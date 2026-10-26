@@ -28,10 +28,12 @@ pub struct Effect {
     transforms: Vec<TransformTracks>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Visual {
     pub opacity: Option<f64>,
     pub transforms: Vec<Transform>,
+    /// Running transitions; keyframe values win where both set a property.
+    pub transition: super::transition::Overrides,
 }
 
 impl Visual {
@@ -118,6 +120,7 @@ impl Effect {
                 .map(|track| track.sample(progress).map(|value| value.clamp(0.0, 1.0)))
                 .transpose()?,
             transforms,
+            transition: Default::default(),
         })
     }
 

@@ -79,11 +79,22 @@ impl ViewSession {
         surface: Option<lifecycle::SurfaceTicket>,
         now: Duration,
     ) -> Result<(), String> {
+        self.set_animation_target(surface, surface.is_some(), now)
+    }
+
+    /// A hidden page renders catch-up frames into its kept surface with time parked:
+    /// they sample the parked time and a change made meanwhile lands on its end value.
+    pub fn set_animation_target(
+        &mut self,
+        surface: Option<lifecycle::SurfaceTicket>,
+        visible: bool,
+        now: Duration,
+    ) -> Result<(), String> {
         let mut candidate = self.animations.fork();
         if surface != self.animation_surface {
             candidate.set_visible(false, now)?;
         }
-        candidate.set_visible(surface.is_some(), now)?;
+        candidate.set_visible(visible && surface.is_some(), now)?;
         self.animations = candidate;
         if surface != self.animation_surface {
             self.pending_animation = None;
@@ -137,9 +148,14 @@ impl ViewSession {
         build: impl FnOnce(DisplayList) -> Result<T, String>,
     ) -> Result<T, String> {
         let surface = self.animation_surface.ok_or("UI_ANIMATION: parked page")?;
+        let mut timeline = self.animations.fork();
+        timeline.set_motion(crate::animation::Motion {
+            reduced: self.environment["reducedMotion"].as_bool() == Some(true),
+            ..timeline.motion()
+        })?;
         let mut animation = FrameAnimations::Collected {
             inventory: self.animation_inventory.clone(),
-            timeline: self.animations.fork(),
+            timeline: Box::new(timeline),
             now,
             frame: None,
             visible: Default::default(),
@@ -164,7 +180,7 @@ impl ViewSession {
             unreachable!()
         };
         self.animation_inventory = inventory;
-        self.animations = timeline;
+        self.animations = *timeline;
         self.animation_visible = visible;
         self.pending_animation = frame.map(|frame| (self.generation, surface, *frame));
         Ok(result)

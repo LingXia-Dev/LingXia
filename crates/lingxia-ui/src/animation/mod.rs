@@ -1,6 +1,7 @@
 //! Shared presentation-bound animation time. No platform clock or guest timers.
 mod effect;
 pub(crate) mod records;
+pub mod transition;
 mod wire;
 pub use wire::decode_definition;
 pub mod interpolate;
@@ -98,7 +99,10 @@ pub struct Prepared {
     owner: Arc<()>,
     ticket: u64,
     prepared_at: Duration,
+    /// Prepared while parked: its acknowledgement commits state but starts no time.
+    visible: bool,
     instances: BTreeMap<String, Instance>,
+    transitions: transition::Transitions,
     samples: BTreeMap<String, Sample>,
     visuals: BTreeMap<String, Visual>,
 }
@@ -118,6 +122,24 @@ impl Prepared {
     }
 }
 
+/// The user's motion preference, taken from the environment.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Motion {
+    /// Transitions complete at once; keyframe animations show their base style.
+    pub reduced: bool,
+    /// Multiplies every duration and delay; must be positive.
+    pub scale: f64,
+}
+
+impl Default for Motion {
+    fn default() -> Self {
+        Self {
+            reduced: false,
+            scale: 1.0,
+        }
+    }
+}
+
 /// One timeline per page. Timestamps are monotonic durations from a host epoch.
 #[derive(Debug, Default)]
 pub struct Timeline {
@@ -128,6 +150,8 @@ pub struct Timeline {
     ticket: u64,
     pending: Option<u64>,
     instances: BTreeMap<String, Instance>,
+    transitions: transition::Transitions,
+    motion: Motion,
     visuals: BTreeMap<String, Visual>,
 }
 
@@ -139,7 +163,7 @@ pub enum Wakeup {
 }
 
 impl Wakeup {
-    fn earliest(self, other: Self) -> Self {
+    pub(crate) fn earliest(self, other: Self) -> Self {
         match (self, other) {
             (Self::NextFrame, _) | (_, Self::NextFrame) => Self::NextFrame,
             (Self::After(a), Self::After(b)) => Self::After(a.min(b)),
@@ -160,8 +184,50 @@ impl Timeline {
             ticket: self.ticket,
             pending: self.pending,
             instances: self.instances.clone(),
+            transitions: self.transitions.clone(),
+            motion: self.motion,
             visuals: self.visuals.clone(),
         }
+    }
+
+    pub fn motion(&self) -> Motion {
+        self.motion
+    }
+
+    /// Takes effect from the next prepared frame.
+    pub fn set_motion(&mut self, motion: Motion) -> Result<(), String> {
+        if !motion.scale.is_finite() || !(0.01..=10.0).contains(&motion.scale) {
+            return Err("UI_ANIMATION: invalid duration scale".into());
+        }
+        self.motion = motion;
+        Ok(())
+    }
+
+    /// Keyframe time under the duration scale.
+    fn local(&self, elapsed: Duration) -> Duration {
+        elapsed.div_f64(self.motion.scale)
+    }
+
+    fn keyframe_visual(
+        &self,
+        instance: &Instance,
+        active_time: Duration,
+    ) -> Result<Option<Visual>, String> {
+        let Some(started) = instance.started else {
+            return Ok(None);
+        };
+        if self.motion.reduced {
+            return Ok(None);
+        }
+        let sample = instance
+            .definition
+            .timing
+            .sample(self.local(active_time.saturating_sub(started)));
+        Ok(if sample.phase == Phase::Active {
+            Some(instance.definition.effect.sample(sample.progress)?)
+        } else {
+            None
+        })
     }
 
     pub(crate) fn clear(&mut self) -> Result<(), String> {
@@ -181,24 +247,32 @@ impl Timeline {
         }
         let mut next = Wakeup::None;
         for identity in visible_identities {
-            let Some(instance) = self.instances.get(identity) else {
-                continue;
+            let instance = self.instances.get(identity);
+            let mut current = match instance {
+                Some(instance) => self.keyframe_visual(instance, active_time)?,
+                None => None,
             };
-            let Some(started) = instance.started else {
-                continue;
-            };
-            let elapsed = active_time.saturating_sub(started);
-            let timing = instance.definition.timing;
-            let sample = timing.sample(elapsed);
-            let current = if sample.phase == Phase::Active {
-                Some(instance.definition.effect.sample(sample.progress)?)
-            } else {
-                None
-            };
+            let overrides = self.transitions.overrides(identity, active_time)?;
+            if !overrides.is_empty() {
+                current.get_or_insert_with(Visual::default).transition = overrides;
+            }
             if current.as_ref() != self.visuals.get(identity) {
                 next = next.earliest(Wakeup::NextFrame);
                 continue;
             }
+            next = next.earliest(self.transitions.wakeup(identity, active_time));
+            let Some((instance, started)) =
+                instance.and_then(|instance| Some((instance, instance.started?)))
+            else {
+                continue;
+            };
+            if self.motion.reduced {
+                continue;
+            }
+            let scale = self.motion.scale;
+            let elapsed = self.local(active_time.saturating_sub(started));
+            let timing = instance.definition.timing;
+            let sample = timing.sample(elapsed);
             let wakeup = match sample.phase {
                 Phase::Finished => Wakeup::None,
                 Phase::Delayed => Wakeup::After(sample.until_boundary.unwrap()),
@@ -224,7 +298,10 @@ impl Timeline {
                     }
                 },
             };
-            next = next.earliest(wakeup);
+            next = next.earliest(match wakeup {
+                Wakeup::After(delay) => Wakeup::After(delay.mul_f64(scale)),
+                other => other,
+            });
         }
         Ok(next)
     }
@@ -263,7 +340,7 @@ impl Timeline {
         now: Duration,
         definitions: impl IntoIterator<Item = (String, Definition)>,
     ) -> Result<Prepared, String> {
-        self.prepare_window(now, definitions, None)
+        self.prepare_window(now, definitions, Vec::new(), None)
     }
 
     /// Definitions describe semantic lifetime, including offscreen list items.
@@ -283,16 +360,47 @@ impl Timeline {
                 return Err("UI_ANIMATION: duplicate visible identity".into());
             }
         }
-        self.prepare_window(now, definitions, Some(visible))
+        self.prepare_window(now, definitions, Vec::new(), Some(visible))
+    }
+
+    /// Like `prepare_visible`, also reconciling transitions against each node's resolved paint.
+    /// A visible identity needs a keyframe definition or a transition.
+    pub(crate) fn prepare_frame<'a>(
+        &mut self,
+        now: Duration,
+        definitions: impl IntoIterator<Item = (String, Definition)>,
+        transitions: Vec<(String, transition::TransitionDef, transition::Resolved)>,
+        visible_identities: impl IntoIterator<Item = &'a str>,
+    ) -> Result<Prepared, String> {
+        let mut visible = std::collections::BTreeSet::new();
+        for identity in visible_identities {
+            if identity.is_empty() || identity.len() > 1024 || visible.len() == MAX_INSTANCES {
+                return Err("UI_ANIMATION: visible identity budget exceeded".into());
+            }
+            if !visible.insert(identity.to_owned()) {
+                return Err("UI_ANIMATION: duplicate visible identity".into());
+            }
+        }
+        self.prepare_window(now, definitions, transitions, Some(visible))
     }
 
     fn prepare_window(
         &mut self,
         now: Duration,
         definitions: impl IntoIterator<Item = (String, Definition)>,
+        transitions: Vec<(String, transition::TransitionDef, transition::Resolved)>,
         mut visible: Option<std::collections::BTreeSet<String>>,
     ) -> Result<Prepared, String> {
         let elapsed = self.time_at(now)?;
+        let transitions = self.transitions.reconcile(
+            transitions,
+            elapsed,
+            transition::Policy {
+                start: self.visible && !self.motion.reduced,
+                keep: !self.motion.reduced,
+                scale: self.motion.scale,
+            },
+        )?;
         let mut instances = BTreeMap::new();
         let mut samples = BTreeMap::new();
         let mut visuals = BTreeMap::new();
@@ -321,11 +429,13 @@ impl Timeline {
                 .and_then(|old| old.started);
             if visible.as_mut().is_none_or(|ids| ids.remove(&identity)) {
                 let sample = definition.timing.sample(
-                    started
-                        .map(|start| elapsed.saturating_sub(start))
-                        .unwrap_or_default(),
+                    self.local(
+                        started
+                            .map(|start| elapsed.saturating_sub(start))
+                            .unwrap_or_default(),
+                    ),
                 );
-                if sample.phase == Phase::Active {
+                if sample.phase == Phase::Active && !self.motion.reduced {
                     visuals.insert(identity.clone(), definition.effect.sample(sample.progress)?);
                 }
                 samples.insert(identity.clone(), sample);
@@ -338,8 +448,20 @@ impl Timeline {
                 },
             );
         }
+        if let Some(ids) = &mut visible {
+            ids.retain(|id| !transitions.contains(id));
+        }
         if visible.is_some_and(|ids| !ids.is_empty()) {
             return Err("UI_ANIMATION: visible identity has no definition".into());
+        }
+        for identity in transitions.identities() {
+            let overrides = transitions.overrides(identity, elapsed)?;
+            if !overrides.is_empty() {
+                visuals
+                    .entry(identity.clone())
+                    .or_insert_with(Visual::default)
+                    .transition = overrides;
+            }
         }
         self.invalidate()?;
         self.pending = Some(self.ticket);
@@ -347,7 +469,9 @@ impl Timeline {
             owner: self.owner.clone(),
             ticket: self.ticket,
             prepared_at: now,
+            visible: self.visible,
             instances,
+            transitions,
             samples,
             visuals,
         })
@@ -359,7 +483,7 @@ impl Timeline {
         now: Duration,
     ) -> Result<Duration, String> {
         if !Arc::ptr_eq(&self.owner, &frame.owner)
-            || !self.visible
+            || self.visible != frame.visible
             || self.pending != Some(frame.ticket)
             || now < frame.prepared_at
         {
@@ -371,12 +495,17 @@ impl Timeline {
     /// Call only after the matching page/surface frame actually presented.
     pub fn presented(&mut self, mut frame: Prepared, now: Duration) -> Result<(), String> {
         let elapsed = self.validate_presentation(&frame, now)?;
-        for (identity, instance) in &mut frame.instances {
-            if frame.samples.contains_key(identity) {
-                instance.started.get_or_insert(elapsed);
+        // A parked frame shows state without starting entrances or transitions.
+        if frame.visible {
+            for (identity, instance) in &mut frame.instances {
+                if frame.samples.contains_key(identity) {
+                    instance.started.get_or_insert(elapsed);
+                }
             }
+            frame.transitions.start(elapsed);
         }
         self.instances = frame.instances;
+        self.transitions = frame.transitions;
         self.visuals = frame.visuals;
         self.pending = None;
         self.elapsed = elapsed;
@@ -388,6 +517,7 @@ impl Timeline {
         self.time_at(now)?;
         self.invalidate()?;
         self.instances.clear();
+        self.transitions = Default::default();
         self.visuals.clear();
         self.elapsed = Duration::ZERO;
         self.observed_at = now;
@@ -637,7 +767,7 @@ mod tests {
     }
 
     #[test]
-    fn other_pages_hidden_frames_and_budget_failures_cannot_commit() {
+    fn other_pages_stale_hidden_frames_and_budget_failures_cannot_commit() {
         let mut a = Timeline::default();
         let mut b = Timeline::default();
         a.set_visible(true, ms(0)).unwrap();
@@ -675,8 +805,13 @@ mod tests {
         let hidden = prepare(&mut b, 20, effect());
         b.set_visible(false, ms(20)).unwrap();
         assert!(b.presented(hidden, ms(21)).is_err());
-        let hidden = prepare(&mut b, 100, effect());
-        assert!(b.presented(hidden, ms(100)).is_err());
+        // A frame prepared while parked commits without starting anything.
+        let parked = b.prepare(ms(100), [("new".into(), effect())]).unwrap();
+        b.presented(parked, ms(100)).unwrap();
+        b.set_visible(true, ms(500)).unwrap();
+        let shown = b.prepare(ms(500), [("new".into(), effect())]).unwrap();
+        assert_eq!(shown.samples()["new"].phase, Phase::Delayed);
+        assert_eq!(shown.samples()["new"].until_boundary, Some(ms(20)));
     }
 
     fn blink() -> Definition {

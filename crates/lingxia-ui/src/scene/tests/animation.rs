@@ -15,6 +15,7 @@ fn subtree_translation_recovers_offscreen_paint_without_moving_siblings() {
         Visual {
             opacity: None,
             transforms: vec![Transform::Translate([-100.0, 0.0])],
+            ..Default::default()
         },
     )]);
     let display = original
@@ -50,6 +51,7 @@ fn transformed_plot_selection_uses_original_geometry_inside_static_scroll_clips(
                 Transform::Translate([4.0, -10.0]),
                 Transform::Scale([0.7, 0.6]),
             ],
+            ..Default::default()
         };
         let [x, y, w, h] = owner.bounds.map(f64::from);
         let matrix = visual.matrix([x + w / 2.0, y + h / 2.0]).unwrap();
@@ -93,6 +95,7 @@ fn animated_opacity_replaces_base_alpha_and_isolates_overlapping_children() {
         Visual {
             opacity: Some(0.5),
             transforms: vec![],
+            ..Default::default()
         },
     );
     let frame = display.rasterize().unwrap();
@@ -120,6 +123,7 @@ fn animated_interactive_geometry_is_rejected_before_build_when_unsupported() {
             Visual {
                 opacity: None,
                 transforms: vec![Transform::Scale([0.9, 0.9])],
+                ..Default::default()
             },
         )]);
         assert!(
@@ -256,4 +260,33 @@ fn backdrop_clip_and_blur_follow_uniform_scale_and_reject_nonuniform_scale() {
     assert_eq!(*backdrop.1, 4.0);
     display.commands[0] = Paint::Transform(Affine::scale_non_uniform(0.5, 0.6));
     assert!(display.composition_plan().is_err());
+}
+
+#[test]
+fn a_transitioning_background_is_painted_on_a_node_that_has_none() {
+    use crate::animation::transition::Overrides;
+    let mut page = crate::ViewSession::new(&crate::session::tests::source(
+        "function render(){return h('column',{style:{backgroundColor:'#ffffff',width:40,height:40}},h('column',{testId:'x',style:{width:20,height:20,borderRadius:4}}))}",
+    ))
+    .unwrap();
+    let display = page.layout(40, 40, 1.0).unwrap();
+    let index = display.nodes.iter().position(|n| n.test_id == "x").unwrap();
+    let painted = display
+        .animate_for_test(
+            index,
+            Visual {
+                transition: Overrides {
+                    background: Some([0, 0, 255, 255]),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )
+        .rasterize()
+        .unwrap();
+    let at = |x: usize, y: usize| &painted.pixels.data_as_u8_slice()[(y * 40 + x) * 4..][..4];
+    assert_eq!(at(10, 10), [0, 0, 255, 255]);
+    // The injected fill keeps the node's rounded corner and stays inside its box.
+    assert_eq!(at(0, 0), [255, 255, 255, 255]);
+    assert_eq!(at(30, 30), [255, 255, 255, 255]);
 }

@@ -1,0 +1,356 @@
+//! Transitions on a fake 60 Hz clock: presented values, interruption, hit geometry, motion.
+use crate::session::lifecycle::SurfaceTicket;
+use crate::{DisplayList, ViewSession, animation::Wakeup};
+use serde_json::json;
+use std::time::Duration;
+
+const SURFACE: SurfaceTicket = SurfaceTicket::new(1);
+
+fn frame_time(index: u64) -> Duration {
+    Duration::from_micros(index * 16_667)
+}
+
+/// A 100x40 button at the origin whose `active:` delta is `pressed`.
+fn page(transition: serde_json::Value, base: &str, pressed: &str, child: &str) -> ViewSession {
+    let module = super::source(&format!(
+        "function render(){{return h('page',{{style:{{backgroundColor:'#ffffff'}}}},h('button',{{testId:'b',onClick(){{}},className:'active:x',style:{{position:'absolute',left:0,top:0,width:100,height:40,padding:0,borderRadius:0,{base},transition:{transition}}}}},{child}))}}"
+    ))
+    .replace(
+        "__lingxiaPublish(render);",
+        &format!(
+            "configureClasses([{{name:'active:x',when:{{state:'active'}},style:{{{pressed}}}}}]);__lingxiaPublish(render);"
+        ),
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    page.set_animation_surface(Some(SURFACE), Duration::ZERO)
+        .unwrap();
+    page
+}
+
+fn transition(properties: &[&str], ms: u64) -> serde_json::Value {
+    json!({"properties":properties,"durationMs":ms,"delayMs":0,"easing":"linear"})
+}
+
+/// A presented frame: its nodes, first text colour and CPU pixels.
+struct Shot {
+    nodes: Vec<crate::scene::node::NodeSnapshot>,
+    text: Option<[u8; 4]>,
+    pixels: Vec<u8>,
+}
+
+fn shoot(display: DisplayList, composited: bool) -> Shot {
+    let text = display.commands.iter().find_map(|paint| match paint {
+        crate::scene::paint::Paint::Text { color, .. } => Some(*color),
+        _ => None,
+    });
+    let nodes = display.nodes.clone();
+    let frame = if composited {
+        display.rasterize_composited()
+    } else {
+        display.rasterize()
+    }
+    .unwrap();
+    Shot {
+        nodes,
+        text,
+        pixels: frame.pixels.data_as_u8_slice().to_vec(),
+    }
+}
+
+/// Prepare and present one frame at `at`; returns it and the next wakeup.
+fn present(page: &mut ViewSession, at: Duration) -> (Shot, Wakeup) {
+    present_route(page, at, false, false)
+}
+
+fn present_route(
+    page: &mut ViewSession,
+    at: Duration,
+    rebuild: bool,
+    composited: bool,
+) -> (Shot, Wakeup) {
+    let display = page
+        .prepare_view_animated(200, 100, 1.0, rebuild, None, at, |display| {
+            Ok(shoot(display, composited))
+        })
+        .unwrap();
+    assert!(
+        page.animation_presented(SURFACE, page.generation(), at)
+            .unwrap()
+    );
+    (display, page.view_animation_wakeup(at).unwrap())
+}
+
+fn press(page: &mut ViewSession, display: &Shot, pressed: bool) {
+    let identity = display
+        .nodes
+        .iter()
+        .find(|n| n.test_id == "b")
+        .unwrap()
+        .identity
+        .clone();
+    page.set_pointer_state(pressed.then_some(identity.as_str()), None);
+}
+
+fn pixel(display: &Shot, x: usize, y: usize) -> [u8; 4] {
+    display.pixels[(y * 200 + x) * 4..(y * 200 + x) * 4 + 4]
+        .try_into()
+        .unwrap()
+}
+
+fn button(display: &Shot) -> &crate::scene::node::NodeSnapshot {
+    display.nodes.iter().find(|n| n.test_id == "b").unwrap()
+}
+
+#[test]
+fn a_200ms_opacity_transition_takes_200ms_with_intermediate_frames() {
+    let mut page = page(
+        transition(&["opacity"], 200),
+        "backgroundColor:'#000000'",
+        "opacity:0",
+        "''",
+    );
+    let (display, wakeup) = present(&mut page, frame_time(0));
+    assert_eq!(wakeup, Wakeup::None);
+    press(&mut page, &display, true);
+    let mut samples = Vec::new();
+    let mut settled = None;
+    for index in 1..40 {
+        let (display, wakeup) = present(&mut page, frame_time(index));
+        samples.push(pixel(&display, 50, 20)[0]);
+        if wakeup == Wakeup::None {
+            settled = Some(index);
+            break;
+        }
+        assert_eq!(wakeup, Wakeup::NextFrame);
+    }
+    // Started on presentation at frame 1; 200 ms is 12 frames at 60 Hz.
+    let settled = settled.unwrap();
+    assert!((12..=14).contains(&(settled - 1)), "settled at {settled}");
+    assert_eq!(*samples.last().unwrap(), 255);
+    assert_eq!(samples[0], 0, "the first frame shows the presented value");
+    let intermediate = samples.iter().filter(|v| (1..255).contains(*v)).count();
+    assert!(intermediate >= 10, "{samples:?}");
+    assert!(samples.windows(2).all(|w| w[0] <= w[1]), "{samples:?}");
+    // Nothing further is scheduled and later frames stay at the end value.
+    let (display, wakeup) = present(&mut page, frame_time(60));
+    assert_eq!((pixel(&display, 50, 20)[0], wakeup), (255, Wakeup::None));
+}
+
+#[test]
+fn interruption_continues_from_the_presented_value_without_a_jump() {
+    let mut page = page(
+        transition(&["opacity"], 200),
+        "backgroundColor:'#000000'",
+        "opacity:0",
+        "''",
+    );
+    let (display, _) = present(&mut page, frame_time(0));
+    press(&mut page, &display, true);
+    let mut last = 0;
+    for index in 1..=7 {
+        last = pixel(&present(&mut page, frame_time(index)).0, 50, 20)[0];
+    }
+    assert!((100..160).contains(&last), "{last}");
+    press(&mut page, &display, false);
+    let mut values = vec![last];
+    for index in 8..30 {
+        let (display, wakeup) = present(&mut page, frame_time(index));
+        values.push(pixel(&display, 50, 20)[0]);
+        if wakeup == Wakeup::None {
+            break;
+        }
+    }
+    // The reversal's first frame samples the old curve at its own time (one frame step on),
+    // then darkens monotonically back to opaque black.
+    assert!(values[1].abs_diff(last) <= 22, "{values:?}");
+    let values = &values[1..];
+    assert!(values.windows(2).all(|w| w[0] >= w[1]), "{values:?}");
+    assert_eq!(*values.last().unwrap(), 0);
+}
+
+#[test]
+fn colours_mix_in_oklab_and_reach_inheriting_text() {
+    let mut page = page(
+        transition(&["bg", "fg"], 200),
+        "backgroundColor:'#000000',color:'#ffffff'",
+        "backgroundColor:'#ffffff',color:'#000000'",
+        "h('text',{testId:'t'},'Hello')",
+    );
+    let (display, _) = present(&mut page, frame_time(0));
+    let text_color = |display: &Shot| display.text.unwrap();
+    assert_eq!(text_color(&display), [255, 255, 255, 255]);
+    press(&mut page, &display, true);
+    present(&mut page, Duration::from_millis(100));
+    let (display, _) = present(&mut page, Duration::from_millis(200));
+    // Linear easing at the midpoint: OKLab middle gray, not sRGB 128.
+    assert_eq!(pixel(&display, 2, 2), [99, 99, 99, 255]);
+    assert_eq!(text_color(&display), [99, 99, 99, 255]);
+    let (display, wakeup) = present(&mut page, Duration::from_millis(300));
+    assert_eq!(pixel(&display, 2, 2), [255, 255, 255, 255]);
+    assert_eq!(text_color(&display), [0, 0, 0, 255]);
+    assert_eq!(wakeup, Wakeup::None);
+}
+
+#[test]
+fn a_background_fades_in_from_transparent_and_shadows_interpolate_per_layer() {
+    let mut page = page(
+        transition(&["bg", "shadow"], 200),
+        "backgroundColor:'#00000000',boxShadow:[{offsetX:0,offsetY:0,blur:0,spread:0,color:'#00000000'}]",
+        "backgroundColor:'#000000',boxShadow:[{offsetX:0,offsetY:20,blur:0,spread:0,color:'#000000'}]",
+        "''",
+    );
+    let (display, _) = present(&mut page, frame_time(0));
+    assert_eq!(pixel(&display, 50, 20), [255, 255, 255, 255]);
+    press(&mut page, &display, true);
+    present(&mut page, Duration::from_millis(100));
+    let (display, _) = present(&mut page, Duration::from_millis(200));
+    let fill = pixel(&display, 50, 20);
+    assert!(
+        (100..160).contains(&fill[0]),
+        "half-opaque black over white: {fill:?}"
+    );
+    // The shadow has moved 10 px down: covered at y=45, not yet at y=55.
+    assert!(pixel(&display, 50, 45)[0] < 250);
+    assert_eq!(pixel(&display, 50, 55)[0], 255);
+    let (display, _) = present(&mut page, Duration::from_millis(300));
+    assert_eq!(pixel(&display, 50, 20), [0, 0, 0, 255]);
+    assert_eq!(pixel(&display, 50, 55)[0], 0);
+}
+
+#[test]
+fn hit_geometry_follows_the_presented_transform_mid_flight() {
+    let mut page = page(
+        transition(&["transform"], 200),
+        "backgroundColor:'#000000'",
+        "scale:[0.5,0.5]",
+        "''",
+    );
+    let (display, _) = present(&mut page, frame_time(0));
+    assert_eq!(button(&display).bounds, [0.0, 0.0, 100.0, 40.0]);
+    press(&mut page, &display, true);
+    present(&mut page, Duration::from_millis(100));
+    let (display, _) = present(&mut page, Duration::from_millis(200));
+    let bounds = button(&display).bounds;
+    // Scale 0.75 about the center.
+    for (actual, expected) in bounds.iter().zip([12.5, 5.0, 75.0, 30.0]) {
+        assert!((actual - expected).abs() < 0.01, "{bounds:?}");
+    }
+    assert!(button(&display).on_click.is_some());
+    assert_eq!(pixel(&display, 5, 2)[0], 255);
+    assert_eq!(pixel(&display, 20, 10)[0], 0);
+    let (display, _) = present(&mut page, Duration::from_millis(300));
+    assert_eq!(button(&display).bounds, [25.0, 10.0, 50.0, 20.0]);
+}
+
+#[test]
+fn translation_transitions_replace_the_laid_out_offset() {
+    let mut page = page(
+        transition(&["transform"], 200),
+        "backgroundColor:'#000000'",
+        "translate:[0,20]",
+        "''",
+    );
+    let (display, _) = present(&mut page, frame_time(0));
+    press(&mut page, &display, true);
+    present(&mut page, Duration::from_millis(100));
+    let (display, _) = present(&mut page, Duration::from_millis(200));
+    assert!((button(&display).bounds[1] - 10.0).abs() < 0.01);
+    let (display, _) = present(&mut page, Duration::from_millis(300));
+    assert_eq!(button(&display).bounds[1], 20.0);
+}
+
+#[test]
+fn cpu_and_composited_routes_sample_the_same_values_at_fixed_times() {
+    let pages = || {
+        page(
+            transition(&["opacity", "transform", "bg"], 200),
+            "backgroundColor:'#ff0000',rotate:0",
+            "opacity:0.2,rotate:45,backgroundColor:'#0000ff'",
+            "h('text',{},'Go')",
+        )
+    };
+    let (mut cpu, mut composited) = (pages(), pages());
+    for page in [&mut cpu, &mut composited] {
+        let (display, _) = present(page, frame_time(0));
+        press(page, &display, true);
+        present(page, Duration::from_millis(20));
+    }
+    for at in [60, 120, 180] {
+        let at = Duration::from_millis(20 + at);
+        let (a, _) = present_route(&mut cpu, at, false, false);
+        let (b, _) = present_route(&mut composited, at, false, true);
+        assert_ne!(
+            a.pixels,
+            present_route(&mut pages(), at, true, false).0.pixels
+        );
+        for (index, (a, b)) in a.pixels.iter().zip(&b.pixels).enumerate() {
+            assert!(a.abs_diff(*b) <= 2, "t={at:?} byte={index}: {a} vs {b}");
+        }
+    }
+}
+
+#[test]
+fn reduced_motion_lands_on_the_final_state_in_one_frame() {
+    let mut page = page(
+        transition(&["opacity"], 200),
+        "backgroundColor:'#000000'",
+        "opacity:0",
+        "''",
+    );
+    let mut environment = json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","displayLanguage":"en","canDock":false,"runner":false,"reducedMotion":true});
+    page.set_environment(environment.clone()).unwrap();
+    let (display, _) = page_frame(&mut page, 0);
+    press(&mut page, &display, true);
+    let (display, wakeup) = page_frame(&mut page, 1);
+    assert_eq!((pixel(&display, 50, 20)[0], wakeup), (255, Wakeup::None));
+    // Turning it off again animates the next change.
+    environment["reducedMotion"] = json!(false);
+    page.set_environment(environment).unwrap();
+    page_frame(&mut page, 2);
+    press(&mut page, &display, false);
+    let (_, wakeup) = page_frame(&mut page, 3);
+    assert_eq!(wakeup, Wakeup::NextFrame);
+}
+
+fn page_frame(page: &mut ViewSession, index: u64) -> (Shot, Wakeup) {
+    present_route(page, frame_time(index), true, false)
+}
+
+#[test]
+fn hidden_pages_park_running_transitions_and_jump_new_ones_to_their_end() {
+    let mut page = page(
+        transition(&["opacity"], 200),
+        "backgroundColor:'#000000'",
+        "opacity:0",
+        "''",
+    );
+    let (display, _) = present(&mut page, frame_time(0));
+    press(&mut page, &display, true);
+    for index in 1..=7 {
+        present(&mut page, frame_time(index));
+    }
+    let running = pixel(&present(&mut page, frame_time(7)).0, 50, 20)[0];
+    // Hide: a catch-up frame samples the parked time and schedules nothing.
+    page.set_animation_target(Some(SURFACE), false, frame_time(7))
+        .unwrap();
+    let (parked, wakeup) = present(&mut page, Duration::from_secs(5));
+    assert_eq!((pixel(&parked, 50, 20)[0], wakeup), (running, Wakeup::None));
+    // Reveal: time resumes from the parked value.
+    page.set_animation_target(Some(SURFACE), true, Duration::from_secs(6))
+        .unwrap();
+    let (shown, wakeup) = present(&mut page, Duration::from_secs(6));
+    assert_eq!(
+        (pixel(&shown, 50, 20)[0], wakeup),
+        (running, Wakeup::NextFrame)
+    );
+    // A change while hidden lands on its end value.
+    page.set_animation_target(Some(SURFACE), false, Duration::from_secs(6))
+        .unwrap();
+    press(&mut page, &display, false);
+    let (hidden, wakeup) = present(&mut page, Duration::from_secs(7));
+    assert_eq!((pixel(&hidden, 50, 20)[0], wakeup), (0, Wakeup::None));
+    page.set_animation_target(Some(SURFACE), true, Duration::from_secs(8))
+        .unwrap();
+    let (shown, wakeup) = present(&mut page, Duration::from_secs(8));
+    assert_eq!((pixel(&shown, 50, 20)[0], wakeup), (0, Wakeup::None));
+}
