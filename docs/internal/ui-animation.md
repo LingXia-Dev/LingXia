@@ -64,6 +64,13 @@ includes nodes intersecting the viewport before or after their sampled transform
 Animation-only frames (`rebuild=false`, no input or viewport change) reuse committed
 layout and shaping and touch only paint, transforms and hit geometry. Opacity is a
 subtree group. Text is never scaled by resizing the surface.
+`DisplayList::animated_spans()` names each outermost animated subtree's command range,
+holding the frame's sampled values. A span opens from and closes back to its parent's
+layer stack and is followed by the parent's absolute transform, so commands outside the
+spans are identical across frames of one layout: renderers cache those and re-encode only
+the spans. Presented frames carry a layout key; between frames of one layout, interaction
+keeps a held press and focus by index, and bounds-only accessibility changes go out at
+most every fourth frame and once on settle.
 
 ## Scheduling
 
@@ -73,7 +80,11 @@ boundary, `None` when settled. One timer per page (`animation_timer`) is revoked
 other frame, so animation, caret and scroll work coalesce into one frame per vsync. A
 late frame samples current time and never replays missed frames; a page whose encode
 overruns a vsync drops frames, never timing. Values that differ from what was presented
-force a catch-up frame. Removal, completion and teardown leave no timer.
+force a catch-up frame. Removal, completion and teardown leave no timer. While the
+last wakeup was `NextFrame`, presenting queues the next prepare right behind the
+acknowledgement on the worker. An adapter whose `present` only queues a frame (CPU raster)
+returns `Presenter::deferred` and calls `ViewHost::deferred_presented` once it is on
+screen; nothing prepares meanwhile, so each shown frame carries its own sample.
 
 ## Hidden pages
 
