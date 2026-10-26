@@ -774,6 +774,18 @@ fn db_error(error: impl fmt::Display) -> FetchError {
     FetchError::new(FetchErrorKind::Io, format!("http store index: {error}"))
 }
 
+static SHARED: std::sync::OnceLock<Arc<Store>> = std::sync::OnceLock::new();
+
+/// Install the host's store; the first call wins.
+pub fn install(store: Arc<Store>) {
+    let _ = SHARED.set(store);
+}
+
+/// The host's store, once installed.
+pub fn shared() -> Option<Arc<Store>> {
+    SHARED.get().cloned()
+}
+
 #[cfg(test)]
 #[path = "store/tests.rs"]
 mod tests;

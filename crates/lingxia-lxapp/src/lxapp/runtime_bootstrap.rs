@@ -25,6 +25,17 @@ fn prepare_directory_structure(runtime: Arc<Platform>) -> Result<(), LxAppError>
     // disk belongs to a run this process never saw end (a crash, a kill).
     super::data_profile::sweep_stale(&super::data_profile::profiles_base(&data_dir));
 
+    // Disposable, like the rest of the OS cache dir; the store rebuilds what it loses.
+    match lingxia_transfer::store::Store::open(
+        cache_dir.join(LINGXIA_DIR).join(HTTP_STORE_DIR),
+        lingxia_transfer::store::STORE_BUDGET_BYTES,
+    ) {
+        Ok(store) => lingxia_transfer::store::install(store),
+        Err(error) => {
+            warn!("HTTP store unavailable: {error}");
+        }
+    }
+
     let metadata_path = data_dir.join(LINGXIA_DIR).join(LXAPPS_DB_FILE);
     metadata::init(metadata_path)
 }

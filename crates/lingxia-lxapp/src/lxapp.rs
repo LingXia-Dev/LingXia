@@ -144,6 +144,8 @@ pub(crate) const USER_CACHE_DIR: &str = "usercache";
 pub(crate) const TEMP_DIR: &str = "temp";
 
 const LXAPPS_DB_FILE: &str = "lxapps.redb";
+/// The host HTTP store, under the OS cache dir.
+pub(crate) const HTTP_STORE_DIR: &str = "http";
 type PendingPageServiceRestart = (PageInstance, oneshot::Receiver<Result<(), String>>);
 const DEFAULT_VERSION: &str = "0.0.1";
 
@@ -5274,18 +5276,28 @@ mod manifest_reload_tests {
     #[tokio::test]
     async fn gpu_image_loader_preserves_local_resources_and_refuses_private_networks() {
         let (temp, app, page) = gpu_factory_fixture();
+        lingxia_transfer::store::install(
+            lingxia_transfer::store::Store::open(temp.path().join("http-store"), 1 << 20).unwrap(),
+        );
         std::fs::write(temp.path().join("avatar.png"), b"fixture").unwrap();
         assert_eq!(
             page.load_gpu_image_bytes("avatar.png").await.unwrap(),
             b"fixture"
         );
+        // Refused before any lookup, by the app's grant or its network guard.
         for source in [
             "http://127.0.0.1/image.png",
             "http://169.254.169.254/image.png",
             "https://[::1]/image.png",
-            "https://",
-            "file:///etc/passwd",
         ] {
+            let error = page.load_gpu_image_bytes(source).await.unwrap_err();
+            let message = error.to_string();
+            assert!(
+                message.contains("not allowed") || message.contains("denied"),
+                "{source}: {message}"
+            );
+        }
+        for source in ["https://", "file:///etc/passwd"] {
             assert!(page.load_gpu_image_bytes(source).await.is_err(), "{source}");
         }
         app.session.cancel();

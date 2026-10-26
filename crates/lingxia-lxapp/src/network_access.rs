@@ -89,6 +89,11 @@ fn ensure_public_target(host: &str, port: u16, allow_private: bool) -> Result<()
 }
 
 /// Apply the owning app network policy to every request and redirect.
+/// `lxapp`'s network policy, for a request made outside its scope.
+pub(crate) fn guard(lxapp: Arc<LxApp>) -> Arc<dyn NetworkAccessGuard> {
+    Arc::new(LxAppNetworkAccessGuard { lxapp })
+}
+
 pub async fn scope_lxapp_network_access<F, T>(lxapp: Arc<LxApp>, future: F) -> T
 where
     F: Future<Output = T>,

@@ -2135,7 +2135,7 @@ impl PageInstance {
         self.owning_lxapp().read_gpu_image(source)
     }
 
-    /// Resolve image resources off the UI thread, sharing the managed URL cache.
+    /// Resolve image resources off the UI thread; remote ones go through the host HTTP store.
     pub async fn load_gpu_image_bytes(&self, source: &str) -> Result<Vec<u8>, LxAppError> {
         if !source.starts_with("https://") && !source.starts_with("http://") {
             return self.gpu_image_bytes(source);
@@ -2159,35 +2159,24 @@ impl PageInstance {
                 "image URL is not allowed".into(),
             ));
         }
-        let result = crate::network_access::scope_lxapp_network_access(
-            app.clone(),
-            lingxia_transfer::user_cache::download_to_user_cache_with_behavior(
-                None,
-                &app.user_cache_dir,
-                lingxia_transfer::user_cache::UserCacheDownloadRequest {
-                    url: source.into(),
-                    headers: Vec::new(),
-                },
-                None,
-                lingxia_transfer::user_cache::DownloadBehavior {
-                    max_bytes: Some(ui_limits::IMAGE_BYTES as u64),
-                    request_timeout: std::time::Duration::from_secs(30),
-                    max_retries: 0,
-                    ..Default::default()
-                },
-                |_| {},
-            ),
-        )
-        .await
-        .map_err(|error| LxAppError::ResourceNotFound(error.error))?;
+        let store = lingxia_transfer::store::shared()
+            .ok_or_else(|| LxAppError::Runtime("HTTP store unavailable".into()))?;
+        let mut request = lingxia_transfer::store::FetchRequest::new(source, app.appid.clone());
+        request.max_bytes = ui_limits::IMAGE_BYTES as u64;
+        request.timeout = std::time::Duration::from_secs(30);
+        // The app's own guard decides plain http as it does every other request.
+        request.allow_http = true;
+        // A page scrolled back offline still shows what it showed.
+        request.stale_on_error = true;
+        request.guard = Some(crate::network_access::guard(app.clone()));
+        let bytes = store
+            .fetch_bytes(request)
+            .await
+            .map_err(|error| LxAppError::ResourceNotFound(error.to_string()))?;
         if app.session.is_cancelled() {
             return Err(LxAppError::Runtime("image owner has closed".into()));
         }
-        let managed = app.to_uri(&result.temp_path).ok_or_else(|| {
-            LxAppError::ResourceNotFound("image cache is outside managed storage".into())
-        })?;
-        crate::cache::touch_access_time(&result.temp_path);
-        app.read_gpu_image(managed.as_str())
+        Ok(bytes.to_vec())
     }
 
     pub fn app_session_id(&self) -> u64 {
