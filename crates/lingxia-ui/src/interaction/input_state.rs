@@ -26,6 +26,7 @@ struct Entry {
     on_input: Option<u64>,
     on_submit: Option<u64>,
     scroll_offset: [f32; 2],
+    rules: crate::interaction::input_rules::Rules,
 }
 
 #[derive(Clone, Default)]
@@ -33,6 +34,8 @@ pub(crate) struct Inputs {
     entries: HashMap<String, Entry>,
     focused: Option<String>,
     token: u64,
+    /// Values a blur or submit committed (bounds, step), for the session to report as input.
+    committed: Vec<(u64, String)>,
 }
 
 impl Inputs {
@@ -109,11 +112,13 @@ impl Inputs {
                         on_input: None,
                         on_submit: None,
                         scroll_offset: [0.0; 2],
+                        rules: Default::default(),
                     },
                 );
             }
             let entry = self.entries.get_mut(&id).unwrap();
             entry.enabled = record.number(field::ENABLED) != Some(0.0);
+            entry.rules = crate::interaction::input_rules::Rules::from_record(record);
             entry.on_input = record
                 .fields
                 .iter()
@@ -243,8 +248,46 @@ impl Inputs {
         Ok(true)
     }
 
+    /// Apply bounds and step to the editor's value, queueing the change as input.
+    pub fn commit(&mut self, id: &str, renderer: &mut Renderer) -> Result<(), String> {
+        let Some(entry) = self.entries.get_mut(id) else {
+            return Ok(());
+        };
+        let snapshot = entry.editor.snapshot();
+        let Some(value) = entry.rules.commit(&snapshot.text) else {
+            return Ok(());
+        };
+        let end = snapshot.text.encode_utf16().count() as u32;
+        renderer.edit_text(
+            &mut entry.editor,
+            &[
+                Edit::FinishComposition,
+                Edit::Selection {
+                    anchor: 0,
+                    focus: end,
+                },
+                Edit::Replace {
+                    text: value.clone(),
+                    cursor: 1,
+                    composing: false,
+                },
+            ],
+        )?;
+        if let Some(handle) = entry.on_input {
+            self.committed.push((handle, value));
+        }
+        Ok(())
+    }
+
+    pub fn take_committed(&mut self) -> Vec<(u64, String)> {
+        std::mem::take(&mut self.committed)
+    }
+
     pub fn blur(&mut self, renderer: &mut Renderer) -> Result<(), String> {
         if let Some(id) = self.focused.take() {
+            if self.entries.get(&id).is_some_and(|entry| entry.enabled) {
+                self.commit(&id, renderer)?;
+            }
             if let Some(entry) = self.entries.get_mut(&id) {
                 renderer.edit_text(&mut entry.editor, &[Edit::Blur])?;
             }
@@ -280,16 +323,40 @@ impl Inputs {
         {
             return Err("UI_INPUT: host edit cannot change control state".into());
         }
-        let change = renderer.edit_text(
-            &mut self
-                .entries
-                .get_mut(id)
-                .ok_or("UI_INPUT: missing editor")?
-                .editor,
-            edits,
-        )?;
+        let entry = self.entries.get_mut(id).ok_or("UI_INPUT: missing editor")?;
+        let before = entry.editor.clone();
+        let mut input = None;
+        if entry.rules.max_length.is_none() {
+            input = renderer.edit_text(&mut entry.editor, edits)?.input;
+        } else {
+            for edit in edits {
+                // maxLength trims what an edit inserts; it never removes existing text.
+                let edit = match edit {
+                    Edit::Replace {
+                        text,
+                        cursor,
+                        composing,
+                    } => Edit::Replace {
+                        text: entry.rules.fit(&entry.editor.snapshot(), text),
+                        cursor: *cursor,
+                        composing: *composing,
+                    },
+                    edit => edit.clone(),
+                };
+                let change = renderer.edit_text(&mut entry.editor, std::slice::from_ref(&edit))?;
+                input = change.input.or(input);
+            }
+        }
+        let text = entry.editor.snapshot().text;
+        if !entry.rules.accepts(&text) {
+            entry.editor = before;
+            return Err(format!(
+                "UI_INPUT: {} inputs take an ISO value",
+                entry.rules.keyboard
+            ));
+        }
         self.check_budget()?;
-        Ok(change.input)
+        Ok(input)
     }
     fn check_budget(&self) -> Result<(), String> {
         if self

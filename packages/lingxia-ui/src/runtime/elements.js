@@ -145,7 +145,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       check.label(props.accessibilityLabel, 'UI_INPUT');
       if (!validInputText(props.value === undefined ? '' : props.value) || !validInputText(props.placeholder === undefined ? '' : props.placeholder)) throw Error('UI_INPUT: invalid text');
       for (const name of ['secure', 'autoFocus', 'submitOnEnter']) if (props[name] !== undefined && typeof props[name] !== 'boolean') throw Error(`UI_INPUT: ${name}`);
-      if (props.keyboard !== undefined && !['text', 'number', 'email', 'phone'].includes(props.keyboard)) throw Error('UI_INPUT: keyboard');
+      const attributes = check.editor(tag, props);
       if (props.onSubmit !== undefined && typeof props.onSubmit !== 'function') throw Error('UI_INPUT: onSubmit');
       if (props.accessibilityLabel !== undefined) wire('accessibilityLabel', props.accessibilityLabel);
       wire('inputValue', props.value ?? '');
@@ -153,6 +153,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       if (tag === 'search') wire('keyboard', 'search');
       else if (props.keyboard !== undefined) wire('keyboard', props.keyboard);
       for (const name of ['secure', 'autoFocus', 'submitOnEnter']) if (props[name] !== undefined) wire(name, +props[name]);
+      for (const [key, value] of attributes) wire(key, value);
       if (!disabled) for (const name of ['onInput', 'onSubmit']) if (props[name]) on(name, props[name], 'text');
       break;
     case 'image':

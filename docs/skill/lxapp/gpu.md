@@ -45,6 +45,9 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   runs take text paint only; links are accent + underline by default.
 - Semantics: `role="heading" headingLevel={2}`, `list`/`listitem`, `dialog`, `alert`/`status`
   (announced), `accessibilityHidden` for decoration.
+- Inputs take `maxLength`, `autoComplete` (autofill), `enterKeyHint`, `autoCapitalize`, `spellCheck`;
+  `keyboard="number"` with `min`/`max`/`step` clamps on blur/submit; `keyboard="date|time"` opens the
+  platform picker and reports ISO strings.
 - Buttons may contain text, icons and images; their text names them for
   accessibility. Images need `alt` (`""` for decoration).
 - Remote `<image>` sources follow HTTP caching: revalidated, and shown stale while offline.

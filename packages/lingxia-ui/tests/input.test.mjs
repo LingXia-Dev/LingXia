@@ -109,3 +109,19 @@ test('focus styles lower to paint deltas on editors and are rejected elsewhere',
   assert.throws(() => describe(() => h('input', { className: 'focus:p-4' }), {}), /UI_STYLE: focus: supports paint properties only/);
   configureClasses([]);
 });
+
+test('editor attributes are validated, normalized and wired for the platform input connection', () => {
+  const props = rendered(() => h('input', { value: '', maxLength: 6, autoComplete: 'one-time-code', enterKeyHint: 'go', autoCapitalize: 'off', spellCheck: false })).props;
+  assert.deepEqual([props.maxLength, props.autoComplete, props.enterKeyHint, props.autoCapitalize, props.spellCheck], [6, 'one-time-code', 'go', 'none', 0]);
+  const number = rendered(() => h('input', { value: '', keyboard: 'number', min: 0, max: 9.5, step: 0.5 })).props;
+  assert.deepEqual([number.inputMin, number.inputMax, number.inputStep], [0, 9.5, 0.5]);
+  const date = rendered(() => h('input', { value: '', keyboard: 'date', min: '2024-01-01' })).props;
+  assert.deepEqual([date.keyboard, date.inputMin], ['date', '2024-01-01']);
+  for (const [tag, props, message] of [
+    ['input', { maxLength: 0 }, /maxLength/], ['input', { autoComplete: 'password' }, /autoComplete must be one of/],
+    ['textarea', { keyboard: 'time' }, /need <input>/], ['input', { min: 1 }, /need keyboard number, date or time/],
+    ['input', { keyboard: 'number', min: 5, max: 1 }, /min exceeds max/], ['input', { keyboard: 'date', min: '01/02/2024' }, /ISO form/],
+    ['input', { keyboard: 'date', step: 1 }, /step is a positive number/], ['input', { keyboard: 'search' }, /keyboard/],
+    ['search', { spellCheck: 'no' }, /spellCheck/]])
+    assert.throws(() => describe(() => h(tag, { value: '', ...props }), {}), message);
+});

@@ -122,6 +122,14 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             .as_str()
             .filter(|v| options.contains(v))
             .ok_or("UI_STYLE: invalid style option")?;
+        if id == field::KEYBOARD {
+            if (tag == tag::SEARCH) != (value == "search") {
+                return Err("UI_INPUT: search requires search keyboard".into());
+            }
+            if matches!(value, "date" | "time") && tag != tag::INPUT {
+                return Err("UI_INPUT: date and time pickers need input".into());
+            }
+        }
         return ensure(
             tag != tag::LIST
                 || !((id == field::ALIGN && value != "stretch")
@@ -281,19 +289,27 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             bounded_str(value, crate::text::input::MAX_TEXT_BYTES),
             "UI_INPUT: invalid text",
         ),
-        field::SECURE | field::AUTO_FOCUS => ensure(flag(value), "UI_INPUT: invalid flag"),
-        field::KEYBOARD => {
-            if tag == tag::SEARCH && value.as_str() != Some("search") {
-                return Err("UI_INPUT: search requires search keyboard".into());
-            }
-            ensure(
-                matches!(
-                    value.as_str(),
-                    Some("text" | "number" | "email" | "phone" | "search")
-                ),
-                "UI_INPUT: invalid keyboard",
-            )
+        field::SECURE | field::AUTO_FOCUS | field::SPELL_CHECK => {
+            ensure(flag(value), "UI_INPUT: invalid flag")
         }
+        field::MAX_LENGTH => ensure(
+            value.as_u64().is_some_and(|v| (1..=65536).contains(&v)),
+            "UI_INPUT: maxLength must be 1..65536",
+        ),
+        field::INPUT_STEP => ensure(
+            value
+                .as_f64()
+                .is_some_and(|v| v.is_finite() && v > 0.0 && v <= 1e15),
+            "UI_INPUT: invalid step",
+        ),
+        field::INPUT_MIN | field::INPUT_MAX => ensure(
+            finite_within(value, 1e15)
+                || value.as_str().is_some_and(|text| {
+                    crate::interaction::input_rules::iso(text, "date")
+                        || crate::interaction::input_rules::iso(text, "time")
+                }),
+            "UI_INPUT: invalid min or max",
+        ),
         field::ON_INPUT | field::ON_SUBMIT => ensure(handle(value), "UI_INPUT: invalid callback"),
         field::IMAGE_SRC => ensure(
             value.as_str().is_some_and(|s| {

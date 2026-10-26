@@ -1,5 +1,6 @@
 import { utf8Bytes, has } from './data.js';
 import { limits } from '../generated/contract.js';
+import { fieldOptions } from '../generated/wire.js';
 
 // Per-element value checks; native decoding re-validates everything it receives.
 export function label(value, code, required = false) {
@@ -145,4 +146,44 @@ export function listKeys(props) {
         (a.seq !== undefined && (!Number.isSafeInteger(a.seq) || a.seq < 0))) throw Error('UI_LIST: invalid anchor');
     props.anchor = { index: a.index, align: a.align, ...(a.seq === undefined ? {} : { seq: a.seq }) };
   }
+}
+
+const iso = { date: /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/, time: /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/ };
+
+/** Editor attributes as wire pairs; native enforces length and range again. */
+export function editor(tag, props) {
+  const out = [];
+  const keyboard = props.keyboard;
+  if (keyboard !== undefined && (keyboard === 'search' || !fieldOptions.keyboard.includes(keyboard))) throw Error('UI_INPUT: keyboard');
+  if ((keyboard === 'date' || keyboard === 'time') && tag !== 'input') throw Error(`UI_INPUT: ${keyboard} pickers need <input>`);
+  if (props.maxLength !== undefined) {
+    if (!Number.isInteger(props.maxLength) || props.maxLength < 1 || props.maxLength > 65536) throw Error('UI_INPUT: maxLength is an integer 1..65536');
+    out.push(['maxLength', props.maxLength]);
+  }
+  for (const [name, key] of [['autoComplete', 'autoComplete'], ['enterKeyHint', 'enterKeyHint']]) {
+    if (props[name] === undefined) continue;
+    if (!fieldOptions[key].includes(props[name])) throw Error(`UI_INPUT: ${name} must be one of ${fieldOptions[key].join(', ')}`);
+    out.push([key, props[name]]);
+  }
+  if (props.autoCapitalize !== undefined) {
+    const value = { off: 'none', on: 'sentences' }[props.autoCapitalize] ?? props.autoCapitalize;
+    if (!fieldOptions.autoCapitalize.includes(value)) throw Error('UI_INPUT: autoCapitalize');
+    out.push(['autoCapitalize', value]);
+  }
+  if (props.spellCheck !== undefined) {
+    if (typeof props.spellCheck !== 'boolean') throw Error('UI_INPUT: spellCheck must be boolean');
+    out.push(['spellCheck', +props.spellCheck]);
+  }
+  const bounded = ['min', 'max', 'step'].filter(name => props[name] !== undefined);
+  if (bounded.length) {
+    if (tag !== 'input' || !['number', 'date', 'time'].includes(keyboard)) throw Error('UI_INPUT: min, max and step need keyboard number, date or time');
+    const valid = value => keyboard === 'number' ? typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1e15
+      : typeof value === 'string' && iso[keyboard].test(value);
+    for (const name of ['min', 'max']) if (props[name] !== undefined && !valid(props[name])) throw Error(`UI_INPUT: ${name} must be a ${keyboard === 'number' ? 'number' : `${keyboard} in ISO form`}`);
+    if (props.min !== undefined && props.max !== undefined && props.min > props.max) throw Error('UI_INPUT: min exceeds max');
+    if (props.step !== undefined && (keyboard !== 'number' || typeof props.step !== 'number' || !(props.step > 0) || props.step > 1e15))
+      throw Error('UI_INPUT: step is a positive number on keyboard="number"');
+    for (const [name, key] of [['min', 'inputMin'], ['max', 'inputMax'], ['step', 'inputStep']]) if (props[name] !== undefined) out.push([key, props[name]]);
+  }
+  return out;
 }

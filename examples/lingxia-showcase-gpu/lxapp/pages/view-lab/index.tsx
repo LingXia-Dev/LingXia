@@ -17,6 +17,7 @@ export function render() {
       <Sizing />
       <Direction />
       <Accessibility />
+      <Inputs />
     </Page>
   );
 }
@@ -201,6 +202,26 @@ function Accessibility() {
         <Button testId="lab-a11y-save" onClick={() => saves.set(saves.value + 1)}>Save</Button>
         <text testId="lab-a11y-status" role="status" className="text-sm text-muted-foreground">{saves.value ? `Saved ${saves.value} times` : 'Not saved yet'}</text>
       </row>
+    </Section>
+  );
+}
+
+function Inputs() {
+  const code = useLocal('code', '');
+  const amount = useLocal('amount', '');
+  const day = useLocal('day', '');
+  const time = useLocal('time', '');
+  const field = 'px-3 py-2 rounded-lg border border-input bg-card text-sm';
+  return (
+    <Section title="Inputs" testId="lab-inputs">
+      <input testId="lab-input-otp" bind={code} accessibilityLabel="One-time code" keyboard="number" maxLength={6} autoComplete="one-time-code" enterKeyHint="done" placeholder="6-digit code" className={field} />
+      <input testId="lab-input-amount" bind={amount} accessibilityLabel="Amount" keyboard="number" min={1} max={500} step={0.5} enterKeyHint="next" placeholder="1 to 500, steps of 0.5" className={field} />
+      <row className="gap-2">
+        <input testId="lab-input-date" bind={day} accessibilityLabel="Date" keyboard="date" min="2024-01-01" placeholder="Date" className={`grow basis-0 ${field}`} />
+        <input testId="lab-input-time" bind={time} accessibilityLabel="Time" keyboard="time" placeholder="Time" className={`grow basis-0 ${field}`} />
+      </row>
+      <input testId="lab-input-name" accessibilityLabel="Name" autoComplete="name" autoCapitalize="words" spellCheck={false} placeholder="Full name" className={field} />
+      <text testId="lab-input-values" className="text-xs text-muted-foreground">{`code=${code.value} amount=${amount.value} date=${day.value} time=${time.value}`}</text>
     </Section>
   );
 }

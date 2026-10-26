@@ -56,6 +56,10 @@ impl ViewSession {
         if !inputs.focus(identity, &mut self.renderer)? {
             return Ok(None);
         }
+        for (handle, text) in inputs.take_committed() {
+            self.text_event(self.generation, handle, &text)?;
+            self.input_rebuild = true;
+        }
         let reply = inputs.reply(identity, self.input_rebuild);
         if self.pending_inputs.is_none() {
             self.pending_inputs = Some(self.inputs.clone());
@@ -97,6 +101,13 @@ impl ViewSession {
             }
             rebuild = true;
         }
+        if submit {
+            inputs.commit(identity, &mut self.renderer)?;
+        }
+        for (handle, text) in inputs.take_committed() {
+            self.text_event(self.generation, handle, &text)?;
+            rebuild = true;
+        }
         if submit && let Some(handle) = inputs.handler(identity, true) {
             let text = inputs.reply(identity, false).state.text;
             if !self.text_event(self.generation, handle, &text)? {
@@ -121,6 +132,10 @@ impl ViewSession {
         }
         let mut inputs = self.inputs.clone();
         inputs.blur(&mut self.renderer)?;
+        for (handle, text) in inputs.take_committed() {
+            self.text_event(self.generation, handle, &text)?;
+            self.input_rebuild = true;
+        }
         if self.pending_inputs.is_none() {
             self.pending_inputs = Some(self.inputs.clone());
         }

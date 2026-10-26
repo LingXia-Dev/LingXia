@@ -102,10 +102,36 @@ pub struct InputSnapshot {
     pub enabled: bool,
     pub on_input: Option<u64>,
     pub on_submit: Option<u64>,
+    /// Attributes the platform input connection maps onto its IME and autofill.
+    #[serde(flatten)]
+    pub attributes: EditorAttributes,
     pub edit: Option<crate::text::input::Snapshot>,
     pub edit_token: Option<u64>,
     pub geometry: Option<InputGeometry>,
     pub scroll_offset: [f32; 2],
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct EditorAttributes {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_length: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_complete: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enter_key_hint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_capitalize: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spell_check: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub step: Option<f64>,
+    /// `date` or `time`: the platform opens its picker instead of a keyboard.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub picker: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]

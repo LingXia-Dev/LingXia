@@ -153,3 +153,5 @@ export interface VectorGradient {
   stops: ReadonlyArray<{ offset: number; color: string; opacity?: number }>;
 }
 export interface RadioOption { readonly value: string; readonly label: string; readonly disabled?: boolean; readonly testId?: string }
+/** HTML autocomplete tokens; Android maps them to autofill hints. */
+export type AutoComplete = "off" | "on" | "username" | "current-password" | "new-password" | "one-time-code" | "email" | "tel" | "name" | "given-name" | "family-name" | "street-address" | "postal-code" | "country" | "cc-number" | "cc-exp" | "cc-csc" | "bday";

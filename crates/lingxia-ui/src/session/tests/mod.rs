@@ -1612,3 +1612,5 @@ fn native_validation_failure_does_not_commit_state_or_handlers() {
         .unwrap();
     assert_eq!(session.render(300, 500, 1.0).unwrap().nodes[0].text, "1");
 }
+#[path = "editor_rules.rs"]
+mod editor_rules;

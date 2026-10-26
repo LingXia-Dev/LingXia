@@ -195,6 +195,14 @@ pub mod field {
     pub const HEADING_LEVEL: usize = 160;
     pub const ACCESSIBILITY_HIDDEN: usize = 161;
     pub const ACCESSIBILITY_LIVE_REGION: usize = 162;
+    pub const MAX_LENGTH: usize = 163;
+    pub const AUTO_COMPLETE: usize = 164;
+    pub const ENTER_KEY_HINT: usize = 165;
+    pub const AUTO_CAPITALIZE: usize = 166;
+    pub const SPELL_CHECK: usize = 167;
+    pub const INPUT_MIN: usize = 168;
+    pub const INPUT_MAX: usize = 169;
+    pub const INPUT_STEP: usize = 170;
 }
 
 pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page", "span", "link"];
@@ -364,6 +372,14 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("headingLevel", "heading-level"),
     ("accessibilityHidden", "hidden-flag"),
     ("accessibilityLiveRegion", "live-region"),
+    ("maxLength", "input-max-length"),
+    ("autoComplete", "auto-complete"),
+    ("enterKeyHint", "enter-key-hint"),
+    ("autoCapitalize", "auto-capitalize"),
+    ("spellCheck", "input-flag"),
+    ("min", "input-bound"),
+    ("max", "input-bound"),
+    ("step", "input-step"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -394,6 +410,10 @@ pub fn options(kind: &str) -> Option<&'static [&'static str]> {
         "direction" => Some(&["ltr", "rtl"]),
         "role" => Some(&["heading", "list", "listitem", "dialog", "alert", "status"]),
         "live-region" => Some(&["off", "polite", "assertive"]),
+        "input-keyboard" => Some(&["text", "number", "email", "phone", "search", "date", "time"]),
+        "auto-complete" => Some(&["off", "on", "username", "current-password", "new-password", "one-time-code", "email", "tel", "name", "given-name", "family-name", "street-address", "postal-code", "country", "cc-number", "cc-exp", "cc-csc", "bday"]),
+        "enter-key-hint" => Some(&["enter", "done", "go", "next", "previous", "search", "send"]),
+        "auto-capitalize" => Some(&["none", "sentences", "words", "characters"]),
         _ => None,
     }
 }
@@ -640,4 +660,12 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
+    FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
+    FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
+    FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
+    FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
+    FieldAdmission { tags: Some(&[tag::INPUT]), parent: None },
+    FieldAdmission { tags: Some(&[tag::INPUT]), parent: None },
+    FieldAdmission { tags: Some(&[tag::INPUT]), parent: None },
 ];

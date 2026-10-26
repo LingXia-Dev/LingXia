@@ -2,6 +2,7 @@
 pub mod chrome;
 pub mod frame;
 pub(crate) mod input_hits;
+pub(crate) mod input_rules;
 pub(crate) mod input_state;
 pub mod keyboard;
 #[cfg(test)]

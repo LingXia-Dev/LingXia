@@ -303,6 +303,31 @@ ${lines.join('\n')}
 `;
 }
 
+// Editor attributes the Android input connection maps onto EditorInfo and autofill.
+function androidInput(schema) {
+  const { autofill, keys } = schema.input;
+  const options = kind => schema.options[kind].map(value => `    public static final String ${kind === 'enter-key-hint' ? 'ENTER' : kind === 'auto-capitalize' ? 'CAPITALIZE' : 'KEYBOARD'}_${constant(value)} = ${JSON.stringify(value)};`);
+  const hints = Object.entries(autofill).map(([token, hint]) => `            case ${JSON.stringify(token)}: return ${JSON.stringify(hint)};`);
+  return `${header}package com.lingxia.ui.generated;
+
+/** Editor keyboards, IME actions, capitalization, autofill hints and snapshot keys. */
+public final class GpuInput {
+    private GpuInput() {}
+
+${[...options('input-keyboard'), ...options('enter-key-hint'), ...options('auto-capitalize'),
+  ...Object.entries(keys).map(([name, key]) => `    public static final String KEY_${constant(name)} = ${JSON.stringify(key)};`)].join('\n')}
+
+    /** The Android autofill hint for an HTML autocomplete token, or null. */
+    public static String autofillHint(String token) {
+        switch (token) {
+${hints.join('\n')}
+            default: return null;
+        }
+    }
+}
+`;
+}
+
 /** Map of repository-relative path to generated content. */
 export async function generate(schema) {
   validate(schema);
@@ -315,6 +340,7 @@ export async function generate(schema) {
     'packages/lingxia-ui/src/generated/contract.js': contract(schema),
     'packages/lingxia-ui/src/generated/authoring.d.ts': authoring(schema, api),
     'lingxia-sdk/android/lingxia/src/main/java/com/lingxia/ui/generated/GpuSemantics.java': androidSemantics(schema),
+    'lingxia-sdk/android/lingxia/src/main/java/com/lingxia/ui/generated/GpuInput.java': androidInput(schema),
   };
   generated['crates/lingxia-ui/src/session/tests/runtime.js'] = await nativeTestRuntime(generated);
   return generated;

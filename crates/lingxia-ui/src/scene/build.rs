@@ -14,6 +14,14 @@ use std::sync::Arc;
 use taffy::prelude::*;
 use vello_cpu::Glyph;
 
+fn field_value(record: &Record, id: usize) -> Option<serde_json::Value> {
+    record
+        .fields
+        .iter()
+        .find(|(field, _)| *field == id)
+        .map(|(_, value)| value.clone())
+}
+
 impl Renderer {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn build_scene(
@@ -843,6 +851,22 @@ impl Renderer {
                             .iter()
                             .find(|(id, _)| *id == field::ON_SUBMIT)
                             .and_then(|(_, v)| v.as_u64()),
+                        attributes: crate::scene::node::EditorAttributes {
+                            max_length: record.number(field::MAX_LENGTH).map(|n| n as u32),
+                            auto_complete: record.string(field::AUTO_COMPLETE).map(str::to_owned),
+                            enter_key_hint: record.string(field::ENTER_KEY_HINT).map(str::to_owned),
+                            auto_capitalize: record
+                                .string(field::AUTO_CAPITALIZE)
+                                .map(str::to_owned),
+                            spell_check: record.number(field::SPELL_CHECK).map(|flag| flag == 1.0),
+                            min: field_value(record, field::INPUT_MIN),
+                            max: field_value(record, field::INPUT_MAX),
+                            step: record.number(field::INPUT_STEP).map(f64::from),
+                            picker: record
+                                .string(field::KEYBOARD)
+                                .filter(|k| matches!(*k, "date" | "time"))
+                                .map(str::to_owned),
+                        },
                     }
                 }),
                 tag: crate::protocol::TAGS[record.tag],

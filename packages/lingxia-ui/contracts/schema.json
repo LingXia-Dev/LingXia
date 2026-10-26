@@ -52,7 +52,11 @@
     "align-content": ["start", "center", "end", "between", "around", "evenly", "stretch"],
     "direction": ["ltr", "rtl"],
     "role": ["heading", "list", "listitem", "dialog", "alert", "status"],
-    "live-region": ["off", "polite", "assertive"]
+    "live-region": ["off", "polite", "assertive"],
+    "input-keyboard": ["text", "number", "email", "phone", "search", "date", "time"],
+    "auto-complete": ["off", "on", "username", "current-password", "new-password", "one-time-code", "email", "tel", "name", "given-name", "family-name", "street-address", "postal-code", "country", "cc-number", "cc-exp", "cc-csc", "bday"],
+    "enter-key-hint": ["enter", "done", "go", "next", "previous", "search", "send"],
+    "auto-capitalize": ["none", "sentences", "words", "characters"]
   },
   "fields": [
     {"id": 0, "key": "width", "wire": "width", "kind": "number"},
@@ -217,8 +221,20 @@
     {"id": 159, "key": "role", "wire": "role", "kind": "role"},
     {"id": 160, "key": "headingLevel", "wire": "headingLevel", "kind": "heading-level"},
     {"id": 161, "key": "accessibilityHidden", "wire": "accessibilityHidden", "kind": "hidden-flag"},
-    {"id": 162, "key": "accessibilityLiveRegion", "wire": "accessibilityLiveRegion", "kind": "live-region"}
+    {"id": 162, "key": "accessibilityLiveRegion", "wire": "accessibilityLiveRegion", "kind": "live-region"},
+    {"id": 163, "key": "maxLength", "wire": "maxLength", "kind": "input-max-length", "tags": ["input", "textarea", "search"]},
+    {"id": 164, "key": "autoComplete", "wire": "autoComplete", "kind": "auto-complete", "tags": ["input", "textarea", "search"]},
+    {"id": 165, "key": "enterKeyHint", "wire": "enterKeyHint", "kind": "enter-key-hint", "tags": ["input", "textarea", "search"]},
+    {"id": 166, "key": "autoCapitalize", "wire": "autoCapitalize", "kind": "auto-capitalize", "tags": ["input", "textarea", "search"]},
+    {"id": 167, "key": "spellCheck", "wire": "spellCheck", "kind": "input-flag", "tags": ["input", "textarea", "search"]},
+    {"id": 168, "key": "inputMin", "wire": "min", "kind": "input-bound", "tags": ["input"]},
+    {"id": 169, "key": "inputMax", "wire": "max", "kind": "input-bound", "tags": ["input"]},
+    {"id": 170, "key": "inputStep", "wire": "step", "kind": "input-step", "tags": ["input"]}
   ],
+  "input": {
+    "autofill": {"username": "username", "current-password": "password", "new-password": "newPassword", "one-time-code": "smsOTPCode", "email": "emailAddress", "tel": "phone", "name": "personName", "given-name": "personGivenName", "family-name": "personFamilyName", "street-address": "postalAddress", "postal-code": "postalCode", "country": "addressCountry", "cc-number": "creditCardNumber", "cc-exp": "creditCardExpirationDate", "cc-csc": "creditCardSecurityCode", "bday": "birthDateFull"},
+    "keys": {"maxLength": "max_length", "autoComplete": "auto_complete", "enterKeyHint": "enter_key_hint", "autoCapitalize": "auto_capitalize", "spellCheck": "spell_check", "min": "min", "max": "max", "step": "step", "picker": "picker"}
+  },
   "semantics": {
     "roles": ["button", "check-box", "switch", "radio-group", "radio-button", "text-field", "scroll-view", "horizontal-scroll-view", "image", "slider", "text", "link", "heading", "list", "list-item", "dialog", "alert", "status"],
     "liveRegions": ["polite", "assertive"],
@@ -346,9 +362,9 @@
     "scroll": {"wire": "scroll", "children": "any", "style": ["box", "padding", "flex", "align", "gap", "text", "scroll", "overscroll"], "props": {"onReachStart": {"type": "() => void"}, "onReachEnd": {"type": "() => void"}}},
     "list": {"wire": "list", "children": "none", "style": ["box", "padding", "gap", "text", "overscroll"], "props": {"count": {"type": "number", "required": true}, "row": {"type": "(index: number) => JSX.Element", "required": true}, "height": {"type": "(index: number) => number"}, "anchor": {"type": "\"end\" | { index: number; align: \"start\" | \"end\"; seq?: number }"}, "itemKeys": {"type": "readonly string[]"}, "onReachStart": {"type": "() => void"}, "onReachEnd": {"type": "() => void"}}},
     "image": {"wire": "image", "children": "none", "style": ["box", "media"], "props": {"src": {"type": "string", "required": true}, "alt": {"type": "string"}, "retryKey": {"type": "string"}, "onLoad": {"type": "() => void"}, "onError": {"type": "() => void"}}},
-    "input": {"wire": "input", "children": "none", "style": ["box", "padding", "text", "editor"], "binding": {"type": "string", "event": "onInput"}, "props": {"accessibilityLabel": {"type": "string"}, "placeholder": {"type": "string"}, "secure": {"type": "boolean"}, "keyboard": {"type": "\"text\" | \"number\" | \"email\" | \"phone\""}, "autoFocus": {"type": "boolean"}, "disabled": {"type": "boolean"}, "onSubmit": {"type": "(value: string) => void"}}},
-    "textarea": {"wire": "textarea", "children": "none", "style": ["box", "padding", "text", "editor"], "binding": {"type": "string", "event": "onInput"}, "props": {"accessibilityLabel": {"type": "string"}, "placeholder": {"type": "string"}, "secure": {"type": "boolean"}, "keyboard": {"type": "\"text\" | \"number\" | \"email\" | \"phone\""}, "autoFocus": {"type": "boolean"}, "disabled": {"type": "boolean"}, "submitOnEnter": {"type": "boolean"}, "onSubmit": {"type": "(value: string) => void"}}},
-    "search": {"wire": "search", "children": "none", "style": ["box", "padding", "text", "editor"], "binding": {"type": "string", "event": "onInput"}, "props": {"accessibilityLabel": {"type": "string"}, "placeholder": {"type": "string"}, "autoFocus": {"type": "boolean"}, "disabled": {"type": "boolean"}, "onSubmit": {"type": "(value: string) => void"}}},
+    "input": {"wire": "input", "children": "none", "style": ["box", "padding", "text", "editor"], "binding": {"type": "string", "event": "onInput"}, "props": {"accessibilityLabel": {"type": "string"}, "placeholder": {"type": "string"}, "secure": {"type": "boolean"}, "keyboard": {"type": "\"text\" | \"number\" | \"email\" | \"phone\" | \"date\" | \"time\""}, "autoFocus": {"type": "boolean"}, "disabled": {"type": "boolean"}, "onSubmit": {"type": "(value: string) => void"}, "maxLength": {"type": "number"}, "autoComplete": {"type": "AutoComplete"}, "enterKeyHint": {"type": "\"enter\" | \"done\" | \"go\" | \"next\" | \"previous\" | \"search\" | \"send\""}, "autoCapitalize": {"type": "\"none\" | \"sentences\" | \"words\" | \"characters\" | \"off\" | \"on\""}, "spellCheck": {"type": "boolean"}, "min": {"type": "number | string"}, "max": {"type": "number | string"}, "step": {"type": "number"}}},
+    "textarea": {"wire": "textarea", "children": "none", "style": ["box", "padding", "text", "editor"], "binding": {"type": "string", "event": "onInput"}, "props": {"accessibilityLabel": {"type": "string"}, "placeholder": {"type": "string"}, "secure": {"type": "boolean"}, "keyboard": {"type": "\"text\" | \"number\" | \"email\" | \"phone\""}, "autoFocus": {"type": "boolean"}, "disabled": {"type": "boolean"}, "submitOnEnter": {"type": "boolean"}, "onSubmit": {"type": "(value: string) => void"}, "maxLength": {"type": "number"}, "autoComplete": {"type": "AutoComplete"}, "enterKeyHint": {"type": "\"enter\" | \"done\" | \"go\" | \"next\" | \"previous\" | \"search\" | \"send\""}, "autoCapitalize": {"type": "\"none\" | \"sentences\" | \"words\" | \"characters\" | \"off\" | \"on\""}, "spellCheck": {"type": "boolean"}}},
+    "search": {"wire": "search", "children": "none", "style": ["box", "padding", "text", "editor"], "binding": {"type": "string", "event": "onInput"}, "props": {"accessibilityLabel": {"type": "string"}, "placeholder": {"type": "string"}, "autoFocus": {"type": "boolean"}, "disabled": {"type": "boolean"}, "onSubmit": {"type": "(value: string) => void"}, "maxLength": {"type": "number"}, "autoComplete": {"type": "AutoComplete"}, "enterKeyHint": {"type": "\"enter\" | \"done\" | \"go\" | \"next\" | \"previous\" | \"search\" | \"send\""}, "autoCapitalize": {"type": "\"none\" | \"sentences\" | \"words\" | \"characters\" | \"off\" | \"on\""}, "spellCheck": {"type": "boolean"}}},
     "checkbox": {"wire": "checkbox", "children": "content", "style": ["box", "padding", "flex", "align", "gap", "text"], "binding": {"type": "boolean", "event": "onChange"}, "props": {"accessibilityLabel": {"type": "string"}, "disabled": {"type": "boolean"}}},
     "switch": {"wire": "switch", "children": "text", "style": ["box", "padding", "text"], "binding": {"type": "boolean", "event": "onChange"}, "props": {"accessibilityLabel": {"type": "string"}, "disabled": {"type": "boolean"}}},
     "radio": {"wire": "radio", "children": "none", "style": ["box", "padding", "gap", "text"], "binding": {"type": "string", "event": "onChange"}, "props": {"options": {"type": "readonly RadioOption[]", "required": true}, "accessibilityLabel": {"type": "string"}, "disabled": {"type": "boolean"}}},

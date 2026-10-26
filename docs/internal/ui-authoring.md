@@ -41,6 +41,11 @@ text among element children becomes text nodes. Their accessible name comes
 from descendant text unless `accessibilityLabel` is given. Empty strings,
 booleans and nullish children render nothing, so `{text && <x/>}` is safe.
 
+Editors enforce `maxLength` natively (insertions are cut, existing text kept), clamp
+and snap `min`/`max`/`step` when they blur or submit and report it as input, and
+hold only ISO values with `keyboard="date|time"`. The Android adapter maps the
+attributes through the generated `GpuInput` class.
+
 ## Hooks and View
 
 - `useView()` returns the page View; components receive props only and type
