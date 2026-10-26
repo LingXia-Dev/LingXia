@@ -10,11 +10,11 @@ import { configureClasses, resolveClasses } from '../src/style/classes.js';
 test('nested CSS imports retain source order and theme source locations', async () => {
   const root = await mkdtemp(join(tmpdir(), 'lingxia-ui-theme-'));
   try {
-    await writeFile(join(root, 'base.css'), '@theme { --color-brand: #112233; }');
-    await writeFile(join(root, 'tokens.css'), '@import "./base.css"; @theme { --color-brand: #445566; }');
-    await writeFile(join(root, 'theme.css'), '@import "./tokens.css"; @theme { --color-brand: #778899; }');
-    configureClasses(await compileUtilities(new Set(['bg-brand']), (await loadStylesheet(join(root, 'theme.css'))).toString()));
-    assert.equal(resolveClasses('bg-brand').base.backgroundColor, '#778899ff');
+    await writeFile(join(root, 'base.css'), '@theme { --radius-brand: 1px; }');
+    await writeFile(join(root, 'tokens.css'), '@import "./base.css"; @theme { --radius-brand: 2px; }');
+    await writeFile(join(root, 'theme.css'), '@import "./tokens.css"; @theme { --radius-brand: 3px; }');
+    configureClasses(await compileUtilities(new Set(['rounded-brand']), (await loadStylesheet(join(root, 'theme.css'))).toString()));
+    assert.equal(resolveClasses('rounded-brand').base.borderRadius, 3);
     await writeFile(join(root, 'base.css'), '@import "./theme.css";');
     await assert.rejects(loadStylesheet(join(root, 'theme.css')), /UI_CSS: cyclic import/);
     await writeFile(join(root, 'base.css'), '@import "https://example.com/theme.css";');

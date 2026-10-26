@@ -8,6 +8,7 @@ import { located } from './errors.js';
 import { has, validInputText } from './data.js';
 import { fieldOptions } from '../generated/wire.js';
 import * as check from './validate.js';
+import { defaultSeries } from '../style/color.js';
 
 const common = new Set(commonProps);
 const semanticStates = { pressed: 'statePressed', selected: 'stateSelected', expanded: 'stateExpanded', busy: 'stateBusy' };
@@ -226,7 +227,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
     case 'plot': {
       check.plot(props);
       wire('plotValues', JSON.stringify(props.values)); wire('plotKind', props.kind);
-      wire('plotColors', JSON.stringify(props.colors)); wire('accessibilityLabel', props.accessibilityLabel);
+      wire('plotColors', JSON.stringify(props.colors ?? defaultSeries)); wire('accessibilityLabel', props.accessibilityLabel);
       for (const name of ['smooth', 'area']) if (props[name] !== undefined) wire(`plot${name[0].toUpperCase()}${name.slice(1)}`, +props[name]);
       for (const [key, name] of [['plotDomainMin', 'domainMin'], ['plotDomainMax', 'domainMax'], ['plotMarkerEmphasisScale', 'markerEmphasisScale'], ['plotSelectedIndex', 'selectedIndex']])
         if (props[name] !== undefined) wire(key, props[name]);

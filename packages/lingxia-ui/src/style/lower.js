@@ -3,6 +3,7 @@ import { fieldOptions } from '../generated/wire.js';
 import { limits, options } from '../generated/contract.js';
 import { normalizeShadows } from './shadow.js';
 import { normalizeGradient } from './gradient.js';
+import { wireColorProblem } from './color.js';
 import { utf8Bytes, has } from '../runtime/data.js';
 
 const finite = value => typeof value === 'number' && Number.isFinite(value);
@@ -260,7 +261,13 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
       case 'opacity': if (!finite(value) || value < 0 || value > 1) invalid(name); out[key] = value; break;
       case 'font-size': out[key] = fontSize; break;
       case 'font-weight': if (!finite(value) || value < 1 || value > 1000) invalid(name); out[key] = value; break;
-      case 'color': if (typeof value !== 'string' || !value) invalid(name); out[key] = value; break;
+      case 'color': {
+        if (typeof value !== 'string' || !value) invalid(name);
+        const problem = wireColorProblem(value, name);
+        if (problem) throw Error(problem);
+        out[key] = value === 'transparent' ? '#00000000' : value;
+        break;
+      }
       case 'gradient': out[key] = normalizeGradient(value); break;
       case 'shadow': out[key] = normalizeShadows(value); break;
       case 'backdrop': [out[key[0]], out[key[1]]] = backdrop(name, value); break;

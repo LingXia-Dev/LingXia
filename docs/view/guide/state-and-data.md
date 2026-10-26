@@ -22,7 +22,7 @@ export function render({ data, actions }: View<Actions, { userId: string }>) {
   };
   return (
     <page className="p-4 gap-3">
-      {profile.error && <text role="alert" className="text-sm text-red-700">{profile.error.message}</text>}
+      {profile.error && <text role="alert" className="text-sm text-danger">{profile.error.message}</text>}
       <text className={profile.stale ? 'text-lg opacity-50' : 'text-lg'}>{profile.value?.name ?? (profile.pending ? 'Loading…' : '')}</text>
       <input bind={draft} accessibilityLabel="New name" className="px-3 py-2 rounded-lg border" />
       <button disabled={!draft.value} onClick={save}>Rename</button>
@@ -142,7 +142,7 @@ export function render() {
       <textarea bind={draft} accessibilityLabel="Draft" />
       <button onClick={() => saved.set(draft.value)}>Save</button>
       {guard.pending && (
-        <column role="dialog" accessibilityLabel="Discard changes?" className="gap-2 p-4 rounded-xl bg-neutral-100">
+        <column role="dialog" accessibilityLabel="Discard changes?" className="gap-2 p-4 rounded-xl bg-surface-sunken">
           <text>Discard your changes?</text>
           <row className="gap-2">
             <button onClick={() => guard.answer(false)}>Keep editing</button>

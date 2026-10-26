@@ -52,10 +52,7 @@ impl BoxShadow {
                     .any(|v| !v.is_finite() || v.abs() > 1024.0)
                     || !s.blur.is_finite()
                     || !(0.0..=256.0).contains(&s.blur)
-                    || (s.color != "currentColor"
-                        && (!matches!(s.color.len(), 7 | 9)
-                            || !s.color.starts_with('#')
-                            || !s.color[1..].bytes().all(|b| b.is_ascii_hexdigit())))
+                    || (s.color != "currentColor" && crate::theme::parse(&s.color).is_err())
             })
         {
             return Err(invalid());

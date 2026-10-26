@@ -77,7 +77,8 @@ Renderer fixtures (flex, tracking, italic, padded text, strike, vector, cover,
 percent, shadow, gradient, alignment, border) and the interactive renderer lab
 are one Logic-free lxapp in `fixtures/renderer`, a page each. Open one in the
 smoke host with `node tools/lingxia-ui-android/run.mjs --project
-lingxia-sdk/android/tests/gpu/fixtures/renderer --page <name>`.
+lingxia-sdk/android/tests/gpu/fixtures/renderer --page <name> --allow-literal-colors`. The flag lets these
+pages keep the exact hex and palette colours their probes read as pixels; app pages must use theme roles.
 `GpuFlexBasisProbe` runs on the `flex` page: content versus zero basis,
 percentage basis and column growth, then a resize.
 

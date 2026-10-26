@@ -98,6 +98,12 @@ function styles(schema) {
     '`transition` and `animation` exist on the wire but are set only by the gated motion utilities.', '',
     '## By element', ''];
   for (const name of names) out.push(`### \`<${name}>\``, '', accepted[name].filter(key => !schema.style[key].internal).map(code).join(', '), '');
+  out.push('## Colour roles', '',
+    'Every colour is one of these roles, optionally with an alpha percent (`accent/12`). The utility drops a `text-`',
+    'prefix (`text-muted`, not `text-text-muted`). The theme pack resolves each role per appearance and proves the',
+    'listed contrast minimums.', '',
+    table(['Role', 'Minimum contrast', 'Use'], schema.roles.map(role => [code(role.name),
+      Object.entries(role.on ?? {}).map(([background, ratio]) => `${ratio}:1 on ${code(background)}`).join(', '), role.doc])), '');
   return out.join('\n');
 }
 
@@ -127,7 +133,8 @@ async function lowering(generated) {
 async function designSystem() {
   const { __unstable__loadDesignSystem: load } = await import('tailwindcss');
   const theme = await readFile(new URL(import.meta.resolve('tailwindcss/theme.css')), 'utf8');
-  return load(`${theme}\n@tailwind utilities;`);
+  const { roleTheme } = await import('../compiler/tailwind.mjs');
+  return load(`${theme}\n${roleTheme}\n@tailwind utilities;`);
 }
 
 const strip = name => name.replace(/^-/, '');
@@ -200,7 +207,7 @@ function utilities(system, rules) {
   }
   const out = [header, '# Utilities', '',
     'Every utility of Tailwind\'s default theme, run through the native lowering and grouped by family.',
-    'Your `@theme` tokens add names to the same families (`bg-primary`, `rounded-card`); arbitrary values',
+    'Colour families accept only roles (`bg-surface`, `text-muted`); your `@theme` tokens add other names (`rounded-card`); arbitrary values',
     '(`w-[72px]`, `grid-cols-[1fr_auto]`) follow the rules of the family they extend. A supported utility',
     'is still refused on an element that does not render its style ([styles.md](styles.md)).', ''];
   for (const [title] of [...sections, ['Other']]) {
@@ -244,18 +251,19 @@ function variants(schema, system, rules) {
     focus: `${on('focusStyle')}; paint only`, active: `${on('pressedStyle')}; paint only`,
     hover: 'any element, only when `env.pointer` is `fine`; paint only', disabled: `${disableable}; replaces the whole class cascade`,
     placeholder: `editors; \`text-*\` color only`,
+    dark: 'any element; not on colours, which follow appearance',
   };
   const supported = [], refused = [];
   for (const [name, candidate] of candidates) {
     const sample = candidate.slice(0, -probe.length - 1);
-    const error = name === 'placeholder' ? result('placeholder:text-red-500') : result(candidate);
+    const error = name === 'placeholder' ? result('placeholder:text-muted') : result(candidate);
     if (error) refused.push([code(`${name}:`), code(`${sample}:`), error === 'not generated'
       ? 'matches no rule; the build reports it as `UI_CLASS_UNKNOWN`' : error.replace(/^UI_[A-Z_]+: /, '')]);
     else supported.push([code(`${name}:`), admission[name] ?? 'any element']);
   }
   return [header, '# Variants', '',
     'Every Tailwind variant, tested against the native lowering. Supported variants may be stacked',
-    '(`dark:active:bg-muted`). Conditions on DOM state the View does not have are refused at build time.', '',
+    '(`md:active:bg-surface-sunken`). Conditions on DOM state the View does not have are refused at build time.', '',
     '## Supported', '', table(['Variant', 'Applies to'], supported), '',
     '`space-x-*`, `space-y-*` and `divide-*` are utilities, not variants: they style every child but the last.', '',
     '## Refused', '', table(['Variant', 'Probed as', 'Reason'], refused), ''].join('\n');
@@ -334,7 +342,7 @@ const errorNotes = {
   UI_CLASS_ELEMENT: 'A supported utility on an element that does not render it, or a state variant the element never enters.',
   UI_CLASS_UNKNOWN: 'Not a Tailwind utility; the message names the nearest supported one when close.',
   UI_CLASS_UNSUPPORTED: 'Tailwind CSS the native renderer cannot draw.',
-  UI_COLOR: 'A color that is not a hex value or `currentColor` reached the decoder.',
+  UI_COLOR: 'A colour is not a role (`surface`, `accent/12`), `currentColor` or `transparent`, or a colour class uses `dark:`; hex is legal only in vectors, complete gradients and shadow layers.',
   UI_COMMIT: 'A commit without a prepared candidate.',
   UI_COMPAT: 'The installed host is older than the compiled page; update the host app.',
   UI_COMPOSITE: 'A composited effect (backdrop, opacity group) is out of bounds.',
@@ -439,7 +447,7 @@ export async function docs(schema, generated) {
   const [system, { compileUtilities }] = await Promise.all([designSystem(), lowering(generated)]);
   // One lowering pass covers every utility and every variant probe.
   const names = system.getClassList().map(([name]) => name);
-  const rules = await compileUtilities(new Set([...names, ...variantCandidates(system).map(([, candidate]) => candidate), 'placeholder:text-red-500']));
+  const rules = await compileUtilities(new Set([...names, ...variantCandidates(system).map(([, candidate]) => candidate), 'placeholder:text-muted']));
   const base = 'docs/view/reference';
   return {
     [`${base}/elements.md`]: await elements(schema),

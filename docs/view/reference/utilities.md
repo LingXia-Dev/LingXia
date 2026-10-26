@@ -3,7 +3,7 @@ _Generated from the View schema (`schema.json`) and the compiler; do not edit._
 # Utilities
 
 Every utility of Tailwind's default theme, run through the native lowering and grouped by family.
-Your `@theme` tokens add names to the same families (`bg-primary`, `rounded-card`); arbitrary values
+Colour families accept only roles (`bg-surface`, `text-muted`); your `@theme` tokens add other names (`rounded-card`); arbitrary values
 (`w-[72px]`, `grid-cols-[1fr_auto]`) follow the rules of the family they extend. A supported utility
 is still refused on an element that does not render its style ([styles.md](styles.md)).
 
@@ -144,7 +144,7 @@ is still refused on an element that does not render its style ([styles.md](style
 | `slashed` | `slashed-zero` |  |
 | `stacked` | `stacked-fractions` |  |
 | `tabular` | `tabular-nums` |  |
-| `text` | `text-2xl`, `text-3xl`, `text-4xl`, `text-5xl`, `text-6xl`, … (310) | text-wrap (4); unsupported color (2) |
+| `text` | `text-2xl`, `text-3xl`, `text-4xl`, `text-5xl`, `text-6xl`, … (51) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); text-wrap (4); unsupported color (2) |
 | `tracking` | `tracking-normal`, `tracking-tight`, `tracking-tighter`, `tracking-wide`, `tracking-wider`, `tracking-widest` | unsupported length (6) |
 | `truncate` | `truncate` |  |
 | `underline` | `underline` |  |
@@ -156,13 +156,13 @@ is still refused on an element that does not render its style ([styles.md](style
 
 | Family | Supported | Refused |
 | --- | --- | --- |
-| `bg` | `bg-amber-50`, `bg-amber-100`, `bg-amber-200`, `bg-amber-300`, `bg-amber-400`, … (291) | background-blend-mode (16); background-position (9); background-repeat (6) |
+| `bg` | `bg-accent`, `bg-accent-soft`, `bg-canvas`, `bg-chart-1`, `bg-chart-2`, … (32) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); background-blend-mode (16); background-position (9) |
 | `bg-conic` | `bg-conic`, `bg-conic-0`, `bg-conic-30`, `bg-conic-60`, `bg-conic-90`, … (13) | unsupported gradient shape (12) |
 | `bg-linear` | `bg-linear-0`, `bg-linear-30`, `bg-linear-60`, `bg-linear-90`, `bg-linear-120`, … (20) | unsupported gradient shape (12) |
 | `bg-radial` | `bg-radial` |  |
-| `from` | `from-0%`, `from-5%`, `from-10%`, `from-15%`, `from-20%`, … (310) | unsupported color (2) |
-| `to` | `to-0%`, `to-5%`, `to-10%`, `to-15%`, `to-20%`, … (310) | unsupported color (2) |
-| `via` | `via-0%`, `via-5%`, `via-10%`, `via-15%`, `via-20%`, … (311) | unsupported color (2) |
+| `from` | `from-0%`, `from-5%`, `from-10%`, `from-15%`, `from-20%`, … (51) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2) |
+| `to` | `to-0%`, `to-5%`, `to-10%`, `to-15%`, `to-20%`, … (51) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2) |
+| `via` | `via-0%`, `via-5%`, `via-10%`, `via-15%`, `via-20%`, … (52) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2) |
 
 ## Radius
 
@@ -188,18 +188,18 @@ is still refused on an element that does not render its style ([styles.md](style
 
 | Family | Supported | Refused |
 | --- | --- | --- |
-| `border` | `border`, `border-0`, `border-2`, `border-4`, `border-8`, … (298) | border-style (3); border-collapse (2); unsupported color (1) |
-| `border-b` | `border-b`, `border-b-0`, `border-b-2`, `border-b-4`, `border-b-8` | border-bottom-color (291) |
-| `border-be` | `border-be`, `border-be-0`, `border-be-2`, `border-be-4`, `border-be-8` | border-block-end-color (291) |
-| `border-bs` | `border-bs`, `border-bs-0`, `border-bs-2`, `border-bs-4`, `border-bs-8` | border-block-start-color (291) |
-| `border-e` | `border-e`, `border-e-0`, `border-e-2`, `border-e-4`, `border-e-8` | border-inline-end-color (291) |
-| `border-l` | `border-l`, `border-l-0`, `border-l-2`, `border-l-4`, `border-l-8` | border-left-color (291) |
-| `border-r` | `border-r`, `border-r-0`, `border-r-2`, `border-r-4`, `border-r-8` | border-right-color (291) |
-| `border-s` | `border-s`, `border-s-0`, `border-s-2`, `border-s-4`, `border-s-8` | border-inline-start-color (291) |
-| `border-t` | `border-t`, `border-t-0`, `border-t-2`, `border-t-4`, `border-t-8` | border-top-color (291) |
-| `border-x` | `border-x`, `border-x-0`, `border-x-2`, `border-x-4`, `border-x-8` | border-inline-color (291) |
-| `border-y` | `border-y`, `border-y-0`, `border-y-2`, `border-y-4`, `border-y-8` | border-block-color (291) |
-| `divide` | `divide-amber-50`, `divide-amber-100`, `divide-amber-200`, `divide-amber-300`, `divide-amber-400`, … (293) | border-style (2); unsupported color (1) |
+| `border` | `border`, `border-0`, `border-2`, `border-4`, `border-8`, … (39) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); border-style (3); border-collapse (2) |
+| `border-b` | `border-b`, `border-b-0`, `border-b-2`, `border-b-4`, `border-b-8` | border-bottom-color (320) |
+| `border-be` | `border-be`, `border-be-0`, `border-be-2`, `border-be-4`, `border-be-8` | border-block-end-color (320) |
+| `border-bs` | `border-bs`, `border-bs-0`, `border-bs-2`, `border-bs-4`, `border-bs-8` | border-block-start-color (320) |
+| `border-e` | `border-e`, `border-e-0`, `border-e-2`, `border-e-4`, `border-e-8` | border-inline-end-color (320) |
+| `border-l` | `border-l`, `border-l-0`, `border-l-2`, `border-l-4`, `border-l-8` | border-left-color (320) |
+| `border-r` | `border-r`, `border-r-0`, `border-r-2`, `border-r-4`, `border-r-8` | border-right-color (320) |
+| `border-s` | `border-s`, `border-s-0`, `border-s-2`, `border-s-4`, `border-s-8` | border-inline-start-color (320) |
+| `border-t` | `border-t`, `border-t-0`, `border-t-2`, `border-t-4`, `border-t-8` | border-top-color (320) |
+| `border-x` | `border-x`, `border-x-0`, `border-x-2`, `border-x-4`, `border-x-8` | border-inline-color (320) |
+| `border-y` | `border-y`, `border-y-0`, `border-y-2`, `border-y-4`, `border-y-8` | border-block-color (320) |
+| `divide` | `divide-accent`, `divide-accent-soft`, `divide-canvas`, `divide-chart-1`, `divide-chart-2`, … (34) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); border-style (2); unsupported color (1) |
 | `divide-x` | `divide-x`, `divide-x-0`, `divide-x-2`, `divide-x-4`, `divide-x-8` | reversed space/divide order (1) |
 | `divide-y` | `divide-y`, `divide-y-0`, `divide-y-2`, `divide-y-4`, `divide-y-8` | reversed space/divide order (1) |
 
@@ -210,8 +210,8 @@ is still refused on an element that does not render its style ([styles.md](style
 | `backdrop-blur` | `backdrop-blur-2xl`, `backdrop-blur-3xl`, `backdrop-blur-lg`, `backdrop-blur-md`, `backdrop-blur-none`, … (8) |  |
 | `backdrop-saturate` | `backdrop-saturate-0`, `backdrop-saturate-50`, `backdrop-saturate-100`, `backdrop-saturate-150`, `backdrop-saturate-200` |  |
 | `opacity` | `opacity-0`, `opacity-5`, `opacity-10`, `opacity-15`, `opacity-20`, … (21) |  |
-| `ring` | `ring`, `ring-0`, `ring-1`, `ring-2`, `ring-4`, … (295) | unsupported color (2); unsupported shadow property (1) |
-| `shadow` | `shadow`, `shadow-2xl`, `shadow-2xs`, `shadow-amber-50`, `shadow-amber-100`, … (298) | unsupported color (3); inset shadows are not supported yet (1) |
+| `ring` | `ring`, `ring-0`, `ring-1`, `ring-2`, `ring-4`, … (36) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2); unsupported shadow property (1) |
+| `shadow` | `shadow`, `shadow-2xl`, `shadow-2xs`, `shadow-accent`, `shadow-accent-soft`, … (39) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (3); inset shadows are not supported yet (1) |
 
 ## Transforms
 
@@ -236,7 +236,7 @@ is still refused on an element that does not render its style ([styles.md](style
 
 | Family | Supported | Refused |
 | --- | --- | --- |
-| `placeholder` | `placeholder-amber-50`, `placeholder-amber-100`, `placeholder-amber-200`, `placeholder-amber-300`, `placeholder-amber-400`, … (289) | unsupported color (2) |
+| `placeholder` | `placeholder-accent`, `placeholder-accent-soft`, `placeholder-canvas`, `placeholder-chart-1`, `placeholder-chart-2`, … (30) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2) |
 
 ## Images and vectors
 
@@ -255,7 +255,7 @@ Refused unless the page opts into the gated motion lowering (see the motion chap
 | Family | Utilities | Reason |
 | --- | --- | --- |
 | `@container` | 2 | container-type (2) |
-| `accent` | 292 | accent-color (292) |
+| `accent` | 321 | accent-color (321) |
 | `align` | 8 | vertical-align (8) |
 | `antialiased` | 1 | -webkit-font-smoothing (1) |
 | `appearance` | 2 | appearance (2) |
@@ -274,7 +274,7 @@ Refused unless the page opts into the gated motion lowering (see the motion chap
 | `box` | 4 | -webkit-box-decoration-break (2); box-sizing (2) |
 | `brightness` | 11 | filters (11) |
 | `caption` | 2 | caption-side (2) |
-| `caret` | 291 | caret-color (291) |
+| `caret` | 320 | caret-color (320) |
 | `clear` | 6 | clear (6) |
 | `collapse` | 1 | visibility (1) |
 | `columns` | 26 | columns (26) |
@@ -283,10 +283,10 @@ Refused unless the page opts into the gated motion lowering (see the motion chap
 | `contents` | 1 | display (1) |
 | `contrast` | 7 | filters (7) |
 | `cursor` | 36 | cursor (36) |
-| `decoration` | 301 | text-decoration-color (291); text-decoration-style (5); text-decoration-thickness (5) |
-| `drop-shadow` | 298 | drop-shadow colors (291); filters (7) |
+| `decoration` | 330 | text-decoration-color (320); text-decoration-style (5); text-decoration-thickness (5) |
+| `drop-shadow` | 327 | drop-shadow colors (320); filters (7) |
 | `field` | 2 | field-sizing (2) |
-| `fill` | 292 | fill (292) |
+| `fill` | 321 | fill (321) |
 | `float` | 5 | float (5) |
 | `flow` | 1 | display (1) |
 | `font-stretch` | 19 | font-stretch (19) |
@@ -297,8 +297,8 @@ Refused unless the page opts into the gated motion lowering (see the motion chap
 | `indent` | 70 | text-indent (70) |
 | `inset-be` | 125 | inset-block-end (125) |
 | `inset-bs` | 125 | inset-block-start (125) |
-| `inset-ring` | 297 | unsupported shadow property (297) |
-| `inset-shadow` | 296 | unsupported shadow property (296) |
+| `inset-ring` | 326 | unsupported shadow property (326) |
+| `inset-shadow` | 325 | unsupported shadow property (325) |
 | `invert` | 6 | filters (6) |
 | `invisible` | 1 | visibility (1) |
 | `isolate` | 1 | isolation (1) |
@@ -306,41 +306,41 @@ Refused unless the page opts into the gated motion lowering (see the motion chap
 | `list` | 6 | list-style-type (3); list-style-position (2); display (1) |
 | `list-image` | 1 | list-style-image (1) |
 | `mask` | 43 | mask-position (9); mask-clip (7); mask-origin (6) |
-| `mask-b-from` | 346 | mask-image (346) |
-| `mask-b-to` | 346 | mask-image (346) |
+| `mask-b-from` | 375 | mask-image (375) |
+| `mask-b-to` | 375 | mask-image (375) |
 | `mask-conic` | 18 | mask-image (18) |
-| `mask-conic-from` | 346 | mask-image (346) |
-| `mask-conic-to` | 346 | mask-image (346) |
-| `mask-l-from` | 346 | mask-image (346) |
-| `mask-l-to` | 346 | mask-image (346) |
+| `mask-conic-from` | 375 | mask-image (375) |
+| `mask-conic-to` | 375 | mask-image (375) |
+| `mask-l-from` | 375 | mask-image (375) |
+| `mask-l-to` | 375 | mask-image (375) |
 | `mask-linear` | 18 | mask-image (18) |
-| `mask-linear-from` | 346 | mask-image (346) |
-| `mask-linear-to` | 346 | mask-image (346) |
-| `mask-r-from` | 346 | mask-image (346) |
-| `mask-r-to` | 346 | mask-image (346) |
+| `mask-linear-from` | 375 | mask-image (375) |
+| `mask-linear-to` | 375 | mask-image (375) |
+| `mask-r-from` | 375 | mask-image (375) |
+| `mask-r-to` | 375 | mask-image (375) |
 | `mask-radial` | 4 | masks (4) |
 | `mask-radial-at` | 9 | masks (9) |
-| `mask-radial-from` | 346 | mask-image (346) |
-| `mask-radial-to` | 346 | mask-image (346) |
-| `mask-t-from` | 346 | mask-image (346) |
-| `mask-t-to` | 346 | mask-image (346) |
-| `mask-x-from` | 346 | mask-image (346) |
-| `mask-x-to` | 346 | mask-image (346) |
-| `mask-y-from` | 346 | mask-image (346) |
-| `mask-y-to` | 346 | mask-image (346) |
+| `mask-radial-from` | 375 | mask-image (375) |
+| `mask-radial-to` | 375 | mask-image (375) |
+| `mask-t-from` | 375 | mask-image (375) |
+| `mask-t-to` | 375 | mask-image (375) |
+| `mask-x-from` | 375 | mask-image (375) |
+| `mask-x-to` | 375 | mask-image (375) |
+| `mask-y-from` | 375 | mask-image (375) |
+| `mask-y-to` | 375 | mask-image (375) |
 | `max-block` | 71 | max-block-size (71) |
 | `max-inline` | 83 | max-inline-size (83) |
 | `min-block` | 71 | min-block-size (71) |
 | `min-inline` | 83 | min-inline-size (83) |
 | `mix` | 18 | mix-blend-mode (18) |
-| `outline` | 303 | outline (303) |
+| `outline` | 332 | outline (332) |
 | `outline-offset` | 10 | outline (10) |
 | `overline` | 1 | text-decoration-line (1) |
 | `perspective` | 6 | perspective (6) |
 | `perspective-origin` | 9 | perspective-origin (9) |
 | `pointer` | 2 | pointer-events (2) |
 | `resize` | 4 | resize (4) |
-| `ring-offset` | 296 | unsupported shadow property (296) |
+| `ring-offset` | 325 | unsupported shadow property (325) |
 | `rotate-x` | 18 | transform (18) |
 | `rotate-y` | 18 | transform (18) |
 | `rotate-z` | 18 | transform (18) |
@@ -371,8 +371,8 @@ Refused unless the page opts into the gated motion lowering (see the motion chap
 | `scroll-px` | 35 | scroll-padding-inline (35) |
 | `scroll-py` | 35 | scroll-padding-block (35) |
 | `scrollbar` | 6 | scrollbar-gutter (3); scrollbar-width (3) |
-| `scrollbar-thumb` | 291 | scrollbar-color (291) |
-| `scrollbar-track` | 291 | scrollbar-color (291) |
+| `scrollbar-thumb` | 320 | scrollbar-color (320) |
+| `scrollbar-track` | 320 | scrollbar-color (320) |
 | `sepia` | 4 | filters (4) |
 | `skew` | 12 | transform (12) |
 | `skew-x` | 12 | transform (12) |
@@ -380,11 +380,11 @@ Refused unless the page opts into the gated motion lowering (see the motion chap
 | `snap` | 12 | scroll-snap-align (4); scroll-snap-type (4); scroll-snap-stop (2) |
 | `sr` | 1 | clip-path (1) |
 | `static` | 1 | position (1) |
-| `stroke` | 296 | stroke (292); stroke-width (4) |
+| `stroke` | 325 | stroke (321); stroke-width (4) |
 | `subpixel` | 1 | -webkit-font-smoothing (1) |
 | `tab` | 3 | tab-size (3) |
 | `table` | 11 | display (9); table-layout (2) |
-| `text-shadow` | 298 | text shadows (292); text-shadow (6) |
+| `text-shadow` | 327 | text shadows (321); text-shadow (6) |
 | `touch` | 10 | touch-action (10) |
 | `transform` | 11 | transform-box (5); transform (4); transform-style (2) |
 | `transition` | 9 | gated motion (7); transition-behavior (2) |

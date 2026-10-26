@@ -209,7 +209,8 @@ fn budgets(records: &[Record]) -> Result<(), String> {
     }
     let mut plot_work = 0;
     for record in records.iter().filter(|r| r.tag == tag::PLOT) {
-        let plot = crate::scene::plot::Plot::from_record(record)?;
+        let plot =
+            crate::scene::plot::Plot::from_record(record, &crate::theme::Palette::builtin(false))?;
         plot_work += plot.work();
         if plot_work > 16384 {
             return Err("UI_LIMIT: plot geometry budget exceeded".into());

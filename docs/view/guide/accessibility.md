@@ -22,7 +22,7 @@ export function render() {
           </row>
         ))}
       </column>
-      <text role="status" className="text-sm text-neutral-600">{status}</text>
+      <text role="status" className="text-sm text-muted">{status}</text>
     </page>
   );
 }

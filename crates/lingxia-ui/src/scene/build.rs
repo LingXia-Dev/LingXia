@@ -357,7 +357,8 @@ impl Renderer {
                 });
             }
             if let Some(source) = record.string(field::BACKGROUND_GRADIENT)
-                && let Some(gradient) = crate::scene::gradient::BackgroundGradient::parse(source)?
+                && let Some(gradient) =
+                    crate::scene::gradient::BackgroundGradient::parse_with(source, &palette)?
             {
                 paint_style.gradient = true;
                 commands.push(Paint::Gradient {
@@ -390,8 +391,9 @@ impl Renderer {
                 });
             }
             if record.tag == tag::VECTOR {
-                let vector = crate::scene::vector::Vector::parse(
+                let vector = crate::scene::vector::Vector::parse_with(
                     record.string(field::VECTOR_SOURCE).unwrap(),
+                    &palette,
                 )?;
                 let vector_bounds = [
                     control_bounds[0] + layout.padding.left,
@@ -434,7 +436,7 @@ impl Renderer {
             }
             let mut plot_snapshot = None;
             if record.tag == tag::PLOT {
-                let plot = crate::scene::plot::Plot::from_record(record)?;
+                let plot = crate::scene::plot::Plot::from_record(record, &palette)?;
                 plot_snapshot = Some(plot.snapshot());
                 for shape in plot.shapes(control_bounds) {
                     commands.push(match shape {
@@ -763,8 +765,16 @@ impl Renderer {
                             || records[p].number(field::ENABLED) != Some(0.0)
                     })
                     && record.number(field::ON_CHECKED_CHANGE).is_some();
-                let accent = palette.role(if enabled { Role::Accent } else { Role::TextFaint });
-                let neutral = palette.role(if enabled { Role::LineStrong } else { Role::Line });
+                let accent = palette.role(if enabled {
+                    Role::Accent
+                } else {
+                    Role::TextFaint
+                });
+                let neutral = palette.role(if enabled {
+                    Role::LineStrong
+                } else {
+                    Role::Line
+                });
                 let cy = y
                     + layout.padding.top
                     + (layout.size.height - layout.padding.top - layout.padding.bottom).max(0.0)

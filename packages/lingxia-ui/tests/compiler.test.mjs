@@ -93,7 +93,7 @@ test('class diagnostics separate unknown, unsupported and wrong-element utilitie
   await project({ 'page.tsx': `export function render(view) {
   return <column className="grid-cols-2 not-a-utility transition">
     <text className={view.data.on ? "grid-cols-2" : "items-center"}>A</text>
-    <column className="active:bg-red-500 hover:p-4"/>
+    <column className="active:bg-danger hover:p-4"/>
   </column>;
 }` }, async (root, build) => {
     const error = await build().catch(error => error);
@@ -104,7 +104,7 @@ test('class diagnostics separate unknown, unsupported and wrong-element utilitie
       /^page.tsx:2:\d+: UI_CLASS_UNKNOWN: not-a-utility is not a Tailwind utility$/,
       /^page.tsx:2:\d+: UI_CLASS_UNSUPPORTED: transition: the native renderer does not support UI_ANIMATION: native presentation scheduling is not connected/,
       /^page.tsx:3:\d+: UI_CLASS_ELEMENT: items-center sets alignItems, which <text> does not support$/,
-      /^page.tsx:4:\d+: UI_CLASS_ELEMENT: active:bg-red-500 needs a control; <column> is never pressed$/,
+      /^page.tsx:4:\d+: UI_CLASS_ELEMENT: active:bg-danger needs a control; <column> is never pressed$/,
       /^page.tsx:4:\d+: UI_CLASS_ELEMENT: hover:p-4: hover styles change paint only, not paddingTop, paddingRight, paddingBottom, paddingLeft$/,
     ]) assert.ok(lines.some(line => pattern.test(line)), `${pattern} in\n${error.message}`);
     await assert.rejects(readFile(join(root, 'dist/page.js')), { code: 'ENOENT' });
@@ -246,26 +246,52 @@ test('compiler emits executable ESM UI, carries the action catalog and preserves
   });
 });
 
-test('bundled TSX classes use theme tokens, conditional strings and explicit style overrides', async () => {
+test('bundled TSX classes lower roles, conditional strings and explicit style overrides', async () => {
   await project({
-    'theme.css': '@import "./palette.css"; @theme inline { --color-primary: var(--brand); }',
-    'palette.css': ':root { --brand: #007aff; } [data-theme="dark"] { --brand: #0a84ff; }',
+    'theme.css': '@theme { --text-sm: 0.875rem; }',
     'page.tsx': `
       import './theme.css';
       function Label({ className, children }) { return <text className={className} style={{ fontSize: 17 }}>{children}</text>; }
-      export function render(view) { return <Label className={view.data.active ? 'text-sm text-primary dark:text-white' : 'text-sm text-black'}>Hello</Label>; }
+      export function render(view) { return <Label className={view.data.active ? 'text-sm text-accent' : 'text-sm text-muted/60'}>Hello</Label>; }
     `,
   }, async (root, build) => {
     await build();
     const source = await load(root);
     const label = (active, theme) => tree(describePage({ data: { active }, env: { theme } })).props;
     const light = label(true, 'light');
-    assert.deepEqual([light.color, light.fontSize, light.lineHeight], ['#007affff', 17, 17 * (1.25 / .875)]);
-    assert.equal(label(true, 'dark').color, '#ffffffff');
-    assert.equal(label(false, 'dark').color, '#000000ff');
+    assert.deepEqual([light.color, light.fontSize, light.lineHeight], ['accent', 17, 17 * (1.25 / .875)]);
+    assert.equal(label(true, 'dark').color, 'accent', 'roles follow appearance natively');
+    assert.equal(label(false, 'dark').color, 'text-muted/60');
     assert.doesNotMatch(source, /function compileUtilities|function declarations\(/);
     await writeFile(join(root, 'page.tsx'), 'export function render() { return <text className="backdrop-invert">Hello</text>; }');
     await assert.rejects(build(), /page.tsx:1:\d+: UI_CLASS_UNSUPPORTED: backdrop-invert/);
+  });
+});
+
+// The exact colour diagnostics the docs reference quotes.
+test('page colours are roles: palette classes, dark: colours and hex literals fail naming the role to use', async () => {
+  await project({ 'page.tsx': '' }, async (root, build) => {
+    const fails = async (page, message) => {
+      await writeFile(join(root, 'page.tsx'), page);
+      await assert.rejects(build(), error => { assert.match(error.message, /page\.tsx:1:\d+: UI_COLOR/); assert.ok(error.message.includes(message), error.message); return true; });
+    };
+    await fails('export function render() { return <text className="text-gray-500">Hi</text>; }',
+      'UI_COLOR: text-gray-500: not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent');
+    await fails('export function render() { return <view className="bg-surface dark:bg-surface-raised" />; }',
+      'UI_COLOR: dark:bg-surface-raised: roles follow appearance; drop dark:');
+    await fails(`export function render() { return <view style={{ backgroundColor: '#ffffff' }} />; }`,
+      `UI_COLOR: "#ffffff" is not a role; backgroundColor uses a role such as 'surface', 'text-muted', 'line', 'accent' or 'accent/12'`);
+    await writeFile(join(root, 'page.tsx'), 'export function render() { return <view className="bg-transparent dark:p-2 border-line-strong shadow-md" />; }');
+    await build();
+  });
+});
+
+test('renderer test fixtures may keep literal colours only through the build option', async () => {
+  await project({ 'page.tsx': `export function render() { return <view className="bg-[#ff0000] dark:bg-white" style={{ borderColor: '#0000ff' }} />; }` }, async root => {
+    await assert.rejects(buildPages(root, ['page.tsx'], join(root, 'dist')), /UI_COLOR/);
+    await buildPages(root, ['page.tsx'], join(root, 'dist'), {}, { literalColors: true });
+    await load(root);
+    assert.equal(tree(describePage()).props.background, '#ff0000ff');
   });
 });
 

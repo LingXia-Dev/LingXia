@@ -25,7 +25,7 @@ export function render({ data, actions }: View<Actions, { messages: Message[]; h
 function Bubble({ text }: { text: string }) {
   const expanded = useLocal('expanded', false);
   return (
-    <button onClick={() => expanded.set(!expanded.value)} className="self-start rounded-2xl bg-neutral-100 text-neutral-900 px-3 py-2">
+    <button onClick={() => expanded.set(!expanded.value)} className="self-start rounded-2xl bg-surface-sunken text-text px-3 py-2">
       <text className={expanded.value ? 'text-sm' : 'text-sm line-clamp-3'}>{text}</text>
     </button>
   );

@@ -1,3 +1,4 @@
+import { isRole } from './color.js';
 export function normalizeShadows(value) {
   if (value === 'none') return value;
   const invalid = () => { throw Error('UI_SHADOW: invalid box shadow'); };
@@ -13,7 +14,7 @@ export function normalizeShadows(value) {
       result[key] = number;
     }
     result.color = shadow.color === undefined ? 'currentColor' : shadow.color;
-    if (result.color !== 'currentColor' && (typeof result.color !== 'string' || !/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(result.color))) invalid();
+    if (result.color !== 'currentColor' && (typeof result.color !== 'string' || !(/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(result.color) || isRole(result.color)))) invalid();
     return result;
   });
 }

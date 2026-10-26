@@ -10,7 +10,7 @@ export function render() {
   return (
     <page>
       {env.renderer?.fallback === 'driver' && (
-        <text role="status" className="px-4 py-2 text-xs bg-amber-100">Rendering without the GPU on this device.</text>
+        <text role="status" className="px-4 py-2 text-xs bg-warning-soft">Rendering without the GPU on this device.</text>
       )}
       <List items={rows} getKey={row => row.id} renderItem={row => <text className="px-4 py-3 text-sm">{row.label}</text>}
         getItemHeight={() => 44} />

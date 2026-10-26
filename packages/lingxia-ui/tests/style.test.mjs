@@ -29,10 +29,10 @@ test('flex basis encodes auto, logical lengths and percentages without mixing th
 });
 
 test('CSS names lower to the native box: colors, radii, flex factors and alignment', () => {
-  const props = style({ backgroundColor: '#ffffff', borderRadius: 8, borderTopLeftRadius: 2, flexGrow: 1, flexShrink: 0,
+  const props = style({ backgroundColor: 'surface', borderRadius: 8, borderTopLeftRadius: 2, flexGrow: 1, flexShrink: 0,
     alignItems: 'flex-start', justifyContent: 'space-between', alignSelf: 'flex-end' }, 'row');
   assert.deepEqual([props.background, props.radius, props.radiusTopLeft, props.radiusTopRight, props.grow, props.shrink, props.align, props.justify, props.alignSelf],
-    ['#ffffff', 8, 2, 8, 1, 0, 'start', 'between', 'end']);
+    ['surface', 8, 2, 8, 1, 0, 'start', 'between', 'end']);
   assert.deepEqual([style({ justifyContent: 'space-around' }).justify, style({ justifyContent: 'space-evenly' }).justify], ['around', 'evenly']);
   for (const value of [{ alignItems: 'space-between' }, { justifyContent: 'stretch' }, { alignSelf: 'auto' }, { alignItems: 1 }]) rejects(value, /UI_STYLE_VALUE/);
   for (const value of [{ alignItems: 'center' }, { justifyContent: 'flex-end' }])
@@ -114,15 +114,15 @@ test('typography: CSS line-height multipliers inherit and recompute per font siz
 test('opacity, placeholder and scroll axes accept only their element and range', () => {
   for (const opacity of [0, 0.25, 1]) assert.equal(style({ opacity }).opacity, opacity);
   for (const opacity of [-0.01, 1.01, NaN, Infinity, '0.5', null, true]) rejects({ opacity }, /UI_STYLE_VALUE/);
-  assert.equal(style({ placeholderColor: '#12345680' }, 'input').placeholderColor, '#12345680');
+  assert.equal(style({ placeholderColor: 'text-muted/50' }, 'input').placeholderColor, 'text-muted/50');
   for (const value of [null, 1, true, {}]) rejects({ placeholderColor: value }, /UI_STYLE_VALUE/, 'input');
-  rejects({ placeholderColor: '#123456' }, /not supported on <column>/);
+  rejects({ placeholderColor: 'text-muted' }, /not supported on <column>/);
   assert.equal(style({ overflowX: 'auto' }, 'scroll').scrollAxis, 'horizontal');
   rejects({ overflowX: 'auto' }, /UI_STYLE: overflowX is not supported on <column>/);
 });
 
 test('every style property is checked against the element that renders it', () => {
-  for (const [tag, name, value] of [['text', 'alignItems', 'center'], ['text', 'gap', 4], ['image', 'color', '#000000'], ['spacer', 'padding', 4],
+  for (const [tag, name, value] of [['text', 'alignItems', 'center'], ['text', 'gap', 4], ['image', 'color', 'text'], ['spacer', 'padding', 4],
     ['plot', 'fontSize', 12], ['row', 'lineClamp', 2], ['button', 'flexDirection', 'row'], ['slider', 'fontSize', 12]])
     rejects({ [name]: value }, new RegExp(`UI_STYLE: ${name} is not supported on <${tag}>`), tag);
   rejects({ unknownThing: 1 }, /UI_STYLE: unknown style property unknownThing/);
@@ -131,14 +131,14 @@ test('every style property is checked against the element that renders it', () =
 const rules = list => configureClasses(list.map(([name, style, when = {}]) => ({ name, when, style })));
 
 test('active and hover variants become paint deltas; hover only for fine pointers', () => {
-  rules([['bg-white', { backgroundColor: '#ffffffff' }], ['active:bg-gray', { backgroundColor: '#eeeeeeff' }, { state: 'active' }],
-    ['hover:bg-blue', { backgroundColor: '#0000ffff' }, { state: 'hover' }], ['active:p-2', { paddingTop: 8 }, { state: 'active' }]]);
-  const touch = rendered(() => h('button', { className: 'bg-white active:bg-gray hover:bg-blue' }, 'Go'), { env: { pointer: 'coarse' } });
-  assert.deepEqual(touch.props.pressedStyle, { background: '#eeeeeeff' });
+  rules([['bg-surface', { backgroundColor: 'surface' }], ['active:bg-line-strong', { backgroundColor: 'line-strong' }, { state: 'active' }],
+    ['hover:bg-accent', { backgroundColor: 'accent' }, { state: 'hover' }], ['active:p-2', { paddingTop: 8 }, { state: 'active' }]]);
+  const touch = rendered(() => h('button', { className: 'bg-surface active:bg-line-strong hover:bg-accent' }, 'Go'), { env: { pointer: 'coarse' } });
+  assert.deepEqual(touch.props.pressedStyle, { background: 'line-strong' });
   assert.equal(touch.props.hoverStyle, undefined);
-  const mouse = rendered(() => h('button', { className: 'bg-white hover:bg-blue' }, 'Go'), { env: { pointer: 'fine' } });
-  assert.deepEqual(mouse.props.hoverStyle, { background: '#0000ffff' });
-  assert.throws(() => describe(() => h('column', { className: 'active:bg-gray' }), {}), /UI_STYLE: active: requires a control, not <column>/);
+  const mouse = rendered(() => h('button', { className: 'bg-surface hover:bg-accent' }, 'Go'), { env: { pointer: 'fine' } });
+  assert.deepEqual(mouse.props.hoverStyle, { background: 'accent' });
+  assert.throws(() => describe(() => h('column', { className: 'active:bg-line-strong' }), {}), /UI_STYLE: active: requires a control, not <column>/);
   assert.throws(() => describe(() => h('button', { className: 'active:p-2' }, 'x'), {}), /active: supports paint properties only, not paddingTop/);
 });
 

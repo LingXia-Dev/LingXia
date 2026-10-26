@@ -1,5 +1,5 @@
 // Builds a Logic-free GPU lxapp, the core for arm64 Android and the smoke host, then launches it:
-//   node run.mjs [--project <lxapp dir>] [--page <name>] [--device <serial>] [--sdk <dir>]
+//   node run.mjs [--project <lxapp dir>] [--page <name>] [--device <serial>] [--sdk <dir>] [--allow-literal-colors]
 import { copyFileSync, mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,7 +22,7 @@ const env = {
   BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android: `-I"${resourceDir}/include" -I"${sysroot}" -I"${sysroot}/aarch64-linux-android"`,
 };
 
-run('node', [join(repoRoot, 'packages/lingxia-ui/build.mjs'), project], { cwd: repoRoot });
+run('node', [join(repoRoot, 'packages/lingxia-ui/build.mjs'), project, ...(args['allow-literal-colors'] ? ['--allow-literal-colors'] : [])], { cwd: repoRoot });
 run('cargo', ['build', '-p', 'lingxia-ui-android', '--features', 'gpu', '--target', 'aarch64-linux-android', '--release'], { cwd: repoRoot, env });
 const jniLibs = join(here, 'src/main/jniLibs/arm64-v8a');
 mkdirSync(jniLibs, { recursive: true });

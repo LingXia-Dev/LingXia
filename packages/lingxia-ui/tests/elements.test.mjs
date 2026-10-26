@@ -300,12 +300,12 @@ test('grid templates are a style; counts expand to equal tracks and any containe
 test('text flattens nested spans and links into styled runs under one paragraph', () => {
   let pressed = 0;
   const tree = rendered(() => h('text', { style: { fontSize: 16 } }, 'Hello ',
-    h('span', { style: { fontWeight: 700, color: '#ff0000' } }, 'bold ', h('span', { style: { fontStyle: 'italic' } }, 'both'), ' tail'),
+    h('span', { style: { fontWeight: 700, color: 'danger' } }, 'bold ', h('span', { style: { fontStyle: 'italic' } }, 'both'), ' tail'),
     ' and ', h('link', { onPress: () => pressed++, accessibilityLabel: 'Terms' }, 'terms')));
   assert.equal(tree.text, '');
   assert.deepEqual(tree.children.map(child => [child.tag, child.text]),
     [['span', 'Hello '], ['span', 'bold '], ['span', 'both'], ['span', ' tail'], ['span', ' and '], ['link', 'terms']]);
-  assert.deepEqual(tree.children[2].props, { fontWeight: 700, color: '#ff0000', fontStyle: 'italic' });
+  assert.deepEqual(tree.children[2].props, { fontWeight: 700, color: 'danger', fontStyle: 'italic' });
   assert.equal(tree.children[5].props.accessibilityLabel, 'Terms');
   assert.equal(typeof tree.children[5].props.onClick, 'number');
   assert.equal(rendered(() => h('text', {}, 'plain ', 'text')).text, 'plain text');

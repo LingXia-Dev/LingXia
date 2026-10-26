@@ -6,6 +6,7 @@ import { moduleBanner } from './compatibility.mjs';
 import { compileUtilities } from './tailwind.mjs';
 import { nearestSupported } from './suggest.mjs';
 import { loadStylesheet, validateTokens } from './stylesheets.mjs';
+import { colorProblem, seriesProblem } from '../src/style/color.js';
 import { readFile, mkdir, writeFile, copyFile, realpath } from 'node:fs/promises';
 import { resolve, dirname, join, relative, isAbsolute, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -68,7 +69,7 @@ function spoken(element) {
   });
 }
 
-export function audit(source, filename) {
+export function audit(source, filename, { literalColors = false } = {}) {
   const file = parseSource(filename, source);
   const checker = sourceChecker(file);
   const problems = [];
@@ -88,12 +89,20 @@ export function audit(source, filename) {
         }
         const key = prop.name.getText(file);
         if (!acceptsProp(tag, key)) report(prop, `UI_PROP: ${key} is not a property of <${tag}>`);
+        const series = tag === 'plot' && key === 'colors' && prop.initializer && ts.isJsxExpression(prop.initializer) && prop.initializer.expression;
+        if (!literalColors && series && ts.isArrayLiteralExpression(series)) for (const item of series.elements) {
+          const problem = ts.isStringLiteralLike(item) && seriesProblem(item.text);
+          if (problem) report(item, problem);
+        }
         const style = key === 'style' && prop.initializer && ts.isJsxExpression(prop.initializer) && prop.initializer.expression;
         if (style && ts.isObjectLiteralExpression(style)) for (const entry of style.properties) {
           if (!ts.isPropertyAssignment(entry) && !ts.isShorthandPropertyAssignment(entry)) continue;
           const name = entry.name.getText(file).replace(/['"]/g, '');
           if (name === 'animation') report(entry, 'UI_ANIMATION: native presentation scheduling is not connected');
           else { const problem = styleProblem(tag, name); if (problem) report(entry, problem); }
+          const literal = ts.isPropertyAssignment(entry) && ts.isStringLiteralLike(entry.initializer) && entry.initializer.text;
+          const colorIssue = !literalColors && literal !== false && styleTable[name]?.lower === 'color' && colorProblem(literal, name);
+          if (colorIssue) report(entry, colorIssue);
         }
       }
     }
@@ -137,6 +146,7 @@ function classProblems(rule, name, tag, suggestions) {
     const nearest = suggestions.get(name);
     return [`UI_CLASS_UNKNOWN: ${name} is not a Tailwind utility${nearest ? `; nearest supported: ${nearest}` : ''}`];
   }
+  if (rule.error?.category === 'color') return [`UI_COLOR: ${name}: ${rule.error.message}`];
   if (rule.error) return [`UI_CLASS_UNSUPPORTED: ${name}: the native renderer does not support ${rule.error.message}`];
   if (!has(elements, tag) || rule.when?.children) return [];
   const props = [...Object.keys(rule.style ?? {}), ...(rule.gradient ? ['backgroundImage'] : []),
@@ -180,7 +190,11 @@ function report(problems, page) {
  * page's sibling `.json` must declare `"renderer": "gpu"`, which is the only
  * thing that makes a page native. Output is `<base>.js` beside a copy of the config.
  */
-export async function buildPages(root, pages, output, catalogs = {}, { dev = false } = {}) {
+/**
+ * `literalColors` admits hex and palette colours for renderer test fixtures whose probes read exact
+ * pixels; app builds never set it.
+ */
+export async function buildPages(root, pages, output, catalogs = {}, { dev = false, literalColors = false } = {}) {
   const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   root = await realpath(resolve(root)); output = resolve(output);
   const inputs = {};
@@ -216,7 +230,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
           builder.onLoad({ filter: /\.[jt]sx?$/ }, async ({ path }) => {
             if (path.toLowerCase().startsWith(runtimeRoot)) return;
             const contents = await readFile(path, 'utf8');
-            problems.push(...audit(contents, path));
+            problems.push(...audit(contents, path, { literalColors }));
             const file = parseSource(path, contents);
             sourceFiles.push(file);
             const collect = node => {
@@ -236,7 +250,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
       if (!problems.length) throw error;
     }
     if (themes.size > 1) problems.push(`${page}: UI_CSS: import one shared @theme stylesheet per page`);
-    const classes = await compileUtilities(candidates, [...themes.values()].join('\n'), { animationLowering });
+    const classes = await compileUtilities(candidates, [...themes.values()].join('\n'), { animationLowering, literalColors });
     const checker = moduleChecker(sourceFiles);
     const rulesByName = new Map();
     for (const rule of classes) rulesByName.set(rule.name, [...(rulesByName.get(rule.name) ?? []), rule]);

@@ -14,11 +14,11 @@ export function render() {
   return (
     <page className="p-4 gap-4">
       <button onClick={() => shown.set(!shown.value)}
-        className="self-start rounded-xl bg-blue-600 text-white active:scale-95 transition-transform duration-150">
+        className="self-start rounded-xl bg-accent text-on-accent active:scale-95 transition-transform duration-150">
         {shown.value ? 'Fade out' : 'Fade in'}
       </button>
-      <view className={`w-12 h-12 rounded-lg bg-blue-600 transition-opacity duration-200 ease-out ${shown.value ? 'opacity-100' : 'opacity-0'}`} />
-      <view className="w-10 h-10 rounded-lg bg-rose-600 motion-safe:animate-pulse motion-reduce:opacity-60" />
+      <view className={`w-12 h-12 rounded-lg bg-accent transition-opacity duration-200 ease-out ${shown.value ? 'opacity-100' : 'opacity-0'}`} />
+      <view className="w-10 h-10 rounded-lg bg-danger motion-safe:animate-pulse motion-reduce:opacity-60" />
     </page>
   );
 }
@@ -37,7 +37,7 @@ The opt-in is per page. Without it, `transition-*`, `duration-*`, `delay-*`, `ea
 
 ```tsx error UI_ANIMATION
 export function render() {
-  return <page><view className="h-10 bg-blue-600 transition-opacity" /></page>;
+  return <page><view className="h-10 bg-accent transition-opacity" /></page>;
 }
 ```
 
@@ -55,7 +55,7 @@ refused, naming `transition-transform` or `transition-opacity` as the alternativ
 ```tsx error UI_CLASS_UNSUPPORTED
 // @ui-experimental motion
 export function render() {
-  return <page><view className="h-10 bg-blue-600 transition-[width]" /></page>;
+  return <page><view className="h-10 bg-accent transition-[width]" /></page>;
 }
 ```
 

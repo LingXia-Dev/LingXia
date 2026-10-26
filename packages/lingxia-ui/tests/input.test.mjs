@@ -101,11 +101,11 @@ test('submitOnEnter is an explicit textarea flag with a normal submit callback',
 test('focus styles lower to paint deltas on editors and are rejected elsewhere', async () => {
   const { configureClasses } = await import('../src/internal.js');
   configureClasses([
-    { name: 'focus:bg-white', when: { state: 'focus' }, style: { backgroundColor: '#ffffffff' } },
+    { name: 'focus:bg-surface', when: { state: 'focus' }, style: { backgroundColor: 'surface' } },
     { name: 'focus:p-4', when: { state: 'focus' }, style: { paddingTop: 16 } },
   ]);
-  assert.deepEqual(rendered(() => h('input', { className: 'focus:bg-white' })).props.focusStyle, { background: '#ffffffff' });
-  assert.throws(() => describe(() => h('column', { className: 'focus:bg-white' }), {}), /UI_STYLE: focus: requires an editor/);
+  assert.deepEqual(rendered(() => h('input', { className: 'focus:bg-surface' })).props.focusStyle, { background: 'surface' });
+  assert.throws(() => describe(() => h('column', { className: 'focus:bg-surface' }), {}), /UI_STYLE: focus: requires an editor/);
   assert.throws(() => describe(() => h('input', { className: 'focus:p-4' }), {}), /UI_STYLE: focus: supports paint properties only/);
   configureClasses([]);
 });

@@ -121,11 +121,11 @@ test('flow-relative utilities stay logical on the wire and rtl:/ltr: follow the 
 });
 
 test('structural variants match sibling position, list rows and emptiness; DOM-state variants name the TS alternative', async () => {
-  await use(['first:pt-1', 'last:pb-2', 'odd:bg-white', 'even:bg-black', 'only:p-4', 'empty:hidden', 'first:hover:p-3', 'md:first:pt-3',
+  await use(['first:pt-1', 'last:pb-2', 'odd:bg-surface', 'even:bg-text', 'only:p-4', 'empty:hidden', 'first:hover:p-3', 'md:first:pt-3',
     'has-[input]:p-2', 'data-[state=open]:p-2', 'aria-checked:p-2']);
-  const tree = rendered(() => h('column', {}, ...['a', 'b', 'c'].map(key => h('text', { key, className: 'first:pt-1 last:pb-2 odd:bg-white even:bg-black' }, key))));
+  const tree = rendered(() => h('column', {}, ...['a', 'b', 'c'].map(key => h('text', { key, className: 'first:pt-1 last:pb-2 odd:bg-surface even:bg-text' }, key))));
   const rows = tree.children.map(child => [child.props.paddingTop, child.props.paddingBottom, child.props.background]);
-  assert.deepEqual(rows, [[4, undefined, '#ffffffff'], [undefined, undefined, '#000000ff'], [undefined, 8, '#ffffffff']]);
+  assert.deepEqual(rows, [[4, undefined, 'surface'], [undefined, undefined, 'text'], [undefined, 8, 'surface']]);
   assert.equal(rendered(() => h('column', {}, h('text', { className: 'only:p-4' }, 'x'))).children[0].props.paddingTop, 16);
   assert.equal(rendered(() => h('column', {}, false, h('text', { className: 'only:p-4' }, 'x'), null)).children[0].props.paddingTop, 16);
   assert.equal(rendered(() => h('column', { className: 'empty:hidden' })).props.display, 'none');
@@ -158,15 +158,16 @@ test('alignment keeps CSS values until rendering', async () => {
 });
 
 test('cached class cascades isolate mutations, typography and environments', async () => {
-  await use(['p-4', 'leading-relaxed', 'tracking-wider', 'shadow-sm', 'text-red-500', 'dark:text-white', 'md:p-8']);
-  const classes = 'p-4 leading-relaxed tracking-wider shadow-sm text-red-500 dark:text-white md:p-8';
+  await use(['p-4', 'leading-relaxed', 'tracking-wider', 'shadow-sm', 'text-danger', 'dark:tracking-widest', 'md:p-8']);
+  const classes = 'p-4 leading-relaxed tracking-wider shadow-sm text-danger dark:tracking-widest md:p-8';
   const first = resolveClasses(classes, env());
   first.base.boxShadow[0].color = '#123456'; first.base.paddingTop = 900;
   const second = node('text', { className: classes, style: { fontSize: 20 } }, { env: env() });
   assert.equal(second.paddingTop, 16); assert.equal(second.lineHeight, 32.5); assert.equal(second.letterSpacing, 1);
   assert.notEqual(JSON.parse(second.boxShadow)[0].color, '#123456');
   const dark = classStyle(classes, env('dark', 900));
-  assert.equal(dark.paddingTop, 32); assert.notEqual(dark.color, classStyle(classes, env()).color);
+  assert.equal(dark.paddingTop, 32); assert.notEqual(dark.letterSpacing, classStyle(classes, env()).letterSpacing);
+  assert.equal(dark.color, 'danger');
   configureClasses([]); assert.throws(() => classStyle(classes), /was not compiled/);
 });
 
@@ -215,25 +216,25 @@ test('margins, positioning, layering and line clamps are native utilities', asyn
 });
 
 test('space and divide utilities target non-last children', async () => {
-  await use(['space-y-2', 'space-x-3', 'divide-y', 'divide-gray-200', 'gap-x-2', 'gap-y-4']);
+  await use(['space-y-2', 'space-x-3', 'divide-y', 'divide-line', 'gap-x-2', 'gap-y-4']);
   assert.deepEqual(resolveClasses('space-y-2').children, { marginTop: 0, marginBottom: 8 });
   assert.deepEqual(resolveClasses('space-x-3').children, { marginInlineStart: 0, marginInlineEnd: 12 });
-  const list = rendered(() => h('column', { className: 'space-y-2 divide-y divide-gray-200' }, h('text', {}, 'a'), h('text', {}, 'b')));
+  const list = rendered(() => h('column', { className: 'space-y-2 divide-y divide-line' }, h('text', {}, 'a'), h('text', {}, 'b')));
   assert.deepEqual(list.children.map(child => [child.props.marginBottom, child.props.borderBottomWidth]), [[8, 1], [undefined, undefined]]);
-  assert.match(list.children[0].props.borderColor, /^#e5e7eb/);
+  assert.equal(list.children[0].props.borderColor, 'line');
   assert.deepEqual(classStyle('gap-x-2 gap-y-4'), { columnGap: 8, rowGap: 16 });
 });
 
 test('state variants lower to state styles and disabled replaces the cascade', async () => {
-  await use(['bg-white', 'active:bg-gray-100', 'hover:bg-gray-50', 'disabled:opacity-50', 'focus:bg-red-500']);
-  const states = resolveClasses('bg-white active:bg-gray-100 hover:bg-gray-50 disabled:opacity-50', { pointer: 'fine' });
+  await use(['bg-surface', 'active:bg-surface-sunken', 'hover:bg-surface-sunken', 'disabled:opacity-50', 'focus:bg-danger']);
+  const states = resolveClasses('bg-surface active:bg-surface-sunken hover:bg-surface-sunken disabled:opacity-50', { pointer: 'fine' });
   assert.deepEqual(Object.keys(states.active), ['backgroundColor']);
   assert.deepEqual(Object.keys(states.hover), ['backgroundColor']);
   assert.equal(states.disabled.opacity, 0.5);
-  assert.equal(resolveClasses('hover:bg-gray-50', { pointer: 'coarse' }).hover, undefined);
-  const button = rendered(() => h('button', { className: 'bg-white active:bg-gray-100 disabled:opacity-50', disabled: true }, 'Save')).props;
+  assert.equal(resolveClasses('hover:bg-surface-sunken', { pointer: 'coarse' }).hover, undefined);
+  const button = rendered(() => h('button', { className: 'bg-surface active:bg-surface-sunken disabled:opacity-50', disabled: true }, 'Save')).props;
   assert.deepEqual([button.opacity, button.pressedStyle, button.enabled], [0.5, undefined, 0]);
-  assert.ok(rendered(() => h('input', { className: 'focus:bg-red-500' })).props.focusStyle.background);
+  assert.ok(rendered(() => h('input', { className: 'focus:bg-danger' })).props.focusStyle.background);
 });
 
 test('text utilities: transform, decoration, nowrap, alignment and families', async () => {
@@ -255,7 +256,7 @@ test('text utilities: transform, decoration, nowrap, alignment and families', as
 });
 
 test('outer shadows preserve layers, color overrides, variants and CSS order', async () => {
-  const names = ['shadow-sm', 'shadow-lg', 'shadow-none', 'shadow-red-500/40', 'dark:shadow-blue-500', 'md:shadow-none'];
+  const names = ['shadow-sm', 'shadow-lg', 'shadow-none', 'shadow-danger/40', 'md:shadow-none'];
   const rules = await compileUtilities(new Set(names));
   assert.deepEqual(rules.filter(rule => rule.error), []);
   configureClasses(rules);
@@ -263,15 +264,16 @@ test('outer shadows preserve layers, color overrides, variants and CSS order', a
     { offsetX: 0, offsetY: 10, blur: 15, spread: -3, color: '#0000001a' },
     { offsetX: 0, offsetY: 4, blur: 6, spread: -4, color: '#0000001a' },
   ]);
-  const classes = 'shadow-sm shadow-red-500/40 dark:shadow-blue-500 md:shadow-none';
+  const classes = 'shadow-sm shadow-danger/40 md:shadow-none';
   const style = classStyle(classes, env());
   assert.deepEqual(style, classStyle(classes.split(' ').reverse().join(' '), env()));
   assert.equal(style.boxShadow.length, 2);
-  assert.match(style.boxShadow[0].color, /66$/);
+  assert.equal(style.boxShadow[0].color, 'danger/40');
   assert.equal(style.boxShadow[0].color, style.boxShadow[1].color);
-  assert.match(classStyle(classes, env('dark')).boxShadow[0].color, /ff$/);
   assert.equal(classStyle(classes, env('light', 800)).boxShadow[0].color, '#00000000');
-  assert.deepEqual(classStyle('shadow-red-500/40'), {});
+  assert.deepEqual(classStyle('shadow-danger/40'), {});
+  const [palette, dark] = await compileUtilities(new Set(['shadow-red-500', 'dark:shadow-accent']));
+  assert.deepEqual([palette.error.category, dark.error.message], ['color', 'roles follow appearance; drop dark:']);
   assert.equal(node('column', { className: classes, style: { boxShadow: 'none' } }, { env: env() }).boxShadow, 'none');
 });
 
@@ -287,54 +289,54 @@ test('shadow tokens and arbitrary variables expand to every layer they hold in e
   const theme = `@theme inline { --shadow-card: var(--card-shadow); }
     :root { --card-shadow: 0 1px 2px #0000001a, 0 4px 8px hsl(220 13% 20% / .1); --elev: 0 1px 2px #0002, 0 4px 8px #0003; --nine: ${Array(9).fill('0 1px 2px #000').join(', ')}; }
     [data-theme='dark'] { --card-shadow: 0 0 0 1px #ffffff1a; }`;
-  await use(['shadow-card', 'shadow-[var(--elev)]', '[box-shadow:var(--elev)]', 'shadow-[var(--nine)]', 'shadow-red-500'], theme);
+  await use(['shadow-card', 'shadow-[var(--elev)]', '[box-shadow:var(--elev)]', 'shadow-[var(--nine)]', 'shadow-danger'], theme);
   assert.deepEqual(classStyle('shadow-card', env()).boxShadow.map(layer => layer.offsetY), [1, 4]);
   assert.deepEqual(classStyle('shadow-card', env('dark')).boxShadow, [{ offsetX: 0, offsetY: 0, blur: 0, spread: 1, color: '#ffffff1a' }]);
   assert.deepEqual(classStyle('shadow-[var(--elev)]').boxShadow.map(layer => layer.color), ['#00000022', '#00000033']);
   assert.deepEqual(classStyle('[box-shadow:var(--elev)]').boxShadow.length, 2);
   // A layer Tailwind did not wrap in --tw-shadow-color keeps its own color, as in CSS.
-  assert.equal(classStyle('shadow-[var(--elev)] shadow-red-500').boxShadow[0].color, '#00000022');
+  assert.equal(classStyle('shadow-[var(--elev)] shadow-danger').boxShadow[0].color, '#00000022');
   assert.throws(() => classStyle('shadow-[var(--nine)]'), /too many box shadows/);
 });
 
 test('outer rings compose before shadows and fixed shadows replace the composition', async () => {
-  await use(['ring-2', 'ring-0', 'ring-blue-500/30', 'shadow-lg', 'shadow-none', 'focus:ring-2', 'focus:ring-blue-500/30', 'ring-offset-2', 'ring-inset', '[box-shadow:none]']);
-  const style = classStyle('ring-2 ring-blue-500/30 shadow-lg');
-  assert.equal(style.boxShadow.length, 3); assert.equal(style.boxShadow[0].spread, 2); assert.match(style.boxShadow[0].color, /4d$/);
+  await use(['ring-2', 'ring-0', 'ring-accent/30', 'shadow-lg', 'shadow-none', 'focus:ring-2', 'focus:ring-accent/30', 'ring-offset-2', 'ring-inset', '[box-shadow:none]']);
+  const style = classStyle('ring-2 ring-accent/30 shadow-lg');
+  assert.equal(style.boxShadow.length, 3); assert.equal(style.boxShadow[0].spread, 2); assert.equal(style.boxShadow[0].color, 'accent/30');
   assert.equal(classStyle('ring-2 shadow-none').boxShadow[0].spread, 2);
   assert.deepEqual(classStyle('ring-0').boxShadow, []);
   assert.deepEqual(classStyle('ring-2 [box-shadow:none]').boxShadow, []);
-  assert.deepEqual(classStyle('focus:ring-2 focus:ring-blue-500/30'), {});
-  assert.equal(resolveClasses('focus:ring-2 focus:ring-blue-500/30').focus.boxShadow[0].spread, 2);
+  assert.deepEqual(classStyle('focus:ring-2 focus:ring-accent/30'), {});
+  assert.equal(resolveClasses('focus:ring-2 focus:ring-accent/30').focus.boxShadow[0].spread, 2);
   for (const name of ['ring-offset-2', 'ring-inset']) assert.throws(() => classStyle(name), /unsupported shadow property/);
 });
 
 test('gradient utilities compose across classes using Tailwind cascade and theme', async () => {
-  const names = ['bg-linear-to-br', 'bg-linear-to-r/srgb', 'from-red-500', 'via-green-500', 'to-blue-500', 'from-80%', 'via-10%', 'to-20%', 'dark:from-white', 'md:bg-none', 'bg-white'];
+  const names = ['bg-linear-to-br', 'bg-linear-to-r/srgb', 'from-danger', 'via-success', 'to-accent', 'from-80%', 'via-10%', 'to-20%', 'md:bg-none', 'bg-surface'];
   const rules = await compileUtilities(new Set(names));
   assert.deepEqual(rules.filter(rule => rule.error), []);
   configureClasses(rules);
-  const classes = 'bg-white bg-linear-to-br from-red-500 via-green-500 to-blue-500 from-80% via-10% to-20% dark:from-white md:bg-none';
+  const classes = 'bg-surface bg-linear-to-br from-danger via-success to-accent from-80% via-10% to-20% md:bg-none';
   const style = classStyle(classes, env());
   assert.deepEqual(style, classStyle(classes.split(' ').reverse().join(' '), env()));
-  assert.equal(style.backgroundColor, '#ffffffff');
+  assert.equal(style.backgroundColor, 'surface');
   assert.equal(style.backgroundImage.direction, 'bottom-right');
   assert.equal(style.backgroundImage.colorSpace, 'oklab');
   assert.deepEqual(style.backgroundImage.stops.map(stop => stop.offset), [.8, .8, .8]);
-  assert.equal(classStyle(classes, env('dark')).backgroundImage.stops[0].color, '#ffffffff');
+  assert.equal(classStyle(classes, env('dark')).backgroundImage.stops[0].color, 'danger');
   assert.equal(classStyle(classes, env('light', 800)).backgroundImage, 'none');
-  assert.equal(classStyle('bg-linear-to-r/srgb from-red-500 to-blue-500').backgroundImage.colorSpace, 'srgb');
-  assert.deepEqual(classStyle('from-red-500'), {});
+  assert.equal(classStyle('bg-linear-to-r/srgb from-danger to-accent').backgroundImage.colorSpace, 'srgb');
+  assert.deepEqual(classStyle('from-danger'), {});
 });
 
 test('gradient defaults, transparency, negative stops and unsupported spaces are explicit', async () => {
-  await use(['bg-linear-45', 'from-red-500/50', 'to-blue-500', 'from-[-10%]', 'to-[120%]', 'bg-linear-to-r/hsl', 'via-[12px]']);
-  const gradient = classStyle('bg-linear-45 from-red-500/50 from-[-10%] to-blue-500 to-[120%]').backgroundImage;
+  await use(['bg-linear-45', 'from-danger/50', 'to-accent', 'from-[-10%]', 'to-[120%]', 'bg-linear-to-r/hsl', 'via-[12px]']);
+  const gradient = classStyle('bg-linear-45 from-danger/50 from-[-10%] to-accent to-[120%]').backgroundImage;
   assert.equal(gradient.angle, 45);
   assert.equal(gradient.stops[0].offset, -.1);
   assert.equal(gradient.stops[1].offset, 1.2);
-  assert.match(gradient.stops[0].color, /80$/);
-  assert.equal(classStyle('bg-linear-45 from-red-500/50').backgroundImage.stops[1].color, '#00000000');
+  assert.equal(gradient.stops[0].color, 'danger/50');
+  assert.equal(classStyle('bg-linear-45 from-danger/50').backgroundImage.stops[1].color, '#00000000');
   assert.equal(classStyle('bg-linear-45').backgroundImage, 'none');
   for (const name of ['bg-linear-to-r/hsl', 'via-[12px]']) assert.throws(() => classStyle(name), /UI_CLASS/);
 });
@@ -342,14 +344,14 @@ test('gradient defaults, transparency, negative stops and unsupported spaces are
 test('radial, conic and complete CSS gradients lower from utilities, arbitrary values and theme tokens', async () => {
   const theme = `@theme { --gradient-hero: linear-gradient(135deg, #ffffff, #000000 80%); }
     :root { --glow: radial-gradient(circle at top, #ff000080, transparent 70%); }`;
-  await use(['bg-radial', 'bg-radial-[at_25%_75%]', 'bg-conic-180', 'bg-conic', 'from-red-500', 'to-blue-500',
+  await use(['bg-radial', 'bg-radial-[at_25%_75%]', 'bg-conic-180', 'bg-conic', 'from-danger', 'to-accent',
     'bg-[radial-gradient(circle_closest-side_at_left_top,#fff,#000_50%,#f00)]', 'bg-[image:var(--glow)]', 'bg-(image:--gradient-hero)',
     'bg-[conic-gradient(from_90deg,#fff_0deg,#000_0.5turn)]', 'bg-[repeating-linear-gradient(#fff,#000)]', 'bg-[radial-gradient(#fff_10px,#000)]',
     'bg-[linear-gradient(at_top,#fff,#000)]', 'bg-linear-45'], theme);
-  const radial = classStyle('bg-radial-[at_25%_75%] from-red-500 to-blue-500').backgroundImage;
+  const radial = classStyle('bg-radial-[at_25%_75%] from-danger to-accent').backgroundImage;
   assert.deepEqual([radial.kind, radial.at, radial.stops.length], ['radial', [.25, .75], 2]);
-  assert.equal(classStyle('bg-radial from-red-500 to-blue-500').backgroundImage.colorSpace, 'oklab');
-  assert.deepEqual(classStyle('bg-conic-180 from-red-500 to-blue-500').backgroundImage.from, 180);
+  assert.equal(classStyle('bg-radial from-danger to-accent').backgroundImage.colorSpace, 'oklab');
+  assert.deepEqual(classStyle('bg-conic-180 from-danger to-accent').backgroundImage.from, 180);
   assert.deepEqual(classStyle('bg-[radial-gradient(circle_closest-side_at_left_top,#fff,#000_50%,#f00)]').backgroundImage, {
     kind: 'radial', shape: 'circle', size: 'closest-side', at: [0, 0], colorSpace: 'srgb',
     stops: [{ offset: 0, color: '#ffffffff' }, { offset: .5, color: '#000000ff' }, { offset: 1, color: '#ff0000ff' }],
@@ -360,7 +362,7 @@ test('radial, conic and complete CSS gradients lower from utilities, arbitrary v
   assert.deepEqual([hero.kind, hero.angle, hero.stops[1].offset], [undefined, 135, .8]);
   assert.deepEqual(classStyle('bg-[conic-gradient(from_90deg,#fff_0deg,#000_0.5turn)]').backgroundImage.stops.map(stop => stop.offset), [0, .5]);
   // Both set one background-image; Tailwind's order decides, never the class string.
-  const mixed = 'bg-(image:--gradient-hero) bg-linear-45 from-red-500 to-blue-500';
+  const mixed = 'bg-(image:--gradient-hero) bg-linear-45 from-danger to-accent';
   assert.deepEqual(classStyle(mixed), classStyle(mixed.split(' ').reverse().join(' ')));
   assert.equal(classStyle(mixed).backgroundImage.angle, 135);
   for (const [name, message] of [['bg-[repeating-linear-gradient(#fff,#000)]', /background-image/], ['bg-[radial-gradient(#fff_10px,#000)]', /percentages/],
@@ -392,27 +394,28 @@ test('radii: infinite radius clamps and corners cascade under shorthands', async
 });
 
 test('real Tailwind utilities lower to native dimensions, typography and colors', async () => {
-  await use(['p-6', 'gap-2', 'text-sm', 'font-semibold', 'rounded-xl', 'bg-blue-500/80', 'opacity-50']);
+  await use(['p-6', 'gap-2', 'text-sm', 'font-semibold', 'rounded-xl', 'bg-accent/80', 'opacity-50']);
   assert.deepEqual(classStyle('p-6 gap-2 text-sm font-semibold rounded-xl opacity-50'), {
     paddingTop: 24, paddingRight: 24, paddingBottom: 24, paddingLeft: 24, gap: 8, fontSize: 14, lineHeight: 1.25 / 0.875,
     fontWeight: 600, borderRadius: 12, opacity: .5,
   });
   assert.equal(node('text', { className: 'text-sm' }).lineHeight, 20);
-  assert.match(classStyle('bg-blue-500/80').backgroundColor, /^#[0-9a-f]{6}cc$/);
+  assert.equal(classStyle('bg-accent/80').backgroundColor, 'accent/80');
 });
 
 test('cascade follows Tailwind order and responds to viewport and appearance', async () => {
-  await use(['gap-2', 'md:gap-4', 'bg-white', 'dark:bg-black', 'p-4', 'p-2', 'pl-1', 'md:p-8']);
+  await use(['gap-2', 'md:gap-4', 'bg-surface', 'dark:p-1', 'p-4', 'p-2', 'pl-1', 'md:p-8']);
   assert.equal(classStyle('p-4 p-2').paddingLeft, 16);
   assert.equal(classStyle('p-2 p-4').paddingLeft, 16);
-  assert.deepEqual(classStyle('gap-2 md:gap-4 bg-white dark:bg-black', env('light', 767)), { gap: 8, backgroundColor: '#ffffffff' });
-  assert.deepEqual(classStyle('gap-2 md:gap-4 bg-white dark:bg-black', env('dark', 768)), { gap: 16, backgroundColor: '#000000ff' });
+  assert.deepEqual(classStyle('gap-2 md:gap-4 bg-surface', env('light', 767)), { gap: 8, backgroundColor: 'surface' });
+  assert.deepEqual(classStyle('gap-2 md:gap-4 bg-surface dark:p-1', env('dark', 768)), { gap: 16, backgroundColor: 'surface', paddingTop: 4, paddingRight: 4, paddingBottom: 4, paddingLeft: 4 });
   assert.equal(classStyle('pl-1 md:p-8', env('light', 900)).paddingLeft, 32);
 });
 
 test('custom theme tokens and arbitrary values retain Tailwind semantics', async () => {
-  await use(['bg-primary', 'rounded-xl', 'h-[50px]', 'text-[17px]'], '@theme { --color-primary: #007aff; --radius-xl: 16px; }');
-  assert.deepEqual(classStyle('bg-primary rounded-xl h-[50px] text-[17px]'), { backgroundColor: '#007affff', borderRadius: 16, height: 50, fontSize: 17 });
+  await use(['bg-accent', 'rounded-xl', 'h-[50px]', 'text-[17px]'], '@theme { --color-accent: #007aff; --radius-xl: 16px; }');
+  // A project theme cannot redefine a role: the palette, not the build, decides its colour.
+  assert.deepEqual(classStyle('bg-accent rounded-xl h-[50px] text-[17px]'), { backgroundColor: 'accent', borderRadius: 16, height: 50, fontSize: 17 });
 });
 
 test('unsupported rendering and missing dynamic candidates fail visibly', async () => {
@@ -433,33 +436,26 @@ test('stylesheets cannot silently discard browser selectors or imports', async (
     await assert.rejects(compileUtilities(new Set(['p-4']), css), /UI_CSS/);
 });
 
-test('semantic aliases resolve the active palette before utility cascade', async () => {
-  const css = `
-    @theme inline { --color-surface: var(--lx-surface); --color-foreground: var(--lx-text); --color-primary: var(--lx-primary); }
-    :root { color-scheme: light; --lx-surface: #ffffff; --lx-gray-900: #1c1c1e; --lx-text: var(--lx-gray-900); --lx-primary: #007aff; }
-    [data-theme='dark'] { color-scheme: dark; --lx-surface: #1f1f22; --lx-gray-900: #f2f2f7; --lx-primary: #0a84ff; }
-  `;
-  await use(['bg-surface/80', 'text-foreground', 'text-primary', 'dark:text-white'], css);
-  assert.deepEqual(classStyle('bg-surface/80 text-foreground', { theme: 'light' }), { backgroundColor: '#ffffffcc', color: '#1c1c1eff' });
-  assert.deepEqual(classStyle('bg-surface/80 text-foreground'), { backgroundColor: '#ffffffcc', color: '#1c1c1eff' });
-  assert.deepEqual(classStyle('bg-surface/80 text-foreground', { theme: 'dark' }), { backgroundColor: '#1f1f22cc', color: '#f2f2f7ff' });
-  assert.equal(classStyle('text-primary', { theme: 'light' }).color, '#007affff');
-  assert.equal(classStyle('text-primary', { theme: 'dark' }).color, '#0a84ffff');
-  assert.equal(classStyle('dark:text-white text-primary', { theme: 'dark' }).color, '#ffffffff');
+test('role classes keep their role in every appearance and refuse dark: and palette colours', async () => {
+  await use(['bg-surface/80', 'text-muted', 'text-accent', 'dark:text-on-accent', 'text-white', 'bg-[#123456]'], '@theme inline { --color-surface: #ffffff; }');
+  for (const theme of ['light', 'dark']) assert.deepEqual(classStyle('bg-surface/80 text-muted', { theme }), { backgroundColor: 'surface/80', color: 'text-muted' });
+  assert.equal(classStyle('text-accent', { theme: 'dark' }).color, 'accent');
+  assert.throws(() => classStyle('dark:text-on-accent'), /UI_CLASS: dark:text-on-accent: roles follow appearance; drop dark:/);
+  for (const name of ['text-white', 'bg-[#123456]']) assert.throws(() => classStyle(name), /not a role; use a role class such as bg-surface/);
 });
 
 test('palette rules obey source order and diagnose invalid variables in either appearance', async () => {
-  await use(['bg-surface'], `
-    @theme inline { --color-surface: var(--fill); }
-    [data-theme="dark"] { --fill: black; }
-    :root { --fill: white; }
-    [data-theme="light"] { --fill: red; }
+  await use(['rounded-card'], `
+    @theme inline { --radius-card: var(--round); }
+    [data-theme="dark"] { --round: 2px; }
+    :root { --round: 4px; }
+    [data-theme="light"] { --round: 6px; }
   `);
-  assert.equal(classStyle('bg-surface', { theme: 'dark' }).backgroundColor, '#ffffffff');
-  assert.equal(classStyle('bg-surface', { theme: 'light' }).backgroundColor, '#ff0000ff');
-  for (const value of ['var(--missing)', 'var(--fill)']) {
-    await use(['bg-surface'], `@theme inline { --color-surface: var(--fill); } :root { --fill: white; } [data-theme="dark"] { --fill: ${value}; }`);
-    assert.throws(() => classStyle('bg-surface', { theme: 'light' }), /UI_CLASS.*(?:unresolved|cyclic)/);
+  assert.equal(classStyle('rounded-card', { theme: 'dark' }).borderRadius, 4);
+  assert.equal(classStyle('rounded-card', { theme: 'light' }).borderRadius, 6);
+  for (const value of ['var(--missing)', 'var(--round)']) {
+    await use(['rounded-card'], `@theme inline { --radius-card: var(--round); } :root { --round: 4px; } [data-theme="dark"] { --round: ${value}; }`);
+    assert.throws(() => classStyle('rounded-card', { theme: 'light' }), /UI_CLASS.*(?:unresolved|cyclic)/);
   }
   for (const css of ['[data-theme="dark"] { color-scheme: light; }', '[data-theme="dark"] { --fill: black !important; }'])
     await assert.rejects(compileUtilities(new Set(['p-4']), css), /UI_CSS/);
@@ -485,7 +481,7 @@ test('relative line height and tracking follow font size across components and l
 
 test('padding, borders and word breaking keep shorthand, axis, edge and variant semantics', async () => {
   await use(['p-2', 'px-6', 'py-3', 'pl-1', 'md:p-4', 'dark:px-3', '[padding:1px_2px_3px_4px]', 'border', 'border-4', 'border-t-2', 'border-x-8',
-    'border-blue-500/50', 'border-current', 'border-dashed', 'border-none', 'break-all', 'break-normal', 'wrap-anywhere', 'h-auto', 'min-h-[42px]', 'max-h-[120px]']);
+    'border-accent/50', 'border-current', 'border-dashed', 'border-none', 'break-all', 'break-normal', 'wrap-anywhere', 'h-auto', 'min-h-[42px]', 'max-h-[120px]']);
   const names = 'pl-1 px-6 p-2 py-3 md:p-4 dark:px-3';
   assert.deepEqual(classStyle(names, env('light', 600)), { paddingTop: 12, paddingRight: 24, paddingBottom: 12, paddingLeft: 4 });
   assert.deepEqual(classStyle(names, env('light', 800)), { paddingTop: 16, paddingRight: 16, paddingBottom: 16, paddingLeft: 16 });
@@ -497,7 +493,7 @@ test('padding, borders and word breaking keep shorthand, axis, edge and variant 
   assert.equal(classStyle('border-4 border-t-2').borderTopWidth, 2);
   assert.deepEqual(classStyle('border-x-8'), { borderLeftWidth: 8, borderRightWidth: 8 });
   assert.equal(classStyle('border-current').borderColor, 'currentColor');
-  assert.match(classStyle('border-blue-500/50').borderColor, /80$/);
+  assert.equal(classStyle('border-accent/50').borderColor, 'accent/50');
   assert.throws(() => classStyle('border-none'), /UI_CLASS/);
   assert.deepEqual(classStyle('break-normal'), { wordBreak: 'normal', overflowWrap: 'normal' });
   assert.equal(classStyle('wrap-anywhere').overflowWrap, 'anywhere');
@@ -522,27 +518,27 @@ test('backdrop variables compose through CSS order, variants and disabling', asy
 });
 
 test('placeholder color remains separate from text across theme and viewport', async () => {
-  await use(['text-blue-500', 'placeholder:text-[#123456]/30', 'dark:placeholder:text-[#abcdef]', 'md:placeholder:text-red-500', 'placeholder:font-bold', 'placeholder:bg-red-500']);
-  const names = 'text-blue-500 placeholder:text-[#123456]/30 dark:placeholder:text-[#abcdef] md:placeholder:text-red-500';
+  await use(['text-accent', 'placeholder:text-muted/30', 'md:placeholder:text-danger', 'placeholder:font-bold', 'placeholder:bg-danger']);
+  const names = 'text-accent placeholder:text-muted/30 md:placeholder:text-danger';
   const light = classStyle(names, env()), dark = classStyle(names, env('dark'));
-  assert.equal(light.placeholderColor, '#1234564d');
-  assert.equal(dark.placeholderColor, '#abcdefff');
+  assert.equal(light.placeholderColor, 'text-muted/30');
+  assert.equal(dark.placeholderColor, 'text-muted/30');
   assert.equal(light.color, dark.color);
   assert.notEqual(classStyle(names, env('light', 900)).placeholderColor, light.placeholderColor);
-  for (const name of ['placeholder:font-bold', 'placeholder:bg-red-500']) assert.throws(() => classStyle(name), /placeholder supports only color/);
+  for (const name of ['placeholder:font-bold', 'placeholder:bg-danger']) assert.throws(() => classStyle(name), /placeholder supports only color/);
 });
 
 test('editor focus paint preserves cascade order without affecting base style', async () => {
-  await use(['bg-white', 'focus:bg-red-500', 'dark:focus:bg-blue-500', 'focus:shadow-lg', 'focus:placeholder:text-[#123456]', 'focus:p-4']);
-  const classes = 'bg-white focus:bg-red-500 dark:focus:bg-blue-500 focus:shadow-lg';
-  assert.deepEqual(classStyle(classes, env()), { backgroundColor: '#ffffffff' });
+  await use(['bg-surface', 'focus:bg-danger', 'md:focus:bg-accent', 'focus:shadow-lg', 'focus:placeholder:text-muted', 'focus:p-4']);
+  const classes = 'bg-surface focus:bg-danger md:focus:bg-accent focus:shadow-lg';
+  assert.deepEqual(classStyle(classes, env()), { backgroundColor: 'surface' });
   const focus = resolveClasses(classes, env()).focus;
   assert.ok(focus.boxShadow.length);
-  assert.notEqual(focus.backgroundColor, resolveClasses(classes, env('dark')).focus.backgroundColor);
+  assert.notEqual(focus.backgroundColor, resolveClasses(classes, env('light', 900)).focus.backgroundColor);
   assert.deepEqual(focus, resolveClasses(classes.split(' ').reverse().join(' '), env()).focus);
-  assert.throws(() => classStyle('focus:placeholder:text-[#123456]'), /UI_CLASS/);
+  assert.throws(() => classStyle('focus:placeholder:text-muted'), /UI_CLASS/);
   assert.throws(() => describe(() => h('input', { className: 'focus:p-4' }), {}), /focus: supports paint properties only/);
-  assert.throws(() => describe(() => h('button', { className: 'focus:bg-red-500' }, 'x'), {}), /focus: requires an editor/);
+  assert.throws(() => describe(() => h('button', { className: 'focus:bg-danger' }, 'x'), {}), /focus: requires an editor/);
 });
 
 test('every Tailwind breakpoint matches, including the escaped 2xl', async () => {

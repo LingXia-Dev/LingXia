@@ -1,5 +1,5 @@
+use crate::protocol::Record;
 use crate::protocol::field;
-use crate::protocol::{Record, color};
 
 /// Platform-independent plot activation from the displayed frame.
 pub enum PlotSelection {
@@ -143,6 +143,8 @@ pub(crate) struct Plot {
     pub domain: [f64; 2],
     pub pie_layout: PieLayout,
     pub colors: Vec<[u8; 4]>,
+    /// Hollow markers are punched out with the surface colour.
+    pub surface: [u8; 4],
     pub smooth: bool,
     pub area: bool,
     pub marker_emphasis_scale: f32,
@@ -158,7 +160,8 @@ pub(crate) enum Shape {
 }
 
 impl Plot {
-    pub fn from_record(record: &Record) -> Result<Self, String> {
+    /// Series colours are roles (`chart-1`…) or hex, resolved against `palette`.
+    pub fn from_record(record: &Record, palette: &crate::theme::Palette) -> Result<Self, String> {
         if record
             .string(field::ACCESSIBILITY_LABEL)
             .is_none_or(|s| s.trim().is_empty())
@@ -187,21 +190,23 @@ impl Plot {
                 "UI_PLOT: expected 1..128 bounded values; pie values must be nonnegative".into(),
             );
         }
-        let palette: Vec<String> = serde_json::from_str(
+        let series: Vec<String> = serde_json::from_str(
             record
                 .string(field::PLOT_COLORS)
                 .ok_or("UI_PLOT: missing colors")?,
         )
         .map_err(|_| "UI_PLOT: invalid colors")?;
-        if palette.is_empty()
-            || palette.len() > 16
-            || palette
-                .iter()
-                .any(|s| !s.starts_with('#') || !matches!(s.len(), 7 | 9))
-        {
-            return Err("UI_PLOT: expected 1..16 colors".into());
-        }
-        let colors = palette.iter().map(|s| color(s)).collect::<Result<_, _>>()?;
+        let surface = palette.role(lingxia_theme::Role::Surface);
+        let colors = (1..=16)
+            .contains(&series.len())
+            .then(|| {
+                series
+                    .iter()
+                    .map(|s| palette.resolve(s).ok())
+                    .collect::<Option<Vec<_>>>()
+            })
+            .flatten()
+            .ok_or("UI_PLOT: expected 1..16 colors")?;
         let smooth = record.number(field::PLOT_SMOOTH) == Some(1.0);
         let area = record.number(field::PLOT_AREA) == Some(1.0);
         let marker_emphasis_scale = record
@@ -257,6 +262,7 @@ impl Plot {
             domain,
             values,
             colors,
+            surface,
             smooth,
             area,
             marker_emphasis_scale,
@@ -405,7 +411,7 @@ impl Plot {
                 // Empty-circle emphasis scales the path, not its two-pixel stroke.
                 for (size, color) in [
                     (body + stroke, self.colors[0]),
-                    (body - stroke, [255, 255, 255, 255]),
+                    (body - stroke, self.surface),
                 ] {
                     out.push(Shape::Circle(
                         [point[0] - size / 2.0, point[1] - size / 2.0, size, size],

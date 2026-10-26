@@ -13,13 +13,13 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   const note = useRequest('note', actions.load, { id: data.id });
   const draft = useLocal('draft', '');
   return (
-    <page className="bg-white dark:bg-neutral-900">
+    <page className="bg-canvas">
       <scroll className="grow">
         <column className="p-4 gap-3">
           <text role="heading" className="text-xl font-semibold">{note.value?.title ?? 'Loading…'}</text>
-          <text className="text-sm text-neutral-600 whitespace-pre-line">{note.value?.body ?? ''}</text>
-          <input bind={draft} accessibilityLabel="Reply" placeholder="Reply" className="px-3 py-2 rounded-lg border border-neutral-300" />
-          <button disabled={!draft.value} onClick={() => draft.set('')} className="px-4 py-2 rounded-lg bg-blue-600 text-white active:opacity-80">
+          <text className="text-sm text-muted whitespace-pre-line">{note.value?.body ?? ''}</text>
+          <input bind={draft} accessibilityLabel="Reply" placeholder="Reply" className="px-3 py-2 rounded-lg border border-line" />
+          <button disabled={!draft.value} onClick={() => draft.set('')} className="px-4 py-2 rounded-lg bg-accent text-on-accent active:opacity-80">
             Send
           </button>
         </column>

@@ -5,12 +5,12 @@ const tiles = ['Calls', 'Data', 'SMS', 'Roaming', 'Top up', 'Bills'];
 
 export function render() {
   return (
-    <page className="bg-neutral-50">
+    <page className="bg-surface-sunken">
       <scroll className="grow">
-        <text className="sticky top-0 px-4 py-2 text-xs font-semibold bg-neutral-200">Services</text>
+        <text className="sticky top-0 px-4 py-2 text-xs font-semibold bg-line">Services</text>
         <grid className="grid-cols-[repeat(auto-fit,minmax(6rem,1fr))] gap-2 p-4">
           {tiles.map(tile => (
-            <column key={tile} className="h-16 items-center justify-center rounded-lg bg-white">
+            <column key={tile} className="h-16 items-center justify-center rounded-lg bg-surface">
               <text className="text-sm">{tile}</text>
             </column>
           ))}
@@ -20,7 +20,7 @@ export function render() {
           <text className="text-sm font-semibold tabular-nums">12.40</text>
         </row>
       </scroll>
-      <button onClick={() => {}} className="fixed bottom-6 end-6 rounded-full bg-blue-600 text-white px-5">Top up</button>
+      <button onClick={() => {}} className="fixed bottom-6 end-6 rounded-full bg-accent text-on-accent px-5">Top up</button>
     </page>
   );
 }
@@ -84,10 +84,10 @@ export function render() {
   return (
     <page className="p-4">
       <grid className="grid-cols-3 grid-rows-[auto_auto] gap-2">
-        <view className="col-span-2 h-12 rounded-lg bg-blue-500" />
-        <view className="row-span-2 rounded-lg bg-rose-500" />
-        <view className="h-12 rounded-lg bg-neutral-300" />
-        <view className="h-12 rounded-lg bg-neutral-300 order-first" />
+        <view className="col-span-2 h-12 rounded-lg bg-accent" />
+        <view className="row-span-2 rounded-lg bg-danger" />
+        <view className="h-12 rounded-lg bg-line" />
+        <view className="h-12 rounded-lg bg-line order-first" />
       </grid>
     </page>
   );

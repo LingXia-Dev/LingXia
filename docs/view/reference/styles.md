@@ -216,3 +216,41 @@ Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:`
 ### `<select>`
 
 `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `aspectRatio`, `maxHeight`, `margin`, `marginTop`, `marginRight`, `marginBottom`, `marginLeft`, `marginInlineStart`, `marginInlineEnd`, `position`, `inset`, `top`, `right`, `bottom`, `left`, `insetInlineStart`, `insetInlineEnd`, `zIndex`, `flexGrow`, `flexShrink`, `flexBasis`, `alignSelf`, `gridColumn`, `gridColumnStart`, `gridColumnEnd`, `gridRow`, `gridRowStart`, `gridRowEnd`, `justifySelf`, `order`, `opacity`, `overflow`, `backgroundColor`, `backgroundImage`, `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomRightRadius`, `borderBottomLeftRadius`, `borderStartStartRadius`, `borderStartEndRadius`, `borderEndStartRadius`, `borderEndEndRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderInlineStartWidth`, `borderInlineEndWidth`, `borderStyle`, `borderColor`, `boxShadow`, `backdropFilter`, `translate`, `rotate`, `scale`, `transformOrigin`, `display`, `padding`, `paddingTop`, `paddingRight`, `paddingBottom`, `paddingLeft`, `paddingInlineStart`, `paddingInlineEnd`, `color`, `fontSize`, `fontWeight`, `fontFamily`, `fontStyle`, `lineHeight`, `letterSpacing`, `fontVariantNumeric`, `userSelect`, `textAlign`, `textDecorationLine`, `textTransform`, `whiteSpace`, `wordBreak`, `overflowWrap`
+
+## Colour roles
+
+Every colour is one of these roles, optionally with an alpha percent (`accent/12`). The utility drops a `text-`
+prefix (`text-muted`, not `text-text-muted`). The theme pack resolves each role per appearance and proves the
+listed contrast minimums.
+
+| Role | Minimum contrast | Use |
+| --- | --- | --- |
+| `canvas` |  | Window and page floor. |
+| `surface` |  | Cards, cells and sheets. |
+| `surface-raised` |  | Menus, popovers and elevated sheets. |
+| `surface-sunken` |  | Inset fields and grouped backgrounds. |
+| `line` | 1.2:1 on `surface`, 1.1:1 on `canvas` | Decorative separators and card borders; interactive boundaries use line-strong. |
+| `text` | 4.5:1 on `canvas`, 4.5:1 on `surface`, 4.5:1 on `surface-raised`, 4.5:1 on `surface-sunken` | Body text. |
+| `text-muted` | 4.5:1 on `canvas`, 4.5:1 on `surface` | Secondary text. |
+| `text-faint` | 3:1 on `surface` | Hints and disabled text. |
+| `accent` | 3:1 on `surface`, 3:1 on `canvas` | Primary actions, selection and links. |
+| `on-accent` | 4.5:1 on `accent` | Text and icons on accent. |
+| `accent-soft` |  | Tinted containers and selected rows. |
+| `on-accent-soft` | 4.5:1 on `accent-soft` | Text on accent-soft. |
+| `danger` | 3:1 on `surface` | Destructive actions and errors. |
+| `on-danger` | 4.5:1 on `danger` | Text and icons on danger. |
+| `danger-soft` |  | Error containers; text on it uses text. |
+| `success` | 3:1 on `surface` | Success state. |
+| `on-success` | 4.5:1 on `success` | Text and icons on success. |
+| `success-soft` |  | Success containers; text on it uses text. |
+| `warning` | 3:1 on `surface` | Warning state. |
+| `on-warning` | 4.5:1 on `warning` | Text and icons on warning. |
+| `warning-soft` |  | Warning containers; text on it uses text. |
+| `focus` | 3:1 on `surface`, 3:1 on `canvas` | Focus ring. |
+| `scrim` |  | Modal backdrop, translucent. |
+| `chart-1` | 3:1 on `surface`, 3:1 on `canvas` | First categorical series. |
+| `chart-2` | 3:1 on `surface`, 3:1 on `canvas` | Second categorical series. |
+| `chart-3` | 3:1 on `surface`, 3:1 on `canvas` | Third categorical series. |
+| `chart-4` | 3:1 on `surface`, 3:1 on `canvas` | Fourth categorical series. |
+| `chart-5` | 3:1 on `surface`, 3:1 on `canvas` | Fifth categorical series. |
+| `line-strong` | 3:1 on `surface`, 3:1 on `canvas` | Interactive boundaries: editor borders and control outlines. |

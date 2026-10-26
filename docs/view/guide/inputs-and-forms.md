@@ -12,7 +12,7 @@ export function render({ actions }: View<Actions>) {
   const news = useLocal('news', true);
   const seats = useLocal('seats', 3);
   const busy = useLocal('busy', false);
-  const field = 'px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm focus:border-blue-600';
+  const field = 'px-3 py-2 rounded-lg border border-line bg-surface text-sm focus:border-accent';
   const submit = async () => {
     busy.set(true);
     try { await actions.signUp({ email: email.value, code: code.value, plan: plan.value, news: news.value, seats: seats.value }); }
@@ -26,10 +26,10 @@ export function render({ actions }: View<Actions>) {
         maxLength={6} autoComplete="one-time-code" enterKeyHint="done" onSubmit={submit} className={field} />
       <radio bind={plan} accessibilityLabel="Plan" className="gap-1 text-sm"
         options={[{ value: 'basic', label: 'Basic' }, { value: 'pro', label: 'Pro' }]} />
-      <slider bind={seats} min={1} max={20} step={1} accessibilityLabel="Seats" className="text-blue-600" />
+      <slider bind={seats} min={1} max={20} step={1} accessibilityLabel="Seats" className="text-accent" />
       <switch bind={news} className="text-sm">Product news</switch>
       <button disabled={busy.value || !email.value} onClick={submit}
-        className="rounded-lg bg-blue-600 text-white disabled:bg-neutral-300 disabled:text-neutral-500">
+        className="rounded-lg bg-accent text-on-accent disabled:bg-line disabled:text-muted">
         {busy.value ? 'Signing up…' : `Sign up for ${seats.value} seats`}
       </button>
     </page>

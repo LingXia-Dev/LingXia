@@ -90,6 +90,7 @@
   var admission = { "tags": { "column": { "children": "any", "content": true }, "row": { "children": "any", "content": true }, "text": { "children": "runs", "content": true }, "button": { "children": "content" }, "spacer": { "children": "none", "content": true }, "scroll": { "children": "any" }, "list": { "children": "rows", "requires": ["listId", "listCount", "listLeading", "listTrailing"] }, "image": { "children": "none", "content": true, "requires": ["imageSrc"] }, "input": { "children": "none" }, "textarea": { "children": "none" }, "checkbox": { "children": "content" }, "switch": { "children": "text" }, "radio": { "children": "options" }, "radio-option": { "children": "text", "parent": "radio", "keyed": true, "requires": ["checked"] }, "search": { "children": "none" }, "slider": { "children": "none" }, "grid": { "children": "any", "content": true }, "stack": { "children": "any", "content": true }, "plot": { "children": "none" }, "vector": { "children": "none", "content": true }, "page": { "children": "any", "root": true }, "span": { "children": "text", "content": true, "parent": "text" }, "link": { "children": "text", "parent": "text" }, "select": { "children": "text" } }, "fields": { "onClick": ["button", "link"], "enabled": ["button", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "select"], "listId": ["list"], "listCount": ["list"], "listLeading": ["list"], "listTrailing": ["list"], "listRowIndex": ["column"], "listAnchor": ["list"], "onReachStart": ["scroll", "list"], "onReachEnd": ["scroll", "list"], "imageSrc": ["image"], "imageFit": ["image"], "inputValue": ["input", "textarea", "search", "select"], "placeholder": ["input", "textarea", "search", "select"], "secure": ["input", "textarea"], "keyboard": ["input", "textarea", "search"], "autoFocus": ["input", "textarea", "search"], "onInput": ["input", "textarea", "search"], "onSubmit": ["input", "textarea", "search"], "checked": ["checkbox", "switch", "radio-option"], "onCheckedChange": ["checkbox", "switch", "radio-option"], "accessibilityLabel": ["button", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "link", "column", "row", "page", "text", "select"], "sliderValue": ["slider"], "sliderMin": ["slider"], "sliderMax": ["slider"], "sliderStep": ["slider"], "onSliderChange": ["slider"], "gridColumns": ["grid"], "textLines": ["text"], "plotValues": ["plot"], "plotKind": ["plot"], "plotColors": ["plot"], "plotSmooth": ["plot"], "plotArea": ["plot"], "onPlotSelect": ["plot"], "plotSelectedIndex": ["plot"], "vectorSource": ["vector"], "submitOnEnter": ["textarea"], "plotDomainMin": ["plot"], "plotDomainMax": ["plot"], "plotPieLayout": ["plot"], "plotMarkerEmphasisScale": ["plot"], "focusStyle": ["input", "textarea", "search"], "scrollAxis": ["scroll"], "listItemKeys": ["list"], "flexDirection": ["column", "row", "page"], "imageAlt": ["image"], "imageRetryKey": ["image"], "onImageLoad": ["image"], "onImageError": ["image"], "pressedStyle": ["button", "checkbox", "switch", "radio", "link"], "overscroll": ["scroll", "list"], "maxLength": ["input", "textarea", "search"], "autoComplete": ["input", "textarea", "search"], "enterKeyHint": ["input", "textarea", "search"], "autoCapitalize": ["input", "textarea", "search"], "spellCheck": ["input", "textarea", "search"], "inputMin": ["input"], "inputMax": ["input"], "inputStep": ["input"], "focusRequest": ["input", "textarea", "search"], "selectOptions": ["select"], "onSelect": ["select"], "rows": ["textarea"], "maxRows": ["textarea"], "imagePlaceholder": ["image"], "imagePosition": ["image"] } };
   var options = { "font-family": ["sans", "mono"], "font-style": ["normal", "italic"], "flex-wrap": ["nowrap", "wrap", "wrap-reverse"], "flex-direction": ["row", "column", "row-reverse", "column-reverse"], "display": ["flex", "grid", "none", "block", "inline-flex", "inline-block"], "scroll-axis": ["horizontal", "vertical"], "word-break": ["normal", "break-all", "keep-all"], "overflow-wrap": ["normal", "break-word", "anywhere"], "text-decoration-line": ["none", "line-through", "underline"], "text-alignment": ["start", "end", "left", "center", "right", "justify"], "alignment": ["start", "center", "end", "stretch", "baseline"], "justification": ["start", "center", "end", "between", "around", "evenly"], "position": ["relative", "absolute", "fixed", "sticky"], "overflow": ["visible", "hidden"], "text-transform": ["none", "uppercase", "lowercase", "capitalize"], "white-space": ["normal", "nowrap", "pre", "pre-wrap", "pre-line"], "text-overflow": ["clip", "ellipsis"], "sizing-keyword": ["fit-content", "max-content", "min-content"], "border-style": ["solid", "dashed", "dotted"], "overscroll": ["auto", "contain", "none"], "grid-auto-flow": ["row", "column", "row-dense", "column-dense"], "align-content": ["start", "center", "end", "between", "around", "evenly", "stretch"], "direction": ["ltr", "rtl", "auto"], "role": ["heading", "list", "listitem", "dialog", "alert", "status"], "live-region": ["off", "polite", "assertive"], "input-keyboard": ["text", "number", "email", "phone", "search", "date", "time"], "auto-complete": ["off", "on", "username", "current-password", "new-password", "one-time-code", "email", "tel", "name", "given-name", "family-name", "street-address", "postal-code", "country", "cc-number", "cc-exp", "cc-csc", "bday"], "enter-key-hint": ["enter", "done", "go", "next", "previous", "search", "send"], "auto-capitalize": ["none", "sentences", "words", "characters"], "transition-property": ["opacity", "transform", "bg", "fg", "border", "shadow"], "user-select": ["none", "text", "all"] };
   var commonProps = ["style", "className", "key", "testId", "dir", "children", "role", "headingLevel", "accessibilityHidden", "accessibilityLiveRegion", "accessibilityState"];
+  var roles = ["canvas", "surface", "surface-raised", "surface-sunken", "line", "text", "text-muted", "text-faint", "accent", "on-accent", "accent-soft", "on-accent-soft", "danger", "on-danger", "danger-soft", "success", "on-success", "success-soft", "warning", "on-warning", "warning-soft", "focus", "scrim", "chart-1", "chart-2", "chart-3", "chart-4", "chart-5", "line-strong"];
 
   // src/style/classes.js
   var byName = /* @__PURE__ */ new Map();
@@ -222,6 +223,24 @@
   var field = { "width": 0, "height": 1, "gap": 2, "padding": 3, "fontSize": 4, "color": 5, "background": 6, "grow": 7, "onClick": 8, "enabled": 9, "radius": 10, "listId": 11, "listCount": 12, "listLeading": 13, "listTrailing": 14, "listRowIndex": 15, "listAnchor": 16, "onReachStart": 17, "onReachEnd": 18, "imageSrc": 19, "imageFit": 20, "inputValue": 21, "placeholder": 22, "secure": 23, "keyboard": 24, "autoFocus": 25, "onInput": 26, "onSubmit": 27, "minWidth": 28, "minHeight": 29, "maxWidth": 30, "maxHeight": 31, "shrink": 32, "align": 33, "justify": 34, "alignSelf": 35, "fontWeight": 36, "lineHeight": 37, "fontFamily": 38, "checked": 39, "onCheckedChange": 40, "accessibilityLabel": 41, "sliderValue": 42, "sliderMin": 43, "sliderMax": 44, "sliderStep": 45, "onSliderChange": 46, "gridColumns": 47, "offsetX": 48, "offsetY": 49, "textLines": 50, "plotValues": 51, "plotKind": 52, "plotColors": 53, "plotSmooth": 54, "plotArea": 55, "onPlotSelect": 56, "plotSelectedIndex": 57, "opacity": 58, "paddingTop": 59, "paddingRight": 60, "paddingBottom": 61, "paddingLeft": 62, "wordBreak": 63, "overflowWrap": 64, "borderWidth": 65, "borderColor": 66, "borderTopWidth": 67, "borderRightWidth": 68, "borderBottomWidth": 69, "borderLeftWidth": 70, "textAlign": 71, "backgroundGradient": 72, "boxShadow": 73, "widthPercent": 74, "heightPercent": 75, "minWidthPercent": 76, "minHeightPercent": 77, "maxWidthPercent": 78, "maxHeightPercent": 79, "vectorSource": 80, "textDecorationLine": 81, "heightAuto": 82, "submitOnEnter": 83, "fontStyle": 84, "plotDomainMin": 85, "plotDomainMax": 86, "flexWrap": 87, "plotPieLayout": 88, "letterSpacing": 89, "radiusTopLeft": 90, "radiusTopRight": 91, "radiusBottomRight": 92, "radiusBottomLeft": 93, "plotMarkerEmphasisScale": 94, "backdropBlur": 95, "backdropSaturation": 96, "placeholderColor": 97, "focusStyle": 98, "flexBasis": 99, "scrollAxis": 100, "animation": 101, "listItemKeys": 102, "flexDirection": 103, "display": 104, "imageAlt": 105, "imageRetryKey": 106, "onImageLoad": 107, "onImageError": 108, "marginTop": 109, "marginRight": 110, "marginBottom": 111, "marginLeft": 112, "position": 113, "insetTop": 114, "insetRight": 115, "insetBottom": 116, "insetLeft": 117, "zIndex": 118, "overflow": 119, "rowGap": 120, "columnGap": 121, "textTransform": 122, "whiteSpace": 123, "textOverflow": 124, "pressedStyle": 125, "hoverStyle": 126, "widthKeyword": 127, "heightKeyword": 128, "borderStyle": 129, "transform": 130, "fontVariantNumeric": 131, "overscroll": 132, "aspectRatio": 133, "maxWidthCh": 134, "gridTemplateColumns": 135, "gridTemplateRows": 136, "gridAutoColumns": 137, "gridAutoRows": 138, "gridAutoFlow": 139, "gridColumn": 140, "gridRow": 141, "justifyItems": 142, "justifySelf": 143, "alignContent": 144, "order": 145, "direction": 146, "marginInlineStart": 147, "marginInlineEnd": 148, "paddingInlineStart": 149, "paddingInlineEnd": 150, "insetInlineStart": 151, "insetInlineEnd": 152, "borderInlineStartWidth": 153, "borderInlineEndWidth": 154, "radiusStartStart": 155, "radiusStartEnd": 156, "radiusEndStart": 157, "radiusEndEnd": 158, "role": 159, "headingLevel": 160, "accessibilityHidden": 161, "accessibilityLiveRegion": 162, "maxLength": 163, "autoComplete": 164, "enterKeyHint": 165, "autoCapitalize": 166, "spellCheck": 167, "inputMin": 168, "inputMax": 169, "inputStep": 170, "transition": 171, "userSelect": 172, "focusRequest": 173, "statePressed": 174, "stateSelected": 175, "stateExpanded": 176, "stateBusy": 177, "selectOptions": 178, "onSelect": 179, "rows": 180, "maxRows": 181, "imagePlaceholder": 182, "imagePosition": 183 };
   var fieldOptions = { "keyboard": ["text", "number", "email", "phone", "search", "date", "time"], "align": ["start", "center", "end", "stretch", "baseline"], "justify": ["start", "center", "end", "between", "around", "evenly"], "alignSelf": ["start", "center", "end", "stretch", "baseline"], "fontFamily": ["sans", "mono"], "wordBreak": ["normal", "break-all", "keep-all"], "overflowWrap": ["normal", "break-word", "anywhere"], "textAlign": ["start", "end", "left", "center", "right", "justify"], "textDecorationLine": ["none", "line-through", "underline"], "fontStyle": ["normal", "italic"], "flexWrap": ["nowrap", "wrap", "wrap-reverse"], "scrollAxis": ["horizontal", "vertical"], "flexDirection": ["row", "column", "row-reverse", "column-reverse"], "display": ["flex", "grid", "none", "block", "inline-flex", "inline-block"], "position": ["relative", "absolute", "fixed", "sticky"], "overflow": ["visible", "hidden"], "textTransform": ["none", "uppercase", "lowercase", "capitalize"], "whiteSpace": ["normal", "nowrap", "pre", "pre-wrap", "pre-line"], "textOverflow": ["clip", "ellipsis"], "widthKeyword": ["fit-content", "max-content", "min-content"], "heightKeyword": ["fit-content", "max-content", "min-content"], "borderStyle": ["solid", "dashed", "dotted"], "overscroll": ["auto", "contain", "none"], "gridAutoFlow": ["row", "column", "row-dense", "column-dense"], "justifyItems": ["start", "center", "end", "stretch", "baseline"], "justifySelf": ["start", "center", "end", "stretch", "baseline"], "alignContent": ["start", "center", "end", "between", "around", "evenly", "stretch"], "direction": ["ltr", "rtl", "auto"], "role": ["heading", "list", "listitem", "dialog", "alert", "status"], "accessibilityLiveRegion": ["off", "polite", "assertive"], "autoComplete": ["off", "on", "username", "current-password", "new-password", "one-time-code", "email", "tel", "name", "given-name", "family-name", "street-address", "postal-code", "country", "cc-number", "cc-exp", "cc-csc", "bday"], "enterKeyHint": ["enter", "done", "go", "next", "previous", "search", "send"], "autoCapitalize": ["none", "sentences", "words", "characters"], "userSelect": ["none", "text", "all"] };
 
+  // src/style/color.js
+  var names = new Set(roles);
+  function isRole(value) {
+    const match = typeof value === "string" && /^([a-z0-9-]+)(?:\/(\d{1,3}))?$/.exec(value);
+    return Boolean(match) && names.has(match[1]) && (match[2] === void 0 || Number(match[2]) <= 100);
+  }
+  function colorProblem(value, where = "a page colour") {
+    if (value === "currentColor" || value === "transparent" || /^#[0-9a-fA-F]{6}00$/.test(value) || isRole(value)) return void 0;
+    return `UI_COLOR: ${JSON.stringify(value)} is not a role; ${where} uses a role such as 'surface', 'text-muted', 'line', 'accent' or 'accent/12'`;
+  }
+  function wireColorProblem(value, where) {
+    return /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(value) ? void 0 : colorProblem(value, where);
+  }
+  function seriesProblem(value) {
+    return isRole(value) ? void 0 : `UI_COLOR: ${JSON.stringify(value)} is not a role; plot series use 'chart-1' to 'chart-5'`;
+  }
+  var defaultSeries = ["chart-1", "chart-2", "chart-3", "chart-4", "chart-5"];
+
   // src/style/shadow.js
   function normalizeShadows(value) {
     if (value === "none") return value;
@@ -238,12 +257,13 @@
         result[key] = number;
       }
       result.color = shadow.color === void 0 ? "currentColor" : shadow.color;
-      if (result.color !== "currentColor" && (typeof result.color !== "string" || !/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(result.color))) invalid2();
+      if (result.color !== "currentColor" && (typeof result.color !== "string" || !(/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(result.color) || isRole(result.color)))) invalid2();
       return result;
     });
   }
 
   // src/style/gradient.js
+  var hex = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/;
   var directions = ["top", "right", "bottom", "left", "top-right", "bottom-right", "bottom-left", "top-left"];
   var geometry = { linear: ["direction", "angle"], radial: ["shape", "size", "at"], conic: ["from", "at"] };
   var sizes = ["closest-side", "closest-corner", "farthest-side", "farthest-corner"];
@@ -260,7 +280,7 @@
     const [low, high] = kind === "linear" ? [-16, 16] : kind === "radial" ? [0, 16] : [0, 1];
     let previous = -Infinity;
     const stops = value.stops.map((stop) => {
-      if (!stop || typeof stop !== "object" || Array.isArray(stop) || Object.keys(stop).some((key) => key !== "offset" && key !== "color") || typeof stop.offset !== "number" || !Number.isFinite(stop.offset) || stop.offset < low || stop.offset > high || stop.offset < previous || typeof stop.color !== "string" || !/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(stop.color)) invalid2();
+      if (!stop || typeof stop !== "object" || Array.isArray(stop) || Object.keys(stop).some((key) => key !== "offset" && key !== "color") || typeof stop.offset !== "number" || !Number.isFinite(stop.offset) || stop.offset < low || stop.offset > high || stop.offset < previous || typeof stop.color !== "string" || !(hex.test(stop.color) || isRole(stop.color))) invalid2();
       previous = stop.offset;
       return { offset: stop.offset, color: stop.color };
     });
@@ -486,8 +506,8 @@
     if (style2.fontSize !== void 0 && style2.fontSize <= 0) invalid("fontSize");
     let lineHeight = inherited.lineHeight;
     const transform = {}, lines = {};
-    const names = Object.keys(style2).sort((a, b) => Number(shorthand(b)) - Number(shorthand(a)));
-    for (const name of names) {
+    const names2 = Object.keys(style2).sort((a, b) => Number(shorthand(b)) - Number(shorthand(a)));
+    for (const name of names2) {
       const value = style2[name], entry = style[name], key = entry.wire;
       switch (entry.lower) {
         case "dimension":
@@ -549,10 +569,13 @@
           if (!finite(value) || value < 1 || value > 1e3) invalid(name);
           out[key] = value;
           break;
-        case "color":
+        case "color": {
           if (typeof value !== "string" || !value) invalid(name);
-          out[key] = value;
+          const problem = wireColorProblem(value, name);
+          if (problem) throw Error(problem);
+          out[key] = value === "transparent" ? "#00000000" : value;
           break;
+        }
         case "gradient":
           out[key] = normalizeGradient(value);
           break;
@@ -1100,14 +1123,14 @@
   }
   function configureActions(metadata) {
     outsideRender("configure actions");
-    const names = metadata?.__names, modes = metadata?.__modes;
-    if (!Array.isArray(names) || names.length > 256 || !modes || typeof modes !== "object" || names.some((name) => typeof name !== "string" || !name || name.length > 256 || !has(modes, name) || !["call", "stream"].includes(modes[name])) || new Set(names).size !== names.length) throw Error("UI_ACTION: invalid action catalog");
+    const names2 = metadata?.__names, modes = metadata?.__modes;
+    if (!Array.isArray(names2) || names2.length > 256 || !modes || typeof modes !== "object" || names2.some((name) => typeof name !== "string" || !name || name.length > 256 || !has(modes, name) || !["call", "stream"].includes(modes[name])) || new Set(names2).size !== names2.length) throw Error("UI_ACTION: invalid action catalog");
     cancelActions();
     const epoch2 = actionEpoch, built = /* @__PURE__ */ Object.create(null);
     const reportLive = (cause) => {
       if (epoch2 === actionEpoch) report(cause);
     };
-    for (const name of names) built[name] = (...args) => {
+    for (const name of names2) built[name] = (...args) => {
       outsideRender("action");
       if (epoch2 !== actionEpoch) throw bridgeError("BRIDGE_CANCELED", "Stale page action");
       if (args.length > 1) throw Error("UI_ACTION: expected at most one JSON payload");
@@ -1133,7 +1156,7 @@
       requests.push(encoded);
       return promise;
     };
-    for (const name of names) {
+    for (const name of names2) {
       actionModes.set(built[name], modes[name]);
       actionNames.set(built[name], name);
     }
@@ -1642,7 +1665,7 @@
     const invalid2 = () => {
       throw Error(`UI_VECTOR: invalid gradient ${id}`);
     };
-    if (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || !plain(gradient) || Object.keys(gradient).some((k) => !gradientKeys.includes(k)) || !["linear", "radial", "conic"].includes(gradient.type) || { linear: ["cx", "cy", "r", "fx", "fy", "fr", "from"], radial: ["x1", "y1", "x2", "y2", "from"], conic: ["x1", "y1", "x2", "y2", "r", "fx", "fy", "fr"] }[gradient.type].some((k) => gradient[k] !== void 0) || gradient.from !== void 0 && !finiteWithin(gradient.from, 36e3) || ["x1", "y1", "x2", "y2", "cx", "cy", "fx", "fy"].some((k) => gradient[k] !== void 0 && !finiteWithin(gradient[k], 16384)) || ["r", "fr"].some((k) => gradient[k] !== void 0 && (!finiteWithin(gradient[k], 16384) || gradient[k] < 0)) || gradient.units !== void 0 && !["objectBoundingBox", "userSpaceOnUse"].includes(gradient.units) || gradient.spread !== void 0 && !["pad", "reflect", "repeat"].includes(gradient.spread) || !Array.isArray(gradient.stops) || !gradient.stops.length || gradient.stops.length > 16 || gradient.stops.some((stop) => !plain(stop) || Object.keys(stop).some((k) => !["offset", "color", "opacity"].includes(k)) || !finiteWithin(stop.offset, 1) || stop.offset < 0 || !hexColor(stop.color) || stop.opacity !== void 0 && (!finiteWithin(stop.opacity, 1) || stop.opacity < 0))) invalid2();
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || !plain(gradient) || Object.keys(gradient).some((k) => !gradientKeys.includes(k)) || !["linear", "radial", "conic"].includes(gradient.type) || { linear: ["cx", "cy", "r", "fx", "fy", "fr", "from"], radial: ["x1", "y1", "x2", "y2", "from"], conic: ["x1", "y1", "x2", "y2", "r", "fx", "fy", "fr"] }[gradient.type].some((k) => gradient[k] !== void 0) || gradient.from !== void 0 && !finiteWithin(gradient.from, 36e3) || ["x1", "y1", "x2", "y2", "cx", "cy", "fx", "fy"].some((k) => gradient[k] !== void 0 && !finiteWithin(gradient[k], 16384)) || ["r", "fr"].some((k) => gradient[k] !== void 0 && (!finiteWithin(gradient[k], 16384) || gradient[k] < 0)) || gradient.units !== void 0 && !["objectBoundingBox", "userSpaceOnUse"].includes(gradient.units) || gradient.spread !== void 0 && !["pad", "reflect", "repeat"].includes(gradient.spread) || !Array.isArray(gradient.stops) || !gradient.stops.length || gradient.stops.length > 16 || gradient.stops.some((stop) => !plain(stop) || Object.keys(stop).some((k) => !["offset", "color", "opacity"].includes(k)) || !finiteWithin(stop.offset, 1) || stop.offset < 0 || !(hexColor(stop.color) || isRole(stop.color)) || stop.opacity !== void 0 && (!finiteWithin(stop.opacity, 1) || stop.opacity < 0))) invalid2();
   }
   function vector(props, fit) {
     const box = props.viewBox ?? [0, 0, 24, 24];
@@ -1656,7 +1679,7 @@
       if (!plain(path) || Object.keys(path).some((k) => !pathKeys.includes(k)) || typeof path.d !== "string" || !path.d.length || path.d.length > 16384) throw Error("UI_VECTOR: invalid path");
       for (const key of ["fill", "stroke"]) {
         const value = path[key];
-        if (value === void 0 || value === "none" || value === "currentColor" || hexColor(value)) continue;
+        if (value === void 0 || value === "none" || value === "currentColor" || hexColor(value) || isRole(value)) continue;
         const id = typeof value === "string" && value.match(/^url\(#(.+)\)$/)?.[1];
         if (!id) throw Error("UI_VECTOR: invalid color");
         if (!has(gradients, id)) throw Error(`UI_VECTOR: unknown gradient ${id}`);
@@ -1695,8 +1718,10 @@
     if (props.onSelect !== void 0 && typeof props.onSelect !== "function") throw Error("UI_PLOT: onSelect must be a function");
     if (props.selectedIndex !== void 0 && (!Number.isInteger(props.selectedIndex) || props.selectedIndex < -1 || props.selectedIndex >= props.values.length))
       throw Error("UI_PLOT: invalid selected index");
-    if (!Array.isArray(props.colors) || !props.colors.length || props.colors.length > 16 || props.colors.some((c) => typeof c !== "string" || !/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(c)))
-      throw Error("UI_PLOT: expected 1..16 hex colors");
+    if (props.colors !== void 0) {
+      if (!Array.isArray(props.colors) || !props.colors.length || props.colors.length > 16) throw Error("UI_PLOT: expected 1..16 colors");
+      for (const color of props.colors) if (!(hexColor(color) && color.length !== 4 && color.length !== 5) && seriesProblem(color)) throw Error(seriesProblem(color));
+    }
   }
   function sliderValue({ min, max, step }, value) {
     value = Math.max(min, Math.min(max, value));
@@ -2015,7 +2040,7 @@
         plot(props);
         wire("plotValues", JSON.stringify(props.values));
         wire("plotKind", props.kind);
-        wire("plotColors", JSON.stringify(props.colors));
+        wire("plotColors", JSON.stringify(props.colors ?? defaultSeries));
         wire("accessibilityLabel", props.accessibilityLabel);
         for (const name of ["smooth", "area"]) if (props[name] !== void 0) wire(`plot${name[0].toUpperCase()}${name.slice(1)}`, +props[name]);
         for (const [key, name] of [["plotDomainMin", "domainMin"], ["plotDomainMax", "domainMax"], ["plotMarkerEmphasisScale", "markerEmphasisScale"], ["plotSelectedIndex", "selectedIndex"]])

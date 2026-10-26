@@ -107,14 +107,21 @@ fn present<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(
     T::deserialize(deserializer).map(Some)
 }
 
-fn hex(color: &str) -> bool {
-    matches!(color.len(), 7 | 9)
-        && color.starts_with('#')
-        && color[1..].bytes().all(|b| b.is_ascii_hexdigit())
+fn rgba_hex([r, g, b, a]: [u8; 4]) -> String {
+    format!("#{r:02x}{g:02x}{b:02x}{a:02x}")
 }
 
 impl BackgroundGradient {
+    /// Validates with the built-in palette; painting resolves roles with [`Self::parse_with`].
     pub fn parse(source: &str) -> Result<Option<Self>, String> {
+        Self::parse_with(source, &crate::theme::Palette::builtin(false))
+    }
+
+    /// Stops may be hex or roles; roles resolve against `palette` here.
+    pub fn parse_with(
+        source: &str,
+        palette: &crate::theme::Palette,
+    ) -> Result<Option<Self>, String> {
         if source == "none" {
             return Ok(None);
         }
@@ -162,9 +169,13 @@ impl BackgroundGradient {
             || value
                 .stops
                 .iter()
-                .any(|s| !s.offset.is_finite() || !range.contains(&s.offset) || !hex(&s.color))
+                .any(|s| !s.offset.is_finite() || !range.contains(&s.offset))
         {
             return Err(invalid());
+        }
+        let mut value = value;
+        for stop in &mut value.stops {
+            stop.color = rgba_hex(palette.resolve(&stop.color).map_err(|_| invalid())?);
         }
         Ok(Some(value))
     }

@@ -12,7 +12,7 @@ pub enum Role {
     SurfaceRaised = 2,
     /// Inset fields and grouped backgrounds.
     SurfaceSunken = 3,
-    /// Separators and borders.
+    /// Decorative separators and card borders; interactive boundaries use line-strong.
     Line = 4,
     /// Body text.
     Text = 5,

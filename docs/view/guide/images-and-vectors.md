@@ -17,7 +17,7 @@ export function render() {
   const failed = useLocal('failed', false);
   return (
     <page className="p-4 gap-4">
-      <stack className="w-full aspect-video rounded-xl overflow-hidden bg-neutral-200">
+      <stack className="w-full aspect-video rounded-xl overflow-hidden bg-line">
         <image
           src="https://images.example.com/cover.jpg"
           retryKey={String(attempt.value)}
@@ -27,7 +27,7 @@ export function render() {
           onError={() => failed.set(true)}
         />
         {failed.value && (
-          <button onClick={() => attempt.set(attempt.value + 1)} className="self-center justify-self-center rounded-full bg-white text-neutral-900">
+          <button onClick={() => attempt.set(attempt.value + 1)} className="self-center justify-self-center rounded-full bg-surface text-text">
             Retry
           </button>
         )}
@@ -35,8 +35,8 @@ export function render() {
       <row className="items-center gap-3">
         <image src="images/avatar.png" alt="" className="w-10 h-10 rounded-full" />
         <text className="grow text-sm">Mina Park</text>
-        <Icon name="star" className="w-5 h-5 text-amber-500" />
-        <Icon name="chevron" className="w-5 h-5 text-neutral-400 rtl:-scale-x-100" />
+        <Icon name="star" className="w-5 h-5 text-warning" />
+        <Icon name="chevron" className="w-5 h-5 text-faint rtl:-scale-x-100" />
       </row>
     </page>
   );
@@ -125,7 +125,7 @@ export function render() {
   const picked = useLocal('picked', -1);
   return (
     <page className="p-4 gap-2">
-      <plot kind="bar" values={sales} colors={['#2563eb']} accessibilityLabel="Weekly sales"
+      <plot kind="bar" values={sales} colors={['chart-1']} accessibilityLabel="Weekly sales"
         selectedIndex={picked.value} onSelect={index => picked.set(index)} className="h-40" />
       <text className="text-sm tabular-nums">{picked.value >= 0 ? `Day ${picked.value + 1}: ${sales[picked.value]}` : 'Tap a bar'}</text>
     </page>

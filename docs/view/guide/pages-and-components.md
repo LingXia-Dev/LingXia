@@ -20,7 +20,7 @@ export function render({ data, actions }: View<Actions, { items: Item[] }>) {
 
 function Card({ title, children }: { title: string; children?: Child }) {
   return (
-    <column className="rounded-xl border border-neutral-200 p-4 gap-2">
+    <column className="rounded-xl border border-line p-4 gap-2">
       <text className="text-base font-semibold">{title}</text>
       {children}
     </column>
@@ -34,10 +34,10 @@ function Row({ title, done, onToggle }: { title: string; done: boolean; onToggle
       <row className="items-center gap-2">
         <checkbox value={done} onChange={onToggle} accessibilityLabel={title} />
         <button onClick={() => expanded.set(!expanded.value)} className="grow p-0 bg-transparent">
-          <text className={done ? 'text-sm line-through text-neutral-400' : 'text-sm'}>{title}</text>
+          <text className={done ? 'text-sm line-through text-faint' : 'text-sm'}>{title}</text>
         </button>
       </row>
-      {expanded.value && <text className="text-xs text-neutral-500">Tap the box to mark it done.</text>}
+      {expanded.value && <text className="text-xs text-muted">Tap the box to mark it done.</text>}
     </column>
   );
 }
@@ -85,7 +85,7 @@ import { useView, type Child } from '@lingxia/ui';
 function Section({ title, children }: { title: string; children?: Child }) {
   const { env } = useView();
   return (
-    <column className={env.theme === 'dark' ? 'gap-2 p-4 bg-neutral-800' : 'gap-2 p-4 bg-neutral-100'}>
+    <column className={env.theme === 'dark' ? 'gap-2 p-4 bg-text' : 'gap-2 p-4 bg-surface-sunken'}>
       <text className="text-sm font-semibold">{title}</text>
       {children}
     </column>

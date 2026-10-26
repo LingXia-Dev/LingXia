@@ -6,19 +6,19 @@ import { useLocal } from '@lingxia/ui';
 export function render() {
   const opened = useLocal('opened', 0);
   return (
-    <page className="p-4 gap-3 text-neutral-900">
+    <page className="p-4 gap-3 text-text">
       <text className="text-2xl font-semibold tracking-tight">Order summary</text>
       <text className="text-sm leading-relaxed">
         Plans renew <span className="font-semibold">monthly</span> unless you{' '}
-        <span className="font-mono bg-neutral-100">cancel</span> first. Read the{' '}
-        <link onPress={() => opened.set(opened.value + 1)} className="active:text-blue-800">terms</link>
+        <span className="font-mono bg-surface-sunken">cancel</span> first. Read the{' '}
+        <link onPress={() => opened.set(opened.value + 1)} className="active:text-accent">terms</link>
         {' '}before you continue.
       </text>
       <row className="justify-between">
-        <text className="text-sm text-neutral-500">Total</text>
+        <text className="text-sm text-muted">Total</text>
         <text className="text-sm font-semibold tabular-nums">1,204.50</text>
       </row>
-      <text className="text-xs text-neutral-500 whitespace-pre-line">{'Line one\nLine two'}</text>
+      <text className="text-xs text-muted whitespace-pre-line">{'Line one\nLine two'}</text>
       <text className="text-sm line-clamp-2">A long description that stops after two lines and ends with an ellipsis when it would run longer than that.</text>
       <text className="font-mono text-sm select-all">LX-2024-88412</text>
     </page>
@@ -32,9 +32,9 @@ style down: `text-*`, `font-*`, `leading-*`, `tracking-*` and the other typograp
 
 ## Defaults
 
-Text is 14 px, weight 400, in the system sans font, colored `#172033`. Unstyled buttons draw white
-text on `#365cdd`, editors a white surface, and the root a `#f6f7fb` background. These defaults do not
-follow `env.theme`; a page that supports dark mode sets its colors explicitly.
+Text is 14 px, weight 400, in the system sans font, colored with the `text` role. Unstyled buttons draw
+`on-accent` on `accent`, editors a `surface`, and the root `canvas`. Roles follow the theme and
+appearance, so pages never set dark colours themselves.
 
 ## Whitespace
 

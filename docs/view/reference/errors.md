@@ -22,7 +22,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_CLASS_ELEMENT` | build | A supported utility on an element that does not render it, or a state variant the element never enters. |
 | `UI_CLASS_UNKNOWN` | build | Not a Tailwind utility; the message names the nearest supported one when close. |
 | `UI_CLASS_UNSUPPORTED` | build | Tailwind CSS the native renderer cannot draw. |
-| `UI_COLOR` | native | A color that is not a hex value or `currentColor` reached the decoder. |
+| `UI_COLOR` | build, runtime, native | A colour is not a role (`surface`, `accent/12`), `currentColor` or `transparent`, or a colour class uses `dark:`; hex is legal only in vectors, complete gradients and shadow layers. |
 | `UI_COMMIT` | runtime | A commit without a prepared candidate. |
 | `UI_COMPAT` | runtime, native | The installed host is older than the compiled page; update the host app. |
 | `UI_COMPOSITE` | native | A composited effect (backdrop, opacity group) is out of bounds. |

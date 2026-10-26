@@ -8,9 +8,9 @@ type Actions = { orders(): Promise<{ id: string; total: string }[]> };
 function ErrorBanner({ error, onRetry }: { error: ResourceError | null; onRetry: () => void }) {
   if (!error) return null;
   return (
-    <row role="alert" className="items-center gap-3 p-3 rounded-lg bg-red-50">
-      <text className="grow text-sm text-red-800">{error.message}</text>
-      <button onClick={onRetry} className="rounded-lg bg-red-700 text-white px-3 py-1">Retry</button>
+    <row role="alert" className="items-center gap-3 p-3 rounded-lg bg-danger-soft">
+      <text className="grow text-sm text-danger">{error.message}</text>
+      <button onClick={onRetry} className="rounded-lg bg-danger text-on-accent px-3 py-1">Retry</button>
     </row>
   );
 }

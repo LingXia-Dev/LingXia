@@ -263,7 +263,7 @@
     {"name": "surface", "doc": "Cards, cells and sheets."},
     {"name": "surface-raised", "doc": "Menus, popovers and elevated sheets."},
     {"name": "surface-sunken", "doc": "Inset fields and grouped backgrounds."},
-    {"name": "line", "on": {"surface": 1.2, "canvas": 1.1}, "doc": "Separators and borders."},
+    {"name": "line", "on": {"surface": 1.2, "canvas": 1.1}, "doc": "Decorative separators and card borders; interactive boundaries use line-strong."},
     {"name": "text", "on": {"canvas": 4.5, "surface": 4.5, "surface-raised": 4.5, "surface-sunken": 4.5}, "doc": "Body text."},
     {"name": "text-muted", "on": {"canvas": 4.5, "surface": 4.5}, "doc": "Secondary text."},
     {"name": "text-faint", "on": {"surface": 3}, "doc": "Hints and disabled text."},

@@ -10,21 +10,21 @@ export function render() {
   const opened = useLocal('opened', 0);
   return (
     <page className="p-4 gap-3">
-      <button onClick={() => opened.set(opened.value + 1)} className="p-3 rounded-xl bg-white text-neutral-900 active:bg-neutral-100">
+      <button onClick={() => opened.set(opened.value + 1)} className="p-3 rounded-xl bg-surface text-text active:bg-surface-sunken">
         <row className="items-center gap-3">
           <image src="images/album.png" alt="" className="w-12 h-12 rounded-lg" />
           <column className="grow basis-0 gap-0.5">
             <text className="text-sm font-semibold">Morning Mix</text>
-            <text className="text-xs text-neutral-500">32 songs</text>
+            <text className="text-xs text-muted">32 songs</text>
           </column>
-          <vector accessibilityHidden paths={chevron} className="w-5 h-5 text-neutral-400 rtl:-scale-x-100" />
+          <vector accessibilityHidden paths={chevron} className="w-5 h-5 text-faint rtl:-scale-x-100" />
         </row>
       </button>
       <button onClick={() => liked.set(!liked.value)} accessibilityLabel={liked.value ? 'Unlike' : 'Like'}
-        className={liked.value ? 'self-start rounded-full bg-rose-600 text-white' : 'self-start rounded-full bg-neutral-200 text-neutral-900'}>
+        className={liked.value ? 'self-start rounded-full bg-danger text-on-accent' : 'self-start rounded-full bg-line text-text'}>
         {liked.value ? '♥' : '♡'}
       </button>
-      <text className="text-xs text-neutral-500">Opened {opened.value} times</text>
+      <text className="text-xs text-muted">Opened {opened.value} times</text>
     </page>
   );
 }

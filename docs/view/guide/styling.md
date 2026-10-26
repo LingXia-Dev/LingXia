@@ -1,23 +1,8 @@
 # Styling
 
 ```css
-@theme inline {
-  --color-surface: var(--app-surface);
-  --color-ink: var(--app-ink);
-  --color-accent: var(--app-accent);
-}
 @theme {
   --radius-card: 14px;
-}
-:root {
-  --app-surface: #ffffff;
-  --app-ink: #111827;
-  --app-accent: #2563eb;
-}
-[data-theme='dark'] {
-  --app-surface: #0b0f19;
-  --app-ink: #f3f4f6;
-  --app-accent: #60a5fa;
 }
 ```
 
@@ -25,12 +10,12 @@
 import { useLocal } from '@lingxia/ui';
 import './theme.css';
 
-const tone = { neutral: 'bg-surface text-ink', accent: 'bg-accent text-white' } as const;
+const tone = { neutral: 'bg-surface-raised text-text', accent: 'bg-accent text-on-accent' } as const;
 
 export function render() {
   const selected = useLocal<'neutral' | 'accent'>('selected', 'neutral');
   return (
-    <page className="bg-surface p-4 gap-3">
+    <page className="bg-canvas p-4 gap-3">
       <column className={`rounded-card p-4 gap-1 shadow-md ${tone[selected.value]}`}>
         <text className="text-lg font-semibold">Plan</text>
         <text className="text-sm opacity-80">Renews monthly</text>
@@ -41,7 +26,7 @@ export function render() {
       >
         Switch tone
       </button>
-      <view style={{ height: 4, borderRadius: 2, backgroundImage: { kind: 'linear', direction: 'right', stops: [{ offset: 0, color: '#2563eb' }, { offset: 1, color: '#db2777' }] } }} />
+      <view style={{ height: 4, borderRadius: 2, backgroundImage: { kind: 'linear', direction: 'right', stops: [{ offset: 0, color: 'accent' }, { offset: 1, color: 'chart-4' }] } }} />
     </page>
   );
 }
@@ -71,29 +56,43 @@ Choose between complete names instead: `size.value === 4 ? 'p-4' : 'p-8'`.
 The order of classes in a string never matters; Tailwind's cascade decides, as in CSS. Every utility
 the default theme defines is listed in [utilities](../reference/utilities.md) as supported or refused.
 
+## Colours are roles
+
+Colours name a theme role, never a value: `bg-surface`, `text-muted`, `border-line`,
+`bg-accent text-on-accent`, with opacity modifiers (`bg-text/8`). The theme pack resolves roles per
+appearance, so `dark:` on a colour, palette ladders (`gray-200`) and hex fail with `UI_COLOR`; so do hex
+colours in `style`. Complete CSS gradients (`bg-[radial-gradient(…)]`) and shadow layers may use literal
+colours. The roles are listed in [styles](../reference/styles.md#colour-roles).
+
+```tsx error UI_COLOR
+export function render() {
+  return <page className="bg-white"><text className="text-gray-500">Hex and ladders fail</text></page>;
+}
+```
+
 ## Arbitrary values
 
-`w-[72px]`, `text-[13px]`, `bg-[#0ea5e9]`, `grid-cols-[1fr_auto]`, `bg-(--brand)` and opacity modifiers
-(`bg-black/50`) work wherever the family works. Colors in any CSS syntax (`oklch()`, `color-mix()` with
-`transparent`) become sRGB hex at build time. `calc()` folds when its operands share a unit.
+`w-[72px]`, `text-[13px]`, `grid-cols-[1fr_auto]`, `bg-(--brand-image)` and opacity modifiers
+(`bg-text/50`) work wherever the family works. `calc()` folds when its operands share a unit.
 `url()` backgrounds, `!important` and unresolved `var()` are refused.
 
 ## Themes and tokens
 
 A page imports at most one stylesheet (it may `@import` relative token files). It holds only tokens:
 
-- `@theme { … }` and `@theme inline { … }` define Tailwind tokens (`--color-*`, `--radius-*`, `--text-*`, …).
-- `:root { … }` and `[data-theme='light' | 'dark'] { … }` define palette custom properties.
+- `@theme { … }` and `@theme inline { … }` define Tailwind tokens (`--radius-*`, `--text-*`, `--shadow-*`, …);
+  colour tokens never override a role.
+- `:root { … }` and `[data-theme='light' | 'dark'] { … }` define custom properties, such as shadow tints.
 
-Rules, selectors and `@apply` are refused (`UI_CSS`). A token that differs between palettes compiles
-into a light and a dark rule; the View picks one from `env.theme`, so `bg-surface` above needs no
-`dark:` variant. Font tokens accept only the standard system sans and mono stacks.
+Rules, selectors and `@apply` are refused (`UI_CSS`). A token that differs between the two blocks
+compiles into a light and a dark rule; the View picks one from `env.theme`. Font tokens accept only the
+standard system sans and mono stacks.
 
 ## Variants
 
 | Variant | Matches |
 | --- | --- |
-| `dark:` | `env.theme === 'dark'` |
+| `dark:` | `env.theme === 'dark'`; not on colours, which follow appearance |
 | `sm:` … `xl:`, `min-[…]:`, `max-*:` | the View viewport width (`sm` = 640 px, `md` = 768, `lg` = 1024, `xl` = 1280) |
 | `rtl:`, `ltr:` | the node's inline direction ([RTL and i18n](rtl-and-i18n.md)) |
 | `first:` `last:` `only:` `odd:` `even:` `empty:` | the node's position among its rendered siblings; `empty:` a node with no children |
@@ -131,10 +130,10 @@ Transforms are static paint: they never change layout.
 export function render() {
   return (
     <page className="p-4">
-      <view className="relative w-16 h-10 rounded-lg bg-neutral-200">
-        <view className="absolute top-0 right-0 w-4 h-4 rounded-full bg-rose-600 translate-x-1/2 -translate-y-1/2" />
+      <view className="relative w-16 h-10 rounded-lg bg-line">
+        <view className="absolute top-0 right-0 w-4 h-4 rounded-full bg-danger translate-x-1/2 -translate-y-1/2" />
       </view>
-      <button onClick={() => {}} className="self-start rounded-xl bg-blue-600 text-white active:scale-95 active:opacity-90">Press</button>
+      <button onClick={() => {}} className="self-start rounded-xl bg-accent text-on-accent active:scale-95 active:opacity-90">Press</button>
     </page>
   );
 }
@@ -163,8 +162,9 @@ resets earlier longhands, as in CSS.
 
 Structured values have object forms: `backgroundImage` takes `{ kind, stops, … }` (linear, radial,
 conic), `boxShadow` an array of `{ offsetX, offsetY, blur, spread, color }`, `translate`/`scale` a
-number or a pair, `rotate` degrees, `transformOrigin` a pair of box fractions. Colors in `style` are
-hex strings or `currentColor`.
+number or a pair, `rotate` degrees, `transformOrigin` a pair of box fractions. Colours in `style` are
+roles (`'surface'`, `'accent/12'`), `currentColor` or `transparent`; gradient stops and shadows may
+also be hex.
 
 ```tsx error UI_STYLE
 export function render() {
@@ -187,7 +187,7 @@ Each of these fails the build with `UI_CLASS_UNSUPPORTED` rather than rendering 
 
 ```tsx error UI_CLASS_UNSUPPORTED
 export function render() {
-  return <page><view className="h-10 blur-sm bg-neutral-300" /></page>;
+  return <page><view className="h-10 blur-sm bg-line" /></page>;
 }
 ```
 

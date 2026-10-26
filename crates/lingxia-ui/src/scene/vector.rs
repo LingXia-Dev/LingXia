@@ -94,10 +94,9 @@ fn tint<'a>(
             .ok_or_else(|| format!("UI_VECTOR: unknown gradient {id}"));
     }
     if value != "currentColor" {
-        if !value.starts_with('#') {
-            return Err("UI_VECTOR: expected hex color, currentColor, url(#id) or none".into());
-        }
-        crate::protocol::color(&value)?;
+        crate::theme::parse(&value).map_err(|_| {
+            "UI_VECTOR: expected a hex color, role, currentColor, url(#id) or none".to_string()
+        })?;
     }
     Ok(Some(Paint::Color(value)))
 }
@@ -159,8 +158,7 @@ impl VectorGradient {
                     || stop
                         .opacity
                         .is_some_and(|o| !o.is_finite() || !(0.0..=1.0).contains(&o))
-                    || !stop.color.starts_with('#')
-                    || crate::protocol::color(&stop.color).is_err()
+                    || crate::theme::parse(&stop.color).is_err()
             })
         {
             return Err(invalid());
@@ -170,7 +168,12 @@ impl VectorGradient {
 
     /// The brush in the path's user space; `bounds` is the geometry box SVG
     /// maps `objectBoundingBox` units onto.
-    fn brush(&self, bounds: vello_cpu::kurbo::Rect, transform: Affine) -> GradientBrush {
+    fn brush(
+        &self,
+        bounds: vello_cpu::kurbo::Rect,
+        transform: Affine,
+        palette: &crate::theme::Palette,
+    ) -> GradientBrush {
         // SVG clamps each stop to at least the previous offset.
         let mut previous = 0.0f64;
         let stops: Vec<(f32, AlphaColor<Srgb>)> = self
@@ -178,7 +181,7 @@ impl VectorGradient {
             .iter()
             .map(|stop| {
                 previous = previous.max(stop.offset);
-                let [r, g, b, a] = crate::protocol::color(&stop.color).expect("checked stop");
+                let [r, g, b, a] = palette.resolve(&stop.color).expect("checked stop");
                 let alpha = (f64::from(a) * stop.opacity.unwrap_or(1.0)).round() as u8;
                 (
                     previous as f32,
@@ -233,7 +236,13 @@ impl VectorGradient {
 }
 
 impl Vector {
+    /// Validates with the built-in palette; painting resolves roles with [`Self::parse_with`].
     pub fn parse(json: &str) -> Result<Self, String> {
+        Self::parse_with(json, &crate::theme::Palette::builtin(false))
+    }
+
+    /// Fills, strokes and gradient stops may be hex or roles; roles resolve against `palette`.
+    pub fn parse_with(json: &str, palette: &crate::theme::Palette) -> Result<Self, String> {
         if json.len() > 32768 {
             return Err("UI_VECTOR: source too large".into());
         }
@@ -324,9 +333,11 @@ impl Vector {
             }
             let resolve = |paint: Paint| match paint {
                 Paint::Color(color) => Tint::Color(color),
-                Paint::Gradient(gradient) => {
-                    Tint::Gradient(Arc::new(gradient.brush(local.bounding_box(), transform)))
-                }
+                Paint::Gradient(gradient) => Tint::Gradient(Arc::new(gradient.brush(
+                    local.bounding_box(),
+                    transform,
+                    palette,
+                ))),
             };
             let style = Stroke::new(width)
                 .with_caps(cap)

@@ -14,7 +14,7 @@ export function render({ data, actions }: View<Actions, { query: string }>) {
     <page>
       <column className="p-4 gap-2">
         <search bind={query} accessibilityLabel="Search products" placeholder="Search" />
-        {results.pending && <text className="text-xs text-neutral-500">Searching…</text>}
+        {results.pending && <text className="text-xs text-muted">Searching…</text>}
       </column>
       <List
         items={results.value ?? []}

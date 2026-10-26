@@ -3,7 +3,7 @@ _Generated from the View schema (`schema.json`) and the compiler; do not edit._
 # Variants
 
 Every Tailwind variant, tested against the native lowering. Supported variants may be stacked
-(`dark:active:bg-muted`). Conditions on DOM state the View does not have are refused at build time.
+(`md:active:bg-surface-sunken`). Conditions on DOM state the View does not have are refused at build time.
 
 ## Supported
 
@@ -31,7 +31,7 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 | `min:` | any element |
 | `ltr:` | any element |
 | `rtl:` | any element |
-| `dark:` | any element |
+| `dark:` | any element; not on colours, which follow appearance |
 
 `space-x-*`, `space-y-*` and `divide-*` are utilities, not variants: they style every child but the last.
 

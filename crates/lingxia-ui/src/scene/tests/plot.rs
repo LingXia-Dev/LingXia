@@ -1,9 +1,12 @@
 use super::*;
 #[test]
 fn shared_selection_handles_categories_empty_slices_and_expanded_edges() {
-    let mut plot = Plot::from_record(&record("bar", "[10,20,30,40]"))
-        .unwrap()
-        .snapshot();
+    let mut plot = Plot::from_record(
+        &record("bar", "[10,20,30,40]"),
+        &crate::theme::Palette::builtin(false),
+    )
+    .unwrap()
+    .snapshot();
     plot.on_select = Some(1);
     let bounds = [10.0, 20.0, 100.0, 100.0];
     for (x, expected) in [(10.0, 0), (36.9, 0), (37.0, 1), (60.0, 2), (109.9, 3)] {
@@ -98,7 +101,7 @@ fn marker_emphasis_preserves_stroke_and_changes_only_selected_circle() {
     line_record
         .fields
         .extend([(94, serde_json::json!(1.1)), (57, serde_json::json!(0))]);
-    let plot = Plot::from_record(&line_record).unwrap();
+    let plot = Plot::from_record(&line_record, &crate::theme::Palette::builtin(false)).unwrap();
     let shapes = plot.shapes([0.0, 0.0, 100.0, 100.0]);
     let diameters: Vec<f32> = shapes
         .iter()
@@ -114,7 +117,7 @@ fn marker_emphasis_preserves_stroke_and_changes_only_selected_circle() {
     for kind in ["bar", "pie"] {
         let mut record = record(kind, "[10,20]");
         record.fields.push((94, serde_json::json!(1.1)));
-        assert!(Plot::from_record(&record).is_err());
+        assert!(Plot::from_record(&record, &crate::theme::Palette::builtin(false)).is_err());
     }
 }
 #[test]
@@ -257,7 +260,7 @@ fn pie_layout_rejects_invalid_geometry_and_non_pies() {
         88,
         serde_json::json!(r#"{"center":[0.5,0.44],"innerRadius":0.4,"outerRadius":0.68}"#),
     ));
-    assert!(Plot::from_record(&record).is_err());
+    assert!(Plot::from_record(&record, &crate::theme::Palette::builtin(false)).is_err());
 }
 #[test]
 fn signed_bars_round_only_top_corners() {
@@ -342,7 +345,7 @@ fn selection_snapshot_and_events_follow_the_committed_generation() {
     for value in [-2, 2, 128] {
         let mut record = record("line", "[10,20]");
         record.fields.push((57, value.into()));
-        assert!(Plot::from_record(&record).is_err());
+        assert!(Plot::from_record(&record, &crate::theme::Palette::builtin(false)).is_err());
     }
 }
 #[test]
@@ -417,7 +420,7 @@ fn explicit_domain_scales_geometry_and_preserves_exact_data() {
         let mut data = record(kind, "[-10,20]");
         data.fields
             .extend([(85, (-20.0).into()), (86, 40.0.into())]);
-        let plot = Plot::from_record(&data).unwrap();
+        let plot = Plot::from_record(&data, &crate::theme::Palette::builtin(false)).unwrap();
         assert_eq!(plot.snapshot().domain, [-20.0, 40.0]);
         assert_eq!(plot.snapshot().values, [-10.0, 20.0]);
         let shapes = plot.shapes([0.0, 0.0, 100.0, 128.0]);
@@ -445,16 +448,16 @@ fn explicit_domain_scales_geometry_and_preserves_exact_data() {
     ] {
         let mut data = record(kind, "[10,20]");
         data.fields.extend([(85, min.into()), (86, max.into())]);
-        assert!(Plot::from_record(&data).is_err());
+        assert!(Plot::from_record(&data, &crate::theme::Palette::builtin(false)).is_err());
     }
     let mut data = record("line", "[0.1,0.3]");
     data.fields.extend([(85, 0.0.into()), (86, 0.3.into())]);
     assert!(
-        Plot::from_record(&data).is_ok(),
+        Plot::from_record(&data, &crate::theme::Palette::builtin(false)).is_ok(),
         "bounds retain f64 precision"
     );
     data.fields.pop();
-    assert!(Plot::from_record(&data).is_err());
+    assert!(Plot::from_record(&data, &crate::theme::Palette::builtin(false)).is_err());
 }
 #[test]
 fn wire_domain_fields_require_numeric_bounds_on_plots() {
@@ -564,11 +567,11 @@ fn area_flags_and_expanded_geometry_are_bounded_on_the_wire() {
     for kind in ["bar", "pie"] {
         let mut item = record(kind, "[1,2]");
         item.fields.push((54, 1.into()));
-        assert!(Plot::from_record(&item).is_err());
+        assert!(Plot::from_record(&item, &crate::theme::Palette::builtin(false)).is_err());
     }
     let mut item = record("line", &serde_json::to_string(&vec![1; 128]).unwrap());
     item.fields.extend([(54, 1.into()), (55, 1.into())]);
-    let plot = Plot::from_record(&item).unwrap();
+    let plot = Plot::from_record(&item, &crate::theme::Palette::builtin(false)).unwrap();
     assert_eq!(plot.work(), 2292);
     let geometry = plot.shapes([0.0, 0.0, 100.0, 100.0]);
     assert!(matches!(&geometry[0], Shape::Area(points, _, _) if points.len() == 1019));
@@ -611,19 +614,29 @@ fn rejects_unbounded_or_invalid_series() {
         ("other", "[1]"),
         ("bar", "[null]"),
     ] {
-        assert!(Plot::from_record(&record(kind, values)).is_err());
+        assert!(
+            Plot::from_record(
+                &record(kind, values),
+                &crate::theme::Palette::builtin(false)
+            )
+            .is_err()
+        );
     }
     assert!(
-        Plot::from_record(&record(
-            "bar",
-            &serde_json::to_string(&vec![1; 129]).unwrap()
-        ))
+        Plot::from_record(
+            &record("bar", &serde_json::to_string(&vec![1; 129]).unwrap()),
+            &crate::theme::Palette::builtin(false)
+        )
         .is_err()
     );
 }
 #[test]
 fn negative_bars_share_zero_baseline_and_donut_work_is_bounded() {
-    let plot = Plot::from_record(&record("bar", "[-10,10]")).unwrap();
+    let plot = Plot::from_record(
+        &record("bar", "[-10,10]"),
+        &crate::theme::Palette::builtin(false),
+    )
+    .unwrap();
     let shapes = plot.shapes([0.0, 0.0, 100.0, 100.0]);
     let Shape::Bar(first, _) = shapes[0] else {
         panic!()
@@ -633,10 +646,10 @@ fn negative_bars_share_zero_baseline_and_donut_work_is_bounded() {
     };
     assert_eq!(first[1], 50.0);
     assert_eq!(second[1] + second[3], 50.0);
-    let pie = Plot::from_record(&record(
-        "pie",
-        &serde_json::to_string(&vec![1; 128]).unwrap(),
-    ))
+    let pie = Plot::from_record(
+        &record("pie", &serde_json::to_string(&vec![1; 128]).unwrap()),
+        &crate::theme::Palette::builtin(false),
+    )
     .unwrap();
     let slices = pie.shapes([0.0, 0.0, 100.0, 100.0]);
     assert_eq!(slices.len(), 128);
@@ -651,10 +664,13 @@ fn negative_bars_share_zero_baseline_and_donut_work_is_bounded() {
         .sum();
     assert!(segments <= 384);
     assert!(
-        Plot::from_record(&record("pie", "[0,0]"))
-            .unwrap()
-            .shapes([0.0, 0.0, 100.0, 100.0])
-            .is_empty()
+        Plot::from_record(
+            &record("pie", "[0,0]"),
+            &crate::theme::Palette::builtin(false)
+        )
+        .unwrap()
+        .shapes([0.0, 0.0, 100.0, 100.0])
+        .is_empty()
     );
 }
 

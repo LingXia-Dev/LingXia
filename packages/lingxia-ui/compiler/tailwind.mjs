@@ -4,13 +4,16 @@ import { parse, formatHex8 } from 'culori';
 import { readFile } from 'node:fs/promises';
 import { tokenSelectorTheme, validateTokens } from './stylesheets.mjs';
 import { lowerAnimation, easing as lowerEasing } from './animation.mjs';
-import { css as cssStyle, keywords, style as styleTable, limits } from '../src/generated/contract.js';
+import { css as cssStyle, keywords, style as styleTable, limits, roles } from '../src/generated/contract.js';
 
 // Tailwind owns utility expansion and cascade order; this module lowers each
 // rule's declarations to the CSS-named style the native renderer accepts and
 // reports everything else instead of quietly producing a different design.
 
 class Unsupported extends Error {}
+// A colour that is not a role; reported as UI_COLOR rather than unsupported.
+class RoleError extends Unsupported {}
+const roleClasses = 'use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent';
 const unsupported = message => { throw new Unsupported(message); };
 
 // calc() arithmetic over px, rem, em, %, vw and vh; rem resolves to 16px.
@@ -92,6 +95,8 @@ function values(value, count, lower) {
 }
 
 function parseColor(value) {
+  const role = value.match(/^role\(([a-z0-9-]+)\)$/);
+  if (role) return { role: role[1] };
   const mix = value.match(/^color-mix\(in (?:srgb|oklab), (.+) ([\d.]+)%, transparent\)$/);
   const result = mix ? parseColor(mix[1]) : parse(value);
   if (!result) unsupported(`unsupported color: ${value}`);
@@ -99,7 +104,26 @@ function parseColor(value) {
   return result;
 }
 
-function color(value) { return formatHex8(parseColor(value)); }
+// Roles lower to `role` or `role/NN`; anything else is a literal.
+function color(value) {
+  const parsed = parseColor(value);
+  if (!parsed.role) return formatHex8(parsed);
+  const percent = Math.round((parsed.alpha ?? 1) * 100);
+  return percent === 100 ? parsed.role : `${parsed.role}/${percent}`;
+}
+
+// Set for one compileUtilities pass of a renderer test fixture.
+let literalColors = false;
+
+// Class colours must be roles; transparent is the one literal they keep.
+function roleColor(value) {
+  const lowered = color(value);
+  if (!literalColors && lowered.startsWith('#') && !/^#[0-9a-f]{6}00$/.test(lowered)) throw new RoleError(`not a role; ${roleClasses}`);
+  return lowered;
+}
+
+/** The Tailwind colour names for the roles: `text-muted` is `muted`, so the class reads `text-muted`. */
+export const roleTheme = `@theme inline {\n${roles.map(role => `  --color-${role.replace(/^text-/, '')}: role(${role});`).join('\n')}\n}`;
 
 function variables(value, vars, depth = 0) {
   if (depth > 32) unsupported('cyclic CSS variable');
@@ -211,6 +235,7 @@ function cssGradient(value) {
   for (const arg of args) {
     const [tint, ...positions] = postcss.list.space(arg);
     if (!isStop(tint) || positions.length > 2) unsupported(`unsupported gradient stop: ${arg}`);
+    // A complete CSS gradient is artwork, so its stops may be literal; from-/via-/to- utilities are roles.
     const hex = color(tint);
     if (!positions.length) stops.push({ color: hex });
     for (const position of positions) stops.push({ color: hex, offset: offset(position) });
@@ -262,7 +287,7 @@ function gradientDeclaration(prop, raw, local, gradient) {
       const offset = number(value);
       if (Math.abs(offset) > 16) unsupported('gradient stop exceeds native bounds');
       gradient[`${match[1]}Offset`] = offset;
-    } else gradient[`${match[1]}Color`] = color(value);
+    } else gradient[`${match[1]}Color`] = roleColor(value);
   }
 }
 
@@ -295,8 +320,8 @@ function shadowLayers(value, local) {
 
 function shadowDeclaration(prop, raw, local, shadow) {
   if (prop === '--tw-shadow') shadow.layers = shadowLayers(raw, local);
-  else if (prop === '--tw-shadow-color') shadow.color = color(variables(raw,local));
-  else if (prop === '--tw-ring-color') shadow.ringColor = color(variables(raw,local));
+  else if (prop === '--tw-shadow-color') shadow.color = roleColor(variables(raw,local));
+  else if (prop === '--tw-ring-color') shadow.ringColor = roleColor(variables(raw,local));
   else if (prop === '--tw-ring-shadow') {
     const match = raw.match(/^var\(--tw-ring-inset,\)\s+0 0 0 calc\((.+?) \+ var\(--tw-ring-offset-width\)\) var\(--tw-ring-color, currentcolor\)$/i);
     if (!match) unsupported(`unsupported ring geometry: ${raw}`);
@@ -380,7 +405,7 @@ function longhand(prop, value) {
     case 'length': return prop.endsWith('radius') && /^calc\(infinity\s*\*\s*1px\)$/.test(value) ? 16384 : number(value, true);
     case 'font-size': return number(value, true);
     case 'number': case 'opacity': case 'font-weight': return number(value);
-    case 'color': return ['borderColor', 'backgroundColor'].includes(key) && value.toLowerCase() === 'currentcolor' ? 'currentColor' : color(value);
+    case 'color': return ['borderColor', 'backgroundColor'].includes(key) && value.toLowerCase() === 'currentcolor' ? 'currentColor' : roleColor(value);
     case 'aspect-ratio': {
       if (value === 'auto') return value;
       const ratio = value.match(/^((?:\d*\.)?\d+)\s*(?:\/\s*((?:\d*\.)?\d+))?$/);
@@ -683,12 +708,15 @@ function inert(name) {
   return families.find(([test]) => test.test(base))?.[1] ?? `${base} (it sets nothing the native renderer draws)`;
 }
 
+const paintsColor = result => Object.keys(result.style).some(key => styleTable[key]?.lower === 'color') ||
+  Boolean(result.gradient) || result.shadow?.color !== undefined || result.shadow?.ringColor !== undefined;
+
 /** Lowered rules for every candidate Tailwind generates; unsupported ones carry an error. */
-export async function compileUtilities(candidates, theme = '', { animationLowering = false } = {}) {
+export async function compileUtilities(candidates, theme = '', { animationLowering = false, literalColors: literal = false } = {}) {
   const tokens = postcss.parse(theme);
   validateTokens(tokens, { animationLowering });
   const defaults = await readFile(new URL(import.meta.resolve('tailwindcss/theme.css')), 'utf8');
-  const compiler = await compile(`${defaults}\n${theme}\n@tailwind utilities;`);
+  const compiler = await compile(`${defaults}\n${theme}\n${roleTheme}\n@tailwind utilities;`);
   const root = postcss.parse(compiler.build([...candidates]));
   const palettes = { light: Object.create(null), dark: Object.create(null) }, rules = [];
   root.walkAtRules('property', rule => {
@@ -701,7 +729,8 @@ export async function compileUtilities(candidates, theme = '', { animationLoweri
     for (const name of theme === 'all' ? ['light', 'dark'] : [theme])
       for (const decl of rule.nodes) if (decl.type === 'decl' && decl.prop.startsWith('--')) palettes[name][decl.prop] = decl.value;
   });
-  root.walkRules(rule => {
+  literalColors = literal;
+  try { root.walkRules(rule => {
     const target = selectorTarget(rule.selector);
     if (!target || !candidates.has(target.name)) return;
     const { name } = target;
@@ -723,12 +752,13 @@ export async function compileUtilities(candidates, theme = '', { animationLoweri
       };
       const light = when.theme === 'dark' ? undefined : lower(palettes.light);
       const dark = lower(palettes.dark);
+      if (when.theme === 'dark' && !literal && paintsColor(dark)) throw new RoleError('roles follow appearance; drop dark:');
       if (when.theme || JSON.stringify(light) === JSON.stringify(dark)) rules.push({ name, when, ...dark });
       else rules.push({ name, when: { ...when, theme: 'light' }, ...light }, { name, when: { ...when, theme: 'dark' }, ...dark });
     } catch (error) {
       if (!(error instanceof Unsupported) && !String(error.message).startsWith('UI_ANIMATION')) throw error;
-      rules.push({ name, error: { category: 'unsupported', message: error.message } });
+      rules.push({ name, error: { category: error instanceof RoleError ? 'color' : 'unsupported', message: error.message } });
     }
-  });
+  }); } finally { literalColors = false; }
   return rules;
 }

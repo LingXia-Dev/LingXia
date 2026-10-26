@@ -1,6 +1,7 @@
 import { utf8Bytes, has } from './data.js';
 import { limits } from '../generated/contract.js';
 import { fieldOptions } from '../generated/wire.js';
+import { seriesProblem, isRole } from '../style/color.js';
 
 // Per-element value checks; native decoding re-validates everything it receives.
 export function label(value, code, required = false) {
@@ -28,7 +29,7 @@ function vectorGradient(id, gradient) {
       (gradient.spread !== undefined && !['pad', 'reflect', 'repeat'].includes(gradient.spread)) ||
       !Array.isArray(gradient.stops) || !gradient.stops.length || gradient.stops.length > 16 ||
       gradient.stops.some(stop => !plain(stop) || Object.keys(stop).some(k => !['offset', 'color', 'opacity'].includes(k)) ||
-        !finiteWithin(stop.offset, 1) || stop.offset < 0 || !hexColor(stop.color) ||
+        !finiteWithin(stop.offset, 1) || stop.offset < 0 || !(hexColor(stop.color) || isRole(stop.color)) ||
         (stop.opacity !== undefined && (!finiteWithin(stop.opacity, 1) || stop.opacity < 0)))) invalid();
 }
 
@@ -45,7 +46,7 @@ export function vector(props, fit) {
         typeof path.d !== 'string' || !path.d.length || path.d.length > 16384) throw Error('UI_VECTOR: invalid path');
     for (const key of ['fill', 'stroke']) {
       const value = path[key];
-      if (value === undefined || value === 'none' || value === 'currentColor' || hexColor(value)) continue;
+      if (value === undefined || value === 'none' || value === 'currentColor' || hexColor(value) || isRole(value)) continue;
       const id = typeof value === 'string' && value.match(/^url\(#(.+)\)$/)?.[1];
       if (!id) throw Error('UI_VECTOR: invalid color');
       if (!has(gradients, id)) throw Error(`UI_VECTOR: unknown gradient ${id}`);
@@ -97,9 +98,10 @@ export function plot(props) {
   if (props.onSelect !== undefined && typeof props.onSelect !== 'function') throw Error('UI_PLOT: onSelect must be a function');
   if (props.selectedIndex !== undefined && (!Number.isInteger(props.selectedIndex) || props.selectedIndex < -1 || props.selectedIndex >= props.values.length))
     throw Error('UI_PLOT: invalid selected index');
-  if (!Array.isArray(props.colors) || !props.colors.length || props.colors.length > 16 ||
-      props.colors.some(c => typeof c !== 'string' || !/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(c)))
-    throw Error('UI_PLOT: expected 1..16 hex colors');
+  if (props.colors !== undefined) {
+    if (!Array.isArray(props.colors) || !props.colors.length || props.colors.length > 16) throw Error('UI_PLOT: expected 1..16 colors');
+    for (const color of props.colors) if (!(hexColor(color) && color.length !== 4 && color.length !== 5) && seriesProblem(color)) throw Error(seriesProblem(color));
+  }
 }
 
 export function sliderValue({ min, max, step }, value) {
