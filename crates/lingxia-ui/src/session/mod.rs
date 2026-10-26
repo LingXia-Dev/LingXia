@@ -70,6 +70,17 @@ struct ViewBridge {
     ready: bool,
 }
 
+/// The wall-clock budget for one View evaluation; unoptimized builds get a multiple.
+pub(crate) fn eval_budget() -> Duration {
+    use crate::protocol::limits::{EVAL_BUDGET_DEBUG_MULTIPLIER, EVAL_BUDGET_MS};
+    let scale = if cfg!(debug_assertions) {
+        EVAL_BUDGET_DEBUG_MULTIPLIER
+    } else {
+        1
+    };
+    Duration::from_millis((EVAL_BUDGET_MS * scale) as u64)
+}
+
 impl ViewSession {
     pub fn new(source: &str) -> Result<Self, String> {
         Self::new_with_logic(source, false)
@@ -193,7 +204,7 @@ impl ViewSession {
         if self.poisoned.get() {
             return Err("UI_TIMEOUT: discard the interrupted page before reusing it".into());
         }
-        let result = self.budget.run(Duration::from_millis(100), || {
+        let result = self.budget.run(eval_budget(), || {
             let value = work()?;
             <crate::engine::Active as crate::engine::Engine>::drain_jobs(&self.context)?;
             Ok(value)

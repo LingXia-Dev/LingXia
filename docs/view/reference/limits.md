@@ -17,5 +17,7 @@ Page-wide bounds the runtime and the native decoder both enforce. Exceeding one 
 | `decodedImageBytes` | 100663296 (96 MiB) | Decoded-image cache shared by every page; it evicts, never fails. |
 | `runs` | 256 | Runs in one `<text>`: each `<span>`, `<link>` and the text between them. |
 | `transitionMs` | 10000 | Longest transition duration or delay, in milliseconds (gated motion). |
+| `evalBudgetMs` | 100 | Wall-clock budget for one View render or callback; past it the page fails with UI_TIMEOUT. |
+| `evalBudgetDebugMultiplier` | 8 | Multiplier on that budget in unoptimized (debug) builds. |
 
 Wire ABI: 1. Highest field id: 173.

@@ -438,6 +438,8 @@ pub mod limits {
     pub const DECODED_IMAGE_BYTES: usize = 100663296;
     pub const RUNS: usize = 256;
     pub const TRANSITION_MS: usize = 10000;
+    pub const EVAL_BUDGET_MS: usize = 100;
+    pub const EVAL_BUDGET_DEBUG_MULTIPLIER: usize = 8;
 }
 
 /// Colors of unstyled elements as (token, light, dark), until the theme system supplies them.

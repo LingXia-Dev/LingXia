@@ -16,7 +16,7 @@ const screaming = name => name.replace(/-/g, '_').replace(/([a-z0-9])([A-Z])/g, 
 const object = entries => JSON.stringify(Object.fromEntries(entries));
 
 const childKinds = ['none', 'text', 'content', 'any', 'rows', 'options', 'runs'];
-const limitNames = ['nodes', 'depth', 'animationBytes', 'itemKeyBytes', 'imageBytes', 'sourceBytes', 'visibleImageBytes', 'decodedImageBytes', 'runs', 'transitionMs'];
+const limitNames = ['nodes', 'depth', 'animationBytes', 'itemKeyBytes', 'imageBytes', 'sourceBytes', 'visibleImageBytes', 'decodedImageBytes', 'runs', 'transitionMs', 'evalBudgetMs', 'evalBudgetDebugMultiplier'];
 
 function validate(schema) {
   const ids = schema.fields.map(field => field.id);

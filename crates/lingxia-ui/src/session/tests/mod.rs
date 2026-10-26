@@ -1622,3 +1622,15 @@ mod motion;
 mod text_selection;
 #[path = "transition.rs"]
 mod transition;
+
+#[test]
+fn the_eval_budget_scales_only_in_debug_builds() {
+    use crate::protocol::limits::{EVAL_BUDGET_DEBUG_MULTIPLIER, EVAL_BUDGET_MS};
+    let expected = if cfg!(debug_assertions) {
+        EVAL_BUDGET_MS * EVAL_BUDGET_DEBUG_MULTIPLIER
+    } else {
+        EVAL_BUDGET_MS
+    };
+    assert_eq!(super::eval_budget().as_millis() as usize, expected);
+    assert_eq!((EVAL_BUDGET_MS, EVAL_BUDGET_DEBUG_MULTIPLIER), (100, 8));
+}
