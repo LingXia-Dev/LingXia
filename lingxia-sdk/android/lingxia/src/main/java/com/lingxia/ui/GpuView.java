@@ -20,6 +20,7 @@ import android.view.accessibility.AccessibilityNodeProvider;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 import com.lingxia.ui.generated.GpuInput;
+import com.lingxia.ui.generated.GpuSemantics;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -68,6 +69,10 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     static native String nativeSemanticRoots(long host);
     static native String nativeSemanticNode(long host, int id);
     static native String nativeAutomate(long host, String request);
+    static native void nativeMoveTextSelection(long host, String identity, int which, float x, float y);
+    static native void nativeSetTextSelection(long host, String identity, int start, int end);
+    static native void nativeCopyTextSelection(long host, long callback);
+    static native void nativeClearTextSelection(long host);
     static native void nativeInput(long host, String request, long callback);
     static native void nativeCaret(long host, boolean eligible, boolean connected, String text, int anchor, int focus, int start, int end);
     // Chrome geometry over a snapshot node's JSON; the policy lives in the shared core.
@@ -119,6 +124,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     private final android.graphics.Rect chromeInsets = new android.graphics.Rect();
     private GpuTextMenu textMenu;
     private GpuSelectionHandles selectionHandles;
+    private GpuStaticSelection staticSelection;
     private android.content.res.Configuration hostConfiguration;
     private org.json.JSONArray textScale;
     private float textScalePreference = Float.NaN, textScaleDensity = Float.NaN;
@@ -164,13 +170,6 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 if (destroyed) return;
                 if (rebuild) nativeRequestFrame(host); else nativeRedraw(host);
             }
-            @Override public void caret(boolean eligible, String text, int anchor, int focus, int start, int end) {
-                if (!destroyed) nativeCaret(host, eligible, text != null, text == null ? "" : text, anchor, focus, start, end);
-            }
-        });
-        textMenu = new GpuTextMenu(surface, ime, () -> {
-            JSONArray nodes = snapshot == null ? null : snapshot.optJSONArray("nodes");
-            for (int i = 0; nodes != null && i < nodes.length(); i++) {
             private int autofilled = -1;
             @Override public void editorChanged(String identity) {
                 if (android.os.Build.VERSION.SDK_INT < 26) return;
@@ -188,6 +187,13 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 bounds.offset(origin[0], origin[1]);
                 autofill.notifyViewEntered(surface, autofilled, bounds);
             }
+            @Override public void caret(boolean eligible, String text, int anchor, int focus, int start, int end) {
+                if (!destroyed) nativeCaret(host, eligible, text != null, text == null ? "" : text, anchor, focus, start, end);
+            }
+        });
+        textMenu = new GpuTextMenu(surface, ime, () -> {
+            JSONArray nodes = snapshot == null ? null : snapshot.optJSONArray("nodes");
+            for (int i = 0; nodes != null && i < nodes.length(); i++) {
                 JSONObject node = nodes.optJSONObject(i), input = node == null ? null : node.optJSONObject("input");
                 if (input != null && input.optLong("edit_token") > 0) return surface.bounds(node);
             }
@@ -201,6 +207,15 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             public void showMenu() { textMenu.show(); }
         });
         feedback.getOverlay().add(selectionHandles);
+        staticSelection = new GpuStaticSelection(surface, new GpuStaticSelection.Host() {
+            public JSONObject frame() { return snapshot; }
+            public float scale() { return frameScale; }
+            public void move(String identity, int which, float x, float y) { if (!destroyed) nativeMoveTextSelection(host, identity, which, x, y); }
+            public void select(String identity, int start, int end) { if (!destroyed) nativeSetTextSelection(host, identity, start, end); }
+            public void copy() { copyTextSelection(); }
+            public void clear() { if (!destroyed) nativeClearTextSelection(host); }
+        });
+        feedback.getOverlay().add(staticSelection);
         host = nativeHostCreate(new Platform(), worker, logic, imageOwner);
         ime.setCaretActive(false);
         surface.getHolder().addCallback(this);
@@ -402,6 +417,20 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         return nativeAutomate(host, request);
     }
 
+    /** Copy the static-text selection to the clipboard; the core then drops it. */
+    private void copyTextSelection() {
+        if (destroyed) return;
+        long callback = ++nextInputReply;
+        inputReplies.put(callback, reply -> {
+            String text = reply == null || reply.isNull("text") ? null : reply.optString("text");
+            if (text == null || text.isEmpty()) return;
+            android.content.ClipboardManager clipboard = (android.content.ClipboardManager)getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+            try { if (clipboard != null) clipboard.setPrimaryClip(android.content.ClipData.newPlainText("", text)); }
+            catch (SecurityException | IllegalStateException unavailable) { Log.w("LingXia.UI", "clipboard unavailable", unavailable); }
+        });
+        nativeCopyTextSelection(host, callback);
+    }
+
     public void connect(long generation, String nonce) { if (!destroyed) nativeConnect(host, generation, nonce); }
     public void receive(long generation, String frame) { if (!destroyed) nativeReceive(host, generation, frame); }
     public void requestLeave(long generation, String reason) { if (!destroyed) nativeRequestLeave(host, generation, reason); }
@@ -425,6 +454,19 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         bootstrapSurfaceImportance = surface.getImportantForAccessibility();
         surface.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         addView(bootstrapMessage, new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+    }
+    private final android.database.ContentObserver animatorScale = new android.database.ContentObserver(main) {
+        @Override public void onChange(boolean selfChange) { requestFrame(); }
+    };
+    @Override protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        getContext().getContentResolver().registerContentObserver(
+            android.provider.Settings.Global.getUriFor(android.provider.Settings.Global.ANIMATOR_DURATION_SCALE), false, animatorScale);
+        requestFrame();
+    }
+    @Override protected void onDetachedFromWindow() {
+        getContext().getContentResolver().unregisterContentObserver(animatorScale);
+        super.onDetachedFromWindow();
     }
     @Override public void onConfigurationChanged(android.content.res.Configuration configuration) {
         super.onConfigurationChanged(configuration);
@@ -456,19 +498,6 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         // The parent clips it; View.env.keyboard drives the content's usable height.
         int surfaceHeight = Math.max(height, unoccludedHeight);
         surface.measure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
-    private final android.database.ContentObserver animatorScale = new android.database.ContentObserver(main) {
-        @Override public void onChange(boolean selfChange) { requestFrame(); }
-    };
-    @Override protected void onAttachedToWindow() {
-        super.onAttachedToWindow();
-        getContext().getContentResolver().registerContentObserver(
-            android.provider.Settings.Global.getUriFor(android.provider.Settings.Global.ANIMATOR_DURATION_SCALE), false, animatorScale);
-        requestFrame();
-    }
-    @Override protected void onDetachedFromWindow() {
-        getContext().getContentResolver().unregisterContentObserver(animatorScale);
-        super.onDetachedFromWindow();
-    }
             MeasureSpec.makeMeasureSpec(surfaceHeight, MeasureSpec.EXACTLY));
     }
 
@@ -545,6 +574,9 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 == android.content.res.Configuration.UI_MODE_NIGHT_YES;
             java.util.Locale locale = android.os.Build.VERSION.SDK_INT >= 24
                 ? configuration.getLocales().get(0) : configuration.locale;
+            // "Remove animations" sets the scale to 0, Android's reduced-motion signal.
+            float animatorScale = Math.max(0f, Math.min(10f, android.provider.Settings.Global.getFloat(
+                getContext().getContentResolver(), android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f)));
             float preference = getResources().getConfiguration().fontScale;
             float density = getResources().getDisplayMetrics().density;
             // A retained page can move between Activities without a View config callback.
@@ -576,9 +608,6 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         host = 0;
         nativeHostRelease(released);
     }
-            // "Remove animations" sets the scale to 0, Android's reduced-motion signal.
-            float animatorScale = Math.max(0f, Math.min(10f, android.provider.Settings.Global.getFloat(
-                getContext().getContentResolver(), android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f)));
     @Override public void surfaceCreated(SurfaceHolder holder) { updateCaretActivity(); }
     @Override public void surfaceDestroyed(SurfaceHolder holder) {
         surface.cancelRefreshGesture();
@@ -688,6 +717,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             catch (org.json.JSONException error) { throw new IllegalStateException("Invalid native frame", error); }
             snapshotText = encoded; frameScale = scale; hasSurfaceFrame = true;
             ime.presented(snapshot, ime.capture());
+            staticSelection.setBounds(0, 0, feedback.getWidth(), feedback.getHeight());
+            staticSelection.update();
             updateCaretActivity();
         }
         @Override public void imeFocus(int index, long commit, boolean touch, float x, float y, boolean word) {
@@ -793,38 +824,6 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             JSONArray nodes = snapshot == null ? null : snapshot.optJSONArray("nodes");
             return nodes == null ? null : nodes.optJSONObject(index);
         }
-        Rect bounds(JSONObject node) {
-            JSONArray b = node.optJSONArray("visible_bounds");
-            if (b == null) b = node.optJSONArray("bounds");
-            return GpuAccessibility.pixels(b, frameScale);
-        }
-        void showPress(int index) {
-            JSONObject node = node(index);
-            if (node == null) return;
-            pressedOverlay.setNode(node, frameScale);
-            feedback.getOverlay().remove(pressedOverlay);
-            feedback.getOverlay().add(pressedOverlay);
-        }
-        void clearPress() { feedback.getOverlay().remove(pressedOverlay); }
-        void showFocusRing(int index) {
-            JSONObject node = node(index);
-            if (node == null) return;
-            focusOverlay.setNode(node, frameScale);
-            focusOverlay.setStroke(Math.max(1, (int)(2 * frameScale)), Color.rgb(23, 32, 51));
-            feedback.getOverlay().remove(focusOverlay);
-            feedback.getOverlay().add(focusOverlay);
-        }
-        void clearFocusRing() { feedback.getOverlay().remove(focusOverlay); }
-        void clearFeedback() { clearPress(); clearFocusRing(); }
-        void armLongPress() { main.removeCallbacks(longPress); main.postDelayed(longPress, ViewConfiguration.getLongPressTimeout()); }
-        void disarmLongPress() { main.removeCallbacks(longPress); }
-        void fling(String region, boolean horizontal, float speed) {
-            flingRegion = region;
-            flingHorizontal = horizontal;
-            flingPosition = 0;
-            if (flingHorizontal) scroller.fling(0, 0, (int)speed, 0, -100000000, 100000000, 0, 0);
-            else scroller.fling(0, 0, 0, (int)speed, 0, 0, -100000000, 100000000);
-            Choreographer.getInstance().postFrameCallback(flingFrame);
         /** Autofill addresses an editor by a virtual id stable across frames. */
         int autofillId(JSONObject node) { return node.optString("identity").hashCode() & 0x7fffffff; }
         JSONObject editor(int autofillId) {
@@ -874,6 +873,38 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                     ime.accessibilityEdit(node, snapshot.optLong("generation"), value.getTextValue().toString(), -1, -1);
             }
         }
+        Rect bounds(JSONObject node) {
+            JSONArray b = node.optJSONArray("visible_bounds");
+            if (b == null) b = node.optJSONArray("bounds");
+            return GpuAccessibility.pixels(b, frameScale);
+        }
+        void showPress(int index) {
+            JSONObject node = node(index);
+            if (node == null) return;
+            pressedOverlay.setNode(node, frameScale);
+            feedback.getOverlay().remove(pressedOverlay);
+            feedback.getOverlay().add(pressedOverlay);
+        }
+        void clearPress() { feedback.getOverlay().remove(pressedOverlay); }
+        void showFocusRing(int index) {
+            JSONObject node = node(index);
+            if (node == null) return;
+            focusOverlay.setNode(node, frameScale);
+            focusOverlay.setStroke(Math.max(1, (int)(2 * frameScale)), Color.rgb(23, 32, 51));
+            feedback.getOverlay().remove(focusOverlay);
+            feedback.getOverlay().add(focusOverlay);
+        }
+        void clearFocusRing() { feedback.getOverlay().remove(focusOverlay); }
+        void clearFeedback() { clearPress(); clearFocusRing(); }
+        void armLongPress() { main.removeCallbacks(longPress); main.postDelayed(longPress, ViewConfiguration.getLongPressTimeout()); }
+        void disarmLongPress() { main.removeCallbacks(longPress); }
+        void fling(String region, boolean horizontal, float speed) {
+            flingRegion = region;
+            flingHorizontal = horizontal;
+            flingPosition = 0;
+            if (flingHorizontal) scroller.fling(0, 0, (int)speed, 0, -100000000, 100000000, 0, 0);
+            else scroller.fling(0, 0, 0, (int)speed, 0, 0, -100000000, 100000000);
+            Choreographer.getInstance().postFrameCallback(flingFrame);
         }
         void stopFling() {
             scroller.abortAnimation();
@@ -891,6 +922,11 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         }
         @Override public boolean onTouchEvent(MotionEvent event) {
             if (destroyed || !active || nativeSessionFailed(host)) return false;
+            if (staticSelection.touch(event)) {
+                cancel();
+                getParent().requestDisallowInterceptTouchEvent(staticSelection.dragging());
+                return true;
+            }
             if (selectionHandles.touch(event)) {
                 cancel();
                 getParent().requestDisallowInterceptTouchEvent(selectionHandles.dragging());
@@ -1022,6 +1058,19 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 }
                 @Override public boolean performAction(int id, int action, Bundle args) {
                     if (!active || destroyed) return false;
+                    if (action == AccessibilityNodeInfo.ACTION_COPY) {
+                        if (staticSelection.node() == null) return false;
+                        copyTextSelection(); return true;
+                    }
+                    JSONObject semantic = action == AccessibilityNodeInfo.ACTION_SET_SELECTION ? semantic(id) : null;
+                    if (semantic != null && semantic.isNull("text_field") && GpuAccessibility.hasAction(semantic, GpuSemantics.ACTION_SET_SELECTION)) {
+                        JSONObject node = node(semantic.optInt("index"));
+                        if (node == null || args == null) return false;
+                        nativeSetTextSelection(host, node.optString("identity"),
+                            args.getInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, 0),
+                            args.getInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, 0));
+                        return true;
+                    }
                     int shared = GpuAccessibility.action(action);
                     if (shared < 0) return false;
                     double number = 0; String argument = "";

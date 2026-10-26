@@ -152,6 +152,18 @@ pub fn register_natives(env: &mut Env, class: &JClass) -> jni::errors::Result<()
             "(JLjava/lang/String;)Ljava/lang/String;",
             automate
         ),
+        method!(
+            "nativeMoveTextSelection",
+            "(JLjava/lang/String;IFF)V",
+            move_text_selection
+        ),
+        method!(
+            "nativeSetTextSelection",
+            "(JLjava/lang/String;II)V",
+            set_text_selection
+        ),
+        method!("nativeCopyTextSelection", "(JJ)V", copy_text_selection),
+        method!("nativeClearTextSelection", "(J)V", clear_text_selection),
         method!("nativeInput", "(JLjava/lang/String;J)V", input),
         method!("nativeCaret", "(JZZLjava/lang/String;IIII)V", caret),
         method!("nativeGpuSentinel", "(Ljava/lang/String;)V", gpu_sentinel),
@@ -620,6 +632,71 @@ fn automation(host: &Host, request: &serde_json::Value) -> Result<serde_json::Va
         }
         other => Err(format!("E_UNSUPPORTED: automation op {other:?}")),
     }
+}
+
+/// Drag a static-text selection end (0 anchor, 1 focus) to a logical point.
+extern "system" fn move_text_selection<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    identity: JString<'a>,
+    which: jint,
+    x: jfloat,
+    y: jfloat,
+) {
+    run(&mut env, |env| {
+        let identity = text(env, &identity)?;
+        host(handle)?.move_text_selection(identity, which.clamp(0, 1) as u8, [x, y]);
+        Ok(())
+    })
+}
+
+extern "system" fn set_text_selection<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    identity: JString<'a>,
+    start: jint,
+    end: jint,
+) {
+    run(&mut env, |env| {
+        let identity = text(env, &identity)?;
+        host(handle)?.set_text_selection(identity, start.max(0) as u32, end.max(0) as u32);
+        Ok(())
+    })
+}
+
+/// The selected text arrives through `inputReply(callback, {"text": ...})`; the selection clears.
+extern "system" fn copy_text_selection<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    callback: jlong,
+) {
+    run(&mut env, |_| {
+        let host = host(handle)?;
+        let replier = host.clone();
+        host.copy_text_selection(move |selected| {
+            replier.adapter().java(|env, platform| {
+                let reply = env.new_string(serde_json::json!({ "text": selected }).to_string())?;
+                env.call_method(
+                    platform,
+                    jni_str!("inputReply"),
+                    jni_sig!("(JLjava/lang/String;)V"),
+                    &[JValue::Long(callback), JValue::Object(&reply)],
+                )?;
+                Ok(())
+            })
+        });
+        Ok(())
+    })
+}
+
+extern "system" fn clear_text_selection<'a>(mut env: EnvUnowned<'a>, _: JClass<'a>, handle: jlong) {
+    run(&mut env, |_| {
+        host(handle)?.clear_text_selection();
+        Ok(())
+    })
 }
 
 /// Unpaired surrogates must reach the session as an error, not as replacement characters.

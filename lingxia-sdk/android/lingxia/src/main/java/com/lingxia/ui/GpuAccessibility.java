@@ -37,6 +37,13 @@ final class GpuAccessibility {
         }
     }
 
+    static boolean hasAction(JSONObject node, String kind) {
+        JSONArray actions = node.optJSONArray("actions");
+        for (int i = 0; actions != null && i < actions.length(); i++)
+            if (kind.equals(actions.optJSONObject(i).optString("kind"))) return true;
+        return false;
+    }
+
     static Rect pixels(JSONArray bounds, float scale) {
         if (bounds == null) return new Rect();
         return new Rect((int)(bounds.optDouble(0) * scale), (int)(bounds.optDouble(1) * scale),
@@ -50,6 +57,9 @@ final class GpuAccessibility {
         info.setPackageName(packageName);
         info.setClassName(className(role));
         info.setText(node.optString("text"));
+        // TalkBack speaks this in place of the class role; a link has no widget class of its own.
+        if (GpuSemantics.ROLE_LINK.equals(role))
+            info.getExtras().putCharSequence(ROLE_DESCRIPTION, host.getContext().getString(com.lingxia.lxapp.R.string.lx_gpu_a11y_link));
         String name = node.optString("name");
         if (!name.isEmpty() && !name.equals(node.optString("text"))) info.setContentDescription(name);
         info.setVisibleToUser(node.optBoolean("visible"));
@@ -57,9 +67,6 @@ final class GpuAccessibility {
         String testId = node.optString("test_id");
         if (!testId.isEmpty()) info.setViewIdResourceName(packageName + ":id/" + testId);
         info.setEnabled(node.optBoolean("enabled"));
-        // TalkBack speaks this in place of the class role; a link has no widget class of its own.
-        if (GpuSemantics.ROLE_LINK.equals(role))
-            info.getExtras().putCharSequence(ROLE_DESCRIPTION, host.getContext().getString(com.lingxia.lxapp.R.string.lx_gpu_a11y_link));
         info.setFocusable(node.optBoolean("focusable"));
         info.setClickable(node.optBoolean("clickable"));
         info.setFocused(node.optBoolean("focused"));
@@ -78,6 +85,8 @@ final class GpuAccessibility {
             info.setTextSelection(selection == null ? -1 : selection.optInt(0, -1), selection == null ? -1 : selection.optInt(1, -1));
             if (Build.VERSION.SDK_INT >= 26) { info.setHintText(field.optString("hint")); info.setShowingHintText(false); }
         }
+        JSONArray selected = node.optJSONArray(GpuSemantics.KEY_TEXT_SELECTION);
+        if (field == null && selected != null) info.setTextSelection(selected.optInt(0), selected.optInt(1));
         JSONArray position = node.optJSONArray(GpuSemantics.KEY_POSITION);
         if (position != null && GpuSemantics.ROLE_RADIO_GROUP.equals(role)) {
             info.setCollectionInfo(AccessibilityNodeInfo.CollectionInfo.obtain(position.optInt(1), 1, false,
@@ -109,6 +118,7 @@ final class GpuAccessibility {
                 case "scroll-backward": info.addAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD); break;
                 case "set-text": info.addAction(AccessibilityNodeInfo.ACTION_SET_TEXT); break;
                 case "set-selection": info.addAction(AccessibilityNodeInfo.ACTION_SET_SELECTION); break;
+                case GpuSemantics.ACTION_COPY: info.addAction(AccessibilityNodeInfo.ACTION_COPY); break;
                 case "set-progress":
                     if (Build.VERSION.SDK_INT >= 24) info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS);
                     break;

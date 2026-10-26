@@ -487,6 +487,49 @@ impl<A: PlatformAdapter> ViewHost<A> {
         Ok(())
     }
 
+    /// Drag the static-text selection's anchor (0) or focus (1) end to a logical point.
+    pub fn move_text_selection(&self, identity: String, which: u8, point: [f32; 2]) {
+        self.inner.change_text_selection(move |session| {
+            session.move_text_selection(&identity, which as usize, point)
+        });
+    }
+
+    /// Select UTF-16 `start..end` of a selectable text node (accessibility, Select all).
+    pub fn set_text_selection(&self, identity: String, start: u32, end: u32) {
+        self.inner.change_text_selection(move |session| {
+            session.set_text_selection(&identity, start, end)
+        });
+    }
+
+    /// The selected text for Copy, then the selection is dropped.
+    pub fn copy_text_selection(&self, reply: impl FnOnce(Option<String>) + Send + 'static) {
+        let page = self.inner.lifecycle.page();
+        self.inner.work(
+            Guard::Page(page),
+            |_, session| {
+                let text = session.selected_text();
+                Ok((text, session.clear_text_selection()))
+            },
+            move |inner, result| {
+                let (text, cleared) = match result {
+                    Some(Ok(done)) => done,
+                    _ => (None, false),
+                };
+                if cleared && inner.lifecycle.is_current_page(page) {
+                    inner.main().dirty = true;
+                    inner.schedule();
+                }
+                reply(text);
+            },
+        );
+    }
+
+    /// Drop the static-text selection, e.g. when its action mode is dismissed.
+    pub fn clear_text_selection(&self) {
+        self.inner
+            .change_text_selection(|session| Ok(session.clear_text_selection()));
+    }
+
     /// Advance a fling; returns false once the region stops moving.
     pub fn scroll_by(&self, region: &str, delta_px: f32) -> bool {
         let changed = self.inner.main().interaction.scroll_by(region, delta_px);
@@ -747,6 +790,24 @@ impl<A: PlatformAdapter> Inner<A> {
             self.park_animations();
             self.clear_text_selection();
         }
+    }
+
+    /// Run a selection change on the worker; a change repaints.
+    fn change_text_selection(
+        self: &Arc<Self>,
+        change: impl FnOnce(&mut ViewSession) -> Result<bool, String> + Send + 'static,
+    ) {
+        let page = self.lifecycle.page();
+        self.work(
+            Guard::Page(page),
+            move |_, session| change(session),
+            move |inner, result| {
+                if matches!(result, Some(Ok(true))) && inner.lifecycle.is_current_page(page) {
+                    inner.main().dirty = true;
+                    inner.schedule();
+                }
+            },
+        );
     }
 
     /// A hidden page keeps no selection: its kept frame catches up without the handles.

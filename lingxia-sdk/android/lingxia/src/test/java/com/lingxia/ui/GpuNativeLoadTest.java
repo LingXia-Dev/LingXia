@@ -44,7 +44,7 @@ public class GpuNativeLoadTest {
         public void imeFocus(int node, long commit, boolean touch, float x, float y, boolean word) { }
         public void imeActivation() { }
         public void imeReset() { }
-        public void inputReply(long callback, String reply) { }
+        public void inputReply(long callback, String reply) { events.add("reply:" + reply); }
         public void press(int node) { events.add("press"); }
         public void clearPress() { events.add("clear-press"); }
         public void focusRing(int node) { }
