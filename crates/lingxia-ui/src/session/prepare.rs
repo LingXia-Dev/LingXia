@@ -149,9 +149,14 @@ impl ViewSession {
     ) -> Result<T, String> {
         let surface = self.animation_surface.ok_or("UI_ANIMATION: parked page")?;
         let mut timeline = self.animations.fork();
+        // A zero scale already reads as reduced motion in the environment.
+        let duration_scale = self.environment["animatorDurationScale"]
+            .as_f64()
+            .filter(|scale| *scale > 0.0)
+            .unwrap_or(1.0);
         timeline.set_motion(crate::animation::Motion {
             reduced: self.environment["reducedMotion"].as_bool() == Some(true),
-            ..timeline.motion()
+            scale: duration_scale.clamp(0.01, 10.0),
         })?;
         let mut animation = FrameAnimations::Collected {
             inventory: self.animation_inventory.clone(),

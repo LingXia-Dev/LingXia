@@ -84,6 +84,8 @@ pub struct Sample {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Definition {
     pub name: String,
+    /// Keeps playing under reduced motion (authored for it explicitly).
+    pub keep_reduced: bool,
     pub timing: Timing,
     pub effect: Effect,
 }
@@ -225,7 +227,7 @@ impl Timeline {
         let Some(started) = instance.started else {
             return Ok(None);
         };
-        if self.motion.reduced {
+        if self.motion.reduced && !instance.definition.keep_reduced {
             return Ok(None);
         }
         let sample = instance
@@ -275,7 +277,7 @@ impl Timeline {
             else {
                 continue;
             };
-            if self.motion.reduced {
+            if self.motion.reduced && !instance.definition.keep_reduced {
                 continue;
             }
             let scale = self.motion.scale;
@@ -444,7 +446,9 @@ impl Timeline {
                             .unwrap_or_default(),
                     ),
                 );
-                if sample.phase == Phase::Active && !self.motion.reduced {
+                if sample.phase == Phase::Active
+                    && (!self.motion.reduced || definition.keep_reduced)
+                {
                     visuals.insert(identity.clone(), definition.effect.sample(sample.progress)?);
                 }
                 samples.insert(identity.clone(), sample);
@@ -573,6 +577,7 @@ mod tests {
     }
     fn effect() -> Definition {
         Definition {
+            keep_reduced: false,
             name: "effect".into(),
             timing: Timing::new(ms(100), ms(20), NonZeroU32::new(2)).unwrap(),
             effect: opacity(0.0, 1.0),
@@ -874,6 +879,7 @@ mod tests {
             .map(|(offset, value)| interpolate::Keyframe { offset, value })
             .to_vec();
         Definition {
+            keep_reduced: false,
             name: "blink".into(),
             timing: Timing::new(ms(900), Duration::ZERO, None).unwrap(),
             effect: Effect::new(
@@ -939,6 +945,7 @@ mod tests {
             Wakeup::After(ms(300))
         );
         let constant = Definition {
+            keep_reduced: false,
             name: "constant".into(),
             timing: Timing::new(ms(100), Duration::ZERO, NonZeroU32::new(2)).unwrap(),
             effect: opacity(0.5, 0.5),
@@ -999,6 +1006,7 @@ mod tests {
         )
         .unwrap();
         let invalid_midpoint = Definition {
+            keep_reduced: false,
             name: "invalid-midpoint".into(),
             timing: Timing::new(ms(100), Duration::ZERO, None).unwrap(),
             effect: Effect::new(

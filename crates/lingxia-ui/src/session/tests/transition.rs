@@ -354,3 +354,49 @@ fn hidden_pages_park_running_transitions_and_jump_new_ones_to_their_end() {
     let (shown, wakeup) = present(&mut page, Duration::from_secs(8));
     assert_eq!((pixel(&shown, 50, 20)[0], wakeup), (0, Wakeup::None));
 }
+
+fn environment(reduced: bool, scale: f64) -> serde_json::Value {
+    json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","displayLanguage":"en","canDock":false,"runner":false,"reducedMotion":reduced,"animatorDurationScale":scale})
+}
+
+#[test]
+fn the_animator_duration_scale_stretches_transitions() {
+    let mut page = page(
+        transition(&["opacity"], 200),
+        "backgroundColor:'#000000'",
+        "opacity:0",
+        "''",
+    );
+    page.set_environment(environment(false, 2.0)).unwrap();
+    let (display, _) = page_frame(&mut page, 0);
+    press(&mut page, &display, true);
+    present(&mut page, Duration::from_millis(100));
+    let (half, _) = present(&mut page, Duration::from_millis(300));
+    assert!((120..136).contains(&pixel(&half, 50, 20)[0]));
+    let (_, wakeup) = present(&mut page, Duration::from_millis(499));
+    assert_eq!(wakeup, Wakeup::NextFrame);
+    let (done, wakeup) = present(&mut page, Duration::from_millis(501));
+    assert_eq!((pixel(&done, 50, 20)[0], wakeup), (255, Wakeup::None));
+}
+
+#[test]
+fn reduced_motion_keeps_only_animations_authored_for_it() {
+    let pulse = |when: &str| {
+        json!({"name":"pulse","durationMs":1000,"delayMs":0,"iterations":null,"whenReduced":when,"easing":"linear",
+            "opacity":[{"offset":0,"value":1},{"offset":0.5,"value":0},{"offset":1,"value":1}],"transforms":[]})
+    };
+    for (when, plays) in [("base", false), ("keep", true)] {
+        let module = super::source(&format!(
+            "function render(){{return h('page',{{style:{{backgroundColor:'#ffffff'}}}},h('column',{{style:{{width:40,height:40,backgroundColor:'#000000',animation:{}}}}}))}}",
+            pulse(when)
+        ));
+        let mut page = ViewSession::new(&module).unwrap();
+        page.set_animation_surface(Some(SURFACE), Duration::ZERO)
+            .unwrap();
+        page.set_environment(environment(false, 0.0)).unwrap();
+        present_route(&mut page, Duration::ZERO, true, false);
+        let (frame, wakeup) = present_route(&mut page, Duration::from_millis(500), false, false);
+        assert_eq!(pixel(&frame, 20, 20)[0] == 255, plays, "{when}");
+        assert_eq!(wakeup == Wakeup::NextFrame, plays, "{when}");
+    }
+}

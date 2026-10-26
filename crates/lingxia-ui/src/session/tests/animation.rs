@@ -9,13 +9,13 @@ use std::num::NonZeroU32;
 const CHART: &str = "/i:0:0";
 
 fn authored_effect() -> String {
-    serde_json::json!({"name":"enter","durationMs":100,"delayMs":0,"iterations":1,
+    serde_json::json!({"name":"enter","durationMs":100,"delayMs":0,"iterations":1,"whenReduced":"base",
         "easing":"linear","opacity":[{"offset":0,"value":0},{"offset":1,"value":1}],"transforms":[]}).to_string()
 }
 
 #[test]
 fn authored_transform_can_bring_an_offscreen_node_into_the_animation_visible_set() {
-    let effect = serde_json::json!({"name":"slide","durationMs":100,"delayMs":0,"iterations":1,"easing":"linear",
+    let effect = serde_json::json!({"name":"slide","durationMs":100,"delayMs":0,"iterations":1,"whenReduced":"base","easing":"linear",
       "transforms":[{"kind":"translate","x":[{"offset":0,"value":0},{"offset":1,"value":0}],
         "y":[{"offset":0,"value":-40},{"offset":1,"value":0}]}]});
     let source = tests::source(&format!(
@@ -236,6 +236,7 @@ fn definitions() -> [(String, Definition); 1] {
     [(
         CHART.into(),
         Definition {
+            keep_reduced: false,
             name: "chart".into(),
             timing: Timing::new(ms(100), ms(0), NonZeroU32::new(1)).unwrap(),
             effect: Effect::new(

@@ -1020,7 +1020,7 @@ fn connections_say_hello_and_report_an_overdue_bootstrap() {
 
 // Motion: wakeups, hidden silence and the animation frame counter.
 
-const SPIN: &str = r#"{"name":"spin","durationMs":1000,"delayMs":0,"iterations":null,"easing":"linear","opacity":null,"transforms":[{"kind":"rotate","angle":[{"offset":0,"value":0},{"offset":1,"value":360}]}]}"#;
+const SPIN: &str = r#"{"name":"spin","durationMs":1000,"delayMs":0,"iterations":null,"whenReduced":"base","easing":"linear","opacity":null,"transforms":[{"kind":"rotate","angle":[{"offset":0,"value":0},{"offset":1,"value":360}]}]}"#;
 
 fn presents(host: &ViewHost<Fake>) -> usize {
     host.adapter().log.lock().unwrap().presented.len()
@@ -1092,7 +1092,7 @@ fn a_spinner_presents_at_display_rate_only_while_visible_and_present() {
 fn a_one_shot_animation_stops_presenting_once_complete() {
     let worker = ViewWorker::spawn("test-view").unwrap();
     let platform = Platform::new(&[&worker]);
-    let fade = r#"{"name":"fade","durationMs":100,"delayMs":0,"iterations":1,"easing":"linear","opacity":[{"offset":0,"value":0},{"offset":1,"value":1}],"transforms":[]}"#;
+    let fade = r#"{"name":"fade","durationMs":100,"delayMs":0,"iterations":1,"whenReduced":"base","easing":"linear","opacity":[{"offset":0,"value":0},{"offset":1,"value":1}],"transforms":[]}"#;
     let host = platform.host(
         &worker,
         &source(&format!(

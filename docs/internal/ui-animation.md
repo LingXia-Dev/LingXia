@@ -18,8 +18,8 @@ adapters must reuse this state.
 
 `decode_definition` (≤32 KiB per definition, ≤256 KiB per page, measured in UTF-8 bytes on
 both sides) revalidates every value: name, `durationMs`/`delayMs`, `iterations` (null =
-infinite), easing (`linear`, `step-end`, four Bezier values), optional opacity keys and
-≤8 ordered transform tracks: `scale` (positive; reflections rejected), `translate`
+infinite), `whenReduced` (`base`|`keep`), easing (`linear`, `step-end`, four Bezier
+values), optional opacity keys and ≤8 ordered transform tracks: `scale` (positive; reflections rejected), `translate`
 (pixels, or fractions of the node's own box with `relative: true`), `rotate` (degrees).
 Keys are `{offset, value, easing?}`; a key's easing eases the segment that starts there
 and the final key cannot carry one. Offsets strictly increase from 0 to 1; the compiler
@@ -87,13 +87,12 @@ frames neither change nor invalidate it.
 
 ## Motion preference
 
-`env.reducedMotion` (default false) is read at each prepared frame: transitions complete
-at once and keyframe animations show their base style without wakeups. The compiler
-already drops `motion-safe:` classes and applies `motion-reduce:` ones; natively a plain
-`animate-*` and a `motion-reduce:animate-*` look alike until field 101 carries a flag.
-Toggling it is an environment change, so a hidden page renders one catch-up frame.
-`Timeline::set_motion` also takes a duration scale (0.01..=10) that multiplies keyframe
-and transition durations and delays; the platform environment key is not wired yet.
+`env.reducedMotion` (default false) and `env.animatorDurationScale` (0..=10, default 1;
+0 reads as reduced motion) are read at each prepared frame. Reduced motion completes
+transitions at once and shows the base style of keyframe animations whose payload says
+`"whenReduced":"base"`; `"keep"` (authored under `motion-reduce:`/`motion-safe:`) keeps
+playing. The scale multiplies keyframe and transition durations, delays and wakeups.
+Either change is an environment change, so a hidden page renders one catch-up frame.
 
 ## Metrics
 

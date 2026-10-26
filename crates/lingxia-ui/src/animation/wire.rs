@@ -16,9 +16,16 @@ struct Wire {
     easing: Ease,
     opacity: Option<Vec<Key>>,
     transforms: Vec<Transform>,
-    /// `keep` when authored under `motion-reduce:`/`motion-safe:`; otherwise reduced motion drops it.
-    #[serde(default)]
-    when_reduced: Option<String>,
+    /// `keep` when authored under `motion-reduce:`/`motion-safe:`; `base` shows the base
+    /// style under reduced motion.
+    when_reduced: WhenReduced,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum WhenReduced {
+    Base,
+    Keep,
 }
 
 #[derive(Deserialize)]
@@ -126,13 +133,6 @@ pub fn decode_definition(source: &str) -> Result<Definition, String> {
         iterations,
     )?;
     let easing = easing(wire.easing)?;
-    if wire
-        .when_reduced
-        .as_deref()
-        .is_some_and(|mode| !matches!(mode, "base" | "keep"))
-    {
-        return Err("UI_ANIMATION: invalid whenReduced".into());
-    }
     if wire.transforms.len() > 8 || (wire.opacity.is_none() && wire.transforms.is_empty()) {
         return Err("UI_ANIMATION: invalid effect tracks".into());
     }
@@ -171,6 +171,7 @@ pub fn decode_definition(source: &str) -> Result<Definition, String> {
         return Err("UI_ANIMATION: effect budget exceeded".into());
     }
     Ok(Definition {
+        keep_reduced: matches!(wire.when_reduced, WhenReduced::Keep),
         name: wire.name,
         timing,
         effect,
@@ -223,15 +224,15 @@ mod tests {
     /// The compiler's lowering of Tailwind's default `animate-*` keyframes.
     fn defaults() -> Value {
         json!({
-            "spin":{"name":"spin","durationMs":1000,"delayMs":0,"iterations":null,"easing":"linear","opacity":null,
+            "spin":{"name":"spin","durationMs":1000,"delayMs":0,"iterations":null,"whenReduced":"base","easing":"linear","opacity":null,
                 "transforms":[{"kind":"rotate","angle":[{"offset":0,"value":0},{"offset":1,"value":360}]}]},
-            "ping":{"name":"ping","durationMs":1000,"delayMs":0,"iterations":null,"easing":[0,0,0.2,1],
+            "ping":{"name":"ping","durationMs":1000,"delayMs":0,"iterations":null,"whenReduced":"base","easing":[0,0,0.2,1],
                 "opacity":[{"offset":0,"value":1},{"offset":0.75,"value":0},{"offset":1,"value":0}],
                 "transforms":[{"kind":"scale","x":[{"offset":0,"value":1},{"offset":0.75,"value":2},{"offset":1,"value":2}],
                     "y":[{"offset":0,"value":1},{"offset":0.75,"value":2},{"offset":1,"value":2}]}]},
-            "pulse":{"name":"pulse","durationMs":2000,"delayMs":0,"iterations":null,"easing":[0.4,0,0.6,1],
+            "pulse":{"name":"pulse","durationMs":2000,"delayMs":0,"iterations":null,"whenReduced":"base","easing":[0.4,0,0.6,1],
                 "opacity":[{"offset":0,"value":1},{"offset":0.5,"value":0.5},{"offset":1,"value":1}],"transforms":[]},
-            "bounce":{"name":"bounce","durationMs":1000,"delayMs":0,"iterations":null,"easing":[0.25,0.1,0.25,1],"opacity":null,
+            "bounce":{"name":"bounce","durationMs":1000,"delayMs":0,"iterations":null,"whenReduced":"base","easing":[0.25,0.1,0.25,1],"opacity":null,
                 "transforms":[{"kind":"translate","relative":true,
                     "x":[{"offset":0,"value":0,"easing":[0.8,0,1,1]},{"offset":0.5,"value":0,"easing":[0,0,0.2,1]},{"offset":1,"value":0}],
                     "y":[{"offset":0,"value":-0.25,"easing":[0.8,0,1,1]},{"offset":0.5,"value":0,"easing":[0,0,0.2,1]},{"offset":1,"value":-0.25}]}]}
@@ -342,6 +343,8 @@ mod tests {
             ("bounce", "/transforms/0/relative", json!("yes")),
             ("ping", "/transforms/0/x/1/value", json!(-2)),
             ("ping", "/transforms/0/relative", json!(true)),
+            ("pulse", "/whenReduced", json!("sometimes")),
+            ("pulse", "/whenReduced", json!(null)),
         ] {
             let mut payload = defaults[name].clone();
             match payload.pointer_mut(path) {
