@@ -14,6 +14,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 mod accessibility;
+mod automation;
+pub use automation::AutomationAct;
 mod effects;
 mod keyboard;
 mod number;

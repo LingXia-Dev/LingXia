@@ -216,6 +216,8 @@ function resolveElement(tag, original, children, identity, depth, parent) {
     // A styled link becomes consecutive link pieces sharing one handle, label and pressed style.
     if (tag === 'link') result.children = result.children.map((piece, i) => ({
       ...piece, tag: 'link', element: 'link', states: result.states, handlers: result.handlers.map(entry => [...entry]),
+      // The first piece stands for the whole link, so it answers to the link's test id.
+      props: i === 0 && props.testId !== undefined ? { ...piece.props, testId: props.testId } : piece.props,
       wire: [...piece.wire, ...result.wire.filter(([key]) => i === 0 || key !== 'accessibilityLabel')],
     }));
     if (tag === 'text' && result.children.length > limits.runs) throw Error(`UI_TEXT: more than ${limits.runs} runs`);

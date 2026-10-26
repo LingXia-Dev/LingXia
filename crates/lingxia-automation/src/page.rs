@@ -33,6 +33,7 @@ const PAGE_ACTIONS_NOT_READY: &str = "PAGE_ACTIONS_NOT_READY";
 fn is_transient_page_error(error: &str) -> bool {
     error.starts_with("page is not active:")
         || error == "page WebView is not ready"
+        || error.starts_with("E_PAGE_NOT_READY:")
         // The query path surfaces LxAppError's Display form ("WebView error:
         // No current page"), not the bare lowercase string navigate() emits.
         || error.to_ascii_lowercase().contains("no current page")
@@ -295,7 +296,7 @@ impl JSPageDriver {
         } else {
             Some(options.max_text.unwrap_or(DEFAULT_MAX_TEXT))
         };
-        let value = auto::page_query(
+        let value = crate::gpu::page_query(
             &app,
             options.page.as_deref(),
             &options.css,
@@ -311,12 +312,14 @@ impl JSPageDriver {
     #[js_method]
     async fn click(&self, ctx: JSContext, options: JSClickOptions) -> JSResult<()> {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;
-        auto::page_click_with(
+        crate::gpu::page_act(
             &app,
             options.page.as_deref(),
             &options.css,
             options.index,
-            options.force.unwrap_or(false),
+            crate::gpu::GpuAction::Click {
+                force: options.force.unwrap_or(false),
+            },
         )
         .await
         .map_err(fail(&app, options.page.as_deref()))
@@ -325,12 +328,14 @@ impl JSPageDriver {
     #[js_method(rename = "type")]
     async fn type_text(&self, ctx: JSContext, options: JSTypeOptions) -> JSResult<()> {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;
-        auto::page_type(
+        crate::gpu::page_act(
             &app,
             options.page.as_deref(),
             &options.css,
             options.index,
-            &options.text,
+            crate::gpu::GpuAction::Type {
+                text: options.text.clone(),
+            },
         )
         .await
         .map_err(fail(&app, options.page.as_deref()))
@@ -339,13 +344,15 @@ impl JSPageDriver {
     #[js_method]
     async fn fill(&self, ctx: JSContext, options: JSTypeOptions) -> JSResult<()> {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;
-        auto::page_fill_with(
+        crate::gpu::page_act(
             &app,
             options.page.as_deref(),
             &options.css,
             options.index,
-            &options.text,
-            options.force.unwrap_or(false),
+            crate::gpu::GpuAction::Fill {
+                text: options.text.clone(),
+                force: options.force.unwrap_or(false),
+            },
         )
         .await
         .map_err(fail(&app, options.page.as_deref()))
@@ -368,9 +375,15 @@ impl JSPageDriver {
     #[js_method(rename = "scrollTo")]
     async fn scroll_to(&self, ctx: JSContext, options: JSScrollToOptions) -> JSResult<()> {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;
-        auto::page_scroll_to(&app, options.page.as_deref(), &options.css)
-            .await
-            .map_err(fail(&app, options.page.as_deref()))
+        crate::gpu::page_act(
+            &app,
+            options.page.as_deref(),
+            &options.css,
+            None,
+            crate::gpu::GpuAction::ScrollIntoView,
+        )
+        .await
+        .map_err(fail(&app, options.page.as_deref()))
     }
 
     #[js_method]
@@ -432,7 +445,7 @@ impl JSPageDriver {
             // Navigation returns before the destination WebView is attached.
             // Treat that transient absence like an unsatisfied selector so a
             // targeted wait can also be the page-readiness barrier.
-            let probe = match auto::page_query(
+            let probe = match crate::gpu::page_query(
                 &app,
                 options.page.as_deref(),
                 &options.css,
@@ -614,7 +627,7 @@ impl JSPageDriver {
     ) -> JSResult<JSScreenshot> {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;
         let options = options.0.unwrap_or_default();
-        let bytes = auto::page_screenshot(&app, options.page.as_deref())
+        let bytes = crate::gpu::page_screenshot(&app, options.page.as_deref())
             .await
             .map_err(fail(&app, options.page.as_deref()))?;
         let (width, height) = png_dimensions(&bytes).unwrap_or((0, 0));

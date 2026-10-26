@@ -22,6 +22,7 @@ mod dialogs;
 #[path = "dialogs/unavailable.rs"]
 mod dialogs;
 mod error;
+pub mod gpu;
 mod host;
 mod info;
 mod input;

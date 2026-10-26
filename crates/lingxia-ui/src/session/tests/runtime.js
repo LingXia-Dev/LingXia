@@ -1924,6 +1924,8 @@
         element: "link",
         states: result.states,
         handlers: result.handlers.map((entry) => [...entry]),
+        // The first piece stands for the whole link, so it answers to the link's test id.
+        props: i === 0 && props.testId !== void 0 ? { ...piece.props, testId: props.testId } : piece.props,
         wire: [...piece.wire, ...result.wire.filter(([key]) => i === 0 || key !== "accessibilityLabel")]
       }));
       if (tag === "text" && result.children.length > limits.runs) throw Error(`UI_TEXT: more than ${limits.runs} runs`);
