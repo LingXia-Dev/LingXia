@@ -91,6 +91,33 @@ fn keyword(record: &Record, field: usize) -> Option<Dimension> {
     }
 }
 
+/// The box each record is laid out, clipped and painted in: fixed boxes
+/// escape to the root, every other record keeps its tree parent.
+pub(crate) fn layout_parents(records: &[Record]) -> Vec<Option<usize>> {
+    records
+        .iter()
+        .map(|record| {
+            record.parent.map(|parent| {
+                if record.string(field::POSITION) == Some("fixed") {
+                    0
+                } else {
+                    parent
+                }
+            })
+        })
+        .collect()
+}
+
+/// Records under `display: none`, including their descendants.
+pub(crate) fn hidden(records: &[Record]) -> Vec<bool> {
+    let mut hidden = Vec::with_capacity(records.len());
+    for record in records {
+        let inherited = record.parent.is_some_and(|parent| hidden[parent]);
+        hidden.push(inherited || record.string(field::DISPLAY) == Some("none"));
+    }
+    hidden
+}
+
 /// Taffy style for one record; the root fills the viewport and a page root keeps out of the safe area.
 pub(crate) fn node_style(
     records: &[Record],
@@ -102,7 +129,7 @@ pub(crate) fn node_style(
     let page = index == 0 && record.tag == tag::PAGE;
     // Opposing insets size an absolute box, so fixed media defaults must not override them.
     let spans = |a: usize, b: usize| {
-        record.string(field::POSITION) == Some("absolute")
+        matches!(record.string(field::POSITION), Some("absolute" | "fixed"))
             && record.fields.iter().any(|(id, _)| *id == a)
             && record.fields.iter().any(|(id, _)| *id == b)
     };
@@ -147,11 +174,17 @@ pub(crate) fn node_style(
         padding_bottom += safe.insets[2].max(safe.keyboard);
         padding_left += safe.insets[3];
     }
+    let display = record.string(field::DISPLAY);
+    // `block` children stretch down a column; inline boxes shrink to content.
+    let block = matches!(display, Some("block" | "inline-block"));
+    let inline = matches!(display, Some("inline-flex" | "inline-block"));
     let border = record.number(field::BORDER_WIDTH).unwrap_or(0.0);
     let [border_top, border_right, border_bottom, border_left] =
         crate::protocol::BORDER_EDGES.map(|id| record.number(id).unwrap_or(border));
     Ok(Style {
-        display: if matches!(record.tag, tag::GRID | tag::STACK) {
+        display: if display == Some("none") {
+            Display::None
+        } else if matches!(record.tag, tag::GRID | tag::STACK) {
             Display::Grid
         } else {
             Display::Flex
@@ -172,7 +205,7 @@ pub(crate) fn node_style(
         } else {
             Default::default()
         },
-        position: if record.string(field::POSITION) == Some("absolute") {
+        position: if matches!(record.string(field::POSITION), Some("absolute" | "fixed")) {
             Position::Absolute
         } else {
             Position::Relative
@@ -193,6 +226,7 @@ pub(crate) fn node_style(
             Some("row-reverse") => FlexDirection::RowReverse,
             Some("column") => FlexDirection::Column,
             Some("column-reverse") => FlexDirection::ColumnReverse,
+            _ if block => FlexDirection::Column,
             _ if record.tag == tag::ROW => FlexDirection::Row,
             _ => FlexDirection::Column,
         },
@@ -226,8 +260,14 @@ pub(crate) fn node_style(
                 0.0
             },
         ),
-        align_items: record.string(field::ALIGN).map(cross_alignment),
-        align_self: record.string(field::ALIGN_SELF).map(cross_alignment),
+        align_items: record
+            .string(field::ALIGN)
+            .map(cross_alignment)
+            .or(block.then_some(AlignItems::STRETCH)),
+        align_self: record
+            .string(field::ALIGN_SELF)
+            .map(cross_alignment)
+            .or(inline.then_some(AlignItems::FLEX_START)),
         justify_content: record.string(field::JUSTIFY).map(|value| match value {
             "center" => JustifyContent::SAFE_CENTER,
             "end" => JustifyContent::SAFE_FLEX_END,

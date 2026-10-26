@@ -19,8 +19,21 @@ test('flex direction follows utility cascade, responsive rules and explicit styl
   assert.equal(classStyle('flex-col-reverse').flexDirection, 'column-reverse');
   const view = rendered(() => h('view', { className: 'flex flex-col' }, h('text', {}, 'Hello')));
   assert.deepEqual([view.tag, view.props.display, view.props.flexDirection], ['column', 'flex', 'column']);
-  assert.throws(() => describe(() => h('text', { className: 'flex' }, 'Hello'), {}), /UI_STYLE: display is not supported on <text>/);
   assert.throws(() => describe(() => h('grid', { className: 'flex-col', style: { gridTemplateColumns: 2 } }), {}), /flexDirection is not supported on <grid>/);
+});
+
+test('display utilities, fixed positioning and dynamic viewport units lower to defined native semantics', async () => {
+  await use(['hidden', 'block', 'inline-flex', 'inline-block', 'md:hidden', 'contents', 'table', 'fixed', 'sticky', 'h-dvh', 'min-h-svh', 'max-h-lvh', 'w-dvw', 'h-[50dvh]']);
+  assert.deepEqual(classStyle('hidden'), { display: 'none' });
+  assert.deepEqual(classStyle('block md:hidden', env('light', 900)), { display: 'none' });
+  for (const name of ['block', 'inline-flex', 'inline-block']) assert.equal(classStyle(name).display, name);
+  assert.equal(node('text', { className: 'hidden' }).display, 'none');
+  assert.equal(node('image', { src: 'a.png', className: 'hidden' }).display, 'none');
+  for (const name of ['contents', 'table', 'sticky']) assert.throws(() => classStyle(name), /UI_CLASS/);
+  assert.equal(classStyle('fixed').position, 'fixed');
+  assert.deepEqual([classStyle('h-dvh').height, classStyle('min-h-svh').minHeight, classStyle('max-h-lvh').maxHeight, classStyle('w-dvw').width, classStyle('h-[50dvh]').height],
+    ['100vh', '100vh', '100vh', '100vw', '50vh']);
+  assert.equal(node('column', { className: 'h-dvh' }, { env: { viewport: { width: 400, height: 700 } } }).height, 700);
 });
 
 test('horizontal overflow lowers only onto scroll containers', async () => {

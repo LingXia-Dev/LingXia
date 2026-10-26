@@ -24,10 +24,11 @@ function evaluate(text) {
       i += source[i] === '(' ? 1 : 5;
       const value = sum(); expect(')'); return value;
     }
-    const match = source.slice(i).match(/^(-?(?:\d*\.)?\d+(?:e[+-]?\d+)?)(px|rem|em|%|vw|vh)?/i);
+    const match = source.slice(i).match(/^(-?(?:\d*\.)?\d+(?:e[+-]?\d+)?)(px|rem|em|%|[dsl]?vw|[dsl]?vh)?/i);
     if (!match) unsupported(`unsupported value: ${text}`);
     i += match[0].length;
-    const unit = match[2]?.toLowerCase() ?? '';
+    // The View viewport has no browser chrome, so dynamic, small and large units coincide.
+    const unit = match[2]?.toLowerCase().replace(/^[dsl](v[wh])$/, '$1') ?? '';
     return unit === 'rem' ? { value: Number(match[1]) * 16, unit: 'px' } : { value: Number(match[1]), unit };
   };
   const product = () => {

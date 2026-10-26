@@ -119,6 +119,7 @@ impl Renderer {
         for (index, record) in records.iter().enumerate() {
             layouts.push(self.shape(record, &styles[index], &texts[index]));
         }
+        let parents = style::layout_parents(records);
         let mut tree: TaffyTree<usize> = TaffyTree::new();
         let mut ids = Vec::new();
         for (index, record) in records.iter().enumerate() {
@@ -126,7 +127,7 @@ impl Renderer {
             let id = tree
                 .new_leaf_with_context(style, index)
                 .map_err(|e| e.to_string())?;
-            if let Some(parent) = record.parent {
+            if let Some(parent) = parents[index] {
                 tree.add_child(ids[parent], id).map_err(|e| e.to_string())?;
             }
             if record.tag == tag::LIST {

@@ -29,7 +29,12 @@ time (see [ui-authoring.md](ui-authoring.md)) and again at runtime.
 - Unitless `lineHeight` is a multiplier and is recomputed per node from its
   font size; `'24px'` is absolute and inherits as pixels.
 - `letterSpacing` in `em` resolves on its owner; descendants inherit pixels.
-- `rem` is 16 logical pixels. `vw`/`vh` resolve against the View viewport.
+- `rem` is 16 logical pixels. `vw`/`vh` (and `d`/`s`/`l` variants) resolve against
+  the View viewport.
+- `hidden` is `display: none`: no layout, paint, hits or semantics. `block` and
+  `inline-block` lay children in a stretched column; `inline-flex` and
+  `inline-block` default `align-self` to start.
+- `fixed` is absolute against the root `<page>`; it escapes ancestor scrolls and clips.
 - Percent sizes resolve in layout against the parent content box.
 - `w-fit`, `w-auto`, `h-auto` map to native sizing keywords; `h-auto` keeps
   intrinsic height under min/max constraints.

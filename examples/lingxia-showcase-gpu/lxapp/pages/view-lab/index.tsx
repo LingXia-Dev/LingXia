@@ -1,6 +1,6 @@
-import type { VectorPath } from '@lingxia/ui';
+import { useLocal, type VectorPath } from '@lingxia/ui';
 import '../../theme/index.css';
-import { Page, Section } from '../../shared/ui';
+import { Button, Page, Section } from '../../shared/ui';
 
 // GPU-only renderer fixtures: one section per View capability, addressed by testId.
 export function render() {
@@ -9,6 +9,7 @@ export function render() {
       <Gradients />
       <Vectors />
       <Borders />
+      <Display />
     </Page>
   );
 }
@@ -57,6 +58,27 @@ function Borders() {
         <view testId="lab-border-dotted" className="h-12 grow basis-0 rounded-full border-4 border-dotted border-error" />
         <view testId="lab-border-edges" className="h-12 grow basis-0 border-t-2 border-l-4 border-dashed border-foreground" />
       </row>
+    </Section>
+  );
+}
+
+function Display() {
+  const shown = useLocal('shown', true);
+  return (
+    <Section title="Display" testId="lab-display">
+      <row className="gap-2 items-center">
+        <Button testId="lab-display-toggle" onClick={() => shown.set(!shown.value)}>{shown.value ? 'Hide' : 'Show'}</Button>
+        <text testId="lab-display-hidden" className={shown.value ? 'text-sm' : 'hidden'}>Toggled by hidden</text>
+      </row>
+      <row className="block gap-1">
+        <text className="text-xs text-muted-foreground">block: a column that stretches</text>
+        <view className="h-2 rounded bg-primary" />
+      </row>
+      <row className="h-16 items-center gap-2 bg-muted rounded-lg px-2">
+        <view testId="lab-display-inline" className="inline-flex px-2 py-1 rounded bg-card"><text className="text-xs">inline-flex</text></view>
+        <view className="h-[8dvh] w-4 rounded bg-primary" />
+      </row>
+      <view testId="lab-display-fixed" className="fixed bottom-4 right-4 px-3 py-1 rounded-full bg-primary"><text className="text-xs text-primary-foreground">fixed</text></view>
     </Section>
   );
 }

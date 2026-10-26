@@ -44,14 +44,17 @@ fn flex_container_directions_reflow_without_changing_identity() {
 #[test]
 fn wire_keeps_flex_layout_options_bounded_and_container_specific() {
     assert_eq!(protocol::FIELDS[103], ("flexDirection", "flex-direction"));
-    assert_eq!(protocol::FIELDS[104], ("display", "flex-display"));
+    assert_eq!(protocol::FIELDS[104], ("display", "display"));
     for tag in [2, 3, 5, 6, 16, 17] {
-        for (field, value) in [(103, "row"), (104, "flex")] {
-            let wire = json!([tag, -1, "", "", "", 1, field, value]);
-            assert!(protocol::decode(wire.as_array().unwrap()).is_err());
-        }
+        let wire = json!([tag, -1, "", "", "", 1, 103, "row"]);
+        assert!(protocol::decode(wire.as_array().unwrap()).is_err());
     }
-    for (field, value) in [(103, "sideways"), (104, "grid"), (104, "none")] {
+    // Any box may leave layout.
+    for tag in [2, 3, 5, 17] {
+        let wire = json!([tag, -1, "", "", "", 1, 104, "none"]);
+        assert!(protocol::decode(wire.as_array().unwrap()).is_ok());
+    }
+    for (field, value) in [(103, "sideways"), (104, "contents"), (104, "table")] {
         assert!(
             protocol::decode(
                 json!([0, -1, "", "", "", 1, field, value])

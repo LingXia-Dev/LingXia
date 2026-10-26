@@ -852,3 +852,6 @@ mod box_model {
         );
     }
 }
+
+#[path = "tests/display.rs"]
+mod display;

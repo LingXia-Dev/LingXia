@@ -41,13 +41,15 @@ impl Renderer {
         let mut input_layouts = Vec::new();
         let identities = crate::protocol::identities(records);
         let mut scroll_parents: Vec<Option<String>> = Vec::new();
+        let parents = crate::layout::style::layout_parents(records);
+        let hidden = crate::layout::style::hidden(records);
         for (index, record) in records.iter().enumerate() {
             let mut layout = *tree.layout(ids[index]).map_err(|e| e.to_string())?;
             layout.padding.left += layout.border.left;
             layout.padding.right += layout.border.right;
             layout.padding.top += layout.border.top;
             layout.padding.bottom += layout.border.bottom;
-            let (px, py) = record.parent.map(|p| origins[p]).unwrap_or((0.0, 0.0));
+            let (px, py) = parents[index].map(|p| origins[p]).unwrap_or((0.0, 0.0));
             let x = px + layout.location.x;
             let y = py + layout.location.y;
             let identity = identities[index].clone();
@@ -113,7 +115,7 @@ impl Renderer {
                 });
             let control_bounds = content_clip.map(|clip| clip.bounds).unwrap_or(bounds);
             let visible_bounds = intersect(bounds, viewport);
-            let scroll_parent = record.parent.and_then(|p| scroll_parents[p].clone());
+            let scroll_parent = parents[index].and_then(|p| scroll_parents[p].clone());
             let scroll = (matches!(record.tag, tag::SCROLL | tag::LIST)).then(|| {
                 let axis = if record.string(field::SCROLL_AXIS) == Some("horizontal") {
                     ScrollAxis::Horizontal
@@ -659,6 +661,9 @@ impl Renderer {
                     None
                 },
             );
+            if hidden[index] {
+                commands.truncate(paint_start);
+            }
             ranges.push(paint_start..commands.len());
             nodes.push(NodeSnapshot {
                 plot_local: None,
@@ -682,7 +687,8 @@ impl Renderer {
                     .or_else(|| record.string(field::IMAGE_ALT))
                     .filter(|label| !label.is_empty())
                     .map(str::to_owned),
-                accessibility_hidden: (button_owners[index].is_some()
+                accessibility_hidden: (hidden[index]
+                    || button_owners[index].is_some()
                     || record.string(field::IMAGE_ALT) == Some(""))
                 .then_some(true),
                 button_content: button_hashes
@@ -743,7 +749,8 @@ impl Renderer {
                 clips: Vec::new(),
                 scroll,
                 radius,
-                on_click: if record.number(field::ENABLED) == Some(0.0)
+                on_click: if hidden[index]
+                    || record.number(field::ENABLED) == Some(0.0)
                     || record.parent.is_some_and(|p| {
                         records[p].tag == tag::RADIO
                             && records[p].number(field::ENABLED) == Some(0.0)
@@ -771,17 +778,14 @@ impl Renderer {
             commands,
             nodes,
             ranges,
-            parents: records.iter().map(|record| record.parent).collect(),
             order: crate::scene::retained::paint_order(
-                &records
-                    .iter()
-                    .map(|record| record.parent)
-                    .collect::<Vec<_>>(),
+                &parents,
                 &records
                     .iter()
                     .map(|record| record.number(field::Z_INDEX).unwrap_or(0.0) as i32)
                     .collect::<Vec<_>>(),
             ),
+            parents,
             backdrops: records
                 .iter()
                 .map(|r| {
