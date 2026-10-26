@@ -45,6 +45,17 @@ pub(crate) struct SceneKey {
 #[cfg(feature = "gpu")]
 impl SceneKey {
     pub(crate) fn capture(display: &DisplayList) -> Option<Self> {
+        Self::eligible(display, 256, 4096).then(|| Self {
+            width: display.width,
+            height: display.height,
+            scale: display.scale,
+            commands: display.commands.clone(),
+            images: display.images.clone(),
+        })
+    }
+
+    /// Whether a frame is small enough to keep its commands as a cache key.
+    pub(crate) fn eligible(display: &DisplayList, max_commands: usize, max_glyphs: usize) -> bool {
         let glyphs: usize = display
             .commands
             .iter()
@@ -58,25 +69,15 @@ impl SceneKey {
             .values()
             .map(crate::scene::image::Bitmap::byte_len)
             .sum();
-        if display.commands.len() > 256
-            || glyphs > 4096
+        !(display.commands.len() > max_commands
+            || glyphs > max_glyphs
             || display.images.len() > 16
             || image_bytes > 8 * 1024 * 1024
             || u32::from(display.width) * u32::from(display.height) > 4 * 1024 * 1024
             || display
                 .commands
                 .iter()
-                .any(|paint| matches!(paint, Paint::Text { size, .. } if *size > 256.0))
-        {
-            return None;
-        }
-        Some(Self {
-            width: display.width,
-            height: display.height,
-            scale: display.scale,
-            commands: display.commands.clone(),
-            images: display.images.clone(),
-        })
+                .any(|paint| matches!(paint, Paint::Text { size, .. } if *size > 256.0)))
     }
 
     pub(crate) fn matches(&self, display: &DisplayList) -> bool {
@@ -117,6 +118,27 @@ impl DisplayList {
     pub(crate) fn hide_caret(&mut self) {
         if let Some(index) = self.caret_paint.take() {
             self.commands.remove(index);
+            for span in &mut self.animated {
+                let range = &mut span.commands;
+                if range.start <= index && index < range.end {
+                    range.end -= 1;
+                } else if range.start > index {
+                    *range = range.start - 1..range.end - 1;
+                }
+            }
+        }
+    }
+
+    /// Keep animated spans on their commands when `count` paints are inserted at `at`
+    /// for the node whose paints are `owner`.
+    fn spans_inserted(spans: &mut [AnimatedSpan], owner: Range<usize>, at: usize, count: usize) {
+        for span in spans {
+            let range = &mut span.commands;
+            if range.start <= owner.start && owner.end <= range.end {
+                range.end += count;
+            } else if range.start >= at {
+                *range = range.start + count..range.end + count;
+            }
         }
     }
     pub(crate) fn decorate_inputs(&mut self) {
@@ -240,6 +262,13 @@ impl DisplayList {
                 foreground.push(rect(caret, shaped.color));
             }
             foreground.push(Paint::PopClip);
+            let owner = range.clone();
+            Self::spans_inserted(
+                &mut self.animated,
+                owner.clone(),
+                range.end,
+                foreground.len(),
+            );
             self.commands.splice(range.end..range.end, foreground);
             let light_text = shaped.color.iter().take(3).map(|c| *c as u32).sum::<u32>() > 384;
             let fill = if light_text {
@@ -247,6 +276,7 @@ impl DisplayList {
             } else {
                 [216, 227, 255, 255]
             };
+            Self::spans_inserted(&mut self.animated, owner, range.start, 1 + selection.len());
             self.commands.splice(
                 range.start..range.start,
                 std::iter::once(Paint::Clip(ClipSnapshot {
@@ -338,6 +368,7 @@ impl DisplayList {
             return true;
         };
         let count = rects.len();
+        Self::spans_inserted(&mut self.animated, start..start, start, count);
         self.commands.splice(
             start..start,
             rects.into_iter().map(|bounds| Paint::Rect {
