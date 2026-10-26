@@ -9,6 +9,37 @@ const HANDLE_KNOB: f64 = 8.0;
 /// A handle grabs only touches at most this far above the line bottom.
 const HANDLE_REACH_ABOVE: f64 = 4.0;
 
+/// How adapters draw press and keyboard-focus feedback for the page's theme.
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeedbackStyle {
+    /// ARGB over an unstyled pressed node's clipped shape. A node with a
+    /// `pressedStyle` repaints itself and gets no overlay.
+    pub press_overlay: u32,
+    /// ARGB stroke of the keyboard focus ring.
+    pub focus_ring: u32,
+    /// Ring stroke width, logical pixels.
+    pub focus_ring_width: f32,
+}
+
+impl FeedbackStyle {
+    pub fn for_theme(dark: bool) -> Self {
+        if dark {
+            Self {
+                press_overlay: 0x33FF_FFFF,
+                focus_ring: 0xFFE6_EBF5,
+                focus_ring_width: 2.0,
+            }
+        } else {
+            Self {
+                press_overlay: 0x2200_0000,
+                focus_ring: 0xFF17_2033,
+                focus_ring_width: 2.0,
+            }
+        }
+    }
+}
+
 #[derive(Deserialize)]
 struct Clip {
     bounds: Option<[f64; 4]>,

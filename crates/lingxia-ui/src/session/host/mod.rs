@@ -47,7 +47,8 @@ pub struct FrameSnapshot {
     /// Each source's decode size in this frame.
     pub image_buckets: std::collections::HashMap<String, crate::scene::image::Bucket>,
     pub metrics: crate::session::metrics::FrameMetrics,
-    /// `{generation, nodes, images, metrics}` for adapters that marshal the frame.
+    /// `{generation, nodes, images, metrics, feedback}` for adapters that marshal the
+    /// frame; `feedback` is the [`crate::interaction::chrome::FeedbackStyle`] to draw.
     pub json: String,
 }
 

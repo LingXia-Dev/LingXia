@@ -234,11 +234,13 @@ impl<A: PlatformAdapter> Inner<A> {
             metrics.extend(extra.clone());
         }
         let generation = session.generation();
+        let feedback = crate::interaction::chrome::FeedbackStyle::for_theme(session.renderer.dark);
         let json = serde_json::json!({
             "generation": generation,
             "nodes": nodes,
             "images": images,
             "metrics": metrics,
+            "feedback": feedback,
         })
         .to_string();
         let snapshot = Arc::new(FrameSnapshot {

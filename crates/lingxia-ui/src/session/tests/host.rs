@@ -1414,3 +1414,25 @@ fn a_failed_session_leaves_touches_and_keys_to_the_platform() {
     assert!(!host.pointer(down));
     assert!(!host.key(Key::Tab, false, false));
 }
+
+#[test]
+fn the_frame_says_how_to_draw_press_and_focus_feedback_for_its_theme() {
+    use crate::interaction::chrome::FeedbackStyle;
+    let worker = ViewWorker::spawn("test-feedback-style").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source("function render(){return h('button',{onClick:()=>{}},'tap')}"),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let snapshot: serde_json::Value = serde_json::from_str(&host.snapshot().unwrap().json).unwrap();
+    assert_eq!(
+        snapshot["feedback"],
+        serde_json::to_value(FeedbackStyle::for_theme(false)).unwrap()
+    );
+    assert_eq!(snapshot["feedback"]["pressOverlay"], 0x2200_0000u32);
+    let dark = FeedbackStyle::for_theme(true);
+    assert_ne!(dark.focus_ring, FeedbackStyle::for_theme(false).focus_ring);
+}
