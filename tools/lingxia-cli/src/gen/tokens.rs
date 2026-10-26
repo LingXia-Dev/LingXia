@@ -55,8 +55,10 @@ pub fn load(path: Option<&Path>) -> Result<Pack> {
         Some(path) => {
             let text =
                 fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
-            serde_json::from_str(&text)
-                .with_context(|| format!("{} is not a theme pack", path.display()))?
+            lingxia_theme::complete(
+                serde_json::from_str(&text)
+                    .with_context(|| format!("{} is not a theme pack", path.display()))?,
+            )
         }
     };
     let problems = lingxia_theme::check(&pack);
@@ -132,11 +134,11 @@ mod tests {
 
     #[test]
     fn the_gpu_showcase_tokens_are_current() {
-        let showcase = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../examples/lingxia-showcase-gpu/lxapp/theme/tokens.css");
+        let theme = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/lingxia-showcase-gpu/lxapp/theme");
         assert_eq!(
-            fs::read_to_string(showcase).unwrap(),
-            stylesheet(&load(None).unwrap()),
+            fs::read_to_string(theme.join("tokens.css")).unwrap(),
+            stylesheet(&load(Some(&theme.join("pack.json"))).unwrap()),
             "run `lingxia gen tokens` in the showcase lxapp"
         );
     }

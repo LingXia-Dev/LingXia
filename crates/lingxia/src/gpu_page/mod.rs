@@ -270,8 +270,26 @@ impl GpuPageViewFactory for Binding {
                 .await
                 .map_err(|_| LxAppError::Runtime("GPU creation cancelled".into()))?
                 .map_err(LxAppError::Runtime)?;
+            if let Some(update) = page.gpu_theme_pack().as_deref().and_then(theme_update) {
+                // The host validates and resolves it; a bad pack keeps the default palette.
+                if let Err(error) = native.update_environment(&update) {
+                    log::warn!("GPU theme pack not applied: {error}");
+                }
+            }
             Ok(register(lease, native) as Arc<dyn GpuPageView>)
         })
+    }
+}
+
+/// The lxapp's bundled pack as a host environment push; it is the app's palette unless the
+/// platform pushes its own.
+fn theme_update(pack: &str) -> Option<serde_json::Value> {
+    match serde_json::from_str::<serde_json::Value>(pack) {
+        Ok(pack) => Some(serde_json::json!({"kind": "theme", "revision": 1, "pack": pack})),
+        Err(error) => {
+            log::warn!("theme/pack.json is not JSON: {error}");
+            None
+        }
     }
 }
 

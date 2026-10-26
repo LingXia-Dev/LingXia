@@ -2125,6 +2125,11 @@ impl PageInstance {
         self.owning_lxapp().read_gpu_module(&self.inner.path)
     }
 
+    /// The owning lxapp's bundled theme pack JSON, if it ships one.
+    pub fn gpu_theme_pack(&self) -> Option<String> {
+        self.owning_lxapp().read_theme_pack()
+    }
+
     /// Resolve package or managed image bytes on the host's resource worker.
     pub fn gpu_image_bytes(&self, source: &str) -> Result<Vec<u8>, LxAppError> {
         if self.renderer() != PageRenderer::Gpu {

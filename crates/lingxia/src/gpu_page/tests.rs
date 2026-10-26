@@ -239,3 +239,11 @@ fn hot_swap_matches_routes_with_or_without_module_extension() {
     }
     assert_eq!(super::page_key("pages/v1.2/index"), "pages/v1.2/index");
 }
+
+#[test]
+fn a_bundled_pack_becomes_a_theme_push_and_bad_json_is_skipped() {
+    let update = theme_update(r##"{"name":"brand","version":1}"##).unwrap();
+    assert_eq!(update["kind"], "theme");
+    assert_eq!(update["pack"]["name"], "brand");
+    assert!(theme_update("{").is_none());
+}

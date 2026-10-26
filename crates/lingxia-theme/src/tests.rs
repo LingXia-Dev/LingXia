@@ -126,3 +126,34 @@ fn roles_are_kebab_names_in_slot_order() {
     }
     assert_eq!(Role::from_name("chart-5"), Some(Role::Chart5));
 }
+
+#[test]
+fn a_partial_pack_completes_from_the_default_and_derives_its_accent() {
+    let pack: Pack = serde_json::from_str(
+        r##"{"name":"brand","version":1,"accent":{"seed":"#0f9d58","derive":true}}"##,
+    )
+    .unwrap();
+    assert!(
+        !check(&pack).is_empty(),
+        "missing roles stay visible before completion"
+    );
+    let pack = complete(pack);
+    assert_eq!(check(&pack), Vec::new());
+    let base = default_pack();
+    assert_eq!(
+        (&pack.typography, &pack.shape, &pack.space, &pack.motion),
+        (&base.typography, &base.shape, &base.space, &base.motion)
+    );
+    for appearance in [Appearance::Light, Appearance::Dark] {
+        let prefs = Prefs {
+            appearance,
+            ..Prefs::default()
+        };
+        let (ours, theirs) = (
+            resolve(&pack, &prefs).unwrap(),
+            resolve(&base, &prefs).unwrap(),
+        );
+        assert_ne!(ours.color(Role::Accent), theirs.color(Role::Accent));
+        assert_eq!(ours.color(Role::Surface), theirs.color(Role::Surface));
+    }
+}

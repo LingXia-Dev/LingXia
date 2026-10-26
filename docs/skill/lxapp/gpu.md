@@ -33,6 +33,8 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   `border-line-strong` (editors, controls), `bg-accent text-on-accent`, `bg-text/8`; plot series
   `chart-1`..`chart-5`. Roles follow appearance, so `dark:` on a colour fails (`UI_COLOR`).
 - `lingxia gen tokens` writes the theme pack's type, radius and spacing scales to `theme/tokens.css`.
+- `theme/pack.json` gives the lxapp its own palette; it may set only `accent` (`{"seed":"#…","derive":true}`),
+  the rest comes from the default pack. A palette the host pushes wins.
 - Supported variants: `dark:`, `rtl:`/`ltr:`, `first:`/`last:`/`odd:`/`even:`/`only:`/`empty:`, `sm:`–`2xl:`, `focus:` (editors), `active:`
   (controls), `hover:` (fine pointers), `disabled:`, `placeholder:`,
   `space-*`/`divide-*`. `*:`, `**:`, `in-*:`, `group-*:`, `peer-*:` fail naming the TS-side form.

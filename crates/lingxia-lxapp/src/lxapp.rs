@@ -2912,6 +2912,18 @@ impl LxApp {
             .map_err(|_| LxAppError::Runtime(format!("GPU module is not UTF-8: {path}")))
     }
 
+    /// The theme pack the lxapp bundles (`theme/pack.json`, completed by `lingxia build`).
+    pub(crate) fn read_theme_pack(&self) -> Option<String> {
+        const LIMIT: usize = 64 * 1024;
+        let bytes = self.read_bytes("theme/pack.json").ok()?;
+        if bytes.len() > LIMIT {
+            warn!("theme/pack.json is over {LIMIT} bytes; the default theme applies")
+                .with_appid(self.appid.clone());
+            return None;
+        }
+        String::from_utf8(bytes).ok()
+    }
+
     pub(crate) fn read_gpu_image(&self, source: &str) -> Result<Vec<u8>, LxAppError> {
         const LIMIT: u64 = crate::page::ui_limits::IMAGE_BYTES as u64;
         if source.is_empty()

@@ -16,11 +16,36 @@ pub fn default_pack() -> Pack {
     serde_json::from_str(include_str!("../packs/default.json")).expect("default pack parses")
 }
 
+/// `pack` with every role and scale step it leaves out taken from the default pack, so an
+/// lxapp pack may change only its accent.
+pub fn complete(mut pack: Pack) -> Pack {
+    let base = default_pack();
+    for (colors, defaults) in [
+        (&mut pack.appearance.light, &base.appearance.light),
+        (&mut pack.appearance.dark, &base.appearance.dark),
+    ] {
+        for (role, color) in defaults {
+            colors.entry(role.clone()).or_insert(*color);
+        }
+    }
+    for (values, defaults) in [
+        (&mut pack.typography.scale, &base.typography.scale),
+        (&mut pack.typography.leading, &base.typography.leading),
+        (&mut pack.shape.radius, &base.shape.radius),
+    ] {
+        for (key, value) in defaults {
+            values.entry(key.clone()).or_insert(*value);
+        }
+    }
+    pack
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Pack {
     pub name: String,
     pub version: u32,
+    #[serde(default)]
     pub appearance: Appearances,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub accent: Option<Accent>,
@@ -36,10 +61,12 @@ pub struct Pack {
 
 pub type Colors = BTreeMap<String, Rgba>;
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Appearances {
+    #[serde(default)]
     pub light: Colors,
+    #[serde(default)]
     pub dark: Colors,
     #[serde(
         default,

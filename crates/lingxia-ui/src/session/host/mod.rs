@@ -464,7 +464,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
         self.inner.deliver(effects);
     }
 
-    /// A runtime environment push (`language` or `surface` kind, JSON).
+    /// A runtime environment push (`language`, `surface` or `theme` kind, JSON).
     pub fn update_environment(&self, update: &str) -> Result<(), String> {
         if self.inner.main().host_environment.update(update)? {
             self.request_frame();

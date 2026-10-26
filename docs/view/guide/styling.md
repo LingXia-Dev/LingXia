@@ -64,6 +64,14 @@ appearance, so `dark:` on a colour, palette ladders (`gray-200`) and hex fail wi
 colours in `style`. Complete CSS gradients (`bg-[radial-gradient(…)]`) and shadow layers may use literal
 colours. The roles are listed in [styles](../reference/styles.md#colour-roles).
 
+An lxapp sets its own look with `theme/pack.json`. A pack may name only an accent seed and derive the
+accent family from it; every role it leaves out comes from the default pack. `lingxia build` proves the
+pack's contrast pairs and ships it; the host resolves it when a page opens:
+
+```json
+{ "name": "brand", "version": 1, "accent": { "seed": "#0f9d58", "derive": true } }
+```
+
 ```tsx error UI_COLOR
 export function render() {
   return <page className="bg-white"><text className="text-gray-500">Hex and ladders fail</text></page>;

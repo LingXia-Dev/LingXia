@@ -5,6 +5,8 @@ use serde::Deserialize;
 pub(super) struct HostEnvironment {
     language: Option<(u64, String)>,
     surface: Option<(u64, SurfaceContext)>,
+    /// The lxapp's theme pack, resolved into light and dark palette pushes.
+    theme: Option<(u64, [serde_json::Value; 2])>,
 }
 
 /// The lxapp's adaptive context, as Logic's `lx.surface.watchContext()` reports it.
@@ -35,6 +37,10 @@ enum Update {
         revision: u64,
         context: SurfaceContext,
     },
+    Theme {
+        revision: u64,
+        pack: Box<lingxia_theme::Pack>,
+    },
 }
 
 impl HostEnvironment {
@@ -61,6 +67,13 @@ impl HostEnvironment {
                 }
                 newer
             }
+            Update::Theme { revision, pack } => {
+                let newer = newer(self.theme.as_ref().map(|t| t.0), revision);
+                if newer {
+                    self.theme = Some((revision, palettes(&pack, revision)?));
+                }
+                newer
+            }
         })
     }
 
@@ -78,7 +91,40 @@ impl HostEnvironment {
             .into();
         }
         env["canDock"] = surface.is_some_and(|c| c.can_dock).into();
+        // A palette the platform pushes (the host's theme) wins over the lxapp's own pack.
+        if let Some((_, palettes)) = &self.theme
+            && env.get("palette").is_none()
+        {
+            env["palette"] = palettes[usize::from(env["theme"] == "dark")].clone();
+        }
     }
+}
+
+/// The pack resolved for each appearance by the resolver host chrome uses, as palette pushes.
+fn palettes(pack: &lingxia_theme::Pack, revision: u64) -> Result<[serde_json::Value; 2], String> {
+    let pack = lingxia_theme::complete(pack.clone());
+    if let Some(problem) = lingxia_theme::check(&pack).first() {
+        return Err(format!(
+            "UI_ENVIRONMENT: theme pack {}: {problem}",
+            pack.name
+        ));
+    }
+    let resolve = |appearance| {
+        let prefs = lingxia_theme::Prefs {
+            appearance,
+            ..Default::default()
+        };
+        lingxia_theme::resolve(&pack, &prefs)
+            .map(|theme| {
+                let colors: Vec<String> = theme.palette.iter().map(|color| color.hex()).collect();
+                serde_json::json!({ "revision": revision, "colors": colors })
+            })
+            .map_err(|error| format!("UI_ENVIRONMENT: {error}"))
+    };
+    Ok([
+        resolve(lingxia_theme::Appearance::Light)?,
+        resolve(lingxia_theme::Appearance::Dark)?,
+    ])
 }
 
 #[cfg(test)]
@@ -122,8 +168,35 @@ mod tests {
             r#"{"kind":"surface","revision":1,"context":{"sizeClass":"compact","width":0,"height":0}}"#,
             r#"{"kind":"language","revision":1,"language":""}"#,
             r#"{"kind":"theme","revision":1}"#,
+            r#"{"kind":"theme","revision":1,"pack":{"name":"x","version":2}}"#,
+            r##"{"kind":"theme","revision":1,"pack":{"name":"x","version":1,"appearance":{"light":{"text":"#ffffff"}}}}"##,
         ] {
             assert!(host.update(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn an_lxapp_pack_becomes_the_palette_unless_the_platform_pushes_one() {
+        let mut host = HostEnvironment::default();
+        let pack = json!({"kind": "theme", "revision": 1,
+            "pack": {"name": "brand", "version": 1, "accent": {"seed": "#0f9d58", "derive": true}}});
+        assert!(host.update(&pack.to_string()).unwrap());
+        let slot = lingxia_theme::Role::Accent as usize;
+        for theme in ["light", "dark"] {
+            let mut env = json!({"theme": theme});
+            host.apply(&mut env);
+            let palette = crate::theme::Palette::decode(&env["palette"], theme == "dark").unwrap();
+            assert_ne!(
+                palette.0[slot],
+                crate::theme::Palette::builtin(theme == "dark").0[slot]
+            );
+            assert_eq!(
+                palette.role(lingxia_theme::Role::Surface),
+                crate::theme::Palette::builtin(theme == "dark").role(lingxia_theme::Role::Surface)
+            );
+        }
+        let mut env = json!({"theme": "light", "palette": {"revision": 9, "colors": ["#000000"]}});
+        host.apply(&mut env);
+        assert_eq!(env["palette"]["revision"], 9, "the platform's palette wins");
     }
 }
