@@ -1,0 +1,173 @@
+# Styling
+
+```css
+@theme inline {
+  --color-surface: var(--app-surface);
+  --color-ink: var(--app-ink);
+  --color-accent: var(--app-accent);
+}
+@theme {
+  --radius-card: 14px;
+}
+:root {
+  --app-surface: #ffffff;
+  --app-ink: #111827;
+  --app-accent: #2563eb;
+}
+[data-theme='dark'] {
+  --app-surface: #0b0f19;
+  --app-ink: #f3f4f6;
+  --app-accent: #60a5fa;
+}
+```
+
+```tsx
+import { useLocal } from '@lingxia/ui';
+import './theme.css';
+
+const tone = { neutral: 'bg-surface text-ink', accent: 'bg-accent text-white' } as const;
+
+export function render() {
+  const selected = useLocal<'neutral' | 'accent'>('selected', 'neutral');
+  return (
+    <page className="bg-surface p-4 gap-3">
+      <column className={`rounded-card p-4 gap-1 shadow-md ${tone[selected.value]}`}>
+        <text className="text-lg font-semibold">Plan</text>
+        <text className="text-sm opacity-80">Renews monthly</text>
+      </column>
+      <button
+        onClick={() => selected.set(selected.value === 'neutral' ? 'accent' : 'neutral')}
+        className="rounded-full border border-accent text-accent bg-transparent active:bg-accent/10 md:self-start"
+      >
+        Switch tone
+      </button>
+      <view style={{ height: 4, borderRadius: 2, backgroundImage: { kind: 'linear', direction: 'right', stops: [{ offset: 0, color: '#2563eb' }, { offset: 1, color: '#db2777' }] } }} />
+    </page>
+  );
+}
+```
+
+Style with Tailwind utilities in `className`, or with CSS-named properties in `style`. The official
+Tailwind compiler runs at build time; each utility is lowered to native style or refused. Nothing
+CSS-related runs on the device.
+
+## Utilities
+
+Write complete utility names as string literals. The build reads class names from literals, both
+branches of conditionals, `&&`/`||`/`??`, `const` aliases and object maps (also imported ones), without
+running your code. A name assembled at runtime is not compiled and fails when it renders:
+
+```tsx error UI_CLASS
+import { useLocal } from '@lingxia/ui';
+
+export function render() {
+  const size = useLocal('size', 4);
+  return <page className={`p-${size.value}`} />;
+}
+```
+
+Choose between complete names instead: `size.value === 4 ? 'p-4' : 'p-8'`.
+
+The order of classes in a string never matters; Tailwind's cascade decides, as in CSS. Every utility
+the default theme defines is listed in [utilities](../reference/utilities.md) as supported or refused.
+
+## Arbitrary values
+
+`w-[72px]`, `text-[13px]`, `bg-[#0ea5e9]`, `grid-cols-[1fr_auto]`, `bg-(--brand)` and opacity modifiers
+(`bg-black/50`) work wherever the family works. Colors in any CSS syntax (`oklch()`, `color-mix()` with
+`transparent`) become sRGB hex at build time. `calc()` folds when its operands share a unit.
+`url()` backgrounds, `!important` and unresolved `var()` are refused.
+
+## Themes and tokens
+
+A page imports at most one stylesheet (it may `@import` relative token files). It holds only tokens:
+
+- `@theme { … }` and `@theme inline { … }` define Tailwind tokens (`--color-*`, `--radius-*`, `--text-*`, …).
+- `:root { … }` and `[data-theme='light' | 'dark'] { … }` define palette custom properties.
+
+Rules, selectors and `@apply` are refused (`UI_CSS`). A token that differs between palettes compiles
+into a light and a dark rule; the View picks one from `env.theme`, so `bg-surface` above needs no
+`dark:` variant. Font tokens accept only the standard system sans and mono stacks.
+
+## Variants
+
+| Variant | Matches |
+| --- | --- |
+| `dark:` | `env.theme === 'dark'` |
+| `sm:` … `xl:`, `min-[…]:`, `max-*:` | the View viewport width (`sm` = 640 px, `md` = 768, `lg` = 1024, `xl` = 1280) |
+| `rtl:`, `ltr:` | the node's inline direction ([RTL and i18n](rtl-and-i18n.md)) |
+| `first:` `last:` `only:` `odd:` `even:` `empty:` | the node's position among its rendered siblings; `empty:` a node with no children |
+| `active:` | a pressed `<button>`, `<checkbox>`, `<switch>`, `<radio>` or `<link>` |
+| `focus:` | a focused `<input>`, `<textarea>` or `<search>` |
+| `hover:` | a hovered element, only when `env.pointer` is `fine` |
+| `disabled:` | an element with `disabled` set; it replaces the whole class cascade |
+| `placeholder:` | an editor's placeholder; `text-*` color only |
+| `motion-reduce:`, `motion-safe:` | `env.reducedMotion` |
+
+`active:`, `focus:` and `hover:` may change paint only: color, background color and image, opacity,
+border color, box shadow and placeholder color. They cannot change size, spacing or transforms.
+`2xl:` is not recognized and fails as an unknown utility; write `min-[96rem]:`.
+
+Variants that test DOM state are refused with the alternative named in the message: `group-*`, `peer-*`,
+`has-[…]`, `data-[…]`, `aria-*`, `checked:`, `focus-within:`, `focus-visible:`, `nth-*`, `before:`,
+`after:` and container queries (`@md:`). Compute the condition in TypeScript and pick the class.
+The full list is in [variants](../reference/variants.md).
+
+## Each element renders its own styles
+
+Every element accepts only the style properties it draws. A utility on an element that ignores it is
+a build error, not a silent no-op:
+
+```tsx error UI_CLASS_ELEMENT
+export function render() {
+  return <page><text className="gap-2">Text has no gap</text></page>;
+}
+```
+
+The accepted properties per element are in [styles](../reference/styles.md). `<span>` and `<link>`
+take only text paint; `<spacer>` only box properties.
+
+## The `style` prop
+
+`style` takes CSS property names in camelCase. Numbers are logical pixels; strings carry units
+(`'50%'`, `'100vw'`, `'24px'` line height, `'0.05em'` letter spacing). Inline style overrides classes.
+Within one object, longhands beat shorthands whatever their order; across layers a later shorthand
+resets earlier longhands, as in CSS.
+
+Structured values have object forms: `backgroundImage` takes `{ kind, stops, … }` (linear, radial,
+conic), `boxShadow` an array of `{ offsetX, offsetY, blur, spread, color }`, `translate`/`scale` a
+number or a pair, `rotate` degrees, `transformOrigin` a pair of box fractions. Colors in `style` are
+hex strings or `currentColor`.
+
+```tsx error UI_STYLE
+export function render() {
+  return <page><text style={{ alignItems: 'center' }}>Text is not a flex container</text></page>;
+}
+```
+
+## Refused, and why
+
+Each of these fails the build with `UI_CLASS_UNSUPPORTED` rather than rendering differently from CSS:
+
+- Filters (`blur-*`, `brightness-*`, `drop-shadow-*`), except `backdrop-blur-*` and `backdrop-saturate-*`.
+- Inset shadows, `ring-offset-*`, outlines, `text-shadow-*`, masks, blend modes.
+- Skew and 3D transforms (`skew-*`, `rotate-x-*`, `perspective-*`).
+- Per-edge border colors and styles (`border-t-red-500`); borders share one color and style.
+- `cursor-*` and `pointer-events-*`: there is no cursor, and hit testing follows the rules in [Interaction](interaction.md).
+- Floats, columns, tables, `visibility`, `static`, scroll snapping and scroll margins.
+- Serif and custom font families.
+- Transitions and animations, until motion leaves its gate ([Motion](motion.md)).
+
+```tsx error UI_CLASS_UNSUPPORTED
+export function render() {
+  return <page><view className="h-10 blur-sm bg-neutral-300" /></page>;
+}
+```
+
+A misspelled or invented utility is `UI_CLASS_UNKNOWN`; the message names the nearest supported one.
+
+```tsx error UI_CLASS_UNKNOWN
+export function render() {
+  return <page><row className="flex-center" /></page>;
+}
+```
