@@ -527,6 +527,7 @@ fn shared_composite_plan_matches_cpu_for_nested_roots_clips_and_siblings() {
         bounds: [x, 0.0, width, 96.0],
         radius: 0.0,
         radii: None,
+        transform: None,
     };
     let glass = |saturation| Layer::Backdrop {
         clip: clip(0.0, 96.0),
@@ -655,6 +656,7 @@ fn compositor_pool_reuses_submitted_work_without_overwriting_live_outputs() {
                     bounds: [16.0, 16.0, 64.0, 64.0],
                     radius: 0.0,
                     radii: None,
+                    transform: None,
                 },
                 blur: 4.0,
                 saturation: Saturation::new(1.0).unwrap(),
@@ -757,6 +759,7 @@ fn mirrored_backdrop_crop_preserves_gpu_card_edges() {
                         bounds: [16.0, 16.0, 64.0, 64.0],
                         radius: 0.0,
                         radii: None,
+                        transform: None,
                     },
                     blur,
                     saturation: Saturation::new(1.0).unwrap(),
@@ -818,6 +821,7 @@ fn mirrored_backdrop_crop_preserves_gpu_card_edges() {
                     bounds: [16.0, 16.0, 64.0, 64.0],
                     radius: 0.0,
                     radii: None,
+                    transform: None,
                 },
                 blur: 20.0,
                 saturation: Saturation::new(1.0).unwrap(),

@@ -83,6 +83,7 @@ mod tests {
             bounds: [16.25, 8.5, 15.5, 20.25],
             radius: 4.0,
             radii: None,
+            transform: None,
         };
         let region = Region::new(clip, 96, 96, 20.0).unwrap().unwrap();
         assert_eq!(

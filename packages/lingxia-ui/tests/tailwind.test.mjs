@@ -36,6 +36,23 @@ test('display utilities, fixed positioning and dynamic viewport units lower to d
   assert.equal(node('column', { className: 'h-dvh' }, { env: { viewport: { width: 400, height: 700 } } }).height, 700);
 });
 
+test('static transforms compose per-axis variables, origins and rotations; skew and 3D fail', async () => {
+  await use(['translate-x-2', '-translate-y-1/2', 'translate-[10px_20%]', 'rotate-45', '-rotate-90', 'scale-95', '-scale-x-100', 'scale-y-50',
+    'origin-top-left', 'origin-[25%_75%]', 'skew-x-6', 'rotate-x-45', 'transform', 'active:scale-95', 'md:rotate-180']);
+  assert.deepEqual(classStyle('translate-x-2 -translate-y-1/2').translate, [8, '-50%']);
+  assert.deepEqual(classStyle('-translate-y-1/2 translate-x-2'), classStyle('translate-x-2 -translate-y-1/2'));
+  assert.deepEqual(classStyle('translate-[10px_20%]').translate, [10, '20%']);
+  assert.deepEqual(classStyle('-scale-x-100').scale, [-1, 1]);
+  assert.deepEqual(classStyle('scale-95 scale-y-50').scale, [.95, .5]);
+  assert.deepEqual([classStyle('-rotate-90').rotate, classStyle('rotate-45 md:rotate-180', env('light', 900)).rotate], [-90, 180]);
+  assert.deepEqual([classStyle('origin-top-left').transformOrigin, classStyle('origin-[25%_75%]').transformOrigin], [[0, 0], [.25, .75]]);
+  assert.deepEqual(classStyle('transform'), {});
+  for (const name of ['skew-x-6', 'rotate-x-45']) assert.throws(() => classStyle(name), /only translate, rotate and scale/);
+  assert.deepEqual(JSON.parse(node('column', { className: 'translate-x-2 rotate-45 -scale-x-100 origin-top-left' }).transform),
+    { translate: [8, 0], rotate: 45, scale: [-1, 1], origin: [0, 0] });
+  assert.throws(() => describe(() => h('button', { className: 'active:scale-95' }, 'Go'), {}), /paint properties only, not scale/);
+});
+
 test('horizontal overflow lowers only onto scroll containers', async () => {
   await use(['overflow-x-auto', 'md:overflow-x-auto', 'overflow-hidden']);
   assert.deepEqual(classStyle('overflow-x-auto'), { overflowX: 'auto' });
@@ -311,11 +328,11 @@ test('custom theme tokens and arbitrary values retain Tailwind semantics', async
 });
 
 test('unsupported rendering and missing dynamic candidates fail visibly', async () => {
-  const rules = await compileUtilities(new Set(['backdrop-invert', 'transition', 'rotate-45', 'group-hover:underline', 'p-4']));
+  const rules = await compileUtilities(new Set(['backdrop-invert', 'transition', 'skew-y-3', 'group-hover:underline', 'p-4']));
   const errors = Object.fromEntries(rules.filter(rule => rule.error).map(rule => [rule.name, rule.error]));
-  assert.deepEqual(Object.keys(errors).sort(), ['backdrop-invert', 'group-hover:underline', 'rotate-45', 'transition']);
+  assert.deepEqual(Object.keys(errors).sort(), ['backdrop-invert', 'group-hover:underline', 'skew-y-3', 'transition']);
   assert.ok(Object.values(errors).every(error => error.category === 'unsupported'));
-  assert.match(errors.transition.message, /transition-property \(the native renderer has no transitions or transforms\)/);
+  assert.match(errors.transition.message, /transition-property \(the native renderer has no transitions\)/);
   configureClasses(rules);
   for (const name of ['backdrop-invert', 'transition', 'p-8']) assert.throws(() => classStyle(name), /UI_CLASS/);
   assert.throws(() => classStyle(false), /className must be a string/);

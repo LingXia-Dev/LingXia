@@ -160,6 +160,7 @@ pub mod field {
     pub const WIDTH_KEYWORD: usize = 127;
     pub const HEIGHT_KEYWORD: usize = 128;
     pub const BORDER_STYLE: usize = 129;
+    pub const TRANSFORM: usize = 130;
 }
 
 pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page"];
@@ -296,6 +297,7 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("widthKeyword", "sizing-keyword"),
     ("heightKeyword", "sizing-keyword"),
     ("borderStyle", "border-style"),
+    ("transform", "transform"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -524,6 +526,7 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::BUTTON, tag::CHECKBOX, tag::SWITCH, tag::RADIO]), parent: None },
+    FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },

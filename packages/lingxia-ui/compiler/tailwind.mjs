@@ -405,11 +405,52 @@ function longhand(prop, value) {
       return value;
   }
 }
-const transitions = /^(?:transition|transition-[a-z-]+|animation-[a-z-]+|transform|translate|scale|rotate|filter|cursor|pointer-events|user-select|outline.*)$/;
+const transitions = /^(?:transition|transition-[a-z-]+|animation-[a-z-]+|filter|cursor|pointer-events|user-select|outline.*)$/;
+
+function angle(text) {
+  const negated = text.match(/^calc\(([\s\S]+?)\s*\*\s*-1\)$/);
+  return negated ? -angle(negated[1]) : degrees(text);
+}
+
+function translateLength(text) {
+  const { value, unit } = evaluate(text);
+  if (unit === '%') return `${Math.round(value * 1e6) / 1e6}%`;
+  if (unit === 'px' || (unit === '' && value === 0)) return value;
+  return unsupported(`unsupported translate: ${text}`);
+}
+
+// Tailwind composes translate and scale from per-axis variables that cascade independently.
+function transformDeclaration(prop, raw, local, style, transform) {
+  const value = variables(raw, local).trim();
+  const axis = prop.match(/^--tw-(translate|scale)-(x|y)$/);
+  if (axis) {
+    const parts = postcss.list.space(value);
+    // `translate-[x_y]` writes both axes into each variable.
+    const part = parts.length === 2 ? parts[axis[2] === 'x' ? 0 : 1] : value;
+    transform[`${axis[1]}${axis[2].toUpperCase()}`] = axis[1] === 'translate' ? translateLength(part) : number(part);
+    return;
+  }
+  if (prop === 'rotate') { style.rotate = value === 'none' ? 0 : angle(value); return; }
+  if (prop === 'transform-origin') {
+    style.transformOrigin = gradientCenter(value.replace(/(^|\s)0(?=\s|$)/g, '$10%'));
+    return;
+  }
+  if (prop === 'transform') {
+    if (value) unsupported(`transform: ${value} (only translate, rotate and scale)`);
+    return;
+  }
+  const kind = prop === 'translate' ? 'translate' : 'scale';
+  transform[kind] = true;
+  if (raw.replace(/\s/g, '') === `var(--tw-${kind}-x)var(--tw-${kind}-y)`) return;
+  const [x, y] = postcss.list.space(value);
+  const lower = kind === 'translate' ? translateLength : number;
+  transform[`${kind}X`] = lower(x);
+  transform[`${kind}Y`] = y === undefined ? (kind === 'scale' ? transform.scaleX : 0) : lower(y);
+}
 
 function declarations(nodes, vars, root, animationLowering) {
   nodes = nodes.flatMap(node => node.type === 'atrule' && node.name === 'supports' && supportedConditions.includes(node.params) ? node.nodes : [node]);
-  const style = {}, gradient = {}, shadow = {}, backdrop = {}, local = { ...vars };
+  const style = {}, gradient = {}, shadow = {}, backdrop = {}, transform = {}, local = { ...vars };
   for (const node of nodes) if (node.type === 'decl' && node.prop.startsWith('--')) local[node.prop] = node.value;
   const clamp = nodes.some(node => node.type === 'decl' && node.prop === '-webkit-line-clamp');
   for (const node of nodes) {
@@ -425,10 +466,13 @@ function declarations(nodes, vars, root, animationLowering) {
     if (prop.startsWith('--tw-backdrop-') || prop === 'backdrop-filter' || prop === '-webkit-backdrop-filter') { backdropDeclaration(prop, node.value, local, backdrop); continue; }
     if (prop.startsWith('--tw-shadow') || prop.startsWith('--tw-ring-') || prop.startsWith('--tw-inset-') || prop === 'box-shadow') { shadowDeclaration(prop, node.value, local, shadow); continue; }
     if (prop.startsWith('--tw-gradient-') || prop === 'background-image') { gradientDeclaration(prop, node.value, local, gradient); continue; }
+    if (/^--tw-(?:translate|scale)-[xy]$/.test(prop) || ['translate', 'scale', 'rotate', 'transform', 'transform-origin'].includes(prop)) {
+      transformDeclaration(prop, node.value, local, style, transform); continue;
+    }
     // Border styles follow --tw-border-style, which only `border-solid|dashed|dotted` set.
     if (prop === '--tw-border-style') { style.borderStyle = longhand('border-style', variables(node.value, local).trim()); continue; }
     if (prop.startsWith('--')) continue;
-    if (transitions.test(prop)) unsupported(`${prop} (the native renderer has no transitions or transforms)`);
+    if (transitions.test(prop)) unsupported(`${prop} (the native renderer has no transitions)`);
     const value = variables(node.value, local).trim();
     if (prop in shorthands) {
       const longhands = shorthands[prop];
@@ -458,7 +502,7 @@ function declarations(nodes, vars, root, animationLowering) {
     else if (prop in cssStyle) style[cssStyle[prop]] = longhand(prop, value);
     else unsupported(`${prop}: ${value}`);
   }
-  return { style, ...(Object.keys(backdrop).length ? { backdrop } : {}), ...(Object.keys(gradient).length ? { gradient } : {}), ...(Object.keys(shadow).length ? { shadow } : {}) };
+  return { style, ...(Object.keys(transform).length ? { transform } : {}), ...(Object.keys(backdrop).length ? { backdrop } : {}), ...(Object.keys(gradient).length ? { gradient } : {}), ...(Object.keys(shadow).length ? { shadow } : {}) };
 }
 
 function conditions(rule) {

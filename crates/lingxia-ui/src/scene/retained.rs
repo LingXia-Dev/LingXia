@@ -28,6 +28,8 @@ pub(crate) struct RetainedLayout {
     /// Paint order: depth-first, siblings stably ordered by z-index.
     pub(crate) order: Vec<usize>,
     pub(crate) opacities: Vec<f32>,
+    /// Static rotation and scale; translation is already in the geometry.
+    pub(crate) transforms: Vec<Option<crate::scene::transform::StaticTransform>>,
     pub(crate) backdrops: Vec<Option<(f32, f32)>>,
     pub(crate) width: u16,
     pub(crate) height: u16,
@@ -142,7 +144,7 @@ impl RetainedLayout {
         {
             return Err("UI_ANIMATION: visual identity missing from layout".into());
         }
-        let animated = !visuals.is_empty();
+        let animated = !visuals.is_empty() || self.transforms.iter().any(Option::is_some);
         let count = self.nodes.len();
         let mut transforms: Vec<Affine> = vec![Affine::IDENTITY; count];
         let viewport = [
@@ -184,6 +186,12 @@ impl RetainedLayout {
             }
             let inherited = parent.map(|p| transforms[p]).unwrap_or(Affine::IDENTITY);
             let visual = visuals.get(&node.identity);
+            let inherited = match self.transforms[index] {
+                Some(transform) => {
+                    checked_paint_transform(inherited * transform.matrix(node.bounds))?
+                }
+                None => inherited,
+            };
             let matrix = if let Some(visual) = visual {
                 let [x, y, w, h] = node.bounds.map(f64::from);
                 checked_paint_transform(inherited * visual.matrix([x + w / 2.0, y + h / 2.0])?)?
@@ -194,7 +202,7 @@ impl RetainedLayout {
                 && (node.input.is_some() || node.scroll.is_some() || node.range.is_some())
             {
                 return Err(
-                    "UI_ANIMATION: transformed editor, scroll or slider unsupported".into(),
+                    "UI_TRANSFORM: editors, scrolls and sliders cannot rotate or scale".into(),
                 );
             }
             let alpha = visual
@@ -240,6 +248,7 @@ impl RetainedLayout {
                             radii: node.radii,
                             bounds: node.bounds,
                             radius: node.radius,
+                            transform: None,
                         },
                         matrix,
                     )?);
@@ -252,6 +261,7 @@ impl RetainedLayout {
                         bounds: node.bounds,
                         radius: node.radius,
                         radii: node.radii,
+                        transform: None,
                     },
                     blur,
                     saturation,
@@ -269,6 +279,7 @@ impl RetainedLayout {
                     bounds: node.bounds,
                     radius: node.radius,
                     radii: node.radii,
+                    transform: None,
                 })));
             }
             child_layers[index] = descendants;
@@ -600,6 +611,7 @@ impl RetainedLayout {
                     radii: node.radii,
                     bounds: node.bounds,
                     radius: node.radius,
+                    transform: None,
                 }));
             }
             let inner_clip = node.content_clip.filter(|_| {
@@ -667,12 +679,20 @@ impl RetainedLayout {
                     bounds: node.bounds,
                     radius: node.radius,
                     radii: node.radii,
+                    transform: None,
                 },
                 matrix,
             )?;
-            node.bounds = border.bounds;
-            node.radius = border.radius;
-            node.radii = border.radii;
+            node.bounds = border.extent();
+            if border.transform.is_some() {
+                // Hits follow the rotated shape, not its extent.
+                node.clips.push(border);
+                node.radius = 0.0;
+                node.radii = None;
+            } else {
+                node.radius = border.radius;
+                node.radii = border.radii;
+            }
             node.visible_bounds = transformed_bounds(node.visible_bounds, matrix)?;
             node.content_clip = node
                 .content_clip

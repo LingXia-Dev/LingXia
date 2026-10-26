@@ -35,6 +35,10 @@ time (see [ui-authoring.md](ui-authoring.md)) and again at runtime.
   `inline-block` lay children in a stretched column; `inline-flex` and
   `inline-block` default `align-self` to start.
 - `fixed` is absolute against the root `<page>`; it escapes ancestor scrolls and clips.
+- `translate-*` moves layout geometry after layout (siblings stay put, hits stay exact);
+  `rotate-*`, `scale-*` and `origin-*` paint an affine about the origin and hit-test the
+  transformed shape. Editors, scrolls and sliders may translate but not rotate or scale;
+  state variants cannot transform; skew and 3D fail.
 - Percent sizes resolve in layout against the parent content box.
 - `w-fit`, `w-auto`, `h-auto` map to native sizing keywords; `h-auto` keeps
   intrinsic height under min/max constraints.
@@ -78,7 +82,7 @@ custom properties and a matching `color-scheme`.
 
 ## Unsupported on purpose
 
-Transitions, transforms, filters other than backdrop blur/saturation, inset
+Transitions, skew and 3D transforms, filters other than backdrop blur/saturation, inset
 shadows, ring offsets, per-edge border styles and colors, `group-*` and
 `peer-*` selectors, container queries and plugins. Each fails with
 `UI_CLASS_UNSUPPORTED` rather than rendering differently from CSS.

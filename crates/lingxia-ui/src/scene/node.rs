@@ -61,6 +61,7 @@ impl NodeSnapshot {
                 bounds: self.visible_bounds,
                 radius: 0.0,
                 radii: None,
+                transform: None,
             })
             .contains(point)
             || self.clips.iter().any(|clip| !clip.contains(point))
@@ -113,6 +114,10 @@ pub struct ClipSnapshot {
     pub radii: Option<[[f32; 2]; 4]>,
     pub bounds: [f32; 4],
     pub radius: f32,
+    /// A rotating, skewing or mirroring affine applied to the rounded box;
+    /// axis-aligned scales fold into `bounds` instead.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transform: Option<[f64; 6]>,
 }
 impl ClipSnapshot {
     pub(crate) fn rounded_box(self) -> crate::scene::border::RoundedBox {
@@ -127,10 +132,35 @@ impl ClipSnapshot {
                 .map(|pair| pair.map(f64::from)),
         )
     }
+    pub(crate) fn affine(self) -> Option<Affine> {
+        self.transform.map(Affine::new)
+    }
+    /// The axis-aligned box the clip shape covers.
+    pub(crate) fn extent(self) -> [f32; 4] {
+        let Some(transform) = self.affine() else {
+            return self.bounds;
+        };
+        let [x, y, w, h] = self.bounds.map(f64::from);
+        let b = transform.transform_rect_bbox(vello_cpu::kurbo::Rect::new(x, y, x + w, y + h));
+        [b.x0, b.y0, b.width(), b.height()].map(|v| v as f32)
+    }
     pub(crate) fn contains(self, point: [f32; 2]) -> bool {
+        let point = match self.affine() {
+            Some(transform) => {
+                let local = transform.inverse()
+                    * vello_cpu::kurbo::Point::new(f64::from(point[0]), f64::from(point[1]));
+                [local.x as f32, local.y as f32]
+            }
+            None => point,
+        };
         self.rounded_box().contains(point.map(f64::from))
     }
     pub(crate) fn intersects(self, bounds: [f32; 4]) -> bool {
+        // Transformed shapes cull by their extent; paint clips them exactly.
+        if self.transform.is_some() {
+            let [_, _, w, h] = intersect(self.extent(), bounds);
+            return w > 0.0 && h > 0.0;
+        }
         if self.radii.is_some() {
             return self.rounded_box().intersects(bounds.map(f64::from));
         }
@@ -147,18 +177,36 @@ impl ClipSnapshot {
         dx * dx + dy * dy <= r * r
     }
     pub(crate) fn path(self) -> vello_cpu::kurbo::BezPath {
-        if self.radii.is_some() {
-            return self.rounded_box().path();
+        let path = if self.radii.is_some() {
+            self.rounded_box().path()
+        } else {
+            let [x, y, w, h] = self.bounds;
+            RoundedRect::new(
+                x as f64,
+                y as f64,
+                (x + w) as f64,
+                (y + h) as f64,
+                self.radius as f64,
+            )
+            .to_path(0.1)
+        };
+        match self.affine() {
+            Some(transform) => transform * path,
+            None => path,
         }
-        let [x, y, w, h] = self.bounds;
-        RoundedRect::new(
-            x as f64,
-            y as f64,
-            (x + w) as f64,
-            (y + h) as f64,
-            self.radius as f64,
-        )
-        .to_path(0.1)
+    }
+    /// The clip in device pixels.
+    pub(crate) fn scaled(mut self, scale: f32) -> Self {
+        if let Some(transform) = self.affine() {
+            self.transform = Some((Affine::scale(f64::from(scale)) * transform).as_coeffs());
+            return self;
+        }
+        self.bounds = self.bounds.map(|value| value * scale);
+        self.radius *= scale;
+        self.radii = self
+            .radii
+            .map(|radii| radii.map(|pair| pair.map(|value| value * scale)));
+        self
     }
 }
 

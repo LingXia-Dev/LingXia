@@ -98,6 +98,7 @@ impl DisplayList {
                             bounds,
                             radius: 0.0,
                             radii: None,
+                            transform: None,
                         }
                         .path(),
                     );
@@ -206,6 +207,7 @@ impl DisplayList {
                             bounds: [x, y, w, h],
                             radius,
                             radii: corners,
+                            transform: None,
                         }
                         .path(),
                     );
@@ -223,6 +225,7 @@ impl DisplayList {
                             bounds: [x, y, w, h],
                             radius,
                             radii: corners,
+                            transform: None,
                         }
                         .path(),
                     );

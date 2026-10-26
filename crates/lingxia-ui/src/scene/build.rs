@@ -43,6 +43,24 @@ impl Renderer {
         let mut scroll_parents: Vec<Option<String>> = Vec::new();
         let parents = crate::layout::style::layout_parents(records);
         let hidden = crate::layout::style::hidden(records);
+        let transforms = records
+            .iter()
+            .map(|record| {
+                record
+                    .string(field::TRANSFORM)
+                    .map(crate::scene::transform::StaticTransform::parse)
+                    .transpose()
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        // A zero scale hides paint and hits for its subtree but keeps layout and semantics.
+        let mut collapsed: Vec<bool> = Vec::with_capacity(records.len());
+        for (index, record) in records.iter().enumerate() {
+            collapsed.push(
+                hidden[index]
+                    || transforms[index].is_some_and(|t| t.collapsed())
+                    || record.parent.is_some_and(|parent| collapsed[parent]),
+            );
+        }
         for (index, record) in records.iter().enumerate() {
             let mut layout = *tree.layout(ids[index]).map_err(|e| e.to_string())?;
             layout.padding.left += layout.border.left;
@@ -50,8 +68,11 @@ impl Renderer {
             layout.padding.top += layout.border.top;
             layout.padding.bottom += layout.border.bottom;
             let (px, py) = parents[index].map(|p| origins[p]).unwrap_or((0.0, 0.0));
-            let x = px + layout.location.x;
-            let y = py + layout.location.y;
+            let [tx, ty] = transforms[index]
+                .map(|t| t.translation([layout.size.width, layout.size.height]))
+                .unwrap_or_default();
+            let x = px + layout.location.x + tx;
+            let y = py + layout.location.y + ty;
             let identity = identities[index].clone();
             let bounds = [x, y, layout.size.width, layout.size.height];
             // Nested percentages can multiply otherwise bounded authored lengths.
@@ -112,6 +133,7 @@ impl Renderer {
                     bounds: geometry.inner.bounds.map(|v| v as f32),
                     radius: 0.0,
                     radii: Some(geometry.inner.radii.map(|pair| pair.map(|v| v as f32))),
+                    transform: None,
                 });
             let control_bounds = content_clip.map(|clip| clip.bounds).unwrap_or(bounds);
             let visible_bounds = intersect(bounds, viewport);
@@ -661,7 +683,7 @@ impl Renderer {
                     None
                 },
             );
-            if hidden[index] {
+            if collapsed[index] {
                 commands.truncate(paint_start);
             }
             ranges.push(paint_start..commands.len());
@@ -749,7 +771,7 @@ impl Renderer {
                 clips: Vec::new(),
                 scroll,
                 radius,
-                on_click: if hidden[index]
+                on_click: if collapsed[index]
                     || record.number(field::ENABLED) == Some(0.0)
                     || record.parent.is_some_and(|p| {
                         records[p].tag == tag::RADIO
@@ -786,6 +808,11 @@ impl Renderer {
                     .collect::<Vec<_>>(),
             ),
             parents,
+            transforms: transforms
+                .iter()
+                .zip(&collapsed)
+                .map(|(t, collapsed)| t.filter(|t| t.paints() && !collapsed))
+                .collect(),
             backdrops: records
                 .iter()
                 .map(|r| {

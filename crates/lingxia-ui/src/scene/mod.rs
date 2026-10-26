@@ -19,4 +19,5 @@ pub(crate) mod slider;
 pub(crate) mod test_prelude;
 #[cfg(test)]
 mod tests;
+pub(crate) mod transform;
 pub(crate) mod vector;

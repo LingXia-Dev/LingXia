@@ -161,6 +161,7 @@ mod tests {
             bounds: [x, 0.0, width, 96.0],
             radius: 0.0,
             radii: None,
+            transform: None,
         }
     }
     fn glass(blur: f32, saturation: f32) -> Layer {
@@ -202,6 +203,7 @@ mod tests {
                             bounds: [16.0, 16.0, 64.0, 64.0],
                             radius: 0.0,
                             radii: None,
+                            transform: None,
                         },
                         blur,
                         saturation: Saturation::new(1.0).unwrap(),
@@ -255,6 +257,7 @@ mod tests {
                         bounds: [16.0, 16.0, 64.0, 64.0],
                         radius: 0.0,
                         radii: None,
+                        transform: None,
                     },
                     blur: 20.0,
                     saturation: Saturation::new(1.0).unwrap(),
@@ -321,6 +324,7 @@ mod tests {
                         bounds: [16.0, 16.0, 64.0, 64.0],
                         radius: 12.0,
                         radii: None,
+                        transform: None,
                     },
                     blur: 4.0,
                     saturation: Saturation::new(1.0).unwrap(),

@@ -235,6 +235,7 @@ impl DisplayList {
                     radii: None,
                     bounds: content_bounds,
                     radius: 0.0,
+                    transform: None,
                 }))
                 .chain(selection.iter().map(|b| rect(*b, fill))),
             );
@@ -320,12 +321,7 @@ impl DisplayList {
                     None
                 }
                 Paint::Clip(clip) => {
-                    let mut clip = transformed_clip(*clip, transform)?;
-                    clip.bounds = clip.bounds.map(|value| value * self.scale);
-                    clip.radius *= self.scale;
-                    clip.radii = clip
-                        .radii
-                        .map(|radii| radii.map(|pair| pair.map(|value| value * self.scale)));
+                    let clip = transformed_clip(*clip, transform)?.scaled(self.scale);
                     groups.push(0);
                     Some(Step::Push(Layer::Clip(clip)))
                 }
@@ -341,15 +337,12 @@ impl DisplayList {
                     ..
                 } => {
                     let [sx, _, _, sy, _, _] = transform.as_coeffs();
-                    if sx != sy {
+                    if sx != sy || !axis_aligned(transform) {
                         return Err(
-                            "UI_ANIMATION: nonuniform backdrop transform unsupported".into()
+                            "UI_TRANSFORM: backdrops need a uniform, unrotated transform".into(),
                         );
                     }
-                    let mut clip = transformed_clip(*clip, transform)?;
-                    clip.bounds = clip.bounds.map(|v| v * self.scale);
-                    clip.radius *= self.scale;
-                    clip.radii = clip.radii.map(|r| r.map(|p| p.map(|v| v * self.scale)));
+                    let clip = transformed_clip(*clip, transform)?.scaled(self.scale);
                     groups.push(2);
                     Some(Step::Push(Layer::Backdrop {
                         clip,

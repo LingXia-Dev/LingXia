@@ -71,6 +71,25 @@ function backdrop(name, value) {
   return [blur, saturation];
 }
 
+const translateLength = value => finite(value) ? Math.abs(value) <= 16384
+  : typeof value === 'string' && /^-?(?:\d+(?:\.\d+)?|\.\d+)%$/.test(value) && Math.abs(parseFloat(value)) <= 1000;
+
+// CSS individual transform properties, composed natively as translate, rotate, scale about the origin.
+function transformPart(name, value, out) {
+  const pair = check => {
+    const parts = Array.isArray(value) ? value : [value, name === 'scale' ? value : 0];
+    if (parts.length !== 2 || !parts.every(check)) invalid(name);
+    return [...parts];
+  };
+  if (name === 'translate') out.translate = pair(translateLength);
+  else if (name === 'scale') out.scale = pair(v => finite(v) && Math.abs(v) <= 1000);
+  else if (name === 'rotate') { if (!finite(value) || Math.abs(value) > 36000) invalid(name); out.rotate = value; }
+  else {
+    if (!Array.isArray(value) || value.length !== 2 || !value.every(v => finite(v) && Math.abs(v) <= 16)) invalid(name);
+    out.origin = [...value];
+  }
+}
+
 function animation(value) {
   if (value === null) return undefined;
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error('UI_ANIMATION: expected definition');
@@ -94,6 +113,7 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
   const fontSize = style.fontSize === undefined ? inherited.fontSize : length('fontSize', style.fontSize);
   if (style.fontSize !== undefined && style.fontSize <= 0) invalid('fontSize');
   let lineHeight = inherited.lineHeight;
+  const transform = {};
   const names = Object.keys(style).sort((a, b) => Number(shorthand(b)) - Number(shorthand(a)));
   for (const name of names) {
     const value = style[name], entry = table[name], key = entry.wire;
@@ -133,6 +153,7 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
       case 'shadow': out[key] = normalizeShadows(value); break;
       case 'backdrop': [out[key[0]], out[key[1]]] = backdrop(name, value); break;
       case 'animation': { const lowered = animation(value); if (lowered !== undefined) out[key] = lowered; break; }
+      case 'transform': transformPart(name, value, transform); break;
       case 'basis':
         if (value !== 'auto') length(name, percent(value) ?? value);
         out[key] = value; break;
@@ -161,6 +182,7 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
       default: throw Error(`UI_STYLE: ${name} has no native lowering`);
     }
   }
+  if (Object.keys(transform).length) out.transform = JSON.stringify(transform);
   // A multiplier recomputes against each node's font size; pixels inherit natively.
   if (style.lineHeight !== undefined || typeof lineHeight === 'object') {
     const pixels = typeof lineHeight === 'object' ? fontSize * lineHeight.multiplier : lineHeight;

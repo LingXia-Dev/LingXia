@@ -69,10 +69,12 @@ impl InputHitMap {
             radii: None,
             bounds: node.visible_bounds,
             radius: 0.0,
+            transform: None,
         }) || !contains(ClipSnapshot {
             radii: node.radii,
             bounds: node.bounds,
             radius: node.radius,
+            transform: None,
         }) || !node.clips.iter().copied().all(contains)
         {
             return None;

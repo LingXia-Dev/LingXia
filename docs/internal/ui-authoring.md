@@ -56,7 +56,7 @@ The compiler reports every problem in a page at once, as
   properties not admitted on that element;
 - `UI_CLASS_UNKNOWN` — not a Tailwind utility;
 - `UI_CLASS_UNSUPPORTED` — Tailwind CSS the native renderer cannot draw
-  (transitions, transforms, unsupported selectors);
+  (transitions, skew/3D transforms, unsupported selectors);
 - `UI_CLASS_ELEMENT` — a supported utility on an element that ignores it, or a
   state variant on an element that never enters that state.
 

@@ -27,7 +27,8 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   `lineHeight` is a multiplier. Each element accepts only styles it renders.
 - Supported variants: `dark:`, breakpoints, `focus:` (editors), `active:`
   (controls), `hover:` (fine pointers), `disabled:`, `placeholder:`,
-  `space-*`/`divide-*`. Transitions and transforms are rejected.
+  `space-*`/`divide-*`. Transitions, skew and 3D transforms are
+  rejected; `translate`/`rotate`/`scale`/`origin` are static.
 - The build reports every problem with `file:line:col`, split into unknown
   utilities, ones the renderer cannot draw, and ones the element ignores.
 - `useLocal(name, value)` state is keyed by name and component identity.

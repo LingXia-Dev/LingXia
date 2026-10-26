@@ -144,6 +144,7 @@ fn primitives(scale: f32) -> DisplayList {
             bounds: [0.0, 0.0, 16.0, 16.0],
             radius: 0.0,
             radii: None,
+            transform: None,
         }),
         Paint::Opacity {
             node: 0,
@@ -195,10 +196,17 @@ fn transformed_primitives_have_expected_pixels_and_reset_for_siblings() {
 
 #[test]
 fn unsupported_transforms_fail_in_both_paint_paths() {
+    // Rotations and mirrors paint; singular and unbounded matrices never do.
+    for matrix in [Affine::scale(-1.0), Affine::rotate(0.1)] {
+        let mut display = primitives(1.0);
+        display.commands[0] = Paint::Transform(matrix);
+        assert!(display.rasterize().is_ok());
+        let mut display = primitives(1.0);
+        display.commands[0] = Paint::Transform(matrix);
+        assert!(display.rasterize_composited().is_ok());
+    }
     for matrix in [
         Affine::scale(0.0),
-        Affine::scale(-1.0),
-        Affine::rotate(0.1),
         Affine::translate((f64::NAN, 0.0)),
         Affine::translate((1e13, 0.0)),
     ] {
@@ -222,6 +230,7 @@ fn backdrop_clip_and_blur_follow_uniform_scale_and_reject_nonuniform_scale() {
                 bounds: [0.0, 0.0, 16.0, 16.0],
                 radius: 2.0,
                 radii: None,
+                transform: None,
             },
             blur: 4.0,
             saturation: 1.0,

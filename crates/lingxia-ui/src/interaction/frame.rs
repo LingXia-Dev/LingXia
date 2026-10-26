@@ -124,6 +124,7 @@ pub fn contains(node: &NodeSnapshot, point: [f32; 2], own_shape: bool) -> bool {
         bounds: node.bounds,
         radius: node.radius,
         radii: node.radii,
+        transform: None,
     };
     if own_shape && !shape.contains(point) {
         return false;

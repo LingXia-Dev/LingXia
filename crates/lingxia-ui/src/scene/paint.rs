@@ -67,19 +67,21 @@ pub(crate) fn area_gradient(
 }
 
 pub(crate) fn checked_paint_transform(transform: Affine) -> Result<Affine, String> {
-    let [sx, b, c, sy, _, _] = transform.as_coeffs();
     if transform
         .as_coeffs()
         .iter()
         .any(|n| !n.is_finite() || n.abs() > 1e12)
-        || sx <= 0.0
-        || sy <= 0.0
-        || b != 0.0
-        || c != 0.0
+        || transform.determinant().abs() < 1e-12
     {
-        return Err("UI_ANIMATION: unsupported or singular paint transform".into());
+        return Err("UI_TRANSFORM: unsupported or singular paint transform".into());
     }
     Ok(transform)
+}
+
+/// Positive scales and translations keep boxes axis-aligned.
+pub(crate) fn axis_aligned(transform: Affine) -> bool {
+    let [sx, b, c, sy, _, _] = transform.as_coeffs();
+    sx > 0.0 && sy > 0.0 && b == 0.0 && c == 0.0
 }
 
 pub(crate) fn transformed_clip(
@@ -89,11 +91,24 @@ pub(crate) fn transformed_clip(
     if transform == Affine::IDENTITY {
         return Ok(clip);
     }
-    let [sx, _, _, sy, tx, ty] = checked_paint_transform(transform)?.as_coeffs();
+    let transform = checked_paint_transform(transform)?;
+    if clip.transform.is_some() || !axis_aligned(transform) {
+        let combined = transform * clip.affine().unwrap_or(Affine::IDENTITY);
+        clip.transform = (combined != Affine::IDENTITY).then(|| combined.as_coeffs());
+        if clip
+            .extent()
+            .iter()
+            .any(|n| !n.is_finite() || n.abs() > 1e12)
+        {
+            return Err("UI_TRANSFORM: transformed clip outside bounds".into());
+        }
+        return Ok(clip);
+    }
+    let [sx, _, _, sy, tx, ty] = transform.as_coeffs();
     let [x, y, w, h] = clip.bounds.map(f64::from);
     let bounds = [x * sx + tx, y * sy + ty, w * sx, h * sy];
     if bounds.iter().any(|n| !n.is_finite() || n.abs() > 1e12) {
-        return Err("UI_ANIMATION: transformed clip outside bounds".into());
+        return Err("UI_TRANSFORM: transformed clip outside bounds".into());
     }
     clip.bounds = bounds.map(|n| n as f32);
     if sx == sy {
@@ -112,16 +127,18 @@ pub(crate) fn transformed_clip(
     Ok(clip)
 }
 
+/// The axis-aligned extent of `bounds` under `transform`.
 pub(crate) fn transformed_bounds(bounds: [f32; 4], transform: Affine) -> Result<[f32; 4], String> {
     Ok(transformed_clip(
         ClipSnapshot {
             bounds,
             radius: 0.0,
             radii: None,
+            transform: None,
         },
         transform,
     )?
-    .bounds)
+    .extent())
 }
 
 #[derive(Clone, PartialEq)]

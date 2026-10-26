@@ -238,6 +238,7 @@ fn hit_testing_obeys_rounded_ancestor_clips_and_own_shape() {
         bounds: [0.0, 0.0, 100.0, 100.0],
         radius: 30.0,
         radii: None,
+        transform: None,
     }];
     clipped.on_click = Some(4);
     let presented = frame(vec![clipped.clone()]);

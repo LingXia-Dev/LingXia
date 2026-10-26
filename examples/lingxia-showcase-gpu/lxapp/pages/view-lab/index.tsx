@@ -1,6 +1,6 @@
 import { useLocal, type VectorPath } from '@lingxia/ui';
 import '../../theme/index.css';
-import { Button, Page, Section } from '../../shared/ui';
+import { Button, Icon, Page, Section } from '../../shared/ui';
 
 // GPU-only renderer fixtures: one section per View capability, addressed by testId.
 export function render() {
@@ -10,6 +10,7 @@ export function render() {
       <Vectors />
       <Borders />
       <Display />
+      <Transforms />
     </Page>
   );
 }
@@ -79,6 +80,21 @@ function Display() {
         <view className="h-[8dvh] w-4 rounded bg-primary" />
       </row>
       <view testId="lab-display-fixed" className="fixed bottom-4 right-4 px-3 py-1 rounded-full bg-primary"><text className="text-xs text-primary-foreground">fixed</text></view>
+    </Section>
+  );
+}
+
+function Transforms() {
+  return (
+    <Section title="Transforms" testId="lab-transforms">
+      <row className="gap-4 items-center">
+        <Icon name="chevron" className="w-6 h-6 text-foreground rotate-90" />
+        <Icon name="send" className="w-6 h-6 text-primary -scale-x-100" />
+        <view className="relative w-16 h-10 rounded-lg bg-muted">
+          <view testId="lab-transform-badge" className="absolute top-0 right-0 w-4 h-4 rounded-full bg-error translate-x-1/2 -translate-y-1/2" />
+        </view>
+        <view testId="lab-transform-card" className="w-12 h-12 rounded-lg bg-primary origin-bottom-left rotate-12 scale-90" />
+      </row>
     </Section>
   );
 }

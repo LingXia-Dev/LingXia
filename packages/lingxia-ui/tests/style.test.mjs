@@ -75,6 +75,14 @@ test('outer shadows, gradients and backdrop filters are bounded composite values
   for (const value of ['blur(65px)', 'saturate(17)', 'blur(4)', 'invert(1)', 4, null]) rejects({ backdropFilter: value }, /UI_STYLE_VALUE/);
 });
 
+test('static transform style keys lower to one bounded wire transform', () => {
+  assert.deepEqual(JSON.parse(style({ translate: 4, rotate: 30, scale: 2, transformOrigin: [0, 1] }).transform),
+    { translate: [4, 0], rotate: 30, scale: [2, 2], origin: [0, 1] });
+  assert.deepEqual(JSON.parse(style({ translate: ['-50%', 3] }).transform), { translate: ['-50%', 3] });
+  for (const value of [{ translate: '2000%' }, { rotate: 'x' }, { scale: [1, 1, 1] }, { scale: 1e4 }, { transformOrigin: 0.5 }, { translate: [1, 'a'] }])
+    rejects(value, /UI_STYLE_VALUE/);
+});
+
 test('typography: CSS line-height multipliers inherit and recompute per font size', () => {
   const root = rendered(() => h('column', { style: { fontSize: 10, lineHeight: 1.5 } }, h('text', { style: { fontSize: 20 } }, 'big'), h('text', {}, 'small')));
   assert.equal(root.props.lineHeight, 15);

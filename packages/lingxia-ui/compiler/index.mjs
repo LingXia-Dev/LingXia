@@ -98,6 +98,7 @@ function classProblems(rule, name, tag) {
   if (rule.error) return [`UI_CLASS_UNSUPPORTED: ${name}: the native renderer does not support ${rule.error.message}`];
   if (!has(elements, tag) || rule.when?.children) return [];
   const props = [...Object.keys(rule.style ?? {}), ...(rule.gradient ? ['backgroundImage'] : []),
+    ...(rule.transform?.translate ? ['translate'] : []), ...(rule.transform?.scale ? ['scale'] : []),
     ...(rule.shadow ? ['boxShadow'] : []), ...(rule.backdrop ? ['backdropFilter'] : [])];
   const state = rule.when?.state;
   const problems = props.filter(prop => !elements[tag].style.includes(prop))

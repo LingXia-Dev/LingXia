@@ -176,7 +176,8 @@
     {"id": 126, "key": "hoverStyle", "wire": "hoverStyle", "kind": "state-style"},
     {"id": 127, "key": "widthKeyword", "wire": "widthKeyword", "kind": "sizing-keyword"},
     {"id": 128, "key": "heightKeyword", "wire": "heightKeyword", "kind": "sizing-keyword"},
-    {"id": 129, "key": "borderStyle", "wire": "borderStyle", "kind": "border-style"}
+    {"id": 129, "key": "borderStyle", "wire": "borderStyle", "kind": "border-style"},
+    {"id": 130, "key": "transform", "wire": "transform", "kind": "transform"}
   ],
   "styleGroups": {"accent": ["color"]},
   "style": {
@@ -220,6 +221,10 @@
     "borderColor": {"type": "string | \"currentColor\"", "group": "box", "lower": "color", "wire": "borderColor", "paint": true, "css": "border-color"},
     "boxShadow": {"type": "ReadonlyArray<BoxShadow> | \"none\"", "group": "box", "lower": "shadow", "wire": "boxShadow", "paint": true},
     "backdropFilter": {"type": "string", "group": "box", "lower": "backdrop", "wire": ["backdropBlur", "backdropSaturation"]},
+    "translate": {"type": "number | `${number}%` | readonly [number | `${number}%`, number | `${number}%`]", "group": "box", "lower": "transform", "wire": "transform"},
+    "rotate": {"type": "number", "group": "box", "lower": "transform", "wire": "transform"},
+    "scale": {"type": "number | readonly [number, number]", "group": "box", "lower": "transform", "wire": "transform"},
+    "transformOrigin": {"type": "readonly [number, number]", "group": "box", "lower": "transform", "wire": "transform"},
     "animation": {"type": "unknown", "group": "box", "lower": "animation", "wire": "animation", "internal": true},
     "padding": {"type": "number", "group": "padding", "lower": "length", "wire": ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft"]},
     "paddingTop": {"type": "number", "group": "padding", "lower": "length", "wire": "paddingTop", "css": ["padding-top", "padding-block-start"]},
