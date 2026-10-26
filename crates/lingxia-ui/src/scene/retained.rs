@@ -30,6 +30,7 @@ pub(crate) struct RetainedLayout {
     pub(crate) opacities: Vec<f32>,
     /// Static rotation and scale; translation is already in the geometry.
     pub(crate) transforms: Vec<Option<crate::scene::transform::StaticTransform>>,
+    pub(crate) stickies: Vec<Option<crate::scene::sticky::Sticky>>,
     pub(crate) backdrops: Vec<Option<(f32, f32)>>,
     pub(crate) width: u16,
     pub(crate) height: u16,
@@ -168,11 +169,36 @@ impl RetainedLayout {
         let mut painted = Vec::new();
         let mut input_paints = Vec::new();
         for (position, &index) in self.order.iter().enumerate() {
+            let parent = self.parents[index];
+            let mut translation = parent.map(|p| translations[p]).unwrap_or([0.0; 2]);
+            if let Some(sticky) = &self.stickies[index] {
+                // The scroll is composed already; its content box is the sticky viewport.
+                let scroll = &nodes[sticky.scroll];
+                let insets = scroll
+                    .scroll
+                    .as_ref()
+                    .map(|s| s.content_insets)
+                    .unwrap_or_default();
+                let viewport = [
+                    scroll.bounds[0] + insets[3],
+                    scroll.bounds[1] + insets[0],
+                    (scroll.bounds[2] - insets[1] - insets[3]).max(0.0),
+                    (scroll.bounds[3] - insets[0] - insets[2]).max(0.0),
+                ];
+                let mut natural = self.nodes[index].bounds;
+                natural[0] -= translation[0];
+                natural[1] -= translation[1];
+                let container = sticky.container.map(|mut c| {
+                    c[0] -= translation[0];
+                    c[1] -= translation[1];
+                    c
+                });
+                let [dx, dy] = sticky.shift(natural, viewport, container);
+                translation = [translation[0] - dx, translation[1] - dy];
+            }
             let node = &mut nodes[index];
             node.order = position as u32;
-            let parent = self.parents[index];
             let mut desired = parent.map(|p| child_layers[p].clone()).unwrap_or_default();
-            let translation = parent.map(|p| translations[p]).unwrap_or([0.0; 2]);
             let world_clip = parent.map(|p| clips[p]).unwrap_or(viewport);
             node.bounds[0] -= translation[0];
             node.bounds[1] -= translation[1];
@@ -726,7 +752,7 @@ impl RetainedLayout {
 
 /// Depth-first paint order with siblings stably sorted by z-index, then CSS
 /// `order`; subtrees stay contiguous.
-pub(crate) fn paint_order(parents: &[Option<usize>], z: &[(i32, i32)]) -> Vec<usize> {
+pub(crate) fn paint_order(parents: &[Option<usize>], z: &[(i32, i32, i32)]) -> Vec<usize> {
     let mut children: Vec<Vec<usize>> = vec![Vec::new(); parents.len()];
     let mut roots = Vec::new();
     for (index, parent) in parents.iter().enumerate() {

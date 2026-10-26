@@ -15,6 +15,7 @@ pub(crate) mod plot;
 pub(crate) mod retained;
 pub(crate) mod shadow;
 pub(crate) mod slider;
+pub(crate) mod sticky;
 #[cfg(test)]
 pub(crate) mod test_prelude;
 #[cfg(test)]

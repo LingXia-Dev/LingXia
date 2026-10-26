@@ -329,25 +329,35 @@ pub(crate) fn node_style(
         } else {
             Position::Relative
         },
-        inset: Rect {
-            left: inset(
-                record,
-                left(
-                    field::INSET_LEFT,
-                    field::INSET_INLINE_START,
-                    field::INSET_INLINE_END,
+        // Sticky insets offset the box at composition, never in layout.
+        inset: if record.string(field::POSITION) == Some("sticky") {
+            Rect {
+                left: auto(),
+                right: auto(),
+                top: auto(),
+                bottom: auto(),
+            }
+        } else {
+            Rect {
+                left: inset(
+                    record,
+                    left(
+                        field::INSET_LEFT,
+                        field::INSET_INLINE_START,
+                        field::INSET_INLINE_END,
+                    ),
                 ),
-            ),
-            top: inset(record, field::INSET_TOP),
-            right: inset(
-                record,
-                right(
-                    field::INSET_RIGHT,
-                    field::INSET_INLINE_START,
-                    field::INSET_INLINE_END,
+                top: inset(record, field::INSET_TOP),
+                right: inset(
+                    record,
+                    right(
+                        field::INSET_RIGHT,
+                        field::INSET_INLINE_START,
+                        field::INSET_INLINE_END,
+                    ),
                 ),
-            ),
-            bottom: inset(record, field::INSET_BOTTOM),
+                bottom: inset(record, field::INSET_BOTTOM),
+            }
         },
         direction: if rtl {
             taffy::Direction::Rtl

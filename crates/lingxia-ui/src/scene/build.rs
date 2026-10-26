@@ -63,6 +63,8 @@ impl Renderer {
                     || record.parent.is_some_and(|parent| unspoken[parent]),
             );
         }
+        let mut content_boxes: Vec<[f32; 4]> = Vec::with_capacity(records.len());
+        let mut stickies = Vec::with_capacity(records.len());
         let mut run_rects: std::collections::HashMap<usize, Vec<[f32; 4]>> =
             std::collections::HashMap::new();
         let transforms = records
@@ -209,6 +211,40 @@ impl Renderer {
                     .or(scroll_parent.clone()),
             );
             origins.push((x, y));
+            content_boxes.push([
+                x + layout.padding.left,
+                y + layout.padding.top,
+                (layout.size.width - layout.padding.left - layout.padding.right).max(0.0),
+                (layout.size.height - layout.padding.top - layout.padding.bottom).max(0.0),
+            ]);
+            stickies.push((record.string(field::POSITION) == Some("sticky")).then(|| {
+                let rtl = directions[index];
+                let side = |physical, left| {
+                    crate::layout::style::side(
+                        record,
+                        physical,
+                        field::INSET_INLINE_START,
+                        field::INSET_INLINE_END,
+                        left,
+                        rtl,
+                    )
+                };
+                let mut scroll = parents[index];
+                while let Some(ancestor) = scroll.filter(|a| records[*a].tag != tag::SCROLL) {
+                    scroll = parents[ancestor];
+                }
+                let parent = parents[index].unwrap_or(0);
+                crate::scene::sticky::Sticky {
+                    scroll: scroll.unwrap_or(0),
+                    insets: [
+                        record.number(field::INSET_TOP),
+                        record.number(side(field::INSET_RIGHT, false)),
+                        record.number(field::INSET_BOTTOM),
+                        record.number(side(field::INSET_LEFT, true)),
+                    ],
+                    container: (Some(parent) != scroll).then(|| content_boxes[parent]),
+                }
+            }));
             let paint_start = commands.len();
             if let Some(source) = record.string(field::BOX_SHADOW) {
                 for shadow in crate::scene::shadow::BoxShadow::parse(source)?
@@ -930,12 +966,15 @@ impl Renderer {
                     .map(|record| {
                         (
                             record.number(field::Z_INDEX).unwrap_or(0.0) as i32,
+                            // Stuck boxes lift above the in-flow siblings they pass over.
+                            i32::from(record.string(field::POSITION) == Some("sticky")),
                             record.number(field::ORDER).unwrap_or(0.0) as i32,
                         )
                     })
                     .collect::<Vec<_>>(),
             ),
             parents,
+            stickies,
             transforms: transforms
                 .iter()
                 .zip(&collapsed)

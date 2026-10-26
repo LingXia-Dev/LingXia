@@ -19,6 +19,7 @@ export function render() {
       <Accessibility />
       <Inputs />
       <Structure />
+      <StickyHeaders />
     </Page>
   );
 }
@@ -240,6 +241,22 @@ function Structure() {
         <view testId="lab-structure-empty" className="h-8 grow basis-0 rounded-lg bg-error empty:bg-muted" />
         <view className="h-8 grow basis-0 rounded-lg bg-muted"><text className="only:text-xs only:p-2">only child</text></view>
       </row>
+    </Section>
+  );
+}
+
+function StickyHeaders() {
+  const groups = { Today: ['Top up', 'Data pack'], Yesterday: ['Bill paid', 'Roaming on', 'SMS bundle'], 'Last week': ['Plan change', 'Refund'] };
+  return (
+    <Section title="Sticky headers" testId="lab-sticky">
+      <scroll testId="lab-sticky-scroll" className="h-48 rounded-lg border border-border">
+        {Object.entries(groups).map(([day, items]) => (
+          <column key={day}>
+            <text className="sticky top-0 px-3 py-1.5 text-xs font-semibold bg-muted">{day}</text>
+            {items.map(item => <text key={item} className="px-3 py-3 text-sm border-b border-border">{item}</text>)}
+          </column>
+        ))}
+      </scroll>
     </Section>
   );
 }

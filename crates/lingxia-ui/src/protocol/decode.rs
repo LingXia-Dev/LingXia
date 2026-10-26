@@ -215,6 +215,35 @@ fn budgets(records: &[Record]) -> Result<(), String> {
             return Err("UI_LIMIT: plot geometry budget exceeded".into());
         }
     }
+    for record in records
+        .iter()
+        .filter(|r| r.string(field::POSITION) == Some("sticky"))
+    {
+        let mut ancestor = record.parent;
+        loop {
+            match ancestor.map(|a| records[a].tag) {
+                Some(tag::SCROLL) => break,
+                Some(tag::LIST) => {
+                    return Err("UI_STYLE: sticky is not supported inside list rows".into());
+                }
+                Some(_) => ancestor = records[ancestor.unwrap()].parent,
+                None => return Err("UI_STYLE: sticky needs an ancestor scroll".into()),
+            }
+        }
+        let percent = [
+            field::INSET_TOP,
+            field::INSET_RIGHT,
+            field::INSET_BOTTOM,
+            field::INSET_LEFT,
+            field::INSET_INLINE_START,
+            field::INSET_INLINE_END,
+        ]
+        .iter()
+        .any(|id| record.string(*id).is_some_and(|v| v.ends_with('%')));
+        if percent || record.fields.iter().any(|(id, _)| *id == field::TRANSFORM) {
+            return Err("UI_STYLE: sticky takes pixel insets and no transform".into());
+        }
+    }
     let mut runs: HashMap<usize, usize> = HashMap::new();
     for record in records
         .iter()

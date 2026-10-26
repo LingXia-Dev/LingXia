@@ -29,7 +29,8 @@ test('display utilities, fixed positioning and dynamic viewport units lower to d
   for (const name of ['block', 'inline-flex', 'inline-block']) assert.equal(classStyle(name).display, name);
   assert.equal(node('text', { className: 'hidden' }).display, 'none');
   assert.equal(node('image', { src: 'a.png', className: 'hidden' }).display, 'none');
-  for (const name of ['contents', 'table', 'sticky']) assert.throws(() => classStyle(name), /UI_CLASS/);
+  for (const name of ['contents', 'table']) assert.throws(() => classStyle(name), /UI_CLASS/);
+  assert.equal(classStyle('sticky').position, 'sticky');
   assert.equal(classStyle('fixed').position, 'fixed');
   assert.deepEqual([classStyle('h-dvh').height, classStyle('min-h-svh').minHeight, classStyle('max-h-lvh').maxHeight, classStyle('w-dvw').width, classStyle('h-[50dvh]').height],
     ['100vh', '100vh', '100vh', '100vw', '50vh']);

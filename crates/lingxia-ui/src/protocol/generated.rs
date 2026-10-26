@@ -399,7 +399,7 @@ pub fn options(kind: &str) -> Option<&'static [&'static str]> {
         "text-alignment" => Some(&["start", "end", "left", "center", "right", "justify"]),
         "alignment" => Some(&["start", "center", "end", "stretch", "baseline"]),
         "justification" => Some(&["start", "center", "end", "between", "around", "evenly"]),
-        "position" => Some(&["relative", "absolute", "fixed"]),
+        "position" => Some(&["relative", "absolute", "fixed", "sticky"]),
         "overflow" => Some(&["visible", "hidden"]),
         "text-transform" => Some(&["none", "uppercase", "lowercase", "capitalize"]),
         "white-space" => Some(&["normal", "nowrap", "pre", "pre-wrap", "pre-line"]),

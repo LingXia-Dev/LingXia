@@ -861,3 +861,6 @@ mod grid;
 
 #[path = "tests/rtl.rs"]
 mod rtl;
+
+#[path = "tests/sticky.rs"]
+mod sticky;

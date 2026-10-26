@@ -173,7 +173,7 @@ export interface Style {
   marginLeft?: number | "auto";
   marginInlineStart?: number | "auto";
   marginInlineEnd?: number | "auto";
-  position?: "relative" | "absolute" | "fixed";
+  position?: "relative" | "absolute" | "fixed" | "sticky";
   inset?: number | `${number}%`;
   top?: number | `${number}%`;
   right?: number | `${number}%`;

@@ -53,7 +53,8 @@ test('positioning, layering and clipping are native box properties', () => {
   const props = style({ position: 'absolute', inset: 0, right: '10%', zIndex: 3, overflow: 'hidden' });
   assert.deepEqual([props.position, props.insetTop, props.insetRight, props.insetLeft, props.zIndex, props.overflow], ['absolute', 0, '10%', 0, 3, 'hidden']);
   assert.equal(style({ position: 'fixed' }).position, 'fixed');
-  for (const value of [{ position: 'sticky' }, { zIndex: 1.5 }, { zIndex: 10001 }, { top: 'auto' }, { overflow: 'scroll' }]) rejects(value, /UI_STYLE_VALUE/);
+  assert.equal(style({ position: 'sticky', top: 0 }).position, 'sticky');
+  for (const value of [{ position: 'static' }, { zIndex: 1.5 }, { zIndex: 10001 }, { top: 'auto' }, { overflow: 'scroll' }]) rejects(value, /UI_STYLE_VALUE/);
 });
 
 test('outer shadows, gradients and backdrop filters are bounded composite values', () => {
