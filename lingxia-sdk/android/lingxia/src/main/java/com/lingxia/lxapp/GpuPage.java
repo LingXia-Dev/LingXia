@@ -129,6 +129,11 @@ public final class GpuPage extends FrameLayout {
         });
     }
 
+    /** Dev hot-swap: the page keeps its state and its presented frame. */
+    public static void swapModule(long token, String source) {
+        MAIN.post(() -> { GpuPage page = PAGES.get(token); if (page != null) page.content.swapModule(source); });
+    }
+
     public static void park(long token) {
         MAIN.post(() -> {
             GpuPage page = PAGES.get(token);

@@ -227,3 +227,15 @@ fn a_hot_swap_reaches_only_the_selected_live_pages() {
     assert_eq!(first.calls(), ["swap next"]);
     assert!(second.calls().is_empty());
 }
+
+#[test]
+fn hot_swap_matches_routes_with_or_without_module_extension() {
+    for path in [
+        "pages/view-lab/index",
+        "/pages/view-lab/index.js",
+        "pages/view-lab/index.js?tab=1",
+    ] {
+        assert_eq!(super::page_key(path), "pages/view-lab/index");
+    }
+    assert_eq!(super::page_key("pages/v1.2/index"), "pages/v1.2/index");
+}

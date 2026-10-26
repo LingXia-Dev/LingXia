@@ -322,17 +322,20 @@ fn swap_pages(select: impl Fn(&str) -> Option<String>) -> Result<usize, LxAppErr
 pub(crate) fn hot_swap(appid: &str, path: &str) -> Result<usize, LxAppError> {
     swap_pages(|id| {
         let page = lxapp::find_page_by_instance_id(id)?;
-        let key = |path: &str| {
-            path.split('?')
-                .next()
-                .unwrap_or("")
-                .trim_start_matches('/')
-                .to_owned()
-        };
-        (page.appid() == appid && key(&page.path()) == key(path))
+        (page.appid() == appid && page_key(&page.path()) == page_key(path))
             .then(|| page.gpu_module_source().ok())
             .flatten()
     })
+}
+
+/// A page route without query, leading slash or module extension: the runtime knows
+/// `pages/a/index.js`, the dev CLI names the source `pages/a/index`.
+fn page_key(path: &str) -> &str {
+    let path = path.split('?').next().unwrap_or("").trim_start_matches('/');
+    match path.rsplit_once('.') {
+        Some((base, ext)) if !ext.contains('/') => base,
+        _ => path,
+    }
 }
 
 fn live(token: Token) -> Option<Arc<Endpoint>> {

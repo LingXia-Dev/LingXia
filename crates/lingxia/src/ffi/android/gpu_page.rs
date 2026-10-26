@@ -142,6 +142,9 @@ impl NativePage for AndroidPage {
     fn reload(&self, source: &str) -> Result<(), LxAppError> {
         value_operation(self.token, source, jni_str!("reload"))
     }
+    fn swap_module(&self, source: &str) -> Result<(), LxAppError> {
+        value_operation(self.token, source, jni_str!("swapModule"))
+    }
     fn park(&self) -> Result<(), LxAppError> {
         operation(self.token, jni_str!("park"))
     }
