@@ -22,13 +22,31 @@ pub(super) struct Reveal {
     /// Revealed without a current frame; showing the surface waits for one.
     holding: bool,
     window_hidden: bool,
+    deadlines: u64,
+    watchdogs: u64,
+    /// Why and when (since the platform clock's origin) the page was last revealed.
+    last: Option<(&'static str, Duration)>,
+}
+
+impl Reveal {
+    /// `{deadlines, watchdogs, lastReveal: {reason, atMs}}`, times since `opened`.
+    pub(super) fn metrics(&self, opened: Duration) -> serde_json::Value {
+        serde_json::json!({
+            "deadlines": self.deadlines,
+            "watchdogs": self.watchdogs,
+            "lastReveal": self.last.map(|(reason, at)| serde_json::json!({
+                "reason": reason,
+                "atMs": at.saturating_sub(opened).as_millis() as u64,
+            })),
+        })
+    }
 }
 
 impl<A: PlatformAdapter> Inner<A> {
     pub(super) fn begin_reveal(self: &Arc<Self>, surface_holds_frame: bool) {
         if self.frame_is_current() {
             self.main().reveal.pending = None;
-            return self.finish_reveal(false);
+            return self.finish_reveal(false, "current");
         }
         let (epoch, delay) = {
             let mut main = self.main();
@@ -65,17 +83,31 @@ impl<A: PlatformAdapter> Inner<A> {
             return self.reveal_after(epoch, delay);
         }
         let hold = !self.frame_is_current();
-        self.main().reveal.pending = None;
-        self.adapter.warn(&if delay == REVEAL_DEADLINE {
+        let deadline = delay == REVEAL_DEADLINE;
+        {
+            let mut main = self.main();
+            main.reveal.pending = None;
+            if deadline {
+                main.reveal.deadlines += 1;
+            } else {
+                main.reveal.watchdogs += 1;
+            }
+        }
+        self.adapter.warn(&if deadline {
             format!("reveal deadline: shown before a current frame (stale={hold})")
         } else {
             "first-frame watchdog: page never presented".to_owned()
         });
-        self.finish_reveal(hold);
+        self.finish_reveal(hold, if deadline { "deadline" } else { "watchdog" });
     }
 
-    fn finish_reveal(self: &Arc<Self>, hold: bool) {
-        self.main().reveal.holding = hold;
+    fn finish_reveal(self: &Arc<Self>, hold: bool, reason: &'static str) {
+        let at = self.adapter.now();
+        {
+            let mut main = self.main();
+            main.reveal.holding = hold;
+            main.reveal.last = Some((reason, at));
+        }
         self.adapter.revealed(hold);
     }
 
@@ -94,14 +126,14 @@ impl<A: PlatformAdapter> Inner<A> {
             waiting
         };
         if waiting {
-            self.finish_reveal(false);
+            self.finish_reveal(false, "frame");
         }
     }
 
     /// Recovery chrome is shown at once.
     pub(super) fn revealed_by_failure(self: &Arc<Self>) {
         if self.main().reveal.pending.take().is_some() {
-            self.finish_reveal(false);
+            self.finish_reveal(false, "failure");
         }
     }
 }

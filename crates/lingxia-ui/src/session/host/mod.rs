@@ -22,6 +22,7 @@ mod environment;
 mod images;
 mod pump;
 mod reveal;
+mod telemetry;
 mod worker;
 
 /// Largest input-method request [`ViewHost::input`] accepts, in bytes.
@@ -45,6 +46,7 @@ pub struct FrameSnapshot {
     pub images: Vec<ImageSource>,
     /// Each source's decode size in this frame.
     pub image_buckets: std::collections::HashMap<String, crate::scene::image::Bucket>,
+    pub metrics: crate::session::metrics::FrameMetrics,
     /// `{generation, nodes, images, metrics}` for adapters that marshal the frame.
     pub json: String,
 }
@@ -226,6 +228,7 @@ struct Main<F> {
     animation_timer: u64,
     bootstrap_timer: u64,
     reveal: reveal::Reveal,
+    telemetry: telemetry::Telemetry,
 }
 
 impl<A: PlatformAdapter> Drop for Inner<A> {
@@ -276,6 +279,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     animation_timer: 0,
                     bootstrap_timer: 0,
                     reveal: Default::default(),
+                    telemetry: Default::default(),
                 }),
             }),
         }
@@ -529,7 +533,8 @@ impl<A: PlatformAdapter> ViewHost<A> {
 
     /// One automation request from the page driver:
     /// `{op: "query", css, index, all, maxText}` or
-    /// `{op: "act", css, index, action: {kind: click|fill|type|scroll|press, text, key, force}}`.
+    /// `{op: "act", css, index, action: {kind: click|fill|type|scroll|press, text, key, force}}`,
+    /// `{op: "tree"}` or `{op: "frame"}` (presentation counters).
     /// Screenshots belong to the adapter's presenter.
     pub fn automation_request(
         &self,
@@ -560,6 +565,8 @@ impl<A: PlatformAdapter> ViewHost<A> {
                 self.automate(css, index, act, force)
                     .map(|()| serde_json::Value::Null)
             }
+            Some("tree") => self.inner.main().interaction.automation_tree(),
+            Some("frame") => Ok(self.inner.frame_metrics()),
             other => Err(format!("E_UNSUPPORTED: automation op {other:?}")),
         }
     }
@@ -763,6 +770,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.bootstrap_timer += 1;
             main.failure = None;
             let page = self.lifecycle.load();
+            main.telemetry.opened(self.adapter.now());
             main.snapshot = None;
             main.prepared = None;
             main.busy = false;

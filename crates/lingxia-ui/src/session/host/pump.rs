@@ -242,6 +242,7 @@ impl<A: PlatformAdapter> Inner<A> {
         })
         .to_string();
         let snapshot = Arc::new(FrameSnapshot {
+            metrics: session.frame_metrics().clone(),
             generation,
             width,
             height,
@@ -375,6 +376,8 @@ impl<A: PlatformAdapter> Inner<A> {
         self.update_images(snapshot.images.clone(), snapshot.image_buckets.clone());
         self.flush_image_events();
         timing.main_us = micros(vsync.elapsed());
+        let now = self.adapter.now();
+        self.main().telemetry.presented(now, &snapshot, &timing);
         self.adapter.presented(&snapshot, &timing);
         self.revealed_by_frame();
     }
@@ -421,7 +424,15 @@ impl<A: PlatformAdapter> Inner<A> {
                 inner.adapter.post_after(
                     delay.saturating_sub(spent),
                     Box::new(move || {
-                        if host.main().animation_timer == timer {
+                        let current = {
+                            let mut main = host.main();
+                            let current = main.animation_timer == timer;
+                            if current {
+                                main.telemetry.woke();
+                            }
+                            current
+                        };
+                        if current {
                             host.schedule();
                         }
                     }),

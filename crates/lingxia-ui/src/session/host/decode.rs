@@ -221,6 +221,12 @@ pub fn retained_bytes() -> usize {
     cache().bytes()
 }
 
+/// Decoded bytes and bitmaps the process cache retains.
+pub(super) fn retained() -> (usize, usize) {
+    let cache = cache();
+    (cache.bytes(), cache.entries.values().map(Vec::len).sum())
+}
+
 /// How many times `bytes` were decoded in this process.
 #[cfg(test)]
 pub(crate) fn decodes_of(bytes: &[u8]) -> usize {

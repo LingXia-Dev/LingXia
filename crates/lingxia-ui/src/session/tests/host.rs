@@ -1225,6 +1225,12 @@ fn a_returning_page_with_a_stale_frame_is_shown_held_at_the_deadline_then_releas
         [true],
         "shown, but its stale surface stays hidden"
     );
+    let reveal = host
+        .automation_request(&serde_json::json!({"op": "frame"}))
+        .unwrap()["reveal"]
+        .clone();
+    assert_eq!(reveal["deadlines"], 1);
+    assert_eq!(reveal["lastReveal"]["reason"], "deadline");
     host.surface_changed();
     platform.settle(&[&host]);
     assert_eq!(
@@ -1303,6 +1309,29 @@ fn automation_requests_query_and_act_through_the_core_driver() {
     );
     platform.settle(&[&host]);
     assert_eq!(last(&host), ["Count 1"]);
+    let tree = host
+        .automation_request(&serde_json::json!({"op": "tree"}))
+        .unwrap();
+    assert!(tree.to_string().contains("Count 1"), "{tree}");
+    let frame = host
+        .automation_request(&serde_json::json!({"op": "frame"}))
+        .unwrap();
+    assert_eq!(frame["renderer"], "gpu");
+    assert!(frame["frames"].as_u64().unwrap() >= 2, "{frame}");
+    assert_eq!(frame["firstPresentAt"], 0, "the fake clock never moves");
+    assert!(frame["commit"].as_u64().unwrap() > 0);
+    for key in [
+        "workerQueueUs",
+        "evalMs",
+        "imageCacheBytes",
+        "imageCacheEntries",
+        "animationFrames",
+        "wakeups",
+    ] {
+        assert!(!frame[key].is_null(), "{key} in {frame}");
+    }
+    assert_eq!(frame["reveal"]["deadlines"], 0);
+    assert!(frame["reveal"]["lastReveal"].is_null());
     for (request, error) in [
         (
             serde_json::json!({"op": "act", "css": "button", "action": {"kind": "hover"}}),
