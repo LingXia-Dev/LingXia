@@ -14,6 +14,9 @@ use serde_json::Value;
 use std::sync::Arc;
 use std::time::Duration;
 
+#[path = "automation_gpu.rs"]
+pub mod gpu;
+
 /// Default bound for [`wait_page_runtime_ready`].
 pub const PAGE_READY_TIMEOUT: Duration = Duration::from_secs(15);
 
@@ -457,6 +460,9 @@ pub async fn page_query(
     all: bool,
     max_text: Option<usize>,
 ) -> Result<Value, String> {
+    if let Some(page) = gpu::backend(app, page_name)? {
+        return page.query(selector, index, all, max_text).await;
+    }
     let script = build_query_script(selector, index, all, max_text)?;
     page_eval(app, page_name, &script).await
 }
@@ -479,6 +485,11 @@ pub async fn page_click_with(
     index: Option<usize>,
     force: bool,
 ) -> Result<(), String> {
+    if let Some(page) = gpu::backend(app, page_name)? {
+        return page
+            .act(selector, index, gpu::GpuAction::Click { force })
+            .await;
+    }
     resolve_webview(app, page_name)?
         .click(selector, lingxia_webview::ClickOptions { index, force })
         .await
@@ -493,6 +504,12 @@ pub async fn page_type(
     index: Option<usize>,
     text: &str,
 ) -> Result<(), String> {
+    if let Some(page) = gpu::backend(app, page_name)? {
+        let text = text.to_owned();
+        return page
+            .act(selector, index, gpu::GpuAction::Type { text })
+            .await;
+    }
     resolve_webview(app, page_name)?
         .type_text(
             selector,
@@ -526,6 +543,12 @@ pub async fn page_fill_with(
     text: &str,
     force: bool,
 ) -> Result<(), String> {
+    if let Some(page) = gpu::backend(app, page_name)? {
+        let text = text.to_owned();
+        return page
+            .act(selector, index, gpu::GpuAction::Fill { text, force })
+            .await;
+    }
     resolve_webview(app, page_name)?
         .fill(
             selector,
@@ -558,6 +581,9 @@ pub async fn page_press(
 
 /// Capture a PNG screenshot of the target page's WebView.
 pub async fn page_screenshot(app: &Arc<LxApp>, page_name: Option<&str>) -> Result<Vec<u8>, String> {
+    if let Some(page) = gpu::backend(app, page_name)? {
+        return page.screenshot().await;
+    }
     resolve_webview(app, page_name)?
         .take_screenshot()
         .await
@@ -583,6 +609,24 @@ pub async fn page_scroll_to(
     page_name: Option<&str>,
     selector: &str,
 ) -> Result<(), String> {
+    page_scroll_to_index(app, page_name, selector, None).await
+}
+
+/// Scroll a match of `selector` (default the first) into view.
+pub async fn page_scroll_to_index(
+    app: &Arc<LxApp>,
+    page_name: Option<&str>,
+    selector: &str,
+    index: Option<usize>,
+) -> Result<(), String> {
+    if let Some(page) = gpu::backend(app, page_name)? {
+        return page
+            .act(selector, index, gpu::GpuAction::ScrollIntoView)
+            .await;
+    }
+    if index.is_some_and(|index| index > 0) {
+        return Err("page scrollTo: a WebView page reveals only the first match".into());
+    }
     resolve_webview(app, page_name)?
         .scroll_to(selector, lingxia_webview::ScrollOptions)
         .await

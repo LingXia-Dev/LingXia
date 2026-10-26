@@ -297,7 +297,7 @@ impl JSPageDriver {
         } else {
             Some(options.max_text.unwrap_or(DEFAULT_MAX_TEXT))
         };
-        let value = crate::gpu::page_query(
+        let value = auto::page_query(
             &app,
             options.page.as_deref(),
             &options.css,
@@ -313,14 +313,12 @@ impl JSPageDriver {
     #[js_method]
     async fn click(&self, ctx: JSContext, options: JSClickOptions) -> JSResult<()> {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;
-        crate::gpu::page_act(
+        auto::page_click_with(
             &app,
             options.page.as_deref(),
             &options.css,
             options.index,
-            crate::gpu::GpuAction::Click {
-                force: options.force.unwrap_or(false),
-            },
+            options.force.unwrap_or(false),
         )
         .await
         .map_err(fail(&app, options.page.as_deref()))
@@ -329,14 +327,12 @@ impl JSPageDriver {
     #[js_method(rename = "type")]
     async fn type_text(&self, ctx: JSContext, options: JSTypeOptions) -> JSResult<()> {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;
-        crate::gpu::page_act(
+        auto::page_type(
             &app,
             options.page.as_deref(),
             &options.css,
             options.index,
-            crate::gpu::GpuAction::Type {
-                text: options.text.clone(),
-            },
+            &options.text,
         )
         .await
         .map_err(fail(&app, options.page.as_deref()))
@@ -345,15 +341,13 @@ impl JSPageDriver {
     #[js_method]
     async fn fill(&self, ctx: JSContext, options: JSTypeOptions) -> JSResult<()> {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;
-        crate::gpu::page_act(
+        auto::page_fill_with(
             &app,
             options.page.as_deref(),
             &options.css,
             options.index,
-            crate::gpu::GpuAction::Fill {
-                text: options.text.clone(),
-                force: options.force.unwrap_or(false),
-            },
+            &options.text,
+            options.force.unwrap_or(false),
         )
         .await
         .map_err(fail(&app, options.page.as_deref()))
@@ -376,15 +370,9 @@ impl JSPageDriver {
     #[js_method(rename = "scrollTo")]
     async fn scroll_to(&self, ctx: JSContext, options: JSScrollToOptions) -> JSResult<()> {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;
-        crate::gpu::page_act(
-            &app,
-            options.page.as_deref(),
-            &options.css,
-            options.index,
-            crate::gpu::GpuAction::ScrollIntoView,
-        )
-        .await
-        .map_err(fail(&app, options.page.as_deref()))
+        auto::page_scroll_to_index(&app, options.page.as_deref(), &options.css, options.index)
+            .await
+            .map_err(fail(&app, options.page.as_deref()))
     }
 
     #[js_method]
@@ -446,7 +434,7 @@ impl JSPageDriver {
             // Navigation returns before the destination WebView is attached.
             // Treat that transient absence like an unsatisfied selector so a
             // targeted wait can also be the page-readiness barrier.
-            let probe = match crate::gpu::page_query(
+            let probe = match auto::page_query(
                 &app,
                 options.page.as_deref(),
                 &options.css,
@@ -628,7 +616,7 @@ impl JSPageDriver {
     ) -> JSResult<JSScreenshot> {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;
         let options = options.0.unwrap_or_default();
-        let bytes = crate::gpu::page_screenshot(&app, options.page.as_deref())
+        let bytes = auto::page_screenshot(&app, options.page.as_deref())
             .await
             .map_err(fail(&app, options.page.as_deref()))?;
         let (width, height) = png_dimensions(&bytes).unwrap_or((0, 0));
