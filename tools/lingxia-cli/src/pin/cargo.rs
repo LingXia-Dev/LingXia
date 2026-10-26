@@ -371,6 +371,10 @@ pub fn transcribed_patches(checkout: &Path, base: &str) -> Result<Vec<Patch>> {
         let fields: Vec<String> = spec
             .iter()
             .map(|(key, value)| match (key.as_str(), value.as_str()) {
+                // An absolute path names a checkout outside LingXia's, the same on this machine.
+                ("path", Some(path)) if Path::new(path).is_absolute() => {
+                    format!("path = {}", toml_string(path))
+                }
                 ("path", Some(path)) => format!(
                     "path = {}",
                     toml_string(&format!("{base}/{}", path.trim_start_matches("./")))
@@ -533,5 +537,21 @@ lto = true
         let pty = patches.iter().find(|p| p.name == "pty").unwrap();
         assert!(pty.value.contains("git = \"https://g/pty.git\""));
         assert!(pty.value.contains("package = \"portable-pty\""));
+    }
+
+    #[test]
+    fn transcribed_patches_keep_absolute_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = dir.path().join("rong").join("core");
+        let manifest = format!(
+            "[patch.crates-io]\nrong_core = {{ path = {} }}\n",
+            toml_string(&outside.to_string_lossy())
+        );
+        std::fs::write(dir.path().join("Cargo.toml"), manifest).unwrap();
+        let patches = transcribed_patches(dir.path(), SOURCE_PATH).unwrap();
+        assert_eq!(
+            patches[0].value,
+            format!("{{ path = {} }}", toml_string(&outside.to_string_lossy()))
+        );
     }
 }
