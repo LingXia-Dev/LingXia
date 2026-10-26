@@ -70,6 +70,14 @@ export function render(view: View<{ save(value: string): Promise<void> }, { titl
   const decorativeImage = <image src="texture.png" alt=""/>;
   // @ts-expect-error alternative text must be text
   const invalidAlt = <image src="photo.png" alt={3}/>;
+  // @ts-expect-error roles are a closed set.
+  const banner = <column role="banner"/>;
+  // @ts-expect-error accessibilityState names known states only.
+  const state = <button accessibilityState={{ checked: true }}>Go</button>;
+  // @ts-expect-error unknown style keys are refused.
+  const unknownStyle = <column style={{ cursor: 'pointer' }}/>;
+  // @ts-expect-error sizeClass is compact or regular.
+  const wide = useView().env.sizeClass === 'wide';
   return <Card>
     <text>{view.data.title}{false}{null}{['hello', 1]}</text>
     <input bind={draft}/><textarea bind={draft}/><search bind={draft}/>

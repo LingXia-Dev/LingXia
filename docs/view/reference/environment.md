@@ -12,8 +12,8 @@ _Generated from the View schema (`schema.json`) and the compiler; do not edit._
 | `keyboard` | `Readonly<{ height: number }>` |  |
 | `pointer` | `"fine" \| "coarse"` | `fine` pointers (mouse, trackpad) hover; `coarse` ones (touch) do not. |
 | `os` | `string` |  |
-| `formFactor` | `string` |  |
-| `sizeClass` | `string` |  |
+| `formFactor` | `string` | `phone` or `tablet` from the smallest screen width; other hosts may report their own. |
+| `sizeClass` | `"compact" \| "regular"` | `compact` below 600 logical pixels of page width, else `regular`. |
 | `displayLanguage` | `string` |  |
 | `reducedMotion` | `boolean` | The system asks for reduced motion; `motion-reduce:`/`motion-safe:` follow it. |
 | `animatorDurationScale` | `number` | The platform's animation duration multiplier (0..10, default 1); 0 also sets `reducedMotion`. |

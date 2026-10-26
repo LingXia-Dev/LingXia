@@ -32,8 +32,10 @@ export interface Env {
   /** `fine` pointers (mouse, trackpad) hover; `coarse` ones (touch) do not. */
   readonly pointer: "fine" | "coarse";
   readonly os: string;
+  /** `phone` or `tablet` from the smallest screen width; other hosts may report their own. */
   readonly formFactor: string;
-  readonly sizeClass: string;
+  /** `compact` below 600 logical pixels of page width, else `regular`. */
+  readonly sizeClass: "compact" | "regular";
   readonly displayLanguage: string;
   /** The system asks for reduced motion; `motion-reduce:`/`motion-safe:` follow it. */
   readonly reducedMotion: boolean;
