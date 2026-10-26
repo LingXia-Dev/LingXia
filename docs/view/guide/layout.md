@@ -40,6 +40,9 @@ a flex container unless it is a grid.
 | `<scroll>` | flex column that scrolls one axis (see [Lists and scrolling](lists-and-scrolling.md)) |
 | `<spacer>` | nothing: an empty box; give it `grow` or a size |
 
+`justify-self-start` and `justify-self-end` are refused at the moment; use `place-self-*` or
+`style={{ justifySelf: 'end' }}`.
+
 `flex-row`/`flex-col` (and their `-reverse` forms) change the direction of a `<column>`, `<row>` or `<page>`.
 `flex-wrap`, `items-*`, `justify-*`, `content-*` and `gap-*` behave as in CSS.
 
