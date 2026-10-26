@@ -21,6 +21,18 @@ pub(super) struct Prepared<F> {
     prepared_at: Instant,
 }
 
+/// A presented frame waiting for the adapter to put it on screen.
+pub(super) struct Deferred {
+    environment: crate::platform::FrameEnvironment,
+    snapshot: Arc<FrameSnapshot>,
+    surface: SurfaceTicket,
+    page: PageTicket,
+    revision: u64,
+    offsets: HashMap<String, f32>,
+    timing: FrameTiming,
+    vsync: Instant,
+}
+
 const DECLINED: &str = "UI_FRAME: declined by the target";
 
 fn micros(duration: Duration) -> u64 {
@@ -320,7 +332,23 @@ impl<A: PlatformAdapter> Inner<A> {
                 prepared_at,
             } = prepared;
             timing.wait_us = micros(vsync.saturating_duration_since(prepared_at));
+            let deferred = self.adapter.deferred(&frame);
             match self.adapter.present(frame) {
+                Ok(true) if deferred => {
+                    // Nothing else prepares until this frame is on screen.
+                    let mut main = self.main();
+                    main.busy = true;
+                    main.deferred = Some(Deferred {
+                        environment,
+                        snapshot,
+                        surface,
+                        page,
+                        revision,
+                        offsets,
+                        timing,
+                        vsync,
+                    });
+                }
                 Ok(true) => {
                     // The gate in `frame_is_current` trusts only a frame the target accepted.
                     let mut main = self.main();
@@ -338,6 +366,52 @@ impl<A: PlatformAdapter> Inner<A> {
             let host = self.clone();
             self.adapter
                 .post_after(Duration::from_millis(16), Box::new(move || host.schedule()));
+        }
+        let pending = {
+            let main = self.main();
+            main.pending && !main.disposed
+        };
+        if pending {
+            self.schedule();
+        }
+    }
+
+    pub(super) fn deferred_presented(self: &Arc<Self>, generation: CommitTicket, shown: bool) {
+        let Some(deferred) = ({
+            let mut main = self.main();
+            let matches = main
+                .deferred
+                .as_ref()
+                .is_some_and(|d| d.snapshot.generation == generation);
+            let deferred = matches.then(|| main.deferred.take()).flatten();
+            if deferred.is_some() {
+                main.busy = false;
+            }
+            deferred
+        }) else {
+            return;
+        };
+        let current = !self.main().disposed && self.lifecycle.is_current_surface(deferred.surface);
+        if shown && current {
+            let Deferred {
+                environment,
+                snapshot,
+                surface,
+                page,
+                revision,
+                offsets,
+                timing,
+                vsync,
+            } = deferred;
+            {
+                let mut main = self.main();
+                main.presented_environment = Some(environment);
+                main.catch_up = false;
+            }
+            self.presented(snapshot, surface, page, revision, offsets, timing, vsync);
+        } else {
+            self.main().dirty = true;
+            self.main().pending = true;
         }
         let pending = {
             let main = self.main();

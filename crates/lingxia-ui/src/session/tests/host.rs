@@ -42,6 +42,8 @@ struct Log {
     menus: Vec<Option<crate::session::host::TextMenu>>,
     /// Threads that ran main-thread callbacks.
     main: Vec<ThreadId>,
+    /// Generations of frames the fake target accepted.
+    generations: Vec<CommitTicket>,
 }
 
 struct Fake {
@@ -53,6 +55,8 @@ struct Fake {
     restart: bool,
     /// A target still attaching: frames are declined, never produced some other way.
     pending: std::sync::atomic::AtomicBool,
+    /// Presenting only queues the frame, as a CPU raster thread does.
+    defer: std::sync::atomic::AtomicBool,
 }
 
 impl Fake {
@@ -75,8 +79,9 @@ impl Presenter for Fake {
         &self,
         display: DisplayList,
         _: SurfaceTicket,
-        _: CommitTicket,
+        generation: CommitTicket,
     ) -> Result<Option<Encoded>, String> {
+        self.log.lock().unwrap().generations.push(generation);
         self.log
             .lock()
             .unwrap()
@@ -106,6 +111,9 @@ impl Presenter for Fake {
         log.presented.push(frame.texts);
         log.presented_at.push(std::time::Instant::now());
         Ok(true)
+    }
+    fn deferred(&self, _: &Encoded) -> bool {
+        self.defer.load(std::sync::atomic::Ordering::Acquire)
     }
 }
 impl FrameScheduler for Fake {
@@ -238,6 +246,7 @@ impl Platform {
                 })),
                 restart: false,
                 pending: Default::default(),
+                defer: Default::default(),
             },
             worker.clone(),
             logic,
@@ -1719,4 +1728,58 @@ fn a_held_press_keeps_its_scale_transition_and_accessibility_hears_moves_at_a_qu
     // Nine moving frames report at most every fourth, plus one when they settle.
     let moves = content_changes(&host) - before;
     assert!((1..=4).contains(&moves), "{moves}");
+}
+
+#[test]
+fn a_deferred_present_holds_the_next_frame_until_it_reaches_the_screen() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(&format!(
+            "function render(){{return h('column',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}})}}"
+        )),
+        false,
+    );
+    host.adapter()
+        .defer
+        .store(true, std::sync::atomic::Ordering::Release);
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 10);
+    let queued = presents(&host);
+    assert_eq!(queued, 1, "nothing prepares behind a frame still rastering");
+    assert!(
+        host.snapshot().is_none(),
+        "not presented until it is on screen"
+    );
+    let generation = *host
+        .adapter()
+        .log
+        .lock()
+        .unwrap()
+        .generations
+        .last()
+        .unwrap();
+    host.deferred_presented(generation, true);
+    platform.settle(&[&host]);
+    assert!(host.snapshot().is_some());
+    run_frames(&platform, &host, 1);
+    assert_eq!(
+        presents(&host),
+        2,
+        "the next frame follows the acknowledgement"
+    );
+    // A dropped deferred frame is prepared again.
+    let generation = *host
+        .adapter()
+        .log
+        .lock()
+        .unwrap()
+        .generations
+        .last()
+        .unwrap();
+    host.deferred_presented(generation, false);
+    run_frames(&platform, &host, 1);
+    assert_eq!(presents(&host), 3);
 }
