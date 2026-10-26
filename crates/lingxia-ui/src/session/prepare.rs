@@ -183,6 +183,7 @@ impl ViewSession {
         self.animations = *timeline;
         self.animation_visible = visible;
         self.pending_animation = frame.map(|frame| (self.generation, surface, *frame));
+        self.metrics.animation_frames = self.animations.frames_per_second(now);
         Ok(result)
     }
 

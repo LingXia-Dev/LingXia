@@ -1017,3 +1017,134 @@ fn connections_say_hello_and_report_an_overdue_bootstrap() {
         assert!(failure.error.contains("UI_ACTION"), "{}", failure.error);
     }
 }
+
+// Motion: wakeups, hidden silence and the animation frame counter.
+
+const SPIN: &str = r#"{"name":"spin","durationMs":1000,"delayMs":0,"iterations":null,"easing":"linear","opacity":null,"transforms":[{"kind":"rotate","angle":[{"offset":0,"value":0},{"offset":1,"value":360}]}]}"#;
+
+fn presents(host: &ViewHost<Fake>) -> usize {
+    host.adapter().log.lock().unwrap().presented.len()
+}
+
+/// Advance the fake clock by `frames` display frames, firing due wakeups each frame.
+fn run_frames(platform: &Platform, host: &ViewHost<Fake>, frames: u32) {
+    let frame = Duration::from_micros(16_667);
+    for _ in 0..frames {
+        *host.adapter().clock.lock().unwrap() += frame;
+        platform.advance(frame);
+        platform.settle(&[host]);
+    }
+}
+
+fn animation_frames(host: &ViewHost<Fake>) -> u64 {
+    let snapshot = host.snapshot().unwrap();
+    let json: serde_json::Value = serde_json::from_str(&snapshot.json).unwrap();
+    json["metrics"]["animationFrames"].as_u64().unwrap()
+}
+
+#[test]
+fn a_spinner_presents_at_display_rate_only_while_visible_and_present() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(&format!(
+            "function render(){{const on=useLocal('on',true);return h('column',{{}},h('button',{{onClick:()=>on.set(false),style:{{height:60}}}},'stop'),on.value?h('column',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}}):null)}}"
+        )),
+        false,
+    );
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 10);
+    assert_eq!(presents(&host), 0, "hidden from the start");
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let shown = presents(&host);
+    run_frames(&platform, &host, 60);
+    let spun = presents(&host) - shown;
+    assert!((58..=61).contains(&spun), "{spun} presents in one second");
+    assert!(animation_frames(&host) >= 55, "{}", animation_frames(&host));
+
+    host.set_visible(false);
+    platform.settle(&[&host]);
+    let hidden = presents(&host);
+    run_frames(&platform, &host, 60);
+    assert_eq!(presents(&host), hidden, "a hidden page presents nothing");
+
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 10);
+    assert!(presents(&host) - hidden >= 10);
+
+    tap(&host, 20.0, 20.0);
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 2);
+    let removed = presents(&host);
+    run_frames(&platform, &host, 60);
+    assert_eq!(
+        presents(&host),
+        removed,
+        "a removed spinner schedules nothing"
+    );
+    assert!(platform.timers.lock().unwrap().is_empty());
+}
+
+#[test]
+fn a_one_shot_animation_stops_presenting_once_complete() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let fade = r#"{"name":"fade","durationMs":100,"delayMs":0,"iterations":1,"easing":"linear","opacity":[{"offset":0,"value":0},{"offset":1,"value":1}],"transforms":[]}"#;
+    let host = platform.host(
+        &worker,
+        &source(&format!(
+            "function render(){{return h('column',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{fade}}}}})}}"
+        )),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 12);
+    let done = presents(&host);
+    assert!(done >= 7, "{done}");
+    run_frames(&platform, &host, 60);
+    assert_eq!(presents(&host), done);
+    assert!(platform.timers.lock().unwrap().is_empty());
+}
+
+#[test]
+fn a_reduced_motion_change_while_hidden_catches_up_once_and_stays_silent() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(&format!(
+            "function render(){{return h('column',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}})}}"
+        )),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 5);
+    host.set_visible(false);
+    platform.settle(&[&host]);
+    assert!(host.frame_is_current());
+    let hidden = presents(&host);
+    host.adapter()
+        .environment
+        .lock()
+        .unwrap()
+        .as_mut()
+        .unwrap()
+        .value["reducedMotion"] = serde_json::json!(true);
+    host.redraw();
+    platform.settle(&[&host]);
+    assert_eq!(presents(&host), hidden + 1, "one catch-up frame");
+    assert!(host.frame_is_current());
+    run_frames(&platform, &host, 30);
+    assert_eq!(presents(&host), hidden + 1);
+    // Shown again with reduced motion, the spinner shows its base style and never wakes.
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let shown = presents(&host);
+    run_frames(&platform, &host, 30);
+    assert_eq!(presents(&host), shown);
+}

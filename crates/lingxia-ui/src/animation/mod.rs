@@ -153,6 +153,8 @@ pub struct Timeline {
     transitions: transition::Transitions,
     motion: Motion,
     visuals: BTreeMap<String, Visual>,
+    /// Host times of visible presentations that showed or cleared animated values.
+    presents: std::collections::VecDeque<Duration>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -187,7 +189,14 @@ impl Timeline {
             transitions: self.transitions.clone(),
             motion: self.motion,
             visuals: self.visuals.clone(),
+            presents: self.presents.clone(),
         }
+    }
+
+    /// Animated presentations in the second up to `now`; parked frames never count.
+    pub fn frames_per_second(&self, now: Duration) -> usize {
+        let since = now.saturating_sub(Duration::from_secs(1));
+        self.presents.iter().filter(|at| **at > since).count()
     }
 
     pub fn motion(&self) -> Motion {
@@ -503,6 +512,15 @@ impl Timeline {
                 }
             }
             frame.transitions.start(elapsed);
+            if !frame.visuals.is_empty() || !self.visuals.is_empty() {
+                let since = now.saturating_sub(Duration::from_secs(1));
+                while self.presents.front().is_some_and(|at| *at <= since) {
+                    self.presents.pop_front();
+                }
+                if self.presents.len() < 1024 {
+                    self.presents.push_back(now);
+                }
+            }
         }
         self.instances = frame.instances;
         self.transitions = frame.transitions;
@@ -812,6 +830,43 @@ mod tests {
         let shown = b.prepare(ms(500), [("new".into(), effect())]).unwrap();
         assert_eq!(shown.samples()["new"].phase, Phase::Delayed);
         assert_eq!(shown.samples()["new"].until_boundary, Some(ms(20)));
+    }
+
+    #[test]
+    fn duration_scale_stretches_keyframe_time_and_wakeups_and_reduced_motion_shows_base() {
+        let mut t = Timeline::default();
+        t.set_motion(Motion {
+            reduced: false,
+            scale: 2.0,
+        })
+        .unwrap();
+        t.set_visible(true, ms(0)).unwrap();
+        let first = prepare(&mut t, 0, effect());
+        t.presented(first, ms(0)).unwrap();
+        assert_eq!(
+            t.next_wakeup(ms(0), ["chart"]).unwrap(),
+            Wakeup::After(ms(40))
+        );
+        assert_eq!(
+            prepare(&mut t, 140, effect()).samples()["chart"].progress,
+            0.5
+        );
+        t.set_motion(Motion {
+            reduced: true,
+            scale: 2.0,
+        })
+        .unwrap();
+        let reduced = prepare(&mut t, 140, effect());
+        assert!(reduced.visuals().is_empty());
+        t.presented(reduced, ms(140)).unwrap();
+        assert_eq!(t.next_wakeup(ms(140), ["chart"]).unwrap(), Wakeup::None);
+        assert!(
+            t.set_motion(Motion {
+                reduced: false,
+                scale: 0.0
+            })
+            .is_err()
+        );
     }
 
     fn blink() -> Definition {
