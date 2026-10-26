@@ -109,3 +109,28 @@ fn selectable_text_projects_selection_actions() {
     );
     assert_eq!(semantic.text_selection, Some([0, 5]));
 }
+
+#[test]
+fn long_press_between_words_selects_the_nearest_word() {
+    let mut session = page(
+        "h('column',{},h('text',{testId:'p',style:{userSelect:'text',whiteSpace:'pre',fontFamily:'monospace',fontSize:16,alignSelf:'flex-start'}},'ab        cd'))",
+    );
+    let display = session.layout(320, 200, 1.0).unwrap();
+    let text = node(&display, "p");
+    let identity = text.identity.clone();
+    let y = text.bounds[1] + text.bounds[3] / 2.0;
+    let advance = text.bounds[2] / 12.0;
+    for (column, word) in [(3.0, "ab"), (8.5, "cd")] {
+        let x = text.bounds[0] + advance * column;
+        assert!(
+            session
+                .select_text(session.generation(), &identity, [x, y])
+                .unwrap()
+        );
+        assert_eq!(
+            session.selected_text().as_deref(),
+            Some(word),
+            "column {column}"
+        );
+    }
+}

@@ -92,7 +92,21 @@ impl InputHitMap {
             return Some([0, input.value.encode_utf16().count() as u32]);
         }
         let mut selection = if word {
-            Selection::word_from_point(&shaped.layout, x, y)
+            let hit = Selection::word_from_point(&shaped.layout, x, y).text_range();
+            let at = parley::editing::Cursor::from_point(&shaped.layout, x, y).index();
+            let range = crate::text::words::snap(&input.value, hit, at);
+            Selection::new(
+                parley::editing::Cursor::from_byte_index(
+                    &shaped.layout,
+                    range.start,
+                    parley::Affinity::Downstream,
+                ),
+                parley::editing::Cursor::from_byte_index(
+                    &shaped.layout,
+                    range.end,
+                    parley::Affinity::Upstream,
+                ),
+            )
         } else {
             Selection::from_point(&shaped.layout, x, y)
         };

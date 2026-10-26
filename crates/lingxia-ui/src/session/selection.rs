@@ -53,7 +53,11 @@ impl ViewSession {
         let range = if all {
             0..text.text.len()
         } else {
-            Selection::word_from_point(&text.layout, x, y).text_range()
+            crate::text::words::snap(
+                &text.text,
+                Selection::word_from_point(&text.layout, x, y).text_range(),
+                Cursor::from_point(&text.layout, x, y).index(),
+            )
         };
         self.set_selection(identity, &text.text, range.start, range.end);
         Ok(true)

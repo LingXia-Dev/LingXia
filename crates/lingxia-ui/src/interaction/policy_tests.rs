@@ -809,3 +809,38 @@ fn rtl_horizontal_drags_advance_the_offset_the_other_way() {
         (0.0, 20.0)
     );
 }
+
+#[test]
+fn a_long_press_on_a_link_selects_in_selectable_text_and_presses_otherwise() {
+    let link_in = |selectable: Option<&'static str>| {
+        let mut text = node("t", "text", [0.0, 0.0, 100.0, 20.0]);
+        text.text = "read terms".into();
+        text.selectable = selectable;
+        let mut link = node("t/l", "link", [40.0, 0.0, 40.0, 20.0]);
+        link.text = "terms".into();
+        link.on_click = Some(7);
+        vec![text, link]
+    };
+    let page = PageTicket::new(1);
+    // Selectable: the long-press selects and the release does not press.
+    let mut interaction = ViewInteraction::default();
+    presented(&mut interaction, link_in(Some("text")), 1);
+    let (_, effects) = interaction.pointer(press(PointerPhase::Down, 100.0, 20.0), page);
+    assert!(effects.contains(&Effect::ArmLongPress));
+    let effects = interaction.long_press();
+    assert!(effects.contains(&Effect::ClearPress) && effects.contains(&Effect::Dispatch));
+    assert!(matches!(
+        interaction.take_dispatch()[..],
+        [Dispatch::SelectText { .. }]
+    ));
+    let (_, effects) = interaction.pointer(press(PointerPhase::Up, 100.0, 20.0), page);
+    assert!(!effects.contains(&Effect::Clicked));
+    assert!(interaction.take_dispatch().is_empty());
+    // Plain text: no long-press arms, so a long hold still presses the link.
+    let mut interaction = ViewInteraction::default();
+    presented(&mut interaction, link_in(None), 1);
+    let (_, effects) = interaction.pointer(press(PointerPhase::Down, 100.0, 20.0), page);
+    assert!(!effects.contains(&Effect::ArmLongPress));
+    let (_, effects) = interaction.pointer(press(PointerPhase::Up, 100.0, 20.0), page);
+    assert!(effects.contains(&Effect::Clicked));
+}

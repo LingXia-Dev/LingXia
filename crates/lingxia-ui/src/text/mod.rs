@@ -12,3 +12,4 @@ pub(crate) mod shape;
 pub(crate) mod style;
 #[cfg(test)]
 mod tests;
+pub(crate) mod words;

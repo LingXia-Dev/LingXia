@@ -64,6 +64,12 @@ impl ViewInteraction {
                     effects.push(press(&frame, index));
                     if frame.node(index).is_some_and(frame::editable) {
                         effects.push(Effect::ArmLongPress);
+                    } else if frame.node(index).is_some_and(|node| node.tag == "link")
+                        && let Some(text) = frame.selectable_hit(point)
+                    {
+                        // In selectable text a long-press selects instead of pressing the link.
+                        self.gesture.selectable = Some(text);
+                        effects.push(Effect::ArmLongPress);
                     }
                 } else if let Some(index) = frame.selectable_hit(point) {
                     self.gesture.selectable = Some(index);
@@ -199,20 +205,30 @@ impl ViewInteraction {
         let Some(frame) = self.frame.clone() else {
             return Vec::new();
         };
-        if let (None, Some(index), Some(commit)) = (
-            self.gesture.pressed,
+        let link = self
+            .gesture
+            .pressed
+            .is_some_and(|pressed| frame.nodes[pressed].tag == "link");
+        if let (true, Some(index), Some(commit)) = (
+            self.gesture.pressed.is_none() || link,
             self.gesture.selectable,
             self.gesture.pressed_commit,
         ) && commit == frame.commit
         {
             self.gesture.long_pressed = true;
+            let mut effects = if link {
+                self.cancel_press()
+            } else {
+                Vec::new()
+            };
             let point = self.logical(self.gesture.down[0], self.gesture.down[1]);
             self.dispatches.push(Dispatch::SelectText {
                 commit,
                 identity: frame.nodes[index].identity.clone(),
                 point,
             });
-            return vec![Effect::Haptic, Effect::Dispatch];
+            effects.extend([Effect::Haptic, Effect::Dispatch]);
+            return effects;
         }
         let (Some(index), Some(commit)) = (self.gesture.pressed, self.gesture.pressed_commit)
         else {

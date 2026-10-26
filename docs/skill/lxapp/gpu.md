@@ -47,7 +47,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   `fill`/`stroke: 'url(#id)'` naming a `gradients` entry (linear, radial or conic, ≤8).
 - Rich text: `<text>Read <span className="font-bold">this</span> or <link onPress={go}>that</link></text>`;
   runs take text paint only; links are accent + underline by default. `select-text` lets users
-  long-press to select and copy.
+  long-press to select the nearest word and copy; there a long-press on a link selects, elsewhere it presses.
 - Semantics: `role="heading" headingLevel={2}`, `list`/`listitem`, `dialog`, `alert`/`status`
   (announced), `accessibilityHidden` for decoration. A layout element with a role, or a scroll,
   groups its content for screen readers ("item 2 of 3"); plain wrappers collapse.
