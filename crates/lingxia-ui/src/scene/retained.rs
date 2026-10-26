@@ -239,7 +239,7 @@ impl RetainedLayout {
             };
             let matrix = if let Some(visual) = visual {
                 let [x, y, w, h] = node.bounds.map(f64::from);
-                checked_paint_transform(inherited * visual.matrix([x + w / 2.0, y + h / 2.0])?)?
+                checked_paint_transform(inherited * visual.matrix_in([x, y, w, h])?)?
             } else {
                 inherited
             };
