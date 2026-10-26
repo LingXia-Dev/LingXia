@@ -46,6 +46,21 @@ mod tests {
     use super::snap;
 
     #[test]
+    fn chinese_selects_a_dictionary_word_not_the_whole_run() {
+        use parley::{LayoutContext, StyleProperty, editing::Selection};
+        let mut fonts = crate::text::fonts::context();
+        let mut layouts = LayoutContext::<()>::new();
+        let text = "我们今天去北京看朋友";
+        let mut builder = layouts.ranged_builder(&mut fonts, text, 1.0, true);
+        builder.push_default(StyleProperty::FontSize(20.0));
+        let mut layout = builder.build(text);
+        layout.break_all_lines(None);
+        // The first two characters are one word, "我们".
+        let word = Selection::word_from_point(&layout, 2.0, 10.0).text_range();
+        assert_eq!(&text[word], "我们");
+    }
+
+    #[test]
     fn a_hit_on_whitespace_takes_the_nearest_word() {
         let text = "select  the   word";
         assert_eq!(snap(text, 6..8, 6), 0..6);
