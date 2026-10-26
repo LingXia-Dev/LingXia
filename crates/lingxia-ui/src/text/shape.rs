@@ -177,6 +177,22 @@ impl Renderer {
         Some(layout)
     }
 
+    /// The CSS `ch` unit: the advance of "0" in the node's (scaled) font.
+    pub(crate) fn zero_advance(&mut self, style: &TextStyle) -> f32 {
+        let mut builder = self.text.ranged_builder(&mut self.fonts, "0", 1.0, true);
+        builder.push_default(StyleProperty::FontSize(self.text_scale.map(style.size)));
+        builder.push_default(StyleProperty::FontWeight(FontWeight::new(style.weight)));
+        builder.push_default(StyleProperty::Locale(self.locale));
+        builder.push_default(if style.mono {
+            GenericFamily::Monospace
+        } else {
+            GenericFamily::SansSerif
+        });
+        let mut layout = builder.build("0");
+        layout.break_all_lines(None);
+        layout.full_width()
+    }
+
     /// The longest prefix plus an ellipsis that fits `lines` lines of `width`, or `None` if all fits.
     pub(crate) fn ellipsize(
         &mut self,

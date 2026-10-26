@@ -75,6 +75,9 @@ function number(value, length = false) {
 
 function dimension(value) {
   if (['auto', 'fit-content', 'max-content', 'min-content'].includes(value)) return value;
+  // `ch` resolves natively against the advance of "0" in the node's font.
+  const ch = value.match(/^((?:\d*\.)?\d+)ch$/);
+  if (ch) return `${Number(ch[1])}ch`;
   const { value: amount, unit } = evaluate(value);
   if (unit === '%' || unit === 'vw' || unit === 'vh') return `${Math.round(amount * 1e6) / 1e6}${unit}`;
   if (unit === 'px' || (unit === '' && amount === 0)) return amount;
@@ -377,7 +380,13 @@ function longhand(prop, value) {
     case 'length': return prop.endsWith('radius') && /^calc\(infinity\s*\*\s*1px\)$/.test(value) ? 16384 : number(value, true);
     case 'font-size': return number(value, true);
     case 'number': case 'opacity': case 'font-weight': return number(value);
-    case 'color': return key === 'borderColor' && value.toLowerCase() === 'currentcolor' ? 'currentColor' : color(value);
+    case 'color': return ['borderColor', 'backgroundColor'].includes(key) && value.toLowerCase() === 'currentcolor' ? 'currentColor' : color(value);
+    case 'aspect-ratio': {
+      if (value === 'auto') return value;
+      const ratio = value.match(/^((?:\d*\.)?\d+)\s*(?:\/\s*((?:\d*\.)?\d+))?$/);
+      if (!ratio || !(Number(ratio[2] ?? 1) > 0)) unsupported(`aspect-ratio: ${value}`);
+      return Number(ratio[1]) / Number(ratio[2] ?? 1);
+    }
     case 'family': return fontFamily(value);
     case 'z-index':
       if (!/^-?\d+$/.test(value)) unsupported(`z-index: ${value}`);
@@ -480,6 +489,11 @@ function declarations(nodes, vars, root, animationLowering) {
     // Border styles follow --tw-border-style, which only `border-solid|dashed|dotted` set.
     if (prop === '--tw-border-style') { style.borderStyle = longhand('border-style', variables(node.value, local).trim()); continue; }
     if (prop.startsWith('--')) continue;
+    if (prop === 'user-select' || prop === '-webkit-user-select') {
+      // Static text is never selectable yet, so `select-none` already holds.
+      if (!['none', 'auto'].includes(node.value.trim())) unsupported(`user-select: ${node.value} (selectable text is not supported yet)`);
+      continue;
+    }
     if (transitions.test(prop)) unsupported(`${prop} (the native renderer has no transitions)`);
     const value = variables(node.value, local).trim();
     if (prop in shorthands) {

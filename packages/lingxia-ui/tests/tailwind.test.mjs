@@ -67,6 +67,21 @@ test('numeric variants compose across classes and white-space keeps CSS keywords
   assert.throws(() => describe(() => h('text', { style: { fontVariantNumeric: 'small-caps' } }, '1'), {}), /UI_STYLE_VALUE/);
 });
 
+test('aspect ratios, ch widths, current-color backgrounds, overscroll and select-none lower or fail by name', async () => {
+  await use(['aspect-square', 'aspect-video', 'aspect-[4/3]', 'aspect-auto', 'max-w-[60ch]', 'w-[10ch]', 'bg-current', 'overscroll-contain',
+    'overscroll-y-none', 'select-none', 'select-text', 'select-all']);
+  assert.deepEqual([classStyle('aspect-square').aspectRatio, classStyle('aspect-video').aspectRatio, classStyle('aspect-[4/3]').aspectRatio], [1, 16 / 9, 4 / 3]);
+  assert.equal(node('column', { className: 'aspect-video', style: { aspectRatio: 'auto' } }).aspectRatio, undefined);
+  assert.equal(node('text', { className: 'max-w-[60ch]' }).maxWidthCh, 60);
+  assert.throws(() => describe(() => h('column', { className: 'w-[10ch]' }), {}), /UI_STYLE_VALUE: width/);
+  assert.equal(node('column', { className: 'bg-current' }).background, 'currentColor');
+  assert.equal(node('scroll', { className: 'overscroll-contain' }).overscroll, 'contain');
+  assert.equal(node('scroll', { className: 'overscroll-y-none' }).overscroll, 'none');
+  assert.throws(() => describe(() => h('column', { className: 'overscroll-contain' }), {}), /overscrollBehavior is not supported on <column>/);
+  assert.deepEqual(classStyle('select-none'), {});
+  for (const name of ['select-text', 'select-all']) assert.throws(() => classStyle(name), /selectable text is not supported yet/);
+});
+
 test('horizontal overflow lowers only onto scroll containers', async () => {
   await use(['overflow-x-auto', 'md:overflow-x-auto', 'overflow-hidden']);
   assert.deepEqual(classStyle('overflow-x-auto'), { overflowX: 'auto' });

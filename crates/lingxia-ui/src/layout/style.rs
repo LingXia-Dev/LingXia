@@ -427,6 +427,7 @@ pub(crate) fn node_style(
             right: margin(record, field::MARGIN_RIGHT),
             top: margin(record, field::MARGIN_TOP),
         },
+        aspect_ratio: record.number(field::ASPECT_RATIO),
         ..Default::default()
     })
 }

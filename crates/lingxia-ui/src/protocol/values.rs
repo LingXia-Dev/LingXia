@@ -151,6 +151,18 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             }),
             "UI_STYLE: invalid font-variant-numeric",
         ),
+        field::ASPECT_RATIO => ensure(
+            value
+                .as_f64()
+                .is_some_and(|v| v.is_finite() && v > 0.0 && v <= 10000.0),
+            "UI_STYLE: invalid aspect ratio",
+        ),
+        field::MAX_WIDTH_CH => ensure(
+            value
+                .as_f64()
+                .is_some_and(|v| v.is_finite() && (0.0..=4096.0).contains(&v)),
+            "UI_STYLE: invalid ch length",
+        ),
         field::TRANSFORM => crate::scene::transform::StaticTransform::parse(
             value
                 .as_str()
@@ -310,7 +322,8 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             "number" => number(id, value),
             _ => {
                 let value = value.as_str().ok_or("UI_STYLE: expected color")?;
-                if id != field::BORDER_COLOR || value != "currentColor" {
+                if !matches!(id, field::BORDER_COLOR | field::BACKGROUND) || value != "currentColor"
+                {
                     color(value)?;
                 }
                 Ok(())

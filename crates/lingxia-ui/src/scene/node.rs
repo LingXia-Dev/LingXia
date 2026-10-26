@@ -228,6 +228,9 @@ impl ScrollAxis {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct ScrollSnapshot {
+    /// `overscroll-behavior: contain`: leftover distance never reaches ancestors.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub contain: bool,
     /// Resolved layout edges, including borders, in top/right/bottom/left order.
     #[serde(skip)]
     pub(crate) content_insets: [f32; 4],

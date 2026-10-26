@@ -149,6 +149,7 @@ impl Renderer {
                     ScrollAxis::Vertical => layout.scroll_height(),
                 };
                 ScrollSnapshot {
+                    contain: matches!(record.string(field::OVERSCROLL), Some("contain" | "none")),
                     content_insets: [
                         layout.padding.top,
                         layout.padding.right,
@@ -243,7 +244,11 @@ impl Renderer {
                         None
                     })
             {
-                let [r, g, b, a] = color(background)?;
+                let [r, g, b, a] = color(if background == "currentColor" {
+                    colors[index]
+                } else {
+                    background
+                })?;
                 commands.push(Paint::Rect {
                     corners,
                     color: [r, g, b, a],

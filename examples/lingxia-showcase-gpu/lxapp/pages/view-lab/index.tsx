@@ -12,6 +12,7 @@ export function render() {
       <Display />
       <Transforms />
       <TextLayout />
+      <Sizing />
     </Page>
   );
 }
@@ -111,6 +112,23 @@ function TextLayout() {
       </row>
       <text testId="lab-text-pre-wrap" className="p-2 rounded bg-muted text-xs font-mono whitespace-pre-wrap">{'{\n  "indent": true\n}'}</text>
       <text testId="lab-text-break-all" className="text-xs break-all">https://example.com/a/very/long/path/without/any/spaces/to/break/at</text>
+    </Section>
+  );
+}
+
+function Sizing() {
+  return (
+    <Section title="Sizing" testId="lab-sizing">
+      <row className="gap-3 items-start">
+        <view testId="lab-aspect-video" className="grow basis-0 aspect-video rounded-lg bg-primary" />
+        <view testId="lab-aspect-square" className="w-16 aspect-square rounded-lg text-error bg-current" />
+      </row>
+      <text testId="lab-max-ch" className="max-w-[24ch] text-sm select-none">This paragraph wraps at about twenty-four zeros of its own font.</text>
+      <scroll testId="lab-overscroll" className="h-24 rounded-lg border border-border overscroll-contain">
+        <column className="p-3 gap-2">
+          {Array.from({ length: 8 }, (_, i) => <text key={String(i)} className="text-xs">Contained row {i + 1}</text>)}
+        </column>
+      </scroll>
     </Section>
   );
 }

@@ -44,7 +44,8 @@
     "white-space": ["normal", "nowrap", "pre", "pre-wrap", "pre-line"],
     "text-overflow": ["clip", "ellipsis"],
     "sizing-keyword": ["fit-content", "max-content", "min-content"],
-    "border-style": ["solid", "dashed", "dotted"]
+    "border-style": ["solid", "dashed", "dotted"],
+    "overscroll": ["auto", "contain", "none"]
   },
   "fields": [
     {"id": 0, "key": "width", "wire": "width", "kind": "number"},
@@ -178,7 +179,10 @@
     {"id": 128, "key": "heightKeyword", "wire": "heightKeyword", "kind": "sizing-keyword"},
     {"id": 129, "key": "borderStyle", "wire": "borderStyle", "kind": "border-style"},
     {"id": 130, "key": "transform", "wire": "transform", "kind": "transform"},
-    {"id": 131, "key": "fontVariantNumeric", "wire": "fontVariantNumeric", "kind": "font-variant-numeric"}
+    {"id": 131, "key": "fontVariantNumeric", "wire": "fontVariantNumeric", "kind": "font-variant-numeric"},
+    {"id": 132, "key": "overscroll", "wire": "overscroll", "kind": "overscroll", "tags": ["scroll", "list"]},
+    {"id": 133, "key": "aspectRatio", "wire": "aspectRatio", "kind": "aspect-ratio"},
+    {"id": 134, "key": "maxWidthCh", "wire": "maxWidthCh", "kind": "dimension-ch"}
   ],
   "styleGroups": {"accent": ["color"]},
   "style": {
@@ -186,7 +190,8 @@
     "height": {"type": "number | `${number}%` | `${number}vw` | `${number}vh` | \"auto\" | \"fit-content\" | \"max-content\" | \"min-content\"", "group": "box", "lower": "dimension", "wire": "height", "css": "height"},
     "minWidth": {"type": "number | `${number}%` | `${number}vw` | `${number}vh`", "group": "box", "lower": "dimension", "wire": "minWidth", "css": "min-width"},
     "minHeight": {"type": "number | `${number}%` | `${number}vw` | `${number}vh`", "group": "box", "lower": "dimension", "wire": "minHeight", "css": "min-height"},
-    "maxWidth": {"type": "number | `${number}%` | `${number}vw` | `${number}vh`", "group": "box", "lower": "dimension", "wire": "maxWidth", "css": "max-width"},
+    "maxWidth": {"type": "number | `${number}%` | `${number}vw` | `${number}vh` | `${number}ch`", "group": "box", "lower": "dimension", "wire": "maxWidth", "css": "max-width"},
+    "aspectRatio": {"type": "number | \"auto\"", "group": "box", "lower": "aspect-ratio", "wire": "aspectRatio", "css": "aspect-ratio"},
     "maxHeight": {"type": "number | `${number}%` | `${number}vw` | `${number}vh`", "group": "box", "lower": "dimension", "wire": "maxHeight", "css": "max-height"},
     "margin": {"type": "number | \"auto\"", "group": "box", "lower": "margin", "wire": ["marginTop", "marginRight", "marginBottom", "marginLeft"]},
     "marginTop": {"type": "number | \"auto\"", "group": "box", "lower": "margin", "wire": "marginTop", "css": ["margin-top", "margin-block-start"]},
@@ -206,7 +211,7 @@
     "alignSelf": {"type": "\"flex-start\" | \"start\" | \"center\" | \"flex-end\" | \"end\" | \"stretch\" | \"baseline\"", "group": "box", "lower": "alignment", "wire": "alignSelf", "css": "align-self"},
     "opacity": {"type": "number", "group": "box", "lower": "opacity", "wire": "opacity", "paint": true, "css": "opacity"},
     "overflow": {"type": "\"visible\" | \"hidden\"", "group": "box", "lower": "option", "wire": "overflow", "css": "overflow"},
-    "backgroundColor": {"type": "string", "group": "box", "lower": "color", "wire": "background", "paint": true, "css": "background-color"},
+    "backgroundColor": {"type": "string | \"currentColor\"", "group": "box", "lower": "color", "wire": "background", "paint": true, "css": "background-color"},
     "backgroundImage": {"type": "BackgroundGradient | \"none\"", "group": "box", "lower": "gradient", "wire": "backgroundGradient", "paint": true},
     "borderRadius": {"type": "number", "group": "box", "lower": "length", "wire": ["radius", "radiusTopLeft", "radiusTopRight", "radiusBottomRight", "radiusBottomLeft"], "css": "border-radius"},
     "borderTopLeftRadius": {"type": "number", "group": "box", "lower": "length", "wire": "radiusTopLeft", "css": "border-top-left-radius"},
@@ -259,6 +264,7 @@
     "textOverflow": {"type": "\"clip\" | \"ellipsis\"", "group": "textBlock", "lower": "option", "wire": "textOverflow", "css": "text-overflow"},
     "overflowX": {"type": "\"auto\"", "group": "scroll", "lower": "scroll-axis", "wire": "scrollAxis", "css": "overflow-x"},
     "overflowY": {"type": "\"auto\"", "group": "scroll", "lower": "scroll-axis", "wire": "scrollAxis", "css": "overflow-y"},
+    "overscrollBehavior": {"type": "\"auto\" | \"contain\" | \"none\"", "group": "overscroll", "lower": "option", "wire": "overscroll", "css": ["overscroll-behavior", "overscroll-behavior-x", "overscroll-behavior-y"]},
     "placeholderColor": {"type": "string", "group": "editor", "lower": "color", "wire": "placeholderColor", "paint": true},
     "objectFit": {"type": "\"cover\" | \"contain\" | \"fill\"", "group": "media", "lower": "fit", "wire": "imageFit", "css": "object-fit"}
   },
@@ -270,8 +276,8 @@
     "text": {"wire": "text", "children": "text", "style": ["box", "padding", "text", "textBlock"], "props": {}},
     "button": {"wire": "button", "children": "content", "style": ["box", "padding", "flex", "gap", "text"], "props": {"onClick": {"type": "() => void"}, "disabled": {"type": "boolean"}, "accessibilityLabel": {"type": "string"}}},
     "spacer": {"wire": "spacer", "children": "none", "style": ["box"], "props": {}},
-    "scroll": {"wire": "scroll", "children": "any", "style": ["box", "padding", "flex", "gap", "text", "scroll"], "props": {"onReachStart": {"type": "() => void"}, "onReachEnd": {"type": "() => void"}}},
-    "list": {"wire": "list", "children": "none", "style": ["box", "padding", "gap", "text"], "props": {"count": {"type": "number", "required": true}, "row": {"type": "(index: number) => JSX.Element", "required": true}, "height": {"type": "(index: number) => number"}, "anchor": {"type": "\"end\" | { index: number; align: \"start\" | \"end\"; seq?: number }"}, "itemKeys": {"type": "readonly string[]"}, "onReachStart": {"type": "() => void"}, "onReachEnd": {"type": "() => void"}}},
+    "scroll": {"wire": "scroll", "children": "any", "style": ["box", "padding", "flex", "gap", "text", "scroll", "overscroll"], "props": {"onReachStart": {"type": "() => void"}, "onReachEnd": {"type": "() => void"}}},
+    "list": {"wire": "list", "children": "none", "style": ["box", "padding", "gap", "text", "overscroll"], "props": {"count": {"type": "number", "required": true}, "row": {"type": "(index: number) => JSX.Element", "required": true}, "height": {"type": "(index: number) => number"}, "anchor": {"type": "\"end\" | { index: number; align: \"start\" | \"end\"; seq?: number }"}, "itemKeys": {"type": "readonly string[]"}, "onReachStart": {"type": "() => void"}, "onReachEnd": {"type": "() => void"}}},
     "image": {"wire": "image", "children": "none", "style": ["box", "media"], "props": {"src": {"type": "string", "required": true}, "alt": {"type": "string"}, "retryKey": {"type": "string"}, "onLoad": {"type": "() => void"}, "onError": {"type": "() => void"}}},
     "input": {"wire": "input", "children": "none", "style": ["box", "padding", "text", "editor"], "binding": {"type": "string", "event": "onInput"}, "props": {"accessibilityLabel": {"type": "string"}, "placeholder": {"type": "string"}, "secure": {"type": "boolean"}, "keyboard": {"type": "\"text\" | \"number\" | \"email\" | \"phone\""}, "autoFocus": {"type": "boolean"}, "disabled": {"type": "boolean"}, "onSubmit": {"type": "(value: string) => void"}}},
     "textarea": {"wire": "textarea", "children": "none", "style": ["box", "padding", "text", "editor"], "binding": {"type": "string", "event": "onInput"}, "props": {"accessibilityLabel": {"type": "string"}, "placeholder": {"type": "string"}, "secure": {"type": "boolean"}, "keyboard": {"type": "\"text\" | \"number\" | \"email\" | \"phone\""}, "autoFocus": {"type": "boolean"}, "disabled": {"type": "boolean"}, "submitOnEnter": {"type": "boolean"}, "onSubmit": {"type": "(value: string) => void"}}},

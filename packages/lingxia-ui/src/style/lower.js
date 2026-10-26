@@ -41,6 +41,12 @@ function length(name, value, { signed = false, max = 16384 } = {}) {
 }
 
 function dimension(name, value, env, out, key) {
+  const ch = typeof value === 'string' && value.match(/^(\d+(?:\.\d+)?)ch$/);
+  if (ch) {
+    if (key !== 'maxWidth') invalid(name);
+    out.maxWidthCh = length(name, Number(ch[1]), { max: 4096 });
+    return;
+  }
   const viewport = typeof value === 'string' && value.match(/^(\d+(?:\.\d+)?)(vw|vh)$/);
   if (viewport) {
     const extent = env?.viewport?.[viewport[2] === 'vw' ? 'width' : 'height'];
@@ -164,6 +170,10 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
       case 'backdrop': [out[key[0]], out[key[1]]] = backdrop(name, value); break;
       case 'animation': { const lowered = animation(value); if (lowered !== undefined) out[key] = lowered; break; }
       case 'transform': transformPart(name, value, transform); break;
+      case 'aspect-ratio':
+        if (value === 'auto') break;
+        if (!finite(value) || value <= 0 || value > 10000) invalid(name);
+        out[key] = value; break;
       case 'font-variant-numeric': out[key] = numericVariant(name, value); break;
       case 'basis':
         if (value !== 'auto') length(name, percent(value) ?? value);

@@ -71,3 +71,26 @@ fn fixed_boxes_position_against_the_page_and_escape_scroll_and_clips() {
     let at = (180 * 200 + 180) * 4;
     assert_eq!(&pixels.data_as_u8_slice()[at..at + 4], &[0, 255, 0, 255]);
 }
+
+#[test]
+fn aspect_ratio_derives_the_free_axis_and_ch_tracks_the_font() {
+    let display = layout(
+        "h('column',{style:{width:200}},h('column',{testId:'video',style:{width:160,aspectRatio:16/9}}),h('column',{testId:'square',style:{height:30,aspectRatio:1,alignSelf:'start'}}),h('text',{testId:'small',style:{maxWidth:'10ch',fontSize:10}},'0000000000000000000000'),h('text',{testId:'large',style:{maxWidth:'10ch',fontSize:20}},'0000000000000000000000'))",
+    );
+    assert_eq!(bounds(&display, "video")[3], 90.0);
+    assert_eq!(bounds(&display, "square")[2], 30.0);
+    let [small, large] = ["small", "large"].map(|id| bounds(&display, id)[2]);
+    assert!(
+        small > 20.0 && small <= 100.0 && (large / small - 2.0).abs() < 0.1,
+        "{small} {large}"
+    );
+}
+
+#[test]
+fn current_color_backgrounds_follow_the_text_color() {
+    let display = layout(
+        "h('column',{style:{color:'#00ff00'}},h('column',{style:{width:10,height:10,backgroundColor:'currentColor'}}))",
+    );
+    let pixels = display.rasterize().unwrap().pixels;
+    assert_eq!(&pixels.data_as_u8_slice()[..4], &[0, 255, 0, 255]);
+}

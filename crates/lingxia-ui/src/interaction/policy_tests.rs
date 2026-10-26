@@ -47,6 +47,7 @@ pub(crate) fn node(identity: &str, tag: &'static str, bounds: [f32; 4]) -> NodeS
 
 fn region(id: &str, parent: Option<&str>, offset: f32, max: f32) -> ScrollSnapshot {
     ScrollSnapshot {
+        contain: false,
         content_insets: [0.0; 4],
         content_size: [0.0; 2],
         axis: ScrollAxis::Vertical,
@@ -69,6 +70,27 @@ fn scrolls(inner_offset: f32, inner_max: f32) -> PresentedFrame {
     let mut inner = node("i", "scroll", [0.0, 0.0, 100.0, 100.0]);
     inner.scroll = Some(region("inner", Some("outer"), inner_offset, inner_max));
     frame(vec![outer, inner])
+}
+
+#[test]
+fn contained_overscroll_never_reaches_ancestors() {
+    let mut scroll = ScrollModel::default();
+    let mut frame = scrolls(0.0, 50.0);
+    frame.nodes[1].scroll.as_mut().unwrap().contain = true;
+    scroll.accept(&frame, 0, &HashMap::new());
+    assert!(scroll.scroll_by("inner", 75.0));
+    assert_eq!(
+        (scroll.offset("inner"), scroll.offset("outer")),
+        (50.0, 0.0)
+    );
+    assert!(!scroll.can_scroll(Some("inner"), 1, ScrollAxis::Vertical));
+    let mut flat = scrolls(0.0, 0.0);
+    flat.nodes[1].scroll.as_mut().unwrap().contain = true;
+    scroll.accept(&flat, scroll.revision(), &scroll.snapshot());
+    assert_eq!(
+        scroll.target_for_axis(Some("inner"), ScrollAxis::Vertical),
+        None
+    );
 }
 
 #[test]

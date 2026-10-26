@@ -39,7 +39,11 @@ time (see [ui-authoring.md](ui-authoring.md)) and again at runtime.
   `rotate-*`, `scale-*` and `origin-*` paint an affine about the origin and hit-test the
   transformed shape. Editors, scrolls and sliders may translate but not rotate or scale;
   state variants cannot transform; skew and 3D fail.
-- Percent sizes resolve in layout against the parent content box.
+- Percent sizes resolve in layout against the parent content box. `aspect-*` derives
+  the free axis; `max-w-[Nch]` resolves against the advance of "0" in the node's font.
+- `bg-current` paints the text color. `overscroll-contain`/`-none` stop a scroll or
+  list from handing leftover distance to ancestors. `select-none` is accepted (static
+  text is not selectable); `select-text`/`select-all` fail.
 - `w-fit`, `w-auto`, `h-auto` map to native sizing keywords; `h-auto` keeps
   intrinsic height under min/max constraints.
 - `whiteSpace` follows CSS: `normal`/`nowrap` collapse whitespace runs (newlines

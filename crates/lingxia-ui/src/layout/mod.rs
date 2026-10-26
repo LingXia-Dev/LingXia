@@ -123,7 +123,11 @@ impl Renderer {
         let mut tree: TaffyTree<usize> = TaffyTree::new();
         let mut ids = Vec::new();
         for (index, record) in records.iter().enumerate() {
-            let style = style::node_style(records, index, (width, height, scale), self.safe_area)?;
+            let mut style =
+                style::node_style(records, index, (width, height, scale), self.safe_area)?;
+            if let Some(ch) = record.number(field::MAX_WIDTH_CH) {
+                style.max_size.width = length(ch * self.zero_advance(&styles[index]));
+            }
             let id = tree
                 .new_leaf_with_context(style, index)
                 .map_err(|e| e.to_string())?;

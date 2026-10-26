@@ -49,6 +49,9 @@ impl ScrollModel {
             if region.axis == axis && region.max_offset > 0.0 {
                 return Some(region.id.clone());
             }
+            if region.axis == axis && region.contain {
+                return None;
+            }
             id = Self::parent(region);
         }
         None
@@ -112,6 +115,9 @@ impl ScrollModel {
                     changed = true;
                 }
                 delta -= after - before;
+                if region.contain {
+                    break;
+                }
             }
             id = parent;
         }
@@ -141,6 +147,9 @@ impl ScrollModel {
                 })
             {
                 return true;
+            }
+            if region.axis == axis && region.contain {
+                return false;
             }
             id = Self::parent(region);
         }

@@ -162,6 +162,9 @@ pub mod field {
     pub const BORDER_STYLE: usize = 129;
     pub const TRANSFORM: usize = 130;
     pub const FONT_VARIANT_NUMERIC: usize = 131;
+    pub const OVERSCROLL: usize = 132;
+    pub const ASPECT_RATIO: usize = 133;
+    pub const MAX_WIDTH_CH: usize = 134;
 }
 
 pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page"];
@@ -300,6 +303,9 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("borderStyle", "border-style"),
     ("transform", "transform"),
     ("fontVariantNumeric", "font-variant-numeric"),
+    ("overscroll", "overscroll"),
+    ("aspectRatio", "aspect-ratio"),
+    ("maxWidthCh", "dimension-ch"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -324,6 +330,7 @@ pub fn options(kind: &str) -> Option<&'static [&'static str]> {
         "text-overflow" => Some(&["clip", "ellipsis"]),
         "sizing-keyword" => Some(&["fit-content", "max-content", "min-content"]),
         "border-style" => Some(&["solid", "dashed", "dotted"]),
+        "overscroll" => Some(&["auto", "contain", "none"]),
         _ => None,
     }
 }
@@ -532,6 +539,9 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: Some(&[tag::SCROLL, tag::LIST]), parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
 ];

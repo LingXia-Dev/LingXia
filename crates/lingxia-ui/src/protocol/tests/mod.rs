@@ -424,19 +424,26 @@ fn padding_and_border_edges_are_bounded_nonnegative_lengths() {
 }
 
 #[test]
-fn current_color_is_only_accepted_for_borders() {
-    for field in [5, 6] {
-        assert!(
-            decode(
-                json!([0, -1, "", "", "", 1, field, "currentColor"])
-                    .as_array()
-                    .unwrap()
-            )
-            .is_err()
-        );
-    }
-    for value in ["currentColor", "#123456", "#12345680"] {
-        assert!(decode(json!([0, -1, "", "", "", 1, 66, value]).as_array().unwrap()).is_ok());
+fn current_color_is_only_accepted_for_borders_and_backgrounds() {
+    assert!(
+        decode(
+            json!([0, -1, "", "", "", 1, 5, "currentColor"])
+                .as_array()
+                .unwrap()
+        )
+        .is_err()
+    );
+    for field in [6, 66] {
+        for value in ["currentColor", "#123456", "#12345680"] {
+            assert!(
+                decode(
+                    json!([0, -1, "", "", "", 1, field, value])
+                        .as_array()
+                        .unwrap()
+                )
+                .is_ok()
+            );
+        }
     }
     for value in [json!("invalid"), json!(12), Value::Null] {
         assert!(decode(json!([0, -1, "", "", "", 1, 66, value]).as_array().unwrap()).is_err());
