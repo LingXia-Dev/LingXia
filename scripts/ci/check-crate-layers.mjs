@@ -20,6 +20,7 @@ export const LAYERS = {
   shell: 1,
   update: 1,
   "control-protocol": 1,
+  theme: 1,
   webview: 2,
   platform: 2,
   "windows-contract": 2,

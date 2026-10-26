@@ -4292,6 +4292,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "lingxia-theme"
+version = "0.28.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "lingxia-transfer"
 version = "0.28.0"
 dependencies = [

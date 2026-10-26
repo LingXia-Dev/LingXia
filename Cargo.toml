@@ -4,6 +4,7 @@ members = [
     "crates/lingxia-ui-android",
     "crates/lingxia-ui-apple",
     "crates/lingxia-app-context",
+    "crates/lingxia-theme",
     "crates/lingxia-control-runtime",
     "crates/lingxia-control-protocol",
     "crates/lingxia-media",
@@ -96,6 +97,7 @@ lingxia-log = { path = "crates/lingxia-log", version = "0.28.0" }
 lingxia-provider = { path = "crates/lingxia-provider", version = "0.28.0" }
 lingxia-update = { path = "crates/lingxia-update", version = "0.28.0" }
 lingxia-app-context = { path = "crates/lingxia-app-context", version = "0.28.0" }
+lingxia-theme = { path = "crates/lingxia-theme", version = "0.28.0" }
 lingxia-media = { path = "crates/lingxia-media", version = "0.28.0" }
 lingxia-webview = { path = "crates/lingxia-webview", version = "0.28.0" }
 lingxia-automation = { path = "crates/lingxia-automation", version = "0.28.0" }

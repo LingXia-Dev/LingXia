@@ -20,6 +20,7 @@ const childKinds = ['none', 'text', 'content', 'any', 'rows', 'options', 'runs']
 const limitNames = ['nodes', 'depth', 'animationBytes', 'itemKeyBytes', 'imageBytes', 'sourceBytes', 'visibleImageBytes', 'decodedImageBytes', 'runs', 'transitionMs', 'evalBudgetMs', 'evalBudgetDebugMultiplier'];
 
 function validate(schema) {
+  validateRoles(schema.roles ?? []);
   const ids = schema.fields.map(field => field.id);
   if (ids.some((id, index) => id !== index)) throw Error('schema.json: field ids must be dense and ordered');
   const keys = new Set();
@@ -73,6 +74,57 @@ pub fn check_environment(value: &serde_json::Value) -> bool {
     value.is_object()
         && ${checks.join('\n        && ')}
 }`;
+}
+
+const roleVariant = name => name.split('-').map(part => part[0].toUpperCase() + part.slice(1)).join('');
+
+function validateRoles(roles) {
+  const names = roles.map(role => role.name);
+  if (!names.length || new Set(names).size !== names.length) throw Error('schema.json: role names must be unique');
+  for (const role of roles) {
+    if (!/^[a-z]+(?:-[a-z0-9]+)*$/.test(role.name) || typeof role.doc !== 'string') throw Error(`schema.json: role ${role.name} needs a kebab-case name and a doc`);
+    for (const [background, ratio] of Object.entries(role.on ?? {}))
+      if (!names.includes(background) || !(ratio >= 1 && ratio <= 21)) throw Error(`schema.json: role ${role.name} needs a known background and a 1-21 contrast`);
+  }
+}
+
+function themeRust(schema) {
+  const roles = schema.roles;
+  const variants = roles.map((role, slot) => `    /// ${role.doc}\n    ${roleVariant(role.name)} = ${slot},`).join('\n');
+  const pairs = roles.flatMap(role => Object.entries(role.on ?? {}).map(([background, ratio]) =>
+    `    (Role::${roleVariant(role.name)}, Role::${roleVariant(background)}, ${Number(ratio).toFixed(1)}),`)).join('\n');
+  return `// Generated from packages/lingxia-ui/contracts/schema.json; do not edit.
+//! Roles are palette slots in order; append-only.
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[repr(u8)]
+pub enum Role {
+${variants}
+}
+
+pub const ROLE_COUNT: usize = ${roles.length};
+
+impl Role {
+    pub const ALL: [Role; ROLE_COUNT] = [
+${roles.map(role => `        Role::${roleVariant(role.name)},`).join('\n')}
+    ];
+
+    pub const fn name(self) -> &'static str {
+        match self {
+${roles.map(role => `            Role::${roleVariant(role.name)} => ${JSON.stringify(role.name)},`).join('\n')}
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Role> {
+        Role::ALL.into_iter().find(|role| role.name() == name)
+    }
+}
+
+/// (foreground, background, minimum WCAG contrast) every resolved palette meets.
+pub const CONTRAST: &[(Role, Role, f32)] = &[
+${pairs}
+];
+`;
 }
 
 function rust(schema) {
@@ -401,6 +453,7 @@ export async function generate(schema) {
   const api = await readFile(join(packageRoot, 'contracts/api.d.ts'), 'utf8');
   const generated = {
     'crates/lingxia-ui/src/protocol/generated.rs': rust(schema),
+    'crates/lingxia-theme/src/generated.rs': themeRust(schema),
     'crates/lingxia-lxapp/src/page/ui_limits.rs': lxappLimits(schema),
     'packages/lingxia-ui/src/generated/wire.js': wire(schema),
     'packages/lingxia-ui/src/generated/contract.js': contract(schema, commonProps(api)),
