@@ -66,6 +66,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     static native boolean nativeCanScrollVertically(long host, int direction);
     static native String nativeSemanticRoots(long host);
     static native String nativeSemanticNode(long host, int id);
+    static native String nativeAutomate(long host, String request);
     static native void nativeInput(long host, String request, long callback);
     static native void nativeCaret(long host, boolean eligible, boolean connected, String text, int anchor, int focus, int start, int end);
     // Chrome geometry over a snapshot node's JSON; the policy lives in the shared core.
@@ -375,6 +376,12 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         if (destroyed) return;
         pause(); snapshot = null; snapshotText = null;
         nativePark(host);
+    }
+
+    /** One automation request (query or act) on the presented frame: `{"value":...}` or `{"error":...}`. */
+    public String automate(String request) {
+        if (destroyed) return "{\"error\":\"page is not active: the GPU page was disposed\"}";
+        return nativeAutomate(host, request);
     }
 
     public void connect(long generation, String nonce) { if (!destroyed) nativeConnect(host, generation, nonce); }

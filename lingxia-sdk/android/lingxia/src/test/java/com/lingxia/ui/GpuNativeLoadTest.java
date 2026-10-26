@@ -56,7 +56,7 @@ public class GpuNativeLoadTest {
         public void stopFling() { }
         public void clicked() { events.add("clicked"); }
         public void haptic() { }
-        public void editText(int node, String text, int start, int end) { }
+        public void editText(int node, String text, int start, int end) { events.add("edit:" + text); }
         public void loaded() { loaded++; }
         public void presented() { presented++; }
         public void message(long connection, String message) { }

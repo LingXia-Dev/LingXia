@@ -49,6 +49,13 @@ impl NativePage for Shell {
         self.0.lock().unwrap().push(format!("retain {retained}"));
         Ok(())
     }
+    fn automation(&self, request: serde_json::Value, reply: AutomationReply) {
+        self.0
+            .lock()
+            .unwrap()
+            .push(format!("automation {}", request["op"]));
+        reply(Ok(request));
+    }
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -155,4 +162,53 @@ fn creation_outcomes_reach_only_their_pending_request() {
     created(token, Err("failed".into()));
     assert_eq!(rx.try_recv().unwrap().err().as_deref(), Some("failed"));
     assert_eq!(worker_key("app", 7), "app:7");
+}
+
+#[test]
+fn shell_replies_decode_to_values_or_verbatim_errors() {
+    assert_eq!(
+        decode_reply(r#"{"value":{"count":2}}"#).unwrap(),
+        serde_json::json!({"count": 2})
+    );
+    assert_eq!(
+        decode_reply(r#"{"error":"Element not found: [data-testid=\"x\"] (index 0)"}"#)
+            .unwrap_err(),
+        r#"Element not found: [data-testid="x"] (index 0)"#
+    );
+}
+
+#[cfg(feature = "automation")]
+#[test]
+fn automation_requests_reach_the_shell_until_the_page_goes() {
+    use lingxia_automation::gpu::{GpuAction, GpuPageAutomation};
+    let shell = Arc::new(Shell::default());
+    let native: Arc<dyn NativePage> = shell.clone();
+    let automation = automation::GpuAutomation {
+        native: Arc::downgrade(&native),
+    };
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let query = runtime
+        .block_on(automation.query("[data-testid=\"save\"]", Some(1), false, None))
+        .unwrap();
+    assert_eq!(query["css"], "[data-testid=\"save\"]");
+    assert_eq!(query["index"], 1);
+    runtime
+        .block_on(automation.act(
+            "button",
+            None,
+            GpuAction::Fill {
+                text: "a".into(),
+                force: true,
+            },
+        ))
+        .unwrap();
+    assert_eq!(
+        shell.calls(),
+        ["automation \"query\"", "automation \"act\""]
+    );
+    drop((native, shell));
+    let gone = runtime.block_on(automation.screenshot()).unwrap_err();
+    assert!(gone.starts_with("page is not active:"), "{gone}");
 }

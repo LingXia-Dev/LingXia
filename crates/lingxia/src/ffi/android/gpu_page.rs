@@ -1,10 +1,14 @@
 //! `com.lingxia.lxapp.GpuPage` marshalling for the neutral GPU page binding.
 use super::with_env;
-use crate::gpu_page::{self, Creation, NativeFactory, NativePage, Token};
+use crate::gpu_page::{self, AutomationReply, Creation, NativeFactory, NativePage, Token};
 use jni::objects::{Global, JClass, JObject, JString};
 use jni::{Env, EnvUnowned, errors::ThrowRuntimeExAndDefault, jni_sig, jni_str};
 use lxapp::{GpuViewGeneration, LxAppError, PageInstance};
-use std::sync::{Arc, OnceLock};
+use std::collections::HashMap;
+use std::sync::{
+    Arc, LazyLock, Mutex, OnceLock,
+    atomic::{AtomicI64, Ordering},
+};
 
 static CLASS: OnceLock<Global<JClass<'static>>> = OnceLock::new();
 
@@ -36,6 +40,11 @@ pub(super) fn initialize(env: &mut Env) -> Result<(), jni::errors::Error> {
                 ),
                 method!("presented", "(JJ)V", presented),
                 method!("restart", "(JJ)Z", restart),
+                method!(
+                    "automationReply",
+                    "(JLjava/lang/String;)V",
+                    automation_reply
+                ),
             ],
         )?;
     }
@@ -149,9 +158,56 @@ impl NativePage for AndroidPage {
         })
         .map_err(runtime)
     }
+    fn automation(&self, request: serde_json::Value, reply: AutomationReply) {
+        let id = NEXT_REPLY.fetch_add(1, Ordering::Relaxed);
+        replies().insert(id, reply);
+        let token = self.token;
+        let sent = with_env(|env| {
+            let request = env.new_string(request.to_string())?;
+            env.call_static_method(
+                class(),
+                jni_str!("automate"),
+                jni_sig!("(JLjava/lang/String;J)V"),
+                &[token.into(), (&request).into(), id.into()],
+            )?;
+            Ok::<_, jni::errors::Error>(())
+        });
+        if let Err(error) = sent
+            && let Some(reply) = replies().remove(&id)
+        {
+            reply(Err(format!("page is not active: {error}")));
+        }
+    }
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
+}
+
+static NEXT_REPLY: AtomicI64 = AtomicI64::new(1);
+
+/// Automation replies awaiting their page's UI thread.
+fn replies() -> std::sync::MutexGuard<'static, HashMap<i64, AutomationReply>> {
+    static REPLIES: LazyLock<Mutex<HashMap<i64, AutomationReply>>> =
+        LazyLock::new(Default::default);
+    REPLIES.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+extern "system" fn automation_reply<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    id: i64,
+    reply: JString<'a>,
+) {
+    env.with_env(|env| -> Result<(), jni::errors::Error> {
+        let reply = reply.try_to_string(env)?;
+        // Take it out before running host code.
+        let pending = replies().remove(&id);
+        if let Some(pending) = pending {
+            pending(gpu_page::decode_reply(&reply));
+        }
+        Ok(())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>();
 }
 
 struct Factory;

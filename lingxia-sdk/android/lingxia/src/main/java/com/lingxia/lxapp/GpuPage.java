@@ -16,6 +16,8 @@ public final class GpuPage extends FrameLayout {
     private static native void presented(long token, long generation);
     private static native boolean restart(long token, long generation);
     private static native void message(long token, long generation, String frame);
+    private static native void automationReply(long replyId, String reply);
+    private static final String INACTIVE = "{\"error\":\"page is not active: the GPU page was disposed\"}";
     private final String appId, path, webTag;
     private final GpuView content;
     private boolean reported;
@@ -87,6 +89,29 @@ public final class GpuPage extends FrameLayout {
 
     public static void receive(long token, long generation, String frame) {
         MAIN.post(() -> { GpuPage page = PAGES.get(token); if (page != null) page.content.receive(generation, frame); });
+    }
+
+    /** Automation runs on the main thread, after the frames already posted there. */
+    public static void automate(long token, String request, long replyId) {
+        MAIN.post(() -> {
+            GpuPage page = PAGES.get(token);
+            if (page == null) { automationReply(replyId, INACTIVE); return; }
+            String op;
+            try { op = new org.json.JSONObject(request).optString("op"); }
+            catch (org.json.JSONException error) { automationReply(replyId, "{\"error\":\"E_UNSUPPORTED: malformed automation request\"}"); return; }
+            if (!"screenshot".equals(op)) { automationReply(replyId, page.content.automate(request)); return; }
+            page.content.captureFrameWhenReady(frame -> {
+                if (frame == null) { automationReply(replyId, "{\"error\":\"E_PAGE_NOT_READY: no presented frame\"}"); return; }
+                java.io.ByteArrayOutputStream png = new java.io.ByteArrayOutputStream();
+                frame.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, png);
+                frame.recycle();
+                try {
+                    org.json.JSONObject value = new org.json.JSONObject()
+                        .put("png", android.util.Base64.encodeToString(png.toByteArray(), android.util.Base64.NO_WRAP));
+                    automationReply(replyId, new org.json.JSONObject().put("value", value).toString());
+                } catch (org.json.JSONException error) { throw new IllegalStateException(error); }
+            });
+        });
     }
 
     public static void retainSurface(long token, boolean retained) {

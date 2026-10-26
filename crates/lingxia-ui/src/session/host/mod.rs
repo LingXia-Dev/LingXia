@@ -457,6 +457,36 @@ impl<A: PlatformAdapter> ViewHost<A> {
         handled
     }
 
+    /// The WebView-shaped automation query over the presented frame.
+    pub fn automation_query(
+        &self,
+        css: &str,
+        index: Option<usize>,
+        all: bool,
+        max_text: Option<usize>,
+    ) -> Result<serde_json::Value, String> {
+        let main = self.inner.main();
+        main.interaction.automation_query(css, index, all, max_text)
+    }
+
+    /// Run a locator action through the assistive input paths.
+    pub fn automate(
+        &self,
+        css: &str,
+        index: Option<usize>,
+        act: crate::interaction::view::AutomationAct,
+        force: bool,
+    ) -> Result<(), String> {
+        let page = self.inner.lifecycle.page();
+        let effects = self
+            .inner
+            .main()
+            .interaction
+            .automate(css, index, act, force, page)?;
+        self.inner.deliver(effects);
+        Ok(())
+    }
+
     /// Advance a fling; returns false once the region stops moving.
     pub fn scroll_by(&self, region: &str, delta_px: f32) -> bool {
         let changed = self.inner.main().interaction.scroll_by(region, delta_px);

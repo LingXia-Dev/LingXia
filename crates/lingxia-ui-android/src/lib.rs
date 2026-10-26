@@ -147,6 +147,11 @@ pub fn register_natives(env: &mut Env, class: &JClass) -> jni::errors::Result<()
             "(JI)Ljava/lang/String;",
             semantic_node
         ),
+        method!(
+            "nativeAutomate",
+            "(JLjava/lang/String;)Ljava/lang/String;",
+            automate
+        ),
         method!("nativeInput", "(JLjava/lang/String;J)V", input),
         method!("nativeCaret", "(JZZLjava/lang/String;IIII)V", caret),
         method!("nativeGpuSentinel", "(Ljava/lang/String;)V", gpu_sentinel),
@@ -567,6 +572,54 @@ extern "system" fn semantic_node<'a>(
         });
         Ok(env.new_string(node.to_string())?)
     })
+}
+
+/// One automation request (`op` query or act) on the presented frame; answers
+/// `{"value": ...}` or `{"error": "..."}` with the core's message verbatim.
+extern "system" fn automate<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    request: JString<'a>,
+) -> JString<'a> {
+    run(&mut env, |env| {
+        let request: serde_json::Value =
+            serde_json::from_str(&request.try_to_string(env)?).map_err(|e| e.to_string())?;
+        let reply = match automation(host(handle)?, &request) {
+            Ok(value) => serde_json::json!({ "value": value }),
+            Err(error) => serde_json::json!({ "error": error }),
+        };
+        Ok(env.new_string(reply.to_string())?)
+    })
+}
+
+fn automation(host: &Host, request: &serde_json::Value) -> Result<serde_json::Value, String> {
+    use lingxia_ui::interaction::view::AutomationAct;
+    let css = request["css"].as_str().unwrap_or_default();
+    let index = request["index"].as_u64().map(|i| i as usize);
+    match request["op"].as_str() {
+        Some("query") => host.automation_query(
+            css,
+            index,
+            request["all"].as_bool().unwrap_or(false),
+            request["maxText"].as_u64().map(|n| n as usize),
+        ),
+        Some("act") => {
+            let action = &request["action"];
+            let text = || action["text"].as_str().unwrap_or_default().to_owned();
+            let act = match action["kind"].as_str() {
+                Some("click") => AutomationAct::Click,
+                Some("fill") => AutomationAct::Fill(text()),
+                Some("type") => AutomationAct::Type(text()),
+                Some("scroll") => AutomationAct::ScrollIntoView,
+                other => return Err(format!("E_UNSUPPORTED: automation action {other:?}")),
+            };
+            let force = action["force"].as_bool().unwrap_or(false);
+            host.automate(css, index, act, force)
+                .map(|()| serde_json::Value::Null)
+        }
+        other => Err(format!("E_UNSUPPORTED: automation op {other:?}")),
+    }
 }
 
 /// Unpaired surrogates must reach the session as an error, not as replacement characters.

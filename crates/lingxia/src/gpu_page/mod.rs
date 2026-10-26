@@ -17,11 +17,26 @@ use std::{
 };
 use tokio::sync::oneshot;
 
+#[cfg(feature = "automation")]
+mod automation;
 mod images;
 pub(crate) use images::load_image;
 
 /// Identifies one native page shell from creation to disposal.
 pub(crate) type Token = i64;
+
+/// Answers one automation request; called once, on any thread.
+pub(crate) type AutomationReply = Box<dyn FnOnce(Result<serde_json::Value, String>) + Send>;
+
+/// A native shell's JSON reply: `{"value": ...}` or `{"error": "..."}`.
+pub(crate) fn decode_reply(reply: &str) -> Result<serde_json::Value, String> {
+    let reply: serde_json::Value =
+        serde_json::from_str(reply).map_err(|e| format!("GPU automation reply: {e}"))?;
+    match reply["error"].as_str() {
+        Some(error) => Err(error.to_owned()),
+        None => Ok(reply["value"].clone()),
+    }
+}
 
 /// A platform's native page shell. Calls enqueue on its UI thread without blocking.
 pub(crate) trait NativePage: Send + Sync + 'static {
@@ -32,6 +47,9 @@ pub(crate) trait NativePage: Send + Sync + 'static {
     fn reload(&self, source: &str) -> Result<(), LxAppError>;
     fn park(&self) -> Result<(), LxAppError>;
     fn retain_surface(&self, retained: bool) -> Result<(), LxAppError>;
+    /// `{op: query|act|screenshot, css, index, all, maxText, action: {kind, text, force}}`,
+    /// answered after the presented frame.
+    fn automation(&self, request: serde_json::Value, reply: AutomationReply);
     fn as_any(&self) -> &dyn std::any::Any;
 }
 
@@ -117,6 +135,9 @@ pub(crate) struct Endpoint {
     lease: Lease,
     native: Arc<dyn NativePage>,
     generation: Mutex<Option<GpuViewGeneration>>,
+    /// Registered with lingxia-automation; unregisters when the endpoint drops.
+    #[cfg(feature = "automation")]
+    _automation: Arc<automation::GpuAutomation>,
 }
 
 impl Endpoint {
@@ -251,10 +272,21 @@ impl GpuPageViewFactory for Binding {
 
 fn register(lease: Lease, native: Arc<dyn NativePage>) -> Arc<Endpoint> {
     let (token, page) = (lease.token, lease.page.clone());
+    #[cfg(feature = "automation")]
+    let automation = {
+        let automation = Arc::new(automation::GpuAutomation {
+            native: Arc::downgrade(&native),
+        });
+        let backend: Arc<dyn lingxia_automation::gpu::GpuPageAutomation> = automation.clone();
+        lingxia_automation::gpu::register(&page, Arc::downgrade(&backend));
+        automation
+    };
     let endpoint = Arc::new(Endpoint {
         lease,
         native,
         generation: Mutex::new(None),
+        #[cfg(feature = "automation")]
+        _automation: automation,
     });
     let mut registry = registry();
     registry.live.insert(token, Arc::downgrade(&endpoint));

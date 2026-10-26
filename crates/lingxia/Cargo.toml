@@ -11,7 +11,7 @@ categories = ["web-programming", "api-bindings"]
 [features]
 default = ["standard"]
 standard = ["lxapp/standard", "dep:lingxia-logic"]
-automation = ["dep:lingxia-automation"]
+automation = ["dep:lingxia-automation", "dep:base64"]
 # Sessionless local-OS automation is an explicit host capability; the base JS
 # automation facade does not pull native input, AX, clipboard, or snapshot code.
 desktop-automation = ["automation", "lingxia-automation/desktop"]
@@ -66,6 +66,7 @@ lingxia-terminal-config = { workspace = true, optional = true }
 lingxia-browser = { workspace = true, optional = true }
 lingxia-logic = { workspace = true, optional = true }
 lingxia-automation = { workspace = true, optional = true }
+base64 = { workspace = true, optional = true }
 lingxia-browser-shell = { workspace = true, optional = true }
 lingxia-platform = { workspace = true }
 lingxia-shell = { workspace = true }
