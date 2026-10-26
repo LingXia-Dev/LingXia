@@ -134,6 +134,8 @@ pub(crate) enum Paint {
     Vector {
         path: Arc<vello_cpu::kurbo::BezPath>,
         color: [u8; 4],
+        /// Replaces `color` when present.
+        gradient: Option<Arc<crate::scene::gradient::GradientBrush>>,
         bounds: [f32; 4],
     },
     Shadow {
@@ -143,7 +145,7 @@ pub(crate) enum Paint {
         radius: f32,
     },
     Gradient {
-        gradient: Arc<crate::scene::gradient::LinearGradient>,
+        gradient: Arc<crate::scene::gradient::BackgroundGradient>,
         bounds: [f32; 4],
         radius: f32,
         corners: Option<[[f32; 2]; 4]>,

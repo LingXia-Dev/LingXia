@@ -34,6 +34,8 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   `useChannel(name, action, { params, onData? })` take `view.actions` references.
   Errors are `{ code, message }`; reloads keep old values (`stale`). `useLeaveGuard(name, { enabled })`.
 - Lists: `<List items getKey renderItem />`; hooks inside rows need stable keys.
+- `<vector paths gradients>`: paths take SVG `transform`, caps, joins, dash offset and
+  `fill`/`stroke: 'url(#id)'` naming a `gradients` entry (linear or radial, ≤8).
 - Buttons may contain text, icons and images; their text names them for
   accessibility. Images need `alt` (`""` for decoration).
 - Text follows the system font size; prefer `min-h-*` over fixed heights.

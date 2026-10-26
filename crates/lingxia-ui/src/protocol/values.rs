@@ -144,7 +144,7 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
                 .ok_or("UI_SHADOW: expected encoded shadows")?,
         )
         .map(drop),
-        field::BACKGROUND_GRADIENT => crate::scene::gradient::LinearGradient::parse(
+        field::BACKGROUND_GRADIENT => crate::scene::gradient::BackgroundGradient::parse(
             value
                 .as_str()
                 .ok_or("UI_GRADIENT: expected encoded gradient")?,

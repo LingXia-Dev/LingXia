@@ -4,11 +4,14 @@ import { readFile, readdir } from 'node:fs/promises';
 import { readReference } from './reference.mjs';
 const gpu = new URL('../lxapp/', import.meta.url);
 const json = async url => JSON.parse(await readFile(url, 'utf8'));
+// Renderer fixtures with no React counterpart.
+export const gpuOnly = new Set(['view-lab']);
 
 test('GPU pages preserve the reference host navigation configuration', async () => {
   for (const name of await readdir(new URL('pages/', gpu))) {
     const path = `pages/${name}/index.json`;
     const actual = await json(new URL(path, gpu));
+    if (gpuOnly.has(name)) { assert.equal(actual.renderer, 'gpu', name); continue; }
     // The reference keeps its uppercase API directory.
     const expected = JSON.parse(readReference(path.replace('pages/api/', 'pages/API/')));
     assert.equal(actual.navigationStyle ?? 'default', expected.navigationStyle ?? 'default', name);

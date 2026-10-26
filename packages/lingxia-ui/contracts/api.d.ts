@@ -118,7 +118,25 @@ export interface DataListProps<T> extends Omit<ListProps, "count" | "itemKeys" |
 export declare function List<T>(props: DataListProps<T>): JSX.Element;
 
 export interface BoxShadow { offsetX?: number; offsetY?: number; blur?: number; spread?: number; color?: string }
-export interface LinearGradient { direction?: "top" | "right" | "bottom" | "left" | "top-right" | "bottom-right" | "bottom-left" | "top-left"; angle?: number; colorSpace?: "srgb" | "oklab"; stops: ReadonlyArray<{ offset: number; color: string }> }
+export interface GradientStop { offset: number; color: string }
+/** Positions are fractions of the box; conic angles are degrees clockwise from the top. */
+export type BackgroundGradient =
+  | { kind?: "linear"; direction?: "top" | "right" | "bottom" | "left" | "top-right" | "bottom-right" | "bottom-left" | "top-left"; angle?: number; colorSpace?: "srgb" | "oklab"; stops: ReadonlyArray<GradientStop> }
+  | { kind: "radial"; shape?: "circle" | "ellipse"; size?: "closest-side" | "closest-corner" | "farthest-side" | "farthest-corner"; at?: readonly [number, number]; colorSpace?: "srgb" | "oklab"; stops: ReadonlyArray<GradientStop> }
+  | { kind: "conic"; from?: number; at?: readonly [number, number]; colorSpace?: "srgb" | "oklab"; stops: ReadonlyArray<GradientStop> };
 export interface PieLayout { center: readonly [number, number]; innerRadius: number; outerRadius: number; emphasisScale?: number }
-export interface VectorPath { d: string; fill?: string; stroke?: string; strokeWidth?: number; strokeDasharray?: readonly number[]; vectorEffect?: "none" | "non-scaling-stroke" }
+/** `fill`/`stroke` take a hex color, `currentColor`, `none` or `url(#id)` naming one of the vector's `gradients`. */
+export interface VectorPath {
+  d: string; fill?: string; stroke?: string; strokeWidth?: number; strokeDasharray?: readonly number[]; strokeDashoffset?: number;
+  strokeLinecap?: "butt" | "round" | "square"; strokeLinejoin?: "miter" | "round" | "bevel";
+  /** An SVG transform list: matrix, translate, scale, rotate, skewX, skewY. */
+  transform?: string; vectorEffect?: "none" | "non-scaling-stroke";
+}
+/** SVG gradient; coordinates default to `objectBoundingBox` units. */
+export interface VectorGradient {
+  type: "linear" | "radial"; x1?: number; y1?: number; x2?: number; y2?: number;
+  cx?: number; cy?: number; r?: number; fx?: number; fy?: number; fr?: number;
+  units?: "objectBoundingBox" | "userSpaceOnUse"; spread?: "pad" | "reflect" | "repeat";
+  stops: ReadonlyArray<{ offset: number; color: string; opacity?: number }>;
+}
 export interface RadioOption { readonly value: string; readonly label: string; readonly disabled?: boolean; readonly testId?: string }

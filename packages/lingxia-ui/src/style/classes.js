@@ -5,6 +5,7 @@ let byName = new Map();
 const cache = new Map();
 let cacheEnv = '';
 const states = ['focus', 'active', 'hover', 'disabled'];
+const geometryKeys = { linear: ['direction', 'angle'], radial: ['shape', 'size', 'at'], conic: ['from', 'at'] };
 
 function copy(value) {
   if (Array.isArray(value)) return value.map(copy);
@@ -46,13 +47,19 @@ function cascade(rules) {
     style.backdropFilter = `blur(${pixels(filter.blur ?? 0)}) saturate(${filter.saturation ?? 1})`;
   if (gradient.enabled !== undefined) {
     style.backgroundImage = 'none';
-    if (gradient.enabled && gradient.source && (gradient.source !== 'via' || gradient.via)) {
+    if (gradient.enabled && gradient.fixed) style.backgroundImage = copy(gradient.fixed);
+    else if (gradient.enabled && gradient.source && (gradient.source !== 'via' || gradient.via)) {
       const stops = [{ offset: gradient.fromOffset ?? 0, color: gradient.fromColor ?? '#00000000' }];
       if (gradient.via) stops.push({ offset: gradient.viaOffset ?? .5, color: gradient.viaColor ?? '#00000000' });
       stops.push({ offset: gradient.toOffset ?? 1, color: gradient.toColor ?? '#00000000' });
       // CSS stop fixup clamps later positions to the largest preceding position.
       for (let i = 1; i < stops.length; i++) stops[i].offset = Math.max(stops[i - 1].offset, stops[i].offset);
-      style.backgroundImage = { ...(gradient.orientation ?? { direction: 'bottom' }), colorSpace: gradient.colorSpace ?? 'srgb', stops };
+      const kind = gradient.kind ?? 'linear';
+      const { colorSpace = 'srgb', ...geometry } = gradient.position ?? {};
+      if (Object.keys(geometry).some(key => !geometryKeys[kind].includes(key)))
+        throw Error(`UI_GRADIENT: ${kind} gradients do not take ${Object.keys(geometry).join(', ')}`);
+      if (kind === 'linear' && geometry.angle === undefined && geometry.direction === undefined) geometry.direction = 'bottom';
+      style.backgroundImage = { ...(kind === 'linear' ? {} : { kind }), ...geometry, colorSpace, stops };
     }
   }
   if (shadow.enabled) {

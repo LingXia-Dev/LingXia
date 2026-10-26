@@ -79,6 +79,7 @@ impl DisplayList {
                 Paint::Vector {
                     path,
                     color: [r, g, b, a],
+                    gradient,
                     bounds,
                 } => {
                     context.push_clip_layer(
@@ -89,8 +90,14 @@ impl DisplayList {
                         }
                         .path(),
                     );
-                    context.set_paint(AlphaColor::<Srgb>::from_rgba8(*r, *g, *b, *a));
+                    if let Some(brush) = gradient {
+                        context.set_paint(brush.gradient.clone());
+                        context.set_paint_transform(brush.transform);
+                    } else {
+                        context.set_paint(AlphaColor::<Srgb>::from_rgba8(*r, *g, *b, *a));
+                    }
                     context.fill_path(path);
+                    context.reset_paint_transform();
                     context.pop_layer();
                 }
                 Paint::RasterShadow { raster } => {
@@ -195,7 +202,9 @@ impl DisplayList {
                     bounds: [x, y, w, h],
                     radius,
                 } => {
-                    context.set_paint(gradient.brush([*x, *y, *w, *h]));
+                    let brush = gradient.brush([*x, *y, *w, *h]);
+                    context.set_paint(brush.gradient);
+                    context.set_paint_transform(brush.transform);
                     context.fill_path(
                         &ClipSnapshot {
                             bounds: [*x, *y, *w, *h],
@@ -204,6 +213,7 @@ impl DisplayList {
                         }
                         .path(),
                     );
+                    context.reset_paint_transform();
                 }
                 Paint::Rect {
                     corners,
@@ -293,6 +303,7 @@ impl DisplayList {
                 Paint::Vector {
                     path,
                     color: [r, g, b, a],
+                    gradient,
                     bounds,
                 } => {
                     scene.push_clip_layer(
@@ -305,13 +316,23 @@ impl DisplayList {
                         }
                         .path(),
                     );
-                    scene.fill(
-                        Fill::NonZero,
-                        transform,
-                        Color::<Space>::from_rgba8(*r, *g, *b, *a),
-                        None,
-                        path.as_ref(),
-                    );
+                    if let Some(brush) = gradient {
+                        scene.fill(
+                            Fill::NonZero,
+                            transform,
+                            &brush.gradient,
+                            Some(brush.transform),
+                            path.as_ref(),
+                        );
+                    } else {
+                        scene.fill(
+                            Fill::NonZero,
+                            transform,
+                            Color::<Space>::from_rgba8(*r, *g, *b, *a),
+                            None,
+                            path.as_ref(),
+                        );
+                    }
                     scene.pop_layer();
                 }
                 Paint::RasterShadow { raster } => {
@@ -441,11 +462,12 @@ impl DisplayList {
                     bounds: [x, y, w, h],
                     radius,
                 } => {
+                    let brush = gradient.brush([*x, *y, *w, *h]);
                     scene.fill(
                         Fill::NonZero,
                         transform,
-                        &gradient.brush([*x, *y, *w, *h]),
-                        None,
+                        &brush.gradient,
+                        Some(brush.transform),
                         &ClipSnapshot {
                             bounds: [*x, *y, *w, *h],
                             radius: *radius,

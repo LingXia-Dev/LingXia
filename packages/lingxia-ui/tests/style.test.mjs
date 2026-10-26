@@ -63,6 +63,12 @@ test('outer shadows, gradients and backdrop filters are bounded composite values
   assert.deepEqual(JSON.parse(style({ backgroundImage: gradient }).backgroundGradient), { ...gradient, colorSpace: 'srgb' });
   for (const value of [null, 'red', {}, { ...gradient, angle: 30 }, { ...gradient, unknown: true }, { ...gradient, colorSpace: 'hsl' }, { ...gradient, stops: [] }])
     rejects({ backgroundImage: value }, /UI_GRADIENT/);
+  const stops = [{ offset: 0, color: '#ff0000' }, { offset: 1, color: '#0000ff' }];
+  for (const value of [{ kind: 'radial', shape: 'circle', size: 'closest-side', at: [0.25, 0.75], stops }, { kind: 'conic', from: 90, at: [0.5, 0.5], stops }])
+    assert.deepEqual(JSON.parse(style({ backgroundImage: value }).backgroundGradient), { ...value, colorSpace: 'srgb' });
+  for (const value of [{ kind: 'radial', angle: 30, stops }, { kind: 'conic', shape: 'circle', stops }, { kind: 'linear', at: [0, 0], stops },
+    { kind: 'radial', stops: [{ offset: -0.1, color: '#ff0000' }, stops[1]] }, { kind: 'conic', stops: [stops[0], { offset: 1.5, color: '#0000ff' }] }, { kind: 'repeating', stops }])
+    rejects({ backgroundImage: value }, /UI_GRADIENT/);
   const filter = style({ backdropFilter: 'blur(12px) saturate(150%)' });
   assert.deepEqual([filter.backdropBlur, filter.backdropSaturation], [12, 1.5]);
   for (const value of ['blur(65px)', 'saturate(17)', 'blur(4)', 'invert(1)', 4, null]) rejects({ backdropFilter: value }, /UI_STYLE_VALUE/);

@@ -127,11 +127,111 @@ function fontFamily(value) {
   return unsupported(`unsupported font-family: ${value}`);
 }
 
+function degrees(text) {
+  const match = text.match(/^(-?(?:\d*\.)?\d+)(deg|turn|rad|grad)$/);
+  if (!match) unsupported(`unsupported gradient angle: ${text}`);
+  const value = Number(match[1]) * { deg: 1, turn: 360, rad: 180 / Math.PI, grad: 0.9 }[match[2]];
+  if (Math.abs(value) > 36000) unsupported('gradient angle exceeds native bounds');
+  return value;
+}
+
+// `at` positions as box fractions; keywords may come in either order, as in CSS.
+function gradientCenter(text) {
+  const parts = text.trim().split(/\s+/);
+  const horizontal = { left: 0, right: 1 }, vertical = { top: 0, bottom: 1 };
+  const fraction = part => part === 'center' ? .5 : /^-?(?:\d*\.)?\d+%$/.test(part) ? number(part)
+    : unsupported(`unsupported gradient position: ${text}`);
+  if (parts.length === 1) {
+    const [part] = parts;
+    if (part in vertical) return [.5, vertical[part]];
+    return [part in horizontal ? horizontal[part] : fraction(part), .5];
+  }
+  if (parts.length !== 2) unsupported(`unsupported gradient position: ${text}`);
+  let [x, y] = parts;
+  if (x in vertical || y in horizontal) [x, y] = [y, x];
+  const at = [x in horizontal ? horizontal[x] : fraction(x), y in vertical ? vertical[y] : fraction(y)];
+  if (at.some(v => Math.abs(v) > 16)) unsupported('gradient position exceeds native bounds');
+  return at;
+}
+
+/** Gradient geometry from a CSS prelude: `to right`, `45deg`, `circle closest-side at top`, `from 90deg`, each optionally `in oklab`. */
+function gradientPosition(text) {
+  const match = text.trim().match(/^([\s\S]*?)(?:\s*\bin (srgb|oklab))?$/);
+  let rest = match[1].trim();
+  const out = { colorSpace: match[2] ?? 'srgb' };
+  const at = rest.match(/(?:^|\s)at\s+(.+)$/);
+  if (at) { out.at = gradientCenter(at[1]); rest = rest.slice(0, at.index).trim(); }
+  const from = rest.match(/^from\s+(\S+)$/);
+  if (from) out.from = degrees(from[1]);
+  else if (/^-?(?:\d*\.)?\d+(?:deg|turn|rad|grad)$/.test(rest)) out.angle = degrees(rest);
+  else if (rest.startsWith('to ')) {
+    const directions = { 'to top':'top', 'to right':'right', 'to bottom':'bottom', 'to left':'left',
+      'to top right':'top-right', 'to right top':'top-right', 'to bottom right':'bottom-right', 'to right bottom':'bottom-right',
+      'to bottom left':'bottom-left', 'to left bottom':'bottom-left', 'to top left':'top-left', 'to left top':'top-left' };
+    out.direction = directions[rest.replace(/\s+/g, ' ')] ?? unsupported(`unsupported gradient direction: ${text}`);
+  } else for (const token of rest.split(/\s+/).filter(Boolean)) {
+    if (['circle', 'ellipse'].includes(token) && !out.shape) out.shape = token;
+    else if (['closest-side', 'closest-corner', 'farthest-side', 'farthest-corner'].includes(token) && !out.size) out.size = token;
+    else unsupported(`unsupported gradient shape: ${text}`);
+  }
+  return out;
+}
+
+const geometryKeys = { linear: ['direction', 'angle'], radial: ['shape', 'size', 'at'], conic: ['from', 'at'] };
+
+/** The wire gradient for a kind, rejecting geometry CSS would drop the declaration for. */
+function gradientValue(kind, position, stops) {
+  const { colorSpace = 'srgb', ...geometry } = position ?? {};
+  for (const key of Object.keys(geometry))
+    if (!geometryKeys[kind].includes(key)) unsupported(`${kind} gradients do not take ${key}`);
+  if (kind === 'linear' && geometry.angle === undefined && geometry.direction === undefined) geometry.direction = 'bottom';
+  const [low, high] = kind === 'linear' ? [-16, 16] : kind === 'radial' ? [0, 16] : [0, 1];
+  if (stops.some(stop => stop.offset < low || stop.offset > high)) unsupported(`${kind} gradient stop outside ${low * 100}%..${high * 100}%`);
+  return { ...(kind === 'linear' ? {} : { kind }), ...geometry, colorSpace, stops };
+}
+
+// A complete `linear-|radial-|conic-gradient(...)` value, as authored in arbitrary values and theme tokens.
+function cssGradient(value) {
+  const match = value.trim().match(/^(linear|radial|conic)-gradient\(([\s\S]*)\)$/);
+  if (!match) unsupported(`unsupported background-image: ${value}`);
+  const kind = match[1], args = postcss.list.comma(match[2]);
+  const isStop = text => Boolean(parse(postcss.list.space(text)[0] ?? '')) || /^color-mix\(/.test(text);
+  const position = args.length && !isStop(args[0]) ? gradientPosition(args.shift()) : undefined;
+  const offset = token => {
+    if (/^-?(?:\d*\.)?\d+%$/.test(token)) return number(token);
+    if (kind === 'conic' && /(?:deg|turn|rad|grad)$/.test(token)) return degrees(token) / 360;
+    if (token === '0') return 0;
+    return unsupported(`gradient stop positions must be percentages: ${token}`);
+  };
+  const stops = [];
+  for (const arg of args) {
+    const [tint, ...positions] = postcss.list.space(arg);
+    if (!isStop(tint) || positions.length > 2) unsupported(`unsupported gradient stop: ${arg}`);
+    const hex = color(tint);
+    if (!positions.length) stops.push({ color: hex });
+    for (const position of positions) stops.push({ color: hex, offset: offset(position) });
+  }
+  if (stops.length < 2 || stops.length > 16) unsupported('gradients need 2..16 stops');
+  // CSS stop fixup: ends default to 0 and 1, later stops clamp to earlier ones, gaps spread evenly.
+  stops[0].offset ??= 0;
+  stops[stops.length - 1].offset ??= 1;
+  for (let i = 1; i < stops.length; i++) {
+    if (stops[i].offset === undefined) {
+      let j = i; while (stops[j].offset === undefined) j++;
+      const start = stops[i - 1].offset, end = Math.max(start, stops[j].offset);
+      for (let k = i; k < j; k++) stops[k].offset = start + (end - start) * (k - i + 1) / (j - i + 1);
+    }
+    stops[i].offset = Math.max(stops[i - 1].offset, stops[i].offset);
+  }
+  return gradientValue(kind, position, stops.map(({ offset, color }) => ({ offset, color })));
+}
+
 function gradientDeclaration(prop, raw, local, gradient) {
   if (prop === 'background-image') {
+    const variable = raw.replace(/\s/g, '').match(/^(linear|radial|conic)-gradient\(var\(--tw-gradient-stops(?:,[^()]*)?\)\)$/);
     if (raw === 'none') gradient.enabled = false;
-    else if (raw.replace(/\s/g, '') === 'linear-gradient(var(--tw-gradient-stops))') gradient.enabled = true;
-    else unsupported(`unsupported background-image: ${raw}`);
+    else if (variable) Object.assign(gradient, { enabled: true, kind: variable[1], fixed: null });
+    else Object.assign(gradient, { enabled: true, fixed: cssGradient(variables(raw, local)) });
     return;
   }
   if (prop === '--tw-gradient-stops') {
@@ -149,21 +249,8 @@ function gradientDeclaration(prop, raw, local, gradient) {
     return;
   }
   const value = variables(raw, local);
-  if (prop === '--tw-gradient-position') {
-    const match = value.match(/^(.*?)(?: in (srgb|oklab))?$/);
-    const position = match[1].trim();
-    gradient.colorSpace = match[2] ?? 'srgb';
-    if (/^-?(?:\d*\.)?\d+deg$/.test(position)) {
-      gradient.orientation = { angle: Number(position.slice(0, -3)) };
-      if (Math.abs(gradient.orientation.angle) > 36000) unsupported('gradient angle exceeds native bounds');
-    } else {
-      const directions = { 'to top':'top', 'to right':'right', 'to bottom':'bottom', 'to left':'left',
-        'to top right':'top-right', 'to right top':'top-right', 'to bottom right':'bottom-right', 'to right bottom':'bottom-right',
-        'to bottom left':'bottom-left', 'to left bottom':'bottom-left', 'to top left':'top-left', 'to left top':'top-left' };
-      if (!directions[position]) unsupported(`unsupported gradient direction: ${value}`);
-      gradient.orientation = { direction: directions[position] };
-    }
-  } else {
+  if (prop === '--tw-gradient-position') gradient.position = gradientPosition(value);
+  else {
     const match = prop.match(/^--tw-gradient-(from|via|to)(-position)?$/);
     if (!match) unsupported(`unsupported gradient property: ${prop}`);
     if (match[2]) {

@@ -1,0 +1,10 @@
+{
+  "renderer": "gpu",
+  "navigationBar": {
+    "title": {
+      "default": "View lab",
+      "zh-CN": "视图实验"
+    }
+  },
+  "pageOrientation": "auto"
+}

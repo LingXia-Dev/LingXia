@@ -39,6 +39,9 @@ time (see [ui-authoring.md](ui-authoring.md)) and again at runtime.
 - `grid-cols-N` lowers to `gridTemplateColumns: N` on `<grid>`.
 - Shadow tokens and `shadow-[var(--x)]` expand every layer the variable holds
   (≤8); layers Tailwind did not wrap in `--tw-shadow-color` keep their color.
+- `bg-linear-*`, `bg-radial-*`, `bg-conic-*` and complete `linear-|radial-|conic-gradient()`
+  values (arbitrary or theme tokens via `bg-(image:--x)`) lower to one gradient; stop
+  positions are percentages (conic also angles); repeating gradients fail.
 - `rounded-full` lowers to the native 16,384 radius bound, clamped by paint.
 - Standard system sans/mono stacks lower to `sans-serif`/`monospace`;
   custom faces and serif fail.

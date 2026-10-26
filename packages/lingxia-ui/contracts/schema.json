@@ -203,7 +203,7 @@
     "opacity": {"type": "number", "group": "box", "lower": "opacity", "wire": "opacity", "paint": true, "css": "opacity"},
     "overflow": {"type": "\"visible\" | \"hidden\"", "group": "box", "lower": "option", "wire": "overflow", "css": "overflow"},
     "backgroundColor": {"type": "string", "group": "box", "lower": "color", "wire": "background", "paint": true, "css": "background-color"},
-    "backgroundImage": {"type": "LinearGradient | \"none\"", "group": "box", "lower": "gradient", "wire": "backgroundGradient", "paint": true},
+    "backgroundImage": {"type": "BackgroundGradient | \"none\"", "group": "box", "lower": "gradient", "wire": "backgroundGradient", "paint": true},
     "borderRadius": {"type": "number", "group": "box", "lower": "length", "wire": ["radius", "radiusTopLeft", "radiusTopRight", "radiusBottomRight", "radiusBottomLeft"], "css": "border-radius"},
     "borderTopLeftRadius": {"type": "number", "group": "box", "lower": "length", "wire": "radiusTopLeft", "css": "border-top-left-radius"},
     "borderTopRightRadius": {"type": "number", "group": "box", "lower": "length", "wire": "radiusTopRight", "css": "border-top-right-radius"},
@@ -273,6 +273,6 @@
     "grid": {"wire": "grid", "children": "any", "style": ["box", "padding", "grid", "gap", "text"], "props": {}},
     "stack": {"wire": "stack", "children": "any", "style": ["box", "padding", "text"], "props": {}},
     "plot": {"wire": "plot", "children": "none", "style": ["box"], "props": {"kind": {"type": "\"bar\" | \"line\" | \"pie\"", "required": true}, "values": {"type": "readonly number[]", "required": true}, "colors": {"type": "readonly string[]", "required": true}, "accessibilityLabel": {"type": "string", "required": true}, "smooth": {"type": "boolean"}, "area": {"type": "boolean"}, "selectedIndex": {"type": "number"}, "domainMin": {"type": "number"}, "domainMax": {"type": "number"}, "onSelect": {"type": "(index: number) => void"}, "pieLayout": {"type": "PieLayout"}, "markerEmphasisScale": {"type": "number"}}},
-    "vector": {"wire": "vector", "children": "none", "style": ["box", "padding", "accent", "media"], "props": {"paths": {"type": "ReadonlyArray<VectorPath>", "required": true}, "viewBox": {"type": "readonly [number, number, number, number]"}}}
+    "vector": {"wire": "vector", "children": "none", "style": ["box", "padding", "accent", "media"], "props": {"paths": {"type": "ReadonlyArray<VectorPath>", "required": true}, "gradients": {"type": "Readonly<Record<string, VectorGradient>>"}, "viewBox": {"type": "readonly [number, number, number, number]"}}}
   }
 }

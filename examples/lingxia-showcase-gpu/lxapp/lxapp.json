@@ -83,6 +83,10 @@
     {
       "name": "pulltorefresh",
       "path": "pages/pulltorefresh/index"
+    },
+    {
+      "name": "view-lab",
+      "path": "pages/view-lab/index"
     }
   ],
   "tabBar": {

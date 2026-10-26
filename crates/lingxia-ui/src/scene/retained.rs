@@ -304,6 +304,7 @@ impl RetainedLayout {
                     Paint::Vector {
                         path,
                         color,
+                        gradient,
                         bounds,
                     } => {
                         let mut bounds = *bounds;
@@ -314,14 +315,16 @@ impl RetainedLayout {
                             && visible[3] > 0.0
                             && node.clips.iter().all(|shape| shape.intersects(visible))
                         {
+                            let shift = Affine::translate((
+                                -f64::from(translation[0]),
+                                -f64::from(translation[1]),
+                            ));
                             painted.push(Paint::Vector {
-                                path: Arc::new(
-                                    Affine::translate((
-                                        -f64::from(translation[0]),
-                                        -f64::from(translation[1]),
-                                    )) * path.as_ref(),
-                                ),
+                                path: Arc::new(shift * path.as_ref()),
                                 color: *color,
+                                gradient: gradient
+                                    .as_ref()
+                                    .map(|brush| Arc::new(brush.then(shift))),
                                 bounds,
                             });
                         }

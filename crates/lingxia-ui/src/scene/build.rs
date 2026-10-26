@@ -228,7 +228,7 @@ impl Renderer {
                 });
             }
             if let Some(source) = record.string(field::BACKGROUND_GRADIENT)
-                && let Some(gradient) = crate::scene::gradient::LinearGradient::parse(source)?
+                && let Some(gradient) = crate::scene::gradient::BackgroundGradient::parse(source)?
             {
                 commands.push(Paint::Gradient {
                     corners,
@@ -274,13 +274,21 @@ impl Renderer {
                     {
                         return Err("UI_LIMIT: vector geometry exceeds coordinate budget".into());
                     }
+                    let (tint, gradient) = match tint {
+                        crate::scene::vector::Tint::Color(tint) => (
+                            color(if tint == "currentColor" {
+                                colors[index]
+                            } else {
+                                &tint
+                            })?,
+                            None,
+                        ),
+                        crate::scene::vector::Tint::Gradient(brush) => ([0; 4], Some(brush)),
+                    };
                     commands.push(Paint::Vector {
                         path: Arc::new(path),
-                        color: color(if tint == "currentColor" {
-                            colors[index]
-                        } else {
-                            &tint
-                        })?,
+                        color: tint,
+                        gradient,
                         bounds: vector_bounds,
                     });
                 }
@@ -304,6 +312,7 @@ impl Renderer {
                         },
                         crate::scene::plot::Shape::Bar(bounds, color) => Paint::Vector {
                             color,
+                            gradient: None,
                             bounds,
                             path: Arc::new(plot_bar_path(bounds)),
                         },

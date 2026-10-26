@@ -34,6 +34,20 @@ test('image sources and fits are validated; objectFit is image and vector style'
   throwsOn(() => h('text', { style: { objectFit: 'cover' } }, 'x'), /UI_STYLE: objectFit is not supported on <text>/);
 });
 
+test('vector paths carry SVG transforms, caps, joins, dash offsets and named gradients', () => {
+  const gradients = { glow: { type: 'radial', r: 0.5, stops: [{ offset: 0, color: '#ffffff' }, { offset: 1, color: '#ff0000', opacity: 0.5 }] } };
+  const paths = [{ d: 'M2 12h20', fill: 'url(#glow)', stroke: 'url(#glow)', strokeLinecap: 'round', strokeLinejoin: 'bevel', strokeDashoffset: 2, strokeDasharray: [4, 2], transform: 'rotate(45 12 12) translate(1,2)' }];
+  const source = JSON.parse(rendered(() => h('vector', { paths, gradients })).props.vectorSource);
+  assert.deepEqual(source, { viewBox: [0, 0, 24, 24], paths, gradients });
+  for (const [path, extra] of [
+    [{ d: 'M0 0', fill: 'url(#missing)' }, {}], [{ d: 'M0 0', strokeLinecap: 'arrow' }, {}], [{ d: 'M0 0', strokeLinejoin: 'arcs' }, {}],
+    [{ d: 'M0 0', transform: 'perspective(1)' }, {}], [{ d: 'M0 0', strokeDashoffset: Infinity }, {}],
+    [{ d: 'M0 0' }, { gradients: { 'bad id': gradients.glow } }], [{ d: 'M0 0' }, { gradients: { g: { type: 'conic', stops: [] } } }],
+    [{ d: 'M0 0' }, { gradients: { g: { type: 'linear', r: 1, stops: [{ offset: 0, color: '#000000' }] } } }],
+    [{ d: 'M0 0' }, { gradients: Object.fromEntries(Array.from({ length: 9 }, (_, i) => [`g${i}`, gradients.glow])) }],
+  ]) throwsOn(() => h('vector', { paths: [path], ...extra }), /UI_VECTOR/);
+});
+
 test('vectors encode bounded path data, fit and dash patterns, and decorate composed buttons', () => {
   const paths = [{ d: 'M2 2h20v20H2z', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5 }];
   const vector = rendered(() => h('vector', { paths }));

@@ -1,4 +1,4 @@
-import { utf8Bytes } from './data.js';
+import { utf8Bytes, has } from './data.js';
 import { limits } from '../generated/contract.js';
 
 // Per-element value checks; native decoding re-validates everything it receives.
@@ -8,23 +8,57 @@ export function label(value, code, required = false) {
     throw Error(`${code}: ${required ? 'accessibilityLabel is required' : 'invalid accessibility label'}`);
 }
 
+const finiteWithin = (value, bound) => typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= bound;
+const hexColor = value => typeof value === 'string' && /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value);
+const pathKeys = ['d', 'fill', 'stroke', 'strokeWidth', 'strokeDasharray', 'strokeDashoffset', 'strokeLinecap', 'strokeLinejoin', 'transform', 'vectorEffect'];
+const gradientKeys = ['type', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'fx', 'fy', 'fr', 'units', 'spread', 'stops'];
+const plain = value => value && typeof value === 'object' && !Array.isArray(value);
+
+function vectorGradient(id, gradient) {
+  const invalid = () => { throw Error(`UI_VECTOR: invalid gradient ${id}`); };
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || !plain(gradient) || Object.keys(gradient).some(k => !gradientKeys.includes(k)) ||
+      !['linear', 'radial'].includes(gradient.type) ||
+      (gradient.type === 'linear' ? ['cx', 'cy', 'r', 'fx', 'fy', 'fr'] : ['x1', 'y1', 'x2', 'y2']).some(k => gradient[k] !== undefined) ||
+      ['x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'fx', 'fy'].some(k => gradient[k] !== undefined && !finiteWithin(gradient[k], 16384)) ||
+      ['r', 'fr'].some(k => gradient[k] !== undefined && (!finiteWithin(gradient[k], 16384) || gradient[k] < 0)) ||
+      (gradient.units !== undefined && !['objectBoundingBox', 'userSpaceOnUse'].includes(gradient.units)) ||
+      (gradient.spread !== undefined && !['pad', 'reflect', 'repeat'].includes(gradient.spread)) ||
+      !Array.isArray(gradient.stops) || !gradient.stops.length || gradient.stops.length > 16 ||
+      gradient.stops.some(stop => !plain(stop) || Object.keys(stop).some(k => !['offset', 'color', 'opacity'].includes(k)) ||
+        !finiteWithin(stop.offset, 1) || stop.offset < 0 || !hexColor(stop.color) ||
+        (stop.opacity !== undefined && (!finiteWithin(stop.opacity, 1) || stop.opacity < 0)))) invalid();
+}
+
 export function vector(props, fit) {
   const box = props.viewBox ?? [0, 0, 24, 24];
-  if (!Array.isArray(box) || box.length !== 4 || box.some(v => typeof v !== 'number' || !Number.isFinite(v) || Math.abs(v) > 16384) || box[2] < 1 / 64 || box[3] < 1 / 64)
+  if (!Array.isArray(box) || box.length !== 4 || box.some(v => !finiteWithin(v, 16384)) || box[2] < 1 / 64 || box[3] < 1 / 64)
     throw Error('UI_VECTOR: invalid viewBox');
   if (!Array.isArray(props.paths) || !props.paths.length || props.paths.length > 32) throw Error('UI_VECTOR: invalid paths');
+  const gradients = props.gradients ?? {};
+  if (!plain(gradients) || Object.keys(gradients).length > 8) throw Error('UI_VECTOR: at most 8 gradients');
+  for (const [id, gradient] of Object.entries(gradients)) vectorGradient(id, gradient);
   for (const path of props.paths) {
-    if (!path || typeof path !== 'object' || Array.isArray(path) || Object.keys(path).some(k => !['d', 'fill', 'stroke', 'strokeWidth', 'strokeDasharray', 'vectorEffect'].includes(k)) ||
+    if (!plain(path) || Object.keys(path).some(k => !pathKeys.includes(k)) ||
         typeof path.d !== 'string' || !path.d.length || path.d.length > 16384) throw Error('UI_VECTOR: invalid path');
-    for (const key of ['fill', 'stroke']) if (path[key] !== undefined && (typeof path[key] !== 'string' ||
-        (!['none', 'currentColor'].includes(path[key]) && !/^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(path[key])))) throw Error('UI_VECTOR: invalid color');
+    for (const key of ['fill', 'stroke']) {
+      const value = path[key];
+      if (value === undefined || value === 'none' || value === 'currentColor' || hexColor(value)) continue;
+      const id = typeof value === 'string' && value.match(/^url\(#(.+)\)$/)?.[1];
+      if (!id) throw Error('UI_VECTOR: invalid color');
+      if (!has(gradients, id)) throw Error(`UI_VECTOR: unknown gradient ${id}`);
+    }
     if (path.vectorEffect !== undefined && !['none', 'non-scaling-stroke'].includes(path.vectorEffect)) throw Error('UI_VECTOR: invalid vector effect');
+    if (path.strokeLinecap !== undefined && !['butt', 'round', 'square'].includes(path.strokeLinecap)) throw Error('UI_VECTOR: invalid stroke-linecap');
+    if (path.strokeLinejoin !== undefined && !['miter', 'round', 'bevel'].includes(path.strokeLinejoin)) throw Error('UI_VECTOR: invalid stroke-linejoin');
+    if (path.strokeDashoffset !== undefined && !finiteWithin(path.strokeDashoffset, 16384)) throw Error('UI_VECTOR: invalid dash offset');
+    if (path.transform !== undefined && (typeof path.transform !== 'string' || path.transform.length > 512 ||
+        !/^\s*(?:(?:matrix|translate|scale|rotate|skewX|skewY)\s*\([^()]*\)[\s,]*)+$/.test(path.transform))) throw Error('UI_VECTOR: invalid transform');
     if (path.strokeDasharray !== undefined && (!Array.isArray(path.strokeDasharray) || path.strokeDasharray.length > 16 ||
         path.strokeDasharray.some(v => typeof v !== 'number' || !Number.isFinite(v) || v < 1 / 64 || v > 1024))) throw Error('UI_VECTOR: invalid dash pattern');
     if (path.strokeWidth !== undefined && (typeof path.strokeWidth !== 'number' || !Number.isFinite(path.strokeWidth) || path.strokeWidth < 0 || path.strokeWidth > 1024))
       throw Error('UI_VECTOR: invalid stroke width');
   }
-  const source = JSON.stringify({ viewBox: box, paths: props.paths, ...(fit === undefined ? {} : { fit }) });
+  const source = JSON.stringify({ viewBox: box, paths: props.paths, ...(Object.keys(gradients).length ? { gradients } : {}), ...(fit === undefined ? {} : { fit }) });
   if (source.length > 32768) throw Error('UI_VECTOR: source too large');
   return source;
 }

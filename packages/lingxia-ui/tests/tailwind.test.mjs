@@ -221,6 +221,35 @@ test('gradient defaults, transparency, negative stops and unsupported spaces are
   for (const name of ['bg-linear-to-r/hsl', 'via-[12px]']) assert.throws(() => classStyle(name), /UI_CLASS/);
 });
 
+test('radial, conic and complete CSS gradients lower from utilities, arbitrary values and theme tokens', async () => {
+  const theme = `@theme { --gradient-hero: linear-gradient(135deg, #ffffff, #000000 80%); }
+    :root { --glow: radial-gradient(circle at top, #ff000080, transparent 70%); }`;
+  await use(['bg-radial', 'bg-radial-[at_25%_75%]', 'bg-conic-180', 'bg-conic', 'from-red-500', 'to-blue-500',
+    'bg-[radial-gradient(circle_closest-side_at_left_top,#fff,#000_50%,#f00)]', 'bg-[image:var(--glow)]', 'bg-(image:--gradient-hero)',
+    'bg-[conic-gradient(from_90deg,#fff_0deg,#000_0.5turn)]', 'bg-[repeating-linear-gradient(#fff,#000)]', 'bg-[radial-gradient(#fff_10px,#000)]',
+    'bg-[linear-gradient(at_top,#fff,#000)]', 'bg-linear-45'], theme);
+  const radial = classStyle('bg-radial-[at_25%_75%] from-red-500 to-blue-500').backgroundImage;
+  assert.deepEqual([radial.kind, radial.at, radial.stops.length], ['radial', [.25, .75], 2]);
+  assert.equal(classStyle('bg-radial from-red-500 to-blue-500').backgroundImage.colorSpace, 'oklab');
+  assert.deepEqual(classStyle('bg-conic-180 from-red-500 to-blue-500').backgroundImage.from, 180);
+  assert.deepEqual(classStyle('bg-[radial-gradient(circle_closest-side_at_left_top,#fff,#000_50%,#f00)]').backgroundImage, {
+    kind: 'radial', shape: 'circle', size: 'closest-side', at: [0, 0], colorSpace: 'srgb',
+    stops: [{ offset: 0, color: '#ffffffff' }, { offset: .5, color: '#000000ff' }, { offset: 1, color: '#ff0000ff' }],
+  });
+  const glow = classStyle('bg-[image:var(--glow)]').backgroundImage;
+  assert.deepEqual([glow.shape, glow.at, glow.stops.map(stop => stop.offset)], ['circle', [.5, 0], [0, .7]]);
+  const hero = classStyle('bg-(image:--gradient-hero)').backgroundImage;
+  assert.deepEqual([hero.kind, hero.angle, hero.stops[1].offset], [undefined, 135, .8]);
+  assert.deepEqual(classStyle('bg-[conic-gradient(from_90deg,#fff_0deg,#000_0.5turn)]').backgroundImage.stops.map(stop => stop.offset), [0, .5]);
+  // Both set one background-image; Tailwind's order decides, never the class string.
+  const mixed = 'bg-(image:--gradient-hero) bg-linear-45 from-red-500 to-blue-500';
+  assert.deepEqual(classStyle(mixed), classStyle(mixed.split(' ').reverse().join(' ')));
+  assert.equal(classStyle(mixed).backgroundImage.angle, 135);
+  for (const [name, message] of [['bg-[repeating-linear-gradient(#fff,#000)]', /background-image/], ['bg-[radial-gradient(#fff_10px,#000)]', /percentages/],
+    ['bg-[linear-gradient(at_top,#fff,#000)]', /linear gradients do not take at/]])
+    assert.throws(() => classStyle(name), message);
+});
+
 test('radii: infinite radius clamps and corners cascade under shorthands', async () => {
   await use(['rounded-full', 'rounded-none', 'rounded-3xl', 'rounded-br-md', 'rounded-t-none', 'rounded-br-full', '[width:calc(infinity*1px)]']);
   assert.deepEqual(classStyle('rounded-full'), { borderRadius: 16384 });
