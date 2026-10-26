@@ -104,6 +104,33 @@ fn live_regions_announce_changed_text_with_their_politeness() {
 }
 
 #[test]
+fn an_alert_speaks_when_it_appears_and_a_status_only_when_it_changes() {
+    let before = frame("h('column',{},h('text',{},'Form'))");
+    let after = frame(
+        "h('column',{},h('text',{},'Form'),h('text',{role:'alert'},'Card declined'),h('text',{role:'status'},'Saved'),h('text',{role:'alert',accessibilityLiveRegion:'off'},'Quiet'))",
+    );
+    let mut ids = SemanticIds::default();
+    ids.update(after.nodes.iter().map(|n| n.identity.as_str()));
+    let announced = |previous: Option<&PresentedFrame>| -> Vec<_> {
+        projection::changes(previous, &after, &ids)
+            .into_iter()
+            .filter_map(|event| match event {
+                Event::Announce {
+                    text, assertive, ..
+                } => Some((text, assertive)),
+                _ => None,
+            })
+            .collect()
+    };
+    assert_eq!(
+        announced(Some(&before)),
+        [("Card declined".to_owned(), true)]
+    );
+    // A page that opens with an alert is read with the page, not announced over it.
+    assert!(announced(None).is_empty());
+}
+
+#[test]
 fn heading_levels_need_a_heading_role_on_the_wire() {
     use crate::protocol::{decode, field, tag};
     use serde_json::json;

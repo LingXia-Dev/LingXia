@@ -576,6 +576,23 @@ pub fn changes(
         .unwrap_or_default();
     let mut events = Vec::new();
     for (index, node) in next.nodes.iter().enumerate() {
+        // An alert speaks when it appears, not only when it changes; a status waits for a change.
+        if previous.is_some()
+            && !before.contains_key(node.identity.as_str())
+            && node.role.as_deref() == Some("alert")
+            && let Some(kind) = &node.live_region
+            && !node.accessibility_hidden.unwrap_or(false)
+            && let Some(id) = ids.id(index)
+        {
+            let text = spoken(next, node);
+            if !text.is_empty() {
+                events.push(Event::Announce {
+                    id,
+                    text,
+                    assertive: kind == "assertive",
+                });
+            }
+        }
         let (Some(id), Some(prior)) = (ids.id(index), before.get(node.identity.as_str())) else {
             continue;
         };

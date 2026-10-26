@@ -35,7 +35,7 @@ handle, press together and read as one link. Rich text selects as one paragraph.
 Any element may set `role` (heading with `headingLevel`, list/listitem, dialog,
 alert, status), `accessibilityHidden` (removes the subtree from semantics, not
 paint) and `accessibilityLiveRegion`; alert and status announce assertively and
-politely by default. Controls keep their own role. The Android adapter reads the
+politely by default; an alert also speaks when it appears, a status only when it changes. Controls keep their own role. The Android adapter reads the
 role and key names from the generated `GpuSemantics` class.
 The projection nests published nodes under their nearest published layout
 ancestor (a role, or a scroll); unpublished wrappers collapse and reading order
