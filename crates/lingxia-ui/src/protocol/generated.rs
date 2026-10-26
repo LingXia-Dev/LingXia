@@ -159,6 +159,7 @@ pub mod field {
     pub const HOVER_STYLE: usize = 126;
     pub const WIDTH_KEYWORD: usize = 127;
     pub const HEIGHT_KEYWORD: usize = 128;
+    pub const BORDER_STYLE: usize = 129;
 }
 
 pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page"];
@@ -294,6 +295,7 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("hoverStyle", "state-style"),
     ("widthKeyword", "sizing-keyword"),
     ("heightKeyword", "sizing-keyword"),
+    ("borderStyle", "border-style"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -317,6 +319,7 @@ pub fn options(kind: &str) -> Option<&'static [&'static str]> {
         "white-space" => Some(&["normal", "nowrap"]),
         "text-overflow" => Some(&["clip", "ellipsis"]),
         "sizing-keyword" => Some(&["fit-content", "max-content", "min-content"]),
+        "border-style" => Some(&["solid", "dashed", "dotted"]),
         _ => None,
     }
 }
@@ -521,6 +524,7 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::BUTTON, tag::CHECKBOX, tag::SWITCH, tag::RADIO]), parent: None },
+    FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },

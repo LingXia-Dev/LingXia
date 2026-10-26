@@ -42,6 +42,8 @@ time (see [ui-authoring.md](ui-authoring.md)) and again at runtime.
 - `bg-linear-*`, `bg-radial-*`, `bg-conic-*` and complete `linear-|radial-|conic-gradient()`
   values (arbitrary or theme tokens via `bg-(image:--x)`) lower to one gradient; stop
   positions are percentages (conic also angles); repeating gradients fail.
+- `border-dashed`/`border-dotted` follow `--tw-border-style`, so class order never
+  matters; dashes are 3× the width (dots 1×) and divide each ring or edge evenly.
 - `rounded-full` lowers to the native 16,384 radius bound, clamped by paint.
 - Standard system sans/mono stacks lower to `sans-serif`/`monospace`;
   custom faces and serif fail.
@@ -72,6 +74,6 @@ custom properties and a matching `color-scheme`.
 ## Unsupported on purpose
 
 Transitions, transforms, filters other than backdrop blur/saturation, inset
-shadows, ring offsets, dashed borders, per-edge border colors, `group-*` and
+shadows, ring offsets, per-edge border styles and colors, `group-*` and
 `peer-*` selectors, container queries and plugins. Each fails with
 `UI_CLASS_UNSUPPORTED` rather than rendering differently from CSS.

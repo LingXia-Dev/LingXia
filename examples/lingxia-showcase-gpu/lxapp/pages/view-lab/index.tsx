@@ -8,6 +8,7 @@ export function render() {
     <Page testId="view-lab" title="View lab">
       <Gradients />
       <Vectors />
+      <Borders />
     </Page>
   );
 }
@@ -43,6 +44,18 @@ function Vectors() {
         <vector testId="lab-vector-strokes" className="w-16 h-16 text-foreground" paths={strokes} />
         <vector testId="lab-vector-transform" className="w-16 h-16 text-primary"
           paths={[0, 45, 90, 135].map(angle => ({ d: 'M12 4h1v16h-1z', transform: `rotate(${angle} 12.5 12)` }))} />
+      </row>
+    </Section>
+  );
+}
+
+function Borders() {
+  return (
+    <Section title="Borders" testId="lab-borders">
+      <row className="gap-3">
+        <view testId="lab-border-dashed" className="h-12 grow basis-0 rounded-xl border-2 border-dashed border-primary" />
+        <view testId="lab-border-dotted" className="h-12 grow basis-0 rounded-full border-4 border-dotted border-error" />
+        <view testId="lab-border-edges" className="h-12 grow basis-0 border-t-2 border-l-4 border-dashed border-foreground" />
       </row>
     </Section>
   );

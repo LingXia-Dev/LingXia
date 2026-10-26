@@ -424,6 +424,8 @@ function declarations(nodes, vars, root, animationLowering) {
     if (prop.startsWith('--tw-backdrop-') || prop === 'backdrop-filter' || prop === '-webkit-backdrop-filter') { backdropDeclaration(prop, node.value, local, backdrop); continue; }
     if (prop.startsWith('--tw-shadow') || prop.startsWith('--tw-ring-') || prop.startsWith('--tw-inset-') || prop === 'box-shadow') { shadowDeclaration(prop, node.value, local, shadow); continue; }
     if (prop.startsWith('--tw-gradient-') || prop === 'background-image') { gradientDeclaration(prop, node.value, local, gradient); continue; }
+    // Border styles follow --tw-border-style, which only `border-solid|dashed|dotted` set.
+    if (prop === '--tw-border-style') { style.borderStyle = longhand('border-style', variables(node.value, local).trim()); continue; }
     if (prop.startsWith('--')) continue;
     if (transitions.test(prop)) unsupported(`${prop} (the native renderer has no transitions or transforms)`);
     const value = variables(node.value, local).trim();
@@ -432,7 +434,10 @@ function declarations(nodes, vars, root, animationLowering) {
       const lowered = values(value, longhands.length, part => longhand(longhands[0], part));
       longhands.forEach((name, index) => { style[cssStyle[name]] = lowered[index]; });
     }
-    else if (/^border(?:-(?:top|right|bottom|left|inline|block|x|y))?-style$/.test(prop)) { if (value !== 'solid') unsupported(`${prop}: ${value}`); }
+    else if (/^border(?:-(?:top|right|bottom|left|inline|block|x|y))?-style$/.test(prop) && node.value.replace(/\s/g, '') === 'var(--tw-border-style)') { /* set by --tw-border-style */ }
+    else if (/^border-(?:top|right|bottom|left|inline|block|x|y)-style$/.test(prop)) {
+      if (value !== 'solid') unsupported(`${prop}: ${value} (per-edge border styles)`);
+    }
     else if (prop === 'gap') {
       const [row, column = row] = postcss.list.space(value).map(part => number(part, true));
       if (row === column) style.gap = row; else Object.assign(style, { rowGap: row, columnGap: column });

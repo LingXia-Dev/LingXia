@@ -438,6 +438,7 @@ impl RetainedLayout {
                         bounds,
                         widths,
                         radius,
+                        style,
                     } => {
                         let mut bounds = *bounds;
                         bounds[0] -= translation[0];
@@ -453,6 +454,7 @@ impl RetainedLayout {
                                 bounds,
                                 widths: *widths,
                                 radius: *radius,
+                                style: *style,
                             });
                         }
                     }

@@ -250,6 +250,16 @@ test('radial, conic and complete CSS gradients lower from utilities, arbitrary v
     assert.throws(() => classStyle(name), message);
 });
 
+test('dashed and dotted borders follow the border-style variable whatever the class order', async () => {
+  await use(['border', 'border-2', 'border-t-4', 'border-dashed', 'border-dotted', 'border-solid', '[border-top-style:dashed]', 'md:border-dotted']);
+  for (const classes of ['border border-dashed', 'border-dashed border', 'border-t-4 border-dashed'])
+    assert.equal(classStyle(classes).borderStyle, 'dashed', classes);
+  assert.equal(classStyle('border').borderStyle, undefined);
+  assert.equal(classStyle('border-2 border-dashed md:border-dotted', env('light', 900)).borderStyle, 'dotted');
+  assert.equal(node('column', { className: 'border border-dotted' }).borderStyle, 'dotted');
+  assert.throws(() => classStyle('[border-top-style:dashed]'), /per-edge border styles/);
+});
+
 test('radii: infinite radius clamps and corners cascade under shorthands', async () => {
   await use(['rounded-full', 'rounded-none', 'rounded-3xl', 'rounded-br-md', 'rounded-t-none', 'rounded-br-full', '[width:calc(infinity*1px)]']);
   assert.deepEqual(classStyle('rounded-full'), { borderRadius: 16384 });
@@ -370,7 +380,7 @@ test('padding, borders and word breaking keep shorthand, axis, edge and variant 
   assert.deepEqual(classStyle('border-x-8'), { borderLeftWidth: 8, borderRightWidth: 8 });
   assert.equal(classStyle('border-current').borderColor, 'currentColor');
   assert.match(classStyle('border-blue-500/50').borderColor, /80$/);
-  for (const name of ['border-dashed', 'border-none']) assert.throws(() => classStyle(name), /UI_CLASS/);
+  assert.throws(() => classStyle('border-none'), /UI_CLASS/);
   assert.deepEqual(classStyle('break-normal'), { wordBreak: 'normal', overflowWrap: 'normal' });
   assert.equal(classStyle('wrap-anywhere').overflowWrap, 'anywhere');
   const textarea = rendered(() => h('textarea', { className: 'h-auto min-h-[42px] max-h-[120px]', value: 'hello' })).props;

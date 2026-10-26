@@ -1,4 +1,4 @@
-use vello_cpu::kurbo::BezPath;
+use vello_cpu::kurbo::{BezPath, Cap, Join, Line, Shape, Stroke, StrokeOpts, stroke};
 
 /// Clockwise corner radii: top-left, top-right, bottom-right, bottom-left.
 #[derive(Clone, Debug, PartialEq)]
@@ -167,6 +167,115 @@ impl Border {
     }
 }
 
+/// CSS `border-style` values the renderer draws.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum LineStyle {
+    #[default]
+    Solid,
+    Dashed,
+    Dotted,
+}
+
+impl LineStyle {
+    pub(crate) fn from_wire(value: Option<&str>) -> Self {
+        match value {
+            Some("dashed") => Self::Dashed,
+            Some("dotted") => Self::Dotted,
+            _ => Self::Solid,
+        }
+    }
+}
+
+/// Most dashes one border edge (or ring) is split into; longer edges lengthen the period.
+const MAX_DASHES: f64 = 2048.0;
+
+/// A dash pattern whose period divides `length` evenly, so corners meet whole dashes.
+fn dashes(style: LineStyle, width: f64, length: f64) -> (Stroke, f64) {
+    let (on, period, cap) = match style {
+        // Three-width dashes and gaps, like Chromium's thin dashed borders.
+        LineStyle::Dashed => (3.0 * width, 6.0 * width, Cap::Butt),
+        // A zero-length dash with round caps draws a dot of the border width.
+        _ => (0.0, 2.0 * width, Cap::Round),
+    };
+    let count = (length / period).round().clamp(1.0, MAX_DASHES);
+    let scale = length / (count * period);
+    let on = (on * scale).max(1e-3);
+    let off = (period * scale - on).max(1e-3);
+    (
+        Stroke::new(width)
+            .with_caps(cap)
+            .with_join(Join::Round)
+            .with_dashes(
+                if style == LineStyle::Dashed {
+                    -on / 2.0
+                } else {
+                    0.0
+                },
+                [on, off],
+            ),
+        count,
+    )
+}
+
+impl Border {
+    /// The fill path for `style`: the solid ring, or dashes and dots along its
+    /// center line. Unequal widths dash each straight edge on its own.
+    pub fn styled_path(&self, style: LineStyle) -> BezPath {
+        if style == LineStyle::Solid {
+            return self.path();
+        }
+        let [x, y, w, h] = self.outer.bounds;
+        let [ix, iy, iw, ih] = self.inner.bounds;
+        let widths = [iy - y, x + w - ix - iw, y + h - iy - ih, ix - x];
+        let mut out = BezPath::new();
+        if widths.iter().all(|width| (width - widths[0]).abs() < 1e-6) {
+            let width = widths[0];
+            if width <= 0.0 {
+                return out;
+            }
+            let half = width / 2.0;
+            let center = RoundedBox::normalized(
+                [
+                    x + half,
+                    y + half,
+                    (w - width).max(0.0),
+                    (h - width).max(0.0),
+                ],
+                self.outer
+                    .radii
+                    .map(|[rx, ry]| [(rx - half).max(0.0), (ry - half).max(0.0)]),
+            )
+            .path();
+            let (style, _) = dashes(style, width, center.perimeter(0.1));
+            out.extend(stroke(center.iter(), &style, &StrokeOpts::default(), 0.1).iter());
+            return out;
+        }
+        let [top, right, bottom, left] = widths;
+        for (width, from, to) in [
+            (top, (x, y + top / 2.0), (x + w, y + top / 2.0)),
+            (
+                right,
+                (x + w - right / 2.0, y),
+                (x + w - right / 2.0, y + h),
+            ),
+            (
+                bottom,
+                (x + w, y + h - bottom / 2.0),
+                (x, y + h - bottom / 2.0),
+            ),
+            (left, (x + left / 2.0, y + h), (x + left / 2.0, y)),
+        ] {
+            if width <= 0.0 {
+                continue;
+            }
+            let line = Line::new(from, to);
+            let (style, _) = dashes(style, width, line.perimeter(0.1));
+            out.extend(stroke(line.path_elements(0.1), &style, &StrokeOpts::default(), 0.1).iter());
+        }
+        out
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -325,5 +434,55 @@ mod tests {
         assert_eq!(solid.inner.bounds[2..], [0.0, 0.0]);
         assert_ne!(solid.path().winding((50.0, 40.0).into()), 0);
         assert_eq!(solid.path().winding((1.0, 1.0).into()), 0);
+    }
+
+    fn top_row(style: &str, widths: &str) -> Vec<bool> {
+        let source = crate::session::tests::source(&format!(
+            "function render(){{return h('column',{{style:{{width:96,height:24,backgroundColor:'#ffffff',borderColor:'#000000',borderStyle:'{style}',{widths}}}}})}}"
+        ));
+        let mut page = crate::ViewSession::new(&source).unwrap();
+        let frame = page.layout(96, 24, 1.0).unwrap().rasterize().unwrap();
+        let pixels = frame.pixels.data_as_u8_slice();
+        (0..96).map(|x| pixels[(96 + x) * 4] < 128).collect()
+    }
+
+    fn runs(row: &[bool]) -> usize {
+        row.windows(2).filter(|pair| pair[0] && !pair[1]).count()
+    }
+
+    #[test]
+    fn dashed_and_dotted_borders_break_the_edge_into_even_marks() {
+        let solid = top_row("solid", "borderWidth:2");
+        assert!(solid.iter().all(|painted| *painted));
+        let dashed = top_row("dashed", "borderWidth:2");
+        // A 2px border has 12px dash periods: about eight dashes along a 96px edge.
+        assert!((6..=9).contains(&runs(&dashed)), "{}", runs(&dashed));
+        let dotted = top_row("dotted", "borderWidth:2");
+        assert!(
+            runs(&dotted) > runs(&dashed),
+            "{} {}",
+            runs(&dotted),
+            runs(&dashed)
+        );
+        // Unequal widths dash each edge on its own.
+        let edges = top_row("dashed", "borderTopWidth:2,borderLeftWidth:4");
+        assert!((6..=9).contains(&runs(&edges)), "{}", runs(&edges));
+    }
+
+    #[test]
+    fn styled_paths_bound_dash_counts_on_huge_boxes() {
+        let border = Border::new([0.0, 0.0, 16384.0, 16384.0], [0.5; 4], 0.0);
+        let path = border.styled_path(LineStyle::Dotted);
+        assert!(
+            path.elements().len() < 2048 * 16,
+            "{}",
+            path.elements().len()
+        );
+        assert!(
+            Border::new([0.0, 0.0, 10.0, 10.0], [0.0; 4], 0.0)
+                .styled_path(LineStyle::Dashed)
+                .elements()
+                .is_empty()
+        );
     }
 }

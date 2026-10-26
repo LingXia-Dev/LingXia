@@ -43,7 +43,8 @@
     "text-transform": ["none", "uppercase", "lowercase", "capitalize"],
     "white-space": ["normal", "nowrap"],
     "text-overflow": ["clip", "ellipsis"],
-    "sizing-keyword": ["fit-content", "max-content", "min-content"]
+    "sizing-keyword": ["fit-content", "max-content", "min-content"],
+    "border-style": ["solid", "dashed", "dotted"]
   },
   "fields": [
     {"id": 0, "key": "width", "wire": "width", "kind": "number"},
@@ -174,7 +175,8 @@
     {"id": 125, "key": "pressedStyle", "wire": "pressedStyle", "kind": "state-style", "tags": ["button", "checkbox", "switch", "radio"]},
     {"id": 126, "key": "hoverStyle", "wire": "hoverStyle", "kind": "state-style"},
     {"id": 127, "key": "widthKeyword", "wire": "widthKeyword", "kind": "sizing-keyword"},
-    {"id": 128, "key": "heightKeyword", "wire": "heightKeyword", "kind": "sizing-keyword"}
+    {"id": 128, "key": "heightKeyword", "wire": "heightKeyword", "kind": "sizing-keyword"},
+    {"id": 129, "key": "borderStyle", "wire": "borderStyle", "kind": "border-style"}
   ],
   "styleGroups": {"accent": ["color"]},
   "style": {
@@ -214,6 +216,7 @@
     "borderRightWidth": {"type": "number", "group": "box", "lower": "length", "wire": "borderRightWidth", "css": ["border-right-width", "border-inline-end-width"]},
     "borderBottomWidth": {"type": "number", "group": "box", "lower": "length", "wire": "borderBottomWidth", "css": ["border-bottom-width", "border-block-end-width"]},
     "borderLeftWidth": {"type": "number", "group": "box", "lower": "length", "wire": "borderLeftWidth", "css": ["border-left-width", "border-inline-start-width"]},
+    "borderStyle": {"type": "\"solid\" | \"dashed\" | \"dotted\"", "group": "box", "lower": "option", "wire": "borderStyle", "css": "border-style"},
     "borderColor": {"type": "string | \"currentColor\"", "group": "box", "lower": "color", "wire": "borderColor", "paint": true, "css": "border-color"},
     "boxShadow": {"type": "ReadonlyArray<BoxShadow> | \"none\"", "group": "box", "lower": "shadow", "wire": "boxShadow", "paint": true},
     "backdropFilter": {"type": "string", "group": "box", "lower": "backdrop", "wire": ["backdropBlur", "backdropSaturation"]},

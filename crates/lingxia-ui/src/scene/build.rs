@@ -248,6 +248,9 @@ impl Renderer {
                     bounds,
                     widths: border_widths,
                     radius,
+                    style: crate::scene::border::LineStyle::from_wire(
+                        record.string(field::BORDER_STYLE),
+                    ),
                 });
             }
             if record.tag == tag::VECTOR {

@@ -156,6 +156,7 @@ pub(crate) enum Paint {
         widths: [f32; 4],
         radius: f32,
         corners: Option<[[f32; 2]; 4]>,
+        style: crate::scene::border::LineStyle,
     },
     Area {
         points: Vec<[f32; 2]>,

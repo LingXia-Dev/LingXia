@@ -185,6 +185,7 @@ impl DisplayList {
                     bounds,
                     widths,
                     radius,
+                    style,
                 } => {
                     context.set_paint(AlphaColor::<Srgb>::from_rgba8(*r, *g, *b, *a));
                     context.fill_path(
@@ -193,7 +194,7 @@ impl DisplayList {
                             *widths,
                             corners.unwrap_or([[*radius; 2]; 4]),
                         )
-                        .path(),
+                        .styled_path(*style),
                     );
                 }
                 Paint::Gradient {
@@ -442,6 +443,7 @@ impl DisplayList {
                     bounds,
                     widths,
                     radius,
+                    style,
                 } => {
                     scene.fill(
                         Fill::NonZero,
@@ -453,7 +455,7 @@ impl DisplayList {
                             *widths,
                             corners.unwrap_or([[*radius; 2]; 4]),
                         )
-                        .path(),
+                        .styled_path(*style),
                     );
                 }
                 Paint::Gradient {
