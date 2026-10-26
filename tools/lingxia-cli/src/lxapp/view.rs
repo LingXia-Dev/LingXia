@@ -105,7 +105,7 @@ pub fn build(
         vite_pipeline::build(&web, options, progress, install_duration_hint)?
     };
     let started = std::time::Instant::now();
-    gpu::build(project, !options.release)?;
+    gpu::build(project, gpu_dev_build(options))?;
     report.bundle_duration += started.elapsed();
     report.page_count = project.pages.len();
     Ok(report)
@@ -897,8 +897,28 @@ fn is_function_like_property(
     }
 }
 
+/// GPU pages build for development (source maps, hot swap, recorded inputs) in any dev
+/// session, `--release` included, and outside one unless releasing.
+fn gpu_dev_build(options: &BuildOptions) -> bool {
+    options.dev_session || !options.release
+}
+
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_release_dev_session_still_builds_gpu_pages_for_hot_swap() {
+        let options = |dev_session, release| BuildOptions {
+            dev_session,
+            release,
+            package: false,
+            progress: crate::lxapp::options::ProgressMode::Plain,
+        };
+        assert!(super::gpu_dev_build(&options(true, true)));
+        assert!(super::gpu_dev_build(&options(false, false)));
+        assert!(!super::gpu_dev_build(&options(false, true)));
+    }
+
     use super::*;
     use tempfile::tempdir;
 

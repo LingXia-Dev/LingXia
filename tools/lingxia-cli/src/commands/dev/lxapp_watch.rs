@@ -147,6 +147,24 @@ pub(super) fn discover_watch_roots(project_root: &Path) -> Result<Vec<WatchRoot>
     Ok(roots)
 }
 
+/// Where `lxdev test` writes runs for a project holding `root`: `test.outputDir` of the nearest
+/// `lxdev.json` above it. Its reports are output, never a source edit.
+fn test_output_dir(root: &Path) -> Option<PathBuf> {
+    let base = root
+        .ancestors()
+        .find(|dir| dir.join("lxdev.json").is_file())?;
+    let text = fs::read_to_string(base.join("lxdev.json")).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let dir = value["test"]["outputDir"].as_str()?;
+    Some(base.join(dir))
+}
+
+/// Output the watcher must not treat as edits: generated directories by name, editor junk,
+/// and any configured test output directory.
+fn is_output(path: &Path, outputs: &[PathBuf]) -> bool {
+    is_ignored_path(path) || outputs.iter().any(|dir| path.starts_with(dir))
+}
+
 pub(super) fn is_ignored_path(path: &Path) -> bool {
     if path.components().any(|component| {
         component
@@ -310,6 +328,11 @@ fn run_watch(
         watch_root(&mut watcher, &mut subtrees, &root.path)?;
     }
 
+    let outputs: Vec<PathBuf> = roots
+        .iter()
+        .filter_map(|root| test_output_dir(&root.path))
+        .filter_map(|dir| dunce::canonicalize(&dir).ok().or(Some(dir)))
+        .collect();
     let mut dirty: BTreeSet<String> = BTreeSet::new();
     // What changed per app since its last reload, for the GPU hot-swap plan.
     let mut changed: std::collections::BTreeMap<String, BTreeSet<PathBuf>> = Default::default();
@@ -347,7 +370,7 @@ fn run_watch(
                     continue;
                 }
                 for path in event.paths {
-                    if is_ignored_path(&path) {
+                    if is_output(strip_verbatim_prefix(&path), &outputs) {
                         continue;
                     }
                     if let Some(change) = subtree_change(&roots, &subtrees, &path) {
@@ -781,6 +804,29 @@ mod tests {
     fn discover_empty_without_lxapp_or_host() {
         let temp = tempfile::tempdir().unwrap();
         assert!(discover_watch_roots(temp.path()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_configured_test_output_dir_is_never_an_edit() {
+        let project = tempfile::tempdir().unwrap();
+        let root = project.path().join("lxapp");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            project.path().join("lxdev.json"),
+            r#"{"test":{"outputDir":"build/runs"}}"#,
+        )
+        .unwrap();
+        let outputs = vec![test_output_dir(&root).unwrap()];
+        assert!(is_output(
+            &project.path().join("build/runs/latest/report.json"),
+            &outputs
+        ));
+        assert!(is_output(
+            &root.join("test-results/run-1/report.json"),
+            &outputs
+        ));
+        assert!(!is_output(&root.join("pages/home/index.tsx"), &outputs));
+        assert!(test_output_dir(tempfile::tempdir().unwrap().path()).is_none());
     }
 
     #[test]
