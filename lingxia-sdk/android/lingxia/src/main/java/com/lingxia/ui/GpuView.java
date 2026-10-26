@@ -803,7 +803,6 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 setDefaultFocusHighlightEnabled(false);
                 setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_YES);
             }
-            pressedOverlay.setColor(0x22000000);
             focusOverlay.setColor(Color.TRANSPARENT);
         }
         JSONObject node(int index) {
@@ -865,9 +864,15 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             if (b == null) b = node.optJSONArray("bounds");
             return GpuAccessibility.pixels(b, frameScale);
         }
+        /** The frame's `feedback` style, chosen by the core for the page's theme. */
+        private JSONObject feedbackStyle() {
+            JSONObject style = snapshot == null ? null : snapshot.optJSONObject("feedback");
+            return style == null ? new JSONObject() : style;
+        }
         void showPress(int index) {
             JSONObject node = node(index);
             if (node == null) return;
+            pressedOverlay.setColor((int)feedbackStyle().optLong("pressOverlay"));
             pressedOverlay.setNode(node, frameScale);
             feedback.getOverlay().remove(pressedOverlay);
             feedback.getOverlay().add(pressedOverlay);
@@ -877,7 +882,9 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             JSONObject node = node(index);
             if (node == null) return;
             focusOverlay.setNode(node, frameScale);
-            focusOverlay.setStroke(Math.max(1, (int)(2 * frameScale)), Color.rgb(23, 32, 51));
+            JSONObject style = feedbackStyle();
+            focusOverlay.setStroke(Math.max(1, Math.round((float)style.optDouble("focusRingWidth", 2) * frameScale)),
+                (int)style.optLong("focusRing"));
             feedback.getOverlay().remove(focusOverlay);
             feedback.getOverlay().add(focusOverlay);
         }
