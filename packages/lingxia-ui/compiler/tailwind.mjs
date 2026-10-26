@@ -546,6 +546,7 @@ function transitionDeclaration(prop, raw, local, motion) {
 function declarations(nodes, vars, root, animationLowering) {
   nodes = nodes.flatMap(node => node.type === 'atrule' && node.name === 'supports' && supportedConditions.includes(node.params) ? node.nodes : [node]);
   const style = {}, gradient = {}, shadow = {}, backdrop = {}, transform = {}, variant = {}, motion = {}, local = { ...vars };
+  let pairedLeading = false;
   for (const node of nodes) if (node.type === 'decl' && node.prop.startsWith('--')) local[node.prop] = node.value;
   const clamp = nodes.some(node => node.type === 'decl' && node.prop === '-webkit-line-clamp');
   for (const node of nodes) {
@@ -616,10 +617,14 @@ function declarations(nodes, vars, root, animationLowering) {
       }
     }
     else if (clamp && ((prop === 'display' && value === '-webkit-box') || (prop === '-webkit-box-orient' && value === 'vertical'))) { /* The line clamp owns these. */ }
-    else if (prop in cssStyle) style[cssStyle[prop]] = longhand(prop, value);
+    else if (prop in cssStyle) {
+      style[cssStyle[prop]] = longhand(prop, value);
+      // `text-sm` pairs a line height with its size; a text run takes the size and leaves the leading.
+      if (prop === 'line-height' && /^var\(--tw-leading,/.test(node.value.trim())) pairedLeading = true;
+    }
     else unsupported(`${prop}: ${value}`);
   }
-  return { style, ...(Object.keys(motion).length ? { motion } : {}), ...(Object.keys(transform).length ? { transform } : {}), ...(Object.keys(variant).length ? { numeric: variant } : {}), ...(Object.keys(backdrop).length ? { backdrop } : {}), ...(Object.keys(gradient).length ? { gradient } : {}), ...(Object.keys(shadow).length ? { shadow } : {}) };
+  return { style, ...(pairedLeading ? { pairedLeading } : {}), ...(Object.keys(motion).length ? { motion } : {}), ...(Object.keys(transform).length ? { transform } : {}), ...(Object.keys(variant).length ? { numeric: variant } : {}), ...(Object.keys(backdrop).length ? { backdrop } : {}), ...(Object.keys(gradient).length ? { gradient } : {}), ...(Object.keys(shadow).length ? { shadow } : {}) };
 }
 
 function conditions(rule) {

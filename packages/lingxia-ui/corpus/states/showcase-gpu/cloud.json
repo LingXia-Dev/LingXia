@@ -1,0 +1,20 @@
+{
+  "type": "auth",
+  "status": "Idle",
+  "tenant": null,
+  "user": null,
+  "tenants": [],
+  "mqttStatus": "Idle",
+  "mqttRuntimeState": "idle",
+  "mqttLastError": "",
+  "mqttSubscribed": false,
+  "mqttTopicFilter": "demo/mqtt",
+  "mqttMessageCount": 0,
+  "mqttLastTopic": "",
+  "mqttLastPayload": "",
+  "mqttLastReceivedAt": "",
+  "functionsStatus": "Idle",
+  "functionsAvailable": [],
+  "functionsLastCall": "",
+  "functionsLastResult": ""
+}

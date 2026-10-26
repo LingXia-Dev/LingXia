@@ -121,11 +121,12 @@
     return true;
   }
   var pixels = (value) => `${value}px`;
-  function cascade(rules) {
+  function cascade(rules, meta) {
     const style2 = {}, gradient = {}, shadow = {}, backdrop2 = {}, transform = {}, motion = {};
     let numeric = {};
     for (const rule of rules) {
       Object.assign(style2, copy(rule.style));
+      if (meta && rule.style?.lineHeight !== void 0) meta.pairedLeading = rule.pairedLeading === true;
       Object.assign(motion, rule.motion);
       Object.assign(transform, rule.transform);
       if (rule.numeric?.normal || rule.numeric?.fixed) numeric = { ...rule.numeric };
@@ -203,8 +204,9 @@
     matched.sort((a, b) => Number(!!a.when?.state) - Number(!!b.when?.state) || a.order - b.order);
     const own2 = matched.filter((rule) => !rule.when?.children);
     const plain2 = own2.filter((rule) => !rule.when?.state);
-    const base = cascade(plain2);
-    const result = { base };
+    const meta = {};
+    const base = cascade(plain2, meta);
+    const result = { base, ...meta.pairedLeading ? { pairedLeading: true } : {} };
     for (const state of states) {
       const extra = own2.filter((rule) => rule.when?.state === state);
       if (!extra.length || state === "hover" && env.pointer !== "fine") continue;
@@ -1769,7 +1771,11 @@
   function editor(tag, props) {
     const out = [];
     const keyboard = props.keyboard;
-    if (keyboard !== void 0 && (keyboard === "search" || !fieldOptions.keyboard.includes(keyboard))) throw Error("UI_INPUT: keyboard");
+    if (keyboard !== void 0 && (keyboard === "search" || !fieldOptions.keyboard.includes(keyboard))) {
+      const allowed = fieldOptions.keyboard.filter((name) => name !== "search").join(", ");
+      const hint = keyboard === "tel" ? '; use "phone"' : keyboard === "search" ? "; use <search>" : "";
+      throw Error(`UI_INPUT: keyboard ${JSON.stringify(keyboard)} is not one of ${allowed}${hint}`);
+    }
     if ((keyboard === "date" || keyboard === "time") && tag !== "input") throw Error(`UI_INPUT: ${keyboard} pickers need <input>`);
     if (props.maxLength !== void 0) {
       if (!Number.isInteger(props.maxLength) || props.maxLength < 1 || props.maxLength > 65536) throw Error("UI_INPUT: maxLength is an integer 1..65536");
@@ -1858,10 +1864,12 @@
     return { ...style2, fields: { ...style2.fields } };
   }
   var fieldTags = /* @__PURE__ */ new Set(["input", "textarea", "search", "select"]);
+  var runTags = /* @__PURE__ */ new Set(["span", "link"]);
   var disabledField = { color: "text-muted", backgroundColor: "surface-sunken", borderColor: "line" };
   function lowerNodeStyle(tag, props, extra, inherited, direction, structure2) {
     const env = { ...render.view?.env, direction, structure: structure2 };
     const classes = resolveClasses(props.className, env);
+    if (classes?.pairedLeading && runTags.has(tag)) delete classes.base.lineHeight;
     const disabled = props.disabled === true;
     const muted = disabled && !classes?.disabled && fieldTags.has(tag) ? disabledField : void 0;
     const author = mergeStyle(direction, extra, disabled && classes?.disabled ? classes.disabled : classes?.base, muted, props.style);

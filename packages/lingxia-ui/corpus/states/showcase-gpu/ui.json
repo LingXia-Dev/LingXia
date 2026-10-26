@@ -1,0 +1,57 @@
+{
+  "currentType": "navigation",
+  "pageStack": [],
+  "instanceTag": "",
+  "previousInstanceTag": "",
+  "logicCounter": 0,
+  "moduleCounter": 0,
+  "events": [],
+  "modalResult": null,
+  "actionSheetResult": null,
+  "toastIcon": "success",
+  "toastIconLabel": "Success",
+  "toastIconOptions": [
+    {
+      "label": "Success",
+      "value": "success"
+    },
+    {
+      "label": "Error",
+      "value": "error"
+    },
+    {
+      "label": "Loading",
+      "value": "loading"
+    },
+    {
+      "label": "None",
+      "value": "none"
+    }
+  ],
+  "toastPosition": "center",
+  "toastPositionLabel": "Center",
+  "toastPositionOptions": [
+    {
+      "label": "Top",
+      "value": "top"
+    },
+    {
+      "label": "Center",
+      "value": "center"
+    },
+    {
+      "label": "Bottom",
+      "value": "bottom"
+    }
+  ],
+  "surfaceDemo": {
+    "message": "",
+    "active": false,
+    "visible": false
+  },
+  "chromeError": "",
+  "appearance": {
+    "preference": "auto",
+    "resolved": "light"
+  }
+}

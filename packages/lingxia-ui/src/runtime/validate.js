@@ -160,7 +160,11 @@ const iso = { date: /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/, time: /^([0
 export function editor(tag, props) {
   const out = [];
   const keyboard = props.keyboard;
-  if (keyboard !== undefined && (keyboard === 'search' || !fieldOptions.keyboard.includes(keyboard))) throw Error('UI_INPUT: keyboard');
+  if (keyboard !== undefined && (keyboard === 'search' || !fieldOptions.keyboard.includes(keyboard))) {
+    const allowed = fieldOptions.keyboard.filter(name => name !== 'search').join(', ');
+    const hint = keyboard === 'tel' ? '; use "phone"' : keyboard === 'search' ? '; use <search>' : '';
+    throw Error(`UI_INPUT: keyboard ${JSON.stringify(keyboard)} is not one of ${allowed}${hint}`);
+  }
   if ((keyboard === 'date' || keyboard === 'time') && tag !== 'input') throw Error(`UI_INPUT: ${keyboard} pickers need <input>`);
   if (props.maxLength !== undefined) {
     if (!Number.isInteger(props.maxLength) || props.maxLength < 1 || props.maxLength > 65536) throw Error('UI_INPUT: maxLength is an integer 1..65536');

@@ -160,6 +160,9 @@ pub(crate) struct MaskCache {
     entries: std::collections::VecDeque<(Vec<u32>, RasterShadow)>,
     bytes: usize,
 }
+/// Device blur sigma above which masks render at reduced resolution.
+const MASK_SIGMA: f32 = 4.0;
+
 impl MaskCache {
     pub fn clear(&mut self) {
         self.entries.clear();
@@ -205,6 +208,14 @@ impl MaskCache {
             return Ok(None);
         };
         let [x, y, w, h] = geometry.extent;
+        // A wide blur is low-frequency: rasterize it at a fraction of the device scale and let
+        // the bilinear paint stretch it back. Cost falls with the square of the fraction.
+        let device_sigma = geometry.sigma * scale;
+        let scale = if device_sigma > MASK_SIGMA {
+            scale * (MASK_SIGMA / device_sigma).max(0.125)
+        } else {
+            scale
+        };
         let left = (x * scale).floor();
         let top = (y * scale).floor();
         let width = ((x + w) * scale).ceil() - left;

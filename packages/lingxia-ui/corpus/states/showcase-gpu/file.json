@@ -1,0 +1,20 @@
+{
+  "activeDemo": "openFile",
+  "pdfUrl": "https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/PDF32000_2008.pdf",
+  "officeUrl": "https://example-files.online-convert.com/document/docx/example.docx",
+  "officeFileType": "docx",
+  "showMenu": true,
+  "chooseFileDefaultPath": "",
+  "chooseFileStatusText": "Choose a file",
+  "chooseFileSelectedPath": "",
+  "chooseFileSelectedType": "",
+  "isPdfDownloading": false,
+  "pdfDownloadState": "idle",
+  "pdfProgressKnown": false,
+  "pdfDownloadProgress": 0,
+  "pdfProgressText": "",
+  "pdfSupportsTransferControl": false,
+  "pdfTransferButtonText": "Pause Download",
+  "isOfficeFetching": false,
+  "officeStatusText": ""
+}

@@ -88,7 +88,8 @@ export function audit(source, filename, { literalColors = false } = {}) {
           continue;
         }
         const key = prop.name.getText(file);
-        if (!acceptsProp(tag, key)) report(prop, `UI_PROP: ${key} is not a property of <${tag}>`);
+        if (!acceptsProp(tag, key))
+          report(prop, `UI_PROP: ${key} is not a property of <${tag}>${key === 'onClick' && acceptsProp(tag, 'onPress') ? '; use onPress' : ''}`);
         const series = tag === 'plot' && key === 'colors' && prop.initializer && ts.isJsxExpression(prop.initializer) && prop.initializer.expression;
         if (!literalColors && series && ts.isArrayLiteralExpression(series)) for (const item of series.elements) {
           const problem = ts.isStringLiteralLike(item) && seriesProblem(item.text);
@@ -140,6 +141,8 @@ const hints = { grid: {
   flexWrap: '; grid items wrap into rows by themselves (use grid-cols-[repeat(auto-fit,minmax(…,1fr))])',
   flexDirection: '; use grid-flow-col to fill columns first',
 } };
+// Flex elements center with the flex pair; `place-items-*` and `justify-items-*` are grid-only.
+const flexHints = { justifyItems: '; on a flex element center with items-center justify-center' };
 
 function classProblems(rule, name, tag, suggestions) {
   if (!rule) {
@@ -149,13 +152,14 @@ function classProblems(rule, name, tag, suggestions) {
   if (rule.error?.category === 'color') return [`UI_COLOR: ${name}: ${rule.error.message}`];
   if (rule.error) return [`UI_CLASS_UNSUPPORTED: ${name}: the native renderer does not support ${rule.error.message}`];
   if (!has(elements, tag) || rule.when?.children) return [];
-  const props = [...Object.keys(rule.style ?? {}), ...(rule.gradient ? ['backgroundImage'] : []),
+  const runs = tag === 'span' || tag === 'link';
+  const props = [...Object.keys(rule.style ?? {}).filter(prop => !(runs && rule.pairedLeading && prop === 'lineHeight')), ...(rule.gradient ? ['backgroundImage'] : []),
     ...(rule.transform?.translate ? ['translate'] : []), ...(rule.transform?.scale ? ['scale'] : []),
     ...(rule.numeric ? ['fontVariantNumeric'] : []),
     ...(rule.shadow ? ['boxShadow'] : []), ...(rule.backdrop ? ['backdropFilter'] : [])];
   const state = rule.when?.state;
   const problems = props.filter(prop => !elements[tag].style.includes(prop))
-    .map(prop => `UI_CLASS_ELEMENT: ${name} sets ${prop}, which <${tag}> does not support${hints[tag]?.[prop] ?? ''}`);
+    .map(prop => `UI_CLASS_ELEMENT: ${name} sets ${prop}, which <${tag}> does not support${hints[tag]?.[prop] ?? flexHints[prop] ?? ''}`);
   if (state === 'focus' && !editors.has(tag)) problems.push(`UI_CLASS_ELEMENT: ${name} needs an editor; <${tag}> never takes focus`);
   if (state === 'active' && !controls.has(tag)) problems.push(`UI_CLASS_ELEMENT: ${name} needs a control; <${tag}> is never pressed`);
   const layout = state && state !== 'disabled' ? props.filter(prop => !styleTable[prop]?.paint) : [];

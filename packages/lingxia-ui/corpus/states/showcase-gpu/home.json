@@ -1,0 +1,15 @@
+{
+  "greeting": "This is from App's globalData.data",
+  "imageUrl": "https://cn.bing.com/th?id=OHR.BulgariaRocks_EN-US3184562282_UHD.jpg",
+  "ipAddr": "loading",
+  "greetCount": 0,
+  "appVersion": "",
+  "appearance": {
+    "preference": "auto",
+    "resolved": "light"
+  },
+  "displayLanguage": {
+    "preference": "auto",
+    "resolved": "en-US"
+  }
+}

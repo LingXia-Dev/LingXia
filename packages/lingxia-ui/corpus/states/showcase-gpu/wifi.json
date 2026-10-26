@@ -1,0 +1,9 @@
+{
+  "statusText": "Ready",
+  "scanning": false,
+  "wifiList": null,
+  "connectedWifi": null,
+  "wifiModuleEnabled": false,
+  "wifiListenerEnabled": false,
+  "wifiConnectedEvents": []
+}

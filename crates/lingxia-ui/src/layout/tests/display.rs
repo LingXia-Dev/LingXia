@@ -297,3 +297,30 @@ fn an_image_placeholder_paints_first_and_loads_alongside() {
         .collect();
     assert_eq!(requested, ["photo-tiny.jpg", "photo.jpg"]);
 }
+
+#[test]
+fn an_unstyled_buttons_text_pairs_with_its_fill() {
+    use crate::scene::paint::Paint;
+    let source = crate::session::tests::source(
+        "function render(){return h('column',{},h('button',{testId:'plain',onClick(){}},'A'),h('button',{testId:'card',onClick(){},style:{backgroundColor:'surface'}},'B'),h('button',{testId:'risk',onClick(){},style:{backgroundColor:'danger'}},'C'))}",
+    );
+    let display = crate::ViewSession::new(&source)
+        .unwrap()
+        .layout(200, 200, 1.0)
+        .unwrap();
+    let ink = |id: &str| {
+        let index = display.nodes.iter().position(|n| n.test_id == id).unwrap();
+        display.retained.commands[display.retained.ranges[index].clone()]
+            .iter()
+            .find_map(|p| match p {
+                Paint::Text { color, .. } => Some(*color),
+                _ => None,
+            })
+            .unwrap()
+    };
+    let palette = crate::theme::Palette::builtin(false);
+    use lingxia_theme::Role;
+    assert_eq!(ink("plain"), palette.role(Role::OnAccent));
+    assert_eq!(ink("card"), palette.role(Role::Text));
+    assert_eq!(ink("risk"), palette.role(Role::OnDanger));
+}

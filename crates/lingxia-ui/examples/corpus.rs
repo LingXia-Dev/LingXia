@@ -43,6 +43,26 @@ fn session(job: &Job, source: &str) -> Result<lingxia_ui::ViewSession, String> {
     Ok(page)
 }
 
+/// A page with gated motion needs a presentation surface; its first frame samples time zero.
+fn layout(
+    page: &mut lingxia_ui::ViewSession,
+    width: u16,
+    height: u16,
+    scale: f32,
+) -> Result<lingxia_ui::DisplayList, String> {
+    match page.layout(width, height, scale) {
+        Err(error) if error.contains("requires animation presentation scheduling") => {
+            let zero = std::time::Duration::ZERO;
+            page.set_animation_surface(
+                Some(lingxia_ui::session::lifecycle::SurfaceTicket::new(1)),
+                zero,
+            )?;
+            page.prepare_view_animated(width, height, scale, true, None, zero, Ok)
+        }
+        other => other,
+    }
+}
+
 fn run(job: &Job) -> Result<Value, String> {
     let source = std::fs::read_to_string(&job.module).map_err(|e| e.to_string())?;
     let (width, height) = (
@@ -50,7 +70,7 @@ fn run(job: &Job) -> Result<Value, String> {
         (f32::from(job.height) * job.scale) as u16,
     );
     let mut page = session(job, &source)?;
-    let display = page.layout(width, height, job.scale)?;
+    let display = layout(&mut page, width, height, job.scale)?;
     let cost = display.cost();
     let metrics = page.metrics().clone();
     if let Some(path) = &job.png {
@@ -62,7 +82,7 @@ fn run(job: &Job) -> Result<Value, String> {
     let mut times = Vec::new();
     for _ in 0..5 {
         let mut cold = session(job, &source)?;
-        cold.layout(width, height, job.scale)?;
+        layout(&mut cold, width, height, job.scale)?;
         times.push(cold.metrics().total_us);
     }
     times.sort_unstable();

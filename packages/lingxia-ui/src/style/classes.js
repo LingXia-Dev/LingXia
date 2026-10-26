@@ -36,11 +36,12 @@ const pixels = value => `${value}px`;
 
 // Tailwind composes gradients, shadows and filters from independently cascading
 // variables; the cascade resolves them before they become one style value.
-function cascade(rules) {
+function cascade(rules, meta) {
   const style = {}, gradient = {}, shadow = {}, backdrop = {}, transform = {}, motion = {};
   let numeric = {};
   for (const rule of rules) {
     Object.assign(style, copy(rule.style));
+    if (meta && rule.style?.lineHeight !== undefined) meta.pairedLeading = rule.pairedLeading === true;
     Object.assign(motion, rule.motion);
     Object.assign(transform, rule.transform);
     // `normal-nums` and literal values replace the composed keywords; utilities add to them.
@@ -127,8 +128,9 @@ export function resolveClasses(className, env = {}) {
   matched.sort((a, b) => Number(!!a.when?.state) - Number(!!b.when?.state) || a.order - b.order);
   const own = matched.filter(rule => !rule.when?.children);
   const plain = own.filter(rule => !rule.when?.state);
-  const base = cascade(plain);
-  const result = { base };
+  const meta = {};
+  const base = cascade(plain, meta);
+  const result = { base, ...(meta.pairedLeading ? { pairedLeading: true } : {}) };
   for (const state of states) {
     const extra = own.filter(rule => rule.when?.state === state);
     if (!extra.length || (state === 'hover' && env.pointer !== 'fine')) continue;

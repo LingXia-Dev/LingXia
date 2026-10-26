@@ -69,12 +69,15 @@ function nodeStyle(tag, props, extra, inherited, direction, structure) {
 }
 
 const fieldTags = new Set(['input', 'textarea', 'search', 'select']);
+const runTags = new Set(['span', 'link']);
 const disabledField = { color: 'text-muted', backgroundColor: 'surface-sunken', borderColor: 'line' };
 
 // Classes, then the parent's child rule, then inline style; `disabled:` replaces the class cascade.
 function lowerNodeStyle(tag, props, extra, inherited, direction, structure) {
   const env = { ...render.view?.env, direction, structure };
   const classes = resolveClasses(props.className, env);
+  // A run takes the size of `text-sm` but not the line height paired with it.
+  if (classes?.pairedLeading && runTags.has(tag)) delete classes.base.lineHeight;
   const disabled = props.disabled === true;
   // A disabled editor without `disabled:` classes still reads as disabled: muted roles over its classes.
   const muted = disabled && !classes?.disabled && fieldTags.has(tag) ? disabledField : undefined;

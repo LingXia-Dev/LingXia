@@ -249,7 +249,7 @@ pub(crate) fn computed(records: &[Record], directions: &[bool]) -> Vec<TextStyle
             .map(str::to_owned)
             .unwrap_or_else(|| {
                 if record.tag == tag::BUTTON {
-                    "on-accent".into()
+                    button_ink(record)
                 } else if link {
                     "accent".into()
                 } else {
@@ -280,4 +280,22 @@ pub(crate) fn computed(records: &[Record], directions: &[bool]) -> Vec<TextStyle
         });
     }
     styles
+}
+
+/// An unstyled button's text: the pair of its fill when the fill is a role with an `on-` pair,
+/// `text` over any other fill, and `on-accent` over the default accent fill.
+fn button_ink(record: &crate::protocol::Record) -> String {
+    let fill = record.string(field::BACKGROUND);
+    if fill.is_none() && record.string(field::BACKGROUND_GRADIENT).is_none() {
+        return "on-accent".into();
+    }
+    let role = fill
+        .and_then(|fill| fill.split('/').next())
+        .unwrap_or_default();
+    let paired = format!("on-{role}");
+    if lingxia_theme::Role::from_name(&paired).is_some() {
+        paired
+    } else {
+        "text".into()
+    }
 }

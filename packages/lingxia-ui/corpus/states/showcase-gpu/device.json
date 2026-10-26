@@ -1,0 +1,12 @@
+{
+  "currentType": "device",
+  "deviceInfo": null,
+  "screenInfo": null,
+  "networkInfo": null,
+  "networkChange": null,
+  "networkListening": false,
+  "orientationListening": false,
+  "deviceOrientationValue": "",
+  "orientationEvents": [],
+  "orientationLock": ""
+}
