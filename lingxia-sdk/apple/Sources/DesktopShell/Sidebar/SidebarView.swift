@@ -1758,13 +1758,33 @@ class SidebarView: NSView {
     private func browserContextMenu(for id: String) -> NSMenu? {
         closeRailHoverPanel()
         guard let snapshot = SurfaceMenuBridge.browserTabSnapshot(
-            orderedTabIds: model.browserTabs.map(\.id),
+            rows: mainAreaRows(),
             tabId: id
         ) else { return nil }
         let menu = SurfaceMenuPresenter.makeMenu(snapshot) { [weak self] _, tabId, action in
             self?.performBrowserTabMenuAction(action, tabId: tabId)
         }
         return menu.items.isEmpty ? nil : menu
+    }
+
+    /// Every main-area row in sidebar order: the managed mains, then the
+    /// browser tabs. The close family of either kind of row counts them all.
+    func mainAreaRows() -> [MainAreaRow] {
+        model.appGroups.filter(\.isManagedMain).map {
+            MainAreaRow(id: $0.appId, closable: $0.closable)
+        } + model.browserTabs.map { MainAreaRow(id: $0.id, closable: true) }
+    }
+
+    /// The main-area row shown now, if the selection is one.
+    func selectedMainAreaRowId() -> String? {
+        switch model.selection {
+        case .browser(let id):
+            return id
+        case .app(let appId, _):
+            return model.appGroups.contains { $0.appId == appId && $0.isManagedMain } ? appId : nil
+        case .none:
+            return nil
+        }
     }
 
     private func performBrowserTabMenuAction(_ action: SurfaceMenuSnapshot.Item.Action, tabId: String) {

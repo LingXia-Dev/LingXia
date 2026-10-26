@@ -11,7 +11,10 @@ use serde::{Deserialize, Serialize};
 pub enum SurfaceMenuBuiltinAction {
     Rename,
     ResetTitle,
+    /// Closes a tab-like row: "Close Tab".
     Close,
+    /// Closes an app's row: "Close". Runs exactly like `Close`.
+    CloseApp,
     CloseOthers,
     CloseAfter,
 }
@@ -179,6 +182,36 @@ pub struct SurfaceMenuSnapshot {
     pub sections: Vec<SurfaceMenuSection>,
 }
 
+/// One main-area row as the sidebar lists it. The close family counts every
+/// row the user sees there - graph mains and browser tabs alike - in this
+/// order, so a platform passes all of them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MainRow {
+    pub id: String,
+    pub closable: bool,
+}
+
+/// What "Close Others" and "Close Tabs Below" on `id` would close: every
+/// other closable row, and the closable rows after it. `None` when `id` is
+/// not a row.
+pub fn main_rows_close_targets(rows: &[MainRow], id: &str) -> Option<(Vec<String>, Vec<String>)> {
+    let index = rows.iter().position(|row| row.id == id)?;
+    let closable = |row: &&MainRow| row.closable;
+    let others = rows
+        .iter()
+        .filter(|row| row.id != id)
+        .filter(closable)
+        .map(|row| row.id.clone())
+        .collect();
+    let after = rows[index + 1..]
+        .iter()
+        .filter(closable)
+        .map(|row| row.id.clone())
+        .collect();
+    Some((others, after))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SurfaceMenuContext {
     pub revision: u64,
@@ -191,6 +224,22 @@ pub struct SurfaceMenuContext {
     pub has_closable_after: bool,
 }
 
+impl SurfaceMenuContext {
+    /// Count the close family over the sidebar's main-area `rows` instead
+    /// of whatever list the context was built from. Rows that do not list
+    /// the subject leave the context as it is.
+    pub fn with_rows(mut self, rows: &[MainRow]) -> Self {
+        if let Some(index) = rows.iter().position(|row| row.id == self.surface_id) {
+            self.has_other_closable = rows
+                .iter()
+                .any(|row| row.id != self.surface_id && row.closable);
+            self.has_closable_before = rows[..index].iter().any(|row| row.closable);
+            self.has_closable_after = rows[index + 1..].iter().any(|row| row.closable);
+        }
+        self
+    }
+}
+
 /// Provider items around the shell's own sections. Every main-area row reads
 /// the same way: what the content offers, where it shows, how it closes, and
 /// last what removes it.
@@ -199,6 +248,8 @@ pub struct SurfaceMenuParts {
     pub content: Vec<Vec<SurfaceMenuItem>>,
     pub placement: Vec<SurfaceMenuItem>,
     pub removal: Vec<SurfaceMenuItem>,
+    /// The row is an app, not a tab: its close reads "Close".
+    pub close_app: bool,
 }
 
 pub fn compose_surface_menu(
@@ -256,7 +307,11 @@ pub fn compose_surface_menu_parts(
     let mut lifecycle = Vec::new();
     if context.closable {
         lifecycle.push(SurfaceMenuItem::built_in(
-            SurfaceMenuBuiltinAction::Close,
+            if parts.close_app {
+                SurfaceMenuBuiltinAction::CloseApp
+            } else {
+                SurfaceMenuBuiltinAction::Close
+            },
             SurfaceMenuItemRole::Destructive,
         ));
     }
@@ -478,6 +533,7 @@ mod tests {
                 )]],
                 placement: vec![SurfaceMenuItem::lxapp(LxappSurfaceMenuAction::OpenInSide)],
                 removal: vec![uninstall],
+                close_app: true,
             },
         );
 
@@ -503,5 +559,42 @@ mod tests {
 
         assert_eq!(json["action"]["owner"], "browser");
         assert_eq!(json["action"]["action"], "copyLink");
+    }
+
+    fn row(id: &str, closable: bool) -> MainRow {
+        MainRow {
+            id: id.into(),
+            closable,
+        }
+    }
+
+    #[test]
+    fn close_family_counts_every_main_area_row() {
+        // The root, an lxapp main, then two browser tabs.
+        let rows = [
+            row("home", false),
+            row("app", true),
+            row("tab-1", true),
+            row("tab-2", true),
+        ];
+        let context = SurfaceMenuContext {
+            revision: 1,
+            surface_id: "app".into(),
+            closable: true,
+            renameable: false,
+            title_overridden: false,
+            has_other_closable: false,
+            has_closable_before: false,
+            has_closable_after: false,
+        }
+        .with_rows(&rows);
+        assert!(context.has_other_closable);
+        assert!(!context.has_closable_before);
+        assert!(context.has_closable_after);
+
+        let (others, after) = main_rows_close_targets(&rows, "tab-1").unwrap();
+        assert_eq!(others, vec!["app".to_string(), "tab-2".to_string()]);
+        assert_eq!(after, vec!["tab-2".to_string()]);
+        assert!(main_rows_close_targets(&rows, "gone").is_none());
     }
 }

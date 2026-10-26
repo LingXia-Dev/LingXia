@@ -76,7 +76,7 @@ final class BrowserTabCoordinator: NSObject {
 
     // Tab state
     private(set) var activeTabId: String?
-    private var tabIds: [String] = []
+    private(set) var tabIds: [String] = []
     private var tabTitles: [String: String] = [:]
     private var tabFavicons: [String: NSImage] = [:]
     private var tabFaviconRequestOrigins: [String: String] = [:]

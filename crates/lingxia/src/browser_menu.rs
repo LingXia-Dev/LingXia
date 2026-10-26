@@ -6,15 +6,15 @@
 //! surface menu renderer and run every action over their own tab strip.
 
 use lingxia_shell::{
-    BrowserSurfaceMenuAction as Action, SurfaceMenuContext, SurfaceMenuItem as Item,
+    BrowserSurfaceMenuAction as Action, MainRow, SurfaceMenuContext, SurfaceMenuItem as Item,
     SurfaceMenuParts, SurfaceMenuSnapshot,
 };
 use lxapp::LxAppError;
 
-/// The menu for `tab_id`. `ordered_tab_ids` is the platform's main-area tab
-/// order, which the close family follows.
-pub fn browser_tab_menu(ordered_tab_ids: &[String], tab_id: &str) -> Option<SurfaceMenuSnapshot> {
-    let index = ordered_tab_ids.iter().position(|id| id == tab_id)?;
+/// The menu for `tab_id`. `rows` are the sidebar's main-area rows in order -
+/// lxapp mains and browser tabs alike - which the close family counts.
+pub fn browser_tab_menu(rows: &[MainRow], tab_id: &str) -> Option<SurfaceMenuSnapshot> {
+    rows.iter().find(|row| row.id == tab_id)?;
     let url = lingxia_browser::tabs()
         .into_iter()
         .find(|tab| tab.tab_id == tab_id)
@@ -27,10 +27,11 @@ pub fn browser_tab_menu(ordered_tab_ids: &[String], tab_id: &str) -> Option<Surf
             closable: true,
             renameable: false,
             title_overridden: false,
-            has_other_closable: ordered_tab_ids.len() > 1,
-            has_closable_before: index > 0,
-            has_closable_after: index + 1 < ordered_tab_ids.len(),
-        },
+            has_other_closable: false,
+            has_closable_before: false,
+            has_closable_after: false,
+        }
+        .with_rows(rows),
         browser_tab_menu_parts(
             is_web_url(&url),
             url_is_pinned(&url),
