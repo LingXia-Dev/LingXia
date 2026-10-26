@@ -25,7 +25,6 @@ use dashmap::DashMap;
 use lingxia_platform::Platform;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_update::UpdateTarget;
-use rong_rt::download::{self as service_executor};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -450,31 +449,15 @@ async fn download_and_install_internal(
         let _ = fs::remove_file(&archive_path);
     }
 
-    let receiver =
-        service_executor::request_download(package.url.clone(), archive_path.clone(), None, None)
-            .map_err(|e| LxAppError::IoError(format!("Failed to start plugin download: {}", e)))?;
-
-    match receiver.await {
-        Ok(Ok(())) => {
-            // Verify checksum if provided
-            if !package.checksum_sha256.is_empty() {
-                archive::verify_sha256(&archive_path, &package.checksum_sha256)?;
-            }
-        }
-        Ok(Err(err)) => {
-            let _ = fs::remove_file(&archive_path);
-            return Err(LxAppError::IoError(format!(
-                "Plugin download failed: {}",
-                err
-            )));
-        }
-        Err(_) => {
-            let _ = fs::remove_file(&archive_path);
-            return Err(LxAppError::IoError(
-                "Plugin download task cancelled".to_string(),
-            ));
-        }
-    }
+    // The same resumable, retrying, checksum-verified path as other update packages.
+    lingxia_service::package_download::download_package(
+        &package.url,
+        &archive_path,
+        &package.checksum_sha256,
+        None,
+    )
+    .await
+    .map_err(|e| LxAppError::IoError(format!("Plugin download failed: {e}")))?;
 
     // 3. Install the archive
     let install_path = install_plugin_archive(&runtime, plugin_name, version, &archive_path)?;
