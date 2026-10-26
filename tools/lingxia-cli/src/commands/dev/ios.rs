@@ -1,9 +1,13 @@
 use super::*;
 
-pub(super) fn execute_ios(ctx: DevContext) -> Result<()> {
+pub(super) fn execute_ios(mut ctx: DevContext) -> Result<()> {
     let platform_name = platform_session_name(PlatformType::Ios);
     take_over_target_session(&ctx.project_root, platform_name)?;
     let platform = platform::ios::IosPlatform::new();
+    if ctx.device.is_none() {
+        ctx.device =
+            Some(crate::platform::apple::devicectl::DeviceCtl::wait_for_device(30)?.identifier);
+    }
     let stop_requested = ctx.stop_requested.clone();
     // The iOS device reaches the host over Wi-Fi, so this bind is open and
     // carries the persistent session token. `[::]` takes IPv4 too: the
