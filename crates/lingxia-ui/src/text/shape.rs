@@ -125,6 +125,7 @@ impl Renderer {
                     line_height,
                     (style.mono, italic),
                     (word_break, overflow_wrap, style.nowrap, &style.features),
+                    style.rtl,
                 )
             })
             .flatten();
@@ -133,6 +134,14 @@ impl Renderer {
             layout
         } else {
             let mut builder = self.text.ranged_builder(&mut self.fonts, text, 1.0, true);
+            // Editors in a left-to-right box follow their first strong character, like `dir="auto"`.
+            builder.set_base_direction(if style.rtl {
+                parley::BaseDirection::Rtl
+            } else if matches!(record.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH) {
+                parley::BaseDirection::Auto
+            } else {
+                parley::BaseDirection::Ltr
+            });
             builder.push_default(StyleProperty::FontSize(font_size));
             builder.push_default(StyleProperty::LetterSpacing(letter_spacing));
             builder.push_default(StyleProperty::FontStyle(if italic {

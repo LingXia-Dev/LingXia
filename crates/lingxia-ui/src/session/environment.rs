@@ -35,6 +35,18 @@ impl ViewSession {
         if !valid {
             return Err("UI_ENVIRONMENT: invalid native snapshot".into());
         }
+        // Direction follows the display language and is exposed as `env.direction`.
+        let rtl =
+            crate::text::fonts::right_to_left(value["displayLanguage"].as_str().unwrap_or(""));
+        value["direction"] = serde_json::json!(if rtl { "rtl" } else { "ltr" });
+        if self.renderer.rtl != rtl {
+            self.renderer.rtl = rtl;
+            self.renderer.clear_text_cache();
+            self.retained = None;
+            // Committed records stay flow-relative, so a native frame can mirror them without the View.
+            self.input_dirty = true;
+            crate::layout::list_layout::invalidate_measurements(&mut self.lists);
+        }
         let text_scale = crate::text::scale::TextScale::decode(value.get("textScale"))?;
         if self.renderer.text_scale != text_scale {
             self.renderer.text_scale = text_scale;

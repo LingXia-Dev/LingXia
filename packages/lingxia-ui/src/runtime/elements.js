@@ -8,7 +8,7 @@ import { located } from './errors.js';
 import { has, validInputText } from './data.js';
 import * as check from './validate.js';
 
-const common = new Set(['key', 'testId', 'style', 'className', 'children']);
+const common = new Set(['key', 'testId', 'style', 'className', 'children', 'dir']);
 const accepts = (field, tag) => admission.fields[field].includes(elements[tag].wire);
 const bindCodes = { input: 'UI_INPUT', textarea: 'UI_INPUT', search: 'UI_INPUT', checkbox: 'UI_CHECK', switch: 'UI_CHECK', slider: 'UI_SLIDER', radio: 'UI_RADIO' };
 const optionStyle = ['fontSize', 'fontWeight', 'fontFamily', 'lineHeight', 'color', 'background'];
@@ -43,11 +43,11 @@ function bind(tag, element, props) {
 }
 
 // Classes, then the parent's child rule, then inline style; `disabled:` replaces the class cascade.
-function nodeStyle(tag, props, extra, inherited) {
-  const env = render.view?.env;
+function nodeStyle(tag, props, extra, inherited, direction) {
+  const env = { ...render.view?.env, direction };
   const classes = resolveClasses(props.className, env);
   const disabled = props.disabled === true;
-  const author = mergeStyle(extra, disabled && classes?.disabled ? classes.disabled : classes?.base, props.style);
+  const author = mergeStyle(direction, extra, disabled && classes?.disabled ? classes.disabled : classes?.base, props.style);
   const { fields, typography } = lowerStyle(tag, author, env, inherited);
   const states = {};
   const state = (name, wire, allowed, requirement) => {
@@ -91,7 +91,10 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   admit(tag, element, props);
   if (parent.inControl && !admission.tags[element.wire].content) throw Error('UI_BUTTON: descendants must be noninteractive content');
   if (element.binding) bind(tag, element, props);
-  const style = nodeStyle(tag, props, parent.extra, parent.typography ?? { fontSize: 14 });
+  if (props.dir !== undefined && !['ltr', 'rtl'].includes(props.dir)) throw Error('UI_PROP: dir must be "ltr" or "rtl"');
+  // `dir` overrides the direction inherited from the environment for its subtree.
+  const direction = props.dir ?? parent.direction ?? (render.view?.env?.direction === 'rtl' ? 'rtl' : 'ltr');
+  const style = nodeStyle(tag, props, parent.extra, parent.typography ?? { fontSize: 14 }, direction);
   const flat = flatten(children);
   const composed = element.children === 'content' && flat.some(child => typeof child !== 'string' && typeof child !== 'number');
   const leaf = element.children === 'text' || (element.children === 'content' && !composed);
@@ -103,6 +106,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   const wire = (key, value) => result.wire.push([key, value]);
   const on = (key, callback, kind, isolated) => result.handlers.push([key, handle(), callbackOf(callback, kind, isolated)]);
   if (disabled) wire('enabled', 0);
+  if (props.dir !== undefined) wire('direction', props.dir);
   switch (tag) {
     case 'button':
       check.label(props.accessibilityLabel, 'UI_BUTTON');
@@ -193,7 +197,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       if (key !== undefined) keys.add(key);
       const part = key === undefined ? `position:${position}` : `key:${JSON.stringify(key)}`;
       return resolveNode(child, `${identity}/${tag}/${part}`, depth + 1, {
-        tag, typography: style.typography, extra: position < last ? style.children : undefined,
+        tag, typography: style.typography, direction, extra: position < last ? style.children : undefined,
         inControl: parent.inControl || admission.tags[element.wire].children === 'content',
       });
     }).filter(child => child !== null);

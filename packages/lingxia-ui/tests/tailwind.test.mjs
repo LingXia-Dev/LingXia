@@ -98,6 +98,25 @@ test('CSS grid utilities lower to tracks, placements, alignment and order; named
   assert.throws(() => classStyle('[grid-template-areas:"a_b"]'), /UI_CLASS/);
 });
 
+test('flow-relative utilities stay logical on the wire and rtl:/ltr: follow the inherited direction', async () => {
+  await use(['ps-4', 'pe-2', 'ms-auto', 'me-1', 'start-0', 'end-2', 'border-s-2', 'rounded-s-lg', 'rounded-ee-md', 'text-start',
+    'rtl:-scale-x-100', 'ltr:ml-2', 'rtl:mr-2', 'pl-1', 'px-3']);
+  const props = node('column', { className: 'ps-4 pe-2 ms-auto start-0 border-s-2 rounded-s-lg rounded-ee-md' });
+  assert.deepEqual([props.paddingInlineStart, props.paddingInlineEnd, props.marginInlineStart, props.insetInlineStart, props.borderInlineStartWidth],
+    [16, 8, 'auto', 0, 2]);
+  assert.deepEqual([props.radiusStartStart, props.radiusEndStart, props.radiusEndEnd], [8, 8, 6]);
+  assert.deepEqual(classStyle('rtl:-scale-x-100', { direction: 'ltr' }), {});
+  assert.deepEqual(classStyle('rtl:-scale-x-100', { direction: 'rtl' }).scale, [-1, 1]);
+  const tree = rendered(() => h('column', { dir: 'rtl' }, h('vector', { className: 'rtl:-scale-x-100 ltr:ml-2', paths: [{ d: 'M0 0h1' }] }),
+    h('column', { dir: 'ltr' }, h('column', { className: 'rtl:mr-2 ltr:ml-2' }))));
+  assert.equal(tree.props.direction, 'rtl');
+  assert.deepEqual(JSON.parse(tree.children[0].props.transform).scale, [-1, 1]);
+  assert.equal(tree.children[0].props.marginLeft, undefined);
+  assert.deepEqual([tree.children[1].children[0].props.marginLeft, tree.children[1].children[0].props.marginRight], [8, undefined]);
+  assert.equal(rendered(() => h('column', { className: 'rtl:mr-2' }), { env: { direction: 'rtl' } }).props.marginRight, 8);
+  assert.throws(() => describe(() => h('column', { dir: 'auto' }), {}), /UI_PROP: dir/);
+});
+
 test('horizontal overflow lowers only onto scroll containers', async () => {
   await use(['overflow-x-auto', 'md:overflow-x-auto', 'overflow-hidden']);
   assert.deepEqual(classStyle('overflow-x-auto'), { overflowX: 'auto' });
@@ -174,7 +193,7 @@ test('margins, positioning, layering and line clamps are native utilities', asyn
 test('space and divide utilities target non-last children', async () => {
   await use(['space-y-2', 'space-x-3', 'divide-y', 'divide-gray-200', 'gap-x-2', 'gap-y-4']);
   assert.deepEqual(resolveClasses('space-y-2').children, { marginTop: 0, marginBottom: 8 });
-  assert.deepEqual(resolveClasses('space-x-3').children, { marginLeft: 0, marginRight: 12 });
+  assert.deepEqual(resolveClasses('space-x-3').children, { marginInlineStart: 0, marginInlineEnd: 12 });
   const list = rendered(() => h('column', { className: 'space-y-2 divide-y divide-gray-200' }, h('text', {}, 'a'), h('text', {}, 'b')));
   assert.deepEqual(list.children.map(child => [child.props.marginBottom, child.props.borderBottomWidth]), [[8, 1], [undefined, undefined]]);
   assert.match(list.children[0].props.borderColor, /^#e5e7eb/);

@@ -20,6 +20,25 @@ pub fn set_system_fonts(load: fn() -> SystemFonts) {
     let _ = SOURCE.set(load);
 }
 
+/// Whether a BCP 47 tag writes right to left, from its script or primary language.
+pub(crate) fn right_to_left(tag: &str) -> bool {
+    let mut parts = tag.split(['-', '_']);
+    let language = parts.next().unwrap_or("").to_ascii_lowercase();
+    let script = parts
+        .find(|part| part.len() == 4)
+        .map(str::to_ascii_lowercase);
+    match script.as_deref() {
+        Some("arab" | "hebr" | "thaa" | "syrc" | "nkoo" | "adlm" | "rohg" | "mand" | "samr") => {
+            true
+        }
+        Some(_) => false,
+        None => matches!(
+            language.as_str(),
+            "ar" | "fa" | "he" | "iw" | "ur" | "ps" | "sd" | "ug" | "yi" | "dv" | "ckb" | "ks"
+        ),
+    }
+}
+
 pub(crate) fn context() -> FontContext {
     let mut fonts = FontContext::new();
     if let Some(system) = SOURCE.get().map(|load| SYSTEM.get_or_init(load)) {

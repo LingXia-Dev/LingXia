@@ -509,8 +509,8 @@ function declarations(nodes, vars, root, animationLowering) {
       const lowered = values(value, longhands.length, part => longhand(longhands[0], part));
       longhands.forEach((name, index) => { style[cssStyle[name]] = lowered[index]; });
     }
-    else if (/^border(?:-(?:top|right|bottom|left|inline|block|x|y))?-style$/.test(prop) && node.value.replace(/\s/g, '') === 'var(--tw-border-style)') { /* set by --tw-border-style */ }
-    else if (/^border-(?:top|right|bottom|left|inline|block|x|y)-style$/.test(prop)) {
+    else if (/^border(?:-(?:top|right|bottom|left|inline|block|x|y)(?:-start|-end)?)?-style$/.test(prop) && node.value.replace(/\s/g, '') === 'var(--tw-border-style)') { /* set by --tw-border-style */ }
+    else if (/^border-(?:top|right|bottom|left|inline|block|x|y)(?:-start|-end)?-style$/.test(prop)) {
       if (value !== 'solid') unsupported(`${prop}: ${value} (per-edge border styles)`);
     }
     else if (['place-items', 'place-content', 'place-self'].includes(prop)) {
@@ -562,7 +562,15 @@ function conditions(rule) {
 const unescape = name => name.replace(/\\([0-9a-f]{1,6})\s?|\\(.)/gi, (_, hex, char) => hex ? String.fromCodePoint(parseInt(hex, 16)) : char);
 
 // `.name`, `.name:state`, `.name::placeholder` and `:where(.name > :not(:last-child))`.
-function selectorTarget(selector) {
+function selectorTarget(source) {
+  // `rtl:`/`ltr:` match the node's inherited direction at runtime, like `dark:` does the theme.
+  const dir = source.match(/:where\(:dir\((ltr|rtl)\), \[dir="\1"\], \[dir="\1"\] \*\)/);
+  const selector = dir ? source.replace(dir[0], '') : source;
+  const target = selectorParts(selector);
+  return target && dir ? { ...target, direction: dir[1] } : target;
+}
+
+function selectorParts(selector) {
   const children = selector.match(/^:where\(\.((?:\\.|[^\s>])+) > :not\(:last-child\)\)$/);
   if (children) return { name: unescape(children[1]), children: true };
   const match = selector.match(/^\.((?:\\.|[^\s:.>+~[])+)(.*)$/);
@@ -600,7 +608,8 @@ export async function compileUtilities(candidates, theme = '', { animationLoweri
       if (target.error) unsupported(target.error);
       const { hoverMedia, ...media } = conditions(rule);
       if (hoverMedia && target.state !== 'hover') unsupported('(hover: hover) outside a hover variant');
-      const when = { ...media, ...(target.state ? { state: target.state } : {}), ...(target.children ? { children: true } : {}) };
+      const when = { ...media, ...(target.state ? { state: target.state } : {}), ...(target.children ? { children: true } : {}),
+        ...(target.direction ? { direction: target.direction } : {}) };
       const lower = vars => {
         const result = declarations(rule.nodes, vars, root, animationLowering);
         if (!target.placeholder) return result;

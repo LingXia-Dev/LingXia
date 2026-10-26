@@ -7,18 +7,45 @@ import { utf8Bytes, has } from '../runtime/data.js';
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 const percent = value => typeof value === 'string' && /^(?:\d+(?:\.\d+)?|\.\d+)%$/.test(value) ? Number(value.slice(0, -1)) : undefined;
 const shorthand = name => Array.isArray(table[name]?.wire);
+// Physical shorthands also reset the flow-relative longhands of the same box edge.
+const logical = {
+  margin: ['marginInlineStart', 'marginInlineEnd'], padding: ['paddingInlineStart', 'paddingInlineEnd'],
+  inset: ['insetInlineStart', 'insetInlineEnd'], borderWidth: ['borderInlineStartWidth', 'borderInlineEndWidth'],
+  borderRadius: ['borderStartStartRadius', 'borderStartEndRadius', 'borderEndStartRadius', 'borderEndEndRadius'],
+};
 const longhands = Object.fromEntries(Object.entries(table).filter(([name]) => shorthand(name)).map(([name, entry]) =>
-  [name, Object.keys(table).filter(other => !shorthand(other) && entry.wire.includes(table[other].wire))]));
+  [name, [...Object.keys(table).filter(other => !shorthand(other) && entry.wire.includes(table[other].wire)), ...(logical[name] ?? [])]]));
+// Flow-relative keys and the physical key they map to under each direction.
+const sides = [['marginInlineStart', 'marginLeft', 'marginRight'], ['marginInlineEnd', 'marginRight', 'marginLeft'],
+  ['paddingInlineStart', 'paddingLeft', 'paddingRight'], ['paddingInlineEnd', 'paddingRight', 'paddingLeft'],
+  ['insetInlineStart', 'left', 'right'], ['insetInlineEnd', 'right', 'left'],
+  ['borderInlineStartWidth', 'borderLeftWidth', 'borderRightWidth'], ['borderInlineEndWidth', 'borderRightWidth', 'borderLeftWidth'],
+  ['borderStartStartRadius', 'borderTopLeftRadius', 'borderTopRightRadius'], ['borderStartEndRadius', 'borderTopRightRadius', 'borderTopLeftRadius'],
+  ['borderEndStartRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius'], ['borderEndEndRadius', 'borderBottomRightRadius', 'borderBottomLeftRadius']];
+const aliases = direction => {
+  const map = {};
+  for (const [flow, ltr, rtl] of sides) {
+    const physical = direction === 'rtl' ? rtl : ltr;
+    (map[flow] ??= []).push(physical); (map[physical] ??= []).push(flow);
+  }
+  return map;
+};
+const aliasesByDirection = { ltr: aliases('ltr'), rtl: aliases('rtl') };
 
 /**
  * Layers styles the way the CSS cascade does: a shorthand in a later layer
  * resets the longhands earlier layers set; within one layer longhands win.
  */
-export function mergeStyle(...layers) {
+export function mergeStyle(direction, ...layers) {
   const result = {};
+  const alias = aliasesByDirection[direction] ?? aliasesByDirection.ltr;
   for (const layer of layers) {
     if (!layer) continue;
-    for (const name of Object.keys(layer)) for (const longhand of longhands[name] ?? []) if (!(longhand in layer)) delete result[longhand];
+    for (const name of Object.keys(layer)) {
+      for (const longhand of longhands[name] ?? []) if (!(longhand in layer)) delete result[longhand];
+      // A later layer's physical edge replaces an earlier flow-relative one on the same side, and back.
+      for (const other of alias[name] ?? []) if (!(other in layer)) delete result[other];
+    }
     Object.assign(result, layer);
   }
   return result;

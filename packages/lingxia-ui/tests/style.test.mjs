@@ -2,6 +2,7 @@ import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { h, describe, configureClasses } from '../src/internal.js';
 import { rendered } from './support/wire.mjs';
+import { mergeStyle } from '../src/style/lower.js';
 
 afterEach(() => configureClasses([]));
 const style = (value, tag = 'column') => rendered(() => h(tag, { style: value })).props;
@@ -81,6 +82,14 @@ test('static transform style keys lower to one bounded wire transform', () => {
   assert.deepEqual(JSON.parse(style({ translate: ['-50%', 3] }).transform), { translate: ['-50%', 3] });
   for (const value of [{ translate: '2000%' }, { rotate: 'x' }, { scale: [1, 1, 1] }, { scale: 1e4 }, { transformOrigin: 0.5 }, { translate: [1, 'a'] }])
     rejects(value, /UI_STYLE_VALUE/);
+});
+
+test('a later physical edge replaces an earlier flow-relative one on the side it maps to, by direction', () => {
+  assert.deepEqual(mergeStyle('ltr', { marginInlineStart: 4 }, { marginLeft: 8 }), { marginLeft: 8 });
+  assert.deepEqual(mergeStyle('rtl', { marginInlineStart: 4 }, { marginLeft: 8 }), { marginInlineStart: 4, marginLeft: 8 });
+  assert.deepEqual(mergeStyle('rtl', { paddingRight: 2 }, { paddingInlineStart: 6 }), { paddingInlineStart: 6 });
+  assert.deepEqual(mergeStyle('ltr', { paddingInlineEnd: 6 }, { padding: 1 }), { padding: 1 });
+  assert.deepEqual(mergeStyle('ltr', { borderStartStartRadius: 3 }, { borderRadius: 5 }), { borderRadius: 5 });
 });
 
 test('typography: CSS line-height multipliers inherit and recompute per font size', () => {

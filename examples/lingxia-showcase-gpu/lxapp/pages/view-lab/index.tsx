@@ -1,4 +1,4 @@
-import { useLocal, type VectorPath } from '@lingxia/ui';
+import { useLocal, useView, type VectorPath } from '@lingxia/ui';
 import '../../theme/index.css';
 import { Button, Icon, Page, Section } from '../../shared/ui';
 
@@ -14,6 +14,7 @@ export function render() {
       <Transforms />
       <TextLayout />
       <Sizing />
+      <Direction />
     </Page>
   );
 }
@@ -147,6 +148,21 @@ function Grid() {
         <view className="h-12 rounded-lg bg-muted" />
         <view className="h-12 rounded-lg bg-muted order-first" />
       </view>
+    </Section>
+  );
+}
+
+function Direction() {
+  const { env } = useView();
+  return (
+    <Section title={`Direction (env: ${env.direction})`} testId="lab-direction">
+      {(['ltr', 'rtl'] as const).map(dir => (
+        <row key={dir} dir={dir} testId={`lab-direction-${dir}`} className="items-center gap-2 ps-3 pe-1 py-2 rounded-s-xl border-s-4 border-primary bg-muted">
+          <Icon name="chevron" className="w-5 h-5 text-foreground rtl:-scale-x-100" />
+          <text className="grow basis-0 text-sm text-start">{dir === 'rtl' ? 'مرحبا بالعالم' : 'Hello, world'}</text>
+          <text className="text-xs text-muted-foreground ms-auto">{dir}</text>
+        </row>
+      ))}
     </Section>
   );
 }

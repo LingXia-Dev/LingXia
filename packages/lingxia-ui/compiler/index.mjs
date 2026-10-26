@@ -17,7 +17,7 @@ const jsx = fileURLToPath(new URL('../src/runtime/jsx.js', import.meta.url));
 const host = fileURLToPath(new URL('../src/host.js', import.meta.url));
 const runtimeRoot = dirname(runtime).toLowerCase();
 const has = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
-const common = new Set(['key', 'testId', 'style', 'className', 'children']);
+const common = new Set(['key', 'testId', 'style', 'className', 'children', 'dir']);
 const editors = new Set(['input', 'textarea', 'search']);
 const controls = new Set(['button', 'checkbox', 'switch', 'radio']);
 

@@ -108,6 +108,37 @@ pub(crate) fn layout_parents(records: &[Record]) -> Vec<Option<usize>> {
         .collect()
 }
 
+/// Whether each record lays out right to left: its own `direction`, else its
+/// parent's, else the environment's.
+pub(crate) fn directions(records: &[Record], rtl: bool) -> Vec<bool> {
+    let mut out: Vec<bool> = Vec::with_capacity(records.len());
+    for record in records {
+        out.push(match record.string(field::DIRECTION) {
+            Some(value) => value == "rtl",
+            None => record.parent.map(|parent| out[parent]).unwrap_or(rtl),
+        });
+    }
+    out
+}
+
+/// A physical left/right field, or the flow-relative field that maps onto
+/// that side under `rtl`; the flow-relative one wins when both are set.
+pub(crate) fn side(
+    record: &Record,
+    physical: usize,
+    start: usize,
+    end: usize,
+    left: bool,
+    rtl: bool,
+) -> usize {
+    let logical = if left == rtl { end } else { start };
+    if record.fields.iter().any(|(id, _)| *id == logical) {
+        logical
+    } else {
+        physical
+    }
+}
+
 /// Records under `display: none`, including their descendants.
 pub(crate) fn hidden(records: &[Record]) -> Vec<bool> {
     let mut hidden = Vec::with_capacity(records.len());
@@ -118,17 +149,87 @@ pub(crate) fn hidden(records: &[Record]) -> Vec<bool> {
     hidden
 }
 
+/// Top, right, bottom and left border width fields under `rtl`.
+pub(crate) fn border_edges(record: &Record, rtl: bool) -> [usize; 4] {
+    let [s, e] = [
+        field::BORDER_INLINE_START_WIDTH,
+        field::BORDER_INLINE_END_WIDTH,
+    ];
+    [
+        field::BORDER_TOP_WIDTH,
+        side(record, field::BORDER_RIGHT_WIDTH, s, e, false, rtl),
+        field::BORDER_BOTTOM_WIDTH,
+        side(record, field::BORDER_LEFT_WIDTH, s, e, true, rtl),
+    ]
+}
+
+/// Top-left, top-right, bottom-right and bottom-left radius fields under `rtl`.
+pub(crate) fn radius_corners(record: &Record, rtl: bool) -> [usize; 4] {
+    // `start-start` is block start and inline start: top-left in LTR, top-right in RTL.
+    let pick = |physical, ltr, rtl_field| {
+        let logical = if rtl { rtl_field } else { ltr };
+        if record.fields.iter().any(|(id, _)| *id == logical) {
+            logical
+        } else {
+            physical
+        }
+    };
+    [
+        pick(
+            field::RADIUS_TOP_LEFT,
+            field::RADIUS_START_START,
+            field::RADIUS_START_END,
+        ),
+        pick(
+            field::RADIUS_TOP_RIGHT,
+            field::RADIUS_START_END,
+            field::RADIUS_START_START,
+        ),
+        pick(
+            field::RADIUS_BOTTOM_RIGHT,
+            field::RADIUS_END_END,
+            field::RADIUS_END_START,
+        ),
+        pick(
+            field::RADIUS_BOTTOM_LEFT,
+            field::RADIUS_END_START,
+            field::RADIUS_END_END,
+        ),
+    ]
+}
+
 /// Taffy style for one record; the root fills the viewport and a page root keeps out of the safe area.
 pub(crate) fn node_style(
     records: &[Record],
     index: usize,
     (width, height, scale): (u16, u16, f32),
     safe: SafeArea,
+    rtl: bool,
 ) -> Result<Style, String> {
     let record = &records[index];
+    let left = |physical, start, end| side(record, physical, start, end, true, rtl);
+    let right = |physical, start, end| side(record, physical, start, end, false, rtl);
     let page = index == 0 && record.tag == tag::PAGE;
     // Opposing insets size an absolute box, so fixed media defaults must not override them.
     let spans = |a: usize, b: usize| {
+        let (a, b) = (
+            side(
+                record,
+                a,
+                field::INSET_INLINE_START,
+                field::INSET_INLINE_END,
+                a == field::INSET_LEFT,
+                rtl,
+            ),
+            side(
+                record,
+                b,
+                field::INSET_INLINE_START,
+                field::INSET_INLINE_END,
+                b == field::INSET_LEFT,
+                rtl,
+            ),
+        );
         matches!(record.string(field::POSITION), Some("absolute" | "fixed"))
             && record.fields.iter().any(|(id, _)| *id == a)
             && record.fields.iter().any(|(id, _)| *id == b)
@@ -166,7 +267,21 @@ pub(crate) fn node_style(
         mut padding_right,
         mut padding_bottom,
         mut padding_left,
-    ] = crate::protocol::PADDING_EDGES.map(|field| record.number(field).unwrap_or(padding));
+    ] = [
+        field::PADDING_TOP,
+        right(
+            field::PADDING_RIGHT,
+            field::PADDING_INLINE_START,
+            field::PADDING_INLINE_END,
+        ),
+        field::PADDING_BOTTOM,
+        left(
+            field::PADDING_LEFT,
+            field::PADDING_INLINE_START,
+            field::PADDING_INLINE_END,
+        ),
+    ]
+    .map(|field| record.number(field).unwrap_or(padding));
     if page {
         padding_top += safe.insets[0];
         padding_right += safe.insets[1];
@@ -180,7 +295,7 @@ pub(crate) fn node_style(
     let inline = matches!(display, Some("inline-flex" | "inline-block"));
     let border = record.number(field::BORDER_WIDTH).unwrap_or(0.0);
     let [border_top, border_right, border_bottom, border_left] =
-        crate::protocol::BORDER_EDGES.map(|id| record.number(id).unwrap_or(border));
+        border_edges(record, rtl).map(|id| record.number(id).unwrap_or(border));
     Ok(Style {
         display: if display == Some("none") {
             Display::None
@@ -215,10 +330,29 @@ pub(crate) fn node_style(
             Position::Relative
         },
         inset: Rect {
-            left: inset(record, field::INSET_LEFT),
+            left: inset(
+                record,
+                left(
+                    field::INSET_LEFT,
+                    field::INSET_INLINE_START,
+                    field::INSET_INLINE_END,
+                ),
+            ),
             top: inset(record, field::INSET_TOP),
-            right: inset(record, field::INSET_RIGHT),
+            right: inset(
+                record,
+                right(
+                    field::INSET_RIGHT,
+                    field::INSET_INLINE_START,
+                    field::INSET_INLINE_END,
+                ),
+            ),
             bottom: inset(record, field::INSET_BOTTOM),
+        },
+        direction: if rtl {
+            taffy::Direction::Rtl
+        } else {
+            taffy::Direction::Ltr
         },
         grid_template_columns: if let Some(source) = record.string(field::GRID_TEMPLATE_COLUMNS) {
             crate::layout::grid::template(source)?
@@ -463,8 +597,22 @@ pub(crate) fn node_style(
                 Some(gap) => length(gap),
                 None => margin(record, field::MARGIN_BOTTOM),
             },
-            left: margin(record, field::MARGIN_LEFT),
-            right: margin(record, field::MARGIN_RIGHT),
+            left: margin(
+                record,
+                left(
+                    field::MARGIN_LEFT,
+                    field::MARGIN_INLINE_START,
+                    field::MARGIN_INLINE_END,
+                ),
+            ),
+            right: margin(
+                record,
+                right(
+                    field::MARGIN_RIGHT,
+                    field::MARGIN_INLINE_START,
+                    field::MARGIN_INLINE_END,
+                ),
+            ),
             top: margin(record, field::MARGIN_TOP),
         },
         aspect_ratio: record.number(field::ASPECT_RATIO),

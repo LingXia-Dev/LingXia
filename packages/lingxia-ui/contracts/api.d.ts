@@ -9,7 +9,8 @@ export type ComponentProps<C> = C extends (props: infer P) => unknown ? P : neve
 export declare function childrenToArray(children: Child): readonly Exclude<Child, readonly Child[] | boolean | null | undefined>[];
 
 /** Props every element accepts; `style` is narrowed per element. */
-export interface Props { style?: Style; className?: string; key?: string; testId?: string; children?: Child }
+/** `dir` sets the inline direction of a subtree; otherwise it follows `env.direction`. */
+export interface Props { style?: Style; className?: string; key?: string; testId?: string; dir?: "ltr" | "rtl"; children?: Child }
 export type LeafProps = Omit<Props, "children"> & { children?: never };
 
 export interface Env {
@@ -23,6 +24,8 @@ export interface Env {
   readonly formFactor: string;
   readonly sizeClass: string;
   readonly displayLanguage: string;
+  /** Inline direction derived from `displayLanguage`. */
+  readonly direction: "ltr" | "rtl";
   /** Whether the window can dock an `as: 'aside'` beside the main; false until the host reports it. */
   readonly canDock: boolean;
   readonly runner: boolean;

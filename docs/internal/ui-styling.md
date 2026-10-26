@@ -70,6 +70,17 @@ time (see [ui-authoring.md](ui-authoring.md)) and again at runtime.
   custom faces and serif fail.
 - `placeholder:text-*` lowers to `placeholderColor` (editors only).
 
+## Direction
+
+`env.direction` derives from `displayLanguage`; `dir` sets it for a subtree. Taffy
+mirrors rows, column cross-alignment, grid placement and absolute positions.
+Flow-relative utilities (`ps`/`pe`, `ms`/`me`, `start-`/`end-`, `border-s`/`-e`,
+`rounded-s`/`-e`, `text-start`/`-end`) stay logical on the wire and resolve natively
+against each node's own direction, so a language switch relays out without the View.
+When a node carries both, the flow-relative value wins on its side. `rtl:`/`ltr:`
+match the inherited direction like `dark:` matches the theme; mirror icons with
+`rtl:-scale-x-100`. Editors in LTR boxes take their first strong character's direction.
+
 ## State variants
 
 | Variant | Element | Wire | May change |

@@ -26,6 +26,8 @@ pub struct Renderer {
     pub(crate) shadow_cache: crate::scene::shadow::MaskCache,
     pub(crate) text_time: std::time::Duration,
     pub(crate) safe_area: style::SafeArea,
+    /// The environment's inline direction; `dir` overrides it per subtree.
+    pub(crate) rtl: bool,
 }
 
 #[cfg(test)]
@@ -44,6 +46,7 @@ impl Default for Renderer {
             shadow_cache: Default::default(),
             text_time: std::time::Duration::ZERO,
             safe_area: Default::default(),
+            rtl: false,
         }
     }
 }
@@ -114,7 +117,8 @@ impl Renderer {
             return Err("UI_VIEWPORT: invalid dimensions".into());
         }
         let groups = crate::semantics::groups::control_groups(records)?;
-        let styles = crate::text::style::computed(records);
+        let directions = style::directions(records, self.rtl);
+        let styles = crate::text::style::computed(records, &directions);
         let texts = crate::text::style::display_texts(records, &styles);
         let mut layouts: Vec<Option<Layout<()>>> = Vec::with_capacity(records.len());
         for (index, record) in records.iter().enumerate() {
@@ -125,8 +129,13 @@ impl Renderer {
         let mut ids = Vec::new();
         let mut children: Vec<Vec<usize>> = vec![Vec::new(); records.len()];
         for (index, record) in records.iter().enumerate() {
-            let mut style =
-                style::node_style(records, index, (width, height, scale), self.safe_area)?;
+            let mut style = style::node_style(
+                records,
+                index,
+                (width, height, scale),
+                self.safe_area,
+                directions[index],
+            )?;
             if let Some(ch) = record.number(field::MAX_WIDTH_CH) {
                 style.max_size.width = length(ch * self.zero_advance(&styles[index]));
             }

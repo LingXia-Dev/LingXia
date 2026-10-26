@@ -19,6 +19,8 @@ pub(crate) struct TextStyle {
     pub(crate) transform: Transform,
     pub(crate) nowrap: bool,
     pub(crate) collapse: Collapse,
+    /// The paragraph base direction; `start`/`end` alignment follows it.
+    pub(crate) rtl: bool,
     /// OpenType feature settings in CSS source form; empty for `normal`.
     pub(crate) features: String,
 }
@@ -148,7 +150,7 @@ pub(crate) fn display_texts(records: &[Record], styles: &[TextStyle]) -> Vec<Str
         .collect()
 }
 
-pub(crate) fn computed(records: &[Record]) -> Vec<TextStyle> {
+pub(crate) fn computed(records: &[Record], directions: &[bool]) -> Vec<TextStyle> {
     let mut styles: Vec<TextStyle> = Vec::with_capacity(records.len());
     for (index, record) in records.iter().enumerate() {
         let parent = record.parent.map(|p| styles[p].clone());
@@ -260,6 +262,7 @@ pub(crate) fn computed(records: &[Record]) -> Vec<TextStyle> {
             nowrap,
             collapse,
             features,
+            rtl: directions[index],
         });
     }
     styles

@@ -694,7 +694,7 @@ fn numeric_variants_inherit_as_opentype_features_and_reset_with_normal() {
         .unwrap(),
     )
     .unwrap();
-    let styles = crate::text::style::computed(&records);
+    let styles = crate::text::style::computed(&records, &[false; 3]);
     assert_eq!(styles[1].features, "\"tnum\" 1, \"zero\" 1");
     assert_eq!(styles[2].features, "");
     let source = crate::session::tests::source(

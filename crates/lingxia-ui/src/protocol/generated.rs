@@ -176,6 +176,19 @@ pub mod field {
     pub const JUSTIFY_SELF: usize = 143;
     pub const ALIGN_CONTENT: usize = 144;
     pub const ORDER: usize = 145;
+    pub const DIRECTION: usize = 146;
+    pub const MARGIN_INLINE_START: usize = 147;
+    pub const MARGIN_INLINE_END: usize = 148;
+    pub const PADDING_INLINE_START: usize = 149;
+    pub const PADDING_INLINE_END: usize = 150;
+    pub const INSET_INLINE_START: usize = 151;
+    pub const INSET_INLINE_END: usize = 152;
+    pub const BORDER_INLINE_START_WIDTH: usize = 153;
+    pub const BORDER_INLINE_END_WIDTH: usize = 154;
+    pub const RADIUS_START_START: usize = 155;
+    pub const RADIUS_START_END: usize = 156;
+    pub const RADIUS_END_START: usize = 157;
+    pub const RADIUS_END_END: usize = 158;
 }
 
 pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page"];
@@ -328,6 +341,19 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("justifySelf", "alignment"),
     ("alignContent", "align-content"),
     ("order", "order"),
+    ("direction", "direction"),
+    ("marginInlineStart", "margin"),
+    ("marginInlineEnd", "margin"),
+    ("paddingInlineStart", "number"),
+    ("paddingInlineEnd", "number"),
+    ("insetInlineStart", "inset"),
+    ("insetInlineEnd", "inset"),
+    ("borderInlineStartWidth", "number"),
+    ("borderInlineEndWidth", "number"),
+    ("radiusStartStart", "number"),
+    ("radiusStartEnd", "number"),
+    ("radiusEndStart", "number"),
+    ("radiusEndEnd", "number"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -355,6 +381,7 @@ pub fn options(kind: &str) -> Option<&'static [&'static str]> {
         "overscroll" => Some(&["auto", "contain", "none"]),
         "grid-auto-flow" => Some(&["row", "column", "row-dense", "column-dense"]),
         "align-content" => Some(&["start", "center", "end", "between", "around", "evenly", "stretch"]),
+        "direction" => Some(&["ltr", "rtl"]),
         _ => None,
     }
 }
@@ -566,6 +593,19 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::SCROLL, tag::LIST]), parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },

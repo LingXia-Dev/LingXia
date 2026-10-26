@@ -858,3 +858,6 @@ mod display;
 
 #[path = "tests/grid.rs"]
 mod grid;
+
+#[path = "tests/rtl.rs"]
+mod rtl;

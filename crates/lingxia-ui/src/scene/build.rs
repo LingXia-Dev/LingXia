@@ -43,6 +43,7 @@ impl Renderer {
         let mut scroll_parents: Vec<Option<String>> = Vec::new();
         let parents = crate::layout::style::layout_parents(records);
         let hidden = crate::layout::style::hidden(records);
+        let directions = crate::layout::style::directions(records, self.rtl);
         let transforms = records
             .iter()
             .map(|record| {
@@ -110,7 +111,7 @@ impl Renderer {
                     0.0
                 },
             );
-            let authored = crate::protocol::RADIUS_CORNERS
+            let authored = crate::layout::style::radius_corners(record, directions[index])
                 .map(|id| record.number(id).unwrap_or(default_radius));
             let geometry = if authored.iter().all(|r| *r == authored[0]) {
                 crate::scene::border::Border::new(bounds, border_widths, authored[0])
