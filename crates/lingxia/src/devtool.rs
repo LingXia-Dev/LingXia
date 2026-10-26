@@ -377,6 +377,27 @@ fn register_bundle_source_override() {
     lxapp::register_dev_bundle_source(dev_config.identity.appid.clone(), dev_config.root.clone());
 }
 
+/// Dev sessions: pull `appid`'s latest bundle and swap the module of its live GPU
+/// pages at `path`, keeping their state. Returns how many pages took it.
+pub fn hot_swap_gpu_page(appid: &str, path: &str) -> Result<usize, String> {
+    sync_dev_bundle(appid)?;
+    #[cfg(any(
+        target_os = "android",
+        all(target_os = "ios", feature = "ios-gpu"),
+        test
+    ))]
+    return crate::gpu_page::hot_swap(appid, path).map_err(|err| err.to_string());
+    #[cfg(not(any(
+        target_os = "android",
+        all(target_os = "ios", feature = "ios-gpu"),
+        test
+    )))]
+    {
+        let _ = path;
+        Ok(0)
+    }
+}
+
 /// Reports whether page element input actions are supported on this platform build.
 pub fn lxapp_dev_page_input_supported() -> bool {
     cfg!(any(

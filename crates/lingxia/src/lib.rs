@@ -182,7 +182,7 @@ pub mod dev {
     pub use crate::devtool::{
         Appearance, DeviceController, DeviceEntry, DeviceState, LxAppDevConfig, LxAppDevIdentity,
         connect_dev_server, dev_session_connected, device_get, device_list, device_set,
-        install_lxapp_dev_config, install_lxapp_dev_config_from_env,
+        hot_swap_gpu_page, install_lxapp_dev_config, install_lxapp_dev_config_from_env,
         lxapp_dev_page_input_supported, register_device_controller, sync_dev_bundle,
     };
     pub use lxapp::device::request_device_set;
@@ -194,7 +194,11 @@ mod devtool;
 mod error;
 /// File dialogs and host file-manager integrations.
 pub mod file;
-#[cfg(any(target_os = "android", all(target_os = "ios", feature = "ios-gpu"), test))]
+#[cfg(any(
+    target_os = "android",
+    all(target_os = "ios", feature = "ios-gpu"),
+    test
+))]
 mod gpu_page;
 mod host_addon;
 /// JS AppService extension registration helpers.

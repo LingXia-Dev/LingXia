@@ -45,6 +45,11 @@ pub(crate) trait NativePage: Send + Sync + 'static {
     fn request_leave(&self, generation: GpuViewGeneration, reason: &str) -> Result<(), LxAppError>;
     fn update_environment(&self, update: &serde_json::Value) -> Result<(), LxAppError>;
     fn reload(&self, source: &str) -> Result<(), LxAppError>;
+    /// Dev sessions: replace the module keeping page state (`ViewHost::swap_module`);
+    /// a shell without it reloads.
+    fn swap_module(&self, source: &str) -> Result<(), LxAppError> {
+        self.reload(source)
+    }
     fn park(&self) -> Result<(), LxAppError>;
     fn retain_surface(&self, retained: bool) -> Result<(), LxAppError>;
     /// `{op: query|act|screenshot, css, index, all, maxText, action: {kind, text, force}}`,
@@ -292,6 +297,42 @@ fn register(lease: Lease, native: Arc<dyn NativePage>) -> Arc<Endpoint> {
     registry.live.insert(token, Arc::downgrade(&endpoint));
     registry.pages.insert(page, token);
     endpoint
+}
+
+/// Dev sessions: swap the module of every live GPU page `select` returns a
+/// source for (by page instance id). Returns how many pages took it.
+fn swap_pages(select: impl Fn(&str) -> Option<String>) -> Result<usize, LxAppError> {
+    let pages: Vec<(String, Token)> = registry()
+        .pages
+        .iter()
+        .map(|(id, token)| (id.clone(), *token))
+        .collect();
+    let mut swapped = 0;
+    for (id, token) in pages {
+        let (Some(source), Some(endpoint)) = (select(&id), live(token)) else {
+            continue;
+        };
+        endpoint.native.swap_module(&source)?;
+        swapped += 1;
+    }
+    Ok(swapped)
+}
+
+/// Dev sessions: the pages of `appid` at `path` take the module now in the bundle.
+pub(crate) fn hot_swap(appid: &str, path: &str) -> Result<usize, LxAppError> {
+    swap_pages(|id| {
+        let page = lxapp::find_page_by_instance_id(id)?;
+        let key = |path: &str| {
+            path.split('?')
+                .next()
+                .unwrap_or("")
+                .trim_start_matches('/')
+                .to_owned()
+        };
+        (page.appid() == appid && key(&page.path()) == key(path))
+            .then(|| page.gpu_module_source().ok())
+            .flatten()
+    })
 }
 
 fn live(token: Token) -> Option<Arc<Endpoint>> {

@@ -329,6 +329,8 @@ pub mod methods {
         pub const OPEN: &str = "lxapp.open";
         pub const CLOSE: &str = "lxapp.close";
         pub const RESTART: &str = "lxapp.restart";
+        /// Dev sessions: swap a GPU page's module in place, keeping its state.
+        pub const HOT_SWAP: &str = "lxapp.page.hot_swap";
         pub const UNINSTALL: &str = "lxapp.uninstall";
         /// Rebuild the lxapp front-end bundle. Handled by the `lingxia dev`
         /// orchestrator (which owns the project + build pipeline), not the

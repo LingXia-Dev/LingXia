@@ -41,6 +41,10 @@ impl NativePage for Shell {
     fn reload(&self, _: &str) -> Result<(), LxAppError> {
         Ok(())
     }
+    fn swap_module(&self, source: &str) -> Result<(), LxAppError> {
+        self.0.lock().unwrap().push(format!("swap {source}"));
+        Ok(())
+    }
     fn park(&self) -> Result<(), LxAppError> {
         self.0.lock().unwrap().push("park".into());
         Ok(())
@@ -211,4 +215,15 @@ fn automation_requests_reach_the_shell_until_the_page_goes() {
     drop((native, shell));
     let gone = runtime.block_on(automation.screenshot()).unwrap_err();
     assert!(gone.starts_with("page is not active:"), "{gone}");
+}
+
+#[test]
+fn a_hot_swap_reaches_only_the_selected_live_pages() {
+    let factory = Arc::new(Factory::default());
+    let (_a, first, _) = endpoint(&factory, "swap-a");
+    let (_b, second, _) = endpoint(&factory, "swap-b");
+    let swapped = swap_pages(|id| (id == "swap-a").then(|| "next".to_owned())).unwrap();
+    assert_eq!(swapped, 1);
+    assert_eq!(first.calls(), ["swap next"]);
+    assert!(second.calls().is_empty());
 }

@@ -12,6 +12,8 @@ crate-type = ["rlib", "cdylib"]
 [features]
 default = []
 gpu = ["lingxia-ui/gpu", "dep:raw-window-handle"]
+# Dev sessions: swap a page module in place (`ViewHost::swap_module`).
+hot-swap = ["lingxia-ui/hot-swap"]
 
 [dependencies]
 lingxia-ui = { workspace = true }
