@@ -89,9 +89,13 @@ impl<A: PlatformAdapter> Inner<A> {
         let page = self.lifecycle.page();
         for dispatch in dispatches {
             match dispatch {
-                Dispatch::Editor { .. } => {
+                Dispatch::Editor { node, word, .. } => {
                     if let Some(snapshot) = &snapshot {
                         self.adapter.focus(&dispatch, snapshot);
+                        // A long-press word selection offers the editor's menu.
+                        if word && let Some(node) = snapshot.frame.nodes.get(node) {
+                            self.request_editor_menu(node.identity.clone());
+                        }
                     }
                 }
                 Dispatch::Click { commit, handle } => {

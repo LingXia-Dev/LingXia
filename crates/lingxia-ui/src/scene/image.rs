@@ -87,8 +87,12 @@ impl Bitmap {
         }
         let format = ::image::guess_format(bytes).map_err(image_error)?;
         // Feature unification must not silently broaden the accepted formats.
-        if !matches!(format, ImageFormat::Png | ImageFormat::Jpeg) {
-            return Err("UI_IMAGE: only PNG and JPEG are supported".into());
+        // GIF decodes its first frame; animation is not supported.
+        if !matches!(
+            format,
+            ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::WebP | ImageFormat::Gif
+        ) {
+            return Err("UI_IMAGE: only PNG, JPEG, WebP and GIF are supported".into());
         }
         let mut reader = ImageReader::with_format(Cursor::new(bytes), format);
         let mut limits = Limits::default();
@@ -263,6 +267,51 @@ mod tests {
                 .chunks_exact(4)
                 .all(|p| p[3] == 255)
         );
+    }
+
+    fn center(bitmap: &Bitmap) -> [u8; 4] {
+        let pixmap = &bitmap.pixels;
+        let (w, h) = (pixmap.width() as usize, pixmap.height() as usize);
+        let at = ((h / 2) * w + w / 2) * 4;
+        pixmap.data_as_u8_slice()[at..at + 4].try_into().unwrap()
+    }
+
+    #[test]
+    fn webp_lossy_and_lossless_and_the_first_gif_frame_decode() {
+        let lossy = Bitmap::decode(include_bytes!("tests/images/red-lossy.webp")).unwrap();
+        assert_eq!((lossy.pixels.width(), lossy.pixels.height()), (16, 12));
+        let [r, g, b, a] = center(&lossy);
+        assert!(r > 230 && g < 30 && b < 30 && a == 255, "lossy red: {r},{g},{b},{a}");
+
+        let mut lossless = Vec::new();
+        ::image::codecs::webp::WebPEncoder::new_lossless(&mut lossless)
+            .write_image(&[0, 0, 255, 128].repeat(6), 3, 2, ::image::ExtendedColorType::Rgba8)
+            .unwrap();
+        let decoded = Bitmap::decode(&lossless).unwrap();
+        assert_eq!(center(&decoded), [0, 0, 128, 128], "premultiplied like PNG");
+
+        let gif = Bitmap::decode(include_bytes!("tests/images/red-blue.gif")).unwrap();
+        let [r, _, b, _] = center(&gif);
+        assert!(r > 230 && b < 30, "the first frame is red: {r},{b}");
+    }
+
+    #[test]
+    fn webp_and_gif_decode_to_the_painted_size() {
+        let mut lossless = Vec::new();
+        ::image::codecs::webp::WebPEncoder::new_lossless(&mut lossless)
+            .write_image(&[200; 512 * 512 * 4], 512, 512, ::image::ExtendedColorType::Rgba8)
+            .unwrap();
+        let small = Bitmap::decode_to(&lossless, Bucket::of(64.0, 64.0)).unwrap();
+        assert!(small.pixels.width() < 512 && small.pixels.width() >= 64);
+        let mut gif = Vec::new();
+        {
+            let mut encoder = ::image::codecs::gif::GifEncoder::new(&mut gif);
+            encoder
+                .encode(&[90; 512 * 512 * 4], 512, 512, ::image::ExtendedColorType::Rgba8)
+                .unwrap();
+        }
+        let small = Bitmap::decode_to(&gif, Bucket::of(64.0, 64.0)).unwrap();
+        assert!(small.pixels.width() < 512 && small.pixels.width() >= 64);
     }
 
     #[test]

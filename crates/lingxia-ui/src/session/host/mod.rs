@@ -23,12 +23,14 @@ mod images;
 mod pump;
 mod reveal;
 mod telemetry;
+mod text_menu;
 mod worker;
 
 /// Largest input-method request [`ViewHost::input`] accepts, in bytes.
 pub use super::input_protocol::MAX_REQUEST_BYTES as MAX_INPUT_REQUEST_BYTES;
 pub use bridge::BridgeUpdate;
 pub use reveal::{FIRST_FRAME_WATCHDOG, REVEAL_DEADLINE};
+pub use text_menu::{MenuAction, MenuTarget, TextMenu};
 pub use worker::ViewWorker;
 
 const BOOTSTRAP: Duration = Duration::from_secs(5);
@@ -230,6 +232,7 @@ struct Main<F> {
     bootstrap_timer: u64,
     reveal: reveal::Reveal,
     telemetry: telemetry::Telemetry,
+    text_menu: text_menu::MenuState,
 }
 
 impl<A: PlatformAdapter> Drop for Inner<A> {
@@ -281,6 +284,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     bootstrap_timer: 0,
                     reveal: Default::default(),
                     telemetry: Default::default(),
+                    text_menu: Default::default(),
                 }),
             }),
         }
@@ -420,6 +424,9 @@ impl<A: PlatformAdapter> ViewHost<A> {
         if !self.inner.lifecycle.accepts_input() {
             return false;
         }
+        if event.phase == crate::interaction::view::PointerPhase::Down {
+            self.inner.dismiss_editor_menu();
+        }
         let page = self.inner.lifecycle.page();
         let (handled, effects) = self.inner.main().interaction.pointer(event, page);
         self.inner.deliver(effects);
@@ -446,6 +453,64 @@ impl<A: PlatformAdapter> ViewHost<A> {
     pub fn window_focus(&self, focused: bool) {
         if !focused {
             self.cancel();
+        }
+    }
+
+    /// A selection handle drag started or ended; the menu hides while dragging and
+    /// an editor's menu returns on release.
+    pub fn text_handle_drag(&self, active: bool) {
+        self.inner.set_handle_drag(active);
+    }
+
+    /// The user closed the text menu; a static selection is cleared with it.
+    pub fn text_menu_dismissed(&self) {
+        if self.inner.text_menu_dismissed() {
+            self.clear_text_selection();
+        }
+    }
+
+    /// A text menu item was chosen. Static-text actions run here and return true;
+    /// an editor's run in the platform input connection.
+    pub fn text_menu_action(&self, action: MenuAction) -> bool {
+        let shown = self.inner.main().text_menu_shown();
+        match shown {
+            Some(TextMenu {
+                target: MenuTarget::Text { identity },
+                ..
+            }) => match action {
+                MenuAction::Copy => {
+                    let host = self.downgrade();
+                    self.copy_text_selection(move |text| {
+                        if let (Some(host), Some(text)) = (host.upgrade(), text)
+                            && !text.is_empty()
+                        {
+                            host.adapter().copy_text(&text);
+                        }
+                    });
+                    true
+                }
+                MenuAction::SelectAll => {
+                    let length = self
+                        .snapshot()
+                        .and_then(|s| {
+                            s.frame
+                                .nodes
+                                .iter()
+                                .find(|n| n.identity == identity)
+                                .map(|n| n.text.encode_utf16().count())
+                        })
+                        .unwrap_or(0);
+                    self.set_text_selection(identity, 0, length as u32);
+                    true
+                }
+                _ => false,
+            },
+            _ => {
+                if action != MenuAction::SelectAll {
+                    self.inner.dismiss_editor_menu();
+                }
+                false
+            }
         }
     }
 
@@ -1014,7 +1079,12 @@ impl<A: PlatformAdapter> Inner<A> {
         let (repaint, timer) = {
             let mut main = self.main();
             match state {
-                Some(state) => main.caret.update(eligible, state),
+                Some(state) if eligible => main.caret.update(eligible, state),
+                Some(state) => {
+                    drop(main);
+                    self.dismiss_editor_menu();
+                    self.main().caret.update(eligible, state)
+                }
                 None => {
                     main.caret.stop();
                     return;

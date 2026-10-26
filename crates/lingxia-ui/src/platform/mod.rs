@@ -119,6 +119,10 @@ pub trait HostEvents {
     fn copy_text(&self, text: &str) {
         let _ = text;
     }
+    /// Show, move or hide (`None`) the floating text menu.
+    fn text_menu(&self, menu: Option<&crate::session::host::TextMenu>) {
+        let _ = menu;
+    }
     fn warn(&self, message: &str);
 }
 

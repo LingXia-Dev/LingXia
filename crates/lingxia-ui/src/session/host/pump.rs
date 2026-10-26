@@ -382,6 +382,7 @@ impl<A: PlatformAdapter> Inner<A> {
         self.main().telemetry.presented(now, &snapshot, &timing);
         self.adapter.presented(&snapshot, &timing);
         self.revealed_by_frame();
+        self.update_text_menu();
     }
 
     /// Start the timeline's newly presented effects and wake for its next deadline.

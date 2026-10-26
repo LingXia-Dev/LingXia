@@ -39,6 +39,7 @@ struct Log {
     /// `hold_surface` of each reveal.
     revealed: Vec<bool>,
     copied: Vec<String>,
+    menus: Vec<Option<crate::session::host::TextMenu>>,
     /// Threads that ran main-thread callbacks.
     main: Vec<ThreadId>,
 }
@@ -180,6 +181,9 @@ impl HostEvents for Fake {
     }
     fn copy_text(&self, text: &str) {
         self.main().copied.push(text.into());
+    }
+    fn text_menu(&self, menu: Option<&crate::session::host::TextMenu>) {
+        self.main().menus.push(menu.cloned());
     }
     fn warn(&self, _: &str) {}
 }
@@ -1435,4 +1439,118 @@ fn the_frame_says_how_to_draw_press_and_focus_feedback_for_its_theme() {
     assert_eq!(snapshot["feedback"]["pressOverlay"], 0x2200_0000u32);
     let dark = FeedbackStyle::for_theme(true);
     assert_ne!(dark.focus_ring, FeedbackStyle::for_theme(false).focus_ring);
+}
+
+fn menu(host: &ViewHost<Fake>) -> Option<crate::session::host::TextMenu> {
+    host.adapter()
+        .log
+        .lock()
+        .unwrap()
+        .menus
+        .last()
+        .cloned()
+        .flatten()
+}
+
+#[test]
+fn a_static_selection_shows_its_menu_which_hides_while_dragging_and_clears_on_dismiss() {
+    use crate::session::host::{MenuAction, MenuTarget};
+    let worker = ViewWorker::spawn("test-static-menu").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source("function render(){return h('text',{testId:'p',style:{userSelect:'text'}},'hello brave world')}"),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    assert!(menu(&host).is_none());
+    let identity = host.snapshot().unwrap().frame.nodes[0].identity.clone();
+    host.set_text_selection(identity.clone(), 0, 5);
+    platform.settle(&[&host]);
+    let shown = menu(&host).unwrap();
+    assert_eq!(
+        shown.target,
+        MenuTarget::Text {
+            identity: identity.clone()
+        }
+    );
+    assert_eq!(shown.actions, [MenuAction::Copy, MenuAction::SelectAll]);
+    host.text_handle_drag(true);
+    assert!(menu(&host).is_none(), "hidden while a handle moves");
+    host.text_handle_drag(false);
+    assert!(menu(&host).is_some());
+    assert!(host.text_menu_action(MenuAction::SelectAll));
+    platform.settle(&[&host]);
+    let selection = host.snapshot().unwrap().frame.nodes[0].selection_range;
+    assert_eq!(selection, Some([0, 17]));
+    let events = host.adapter().log.lock().unwrap().menus.len();
+    host.text_menu_dismissed();
+    platform.settle(&[&host]);
+    assert_eq!(
+        host.adapter().log.lock().unwrap().menus.len(),
+        events,
+        "the adapter closed it already"
+    );
+    assert_eq!(
+        host.snapshot().unwrap().frame.nodes[0].selection_range,
+        None
+    );
+}
+
+#[test]
+fn an_editor_menu_offers_what_the_editor_allows_and_goes_when_its_text_changes() {
+    use crate::session::host::{MenuAction, MenuTarget};
+    let worker = ViewWorker::spawn("test-editor-menu").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){const v=useLocal('v','');return h('input',{bind:v,autoFocus:true})}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let (identity, token) = {
+        let snapshot = host.snapshot().unwrap();
+        let node = &snapshot.frame.nodes[0];
+        (
+            node.identity.clone(),
+            node.input.as_ref().unwrap().edit_token.unwrap(),
+        )
+    };
+    host.text_handle_drag(false);
+    let shown = menu(&host).unwrap();
+    assert_eq!(
+        shown.target,
+        MenuTarget::Editor {
+            identity: identity.clone()
+        }
+    );
+    assert_eq!(
+        shown.actions,
+        [MenuAction::Paste],
+        "an empty editor can only paste"
+    );
+    let typed = serde_json::json!({
+        "op": "edit", "identity": identity, "token": token, "submit": false,
+        "edits": [{"op": "replace", "text": "hi", "cursor": 1, "composing": false}],
+    });
+    host.input(typed.to_string(), |_| {});
+    platform.settle(&[&host]);
+    // The adapter renders when the edit reply asks for it.
+    host.request_frame();
+    platform.settle(&[&host]);
+    assert!(menu(&host).is_none(), "typing dismisses the menu");
+    host.text_handle_drag(false);
+    let shown = menu(&host).unwrap();
+    assert!(
+        shown.actions.contains(&MenuAction::SelectAll) && shown.actions.contains(&MenuAction::Undo)
+    );
+    assert!(
+        !host.text_menu_action(MenuAction::Paste),
+        "the input connection pastes"
+    );
+    assert!(menu(&host).is_none());
 }
