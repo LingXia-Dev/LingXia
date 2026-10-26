@@ -15,8 +15,20 @@ const semanticStates = { pressed: 'statePressed', selected: 'stateSelected', exp
 const accepts = (field, tag) => admission.fields[field].includes(elements[tag].wire);
 const bindCodes = { input: 'UI_INPUT', textarea: 'UI_INPUT', search: 'UI_INPUT', checkbox: 'UI_CHECK', switch: 'UI_CHECK', slider: 'UI_SLIDER', radio: 'UI_RADIO' };
 const optionStyle = ['fontSize', 'fontWeight', 'fontFamily', 'lineHeight', 'color', 'background'];
-const componentIds = new WeakMap();
-let nextComponent = 1, nextHandle = 1;
+// A component's id is its function name, numbered only when names repeat: it must not depend
+// on the order components first render, so a hot-swapped module finds the same state and nodes.
+const componentIds = new WeakMap(), componentNames = new Map();
+let nextHandle = 1;
+function componentId(tag) {
+  let id = componentIds.get(tag);
+  if (id !== undefined) return id;
+  const name = tag.name || 'anonymous';
+  const count = (componentNames.get(name) ?? 0) + 1;
+  componentNames.set(name, count);
+  id = count === 1 ? name : `${name}#${count}`;
+  componentIds.set(tag, id);
+  return id;
+}
 
 const handle = () => nextHandle++;
 const callbackOf = (callback, kind = 'void', isolated = false) => ({ callback, kind, isolated });
@@ -108,9 +120,8 @@ export function resolveNode(node, identity, depth = 0, parent = {}) {
   // Where a render that never returns was, for UI_TIMEOUT.
   if (location) render.site = `${typeof tag === 'function' ? tag.name || '<anonymous>' : `<${tag}>`} (${location})`;
   if (typeof tag === 'function') {
-    if (!componentIds.has(tag)) componentIds.set(tag, nextComponent++);
     const previous = render.scope;
-    render.scope = `${identity}/component:${componentIds.get(tag)}`;
+    render.scope = `${identity}/component:${componentId(tag)}`;
     const supplied = children.length === 0 ? undefined : children.length === 1 ? children[0] : children;
     try { return resolveNode(tag({ ...original, children: supplied }), render.scope, depth + 1, parent); }
     catch (error) { throw located(error, `${tag.name || '<anonymous>'}${location ? ` (${location})` : ''}`); }

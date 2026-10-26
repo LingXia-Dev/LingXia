@@ -1815,8 +1815,18 @@
   var bindCodes = { input: "UI_INPUT", textarea: "UI_INPUT", search: "UI_INPUT", checkbox: "UI_CHECK", switch: "UI_CHECK", slider: "UI_SLIDER", radio: "UI_RADIO" };
   var optionStyle = ["fontSize", "fontWeight", "fontFamily", "lineHeight", "color", "background"];
   var componentIds = /* @__PURE__ */ new WeakMap();
-  var nextComponent = 1;
+  var componentNames = /* @__PURE__ */ new Map();
   var nextHandle = 1;
+  function componentId(tag) {
+    let id = componentIds.get(tag);
+    if (id !== void 0) return id;
+    const name = tag.name || "anonymous";
+    const count = (componentNames.get(name) ?? 0) + 1;
+    componentNames.set(name, count);
+    id = count === 1 ? name : `${name}#${count}`;
+    componentIds.set(tag, id);
+    return id;
+  }
   var handle = () => nextHandle++;
   var callbackOf = (callback, kind = "void", isolated = false) => ({ callback, kind, isolated });
   function admit2(tag, element, props) {
@@ -1897,9 +1907,8 @@
     const [tag, original, children, location] = readNode(node);
     if (location) render.site = `${typeof tag === "function" ? tag.name || "<anonymous>" : `<${tag}>`} (${location})`;
     if (typeof tag === "function") {
-      if (!componentIds.has(tag)) componentIds.set(tag, nextComponent++);
       const previous = render.scope;
-      render.scope = `${identity}/component:${componentIds.get(tag)}`;
+      render.scope = `${identity}/component:${componentId(tag)}`;
       const supplied = children.length === 0 ? void 0 : children.length === 1 ? children[0] : children;
       try {
         return resolveNode(tag({ ...original, children: supplied }), render.scope, depth + 1, parent);
