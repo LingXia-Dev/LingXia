@@ -1615,9 +1615,36 @@ fn edits_for_two_editors_reach_the_platform_one_at_a_time() {
         [Some("12".to_owned()), Some("ABC".to_owned())],
         "the frame showing the first releases the second"
     );
-    // "ABC" is never applied by this fake: it holds up the next edit only briefly.
+    // The platform dropped "ABC" (its editor was still connecting, as on a cold start):
+    // the edit is sent again rather than lost, and the next waits behind it.
     fill("amount", "7");
     assert_eq!(sent_edits(&host).len(), 2);
     platform.advance(Duration::from_millis(500));
-    assert_eq!(sent_edits(&host).last().unwrap().as_deref(), Some("7"));
+    assert_eq!(sent_edits(&host).last().unwrap().as_deref(), Some("ABC"));
+    let (identity, generation) = {
+        let snapshot = host.snapshot().unwrap();
+        (
+            snapshot.frame.nodes[2].identity.clone(),
+            snapshot.generation.get(),
+        )
+    };
+    let (replied, reply) = channel();
+    let focus = serde_json::json!({"op": "focus", "identity": identity, "generation": generation});
+    host.input(focus.to_string(), move |r| replied.send(r).unwrap());
+    platform.settle(&[&host]);
+    let focused: serde_json::Value =
+        serde_json::from_str(&reply.try_recv().unwrap().unwrap()).unwrap();
+    let applied = serde_json::json!({
+        "op": "edit", "identity": identity, "token": focused["token"], "submit": false,
+        "edits": [{"op": "replace", "text": "ABC", "cursor": 1, "composing": false}],
+    });
+    host.input(applied.to_string(), |_| {});
+    platform.settle(&[&host]);
+    host.request_frame();
+    platform.settle(&[&host]);
+    assert_eq!(
+        sent_edits(&host).last().unwrap().as_deref(),
+        Some("7"),
+        "once \"ABC\" shows, the next edit goes"
+    );
 }
