@@ -225,8 +225,18 @@ impl Renderer {
                 width: AvailableSpace::Definite(width as f32 / scale),
                 height: AvailableSpace::Definite(height as f32 / scale),
             },
-            |inputs, _, context, style| {
+            |mut inputs, _, context, style| {
                 let index = context.as_ref().map(|index| **index);
+                // Taffy applies `aspect-ratio` to styled sizes only; a size the parent
+                // fixes (a flexed main size, a stretched cross size) must derive the other axis.
+                if let Some(ratio) = style.aspect_ratio.filter(|r| r.is_finite() && *r > 0.0) {
+                    let known = &mut inputs.known_dimensions;
+                    match (known.width, known.height) {
+                        (Some(width), None) => known.height = Some(width / ratio),
+                        (None, Some(height)) => known.width = Some(height * ratio),
+                        _ => {}
+                    }
+                }
                 let mut output = taffy::compute_leaf_layout(
                     inputs,
                     style,

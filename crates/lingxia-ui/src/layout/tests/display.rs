@@ -161,3 +161,24 @@ fn a_transform_ends_with_its_node_and_never_reaches_the_next_sibling() {
         "{transforms_at_text:?}"
     );
 }
+
+#[test]
+fn a_growing_aspect_box_in_a_start_aligned_row_derives_its_height() {
+    let source = crate::session::tests::source(
+        "function render(){return h('column',{style:{padding:16}},h('row',{style:{gap:12,alignItems:'flex-start'}},h('column',{testId:'video',style:{flexGrow:1,flexBasis:0,aspectRatio:16/9}}),h('column',{testId:'square',style:{width:64,aspectRatio:1}})))}",
+    );
+    let mut page = crate::ViewSession::new(&source).unwrap();
+    let display = page.layout(360, 600, 1.0).unwrap();
+    let bounds = |id: &str| {
+        display
+            .nodes
+            .iter()
+            .find(|n| n.test_id == id)
+            .unwrap()
+            .bounds
+    };
+    let video = bounds("video");
+    assert_eq!(video[2], 360.0 - 32.0 - 12.0 - 64.0);
+    assert!((video[3] - video[2] * 9.0 / 16.0).abs() < 0.5, "{video:?}");
+    assert_eq!(bounds("square")[2..], [64.0, 64.0]);
+}
