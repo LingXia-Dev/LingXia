@@ -131,6 +131,26 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
     }
     match id {
         field::FLEX_BASIS => flex_basis(value).map(drop),
+        field::FONT_VARIANT_NUMERIC => ensure(
+            value.as_str().is_some_and(|text| {
+                text == "normal"
+                    || (text.len() <= 128
+                        && text.split(' ').all(|keyword| {
+                            matches!(
+                                keyword,
+                                "ordinal"
+                                    | "slashed-zero"
+                                    | "lining-nums"
+                                    | "oldstyle-nums"
+                                    | "proportional-nums"
+                                    | "tabular-nums"
+                                    | "diagonal-fractions"
+                                    | "stacked-fractions"
+                            )
+                        }))
+            }),
+            "UI_STYLE: invalid font-variant-numeric",
+        ),
         field::TRANSFORM => crate::scene::transform::StaticTransform::parse(
             value
                 .as_str()

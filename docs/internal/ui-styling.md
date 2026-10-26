@@ -42,6 +42,10 @@ time (see [ui-authoring.md](ui-authoring.md)) and again at runtime.
 - Percent sizes resolve in layout against the parent content box.
 - `w-fit`, `w-auto`, `h-auto` map to native sizing keywords; `h-auto` keeps
   intrinsic height under min/max constraints.
+- `whiteSpace` follows CSS: `normal`/`nowrap` collapse whitespace runs (newlines
+  too), `pre-line` keeps newlines, `pre`/`pre-wrap` keep everything.
+- `tabular-nums`, `slashed-zero` and the other numeric variants compose across
+  classes into inherited OpenType features (`tnum`, `zero`, …).
 - `truncate` and `line-clamp-N` lower to `overflow`, `whiteSpace`,
   `textOverflow` and `lineClamp`; Tailwind's `-webkit-box` declarations are
   absorbed by the clamp.

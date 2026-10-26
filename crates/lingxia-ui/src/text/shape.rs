@@ -124,7 +124,7 @@ impl Renderer {
                     weight,
                     line_height,
                     (style.mono, italic),
-                    (word_break, overflow_wrap, style.nowrap),
+                    (word_break, overflow_wrap, style.nowrap, &style.features),
                 )
             })
             .flatten();
@@ -154,6 +154,9 @@ impl Renderer {
                 _ => parley::WordBreak::Normal,
             }));
             builder.push_default(StyleProperty::FontWeight(FontWeight::new(weight)));
+            if !style.features.is_empty() {
+                builder.push_default(StyleProperty::FontFeatures(style.features.as_str().into()));
+            }
             builder.push_default(StyleProperty::Locale(self.locale));
             builder.push_default(if style.mono {
                 GenericFamily::Monospace

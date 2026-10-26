@@ -53,6 +53,20 @@ test('static transforms compose per-axis variables, origins and rotations; skew 
   assert.throws(() => describe(() => h('button', { className: 'active:scale-95' }, 'Go'), {}), /paint properties only, not scale/);
 });
 
+test('numeric variants compose across classes and white-space keeps CSS keywords', async () => {
+  await use(['tabular-nums', 'slashed-zero', 'normal-nums', 'oldstyle-nums', '[font-variant-numeric:tabular-nums_ordinal]',
+    'whitespace-pre-line', 'whitespace-pre-wrap', 'whitespace-pre', 'whitespace-nowrap', 'whitespace-break-spaces', 'break-all']);
+  assert.equal(classStyle('tabular-nums slashed-zero').fontVariantNumeric, 'slashed-zero tabular-nums');
+  assert.equal(classStyle('slashed-zero tabular-nums').fontVariantNumeric, 'slashed-zero tabular-nums');
+  assert.equal(classStyle('tabular-nums normal-nums').fontVariantNumeric, 'normal');
+  assert.equal(node('text', { className: '[font-variant-numeric:tabular-nums_ordinal]' }).fontVariantNumeric, 'ordinal tabular-nums');
+  for (const name of ['pre-line', 'pre-wrap', 'pre', 'nowrap']) assert.equal(classStyle(`whitespace-${name}`).whiteSpace, name);
+  assert.throws(() => classStyle('whitespace-break-spaces'), /UI_CLASS/);
+  assert.equal(classStyle('break-all').wordBreak, 'break-all');
+  assert.throws(() => describe(() => h('text', { style: { fontVariantNumeric: 'tabular-nums proportional-nums' } }, '1'), {}), /UI_STYLE_VALUE/);
+  assert.throws(() => describe(() => h('text', { style: { fontVariantNumeric: 'small-caps' } }, '1'), {}), /UI_STYLE_VALUE/);
+});
+
 test('horizontal overflow lowers only onto scroll containers', async () => {
   await use(['overflow-x-auto', 'md:overflow-x-auto', 'overflow-hidden']);
   assert.deepEqual(classStyle('overflow-x-auto'), { overflowX: 'auto' });

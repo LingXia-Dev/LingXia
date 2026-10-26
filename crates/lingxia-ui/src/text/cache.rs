@@ -16,6 +16,7 @@ pub(crate) struct Key {
     word_break: u8,
     overflow_wrap: u8,
     nowrap: bool,
+    features: String,
 }
 impl Key {
     pub(crate) fn new(
@@ -24,7 +25,7 @@ impl Key {
         weight: f32,
         line_height: Option<f32>,
         face: (bool, bool),
-        (word_break, overflow_wrap, nowrap): (u8, u8, bool),
+        (word_break, overflow_wrap, nowrap, features): (u8, u8, bool, &str),
     ) -> Option<Self> {
         (text.len() <= MAX_ENTRY_BYTES).then(|| Self {
             text: text.into(),
@@ -36,6 +37,7 @@ impl Key {
             word_break,
             overflow_wrap,
             nowrap,
+            features: features.into(),
         })
     }
 }
@@ -82,7 +84,7 @@ mod tests {
                 400.0,
                 None,
                 (false, false),
-                (0, 0, false),
+                (0, 0, false, ""),
             )
             .unwrap()
         };
@@ -97,7 +99,7 @@ mod tests {
                 400.0,
                 None,
                 (false, false),
-                (0, 0, false),
+                (0, 0, false, ""),
             ),
             Key::new(
                 "label",
@@ -105,7 +107,7 @@ mod tests {
                 400.0,
                 None,
                 (false, true),
-                (0, 0, false),
+                (0, 0, false, ""),
             ),
             Key::new(
                 "label",
@@ -113,7 +115,7 @@ mod tests {
                 400.0,
                 None,
                 (false, false),
-                (0, 0, false),
+                (0, 0, false, ""),
             ),
             Key::new(
                 "label",
@@ -121,7 +123,7 @@ mod tests {
                 600.0,
                 None,
                 (false, false),
-                (0, 0, false),
+                (0, 0, false, ""),
             ),
             Key::new(
                 "label",
@@ -129,7 +131,7 @@ mod tests {
                 400.0,
                 Some(24.0),
                 (false, false),
-                (0, 0, false),
+                (0, 0, false, ""),
             ),
             Key::new(
                 "label",
@@ -137,7 +139,7 @@ mod tests {
                 400.0,
                 None,
                 (true, false),
-                (0, 0, false),
+                (0, 0, false, ""),
             ),
             Key::new(
                 "label",
@@ -145,7 +147,7 @@ mod tests {
                 400.0,
                 None,
                 (false, false),
-                (1, 0, false),
+                (1, 0, false, ""),
             ),
             Key::new(
                 "label",
@@ -153,7 +155,7 @@ mod tests {
                 400.0,
                 None,
                 (false, false),
-                (2, 0, false),
+                (2, 0, false, ""),
             ),
             Key::new(
                 "label",
@@ -161,7 +163,7 @@ mod tests {
                 400.0,
                 None,
                 (false, false),
-                (0, 1, false),
+                (0, 1, false, ""),
             ),
             Key::new(
                 "label",
@@ -169,7 +171,7 @@ mod tests {
                 400.0,
                 None,
                 (false, false),
-                (0, 2, false),
+                (0, 2, false, ""),
             ),
             Key::new(
                 "label",
@@ -177,7 +179,7 @@ mod tests {
                 400.0,
                 None,
                 (false, false),
-                (0, 0, true),
+                (0, 0, true, ""),
             ),
         ] {
             assert!(cache.get(&changed.unwrap()).is_none());
@@ -194,7 +196,7 @@ mod tests {
                 400.0,
                 None,
                 (false, false),
-                (0, 0, false)
+                (0, 0, false, "")
             )
             .is_none()
         );

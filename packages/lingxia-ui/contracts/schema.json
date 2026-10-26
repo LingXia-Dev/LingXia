@@ -41,7 +41,7 @@
     "position": ["relative", "absolute", "fixed"],
     "overflow": ["visible", "hidden"],
     "text-transform": ["none", "uppercase", "lowercase", "capitalize"],
-    "white-space": ["normal", "nowrap"],
+    "white-space": ["normal", "nowrap", "pre", "pre-wrap", "pre-line"],
     "text-overflow": ["clip", "ellipsis"],
     "sizing-keyword": ["fit-content", "max-content", "min-content"],
     "border-style": ["solid", "dashed", "dotted"]
@@ -177,7 +177,8 @@
     {"id": 127, "key": "widthKeyword", "wire": "widthKeyword", "kind": "sizing-keyword"},
     {"id": 128, "key": "heightKeyword", "wire": "heightKeyword", "kind": "sizing-keyword"},
     {"id": 129, "key": "borderStyle", "wire": "borderStyle", "kind": "border-style"},
-    {"id": 130, "key": "transform", "wire": "transform", "kind": "transform"}
+    {"id": 130, "key": "transform", "wire": "transform", "kind": "transform"},
+    {"id": 131, "key": "fontVariantNumeric", "wire": "fontVariantNumeric", "kind": "font-variant-numeric"}
   ],
   "styleGroups": {"accent": ["color"]},
   "style": {
@@ -247,10 +248,11 @@
     "fontStyle": {"type": "\"normal\" | \"italic\"", "group": "text", "lower": "option", "wire": "fontStyle", "css": "font-style"},
     "lineHeight": {"type": "number | `${number}px`", "group": "text", "lower": "line-height", "wire": "lineHeight", "css": "line-height"},
     "letterSpacing": {"type": "number | `${number}em`", "group": "text", "lower": "letter-spacing", "wire": "letterSpacing", "css": "letter-spacing"},
+    "fontVariantNumeric": {"type": "string", "group": "text", "lower": "font-variant-numeric", "wire": "fontVariantNumeric"},
     "textAlign": {"type": "\"start\" | \"end\" | \"left\" | \"center\" | \"right\" | \"justify\"", "group": "text", "lower": "option", "wire": "textAlign", "css": "text-align"},
     "textDecorationLine": {"type": "\"none\" | \"line-through\" | \"underline\"", "group": "text", "lower": "option", "wire": "textDecorationLine", "css": "text-decoration-line"},
     "textTransform": {"type": "\"none\" | \"uppercase\" | \"lowercase\" | \"capitalize\"", "group": "text", "lower": "option", "wire": "textTransform", "css": "text-transform"},
-    "whiteSpace": {"type": "\"normal\" | \"nowrap\"", "group": "text", "lower": "option", "wire": "whiteSpace", "css": "white-space"},
+    "whiteSpace": {"type": "\"normal\" | \"nowrap\" | \"pre\" | \"pre-wrap\" | \"pre-line\"", "group": "text", "lower": "option", "wire": "whiteSpace", "css": "white-space"},
     "wordBreak": {"type": "\"normal\" | \"break-all\" | \"keep-all\"", "group": "text", "lower": "option", "wire": "wordBreak", "css": "word-break"},
     "overflowWrap": {"type": "\"normal\" | \"break-word\" | \"anywhere\"", "group": "text", "lower": "option", "wire": "overflowWrap", "css": "overflow-wrap"},
     "lineClamp": {"type": "number", "group": "textBlock", "lower": "line-clamp", "wire": "textLines", "css": "-webkit-line-clamp"},

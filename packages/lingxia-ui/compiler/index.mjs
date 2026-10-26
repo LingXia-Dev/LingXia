@@ -99,6 +99,7 @@ function classProblems(rule, name, tag) {
   if (!has(elements, tag) || rule.when?.children) return [];
   const props = [...Object.keys(rule.style ?? {}), ...(rule.gradient ? ['backgroundImage'] : []),
     ...(rule.transform?.translate ? ['translate'] : []), ...(rule.transform?.scale ? ['scale'] : []),
+    ...(rule.numeric ? ['fontVariantNumeric'] : []),
     ...(rule.shadow ? ['boxShadow'] : []), ...(rule.backdrop ? ['backdropFilter'] : [])];
   const state = rule.when?.state;
   const problems = props.filter(prop => !elements[tag].style.includes(prop))

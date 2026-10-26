@@ -36,9 +36,13 @@ const pixels = value => `${value}px`;
 // variables; the cascade resolves them before they become one style value.
 function cascade(rules) {
   const style = {}, gradient = {}, shadow = {}, backdrop = {}, transform = {};
+  let numeric = {};
   for (const rule of rules) {
     Object.assign(style, copy(rule.style));
     Object.assign(transform, rule.transform);
+    // `normal-nums` and literal values replace the composed keywords; utilities add to them.
+    if (rule.numeric?.normal || rule.numeric?.fixed) numeric = { ...rule.numeric };
+    else if (rule.numeric) numeric = { ...numeric, ...rule.numeric, normal: false, fixed: undefined };
     Object.assign(gradient, rule.gradient);
     Object.assign(shadow, rule.shadow);
     Object.assign(backdrop, rule.backdrop);
@@ -46,6 +50,12 @@ function cascade(rules) {
   const filter = backdrop.mode === 'fixed' ? backdrop.fixed : backdrop.mode === 'variables' ? backdrop : undefined;
   if (filter && (filter.blur != null || filter.saturation != null))
     style.backdropFilter = `blur(${pixels(filter.blur ?? 0)}) saturate(${filter.saturation ?? 1})`;
+  if (numeric.normal) style.fontVariantNumeric = 'normal';
+  else if (numeric.fixed) style.fontVariantNumeric = numeric.fixed;
+  else if (numeric.enabled) {
+    const keywords = [numeric.ordinal, numeric.slashedZero, numeric.figure, numeric.spacing, numeric.fraction].filter(Boolean);
+    style.fontVariantNumeric = keywords.length ? keywords.join(' ') : 'normal';
+  }
   if (transform.translate) style.translate = [transform.translateX ?? 0, transform.translateY ?? 0];
   if (transform.scale) style.scale = [transform.scaleX ?? 1, transform.scaleY ?? 1];
   if (gradient.enabled !== undefined) {

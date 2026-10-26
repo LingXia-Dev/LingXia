@@ -90,6 +90,16 @@ function transformPart(name, value, out) {
   }
 }
 
+// One keyword per CSS font-variant-numeric group, in CSS order.
+const numericGroups = [['ordinal'], ['slashed-zero'], ['lining-nums', 'oldstyle-nums'], ['proportional-nums', 'tabular-nums'], ['diagonal-fractions', 'stacked-fractions']];
+function numericVariant(name, value) {
+  if (value === 'normal') return value;
+  const tokens = typeof value === 'string' ? value.trim().split(/\s+/) : [];
+  const picked = numericGroups.map(group => tokens.filter(token => group.includes(token)));
+  if (!tokens.length || picked.some(group => group.length > 1) || picked.flat().length !== tokens.length) invalid(name);
+  return picked.flat().join(' ');
+}
+
 function animation(value) {
   if (value === null) return undefined;
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error('UI_ANIMATION: expected definition');
@@ -154,6 +164,7 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
       case 'backdrop': [out[key[0]], out[key[1]]] = backdrop(name, value); break;
       case 'animation': { const lowered = animation(value); if (lowered !== undefined) out[key] = lowered; break; }
       case 'transform': transformPart(name, value, transform); break;
+      case 'font-variant-numeric': out[key] = numericVariant(name, value); break;
       case 'basis':
         if (value !== 'auto') length(name, percent(value) ?? value);
         out[key] = value; break;

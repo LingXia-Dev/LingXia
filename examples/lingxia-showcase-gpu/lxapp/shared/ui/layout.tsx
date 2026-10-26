@@ -89,7 +89,7 @@ export function InfoRow({ label, value, testId }: { label: string; value: unknow
   return (
     <row className="items-start justify-between gap-3 py-2.5">
       <text className="shrink-0 text-sm text-muted-foreground">{label}</text>
-      <text testId={testId} className="grow basis-0 min-w-0 text-right text-sm font-semibold break-all">
+      <text testId={testId} className="grow basis-0 min-w-0 text-right text-sm font-semibold break-all whitespace-pre-wrap">
         {display(value)}
       </text>
     </row>

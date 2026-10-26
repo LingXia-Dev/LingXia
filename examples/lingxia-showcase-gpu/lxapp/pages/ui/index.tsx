@@ -106,7 +106,7 @@ function Dialogs({ data, actions }: Pane) {
             Show Action Sheet
           </Button>
           {!!data.actionSheetResult && (
-            <text testId="actionsheet-result" className="text-xs font-mono break-all">
+            <text testId="actionsheet-result" className="text-xs font-mono break-all whitespace-pre-wrap">
               {JSON.stringify(data.actionSheetResult, null, 2)}
             </text>
           )}
@@ -137,7 +137,7 @@ function Dialogs({ data, actions }: Pane) {
       )}
       {type === 'modal' && !!data.modalResult && (
         <Section title="Modal Result">
-          <text testId="modal-result" className="text-xs font-mono text-muted-foreground break-all">
+          <text testId="modal-result" className="text-xs font-mono text-muted-foreground break-all whitespace-pre-wrap">
             {JSON.stringify(data.modalResult, null, 2)}
           </text>
           <Button variant="ghost" testId="modal-clear" onClick={() => actions.clearModalResult()}>

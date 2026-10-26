@@ -11,6 +11,7 @@ export function render() {
       <Borders />
       <Display />
       <Transforms />
+      <TextLayout />
     </Page>
   );
 }
@@ -95,6 +96,21 @@ function Transforms() {
         </view>
         <view testId="lab-transform-card" className="w-12 h-12 rounded-lg bg-primary origin-bottom-left rotate-12 scale-90" />
       </row>
+    </Section>
+  );
+}
+
+function TextLayout() {
+  return (
+    <Section title="Text" testId="lab-text">
+      <row className="gap-6">
+        <column className="items-end">
+          {['1,111.10', '808.08', '10.00'].map(value => <text key={value} className="text-sm tabular-nums slashed-zero">{value}</text>)}
+        </column>
+        <text testId="lab-text-pre-line" className="grow basis-0 text-sm whitespace-pre-line">{'First line\n   second line keeps   one space'}</text>
+      </row>
+      <text testId="lab-text-pre-wrap" className="p-2 rounded bg-muted text-xs font-mono whitespace-pre-wrap">{'{\n  "indent": true\n}'}</text>
+      <text testId="lab-text-break-all" className="text-xs break-all">https://example.com/a/very/long/path/without/any/spaces/to/break/at</text>
     </Section>
   );
 }

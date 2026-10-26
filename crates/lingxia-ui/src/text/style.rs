@@ -18,6 +18,70 @@ pub(crate) struct TextStyle {
     pub(crate) decoration: Option<(usize, Decoration)>,
     pub(crate) transform: Transform,
     pub(crate) nowrap: bool,
+    pub(crate) collapse: Collapse,
+    /// OpenType feature settings in CSS source form; empty for `normal`.
+    pub(crate) features: String,
+}
+
+/// How CSS `white-space` folds authored whitespace before shaping.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Collapse {
+    /// `normal`, `nowrap`: every whitespace run is one space.
+    All,
+    /// `pre-line`: spaces and tabs collapse; newlines break.
+    Spaces,
+    /// `pre`, `pre-wrap`: authored whitespace is kept.
+    None,
+}
+
+impl Collapse {
+    pub(crate) fn apply(self, text: &str) -> String {
+        if self == Self::None {
+            return text.to_owned();
+        }
+        let mut out = String::with_capacity(text.len());
+        let mut pending = false;
+        for c in text.chars() {
+            let newline = matches!(c, '\n' | '\r' | '\u{2028}' | '\u{2029}');
+            if newline && self == Self::Spaces {
+                // Spaces around a preserved break are dropped, as in CSS.
+                pending = false;
+                out.truncate(out.trim_end_matches([' ', '\t']).len());
+                out.push('\n');
+            } else if c.is_whitespace() {
+                pending = !out.is_empty() && !out.ends_with('\n');
+            } else {
+                if pending {
+                    out.push(' ');
+                }
+                pending = false;
+                out.push(c);
+            }
+        }
+        out
+    }
+}
+
+/// OpenType features for CSS font-variant-numeric keywords.
+fn numeric_features(value: &str) -> String {
+    value
+        .split_whitespace()
+        .filter_map(|keyword| {
+            Some(match keyword {
+                "ordinal" => "ordn",
+                "slashed-zero" => "zero",
+                "lining-nums" => "lnum",
+                "oldstyle-nums" => "onum",
+                "proportional-nums" => "pnum",
+                "tabular-nums" => "tnum",
+                "diagonal-fractions" => "frac",
+                "stacked-fractions" => "afrc",
+                _ => return None,
+            })
+        })
+        .map(|tag| format!("\"{tag}\" 1"))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -65,7 +129,7 @@ pub(crate) fn display_texts(records: &[Record], styles: &[TextStyle]) -> Vec<Str
         .zip(styles)
         .map(|(record, style)| {
             if !matches!(record.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH) {
-                return style.transform.apply(&record.text);
+                return style.transform.apply(&style.collapse.apply(&record.text));
             }
             let value = record.string(field::INPUT_VALUE).unwrap_or("");
             let text = if value.is_empty() {
@@ -110,9 +174,23 @@ pub(crate) fn computed(records: &[Record]) -> Vec<TextStyle> {
                 .map(|p| p.transform)
                 .unwrap_or(Transform::None),
         };
-        let nowrap = match record.string(field::WHITE_SPACE) {
-            Some(value) => value == "nowrap",
-            None => parent.as_ref().is_some_and(|p| p.nowrap),
+        let (nowrap, collapse) = match record.string(field::WHITE_SPACE) {
+            Some("nowrap") => (true, Collapse::All),
+            Some("pre") => (true, Collapse::None),
+            Some("pre-wrap") => (false, Collapse::None),
+            Some("pre-line") => (false, Collapse::Spaces),
+            Some(_) => (false, Collapse::All),
+            None => parent
+                .as_ref()
+                .map(|p| (p.nowrap, p.collapse))
+                .unwrap_or((false, Collapse::All)),
+        };
+        let features = match record.string(field::FONT_VARIANT_NUMERIC) {
+            Some(value) => numeric_features(value),
+            None => parent
+                .as_ref()
+                .map(|p| p.features.clone())
+                .unwrap_or_default(),
         };
         let align = match record.string(field::TEXT_ALIGN) {
             Some("left") => Alignment::Left,
@@ -180,6 +258,8 @@ pub(crate) fn computed(records: &[Record]) -> Vec<TextStyle> {
             decoration,
             transform,
             nowrap,
+            collapse,
+            features,
         });
     }
     styles

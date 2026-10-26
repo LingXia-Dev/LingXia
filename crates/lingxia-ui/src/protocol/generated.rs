@@ -161,6 +161,7 @@ pub mod field {
     pub const HEIGHT_KEYWORD: usize = 128;
     pub const BORDER_STYLE: usize = 129;
     pub const TRANSFORM: usize = 130;
+    pub const FONT_VARIANT_NUMERIC: usize = 131;
 }
 
 pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page"];
@@ -298,6 +299,7 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("heightKeyword", "sizing-keyword"),
     ("borderStyle", "border-style"),
     ("transform", "transform"),
+    ("fontVariantNumeric", "font-variant-numeric"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -318,7 +320,7 @@ pub fn options(kind: &str) -> Option<&'static [&'static str]> {
         "position" => Some(&["relative", "absolute", "fixed"]),
         "overflow" => Some(&["visible", "hidden"]),
         "text-transform" => Some(&["none", "uppercase", "lowercase", "capitalize"]),
-        "white-space" => Some(&["normal", "nowrap"]),
+        "white-space" => Some(&["normal", "nowrap", "pre", "pre-wrap", "pre-line"]),
         "text-overflow" => Some(&["clip", "ellipsis"]),
         "sizing-keyword" => Some(&["fit-content", "max-content", "min-content"]),
         "border-style" => Some(&["solid", "dashed", "dotted"]),
@@ -526,6 +528,7 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::BUTTON, tag::CHECKBOX, tag::SWITCH, tag::RADIO]), parent: None },
+    FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },

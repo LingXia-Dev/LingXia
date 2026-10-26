@@ -29,7 +29,7 @@ function Avatar({ src }: { src?: string }) {
 
 function Code({ testId, children }: { testId: string; children: string }) {
   return (
-    <text testId={testId} className="p-3 rounded-lg bg-surface-950 text-surface-50 text-xs font-mono break-all">
+    <text testId={testId} className="p-3 rounded-lg bg-surface-950 text-surface-50 text-xs font-mono break-all whitespace-pre-wrap">
       {children}
     </text>
   );

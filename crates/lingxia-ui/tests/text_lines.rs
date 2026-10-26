@@ -1,4 +1,6 @@
-use lingxia_ui::protocol::field::{FONT_SIZE, HEIGHT, LINE_HEIGHT, PADDING, TEXT_LINES};
+use lingxia_ui::protocol::field::{
+    FONT_SIZE, HEIGHT, LINE_HEIGHT, PADDING, TEXT_LINES, WHITE_SPACE,
+};
 use lingxia_ui::protocol::tag::{BUTTON, COLUMN, GRID, INPUT, ROW, STACK, TEXT};
 use lingxia_ui::{Renderer, protocol::decode};
 use serde_json::{Value, json};
@@ -11,6 +13,9 @@ fn wire(text: &str, lines: Option<u32>) -> Vec<Value> {
         json!(24),
         json!(PADDING),
         json!(4),
+        // These texts break at authored newlines.
+        json!(WHITE_SPACE),
+        json!("pre-line"),
     ];
     if let Some(lines) = lines {
         fields.extend([json!(TEXT_LINES), json!(lines)]);

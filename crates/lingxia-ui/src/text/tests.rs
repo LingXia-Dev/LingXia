@@ -51,7 +51,7 @@ fn strikethrough_tracks_wrapped_runs_and_cached_text_without_changing_layout() {
 #[test]
 fn text_alignment_updates_cached_glyph_positions_and_preserves_overrides() {
     let source = crate::session::tests::source(
-        "function render(){const right=useLocal('right',true);return h('column',{style:{textAlign:right.value?'right':'left'}},h('text',{style:{width:160,padding:8,borderWidth:2}},'MMMM\\nM'),h('text',{style:{width:160,padding:8,borderWidth:2,textAlign:'center'}},'MMMM\\nM'),h('button',{onClick:()=>right.set(!right.value)},'Toggle'))}",
+        "function render(){const right=useLocal('right',true);return h('column',{style:{textAlign:right.value?'right':'left'}},h('text',{style:{width:160,padding:8,borderWidth:2,whiteSpace:'pre-line'}},'MMMM\\nM'),h('text',{style:{width:160,padding:8,borderWidth:2,textAlign:'center',whiteSpace:'pre-line'}},'MMMM\\nM'),h('button',{onClick:()=>right.set(!right.value)},'Toggle'))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let mut right_pixels = None;
@@ -637,4 +637,69 @@ mod text_overflow {
         );
         assert!(display.commands.iter().any(|paint| matches!(paint, Paint::Rect { bounds, .. } if bounds[3] <= 3.0 && bounds[2] > 10.0)), "the underline is a thin rule");
     }
+}
+
+#[test]
+fn white_space_collapses_like_css_before_shaping() {
+    use crate::text::style::Collapse;
+    assert_eq!(Collapse::All.apply("  a \n\t b  c "), "a b c");
+    assert_eq!(Collapse::Spaces.apply("a  \n  b\t\tc\n"), "a\nb c\n");
+    assert_eq!(Collapse::None.apply(" a \n b "), " a \n b ");
+    let lines = |mode: &str| {
+        let source = crate::session::tests::source(&format!(
+            "function render(){{return h('column',{{style:{{whiteSpace:'{mode}'}}}},h('text',{{testId:'t',style:{{width:400}}}},'one\\n  two  three'))}}"
+        ));
+        let mut page = crate::ViewSession::new(&source).unwrap();
+        let display = page.layout(400, 200, 1.0).unwrap();
+        let node = display.nodes.iter().find(|n| n.test_id == "t").unwrap();
+        // Semantics keep the authored string whatever paint collapses.
+        assert_eq!(node.text, "one\n  two  three");
+        node.bounds[3]
+    };
+    let one = lines("normal");
+    assert!((lines("pre-line") - 2.0 * one).abs() < 1.0);
+    assert!((lines("pre-wrap") - 2.0 * one).abs() < 1.0);
+    assert!((lines("nowrap") - one).abs() < 1.0);
+}
+
+#[test]
+fn numeric_variants_inherit_as_opentype_features_and_reset_with_normal() {
+    use crate::protocol::field;
+    let records = crate::protocol::decode(
+        serde_json::json!([
+            0,
+            -1,
+            "",
+            "",
+            "",
+            1,
+            field::FONT_VARIANT_NUMERIC,
+            "tabular-nums slashed-zero",
+            2,
+            0,
+            "",
+            "",
+            "1010",
+            0,
+            2,
+            0,
+            "",
+            "",
+            "1010",
+            1,
+            field::FONT_VARIANT_NUMERIC,
+            "normal"
+        ])
+        .as_array()
+        .unwrap(),
+    )
+    .unwrap();
+    let styles = crate::text::style::computed(&records);
+    assert_eq!(styles[1].features, "\"tnum\" 1, \"zero\" 1");
+    assert_eq!(styles[2].features, "");
+    let source = crate::session::tests::source(
+        "function render(){return h('text',{style:{fontVariantNumeric:'tabular-nums'}},'1010')}",
+    );
+    let mut page = crate::ViewSession::new(&source).unwrap();
+    assert!(page.layout(200, 100, 1.0).is_ok());
 }

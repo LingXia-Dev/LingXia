@@ -450,7 +450,7 @@ function transformDeclaration(prop, raw, local, style, transform) {
 
 function declarations(nodes, vars, root, animationLowering) {
   nodes = nodes.flatMap(node => node.type === 'atrule' && node.name === 'supports' && supportedConditions.includes(node.params) ? node.nodes : [node]);
-  const style = {}, gradient = {}, shadow = {}, backdrop = {}, transform = {}, local = { ...vars };
+  const style = {}, gradient = {}, shadow = {}, backdrop = {}, transform = {}, variant = {}, local = { ...vars };
   for (const node of nodes) if (node.type === 'decl' && node.prop.startsWith('--')) local[node.prop] = node.value;
   const clamp = nodes.some(node => node.type === 'decl' && node.prop === '-webkit-line-clamp');
   for (const node of nodes) {
@@ -466,6 +466,14 @@ function declarations(nodes, vars, root, animationLowering) {
     if (prop.startsWith('--tw-backdrop-') || prop === 'backdrop-filter' || prop === '-webkit-backdrop-filter') { backdropDeclaration(prop, node.value, local, backdrop); continue; }
     if (prop.startsWith('--tw-shadow') || prop.startsWith('--tw-ring-') || prop.startsWith('--tw-inset-') || prop === 'box-shadow') { shadowDeclaration(prop, node.value, local, shadow); continue; }
     if (prop.startsWith('--tw-gradient-') || prop === 'background-image') { gradientDeclaration(prop, node.value, local, gradient); continue; }
+    const numeric = { '--tw-ordinal': 'ordinal', '--tw-slashed-zero': 'slashedZero', '--tw-numeric-figure': 'figure', '--tw-numeric-spacing': 'spacing', '--tw-numeric-fraction': 'fraction' }[prop];
+    if (numeric) { variant[numeric] = variables(node.value, local).trim(); continue; }
+    if (prop === 'font-variant-numeric') {
+      const value = variables(node.value, local).trim();
+      if (node.value.includes('var(--tw-')) variant.enabled = true;
+      else Object.assign(variant, { normal: value === 'normal', fixed: value === 'normal' ? undefined : value });
+      continue;
+    }
     if (/^--tw-(?:translate|scale)-[xy]$/.test(prop) || ['translate', 'scale', 'rotate', 'transform', 'transform-origin'].includes(prop)) {
       transformDeclaration(prop, node.value, local, style, transform); continue;
     }
@@ -502,7 +510,7 @@ function declarations(nodes, vars, root, animationLowering) {
     else if (prop in cssStyle) style[cssStyle[prop]] = longhand(prop, value);
     else unsupported(`${prop}: ${value}`);
   }
-  return { style, ...(Object.keys(transform).length ? { transform } : {}), ...(Object.keys(backdrop).length ? { backdrop } : {}), ...(Object.keys(gradient).length ? { gradient } : {}), ...(Object.keys(shadow).length ? { shadow } : {}) };
+  return { style, ...(Object.keys(transform).length ? { transform } : {}), ...(Object.keys(variant).length ? { numeric: variant } : {}), ...(Object.keys(backdrop).length ? { backdrop } : {}), ...(Object.keys(gradient).length ? { gradient } : {}), ...(Object.keys(shadow).length ? { shadow } : {}) };
 }
 
 function conditions(rule) {
