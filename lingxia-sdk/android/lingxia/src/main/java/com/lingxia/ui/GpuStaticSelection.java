@@ -23,7 +23,7 @@ final class GpuStaticSelection extends Drawable {
     private int which, pointer;
     private float dx, dy;
 
-    GpuStaticSelection(View view, Host host) { this.view = view; this.host = host; paint.setColor(0xff465cda); }
+    GpuStaticSelection(View view, Host host) { this.view = view; this.host = host; }
 
     /** The node carrying a static-text selection in the presented frame, or null. */
     JSONObject node() {
@@ -79,6 +79,7 @@ final class GpuStaticSelection extends Drawable {
 
     @Override public void draw(Canvas canvas) {
         JSONObject node = node(); if (node == null) return;
+        paint.setColor(GpuSelectionHandles.handleColor(host.frame()));
         float factor = host.scale(); int saved = canvas.save(); canvas.scale(factor, factor);
         for (int i = 0; i < 2; i++) {
             float[] end = GpuView.nativeHandleEndpoint(node.toString(), i);

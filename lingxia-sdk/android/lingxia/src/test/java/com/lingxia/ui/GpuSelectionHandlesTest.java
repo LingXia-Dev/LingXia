@@ -119,6 +119,7 @@ public class GpuSelectionHandlesTest {
     }
     @Test public void handleHitTargetsRespectAncestorClipsAndDoNotStealTextLineTaps() throws Exception {
         Client c=new Client();
+        c.frame.put("feedback",new JSONObject().put("selectionHandle",0xff465cdaL));
         c.frame.getJSONArray("nodes").getJSONObject(0).put("clips",new JSONArray().put(new JSONObject()
             .put("bounds",new JSONArray(new int[]{0,0,120,40})).put("radius",0)));
         assertFalse(c.touch(MotionEvent.ACTION_DOWN,80.75f,25));
@@ -128,11 +129,17 @@ public class GpuSelectionHandlesTest {
     @Test @Config(sdk=31) @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
     public void paintedHandlesRespectAncestorClips() throws Exception {
         Client c=new Client();
+        c.frame.put("feedback",new JSONObject().put("selectionHandle",0xff465cdaL));
         c.frame.getJSONArray("nodes").getJSONObject(0).put("clips",new JSONArray().put(new JSONObject()
             .put("bounds",new JSONArray(new int[]{0,0,120,40})).put("radius",0)));
         android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(120,90,android.graphics.Bitmap.Config.ARGB_8888);
         c.handles.draw(new android.graphics.Canvas(bitmap));
         assertEquals(0xff465cda,bitmap.getPixel(80,38)); assertEquals(0,bitmap.getPixel(80,43));
         bitmap.recycle();
+    }
+    @Test public void handlesTakeTheirColourFromTheFrame() throws Exception {
+        JSONObject frame=new JSONObject().put("feedback",new JSONObject().put("selectionHandle",0xFF8C9BFFL));
+        assertEquals(0xFF8C9BFF,GpuSelectionHandles.handleColor(frame));
+        assertEquals("no style, nothing drawn",0,GpuSelectionHandles.handleColor(new JSONObject()));
     }
 }

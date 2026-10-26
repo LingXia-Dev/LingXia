@@ -24,7 +24,7 @@ final class GpuSelectionHandles extends Drawable {
     private boolean collapsed, released, pending, querying;
     private long movement, failedGeneration=-1, gesture;
 
-    GpuSelectionHandles(GpuIme ime,Host host) { this.ime=ime; this.host=host; paint.setColor(0xff465cda); }
+    GpuSelectionHandles(GpuIme ime,Host host) { this.ime=ime; this.host=host; }
     boolean dragging() { return owner != null; }
     private JSONObject node() {
         if (!ime.menuActive()) return null;
@@ -113,6 +113,7 @@ final class GpuSelectionHandles extends Drawable {
     }
     @Override public void draw(Canvas canvas) {
         JSONObject node=node(); if (node==null) return;
+        paint.setColor(handleColor(host.frame()));
         float factor=host.scale(); int saved=canvas.save(); canvas.scale(factor,factor);
         JSONArray clips=node.optJSONArray("clips");
         for(int i=0;clips!=null && i<clips.length();i++) {
@@ -134,5 +135,10 @@ final class GpuSelectionHandles extends Drawable {
     }
     @Override public void setAlpha(int alpha) { paint.setAlpha(alpha); invalidateSelf(); }
     @Override public void setColorFilter(ColorFilter filter) { paint.setColorFilter(filter); invalidateSelf(); }
+    /** The handle colour the core chose for the frame's theme. */
+    static int handleColor(JSONObject frame) {
+        JSONObject style=frame == null ? null : frame.optJSONObject("feedback");
+        return style == null ? 0 : (int)style.optLong("selectionHandle");
+    }
     @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
 }
