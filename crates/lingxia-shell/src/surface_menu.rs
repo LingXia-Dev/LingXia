@@ -321,7 +321,10 @@ pub fn compose_surface_menu_parts(
             SurfaceMenuItemRole::Destructive,
         ));
     }
-    if context.has_closable_before && context.has_closable_after {
+    // Shown whenever a closable row sits below, even where it closes what
+    // "Close Others" closes (the first row under the root): users find menu
+    // items by position, and browsers list it the same way.
+    if context.has_closable_after {
         lifecycle.push(SurfaceMenuItem::built_in(
             SurfaceMenuBuiltinAction::CloseAfter,
             SurfaceMenuItemRole::Destructive,
@@ -371,7 +374,7 @@ mod tests {
     }
 
     #[test]
-    fn root_deduplicates_equivalent_batch_actions() {
+    fn root_keeps_close_below_beside_close_others() {
         let snapshot = compose_surface_menu(
             SurfaceMenuContext {
                 revision: 7,
@@ -393,7 +396,7 @@ mod tests {
         assert!(actions.contains(&SurfaceMenuAction::Switcher {
             action: SurfaceMenuBuiltinAction::CloseOthers,
         }));
-        assert!(!actions.contains(&SurfaceMenuAction::Switcher {
+        assert!(actions.contains(&SurfaceMenuAction::Switcher {
             action: SurfaceMenuBuiltinAction::CloseAfter,
         }));
     }

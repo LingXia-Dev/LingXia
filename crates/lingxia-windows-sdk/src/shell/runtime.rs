@@ -7142,7 +7142,11 @@ fn present_browser_tab_when_ready_inner(
                         if !owner.set_active_main_surface(surface_id) {
                             set_presented_browser_tab(previous_tab.clone());
                             set_presented_browser_group_appid(previous_group.clone());
-                            if let Some(previous_tab) = previous_tab.clone() {
+                            // A tab moved into the side panel meanwhile stays there.
+                            if let Some(previous_tab) = previous_tab
+                                .clone()
+                                .filter(|tab| !lingxia_browser::tab_is_standalone(tab))
+                            {
                                 present_browser_tab_when_ready(&owner_appid, previous_tab);
                             } else if let Err(error) = restore_presented_group_main() {
                                 log::warn!(
