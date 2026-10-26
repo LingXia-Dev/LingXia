@@ -135,6 +135,8 @@ pub struct Presenter {
     preparation_us: [u64; 4],
     /// Encode and submit time of each scene pass in the last direct preparation.
     pass_us: Vec<[u64; 2]>,
+    /// The bottom static segment rendered once while the rest of the page animates.
+    base: Option<(u64, wgpu::TextureView)>,
     scene_cache_hit: bool,
     renderer: crate::renderer::gpu::pass::SceneRenderer,
     scenes: crate::renderer::gpu::scene::SceneCache,
@@ -266,6 +268,7 @@ impl Presenter {
             presentation_us: [0; 4],
             preparation_us: [0; 4],
             pass_us: Vec::new(),
+            base: None,
             scene_cache_hit: false,
             renderer,
             scenes: Default::default(),
@@ -286,6 +289,7 @@ impl Presenter {
         self.depth = None;
         self.images.clear();
         self.composed = [None, None];
+        self.base = None;
         self.prepared = [None; 2];
         if let Some(compositor) = &mut self.compositor {
             compositor.clear();
@@ -400,6 +404,7 @@ impl Presenter {
             });
             let output = compositor.render_display(display, &device.device, &device.queue)?;
             self.composed[slot] = Some(output);
+            self.base = None;
             self.pass_us.clear();
             self.scenes.clear();
             self.images.clear();
@@ -426,7 +431,49 @@ impl Presenter {
         let images_us = crate::session::metrics::micros(started);
         let [mut encode_us, mut submit_us] = [0, 0];
         self.pass_us.clear();
-        for (index, scene) in self.scenes.scenes().enumerate() {
+        let target = &surface.target_views[slot];
+        let mut scenes = self.scenes.scenes();
+        // A kept bottom segment is copied in; only the passes above it draw again.
+        let base = self.scenes.base();
+        self.base = self.base.take().filter(|(id, view)| {
+            Some(*id) == base && view.texture().size() == target.texture().size()
+        });
+        if let Some(id) = base {
+            let first = scenes.next().ok_or("UI_SURFACE: no base scene")?;
+            if self.base.is_none() {
+                let view = crate::renderer::gpu::device::target_view(&device.device, width, height);
+                let [encode, submit] = self.renderer.draw(
+                    &device.device,
+                    &device.queue,
+                    first,
+                    &bindings,
+                    crate::renderer::gpu::pass::Target {
+                        size: size.clone(),
+                        view: &view,
+                        depth: self.depth.as_ref(),
+                        init: vello_gpu::TargetInit::Clear(vello_gpu::ClearSettings::default()),
+                    },
+                )?;
+                encode_us += encode;
+                submit_us += submit;
+                self.pass_us.push([encode, submit]);
+                self.base = Some((id, view));
+            }
+            let started = Instant::now();
+            let mut encoder = device.device.create_command_encoder(&Default::default());
+            let base = &self.base.as_ref().ok_or("UI_SURFACE: no base")?.1;
+            encoder.copy_texture_to_texture(
+                base.texture().as_image_copy(),
+                target.texture().as_image_copy(),
+                target.texture().size(),
+            );
+            device.queue.submit([encoder.finish()]);
+            let copy = crate::session::metrics::micros(started);
+            submit_us += copy;
+            self.pass_us.push([0, copy]);
+        }
+        for (index, scene) in scenes.enumerate() {
+            let first = index == 0 && base.is_none();
             let [encode, submit] = self.renderer.draw(
                 &device.device,
                 &device.queue,
@@ -434,9 +481,9 @@ impl Presenter {
                 &bindings,
                 crate::renderer::gpu::pass::Target {
                     size: size.clone(),
-                    view: &surface.target_views[slot],
+                    view: target,
                     depth: self.depth.as_ref(),
-                    init: if index == 0 {
+                    init: if first {
                         vello_gpu::TargetInit::Clear(vello_gpu::ClearSettings::default())
                     } else {
                         vello_gpu::TargetInit::SrcOver

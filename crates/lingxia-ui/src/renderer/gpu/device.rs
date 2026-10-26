@@ -154,7 +154,7 @@ impl Devices {
 }
 
 /// The offscreen target: drawn by render passes, sampled by the blit and composition.
-fn target_view(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureView {
+pub(crate) fn target_view(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureView {
     device
         .create_texture(&wgpu::TextureDescriptor {
             label: Some("LingXia sparse target"),
@@ -167,7 +167,10 @@ fn target_view(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureV
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         })
         .create_view(&wgpu::TextureViewDescriptor::default())

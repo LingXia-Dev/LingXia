@@ -219,7 +219,11 @@ pub(crate) struct SceneCache {
     segmented: bool,
     frame: Option<FrameKey>,
     segments: Vec<SegmentEntry>,
+    /// Identifies the bottom static segment's content while it stays unchanged.
+    base: Option<u64>,
 }
+
+static BASES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 impl Default for SceneCache {
     fn default() -> Self {
@@ -229,6 +233,7 @@ impl Default for SceneCache {
             segmented: false,
             frame: None,
             segments: Vec::new(),
+            base: None,
         }
     }
 }
@@ -250,6 +255,7 @@ impl SceneCache {
         self.segmented = false;
         self.frame = None;
         self.segments.clear();
+        self.base = None;
         if self.current.matches(display) {
             return Ok(true);
         }
@@ -315,6 +321,7 @@ impl SceneCache {
             .iter()
             .zip(&next)
             .all(|(key, entry)| key.is_none() || entry.is_some());
+        let base_kept = !plan[0].animated && next[0].is_some();
         let mut spare = old.into_iter().flatten();
         let images = display
             .bitmaps()
@@ -354,7 +361,20 @@ impl SceneCache {
         if bitmap_bytes > 8 * 1024 * 1024 {
             self.segments.iter_mut().for_each(|entry| entry.key = None);
         }
+        self.base = if plan[0].animated {
+            None
+        } else if base_kept && self.base.is_some() {
+            self.base
+        } else {
+            Some(BASES.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+        };
         Ok(hit)
+    }
+
+    /// While animating over a static bottom segment: an id that changes whenever that
+    /// segment's pixels may change, so its rendering can be kept between frames.
+    pub(crate) fn base(&self) -> Option<u64> {
+        self.base.filter(|_| self.segmented)
     }
 
     /// Scenes to draw in order; the first clears the target.
@@ -443,9 +463,12 @@ mod tests {
         );
         assert_eq!(plan[0].open_at_end, 1);
         assert_eq!(plan[2].open_at_end, 0);
+        let base = cache.base();
+        assert!(base.is_some());
         for angle in [10.0, 20.0, 30.0] {
             assert!(cache.prepare(&spun(&display, angle), &mut glyphs).unwrap());
             assert_eq!(cache.scenes().count(), 3);
+            assert_eq!(cache.base(), base, "the bottom segment's pixels are kept");
         }
         let shown = spun(&display, 40.0);
         let mut hidden = spun(&display, 40.0);
@@ -457,8 +480,10 @@ mod tests {
         );
         assert!(!cache.prepare(&hidden, &mut glyphs).unwrap());
         assert!(cache.prepare(&hidden, &mut glyphs).unwrap());
+        assert_eq!(cache.base(), base, "the caret blinks above the bottom segment");
         assert!(!cache.prepare(&display, &mut glyphs).unwrap());
         assert_eq!(cache.scenes().count(), 1);
+        assert_eq!(cache.base(), None, "a still page keeps no base");
         assert!(cache.segments.is_empty());
     }
 
