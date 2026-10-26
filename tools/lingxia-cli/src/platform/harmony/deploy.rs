@@ -1127,6 +1127,7 @@ pub fn snapshot_display(device_id: Option<&str>) -> Result<Vec<u8>> {
         .context("Failed to create a capture file")?;
     let local_path = local.path().to_string_lossy().into_owned();
     run(&["file", "recv", REMOTE, &local_path])?;
+    let _ = run(&["shell", "rm", "-f", REMOTE]);
     std::fs::read(local.path()).context("Failed to read the pulled capture")
 }
 
