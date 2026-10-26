@@ -326,9 +326,17 @@ impl LxApp {
         appearance: ResolvedAppearance,
     ) -> Result<(), LxAppError> {
         let capsule_rect = if self.get_navbar_state(&page.path()).is_custom_navigation() {
-            self.runtime
+            let measured = match self
+                .runtime
                 .measure_page_chrome_capsule(self.appid.clone())
-                .await?
+                .await
+            {
+                Ok(measured) => measured,
+                // The first presenter publishes once it mounts.
+                Err(PlatformError::PresenterUnavailable) => return Ok(()),
+                Err(error) => return Err(error.into()),
+            };
+            measured
                 .map(|payload| {
                     serde_json::from_str::<PageChromeRect>(&payload)
                         .map_err(|error| LxAppError::Runtime(error.to_string()))

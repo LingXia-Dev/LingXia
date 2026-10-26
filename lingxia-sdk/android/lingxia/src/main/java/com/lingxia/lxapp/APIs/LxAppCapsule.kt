@@ -13,8 +13,8 @@ internal object LxAppCapsule {
     fun getCapsuleRect(callbackId: Long, appId: String) {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
-            LxLog.w(TAG, "Current activity not available")
-            NativeApi.onCallback(callbackId, false, "2001") // System error
+            // Before an activity mounts: Rust publishes again once one does.
+            NativeApi.onCallback(callbackId, false, LxApp.PRESENTER_UNAVAILABLE)
             return
         }
 

@@ -171,7 +171,8 @@ class LxAppActivity : AppCompatActivity() {
                 activity.runOnUiThread { updateTask() }
                 return true
             } else {
-                Log.w(TAG, "No matching activity found for appId: $appId (current: ${activity?.appId})")
+                // Normal before this app's activity mounts; it reads the state then.
+                Log.d(TAG, "No matching activity found for appId: $appId (current: ${activity?.appId})")
                 return false
             }
         }
@@ -1521,7 +1522,8 @@ class LxAppActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         webViewContainer.visibility = View.VISIBLE
-        attachWebViewToUI(currentWebView)
+        // On a cold start the first screen is still being presented; it attaches itself.
+        currentWebView?.let(::attachWebViewToUI)
         val currentPath = currentWebView?.getCurrentPath()
         if (!currentPath.isNullOrEmpty()) {
             applyPageOrientation(currentPath)

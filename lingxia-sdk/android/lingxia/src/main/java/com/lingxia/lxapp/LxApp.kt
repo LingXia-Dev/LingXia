@@ -28,7 +28,7 @@ object LxApp {
      * the patch and the first presenter reads it, so this must stay separable
      * from the generic failure code (mirrors PRESENTER_UNAVAILABLE_CODE in rust).
      */
-    private const val PRESENTER_UNAVAILABLE = "1001"
+    internal const val PRESENTER_UNAVAILABLE = "1001"
 
     /** App id of the home LxApp, populated by the native layer during [Lingxia.initializeRuntime]. */
     @JvmStatic
@@ -275,7 +275,8 @@ object LxApp {
         return if (activity != null) {
             LxAppActivity.updateTabBarUI(appId)
         } else {
-            Log.w(TAG, "No matching activity for appId: $appId in updateTabBarUI")
+            // Normal before the activity mounts; it reads the state then.
+            Log.d(TAG, "No matching activity for appId: $appId in updateTabBarUI")
             false
         }
     }
@@ -289,7 +290,7 @@ object LxApp {
     fun updateTabBarUIAsync(callbackId: Long, appId: String) {
         val activity = getCurrentActivity()?.takeIf { it.getAppId() == appId }
         if (activity == null) {
-            Log.w(TAG, "No matching activity for appId: $appId in updateTabBarUIAsync")
+            Log.d(TAG, "No matching activity for appId: $appId in updateTabBarUIAsync")
             NativeApi.onCallback(callbackId, false, PRESENTER_UNAVAILABLE)
             return
         }
@@ -310,7 +311,7 @@ object LxApp {
             activity.runOnUiThread { LxAppActivity.updateNavBarUI(appId) }
             true
         } else {
-            Log.w(TAG, "No matching activity for appId: $appId in updateNavBarUI")
+            Log.d(TAG, "No matching activity for appId: $appId in updateNavBarUI")
             false
         }
     }
@@ -322,7 +323,7 @@ object LxApp {
             activity.runOnUiThread { LxAppActivity.updateOrientationUI(appId) }
             true
         } else {
-            Log.w(TAG, "No matching activity for appId: $appId in updateOrientationUI")
+            Log.d(TAG, "No matching activity for appId: $appId in updateOrientationUI")
             false
         }
     }

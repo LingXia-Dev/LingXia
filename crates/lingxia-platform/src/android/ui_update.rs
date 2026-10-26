@@ -117,7 +117,8 @@ impl UIUpdate for Platform {
                 Ok(())
             })
         })
-        .await?;
+        .await
+        .map_err(crate::error::unmounted_presenter_or)?;
         Ok((payload != "null").then_some(payload))
     }
 
@@ -162,19 +163,19 @@ impl UIUpdate for Platform {
                 jni_sig!("(Ljava/lang/String;)Z"),
                 &[JValue::Object(&appid_jstring)],
             )?;
+            // False only when no activity hosts this appid yet; it reads the state when it mounts.
             if result.z()? {
                 Ok(())
             } else {
-                Err(PlatformError::Platform(
-                    "updateTabBarUI returned false".to_string(),
-                ))
+                Err(PlatformError::PresenterUnavailable)
             }
         })
-        .map_err(|e| {
-            PlatformError::Platform(format!(
+        .map_err(|e| match e {
+            PlatformError::PresenterUnavailable => e,
+            e => PlatformError::Platform(format!(
                 "Failed to update TabBar UI for appId: {}: {}",
                 appid, e
-            ))
+            )),
         })
     }
 

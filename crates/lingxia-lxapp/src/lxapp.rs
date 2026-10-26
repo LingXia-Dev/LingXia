@@ -1543,11 +1543,19 @@ impl LxApp {
 
     pub fn sync_host_ui(&self) {
         let revision = self.next_page_chrome_revision();
-        if let Err(err) = self.runtime.update_navbar_ui(self.appid.clone()) {
-            warn!("Failed to update host NavigationBar UI: {}", err).with_appid(self.appid.clone());
+        // Before an activity mounts there is nothing to update; it reads the state then.
+        match self.runtime.update_navbar_ui(self.appid.clone()) {
+            Ok(()) | Err(lingxia_platform::error::PlatformError::PresenterUnavailable) => {}
+            Err(err) => {
+                warn!("Failed to update host NavigationBar UI: {}", err)
+                    .with_appid(self.appid.clone());
+            }
         }
-        if let Err(err) = self.runtime.update_tabbar_ui(self.appid.clone()) {
-            warn!("Failed to update host TabBar UI: {}", err).with_appid(self.appid.clone());
+        match self.runtime.update_tabbar_ui(self.appid.clone()) {
+            Ok(()) | Err(lingxia_platform::error::PlatformError::PresenterUnavailable) => {}
+            Err(err) => {
+                warn!("Failed to update host TabBar UI: {}", err).with_appid(self.appid.clone());
+            }
         }
         if let Ok(page) = self.current_page() {
             let appearance = self.appearance_state().resolved;
