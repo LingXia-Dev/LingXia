@@ -1,13 +1,9 @@
 //! Cross-platform website favicon disk cache.
 
-use bytes::Bytes;
-use http::Request;
-use http_body_util::{BodyExt, Empty};
-use rong_rt::http as host_http;
+use lingxia_transfer::store::FetchRequest;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
-use std::io::Error as IoError;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -145,52 +141,35 @@ pub fn store_for_url(cache_root: &Path, page_url: &str, bytes: &[u8]) -> Option<
     let origin = normalized_origin(page_url)?;
     let key = cache_key(&origin);
     let extension = image_extension("", bytes)?;
-    store(cache_root, &key, extension, bytes).ok()?;
+    store_file(cache_root, &key, extension, bytes).ok()?;
     find_cached(cache_root, &key)
 }
 
 async fn fetch_and_store(cache_root: &Path, origin: &str, key: &str) -> Result<(), String> {
-    let url = format!("{origin}/favicon.ico");
-    let request = Request::builder()
-        .method("GET")
-        .uri(&url)
-        .header(
-            http::header::ACCEPT,
-            "image/png,image/x-icon,image/*;q=0.8,*/*;q=0.1",
-        )
-        .body(
-            Empty::<Bytes>::new()
-                .map_err(|_| IoError::other("favicon request body error"))
-                .boxed(),
-        )
-        .map_err(|error| format!("build request: {error}"))?;
-    let response = host_http::send_with_small_body_limit(
-        request,
-        MAX_FAVICON_BYTES,
-        host_http::RequestOptions::new()
-            .with_connect_timeout(Duration::from_secs(5))
-            .with_request_timeout(Duration::from_secs(10)),
-    )
-    .await
-    .map_err(|error| format!("request: {error}"))?;
-    if !response.status.is_success() {
-        return Err(format!("HTTP {}", response.status));
-    }
-    let content_type = response
-        .headers
-        .get(http::header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    let bytes = host_http::collect_body(response.body)
+    let store = lingxia_transfer::store::shared().ok_or("HTTP store unavailable")?;
+    // Shared across apps on purpose: a site's icon is the same for every caller.
+    let mut request = FetchRequest::new(format!("{origin}/favicon.ico"), "host:favicon");
+    request.headers = vec![(
+        http::header::ACCEPT.to_string(),
+        "image/png,image/x-icon,image/*;q=0.8,*/*;q=0.1".to_string(),
+    )];
+    request.max_bytes = MAX_FAVICON_BYTES as u64;
+    request.timeout = Duration::from_secs(10);
+    request.connect_timeout = Some(Duration::from_secs(5));
+    // The origin is the page's own; an http page has an http icon.
+    request.allow_http = true;
+    let mut bytes = Vec::new();
+    let meta = store
+        .fetch_into(request, &mut bytes)
         .await
-        .map_err(|error| format!("read body: {error}"))?;
-    if bytes.is_empty() || bytes.len() > MAX_FAVICON_BYTES {
-        return Err("empty or oversized image".to_string());
+        .map_err(|error| error.to_string())?;
+    if bytes.is_empty() {
+        return Err("empty image".to_string());
     }
+    let content_type = meta.content_type.unwrap_or_default().to_ascii_lowercase();
     let extension = image_extension(&content_type, &bytes)
         .ok_or_else(|| "response is not a supported image".to_string())?;
-    store(cache_root, key, extension, &bytes)
+    store_file(cache_root, key, extension, &bytes)
 }
 
 fn image_extension(content_type: &str, bytes: &[u8]) -> Option<&'static str> {
@@ -225,7 +204,7 @@ fn image_extension(content_type: &str, bytes: &[u8]) -> Option<&'static str> {
     None
 }
 
-fn store(cache_root: &Path, key: &str, extension: &str, bytes: &[u8]) -> Result<(), String> {
+fn store_file(cache_root: &Path, key: &str, extension: &str, bytes: &[u8]) -> Result<(), String> {
     let directory = cache_directory(cache_root);
     std::fs::create_dir_all(&directory)
         .map_err(|error| format!("create {}: {error}", directory.display()))?;
@@ -346,13 +325,13 @@ mod tests {
     #[test]
     fn cache_files_are_replaced_atomically_by_format() {
         let directory = tempfile::tempdir().unwrap();
-        store(directory.path(), "key", "ico", &[0, 0, 1, 0]).unwrap();
+        store_file(directory.path(), "key", "ico", &[0, 0, 1, 0]).unwrap();
         assert!(
             find_cached(directory.path(), "key")
                 .unwrap()
                 .ends_with("key.ico")
         );
-        store(directory.path(), "key", "png", b"png").unwrap();
+        store_file(directory.path(), "key", "png", b"png").unwrap();
         let cached = find_cached(directory.path(), "key").unwrap();
         assert!(cached.ends_with("key.png"));
         assert!(!cache_directory(directory.path()).join("key.ico").exists());
@@ -379,5 +358,39 @@ mod tests {
         let second = store_for_url(directory.path(), "https://example.com/b", png).unwrap();
         assert_eq!(first, second);
         assert_eq!(std::fs::read(first).unwrap(), png);
+    }
+
+    #[tokio::test]
+    async fn a_site_icon_is_fetched_through_the_host_store() {
+        use std::io::{Read, Write};
+        let directory = tempfile::tempdir().unwrap();
+        lingxia_transfer::store::install(
+            lingxia_transfer::store::Store::open(directory.path().join("http"), 1 << 20).unwrap(),
+        );
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 1024];
+            let read = stream.read(&mut request).unwrap();
+            let png = b"\x89PNG\r\n\x1a\nicon";
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                png.len()
+            )
+            .unwrap();
+            stream.write_all(png).unwrap();
+            String::from_utf8_lossy(&request[..read]).to_string()
+        });
+        fetch_and_store(directory.path(), &origin, "site")
+            .await
+            .unwrap();
+        assert!(server.join().unwrap().starts_with("GET /favicon.ico "));
+        assert!(
+            find_cached(directory.path(), "site")
+                .unwrap()
+                .ends_with("site.png")
+        );
     }
 }
