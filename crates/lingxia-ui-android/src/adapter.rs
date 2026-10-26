@@ -76,6 +76,8 @@ pub(super) struct AndroidAdapter {
     images: Mutex<HashMap<u64, Box<dyn Send>>>,
     /// CPU frames waiting for the raster pool.
     raster: OnceLock<Arc<lingxia_ui::renderer::pool::Mailbox<(DisplayList, CommitTicket)>>>,
+    /// UI-thread time of the last frame handoff to Java, for the present log.
+    reconcile_us: AtomicU64,
 }
 
 pub(super) enum Frame {
@@ -115,6 +117,7 @@ impl AndroidAdapter {
             host: OnceLock::new(),
             images: Mutex::new(HashMap::new()),
             raster: OnceLock::new(),
+            reconcile_us: AtomicU64::new(0),
         }
     }
 
@@ -527,6 +530,7 @@ impl AccessibilitySink for AndroidAdapter {
 
 impl InputMethod for AndroidAdapter {
     fn reconcile(&self, frame: &FrameSnapshot) {
+        let started = Instant::now();
         self.java(|env, platform| {
             let snapshot = env.new_string(&frame.json)?;
             env.call_method(
@@ -536,7 +540,9 @@ impl InputMethod for AndroidAdapter {
                 &[JValue::Object(&snapshot), JValue::Float(frame.scale)],
             )?;
             Ok(())
-        })
+        });
+        self.reconcile_us
+            .store(started.elapsed().as_micros() as u64, Ordering::Relaxed);
     }
     fn focus(&self, editor: &Dispatch, _: &FrameSnapshot) {
         let Dispatch::Editor {
@@ -670,11 +676,18 @@ impl HostEvents for AndroidAdapter {
         self.void(jni_str!("loaded"));
     }
     fn presented(&self, frame: &FrameSnapshot, timing: &FrameTiming) {
-        let metrics = serde_json::from_str::<serde_json::Value>(&frame.json)
-            .map(|snapshot| snapshot["metrics"].to_string())
-            .unwrap_or_default();
+        let started = Instant::now();
+        // Borrow the metrics text instead of building the whole frame as a value.
+        let metrics =
+            serde_json::from_str::<HashMap<&str, &serde_json::value::RawValue>>(&frame.json)
+                .ok()
+                .and_then(|snapshot| snapshot.get("metrics").map(|raw| raw.get().to_owned()))
+                .unwrap_or_default();
+        let metrics_us = started.elapsed().as_micros();
+        let started = Instant::now();
+        self.void(jni_str!("presented"));
         info(&format!(
-            "present generation={} surface={} size={}x{} workerMs={} workerQueueUs={} uiWaitUs={} uiUs={} rebuild={} caretVisible={} nodes={} images={} metrics={metrics}",
+            "present generation={} surface={} size={}x{} workerMs={} workerQueueUs={} uiWaitUs={} uiUs={} reconcileUs={} metricsUs={metrics_us} presentedUs={} rebuild={} caretVisible={} nodes={} images={} metrics={metrics}",
             frame.generation.get(),
             self.gpu.load(Ordering::Acquire),
             frame.width,
@@ -683,12 +696,13 @@ impl HostEvents for AndroidAdapter {
             timing.queue_us,
             timing.wait_us,
             timing.main_us,
+            self.reconcile_us.load(Ordering::Relaxed),
+            started.elapsed().as_micros(),
             timing.rebuild,
             timing.caret_visible,
             frame.frame.nodes.len(),
             frame.loaded_images,
         ));
-        self.void(jni_str!("presented"));
     }
     fn message(&self, connection: ConnectionTicket, message: &str) {
         self.java(|env, platform| {
