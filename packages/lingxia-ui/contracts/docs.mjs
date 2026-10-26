@@ -276,6 +276,10 @@ const limitNotes = {
   transitionMs: 'Longest transition duration or delay, in milliseconds (gated motion).',
   evalBudgetMs: 'Wall-clock budget for one View render or callback; past it the page fails with UI_TIMEOUT.',
   evalBudgetDebugMultiplier: 'Multiplier on that budget in unoptimized (debug) builds.',
+  editorTextBytes: 'Text one editor holds, as UTF-8.',
+  inputRequestBytes: 'One input-method request from the platform, as UTF-8 JSON.',
+  inputBatchEdits: 'Edits in one input-method batch.',
+  clipboardItems: 'Clipboard items one paste reads.',
 };
 
 const size = value => value >= 1 << 20 && value % (1 << 20) === 0 ? `${value / (1 << 20)} MiB`

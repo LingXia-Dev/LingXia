@@ -7,8 +7,8 @@ use std::time::Instant;
 mod history;
 use history::{History, Point};
 
-pub const MAX_TEXT_BYTES: usize = 64 * 1024;
-pub const MAX_BATCH_EDITS: usize = 64;
+pub const MAX_TEXT_BYTES: usize = crate::protocol::limits::EDITOR_TEXT_BYTES;
+pub const MAX_BATCH_EDITS: usize = crate::protocol::limits::INPUT_BATCH_EDITS;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {

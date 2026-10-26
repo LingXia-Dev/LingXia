@@ -19,5 +19,9 @@ Page-wide bounds the runtime and the native decoder both enforce. Exceeding one 
 | `transitionMs` | 10000 | Longest transition duration or delay, in milliseconds (gated motion). |
 | `evalBudgetMs` | 100 | Wall-clock budget for one View render or callback; past it the page fails with UI_TIMEOUT. |
 | `evalBudgetDebugMultiplier` | 8 | Multiplier on that budget in unoptimized (debug) builds. |
+| `editorTextBytes` | 65536 (64 KiB) | Text one editor holds, as UTF-8. |
+| `inputRequestBytes` | 524288 (512 KiB) | One input-method request from the platform, as UTF-8 JSON. |
+| `inputBatchEdits` | 64 | Edits in one input-method batch. |
+| `clipboardItems` | 128 | Clipboard items one paste reads. |
 
 Wire ABI: 1. Highest field id: 183.

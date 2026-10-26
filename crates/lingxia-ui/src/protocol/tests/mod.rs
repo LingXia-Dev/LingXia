@@ -710,6 +710,10 @@ fn contract_drift(schema: &Value) -> Vec<String> {
                 "evalBudgetDebugMultiplier",
                 limits::EVAL_BUDGET_DEBUG_MULTIPLIER,
             ),
+            ("editorTextBytes", limits::EDITOR_TEXT_BYTES),
+            ("inputRequestBytes", limits::INPUT_REQUEST_BYTES),
+            ("inputBatchEdits", limits::INPUT_BATCH_EDITS),
+            ("clipboardItems", limits::CLIPBOARD_ITEMS),
         ];
         let names: Vec<&str> = native.iter().map(|(name, _)| *name).collect();
         for (name, value) in table {

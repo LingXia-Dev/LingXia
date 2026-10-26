@@ -33,6 +33,12 @@ public final class GpuInput {
     public static final String KEY_STEP = "step";
     public static final String KEY_PICKER = "picker";
 
+    /** The core's editor limits; an input mirror holds itself to them. */
+    public static final int LIMIT_EDITOR_TEXT_BYTES = 65536;
+    public static final int LIMIT_INPUT_REQUEST_BYTES = 524288;
+    public static final int LIMIT_INPUT_BATCH_EDITS = 64;
+    public static final int LIMIT_CLIPBOARD_ITEMS = 128;
+
     /** The Android autofill hint for an HTML autocomplete token, or null. */
     public static String autofillHint(String token) {
         switch (token) {

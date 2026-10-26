@@ -461,6 +461,10 @@ pub mod limits {
     pub const TRANSITION_MS: usize = 10000;
     pub const EVAL_BUDGET_MS: usize = 100;
     pub const EVAL_BUDGET_DEBUG_MULTIPLIER: usize = 8;
+    pub const EDITOR_TEXT_BYTES: usize = 65536;
+    pub const INPUT_REQUEST_BYTES: usize = 524288;
+    pub const INPUT_BATCH_EDITS: usize = 64;
+    pub const CLIPBOARD_ITEMS: usize = 128;
 }
 
 /// Environment keys and where each comes from: `device` facts, a host `push`, or the `session`.

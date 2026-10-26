@@ -5,7 +5,7 @@ use crate::{
 };
 use serde::Deserialize;
 
-pub const MAX_REQUEST_BYTES: usize = 512 * 1024;
+pub const MAX_REQUEST_BYTES: usize = crate::protocol::limits::INPUT_REQUEST_BYTES;
 
 #[derive(Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]

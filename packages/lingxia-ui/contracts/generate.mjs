@@ -17,7 +17,7 @@ const screaming = name => name.replace(/-/g, '_').replace(/([a-z0-9])([A-Z])/g, 
 const object = entries => JSON.stringify(Object.fromEntries(entries));
 
 const childKinds = ['none', 'text', 'content', 'any', 'rows', 'options', 'runs'];
-const limitNames = ['nodes', 'depth', 'animationBytes', 'itemKeyBytes', 'imageBytes', 'sourceBytes', 'visibleImageBytes', 'decodedImageBytes', 'runs', 'transitionMs', 'evalBudgetMs', 'evalBudgetDebugMultiplier'];
+const limitNames = ['nodes', 'depth', 'animationBytes', 'itemKeyBytes', 'imageBytes', 'sourceBytes', 'visibleImageBytes', 'decodedImageBytes', 'runs', 'transitionMs', 'evalBudgetMs', 'evalBudgetDebugMultiplier', 'editorTextBytes', 'inputRequestBytes', 'inputBatchEdits', 'clipboardItems'];
 
 function validate(schema) {
   validateRoles(schema.roles ?? []);
@@ -429,6 +429,9 @@ public final class GpuInput {
 
 ${[...options('input-keyboard'), ...options('enter-key-hint'), ...options('auto-capitalize'),
   ...Object.entries(keys).map(([name, key]) => `    public static final String KEY_${constant(name)} = ${JSON.stringify(key)};`)].join('\n')}
+
+    /** The core's editor limits; an input mirror holds itself to them. */
+${['editorTextBytes', 'inputRequestBytes', 'inputBatchEdits', 'clipboardItems'].map(name => `    public static final int LIMIT_${constant(name)} = ${schema.limits[name]};`).join('\n')}
 
     /** The Android autofill hint for an HTML autocomplete token, or null. */
     public static String autofillHint(String token) {
