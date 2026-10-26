@@ -51,6 +51,8 @@ interface GpuPlatform {
     /** Show recovery chrome; {@code message} -1 clears it, {@code action} -1 offers none. */
     void recovery(int message, int action, boolean retained, String error);
     void bootstrapOverdue(boolean overdue);
+    /** Show the page from {@code GpuView.nativeReveal}; a held surface stays hidden until a later {@code revealed(false)}. */
+    void revealed(boolean holdSurface);
     /** Put text on the clipboard: an accessibility Copy of a static selection. */
     void copyText(String text);
 }

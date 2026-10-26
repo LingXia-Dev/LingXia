@@ -116,6 +116,8 @@ pub fn register_natives(env: &mut Env, class: &JClass) -> jni::errors::Result<()
         method!("nativeConnection", "(J)J", connection),
         method!("nativeInputBlocked", "(J)Z", input_blocked),
         method!("nativeWindowFocus", "(JZ)V", window_focus),
+        method!("nativeReveal", "(JZ)V", reveal),
+        method!("nativeWindowVisible", "(JZ)V", window_visible),
         method!("nativeBridgeReady", "(J)Z", bridge_ready),
         method!("nativeFail", "(JLjava/lang/String;)V", fail),
         method!(
@@ -372,6 +374,30 @@ extern "system" fn frame_current<'a>(
     handle: jlong,
 ) -> jboolean {
     run(&mut env, |_| Ok(host(handle)?.frame_is_current()))
+}
+
+extern "system" fn reveal<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    surface_holds_frame: jboolean,
+) {
+    run(&mut env, |_| {
+        host(handle)?.reveal(surface_holds_frame);
+        Ok(())
+    })
+}
+
+extern "system" fn window_visible<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    visible: jboolean,
+) {
+    run(&mut env, |_| {
+        host(handle)?.window_visible(visible);
+        Ok(())
+    })
 }
 
 extern "system" fn window_focus<'a>(

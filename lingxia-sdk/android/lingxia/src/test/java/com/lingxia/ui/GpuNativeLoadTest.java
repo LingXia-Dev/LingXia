@@ -65,6 +65,7 @@ public class GpuNativeLoadTest {
         public void bootstrapOverdue(boolean overdue) { }
         final ArrayList<String> copied = new ArrayList<>();
         public void copyText(String text) { copied.add(text); }
+        public void revealed(boolean hold) { }
 
         /** Run posted work and vsyncs until {@code done} holds. */
         void pump(long host, java.util.function.BooleanSupplier done) throws InterruptedException {
