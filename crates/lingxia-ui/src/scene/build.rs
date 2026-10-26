@@ -853,6 +853,20 @@ impl Renderer {
                 });
             }
             if record.tag == tag::IMAGE {
+                let fit = match record.string(field::IMAGE_FIT) {
+                    Some("contain") => crate::scene::image::Fit::Contain,
+                    Some("fill") => crate::scene::image::Fit::Fill,
+                    _ => crate::scene::image::Fit::Cover,
+                };
+                // A small stand-in, scaled smooth, shows until the image covers it.
+                if let Some(placeholder) = record.string(field::IMAGE_PLACEHOLDER) {
+                    commands.push(Paint::Image {
+                        src: placeholder.to_owned(),
+                        bounds: control_bounds,
+                        radius: if content_clip.is_some() { 0.0 } else { radius },
+                        fit,
+                    });
+                }
                 commands.push(Paint::Image {
                     src: record
                         .string(field::IMAGE_SRC)
@@ -860,11 +874,7 @@ impl Renderer {
                         .to_owned(),
                     bounds: control_bounds,
                     radius: if content_clip.is_some() { 0.0 } else { radius },
-                    fit: match record.string(field::IMAGE_FIT) {
-                        Some("contain") => crate::scene::image::Fit::Contain,
-                        Some("fill") => crate::scene::image::Fit::Fill,
-                        _ => crate::scene::image::Fit::Cover,
-                    },
+                    fit,
                 });
             }
             input_layouts.push(

@@ -272,3 +272,28 @@ fn a_textarea_with_rows_grows_with_its_lines_up_to_max_rows() {
     assert_eq!(height(3), 60.0);
     assert_eq!(height(9), 80.0);
 }
+
+#[test]
+fn an_image_placeholder_paints_first_and_loads_alongside() {
+    use crate::scene::paint::Paint;
+    let source = crate::session::tests::source(
+        "function render(){return h('column',{},h('image',{src:'photo.jpg',placeholder:'photo-tiny.jpg',alt:'Lake',style:{width:100,height:60}}))}",
+    );
+    let mut page = crate::ViewSession::new(&source).unwrap();
+    let display = page.layout(200, 200, 1.0).unwrap();
+    let images: Vec<&str> = display
+        .commands
+        .iter()
+        .filter_map(|paint| match paint {
+            Paint::Image { src, .. } => Some(src.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(images, ["photo-tiny.jpg", "photo.jpg"]);
+    let requested: Vec<String> = page
+        .image_requests()
+        .into_iter()
+        .map(|r| r.source)
+        .collect();
+    assert_eq!(requested, ["photo-tiny.jpg", "photo.jpg"]);
+}

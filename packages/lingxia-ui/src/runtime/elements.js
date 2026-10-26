@@ -214,6 +214,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       wire('imageSrc', props.src);
       if (props.alt !== undefined) wire('imageAlt', props.alt);
       if (props.retryKey !== undefined) wire('imageRetryKey', props.retryKey);
+      if (props.placeholder !== undefined) wire('imagePlaceholder', props.placeholder);
       if (props.onLoad) on('onImageLoad', props.onLoad, 'void', true);
       if (props.onError) on('onImageError', props.onError, 'void', true);
       break;

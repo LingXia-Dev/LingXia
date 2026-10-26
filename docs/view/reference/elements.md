@@ -107,6 +107,7 @@ Children: none. May sit inside a composed `<button>` or `<checkbox>`.
 | Prop | Type | Required |
 | --- | --- | --- |
 | `src` | `string` | yes |
+| `placeholder` | `string` |  |
 | `alt` | `string` |  |
 | `retryKey` | `string` |  |
 | `onLoad` | `() => void` |  |

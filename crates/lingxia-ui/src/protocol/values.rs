@@ -352,7 +352,7 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             "UI_INPUT: invalid min or max",
         ),
         field::ON_INPUT | field::ON_SUBMIT => ensure(handle(value), "UI_INPUT: invalid callback"),
-        field::IMAGE_SRC => ensure(
+        field::IMAGE_SRC | field::IMAGE_PLACEHOLDER => ensure(
             value.as_str().is_some_and(|s| {
                 !s.is_empty() && s.len() <= limits::SOURCE_BYTES && !s.contains('\0')
             }),
