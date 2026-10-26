@@ -43,7 +43,7 @@ export function vector(props, fit) {
   for (const [id, gradient] of Object.entries(gradients)) vectorGradient(id, gradient);
   for (const path of props.paths) {
     if (!plain(path) || Object.keys(path).some(k => !pathKeys.includes(k)) ||
-        typeof path.d !== 'string' || !path.d.length || path.d.length > 16384) throw Error('UI_VECTOR: invalid path');
+        typeof path.d !== 'string' || !path.d.length || path.d.length > limits.vectorPathBytes) throw Error('UI_VECTOR: invalid path');
     for (const key of ['fill', 'stroke']) {
       const value = path[key];
       if (value === undefined || value === 'none' || value === 'currentColor' || hexColor(value) || isRole(value)) continue;
@@ -63,7 +63,7 @@ export function vector(props, fit) {
       throw Error('UI_VECTOR: invalid stroke width');
   }
   const source = JSON.stringify({ viewBox: box, paths: props.paths, ...(Object.keys(gradients).length ? { gradients } : {}), ...(fit === undefined ? {} : { fit }) });
-  if (source.length > 32768) throw Error('UI_VECTOR: source too large');
+  if (source.length > limits.vectorSourceBytes) throw Error('UI_VECTOR: source too large');
   return source;
 }
 
@@ -133,13 +133,13 @@ export function image(props) {
 }
 
 export function listKeys(props) {
-  if (!Number.isSafeInteger(props.count) || props.count < 0 || props.count > 100000 || typeof props.row !== 'function' ||
+  if (!Number.isSafeInteger(props.count) || props.count < 0 || props.count > limits.listRows || typeof props.row !== 'function' ||
       (props.height !== undefined && typeof props.height !== 'function')) throw Error('UI_LIST: invalid row description');
   if (props.itemKeys !== undefined) {
     if (!Array.isArray(props.itemKeys) || props.itemKeys.length !== props.count) throw Error('UI_LIST: itemKeys must match count');
     const seen = new Set();
     props.itemKeys = Array.from(props.itemKeys, key => {
-      if (typeof key !== 'string' || utf8Bytes(key, 256) > 256 || utf8Bytes(`key:${JSON.stringify(key)}`, 256) > 256 || seen.has(key))
+      if (typeof key !== 'string' || utf8Bytes(key, limits.identifierBytes) > limits.identifierBytes || utf8Bytes(`key:${JSON.stringify(key)}`, limits.identifierBytes) > limits.identifierBytes || seen.has(key))
         throw Error('UI_LIST: invalid or duplicate itemKey');
       seen.add(key); return key;
     });

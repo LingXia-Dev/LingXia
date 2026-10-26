@@ -244,7 +244,7 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
         if (!Number.isInteger(value) || Math.abs(value) > 10000) invalid(name);
         out[key] = value; break;
       case 'grid-template':
-        if (Number.isInteger(value) && value >= 1 && value <= 64) out[key] = `repeat(${value}, minmax(0, 1fr))`;
+        if (Number.isInteger(value) && value >= 1 && value <= limits.gridTracks) out[key] = `repeat(${value}, minmax(0, 1fr))`;
         else out[key] = tracks(name, value);
         break;
       case 'grid-auto': out[key] = tracks(name, value); break;

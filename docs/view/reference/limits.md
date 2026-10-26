@@ -23,5 +23,16 @@ Page-wide bounds the runtime and the native decoder both enforce. Exceeding one 
 | `inputRequestBytes` | 524288 (512 KiB) | One input-method request from the platform, as UTF-8 JSON. |
 | `inputBatchEdits` | 64 | Edits in one input-method batch. |
 | `clipboardItems` | 128 | Clipboard items one paste reads. |
+| `wireValues` | 100000 | Values in one encoded frame. |
+| `textBytes` | 65536 (64 KiB) | Text of one node, as UTF-8. |
+| `identifierBytes` | 256 | One `key` or `testId`, as UTF-8. |
+| `listRows` | 100000 | Rows one `<list>` declares. |
+| `gridTracks` | 64 | Tracks one grid template expands to. |
+| `vectorSourceBytes` | 32768 (32 KiB) | One `<vector>` source (paths, gradients, viewBox) as JSON. |
+| `vectorPathBytes` | 16384 (16 KiB) | One path `d` string. |
+| `vectorPathWork` | 16384 | Path elements one `<vector>` draws, strokes outlined. |
+| `vectorWork` | 32768 | Path elements all vectors of one frame draw. |
+| `plotWork` | 16384 | Geometry all plots of one frame draw. |
+| `shadowMaskBytes` | 16777216 (16 MiB) | Blurred shadow masks one frame rasterizes. |
 
 Wire ABI: 1. Highest field id: 183.

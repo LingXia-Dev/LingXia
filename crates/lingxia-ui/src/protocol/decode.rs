@@ -3,8 +3,6 @@ use super::{FIELDS, Record, TAGS, admission, field, limits, tag, values};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
-pub(crate) const MAX_BUFFER_VALUES: usize = 100_000;
-
 /// Page-wide state the walk accumulates across records.
 #[derive(Default)]
 struct Page {
@@ -21,7 +19,7 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
     let mut keys = HashSet::new();
     let mut cursor = 0;
     let mut depths = Vec::new();
-    if buffer.len() > MAX_BUFFER_VALUES {
+    if buffer.len() > limits::WIRE_VALUES {
         return Err("UI_LIMIT: buffer too large".into());
     }
     while cursor < buffer.len() {
@@ -69,7 +67,10 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
             .as_str()
             .ok_or("UI_TEXT: expected string text")?
             .to_owned();
-        if text.len() > 65536 || test_id.len() > 256 || key.len() > 256 {
+        if text.len() > limits::TEXT_BYTES
+            || test_id.len() > limits::IDENTIFIER_BYTES
+            || key.len() > limits::IDENTIFIER_BYTES
+        {
             return Err("UI_LIMIT: string too large".into());
         }
         admission::text(tag, &text)?;
@@ -214,7 +215,7 @@ fn budgets(records: &[Record]) -> Result<(), String> {
                 .ok_or("UI_VECTOR: missing source")?,
         )?;
         vector_work += vector.work;
-        if vector_work > 32768 {
+        if vector_work > limits::VECTOR_WORK {
             return Err("UI_LIMIT: vector geometry budget exceeded".into());
         }
     }
@@ -223,7 +224,7 @@ fn budgets(records: &[Record]) -> Result<(), String> {
         let plot =
             crate::scene::plot::Plot::from_record(record, &crate::theme::Palette::builtin(false))?;
         plot_work += plot.work();
-        if plot_work > 16384 {
+        if plot_work > limits::PLOT_WORK {
             return Err("UI_LIMIT: plot geometry budget exceeded".into());
         }
     }

@@ -243,7 +243,7 @@ impl Vector {
 
     /// Fills, strokes and gradient stops may be hex or roles; roles resolve against `palette`.
     pub fn parse_with(json: &str, palette: &crate::theme::Palette) -> Result<Self, String> {
-        if json.len() > 32768 {
+        if json.len() > crate::protocol::limits::VECTOR_SOURCE_BYTES {
             return Err("UI_VECTOR: source too large".into());
         }
         let source: Source = serde_json::from_str(json).map_err(|_| "UI_VECTOR: invalid source")?;
@@ -272,7 +272,9 @@ impl Vector {
         let mut shapes = Vec::new();
         let mut work = 0;
         for path_source in &source.paths {
-            if path_source.d.is_empty() || path_source.d.len() > 16384 {
+            if path_source.d.is_empty()
+                || path_source.d.len() > crate::protocol::limits::VECTOR_PATH_BYTES
+            {
                 return Err("UI_VECTOR: invalid path length".into());
             }
             bounded_numbers(&path_source.d)?;
@@ -360,7 +362,7 @@ impl Vector {
                     shapes.push((outline, resolve(line)));
                 }
             }
-            if work > 16384 {
+            if work > crate::protocol::limits::VECTOR_PATH_WORK {
                 return Err("UI_VECTOR: geometry budget exceeded".into());
             }
         }
@@ -395,7 +397,7 @@ impl Vector {
                 }
                 path = stroke_outline(&path, style)?;
                 work += path.elements().len();
-                if work > 16384 {
+                if work > crate::protocol::limits::VECTOR_PATH_WORK {
                     return Err("UI_VECTOR: geometry budget exceeded".into());
                 }
             }
@@ -493,7 +495,7 @@ fn stroke_outline(path: &BezPath, style: &Stroke) -> Result<BezPath, String> {
     if !outline.is_finite() {
         return Err("UI_VECTOR: invalid stroke geometry".into());
     }
-    if outline.elements().len() > 16384 {
+    if outline.elements().len() > crate::protocol::limits::VECTOR_PATH_WORK {
         return Err("UI_VECTOR: geometry budget exceeded".into());
     }
     Ok(outline)

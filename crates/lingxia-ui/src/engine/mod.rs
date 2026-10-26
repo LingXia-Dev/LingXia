@@ -112,7 +112,7 @@ pub(crate) fn decode_context_timed(
     let eval_us = crate::session::metrics::micros(started);
     let started = std::time::Instant::now();
     let count = values.len().map_err(|e| e.to_string())?;
-    if count as usize > crate::protocol::MAX_BUFFER_VALUES {
+    if count as usize > crate::protocol::limits::WIRE_VALUES {
         return Err("UI_LIMIT: buffer too large".into());
     }
     let buffer = (0..count)

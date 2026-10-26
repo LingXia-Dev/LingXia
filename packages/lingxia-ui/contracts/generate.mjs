@@ -17,7 +17,6 @@ const screaming = name => name.replace(/-/g, '_').replace(/([a-z0-9])([A-Z])/g, 
 const object = entries => JSON.stringify(Object.fromEntries(entries));
 
 const childKinds = ['none', 'text', 'content', 'any', 'rows', 'options', 'runs'];
-const limitNames = ['nodes', 'depth', 'animationBytes', 'itemKeyBytes', 'imageBytes', 'sourceBytes', 'visibleImageBytes', 'decodedImageBytes', 'runs', 'transitionMs', 'evalBudgetMs', 'evalBudgetDebugMultiplier', 'editorTextBytes', 'inputRequestBytes', 'inputBatchEdits', 'clipboardItems'];
 
 function validate(schema) {
   validateRoles(schema.roles ?? []);
@@ -30,8 +29,8 @@ function validate(schema) {
     for (const tag of [field.tags ?? [], field.parent ?? []].flat())
       if (!schema.tags.includes(tag)) throw Error(`schema.json: field ${field.key} names unknown tag ${tag}`);
   }
-  for (const name of limitNames)
-    if (!Number.isSafeInteger(schema.limits?.[name]) || schema.limits[name] <= 0) throw Error(`schema.json: missing limit ${name}`);
+  for (const [name, value] of Object.entries(schema.limits ?? {}))
+    if (!Number.isSafeInteger(value) || value <= 0) throw Error(`schema.json: limit ${name} must be a positive integer`);
   for (const [key, entry] of Object.entries(schema.environment ?? {}))
     if (!['none', 'external', ...Object.keys(environmentChecks)].includes(entry.check) || !['device', 'push', 'session'].includes(entry.origin) || typeof entry.type !== 'string')
       throw Error(`schema.json: environment ${key} needs a type, a known check and an origin`);
@@ -142,7 +141,7 @@ function rust(schema) {
   }).join('\n');
   const fieldAdmission = schema.fields.map(field => `    FieldAdmission { tags: ${field.tags ? `Some(&[${field.tags.map(tagConst).join(', ')}])` : 'None'}, `
     + `parent: ${field.parent ? `Some(${tagConst(field.parent)})` : 'None'} },`).join('\n');
-  const limits = limitNames.map(name => `    pub const ${screaming(name)}: usize = ${schema.limits[name]};`).join('\n');
+  const limits = Object.keys(schema.limits).map(name => `    pub const ${screaming(name)}: usize = ${schema.limits[name]};`).join('\n');
   return `${header}//! Wire ids are append-only; native validation stays independent of the JS runtime.
 
 pub const UI_ABI: u32 = ${schema.uiAbi};

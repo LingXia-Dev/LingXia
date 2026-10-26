@@ -465,6 +465,17 @@ pub mod limits {
     pub const INPUT_REQUEST_BYTES: usize = 524288;
     pub const INPUT_BATCH_EDITS: usize = 64;
     pub const CLIPBOARD_ITEMS: usize = 128;
+    pub const WIRE_VALUES: usize = 100000;
+    pub const TEXT_BYTES: usize = 65536;
+    pub const IDENTIFIER_BYTES: usize = 256;
+    pub const LIST_ROWS: usize = 100000;
+    pub const GRID_TRACKS: usize = 64;
+    pub const VECTOR_SOURCE_BYTES: usize = 32768;
+    pub const VECTOR_PATH_BYTES: usize = 16384;
+    pub const VECTOR_PATH_WORK: usize = 16384;
+    pub const VECTOR_WORK: usize = 32768;
+    pub const PLOT_WORK: usize = 16384;
+    pub const SHADOW_MASK_BYTES: usize = 16777216;
 }
 
 /// Environment keys and where each comes from: `device` facts, a host `push`, or the `session`.

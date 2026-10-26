@@ -48,8 +48,8 @@ test('the schema rejects incomplete admission and conflicting CSS longhands', as
   unknown.fields.find(field => field.key === 'onClick').tags = ['paragraph'];
   await assert.rejects(generate(unknown), /unknown tag paragraph/);
   const limit = structuredClone(schema);
-  delete limit.limits.nodes;
-  await assert.rejects(generate(limit), /missing limit nodes/);
+  limit.limits.nodes = 0;
+  await assert.rejects(generate(limit), /limit nodes must be a positive integer/);
   const twice = structuredClone(schema);
   twice.style.height.css = 'width';
   await assert.rejects(generate(twice), /css width sets both/);

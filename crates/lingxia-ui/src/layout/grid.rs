@@ -6,7 +6,7 @@ use taffy::style::{
 };
 
 /// Most explicit tracks one template may expand to.
-pub(crate) const MAX_TRACKS: usize = 64;
+pub(crate) const MAX_TRACKS: usize = crate::protocol::limits::GRID_TRACKS;
 
 fn invalid(token: &str) -> String {
     format!("UI_GRID: invalid track or line `{token}`")

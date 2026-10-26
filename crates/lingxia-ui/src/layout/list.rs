@@ -1,7 +1,7 @@
 //! Row geometry for windowed lists. Owners commit a candidate index with its View frame.
 use std::{collections::HashSet, ops::Range};
 
-pub const MAX_ROWS: usize = 100_000;
+pub const MAX_ROWS: usize = crate::protocol::limits::LIST_ROWS;
 const MAX_HEIGHT: f64 = 16_384.0;
 
 pub(crate) fn item_key(value: &str) -> String {

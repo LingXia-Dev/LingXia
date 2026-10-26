@@ -304,7 +304,7 @@ impl Renderer {
                                 if shadow_masks.insert(identity) {
                                     shadow_bytes += raster.bitmap.byte_len();
                                 }
-                                if shadow_bytes > 16 * 1024 * 1024 {
+                                if shadow_bytes > crate::protocol::limits::SHADOW_MASK_BYTES {
                                     return Err("UI_SHADOW: frame mask budget exceeded".into());
                                 }
                                 raster.bounds[0] += bounds[0];
@@ -403,7 +403,7 @@ impl Renderer {
                 ];
                 let (shapes, work) = vector.resolved_shapes(vector_bounds)?;
                 vector_work += work;
-                if vector_work > 32768 {
+                if vector_work > crate::protocol::limits::VECTOR_WORK {
                     return Err("UI_LIMIT: vector geometry budget exceeded".into());
                 }
                 for (path, tint) in shapes {

@@ -288,6 +288,17 @@ const limitNotes = {
   inputRequestBytes: 'One input-method request from the platform, as UTF-8 JSON.',
   inputBatchEdits: 'Edits in one input-method batch.',
   clipboardItems: 'Clipboard items one paste reads.',
+  wireValues: 'Values in one encoded frame.',
+  textBytes: 'Text of one node, as UTF-8.',
+  identifierBytes: 'One `key` or `testId`, as UTF-8.',
+  listRows: 'Rows one `<list>` declares.',
+  gridTracks: 'Tracks one grid template expands to.',
+  vectorSourceBytes: 'One `<vector>` source (paths, gradients, viewBox) as JSON.',
+  vectorPathBytes: 'One path `d` string.',
+  vectorPathWork: 'Path elements one `<vector>` draws, strokes outlined.',
+  vectorWork: 'Path elements all vectors of one frame draw.',
+  plotWork: 'Geometry all plots of one frame draw.',
+  shadowMaskBytes: 'Blurred shadow masks one frame rasterizes.',
 };
 
 const size = value => value >= 1 << 20 && value % (1 << 20) === 0 ? `${value / (1 << 20)} MiB`
@@ -295,6 +306,7 @@ const size = value => value >= 1 << 20 && value % (1 << 20) === 0 ? `${value / (
 
 function limits(schema) {
   for (const key of Object.keys(limitNotes)) if (!(key in schema.limits)) throw Error(`docs.mjs: limit note for unknown limit ${key}`);
+  for (const key of Object.keys(schema.limits)) if (!limitNotes[key]) throw Error(`docs.mjs: limit ${key} needs a note`);
   return [header, '# Limits', '',
     'Page-wide bounds the runtime and the native decoder both enforce. Exceeding one fails the frame',
     '(`UI_LIMIT`, `UI_LIST`, `UI_TEXT`, `UI_ANIMATION`), except the image budgets noted below.', '',
