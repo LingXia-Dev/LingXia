@@ -715,7 +715,28 @@ impl<A: PlatformAdapter> Inner<A> {
             self.schedule();
         } else {
             self.park_animations();
+            self.clear_text_selection();
         }
+    }
+
+    /// A hidden page keeps no selection: its kept frame catches up without the handles.
+    fn clear_text_selection(self: &Arc<Self>) {
+        let page = self.lifecycle.page();
+        self.work(
+            Guard::Page(page),
+            |_, session| Ok(session.clear_text_selection()),
+            move |inner, result| {
+                if !matches!(result, Some(Ok(true))) || !inner.lifecycle.is_current_page(page) {
+                    return;
+                }
+                {
+                    let mut main = inner.main();
+                    main.dirty = true;
+                    main.catch_up |= !main.visible;
+                }
+                inner.schedule();
+            },
+        );
     }
 
     fn retry(self: &Arc<Self>) {

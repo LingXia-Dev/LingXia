@@ -807,6 +807,52 @@ fn a_hidden_page_catches_up_when_its_environment_changes_without_a_new_target() 
 }
 
 #[test]
+fn hiding_a_page_drops_its_text_selection_from_the_kept_frame() {
+    let worker = ViewWorker::shared("test:hide-selection").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){return h('text',{testId:'p',style:{userSelect:'text',fontSize:16}},'hello brave world')}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let text = host
+        .snapshot()
+        .unwrap()
+        .frame
+        .nodes
+        .iter()
+        .find(|n| n.test_id == "p")
+        .unwrap()
+        .bounds;
+    host.pointer(Pointer {
+        phase: PointerPhase::Down,
+        x: text[0] + 8.0,
+        y: text[1] + text[3] / 2.0,
+        slop: 8.0,
+        velocity: [0.0; 2],
+        min_fling: 50.0,
+    });
+    host.long_press();
+    platform.settle(&[&host]);
+    assert!(
+        host.snapshot().unwrap().frame.has_text_selection(),
+        "long press selects"
+    );
+    host.cancel();
+    host.set_visible(false);
+    platform.settle(&[&host]);
+    assert!(
+        !host.snapshot().unwrap().frame.has_text_selection(),
+        "the kept frame carries no handles"
+    );
+    assert!(host.frame_is_current(), "returning needs no new frame");
+}
+
+#[test]
 fn a_hidden_page_catches_up_after_the_shown_page_and_stays_frozen() {
     let worker = ViewWorker::shared("test:catch-up").unwrap();
     let platform = Platform::new(&[&worker]);
