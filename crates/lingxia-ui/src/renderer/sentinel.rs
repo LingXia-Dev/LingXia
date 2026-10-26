@@ -1,8 +1,9 @@
 //! GPU-initialization crash sentinel. A vendor shader compiler that segfaults
 //! cannot be caught, so the first pipeline compilation of a process is
 //! recorded in a persistent store and cleared once a GPU frame reaches the
-//! screen. A launch that finds the record left by a dead process renders that
-//! adapter on the CPU. Platforms supply only the store.
+//! screen. A probation left by a dead process is a strike; a second strike in
+//! a row for the same adapter within a day blocks it, so one kill during a
+//! cold start does not cost the GPU route. Platforms supply only the store.
 use std::collections::HashSet;
 use std::sync::{Mutex, OnceLock};
 
@@ -20,10 +21,17 @@ pub enum Fallback {
     Driver,
 }
 
-/// Persisted as lines: `probation <adapter>` at most once, then `blocked <adapter>`.
+/// A strike expires after a day: two kills far apart are not a crashing driver.
+const STRIKE_TTL_SECS: u64 = 24 * 60 * 60;
+
+/// Persisted as lines: `probation <adapter>` at most once, `strike <unix secs> <adapter>`,
+/// then `blocked <adapter>`.
 #[derive(Default)]
 struct Record {
     probation: Option<String>,
+    /// Probation of a process stopped normally before its first present.
+    paused: bool,
+    strikes: Vec<(u64, String)>,
     blocked: Vec<String>,
 }
 
@@ -33,7 +41,18 @@ impl Record {
         for line in text.lines() {
             match line.split_once(' ') {
                 Some(("probation", adapter)) => record.probation = Some(adapter.into()),
+                Some(("paused", adapter)) => {
+                    record.probation = Some(adapter.into());
+                    record.paused = true;
+                }
                 Some(("blocked", adapter)) => record.blocked.push(adapter.into()),
+                Some(("strike", rest)) => {
+                    if let Some((at, adapter)) = rest.split_once(' ')
+                        && let Ok(at) = at.parse()
+                    {
+                        record.strikes.push((at, adapter.into()));
+                    }
+                }
                 _ => {}
             }
         }
@@ -43,12 +62,20 @@ impl Record {
     fn encode(&self) -> String {
         let mut text = String::new();
         if let Some(adapter) = &self.probation {
-            text.push_str(&format!("probation {adapter}\n"));
+            let state = if self.paused { "paused" } else { "probation" };
+            text.push_str(&format!("{state} {adapter}\n"));
+        }
+        for (at, adapter) in &self.strikes {
+            text.push_str(&format!("strike {at} {adapter}\n"));
         }
         for adapter in &self.blocked {
             text.push_str(&format!("blocked {adapter}\n"));
         }
         text
+    }
+
+    fn is_empty(&self) -> bool {
+        self.probation.is_none() && self.strikes.is_empty() && self.blocked.is_empty()
     }
 }
 
@@ -57,7 +84,7 @@ struct State {
     record: Record,
     /// Adapters that presented a GPU frame in this process.
     proven: HashSet<String>,
-    /// A previous process died during GPU initialization.
+    /// A previous process died during GPU initialization twice in a row.
     inherited: bool,
     /// A known-crashing driver was refused in this process.
     refused: bool,
@@ -70,17 +97,39 @@ pub struct Sentinel {
 
 impl Sentinel {
     pub fn new(store: Box<dyn SentinelStore>) -> Self {
-        let mut record = Record::parse(&store.read().unwrap_or_default());
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        Self::at(store, now)
+    }
+
+    /// `new` with the launch time given, in unix seconds.
+    pub fn at(store: Box<dyn SentinelStore>, now: u64) -> Self {
+        let read = store.read().unwrap_or_default();
+        let mut record = Record::parse(&read);
+        record
+            .strikes
+            .retain(|(at, _)| now.saturating_sub(*at) < STRIKE_TTL_SECS);
         // A record still on probation means its process died before presenting.
-        let crashed = record.probation.take();
-        let inherited = crashed.is_some();
-        if let Some(adapter) = crashed
-            && !record.blocked.contains(&adapter)
-        {
-            record.blocked.push(adapter);
+        let mut inherited = false;
+        let paused = std::mem::take(&mut record.paused);
+        if let Some(adapter) = record.probation.take().filter(|_| !paused) {
+            if record.strikes.iter().any(|(_, struck)| *struck == adapter) {
+                record.strikes.retain(|(_, struck)| *struck != adapter);
+                if !record.blocked.contains(&adapter) {
+                    record.blocked.push(adapter);
+                }
+                inherited = true;
+            } else {
+                record.strikes.push((now, adapter));
+            }
         }
-        if inherited {
-            let _ = store.write(&record.encode());
+        if record.encode() != read {
+            if record.is_empty() {
+                store.clear();
+            } else {
+                let _ = store.write(&record.encode());
+            }
         }
         Self {
             store,
@@ -135,12 +184,38 @@ impl Sentinel {
         known_crashing(&adapter) || self.state().record.blocked.contains(&adapter)
     }
 
-    /// A GPU frame from `adapter` reached the screen.
+    /// A GPU frame from `adapter` reached the screen; its strikes are forgiven.
     pub fn presented(&self, adapter: &str) {
         let adapter = &one_line(adapter);
         let mut state = self.state();
-        state.proven.insert(adapter.into());
-        self.end(&mut state, adapter);
+        if !state.proven.insert(adapter.into()) {
+            return;
+        }
+        state.record.strikes.retain(|(_, struck)| struck != adapter);
+        if state.record.probation.as_deref() == Some(adapter.as_str()) {
+            self.end(&mut state, adapter);
+        } else {
+            self.persist(&state);
+        }
+    }
+
+    /// The platform stopped GPU work on a normal path before a first present: a
+    /// process that dies while stopped did not crash in the driver.
+    pub fn interrupted(&self) {
+        self.set_paused(true);
+    }
+
+    /// GPU work resumes; an open probation guards it again.
+    pub fn resumed(&self) {
+        self.set_paused(false);
+    }
+
+    fn set_paused(&self, paused: bool) {
+        let mut state = self.state();
+        if state.record.probation.is_some() && state.record.paused != paused {
+            state.record.paused = paused;
+            self.persist(&state);
+        }
     }
 
     /// The adapter's GPU attach failed without crashing; release its probation.
@@ -155,7 +230,12 @@ impl Sentinel {
             return;
         }
         state.record.probation = None;
-        if state.record.blocked.is_empty() {
+        state.record.paused = false;
+        self.persist(state);
+    }
+
+    fn persist(&self, state: &State) {
+        if state.record.is_empty() {
             self.store.clear();
         } else {
             let _ = self.store.write(&state.record.encode());
@@ -213,6 +293,18 @@ pub fn presented(adapter: &str) {
 pub fn released(adapter: &str) {
     if let Some(sentinel) = INSTALLED.get() {
         sentinel.released(adapter);
+    }
+}
+
+pub fn interrupted() {
+    if let Some(sentinel) = INSTALLED.get() {
+        sentinel.interrupted();
+    }
+}
+
+pub fn resumed() {
+    if let Some(sentinel) = INSTALLED.get() {
+        sentinel.resumed();
     }
 }
 

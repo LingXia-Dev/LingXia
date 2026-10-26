@@ -24,6 +24,13 @@ impl SentinelStore for Disk {
     }
 }
 
+/// A process that dies on probation, twice in a row: the adapter is blocked.
+fn crash_twice(disk: &Disk, adapter: &str) {
+    for _ in 0..2 {
+        assert!(Sentinel::new(Box::new(disk.clone())).arm(adapter));
+    }
+}
+
 const VULKAN: &str = "Vulkan|13b5:92020010|Mali-G78|v1.r32p1";
 const MALEOON: &str =
     "Vulkan|19e5:10001000|Maleoon 910|Maleoon 910|V100R001C10B221|lingxia-ui 0.28.0";
@@ -49,9 +56,7 @@ fn a_presented_frame_clears_probation_and_later_launches_use_the_gpu() {
 #[test]
 fn a_crash_on_probation_blocks_that_adapter_and_its_fallback_keeps_the_block() {
     let disk = Disk::default();
-    let crashed = Sentinel::new(Box::new(disk.clone()));
-    assert!(crashed.arm(VULKAN));
-    drop(crashed);
+    crash_twice(&disk, VULKAN);
     let relaunch = Sentinel::new(Box::new(disk.clone()));
     assert_eq!(relaunch.fallback(), Some(Fallback::Driver));
     assert!(!relaunch.arm(VULKAN));
@@ -78,12 +83,8 @@ fn a_crash_on_probation_blocks_that_adapter_and_its_fallback_keeps_the_block() {
 #[test]
 fn a_crashing_fallback_is_blocked_too() {
     let disk = Disk::default();
-    let first = Sentinel::new(Box::new(disk.clone()));
-    assert!(first.arm(VULKAN));
-    drop(first);
-    let second = Sentinel::new(Box::new(disk.clone()));
-    assert!(second.arm(GLES));
-    drop(second);
+    crash_twice(&disk, VULKAN);
+    crash_twice(&disk, GLES);
     let third = Sentinel::new(Box::new(disk.clone()));
     assert!(!third.arm(VULKAN));
     assert!(
@@ -138,7 +139,7 @@ fn known_crashing_drivers_never_get_a_first_crash() {
 fn a_crash_on_a_driver_with_multi_line_build_info_blocks_it_on_relaunch() {
     let adreno = "Vulkan|5143:6030001|Adreno (TM) 630|Qualcomm Technologies Inc. Adreno Vulkan Driver|Driver Build: 781e7d0\nDate: 12/01/20\nCompiler Version: EV031.31.04.01\n|lingxia-ui 0.28.0";
     let disk = Disk::default();
-    assert!(Sentinel::new(Box::new(disk.clone())).arm(adreno));
+    crash_twice(&disk, adreno);
     let relaunch = Sentinel::new(Box::new(disk.clone()));
     assert!(
         !relaunch.arm(adreno),
@@ -150,12 +151,82 @@ fn a_crash_on_a_driver_with_multi_line_build_info_blocks_it_on_relaunch() {
 #[test]
 fn a_blocked_adapter_is_reported_without_arming_probation() {
     let disk = Disk::default();
-    let crashed = Sentinel::new(Box::new(disk.clone()));
-    assert!(crashed.arm(VULKAN));
-    drop(crashed);
+    crash_twice(&disk, VULKAN);
     let relaunch = Sentinel::new(Box::new(disk.clone()));
     assert!(relaunch.blocked(VULKAN));
     assert!(relaunch.blocked(MALEOON));
     assert!(!relaunch.blocked(GLES));
     assert!(relaunch.arm(GLES), "checking left no probation behind");
+}
+
+#[test]
+fn one_abandoned_probation_is_only_a_strike() {
+    let disk = Disk::default();
+    assert!(Sentinel::at(Box::new(disk.clone()), 1_000).arm(VULKAN));
+    let relaunch = Sentinel::at(Box::new(disk.clone()), 1_010);
+    assert!(!relaunch.blocked(VULKAN));
+    assert_eq!(relaunch.fallback(), None);
+    assert!(
+        relaunch.arm(VULKAN),
+        "a killed cold start keeps the GPU route"
+    );
+}
+
+#[test]
+fn a_present_after_a_strike_forgives_it() {
+    let disk = Disk::default();
+    assert!(Sentinel::at(Box::new(disk.clone()), 1_000).arm(VULKAN));
+    let relaunch = Sentinel::at(Box::new(disk.clone()), 1_010);
+    assert!(relaunch.arm(VULKAN));
+    relaunch.presented(VULKAN);
+    assert_eq!(disk.read(), None, "no strike left behind");
+    assert!(Sentinel::at(Box::new(disk.clone()), 1_020).arm(VULKAN));
+    let after = Sentinel::at(Box::new(disk.clone()), 1_030);
+    assert!(
+        !after.blocked(VULKAN),
+        "the earlier strike no longer counts"
+    );
+}
+
+#[test]
+fn a_stale_strike_expires() {
+    let disk = Disk::default();
+    assert!(Sentinel::at(Box::new(disk.clone()), 1_000).arm(VULKAN));
+    // The next launch records the strike and never touches the GPU.
+    drop(Sentinel::at(Box::new(disk.clone()), 1_010));
+    let day_later = 1_010 + STRIKE_TTL_SECS + 1;
+    assert!(Sentinel::at(Box::new(disk.clone()), day_later).arm(VULKAN));
+    let relaunch = Sentinel::at(Box::new(disk.clone()), day_later + 10);
+    assert!(
+        !relaunch.blocked(VULKAN),
+        "a day-old strike no longer pairs"
+    );
+}
+
+#[test]
+fn a_normal_stop_before_the_first_present_is_not_a_strike() {
+    let disk = Disk::default();
+    let stopped = Sentinel::at(Box::new(disk.clone()), 1_000);
+    assert!(stopped.arm(VULKAN));
+    stopped.interrupted();
+    // Killed while stopped, then a cold start that crashes for real.
+    assert!(Sentinel::at(Box::new(disk.clone()), 1_010).arm(VULKAN));
+    let relaunch = Sentinel::at(Box::new(disk.clone()), 1_020);
+    assert!(
+        !relaunch.blocked(VULKAN),
+        "the stopped process left no strike"
+    );
+}
+
+#[test]
+fn resuming_guards_the_probation_again() {
+    let disk = Disk::default();
+    let process = Sentinel::at(Box::new(disk.clone()), 1_000);
+    assert!(process.arm(VULKAN));
+    process.interrupted();
+    process.resumed();
+    drop(process);
+    assert!(Sentinel::at(Box::new(disk.clone()), 1_010).arm(VULKAN));
+    let relaunch = Sentinel::at(Box::new(disk.clone()), 1_020);
+    assert!(relaunch.blocked(VULKAN), "a death after resuming counts");
 }

@@ -167,6 +167,7 @@ pub fn register_natives(env: &mut Env, class: &JClass) -> jni::errors::Result<()
         method!("nativeInput", "(JLjava/lang/String;J)V", input),
         method!("nativeCaret", "(JZZLjava/lang/String;IIII)V", caret),
         method!("nativeGpuSentinel", "(Ljava/lang/String;)V", gpu_sentinel),
+        method!("nativeGpuActive", "(Z)V", gpu_active),
         method!(
             "nativeChromeContains",
             "(Ljava/lang/String;FFZ)Z",
@@ -898,6 +899,16 @@ extern "system" fn gpu_sentinel<'a>(
 /// Bind the Surface to a GPU presenter on the View worker; Java hears back
 /// through `GpuPlatform.gpuAttached` and renders on the CPU until then.
 #[cfg(all(feature = "gpu", target_os = "android"))]
+/// A page stopped or resumed on the platform's normal path; a process killed while
+/// stopped did not crash in the driver.
+extern "system" fn gpu_active(_: EnvUnowned<'_>, _: JClass<'_>, active: jboolean) {
+    if active {
+        lingxia_ui::renderer::sentinel::resumed();
+    } else {
+        lingxia_ui::renderer::sentinel::interrupted();
+    }
+}
+
 extern "system" fn attach<'a>(
     mut env: EnvUnowned<'a>,
     _: JClass<'a>,
@@ -946,8 +957,12 @@ extern "system" fn attach<'a>(
                             _ => (String::new(), "vello-cpu"),
                         };
                         adapter::info(&format!(
-                            "backend={backend} surface={surface} adapter={record}"
+                            "backend={backend} surface={surface} adapter={record}{reason}"
                         ));
+                        let reason = match lingxia_ui::renderer::sentinel::fallback() {
+                            Some(_) => " fallback=driver (refused by the GPU crash sentinel)",
+                            None => "",
+                        };
                         adapter.java(|env, platform| {
                             env.call_method(
                                 platform,

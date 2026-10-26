@@ -82,6 +82,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     static native float[] nativeHandleDrag(String node, float x, float y);
     /** Where the GPU crash sentinel keeps its record; the first call in a process wins. */
     static native void nativeGpuSentinel(String directory);
+    static native void nativeGpuActive(boolean active);
     private static native void nativeAttach(long host, android.view.Surface surface, int width, int height);
 
     public interface PullToRefresh { boolean onTouch(MotionEvent event); }
@@ -252,6 +253,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
      * environment sampled before that would describe the previous page's chrome.
      */
     public void resume() {
+        nativeGpuActive(true);
         active = true; frozen = false; updateSurfaceVisibility();
         if (layoutPending) return;
         layoutPending = true;
@@ -401,6 +403,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         });
     }
     public void pause() {
+        nativeGpuActive(false);
         surface.cancelRefreshGesture(); finishSurfaceRedraws();
         active = false; frozen = false; updateSurfaceVisibility(); ime.clear(true);
         cancel();
