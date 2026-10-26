@@ -11,6 +11,9 @@ use crate::session::host::{Failure, FrameSnapshot, FrameTiming};
 use crate::session::lifecycle::{CommitTicket, ConnectionTicket, SurfaceTicket};
 use std::time::Duration;
 
+mod environment;
+pub use environment::{DeviceFacts, TABLET_SMALLEST_WIDTH};
+
 pub type Task = Box<dyn FnOnce() + Send>;
 
 /// Viewport and View environment sampled for one frame.
