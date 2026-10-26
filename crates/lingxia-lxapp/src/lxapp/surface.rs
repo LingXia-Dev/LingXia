@@ -938,7 +938,7 @@ impl WindowSurfaceController {
     fn surface_menu(
         &self,
         surface_id: &str,
-        content_groups: Vec<Vec<lingxia_shell::SurfaceMenuItem>>,
+        parts: lingxia_shell::SurfaceMenuParts,
     ) -> Option<lingxia_shell::SurfaceMenuSnapshot> {
         let snapshot = self.manager.lock().unwrap().switcher_snapshot();
         let index = snapshot
@@ -946,7 +946,7 @@ impl WindowSurfaceController {
             .iter()
             .position(|item| item.surface_id == surface_id)?;
         let item = &snapshot.items[index];
-        Some(lingxia_shell::compose_surface_menu(
+        Some(lingxia_shell::compose_surface_menu_parts(
             lingxia_shell::SurfaceMenuContext {
                 revision: snapshot.revision,
                 surface_id: item.surface_id.clone(),
@@ -968,7 +968,7 @@ impl WindowSurfaceController {
                     .skip(index + 1)
                     .any(|candidate| candidate.closable),
             },
-            content_groups,
+            parts,
         ))
     }
 
@@ -1544,9 +1544,11 @@ fn execute_surface_menu_intent(
             }
         },
         // Provider actions are dispatched by the provider integration, never
-        // interpreted as shell lifecycle operations.
+        // interpreted as shell lifecycle operations. Browser tabs are not
+        // graph surfaces: the platform runs their actions.
         lingxia_shell::SurfaceMenuAction::Information {}
         | lingxia_shell::SurfaceMenuAction::Lxapp { .. }
+        | lingxia_shell::SurfaceMenuAction::Browser { .. }
         | lingxia_shell::SurfaceMenuAction::External { .. } => false,
     };
     HostSurfaceMenuExecution {
@@ -1700,7 +1702,43 @@ impl LxApp {
         request: PageSurfaceRequest,
         chrome: WindowChrome,
     ) -> Result<PageSurface, LxAppError> {
-        self.open_surface_with_web_data(request, chrome, false, false)
+        self.open_surface_with_web_data(request, chrome, false, false, None)
+    }
+
+    /// Show a live main-area browser tab in the side panel, at the panel's
+    /// current edge. The caller has already handed the tab to `self`
+    /// (`lingxia_browser::demote_tab_to_standalone`); the surface takes it
+    /// over as it is, never merging into an open tab of the same URL.
+    pub fn open_browser_tab_aside(
+        &self,
+        tab_id: &str,
+        url: &str,
+    ) -> Result<PageSurface, LxAppError> {
+        let tab_id = tab_id.trim();
+        if tab_id.is_empty() {
+            return Err(LxAppError::InvalidParameter(
+                "browser tab id must not be empty".to_string(),
+            ));
+        }
+        let edge = self.side_panel_dock_edge();
+        let mut request = PageSurfaceRequest::new(
+            format!("browser-tab:{tab_id}"),
+            PageSurfaceTarget::Url(url.to_string()),
+        );
+        request.role = lingxia_surface::Role::Aside;
+        request.position = match edge {
+            lingxia_surface::Edge::Left => SurfacePosition::Left,
+            lingxia_surface::Edge::Top => SurfacePosition::Top,
+            lingxia_surface::Edge::Bottom => SurfacePosition::Bottom,
+            lingxia_surface::Edge::Right => SurfacePosition::Right,
+        };
+        self.open_surface_with_web_data(
+            request,
+            WindowChrome::default(),
+            false,
+            false,
+            Some(tab_id.to_string()),
+        )
     }
 
     fn open_surface_with_web_data(
@@ -1709,6 +1747,7 @@ impl LxApp {
         chrome: WindowChrome,
         ephemeral_web_data: bool,
         url_callback: bool,
+        browser_tab_id: Option<String>,
     ) -> Result<PageSurface, LxAppError> {
         if !self.is_opened() {
             return Err(LxAppError::UnsupportedOperation(
@@ -1807,7 +1846,7 @@ impl LxApp {
                 &page_path,
                 owner_pid.as_deref(),
                 request.role,
-                url_callback,
+                !url_callback && browser_tab_id.is_none(),
                 interaction,
             );
             let opened = controller.open_node(node, request.position);
@@ -1874,6 +1913,7 @@ impl LxApp {
                         chrome,
                         ephemeral_web_data,
                         url_callback,
+                        browser_tab_id,
                     })
                     .map_err(LxAppError::from)
             });
@@ -2056,6 +2096,7 @@ impl LxApp {
                         // Window surfaces host this lxapp's own pages, never external web.
                         ephemeral_web_data: false,
                         url_callback: false,
+                        browser_tab_id: None,
                     })
                     .map_err(LxAppError::from)
             });
@@ -2161,7 +2202,7 @@ impl LxApp {
         // web session: logout is real, and a new login can pick a different
         // account instead of silently reusing a prior SSO cookie.
         let surface =
-            self.open_surface_with_web_data(request, WindowChrome::default(), true, true)?;
+            self.open_surface_with_web_data(request, WindowChrome::default(), true, true, None)?;
         Ok(UrlCallbackSurface {
             appid: self.appid.clone(),
             surface,
@@ -2559,19 +2600,21 @@ impl LxApp {
         if surface_id.is_empty() {
             return None;
         }
-        let content_groups = match self.main_surface_content(surface_id) {
+        let parts = match self.main_surface_content(surface_id) {
             Some(lingxia_surface::SurfaceContent::Lxapp { app_id, .. }) => crate::try_get(&app_id)
                 .map(|app| {
                     let info = app.get_lxapp_info();
-                    let mut groups = vec![vec![lingxia_shell::SurfaceMenuItem::information(
-                        lxapp_surface_menu_header(
-                            &app_id,
-                            &app.listing_name(),
-                            &info.version,
-                            &info.release_type,
-                        ),
-                    )]];
-                    groups.extend(lxapp_switcher_maintenance_groups(app.is_home_lxapp));
+                    let header = lxapp_surface_menu_header(
+                        &app_id,
+                        &app.listing_name(),
+                        &info.version,
+                        &info.release_type,
+                    );
+                    let pinned = !app.is_home_lxapp
+                        && lingxia_shell::is_pinned(&lingxia_shell::ShellPinTarget::Lxapp {
+                            key: app_id.clone(),
+                        })
+                        .unwrap_or(false);
                     let actions = app.more_actions();
                     let generation = actions.generation;
                     let more_actions = actions
@@ -2588,15 +2631,12 @@ impl LxApp {
                             )
                         })
                         .collect::<Vec<_>>();
-                    if !more_actions.is_empty() {
-                        groups.push(more_actions);
-                    }
-                    groups
+                    lxapp_switcher_menu_parts(header, app.is_home_lxapp, pinned, more_actions)
                 })
                 .unwrap_or_default(),
-            _ => Vec::new(),
+            _ => lingxia_shell::SurfaceMenuParts::default(),
         };
-        window_controller(PRIMARY_WINDOW, &self.runtime).surface_menu(surface_id, content_groups)
+        window_controller(PRIMARY_WINDOW, &self.runtime).surface_menu(surface_id, parts)
     }
 
     pub fn perform_shell_surface_menu_intent(
@@ -2646,6 +2686,26 @@ impl LxApp {
                     snapshot,
                 });
             };
+            if let lingxia_shell::LxappSurfaceMenuAction::Pin
+            | lingxia_shell::LxappSurfaceMenuAction::Unpin = action
+            {
+                let pin = matches!(action, lingxia_shell::LxappSurfaceMenuAction::Pin);
+                // A full Pin grid is refused here; the platform that wants to
+                // say so checks the limit before sending the intent.
+                let accepted = !app.is_home_lxapp
+                    && lingxia_shell::set_pinned(
+                        lingxia_shell::ShellPinTarget::Lxapp {
+                            key: app.appid.clone(),
+                        },
+                        pin,
+                    )
+                    .is_ok();
+                return Some(HostSurfaceMenuExecution {
+                    accepted,
+                    removed_surface_ids: Vec::new(),
+                    snapshot: self.surface_switcher_snapshot(),
+                });
+            }
             if matches!(action, lingxia_shell::LxappSurfaceMenuAction::OpenInSide) {
                 // The live main moves beside the main: Logic, page stack and
                 // WebViews stay; the committed plan docks it.
@@ -3091,18 +3151,24 @@ impl LxApp {
     /// The edge the side panel docks at now (`right` while it is empty), so
     /// an aside opened into it joins it there.
     pub fn side_panel_edge(&self) -> &'static str {
-        use lingxia_surface::{Edge, SlotKind};
-        match self.surface_derived_layout().and_then(|plan| {
-            plan.aside_slots
-                .into_iter()
-                .find(|slot| slot.kind == SlotKind::Panel && !slot.children.is_empty())
-                .and_then(|slot| slot.edge)
-        }) {
-            Some(Edge::Left) => "left",
-            Some(Edge::Top) => "top",
-            Some(Edge::Bottom) => "bottom",
-            _ => "right",
+        match self.side_panel_dock_edge() {
+            lingxia_surface::Edge::Left => "left",
+            lingxia_surface::Edge::Top => "top",
+            lingxia_surface::Edge::Bottom => "bottom",
+            lingxia_surface::Edge::Right => "right",
         }
+    }
+
+    fn side_panel_dock_edge(&self) -> lingxia_surface::Edge {
+        use lingxia_surface::{Edge, SlotKind};
+        self.surface_derived_layout()
+            .and_then(|plan| {
+                plan.aside_slots
+                    .into_iter()
+                    .find(|slot| slot.kind == SlotKind::Panel && !slot.children.is_empty())
+                    .and_then(|slot| slot.edge)
+            })
+            .unwrap_or(Edge::Right)
     }
 
     /// A window too small to dock a side panel: a URL aside opens in the
@@ -3133,7 +3199,7 @@ impl LxApp {
         page_path: &Option<String>,
         owner_page_instance_id: Option<&str>,
         role: lingxia_surface::Role,
-        url_callback: bool,
+        reuse_by_url: bool,
         interaction: lingxia_surface::SurfaceInteraction,
     ) -> lingxia_surface::Surface {
         use lingxia_surface::{
@@ -3159,7 +3225,7 @@ impl LxApp {
             },
             SurfaceContentKind::Url => LxContent::Browser {
                 initial_url: path_or_url.to_string(),
-                reuse_by_url: !url_callback,
+                reuse_by_url,
             },
         };
         // A surface opened dynamically by an lxapp is caller-scoped: owned by the
@@ -3277,29 +3343,41 @@ fn apply_registry_switcher_titles(
     snapshot
 }
 
-/// "Open in Side Panel" leads for a guest lxapp (the root main never moves).
-/// Restart and clean-cache stay together. Uninstall is its own section, and
-/// only for a guest lxapp — the home app is not removable from the switcher.
-fn lxapp_switcher_maintenance_groups(is_home: bool) -> Vec<Vec<lingxia_shell::SurfaceMenuItem>> {
-    let mut groups = Vec::new();
+/// An lxapp main's menu: its identity, Pin, its own MoreActions, then
+/// restart and clean-cache; "Open in Side Panel" after the content; Uninstall
+/// last, below every close. The home app is the root main: it neither pins,
+/// moves, nor uninstalls.
+fn lxapp_switcher_menu_parts(
+    header: String,
+    is_home: bool,
+    pinned: bool,
+    more_actions: Vec<lingxia_shell::SurfaceMenuItem>,
+) -> lingxia_shell::SurfaceMenuParts {
+    use lingxia_shell::{LxappSurfaceMenuAction as Action, SurfaceMenuItem as Item};
+    let mut content = vec![vec![Item::information(header)]];
     if !is_home {
-        groups.push(vec![lingxia_shell::SurfaceMenuItem::lxapp(
-            lingxia_shell::LxappSurfaceMenuAction::OpenInSide,
-        )]);
+        content.push(vec![Item::lxapp(if pinned {
+            Action::Unpin
+        } else {
+            Action::Pin
+        })]);
     }
-    groups.push(vec![
-        lingxia_shell::SurfaceMenuItem::lxapp(lingxia_shell::LxappSurfaceMenuAction::Restart),
-        lingxia_shell::SurfaceMenuItem::lxapp(
-            lingxia_shell::LxappSurfaceMenuAction::CleanCacheRestart,
-        ),
+    content.push(more_actions);
+    content.push(vec![
+        Item::lxapp(Action::Restart),
+        Item::lxapp(Action::CleanCacheRestart),
     ]);
+    let mut parts = lingxia_shell::SurfaceMenuParts {
+        content,
+        ..Default::default()
+    };
     if !is_home {
-        let mut uninstall =
-            lingxia_shell::SurfaceMenuItem::lxapp(lingxia_shell::LxappSurfaceMenuAction::Uninstall);
+        parts.placement.push(Item::lxapp(Action::OpenInSide));
+        let mut uninstall = Item::lxapp(Action::Uninstall);
         uninstall.role = lingxia_shell::SurfaceMenuItemRole::Destructive;
-        groups.push(vec![uninstall]);
+        parts.removal.push(uninstall);
     }
-    groups
+    parts
 }
 
 fn lxapp_surface_menu_header(
@@ -3795,53 +3873,47 @@ mod tests {
     }
 
     #[test]
-    fn switcher_menu_offers_uninstall_only_for_guest_lxapps() {
-        let home = lxapp_switcher_maintenance_groups(true);
-        assert_eq!(home.len(), 1);
-        assert!(home[0].iter().any(|item| matches!(
-            item.action,
-            lingxia_shell::SurfaceMenuAction::Lxapp {
-                action: lingxia_shell::LxappSurfaceMenuAction::Restart
-            }
-        )));
-        assert!(!home.iter().flatten().any(|item| matches!(
-            item.action,
-            lingxia_shell::SurfaceMenuAction::Lxapp {
-                action: lingxia_shell::LxappSurfaceMenuAction::Uninstall
-            }
-        )));
+    fn switcher_menu_moves_pins_and_uninstalls_only_guest_lxapps() {
+        use lingxia_shell::{LxappSurfaceMenuAction as Action, SurfaceMenuAction};
+        let has = |parts: &lingxia_shell::SurfaceMenuParts, wanted: Action| {
+            parts
+                .content
+                .iter()
+                .flatten()
+                .chain(&parts.placement)
+                .chain(&parts.removal)
+                .any(|item| item.action == SurfaceMenuAction::Lxapp { action: wanted })
+        };
 
-        let guest = lxapp_switcher_maintenance_groups(false);
-        let uninstall = guest
-            .iter()
-            .flatten()
-            .find(|item| {
-                matches!(
-                    item.action,
-                    lingxia_shell::SurfaceMenuAction::Lxapp {
-                        action: lingxia_shell::LxappSurfaceMenuAction::Uninstall
-                    }
-                )
-            })
-            .expect("guest uninstall");
+        let home = lxapp_switcher_menu_parts("Home".into(), true, false, Vec::new());
+        assert!(has(&home, Action::Restart));
+        for absent in [
+            Action::Pin,
+            Action::Unpin,
+            Action::OpenInSide,
+            Action::Uninstall,
+        ] {
+            assert!(!has(&home, absent));
+        }
+
+        let guest = lxapp_switcher_menu_parts("Guest".into(), false, true, Vec::new());
+        assert!(has(&guest, Action::Unpin) && !has(&guest, Action::Pin));
         assert_eq!(
-            uninstall.role,
+            guest.placement[0].action,
+            SurfaceMenuAction::Lxapp {
+                action: Action::OpenInSide
+            }
+        );
+        assert_eq!(
+            guest.removal[0].action,
+            SurfaceMenuAction::Lxapp {
+                action: Action::Uninstall
+            }
+        );
+        assert_eq!(
+            guest.removal[0].role,
             lingxia_shell::SurfaceMenuItemRole::Destructive
         );
-        // Open in Side Panel leads, then maintenance, then uninstall.
-        assert_eq!(guest.len(), 3);
-        assert!(matches!(
-            guest[0][0].action,
-            lingxia_shell::SurfaceMenuAction::Lxapp {
-                action: lingxia_shell::LxappSurfaceMenuAction::OpenInSide
-            }
-        ));
-        assert!(!home.iter().flatten().any(|item| matches!(
-            item.action,
-            lingxia_shell::SurfaceMenuAction::Lxapp {
-                action: lingxia_shell::LxappSurfaceMenuAction::OpenInSide
-            }
-        )));
     }
 
     #[test]

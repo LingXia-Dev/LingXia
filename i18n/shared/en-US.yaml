@@ -120,7 +120,7 @@ surface:
   reset_title: "Reset Tab Name"
   close: "Close Tab"
   close_others: "Close Other Tabs"
-  close_after: "Close Tabs After"
+  close_after: "Close Tabs Below"
 
 # Store-channel host update prompt (auto-flow + Android SDK dialog)
 update:

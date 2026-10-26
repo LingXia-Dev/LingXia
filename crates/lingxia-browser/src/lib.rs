@@ -286,6 +286,22 @@ pub fn can_promote_standalone_tab(tab_id: &str) -> bool {
     tabs::can_promote_standalone_tab(tab_id)
 }
 
+/// Hand a main-area tab to a docked side panel opened by `owner_appid`,
+/// keeping its id, WebView and history; it leaves the product listing.
+pub fn demote_tab_to_standalone(
+    tab_id: &str,
+    owner_appid: &str,
+    owner_session_id: u64,
+) -> Result<(), LxAppError> {
+    tabs::demote_tab_to_standalone(tab_id, owner_appid, owner_session_id)
+}
+
+/// Whether a main-area tab may move into the side panel: URL-callback and
+/// ephemeral tabs belong to their opener.
+pub fn can_demote_tab_to_standalone(tab_id: &str) -> bool {
+    tabs::can_demote_tab_to_standalone(tab_id)
+}
+
 pub fn close(tab_id: &str) -> Result<(), LxAppError> {
     let owner_appid = tabs::tab_owner_appid(tab_id);
     tabs::close_browser_tab(tab_id)?;

@@ -4718,13 +4718,25 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
                     screen_y,
                 );
             } else if let Some(target_appid) = auxiliary_lxapp_id(&tab_id) {
-                show_lxapp_auxiliary_context_menu(
-                    appid,
-                    target_appid,
-                    payload_isize(&event, "source_window"),
-                    screen_x,
-                    screen_y,
-                );
+                // A live lxapp main reads the same core menu as every other
+                // main-area row; the local builder covers an lxapp without one.
+                if let Some(surface_id) = lxapp_main_surface_id(appid, target_appid) {
+                    show_main_surface_context_menu(
+                        appid,
+                        &surface_id,
+                        payload_isize(&event, "source_window"),
+                        screen_x,
+                        screen_y,
+                    );
+                } else {
+                    show_lxapp_auxiliary_context_menu(
+                        appid,
+                        target_appid,
+                        payload_isize(&event, "source_window"),
+                        screen_x,
+                        screen_y,
+                    );
+                }
             } else if tab_id.starts_with(AUX_BOOKMARK_PREFIX) {
                 show_pinned_bookmark_context_menu(appid, &tab_id, screen_x, screen_y);
             } else {
@@ -5631,88 +5643,102 @@ fn reset_browser_only_last_tab(tab_id: &str, aside: bool) -> bool {
     true
 }
 
-#[derive(Debug, Clone, Copy)]
-enum BrowserTabContextAction {
-    #[cfg(feature = "browser-shell")]
-    TogglePin,
-    Close,
-    CloseOtherTabs,
-    CloseTabsBelow,
-}
-
+/// A main-area browser tab's right-click menu: the core's row menu (page
+/// actions, Open in Side Panel, the close family) run over Windows' tabs.
+#[cfg(feature = "browser-runtime")]
 fn show_browser_tab_context_menu(appid: &str, tab_id: &str, screen_x: i32, screen_y: i32) {
-    let tabs = browser_tabs();
-    let Some(index) = tabs.iter().position(|tab| tab.tab_id == tab_id) else {
+    let ordered = browser_tabs()
+        .into_iter()
+        .map(|tab| tab.tab_id)
+        .collect::<Vec<_>>();
+    let Some(snapshot) = lingxia::browser_tab_menu(&ordered, tab_id) else {
         return;
     };
     let Some(window) = owner_window_handle(appid) else {
         return;
     };
-    use super::context_menu::ContextMenuEntry;
-    use crate::WindowsDesignIcon;
-    use lingxia_logic::I18nKey;
+    let mut entries = Vec::new();
     let mut actions = Vec::new();
-    let mut items = Vec::new();
-    #[cfg(feature = "browser-shell")]
-    if let Some(url) = tabs[index]
-        .current_url
-        .as_deref()
-        .map(str::trim)
-        .filter(|url| url.starts_with("http://") || url.starts_with("https://"))
-    {
-        let pinned = pinned_bookmark_for_url(url).is_some();
-        actions.extend([Some(BrowserTabContextAction::TogglePin), None]);
-        items.extend([
-            ContextMenuEntry::item(
-                lingxia_logic::i18n::t(if pinned {
-                    I18nKey::BrowserUnpin
-                } else {
-                    I18nKey::BrowserPinToSidebar
-                }),
-                true,
-                if pinned {
-                    WindowsDesignIcon::Unpin
-                } else {
-                    WindowsDesignIcon::Pin
-                },
-            ),
-            ContextMenuEntry::separator(),
-        ]);
-    }
-    actions.push(Some(BrowserTabContextAction::Close));
-    items.push(ContextMenuEntry::item(
-        lingxia_logic::i18n::t(I18nKey::CommonClose),
-        true,
-        WindowsDesignIcon::CloseX,
-    ));
-    if tabs.len() > 1 {
-        actions.push(Some(BrowserTabContextAction::CloseOtherTabs));
-        items.push(ContextMenuEntry::item(
-            lingxia_logic::i18n::t(I18nKey::BrowserCloseOtherTabs),
-            true,
-            WindowsDesignIcon::CloseOtherTabs,
-        ));
-    }
-    if index + 1 < tabs.len() {
-        actions.push(Some(BrowserTabContextAction::CloseTabsBelow));
-        items.push(ContextMenuEntry::item(
-            lingxia_logic::i18n::t(I18nKey::BrowserCloseTabsBelow),
-            true,
-            WindowsDesignIcon::CloseTabsBelow,
-        ));
+    for section in &snapshot.sections {
+        if !entries.is_empty() && !section.items.is_empty() {
+            entries.push(super::context_menu::ContextMenuEntry::separator());
+            actions.push(None);
+        }
+        for item in &section.items {
+            entries.push(surface_menu_entry(item));
+            actions.push(Some(item.action.clone()));
+        }
     }
     let appid = appid.to_string();
     let tab_id = tab_id.to_string();
     super::context_menu::show_context_menu_entries(
         window,
         (screen_x, screen_y),
-        items,
+        entries,
         Arc::new(move |index| {
-            if let Some(action) = actions.get(index).copied().flatten() {
-                handle_browser_tab_context_action(&appid, &tab_id, action);
+            if let Some(action) = actions.get(index).cloned().flatten() {
+                handle_browser_tab_menu_action(&appid, &tab_id, action);
             }
         }),
     );
+}
+
+#[cfg(not(feature = "browser-runtime"))]
+fn show_browser_tab_context_menu(_appid: &str, _tab_id: &str, _screen_x: i32, _screen_y: i32) {}
+
+#[cfg(feature = "browser-runtime")]
+fn handle_browser_tab_menu_action(
+    appid: &str,
+    tab_id: &str,
+    action: lingxia_shell::SurfaceMenuAction,
+) {
+    use lingxia_shell::{BrowserSurfaceMenuAction, SurfaceMenuAction, SurfaceMenuBuiltinAction};
+    match action {
+        SurfaceMenuAction::Browser {
+            action: BrowserSurfaceMenuAction::Pin | BrowserSurfaceMenuAction::Unpin,
+        } =>
+        {
+            #[cfg(feature = "browser-shell")]
+            if let Some(tab) = browser_tab_summary(tab_id) {
+                toggle_browser_tab_pin(appid, &tab);
+            }
+        }
+        SurfaceMenuAction::Browser {
+            action: BrowserSurfaceMenuAction::CopyLink,
+        } => {
+            if let Some(url) = browser_tab_summary(tab_id).and_then(|tab| tab.current_url) {
+                let _ = super::clipboard::set_clipboard_text(&url);
+            }
+        }
+        SurfaceMenuAction::Browser {
+            action: BrowserSurfaceMenuAction::OpenInSide,
+        } => move_browser_tab_to_side_panel(appid, tab_id),
+        SurfaceMenuAction::Switcher {
+            action: SurfaceMenuBuiltinAction::Close,
+        } => handle_browser_tab_close(appid, tab_id),
+        SurfaceMenuAction::Switcher {
+            action: SurfaceMenuBuiltinAction::CloseOthers,
+        } => close_other_browser_tabs(appid, tab_id),
+        SurfaceMenuAction::Switcher {
+            action: SurfaceMenuBuiltinAction::CloseAfter,
+        } => close_browser_tabs_below(appid, tab_id),
+        _ => {}
+    }
+}
+
+/// Move a main-area tab into the side panel, keeping its WebView: the main
+/// area presents a neighbour first, then the side panel takes the tab over.
+#[cfg(feature = "browser-runtime")]
+fn move_browser_tab_to_side_panel(appid: &str, tab_id: &str) {
+    if presented_browser_tab().as_deref() == Some(tab_id) {
+        let successor = adjacent_main_tab(tab_id, &HashSet::from([tab_id]));
+        activate_main_tab(appid, successor.as_deref());
+    }
+    if let Err(err) = lingxia::move_browser_tab_to_side_panel(tab_id) {
+        log::warn!("moving browser tab {tab_id} into the side panel refused: {err}");
+        present_browser_tab_when_ready(appid, tab_id.to_string());
+    }
+    sync_shell_layout(appid);
 }
 
 #[cfg(feature = "browser-shell")]
@@ -5764,29 +5790,6 @@ fn show_pinned_bookmark_context_menu(appid: &str, row_id: &str, screen_x: i32, s
 fn show_pinned_bookmark_context_menu(_appid: &str, _row_id: &str, _screen_x: i32, _screen_y: i32) {}
 
 #[cfg(feature = "browser-runtime")]
-fn handle_browser_tab_context_action(appid: &str, tab_id: &str, action: BrowserTabContextAction) {
-    match action {
-        #[cfg(feature = "browser-shell")]
-        BrowserTabContextAction::TogglePin => {
-            if let Some(tab) = browser_tab_summary(tab_id) {
-                toggle_browser_tab_pin(appid, &tab);
-            }
-        }
-        BrowserTabContextAction::Close => handle_browser_tab_close(appid, tab_id),
-        BrowserTabContextAction::CloseOtherTabs => close_other_browser_tabs(appid, tab_id),
-        BrowserTabContextAction::CloseTabsBelow => close_browser_tabs_below(appid, tab_id),
-    }
-}
-
-#[cfg(not(feature = "browser-runtime"))]
-fn handle_browser_tab_context_action(
-    _appid: &str,
-    _tab_id: &str,
-    _action: BrowserTabContextAction,
-) {
-}
-
-#[cfg(feature = "browser-runtime")]
 fn close_other_browser_tabs(appid: &str, keeping_tab_id: &str) {
     let tab_ids: Vec<String> = browser_tabs()
         .into_iter()
@@ -5828,6 +5831,22 @@ fn close_browser_tab_batch(appid: &str, tab_ids: Vec<String>) {
         activate_main_tab(appid, successor.as_deref());
     }
     sync_shell_layout(appid);
+}
+
+/// The main surface showing `target_appid`, if it has one.
+fn lxapp_main_surface_id(owner_appid: &str, target_appid: &str) -> Option<String> {
+    let owner = lxapp::try_get(owner_appid)?;
+    owner
+        .surface_switcher_snapshot()
+        .items
+        .into_iter()
+        .map(|item| item.surface_id)
+        .find(|surface_id| {
+            matches!(
+                owner.main_surface_content(surface_id),
+                Some(lingxia_surface::SurfaceContent::Lxapp { app_id, .. }) if app_id == target_appid
+            )
+        })
 }
 
 fn handle_main_surface_click(owner_appid: &str, surface_id: &str) {
@@ -5995,7 +6014,10 @@ fn surface_menu_entry(
     item: &lingxia_shell::SurfaceMenuItem,
 ) -> super::context_menu::ContextMenuEntry {
     use lingxia_logic::I18nKey;
-    use lingxia_shell::{LxappSurfaceMenuAction, SurfaceMenuAction, SurfaceMenuBuiltinAction};
+    use lingxia_shell::{
+        BrowserSurfaceMenuAction, LxappSurfaceMenuAction, SurfaceMenuAction,
+        SurfaceMenuBuiltinAction,
+    };
     let (label, icon) = match &item.action {
         SurfaceMenuAction::Information {} => (item.label.clone().unwrap_or_default(), None),
         SurfaceMenuAction::External { .. } => (item.label.clone().unwrap_or_default(), None),
@@ -6007,6 +6029,14 @@ fn surface_menu_entry(
             LxappSurfaceMenuAction::OpenInSide => {
                 (lingxia_logic::i18n::t(I18nKey::AsideOpenInSide), None)
             }
+            LxappSurfaceMenuAction::Pin => (
+                lingxia_logic::i18n::t(I18nKey::BrowserPinToSidebar),
+                Some(crate::WindowsDesignIcon::Pin),
+            ),
+            LxappSurfaceMenuAction::Unpin => (
+                lingxia_logic::i18n::t(I18nKey::BrowserUnpin),
+                Some(crate::WindowsDesignIcon::Unpin),
+            ),
             LxappSurfaceMenuAction::CleanCacheRestart => (
                 lingxia_logic::i18n::t(I18nKey::CapsuleCleanCache),
                 Some(crate::WindowsDesignIcon::CleanCache),
@@ -6015,6 +6045,22 @@ fn surface_menu_entry(
                 lingxia_logic::i18n::t(I18nKey::CapsuleUninstall),
                 Some(crate::WindowsDesignIcon::Uninstall),
             ),
+        },
+        SurfaceMenuAction::Browser { action } => match action {
+            BrowserSurfaceMenuAction::Pin => (
+                lingxia_logic::i18n::t(I18nKey::BrowserPinToSidebar),
+                Some(crate::WindowsDesignIcon::Pin),
+            ),
+            BrowserSurfaceMenuAction::Unpin => (
+                lingxia_logic::i18n::t(I18nKey::BrowserUnpin),
+                Some(crate::WindowsDesignIcon::Unpin),
+            ),
+            BrowserSurfaceMenuAction::CopyLink => {
+                (lingxia_logic::i18n::t(I18nKey::BrowserCopyLink), None)
+            }
+            BrowserSurfaceMenuAction::OpenInSide => {
+                (lingxia_logic::i18n::t(I18nKey::AsideOpenInSide), None)
+            }
         },
         SurfaceMenuAction::Switcher { action } => match action {
             SurfaceMenuBuiltinAction::Rename => {
@@ -6097,6 +6143,28 @@ fn handle_main_surface_menu_action(
                 return;
             }
             log::warn!("sidebar row is unavailable for inline surface rename");
+        }
+        // Pin runs here so a full Pin grid can say so.
+        SurfaceMenuAction::Lxapp {
+            action:
+                action @ (lingxia_shell::LxappSurfaceMenuAction::Pin
+                | lingxia_shell::LxappSurfaceMenuAction::Unpin),
+        } => {
+            let appid = lxapp::try_get(owner_appid)
+                .and_then(|owner| owner.main_surface_content(surface_id))
+                .and_then(|content| match content {
+                    lingxia_surface::SurfaceContent::Lxapp { app_id, .. } => Some(app_id),
+                    _ => None,
+                });
+            if let Some(appid) = appid
+                && set_lxapp_pin_with_limit(
+                    owner_appid,
+                    &appid,
+                    action == lingxia_shell::LxappSurfaceMenuAction::Pin,
+                )
+            {
+                sync_shell_layout(owner_appid);
+            }
         }
         // Windows re-hosts the page itself (adopt the WebView as a runtime
         // aside, present the successor main), which the core's own handler
@@ -6561,14 +6629,6 @@ fn build_lxapp_context_menu(
             }),
             Some(LxappContextMenuAction::TogglePin),
         );
-        // The mirror of the aside tab's "Open in Main Area": the live app
-        // moves beside the main without restarting. Home is the root main.
-        push_lxapp_context_menu_item(
-            &mut items,
-            &mut actions,
-            lingxia_logic::i18n::t(lingxia_logic::I18nKey::AsideOpenInSide),
-            Some(LxappContextMenuAction::OpenInSide),
-        );
         push_lxapp_context_menu_item(&mut items, &mut actions, String::new(), None);
     }
     push_lxapp_context_menu_item(
@@ -6584,6 +6644,15 @@ fn build_lxapp_context_menu(
         Some(LxappContextMenuAction::CleanCacheRestart),
     );
     if !is_home {
+        // The mirror of the aside tab's "Open in Main Area": the live app
+        // moves beside the main without restarting. Home is the root main.
+        push_lxapp_context_menu_item(&mut items, &mut actions, String::new(), None);
+        push_lxapp_context_menu_item(
+            &mut items,
+            &mut actions,
+            lingxia_logic::i18n::t(lingxia_logic::I18nKey::AsideOpenInSide),
+            Some(LxappContextMenuAction::OpenInSide),
+        );
         push_lxapp_context_menu_item(&mut items, &mut actions, String::new(), None);
         push_lxapp_context_menu_item(
             &mut items,

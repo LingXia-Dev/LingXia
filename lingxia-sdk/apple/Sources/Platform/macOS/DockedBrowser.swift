@@ -131,6 +131,7 @@ final class DockedBrowser: NSObject {
         owner: (appId: String, sessionId: UInt64),
         surfaceId: String,
         url: String,
+        adoptedBrowserTabId: String? = nil,
         ephemeralWebData: Bool,
         urlCallback: Bool,
         onCloseTab: @escaping (String) -> Void,
@@ -144,6 +145,7 @@ final class DockedBrowser: NSObject {
         guard addOrFocusTab(
             surfaceId: surfaceId,
             url: url,
+            adoptedBrowserTabId: adoptedBrowserTabId,
             ephemeralWebData: ephemeralWebData,
             urlCallback: urlCallback) else { return nil }
         // First click inside the web area marks the active tab as interacted
@@ -233,13 +235,31 @@ final class DockedBrowser: NSObject {
     /// never deduplicate because each one owns an isolated navigation channel.
     /// Returns false only if the underlying browser tab could not be created.
     @discardableResult
+    /// `adoptedBrowserTabId` is a live main-area tab moved in: it becomes
+    /// this tab as it is (same WebView, no load), never merged into an open
+    /// tab of the same URL.
     func addOrFocusTab(
         surfaceId: String,
         url: String,
+        adoptedBrowserTabId: String? = nil,
         ephemeralWebData: Bool,
         urlCallback: Bool
     ) -> Bool {
         if torn { return false }
+        if let adoptedBrowserTabId {
+            let tab = Tab(
+                surfaceId: surfaceId,
+                browserTabId: adoptedBrowserTabId,
+                url: url,
+                ephemeralWebData: ephemeralWebData,
+                urlCallback: urlCallback)
+            tab.title = Self.shortTitle(for: url)
+            tabs.append(tab)
+            buildTabRow(tab)
+            attachWhenReady(tab: tab, attempt: 0)
+            activate(surfaceId)
+            return true
+        }
         if !urlCallback, let existing = tabs.first(where: {
             !$0.urlCallback
                 && Self.sameURL($0.url, url)

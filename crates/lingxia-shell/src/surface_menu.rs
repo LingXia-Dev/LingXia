@@ -19,12 +19,29 @@ pub enum SurfaceMenuBuiltinAction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum LxappSurfaceMenuAction {
+    /// Pin the lxapp to the sidebar, or remove its Pin. The platform runs
+    /// these: a full Pin grid is reported in platform UI.
+    Pin,
+    Unpin,
     /// Move the live lxapp main into the side panel (the reverse of an aside
     /// tab's "Open in Main Area"); never offered for the root main.
     OpenInSide,
     Restart,
     CleanCacheRestart,
     Uninstall,
+}
+
+/// Actions on a main-area browser tab. A browser tab is not a graph surface:
+/// its menu is keyed by the browser tab id, and the platform runs every
+/// action, the close family included, over its browser tabs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BrowserSurfaceMenuAction {
+    Pin,
+    Unpin,
+    CopyLink,
+    /// Move the live tab into the side panel, keeping its WebView.
+    OpenInSide,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -40,6 +57,9 @@ pub enum SurfaceMenuAction {
     },
     Lxapp {
         action: LxappSurfaceMenuAction,
+    },
+    Browser {
+        action: BrowserSurfaceMenuAction,
     },
     External {
         namespace: String,
@@ -91,6 +111,16 @@ impl SurfaceMenuItem {
         }
     }
 
+    pub fn browser(action: BrowserSurfaceMenuAction) -> Self {
+        Self {
+            action: SurfaceMenuAction::Browser { action },
+            label: None,
+            icon: None,
+            enabled: true,
+            role: SurfaceMenuItemRole::Normal,
+        }
+    }
+
     pub fn external(
         namespace: impl Into<String>,
         generation: u64,
@@ -127,7 +157,11 @@ impl SurfaceMenuItem {
 pub enum SurfaceMenuSectionKind {
     Content,
     Management,
+    /// Where the content shows: "Open in Side Panel".
+    Placement,
     Lifecycle,
+    /// Leaves the app for good (Uninstall), after every close.
+    Removal,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -157,12 +191,35 @@ pub struct SurfaceMenuContext {
     pub has_closable_after: bool,
 }
 
+/// Provider items around the shell's own sections. Every main-area row reads
+/// the same way: what the content offers, where it shows, how it closes, and
+/// last what removes it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SurfaceMenuParts {
+    pub content: Vec<Vec<SurfaceMenuItem>>,
+    pub placement: Vec<SurfaceMenuItem>,
+    pub removal: Vec<SurfaceMenuItem>,
+}
+
 pub fn compose_surface_menu(
     context: SurfaceMenuContext,
     content_groups: Vec<Vec<SurfaceMenuItem>>,
 ) -> SurfaceMenuSnapshot {
-    let mut sections = Vec::with_capacity(3);
-    for items in content_groups.into_iter().filter(|items| !items.is_empty()) {
+    compose_surface_menu_parts(
+        context,
+        SurfaceMenuParts {
+            content: content_groups,
+            ..SurfaceMenuParts::default()
+        },
+    )
+}
+
+pub fn compose_surface_menu_parts(
+    context: SurfaceMenuContext,
+    parts: SurfaceMenuParts,
+) -> SurfaceMenuSnapshot {
+    let mut sections = Vec::with_capacity(5);
+    for items in parts.content.into_iter().filter(|items| !items.is_empty()) {
         sections.push(SurfaceMenuSection {
             kind: SurfaceMenuSectionKind::Content,
             items,
@@ -189,6 +246,13 @@ pub fn compose_surface_menu(
         });
     }
 
+    if !parts.placement.is_empty() {
+        sections.push(SurfaceMenuSection {
+            kind: SurfaceMenuSectionKind::Placement,
+            items: parts.placement,
+        });
+    }
+
     let mut lifecycle = Vec::new();
     if context.closable {
         lifecycle.push(SurfaceMenuItem::built_in(
@@ -212,6 +276,12 @@ pub fn compose_surface_menu(
         sections.push(SurfaceMenuSection {
             kind: SurfaceMenuSectionKind::Lifecycle,
             items: lifecycle,
+        });
+    }
+    if !parts.removal.is_empty() {
+        sections.push(SurfaceMenuSection {
+            kind: SurfaceMenuSectionKind::Removal,
+            items: parts.removal,
         });
     }
 
@@ -385,5 +455,53 @@ mod tests {
             snapshot.sections[2].items[0].action,
             SurfaceMenuAction::External { .. }
         ));
+    }
+
+    #[test]
+    fn placement_sits_between_content_and_closes_and_removal_comes_last() {
+        let mut uninstall = SurfaceMenuItem::lxapp(LxappSurfaceMenuAction::Uninstall);
+        uninstall.role = SurfaceMenuItemRole::Destructive;
+        let snapshot = compose_surface_menu_parts(
+            SurfaceMenuContext {
+                revision: 4,
+                surface_id: "guest".into(),
+                closable: true,
+                renameable: false,
+                title_overridden: false,
+                has_other_closable: true,
+                has_closable_before: true,
+                has_closable_after: true,
+            },
+            SurfaceMenuParts {
+                content: vec![vec![SurfaceMenuItem::lxapp(
+                    LxappSurfaceMenuAction::Restart,
+                )]],
+                placement: vec![SurfaceMenuItem::lxapp(LxappSurfaceMenuAction::OpenInSide)],
+                removal: vec![uninstall],
+            },
+        );
+
+        assert_eq!(
+            snapshot
+                .sections
+                .iter()
+                .map(|section| section.kind)
+                .collect::<Vec<_>>(),
+            vec![
+                SurfaceMenuSectionKind::Content,
+                SurfaceMenuSectionKind::Placement,
+                SurfaceMenuSectionKind::Lifecycle,
+                SurfaceMenuSectionKind::Removal,
+            ]
+        );
+    }
+
+    #[test]
+    fn browser_action_serializes_under_its_own_owner() {
+        let item = SurfaceMenuItem::browser(BrowserSurfaceMenuAction::CopyLink);
+        let json = serde_json::to_value(&item).unwrap();
+
+        assert_eq!(json["action"]["owner"], "browser");
+        assert_eq!(json["action"]["action"], "copyLink");
     }
 }

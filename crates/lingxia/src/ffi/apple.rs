@@ -459,6 +459,18 @@ mod bridge {
         #[swift_bridge(swift_name = "promoteDockedBrowserTab")]
         fn promote_docked_browser_tab(tab_id: &str) -> bool;
 
+        // The menu of a main-area browser tab, keyed by its tab id, in the
+        // shared surface menu shape. `ordered_tab_ids_json` is the strip's
+        // tab order.
+        #[swift_bridge(swift_name = "browserTabMenu")]
+        fn browser_tab_menu(ordered_tab_ids_json: &str, tab_id: &str) -> String;
+
+        // Move a main-area browser tab into the side panel, keeping its
+        // WebView. The caller lets go of the tab first. Returns the side
+        // panel surface id, empty when refused.
+        #[swift_bridge(swift_name = "moveBrowserTabToSidePanel")]
+        fn move_browser_tab_to_side_panel(tab_id: &str) -> String;
+
         #[swift_bridge(swift_name = "shellPins")]
         fn shell_pins() -> String;
 
@@ -1751,6 +1763,40 @@ pub fn demote_main_lxapp_to_aside(app_id: &str, edge: &str) -> bool {
                 log::warn!("main demotion refused for {app_id}: {err}");
                 false
             }
+        }
+    })
+}
+
+pub fn browser_tab_menu(ordered_tab_ids_json: &str, tab_id: &str) -> String {
+    ffi_catch_unwind!("browser_tab_menu", String::new(), || {
+        #[cfg(feature = "browser-runtime")]
+        {
+            serde_json::from_str::<Vec<String>>(ordered_tab_ids_json)
+                .ok()
+                .and_then(|ids| crate::browser_tab_menu(&ids, tab_id))
+                .and_then(|menu| serde_json::to_string(&menu).ok())
+                .unwrap_or_default()
+        }
+        #[cfg(not(feature = "browser-runtime"))]
+        {
+            let _ = (ordered_tab_ids_json, tab_id);
+            String::new()
+        }
+    })
+}
+
+pub fn move_browser_tab_to_side_panel(tab_id: &str) -> String {
+    ffi_catch_unwind!("move_browser_tab_to_side_panel", String::new(), || {
+        #[cfg(feature = "browser-runtime")]
+        {
+            crate::move_browser_tab_to_side_panel(tab_id)
+                .inspect_err(|err| log::warn!("moving browser tab {tab_id} refused: {err}"))
+                .unwrap_or_default()
+        }
+        #[cfg(not(feature = "browser-runtime"))]
+        {
+            let _ = tab_id;
+            String::new()
         }
     })
 }

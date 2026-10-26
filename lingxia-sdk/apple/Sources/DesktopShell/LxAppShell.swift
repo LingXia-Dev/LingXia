@@ -753,6 +753,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         sidebar.onBrowserTabCloseTabsBelowRequested = { [weak self] id in
             self?.browserCoordinator.closeTabsBelow(id: id)
         }
+        sidebar.onBrowserTabMoveToSidePanelRequested = { [weak self] id in
+            self?.browserCoordinator.moveTabToSidePanel(id: id)
+        }
         sidebar.onPanelItemToggled = { [weak self] generation, actionID, source in
             switch source {
             case .runtime:

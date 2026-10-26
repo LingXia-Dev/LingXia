@@ -198,6 +198,11 @@ pub struct SurfaceRequest {
     /// interception channel. Platforms use this to keep local-file access out
     /// of callback surfaces without restricting ordinary browser surfaces.
     pub url_callback: bool,
+    /// `Url` content only: a live browser tab this surface takes over (a
+    /// main-area tab moved into the side panel). The platform shows that
+    /// tab's WebView as it is: no new tab, no load, no merge with an open
+    /// tab of the same URL.
+    pub browser_tab_id: Option<String>,
 }
 
 /// Callback adapter used by platform SDK handlers that cannot return a Rust

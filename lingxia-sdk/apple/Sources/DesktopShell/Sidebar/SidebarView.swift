@@ -908,6 +908,8 @@ class SidebarView: NSView {
     var onBrowserTabCloseOtherRequested: ((String) -> Void)?
     /// Called when browser tabs visually below the given tab should close.
     var onBrowserTabCloseTabsBelowRequested: ((String) -> Void)?
+    /// Move a main-area browser tab into the side panel, keeping its page.
+    var onBrowserTabMoveToSidePanelRequested: ((String) -> Void)?
     /// Called when a pin tile with no open tab is clicked (open its URL)
     var onBookmarkOpen: ((String) -> Void)?
     /// Called from tile menus to open the bookmarks manager page
@@ -1750,97 +1752,43 @@ class SidebarView: NSView {
         onPanelItemToggled?(item.generation, item.id, item.source)
     }
 
+    /// The browser tab's "···" and right-click menu: the core's main-area
+    /// row menu (page actions, Open in Side Panel, the close family), run
+    /// here over the sidebar's tabs.
     private func browserContextMenu(for id: String) -> NSMenu? {
         closeRailHoverPanel()
-        guard let tab = model.browserTabs.first(where: { $0.id == id }) else { return nil }
-        let menu = NSMenu()
-
-        // Page actions first (Arc keeps pin/copy on the tab row itself).
-        let url = tab.url.trimmingCharacters(in: .whitespacesAndNewlines)
-        if BrowserPageMenu.isBookmarkActionable(url) {
-            let pinnedEntry = pinnedBookmarkEntries.first {
-                SidebarBookmarksSnapshot.normalize($0.url)
-                    == SidebarBookmarksSnapshot.normalize(url)
-            }
-            let pin = NSMenuItem(
-                title: L10n.string(
-                    pinnedEntry == nil ? "lx_browser_pin_to_sidebar" : "lx_browser_unpin"
-                ),
-                action: #selector(togglePinBrowserMenuItemClicked(_:)),
-                keyEquivalent: ""
-            )
-            pin.image = LxIcon.image(
-                named: pinnedEntry == nil ? "icon_pin" : "icon_unpin",
-                size: CGSize(width: 16, height: 16)
-            )
-            pin.target = self
-            pin.representedObject = id
-            menu.addItem(pin)
-
-            let copyLink = NSMenuItem(
-                title: L10n.string("lx_browser_copy_link"),
-                action: #selector(copyLinkBrowserMenuItemClicked(_:)),
-                keyEquivalent: ""
-            )
-            copyLink.image = LxIcon.image(
-                named: "icon_link", size: CGSize(width: 16, height: 16))
-            copyLink.target = self
-            copyLink.representedObject = id
-            menu.addItem(copyLink)
-
-            menu.addItem(.separator())
+        guard let snapshot = SurfaceMenuBridge.browserTabSnapshot(
+            orderedTabIds: model.browserTabs.map(\.id),
+            tabId: id
+        ) else { return nil }
+        let menu = SurfaceMenuPresenter.makeMenu(snapshot) { [weak self] _, tabId, action in
+            self?.performBrowserTabMenuAction(action, tabId: tabId)
         }
-
-        let close = NSMenuItem(
-            title: L10n.string("lx_common_close"),
-            action: #selector(closeBrowserMenuItemClicked(_:)),
-            keyEquivalent: ""
-        )
-        close.target = self
-        close.representedObject = id
-        close.image = LxIcon.image(
-            named: "icon_close_x", size: CGSize(width: 16, height: 16))
-        menu.addItem(close)
-
-        if let index = model.browserTabs.firstIndex(where: { $0.id == id }) {
-            if model.browserTabs.count > 1 {
-                let closeOther = NSMenuItem(
-                    title: L10n.string("lx_browser_close_other_tabs"),
-                    action: #selector(closeOtherBrowserMenuItemClicked(_:)),
-                    keyEquivalent: ""
-                )
-                closeOther.target = self
-                closeOther.representedObject = id
-                closeOther.image = LxIcon.image(
-                    named: "icon_close_other_tabs", size: CGSize(width: 16, height: 16))
-                menu.addItem(closeOther)
-            }
-
-            if index < model.browserTabs.index(before: model.browserTabs.endIndex) {
-                let closeBelow = NSMenuItem(
-                    title: L10n.string("lx_browser_close_tabs_below"),
-                    action: #selector(closeTabsBelowBrowserMenuItemClicked(_:)),
-                    keyEquivalent: ""
-                )
-                closeBelow.target = self
-                closeBelow.representedObject = id
-                closeBelow.image = LxIcon.image(
-                    named: "icon_close_tabs_below", size: CGSize(width: 16, height: 16))
-                menu.addItem(closeBelow)
-            }
-        }
-
-        return menu
+        return menu.items.isEmpty ? nil : menu
     }
 
-    @objc private func closeBrowserMenuItemClicked(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String else { return }
-        onBrowserTabCloseRequested?(id)
+    private func performBrowserTabMenuAction(_ action: SurfaceMenuSnapshot.Item.Action, tabId: String) {
+        switch (action.owner, action.action) {
+        case ("browser", "pin"), ("browser", "unpin"):
+            toggleBrowserTabPin(tabId)
+        case ("browser", "copyLink"):
+            guard let tab = model.browserTabs.first(where: { $0.id == tabId }) else { return }
+            BrowserPageMenu.copyLink(tab.url, toastHost: self)
+        case ("browser", "openInSide"):
+            onBrowserTabMoveToSidePanelRequested?(tabId)
+        case ("switcher", "close"):
+            onBrowserTabCloseRequested?(tabId)
+        case ("switcher", "closeOthers"):
+            onBrowserTabCloseOtherRequested?(tabId)
+        case ("switcher", "closeAfter"):
+            onBrowserTabCloseTabsBelowRequested?(tabId)
+        default:
+            break
+        }
     }
 
-    @objc private func togglePinBrowserMenuItemClicked(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String,
-              let tab = model.browserTabs.first(where: { $0.id == id }) else { return }
+    private func toggleBrowserTabPin(_ id: String) {
+        guard let tab = model.browserTabs.first(where: { $0.id == id }) else { return }
         if let pinnedEntry = pinnedBookmarkEntries.first(where: {
             SidebarBookmarksSnapshot.normalize($0.url)
                 == SidebarBookmarksSnapshot.normalize(tab.url)
@@ -1853,22 +1801,6 @@ class SidebarView: NSView {
                 showShellPinLimitAlert()
             }
         }
-    }
-
-    @objc private func copyLinkBrowserMenuItemClicked(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String,
-              let tab = model.browserTabs.first(where: { $0.id == id }) else { return }
-        BrowserPageMenu.copyLink(tab.url, toastHost: self)
-    }
-
-    @objc private func closeOtherBrowserMenuItemClicked(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String else { return }
-        onBrowserTabCloseOtherRequested?(id)
-    }
-
-    @objc private func closeTabsBelowBrowserMenuItemClicked(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String else { return }
-        onBrowserTabCloseTabsBelowRequested?(id)
     }
 
     /// Hover affordance for one collapsed-rail icon: the page panel when the

@@ -393,6 +393,24 @@ pub fn is_bookmarked(url: &str) -> bool {
     }
 }
 
+/// The pinned bookmark for `url`, if the sidebar Pin grid holds one: what a
+/// tab menu's Pin / Unpin reads.
+pub fn pinned_entry_for_url(url: &str) -> Option<BookmarkEntry> {
+    let normalized = normalize_url(url);
+    let pinned = lingxia_shell::pins()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|pin| match pin.0 {
+            lingxia_shell::ShellPinTarget::Bookmark { key } => Some(key),
+            lingxia_shell::ShellPinTarget::Lxapp { .. } => None,
+        })
+        .collect::<std::collections::HashSet<_>>();
+    snapshot()?
+        .entries
+        .into_iter()
+        .find(|entry| pinned.contains(&entry.id) && normalize_url(&entry.url) == normalized)
+}
+
 /// Full snapshot as JSON for native chrome (sidebar bookmarks section).
 pub fn snapshot_json() -> Option<String> {
     let dir = runtime_data_dir()?;
