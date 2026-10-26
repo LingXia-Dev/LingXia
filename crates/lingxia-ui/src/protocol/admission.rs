@@ -11,6 +11,15 @@ pub(super) fn child(records: &[Record], parent: usize, child: usize) -> Result<(
         Children::Content if !records[parent].text.is_empty() => {
             return Err("UI_BUTTON: a control with children carries no inline text".into());
         }
+        Children::Runs if !records[parent].text.is_empty() => {
+            return Err("UI_TEXT: a text with runs carries no inline text".into());
+        }
+        Children::Runs if TAG_ADMISSION[child].parent != Some(records[parent].tag) => {
+            return Err(format!(
+                "UI_TEXT: <{}> accepts only text runs",
+                TAGS[records[parent].tag]
+            ));
+        }
         Children::Options if TAG_ADMISSION[child].parent != Some(records[parent].tag) => {
             return Err(format!(
                 "UI_CHILD: <{}> accepts only its options",
@@ -35,7 +44,7 @@ pub(super) fn text(tag: usize, text: &str) -> Result<(), String> {
     if !text.is_empty()
         && !matches!(
             TAG_ADMISSION[tag].children,
-            Children::Text | Children::Content
+            Children::Text | Children::Content | Children::Runs
         )
     {
         return Err("UI_TEXT: container".into());

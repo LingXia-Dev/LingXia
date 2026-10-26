@@ -11,6 +11,9 @@ pub struct NodeSnapshot {
     pub text: String,
     pub bounds: [f32; 4],
     pub visible_bounds: [f32; 4],
+    /// Line pieces of a text run; hits must land in one of them.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub hit_rects: Vec<[f32; 4]>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub clips: Vec<ClipSnapshot>,
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -56,8 +56,9 @@ export function render(view: View<{ save(value: string): Promise<void> }, { titl
   const radio = <radio bind={draft} value="a" options={[]}/>;
   // @ts-expect-error objects are not renderable children
   const child = <Card>{{ arbitrary: true }}</Card>;
-  // @ts-expect-error native text accepts text, not nested layout nodes
-  const nestedText = <text><column/></text>;
+  // @ts-expect-error native text accepts text and runs, not objects
+  const nestedText = <text>{{ arbitrary: true }}</text>;
+  const rich = <text>Read <span className="font-bold">this</span> or <link onPress={() => {}}>that</link></text>;
   // @ts-expect-error editors are leaves
   const inputChildren = <input><text>invalid</text></input>;
   // @ts-expect-error virtual rows belong to the row factory

@@ -1,11 +1,11 @@
 {
   "uiAbi": 1,
-  "limits": {"nodes": 4096, "depth": 128, "animationBytes": 262144, "itemKeyBytes": 262144, "imageBytes": 8388608, "sourceBytes": 8192, "visibleImageBytes": 67108864, "decodedImageBytes": 100663296},
-  "tags": ["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page"],
+  "limits": {"nodes": 4096, "depth": 128, "animationBytes": 262144, "itemKeyBytes": 262144, "imageBytes": 8388608, "sourceBytes": 8192, "visibleImageBytes": 67108864, "decodedImageBytes": 100663296, "runs": 256},
+  "tags": ["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page", "span", "link"],
   "admission": {
     "column": {"children": "any", "content": true},
     "row": {"children": "any", "content": true},
-    "text": {"children": "text", "content": true},
+    "text": {"children": "runs", "content": true},
     "button": {"children": "content"},
     "spacer": {"children": "none", "content": true},
     "scroll": {"children": "any"},
@@ -23,7 +23,9 @@
     "stack": {"children": "any", "content": true},
     "plot": {"children": "none"},
     "vector": {"children": "none", "content": true},
-    "page": {"children": "any", "root": true}
+    "page": {"children": "any", "root": true},
+    "span": {"children": "text", "content": true, "parent": "text"},
+    "link": {"children": "text", "parent": "text"}
   },
   "options": {
     "font-family": ["sans", "mono"],
@@ -59,7 +61,7 @@
     {"id": 5, "key": "color", "wire": "color", "kind": "string"},
     {"id": 6, "key": "background", "wire": "background", "kind": "string"},
     {"id": 7, "key": "grow", "wire": "grow", "kind": "number"},
-    {"id": 8, "key": "onClick", "wire": "onClick", "kind": "handle", "tags": ["button"]},
+    {"id": 8, "key": "onClick", "wire": "onClick", "kind": "handle", "tags": ["button", "link"]},
     {"id": 9, "key": "enabled", "wire": "enabled", "kind": "flag", "tags": ["button", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider"]},
     {"id": 10, "key": "radius", "wire": "radius", "kind": "number"},
     {"id": 11, "key": "listId", "wire": "listId", "kind": "list-id", "tags": ["list"]},
@@ -92,7 +94,7 @@
     {"id": 38, "key": "fontFamily", "wire": "fontFamily", "kind": "font-family"},
     {"id": 39, "key": "checked", "wire": "checked", "kind": "check-flag", "tags": ["checkbox", "switch", "radio-option"]},
     {"id": 40, "key": "onCheckedChange", "wire": "onChange", "kind": "check-handle", "tags": ["checkbox", "switch", "radio-option"]},
-    {"id": 41, "key": "accessibilityLabel", "wire": "accessibilityLabel", "kind": "radio-label", "tags": ["button", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot"]},
+    {"id": 41, "key": "accessibilityLabel", "wire": "accessibilityLabel", "kind": "radio-label", "tags": ["button", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "link"]},
     {"id": 42, "key": "sliderValue", "wire": "value", "kind": "slider-number", "tags": ["slider"]},
     {"id": 43, "key": "sliderMin", "wire": "min", "kind": "slider-number", "tags": ["slider"]},
     {"id": 44, "key": "sliderMax", "wire": "max", "kind": "slider-number", "tags": ["slider"]},
@@ -176,7 +178,7 @@
     {"id": 122, "key": "textTransform", "wire": "textTransform", "kind": "text-transform"},
     {"id": 123, "key": "whiteSpace", "wire": "whiteSpace", "kind": "white-space"},
     {"id": 124, "key": "textOverflow", "wire": "textOverflow", "kind": "text-overflow"},
-    {"id": 125, "key": "pressedStyle", "wire": "pressedStyle", "kind": "state-style", "tags": ["button", "checkbox", "switch", "radio"]},
+    {"id": 125, "key": "pressedStyle", "wire": "pressedStyle", "kind": "state-style", "tags": ["button", "checkbox", "switch", "radio", "link"]},
     {"id": 126, "key": "hoverStyle", "wire": "hoverStyle", "kind": "state-style"},
     {"id": 127, "key": "widthKeyword", "wire": "widthKeyword", "kind": "sizing-keyword"},
     {"id": 128, "key": "heightKeyword", "wire": "heightKeyword", "kind": "sizing-keyword"},
@@ -211,7 +213,7 @@
     {"id": 157, "key": "radiusEndStart", "wire": "radiusEndStart", "kind": "number"},
     {"id": 158, "key": "radiusEndEnd", "wire": "radiusEndEnd", "kind": "number"}
   ],
-  "styleGroups": {"accent": ["color"]},
+  "styleGroups": {"accent": ["color"], "run": ["color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "textDecorationLine", "fontVariantNumeric", "backgroundColor"]},
   "style": {
     "width": {"type": "number | `${number}%` | `${number}vw` | `${number}vh` | \"auto\" | \"fit-content\" | \"max-content\" | \"min-content\"", "group": "box", "lower": "dimension", "wire": "width", "css": "width"},
     "height": {"type": "number | `${number}%` | `${number}vw` | `${number}vh` | \"auto\" | \"fit-content\" | \"max-content\" | \"min-content\"", "group": "box", "lower": "dimension", "wire": "height", "css": "height"},
@@ -326,7 +328,7 @@
     "column": {"wire": "column", "children": "any", "style": ["box", "padding", "flex", "align", "direction", "gap", "text", "grid"], "props": {}},
     "row": {"wire": "row", "children": "any", "style": ["box", "padding", "flex", "align", "direction", "gap", "text", "grid"], "props": {}},
     "page": {"wire": "page", "children": "any", "style": ["box", "padding", "flex", "align", "direction", "gap", "text", "grid"], "props": {}},
-    "text": {"wire": "text", "children": "text", "style": ["box", "padding", "text", "textBlock"], "props": {}},
+    "text": {"wire": "text", "children": "runs", "style": ["box", "padding", "text", "textBlock"], "props": {}},
     "button": {"wire": "button", "children": "content", "style": ["box", "padding", "flex", "align", "gap", "text"], "props": {"onClick": {"type": "() => void"}, "disabled": {"type": "boolean"}, "accessibilityLabel": {"type": "string"}}},
     "spacer": {"wire": "spacer", "children": "none", "style": ["box"], "props": {}},
     "scroll": {"wire": "scroll", "children": "any", "style": ["box", "padding", "flex", "align", "gap", "text", "scroll", "overscroll"], "props": {"onReachStart": {"type": "() => void"}, "onReachEnd": {"type": "() => void"}}},
@@ -342,6 +344,8 @@
     "grid": {"wire": "grid", "children": "any", "style": ["box", "padding", "grid", "align", "gap", "text"], "props": {}},
     "stack": {"wire": "stack", "children": "any", "style": ["box", "padding", "text"], "props": {}},
     "plot": {"wire": "plot", "children": "none", "style": ["box"], "props": {"kind": {"type": "\"bar\" | \"line\" | \"pie\"", "required": true}, "values": {"type": "readonly number[]", "required": true}, "colors": {"type": "readonly string[]", "required": true}, "accessibilityLabel": {"type": "string", "required": true}, "smooth": {"type": "boolean"}, "area": {"type": "boolean"}, "selectedIndex": {"type": "number"}, "domainMin": {"type": "number"}, "domainMax": {"type": "number"}, "onSelect": {"type": "(index: number) => void"}, "pieLayout": {"type": "PieLayout"}, "markerEmphasisScale": {"type": "number"}}},
-    "vector": {"wire": "vector", "children": "none", "style": ["box", "padding", "accent", "media"], "props": {"paths": {"type": "ReadonlyArray<VectorPath>", "required": true}, "gradients": {"type": "Readonly<Record<string, VectorGradient>>"}, "viewBox": {"type": "readonly [number, number, number, number]"}}}
+    "vector": {"wire": "vector", "children": "none", "style": ["box", "padding", "accent", "media"], "props": {"paths": {"type": "ReadonlyArray<VectorPath>", "required": true}, "gradients": {"type": "Readonly<Record<string, VectorGradient>>"}, "viewBox": {"type": "readonly [number, number, number, number]"}}},
+    "span": {"wire": "span", "children": "runs", "style": ["run"], "props": {}},
+    "link": {"wire": "link", "children": "text", "style": ["run"], "props": {"onPress": {"type": "() => void"}, "accessibilityLabel": {"type": "string"}, "disabled": {"type": "boolean"}}}
   }
 }

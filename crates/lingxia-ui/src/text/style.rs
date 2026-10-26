@@ -159,10 +159,13 @@ pub(crate) fn computed(records: &[Record], directions: &[bool]) -> Vec<TextStyle
             .unwrap_or_else(|| parent.as_ref().map(|p| p.size).unwrap_or(14.0));
         // Decorations propagate through layout descendants; `none` only
         // removes a node's own decoration, not one drawn by its ancestor.
+        // Links underline by default; an authored decoration line replaces that.
+        let link = record.tag == tag::LINK;
         let decoration = parent.as_ref().and_then(|p| p.decoration).or_else(|| {
             match record.string(field::TEXT_DECORATION_LINE) {
                 Some("line-through") => Some((index, Decoration::LineThrough)),
                 Some("underline") => Some((index, Decoration::Underline)),
+                None if link => Some((index, Decoration::Underline)),
                 _ => None,
             }
         });
@@ -239,6 +242,8 @@ pub(crate) fn computed(records: &[Record], directions: &[bool]) -> Vec<TextStyle
             .unwrap_or_else(|| {
                 if record.tag == tag::BUTTON {
                     "primaryText".into()
+                } else if link {
+                    "primary".into()
                 } else {
                     parent
                         .as_ref()

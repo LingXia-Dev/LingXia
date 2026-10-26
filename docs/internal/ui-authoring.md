@@ -26,6 +26,11 @@ children kind (any, content, text, none), its props, an optional binding
 `view` is a column. `disabled` replaces `enabled`. Grid tracks, line clamps
 and image fit are style (`gridTemplateColumns`, `lineClamp`, `objectFit`).
 
+`<text>` children may be strings, `<span>` and `<link onPress>` runs (≤256): nested
+spans flatten into styled runs of one paragraph. Runs accept only text paint
+(color, size, weight, family, italic, decoration, numeric variants, background);
+links default to the accent color with an underline, take `active:` paint and
+hit-test only their line pieces. Static text is not selectable.
 Composed buttons and checkboxes may contain noninteractive content; inline
 text among element children becomes text nodes. Their accessible name comes
 from descendant text unless `accessibilityLabel` is given. Empty strings,

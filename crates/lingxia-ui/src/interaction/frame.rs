@@ -129,6 +129,9 @@ pub fn contains(node: &NodeSnapshot, point: [f32; 2], own_shape: bool) -> bool {
     if own_shape && !shape.contains(point) {
         return false;
     }
+    if !node.hit_rects.is_empty() && !node.hit_rects.iter().any(|rect| inside_rect(*rect, point)) {
+        return false;
+    }
     node.clips.iter().all(|clip| clip.contains(point))
 }
 

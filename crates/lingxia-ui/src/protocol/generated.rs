@@ -26,6 +26,8 @@ pub mod tag {
     pub const PLOT: usize = 18;
     pub const VECTOR: usize = 19;
     pub const PAGE: usize = 20;
+    pub const SPAN: usize = 21;
+    pub const LINK: usize = 22;
 }
 
 /// Wire field ids.
@@ -191,7 +193,7 @@ pub mod field {
     pub const RADIUS_END_END: usize = 158;
 }
 
-pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page"];
+pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page", "span", "link"];
 
 /// Wire name and value kind, indexed by field id.
 pub const FIELDS: &[(&str, &str)] = &[
@@ -396,6 +398,7 @@ pub mod limits {
     pub const SOURCE_BYTES: usize = 8192;
     pub const VISIBLE_IMAGE_BYTES: usize = 67108864;
     pub const DECODED_IMAGE_BYTES: usize = 100663296;
+    pub const RUNS: usize = 256;
 }
 
 /// What a wire tag may contain.
@@ -412,6 +415,8 @@ pub enum Children {
     Rows,
     /// Only tags whose admission names this tag as parent.
     Options,
+    /// Inline text, or only run tags whose admission names this tag as parent.
+    Runs,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -430,7 +435,7 @@ pub struct TagAdmission {
 pub const TAG_ADMISSION: &[TagAdmission] = &[
     TagAdmission { children: Children::Any, content: true, parent: None, root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::Any, content: true, parent: None, root: false, keyed: false, requires: &[] },
-    TagAdmission { children: Children::Text, content: true, parent: None, root: false, keyed: false, requires: &[] },
+    TagAdmission { children: Children::Runs, content: true, parent: None, root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::Content, content: false, parent: None, root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::None, content: true, parent: None, root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::Any, content: false, parent: None, root: false, keyed: false, requires: &[] },
@@ -449,6 +454,8 @@ pub const TAG_ADMISSION: &[TagAdmission] = &[
     TagAdmission { children: Children::None, content: false, parent: None, root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::None, content: true, parent: None, root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::Any, content: false, parent: None, root: true, keyed: false, requires: &[] },
+    TagAdmission { children: Children::Text, content: true, parent: Some(tag::TEXT), root: false, keyed: false, requires: &[] },
+    TagAdmission { children: Children::Text, content: false, parent: Some(tag::TEXT), root: false, keyed: false, requires: &[] },
 ];
 
 /// The tags a field applies to (`None`: every tag) and the parent tag it requires.
@@ -468,7 +475,7 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
-    FieldAdmission { tags: Some(&[tag::BUTTON]), parent: None },
+    FieldAdmission { tags: Some(&[tag::BUTTON, tag::LINK]), parent: None },
     FieldAdmission { tags: Some(&[tag::BUTTON, tag::INPUT, tag::TEXTAREA, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::RADIO_OPTION, tag::SEARCH, tag::SLIDER]), parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::LIST]), parent: None },
@@ -501,7 +508,7 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::CHECKBOX, tag::SWITCH, tag::RADIO_OPTION]), parent: None },
     FieldAdmission { tags: Some(&[tag::CHECKBOX, tag::SWITCH, tag::RADIO_OPTION]), parent: None },
-    FieldAdmission { tags: Some(&[tag::BUTTON, tag::INPUT, tag::TEXTAREA, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::SEARCH, tag::SLIDER, tag::PLOT]), parent: None },
+    FieldAdmission { tags: Some(&[tag::BUTTON, tag::INPUT, tag::TEXTAREA, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::SEARCH, tag::SLIDER, tag::PLOT, tag::LINK]), parent: None },
     FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
     FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
     FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
@@ -585,7 +592,7 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
-    FieldAdmission { tags: Some(&[tag::BUTTON, tag::CHECKBOX, tag::SWITCH, tag::RADIO]), parent: None },
+    FieldAdmission { tags: Some(&[tag::BUTTON, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::LINK]), parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },

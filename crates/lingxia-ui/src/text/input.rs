@@ -71,7 +71,7 @@ pub struct Change {
 
 #[derive(Clone)]
 pub struct Editor {
-    visual: PlainEditor<()>,
+    visual: PlainEditor<crate::text::RunBrush>,
     // IME positions may be inside a grapheme; Parley cursors snap to clusters.
     selection: [usize; 2],
     composition: Option<Range<usize>>,
@@ -135,7 +135,7 @@ impl Editor {
         &mut self,
         edit: Edit,
         fonts: &mut FontContext,
-        layouts: &mut LayoutContext<()>,
+        layouts: &mut LayoutContext<crate::text::RunBrush>,
     ) -> Result<Change, Error> {
         self.apply_batch(std::slice::from_ref(&edit), fonts, layouts)
     }
@@ -145,7 +145,7 @@ impl Editor {
         &mut self,
         edits: &[Edit],
         fonts: &mut FontContext,
-        layouts: &mut LayoutContext<()>,
+        layouts: &mut LayoutContext<crate::text::RunBrush>,
     ) -> Result<Change, Error> {
         if edits.len() > MAX_BATCH_EDITS {
             return Err(Error::TooManyEdits);
@@ -179,7 +179,7 @@ impl Editor {
     }
 
     /// Rendering uses Parley's layout, caret and selection geometry, not another text shaper.
-    pub fn visual(&self) -> &PlainEditor<()> {
+    pub fn visual(&self) -> &PlainEditor<crate::text::RunBrush> {
         &self.visual
     }
 
@@ -563,7 +563,7 @@ mod tests {
     struct Client {
         editor: Editor,
         fonts: FontContext,
-        layouts: LayoutContext<()>,
+        layouts: LayoutContext<crate::text::RunBrush>,
     }
     impl Client {
         fn new(value: &str) -> Self {

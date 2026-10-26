@@ -285,6 +285,25 @@ test('grid templates are a style; counts expand to equal tracks and any containe
   throwsOn(() => h('text', { style: { gridAutoFlow: 'row' } }, 'x'), /gridAutoFlow is not supported on <text>/);
 });
 
+test('text flattens nested spans and links into styled runs under one paragraph', () => {
+  let pressed = 0;
+  const tree = rendered(() => h('text', { style: { fontSize: 16 } }, 'Hello ',
+    h('span', { style: { fontWeight: 700, color: '#ff0000' } }, 'bold ', h('span', { style: { fontStyle: 'italic' } }, 'both'), ' tail'),
+    ' and ', h('link', { onPress: () => pressed++, accessibilityLabel: 'Terms' }, 'terms')));
+  assert.equal(tree.text, '');
+  assert.deepEqual(tree.children.map(child => [child.tag, child.text]),
+    [['span', 'Hello '], ['span', 'bold '], ['span', 'both'], ['span', ' tail'], ['span', ' and '], ['link', 'terms']]);
+  assert.deepEqual(tree.children[2].props, { fontWeight: 700, color: '#ff0000', fontStyle: 'italic' });
+  assert.equal(tree.children[5].props.accessibilityLabel, 'Terms');
+  assert.equal(typeof tree.children[5].props.onClick, 'number');
+  assert.equal(rendered(() => h('text', {}, 'plain ', 'text')).text, 'plain text');
+  throwsOn(() => h('column', {}, h('span', {}, 'loose')), /UI_TEXT: <span> belongs inside <text>/);
+  throwsOn(() => h('button', {}, h('text', {}, h('link', { onPress() {} }, 'nested'))), /UI_BUTTON/);
+  throwsOn(() => h('text', {}, h('link', {}, h('link', {}, 'x'))), /UI_CHILD/);
+  throwsOn(() => h('text', {}, h('span', { style: { padding: 4 } }, 'x')), /UI_STYLE: padding is not supported on <span>/);
+  throwsOn(() => h('text', {}, Array.from({ length: 257 }, (_, i) => h('span', { key: String(i) }, 'x'))), /UI_TEXT: more than 256 runs/);
+});
+
 test('stack children position with insets', () => {
   const Child = () => h('button', { style: { position: 'absolute', left: -5, top: 12 } }, 'Top');
   const stack = rendered(() => h('stack', {}, h('text', {}, 'Back'), h(Child, {})));

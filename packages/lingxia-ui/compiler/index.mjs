@@ -19,7 +19,7 @@ const runtimeRoot = dirname(runtime).toLowerCase();
 const has = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 const common = new Set(['key', 'testId', 'style', 'className', 'children', 'dir']);
 const editors = new Set(['input', 'textarea', 'search']);
-const controls = new Set(['button', 'checkbox', 'switch', 'radio']);
+const controls = new Set(['button', 'checkbox', 'switch', 'radio', 'link']);
 
 export function acceptsProp(tag, key) {
   const element = elements[tag];

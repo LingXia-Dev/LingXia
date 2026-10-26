@@ -7,7 +7,10 @@ use parley::StyleProperty;
 use parley::style::{FontStyle, FontWeight, GenericFamily, LineHeight};
 use vello_cpu::Glyph;
 
-pub(crate) fn text_extent(layout: &Layout<()>, lines: Option<usize>) -> (f32, f32) {
+pub(crate) fn text_extent(
+    layout: &Layout<crate::text::RunBrush>,
+    lines: Option<usize>,
+) -> (f32, f32) {
     let Some(limit) = lines else {
         return (layout.width(), layout.height());
     };
@@ -83,7 +86,8 @@ impl Renderer {
         record: &Record,
         style: &TextStyle,
         text: &str,
-    ) -> Option<Layout<()>> {
+        runs: &[(std::ops::Range<usize>, &TextStyle)],
+    ) -> Option<Layout<crate::text::RunBrush>> {
         if !matches!(
             record.tag,
             tag::TEXT
@@ -116,19 +120,21 @@ impl Renderer {
         );
 
         let started = std::time::Instant::now();
-        let key = (!matches!(record.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH))
-            .then(|| {
-                crate::text::cache::Key::new(
-                    text,
-                    (font_size, letter_spacing),
-                    weight,
-                    line_height,
-                    (style.mono, italic),
-                    (word_break, overflow_wrap, style.nowrap, &style.features),
-                    style.rtl,
-                )
-            })
-            .flatten();
+        // Rich text shapes per run; its key would have to carry every run style.
+        let key = (runs.is_empty()
+            && !matches!(record.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH))
+        .then(|| {
+            crate::text::cache::Key::new(
+                text,
+                (font_size, letter_spacing),
+                weight,
+                line_height,
+                (style.mono, italic),
+                (word_break, overflow_wrap, style.nowrap, &style.features),
+                style.rtl,
+            )
+        })
+        .flatten();
         let cached = key.as_ref().and_then(|key| self.text_cache.get(key));
         let mut layout = if let Some(layout) = cached {
             layout
@@ -175,6 +181,41 @@ impl Renderer {
             if let Some(height) = line_height {
                 builder.push_default(StyleProperty::LineHeight(LineHeight::Absolute(height)));
             }
+            for (position, (range, run)) in runs.iter().enumerate() {
+                let range = range.clone();
+                builder.push(
+                    StyleProperty::FontSize(self.text_scale.map(run.size)),
+                    range.clone(),
+                );
+                builder.push(
+                    StyleProperty::FontWeight(FontWeight::new(run.weight)),
+                    range.clone(),
+                );
+                builder.push(
+                    StyleProperty::FontStyle(if run.italic {
+                        FontStyle::Italic
+                    } else {
+                        FontStyle::Normal
+                    }),
+                    range.clone(),
+                );
+                builder.push(
+                    if run.mono {
+                        GenericFamily::Monospace
+                    } else {
+                        GenericFamily::SansSerif
+                    },
+                    range.clone(),
+                );
+                if run.features != style.features {
+                    builder.push(
+                        StyleProperty::FontFeatures(run.features.as_str().into()),
+                        range.clone(),
+                    );
+                }
+                // The brush names the run, so glyph runs split where paint changes.
+                builder.push(StyleProperty::Brush(position as u16 + 1), range);
+            }
             let layout = builder.build(text);
             if let Some(key) = key {
                 self.text_cache.insert(key, &layout);
@@ -208,25 +249,44 @@ impl Renderer {
         record: &Record,
         style: &TextStyle,
         text: &str,
+        runs: &[(std::ops::Range<usize>, &TextStyle)],
         width: f32,
         lines: Option<usize>,
-    ) -> Option<Layout<()>> {
-        let fits = |layout: &mut Layout<()>| {
+    ) -> Option<Layout<crate::text::RunBrush>> {
+        // Runs keep their styles up to the cut; the ellipsis takes the last kept run's.
+        let clipped = |end: usize, total: usize| -> Vec<(std::ops::Range<usize>, &TextStyle)> {
+            let mut kept: Vec<_> = runs
+                .iter()
+                .filter(|(range, _)| range.start < end || (end == 0 && range.start == 0))
+                .map(|(range, run)| (range.start..range.end.min(end), *run))
+                .collect();
+            if let Some(last) = kept.last_mut() {
+                last.0.end = total;
+            }
+            kept
+        };
+        let fits = |layout: &mut Layout<crate::text::RunBrush>| {
             layout.break_all_lines(if style.nowrap { None } else { Some(width) });
             lines.is_none_or(|limit| layout.len() <= limit)
                 && (!style.nowrap || layout.width() <= width + 0.5)
         };
-        if fits(&mut self.shape(record, style, text)?) {
+        if fits(&mut self.shape(record, style, text, runs)?) {
             return None;
         }
         let ends: Vec<usize> = text.char_indices().map(|(at, _)| at).collect();
         // Prefixes of `k` characters for k < count; the whole text is known not to fit.
         let (mut low, mut high) = (0, ends.len().saturating_sub(1));
-        let mut best = self.shape(record, style, "\u{2026}")?;
+        let mut best = self.shape(record, style, "\u{2026}", &clipped(0, 3))?;
         while low < high {
             let middle = (low + high).div_ceil(2);
-            let candidate = format!("{}\u{2026}", text[..ends[middle]].trim_end());
-            let mut layout = self.shape(record, style, &candidate)?;
+            let prefix = text[..ends[middle]].trim_end();
+            let candidate = format!("{prefix}\u{2026}");
+            let mut layout = self.shape(
+                record,
+                style,
+                &candidate,
+                &clipped(prefix.len(), candidate.len()),
+            )?;
             if fits(&mut layout) {
                 best = layout;
                 low = middle;

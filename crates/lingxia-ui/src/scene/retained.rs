@@ -11,7 +11,7 @@ use vello_cpu::kurbo::Affine;
 
 #[derive(Clone)]
 pub(crate) struct InputLayout {
-    pub(crate) layout: Layout<()>,
+    pub(crate) layout: Layout<crate::text::RunBrush>,
     pub(crate) padding: [f32; 2],
     pub(crate) text_offset_y: f32,
     pub(crate) content_size: [f32; 2],
@@ -183,6 +183,10 @@ impl RetainedLayout {
             if let Some(control) = &mut node.control_bounds {
                 control[0] -= translation[0];
                 control[1] -= translation[1];
+            }
+            for rect in &mut node.hit_rects {
+                rect[0] -= translation[0];
+                rect[1] -= translation[1];
             }
             let inherited = parent.map(|p| transforms[p]).unwrap_or(Affine::IDENTITY);
             let visual = visuals.get(&node.identity);
@@ -702,6 +706,9 @@ impl RetainedLayout {
                 .control_bounds
                 .map(|bounds| transformed_bounds(bounds, matrix))
                 .transpose()?;
+            for rect in &mut node.hit_rects {
+                *rect = transformed_bounds(*rect, matrix)?;
+            }
         }
         Ok(DisplayList {
             images: HashMap::new(),

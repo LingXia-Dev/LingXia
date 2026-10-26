@@ -15,8 +15,8 @@ const header = '// Generated from packages/lingxia-ui/contracts/schema.json; do 
 const screaming = name => name.replace(/-/g, '_').replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase();
 const object = entries => JSON.stringify(Object.fromEntries(entries));
 
-const childKinds = ['none', 'text', 'content', 'any', 'rows', 'options'];
-const limitNames = ['nodes', 'depth', 'animationBytes', 'itemKeyBytes', 'imageBytes', 'sourceBytes', 'visibleImageBytes', 'decodedImageBytes'];
+const childKinds = ['none', 'text', 'content', 'any', 'rows', 'options', 'runs'];
+const limitNames = ['nodes', 'depth', 'animationBytes', 'itemKeyBytes', 'imageBytes', 'sourceBytes', 'visibleImageBytes', 'decodedImageBytes', 'runs'];
 
 function validate(schema) {
   const ids = schema.fields.map(field => field.id);
@@ -106,6 +106,8 @@ pub enum Children {
     Rows,
     /// Only tags whose admission names this tag as parent.
     Options,
+    /// Inline text, or only run tags whose admission names this tag as parent.
+    Runs,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -193,7 +195,7 @@ function authoring(schema, api) {
     const type = pascal(name);
     const keys = elementStyle(schema, element).filter(key => !schema.style[key].internal).map(key => JSON.stringify(key)).join(' | ');
     lines.push(`export type ${type}Style = Pick<Style, ${keys}>;`);
-    const children = { any: 'Child', content: 'Child', text: 'TextChild', none: 'never' }[element.children];
+    const children = { any: 'Child', content: 'Child', text: 'TextChild', runs: 'RunChild', none: 'never' }[element.children];
     const props = Object.entries(element.props).map(([prop, entry]) => `${prop}${entry.required ? '' : '?'}: ${entry.type};`);
     const base = `Omit<Props, "style" | "children"> & { style?: ${type}Style; children?: ${children}${props.length ? '; ' + props.join(' ') : ''} }`;
     const binding = element.binding;

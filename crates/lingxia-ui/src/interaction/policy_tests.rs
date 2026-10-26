@@ -22,6 +22,7 @@ pub(crate) fn node(identity: &str, tag: &'static str, bounds: [f32; 4]) -> NodeS
         text: String::new(),
         bounds,
         visible_bounds: bounds,
+        hit_rects: Vec::new(),
         clips: Vec::new(),
         scroll: None,
         on_click: None,

@@ -48,18 +48,18 @@ impl Key {
 /// Unbroken layouts only. Each caller owns its line breaking and alignment.
 #[derive(Default)]
 pub(crate) struct TextCache {
-    entries: VecDeque<(Key, Layout<()>)>,
+    entries: VecDeque<(Key, Layout<crate::text::RunBrush>)>,
     text_bytes: usize,
 }
 impl TextCache {
-    pub(crate) fn get(&mut self, key: &Key) -> Option<Layout<()>> {
+    pub(crate) fn get(&mut self, key: &Key) -> Option<Layout<crate::text::RunBrush>> {
         let index = self.entries.iter().position(|(stored, _)| stored == key)?;
         let entry = self.entries.remove(index)?;
         let layout = entry.1.clone();
         self.entries.push_back(entry);
         Some(layout)
     }
-    pub(crate) fn insert(&mut self, key: Key, layout: &Layout<()>) {
+    pub(crate) fn insert(&mut self, key: Key, layout: &Layout<crate::text::RunBrush>) {
         while self.entries.len() >= MAX_ENTRIES || self.text_bytes + key.text.len() > MAX_TEXT_BYTES
         {
             if let Some((old, _)) = self.entries.pop_front() {

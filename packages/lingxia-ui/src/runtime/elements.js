@@ -62,7 +62,7 @@ function nodeStyle(tag, props, extra, inherited, direction) {
     state('active', 'pressedStyle', accepts('pressedStyle', tag), 'a control');
     state('hover', 'hoverStyle', true);
   }
-  return { fields, states, typography, children: classes?.children };
+  return { fields, states, typography, author, children: classes?.children };
 }
 
 export function resolveNode(node, identity, depth = 0, parent = {}) {
@@ -96,8 +96,11 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   const direction = props.dir ?? parent.direction ?? (render.view?.env?.direction === 'rtl' ? 'rtl' : 'ltr');
   const style = nodeStyle(tag, props, parent.extra, parent.typography ?? { fontSize: 14 }, direction);
   const flat = flatten(children);
-  const composed = element.children === 'content' && flat.some(child => typeof child !== 'string' && typeof child !== 'number');
-  const leaf = element.children === 'text' || (element.children === 'content' && !composed);
+  const inline = child => typeof child === 'string' || typeof child === 'number';
+  if ((tag === 'span' || tag === 'link') && !parent.inText) throw Error(`UI_TEXT: <${tag}> belongs inside <text>`);
+  const composed = element.children === 'content' && flat.some(child => !inline(child));
+  const runs = element.children === 'runs' && flat.some(child => !inline(child));
+  const leaf = element.children === 'text' || (element.children === 'content' && !composed) || (element.children === 'runs' && !runs);
   if (leaf && flat.some(child => typeof child !== 'string' && typeof child !== 'number')) throw Error(`UI_CHILD: <${tag}> accepts only text`);
   if (element.children === 'none' && flat.length) throw Error(`UI_CHILD: <${tag}> takes no children`);
   const disabled = props.disabled === true;
@@ -108,6 +111,12 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   if (disabled) wire('enabled', 0);
   if (props.dir !== undefined) wire('direction', props.dir);
   switch (tag) {
+    case 'link':
+      check.label(props.accessibilityLabel, 'UI_TEXT');
+      if (props.onPress !== undefined && typeof props.onPress !== 'function') throw Error('UI_PROP: onPress');
+      if (props.accessibilityLabel !== undefined) wire('accessibilityLabel', props.accessibilityLabel);
+      if (props.onPress && !disabled) on('onClick', props.onPress);
+      break;
     case 'button':
       check.label(props.accessibilityLabel, 'UI_BUTTON');
       if (props.onClick !== undefined && typeof props.onClick !== 'function') throw Error('UI_PROP: onClick');
@@ -188,6 +197,17 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   if (tag === 'list') {
     check.listKeys(props);
     result.list = listState(props, identity);
+  } else if (runs) {
+    // Nested spans flatten into one run list; inner runs layer over the outer span's style.
+    const extra = tag === 'span' ? style.author : undefined;
+    result.children = flat.flatMap((child, position) => {
+      const run = resolveNode(inline(child) ? h('span', {}, child) : child, `${identity}/${tag}/position:${position}`, depth + 1, {
+        tag, typography: style.typography, direction, extra, inText: true, inControl: parent.inControl,
+      });
+      if (run === null) return [];
+      return run.element === 'span' && run.children.length ? run.children : [run];
+    });
+    if (tag === 'text' && result.children.length > limits.runs) throw Error(`UI_TEXT: more than ${limits.runs} runs`);
   } else if (!leaf && tag !== 'radio') {
     const keys = new Set(), last = flat.length - 1;
     result.children = flat.map((child, position) => {

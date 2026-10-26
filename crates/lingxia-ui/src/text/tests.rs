@@ -703,3 +703,6 @@ fn numeric_variants_inherit_as_opentype_features_and_reset_with_normal() {
     let mut page = crate::ViewSession::new(&source).unwrap();
     assert!(page.layout(200, 100, 1.0).is_ok());
 }
+
+#[path = "tests/runs.rs"]
+mod runs;

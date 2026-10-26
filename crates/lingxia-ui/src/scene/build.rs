@@ -21,9 +21,12 @@ impl Renderer {
         records: &[Record],
         tree: &TaffyTree<usize>,
         ids: &[NodeId],
-        styles: &[TextStyle],
-        texts: &[String],
-        layouts: &mut [Option<Layout<()>>],
+        (styles, texts, paragraphs): (
+            &[TextStyle],
+            &[String],
+            &[Option<crate::text::runs::Paragraph>],
+        ),
+        layouts: &mut [Option<Layout<crate::text::RunBrush>>],
         groups: &ControlGroups,
         (width, height, scale): (u16, u16, f32),
     ) -> Result<RetainedLayout, String> {
@@ -44,6 +47,8 @@ impl Renderer {
         let parents = crate::layout::style::layout_parents(records);
         let hidden = crate::layout::style::hidden(records);
         let directions = crate::layout::style::directions(records, self.rtl);
+        let mut run_rects: std::collections::HashMap<usize, Vec<[f32; 4]>> =
+            std::collections::HashMap::new();
         let transforms = records
             .iter()
             .map(|record| {
@@ -432,6 +437,8 @@ impl Renderer {
                 });
             }
             let mut text_offset_y = 0.0;
+            let mut highlights = Vec::new();
+            let text_start = commands.len();
             if let Some(text) = &mut layouts[index] {
                 let started = std::time::Instant::now();
                 let content_width = (layout.size.width
@@ -452,6 +459,11 @@ impl Renderer {
                         record,
                         &styles[index],
                         &texts[index],
+                        &paragraphs[index]
+                            .iter()
+                            .flat_map(|p| p.runs.iter())
+                            .map(|(run, range)| (range.clone(), &styles[*run]))
+                            .collect::<Vec<_>>(),
                         content_width,
                         record.number(field::TEXT_LINES).map(|n| n as usize),
                     )
@@ -502,8 +514,40 @@ impl Renderer {
                         .map(|n| n as usize)
                         .unwrap_or(usize::MAX),
                 ) {
+                    let metrics = line.metrics();
                     for item in line.items() {
                         if let PositionedLayoutItem::GlyphRun(glyph_run) = item {
+                            // In rich text the brush names the run record that owns these glyphs.
+                            let owner = paragraphs[index]
+                                .as_ref()
+                                .and_then(|p| p.run_at(glyph_run.style().brush))
+                                .unwrap_or(index);
+                            let extent = [
+                                x + layout.padding.left + label_x + glyph_run.offset(),
+                                y + layout.padding.top + label_y + metrics.block_min_coord,
+                                glyph_run.advance(),
+                                metrics.block_max_coord - metrics.block_min_coord,
+                            ];
+                            if owner != index {
+                                if let Some(background) = records[owner].string(field::BACKGROUND) {
+                                    highlights.push(Paint::Rect {
+                                        corners: None,
+                                        color: color(if background == "currentColor" {
+                                            colors[owner]
+                                        } else {
+                                            background
+                                        })?,
+                                        bounds: extent,
+                                        radius: 0.0,
+                                    });
+                                }
+                                run_rects.entry(owner).or_default().push(extent);
+                            }
+                            let [r, g, b, a] = if owner == index {
+                                [r, g, b, a]
+                            } else {
+                                color(colors[owner])?
+                            };
                             let run = glyph_run.run();
                             let coordinates: Vec<i16> = run
                                 .normalized_coords()
@@ -541,7 +585,7 @@ impl Renderer {
                                 skew,
                                 glyphs,
                             });
-                            if let Some((owner, decoration)) = styles[index].decoration {
+                            if let Some((owner, decoration)) = styles[owner].decoration {
                                 let metrics = run.font_metrics();
                                 let (offset, size) = match decoration {
                                     Decoration::LineThrough => {
@@ -567,6 +611,8 @@ impl Renderer {
                     }
                 }
             }
+            // Run backgrounds sit under every glyph of the paragraph.
+            commands.splice(text_start..text_start, highlights);
             if matches!(record.tag, tag::CHECKBOX | tag::SWITCH | tag::RADIO_OPTION)
                 && !(record.tag == tag::CHECKBOX && button_hashes.contains_key(&index))
             {
@@ -689,9 +735,28 @@ impl Renderer {
                     None
                 },
             );
-            if collapsed[index] {
+            let run = matches!(record.tag, tag::SPAN | tag::LINK);
+            // A run paints through its paragraph; its own box is the union of its line pieces.
+            if collapsed[index] || run {
                 commands.truncate(paint_start);
             }
+            let hit_rects = if run {
+                run_rects.remove(&index).unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+            let (bounds, visible_bounds) = match hit_rects.split_first() {
+                Some((first, rest)) => {
+                    let union = rest.iter().fold(*first, |[x, y, w, h], r| {
+                        let (left, top) = (x.min(r[0]), y.min(r[1]));
+                        let right = (x + w).max(r[0] + r[2]);
+                        let bottom = (y + h).max(r[1] + r[3]);
+                        [left, top, right - left, bottom - top]
+                    });
+                    (union, intersect(union, viewport))
+                }
+                None => (bounds, visible_bounds),
+            };
             ranges.push(paint_start..commands.len());
             nodes.push(NodeSnapshot {
                 plot_local: None,
@@ -715,7 +780,9 @@ impl Renderer {
                     .or_else(|| record.string(field::IMAGE_ALT))
                     .filter(|label| !label.is_empty())
                     .map(str::to_owned),
+                hit_rects,
                 accessibility_hidden: (hidden[index]
+                    || record.tag == tag::SPAN
                     || button_owners[index].is_some()
                     || record.string(field::IMAGE_ALT) == Some(""))
                 .then_some(true),
@@ -769,6 +836,12 @@ impl Renderer {
                         .to_owned()
                 } else if matches!(record.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH) {
                     texts[index].clone()
+                } else if let Some(paragraph) = &paragraphs[index] {
+                    paragraph
+                        .runs
+                        .iter()
+                        .map(|(run, _)| records[*run].text.as_str())
+                        .collect()
                 } else {
                     record.text.clone()
                 },

@@ -21,7 +21,7 @@ pub struct Renderer {
     pub(crate) text_scale: crate::text::scale::TextScale,
     pub(crate) fonts: FontContext,
     pub(crate) locale: Option<parley::fontique::Language>,
-    pub(crate) text: LayoutContext<()>,
+    pub(crate) text: LayoutContext<crate::text::RunBrush>,
     pub(crate) text_cache: crate::text::cache::TextCache,
     pub(crate) shadow_cache: crate::scene::shadow::MaskCache,
     pub(crate) text_time: std::time::Duration,
@@ -119,10 +119,23 @@ impl Renderer {
         let groups = crate::semantics::groups::control_groups(records)?;
         let directions = style::directions(records, self.rtl);
         let styles = crate::text::style::computed(records, &directions);
-        let texts = crate::text::style::display_texts(records, &styles);
-        let mut layouts: Vec<Option<Layout<()>>> = Vec::with_capacity(records.len());
+        let mut texts = crate::text::style::display_texts(records, &styles);
+        let paragraphs = crate::text::runs::paragraphs(records, &styles);
+        let mut layouts: Vec<Option<Layout<crate::text::RunBrush>>> =
+            Vec::with_capacity(records.len());
         for (index, record) in records.iter().enumerate() {
-            layouts.push(self.shape(record, &styles[index], &texts[index]));
+            let runs: Vec<_> = match &paragraphs[index] {
+                Some(paragraph) => {
+                    texts[index] = paragraph.text.clone();
+                    paragraph
+                        .runs
+                        .iter()
+                        .map(|(run, range)| (range.clone(), &styles[*run]))
+                        .collect()
+                }
+                None => Vec::new(),
+            };
+            layouts.push(self.shape(record, &styles[index], &texts[index], &runs));
         }
         let parents = style::layout_parents(records);
         let mut tree: TaffyTree<usize> = TaffyTree::new();
@@ -136,13 +149,18 @@ impl Renderer {
                 self.safe_area,
                 directions[index],
             )?;
+            // Runs are shaped inside their paragraph and take no box of their own.
+            let run = matches!(record.tag, tag::SPAN | tag::LINK);
+            if run {
+                style.display = Display::None;
+            }
             if let Some(ch) = record.number(field::MAX_WIDTH_CH) {
                 style.max_size.width = length(ch * self.zero_advance(&styles[index]));
             }
             let id = tree
                 .new_leaf_with_context(style, index)
                 .map_err(|e| e.to_string())?;
-            if let Some(parent) = parents[index] {
+            if let Some(parent) = parents[index].filter(|_| !run) {
                 if records[parent].tag == tag::LIST {
                     tree.add_child(ids[parent], id).map_err(|e| e.to_string())?;
                 } else {
@@ -296,8 +314,7 @@ impl Renderer {
             records,
             &tree,
             &ids,
-            &styles,
-            &texts,
+            (&styles, &texts, &paragraphs),
             &mut layouts,
             &groups,
             (width, height, scale),

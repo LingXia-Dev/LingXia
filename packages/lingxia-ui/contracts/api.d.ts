@@ -3,6 +3,8 @@
 
 export type Child = JSX.Element | string | number | boolean | null | undefined | readonly Child[];
 export type TextChild = string | number | boolean | null | undefined | readonly TextChild[];
+/** Text content of `<text>` and `<span>`: strings, `<span>` and `<link>` runs. */
+export type RunChild = TextChild | JSX.Element | readonly RunChild[];
 export type ComponentResult = JSX.Element | null | undefined | boolean;
 export type Component<P = {}> = (props: P) => ComponentResult;
 export type ComponentProps<C> = C extends (props: infer P) => unknown ? P : never;

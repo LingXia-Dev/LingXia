@@ -21,6 +21,7 @@ pub enum Role {
     Image,
     Slider,
     Text,
+    Link,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -164,7 +165,8 @@ impl Projection<'_> {
             return None;
         }
         let activatable = node.on_click.is_some_and(|handle| handle != 0);
-        let button = node.tag == "button";
+        // Links act like buttons: focusable, named by their text, clicked to activate.
+        let button = matches!(node.tag, "button" | "link");
         let check = node.checked.is_some();
         let input = node.input.as_ref();
         let role = if input.is_some() {
@@ -187,6 +189,8 @@ impl Projection<'_> {
             } else {
                 Role::CheckBox
             }
+        } else if node.tag == "link" {
+            Role::Link
         } else if button {
             Role::Button
         } else if matches!(node.tag, "image" | "plot") {

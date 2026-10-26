@@ -215,6 +215,20 @@ fn budgets(records: &[Record]) -> Result<(), String> {
             return Err("UI_LIMIT: plot geometry budget exceeded".into());
         }
     }
+    let mut runs: HashMap<usize, usize> = HashMap::new();
+    for record in records
+        .iter()
+        .filter(|r| matches!(r.tag, tag::SPAN | tag::LINK))
+    {
+        let count = runs.entry(record.parent.unwrap()).or_default();
+        *count += 1;
+        if *count > limits::RUNS {
+            return Err(format!(
+                "UI_TEXT: more than {} runs in one text",
+                limits::RUNS
+            ));
+        }
+    }
     let mut groups = HashMap::new();
     for record in records.iter().filter(|r| r.tag == tag::RADIO_OPTION) {
         let group = groups

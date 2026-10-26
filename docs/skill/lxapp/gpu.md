@@ -41,6 +41,8 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - Lists: `<List items getKey renderItem />`; hooks inside rows need stable keys.
 - `<vector paths gradients>`: paths take SVG `transform`, caps, joins, dash offset and
   `fill`/`stroke: 'url(#id)'` naming a `gradients` entry (linear or radial, ≤8).
+- Rich text: `<text>Read <span className="font-bold">this</span> or <link onPress={go}>that</link></text>`;
+  runs take text paint only; links are accent + underline by default.
 - Buttons may contain text, icons and images; their text names them for
   accessibility. Images need `alt` (`""` for decoration).
 - Remote `<image>` sources follow HTTP caching: revalidated, and shown stale while offline.
