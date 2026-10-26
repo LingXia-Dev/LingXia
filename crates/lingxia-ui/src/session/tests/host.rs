@@ -2020,13 +2020,15 @@ fn run_timed(platform: &Platform, host: &ViewHost<Fake>, frames: u32) {
 }
 
 fn costly_spinner(platform: &Platform, worker: &Arc<ViewWorker>, ahead: bool) -> ViewHost<Fake> {
-    let host = platform.host(
-        worker,
-        &source(&format!(
-            "function render(){{const n=useLocal('n',0);return h('column',{{}},h('button',{{onClick:()=>n.set(n.value+1),style:{{height:60}}}},`Count ${{n.value}}`),h('column',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}}))}}"
-        )),
-        false,
+    // The button darkens while pressed, as the lab's buttons do: pressing relays the page out.
+    let page = source(&format!(
+        "function render(){{const n=useLocal('n',0);return h('column',{{}},h('button',{{onClick:()=>n.set(n.value+1),className:'active:x',style:{{height:60}}}},`Count ${{n.value}}`),h('column',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}}))}}"
+    ))
+    .replace(
+        "__lingxiaPublish(render);",
+        "configureClasses([{name:'active:x',when:{state:'active'},style:{opacity:0.8}}]);__lingxiaPublish(render);",
     );
+    let host = platform.host(worker, &page, false);
     if !ahead {
         host.disable_frames_ahead();
     }
@@ -2441,5 +2443,104 @@ fn a_surface_push_rebuilds_only_pages_whose_view_read_the_host_context() {
             .last()
             .unwrap(),
         &vec!["regular".to_string()]
+    );
+}
+
+/// Like `run_timed`, but presses after `phase` main-thread steps of the next frame and
+/// releases `hold` frames later, as a finger does.
+fn run_timed_tapping(platform: &Platform, host: &ViewHost<Fake>, phase: usize, hold: u32) {
+    let frame = Duration::from_micros(16_667);
+    let now = {
+        let mut clock = host.adapter().clock.lock().unwrap();
+        *clock += frame;
+        *clock
+    };
+    platform.advance(frame);
+    let (mut vsynced, mut steps, mut tapped) = (false, 0, false);
+    loop {
+        if !tapped && steps >= phase {
+            pointer(host, PointerPhase::Down);
+            if hold == 0 {
+                pointer(host, PointerPhase::Up);
+            }
+            tapped = true;
+        }
+        for worker in &platform.workers {
+            let (done, wait) = channel();
+            worker.run_background(move |_| {
+                let _ = done.send(());
+            });
+            wait.recv_timeout(Duration::from_secs(30)).unwrap();
+        }
+        let mut ran = false;
+        if let Ok(task) = platform.tasks.try_recv() {
+            task();
+            ran = true;
+            steps += 1;
+        }
+        let ready = host
+            .adapter()
+            .costs
+            .lock()
+            .unwrap()
+            .as_ref()
+            .is_none_or(|costs| costs.ready.front().is_some_and(|at| *at <= now));
+        if !vsynced && ready && std::mem::take(&mut host.adapter().log.lock().unwrap().vsync) {
+            host.vsync();
+            vsynced = true;
+            ran = true;
+            steps += 1;
+        }
+        if !ran {
+            break;
+        }
+    }
+    if !tapped {
+        pointer(host, PointerPhase::Down);
+        if hold == 0 {
+            pointer(host, PointerPhase::Up);
+        }
+    }
+    if hold > 0 {
+        run_timed(platform, host, hold);
+        pointer(host, PointerPhase::Up);
+    }
+}
+
+fn pointer(host: &ViewHost<Fake>, phase: PointerPhase) {
+    host.pointer(Pointer {
+        phase,
+        x: 20.0,
+        y: 20.0,
+        slop: 8.0,
+        velocity: [0.0; 2],
+        min_fling: 50.0,
+    });
+}
+
+#[test]
+fn taps_at_any_phase_of_a_pipelined_animation_dispatch_within_two_frames() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = costly_spinner(&platform, &worker, true);
+    run_timed(&platform, &host, 20);
+    let count = |host: &ViewHost<Fake>| -> u32 {
+        last(host)[0].trim_start_matches("Count ").parse().unwrap()
+    };
+    let mut failed = Vec::new();
+    for round in 1..=60usize {
+        let before = count(&host);
+        let (phase, hold) = (round % 7, (round % 4) as u32);
+        run_timed_tapping(&platform, &host, phase, hold);
+        run_timed(&platform, &host, 2);
+        let after = count(&host);
+        run_timed(&platform, &host, 3 + (round % 5) as u32);
+        if after != before + 1 {
+            failed.push((phase, hold, after - before, count(&host) - before));
+        }
+    }
+    assert!(
+        failed.is_empty(),
+        "taps not counted within two frames of release (phase, hold, counted, eventually): {failed:?}"
     );
 }

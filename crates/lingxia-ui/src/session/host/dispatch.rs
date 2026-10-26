@@ -211,6 +211,7 @@ impl<A: PlatformAdapter> Inner<A> {
 
     /// Run an activation; a changed View drains Logic actions and rebuilds.
     fn activate(self: &Arc<Self>, page: PageTicket, announce: bool, activation: Activation) {
+        self.main().activating += 1;
         self.work(
             Guard::Page(page),
             move |inner, session| {
@@ -219,26 +220,39 @@ impl<A: PlatformAdapter> Inner<A> {
                 }
                 inner.drained(session).map(Some)
             },
-            move |inner, result| match result {
-                Some(Ok(Some(update))) => {
-                    if let Some((connection, update)) = update {
-                        inner.publish(connection, update);
-                    }
-                    if inner.main().disposed || !inner.lifecycle.is_current_page(page) {
-                        return;
-                    }
-                    if announce {
-                        inner.adapter.clicked();
-                    }
-                    inner.main().dirty = true;
-                    inner.schedule();
-                }
-                Some(Err(error)) if inner.lifecycle.is_current_page(page) => inner.fail(error),
-                // A running animation whose queued frames gave way to this input resumes.
-                _ if inner.main().animating => inner.schedule(),
-                _ => {}
+            move |inner, result| {
+                inner.main().activating -= 1;
+                inner.activated(page, announce, result)
             },
         );
+    }
+
+    fn activated(
+        self: &Arc<Self>,
+        page: PageTicket,
+        announce: bool,
+        result: Option<Result<Option<super::bridge::Drained>, String>>,
+    ) {
+        let inner = self;
+        match result {
+            Some(Ok(Some(update))) => {
+                if let Some((connection, update)) = update {
+                    inner.publish(connection, update);
+                }
+                if inner.main().disposed || !inner.lifecycle.is_current_page(page) {
+                    return;
+                }
+                if announce {
+                    inner.adapter.clicked();
+                }
+                inner.main().dirty = true;
+                inner.schedule();
+            }
+            Some(Err(error)) if inner.lifecycle.is_current_page(page) => inner.fail(error),
+            // A running animation whose queued frames gave way to this input resumes.
+            _ if inner.main().animating => inner.schedule(),
+            _ => {}
+        }
     }
 
     /// Edges reached by a presented frame; queued before the next preparation

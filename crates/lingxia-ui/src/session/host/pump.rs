@@ -126,7 +126,7 @@ impl<A: PlatformAdapter> Inner<A> {
                     main.catch_up = true;
                 }
             }
-            if (main.busy && !ahead) || main.number_busy {
+            if (main.busy && !ahead) || main.number_busy || (main.activating > 0 && !main.dirty) {
                 return;
             }
             let background = !main.visible;
