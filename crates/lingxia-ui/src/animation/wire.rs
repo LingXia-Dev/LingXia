@@ -16,6 +16,9 @@ struct Wire {
     easing: Ease,
     opacity: Option<Vec<Key>>,
     transforms: Vec<Transform>,
+    /// `keep` when authored under `motion-reduce:`/`motion-safe:`; otherwise reduced motion drops it.
+    #[serde(default)]
+    when_reduced: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -123,6 +126,13 @@ pub fn decode_definition(source: &str) -> Result<Definition, String> {
         iterations,
     )?;
     let easing = easing(wire.easing)?;
+    if wire
+        .when_reduced
+        .as_deref()
+        .is_some_and(|mode| !matches!(mode, "base" | "keep"))
+    {
+        return Err("UI_ANIMATION: invalid whenReduced".into());
+    }
     if wire.transforms.len() > 8 || (wire.opacity.is_none() && wire.transforms.is_empty()) {
         return Err("UI_ANIMATION: invalid effect tracks".into());
     }

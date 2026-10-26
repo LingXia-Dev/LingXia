@@ -16,6 +16,7 @@ _Generated from the View schema (`schema.json`) and the compiler; do not edit._
 | `sizeClass` | `string` |  |
 | `displayLanguage` | `string` |  |
 | `reducedMotion` | `boolean` | The system asks for reduced motion; `motion-reduce:`/`motion-safe:` follow it. |
+| `animatorDurationScale` | `number` | The platform's animation duration multiplier (0..10, default 1); 0 also sets `reducedMotion`. |
 | `direction` | `"ltr" \| "rtl"` | Inline direction derived from `displayLanguage`. |
 | `canDock` | `boolean` | Whether the window can dock an `as: 'aside'` beside the main; false until the host reports it. |
 | `runner` | `boolean` |  |

@@ -714,6 +714,8 @@ export async function compileUtilities(candidates, theme = '', { animationLoweri
       const lower = vars => {
         const result = declarations(rule.nodes, vars, root, animationLowering);
         if (!Object.keys(result.style).length && Object.keys(result).length === 1) unsupported(inert(name));
+        // Native drops plain animations under reduced motion; ones authored under motion-reduce:/motion-safe: say so.
+        if (result.style.animation) result.style.animation.whenReduced = when.reducedMotion === undefined ? 'base' : 'keep';
         if (!target.placeholder) return result;
         if (Object.keys(result).some(key => key !== 'style') || Object.keys(result.style).some(key => key !== 'color') || !result.style.color)
           unsupported('placeholder supports only color');

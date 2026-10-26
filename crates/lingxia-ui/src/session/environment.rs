@@ -27,6 +27,10 @@ impl ViewSession {
                 || matches!(value["sizeClass"].as_str(), Some("compact" | "regular")))
             && value["canDock"].is_boolean()
             && (value.get("reducedMotion").is_none() || value["reducedMotion"].is_boolean())
+            && (value.get("animatorDurationScale").is_none()
+                || value["animatorDurationScale"]
+                    .as_f64()
+                    .is_some_and(|n| n.is_finite() && (0.0..=10.0).contains(&n)))
             && value["runner"].is_boolean()
             && (value.get("renderer").is_none()
                 || (matches!(
@@ -39,6 +43,13 @@ impl ViewSession {
         // Platforms that cannot report the setting leave motion on.
         if value.get("reducedMotion").is_none() {
             value["reducedMotion"] = serde_json::json!(false);
+        }
+        if value.get("animatorDurationScale").is_none() {
+            value["animatorDurationScale"] = serde_json::json!(1);
+        }
+        // A zero animator scale is the platform's "remove animations".
+        if value["animatorDurationScale"] == 0.0 {
+            value["reducedMotion"] = serde_json::json!(true);
         }
         // Direction follows the display language and is exposed as `env.direction`.
         let rtl =
