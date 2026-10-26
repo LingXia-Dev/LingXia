@@ -350,10 +350,9 @@ pub(crate) fn paint_sidebar_peek(hdc: HDC, peek: &SidebarPeekLayout, cursor: Opt
     for (index, rect) in peek.header_action_rects() {
         let action = &peek.header_actions[index];
         if !action.disabled {
-            draw_hover_wash(hdc, rect, 6, cursor);
+            draw_hover_wash(hdc, rect, px(6), cursor);
         }
-        let icon_rect = centered_icon_rect(rect, px(16));
-        let _ = draw_icon_from_path(hdc, &action.icon_path, icon_rect, px(16) as u32);
+        super::sidebar::draw_header_action_icon(hdc, rect, action);
     }
     match peek.position {
         WindowsShellTabBarPosition::Right => draw_left_border(hdc, body, shell_palette().divider),

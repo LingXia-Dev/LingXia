@@ -294,8 +294,9 @@ pub(super) fn footer_action_size() -> i32 {
     crate::dpi::px(30)
 }
 
+/// Footer glyphs match macOS (18 pt) and the rail's icons.
 pub(super) fn footer_action_icon_size() -> i32 {
-    crate::dpi::px(16)
+    crate::dpi::px(18)
 }
 
 pub(super) fn footer_action_gap() -> i32 {

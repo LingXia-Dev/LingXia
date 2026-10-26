@@ -18,7 +18,7 @@ use windows::Win32::Graphics::GdiPlus;
 use windows::Win32::UI::WindowsAndMessaging::{self, HICON};
 use windows::core::w;
 
-use super::icons::{cached_png_bytes_icon_handle, cached_png_icon_handle};
+use super::icons::{cached_icon_handle, cached_png_bytes_icon_handle, cached_png_icon_handle};
 use super::*;
 
 /// Process-lifetime GDI font cache; a repaint draws dozens of strings and
@@ -756,9 +756,39 @@ pub(in crate::shell) fn draw_icon_from_path(hdc: HDC, path: &str, rect: RECT, si
         return false;
     };
     // Raster tiles are already corner-masked in the cached bitmap
-    // (`icons::apply_app_tile_corners`). SVG glyphs stay unmasked so they
-    // tint as templates.
+    // (`icons::apply_app_tile_corners`); SVG glyphs stay unmasked.
     draw_icon_handle(hdc, handle, rect)
+}
+
+/// A sidebar action's icon: an SVG is a template drawn in the action's text
+/// colour (dimmed while disabled), following the theme like macOS; a raster
+/// icon draws as-is.
+pub(in crate::shell) fn draw_action_icon(
+    hdc: HDC,
+    path: &str,
+    rect: RECT,
+    size: u32,
+    disabled: bool,
+) -> bool {
+    let Some(handle) = cached_icon_handle(path, size, Some(action_icon_tint(disabled))) else {
+        return false;
+    };
+    draw_icon_handle(hdc, handle, rect)
+}
+
+/// Tint of a sidebar action glyph: muted text, or that colour faded toward
+/// the sidebar while disabled.
+pub(in crate::shell) fn action_icon_tint(disabled: bool) -> u32 {
+    let palette = shell_palette();
+    if !disabled {
+        return palette.text_muted;
+    }
+    let mix = |shift: u32| {
+        let fg = (palette.text_muted >> shift) & 0xff;
+        let bg = (palette.sidebar_background >> shift) & 0xff;
+        (fg * 45 + bg * 55) / 100
+    };
+    (mix(16) << 16) | (mix(8) << 8) | mix(0)
 }
 
 /// Absolute path to the LingXia icon, copied next to the app by the CLI
