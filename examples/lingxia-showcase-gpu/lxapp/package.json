@@ -4,13 +4,14 @@
   "type": "module",
   "scripts": {
     "build": "lingxia build",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.logic.json"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.logic.json && tsc --noEmit -p tests/tsconfig.json"
   },
   "dependencies": {
     "@lingxia/ui": "file:../../../packages/lingxia-ui"
   },
   "devDependencies": {
     "@lingxia/types": "file:../../../packages/lingxia-types",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "@lingxia/test": "file:../../../packages/lingxia-test"
   }
 }
