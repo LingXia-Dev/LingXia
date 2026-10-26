@@ -64,6 +64,10 @@ pages/profile/index.tsx:6:25: UI_CLASS_ELEMENT: active:p-2: active styles change
 A class problem points at the string literal that holds the class, which may be in another module
 (a shared `const` or class map). Line and column are 1-based.
 
+`UI_PERF` lines are warnings: the page still builds. They flag more than 50 rows from a literal set
+outside `<List>`, an `opacity-*` or `backdrop-*` layer repeated in every row, and a bundled image
+longer than 2048 px or larger than 8 MiB.
+
 ## Runtime errors
 
 A render that throws fails its frame. The error keeps its code and gains the JSX path it was built from,

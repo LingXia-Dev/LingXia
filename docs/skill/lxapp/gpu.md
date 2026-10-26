@@ -78,3 +78,5 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - Text follows the system font size; prefer `min-h-*` over fixed heights. Whitespace
   collapses as in CSS: use `whitespace-pre-line`/`pre-wrap` for authored newlines.
 - `UI_COMPAT` means the installed host is older than the bundle: update it.
+- `UI_PERF` build warnings do not stop the build: use `<List>` past 50 literal rows, keep opacity and
+  backdrop off repeated rows, and ship bundled images at most 2048 px.

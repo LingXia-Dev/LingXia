@@ -49,6 +49,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_PAGE` | native | A call reached a page that was already discarded. |
 | `UI_PARENT` | native | A node listed before its parent reached the native decoder. |
 | `UI_PATCH` | native | An invalid state patch from Logic. |
+| `UI_PERF` | build | A build warning; the page still builds: literal rows above 50 outside `<List>`, an opacity or backdrop layer repeated per row, or a bundled image above 2048 px or 8 MiB. |
 | `UI_PLOT` | runtime, native | Invalid plot props. |
 | `UI_PROP` | build, runtime, native | A prop the element does not take, or an invalid value. |
 | `UI_RADIO` | runtime, native | Invalid radio options, value or label. |

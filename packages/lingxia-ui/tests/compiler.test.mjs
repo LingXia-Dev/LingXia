@@ -361,3 +361,38 @@ export function render() {
     assert.doesNotMatch(await readFile(join(root, 'dist/page.js'), 'utf8'), /\nconfigureSourceMap\(\{/);
   });
 });
+
+test('UI_PERF warnings name literal row sets, per-row layers and oversized bundled images without stopping the build', async () => {
+  const png = (width, height) => { const bytes = Buffer.alloc(33); bytes.writeUInt32BE(0x89504e47, 0); bytes.writeUInt32BE(width, 16); bytes.writeUInt32BE(height, 20); return bytes; };
+  await project({
+    'page.tsx': `import { List } from '@lingxia/ui';
+const tags = Array.from({ length: 60 }, (_, i) => 'tag' + i);
+const chips = ['a', 'b', 'c'];
+function Row({ label }) {
+  return <row className="backdrop-blur-md hover:opacity-50"><text>{label}</text></row>;
+}
+export function render() {
+  return <column>
+    {tags.map(tag => <text key={tag}>{tag}</text>)}
+    {Array.from({ length: 80 }, (_, i) => <text key={String(i)}>{i}</text>)}
+    {chips.map(chip => <text key={chip} className="opacity-50">{chip}</text>)}
+    <List items={tags} getKey={tag => tag} renderItem={tag => <Row label={tag} />} />
+    <image src="huge.png" alt="" className="w-10 h-10" />
+    <image src="small.png" alt="" className="w-10 h-10" />
+    <image src="heavy.png" alt="" className="w-10 h-10" />
+  </column>;
+}`,
+    'huge.png': png(4000, 3000), 'small.png': png(512, 512), 'heavy.png': Buffer.alloc(9 * 1048576),
+  }, async (root, build) => {
+    const { warnings } = await build();
+    await load(root);
+    const codes = warnings.map(line => line.match(/^page.tsx:([\d:, ]+): UI_PERF: (.*)$/).slice(1, 3));
+    assert.deepEqual(codes.map(([place]) => place), ['5:25', '9:6', '10:6', '11:51', '13:16', '15:16']);
+    assert.match(codes[0][1], /backdrop-blur-md composites a layer for every row/);
+    assert.match(codes[1][1], /^60 rows built at once; above 50 use <List>/);
+    assert.match(codes[2][1], /^80 rows/);
+    assert.match(codes[3][1], /opacity-50 composites/);
+    assert.match(codes[4][1], /huge.png is 4000×3000/);
+    assert.match(codes[5][1], /heavy.png is 9.0 MiB; images above 8.0 MiB fail to load/);
+  });
+});

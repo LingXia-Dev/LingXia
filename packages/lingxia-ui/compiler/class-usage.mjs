@@ -3,46 +3,49 @@ import { sourceChecker } from './source.mjs';
 
 // Follow lexical bindings, never identifier spelling: nested components may
 // reuse a name for an unrelated value. This analysis does not execute app code.
+/** The string literals an expression can evaluate to, through const bindings and object maps. */
+export function stringLiterals(checker, node, seen = new Set()) {
+  if (!node || seen.has(node)) return [];
+  seen = new Set(seen).add(node);
+  if (ts.isStringLiteralLike(node)) return [node];
+  if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isSatisfiesExpression(node) || ts.isNonNullExpression(node))
+    return stringLiterals(checker, node.expression, seen);
+  if (ts.isConditionalExpression(node)) return [...stringLiterals(checker, node.whenTrue, seen), ...stringLiterals(checker, node.whenFalse, seen)];
+  if (ts.isBinaryExpression(node)) {
+    if (node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) return stringLiterals(checker, node.right, seen);
+    if ([ts.SyntaxKind.BarBarToken, ts.SyntaxKind.QuestionQuestionToken].includes(node.operatorToken.kind))
+      return [...stringLiterals(checker, node.left, seen), ...stringLiterals(checker, node.right, seen)];
+  }
+  if (ts.isIdentifier(node)) {
+    let symbol = checker.getSymbolAtLocation(node);
+    if (symbol && (symbol.flags & ts.SymbolFlags.Alias)) symbol = checker.getAliasedSymbol(symbol);
+    const declaration = symbol?.valueDeclaration;
+    if (declaration && ts.isVariableDeclaration(declaration) &&
+        (declaration.parent.flags & ts.NodeFlags.Const)) return stringLiterals(checker, declaration.initializer, seen);
+  }
+  if (ts.isPropertyAccessExpression(node)) {
+    const declaration = checker.getSymbolAtLocation(node.name)?.valueDeclaration;
+    if (declaration && ts.isPropertyAssignment(declaration)) return stringLiterals(checker, declaration.initializer, seen);
+    if (declaration && ts.isShorthandPropertyAssignment(declaration))
+      return stringLiterals(checker, checker.getShorthandAssignmentValueSymbol(declaration)?.valueDeclaration?.initializer, seen);
+  }
+  if (ts.isElementAccessExpression(node)) {
+    const type = checker.getTypeAtLocation(node.expression);
+    const properties = ts.isStringLiteralLike(node.argumentExpression)
+      ? [type.getProperty(node.argumentExpression.text)] : type.getProperties();
+    return properties.flatMap(symbol => {
+      const declaration = symbol?.valueDeclaration;
+      if (declaration && ts.isShorthandPropertyAssignment(declaration))
+        return stringLiterals(checker, checker.getShorthandAssignmentValueSymbol(declaration)?.valueDeclaration?.initializer, seen);
+      return declaration && ts.isPropertyAssignment(declaration) ? stringLiterals(checker, declaration.initializer, seen) : [];
+    });
+  }
+  return [];
+}
+
 export function collectClassUsage(file, checker = sourceChecker(file)) {
   const usages = [];
-  const strings = (node, seen = new Set()) => {
-    if (!node || seen.has(node)) return [];
-    seen = new Set(seen).add(node);
-    if (ts.isStringLiteralLike(node)) return [node];
-    if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isSatisfiesExpression(node) || ts.isNonNullExpression(node))
-      return strings(node.expression, seen);
-    if (ts.isConditionalExpression(node)) return [...strings(node.whenTrue, seen), ...strings(node.whenFalse, seen)];
-    if (ts.isBinaryExpression(node)) {
-      if (node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) return strings(node.right, seen);
-      if ([ts.SyntaxKind.BarBarToken, ts.SyntaxKind.QuestionQuestionToken].includes(node.operatorToken.kind))
-        return [...strings(node.left, seen), ...strings(node.right, seen)];
-    }
-    if (ts.isIdentifier(node)) {
-      let symbol = checker.getSymbolAtLocation(node);
-      if (symbol && (symbol.flags & ts.SymbolFlags.Alias)) symbol = checker.getAliasedSymbol(symbol);
-      const declaration = symbol?.valueDeclaration;
-      if (declaration && ts.isVariableDeclaration(declaration) &&
-          (declaration.parent.flags & ts.NodeFlags.Const)) return strings(declaration.initializer, seen);
-    }
-    if (ts.isPropertyAccessExpression(node)) {
-      const declaration = checker.getSymbolAtLocation(node.name)?.valueDeclaration;
-      if (declaration && ts.isPropertyAssignment(declaration)) return strings(declaration.initializer, seen);
-      if (declaration && ts.isShorthandPropertyAssignment(declaration))
-        return strings(checker.getShorthandAssignmentValueSymbol(declaration)?.valueDeclaration?.initializer, seen);
-    }
-    if (ts.isElementAccessExpression(node)) {
-      const type = checker.getTypeAtLocation(node.expression);
-      const properties = ts.isStringLiteralLike(node.argumentExpression)
-        ? [type.getProperty(node.argumentExpression.text)] : type.getProperties();
-      return properties.flatMap(symbol => {
-        const declaration = symbol?.valueDeclaration;
-        if (declaration && ts.isShorthandPropertyAssignment(declaration))
-          return strings(checker.getShorthandAssignmentValueSymbol(declaration)?.valueDeclaration?.initializer, seen);
-        return declaration && ts.isPropertyAssignment(declaration) ? strings(declaration.initializer, seen) : [];
-      });
-    }
-    return [];
-  };
+  const strings = node => stringLiterals(checker, node);
   const record = (expression, tag) => {
     for (const literal of strings(expression)) {
       const owner = literal.getSourceFile();

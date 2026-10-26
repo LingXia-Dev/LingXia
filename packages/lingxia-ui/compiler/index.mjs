@@ -1,6 +1,7 @@
 import { build } from 'esbuild';
 import ts from 'typescript';
 import { collectClassUsage } from './class-usage.mjs';
+import { perfWarnings } from './perf.mjs';
 import { sourceChecker, moduleChecker, parseSource } from './source.mjs';
 import { moduleBanner } from './compatibility.mjs';
 import { compileUtilities } from './tailwind.mjs';
@@ -193,6 +194,7 @@ function report(problems, page) {
  * Compiles GPU pages. `pages` are page source paths relative to `root`; each
  * page's sibling `.json` must declare `"renderer": "gpu"`, which is the only
  * thing that makes a page native. Output is `<base>.js` beside a copy of the config.
+ * Returns the `UI_PERF` warnings, which are also printed; they never stop the build.
  */
 /**
  * `literalColors` admits hex and palette colours for renderer test fixtures whose probes read exact
@@ -201,7 +203,7 @@ function report(problems, page) {
 export async function buildPages(root, pages, output, catalogs = {}, { dev = false, literalColors = false } = {}) {
   const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   root = await realpath(resolve(root)); output = resolve(output);
-  const inputs = {};
+  const inputs = {}, warnings = [];
   for (const page of pages) {
     const source = resolve(root, page);
     const rel = relative(root, source);
@@ -270,6 +272,12 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
       const lines = report(problems.map(line => line.startsWith(root + sep) ? line.slice(root.length + 1) : line), rel);
       throw Error(`${page}: ${lines.count} authoring problem${lines.count === 1 ? '' : 's'}\n${lines.text}`);
     }
+    const perf = await perfWarnings(root, sourceFiles, checker, rulesByName);
+    if (perf.length) {
+      const lines = report(perf.map(line => line.startsWith(root + sep) ? line.slice(root.length + 1) : line), rel);
+      warnings.push(...lines.text.split('\n'));
+      console.warn(`${page}: ${lines.count} performance warning${lines.count === 1 ? '' : 's'}\n${lines.text}`);
+    }
     const dest = join(output, `${base}.js`);
     await mkdir(dirname(dest), { recursive: true });
     const code = bundled.outputFiles.find(file => !file.path.endsWith('.map'));
@@ -293,4 +301,5 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, JSON.stringify({ ...previous, ...inputs }, null, 1) + '\n');
   }
+  return { warnings };
 }
