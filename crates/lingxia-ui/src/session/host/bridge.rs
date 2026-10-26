@@ -34,7 +34,7 @@ pub(super) fn update(
     })
 }
 
-type Drained = Option<(ConnectionTicket, BridgeUpdate)>;
+pub(super) type Drained = Option<(ConnectionTicket, BridgeUpdate)>;
 
 impl<A: PlatformAdapter> Inner<A> {
     /// Logic actions a changed View queued; `None` for standalone pages.

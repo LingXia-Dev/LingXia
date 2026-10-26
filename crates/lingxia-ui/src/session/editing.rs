@@ -10,7 +10,10 @@ impl ViewSession {
         word: bool,
     ) -> Result<Option<[u32; 2]>, String> {
         self.check_input_active()?;
-        if !self.presented_commit(generation) || self.input_dirty || self.pending_inputs.is_some() {
+        if !self.presented_layout_commit(generation)
+            || self.input_dirty
+            || self.pending_inputs.is_some()
+        {
             return Ok(None);
         }
         Ok(self
@@ -30,7 +33,7 @@ impl ViewSession {
     ) -> Result<Option<[u32; 2]>, String> {
         self.check_input_active()?;
         if !self.inputs.valid(identity, token)
-            || !self.presented_commit(generation)
+            || !self.presented_layout_commit(generation)
             || self.input_dirty
             || self.pending_inputs.is_some()
         {
@@ -49,7 +52,7 @@ impl ViewSession {
         identity: &str,
     ) -> Result<Option<crate::InputReply>, String> {
         self.check_input_active()?;
-        if !self.presented_commit(generation) {
+        if !self.presented_layout_commit(generation) {
             return Ok(None);
         }
         let mut inputs = self.inputs.clone();

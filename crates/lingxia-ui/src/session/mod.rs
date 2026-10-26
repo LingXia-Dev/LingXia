@@ -41,6 +41,10 @@ pub struct ViewSession {
     layout_revision: u64,
     /// The first commit of the current layout revision.
     layout_commit: lifecycle::CommitTicket,
+    /// Clicks refused for a commit no longer current: (their commit, the session's).
+    rejected_clicks: Vec<(lifecycle::CommitTicket, lifecycle::CommitTicket)>,
+    /// The first commit of the current retained layout (editor geometry is valid from here).
+    retained_commit: lifecycle::CommitTicket,
     input_hits: Option<crate::interaction::input_hits::InputHitMap>,
     viewport: Option<(u16, u16, f32)>,
     scroll_offsets: HashMap<String, f32>,
@@ -150,6 +154,8 @@ impl ViewSession {
             retained: None,
             layout_revision: 0,
             layout_commit: lifecycle::CommitTicket::new(0),
+            rejected_clicks: Vec::new(),
+            retained_commit: lifecycle::CommitTicket::new(0),
             input_hits: None,
             viewport: None,
             scroll_offsets: HashMap::new(),
@@ -222,6 +228,7 @@ impl ViewSession {
         self.metrics = Default::default();
         self.advance();
         self.layout_commit = self.generation;
+        self.retained_commit = self.generation;
         Ok(())
     }
 

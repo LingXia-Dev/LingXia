@@ -230,6 +230,11 @@ struct Main<F> {
     /// Host time of the last vsync and the display interval estimate.
     last_vsync: Option<Duration>,
     vsync_interval: Duration,
+    /// Activations dispatched to the worker whose result has not come back: an animation
+    /// frame prepared meanwhile would run before the View they change.
+    activating: u32,
+    /// User activations reported dropped, for frame metrics.
+    dropped_activations: u64,
     /// Consecutive refusals of a frame that had a newer one prepared behind it.
     stale_declines: u32,
     /// The presenter keeps only its newest frame; nothing is prepared ahead any more.
@@ -349,6 +354,8 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     ahead_epoch: 0,
                     last_vsync: None,
                     vsync_interval: Duration::from_micros(16_667),
+                    activating: 0,
+                    dropped_activations: 0,
                     stale_declines: 0,
                     single_target: false,
                     #[cfg(test)]

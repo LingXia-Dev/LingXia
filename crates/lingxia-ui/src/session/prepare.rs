@@ -83,6 +83,21 @@ impl ViewSession {
                 && generation.get() <= self.generation.get())
     }
 
+    /// Clicks refused since the last call because their frame was superseded.
+    pub fn take_rejected_clicks(
+        &mut self,
+    ) -> Vec<(lifecycle::CommitTicket, lifecycle::CommitTicket)> {
+        std::mem::take(&mut self.rejected_clicks)
+    }
+
+    /// Editor geometry queries need the frame's exact layout, not only its nodes: a commit
+    /// is valid while no relayout (focus, decoration, paint delta) followed it.
+    pub(crate) fn presented_layout_commit(&self, generation: lifecycle::CommitTicket) -> bool {
+        generation == self.generation
+            || (self.retained_commit.get() <= generation.get()
+                && generation.get() <= self.generation.get())
+    }
+
     /// Frames with the same revision share one retained layout: same nodes in the same
     /// order, differing only in animated, scrolled or decorated geometry.
     pub fn layout_revision(&self) -> u64 {
@@ -589,16 +604,23 @@ impl ViewSession {
             )) => {
                 self.input_hits = Some(input_hits);
                 self.inputs = inputs;
+                let same_view = self
+                    .input_records
+                    .as_deref()
+                    .is_some_and(|old| same_structure(old, &records));
                 self.input_records = Some(records);
                 self.input_dirty = input_dirty;
                 self.input_rebuild = false;
                 self.reveal_input = false;
                 self.pending_inputs = None;
                 self.commit_images(wanted);
-                let relaid = !self
+                let retained_changed = !self
                     .retained
                     .as_ref()
                     .is_some_and(|old| Arc::ptr_eq(old, &retained));
+                // A paint delta (pressed, hovered) relays the page out but keeps its nodes and
+                // handles, so a tap on the previous frame stays valid.
+                let relaid = !same_view && retained_changed;
                 if relaid {
                     self.layout_revision += 1;
                 }
@@ -609,6 +631,9 @@ impl ViewSession {
                 self.advance();
                 if relaid {
                     self.layout_commit = self.generation;
+                }
+                if retained_changed {
+                    self.retained_commit = self.generation;
                 }
                 Ok(frame)
             }
@@ -626,6 +651,26 @@ impl ViewSession {
             }
         }
     }
+}
+
+/// The same nodes in the same order with the same callbacks: frames of either describe
+/// one View, whatever else (paint, text, geometry) differs.
+fn same_structure(old: &[crate::protocol::Record], new: &[crate::protocol::Record]) -> bool {
+    let handle = |id: usize| {
+        crate::protocol::FIELDS
+            .get(id)
+            .is_some_and(|(_, kind)| kind.ends_with("handle"))
+    };
+    old.len() == new.len()
+        && old.iter().zip(new).all(|(a, b)| {
+            a.tag == b.tag
+                && a.parent == b.parent
+                && a.key == b.key
+                && a.fields
+                    .iter()
+                    .filter(|(id, _)| handle(*id))
+                    .eq(b.fields.iter().filter(|(id, _)| handle(*id)))
+        })
 }
 
 fn strip_record_animations(records: &mut [crate::protocol::Record]) {
