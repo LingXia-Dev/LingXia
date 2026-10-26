@@ -906,12 +906,12 @@ extern "system" fn gpu_active(_: EnvUnowned<'_>, _: JClass<'_>, active: jboolean
     }
 }
 
-extern "system" fn attach<'a>(
-    mut env: EnvUnowned<'a>,
-    _: JClass<'a>,
 /// Bind the Surface to a GPU presenter on the View worker; Java hears back
 /// through `GpuPlatform.gpuAttached` and renders on the CPU until then.
 #[cfg(all(feature = "gpu", target_os = "android"))]
+extern "system" fn attach<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
     handle: jlong,
     surface: JObject<'a>,
     width: jint,
@@ -960,12 +960,12 @@ extern "system" fn attach<'a>(
                             Some(_) => " fallback=driver (refused by the GPU crash sentinel)",
                             None => "",
                         };
-                        adapter.java(|env, platform| {
-                            env.call_method(
-                                platform,
                         adapter::info(&format!(
                             "backend={backend} surface={surface} adapter={record}{reason}"
                         ));
+                        adapter.java(|env, platform| {
+                            env.call_method(
+                                platform,
                                 jni_str!("gpuAttached"),
                                 jni_sig!("(Z)V"),
                                 &[JValue::Bool(ok)],
