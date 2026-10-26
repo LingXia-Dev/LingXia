@@ -41,6 +41,17 @@ public class GpuViewEnvironmentTest {
         view.dispose();
     }
 
+    @Test public void surfaceKeepsFullColorForCpuFrames() throws Exception {
+        GpuView view = new GpuView(RuntimeEnvironment.getApplication(), "", "test:environment", null);
+        java.lang.reflect.Field field = GpuView.class.getDeclaredField("surface");
+        field.setAccessible(true);
+        android.view.SurfaceView surface = (android.view.SurfaceView) field.get(view);
+        org.robolectric.shadows.ShadowSurfaceView.FakeSurfaceHolder holder =
+                org.robolectric.Shadows.shadowOf(surface).getFakeSurfaceHolder();
+        assertEquals(android.graphics.PixelFormat.RGBA_8888, holder.getRequestedFormat());
+        view.dispose();
+    }
+
     @Test public void interruptedRefreshGestureIsCanceledOnce() throws Exception {
         for (int interruption = 0; interruption < 3; interruption++) {
             GpuView view = new GpuView(RuntimeEnvironment.getApplication(), "", "test:environment", null);

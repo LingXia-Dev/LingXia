@@ -230,6 +230,9 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         feedback.getOverlay().add(staticSelection);
         host = nativeHostCreate(new Platform(), worker, logic, imageOwner);
         ime.setCaretActive(false);
+        // The CPU route draws through lockCanvas, which uses the holder format (RGB_565 by
+        // default); a later change would recreate the surface.
+        surface.getHolder().setFormat(android.graphics.PixelFormat.RGBA_8888);
         surface.getHolder().addCallback(this);
         addView(surface, new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         addView(feedback, new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
