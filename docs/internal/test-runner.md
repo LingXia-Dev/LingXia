@@ -95,18 +95,27 @@ received artifacts. Keep the following invariants when changing these layers:
   `appScreenshot` / `deviceScreenshot(name)` reserve the attachment name,
   and the dev server stages the PNG under `<staging>/<run_id>/<name>`,
   answering only `{ path, width, height, scale }`.
+  - `surface` resolves to the window showing it on macOS (NSWindow
+    identifier tags) and Windows (the surface WebView's host window); other
+    hosts draw every surface in the one app window. A hidden surface window
+    fails the capture rather than falling back.
   - An app capture is taken in process (macOS `cacheDisplay` of the window,
     WebViews and the Metal terminal drawing themselves into it; Windows
     window DC plus WebView2 and compositor overlays; iOS layer render;
     Android `PixelCopy`; Harmony `window.snapshot`), so it needs no
-    permission anywhere. The PNG goes up as a binary `session.capture.put`.
+    permission anywhere. The PNG goes up as a binary `session.capture.put`,
+    bounded by `DEV_SESSION_MAX_MESSAGE_BYTES` (40 MiB) like every
+    dev-session message.
   - A device capture on a phone is taken outside the app by the dev server
     (`session.device.screenshot`: adb `screencap`, `idevicescreenshot`, hdc
-    `snapshot_display`). A desktop host captures its screen in process and
-    puts it like an app capture: on Windows the dev server may sit in a
-    non-interactive SSH session that cannot see the desktop, and on macOS
-    Screen Recording is checked first because without it a capture still
-    "succeeds" with only the wallpaper and the app's own windows.
+    `snapshot_display`, which writes JPEG, re-encoded to PNG). A desktop
+    host captures its screen in process and puts it like an app capture: on
+    Windows the dev server may sit in a non-interactive SSH session that
+    cannot see the desktop, and on macOS Screen Recording is checked first
+    because without it a capture still "succeeds" with only the wallpaper
+    and the app's own windows. Windows capture on a locked or disconnected
+    (RDP) desktop succeeds with a black image; the host cannot preflight
+    that the way macOS does.
   - On macOS TCC attributes Screen Recording to the *responsible* process:
     the terminal that ran `lingxia dev`, which spawns the host directly; the
     host itself when launched from Finder or `open`. That is why the device

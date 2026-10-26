@@ -161,7 +161,8 @@ pub(crate) fn responsible_app_name() -> Option<String> {
     use objc2_app_kit::NSRunningApplication;
 
     unsafe extern "C" {
-        // libquarantine SPI, stable since macOS 10.14.
+        // libquarantine SPI, stable since macOS 10.14. Private API: acceptable
+        // only because this runs in the dev host, never in an App Store build.
         fn responsibility_get_pid_responsible_for_pid(pid: libc::pid_t) -> libc::pid_t;
     }
     let responsible = unsafe { responsibility_get_pid_responsible_for_pid(libc::getpid()) };

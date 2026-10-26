@@ -68,7 +68,8 @@ The runtime connection is the only one that may send `session.capture.put`
 and `session.device.screenshot`; the dev server answers both itself, never
 forwarding them. `session.capture.put` is the one binary frame on the wire:
 a 4-byte big-endian header length, the request JSON, then the PNG
-(`encode_binary_request`). A device capture is answered on a separate thread
+(`encode_binary_request`), bounded by `DEV_SESSION_MAX_MESSAGE_BYTES` (40 MiB)
+like every message. A device capture is answered on a separate thread
 (adb and hdc take seconds). The device target is fixed per session: the
 adb serial, the `devicectl` device (via `idevicescreenshot`) or the hdc
 target `dev` resolved; desktop hosts capture their own screen and never
