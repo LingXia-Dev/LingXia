@@ -8,6 +8,8 @@ use vello_cpu::kurbo::Affine;
 
 /// Immutable layout output shared by CPU reference rendering and GPU scene encoding.
 pub struct DisplayList {
+    /// Paint spans whose commands change from one animation frame to the next.
+    pub(crate) animated: Vec<AnimatedSpan>,
     pub(crate) images: HashMap<String, crate::scene::image::Bitmap>,
     pub(crate) commands: Vec<Paint>,
     pub(crate) input_paints: Vec<(usize, Range<usize>)>,
@@ -19,6 +21,16 @@ pub struct DisplayList {
     pub height: u16,
     pub scale: f32,
     pub(crate) retained: Arc<RetainedLayout>,
+}
+
+/// An outermost animated subtree's commands, holding this frame's sampled values. A span
+/// opens from its parent's layer stack and closes back to it (pushes and pops balance), and
+/// the command after it re-sets the parent's absolute transform. Commands outside spans
+/// are identical across frames of one retained layout, offsets, images and caret.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AnimatedSpan {
+    pub identity: String,
+    pub commands: Range<usize>,
 }
 
 #[cfg(feature = "gpu")]
@@ -83,6 +95,10 @@ impl SceneKey {
 }
 
 impl DisplayList {
+    pub fn animated_spans(&self) -> &[AnimatedSpan] {
+        &self.animated
+    }
+
     #[cfg(test)]
     pub(crate) fn animate_for_test(self, index: usize, visual: crate::animation::Visual) -> Self {
         let offsets = self
