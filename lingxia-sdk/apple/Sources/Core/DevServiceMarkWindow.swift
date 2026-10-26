@@ -184,8 +184,11 @@ enum DevServiceMarkWindow {
             raise(on: window)
             return
         }
+        // Size the panel to the chip: a content view is resized to its
+        // panel, so a fixed rect would clip a long label such as a port.
+        let chip = ChipView(label: label)
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 64, height: 22),
+            contentRect: NSRect(origin: .zero, size: chip.frame.size),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -201,9 +204,7 @@ enum DevServiceMarkWindow {
         panel.animationBehavior = .none
         panel.collectionBehavior = [.fullScreenAuxiliary, .ignoresCycle]
         panel.isMovable = false
-        let chip = ChipView(label: label)
         panel.contentView = chip
-        panel.setContentSize(chip.fittingSize)
         marks[id] = panel
         window.addChildWindow(panel, ordered: .above)
         place(panel, on: window)
@@ -290,8 +291,6 @@ private final class ChipView: NSView {
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
-
-    override var fittingSize: NSSize { frame.size }
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
