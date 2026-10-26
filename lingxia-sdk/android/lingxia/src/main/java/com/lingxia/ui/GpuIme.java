@@ -43,7 +43,9 @@ final class GpuIme {
     /** The last presented frame, to find the editor a NEXT/PREVIOUS action moved to. */
     private JSONObject frame;
     private android.app.Dialog picker;
-    private boolean pendingFocus, allowAutofocus=true;
+    private boolean pendingFocus;
+    /** The edit token this side last blurred: a frame drawn before the core saw the blur still shows it focused. */
+    private long blurred=-1;
     private long epoch, touchSerial;
     private boolean caretActive = true;
 
@@ -172,7 +174,10 @@ final class GpuIme {
         final long requested=epoch;
         host.request(request("focus",identity,generation),reply -> {
             if (requested != epoch) {
-                if (!pendingFocus && connection == null && reply != null) host.request(request("blur",identity,reply.optLong("token")),ignored -> host.render(false));
+                if (!pendingFocus && connection == null && reply != null) {
+                    blurred=reply.optLong("token");
+                    host.request(request("blur",identity,blurred),ignored -> host.render(false));
+                }
                 return;
             }
             pendingFocus=false;
@@ -203,7 +208,7 @@ final class GpuIme {
             configure(connection);
             if (!previous.equals(ime().toString())) manager.restartInput(view);
             host.editingChanged();
-        } else if (connection != null || allowAutofocus) {
+        } else if (connection != null || (input.optBoolean("raise_keyboard") && input.optLong("edit_token") != blurred)) {
             activate(focused,input.optLong("edit_token"),input.optJSONObject("edit"));
         }
     }
@@ -231,7 +236,7 @@ final class GpuIme {
     }
     private void activate(JSONObject node,long token,JSONObject state,Consumer<GpuInputConnection> initialize) {
         if (state == null || token <= 0) return;
-        drop(false); allowAutofocus=true;
+        drop(false);
         config=node.optJSONObject("input");
         final long created=epoch;
         connection=new GpuInputConnection(view,node.optString("identity"),token,state,new GpuInputConnection.Sink() {
@@ -295,10 +300,13 @@ final class GpuIme {
     }
     void clear(boolean blur) {
         GpuInputConnection previous=connection;
-        drop(true); allowAutofocus=false;
-        if (blur && previous != null) host.request(request("blur",previous.identity,previous.token),ignored -> host.render(false));
+        drop(true);
+        if (blur && previous != null) {
+            blurred=previous.token;
+            host.request(request("blur",previous.identity,previous.token),ignored -> host.render(false));
+        }
     }
-    void reset() { clear(false); allowAutofocus=true; }
+    void reset() { clear(false); blurred=-1; }
     private BaseInputConnection inert() {
         return new BaseInputConnection(view,true) {
             @Override public android.text.Editable getEditable() { return null; }

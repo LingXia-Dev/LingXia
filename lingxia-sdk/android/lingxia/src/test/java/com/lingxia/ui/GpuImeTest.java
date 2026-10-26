@@ -40,7 +40,8 @@ public class GpuImeTest {
     }
     private static JSONObject node(long token,String text) throws Exception {
         return new JSONObject().put("identity","editor").put("tag","input").put("input",new JSONObject()
-            .put("enabled",true).put("keyboard","text").put("edit_token",token).put("edit",state(text)).put("ime",ime()));
+            .put("enabled",true).put("keyboard","text").put("edit_token",token).put("edit",state(text)).put("ime",ime())
+            .put("raise_keyboard",token > 0));
     }
     private static JSONObject ime(JSONObject node) { return node.optJSONObject("input").optJSONObject("ime"); }
     private static JSONObject frame(long token,String text) throws Exception { return new JSONObject().put("nodes",new JSONArray().put(node(token,text))); }
@@ -349,5 +350,14 @@ public class GpuImeTest {
         org.robolectric.shadows.ShadowLooper.idleMainLooper();
         JSONObject dismissed=other.requests.get(other.requests.size()-1);
         assertEquals("pick",dismissed.getString("op")); assertTrue(dismissed.isNull("parts"));
+    }
+    /** Whether a focused editor raises the keyboard is the core's call, per frame. */
+    @Test public void aFocusedEditorConnectsOnlyWhenTheFrameRaisesTheKeyboard() throws Exception {
+        Host host=new Host(); GpuIme ime=ime(host);
+        JSONObject held=node(7,""); held.getJSONObject("input").put("raise_keyboard",false);
+        ime.presented(new JSONObject().put("nodes",new JSONArray().put(held)),ime.capture());
+        assertFalse("the user ended editing; the page's own focus shows no keyboard",ime.hasFocus());
+        ime.presented(frame(7,""),ime.capture());
+        assertTrue(ime.hasFocus());
     }
 }
