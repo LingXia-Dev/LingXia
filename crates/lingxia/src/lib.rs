@@ -194,7 +194,7 @@ mod devtool;
 mod error;
 /// File dialogs and host file-manager integrations.
 pub mod file;
-#[cfg(any(target_os = "android", test))]
+#[cfg(any(target_os = "android", all(target_os = "ios", feature = "ios-gpu"), test))]
 mod gpu_page;
 mod host_addon;
 /// JS AppService extension registration helpers.

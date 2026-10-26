@@ -49,6 +49,8 @@ android-capture = ["realtime-capture", "lingxia-platform/android-capture-provide
 apple-capture = ["realtime-capture", "lingxia-platform/apple-capture-provider"]
 harmony-capture = ["realtime-capture", "lingxia-platform/harmony-capture-provider"]
 webview-input = ["lingxia-webview/webview-input"]
+# GPU pages on iOS: links the View isolate (QuickJS) and the renderer.
+ios-gpu = ["dep:lingxia-ui-apple"]
 
 [dependencies]
 rong_rt = { workspace = true, default-features = false }
@@ -90,6 +92,7 @@ lingxia-ui-android = { workspace = true, features = ["gpu"] }
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
 # JavaScriptCore stays rong's primary engine (Logic) when QuickJS is linked for View isolates.
 rong = { workspace = true, features = ["jscore", "primary-jscore"] }
+lingxia-ui-apple = { workspace = true, optional = true }
 swift-bridge = "0.1.59"
 oslog = "0.2.0"
 

@@ -7,6 +7,9 @@ use lxapp::{
 #[cfg(all(target_os = "macos", feature = "browser-runtime"))]
 use std::sync::Arc;
 
+#[path = "apple/gpu_page.rs"]
+mod gpu_page;
+
 #[swift_bridge::bridge]
 mod bridge {
     // LxApp basic information for Swift
@@ -137,6 +140,8 @@ mod bridge {
         pub page_instance_id: String,
         pub path: String,
         pub webview_ptr: usize,
+        /// A GPU page's token for `GpuPages`, or 0.
+        pub gpu_token: i64,
     }
 
     #[swift_bridge(swift_repr = "struct")]
@@ -940,6 +945,8 @@ pub fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> bridge::Li
     crate::logging::init();
     install_browser_native_input_host();
     install_browser_present_handler();
+    #[cfg(all(target_os = "ios", feature = "ios-gpu"))]
+    gpu_page::install();
     lxapp::add_display_language_effective_listener(Box::new(|_| {
         self::bridge::display_language_changed();
     }));
@@ -2093,6 +2100,7 @@ fn page_binding_of(page: Option<lxapp::PageInstance>) -> self::bridge::PageBindi
             page_instance_id: String::new(),
             path: String::new(),
             webview_ptr: 0,
+            gpu_token: 0,
         };
     };
     let page_instance_id = page.instance_id_string();
@@ -2104,6 +2112,10 @@ fn page_binding_of(page: Option<lxapp::PageInstance>) -> self::bridge::PageBindi
             .webview()
             .map(|webview| webview.get_swift_webview_ptr())
             .unwrap_or(0),
+        #[cfg(all(target_os = "ios", feature = "ios-gpu"))]
+        gpu_token: gpu_page::token_of(&page),
+        #[cfg(not(all(target_os = "ios", feature = "ios-gpu")))]
+        gpu_token: 0,
     }
 }
 
