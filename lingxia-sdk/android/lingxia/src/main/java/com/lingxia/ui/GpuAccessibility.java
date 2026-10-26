@@ -32,6 +32,7 @@ final class GpuAccessibility {
             case GpuSemantics.ROLE_IMAGE: return "android.widget.ImageView";
             case GpuSemantics.ROLE_SLIDER: return "android.widget.SeekBar";
             case GpuSemantics.ROLE_LIST: return "android.widget.ListView";
+            case GpuSemantics.ROLE_COMBO_BOX: return "android.widget.Spinner";
             // Links (with a role description), headings, list items, alerts, status and dialogs read as text plus their traits.
             default: return "android.widget.TextView";
         }

@@ -131,6 +131,9 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     private int unoccludedWidth, unoccludedHeight;
     private final android.graphics.Rect chromeInsets = new android.graphics.Rect();
     private GpuTextMenu textMenu;
+    private GpuPicker picker;
+    /** The `<select>` whose picker is open, for its expanded state. */
+    private String pickerOpen;
     private GpuSelectionHandles selectionHandles;
     private GpuStaticSelection staticSelection;
     private android.content.res.Configuration hostConfiguration;
@@ -195,6 +198,16 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             @Override public void caret(boolean eligible, String text, int anchor, int focus, int start, int end) {
                 if (!destroyed) nativeCaret(host, eligible, text != null, text == null ? "" : text, anchor, focus, start, end);
             }
+        });
+        picker = new GpuPicker(surface, new GpuPicker.Host() {
+            public void request(JSONObject request, java.util.function.Consumer<JSONObject> reply) {
+                if (destroyed) return;
+                long callback = ++nextInputReply;
+                inputReplies.put(callback, reply);
+                nativeInput(host, request.toString(), callback);
+            }
+            public void render(boolean rebuild) { if (!destroyed) { if (rebuild) nativeRequestFrame(host); else nativeRedraw(host); } }
+            public void open(String identity) { pickerOpen = identity; }
         });
         textMenu = new GpuTextMenu(surface, new GpuTextMenu.Host() {
             public boolean coreAction(int code) { return !destroyed && nativeTextMenuAction(host, code); }
@@ -389,7 +402,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     public void pause() {
         nativeGpuActive(false);
         surface.cancelRefreshGesture(); finishSurfaceRedraws();
-        active = false; frozen = false; updateSurfaceVisibility(); ime.clear(true);
+        active = false; frozen = false; updateSurfaceVisibility(); ime.clear(true); picker.dismiss();
         cancel();
     }
     public void park() {
@@ -586,7 +599,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         cancel();
         destroyed = true;
         inputReplies.clear();
-        ime.clear(false); surface.stopFling();
+        ime.clear(false); picker.dismiss(); surface.stopFling();
         if (vsyncRequested) Choreographer.getInstance().removeFrameCallback(vsync);
         long released = host;
         host = 0;
@@ -753,6 +766,11 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         }
         @Override public void bootstrapOverdue(boolean overdue) { showBootstrapMessage(overdue); }
         @Override public void copyText(String text) { if (!destroyed) writeClipboard(text); }
+        @Override public void openPicker(int index) {
+            JSONObject node = surface.node(index);
+            if (destroyed || node == null || snapshot == null) return;
+            picker.show(node, snapshot.optLong("generation"), surface.bounds(node));
+        }
         @Override public void textMenu(String menu) {
             if (destroyed) return;
             try { textMenu.show(menu == null ? null : new JSONObject(menu), frameScale); }
@@ -1054,11 +1072,17 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                     AccessibilityNodeInfo info = AccessibilityNodeInfo.obtain();
                     info.setSource(UiSurface.this, id);
                     GpuAccessibility.populate(info, UiSurface.this, node, parent, frameScale, focused, getContext().getPackageName());
+                    if (GpuSemantics.ROLE_COMBO_BOX.equals(node.optString("role"))) {
+                        JSONObject box = node(node.optInt("index"));
+                        boolean open = box != null && pickerOpen != null && pickerOpen.equals(box.optString("identity"));
+                        info.addAction(open ? AccessibilityNodeInfo.ACTION_COLLAPSE : AccessibilityNodeInfo.ACTION_EXPAND);
+                    }
                     if (!active) info.setVisibleToUser(false);
                     return info;
                 }
                 @Override public boolean performAction(int id, int action, Bundle args) {
                     if (!active || destroyed) return false;
+                    if (action == AccessibilityNodeInfo.ACTION_COLLAPSE && picker.showing()) { picker.dismiss(); return true; }
                     int shared = GpuAccessibility.action(action);
                     if (shared < 0) return false;
                     double number = 0; String argument = "";
