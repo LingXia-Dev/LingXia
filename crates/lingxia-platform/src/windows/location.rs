@@ -2,7 +2,7 @@
 //!
 //! Only one-shot lookups are implemented; there is no watch/subscribe API in
 //! the [`Location`] trait, so `Geolocator.PositionChanged` streaming is not
-//! needed. WinRT activation is safe from any thread: windows-rs ensures the
+//! needed. WinRT activation is safe from any thread: the `windows` crate ensures the
 //! MTA on first factory activation, and `IAsyncOperation` integrates with the
 //! executor via `IntoFuture` (no blocking waits), so the futures returned
 //! here are async-safe.
@@ -12,12 +12,10 @@ use std::time::Duration;
 
 use serde_json::json;
 use windows::Devices::Geolocation::{
-    GeolocationAccessStatus, Geolocator, Geoposition, IGeocoordinate, PositionAccuracy,
-    PositionStatus,
+    GeolocationAccessStatus, Geolocator, Geoposition, PositionAccuracy, PositionStatus,
 };
-use windows::Foundation::IPropertyValue;
+use windows::Foundation::IReference;
 use windows::Win32::Foundation::E_ACCESSDENIED;
-use windows::core::{IUnknown, Interface, Type};
 
 use super::Platform;
 use crate::error::PlatformError;
@@ -123,34 +121,11 @@ fn build_location_payload(
     let longitude = coordinate
         .Longitude()
         .map_err(|err| PlatformError::Platform(format!("failed to read longitude: {err}")))?;
-    // windows-rs projected getters for nullable WinRT values differ across
-    // 0.62 releases. Read the stable ABI so Accuracy/Altitude stay numeric.
     let horizontal_accuracy = sanitize_measurement(coordinate.Accuracy().unwrap_or(0.0));
-    let coordinate_interface: IGeocoordinate = coordinate.cast().map_err(|err| {
-        PlatformError::Platform(format!("failed to access location coordinate: {err}"))
-    })?;
-    let vertical_accuracy = sanitize_measurement(
-        nullable_f64(
-            &coordinate_interface,
-            Interface::vtable(&coordinate_interface).AltitudeAccuracy,
-        )
-        .unwrap_or(0.0),
-    );
-    let speed = sanitize_measurement(
-        nullable_f64(
-            &coordinate_interface,
-            Interface::vtable(&coordinate_interface).Speed,
-        )
-        .unwrap_or(0.0),
-    );
+    let vertical_accuracy = nullable_measurement(coordinate.AltitudeAccuracy());
+    let speed = nullable_measurement(coordinate.Speed());
     let altitude = if include_altitude {
-        sanitize_measurement(
-            nullable_f64(
-                &coordinate_interface,
-                Interface::vtable(&coordinate_interface).Altitude,
-            )
-            .unwrap_or(0.0),
-        )
+        nullable_measurement(coordinate.Altitude())
     } else {
         0.0
     };
@@ -167,19 +142,12 @@ fn build_location_payload(
     .to_string())
 }
 
-fn nullable_f64(
-    interface: &IGeocoordinate,
-    getter: unsafe extern "system" fn(
-        *mut std::ffi::c_void,
-        *mut *mut std::ffi::c_void,
-    ) -> windows::core::HRESULT,
-) -> windows::core::Result<f64> {
-    let mut raw = std::ptr::null_mut();
-    unsafe {
-        getter(Interface::as_raw(interface), &mut raw).ok()?;
-        let reference: IUnknown = Type::from_abi(raw)?;
-        reference.cast::<IPropertyValue>()?.GetDouble()
-    }
+// A null `IReference` (value unavailable) surfaces as an error.
+fn nullable_measurement(value: windows::core::Result<IReference<f64>>) -> f64 {
+    value
+        .and_then(|reference| reference.Value())
+        .map(sanitize_measurement)
+        .unwrap_or(0.0)
 }
 
 fn sanitize_measurement(value: f64) -> f64 {
