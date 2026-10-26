@@ -129,16 +129,19 @@ const BLOCKED: &str = "UI_SURFACE: GPU driver failed during a previous launch";
 pub struct Presenter {
     surface: Option<RenderSurface<'static>>,
     device_id: usize,
-    revision: u64,
+    /// The revision each target holds, until a newer preparation reuses it.
+    prepared: [Option<u64>; 2],
     presentation_us: [u64; 4],
     preparation_us: [u64; 4],
+    /// Encode and submit time of each scene pass in the last direct preparation.
+    pass_us: Vec<[u64; 2]>,
     scene_cache_hit: bool,
     renderer: crate::renderer::gpu::pass::SceneRenderer,
     scenes: crate::renderer::gpu::scene::SceneCache,
     glyph_cache: glifo::GlyphPrepCache,
     images: crate::renderer::gpu::images::ImageTextures,
     compositor: Option<crate::renderer::gpu::composite::Compositor>,
-    composed: Option<crate::renderer::gpu::composite::Surface>,
+    composed: [Option<crate::renderer::gpu::composite::Surface>; 2],
     depth: Option<wgpu::TextureView>,
     context: Context,
     /// This presenter's adapter record for the crash sentinel.
@@ -259,15 +262,16 @@ impl Presenter {
         Ok(Self {
             surface: Some(surface),
             device_id,
-            revision: 0,
+            prepared: [None; 2],
             presentation_us: [0; 4],
             preparation_us: [0; 4],
+            pass_us: Vec::new(),
             scene_cache_hit: false,
             renderer,
             scenes: Default::default(),
             images: Default::default(),
             compositor: None,
-            composed: None,
+            composed: [None, None],
             glyph_cache: Default::default(),
             depth: Some(depth),
             context,
@@ -281,7 +285,8 @@ impl Presenter {
         self.surface = None;
         self.depth = None;
         self.images.clear();
-        self.composed = None;
+        self.composed = [None, None];
+        self.prepared = [None; 2];
         if let Some(compositor) = &mut self.compositor {
             compositor.clear();
         }
@@ -377,8 +382,16 @@ impl Presenter {
         if surface.config.width != width || surface.config.height != height {
             context.resize_surface(surface, width, height);
             self.depth = Some(depth_view(surface, &context.devices[surface.dev_id].device));
+            self.prepared = [None; 2];
         }
         let device = &context.devices[surface.dev_id];
+        // Reuse the target of the older (or no) revision; the newer may still wait to present.
+        let slot = match self.prepared {
+            [None, _] => 0,
+            [_, None] => 1,
+            [Some(a), Some(b)] => usize::from(b < a),
+        };
+        self.prepared[slot] = None;
 
         if composed {
             let started = Instant::now();
@@ -386,12 +399,13 @@ impl Presenter {
                 crate::renderer::gpu::composite::Compositor::with_renderer(self.renderer.clone())
             });
             let output = compositor.render_display(display, &device.device, &device.queue)?;
-            self.composed = Some(output);
+            self.composed[slot] = Some(output);
+            self.pass_us.clear();
             self.scenes.clear();
             self.images.clear();
             self.preparation_us = [0, 0, crate::session::metrics::micros(started), 0];
             self.scene_cache_hit = false;
-            self.revision = revision;
+            self.prepared[slot] = Some(revision);
             return Ok(true);
         }
 
@@ -411,6 +425,7 @@ impl Presenter {
         let bindings = self.images.bindings(&device.device, &device.queue, pixels);
         let images_us = crate::session::metrics::micros(started);
         let [mut encode_us, mut submit_us] = [0, 0];
+        self.pass_us.clear();
         for (index, scene) in self.scenes.scenes().enumerate() {
             let [encode, submit] = self.renderer.draw(
                 &device.device,
@@ -419,7 +434,7 @@ impl Presenter {
                 &bindings,
                 crate::renderer::gpu::pass::Target {
                     size: size.clone(),
-                    view: &surface.target_view,
+                    view: &surface.target_views[slot],
                     depth: self.depth.as_ref(),
                     init: if index == 0 {
                         vello_gpu::TargetInit::Clear(vello_gpu::ClearSettings::default())
@@ -430,11 +445,12 @@ impl Presenter {
             )?;
             encode_us += encode;
             submit_us += submit;
+            self.pass_us.push([encode, submit]);
         }
         self.preparation_us = [scene_us, images_us, encode_us, submit_us];
-        self.composed = None;
+        self.composed[slot] = None;
         self.scene_cache_hit = scene_cache_hit;
-        self.revision = revision;
+        self.prepared[slot] = Some(revision);
         Ok(true)
     }
 
@@ -449,15 +465,24 @@ impl Presenter {
         self.preparation_us
     }
 
+    /// Per scene pass of the last direct preparation: CPU encode and submit time.
+    pub fn pass_timings_us(&self) -> &[[u64; 2]] {
+        &self.pass_us
+    }
+
     pub fn scene_cache_hit(&self) -> bool {
         self.scene_cache_hit
     }
 
     pub fn present(&mut self, revision: u64) -> Result<bool, String> {
         self.presentation_us = [0; 4];
-        if self.revision != revision {
+        let Some(slot) = self
+            .prepared
+            .iter()
+            .position(|held| *held == Some(revision))
+        else {
             return Ok(false);
-        }
+        };
         let Some(surface) = &mut self.surface else {
             return Ok(false);
         };
@@ -492,9 +517,9 @@ impl Presenter {
         surface.blitter.copy(
             &device.device,
             &mut encoder,
-            self.composed
+            self.composed[slot]
                 .as_ref()
-                .map_or(&surface.target_view, |output| output.view()),
+                .map_or(&surface.target_views[slot], |output| output.view()),
             &view,
         );
         let command = encoder.finish();

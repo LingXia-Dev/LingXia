@@ -129,6 +129,9 @@ string. Transforms (`uppercase` etc.) are paint-only.
   Geometry is bounded by a shared plot budget on both sides of the wire.
 
 GPU presenters on one device share a `gpu::Context`; caches stay per presenter.
+A presenter holds at least two in-flight targets: `present(revision)` must not be
+invalidated by a later `prepare` (depth-2 pipelining prepares the next frame while
+one waits for its vsync).
 A driver crash during pipeline compilation cannot be caught: `renderer::sentinel`
 records the adapter (backend, ids, driver, renderer release) before its first
 compile and clears it after the first GPU frame presents. An adapter a dead

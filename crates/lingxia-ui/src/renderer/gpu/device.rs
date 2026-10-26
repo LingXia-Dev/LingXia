@@ -39,12 +39,13 @@ impl DeviceHandle {
     }
 }
 
-/// A window surface and the offscreen target the renderer draws into before the blit.
+/// A window surface and two offscreen targets: one frame can wait for its vsync while the
+/// next is drawn.
 pub(crate) struct RenderSurface<'s> {
     pub surface: wgpu::Surface<'s>,
     pub config: wgpu::SurfaceConfiguration,
     pub dev_id: usize,
-    pub target_view: wgpu::TextureView,
+    pub target_views: [wgpu::TextureView; 2],
     pub blitter: TextureBlitter,
 }
 
@@ -95,7 +96,7 @@ impl Devices {
         };
         surface.configure(&handle.device, &config);
         Ok(RenderSurface {
-            target_view: target_view(&handle.device, width, height),
+            target_views: [0; 2].map(|_| target_view(&handle.device, width, height)),
             blitter: TextureBlitter::new(&handle.device, format),
             surface,
             config,
@@ -107,7 +108,7 @@ impl Devices {
         let device = &self.devices[surface.dev_id].device;
         surface.config.width = width;
         surface.config.height = height;
-        surface.target_view = target_view(device, width, height);
+        surface.target_views = [0; 2].map(|_| target_view(device, width, height));
         surface.surface.configure(device, &surface.config);
     }
 
