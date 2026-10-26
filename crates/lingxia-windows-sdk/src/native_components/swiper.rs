@@ -17,12 +17,13 @@ use windows::Win32::Graphics::Gdi::{
     BeginPaint, CreateEllipticRgn, CreateSolidBrush, EndPaint, FillRect, PAINTSTRUCT,
 };
 use windows::Win32::Graphics::GdiPlus::{
-    GdipCreateBitmapFromFile, GdipCreateFromHDC, GdipDeleteGraphics, GdipDisposeImage,
-    GdipDrawImageRectI, GdipGetImageHeight, GdipGetImageWidth, GdipSetInterpolationMode, GpBitmap,
-    GpGraphics, GpImage, InterpolationModeHighQualityBicubic,
+    GdipCreateFromHDC, GdipDeleteGraphics, GdipDisposeImage, GdipDrawImageRectI,
+    GdipGetImageHeight, GdipGetImageWidth, GdipSetInterpolationMode, GpGraphics, GpImage,
+    InterpolationModeHighQualityBicubic,
 };
 
 use super::*;
+use crate::media_preview::ImageSource;
 
 /// `WM_TIMER` id for the autoplay tick ("LXSA").
 pub(super) const SWIPER_AUTOPLAY_TIMER_ID: usize = 0x4C58_5341;
@@ -803,12 +804,12 @@ fn begin_image_load(
     let spawned = std::thread::Builder::new()
         .name("lingxia-swiper-img".to_string())
         .spawn(move || {
-            // http(s) downloads through the URL cache; `lx://`/local sources
+            // http(s) downloads through the host HTTP store; `lx://`/local sources
             // resolve to a real filesystem path GDI+ can decode.
             let resolved = if is_http {
-                crate::media_preview::resolve_media_path(&src)
+                crate::media_preview::resolve_image_source(&src)
             } else {
-                resolve_native_media_source(&appid, &src)
+                resolve_native_media_source(&appid, &src).map(ImageSource::Path)
             };
             run_on_window_thread(dispatch_window, move || {
                 finish_image_load(&key, index, window, token, resolved, is_http);
@@ -824,7 +825,7 @@ fn finish_image_load(
     index: usize,
     window: isize,
     token: u64,
-    path: Option<String>,
+    source: Option<ImageSource>,
     is_http: bool,
 ) {
     // Bail if the slot was rebuilt while the load was in flight.
@@ -841,7 +842,7 @@ fn finish_image_load(
 
     let item = with_swiper(key, |swiper| swiper.config.items.get(index).cloned()).flatten();
 
-    let Some(path) = path else {
+    let Some(source) = source else {
         if let Some(item) = item {
             let code = if is_http { "network" } else { "not_found" };
             emit_event(
@@ -853,10 +854,7 @@ fn finish_image_load(
         return;
     };
 
-    let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
-    let mut bitmap: *mut GpBitmap = std::ptr::null_mut();
-    let status = unsafe { GdipCreateBitmapFromFile(PCWSTR(wide.as_ptr()), &mut bitmap) };
-    if status.0 != 0 || bitmap.is_null() {
+    let Some(bitmap) = crate::media_preview::load_bitmap(&source) else {
         if let Some(item) = item {
             emit_event(
                 key,
@@ -865,7 +863,7 @@ fn finish_image_load(
             );
         }
         return;
-    }
+    };
 
     let stored = with_swiper(key, |swiper| {
         let Some(page) = swiper.pages.get_mut(index) else {

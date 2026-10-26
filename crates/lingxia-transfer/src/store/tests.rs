@@ -515,3 +515,22 @@ async fn a_failed_resumable_download_keeps_its_partial_body() {
     assert!(!path.exists());
     assert_eq!(partial_len(&path), 10);
 }
+
+#[tokio::test]
+async fn a_plain_thread_can_fetch_and_wait() {
+    let origin = Origin::start(|_, _| {
+        Some(response(
+            "200 OK",
+            &["Cache-Control: max-age=60"],
+            b"native",
+        ))
+    })
+    .await;
+    let (_dir, store) = store(STORE_BUDGET_BYTES);
+    let request = request(&origin, "/a");
+    let bytes = tokio::task::spawn_blocking(move || store.fetch_bytes_blocking(request))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(bytes, "native");
+}

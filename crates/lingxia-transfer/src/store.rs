@@ -208,6 +208,22 @@ impl Store {
         Ok(Bytes::from(bytes))
     }
 
+    /// [`Self::fetch_bytes`] for a plain OS thread (a native image loader): runs on
+    /// the runtime executor and waits. Never call it from an async task.
+    pub fn fetch_bytes_blocking(
+        self: &Arc<Self>,
+        request: FetchRequest,
+    ) -> Result<Bytes, FetchError> {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let store = self.clone();
+        std::mem::drop(rong_rt::RongExecutor::global().spawn(async move {
+            let _ = sender.send(store.fetch_bytes(request).await);
+        }));
+        receiver
+            .recv()
+            .unwrap_or_else(|_| Err(FetchError::new(FetchErrorKind::Canceled, "runtime stopped")))
+    }
+
     /// Copy the response body into `writer`.
     pub async fn fetch_into<W: AsyncWrite + Unpin>(
         self: &Arc<Self>,

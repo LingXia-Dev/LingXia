@@ -32,6 +32,7 @@ host-api = [
 components = [
     "host-api",
     "dep:image",
+    "dep:lingxia-transfer",
     "dep:lingxia-messaging",
     "dep:lxapp",
     "dep:windows-core",
@@ -112,6 +113,7 @@ usvg = { workspace = true, optional = true }
 lxapp = { workspace = true, default-features = false, optional = true }
 lingxia-messaging = { workspace = true, optional = true }
 lingxia-platform = { workspace = true, optional = true }
+lingxia-transfer = { workspace = true, optional = true }
 lingxia-webview = { workspace = true, optional = true }
 lingxia-windows-contract = { workspace = true, optional = true }
 # crates.io 0.62.2 is the latest published coordinated `windows` set (the
@@ -136,7 +138,6 @@ windows = { workspace = true, features = [
     "Win32_Graphics_GdiPlus",
     "Win32_Media_MediaFoundation",
     "Win32_System_Com_StructuredStorage",
-    "Win32_System_Com_Urlmon",
     "Win32_System_DataExchange",
     "Win32_System_LibraryLoader",
     "Win32_System_Memory",

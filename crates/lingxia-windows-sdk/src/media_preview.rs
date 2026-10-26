@@ -7,7 +7,7 @@
 //! [`VideoPlayer`] (whose callbacks marshal to the creating thread) all
 //! live there, fully independent of the app's UI thread. Videos reuse the
 //! player engine and the [`VideoControls`] bar; images letterbox onto the
-//! black backdrop (remote images download through the URL cache first).
+//! black backdrop (remote images download through the host HTTP store first).
 //!
 //! Session protocol (`PreviewMediaRequest`): `presented_callback_id`
 //! fires `{}` once the first item has painted; `callback_id` fires
@@ -31,14 +31,14 @@ use windows::Win32::Graphics::Gdi::{
     MonitorFromWindow, SetBkMode, SetTextColor, TRANSPARENT, TextOutW,
 };
 use windows::Win32::Graphics::GdiPlus::{
-    GdipCreateBitmapFromFile, GdipCreateFromHDC, GdipDeleteGraphics, GdipDisposeImage,
-    GdipDrawImageRectI, GdipGetImageHeight, GdipGetImageWidth, GdipSetInterpolationMode,
-    GdiplusStartup, GdiplusStartupInput, GdiplusStartupOutput, GpBitmap, GpGraphics, GpImage,
-    InterpolationModeHighQualityBicubic,
+    GdipCreateBitmapFromFile, GdipCreateBitmapFromStream, GdipCreateFromHDC, GdipDeleteGraphics,
+    GdipDisposeImage, GdipDrawImageRectI, GdipGetImageHeight, GdipGetImageWidth,
+    GdipSetInterpolationMode, GdiplusStartup, GdiplusStartupInput, GdiplusStartupOutput, GpBitmap,
+    GpGraphics, GpImage, InterpolationModeHighQualityBicubic,
 };
-use windows::Win32::System::Com::Urlmon::URLDownloadToCacheFileW;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{VK_ESCAPE, VK_LEFT, VK_RIGHT};
+use windows::Win32::UI::Shell::SHCreateMemStream;
 use windows::Win32::UI::WindowsAndMessaging::{self, WINDOW_EX_STYLE, WINDOW_STYLE, WNDCLASSW};
 use windows::core::{PCWSTR, w};
 
@@ -293,32 +293,54 @@ fn is_remote_http_url(path: &str) -> bool {
             .is_some_and(|prefix| prefix.eq_ignore_ascii_case("http://"))
 }
 
-/// Resolves an item path: remote URLs go through the URL cache, file URIs
-/// strip their scheme, everything else is a local path already.
-pub(crate) fn resolve_media_path(path: &str) -> Option<String> {
+/// Largest remote image a preview or swiper item downloads.
+const REMOTE_IMAGE_MAX_BYTES: u64 = 32 * 1024 * 1024;
+
+/// Where an image's pixels come from.
+pub(crate) enum ImageSource {
+    Path(String),
+    Bytes(Vec<u8>),
+}
+
+/// Resolves an image item: remote URLs download through the host HTTP store,
+/// file URIs strip their scheme, everything else is a local path already.
+/// Blocks; call from a loader thread.
+pub(crate) fn resolve_image_source(path: &str) -> Option<ImageSource> {
     if is_remote_http_url(path) {
-        let wide_url: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
-        let mut buffer = vec![0u16; 1024];
-        let downloaded = unsafe {
-            URLDownloadToCacheFileW(
-                None::<&windows::core::IUnknown>,
-                PCWSTR(wide_url.as_ptr()),
-                &mut buffer,
-                0,
-                None,
-            )
+        let store = lingxia_transfer::store::shared()?;
+        let mut request = lingxia_transfer::store::FetchRequest::new(path, "host:media-preview");
+        request.max_bytes = REMOTE_IMAGE_MAX_BYTES;
+        // App-supplied media URLs; plain http stays loadable as it was.
+        request.allow_http = true;
+        request.stale_on_error = true;
+        return match store.fetch_bytes_blocking(request) {
+            Ok(bytes) => Some(ImageSource::Bytes(bytes.to_vec())),
+            Err(error) => {
+                log::warn!("previewMedia: failed to download {path}: {error}");
+                None
+            }
         };
-        if downloaded.is_err() {
-            log::warn!("previewMedia: failed to download {path}");
-            return None;
-        }
-        let length = buffer.iter().position(|&c| c == 0).unwrap_or(0);
-        Some(String::from_utf16_lossy(&buffer[..length]))
-    } else if let Some(stripped) = path.strip_prefix("file://") {
-        Some(stripped.to_string())
-    } else {
-        Some(path.to_string())
     }
+    Some(ImageSource::Path(
+        path.strip_prefix("file://").unwrap_or(path).to_string(),
+    ))
+}
+
+/// Decode `source` with GDI+; bytes decode from memory, leaving no file behind.
+pub(crate) fn load_bitmap(source: &ImageSource) -> Option<*mut GpBitmap> {
+    let mut bitmap: *mut GpBitmap = std::ptr::null_mut();
+    let status = match source {
+        ImageSource::Path(path) => {
+            let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+            unsafe { GdipCreateBitmapFromFile(PCWSTR(wide.as_ptr()), &mut bitmap) }
+        }
+        ImageSource::Bytes(bytes) => {
+            // The bitmap holds its own reference to the stream.
+            let stream = unsafe { SHCreateMemStream(Some(bytes)) }?;
+            unsafe { GdipCreateBitmapFromStream(&stream, &mut bitmap) }
+        }
+    };
+    (status.0 == 0 && !bitmap.is_null()).then_some(bitmap)
 }
 
 /// Shows `session.index`, iteratively skipping synchronous failures.
@@ -383,16 +405,13 @@ fn try_show_item(window: HWND) -> bool {
             layout_children(window);
         }
         MediaKind::Image | MediaKind::Unknown => {
-            let Some(path) = resolve_media_path(&item.path) else {
+            let Some(source) = resolve_image_source(&item.path) else {
                 return false;
             };
-            let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
-            let mut bitmap: *mut GpBitmap = std::ptr::null_mut();
-            let status = unsafe { GdipCreateBitmapFromFile(PCWSTR(wide.as_ptr()), &mut bitmap) };
-            if status.0 != 0 || bitmap.is_null() {
-                log::warn!("previewMedia: failed to decode image {path}");
+            let Some(bitmap) = load_bitmap(&source) else {
+                log::warn!("previewMedia: failed to decode image {}", item.path);
                 return false;
-            }
+            };
             session.image = bitmap as *mut GpImage;
             session.failed_items = 0;
         }

@@ -4443,6 +4443,7 @@ dependencies = [
  "lingxia-surface",
  "lingxia-terminal",
  "lingxia-terminal-config",
+ "lingxia-transfer",
  "lingxia-webview",
  "lingxia-windows-contract",
  "log",
