@@ -625,6 +625,9 @@ fn automation(host: &Host, request: &serde_json::Value) -> Result<serde_json::Va
                 Some("fill") => AutomationAct::Fill(text()),
                 Some("type") => AutomationAct::Type(text()),
                 Some("scroll") => AutomationAct::ScrollIntoView,
+                Some("press") => {
+                    AutomationAct::Press(action["key"].as_str().unwrap_or_default().to_owned())
+                }
                 other => return Err(format!("E_UNSUPPORTED: automation action {other:?}")),
             };
             let force = action["force"].as_bool().unwrap_or(false);

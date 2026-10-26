@@ -47,6 +47,8 @@ public class GpuAutomationTest {
             // Fill goes through the platform's text-edit path, as assistive input does.
             assertTrue(fake.events.toString(), fake.events.contains("edit:Ada"));
             fake.pump(host, () -> { try { return "Count 1 ".equals(text(fake, "count")); } catch (Exception e) { throw new AssertionError(e); } });
+            JSONObject press = automate(host, "{\"op\":\"act\",\"css\":\"[data-testid=\\\"add\\\"]\",\"action\":{\"kind\":\"press\",\"key\":\"Tab\"}}");
+            assertTrue(press.toString(), press.has("value"));
             String disabled = automate(host, "{\"op\":\"act\",\"css\":\"[data-testid=\\\"off\\\"]\",\"action\":{\"kind\":\"click\"}}").getString("error");
             assertTrue(disabled, disabled.startsWith("Element not interactable:"));
             String missing = automate(host, "{\"op\":\"act\",\"css\":\"[data-testid=\\\"nope\\\"]\",\"action\":{\"kind\":\"click\"}}").getString("error");
