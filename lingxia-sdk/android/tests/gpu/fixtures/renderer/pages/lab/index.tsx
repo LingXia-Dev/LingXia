@@ -72,8 +72,8 @@ export function render() {
             <button testId="note-mode" onClick={() => longNote.set(!longNote.value)} style={{ backgroundColor: surface, color: accent, padding: 8, fontSize: 12 }}>{longNote.value ? 'Short hello' : 'Long note'}</button>
           </row>
           {longNote.value
-            ? <textarea key="greeting-note" testId="greeting-input" bind={greeting} placeholder="A little more to say…" style={{ backgroundColor: background, color: ink, fontSize: 18, fontFamily:'monospace', lineHeight:'28px', height: 112 }} />
-            : <input key="greeting" testId="greeting-input" bind={greeting} placeholder="Write a little hello" onSubmit={value => sentGreeting.set(value)} style={{ backgroundColor: background, color: ink, fontSize: 18 }} />}
+            ? <textarea key="greeting-note" testId="greeting-input" accessibilityLabel="Greeting note" bind={greeting} placeholder="A little more to say…" style={{ backgroundColor: background, color: ink, fontSize: 18, fontFamily:'monospace', lineHeight:'28px', height: 112 }} />
+            : <input key="greeting" testId="greeting-input" accessibilityLabel="Greeting" bind={greeting} placeholder="Write a little hello" onSubmit={value => sentGreeting.set(value)} style={{ backgroundColor: background, color: ink, fontSize: 18 }} />}
           {!compact && <text style={{ fontSize: 17, lineHeight:'25px', color: muted }}>One tap. A little more warmth.</text>}
           <button testId="say-hello" onClick={() => greet(1)} style={{ backgroundColor: '#435DD9', color: '#FFFFFF', padding: compact ? 12 : 18, fontSize: 18, borderRadius: 14 }}>Say hello</button>
           <text testId="hello-count" style={{ fontSize: 15, color: muted }}>{count.value === 0 ? 'Your first hello starts here.' : `Hello received ${count.value} ${count.value === 1 ? 'time' : 'times'}.`}</text>
@@ -133,7 +133,7 @@ export function render() {
       ) : (
         <column key="discover-card" style={{ flexGrow: 1, flexBasis: 0, gap: 10 }}>
           <row style={{ gap: 8, alignItems: 'center' }}>
-            <search key="moment-search" testId="moment-search" bind={query} onSubmit={applySearch} placeholder="Find a moment by number" style={{ flexGrow: 1, flexBasis: 0, backgroundColor: surface, color: ink, fontSize: 16 }} />
+            <search key="moment-search" testId="moment-search" accessibilityLabel="Search moments" bind={query} onSubmit={applySearch} placeholder="Find a moment by number" style={{ flexGrow: 1, flexBasis: 0, backgroundColor: surface, color: ink, fontSize: 16 }} />
             {query.value && <button testId="clear-search" onClick={() => { query.set(''); applySearch(''); }} style={{ backgroundColor: surface, color: accent, padding: 12 }}>Clear</button>}
           </row>
           {!compact && <row style={{ gap: 10 }}>
@@ -164,7 +164,7 @@ function MomentCard({ index, ink, muted, background, onHello }: { index: number;
   return (
     <column style={{ padding: 18, gap: 10, backgroundColor: background, borderRadius: 14 }}>
       <row style={{ gap: 12, alignItems: 'center' }}>
-        <image testId={`discovery-image-${index + 1}`} src="public/mark.png" style={{ objectFit: 'cover', width: 48, height: 48, borderRadius: 16, backgroundColor: '#E3E9FA' }} />
+        <image testId={`discovery-image-${index + 1}`} src="public/mark.png" alt={`Moment ${index + 1}`} style={{ objectFit: 'cover', width: 48, height: 48, borderRadius: 16, backgroundColor: '#E3E9FA' }} />
         <column style={{ flexGrow: 1, flexBasis: 0, gap: 4 }}>
           <text testId={`discovery-title-${index + 1}`} style={{ fontSize: 20, color: ink }}>{`Moment ${String(index + 1).padStart(3, '0')}`}</text>
           <text style={{ fontSize: 12, color: muted }}>THE SMALL MOMENTS CLUB</text>

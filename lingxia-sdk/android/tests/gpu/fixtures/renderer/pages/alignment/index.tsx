@@ -12,7 +12,7 @@ export function render() {
     <column className={`gap-3 ${classes[alignment]}`}>
       <text testId="alignment-lines" className="w-60 h-20 p-2 border-2 border-black text-xl whitespace-pre-line">{'MMMM\nM'}</text>
       <text testId="alignment-rtl" className="w-60 h-20 p-2 border-2 border-black text-xl whitespace-pre-line">{'\u05d0\u05d1\u05d2\n\u05d0'}</text>
-      <input testId="alignment-input" bind={value} className="w-60 h-14 p-2 border-2 border-black rounded-none text-xl bg-white" />
+      <input testId="alignment-input" accessibilityLabel="Alignment input" bind={value} className="w-60 h-14 p-2 border-2 border-black rounded-none text-xl bg-white" />
       <text testId="alignment-override" className="w-60 h-12 p-2 border-2 border-black text-left text-xl">MMMM</text>
     </column>
     <text testId="alignment-status" className="text-sm">{value.value}</text>
