@@ -249,3 +249,26 @@ fn viewport_units_measure_the_safe_content_box() {
         );
     }
 }
+
+#[test]
+fn a_textarea_with_rows_grows_with_its_lines_up_to_max_rows() {
+    let height = |lines: usize| {
+        let value = vec!["line"; lines].join("\\n");
+        let source = crate::session::tests::source(&format!(
+            "function render(){{return h('column',{{}},h('textarea',{{testId:'t',accessibilityLabel:'Note',value:'{value}',rows:2,maxRows:4,style:{{padding:0,lineHeight:'20px'}}}}))}}"
+        ));
+        let display = crate::ViewSession::new(&source)
+            .unwrap()
+            .layout(300, 600, 1.0)
+            .unwrap();
+        display
+            .nodes
+            .iter()
+            .find(|n| n.test_id == "t")
+            .unwrap()
+            .bounds[3]
+    };
+    assert_eq!(height(1), 40.0);
+    assert_eq!(height(3), 60.0);
+    assert_eq!(height(9), 80.0);
+}

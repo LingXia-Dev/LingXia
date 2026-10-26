@@ -325,6 +325,10 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             "UI_SELECT: invalid options",
         ),
         field::ON_SELECT => ensure(handle(value), "UI_SELECT: invalid handle"),
+        field::ROWS | field::MAX_ROWS => ensure(
+            value.as_u64().is_some_and(|v| (1..=100).contains(&v)),
+            "UI_INPUT: rows and maxRows must be 1..100",
+        ),
         field::FOCUS_REQUEST => ensure(
             value.as_u64().is_some_and(|v| v <= MAX_HANDLE),
             "UI_INPUT: invalid focus request",

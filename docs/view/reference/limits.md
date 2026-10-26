@@ -20,4 +20,4 @@ Page-wide bounds the runtime and the native decoder both enforce. Exceeding one 
 | `evalBudgetMs` | 100 | Wall-clock budget for one View render or callback; past it the page fails with UI_TIMEOUT. |
 | `evalBudgetDebugMultiplier` | 8 | Multiplier on that budget in unoptimized (debug) builds. |
 
-Wire ABI: 1. Highest field id: 179.
+Wire ABI: 1. Highest field id: 181.

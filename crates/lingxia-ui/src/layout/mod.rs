@@ -249,6 +249,12 @@ impl Renderer {
                             .as_ref()
                             .and_then(|i| records[**i].number(field::TEXT_LINES))
                             .map(|n| n as usize);
+                        let rows = context.as_ref().and_then(|i| {
+                            let record = &records[**i];
+                            record
+                                .number(field::ROWS)
+                                .map(|rows| (rows, record.number(field::MAX_ROWS)))
+                        });
                         let Some(layout) = context.and_then(|i| layouts[*i].as_mut()) else {
                             return Size::ZERO;
                         };
@@ -265,7 +271,20 @@ impl Renderer {
                             max_width.map(|w| (w - check_reserve(tag)).max(0.0))
                         });
                         self.text_time += started.elapsed();
-                        let (width, height) = text_extent(layout, limit);
+                        let (width, mut height) = text_extent(layout, limit);
+                        // An autosizing textarea grows with its lines between `rows` and `maxRows`.
+                        if let Some((rows, max_rows)) = rows {
+                            let line = layout
+                                .lines()
+                                .next()
+                                .map(|line| line.metrics().line_height)
+                                .filter(|height| *height > 0.0)
+                                .unwrap_or(16.0 * 1.25);
+                            height = height.max(rows * line);
+                            if let Some(max) = max_rows {
+                                height = height.min(max * line);
+                            }
+                        }
                         Size {
                             width: known.width.unwrap_or(width.ceil() + check_reserve(tag)),
                             height: known.height.unwrap_or(height.ceil().max(check_height(tag))),

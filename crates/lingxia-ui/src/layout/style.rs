@@ -570,7 +570,7 @@ pub(crate) fn node_style(
                     auto()
                 } else if record.tag == tag::SLIDER {
                     length(48.0)
-                } else if record.tag == tag::TEXTAREA {
+                } else if record.tag == tag::TEXTAREA && record.number(field::ROWS).is_none() {
                     length(120.0)
                 } else if index == 0 {
                     length(height as f32 / scale)

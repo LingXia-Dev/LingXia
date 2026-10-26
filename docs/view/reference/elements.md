@@ -144,6 +144,8 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput
 
 | Prop | Type | Required |
 | --- | --- | --- |
+| `rows` | `number` |  |
+| `maxRows` | `number` |  |
 | `accessibilityLabel` | `string` |  |
 | `placeholder` | `string` |  |
 | `secure` | `boolean` |  |

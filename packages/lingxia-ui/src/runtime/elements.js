@@ -184,6 +184,14 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       for (const name of ['secure', 'autoFocus', 'submitOnEnter']) if (props[name] !== undefined) wire(name, +props[name]);
       if (props.bind !== undefined && cellOf(props.bind).cell.focus) wire('focusRequest', cellOf(props.bind).cell.focus);
       for (const [key, value] of attributes) wire(key, value);
+      if (tag === 'textarea') {
+        const { rows, maxRows } = props;
+        const valid = value => value === undefined || (Number.isInteger(value) && value >= 1 && value <= 100);
+        if (!valid(rows) || !valid(maxRows) || (maxRows !== undefined && (rows === undefined || maxRows < rows)))
+          throw Error('UI_INPUT: rows and maxRows are integers 1..100, maxRows needs rows and is at least rows');
+        if (rows !== undefined) wire('rows', rows);
+        if (maxRows !== undefined) wire('maxRows', maxRows);
+      }
       if (!disabled) for (const name of ['onInput', 'onSubmit']) if (props[name]) on(name, props[name], 'text');
       break;
     case 'select': {

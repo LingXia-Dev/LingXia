@@ -213,6 +213,8 @@ pub mod field {
     pub const STATE_BUSY: usize = 177;
     pub const SELECT_OPTIONS: usize = 178;
     pub const ON_SELECT: usize = 179;
+    pub const ROWS: usize = 180;
+    pub const MAX_ROWS: usize = 181;
 }
 
 pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page", "span", "link", "select"];
@@ -399,6 +401,8 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("stateBusy", "semantic-state"),
     ("selectOptions", "select-options"),
     ("onSelect", "select-handle"),
+    ("rows", "textarea-rows"),
+    ("maxRows", "textarea-rows"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -715,4 +719,6 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::SELECT]), parent: None },
     FieldAdmission { tags: Some(&[tag::SELECT]), parent: None },
+    FieldAdmission { tags: Some(&[tag::TEXTAREA]), parent: None },
+    FieldAdmission { tags: Some(&[tag::TEXTAREA]), parent: None },
 ];
