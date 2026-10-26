@@ -422,7 +422,7 @@ function longhand(prop, value) {
       return value;
   }
 }
-const transitions = /^(?:animation-[a-z-]+|filter|cursor|pointer-events|user-select|outline.*)$/;
+const transitions = /^(?:animation-[a-z-]+|filter|cursor|pointer-events|outline.*)$/;
 
 function angle(text) {
   const negated = text.match(/^calc\(([\s\S]+?)\s*\*\s*-1\)$/);
@@ -544,11 +544,9 @@ function declarations(nodes, vars, root, animationLowering) {
     // Border styles follow --tw-border-style, which only `border-solid|dashed|dotted` set.
     if (prop === '--tw-border-style') { style.borderStyle = longhand('border-style', variables(node.value, local).trim()); continue; }
     if (prop.startsWith('--')) continue;
-    if (prop === 'user-select' || prop === '-webkit-user-select') {
-      // Static text is never selectable yet, so `select-none` already holds.
-      if (!['none', 'auto'].includes(node.value.trim())) unsupported(`user-select: ${node.value} (selectable text is not supported yet)`);
-      continue;
-    }
+    // Tailwind writes the prefixed twin of user-select; it carries nothing more.
+    if (prop === '-webkit-user-select') continue;
+    if (prop === 'user-select' && node.value.trim() === 'auto') continue;
     if (transitions.test(prop)) unsupported(`${prop} (the native renderer has no transitions)`);
     const value = variables(node.value, local).trim();
     if (prop in shorthands) {

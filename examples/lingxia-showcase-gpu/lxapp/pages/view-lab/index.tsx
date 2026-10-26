@@ -20,6 +20,7 @@ export function render() {
       <Inputs />
       <Structure />
       <StickyHeaders />
+      <Selection />
     </Page>
   );
 }
@@ -257,6 +258,16 @@ function StickyHeaders() {
           </column>
         ))}
       </scroll>
+    </Section>
+  );
+}
+
+function Selection() {
+  return (
+    <Section title="Selectable text" testId="lab-selection">
+      <text testId="lab-select-text" className="text-sm select-text">Long-press a word to select it, then drag the handles. Order reference: LX-2024-88412.</text>
+      <text testId="lab-select-all" className="font-mono text-sm px-2 py-1 rounded bg-muted select-all">8F3A-77C2-91D0</text>
+      <view className="select-text"><text testId="lab-select-inherited" className="text-xs text-muted-foreground">Selectable by inheritance.</text></view>
     </Section>
   );
 }

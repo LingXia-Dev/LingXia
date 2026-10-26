@@ -45,6 +45,8 @@ struct Gesture {
     dragging: bool,
     moved: bool,
     long_pressed: bool,
+    /// A selectable static text under the press, for long-press selection.
+    selectable: Option<usize>,
 }
 
 struct PendingFocus {

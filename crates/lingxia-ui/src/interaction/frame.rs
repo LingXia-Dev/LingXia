@@ -43,6 +43,17 @@ impl PresentedFrame {
             .map(|(index, _)| index)
     }
 
+    /// The topmost selectable static text under a logical point.
+    pub fn selectable_hit(&self, point: [f32; 2]) -> Option<usize> {
+        self.hit_order()
+            .find(|(_, node)| node.selectable.is_some() && contains(node, point, false))
+            .map(|(index, _)| index)
+    }
+
+    pub fn has_text_selection(&self) -> bool {
+        self.nodes.iter().any(|node| node.text_selection.is_some())
+    }
+
     /// The topmost scroll region that can move under a logical point.
     pub fn scroll_hit(&self, point: [f32; 2]) -> Option<String> {
         self.hit_order()

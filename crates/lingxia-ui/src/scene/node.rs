@@ -11,6 +11,15 @@ pub struct NodeSnapshot {
     pub text: String,
     pub bounds: [f32; 4],
     pub visible_bounds: [f32; 4],
+    /// `text` or `all` when the text may be selected by long press.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selectable: Option<&'static str>,
+    /// The current static-text selection, in the shape chrome reads from editors.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text_selection: Option<InputGeometry>,
+    /// The selection as UTF-16 offsets into the node text, for accessibility.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selection_range: Option<[u32; 2]>,
     /// Line pieces of a text run; hits must land in one of them.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub hit_rects: Vec<[f32; 4]>,

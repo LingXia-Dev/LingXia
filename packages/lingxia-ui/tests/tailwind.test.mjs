@@ -80,8 +80,8 @@ test('aspect ratios, ch widths, current-color backgrounds, overscroll and select
   assert.equal(node('scroll', { className: 'overscroll-contain' }).overscroll, 'contain');
   assert.equal(node('scroll', { className: 'overscroll-y-none' }).overscroll, 'none');
   assert.throws(() => describe(() => h('column', { className: 'overscroll-contain' }), {}), /overscrollBehavior is not supported on <column>/);
-  assert.deepEqual(classStyle('select-none'), {});
-  for (const name of ['select-text', 'select-all']) assert.throws(() => classStyle(name), /selectable text is not supported yet/);
+  assert.deepEqual(['select-none', 'select-text', 'select-all'].map(name => classStyle(name).userSelect), ['none', 'text', 'all']);
+  assert.equal(node('text', { className: 'select-text' }).userSelect, 'text');
 });
 
 test('CSS grid utilities lower to tracks, placements, alignment and order; named lines and areas fail', async () => {

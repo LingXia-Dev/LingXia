@@ -23,6 +23,9 @@ pub(crate) fn node(identity: &str, tag: &'static str, bounds: [f32; 4]) -> NodeS
         bounds,
         visible_bounds: bounds,
         hit_rects: Vec::new(),
+        selectable: None,
+        text_selection: None,
+        selection_range: None,
         role: None,
         heading_level: None,
         live_region: None,
@@ -740,4 +743,39 @@ fn outside_taps_dismiss_selected_plots_without_activating_content() {
             identities: vec!["chart".into()]
         }]
     );
+}
+
+#[test]
+fn long_press_on_selectable_text_selects_and_a_tap_clears() {
+    let mut text = node("t", "text", [0.0, 0.0, 100.0, 20.0]);
+    text.text = "hello".into();
+    text.selectable = Some("text");
+    let mut interaction = ViewInteraction::default();
+    let page = PageTicket::new(1);
+    presented(&mut interaction, vec![text.clone()], 1);
+    let (consumed, effects) = interaction.pointer(press(PointerPhase::Down, 20.0, 20.0), page);
+    assert!(consumed && effects.contains(&Effect::ArmLongPress));
+    assert!(interaction.long_press().contains(&Effect::Dispatch));
+    // Pointer coordinates are device pixels at scale 2.
+    assert_eq!(
+        interaction.take_dispatch(),
+        [Dispatch::SelectText {
+            commit: CommitTicket::new(1),
+            identity: "t".into(),
+            point: [10.0, 10.0],
+        }]
+    );
+    interaction.pointer(press(PointerPhase::Up, 20.0, 20.0), page);
+    assert!(interaction.take_dispatch().is_empty());
+    text.text_selection = Some(crate::scene::node::InputGeometry {
+        anchor: [0.0; 4],
+        caret: [0.0; 4],
+        content_bounds: [0.0, 0.0, 100.0, 20.0],
+        selection: Vec::new(),
+        composition: Vec::new(),
+    });
+    presented(&mut interaction, vec![text], 2);
+    interaction.pointer(press(PointerPhase::Down, 150.0, 150.0), page);
+    interaction.pointer(press(PointerPhase::Up, 150.0, 150.0), page);
+    assert_eq!(interaction.take_dispatch(), [Dispatch::ClearTextSelection]);
 }

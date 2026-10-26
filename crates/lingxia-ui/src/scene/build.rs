@@ -64,6 +64,8 @@ impl Renderer {
             );
         }
         let mut content_boxes: Vec<[f32; 4]> = Vec::with_capacity(records.len());
+        let mut selectables = Vec::with_capacity(records.len());
+        let mut selectable_count = 0;
         let mut stickies = Vec::with_capacity(records.len());
         let mut run_rects: std::collections::HashMap<usize, Vec<[f32; 4]>> =
             std::collections::HashMap::new();
@@ -663,6 +665,37 @@ impl Renderer {
                     }
                 }
             }
+            selectables.push(
+                layouts[index]
+                    .as_ref()
+                    .filter(|_| {
+                        // Truncated text paints a different string than it holds.
+                        record.tag == tag::TEXT
+                            && styles[index].select != 0
+                            && record.string(field::TEXT_OVERFLOW) != Some("ellipsis")
+                            && !collapsed[index]
+                            && selectable_count < crate::scene::retained::MAX_SELECTABLE
+                    })
+                    .map(|text| {
+                        selectable_count += 1;
+                        Arc::new(crate::scene::retained::SelectableText {
+                            layout: text.clone(),
+                            origin: [
+                                x + layout.padding.left,
+                                y + layout.padding.top + text_offset_y,
+                            ],
+                            content: [
+                                x + layout.padding.left,
+                                y + layout.padding.top,
+                                (layout.size.width - layout.padding.left - layout.padding.right)
+                                    .max(0.0),
+                                (layout.size.height - layout.padding.top - layout.padding.bottom)
+                                    .max(0.0),
+                            ],
+                            text: texts[index].clone(),
+                        })
+                    }),
+            );
             // Run backgrounds sit under every glyph of the paragraph.
             commands.splice(text_start..text_start, highlights);
             if matches!(record.tag, tag::CHECKBOX | tag::SWITCH | tag::RADIO_OPTION)
@@ -833,6 +866,15 @@ impl Renderer {
                     .filter(|label| !label.is_empty())
                     .map(str::to_owned),
                 hit_rects,
+                selectable: selectables.last().and_then(Option::as_ref).map(|_| {
+                    if styles[index].select == 2 {
+                        "all"
+                    } else {
+                        "text"
+                    }
+                }),
+                text_selection: None,
+                selection_range: None,
                 role: record.string(field::ROLE).map(str::to_owned),
                 heading_level: record.number(field::HEADING_LEVEL).map(|level| level as u8),
                 live_region: match record.string(field::ACCESSIBILITY_LIVE_REGION) {
@@ -1001,6 +1043,7 @@ impl Renderer {
             height,
             scale,
             inputs: input_layouts,
+            selectables,
         })
     }
 }

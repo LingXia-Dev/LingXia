@@ -36,6 +36,17 @@ pub(crate) struct Inputs {
     token: u64,
     /// Values a blur or submit committed (bounds, step), for the session to report as input.
     committed: Vec<(u64, String)>,
+    /// The one static-text selection a page may hold; editors never share it.
+    pub(crate) text_selection: Option<TextSelection>,
+}
+
+/// A static-text selection: byte offsets into the node's display text.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct TextSelection {
+    pub identity: String,
+    pub text: String,
+    pub anchor: usize,
+    pub focus: usize,
 }
 
 impl Inputs {
@@ -208,6 +219,11 @@ impl Inputs {
             }
         }
         display.decorate_inputs();
+        if let Some(selection) = &self.text_selection
+            && !display.decorate_selection(selection)
+        {
+            self.text_selection = None;
+        }
         for node in &display.nodes {
             if let (Some(input), Some(entry)) = (&node.input, self.entries.get_mut(&node.identity))
             {
@@ -240,6 +256,7 @@ impl Inputs {
         }
         self.blur(renderer)?;
         self.advance()?;
+        self.text_selection = None;
         renderer.edit_text(
             &mut self.entries.get_mut(id).unwrap().editor,
             &[Edit::Focus],

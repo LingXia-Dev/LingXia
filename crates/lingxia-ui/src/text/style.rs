@@ -21,6 +21,8 @@ pub(crate) struct TextStyle {
     pub(crate) collapse: Collapse,
     /// The paragraph base direction; `start`/`end` alignment follows it.
     pub(crate) rtl: bool,
+    /// `user-select`: 0 none, 1 text, 2 all; inherited.
+    pub(crate) select: u8,
     /// OpenType feature settings in CSS source form; empty for `normal`.
     pub(crate) features: String,
 }
@@ -190,6 +192,12 @@ pub(crate) fn computed(records: &[Record], directions: &[bool]) -> Vec<TextStyle
                 .map(|p| (p.nowrap, p.collapse))
                 .unwrap_or((false, Collapse::All)),
         };
+        let select = match record.string(field::USER_SELECT) {
+            Some("text") => 1,
+            Some("all") => 2,
+            Some(_) => 0,
+            None => parent.as_ref().map(|p| p.select).unwrap_or(0),
+        };
         let features = match record.string(field::FONT_VARIANT_NUMERIC) {
             Some(value) => numeric_features(value),
             None => parent
@@ -268,6 +276,7 @@ pub(crate) fn computed(records: &[Record], directions: &[bool]) -> Vec<TextStyle
             collapse,
             features,
             rtl: directions[index],
+            select,
         });
     }
     styles

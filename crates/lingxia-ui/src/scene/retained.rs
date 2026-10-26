@@ -10,6 +10,19 @@ use vello_cpu::Glyph;
 use vello_cpu::kurbo::Affine;
 
 #[derive(Clone)]
+/// A selectable static text's shaped paragraph, kept for hit-to-offset queries.
+pub(crate) struct SelectableText {
+    pub(crate) layout: Layout<crate::text::RunBrush>,
+    /// The paragraph origin and content box in unscrolled layout space.
+    pub(crate) origin: [f32; 2],
+    pub(crate) content: [f32; 4],
+    pub(crate) text: String,
+}
+
+/// Selectable texts realized in one frame; more fall back to unselectable.
+pub(crate) const MAX_SELECTABLE: usize = 64;
+
+#[derive(Clone)]
 pub(crate) struct InputLayout {
     pub(crate) layout: Layout<crate::text::RunBrush>,
     pub(crate) padding: [f32; 2],
@@ -36,6 +49,7 @@ pub(crate) struct RetainedLayout {
     pub(crate) height: u16,
     pub(crate) scale: f32,
     pub(crate) inputs: Vec<Option<InputLayout>>,
+    pub(crate) selectables: Vec<Option<Arc<SelectableText>>>,
 }
 
 impl RetainedLayout {
@@ -168,6 +182,7 @@ impl RetainedLayout {
         let mut child_layers: Vec<Vec<Paint>> = vec![Vec::new(); count];
         let mut painted = Vec::new();
         let mut input_paints = Vec::new();
+        let mut selectable_paints = Vec::new();
         for (position, &index) in self.order.iter().enumerate() {
             let parent = self.parents[index];
             let mut translation = parent.map(|p| translations[p]).unwrap_or([0.0; 2]);
@@ -678,6 +693,9 @@ impl RetainedLayout {
                     commands.len() + background..commands.len() + painted.len(),
                 ));
             }
+            if self.selectables[index].is_some() {
+                selectable_paints.push((index, commands.len()));
+            }
             commands.append(&mut painted);
             if inner_clip.is_some() {
                 commands.push(Paint::PopClip);
@@ -740,6 +758,7 @@ impl RetainedLayout {
             images: HashMap::new(),
             commands,
             input_paints,
+            selectable_paints,
             caret_paint: None,
             nodes,
             width: self.width,

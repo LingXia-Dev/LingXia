@@ -204,6 +204,7 @@ pub mod field {
     pub const INPUT_MAX: usize = 169;
     pub const INPUT_STEP: usize = 170;
     pub const TRANSITION: usize = 171;
+    pub const USER_SELECT: usize = 172;
 }
 
 pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page", "span", "link"];
@@ -382,6 +383,7 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("max", "input-bound"),
     ("step", "input-step"),
     ("transition", "transition"),
+    ("userSelect", "user-select"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -417,6 +419,7 @@ pub fn options(kind: &str) -> Option<&'static [&'static str]> {
         "enter-key-hint" => Some(&["enter", "done", "go", "next", "previous", "search", "send"]),
         "auto-capitalize" => Some(&["none", "sentences", "words", "characters"]),
         "transition-property" => Some(&["opacity", "transform", "bg", "fg", "border", "shadow"]),
+        "user-select" => Some(&["none", "text", "all"]),
         _ => None,
     }
 }
@@ -672,5 +675,6 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::INPUT]), parent: None },
     FieldAdmission { tags: Some(&[tag::INPUT]), parent: None },
     FieldAdmission { tags: Some(&[tag::INPUT]), parent: None },
+    FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
 ];

@@ -42,7 +42,8 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - `<vector paths gradients>`: paths take SVG `transform`, caps, joins, dash offset and
   `fill`/`stroke: 'url(#id)'` naming a `gradients` entry (linear or radial, ≤8).
 - Rich text: `<text>Read <span className="font-bold">this</span> or <link onPress={go}>that</link></text>`;
-  runs take text paint only; links are accent + underline by default.
+  runs take text paint only; links are accent + underline by default. `select-text` lets users
+  long-press to select and copy.
 - Semantics: `role="heading" headingLevel={2}`, `list`/`listitem`, `dialog`, `alert`/`status`
   (announced), `accessibilityHidden` for decoration.
 - Inputs take `maxLength`, `autoComplete` (autofill), `enterKeyHint`, `autoCapitalize`, `spellCheck`;

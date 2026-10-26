@@ -52,6 +52,8 @@ impl ViewInteraction {
                 if pressed.is_none()
                     && self.gesture.target.is_none()
                     && frame.outside_plot_selections(point).is_empty()
+                    && frame.selectable_hit(point).is_none()
+                    && !frame.has_text_selection()
                 {
                     return (false, effects);
                 }
@@ -63,6 +65,9 @@ impl ViewInteraction {
                     if frame.node(index).is_some_and(frame::editable) {
                         effects.push(Effect::ArmLongPress);
                     }
+                } else if let Some(index) = frame.selectable_hit(point) {
+                    self.gesture.selectable = Some(index);
+                    effects.push(Effect::ArmLongPress);
                 }
             }
             PointerPhase::Move => {
@@ -159,6 +164,13 @@ impl ViewInteraction {
                 {
                     effects.push(Effect::Clicked);
                     effects.extend(self.activate(index, Some(point), false, None));
+                } else if !self.gesture.moved
+                    && !self.gesture.long_pressed
+                    && frame.has_text_selection()
+                {
+                    // Any tap that is not a long-press ends the static-text selection.
+                    self.dispatches.push(Dispatch::ClearTextSelection);
+                    effects.push(Effect::Dispatch);
                 } else if target.is_none()
                     && same_frame
                     && !self.gesture.moved
@@ -187,6 +199,21 @@ impl ViewInteraction {
         let Some(frame) = self.frame.clone() else {
             return Vec::new();
         };
+        if let (None, Some(index), Some(commit)) = (
+            self.gesture.pressed,
+            self.gesture.selectable,
+            self.gesture.pressed_commit,
+        ) && commit == frame.commit
+        {
+            self.gesture.long_pressed = true;
+            let point = self.logical(self.gesture.down[0], self.gesture.down[1]);
+            self.dispatches.push(Dispatch::SelectText {
+                commit,
+                identity: frame.nodes[index].identity.clone(),
+                point,
+            });
+            return vec![Effect::Haptic, Effect::Dispatch];
+        }
         let (Some(index), Some(commit)) = (self.gesture.pressed, self.gesture.pressed_commit)
         else {
             return Vec::new();

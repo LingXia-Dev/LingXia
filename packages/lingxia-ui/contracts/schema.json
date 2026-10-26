@@ -57,7 +57,8 @@
     "auto-complete": ["off", "on", "username", "current-password", "new-password", "one-time-code", "email", "tel", "name", "given-name", "family-name", "street-address", "postal-code", "country", "cc-number", "cc-exp", "cc-csc", "bday"],
     "enter-key-hint": ["enter", "done", "go", "next", "previous", "search", "send"],
     "auto-capitalize": ["none", "sentences", "words", "characters"],
-    "transition-property": ["opacity", "transform", "bg", "fg", "border", "shadow"]
+    "transition-property": ["opacity", "transform", "bg", "fg", "border", "shadow"],
+    "user-select": ["none", "text", "all"]
   },
   "fields": [
     {"id": 0, "key": "width", "wire": "width", "kind": "number"},
@@ -231,7 +232,8 @@
     {"id": 168, "key": "inputMin", "wire": "min", "kind": "input-bound", "tags": ["input"]},
     {"id": 169, "key": "inputMax", "wire": "max", "kind": "input-bound", "tags": ["input"]},
     {"id": 170, "key": "inputStep", "wire": "step", "kind": "input-step", "tags": ["input"]},
-    {"id": 171, "key": "transition", "wire": "transition", "kind": "transition"}
+    {"id": 171, "key": "transition", "wire": "transition", "kind": "transition"},
+    {"id": 172, "key": "userSelect", "wire": "userSelect", "kind": "user-select"}
   ],
   "input": {
     "autofill": {"username": "username", "current-password": "password", "new-password": "newPassword", "one-time-code": "smsOTPCode", "email": "emailAddress", "tel": "phone", "name": "personName", "given-name": "personGivenName", "family-name": "personFamilyName", "street-address": "postalAddress", "postal-code": "postalCode", "country": "addressCountry", "cc-number": "creditCardNumber", "cc-exp": "creditCardExpirationDate", "cc-csc": "creditCardSecurityCode", "bday": "birthDateFull"},
@@ -241,7 +243,8 @@
     "roles": ["button", "check-box", "switch", "radio-group", "radio-button", "text-field", "scroll-view", "horizontal-scroll-view", "image", "slider", "text", "link", "heading", "list", "list-item", "dialog", "alert", "status"],
     "liveRegions": ["polite", "assertive"],
     "events": ["announce"],
-    "keys": {"headingLevel": "heading_level", "liveRegion": "live_region", "position": "position"}
+    "actions": ["copy", "set-selection"],
+    "keys": {"headingLevel": "heading_level", "liveRegion": "live_region", "position": "position", "textSelection": "text_selection", "selectable": "selectable"}
   },
   "styleGroups": {"accent": ["color"], "run": ["color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "textDecorationLine", "fontVariantNumeric", "backgroundColor"]},
   "style": {
@@ -340,6 +343,7 @@
     "lineHeight": {"type": "number | `${number}px`", "group": "text", "lower": "line-height", "wire": "lineHeight", "css": "line-height"},
     "letterSpacing": {"type": "number | `${number}em`", "group": "text", "lower": "letter-spacing", "wire": "letterSpacing", "css": "letter-spacing"},
     "fontVariantNumeric": {"type": "string", "group": "text", "lower": "font-variant-numeric", "wire": "fontVariantNumeric"},
+    "userSelect": {"type": "\"none\" | \"text\" | \"all\"", "group": "text", "lower": "option", "wire": "userSelect", "css": "user-select"},
     "textAlign": {"type": "\"start\" | \"end\" | \"left\" | \"center\" | \"right\" | \"justify\"", "group": "text", "lower": "option", "wire": "textAlign", "css": "text-align"},
     "textDecorationLine": {"type": "\"none\" | \"line-through\" | \"underline\"", "group": "text", "lower": "option", "wire": "textDecorationLine", "css": "text-decoration-line"},
     "textTransform": {"type": "\"none\" | \"uppercase\" | \"lowercase\" | \"capitalize\"", "group": "text", "lower": "option", "wire": "textTransform", "css": "text-transform"},

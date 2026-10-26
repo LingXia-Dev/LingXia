@@ -93,6 +93,11 @@ test('a later physical edge replaces an earlier flow-relative one on the side it
   assert.deepEqual(mergeStyle('ltr', { borderStartStartRadius: 3 }, { borderRadius: 5 }), { borderRadius: 5 });
 });
 
+test('userSelect applies to static text, not editors', () => {
+  assert.equal(style({ userSelect: 'all' }, 'text').userSelect, 'all');
+  assert.throws(() => style({ userSelect: 'text' }, 'input'), /editors select their text already/);
+});
+
 test('typography: CSS line-height multipliers inherit and recompute per font size', () => {
   const root = rendered(() => h('column', { style: { fontSize: 10, lineHeight: 1.5 } }, h('text', { style: { fontSize: 20 } }, 'big'), h('text', {}, 'small')));
   assert.equal(root.props.lineHeight, 15);

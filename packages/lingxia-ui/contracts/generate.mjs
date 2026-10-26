@@ -287,11 +287,12 @@ const constant = name => screaming(name).replace(/__+/g, '_');
 
 // The Android adapter maps the semantic projection with these names only.
 function androidSemantics(schema) {
-  const { roles, liveRegions, events, keys } = schema.semantics;
+  const { roles, liveRegions, events, actions, keys } = schema.semantics;
   const lines = [
     ...roles.map(role => `    public static final String ROLE_${constant(role)} = ${JSON.stringify(role)};`),
     ...liveRegions.map(kind => `    public static final String LIVE_${constant(kind)} = ${JSON.stringify(kind)};`),
     ...events.map(kind => `    public static final String EVENT_${constant(kind)} = ${JSON.stringify(kind)};`),
+    ...actions.map(kind => `    public static final String ACTION_${constant(kind)} = ${JSON.stringify(kind)};`),
     ...Object.entries(keys).map(([name, key]) => `    public static final String KEY_${constant(name)} = ${JSON.stringify(key)};`),
   ];
   return `${header}package com.lingxia.ui.generated;

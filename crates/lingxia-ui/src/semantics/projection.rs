@@ -40,8 +40,13 @@ pub enum Action {
     SetSelection,
     SetProgress,
     ClearSelection,
-    SelectItem { index: usize, label: String },
+    SelectItem {
+        index: usize,
+        label: String,
+    },
     ShowOnScreen,
+    /// Copy the selected static text.
+    Copy,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -93,6 +98,8 @@ pub struct SemanticNode {
     pub heading_level: Option<u8>,
     /// `polite` or `assertive`: announce text changes.
     pub live_region: Option<String>,
+    /// Selected range of selectable static text, as UTF-16 offsets.
+    pub text_selection: Option<[u32; 2]>,
 }
 
 /// Nodes that convey information or accept input.
@@ -335,6 +342,12 @@ impl Projection<'_> {
                     .map(|edit| edit.selection),
             }
         });
+        if node.selectable.is_some() && !self.inert {
+            actions.push(Action::SetSelection);
+            if node.selection_range.is_some_and(|[a, b]| a != b) {
+                actions.push(Action::Copy);
+            }
+        }
         if meaningful(node) {
             actions.push(Action::ShowOnScreen);
         }
@@ -379,6 +392,7 @@ impl Projection<'_> {
             actions,
             heading_level: node.heading_level.or((role == Role::Heading).then_some(2)),
             live_region: node.live_region.clone(),
+            text_selection: node.selection_range,
         })
     }
 

@@ -95,6 +95,14 @@ pub enum Dispatch {
         commit: CommitTicket,
         identities: Vec<String>,
     },
+    /// Long-press on selectable text: the session selects there (`select_text`).
+    SelectText {
+        commit: CommitTicket,
+        identity: String,
+        point: [f32; 2],
+    },
+    /// A tap outside the selection: the session drops it (`clear_text_selection`).
+    ClearTextSelection,
     /// Edges reached by a presented frame.
     Reach {
         commit: CommitTicket,

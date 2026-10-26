@@ -45,8 +45,10 @@ time (see [ui-authoring.md](ui-authoring.md)) and again at runtime.
 - Percent sizes resolve in layout against the parent content box. `aspect-*` derives
   the free axis; `max-w-[Nch]` resolves against the advance of "0" in the node's font.
 - `bg-current` paints the text color. `overscroll-contain`/`-none` stop a scroll or
-  list from handing leftover distance to ancestors. `select-none` is accepted (static
-  text is not selectable); `select-text`/`select-all` fail.
+  list from handing leftover distance to ancestors.
+- `select-text` (inherited) makes static text long-press selectable by word;
+  `select-all` selects the whole text first; `select-none` stops it. One selection per
+  page, ≤64 selectable texts per frame; truncated text and editors never take it.
 - `w-fit`, `w-auto`, `h-auto` map to native sizing keywords; `h-auto` keeps
   intrinsic height under min/max constraints.
 - `whiteSpace` follows CSS: `normal`/`nowrap` collapse whitespace runs (newlines

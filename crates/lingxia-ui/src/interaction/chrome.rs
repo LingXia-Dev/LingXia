@@ -42,6 +42,18 @@ pub struct ChromeNode {
     clips: Vec<Clip>,
     #[serde(default)]
     input: Option<Input>,
+    /// A static-text selection exposes the same geometry as an editor's.
+    #[serde(default)]
+    text_selection: Option<Geometry>,
+}
+
+impl ChromeNode {
+    fn geometry(&self) -> Option<&Geometry> {
+        self.input
+            .as_ref()
+            .and_then(|input| input.geometry.as_ref())
+            .or(self.text_selection.as_ref())
+    }
 }
 
 impl ChromeNode {
@@ -154,7 +166,7 @@ pub type Endpoint = [f64; 3];
 /// The anchor (0) or caret (1) handle position; `None` when that end is
 /// scrolled out of the editor's content or clipped away.
 pub fn endpoint(node: &ChromeNode, which: usize) -> Option<Endpoint> {
-    let geometry = node.input.as_ref()?.geometry.as_ref()?;
+    let geometry = node.geometry()?;
     let [x, y, width, height] = if which == 0 {
         geometry.anchor?
     } else {
@@ -209,7 +221,7 @@ pub struct DragPoint {
 /// `None` when the editor has no visible content left; the drag ends.
 pub fn drag_point(node: &ChromeNode, x: f64, y: f64) -> Option<DragPoint> {
     let [bl, bt, bw, bh] = node.visible_bounds?;
-    let [cl, ct, cw, ch] = node.input.as_ref()?.geometry.as_ref()?.content_bounds?;
+    let [cl, ct, cw, ch] = node.geometry()?.content_bounds?;
     let (left, top) = (bl.max(cl), bt.max(ct));
     let (right, bottom) = ((bl + bw).min(cl + cw), (bt + bh).min(ct + ch));
     if right - left < 1.0 || bottom - top < 1.0 {

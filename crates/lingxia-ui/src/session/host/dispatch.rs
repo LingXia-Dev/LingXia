@@ -133,6 +133,23 @@ impl<A: PlatformAdapter> Inner<A> {
                         Ok(changed)
                     }),
                 ),
+                Dispatch::SelectText {
+                    commit,
+                    identity,
+                    point,
+                } => {
+                    self.adapter.activation();
+                    self.activate(
+                        page,
+                        false,
+                        Box::new(move |session| session.select_text(commit, &identity, point)),
+                    );
+                }
+                Dispatch::ClearTextSelection => self.activate(
+                    page,
+                    false,
+                    Box::new(|session| Ok(session.clear_text_selection())),
+                ),
                 reach @ Dispatch::Reach { .. } => self.reach(page, reach),
             }
         }

@@ -18,6 +18,7 @@ mod events;
 mod frame_animation;
 mod images;
 mod prepare;
+mod selection;
 #[cfg(test)]
 pub(crate) mod tests;
 use frame_animation::FrameAnimations;

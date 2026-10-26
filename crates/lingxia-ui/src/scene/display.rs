@@ -11,6 +11,8 @@ pub struct DisplayList {
     pub(crate) images: HashMap<String, crate::scene::image::Bitmap>,
     pub(crate) commands: Vec<Paint>,
     pub(crate) input_paints: Vec<(usize, Range<usize>)>,
+    /// Where each selectable text's paints start, for the selection highlight.
+    pub(crate) selectable_paints: Vec<(usize, usize)>,
     pub(crate) caret_paint: Option<usize>,
     pub nodes: Vec<NodeSnapshot>,
     pub width: u16,
@@ -248,6 +250,95 @@ impl DisplayList {
             });
         }
     }
+    /// Paint a static-text selection and publish its geometry for chrome; `false`
+    /// when the selection no longer fits its node and must be dropped.
+    pub(crate) fn decorate_selection(
+        &mut self,
+        selection: &crate::interaction::input_state::TextSelection,
+    ) -> bool {
+        use parley::{
+            Affinity,
+            editing::{Cursor, Selection},
+        };
+        let Some(index) = self
+            .nodes
+            .iter()
+            .position(|node| node.identity == selection.identity)
+        else {
+            return false;
+        };
+        let Some(text) = self.retained.selectables[index].clone() else {
+            return false;
+        };
+        if text.text != selection.text
+            || [selection.anchor, selection.focus]
+                .iter()
+                .any(|i| *i > text.text.len() || !text.text.is_char_boundary(*i))
+        {
+            return false;
+        }
+        // Composition moved the node (scrolls, sticky, transforms keep its size).
+        let base = &self.retained.nodes[index].bounds;
+        let node = &mut self.nodes[index];
+        let origin = [
+            text.origin[0] + node.bounds[0] - base[0],
+            text.origin[1] + node.bounds[1] - base[1],
+        ];
+        let content = [
+            text.content[0] + node.bounds[0] - base[0],
+            text.content[1] + node.bounds[1] - base[1],
+            text.content[2],
+            text.content[3],
+        ];
+        let cursor = |byte| Cursor::from_byte_index(&text.layout, byte, Affinity::Downstream);
+        let (anchor, focus) = (cursor(selection.anchor), cursor(selection.focus));
+        let bounds = |rect: parley::BoundingBox| {
+            [
+                origin[0] + rect.x0 as f32,
+                origin[1] + rect.y0 as f32,
+                (rect.x1 - rect.x0) as f32,
+                (rect.y1 - rect.y0) as f32,
+            ]
+        };
+        let rects: Vec<_> = Selection::new(anchor, focus)
+            .geometry(&text.layout)
+            .into_iter()
+            .map(|(rect, _)| bounds(rect))
+            .collect();
+        let units = |byte: usize| text.text[..byte].encode_utf16().count() as u32;
+        node.selection_range = Some([units(selection.anchor), units(selection.focus)]);
+        node.text_selection = Some(InputGeometry {
+            anchor: bounds(anchor.geometry(&text.layout, 1.5)),
+            caret: bounds(focus.geometry(&text.layout, 1.5)),
+            content_bounds: content,
+            selection: rects.clone(),
+            composition: Vec::new(),
+        });
+        let Some(&(_, start)) = self
+            .selectable_paints
+            .iter()
+            .find(|(node, _)| *node == index)
+        else {
+            return true;
+        };
+        let count = rects.len();
+        self.commands.splice(
+            start..start,
+            rects.into_iter().map(|bounds| Paint::Rect {
+                corners: None,
+                bounds,
+                color: [216, 227, 255, 255],
+                radius: 0.0,
+            }),
+        );
+        if let Some(caret) = &mut self.caret_paint
+            && *caret >= start
+        {
+            *caret += count;
+        }
+        true
+    }
+
     /// Only currently painted sources are requested; list overscan does not load images.
     pub fn image_sources(&self) -> impl Iterator<Item = &str> {
         self.commands.iter().filter_map(|paint| match paint {
