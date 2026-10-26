@@ -2126,7 +2126,7 @@ fn a_single_target_presenter_is_named_in_the_log_and_falls_back_to_one_frame_at_
         .unwrap()
         .warnings
         .iter()
-        .filter(|w| w.contains("presenterSingleTarget"))
+        .filter(|w| w.starts_with("UI_FRAME: presenterSingleTarget"))
         .cloned()
         .collect();
     assert_eq!(warnings.len(), 1, "warned once: {warnings:?}");

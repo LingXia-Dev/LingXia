@@ -347,6 +347,7 @@ const untestable = {
 
 const errorNotes = {
   UI_SELECT: 'Invalid `<select>` options, value or selection reply.',
+  UI_FRAME: 'The platform presenter kept refusing frames prepared ahead; the page falls back to one frame at a time.',
   UI_ACTION: 'An action call was malformed or its reply invalid.',
   UI_ANIMATION: 'Motion is gated, or an animation definition is invalid or over budget.',
   UI_BOOTSTRAP_TIMEOUT: 'Logic did not deliver the first page state in time.',

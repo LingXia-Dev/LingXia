@@ -34,6 +34,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_FIELDS` | native | A malformed field list reached the native decoder. |
 | `UI_FILTER` | native | A backdrop filter outside its bounds. |
 | `UI_FRAGMENT` | build | A JSX fragment; return one element. |
+| `UI_FRAME` | native | The platform presenter kept refusing frames prepared ahead; the page falls back to one frame at a time. |
 | `UI_GRADIENT` | runtime, native | A gradient with geometry its kind does not take, or invalid stops. |
 | `UI_GRID` | native | An invalid grid track list or line. |
 | `UI_IMAGE` | runtime, native | Invalid image source, alt, retry key or callback, or a failed load. |
