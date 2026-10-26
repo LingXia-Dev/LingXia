@@ -128,6 +128,12 @@ custom properties. Appearance-specific values compile into separate rules;
 the isolate selects them from `View.env.theme`. Palette blocks accept only
 custom properties and a matching `color-scheme`.
 
+Colours are roles from `contracts/schema.json` (`roles`, append-only slots). The compiler injects
+`--color-<role>: role(<role>)` after the project theme, so classes lower to `role` or `role/NN` and
+a project token cannot redefine one; the build refuses other colours (`UI_COLOR`) unless
+`literalColors` is set for pixel fixtures. Native resolves roles against the environment's
+internal `palette` push (`lingxia-theme` resolves packs), else the default pack for `theme`.
+
 ## Unsupported on purpose
 
 Skew and 3D transforms, filters other than backdrop blur/saturation, masks, text and
