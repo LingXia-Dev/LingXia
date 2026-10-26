@@ -815,22 +815,36 @@ function activeGuestGroupPoint(
 }
 
 /// The group header's trailing controls: chevron slot, close, then ellipsis.
+/**
+ * A trailing control of the guest group header, `slot` cells from the row's
+ * trailing edge (lingxia-windows-sdk `sidebar_row_control_rect`): 20 DIP
+ * cells inset 6 DIP from the row and 2 DIP apart. Chat declares no tabBar,
+ * so it has no chevron: close is slot 0 and the menu slot 1.
+ */
+function activeGuestGroupControlRegion(
+  host: DesktopWindowInfo,
+  pinCount: number,
+  switcherIndex: number,
+  slot: number,
+): [number, number, number, number] {
+  const rowRight = WINDOWS_SIDEBAR_DIP - 8;
+  const size = 20;
+  const left = rowRight - 6 - slot * (size + 2) - size;
+  const [, centerY] = activeGuestGroupPoint(host, pinCount, switcherIndex);
+  return [
+    host.bounds.x + nativeWindowExtent('windows', host, left),
+    centerY - nativeWindowExtent('windows', host, size / 2),
+    nativeWindowExtent('windows', host, size),
+    nativeWindowExtent('windows', host, size),
+  ];
+}
+
 function activeGuestGroupMenuRegion(
   host: DesktopWindowInfo,
   pinCount: number,
   switcherIndex: number,
 ): [number, number, number, number] {
-  const sidebarWidth = WINDOWS_SIDEBAR_DIP;
-  const itemInset = 8;
-  const chevronWidth = 18;
-  const trailingControlWidth = 22;
-  const [, centerY] = activeGuestGroupPoint(host, pinCount, switcherIndex);
-  return [
-    host.bounds.x + nativeWindowExtent('windows', host, sidebarWidth - itemInset - chevronWidth - trailingControlWidth * 2),
-    centerY - nativeWindowExtent('windows', host, 18),
-    nativeWindowExtent('windows', host, trailingControlWidth),
-    nativeWindowExtent('windows', host, 36),
-  ];
+  return activeGuestGroupControlRegion(host, pinCount, switcherIndex, 1);
 }
 
 function activeGuestGroupClosePoint(
@@ -838,8 +852,7 @@ function activeGuestGroupClosePoint(
   pinCount: number,
   switcherIndex: number,
 ): [number, number] {
-  const menu = activeGuestGroupMenuRegion(host, pinCount, switcherIndex);
-  return [menu[0] + menu[2] * 1.5, menu[1] + menu[3] / 2];
+  return regionCenter(activeGuestGroupControlRegion(host, pinCount, switcherIndex, 0));
 }
 
 /// From a guest main: the collapsed root row first, then its Home page once

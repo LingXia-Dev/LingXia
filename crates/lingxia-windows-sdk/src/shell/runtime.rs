@@ -2467,9 +2467,11 @@ fn build_tab_bar_layout(
                 if app_id == &app.appid
         )
     });
-    let group_active = this_item.map(|item| item.active).unwrap_or_else(|| {
-        presented_browser_tab().is_none() && active_main_lxapp_id().as_deref() == Some(&app.appid)
-    });
+    // A presented browser tab is the main: no lxapp group reads as active.
+    let group_active = presented_browser_tab().is_none()
+        && this_item
+            .map(|item| item.active)
+            .unwrap_or_else(|| active_main_lxapp_id().as_deref() == Some(&app.appid));
     // Show this lxapp's own tab pages. The root-only filter hid a guest
     // main's items after navigateToApp, so the sidebar kept drawing home.
     // A terminal/browser root with no matching lxapp item still hides them.
@@ -6106,9 +6108,10 @@ fn surface_menu_entry(
                 lingxia_logic::i18n::t(I18nKey::CapsuleRestart),
                 Some(crate::WindowsDesignIcon::Restart),
             ),
-            LxappSurfaceMenuAction::OpenInSide => {
-                (lingxia_logic::i18n::t(I18nKey::AsideOpenInSide), None)
-            }
+            LxappSurfaceMenuAction::OpenInSide => (
+                lingxia_logic::i18n::t(I18nKey::AsideOpenInSide),
+                Some(crate::WindowsDesignIcon::AsideCollapse),
+            ),
             LxappSurfaceMenuAction::Pin => (
                 lingxia_logic::i18n::t(I18nKey::BrowserPinToSidebar),
                 Some(crate::WindowsDesignIcon::Pin),
@@ -6135,12 +6138,14 @@ fn surface_menu_entry(
                 lingxia_logic::i18n::t(I18nKey::BrowserUnpin),
                 Some(crate::WindowsDesignIcon::Unpin),
             ),
-            BrowserSurfaceMenuAction::CopyLink => {
-                (lingxia_logic::i18n::t(I18nKey::BrowserCopyLink), None)
-            }
-            BrowserSurfaceMenuAction::OpenInSide => {
-                (lingxia_logic::i18n::t(I18nKey::AsideOpenInSide), None)
-            }
+            BrowserSurfaceMenuAction::CopyLink => (
+                lingxia_logic::i18n::t(I18nKey::BrowserCopyLink),
+                Some(crate::WindowsDesignIcon::Link),
+            ),
+            BrowserSurfaceMenuAction::OpenInSide => (
+                lingxia_logic::i18n::t(I18nKey::AsideOpenInSide),
+                Some(crate::WindowsDesignIcon::AsideCollapse),
+            ),
         },
         SurfaceMenuAction::Switcher { action } => match action {
             SurfaceMenuBuiltinAction::Rename => {
