@@ -4312,6 +4312,7 @@ dependencies = [
  "futures-util",
  "http",
  "http-body-util",
+ "httpdate",
  "log",
  "redb",
  "reqwest 0.12.28",
