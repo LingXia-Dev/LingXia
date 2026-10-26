@@ -59,6 +59,10 @@ impl GpuPageAutomation for GpuAutomation {
         Box::pin(async move { reply.await.map(|_| ()) })
     }
 
+    fn tree(&self) -> GpuFuture<Value> {
+        self.request(json!({"op": "tree"}))
+    }
+
     fn screenshot(&self) -> GpuFuture<Vec<u8>> {
         let reply = self.request(json!({"op": "screenshot"}));
         Box::pin(async move {

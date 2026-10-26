@@ -596,6 +596,51 @@ pub async fn page_screenshot(app: &Arc<LxApp>, page_name: Option<&str>) -> Resul
         .map_err(|err| err.to_string())
 }
 
+/// The page's accessibility tree, in reading order: `{ renderer?, nodes: [{ role,
+/// name, testId?, bounds, states…, children? }] }`. A GPU page answers from its
+/// semantic projection, a WebView page from roles and names in its DOM.
+pub async fn page_tree(app: &Arc<LxApp>, page_name: Option<&str>) -> Result<Value, String> {
+    if let Some(page) = gpu::backend(app, page_name)? {
+        return page.tree().await;
+    }
+    page_eval(app, page_name, DOM_TREE_SCRIPT).await
+}
+
+/// Roles and names a WebView page exposes, nested like the GPU projection.
+const DOM_TREE_SCRIPT: &str = r#"(() => {
+  const roles = { A: "link", BUTTON: "button", TEXTAREA: "textbox", IMG: "img", UL: "list", OL: "list", LI: "listitem", DIALOG: "dialog",
+    H1: "heading", H2: "heading", H3: "heading", H4: "heading", H5: "heading", H6: "heading" };
+  const inputs = { checkbox: "checkbox", radio: "radio", range: "slider", button: "button", submit: "button" };
+  const roleOf = el => el.getAttribute("role") || (el.tagName === "INPUT" ? inputs[el.type] || "textbox" : el.tagName === "A" && !el.hasAttribute("href") ? null : roles[el.tagName]) || null;
+  const shown = el => { const s = getComputedStyle(el), r = el.getBoundingClientRect(); return s.display !== "none" && s.visibility !== "hidden" && r.width > 0 && r.height > 0; };
+  const walk = (el, depth) => {
+    const out = [];
+    for (const child of el.children) {
+      if (child.getAttribute("aria-hidden") === "true" || !shown(child)) continue;
+      const role = roleOf(child), testId = child.getAttribute("data-testid");
+      const nested = depth < 64 ? walk(child, depth + 1) : [];
+      if (!role && !testId) { out.push(...nested); continue; }
+      const r = child.getBoundingClientRect();
+      const node = { role: role || "generic", name: (child.getAttribute("aria-label") || child.innerText || child.getAttribute("alt") || "").trim().replace(/\s+/g, " ").slice(0, 256),
+        bounds: [r.left, r.top, r.width, r.height] };
+      if (testId) node.testId = testId;
+      if (child.disabled || child.getAttribute("aria-disabled") === "true") node.disabled = true;
+      if (document.activeElement === child) node.focused = true;
+      for (const key of ["checked", "pressed", "selected", "expanded", "busy"]) {
+        const aria = child.getAttribute("aria-" + key);
+        if (aria === "true" || aria === "false") node[key] = aria === "true";
+      }
+      if (child.type === "checkbox" || child.type === "radio") node.checked = child.checked;
+      if (/^H[1-6]$/.test(child.tagName)) node.level = Number(child.tagName[1]);
+      if ("value" in child && typeof child.value === "string" && role !== "button") node.value = child.value;
+      if (nested.length) node.children = nested;
+      out.push(node);
+    }
+    return out;
+  };
+  return { nodes: walk(document.body, 0) };
+})()"#;
+
 /// Scroll the target page WebView by a pixel delta.
 pub async fn page_scroll(
     app: &Arc<LxApp>,

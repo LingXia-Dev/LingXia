@@ -260,3 +260,29 @@ fn press_submits_editors_and_drives_keyboard_focus() {
             .starts_with("E_UNSUPPORTED")
     );
 }
+
+#[test]
+fn the_tree_nests_named_nodes_in_reading_order_with_their_states() {
+    let i = interaction(
+        "h('column',{},h('text',{role:'heading',headingLevel:1},'Bills'),h('column',{role:'list',accessibilityLabel:'Due'},h('text',{testId:'w',role:'listitem',accessibilityState:{selected:true}},'Water')),h('button',{testId:'pay',disabled:true},'Pay'))",
+    );
+    let tree = i.automation_tree().unwrap();
+    let nodes = tree["nodes"].as_array().unwrap();
+    let roles: Vec<_> = nodes.iter().map(|n| n["role"].as_str().unwrap()).collect();
+    assert_eq!(roles, ["heading", "list", "button"]);
+    assert_eq!(nodes[0]["level"], 1);
+    assert_eq!(nodes[1]["name"], "Due");
+    let item = &nodes[1]["children"][0];
+    assert_eq!(
+        (
+            item["role"].as_str(),
+            item["testId"].as_str(),
+            item["selected"].as_bool()
+        ),
+        (Some("listitem"), Some("w"), Some(true))
+    );
+    assert_eq!(
+        (nodes[2]["testId"].as_str(), nodes[2]["disabled"].as_bool()),
+        (Some("pay"), Some(true))
+    );
+}

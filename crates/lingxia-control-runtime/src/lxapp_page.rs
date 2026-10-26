@@ -82,6 +82,14 @@ fn handle_lxapp_page_command_impl(
             })?;
             Ok(Some(json!({ "value": value })))
         }
+        methods::lxapp_page::TREE => {
+            let args: PageTargetArgs = parse_args(handler, args)?;
+            run_async(crate::devtool::lxapp_dev_page_tree(
+                args.appid.as_deref(),
+                args.page.as_deref(),
+            ))
+            .map(Some)
+        }
         methods::lxapp_page::QUERY => {
             let args: QueryArgs = parse_args(handler, args)?;
             let max_text = args

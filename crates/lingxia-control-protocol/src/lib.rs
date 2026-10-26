@@ -404,6 +404,7 @@ pub mod methods {
         pub const SCROLL_TO: &str = "lxapp.page.scroll_to";
         pub const BACK: &str = "lxapp.page.back";
         pub const SCREENSHOT: &str = "lxapp.page.screenshot";
+        pub const TREE: &str = "lxapp.page.tree";
     }
 
     /// Automating the machine rather than the app, unlocked by

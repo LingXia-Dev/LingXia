@@ -54,6 +54,14 @@ impl ViewInteraction {
         query::query(&projection, selector, index, all, max_text)
     }
 
+    /// The accessibility tree of the presented frame (`semantics::query::tree`).
+    pub fn automation_tree(&self) -> Result<serde_json::Value, String> {
+        let projection = self
+            .semantics()
+            .ok_or("E_PAGE_NOT_READY: no presented frame")?;
+        Ok(query::tree(&projection))
+    }
+
     /// Run `act` on a match; `force` skips the visibility check, never the enabled one.
     pub fn automate(
         &mut self,

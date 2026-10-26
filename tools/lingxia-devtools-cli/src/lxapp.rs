@@ -305,6 +305,36 @@ pub enum PageCommand {
         #[arg(long)]
         pretty: bool,
     },
+    /// Print the page's accessibility tree: role, name, test id, state and bounds in reading order
+    Tree {
+        /// Page name or runtime instance id; defaults to current page
+        #[arg(long)]
+        page: Option<String>,
+        /// LxApp context; defaults to current
+        #[arg(long, default_value = "current")]
+        app: String,
+        /// Print pretty JSON
+        #[arg(long)]
+        pretty: bool,
+    },
+    /// Find nodes in the accessibility tree by role and, optionally, exact name
+    Find {
+        /// Role, e.g. button, link, heading, textbox, listitem
+        #[arg(value_name = "ROLE")]
+        role: String,
+        /// Accessible name, matched whole
+        #[arg(long)]
+        name: Option<String>,
+        /// Page name or runtime instance id; defaults to current page
+        #[arg(long)]
+        page: Option<String>,
+        /// LxApp context; defaults to current
+        #[arg(long, default_value = "current")]
+        app: String,
+        /// Print pretty JSON
+        #[arg(long)]
+        pretty: bool,
+    },
     /// Click an element in the page WebView
     Click {
         /// CSS selector of the element
@@ -752,6 +782,31 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
             .unwrap_or(Value::Null);
             print_eval_result(&data, pretty)?;
         }
+        PageCommand::Tree { page, app, pretty } => {
+            let data = client::execute_command(
+                ws_url,
+                methods::lxapp_page::TREE,
+                Some(json!({ "appid": app, "page": page })),
+            )?
+            .unwrap_or(Value::Null);
+            print_json(&data, pretty)?;
+        }
+        PageCommand::Find {
+            role,
+            name,
+            page,
+            app,
+            pretty,
+        } => {
+            let data = client::execute_command(
+                ws_url,
+                methods::lxapp_page::TREE,
+                Some(json!({ "appid": app, "page": page })),
+            )?
+            .unwrap_or(Value::Null);
+            let found = find_in_tree(&data, &role, name.as_deref());
+            print_json(&json!({ "count": found.len(), "items": found }), pretty)?;
+        }
         PageCommand::Query {
             selector,
             all,
@@ -1075,6 +1130,25 @@ fn print_eval_result(data: &Value, pretty: bool) -> Result<()> {
     print_json(value, pretty)
 }
 
+/// Tree nodes with `role` (and exact `name`) in reading order, children left out.
+fn find_in_tree(tree: &Value, role: &str, name: Option<&str>) -> Vec<Value> {
+    fn walk(nodes: &Value, role: &str, name: Option<&str>, out: &mut Vec<Value>) {
+        for node in nodes.as_array().into_iter().flatten() {
+            if node["role"] == role && name.is_none_or(|name| node["name"] == name) {
+                let mut found = node.clone();
+                if let Some(object) = found.as_object_mut() {
+                    object.remove("children");
+                }
+                out.push(found);
+            }
+            walk(&node["children"], role, name, out);
+        }
+    }
+    let mut out = Vec::new();
+    walk(&tree["nodes"], role, name, &mut out);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1210,6 +1284,14 @@ mod tests {
             PageCommand::Query { selector, all: true, .. } if selector == "li"
         ));
         assert!(matches!(
+            page_command(&["page", "tree", "--pretty"]),
+            PageCommand::Tree { pretty: true, .. }
+        ));
+        assert!(matches!(
+            page_command(&["page", "find", "button", "--name", "Pay"]),
+            PageCommand::Find { role, name: Some(name), .. } if role == "button" && name == "Pay"
+        ));
+        assert!(matches!(
             page_command(&["page", "scroll-to", "#end"]),
             PageCommand::ScrollTo { selector, .. } if selector == "#end"
         ));
@@ -1297,5 +1379,24 @@ mod tests {
     fn query_pairs_reject_missing_separator() {
         let err = parse_query_pairs(&args(&["tab"])).unwrap_err();
         assert!(err.to_string().contains("KEY=VALUE"));
+    }
+
+    #[test]
+    fn find_walks_the_tree_in_reading_order_and_matches_names_whole() {
+        let tree = json!({"nodes": [
+            {"role": "button", "name": "Pay"},
+            {"role": "list", "name": "", "children": [
+                {"role": "button", "name": "Pay later"},
+                {"role": "listitem", "name": "Water", "children": [{"role": "button", "name": "Pay"}]}
+            ]}
+        ]});
+        assert_eq!(super::find_in_tree(&tree, "button", None).len(), 3);
+        let pay = super::find_in_tree(&tree, "button", Some("Pay"));
+        assert_eq!(pay.len(), 2);
+        assert!(
+            super::find_in_tree(&tree, "listitem", None)[0]
+                .get("children")
+                .is_none()
+        );
     }
 }

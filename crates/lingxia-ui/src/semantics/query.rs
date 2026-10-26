@@ -277,6 +277,77 @@ pub fn describe(
     })
 }
 
+/// The accessibility tree a screen reader walks, in reading order: role, name,
+/// test id, state and bounds per node, nested under their containers.
+pub fn tree(projection: &Projection) -> Value {
+    fn entry(projection: &Projection, id: u32, depth: usize) -> Option<Value> {
+        let node = projection.node(id)?;
+        let role = aria(node.role).map(str::to_owned).unwrap_or_else(|| {
+            serde_json::to_value(node.role)
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_owned))
+                .unwrap_or_default()
+        });
+        let mut out = serde_json::Map::new();
+        out.insert("role".into(), json!(role));
+        out.insert("name".into(), json!(node.name));
+        if !node.test_id.is_empty() {
+            out.insert("testId".into(), json!(node.test_id));
+        }
+        out.insert("bounds".into(), json!(node.bounds));
+        for (key, flag) in [
+            ("disabled", !node.enabled),
+            ("focused", node.focused),
+            ("offscreen", !node.visible),
+        ] {
+            if flag {
+                out.insert(key.into(), json!(true));
+            }
+        }
+        for (key, state) in [
+            ("checked", node.checked),
+            ("pressed", node.pressed),
+            ("selected", node.selected),
+            ("expanded", node.expanded),
+            ("busy", node.busy),
+        ] {
+            if let Some(state) = state {
+                out.insert(key.into(), json!(state));
+            }
+        }
+        if let Some(level) = node.heading_level {
+            out.insert("level".into(), json!(level));
+        }
+        if let Some(field) = &node.text_field {
+            out.insert("value".into(), json!(field.text));
+        } else if let Some(range) = &node.range {
+            out.insert("value".into(), json!(range.value));
+        }
+        if let Some(scroll) = node.scroll {
+            out.insert("scroll".into(), json!([scroll.offset, scroll.max_offset]));
+        }
+        // Bounded so a pathological page cannot recurse the dump without end.
+        let children: Vec<Value> = if depth < 64 {
+            node.children
+                .iter()
+                .filter_map(|child| entry(projection, *child, depth + 1))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        if !children.is_empty() {
+            out.insert("children".into(), Value::Array(children));
+        }
+        Some(Value::Object(out))
+    }
+    let roots: Vec<Value> = projection
+        .roots()
+        .into_iter()
+        .filter_map(|id| entry(projection, id, 0))
+        .collect();
+    json!({ "renderer": "gpu", "nodes": roots })
+}
+
 /// The DOM query contract: one match (`index`, default the first) or `all`.
 pub fn query(
     projection: &Projection,

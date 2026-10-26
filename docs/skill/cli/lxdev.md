@@ -50,6 +50,8 @@ The lxapps and pages in the session. Commands target the current lxapp
   detached, visible, hidden, enabled, or editable
 - `page query|click|scroll-to SELECTOR`, `page type|fill SELECTOR TEXT`,
   `page press KEY [SELECTOR]`, `page scroll|back`
+- `page tree`, `page find ROLE [--name NAME]` — the accessibility tree (role, name, test id,
+  state, bounds); every page command reaches GPU pages too
 - `page screenshot` — PNG of one page's WebView
 
 ## `lxdev runner`
