@@ -54,10 +54,9 @@ use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POI
 use windows::Win32::Graphics::Gdi::{AC_SRC_ALPHA, AC_SRC_OVER, BLENDFUNCTION};
 use windows::Win32::Graphics::Gdi::{
     BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BeginPaint, BitBlt, CreateCompatibleDC, CreateDIBSection,
-    CreatePen, CreateSolidBrush, DIB_RGB_COLORS, DeleteDC, DeleteObject, EndPaint, ExcludeClipRect,
-    GetDC, GetMonitorInfoW, HDC, HGDIOBJ, IntersectClipRect, MONITOR_DEFAULTTONEAREST, MONITORINFO,
-    MonitorFromWindow, PAINTSTRUCT, PS_SOLID, ReleaseDC, RestoreDC, SRCCOPY, SaveDC,
-    ScreenToClient, SelectObject,
+    DIB_RGB_COLORS, DeleteDC, DeleteObject, EndPaint, ExcludeClipRect, GetDC, GetMonitorInfoW, HDC,
+    HGDIOBJ, IntersectClipRect, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
+    PAINTSTRUCT, ReleaseDC, RestoreDC, SRCCOPY, SaveDC, ScreenToClient, SelectObject,
 };
 use windows::Win32::Graphics::Gdi::{
     HMONITOR, MONITOR_DEFAULTTOPRIMARY, MonitorFromPoint, MonitorFromRect,
@@ -2130,26 +2129,9 @@ fn upload_drill_back_button(hwnd: HWND) {
             return;
         }
         let old_bitmap = SelectObject(dc, HGDIOBJ(bitmap.0));
-        // Black disc backdrop; the chevron in white 2px strokes.
-        let brush = CreateSolidBrush(COLORREF(0));
-        let pen = CreatePen(PS_SOLID, 0, COLORREF(0));
-        let old_brush = SelectObject(dc, HGDIOBJ(brush.0));
-        let old_pen = SelectObject(dc, HGDIOBJ(pen.0));
-        let _ = windows::Win32::Graphics::Gdi::Rectangle(dc, 0, 0, size, size);
-        let white_pen = CreatePen(PS_SOLID, 2, COLORREF(0x00ffffff));
-        let _ = SelectObject(dc, HGDIOBJ(white_pen.0));
-        let _ = windows::Win32::Graphics::Gdi::MoveToEx(dc, 17, 8, None);
-        let _ = windows::Win32::Graphics::Gdi::LineTo(dc, 11, 14);
-        let _ = windows::Win32::Graphics::Gdi::LineTo(dc, 17, 20);
-        let _ = SelectObject(dc, old_pen);
-        let _ = SelectObject(dc, old_brush);
-        let _ = DeleteObject(HGDIOBJ(white_pen.0));
-        let _ = DeleteObject(HGDIOBJ(pen.0));
-        let _ = DeleteObject(HGDIOBJ(brush.0));
-
         let pixel_count = (size * size) as usize;
         let pixels = std::slice::from_raw_parts_mut(bits.cast::<u32>(), pixel_count);
-        apply_drill_back_alpha(pixels, size);
+        paint_round_glyph_button(pixels, size, 0x59, &[&DRILL_BACK_CHEVRON]);
         let dib_size = SIZE { cx: size, cy: size };
         let origin = POINT { x: 0, y: 0 };
         let blend = BLENDFUNCTION {
@@ -2178,30 +2160,62 @@ fn upload_drill_back_button(hwnd: HWND) {
     }
 }
 
-/// Circular alpha: the disc is a 35% black wash, the white chevron strokes
-/// stay opaque; outside the circle is fully transparent.
-fn apply_drill_back_alpha(pixels: &mut [u32], size: i32) {
-    apply_circular_button_alpha(pixels, size, 0x59);
-}
+/// Back chevron and close cross, as polylines in units of the button side.
+/// Proportional coordinates keep the glyph centred at every DPI; fixed pixel
+/// coordinates drew it into the top-left of a scaled button.
+const DRILL_BACK_CHEVRON: [(f32, f32); 3] = [(0.607, 0.286), (0.393, 0.5), (0.607, 0.714)];
+const SURFACE_CLOSE_CROSS: [[(f32, f32); 2]; 2] = [
+    [(0.3125, 0.3125), (0.6875, 0.6875)],
+    [(0.6875, 0.3125), (0.3125, 0.6875)],
+];
 
-fn apply_circular_button_alpha(pixels: &mut [u32], size: i32, dim: u32) {
-    let radius = size as f32 / 2.0;
+/// A translucent black disc (`dim` alpha) with white, round-capped,
+/// anti-aliased strokes, as premultiplied BGRA. Outside the disc is clear.
+fn paint_round_glyph_button(pixels: &mut [u32], size: i32, dim: u32, strokes: &[&[(f32, f32)]]) {
+    let side = size as f32;
+    let radius = side / 2.0;
+    let half_width = side / 32.0;
+    let segments: Vec<((f32, f32), (f32, f32))> = strokes
+        .iter()
+        .flat_map(|stroke| stroke.windows(2))
+        .map(|pair| {
+            (
+                (pair[0].0 * side, pair[0].1 * side),
+                (pair[1].0 * side, pair[1].1 * side),
+            )
+        })
+        .collect();
     for y in 0..size {
         for x in 0..size {
-            let index = (y * size + x) as usize;
-            let pixel = pixels[index] & 0x00ff_ffff;
-            let dx = x as f32 + 0.5 - radius;
-            let dy = y as f32 + 0.5 - radius;
-            let coverage = (radius - (dx * dx + dy * dy).sqrt() + 0.5).clamp(0.0, 1.0);
-            let base = if pixel > 0x00f0_f0f0 { 255 } else { dim };
-            let alpha = (base as f32 * coverage) as u32;
-            let premultiply = |channel: u32| (channel * alpha + 127) / 255;
-            pixels[index] = (alpha << 24)
-                | (premultiply((pixel >> 16) & 0xff) << 16)
-                | (premultiply((pixel >> 8) & 0xff) << 8)
-                | premultiply(pixel & 0xff);
+            let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
+            let (dx, dy) = (px - radius, py - radius);
+            let disc = (radius - (dx * dx + dy * dy).sqrt() + 0.5).clamp(0.0, 1.0);
+            let distance = segments
+                .iter()
+                .map(|&(a, b)| segment_distance((px, py), a, b))
+                .fold(f32::MAX, f32::min);
+            let glyph = (half_width - distance + 0.5).clamp(0.0, 1.0) * disc;
+            let backdrop = dim as f32 / 255.0 * disc;
+            // White glyph over black backdrop: alpha composites, and the
+            // premultiplied colour is the glyph's coverage alone.
+            let alpha = glyph + backdrop * (1.0 - glyph);
+            let a = (alpha * 255.0).round() as u32;
+            let c = (glyph * 255.0).round() as u32;
+            pixels[(y * size + x) as usize] = (a << 24) | (c << 16) | (c << 8) | c;
         }
     }
+}
+
+fn segment_distance(p: (f32, f32), a: (f32, f32), b: (f32, f32)) -> f32 {
+    let (abx, aby) = (b.0 - a.0, b.1 - a.1);
+    let length = abx * abx + aby * aby;
+    let t = if length == 0.0 {
+        0.0
+    } else {
+        (((p.0 - a.0) * abx + (p.1 - a.1) * aby) / length).clamp(0.0, 1.0)
+    };
+    let (cx, cy) = (a.0 + t * abx, a.1 + t * aby);
+    ((p.0 - cx).powi(2) + (p.1 - cy).powi(2)).sqrt()
 }
 
 fn surface_close_size() -> i32 {
@@ -2386,25 +2400,13 @@ fn upload_surface_close_button(hwnd: HWND) {
             return;
         }
         let old_bitmap = SelectObject(dc, HGDIOBJ(bitmap.0));
-        let brush = CreateSolidBrush(COLORREF(0));
-        let pen = CreatePen(PS_SOLID, 0, COLORREF(0));
-        let old_brush = SelectObject(dc, HGDIOBJ(brush.0));
-        let old_pen = SelectObject(dc, HGDIOBJ(pen.0));
-        let _ = windows::Win32::Graphics::Gdi::Rectangle(dc, 0, 0, size, size);
-        let white_pen = CreatePen(PS_SOLID, 2, COLORREF(0x00ffffff));
-        let _ = SelectObject(dc, HGDIOBJ(white_pen.0));
-        let _ = windows::Win32::Graphics::Gdi::MoveToEx(dc, 10, 10, None);
-        let _ = windows::Win32::Graphics::Gdi::LineTo(dc, 22, 22);
-        let _ = windows::Win32::Graphics::Gdi::MoveToEx(dc, 22, 10, None);
-        let _ = windows::Win32::Graphics::Gdi::LineTo(dc, 10, 22);
-        let _ = SelectObject(dc, old_pen);
-        let _ = SelectObject(dc, old_brush);
-        let _ = DeleteObject(HGDIOBJ(white_pen.0));
-        let _ = DeleteObject(HGDIOBJ(pen.0));
-        let _ = DeleteObject(HGDIOBJ(brush.0));
-
         let pixels = std::slice::from_raw_parts_mut(bits.cast::<u32>(), (size * size) as usize);
-        apply_circular_button_alpha(pixels, size, 0x73);
+        paint_round_glyph_button(
+            pixels,
+            size,
+            0x73,
+            &[&SURFACE_CLOSE_CROSS[0], &SURFACE_CLOSE_CROSS[1]],
+        );
         let dib_size = SIZE { cx: size, cy: size };
         let origin = POINT { x: 0, y: 0 };
         let blend = BLENDFUNCTION {
