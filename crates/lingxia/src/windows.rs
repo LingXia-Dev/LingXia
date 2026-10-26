@@ -235,19 +235,29 @@ fn resolve_url_surface_as_browser_tab(
     url: &str,
     data_mode: WebViewDataMode,
 ) -> Option<lingxia_platform::WindowsUrlSurfaceWebTag> {
-    // A tab moved in from the main area is reused as it is: no URL, so no
-    // load.
-    let adopted = request.browser_tab_id.as_deref();
-    let tab_id = crate::browser::open_standalone_for_app(
-        &request.app_id,
-        request.owner_session_id,
-        if adopted.is_some() { "" } else { url },
-        adopted,
-        data_mode,
-        request.url_callback,
-    )
-    .inspect_err(|err| log::warn!("URL surface browser tab failed for {url}: {err}"))
-    .ok()?;
+    // A tab moved in from the main area is shown as it is, looked up by its
+    // runtime id: the core already docked it, so nothing opens or loads.
+    let tab_id = match request.browser_tab_id.as_deref() {
+        Some(adopted) => {
+            if !(lingxia_browser::tab_exists(adopted)
+                && lingxia_browser::tab_is_standalone(adopted))
+            {
+                log::warn!("URL surface cannot adopt browser tab {adopted}: not docked");
+                return None;
+            }
+            adopted.to_string()
+        }
+        None => crate::browser::open_standalone_for_app(
+            &request.app_id,
+            request.owner_session_id,
+            url,
+            None,
+            data_mode,
+            request.url_callback,
+        )
+        .inspect_err(|err| log::warn!("URL surface browser tab failed for {url}: {err}"))
+        .ok()?,
+    };
     let tab = crate::browser::tab_summary(&tab_id)?;
     let close_tab_id = tab_id.clone();
     Some(lingxia_platform::WindowsUrlSurfaceWebTag {
