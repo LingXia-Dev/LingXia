@@ -47,6 +47,12 @@ automation); it generates `GpuFrame.java` and `GpuFrame.swift`.
 holds it to the schema, the Android JVM and Swift suites decode it, and the
 JVM suite fails on any key the decoder never reads.
 
+`tests/properties.rs` lays out generated wire buffers (`tests/support/wire_gen.rs`, mostly
+admitted) and requires finite geometry with visible bounds inside the viewport; replay with
+`LINGXIA_PROPERTY_SEED`/`LINGXIA_PROPERTY_CASES`. `crates/lingxia-ui/fuzz` holds cargo-fuzz
+targets over the same generator, raw wire JSON, automation requests and the strict JSON
+contracts: `scripts/ci/ui-fuzz-smoke.sh [seconds]` (nightly).
+
 JS lowers author style to wire fields; native validation is independent and
 re-checks every record. Never trust that a field reached native through the
 runtime: decode bounds strings, numbers, JSON payloads and tag applicability.

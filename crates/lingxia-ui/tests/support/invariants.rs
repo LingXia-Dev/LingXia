@@ -10,7 +10,11 @@ pub fn check_wire(wire: &[Value], width: u16, height: u16, scale: f32) -> Result
     let Ok(records) = decode(wire) else {
         return Ok(false);
     };
-    let Ok(frame) = Renderer::default().layout(&records, width, height, scale) else {
+    // Font discovery dominates a fresh renderer; one per thread keeps runs fast.
+    thread_local!(static RENDERER: std::cell::RefCell<Renderer> = std::cell::RefCell::new(Renderer::default()));
+    let Ok(frame) =
+        RENDERER.with(|renderer| renderer.borrow_mut().layout(&records, width, height, scale))
+    else {
         return Ok(true);
     };
     let (w, h) = (f32::from(width) / scale, f32::from(height) / scale);

@@ -1,0 +1,58 @@
+[package]
+name = "lingxia-ui-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+# Its own workspace: fuzz builds need nightly and sanitizer flags the main one never sees.
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+lingxia-ui = { path = ".." }
+lingxia-theme = { path = "../../lingxia-theme" }
+serde_json = "1"
+
+[[bin]]
+name = "wire"
+path = "fuzz_targets/wire.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "wire_json"
+path = "fuzz_targets/wire_json.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "automation"
+path = "fuzz_targets/automation.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "contracts"
+path = "fuzz_targets/contracts.rs"
+test = false
+doc = false
+bench = false
+
+# Same as the root manifest's temporary rong patch; remove both together.
+[patch.crates-io]
+rong = { path = "/Users/michael/github/rong" }
+rong_core = { path = "/Users/michael/github/rong/core" }
+rong_rt = { path = "/Users/michael/github/rong/rong_rt" }
+rong_macro = { path = "/Users/michael/github/rong/rong_macro" }
+rong_quickjs = { path = "/Users/michael/github/rong/quickjs" }
+rong_quickjs_sys = { path = "/Users/michael/github/rong/quickjs/sys" }
+rong_jscore = { path = "/Users/michael/github/rong/javascriptcore" }
+rong_jscore_sys = { path = "/Users/michael/github/rong/javascriptcore/sys" }
+rong_arkjs = { path = "/Users/michael/github/rong/arkjs" }
+rong_arkjs_sys = { path = "/Users/michael/github/rong/arkjs/sys" }

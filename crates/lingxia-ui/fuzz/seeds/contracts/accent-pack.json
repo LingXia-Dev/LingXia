@@ -1,0 +1,5 @@
+{
+  "name": "lingxia-showcase",
+  "version": 1,
+  "accent": { "seed": "#0f9d58", "derive": true }
+}

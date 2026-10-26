@@ -103,3 +103,13 @@ fn a_margin_wider_than_the_parent_never_yields_a_negative_size() {
         .unwrap();
     assert_eq!(frame.nodes[1].bounds, [71.0, 0.0, 0.0, 0.0]);
 }
+
+#[test]
+fn the_fuzz_automation_page_decodes_and_lays_out() {
+    let wire: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../fuzz/page.json")).unwrap();
+    let records = lingxia_ui::protocol::decode(&wire).unwrap();
+    lingxia_ui::Renderer::default()
+        .layout(&records, 320, 480, 1.0)
+        .unwrap();
+}

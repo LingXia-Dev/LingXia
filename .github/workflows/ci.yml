@@ -1751,6 +1751,41 @@ jobs:
           path: target/corpus/report.json
           if-no-files-found: ignore
 
+  # libFuzzer smoke of the View wire decoder, layout, automation requests and strict JSON
+  # contracts (crates/lingxia-ui/fuzz); cargo-fuzz needs nightly.
+  ui-fuzz:
+    needs: changes
+    if: ${{ needs.changes.outputs.rust == 'true' }}
+    name: View fuzz smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: nightly
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/lingxia-ui/fuzz
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          prefix-key: ui-fuzz
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - name: Fuzz every target for 30 s
+        run: bash scripts/ci/ui-fuzz-smoke.sh 30
+
+      - name: Upload crashing inputs
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ui-fuzz-artifacts
+          path: crates/lingxia-ui/fuzz/artifacts
+          if-no-files-found: ignore
+
   release-tooling:
     needs: changes
     if: ${{ needs.changes.outputs.release_tooling == 'true' }}
@@ -1802,6 +1837,7 @@ jobs:
       - sdk-android
       - npm-packages
       - view-corpus
+      - ui-fuzz
       - harmony-native
       - harmony-har
       - showcase-automation-types
