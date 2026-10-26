@@ -134,3 +134,30 @@ fn a_pinned_header_pushes_the_previous_one_fully_out() {
         }
     }
 }
+
+#[test]
+fn a_pinned_header_and_its_scroll_edge_share_a_device_pixel_row() {
+    let scale = 2.75;
+    let source = crate::session::tests::source(
+        "function render(){return h('column',{style:{paddingTop:10.3}},h('scroll',{testId:'s',style:{height:100,borderWidth:1,borderColor:'#cccccc',borderRadius:11}},h('column',{},h('text',{testId:'a',style:{position:'sticky',top:0,height:28,backgroundColor:'#eeeeee'}},'Today'),h('column',{style:{height:90}})),h('column',{},h('text',{testId:'b',style:{position:'sticky',top:0,height:28,backgroundColor:'#eeeeee'}},'Yesterday'),h('column',{style:{height:300}}))))}",
+    );
+    let base = crate::ViewSession::new(&source)
+        .unwrap()
+        .layout(330, 600, scale)
+        .unwrap();
+    for offset in [118.0f32, 153.6, 209.0] {
+        let d = scrolled(&base, &[("s", offset)]);
+        let pinned = d.nodes.iter().find(|n| n.test_id == "b").unwrap();
+        let edge = pinned.clips[0].bounds[1];
+        let device = pinned.bounds[1] * scale;
+        assert!(
+            (device - device.round()).abs() < 1e-3,
+            "offset {offset}: {device}"
+        );
+        assert!(
+            (pinned.bounds[1] - edge).abs() < 1e-4,
+            "offset {offset}: {} vs {edge}",
+            pinned.bounds[1]
+        );
+    }
+}

@@ -288,12 +288,15 @@ impl RetainedLayout {
                     .as_ref()
                     .map(|s| s.content_insets)
                     .unwrap_or_default();
-                let viewport = [
-                    scroll.bounds[0] + insets[3],
-                    scroll.bounds[1] + insets[0],
-                    (scroll.bounds[2] - insets[1] - insets[3]).max(0.0),
-                    (scroll.bounds[3] - insets[0] - insets[2]).max(0.0),
-                ];
+                let viewport = snap_to_pixels(
+                    [
+                        scroll.bounds[0] + insets[3],
+                        scroll.bounds[1] + insets[0],
+                        (scroll.bounds[2] - insets[1] - insets[3]).max(0.0),
+                        (scroll.bounds[3] - insets[0] - insets[2]).max(0.0),
+                    ],
+                    self.scale,
+                );
                 let mut natural = self.nodes[index].bounds;
                 natural[0] -= translation[0];
                 natural[1] -= translation[1];
@@ -314,6 +317,11 @@ impl RetainedLayout {
             if let Some(content) = &mut node.content_clip {
                 content.bounds[0] -= translation[0];
                 content.bounds[1] -= translation[1];
+                // A scroll's edge meets the headers pinned to it on one device-pixel row,
+                // so no antialiased half row lets content behind them through.
+                if node.scroll.is_some() {
+                    content.bounds = snap_to_pixels(content.bounds, self.scale);
+                }
             }
             if let Some(control) = &mut node.control_bounds {
                 control[0] -= translation[0];
@@ -967,4 +975,21 @@ pub(crate) fn paint_order(parents: &[Option<usize>], z: &[(i32, i32, i32)]) -> V
         stack.extend(siblings.into_iter().rev());
     }
     order
+}
+
+/// Logical bounds shrunk inward until every edge lands on a whole device pixel at `scale`.
+fn snap_to_pixels([x, y, w, h]: [f32; 4], scale: f32) -> [f32; 4] {
+    if !(scale.is_finite() && scale > 0.0) {
+        return [x, y, w, h];
+    }
+    // A hair of tolerance keeps an edge already on a pixel from moving a whole row.
+    let up = |v: f32| (v * scale - 1e-3).ceil() / scale;
+    let down = |v: f32| (v * scale + 1e-3).floor() / scale;
+    let (left, top) = (up(x), up(y));
+    [
+        left,
+        top,
+        (down(x + w) - left).max(0.0),
+        (down(y + h) - top).max(0.0),
+    ]
 }
