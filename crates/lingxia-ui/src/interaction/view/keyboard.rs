@@ -56,7 +56,53 @@ impl ViewInteraction {
         effects
     }
 
+    /// A dialog that opened takes keyboard focus; one that closed returns it to
+    /// what had it before. Only while the keyboard is in use, so pointers see no ring.
+    fn track_dialogs(&mut self, page: PageTicket) -> Vec<Effect> {
+        let Some(frame) = self.frame.clone() else {
+            return Vec::new();
+        };
+        let open =
+            navigation::active_dialog(&frame).map(|index| frame.nodes[index].identity.clone());
+        let keyboard = self.keyboard_used;
+        let mut effects = Vec::new();
+        // Dialogs no longer shown hand focus back, innermost first.
+        while let Some((dialog, _)) = self.dialogs.last() {
+            if frame
+                .index_of(dialog)
+                .is_some_and(|index| frame::visible(&frame.nodes[index]))
+            {
+                break;
+            }
+            let (_, restore) = self.dialogs.pop().unwrap();
+            if keyboard && let Some(index) = restore.and_then(|identity| frame.index_of(&identity))
+            {
+                effects.extend(self.navigate(index, false, page));
+            }
+        }
+        if let Some(dialog) = open
+            && self.dialogs.last().is_none_or(|(top, _)| *top != dialog)
+        {
+            let before = self
+                .keyboard_origin()
+                .map(|index| frame.nodes[index].identity.clone());
+            self.dialogs.push((dialog, before));
+            if keyboard
+                && let Some(first) = navigation::next(&frame, None, 1, self.revealable(&frame))
+            {
+                effects.extend(self.navigate(first, false, page));
+            }
+        }
+        effects
+    }
+
     pub(super) fn finish_keyboard(&mut self, page: PageTicket) -> Vec<Effect> {
+        let mut effects = self.track_dialogs(page);
+        effects.extend(self.finish_pending(page));
+        effects
+    }
+
+    fn finish_pending(&mut self, page: PageTicket) -> Vec<Effect> {
         let Some(pending) = self.pending_focus.take() else {
             return Vec::new();
         };
@@ -107,6 +153,7 @@ impl ViewInteraction {
         let Some(frame) = self.frame.clone() else {
             return (false, Vec::new());
         };
+        self.keyboard_used = true;
         let origin = self.keyboard_origin();
         if let Some(index) = origin
             && let Some(node) = frame.node(index).filter(|node| frame::slider_enabled(node))
@@ -173,6 +220,7 @@ impl ViewInteraction {
         let Some(frame) = self.frame.clone() else {
             return Vec::new();
         };
+        self.keyboard_used = true;
         match navigation::next(
             &frame,
             self.keyboard_origin(),

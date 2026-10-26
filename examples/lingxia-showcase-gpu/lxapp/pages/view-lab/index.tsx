@@ -8,7 +8,7 @@ const groups = {
   paint: { label: 'Paint', sections: [Grid, Gradients, Vectors, Borders, Transforms] },
   layout: { label: 'Layout', sections: [Display, Sizing, Direction, Structure, StickyHeaders] },
   text: { label: 'Text', sections: [TextLayout, RichText, Selection] },
-  input: { label: 'Input', sections: [Accessibility, Inputs] },
+  input: { label: 'Input', sections: [Accessibility, Inputs, Focus] },
 };
 type Group = keyof typeof groups;
 
@@ -273,6 +273,30 @@ function Selection() {
       <text testId="lab-select-text" className="text-sm select-text">Long-press a word to select it, then drag the handles. Order reference: LX-2024-88412.</text>
       <text testId="lab-select-all" className="font-mono text-sm px-2 py-1 rounded bg-muted select-all">8F3A-77C2-91D0</text>
       <view className="select-text"><text testId="lab-select-inherited" className="text-xs text-muted-foreground">Selectable by inheritance.</text></view>
+    </Section>
+  );
+}
+
+function Focus() {
+  const open = useLocal('dialog-open', false);
+  const choice = useLocal('dialog-choice', 'none');
+  const close = (value: string) => { choice.set(value); open.set(false); };
+  return (
+    <Section title="Keyboard focus" testId="lab-focus">
+      <text className="text-xs text-muted-foreground">With a keyboard: Tab to Open, press Enter; focus stays in the dialog and returns to Open when it closes.</text>
+      <row className="gap-2 items-center">
+        <Button testId="lab-focus-open" onClick={() => open.set(true)}>Open dialog</Button>
+        <text testId="lab-focus-choice" className="text-sm">{`chosen: ${choice.value}`}</text>
+      </row>
+      {open.value ? (
+        <column testId="lab-focus-dialog" role="dialog" accessibilityLabel="Confirm payment" className="gap-3 p-4 rounded-xl border border-border bg-card">
+          <text role="heading" headingLevel={3} className="text-sm font-semibold">Confirm payment</text>
+          <row className="gap-2">
+            <Button testId="lab-focus-confirm" onClick={() => close('confirm')}>Confirm</Button>
+            <Button testId="lab-focus-cancel" variant="secondary" onClick={() => close('cancel')}>Cancel</Button>
+          </row>
+        </column>
+      ) : null}
     </Section>
   );
 }

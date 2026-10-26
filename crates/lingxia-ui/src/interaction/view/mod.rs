@@ -73,6 +73,10 @@ pub struct ViewInteraction {
     activation: Option<Activation>,
     dispatches: Vec<Dispatch>,
     inert: bool,
+    /// Open dialogs, innermost last, each with what had keyboard focus before it opened.
+    dialogs: Vec<(String, Option<String>)>,
+    /// The last input was a key, not a pointer: focus moves (and its ring) follow it.
+    keyboard_used: bool,
 }
 
 /// What a presentation produced besides pixels.

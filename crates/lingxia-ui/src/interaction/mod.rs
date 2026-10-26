@@ -8,6 +8,8 @@ pub(crate) mod input_state;
 pub mod keyboard;
 #[cfg(test)]
 mod policy_tests;
+#[cfg(test)]
+mod focus_tests;
 pub mod reach;
 mod reveal;
 pub mod scroll;

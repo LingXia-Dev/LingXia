@@ -54,6 +54,8 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   (announced), `accessibilityHidden` for decoration. A layout element with a role, or a scroll,
   groups its content for screen readers ("item 2 of 3"); plain wrappers collapse.
   `accessibilityState={{ pressed, selected, expanded, busy }}` announces states (e.g. `busy: req.status === 'loading'`).
+- Keyboard: Tab and arrows follow reading order (no `tabIndex`); a visible `role="dialog"` keeps focus inside
+  and returns it on close; the focus ring shows only after keyboard input.
 - Inputs take `maxLength`, `autoComplete` (autofill), `enterKeyHint`, `autoCapitalize`, `spellCheck`;
   `keyboard="number"` with `min`/`max`/`step` clamps on blur/submit; `keyboard="date|time"` opens the
   platform picker and reports ISO strings.
