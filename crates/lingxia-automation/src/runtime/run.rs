@@ -254,6 +254,20 @@ impl RunShared {
         inner.evict_if_needed();
     }
 
+    /// Claim an attachment name whose file the client receives some other
+    /// way (a device capture the dev server staged), so no artifact can take it.
+    pub fn reserve_attachment(&self, name: &str) -> Result<String, String> {
+        let name = validate_attachment_name(name)?;
+        let mut inner = self.inner.lock().unwrap();
+        if !inner.accepting() {
+            return Err("automation run is no longer active".to_string());
+        }
+        if !inner.attachment_names.insert(name.clone()) {
+            return Err(format!("duplicate attachment name '{name}'"));
+        }
+        Ok(name)
+    }
+
     /// Validate and store one artifact. `Err` carries a JS-facing message.
     pub fn push_artifact(
         &self,
@@ -593,7 +607,7 @@ mod tests {
         use crate::network::companion::{Upstream, set_upstream};
         let seen = Arc::new(Mutex::new(Vec::new()));
         let log = seen.clone();
-        let upstream: Upstream = Arc::new(move |method: &str, _| {
+        let upstream: Upstream = Arc::new(move |method: &str, _, _| {
             log.lock().unwrap().push(method.to_string());
             Box::pin(async { Ok(serde_json::json!({})) })
         });

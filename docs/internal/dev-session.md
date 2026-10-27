@@ -62,6 +62,21 @@ refreshed first.
   need their own capture. Owner-drawn Win32 controls may expose no
   accessibility nodes.
 
+## Captures
+
+The runtime connection is the only one that may send `session.capture.put`
+and `session.device.screenshot`; the dev server answers both itself, never
+forwarding them. `session.capture.put` is the one binary frame on the wire:
+a 4-byte big-endian header length, the request JSON, then the PNG
+(`encode_binary_request`), bounded by `DEV_SESSION_MAX_MESSAGE_BYTES` (40 MiB)
+like every message. A device capture is answered on a separate thread
+(adb and hdc take seconds). The device target is fixed per session: the
+adb serial, the `devicectl` device (via `idevicescreenshot`) or the hdc
+target `dev` resolved; desktop hosts capture their own screen and never
+ask, so a desktop target answers `capture_unsupported`. See
+[`test-runner.md`](test-runner.md) for how staged PNGs reach the report and
+why macOS Screen Recording belongs to the responsible process.
+
 ## Mock readiness
 
 The host awaits the context-bound `__lxWaitForDevMocks` gate (installed by

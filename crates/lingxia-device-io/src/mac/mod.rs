@@ -153,14 +153,23 @@ fn os_version() -> String {
     String::from_utf8_lossy(&buf[..len.saturating_sub(1)]).into_owned()
 }
 
-/// The bundled app the OS will attribute a grant to. Bare binaries have no
-/// bundle URL and must fall back to the terminal that macOS actually records
-/// in its privacy database.
+/// The bundled app the OS will attribute a grant to: TCC asks the
+/// *responsible* process, which for an app a terminal spawned is the
+/// terminal. A bare binary without one falls back to "this terminal".
 #[cfg(any(feature = "input", feature = "window"))]
 pub(crate) fn responsible_app_name() -> Option<String> {
     use objc2_app_kit::NSRunningApplication;
 
-    let app = NSRunningApplication::currentApplication();
+    unsafe extern "C" {
+        // libquarantine SPI, stable since macOS 10.14. Private API: acceptable
+        // only because this runs in the dev host, never in an App Store build.
+        fn responsibility_get_pid_responsible_for_pid(pid: libc::pid_t) -> libc::pid_t;
+    }
+    let responsible = unsafe { responsibility_get_pid_responsible_for_pid(libc::getpid()) };
+    let app = (responsible > 0)
+        .then(|| NSRunningApplication::runningApplicationWithProcessIdentifier(responsible))
+        .flatten()
+        .unwrap_or_else(NSRunningApplication::currentApplication);
     app.bundleURL()?;
     app.localizedName()
         .map(|name| name.to_string())

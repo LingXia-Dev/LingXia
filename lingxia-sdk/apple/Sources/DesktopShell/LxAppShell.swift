@@ -485,6 +485,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         )
         window.contentMinSize = Layout.mainWindowMinimumSize
         window.minSize = Layout.mainWindowMinimumSize
+        // The window `t.app.screenshot()` captures for the current page.
+        window.identifier = NSUserInterfaceItemIdentifier("lingxia.host")
         window.configureForTabStyle()
         window.center()
         var maximized = false

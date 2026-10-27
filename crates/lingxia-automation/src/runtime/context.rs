@@ -10,7 +10,7 @@ use super::run::RunShared;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use lingxia_log::{LogBuilder, LogLevel, LogTag};
-use rong::function::Rest;
+use rong::function::{Optional, Rest};
 use rong::{
     Class, FromJSObject, HostError, IntoJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue,
     RongJSError, js_class, js_method,
@@ -255,6 +255,8 @@ fn make_host(
         })?,
     )?;
 
+    attach_captures(ctx, &host, shared)?;
+
     let event_shared = Arc::downgrade(shared);
     host.set(
         "emit",
@@ -286,6 +288,42 @@ fn make_host(
     )?;
     attach_attempts(ctx, &host, shared)?;
     Ok(host)
+}
+
+/// `appScreenshot(name, surface?)` and `deviceScreenshot(name)`: see
+/// [`super::capture`]. `name` is the report-relative path, reserved here so no
+/// artifact can take it.
+fn attach_captures(ctx: &JSContext, host: &JSObject, shared: &Arc<RunShared>) -> JSResult<()> {
+    fn reserve(run: &Weak<RunShared>, name: &str) -> JSResult<(String, String)> {
+        let run = live_run(run)?;
+        let name = run
+            .reserve_attachment(name)
+            .map_err(|err| HostError::new("E_AUTOMATION_ATTACH", err))?;
+        Ok((run.run_id.clone(), name))
+    }
+    let run = Arc::downgrade(shared);
+    host.set(
+        "appScreenshot",
+        JSFunc::new(ctx, move |name: String, surface: Optional<String>| {
+            let reserved = reserve(&run, &name);
+            async move {
+                let (run_id, name) = reserved?;
+                super::capture::app_screenshot(run_id, name, surface.0).await
+            }
+        })?,
+    )?;
+    let run = Arc::downgrade(shared);
+    host.set(
+        "deviceScreenshot",
+        JSFunc::new(ctx, move |name: String| {
+            let reserved = reserve(&run, &name);
+            async move {
+                let (run_id, name) = reserved?;
+                super::capture::device_screenshot(run_id, name).await
+            }
+        })?,
+    )?;
+    Ok(())
 }
 
 /// What closing an attempt removed.

@@ -36,13 +36,17 @@ import type {
 
 /**
  * Every `code` a spec can meet on a rejection or a failed spec: the
- * automation driver codes, a broken OpenAPI contract, a fixture call that
- * ran out of time, and a runtime skip. A driver timeout reaches a spec as
- * `E_TIMEOUT`, with the driver's own code in `error.cause.code`.
+ * automation driver codes, a broken OpenAPI contract, an app or device
+ * capture that is unavailable or failed, a fixture call that ran out of time, and a
+ * runtime skip. A driver timeout reaches a spec as `E_TIMEOUT`, with the
+ * driver's own code in `error.cause.code`.
  */
 export type TestErrorCode =
   | Exclude<AutomationErrorCode, "E_AUTOMATION_TIMEOUT" | "E_EVAL_TIMEOUT" | "E_DESKTOP_TIMEOUT" | "timeout">
   | "E_OPENAPI_CONTRACT"
+  | "E_CAPTURE_UNSUPPORTED"
+  | "E_CAPTURE_PERMISSION"
+  | "E_CAPTURE_FAILED"
   | "E_TIMEOUT"
   | "E_SKIPPED";
 
@@ -779,6 +783,13 @@ export interface TestApp {
   info: LxAppDriver["info"];
   pages: LxAppDriver["pages"];
   surfaceLayout: LxAppDriver["surfaceLayout"];
+  /**
+   * Everything the host draws in the window showing the current page (or
+   * `surface`): native chrome, every WebView, native views. Captured in
+   * process, so no permission is needed on any platform; attached to the
+   * report. Rejects with `CaptureUnavailableError` where it cannot.
+   */
+  screenshot(options?: AppScreenshotOptions): Promise<Capture>;
 }
 
 /** A checkpoint of the app's isolated data. */
@@ -970,6 +981,37 @@ export interface OpenApiRun {
   documents: Array<{ name: string; version: string; title?: string }>;
 }
 
+/** `t.device`. */
+export interface TestDevice {
+  /**
+   * Capture the whole display, system UI and other apps included, and
+   * attach it to the report. Taken outside the app on a phone; on macOS it
+   * needs Screen Recording for the app that launched the host. Rejects with
+   * `CaptureUnavailableError` where it cannot (`t.skip(error.hint)`).
+   */
+  screenshot(): Promise<Capture>;
+}
+
+/** `t.app.screenshot()` options. */
+export interface AppScreenshotOptions {
+  /**
+   * A surface id from `t.app.surfaceLayout()` (a main, aside or float):
+   * capture the window showing it instead of the current page's.
+   */
+  surface?: string;
+}
+
+/** A PNG `t.app.screenshot()` or `t.device.screenshot()` attached to the report. */
+export interface Capture {
+  /** Report-relative path of the PNG. */
+  path: string;
+  /** Pixels. */
+  width: number;
+  height: number;
+  /** Pixels per point of the display. */
+  scale: number;
+}
+
 /** Explicit parent for nested steps; scoped calls preserve the report tree. */
 export interface StepScope {
   step<T>(name: string, body: (scope: StepScope) => T | Promise<T>): Promise<T>;
@@ -981,6 +1023,8 @@ export interface Fixture {
   readonly app: TestApp;
   /** One product scenario per spec; replacing it replaces HTTP and Function rules together. */
   readonly scenario: TestScenarios;
+  /** The display the app runs on, beyond what the app itself draws. */
+  readonly device: TestDevice;
   /**
    * The OpenAPI documents this run checks against (`lxdev test --openapi`),
    * or `undefined` without them. A spec that only means something against a

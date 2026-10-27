@@ -56,14 +56,6 @@ export default [
     reason: "Android is proven by ANDROID-PHOTOS-001 (MediaStore needs no prompt); iOS still shows the photos permission sheet",
   },
   {
-    id: "PEND-ORIENT-001",
-    implementedOn: ["android"],
-    title: "observe the host physically rotate after setDeviceOrientation",
-    mode: "external-ui",
-    covers: ["lx.setDeviceOrientation"],
-    reason: "ANDROID-ORIENTATION-001 observes the real Android viewport rotate; other hosts still need a rotation contract",
-  },
-  {
     id: "PEND-EXTERNAL-001",
     title: "openExternal launches the system browser",
     mode: "external-ui",

@@ -454,6 +454,8 @@ enum LxAppSurface {
         }
         let windowFrame = kind == kindPopup ? context.frame : surfaceFrame
         let window: NSWindow? = makeWindow(kind: kind, frame: windowFrame, chrome: chrome)
+        // `t.app.screenshot({ surface })` finds the surface's own window by this.
+        window?.identifier = NSUserInterfaceItemIdentifier("lingxia.surface.\(id)")
         let windowContent = SurfaceContentView(frame: NSRect(origin: .zero, size: windowFrame.size))
         windowContent.passesBackgroundClicks = kind == kindPopup && !modal && !dismissOnOutside
         let contentHost: NSView
@@ -668,6 +670,7 @@ enum LxAppSurface {
     ) -> Bool {
 
         let window = makeWindow(kind: kindPopup, frame: context.frame, chrome: chromeSystem)
+        window.identifier = NSUserInterfaceItemIdentifier("lingxia.surface.\(id)")
         let windowContent = NSView(frame: NSRect(origin: .zero, size: context.frame.size))
         windowContent.wantsLayer = true
         windowContent.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor

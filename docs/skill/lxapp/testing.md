@@ -115,6 +115,8 @@ Iterate with `--changed` or a file path; run everything at handoff and in CI.
 | Skip | `spec.skip`, `spec.fixme`; on a condition `{ skip: cond ? 'why' : undefined }` (whole file: `spec.configure({ skip })`); found mid-spec `t.skip(reason)`; without an input `{ requires: { args: ['PASSWORD'], openapi: true } }` |
 | Expect a failure | `spec.fail(title, { expected: { code, message } }, body)` |
 | Group trace, add evidence | `t.step(name, fn)` (await one at a time; nest through the callback's `step`), `t.attach(name, data)` |
+| See what the app draws (native chrome, every WebView) | `await t.app.screenshot({ surface? })` → `{ path, width, height, scale }`, attached to the report; captured in process, so no permission. `surface` is an id from `t.app.surfaceLayout()`; on desktop it captures the window showing that surface, and rejects if that window is hidden |
+| See the whole display (system UI, other apps) | `await t.device.screenshot()` → the same shape. On macOS it needs Screen Recording for the app that launched the host (the terminal running `lingxia dev`). Where it cannot capture it rejects with `CaptureUnavailableError` (`reason: 'unsupported' \| 'permission'`): `catch` it into `t.skip(error.hint)` |
 | Another running lxapp | `t.automation.lxapp(appId)` |
 | App lifecycle, inbound links | `t.automation.lxapps` (`applink({ url })`) |
 | External web pages, auth/payment callbacks | `t.automation.browser`: `snapshot()` then act on its refs (`click({ ref })`, `fill`, `selectOption`, …) or `{ css }`; same auto-wait and failure codes (`covered`, `stale_ref`, …) as `lxdev browser` |

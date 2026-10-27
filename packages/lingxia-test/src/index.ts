@@ -1,9 +1,11 @@
 export { spec, expect } from "./runtime.js";
 export { AssertionError } from "./expect.js";
 export { TimeoutError } from "./fixture.js";
-export { TEST_ERROR_CODES } from "./errors.js";
+export { CaptureUnavailableError, TEST_ERROR_CODES } from "./errors.js";
 export type {
   ActionOptions,
+  AppScreenshotOptions,
+  Capture,
   AnyLogicPage,
   ArgOptions,
   EvalOptions,
@@ -57,6 +59,7 @@ export type {
   TestWindow,
   TestAutomation,
   TestClock,
+  TestDevice,
   TestDialogs,
   TestErrorCode,
   AppErrorCodes,

@@ -19,6 +19,29 @@ impl AppScreenshot for Platform {
         capture_window_png(hwnd.0 as usize).await
     }
 
+    /// A `Window`-kind surface has its own top-level window; an overlay or
+    /// aside lives in the host window. Either way the user sees the WebView's host.
+    async fn capture_window_id(
+        &self,
+        surface: Option<&str>,
+    ) -> Result<Option<String>, PlatformError> {
+        let Some(id) = surface else {
+            return Ok(None);
+        };
+        // The root main page is not an lx.surface entry.
+        let Some(webtag) = super::surface::surface_webtag(id) else {
+            return Ok(None);
+        };
+        let snapshot = lingxia_windows_contract::webview_window_snapshot(&webtag)
+            .map_err(|_| PlatformError::Platform(format!("surface {id} has no window yet")))?;
+        if !snapshot.visible {
+            return Err(PlatformError::Platform(format!(
+                "the window showing surface {id:?} is hidden"
+            )));
+        }
+        Ok(Some(snapshot.window_id.to_string()))
+    }
+
     async fn resolve_app_window(
         &self,
         window_id: Option<&str>,

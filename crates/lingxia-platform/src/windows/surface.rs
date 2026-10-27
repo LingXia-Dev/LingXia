@@ -869,6 +869,10 @@ fn surface_entry(id: &str) -> Option<SurfaceEntry> {
     SURFACES.lock().ok().and_then(|map| map.get(id).cloned())
 }
 
+pub(super) fn surface_webtag(id: &str) -> Option<WebTag> {
+    surface_entry(id).map(|entry| entry.webtag)
+}
+
 /// A finite, positive dimension, else 0 (meaning "unset"; the host derives a
 /// default). The logic layer passes NaN for unset surface dimensions.
 fn finite_or_zero(value: f64) -> f64 {

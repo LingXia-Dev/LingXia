@@ -772,6 +772,12 @@ fn execute_inner(info: &SessionInfo, options: TestOptions, selection: Selection)
 
     // Run-level work first: whatever fails here belongs in every report, so
     // no report is written before it is done.
+    match collect_staged_captures(&info.ws_url, &run_id, &output_dir) {
+        Ok(copied) => outcome.artifacts.extend(copied),
+        Err(error) => outcome
+            .run_errors
+            .push(format!("staged captures were not collected: {error:#}")),
+    }
     if let Some(dir) = &options.record_network {
         match crate::test_network::save_recorded_scenarios(dir, &outcome.artifacts) {
             Ok(written) if !machine => eprintln!(
@@ -3439,6 +3445,18 @@ fn normalized_steps(steps: &[serde_json::Value], case_status: &str) -> Vec<serde
 /// The runtime already validated the name; re-validate before touching the
 /// filesystem so an older or hostile host cannot escape the output directory.
 fn write_artifact(output_dir: &Path, name: &str, base64: &str) -> Result<(PathBuf, usize)> {
+    let path = artifact_path(output_dir, name)?;
+    if base64.len() > MAX_ARTIFACT_BASE64_BYTES {
+        bail!("artifact {name:?} exceeds the {MAX_ARTIFACT_BYTES}-byte limit");
+    }
+    let bytes = decode_artifact(name, base64, MAX_ARTIFACT_BYTES)?;
+    let len = bytes.len();
+    std::fs::write(&path, bytes).with_context(|| format!("failed to write {}", path.display()))?;
+    Ok((path, len))
+}
+
+/// Where artifact `name` goes under `output_dir`, its directory created.
+fn artifact_path(output_dir: &Path, name: &str) -> Result<PathBuf> {
     let normalized = name.replace('\\', "/");
     if normalized.starts_with('/') || normalized.contains(':') {
         bail!("artifact name {name:?} must be a relative path");
@@ -3448,18 +3466,50 @@ fn write_artifact(output_dir: &Path, name: &str, base64: &str) -> Result<(PathBu
             bail!("artifact name {name:?} contains an invalid path segment");
         }
     }
-    if base64.len() > MAX_ARTIFACT_BASE64_BYTES {
-        bail!("artifact {name:?} exceeds the {MAX_ARTIFACT_BYTES}-byte limit");
-    }
     let path = output_dir.join(&normalized);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("failed to create {}", parent.display()))?;
     }
-    let bytes = decode_artifact(name, base64, MAX_ARTIFACT_BYTES)?;
-    let len = bytes.len();
-    std::fs::write(&path, bytes).with_context(|| format!("failed to write {}", path.display()))?;
-    Ok((path, len))
+    Ok(path)
+}
+
+/// Copy the captures (`t.app.screenshot()`, `t.device.screenshot()`) the dev
+/// server staged for this run into its output directory, then remove the
+/// staging. They never travel the artifact channel: the image stays on this
+/// machine from capture to report.
+fn collect_staged_captures(
+    ws_url: &str,
+    run_id: &str,
+    output_dir: &Path,
+) -> Result<Vec<(String, PathBuf, usize)>> {
+    use lingxia_control_protocol::dev_session::{StagedCaptures, StagedCapturesArgs};
+    let value = execute_command(
+        ws_url,
+        methods::session::capture::STAGED,
+        serde_json::to_value(StagedCapturesArgs {
+            run_id: run_id.to_string(),
+        })
+        .ok(),
+    )?
+    .unwrap_or_default();
+    let captures: StagedCaptures =
+        serde_json::from_value(value).context("unreadable session.capture.staged answer")?;
+    let Some(dir) = captures.dir else {
+        return Ok(Vec::new());
+    };
+    let mut copied = Vec::new();
+    for name in captures.files {
+        let path = artifact_path(output_dir, &name)?;
+        let bytes = std::fs::copy(Path::new(&dir).join(&name), &path)
+            .with_context(|| format!("failed to copy capture {name}"))?;
+        copied.push((name, path, bytes as usize));
+    }
+    // The report owns the files now; the server would keep them until it exits.
+    if let Err(err) = std::fs::remove_dir_all(&dir) {
+        eprintln!("warning: staged captures were not removed from {dir}: {err}");
+    }
+    Ok(copied)
 }
 
 fn decode_artifact(name: &str, base64: &str, max_bytes: usize) -> Result<Vec<u8>> {

@@ -1,5 +1,6 @@
-//! The path from a host run to the dev session's companion, for the
-//! `function` rules of `t.scenario.use()`.
+//! The path from a host run to the dev session: its companion, for the
+//! `function` rules of `t.scenario.use()`, and the dev server itself, for
+//! staging screenshots.
 //!
 //! This crate does not know how the host reaches `lingxia dev`: the dev
 //! bridge registers an [`Upstream`] that sends a request over its session
@@ -21,8 +22,9 @@ pub struct UpstreamError {
 
 pub type UpstreamFuture = Pin<Box<dyn Future<Output = Result<Value, UpstreamError>> + Send>>;
 
-/// Send `method` with `params` to the dev server.
-pub type Upstream = Arc<dyn Fn(&str, Value) -> UpstreamFuture + Send + Sync>;
+/// Send `method` with `params` to the dev server; a payload travels beside
+/// them as raw bytes, never inside the JSON.
+pub type Upstream = Arc<dyn Fn(&str, Value, Option<Vec<u8>>) -> UpstreamFuture + Send + Sync>;
 
 static UPSTREAM: Mutex<Option<Upstream>> = Mutex::new(None);
 
@@ -50,7 +52,16 @@ pub(crate) fn unavailable() -> Option<&'static str> {
 }
 
 /// Send one request upstream.
-pub(crate) async fn request(method: &str, params: Value) -> Result<Value, UpstreamError> {
+pub async fn request(method: &str, params: Value) -> Result<Value, UpstreamError> {
+    request_with_payload(method, params, None).await
+}
+
+/// Send one request upstream with a binary payload.
+pub async fn request_with_payload(
+    method: &str,
+    params: Value,
+    payload: Option<Vec<u8>>,
+) -> Result<Value, UpstreamError> {
     let Some(upstream) = upstream() else {
         return Err(UpstreamError {
             code: lingxia_control_protocol::methods::session::companion::UNSUPPORTED.into(),
@@ -58,5 +69,5 @@ pub(crate) async fn request(method: &str, params: Value) -> Result<Value, Upstre
             data: None,
         });
     };
-    upstream(method, params).await
+    upstream(method, params, payload).await
 }

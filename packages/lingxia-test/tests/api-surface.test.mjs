@@ -286,7 +286,7 @@ test("an idempotent read the transport dropped is retried; input is not", async 
 test("each entry exports only its own job", async () => {
   const main = await import("@lingxia/test");
   assert.deepEqual(Object.keys(main).sort(),
-    ["AssertionError", "TEST_ERROR_CODES", "TimeoutError", "expect", "spec"]);
+    ["AssertionError", "CaptureUnavailableError", "TEST_ERROR_CODES", "TimeoutError", "expect", "spec"]);
   const runner = await import("@lingxia/test/runner");
   assert.deepEqual(Object.keys(runner).sort(), [
     "DEFAULT_ACTION_TIMEOUT_MS", "DEFAULT_SPEC_TIMEOUT_MS", "PACKAGE_NAME", "PUBLIC_CAPABILITIES", "VERSION",

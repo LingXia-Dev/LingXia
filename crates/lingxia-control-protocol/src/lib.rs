@@ -165,6 +165,36 @@ pub mod methods {
         /// is refused.
         pub const LXAPP_ATTACH: &str = "session.lxapp.attach";
 
+        /// Screenshots a host test run stages on the dev machine for `lxdev`
+        /// to copy into the run's report. Handled by the dev server and never
+        /// forwarded: `PUT` and `device::SCREENSHOT` are accepted only from
+        /// the session's runtime connection.
+        pub mod capture {
+            /// Sent by the runtime as a binary frame
+            /// ([`crate::dev_session::encode_binary_request`]): params
+            /// [`crate::dev_session::CaptureArgs`], payload the PNG the host
+            /// captured in process. Returns [`crate::dev_session::Capture`].
+            pub const PUT: &str = "session.capture.put";
+            /// Sent by `lxdev test` once its run ended: every capture the run
+            /// staged, app and device alike. Args
+            /// [`crate::dev_session::StagedCapturesArgs`]; returns
+            /// [`crate::dev_session::StagedCaptures`].
+            pub const STAGED: &str = "session.capture.staged";
+            /// The session's target cannot be captured; the message says why.
+            pub const UNSUPPORTED: &str = "capture_unsupported";
+            /// The capture or its staging failed.
+            pub const FAILED: &str = "capture_failed";
+        }
+
+        /// Whole-display captures the dev server takes from outside the app
+        /// (`adb screencap`, `idevicescreenshot`, `hdc snapshot_display`).
+        pub mod device {
+            /// Sent by the runtime for a host run. Args
+            /// [`crate::dev_session::CaptureArgs`]; returns
+            /// [`crate::dev_session::Capture`].
+            pub const SCREENSHOT: &str = "session.device.screenshot";
+        }
+
         /// The dev session's companion (`.lingxia/dev-companion.json`).
         /// Handled by the dev server, which forwards `scenario.*` requests
         /// to a companion that declared
@@ -768,6 +798,72 @@ pub mod dev_session {
         pub capabilities: Vec<String>,
     }
 
+    /// `session.capture.put` and `session.device.screenshot` arguments.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    pub struct CaptureArgs {
+        /// The run the capture belongs to.
+        pub run_id: String,
+        /// Report-relative path the PNG takes in the run's output directory.
+        pub name: String,
+        /// Pixels per point of the captured display, as the host knows it.
+        pub scale: f64,
+    }
+
+    /// A staged capture: its report-relative path, pixel size and scale.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    pub struct Capture {
+        pub path: String,
+        pub width: u32,
+        pub height: u32,
+        pub scale: f64,
+    }
+
+    /// Frame a request whose payload travels as raw bytes: one binary
+    /// websocket message holding a 4-byte big-endian header length, the
+    /// request's JSON, then the payload.
+    pub fn encode_binary_request(
+        request: &ControlRequest,
+        payload: &[u8],
+    ) -> Result<Vec<u8>, serde_json::Error> {
+        let header = serde_json::to_vec(request)?;
+        let mut frame = Vec::with_capacity(4 + header.len() + payload.len());
+        frame.extend_from_slice(&(header.len() as u32).to_be_bytes());
+        frame.extend_from_slice(&header);
+        frame.extend_from_slice(payload);
+        Ok(frame)
+    }
+
+    /// Split a frame [`encode_binary_request`] wrote into its request and payload.
+    pub fn decode_binary_request(frame: &[u8]) -> Result<(ControlRequest, &[u8]), String> {
+        let length = frame
+            .get(..4)
+            .map(|bytes| u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize)
+            .ok_or("binary frame is shorter than its header length")?;
+        let header = 4usize
+            .checked_add(length)
+            .and_then(|end| frame.get(4..end))
+            .ok_or("binary frame is shorter than its header")?;
+        let request = serde_json::from_slice(header)
+            .map_err(|err| format!("binary frame header is not a request: {err}"))?;
+        Ok((request, &frame[4 + length..]))
+    }
+
+    /// `session.capture.staged` arguments.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct StagedCapturesArgs {
+        pub run_id: String,
+    }
+
+    /// `session.capture.staged` result: `files` (report-relative paths) are
+    /// staged under `dir` on this machine for the client to copy, then remove.
+    #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct StagedCaptures {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub dir: Option<String>,
+        #[serde(default)]
+        pub files: Vec<String>,
+    }
+
     /// `session.watch.pause` arguments.
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct WatchPauseArgs {
@@ -975,6 +1071,23 @@ mod tests {
             product,
             serde_json::json!({"type":"request","id":"9","method":"echo","params":{"a":1}})
         );
+    }
+
+    #[test]
+    fn a_binary_request_round_trips_its_payload() {
+        use dev_session::{decode_binary_request, encode_binary_request};
+        let request = ControlRequest {
+            id: "runtime-1".to_string(),
+            method: methods::session::capture::PUT.to_string(),
+            params: Some(serde_json::json!({"run_id": "r", "name": "a.png", "scale": 2.0})),
+        };
+        let frame = encode_binary_request(&request, b"\x89PNG bytes").unwrap();
+        let (decoded, payload) = decode_binary_request(&frame).unwrap();
+        assert_eq!(decoded.method, request.method);
+        assert_eq!(decoded.params, request.params);
+        assert_eq!(payload, b"\x89PNG bytes");
+        assert!(decode_binary_request(&frame[..3]).is_err());
+        assert!(decode_binary_request(&[0, 0, 1, 0, b'{']).is_err());
     }
 }
 
