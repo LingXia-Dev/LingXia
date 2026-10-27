@@ -30,7 +30,9 @@ pub struct FrameEnvironment {
 /// Encodes frames on the View worker and puts them on screen on the main thread.
 pub trait Presenter {
     type Frame: Send + 'static;
-    /// View worker. `None` when the target cannot take a frame now.
+    /// View worker. `None` when the target cannot take a frame now. The host may drop a
+    /// prepared frame without presenting it (it was superseded); dropping the value must
+    /// free whatever target it holds.
     fn prepare(
         &self,
         display: DisplayList,
@@ -147,6 +149,8 @@ pub trait HostEvents {
         let _ = menu;
     }
     fn warn(&self, message: &str);
+    /// Diagnostic detail (one line per executed click, say); adapters log it at debug level.
+    fn debug(&self, _message: &str) {}
 }
 
 /// Monotonic time for animation and presentation scheduling. Any thread.

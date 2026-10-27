@@ -233,8 +233,12 @@ struct Main<F> {
     /// Activations dispatched to the worker whose result has not come back: an animation
     /// frame prepared meanwhile would run before the View they change.
     activating: u32,
-    /// User activations reported dropped, for frame metrics.
+    /// User activations reported dropped, and clicks that ran a callback, for frame metrics.
     dropped_activations: u64,
+    activations: u64,
+    /// A frame was declined while others still held the presenter's targets; presenting
+    /// one frees a target, so the next vsync retries.
+    declined: bool,
     /// Consecutive refusals of a frame that had a newer one prepared behind it.
     stale_declines: u32,
     /// The presenter keeps only its newest frame; nothing is prepared ahead any more.
@@ -356,6 +360,8 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     vsync_interval: Duration::from_micros(16_667),
                     activating: 0,
                     dropped_activations: 0,
+                    activations: 0,
+                    declined: false,
                     stale_declines: 0,
                     single_target: false,
                     #[cfg(test)]

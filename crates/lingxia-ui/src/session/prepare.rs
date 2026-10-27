@@ -83,15 +83,9 @@ impl ViewSession {
                 && generation.get() <= self.generation.get())
     }
 
-    /// Clicks refused since the last call because their frame was superseded.
-    pub fn take_rejected_clicks(
-        &mut self,
-    ) -> Vec<(
-        lifecycle::CommitTicket,
-        lifecycle::CommitTicket,
-        &'static str,
-    )> {
-        std::mem::take(&mut self.rejected_clicks)
+    /// Clicks handled since the last call.
+    pub fn take_clicks(&mut self) -> Vec<ClickRecord> {
+        std::mem::take(&mut self.clicks)
     }
 
     /// Editor geometry queries need the frame's exact layout, not only its nodes: a commit
@@ -643,7 +637,13 @@ impl ViewSession {
             }
             Err(error) => {
                 if prepared_js {
-                    let _ = self.eval("__lingxiaDiscard()");
+                    // A frame the target only declined keeps the user's pending state; any
+                    // other failure reverts it, and its error tells the author why.
+                    let _ = self.eval(if error == FRAME_DECLINED {
+                        "__lingxiaDiscard(true)"
+                    } else {
+                        "__lingxiaDiscard()"
+                    });
                 }
                 if let Some(mut previous) = self.pending_inputs.take() {
                     previous.invalidate_after(&self.inputs)?;

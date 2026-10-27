@@ -20,6 +20,8 @@ function runCandidate(view, lookup, build) {
   Object.assign(render, { active: true, view, lookupLocals: lookup });
   render.candidate = { locals: new Map(), declarations: new Set(), callbacks: new Map(), lists: new Map(), resources: new Map(), resourceNames: new Set(), view };
   try { render.scope = 'root'; return build(render.candidate); }
+  // A render that throws reverts to the committed page: every pending update is dropped,
+  // not only the one that threw, so state that makes render fail cannot wedge each retry.
   catch (error) { discard(); throw error; }
   finally { clearArena(); Object.assign(render, { active: false, scope: null, view: null, lookupLocals: null, collectors: [] }); }
 }
@@ -68,11 +70,16 @@ export function commit() {
   page.resources = next;
 }
 
-export function discard() { render.candidate = null; page.updates.clear(); }
+// Native drops the candidate. A frame the target merely declined keeps pending updates
+// (the user's taps survive it); any other candidate failure reverts them.
+export function discard(keepUpdates = false) {
+  render.candidate = null;
+  if (!keepUpdates) page.updates.clear();
+}
 
 export function reset() {
   outsideRender('reset');
-  discard(); page.committed = null; page.locals.clear(); page.callbacks.clear();
+  discard(); page.updates.clear(); page.committed = null; page.locals.clear(); page.callbacks.clear();
   for (const resource of page.resources.values()) resource.dispose();
   page.resources.clear();
   resetActions();

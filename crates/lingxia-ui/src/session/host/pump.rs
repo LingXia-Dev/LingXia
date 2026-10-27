@@ -41,7 +41,7 @@ impl<F> Prepared<F> {
 }
 
 // An internal signal, never surfaced; the frame is simply skipped.
-const DECLINED: &str = "frame declined by the target";
+use crate::session::FRAME_DECLINED as DECLINED;
 
 fn micros(duration: Duration) -> u64 {
     u64::try_from(duration.as_micros()).unwrap_or(u64::MAX)
@@ -64,6 +64,7 @@ struct Request {
     /// Reported in frame metrics once frames ahead were given up.
     single_target: bool,
     dropped_activations: u64,
+    activations: u64,
 }
 
 impl<A: PlatformAdapter> Inner<A> {
@@ -154,6 +155,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 ahead,
                 single_target: main.single_target,
                 dropped_activations: main.dropped_activations,
+                activations: main.activations,
             };
             main.dirty = false;
             main.pending = false;
@@ -240,6 +242,19 @@ impl<A: PlatformAdapter> Inner<A> {
                     if let Some((connection, update)) = update {
                         inner.publish(connection, update);
                     }
+                    let retry = {
+                        let mut main = inner.main();
+                        main.declined |= main.prepared.is_some() || main.deferred.is_some();
+                        // Nothing else will ask again while an animation waits on this frame.
+                        main.animating && !main.declined && !main.disposed
+                    };
+                    if retry {
+                        let host = inner.clone();
+                        inner.adapter.post_after(
+                            Duration::from_millis(16),
+                            Box::new(move || host.schedule()),
+                        );
+                    }
                     if !inner.ahead_failed(ahead) {
                         inner.unprepared(None, surface, page);
                     }
@@ -281,11 +296,12 @@ impl<A: PlatformAdapter> Inner<A> {
         let mut image_buckets = Default::default();
         session.set_environment(value)?;
         session.set_animation_target(Some(request.surface), request.visible, now)?;
-        let (sample, ahead, single_target, dropped_activations) = (
+        let (sample, ahead, single_target, dropped_activations, activations) = (
             request.sample,
             request.ahead,
             request.single_target,
             request.dropped_activations,
+            request.activations,
         );
         let generation = CommitTicket::new(session.generation().get() + 1);
         let caret = request.caret;
@@ -349,6 +365,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 metrics.insert("presenterSingleTarget".into(), true.into());
             }
             metrics.insert("droppedActivations".into(), dropped_activations.into());
+            metrics.insert("activations".into(), activations.into());
         }
         if let (Some(extra), Some(metrics)) =
             (self.adapter.metrics(&frame), metrics.as_object_mut())
@@ -536,7 +553,8 @@ impl<A: PlatformAdapter> Inner<A> {
             let main = self.main();
             main.pending && !main.disposed
         };
-        if pending {
+        let retry_declined = std::mem::take(&mut self.main().declined);
+        if pending || retry_declined {
             self.schedule();
         }
         self.schedule_ahead();

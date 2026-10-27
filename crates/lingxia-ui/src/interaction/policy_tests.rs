@@ -585,10 +585,24 @@ fn taps_dispatch_against_the_frame_they_started_on() {
             handle: 10
         }]
     );
-    // A press whose label changed underneath it is cancelled.
+    // A press whose label changed underneath it (a toggle the previous tap flipped) stays on
+    // that control and dispatches its current callback.
     interaction.pointer(press(PointerPhase::Down, 20.0, 20.0), page);
     button.text = "Changed".into();
-    presented(&mut interaction, vec![button], 3);
+    button.on_click = Some(11);
+    presented(&mut interaction, vec![button.clone()], 3);
+    interaction.pointer(press(PointerPhase::Up, 20.0, 20.0), page);
+    assert_eq!(
+        interaction.take_dispatch(),
+        [Dispatch::Click {
+            commit: CommitTicket::new(3),
+            handle: 11
+        }]
+    );
+    // A press whose control went away is cancelled.
+    interaction.pointer(press(PointerPhase::Down, 20.0, 20.0), page);
+    button.identity = "other".into();
+    presented(&mut interaction, vec![button], 4);
     interaction.pointer(press(PointerPhase::Up, 20.0, 20.0), page);
     assert!(interaction.take_dispatch().is_empty());
     let (consumed, _) = interaction.pointer(press(PointerPhase::Down, 500.0, 500.0), page);

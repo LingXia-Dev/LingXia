@@ -2468,13 +2468,14 @@
     candidate.resources = definitions;
     page.resources = next;
   }
-  function discard() {
+  function discard(keepUpdates = false) {
     render.candidate = null;
-    page.updates.clear();
+    if (!keepUpdates) page.updates.clear();
   }
   function reset() {
     outsideRender("reset");
     discard();
+    page.updates.clear();
     page.committed = null;
     page.locals.clear();
     page.callbacks.clear();

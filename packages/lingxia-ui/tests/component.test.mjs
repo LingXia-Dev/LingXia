@@ -42,6 +42,18 @@ test('duplicate locals fail with component context, while custom hook namespaces
   assert.ok(describe(render, {}).includes('ab'));
 });
 
+test('a declined candidate keeps pending updates; a rejected one and reset drop them', () => {
+  let count;
+  const render = () => { count = useLocal('count', 0); return h('text', {}, `n ${count.value}`); };
+  describe(render, {});
+  count.set(1); prepare(render, {}); discard(true);
+  assert.ok(describe(render, {}).includes('n 1'), 'the frame the target declined did not cost the update');
+  count.set(2); prepare(render, {}); discard();
+  assert.ok(describe(render, {}).includes('n 1'), 'native rejected the candidate: its update reverts');
+  count.set(3); reset();
+  assert.ok(describe(render, {}).includes('n 0'), 'reset carries no pending update');
+});
+
 test('empty invoked components retain own state and dispose descendants only after commit', () => {
   let visible = true, owner, child;
   function Child() { child = useLocal('value', 'child'); return h('text', {}, child.value); }

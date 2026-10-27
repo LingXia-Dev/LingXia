@@ -11,10 +11,16 @@ impl ViewSession {
             return Ok(false);
         }
         if !self.presented_commit(generation) {
-            self.reject_click(generation, "its frame was superseded before the click ran");
+            self.record_click(
+                generation,
+                false,
+                Err("its frame was superseded before the click ran"),
+            );
             return Ok(false);
         }
-        self.dispatch_handle(handle)
+        let ran = self.dispatch_handle(handle)?;
+        self.record_click(generation, false, Ok(ran));
+        Ok(ran)
     }
 
     /// A tap on `identity` in the presented frame. If a newer View superseded that frame,
@@ -37,22 +43,36 @@ impl ViewSession {
                 .map(|node| node.on_click)
         });
         match current {
-            Some(Some(handle)) if handle != 0 => self.dispatch_handle(handle),
+            Some(Some(handle)) if handle != 0 => {
+                let ran = self.dispatch_handle(handle)?;
+                self.record_click(generation, true, Ok(ran));
+                Ok(ran)
+            }
             Some(_) => {
-                self.reject_click(generation, "the control is no longer clickable");
+                self.record_click(generation, true, Err("the control is no longer clickable"));
                 Ok(false)
             }
             None => {
-                self.reject_click(generation, "the control is gone");
+                self.record_click(generation, true, Err("the control is gone"));
                 Ok(false)
             }
         }
     }
 
-    fn reject_click(&mut self, generation: lifecycle::CommitTicket, reason: &'static str) {
-        if self.rejected_clicks.len() < 16 {
-            self.rejected_clicks
-                .push((generation, self.generation, reason));
+    /// `outcome`: whether a callback ran, or why the click was refused.
+    fn record_click(
+        &mut self,
+        commit: lifecycle::CommitTicket,
+        reresolved: bool,
+        outcome: Result<bool, &'static str>,
+    ) {
+        if self.clicks.len() < 16 {
+            self.clicks.push(ClickRecord {
+                commit,
+                current: self.generation,
+                reresolved,
+                outcome,
+            });
         }
     }
 

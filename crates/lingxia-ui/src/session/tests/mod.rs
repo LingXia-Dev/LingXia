@@ -1717,22 +1717,49 @@ fn a_click_refused_for_a_superseded_frame_is_recorded_for_the_host() {
     let (old, handle) = (page.generation(), first.nodes[0].on_click.unwrap());
     assert!(page.click(old, handle).unwrap());
     page.layout(100, 50, 1.0).unwrap();
-    assert!(page.take_rejected_clicks().is_empty());
+    let ran = page.take_clicks();
+    assert_eq!(
+        (ran.len(), ran[0].reresolved, ran[0].outcome),
+        (1, false, Ok(true))
+    );
     assert!(!page.click(old, handle).unwrap());
     assert_eq!(
-        page.take_rejected_clicks(),
-        [(
-            old,
-            page.generation(),
-            "its frame was superseded before the click ran"
-        )]
+        page.take_clicks()[0].outcome,
+        Err("its frame was superseded before the click ran")
     );
-    assert!(page.take_rejected_clicks().is_empty());
+    assert!(page.take_clicks().is_empty());
     // By control, the same tap re-resolves to its current callback; a gone control drops it.
     let identity = first.nodes[0].identity.clone();
     assert!(page.click_control(old, handle, &identity).unwrap());
     assert_eq!(page.layout(100, 50, 1.0).unwrap().nodes[0].text, "n 2");
-    assert!(page.take_rejected_clicks().is_empty());
+    let clicks = page.take_clicks();
+    assert_eq!((clicks[0].reresolved, clicks[0].outcome), (true, Ok(true)));
     assert!(!page.click_control(old, handle, "/gone").unwrap());
-    assert_eq!(page.take_rejected_clicks()[0].2, "the control is gone");
+    assert_eq!(page.take_clicks()[0].outcome, Err("the control is gone"));
+}
+
+#[test]
+fn a_declined_frame_keeps_a_tap_and_a_rejected_one_reverts_it() {
+    let module = source(
+        "function render(){const n=useLocal('n',0);return h('button',{onClick:()=>n.set(n.value+1),style:n.value===2?{animation:{name:'x'}}:{}},`n ${n.value}`)}",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    let first = page.layout(100, 50, 1.0).unwrap();
+    assert!(
+        page.click(page.generation(), first.nodes[0].on_click.unwrap())
+            .unwrap()
+    );
+    // The presenter had no target free: the tap still shows in the next frame.
+    let declined = page.prepare(100, 50, 1.0, |_| Err::<(), _>(FRAME_DECLINED.to_string()));
+    assert_eq!(declined.unwrap_err(), FRAME_DECLINED);
+    let after = page.layout(100, 50, 1.0).unwrap();
+    assert_eq!(after.nodes[0].text, "n 1");
+    // A tap whose View native rejects reverts; the last good frame stays.
+    assert!(
+        page.click(page.generation(), after.nodes[0].on_click.unwrap())
+            .unwrap()
+    );
+    let rejected = page.layout(100, 50, 1.0).err().unwrap();
+    assert!(rejected.starts_with("UI_"), "{rejected}");
+    assert_eq!(page.layout(100, 50, 1.0).unwrap().nodes[0].text, "n 1");
 }
