@@ -237,7 +237,7 @@ public class GpuViewLabWalk {
         assertEquals("the selection goes after copy", -1, driver.node("lab-select-all").getTextSelectionStart());
     }
 
-    /** An editor driven the way TalkBack's editing menu does: set text, select a range, copy when offered. Writes the offered actions to `editor-actions.txt`. */
+    /** An editor driven the way TalkBack's editing menu does: set text, select a range, copy, cut and paste. Writes the offered actions to `editor-actions.txt`. */
     @Test public void editorThroughAccessibility() throws Exception {
         driver.openTab("Lab");
         driver.openGroup("Input");
@@ -260,8 +260,6 @@ public class GpuViewLabWalk {
         try (FileWriter log = new FileWriter(driver.out("editor-actions.txt"))) {
             for (AccessibilityNodeInfo.AccessibilityAction action : editor.getActionList()) log.write(action.getId() + " " + action.getLabel() + "\n");
         }
-        // Editors do not offer copy yet; check it once the core lists it.
-        if (!editor.getActionList().contains(AccessibilityNodeInfo.AccessibilityAction.ACTION_COPY)) return;
         assertTrue("copy", editor.performAction(AccessibilityNodeInfo.ACTION_COPY));
         Thread.sleep(1000);
         AtomicReference<String> clip = new AtomicReference<>();
@@ -272,5 +270,16 @@ public class GpuViewLabWalk {
             clip.set(data == null ? null : String.valueOf(data.getItemAt(0).getText()));
         });
         assertEquals("world", clip.get());
+        assertTrue("cut", driver.node("lab-input-name").performAction(AccessibilityNodeInfo.ACTION_CUT));
+        Thread.sleep(1000);
+        assertEquals("hello ", String.valueOf(driver.node("lab-input-name").getText()));
+        Bundle start = new Bundle();
+        start.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, 0);
+        start.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, 0);
+        assertTrue("caret", driver.node("lab-input-name").performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, start));
+        Thread.sleep(800);
+        assertTrue("paste", driver.node("lab-input-name").performAction(AccessibilityNodeInfo.ACTION_PASTE));
+        Thread.sleep(1000);
+        assertEquals("worldhello ", String.valueOf(driver.node("lab-input-name").getText()));
     }
 }

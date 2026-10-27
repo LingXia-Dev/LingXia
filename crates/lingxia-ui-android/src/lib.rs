@@ -628,6 +628,8 @@ extern "system" fn accessibility<'a>(
             9 => AccessibilityAction::ClearSelection,
             10 => AccessibilityAction::SelectItem(number as usize),
             11 => AccessibilityAction::Copy,
+            12 => AccessibilityAction::Cut,
+            13 => AccessibilityAction::Paste(text(env, &argument)?),
             _ => return Err("UI_ACCESSIBILITY: unknown action".into()),
         };
         Ok(host(handle)?.accessibility(id as u32, action))

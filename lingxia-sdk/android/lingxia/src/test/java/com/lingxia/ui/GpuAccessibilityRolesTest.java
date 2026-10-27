@@ -42,6 +42,36 @@ public class GpuAccessibilityRolesTest {
         return info;
     }
 
+    @Config(sdk = {28, 31})
+    @Test public void selectSpeaksItsValueAndEditorsOfferPaste() throws Exception {
+        GpuNativeLoadTest.Fake fake = new GpuNativeLoadTest.Fake();
+        long host = GpuView.nativeHostCreate(fake, "test:jvm-select", false, 0);
+        try {
+            GpuView.nativeLoad(host, GpuNative.module(
+                "function render(){const p=useLocal('p','');return h('column',{},"
+                + "h('select',{testId:'p',bind:p,accessibilityLabel:'Billing plan',placeholder:'Choose a plan',"
+                + "options:[{value:'m',label:'Monthly'},{value:'y',label:'Yearly'}],style:{height:40}}),"
+                + "h('input',{testId:'e',accessibilityLabel:'Name',style:{height:40}}))}"));
+            GpuView.nativeSetVisible(host, true);
+            fake.pump(host, () -> fake.presented >= 1);
+            Map<String, JSONObject> nodes = nodes(host);
+            AccessibilityNodeInfo select = info(nodes.get("p"));
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                assertEquals("Billing plan", String.valueOf(select.getContentDescription()));
+                assertEquals("Choose a plan", String.valueOf(select.getStateDescription()));
+            } else {
+                assertEquals("Billing plan, Choose a plan", String.valueOf(select.getContentDescription()));
+            }
+            AccessibilityNodeInfo editor = info(nodes.get("e"));
+            assertTrue(editor.getActionList().contains(AccessibilityNodeInfo.AccessibilityAction.ACTION_PASTE));
+            assertEquals(GpuAccessibility.CUT, GpuAccessibility.action(AccessibilityNodeInfo.ACTION_CUT));
+            assertEquals(GpuAccessibility.PASTE, GpuAccessibility.action(AccessibilityNodeInfo.ACTION_PASTE));
+        } finally {
+            GpuView.nativeHostRelease(host);
+            fake.release();
+        }
+    }
+
     @Test public void headingsListsDialogsAndLiveRegionsMapToNodeInfo() throws Exception {
         GpuNativeLoadTest.Fake fake = new GpuNativeLoadTest.Fake();
         long host = GpuView.nativeHostCreate(fake, "test:jvm-roles", false, 0);

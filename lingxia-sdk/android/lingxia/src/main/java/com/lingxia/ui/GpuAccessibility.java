@@ -18,7 +18,7 @@ final class GpuAccessibility {
 
     // Rust action opcodes; see the JNI accessibility codec.
     static final int FOCUS = 0, CLEAR_FOCUS = 1, CLICK = 2, SHOW_ON_SCREEN = 3, SCROLL_FORWARD = 4, SCROLL_BACKWARD = 5,
-        PROGRESS = 6, SET_TEXT = 7, SET_SELECTION = 8, CLEAR_SELECTION = 9, SELECT = 10, COPY = 11;
+        PROGRESS = 6, SET_TEXT = 7, SET_SELECTION = 8, CLEAR_SELECTION = 9, SELECT = 10, COPY = 11, CUT = 12, PASTE = 13;
 
     static String className(String role) {
         switch (role) {
@@ -73,6 +73,12 @@ final class GpuAccessibility {
             name = spoken.isEmpty() ? busy : spoken + ", " + busy;
         }
         if (!name.isEmpty() && !name.equals(text(node.text()))) info.setContentDescription(name);
+        // A select's chosen label (or placeholder) is its state, spoken after the name.
+        String value = text(node.value());
+        if (!value.isEmpty()) {
+            if (Build.VERSION.SDK_INT >= 30) info.setStateDescription(value);
+            else if (!name.isEmpty()) info.setContentDescription(name + ", " + value);
+        }
         info.setVisibleToUser(node.visible());
         if (Build.VERSION.SDK_INT >= 24) info.setImportantForAccessibility(true);
         String testId = text(node.testId());
@@ -138,6 +144,8 @@ final class GpuAccessibility {
                 case GpuFrame.SEMANTIC_ACTION_SET_TEXT: info.addAction(AccessibilityNodeInfo.ACTION_SET_TEXT); break;
                 case GpuFrame.SEMANTIC_ACTION_SET_SELECTION: info.addAction(AccessibilityNodeInfo.ACTION_SET_SELECTION); break;
                 case GpuFrame.SEMANTIC_ACTION_COPY: info.addAction(AccessibilityNodeInfo.ACTION_COPY); break;
+                case GpuFrame.SEMANTIC_ACTION_CUT: info.addAction(AccessibilityNodeInfo.ACTION_CUT); break;
+                case GpuFrame.SEMANTIC_ACTION_PASTE: info.addAction(AccessibilityNodeInfo.ACTION_PASTE); break;
                 case GpuFrame.SEMANTIC_ACTION_SET_PROGRESS:
                     if (Build.VERSION.SDK_INT >= 24) info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS);
                     break;
@@ -183,6 +191,8 @@ final class GpuAccessibility {
         if (action == AccessibilityNodeInfo.ACTION_SET_SELECTION) return SET_SELECTION;
         if (action == AccessibilityNodeInfo.ACTION_CLEAR_SELECTION) return CLEAR_SELECTION;
         if (action == AccessibilityNodeInfo.ACTION_COPY) return COPY;
+        if (action == AccessibilityNodeInfo.ACTION_CUT) return CUT;
+        if (action == AccessibilityNodeInfo.ACTION_PASTE) return PASTE;
         if (action >= SELECT_ITEM && action < SELECT_ITEM + 128) return SELECT;
         return -1;
     }

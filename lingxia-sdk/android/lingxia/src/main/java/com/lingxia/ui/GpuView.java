@@ -1143,6 +1143,10 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                         argument = String.valueOf(args == null ? -1 : args.getInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, -1));
                     } else if (shared == GpuAccessibility.SELECT) {
                         number = action - GpuAccessibility.SELECT_ITEM;
+                    } else if (shared == GpuAccessibility.PASTE) {
+                        argument = GpuInputConnection.clipboardText(
+                            (android.content.ClipboardManager)getContext().getSystemService(Context.CLIPBOARD_SERVICE));
+                        if (argument == null) return false;
                     }
                     return nativeAccessibility(host, id, shared, number, argument);
                 }

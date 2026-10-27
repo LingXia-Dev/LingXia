@@ -278,7 +278,9 @@ final class GpuInputConnection extends BaseInputConnection {
             return true;
         } catch (SecurityException | IllegalStateException unavailable) { return false; }
     }
-    private String pasteText() {
+    private String pasteText() { return clipboardText(clipboard); }
+    /** Plain clipboard text within the editor limits, or null. */
+    static String clipboardText(android.content.ClipboardManager clipboard) {
         if (clipboard == null) return null;
         try {
             android.content.ClipData clip=clipboard.getPrimaryClip();
