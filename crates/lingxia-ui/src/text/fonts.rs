@@ -10,7 +10,28 @@ use std::sync::OnceLock;
 pub struct SystemFonts {
     fallbacks: Vec<(String, String)>,
     monospace: Option<String>,
+    /// Face files the system collection may not expose, registered before the fallbacks.
+    files: Vec<std::path::PathBuf>,
 }
+
+/// Languages whose script needs its own fallback face: a sample of the script, then named
+/// families to try after the face the platform picks for the sample. Apple's picked Han face
+/// (PingFang UI) registers no face here, and iOS ships no other Chinese face, so Han falls back
+/// to Japanese Hiragino last: most Han renders, simplified-only characters do not.
+pub const FALLBACK_SAMPLES: [(&str, &str, &[&str]); 4] = [
+    (
+        "zh-Hans",
+        "汉字",
+        &["Hiragino Sans GB", "Heiti SC", "Songti SC", "Hiragino Sans"],
+    ),
+    (
+        "zh-Hant",
+        "漢字",
+        &["Heiti TC", "Songti TC", "Hiragino Sans"],
+    ),
+    ("ja", "かな漢字", &["Hiragino Sans"]),
+    ("ko", "한글", &["Apple SD Gothic Neo"]),
+];
 
 static SOURCE: OnceLock<fn() -> SystemFonts> = OnceLock::new();
 static SYSTEM: OnceLock<SystemFonts> = OnceLock::new();
@@ -55,6 +76,26 @@ impl SystemFonts {
             .unwrap_or_default()
     }
 
+    /// Fallback faces by file, as `(language, file, family)`: the platform names the face its
+    /// own text system picks for each of [`FALLBACK_SAMPLES`], which the system collection may
+    /// hide (Apple's PingFang, for one).
+    pub fn from_files(faces: Vec<(String, std::path::PathBuf, String)>) -> Self {
+        let mut fonts = Self::default();
+        for (lang, file, family) in faces {
+            if !fonts.files.contains(&file) {
+                fonts.files.push(file);
+            }
+            fonts.fallbacks.push((lang.clone(), family));
+            // Han text shapes as `Hani` whatever its locale; the first Han face keys it too.
+            if lang.starts_with("zh-Hans") {
+                fonts
+                    .fallbacks
+                    .push(("und-Hani".into(), fonts.fallbacks.last().unwrap().1.clone()));
+            }
+        }
+        fonts
+    }
+
     /// fontique maps only lang families whose faces carry a postScriptName, so
     /// vendor CJK families fall through to tofu; this names every face from its file.
     pub fn from_android_xml(xml: &str, dir: &Path) -> Self {
@@ -92,8 +133,42 @@ impl SystemFonts {
     }
 
     fn apply(&self, collection: &mut Collection) {
+        // Families the files registered, by name: a hidden system face (".PingFang SC") may
+        // answer to its name only through the file that holds it.
+        let mut registered: Vec<(String, parley::fontique::FamilyId)> = Vec::new();
+        for path in &self.files {
+            let Some(data) = std::fs::File::open(path)
+                .ok()
+                // SAFETY: system font files are read-only for the life of the process.
+                .and_then(|file| unsafe { memmap2::Mmap::map(&file) }.ok())
+            else {
+                log::warn!(target: "lingxia_ui", "UI_FONT: cannot read {}", path.display());
+                continue;
+            };
+            let mut held = Vec::new();
+            for (id, _) in collection
+                .register_fonts(parley::fontique::Blob::new(std::sync::Arc::new(data)), None)
+            {
+                if let Some(family) = collection.family(id) {
+                    held.push(family.name().to_owned());
+                    registered.push((family.name().to_owned(), id));
+                }
+            }
+            log::debug!(target: "lingxia_ui", "UI_FONT: {} holds {held:?}", path.display());
+        }
+        let named = |collection: &mut Collection, name: &str| {
+            collection.family_by_name(name).map(|f| f.id()).or_else(|| {
+                registered
+                    .iter()
+                    .find(|(family, _)| family.trim_start_matches('.') == name)
+                    .map(|(_, id)| *id)
+            })
+        };
         for (lang, name) in &self.fallbacks {
-            let Some(id) = collection.family_by_name(name).map(|f| f.id()) else {
+            let Some(id) = named(collection, name) else {
+                if !self.files.is_empty() {
+                    log::warn!(target: "lingxia_ui", "UI_FONT: no family {name} for {lang}");
+                }
                 continue;
             };
             for (script, locale) in keys(lang) {

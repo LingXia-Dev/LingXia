@@ -13,5 +13,7 @@ gpu = ["lingxia-ui/gpu", "dep:raw-window-handle"]
 [dependencies]
 lingxia-ui = { workspace = true }
 log = { workspace = true }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFBase", "CFString", "CFURL"] }
+objc2-core-text = { version = "0.3.2", default-features = false, features = ["std", "CTFont", "CTFontDescriptor"] }
 serde_json = { workspace = true }
 raw-window-handle = { version = "=0.6.2", optional = true }

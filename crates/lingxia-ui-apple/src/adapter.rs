@@ -21,6 +21,7 @@ pub struct AppleAdapter {
     pub(crate) facts: Mutex<Option<DeviceFacts>>,
     raster: OnceLock<Arc<Mailbox<(DisplayList, CommitTicket)>>>,
     /// The attached GPU presenter, or 0.
+    #[cfg(feature = "gpu")]
     pub(crate) gpu: std::sync::atomic::AtomicU64,
     #[cfg(feature = "gpu")]
     pub(crate) target: Mutex<lingxia_ui::renderer::surfaces::Target>,
@@ -37,6 +38,7 @@ impl AppleAdapter {
             host: OnceLock::new(),
             facts: Mutex::new(None),
             raster: OnceLock::new(),
+            #[cfg(feature = "gpu")]
             gpu: std::sync::atomic::AtomicU64::new(0),
             #[cfg(feature = "gpu")]
             // CPU frames until the view attaches a Metal presenter.

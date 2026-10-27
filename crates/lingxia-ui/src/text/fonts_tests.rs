@@ -126,3 +126,46 @@ fn mixed_latin_and_han_have_no_notdef() {
     assert_eq!(glyphs.len(), 8);
     assert!(!glyphs.contains(&0), "{glyphs:?}");
 }
+
+/// A fallback face given by file is registered and keys its language, so Han text has no tofu
+/// even where the system collection does not expose the face.
+#[test]
+fn a_fallback_face_by_file_shapes_han() {
+    let han = Path::new("/System/Library/Fonts/Hiragino Sans GB.ttc");
+    if !han.exists() {
+        eprintln!("skipped: host fonts unavailable");
+        return;
+    }
+    let mut fonts = FontContext {
+        collection: Collection::new(CollectionOptions {
+            shared: false,
+            system_fonts: false,
+        }),
+        source_cache: Default::default(),
+    };
+    SystemFonts::from_files(vec![(
+        "zh-Hans".into(),
+        han.to_path_buf(),
+        "Hiragino Sans GB".into(),
+    )])
+    .apply(&mut fonts.collection);
+    let mut layouts = LayoutContext::<()>::new();
+    let text = "首页";
+    let mut builder = layouts.ranged_builder(&mut fonts, text, 1.0, true);
+    builder.push_default(Generic::SansSerif);
+    builder.push_default(StyleProperty::Locale(locale("zh-Hans-CN")));
+    let mut layout = builder.build(text);
+    layout.break_all_lines(None);
+    let mut glyphs = 0;
+    for line in layout.lines() {
+        for item in line.items() {
+            if let parley::PositionedLayoutItem::GlyphRun(run) = item {
+                for glyph in run.glyphs() {
+                    assert_ne!(glyph.id, 0, "no notdef glyphs");
+                    glyphs += 1;
+                }
+            }
+        }
+    }
+    assert_eq!(glyphs, 2);
+}

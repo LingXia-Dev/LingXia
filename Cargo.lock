@@ -4364,6 +4364,8 @@ version = "0.28.0"
 dependencies = [
  "lingxia-ui",
  "log",
+ "objc2-core-foundation",
+ "objc2-core-text",
  "raw-window-handle",
  "serde_json",
 ]
