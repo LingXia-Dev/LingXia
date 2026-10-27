@@ -30,7 +30,7 @@
     },
     "dark": {
       "canvas": "#0f131a",
-      "surface": "#1a1f2b",
+      "surface": "#181d28",
       "surface-raised": "#232a38",
       "surface-sunken": "#141924",
       "line": "#2e3646",

@@ -870,7 +870,7 @@ fn input_geometry_uses_displayed_font_and_paints_selection_below_text() {
                 p,
                 Paint::Rect { color, .. }
                     if *color == crate::theme::Palette::builtin(false)
-                        .role(lingxia_theme::Role::AccentSoft)
+                        .role(lingxia_theme::Role::Selection)
             )
         })
         .unwrap();

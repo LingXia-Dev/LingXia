@@ -23,8 +23,13 @@ fn the_default_pack_proves_every_pair_in_both_appearances() {
         let theme = resolve(&pack, &prefs).unwrap();
         for &(foreground, background, ratio) in CONTRAST {
             let actual = contrast(theme.color(foreground), theme.color(background));
+            let needed = if involves_selection(foreground, background) {
+                f64::from(ratio)
+            } else {
+                boosted(ratio)
+            };
             assert!(
-                actual + 1e-9 >= boosted(ratio),
+                actual + 1e-9 >= needed,
                 "{appearance:?} high contrast {} on {}: {actual:.2}",
                 foreground.name(),
                 background.name()
@@ -155,5 +160,33 @@ fn a_partial_pack_completes_from_the_default_and_derives_its_accent() {
         );
         assert_ne!(ours.color(Role::Accent), theirs.color(Role::Accent));
         assert_eq!(ours.color(Role::Surface), theirs.color(Role::Surface));
+    }
+}
+
+#[test]
+fn the_selection_highlight_stands_off_the_page_and_keeps_text_readable() {
+    for appearance in [Appearance::Light, Appearance::Dark] {
+        for high_contrast in [false, true] {
+            let theme = resolve(
+                &default_pack(),
+                &Prefs {
+                    appearance,
+                    high_contrast,
+                    ..Prefs::default()
+                },
+            )
+            .unwrap();
+            let selection = theme.color(Role::Selection);
+            for background in [Role::Surface, Role::Canvas] {
+                assert!(
+                    contrast(selection, theme.color(background)) >= 3.0,
+                    "{appearance:?} {high_contrast}"
+                );
+            }
+            assert!(
+                contrast(theme.color(Role::Text), selection) >= 4.5,
+                "{appearance:?} {high_contrast}"
+            );
+        }
     }
 }

@@ -15,4 +15,4 @@ export const options = {"font-family":["sans","mono"],"font-style":["normal","it
 /** Props every element accepts, read from `interface Props` in contracts/api.d.ts. */
 export const commonProps = ["style","className","key","testId","dir","children","role","headingLevel","accessibilityHidden","accessibilityLiveRegion","accessibilityState"];
 /** Colour roles in palette-slot order. */
-export const roles = ["canvas","surface","surface-raised","surface-sunken","line","text","text-muted","text-faint","accent","on-accent","accent-soft","on-accent-soft","danger","on-danger","danger-soft","success","on-success","success-soft","warning","on-warning","warning-soft","focus","scrim","chart-1","chart-2","chart-3","chart-4","chart-5","line-strong"];
+export const roles = ["canvas","surface","surface-raised","surface-sunken","line","text","text-muted","text-faint","accent","on-accent","accent-soft","on-accent-soft","danger","on-danger","danger-soft","success","on-success","success-soft","warning","on-warning","warning-soft","focus","scrim","chart-1","chart-2","chart-3","chart-4","chart-5","line-strong","selection"];

@@ -62,9 +62,11 @@ pub enum Role {
     Chart5 = 27,
     /// Interactive boundaries: editor borders and control outlines.
     LineStrong = 28,
+    /// Selected-text background; derived from the accent when a pack omits it.
+    Selection = 29,
 }
 
-pub const ROLE_COUNT: usize = 29;
+pub const ROLE_COUNT: usize = 30;
 
 impl Role {
     pub const ALL: [Role; ROLE_COUNT] = [
@@ -97,6 +99,7 @@ impl Role {
         Role::Chart4,
         Role::Chart5,
         Role::LineStrong,
+        Role::Selection,
     ];
 
     pub const fn name(self) -> &'static str {
@@ -130,6 +133,7 @@ impl Role {
             Role::Chart4 => "chart-4",
             Role::Chart5 => "chart-5",
             Role::LineStrong => "line-strong",
+            Role::Selection => "selection",
         }
     }
 
@@ -146,6 +150,7 @@ pub const CONTRAST: &[(Role, Role, f32)] = &[
     (Role::Text, Role::Surface, 4.5),
     (Role::Text, Role::SurfaceRaised, 4.5),
     (Role::Text, Role::SurfaceSunken, 4.5),
+    (Role::Text, Role::Selection, 4.5),
     (Role::TextMuted, Role::Canvas, 4.5),
     (Role::TextMuted, Role::Surface, 4.5),
     (Role::TextFaint, Role::Surface, 3.0),
@@ -173,4 +178,6 @@ pub const CONTRAST: &[(Role, Role, f32)] = &[
     (Role::Chart5, Role::Canvas, 3.0),
     (Role::LineStrong, Role::Surface, 3.0),
     (Role::LineStrong, Role::Canvas, 3.0),
+    (Role::Selection, Role::Surface, 3.0),
+    (Role::Selection, Role::Canvas, 3.0),
 ];

@@ -231,7 +231,9 @@ pub fn resolve(pack: &Pack, prefs: &Prefs) -> Result<ResolvedTheme, String> {
     let derived = pack.accent.filter(|accent| accent.derive);
     let mut palette = [Rgba([0, 0, 0, 255]); ROLE_COUNT];
     for role in Role::ALL {
-        if derived.is_some() && ACCENT_FAMILY.contains(&role) {
+        if (derived.is_some() && ACCENT_FAMILY.contains(&role))
+            || (role == Role::Selection && !base.contains_key(role.name()))
+        {
             continue;
         }
         palette[role as usize] = *base
@@ -245,9 +247,13 @@ pub fn resolve(pack: &Pack, prefs: &Prefs) -> Result<ResolvedTheme, String> {
             prefs.appearance,
         );
     }
+    let derive = !base.contains_key(Role::Selection.name());
     if prefs.high_contrast && !explicit_high_contrast {
         for _ in 0..2 {
             for &(foreground, background, ratio) in CONTRAST {
+                if involves_selection(foreground, background) {
+                    continue;
+                }
                 let (fg, bg) = (foreground as usize, background as usize);
                 let target = boosted(ratio);
                 palette[fg] = ensure_contrast(palette[fg], palette[bg], target);
@@ -257,6 +263,9 @@ pub fn resolve(pack: &Pack, prefs: &Prefs) -> Result<ResolvedTheme, String> {
                 }
             }
         }
+    }
+    if derive {
+        palette[Role::Selection as usize] = derive_selection(&palette);
     }
     Ok(ResolvedTheme {
         appearance: prefs.appearance,
@@ -344,6 +353,43 @@ fn derive_accent(palette: &mut [Rgba; ROLE_COUNT], seed: Rgba, appearance: Appea
     palette[Role::Focus as usize] = accent;
 }
 
+/// Selection pairs keep their base ratios under high contrast: text must stay readable on the
+/// highlight, and a highlight boosted past 3:1 off the page would leave no room for that.
+fn involves_selection(foreground: Role, background: Role) -> bool {
+    foreground == Role::Selection || background == Role::Selection
+}
+
+/// The accent's soft tone moved in OKLCH lightness, by bisection, just far enough to stand 3:1
+/// off surface and canvas, so text keeps as much contrast on it as the background allows.
+fn derive_selection(palette: &[Rgba; ROLE_COUNT]) -> Rgba {
+    let soft = palette[Role::AccentSoft as usize];
+    let backgrounds = [
+        palette[Role::Surface as usize],
+        palette[Role::Canvas as usize],
+    ];
+    let passes = |color: Rgba| backgrounds.iter().all(|&bg| contrast(color, bg) >= 3.0);
+    if passes(soft) {
+        return soft;
+    }
+    let tone = soft.oklch();
+    // Away from the backgrounds: darker on a light page, lighter on a dark one.
+    let target = if palette[Role::Surface as usize].luminance() > 0.18 {
+        0.0
+    } else {
+        1.0
+    };
+    let (mut near, mut far) = (tone.l, target);
+    for _ in 0..40 {
+        let mid = (near + far) / 2.0;
+        if passes(Oklch { l: mid, ..tone }.rgba(255)) {
+            far = mid;
+        } else {
+            near = mid;
+        }
+    }
+    Oklch { l: far, ..tone }.rgba(255)
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Problem {
     /// `light`, `dark`, `high-contrast-light`, `high-contrast-dark` or `pack`.
@@ -409,7 +455,7 @@ pub fn check(pack: &Pack) -> Vec<Problem> {
             }
         };
         for &(foreground, background, ratio) in CONTRAST {
-            let needed = if high_contrast {
+            let needed = if high_contrast && !involves_selection(foreground, background) {
                 boosted(ratio)
             } else {
                 f64::from(ratio)

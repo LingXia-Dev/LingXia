@@ -264,7 +264,7 @@
     {"name": "surface-raised", "doc": "Menus, popovers and elevated sheets."},
     {"name": "surface-sunken", "doc": "Inset fields and grouped backgrounds."},
     {"name": "line", "on": {"surface": 1.2, "canvas": 1.1}, "doc": "Decorative separators and card borders; interactive boundaries use line-strong."},
-    {"name": "text", "on": {"canvas": 4.5, "surface": 4.5, "surface-raised": 4.5, "surface-sunken": 4.5}, "doc": "Body text."},
+    {"name": "text", "on": {"canvas": 4.5, "surface": 4.5, "surface-raised": 4.5, "surface-sunken": 4.5, "selection": 4.5}, "doc": "Body text."},
     {"name": "text-muted", "on": {"canvas": 4.5, "surface": 4.5}, "doc": "Secondary text."},
     {"name": "text-faint", "on": {"surface": 3}, "doc": "Hints and disabled text."},
     {"name": "accent", "on": {"surface": 3, "canvas": 3}, "doc": "Primary actions, selection and links."},
@@ -287,7 +287,8 @@
     {"name": "chart-3", "on": {"surface": 3, "canvas": 3}, "doc": "Third categorical series."},
     {"name": "chart-4", "on": {"surface": 3, "canvas": 3}, "doc": "Fourth categorical series."},
     {"name": "chart-5", "on": {"surface": 3, "canvas": 3}, "doc": "Fifth categorical series."},
-    {"name": "line-strong", "on": {"surface": 3, "canvas": 3}, "doc": "Interactive boundaries: editor borders and control outlines."}
+    {"name": "line-strong", "on": {"surface": 3, "canvas": 3}, "doc": "Interactive boundaries: editor borders and control outlines."},
+    {"name": "selection", "on": {"surface": 3, "canvas": 3}, "doc": "Selected-text background; derived from the accent when a pack omits it."}
   ],
   "frame": {
     "doc": "Every message the core hands a platform adapter: the presented frame snapshot, semantic nodes, automation exchanges, input-protocol replies and the text menu. Type grammar: string, bool, u8, u32, u64, i64, usize, f32, f64, any; T? may be absent or null; T[] is a list; T[n] a fixed list; other names refer to types below.",

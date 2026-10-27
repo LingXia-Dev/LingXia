@@ -230,7 +230,7 @@ listed contrast minimums.
 | `surface-raised` |  | Menus, popovers and elevated sheets. |
 | `surface-sunken` |  | Inset fields and grouped backgrounds. |
 | `line` | 1.2:1 on `surface`, 1.1:1 on `canvas` | Decorative separators and card borders; interactive boundaries use line-strong. |
-| `text` | 4.5:1 on `canvas`, 4.5:1 on `surface`, 4.5:1 on `surface-raised`, 4.5:1 on `surface-sunken` | Body text. |
+| `text` | 4.5:1 on `canvas`, 4.5:1 on `surface`, 4.5:1 on `surface-raised`, 4.5:1 on `surface-sunken`, 4.5:1 on `selection` | Body text. |
 | `text-muted` | 4.5:1 on `canvas`, 4.5:1 on `surface` | Secondary text. |
 | `text-faint` | 3:1 on `surface` | Hints and disabled text. |
 | `accent` | 3:1 on `surface`, 3:1 on `canvas` | Primary actions, selection and links. |
@@ -254,3 +254,4 @@ listed contrast minimums.
 | `chart-4` | 3:1 on `surface`, 3:1 on `canvas` | Fourth categorical series. |
 | `chart-5` | 3:1 on `surface`, 3:1 on `canvas` | Fifth categorical series. |
 | `line-strong` | 3:1 on `surface`, 3:1 on `canvas` | Interactive boundaries: editor borders and control outlines. |
+| `selection` | 3:1 on `surface`, 3:1 on `canvas` | Selected-text background; derived from the accent when a pack omits it. |

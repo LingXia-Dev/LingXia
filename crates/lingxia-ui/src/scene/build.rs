@@ -1167,7 +1167,7 @@ impl Renderer {
             });
         }
         Ok(RetainedLayout {
-            selection_fill: palette.role(Role::AccentSoft),
+            selection_fill: palette.role(Role::Selection),
             paint_styles,
             commands,
             nodes,
