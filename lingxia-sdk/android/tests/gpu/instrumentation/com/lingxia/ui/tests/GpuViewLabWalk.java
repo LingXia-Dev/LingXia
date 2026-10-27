@@ -29,7 +29,8 @@ import static org.junit.Assert.*;
 /**
  * Pages through view-lab: a screenshot per scroll page and one line per accessibility node as a
  * service reads it. With `-e talkback 1` each node also takes TalkBack focus and its speech caption
- * is saved; `-e rotation 1` runs in landscape. Output: the host's external files, `walk-<tag>*`.
+ * is saved; `-e rotation 1` runs in landscape; `-e tab <label>` and `-e group <label>` walk another
+ * tab or view-lab group. Output: the host's external files, `walk-<tag>*`.
  */
 @RunWith(AndroidJUnit4.class)
 public class GpuViewLabWalk {
@@ -72,10 +73,12 @@ public class GpuViewLabWalk {
         Bundle args = InstrumentationRegistry.getArguments();
         boolean talkback = "1".equals(args.getString("talkback"));
         boolean landscape = "1".equals(args.getString("rotation"));
-        String tag = landscape ? "land" : "port";
+        String tab = args.getString("tab", "Lab"), group = args.getString("group");
+        String tag = (landscape ? "land" : "port") + ("Lab".equals(tab) ? "" : "-" + tab) + (group == null ? "" : "-" + group);
         driver.automation.setRotation(landscape ? UiAutomation.ROTATION_FREEZE_90 : UiAutomation.ROTATION_FREEZE_0);
         Thread.sleep(1500);
-        driver.openTab("Lab");
+        driver.openTab(tab);
+        if (group != null) driver.openGroup(group);
         String pkg = driver.instrumentation.getTargetContext().getPackageName();
         Set<String> seen = new HashSet<>();
         int caption = 0;
@@ -232,5 +235,42 @@ public class GpuViewLabWalk {
         });
         assertEquals("8F3A", clip.get());
         assertEquals("the selection goes after copy", -1, driver.node("lab-select-all").getTextSelectionStart());
+    }
+
+    /** An editor driven the way TalkBack's editing menu does: set text, select a range, copy when offered. Writes the offered actions to `editor-actions.txt`. */
+    @Test public void editorThroughAccessibility() throws Exception {
+        driver.openTab("Lab");
+        driver.openGroup("Input");
+        AccessibilityNodeInfo editor = driver.reveal("lab-input-name");
+        assertTrue("editable", editor.isEditable());
+        Bundle text = new Bundle();
+        text.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "hello world");
+        assertTrue("set text", editor.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, text));
+        Thread.sleep(1000);
+        editor = driver.node("lab-input-name");
+        assertEquals("hello world", String.valueOf(editor.getText()));
+        Bundle range = new Bundle();
+        range.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, 6);
+        range.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, 11);
+        assertTrue("set selection", editor.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, range));
+        Thread.sleep(800);
+        editor = driver.node("lab-input-name");
+        assertEquals(6, editor.getTextSelectionStart());
+        assertEquals(11, editor.getTextSelectionEnd());
+        try (FileWriter log = new FileWriter(driver.out("editor-actions.txt"))) {
+            for (AccessibilityNodeInfo.AccessibilityAction action : editor.getActionList()) log.write(action.getId() + " " + action.getLabel() + "\n");
+        }
+        // Editors do not offer copy yet; check it once the core lists it.
+        if (!editor.getActionList().contains(AccessibilityNodeInfo.AccessibilityAction.ACTION_COPY)) return;
+        assertTrue("copy", editor.performAction(AccessibilityNodeInfo.ACTION_COPY));
+        Thread.sleep(1000);
+        AtomicReference<String> clip = new AtomicReference<>();
+        driver.instrumentation.runOnMainSync(() -> {
+            android.content.ClipboardManager clipboard = (android.content.ClipboardManager)driver.instrumentation.getTargetContext()
+                .getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+            android.content.ClipData data = clipboard.getPrimaryClip();
+            clip.set(data == null ? null : String.valueOf(data.getItemAt(0).getText()));
+        });
+        assertEquals("world", clip.get());
     }
 }
