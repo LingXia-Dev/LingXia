@@ -450,7 +450,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         if (destroyed) return;
         long callback = ++nextInputReply;
         inputReplies.put(callback, reply -> {
-            String text = reply == null || reply.isNull("text") ? null : reply.optString("text");
+            String text = reply == null ? null : new GpuFrame.CopyReply(reply).text();
             if (text != null && !text.isEmpty()) writeClipboard(text);
         });
         nativeCopyTextSelection(host, callback);
@@ -1091,8 +1091,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                         AccessibilityNodeInfo root = AccessibilityNodeInfo.obtain(UiSurface.this);
                         onInitializeAccessibilityNodeInfo(root);
                         JSONObject roots = active ? roots() : null;
-                        JSONArray children = roots == null ? null : roots.optJSONArray("roots");
-                        for (int i = 0; children != null && i < children.length(); i++) root.addChild(UiSurface.this, children.optInt(i));
+                        long[] children = roots == null ? null : new GpuFrame.SemanticRoots(roots).roots();
+                        for (int i = 0; children != null && i < children.length; i++) root.addChild(UiSurface.this, (int) children[i]);
                         return root;
                     }
                     JSONObject node = semantic(id);
@@ -1101,7 +1101,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                     Long parentId = semanticNode.parent();
                     JSONObject parent = parentId == null ? null : semantic(parentId.intValue());
                     JSONObject roots = roots();
-                    boolean focused = roots != null && !roots.isNull("accessibilityFocus") && roots.optInt("accessibilityFocus") == id;
+                    Long accessibilityFocus = roots == null ? null : new GpuFrame.SemanticRoots(roots).accessibilityFocus();
+                    boolean focused = accessibilityFocus != null && accessibilityFocus == id;
                     AccessibilityNodeInfo info = AccessibilityNodeInfo.obtain();
                     info.setSource(UiSurface.this, id);
                     GpuAccessibility.populate(info, UiSurface.this, node, parent, frameScale, focused, getContext().getPackageName());

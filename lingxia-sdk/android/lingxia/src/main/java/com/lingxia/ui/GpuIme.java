@@ -96,9 +96,9 @@ final class GpuIme {
         host.request(message,reply -> {
             if (serial != touchSerial || ticket.epoch != epoch || ticket.connection != connection
                 || (connection != null && (ticket.revision != connection.revision() || !connection.settled()))) return;
-            JSONArray selection=reply == null ? null : reply.optJSONArray("selection");
-            if (selection == null || selection.length() != 2) return;
-            focus(node,generation,new int[]{selection.optInt(0,-1),selection.optInt(1,-1)});
+            long[] selection=reply == null ? null : new GpuFrame.InputReply(reply).selection();
+            if (selection == null || selection.length != 2) return;
+            focus(node,generation,new int[]{(int)selection[0],(int)selection[1]});
         });
     }
     private void focus(JSONObject node,long generation,int[] selection) {
@@ -121,9 +121,9 @@ final class GpuIme {
                 complete.accept(DragResult.CANCELLED); return;
             }
             if (!valid.getAsBoolean()) { complete.accept(DragResult.SUPERSEDED); return; }
-            JSONArray selection=reply == null ? null : reply.optJSONArray("selection");
+            long[] selection=reply == null ? null : new GpuFrame.InputReply(reply).selection();
             if (selection == null) { complete.accept(DragResult.STALE_FRAME); return; }
-            int end=selection.optInt(1,-1), start=collapsed ? end : fixed;
+            int end=selection.length > 1 ? (int)selection[1] : -1, start=collapsed ? end : fixed;
             if (start == connection.anchor() && end == connection.focus() && connection.composeStart() < 0) {
                 complete.accept(DragResult.UNCHANGED); return;
             }
@@ -177,14 +177,14 @@ final class GpuIme {
         host.request(request("focus",identity,generation),reply -> {
             if (requested != epoch) {
                 if (!pendingFocus && connection == null && reply != null) {
-                    blurred=reply.optLong("token");
+                    blurred=token(reply);
                     host.request(request("blur",identity,blurred),ignored -> host.render(false));
                 }
                 return;
             }
             pendingFocus=false;
             if (reply != null) {
-                activate(node,reply.optLong("token"),reply.optJSONObject("state"),editor -> {
+                activate(node,token(reply),state(reply),editor -> {
                     if (selection != null) editor.selectFromTouch(selection[0],selection[1]);
                     if (afterFocus != null) afterFocus.accept(editor);
                 });
@@ -253,23 +253,23 @@ final class GpuIme {
                 catch (org.json.JSONException impossible) { throw new IllegalArgumentException(impossible); }
                 host.request(message,reply -> {
                     if (created != epoch || current != connection) return;
-                    String moved=reply == null ? null : reply.optString("moved_to",null);
+                    String moved=reply == null ? null : new GpuFrame.InputReply(reply).movedTo();
                     if (moved != null) {
                         // NEXT/PREVIOUS: the reply's token and state belong to the editor focus moved to.
                         JSONObject next=node(moved);
-                        if (next != null && editable(next)) activate(next,reply.optLong("token"),reply.optJSONObject("state"));
+                        if (next != null && editable(next)) activate(next,token(reply),state(reply));
                         else { drop(true); }
-                        host.render(reply.optBoolean("needs_view_render"));
+                        host.render(needsViewRender(reply));
                         return;
                     }
-                    if (reply == null || reply.optLong("token") != current.token) {
+                    if (reply == null || token(reply) != current.token) {
                         drop(true); host.render(false); return;
                     }
-                    if (current.acknowledge(revision,reply.optJSONObject("state"))) {
+                    if (current.acknowledge(revision,state(reply))) {
                         invalidateWrapper(); manager.restartInput(view);
                     }
                     if (submit && ime().hideOnSubmit()) manager.hideSoftInputFromWindow(view.getWindowToken(),0);
-                    host.render(reply.optBoolean("needs_view_render"));
+                    host.render(needsViewRender(reply));
                 });
             }
             @Override public void changed() { selectionChanged(); }
@@ -419,8 +419,9 @@ final class GpuIme {
         catch (org.json.JSONException impossible) { throw new IllegalArgumentException(impossible); }
         host.request(message,reply -> {
             if (connection != editor || reply == null) return;
-            if (!reply.isNull("value")) editor.submitValue(reply.optString("value"));
-            else host.render(reply.optBoolean("needs_view_render"));
+            String value=new GpuFrame.InputReply(reply).value();
+            if (value != null) editor.submitValue(value);
+            else host.render(needsViewRender(reply));
         });
     }
     private static int[] parts(long[] value) {
@@ -428,6 +429,9 @@ final class GpuIme {
     }
     /** An editor offers suggestions unless the core turns them off; a missing config keeps them. */
     private static boolean suggestions(GpuFrame.Ime ime) { return ime.json.length() == 0 || ime.suggestions(); }
+    private static long token(JSONObject reply) { Long token=new GpuFrame.InputReply(reply).token(); return token == null ? 0 : token; }
+    private static JSONObject state(JSONObject reply) { GpuFrame.EditorState state=new GpuFrame.InputReply(reply).state(); return state == null ? null : state.json; }
+    private static boolean needsViewRender(JSONObject reply) { return Boolean.TRUE.equals(new GpuFrame.InputReply(reply).needsViewRender()); }
     private static String identity(JSONObject node) { return String.valueOf(new GpuFrame.Node(node).identity()); }
     private static long millis(int[] date) {
         java.util.Calendar day=java.util.Calendar.getInstance();

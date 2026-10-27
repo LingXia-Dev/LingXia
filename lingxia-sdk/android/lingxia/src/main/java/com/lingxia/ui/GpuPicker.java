@@ -64,7 +64,7 @@ final class GpuPicker {
             JSONObject request;
             try { request = new JSONObject().put("op", "select").put("identity", identity).put("generation", generation).put("index", index); }
             catch (org.json.JSONException impossible) { throw new IllegalArgumentException(impossible); }
-            host.request(request, reply -> host.render(reply != null && reply.optBoolean("needs_view_render")));
+            host.request(request, reply -> host.render(reply != null && Boolean.TRUE.equals(new GpuFrame.InputReply(reply).needsViewRender())));
         };
         host.open(identity);
         if (labels.length <= DROPDOWN_OPTIONS) {

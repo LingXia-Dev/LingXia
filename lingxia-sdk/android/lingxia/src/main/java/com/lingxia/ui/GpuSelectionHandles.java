@@ -3,6 +3,7 @@ package com.lingxia.ui;
 import android.graphics.*;
 import android.graphics.drawable.Drawable;
 import android.view.MotionEvent;
+import com.lingxia.ui.generated.GpuFrame;
 import org.json.*;
 
 /** Selection chrome above the SurfaceView; positions always come from a presented frame. */
@@ -29,20 +30,21 @@ final class GpuSelectionHandles extends Drawable {
     private JSONObject node() {
         if (!ime.menuActive()) return null;
         GpuInputConnection connection=ime.capture().connection;
-        JSONObject frame=host.frame(); JSONArray nodes=frame == null ? null : frame.optJSONArray("nodes");
-        for(int i=0;nodes != null && i<nodes.length();i++) {
-            JSONObject node=nodes.optJSONObject(i), input=node == null ? null : node.optJSONObject("input");
-            if (input != null && GpuIme.editable(node) && input.optJSONObject("geometry")!=null && input.optJSONObject("edit")!=null
-                && connection.identity.equals(node.optString("identity")) && input.optLong("edit_token") == connection.token) return node;
+        JSONObject frame=host.frame(); GpuFrame.Node[] nodes=frame == null ? null : new GpuFrame.FrameSnapshot(frame).nodes();
+        for(int i=0;nodes != null && i<nodes.length;i++) {
+            GpuFrame.Input input=nodes[i].input();
+            Long token=input == null ? null : input.editToken();
+            if (input != null && GpuIme.editable(nodes[i].json) && input.geometry()!=null && input.edit()!=null
+                && connection.identity.equals(nodes[i].identity()) && token != null && token == connection.token) return nodes[i].json;
         }
         return null;
     }
     private boolean matches(JSONObject node) {
-        JSONObject state=node.optJSONObject("input").optJSONObject("edit");
-        JSONArray selection=state == null ? null : state.optJSONArray("selection");
+        GpuFrame.Edit state=new GpuFrame.Node(node).input().edit();
+        long[] selection=state == null ? null : state.selection();
         GpuInputConnection c=ime.capture().connection;
-        return c != null && c.settled() && selection != null && state.optString("text").equals(ime.menuText())
-            && selection.optInt(0,-1)==c.anchor() && selection.optInt(1,-1)==c.focus();
+        return c != null && c.settled() && selection != null && selection.length == 2 && ime.menuText().equals(state.text())
+            && selection[0]==c.anchor() && selection[1]==c.focus();
     }
     /** Center x, line bottom, line midpoint, or null when that end is offscreen or clipped. */
     private float[] endpoint(JSONObject node,String name) {
@@ -75,7 +77,7 @@ final class GpuSelectionHandles extends Drawable {
             owner=ime.capture(); text=ime.menuText(); scale=factor; pointer=event.getPointerId(0);
             collapsed=c.anchor()==c.focus(); fixed=chosen==0 ? c.focus() : c.anchor();
             dx=px-hit[0]; dy=py-hit[2]; x=hit[0]; y=hit[2]; movement=0; failedGeneration=-1;
-            host.dragging(true); ime.focus(node,host.frame().optLong("generation")); return true;
+            host.dragging(true); ime.focus(node,new GpuFrame.FrameSnapshot(host.frame()).generation()); return true;
         }
         if (owner==null) return false;
         if (action==MotionEvent.ACTION_CANCEL || action==MotionEvent.ACTION_POINTER_DOWN) { cancel(); return true; }
@@ -92,7 +94,7 @@ final class GpuSelectionHandles extends Drawable {
         if (querying || host.busy()) return;
         JSONObject node=node(); if (node==null || !matches(node)) return;
         if (!pending) { if (released) finish(); return; }
-        long generation=host.frame().optLong("generation"); if (generation==failedGeneration) return;
+        long generation=new GpuFrame.FrameSnapshot(host.frame()).generation(); if (generation==failedGeneration) return;
         float[] drag=GpuView.nativeHandleDrag(node.toString(),x,y);
         if (drag==null) { cancel(); return; }
         float px=drag[0], py=drag[1]; int edgeX=(int)drag[2], edgeY=(int)drag[3];
@@ -115,18 +117,19 @@ final class GpuSelectionHandles extends Drawable {
         JSONObject node=node(); if (node==null) return;
         paint.setColor(handleColor(host.frame()));
         float factor=host.scale(); int saved=canvas.save(); canvas.scale(factor,factor);
-        JSONArray clips=node.optJSONArray("clips");
-        for(int i=0;clips!=null && i<clips.length();i++) {
-            JSONObject clip=clips.optJSONObject(i); JSONArray b=clip.optJSONArray("bounds");
-            float left=(float)b.optDouble(0),top=(float)b.optDouble(1),right=left+(float)b.optDouble(2),bottom=top+(float)b.optDouble(3);
-            float radius=Math.max(0,Math.min((float)clip.optDouble("radius"),Math.min(right-left,bottom-top)/2));
+        GpuFrame.Node decoded=new GpuFrame.Node(node);
+        GpuFrame.Clip[] clips=decoded.clips();
+        for(int i=0;clips!=null && i<clips.length;i++) {
+            float[] b=clips[i].bounds();
+            float left=b[0],top=b[1],right=left+b[2],bottom=top+b[3];
+            float radius=Math.max(0,Math.min(clips[i].radius(),Math.min(right-left,bottom-top)/2));
             Path path=new Path(); path.addRoundRect(new RectF(left,top,right,bottom),radius,radius,Path.Direction.CW); canvas.clipPath(path);
         }
-        JSONObject edit=node.optJSONObject("input").optJSONObject("edit");
-        JSONArray selected=edit==null ? null : edit.optJSONArray("selection");
-        if (selected==null) { canvas.restoreToCount(saved); return; }
+        GpuFrame.Edit edit=decoded.input().edit();
+        long[] selected=edit==null ? null : edit.selection();
+        if (selected==null || selected.length != 2) { canvas.restoreToCount(saved); return; }
         for(int i=0;i<2;i++) {
-            if (i==0 && selected.optInt(0)==selected.optInt(1)) continue;
+            if (i==0 && selected[0]==selected[1]) continue;
             float[] endpoint=endpoint(node,i==0 ? "anchor" : "caret"); if (endpoint==null) continue;
             canvas.drawRect(endpoint[0]-1,endpoint[1]-1,endpoint[0]+1,endpoint[1]+7,paint);
             canvas.drawCircle(endpoint[0],endpoint[1]+8,7,paint);
@@ -137,8 +140,8 @@ final class GpuSelectionHandles extends Drawable {
     @Override public void setColorFilter(ColorFilter filter) { paint.setColorFilter(filter); invalidateSelf(); }
     /** The handle colour the core chose for the frame's theme. */
     static int handleColor(JSONObject frame) {
-        JSONObject style=frame == null ? null : frame.optJSONObject("feedback");
-        return style == null ? 0 : (int)style.optLong("selectionHandle");
+        GpuFrame.FeedbackStyle style=frame == null ? null : new GpuFrame.FrameSnapshot(frame).feedback();
+        return style == null ? 0 : (int)style.selectionHandle();
     }
     @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
 }

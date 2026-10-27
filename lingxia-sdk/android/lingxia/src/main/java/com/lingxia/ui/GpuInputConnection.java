@@ -8,6 +8,7 @@ import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.ExtractedText;
 import android.view.inputmethod.ExtractedTextRequest;
 import android.view.inputmethod.SurroundingText;
+import com.lingxia.ui.generated.GpuFrame;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.nio.charset.StandardCharsets;
@@ -52,13 +53,16 @@ final class GpuInputConnection extends BaseInputConnection {
         install(state);
     }
     private void install(JSONObject state) {
-        text = state.optString("text");
-        JSONArray selection = state.optJSONArray("selection"), composition = state.optJSONArray("composition");
-        anchor = selection == null ? 0 : selection.optInt(0);
-        focus = selection == null ? 0 : selection.optInt(1);
-        composeStart = composition == null ? -1 : composition.optInt(0);
-        composeEnd = composition == null ? -1 : composition.optInt(1);
-        canUndo=state.optBoolean("can_undo"); canRedo=state.optBoolean("can_redo");
+        // A frame's `edit` and a reply's `state` share the editor-state shape.
+        GpuFrame.EditorState decoded = new GpuFrame.EditorState(state);
+        text = decoded.text() == null ? "" : decoded.text();
+        long[] selection = decoded.selection(), composition = decoded.composition();
+        boolean selected = selection != null && selection.length >= 2, composing = composition != null && composition.length >= 2;
+        anchor = selected ? (int)selection[0] : 0;
+        focus = selected ? (int)selection[1] : 0;
+        composeStart = composing ? (int)composition[0] : -1;
+        composeEnd = composing ? (int)composition[1] : -1;
+        canUndo=decoded.canUndo(); canRedo=decoded.canRedo();
         if (!validText(text) || !boundary(text, anchor) || !boundary(text, focus)
                 || (composeStart != -1 && (!boundary(text, composeStart) || !boundary(text, composeEnd) || composeStart >= composeEnd))) {
             throw new IllegalArgumentException("Invalid native input snapshot");
