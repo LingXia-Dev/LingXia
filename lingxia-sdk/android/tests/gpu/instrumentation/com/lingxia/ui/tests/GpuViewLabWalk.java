@@ -74,12 +74,12 @@ public class GpuViewLabWalk {
         Bundle args = InstrumentationRegistry.getArguments();
         boolean talkback = "1".equals(args.getString("talkback"));
         boolean landscape = "1".equals(args.getString("rotation"));
-        String tab = args.getString("tab"), page = args.getString("page", tab == null ? VIEW_LAB : null), group = args.getString("group");
-        String where = page != null ? page.replaceAll("^pages/|/index$", "") : tab;
+        String tab = args.getString("tab"), path = args.getString("page", tab == null ? VIEW_LAB : null), group = args.getString("group");
+        String where = path != null ? path.replaceAll("^pages/|/index$", "") : tab;
         String tag = (landscape ? "land" : "port") + "-" + where + (group == null ? "" : "-" + group);
         driver.automation.setRotation(landscape ? UiAutomation.ROTATION_FREEZE_90 : UiAutomation.ROTATION_FREEZE_0);
         Thread.sleep(1500);
-        if (page != null) driver.openPage(page); else driver.openTab(tab);
+        if (path != null) driver.openPage(path); else driver.openTab(tab);
         if (group != null) driver.openGroup(group);
         String pkg = driver.instrumentation.getTargetContext().getPackageName();
         Set<String> seen = new HashSet<>();
