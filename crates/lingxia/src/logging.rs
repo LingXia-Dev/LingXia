@@ -226,10 +226,11 @@ struct SdkLogger;
 
 impl Log for SdkLogger {
     fn enabled(&self, metadata: &Metadata<'_>) -> bool {
-        // Renderer internals log every shader and device step; at debug they flood the dev log.
-        const QUIET: [&str; 3] = ["wgpu", "naga", "vello"];
+        // Dependencies (renderer, HTTP, TLS, websocket) log every step at info and debug; a bundle
+        // sync or a pipeline rebuild then floods the dev log stream. Only LingXia's own detail passes.
+        const OWN: [&str; 4] = ["lingxia", "lxapp", "rong", "macos"];
         let target = metadata.target();
-        metadata.level() <= Level::Warn || !QUIET.iter().any(|quiet| target.starts_with(quiet))
+        metadata.level() <= Level::Warn || OWN.iter().any(|own| target.starts_with(own))
     }
 
     fn log(&self, record: &Record<'_>) {
@@ -407,4 +408,19 @@ fn map_sdk_level_to_log_level(level: LxLogLevel) -> Level {
 fn platform_logger() -> &'static PlatformLogger {
     static PLATFORM_LOGGER: OnceLock<PlatformLogger> = OnceLock::new();
     PLATFORM_LOGGER.get_or_init(PlatformLogger::new)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dependency_detail_stays_out_of_the_dev_log() {
+        let at = |target: &str, level: Level| {
+            SdkLogger.enabled(&Metadata::builder().target(target).level(level).build())
+        };
+        assert!(at("lingxia_ui", Level::Debug) && at("lxapp::page", Level::Info));
+        assert!(!at("hyper::proto::h1", Level::Debug) && !at("wgpu_core::device", Level::Info));
+        assert!(at("rustls::conn", Level::Warn), "their warnings still pass");
+    }
 }

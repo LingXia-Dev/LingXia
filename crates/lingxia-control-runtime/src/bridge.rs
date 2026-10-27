@@ -277,18 +277,22 @@ fn bridge_loop(
     let dispatcher = Dispatcher::start();
     let mut last_received = Instant::now();
     let mut last_ping = Instant::now();
+    // Skipped records are reported at most every few seconds: the report is itself a record.
+    let mut skipped_total = 0u64;
+    let mut last_lag_report = Instant::now();
     for chunk in recent.chunks(128) {
         send_log_batch(websocket, chunk)?;
     }
 
     loop {
         let mut batch = Vec::new();
-        while batch.len() < 64 {
+        // Drain what arrived during the last pause, so a burst does not overrun the channel.
+        while batch.len() < 1024 {
             match receiver.try_recv() {
                 Ok(message) => batch.push(message),
                 Err(tokio::sync::broadcast::error::TryRecvError::Empty) => break,
                 Err(tokio::sync::broadcast::error::TryRecvError::Lagged(skipped)) => {
-                    log::warn!("Devtool log stream lagged and skipped {} messages", skipped);
+                    skipped_total += skipped;
                     break;
                 }
                 Err(tokio::sync::broadcast::error::TryRecvError::Closed) => {
@@ -297,8 +301,13 @@ fn bridge_loop(
             }
         }
 
-        if !batch.is_empty() {
-            send_log_batch(websocket, &batch)?;
+        for chunk in batch.chunks(128) {
+            send_log_batch(websocket, chunk)?;
+        }
+        if skipped_total > 0 && last_lag_report.elapsed() >= Duration::from_secs(5) {
+            log::warn!("Devtool log stream lagged and skipped {skipped_total} messages");
+            skipped_total = 0;
+            last_lag_report = Instant::now();
         }
 
         // The live network feed rides the same stream as logs, so lxdev
