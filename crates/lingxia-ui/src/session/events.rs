@@ -11,11 +11,52 @@ impl ViewSession {
             return Ok(false);
         }
         if !self.presented_commit(generation) {
-            if self.rejected_clicks.len() < 16 {
-                self.rejected_clicks.push((generation, self.generation));
-            }
+            self.reject_click(generation, "its frame was superseded before the click ran");
             return Ok(false);
         }
+        self.dispatch_handle(handle)
+    }
+
+    /// A tap on `identity` in the presented frame. If a newer View superseded that frame,
+    /// the same control's current callback runs: a stale frame never costs a tap. Only a
+    /// control that is gone or no longer clickable drops it.
+    pub fn click_control(
+        &mut self,
+        generation: lifecycle::CommitTicket,
+        handle: u64,
+        identity: &str,
+    ) -> Result<bool, String> {
+        if handle == 0 || self.presented_commit(generation) || identity.is_empty() {
+            return self.click(generation, handle);
+        }
+        let current = self.retained.as_ref().and_then(|retained| {
+            retained
+                .nodes
+                .iter()
+                .find(|node| node.identity == identity)
+                .map(|node| node.on_click)
+        });
+        match current {
+            Some(Some(handle)) if handle != 0 => self.dispatch_handle(handle),
+            Some(_) => {
+                self.reject_click(generation, "the control is no longer clickable");
+                Ok(false)
+            }
+            None => {
+                self.reject_click(generation, "the control is gone");
+                Ok(false)
+            }
+        }
+    }
+
+    fn reject_click(&mut self, generation: lifecycle::CommitTicket, reason: &'static str) {
+        if self.rejected_clicks.len() < 16 {
+            self.rejected_clicks
+                .push((generation, self.generation, reason));
+        }
+    }
+
+    fn dispatch_handle(&mut self, handle: u64) -> Result<bool, String> {
         self.execute(|| {
             self.context
                 .eval(Source::from_bytes(

@@ -425,10 +425,14 @@ impl ViewInteraction {
         }
         dispatches.retain(|dispatch| !matches!(dispatch, Dispatch::DismissPlots { identities, .. } if identities.is_empty()));
         if let Some(activation) = self.activation.take() {
+            // The same control by identity when its content changed since the tap (a toggle's
+            // label, say): a newer frame must not cost the user the input.
             let index = if activation.commit == frame.commit && activation.scale == frame.scale {
                 frame.index_of(&activation.node.identity)
             } else if activation.scale == frame.scale {
-                frame.rebind(&activation.node)
+                frame
+                    .rebind(&activation.node)
+                    .or_else(|| frame.index_of(&activation.node.identity))
             } else {
                 None
             };
@@ -474,7 +478,7 @@ impl ViewInteraction {
                     reason: if activation.scale != frame.scale {
                         "display scale changed"
                     } else {
-                        "control changed before it was dispatched"
+                        "the control is gone"
                     },
                     commit: activation.commit,
                     frame: frame.commit,

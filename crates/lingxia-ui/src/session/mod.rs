@@ -42,7 +42,11 @@ pub struct ViewSession {
     /// The first commit of the current layout revision.
     layout_commit: lifecycle::CommitTicket,
     /// Clicks refused for a commit no longer current: (their commit, the session's).
-    rejected_clicks: Vec<(lifecycle::CommitTicket, lifecycle::CommitTicket)>,
+    rejected_clicks: Vec<(
+        lifecycle::CommitTicket,
+        lifecycle::CommitTicket,
+        &'static str,
+    )>,
     /// The first commit of the current retained layout (editor geometry is valid from here).
     retained_commit: lifecycle::CommitTicket,
     input_hits: Option<crate::interaction::input_hits::InputHitMap>,

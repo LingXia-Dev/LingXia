@@ -2657,20 +2657,20 @@ fn dropped_warnings(host: &ViewHost<Fake>) -> Vec<String> {
 }
 
 #[test]
-fn an_activation_whose_control_changed_before_dispatch_is_reported_not_silent() {
+fn an_activation_whose_control_went_away_before_dispatch_is_reported_not_silent() {
     let worker = ViewWorker::spawn("test-view").unwrap();
     let platform = Platform::new(&[&worker]);
     let host = platform.host(
         &worker,
         &source(
-            "function render(){const n=useLocal('n',0);return h('column',{},h('button',{testId:'b',onClick:()=>n.set(n.value+1),style:{height:60}},`Count ${n.value}`))}",
+            "function render(){const n=useLocal('n',0);return h('column',{},n.value===0?h('button',{testId:'b',onClick:()=>n.set(1),style:{height:60}},'Remove me'):h('text',{},'gone'))}",
         ),
         false,
     );
     host.set_visible(true);
     platform.settle(&[&host]);
     tap(&host, 20.0, 20.0);
-    // Its rebuild is in flight; the second tap is made on "Count 0", which is gone by then.
+    // Its rebuild is in flight; the second tap is made on the button that rebuild removes.
     let worker_done = {
         let (done, wait) = channel();
         worker.run_background(move |_| {
@@ -2688,8 +2688,7 @@ fn an_activation_whose_control_changed_before_dispatch_is_reported_not_silent() 
     let warnings = dropped_warnings(&host);
     assert_eq!(warnings.len(), 1, "{warnings:?}");
     assert!(
-        warnings[0].contains("reason=control changed before it was dispatched")
-            && warnings[0].contains("node=\""),
+        warnings[0].contains("reason=the control is gone") && warnings[0].contains("node=\""),
         "{}",
         warnings[0]
     );
@@ -2697,4 +2696,31 @@ fn an_activation_whose_control_changed_before_dispatch_is_reported_not_silent() 
     platform.settle(&[&host]);
     let json: serde_json::Value = serde_json::from_str(&host.snapshot().unwrap().json).unwrap();
     assert_eq!(json["metrics"]["droppedActivations"], 1);
+}
+
+#[test]
+fn quick_taps_on_a_changing_toggle_during_an_animation_are_never_dropped() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = costly_spinner(&platform, &worker, true);
+    run_timed(&platform, &host, 20);
+    // A tap every 50 ms, while the previous tap's rebuild is still on its way (as on a
+    // phone, where a tap's label flips 58–90 ms later).
+    for round in 0..100usize {
+        run_timed_tapping(&platform, &host, round % 5, 0);
+        if round % 3 != 2 {
+            run_timed(&platform, &host, 1);
+        } else {
+            run_timed(&platform, &host, 2);
+        }
+    }
+    run_timed(&platform, &host, 10);
+    assert!(
+        dropped_warnings(&host).is_empty(),
+        "{:?}",
+        dropped_warnings(&host)
+    );
+    assert_eq!(last(&host), ["Count 100"]);
+    let json: serde_json::Value = serde_json::from_str(&host.snapshot().unwrap().json).unwrap();
+    assert_eq!(json["metrics"]["droppedActivations"], 0);
 }

@@ -86,7 +86,11 @@ impl ViewSession {
     /// Clicks refused since the last call because their frame was superseded.
     pub fn take_rejected_clicks(
         &mut self,
-    ) -> Vec<(lifecycle::CommitTicket, lifecycle::CommitTicket)> {
+    ) -> Vec<(
+        lifecycle::CommitTicket,
+        lifecycle::CommitTicket,
+        &'static str,
+    )> {
         std::mem::take(&mut self.rejected_clicks)
     }
 
