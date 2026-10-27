@@ -1,12 +1,11 @@
-//! Resolves the dev runner's configuration from its environment.
+//! Resolves the dev runner's cloud configuration.
 //!
-//! Both the macOS and Windows dev runners need the same inputs before handing
-//! them to the (privately-injected) provider: the `lingxiaServer`/`lingxiaId`
-//! overrides from `~/.lingxia/runner/config.toml`.
-//!
-//! That resolution is pure LingXia/CLI convention, so it lives here as a small,
-//! dependency-light crate returning plain data. Each runner maps the result
-//! onto the provider's own option types (the only crate that has them).
+//! `lingxiaServer` / `lingxiaId` come from `~/.lingxia/runner/config.toml`
+//! (hand-edited; not a documented surface yet). Without a server there,
+//! `LINGXIA_RUNNER_SERVER` — the server `lingxia dev` takes from
+//! `lingxia auth login lingxia` for `--env` — applies. Each runner maps the
+//! result onto the provider's own option types and starts the cloud client
+//! only with a `lingxiaId`.
 
 mod permissions;
 pub use permissions::RunnerRegistryProvider;
@@ -15,15 +14,17 @@ use std::path::{Path, PathBuf};
 
 /// Env var (set by `lingxia dev --env`) selecting the runner config table.
 const ENV_RUNNER_ENV: &str = "LINGXIA_RUNNER_ENV";
+/// Server for this launch, set by `lingxia dev` from `lingxia auth`.
+const ENV_RUNNER_SERVER: &str = "LINGXIA_RUNNER_SERVER";
 /// Runner config location, relative to the user's home directory.
 const RUNNER_CONFIG_REL: &str = ".lingxia/runner/config.toml";
 
 /// The dev runner's resolved configuration.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RunnerConfig {
-    /// `lingxiaServer` override from the runner config, if set.
+    /// `lingxiaServer` from the runner config, else the auth server.
     pub lingxia_server: Option<String>,
-    /// `lingxiaId` override from the runner config, if set.
+    /// `lingxiaId` from the runner config; the cloud client needs it.
     pub lingxia_id: Option<String>,
 }
 
@@ -34,7 +35,12 @@ pub fn from_env() -> RunnerConfig {
         .map(|home| parse_runner_config(&home.join(RUNNER_CONFIG_REL), env))
         .unwrap_or_default();
     RunnerConfig {
-        lingxia_server,
+        lingxia_server: lingxia_server.or_else(|| {
+            std::env::var(ENV_RUNNER_SERVER)
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        }),
         lingxia_id,
     }
 }
