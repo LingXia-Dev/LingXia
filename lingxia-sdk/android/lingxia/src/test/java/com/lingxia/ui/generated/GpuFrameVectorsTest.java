@@ -96,6 +96,15 @@ public class GpuFrameVectorsTest {
         assertTrue(nodes.length() > 8);
         for (int i = 0; i < nodes.length(); i++) walk(new GpuFrame.SemanticNode(record(nodes.getJSONObject(i))));
         assertAllRead();
+        boolean value = false, paste = false;
+        for (int i = 0; i < nodes.length(); i++) {
+            GpuFrame.SemanticNode node = new GpuFrame.SemanticNode(nodes.getJSONObject(i));
+            if ("plan".equals(node.testId())) value = "B".equals(node.value());
+            if ("name".equals(node.testId()))
+                for (GpuFrame.SemanticAction action : node.actions()) paste |= GpuFrame.SEMANTIC_ACTION_PASTE.equals(action.kind());
+        }
+        assertTrue("a select speaks its chosen label", value);
+        assertTrue("an editor offers paste", paste);
     }
 
     @Test public void automationExchangesDecodeEveryField() throws Exception {

@@ -36,6 +36,8 @@ final class GpuFrameVectorsTests: XCTestCase {
         let nodes = try JSONDecoder().decode([GpuFrameSemanticNode].self, from: section("semanticNodes"))
         XCTAssertTrue(nodes.contains { $0.testId == "name" && $0.textField != nil })
         XCTAssertTrue(nodes.contains { $0.testId == "level" && $0.range != nil })
+        XCTAssertTrue(nodes.contains { $0.testId == "plan" && $0.value == "B" })
+        XCTAssertTrue(nodes.contains { $0.testId == "name" && $0.actions.contains { $0.kind == "paste" } })
     }
 
     func testAutomationExchangesDecode() throws {

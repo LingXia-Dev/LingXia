@@ -28,6 +28,8 @@ public final class GpuSemantics {
     public static final String LIVE_ASSERTIVE = "assertive";
     public static final String EVENT_ANNOUNCE = "announce";
     public static final String ACTION_COPY = "copy";
+    public static final String ACTION_CUT = "cut";
+    public static final String ACTION_PASTE = "paste";
     public static final String ACTION_SET_SELECTION = "set-selection";
     public static final String KEY_HEADING_LEVEL = "heading_level";
     public static final String KEY_LIVE_REGION = "live_region";

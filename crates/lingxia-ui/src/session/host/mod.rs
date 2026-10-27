@@ -16,6 +16,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 mod bridge;
+mod clipboard;
 pub(crate) mod decode;
 mod dispatch;
 mod edits;
@@ -666,7 +667,10 @@ impl<A: PlatformAdapter> ViewHost<A> {
     }
 
     pub fn accessibility(&self, id: u32, action: AccessibilityAction) -> bool {
-        if let Some(handled) = self.static_text_action(id, &action) {
+        if let Some(handled) = self
+            .static_text_action(id, &action)
+            .or_else(|| self.editor_clipboard_action(id, &action))
+        {
             return handled;
         }
         let page = self.inner.lifecycle.page();

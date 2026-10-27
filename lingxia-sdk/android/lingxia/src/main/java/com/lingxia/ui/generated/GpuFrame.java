@@ -41,6 +41,8 @@ public final class GpuFrame {
     public static final String SEMANTIC_ACTION_SELECT_ITEM = "select-item";
     public static final String SEMANTIC_ACTION_SHOW_ON_SCREEN = "show-on-screen";
     public static final String SEMANTIC_ACTION_COPY = "copy";
+    public static final String SEMANTIC_ACTION_CUT = "cut";
+    public static final String SEMANTIC_ACTION_PASTE = "paste";
     public static final String AUTOMATION_REQUEST_QUERY = "query";
     public static final String AUTOMATION_REQUEST_ACT = "act";
     public static final String AUTOMATION_REQUEST_TREE = "tree";
@@ -126,6 +128,10 @@ public final class GpuFrame {
         public Long imageCacheBytes() { if (json.isNull("imageCacheBytes")) return null; return json.optLong("imageCacheBytes"); }
         /** `presenterSingleTarget`: bool? */
         public Boolean presenterSingleTarget() { if (json.isNull("presenterSingleTarget")) return null; return json.optBoolean("presenterSingleTarget"); }
+        /** `activations`: u64? */
+        public Long activations() { if (json.isNull("activations")) return null; return json.optLong("activations"); }
+        /** `droppedActivations`: u64? */
+        public Long droppedActivations() { if (json.isNull("droppedActivations")) return null; return json.optLong("droppedActivations"); }
     }
 
     public static final class FrameCost {
@@ -534,6 +540,8 @@ public final class GpuFrame {
         public Boolean expanded() { if (json.isNull("expanded")) return null; return json.optBoolean("expanded"); }
         /** `busy`: bool? */
         public Boolean busy() { if (json.isNull("busy")) return null; return json.optBoolean("busy"); }
+        /** `value`: string? */
+        public String value() { return json.isNull("value") ? null : json.optString("value", null); }
         /** `scroll`: ScrollPosition? */
         public ScrollPosition scroll() { JSONObject o = json.optJSONObject("scroll"); return o == null ? null : new ScrollPosition(o); }
     }

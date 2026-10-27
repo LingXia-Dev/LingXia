@@ -28,4 +28,4 @@ the `role` prop sets one of the authored roles on any non-control element.
 
 ## Text actions
 
-Selectable text supports `copy`, `set-selection`.
+Selectable text supports `copy`, `cut`, `paste`, `set-selection`.

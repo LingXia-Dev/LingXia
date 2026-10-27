@@ -64,6 +64,9 @@ the content behind a modal yourself.
 
 The full role list is in [semantics](../reference/semantics.md).
 
+A `<select>` reports its chosen label as its value, or its placeholder before a choice. An editor's
+selection offers copy, cut and paste to assistive technology; a `secure` editor offers none of them.
+
 ## Live regions
 
 `role="alert"`, `role="status"` or `accessibilityLiveRegion="polite" | "assertive"` make a region

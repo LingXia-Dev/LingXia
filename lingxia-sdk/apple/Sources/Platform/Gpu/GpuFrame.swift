@@ -121,6 +121,8 @@ public struct GpuFrameFrameMetrics: Decodable, Sendable {
     public let cost: GpuFrameFrameCost
     public let imageCacheBytes: UInt64?
     public let presenterSingleTarget: Bool?
+    public let activations: UInt64?
+    public let droppedActivations: UInt64?
 
     enum CodingKeys: String, CodingKey {
         case generation = "generation"
@@ -142,6 +144,8 @@ public struct GpuFrameFrameMetrics: Decodable, Sendable {
         case cost = "cost"
         case imageCacheBytes = "imageCacheBytes"
         case presenterSingleTarget = "presenterSingleTarget"
+        case activations = "activations"
+        case droppedActivations = "droppedActivations"
     }
 }
 
@@ -553,6 +557,7 @@ public struct GpuFrameSemanticNode: Decodable, Sendable {
     public let selected: Bool?
     public let expanded: Bool?
     public let busy: Bool?
+    public let value: String?
     public let scroll: GpuFrameScrollPosition?
 
     enum CodingKeys: String, CodingKey {
@@ -583,6 +588,7 @@ public struct GpuFrameSemanticNode: Decodable, Sendable {
         case selected = "selected"
         case expanded = "expanded"
         case busy = "busy"
+        case value = "value"
         case scroll = "scroll"
     }
 }

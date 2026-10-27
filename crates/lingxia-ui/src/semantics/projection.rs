@@ -46,8 +46,12 @@ pub enum Action {
         label: String,
     },
     ShowOnScreen,
-    /// Copy the selected static text.
+    /// Copy the selection: selected static text, or an editor's (not a secure one).
     Copy,
+    /// Copy and delete an enabled, non-secure editor's selection.
+    Cut,
+    /// Replace an enabled, non-secure editor's selection with the clipboard.
+    Paste,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -110,6 +114,9 @@ pub struct SemanticNode {
     pub expanded: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub busy: Option<bool>,
+    /// A select's shown value: the chosen option's label, else its placeholder.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
     /// A scroll region's position and extent along its axis, in logical pixels.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scroll: Option<ScrollPosition>,
@@ -403,6 +410,21 @@ impl Projection<'_> {
                 actions.push(Action::SetText);
                 actions.push(Action::SetSelection);
             }
+            let selected = input
+                .edit
+                .as_ref()
+                .is_some_and(|edit| edit.selection[0] != edit.selection[1]);
+            if !input.secure && !self.inert {
+                if selected {
+                    actions.push(Action::Copy);
+                }
+                if input.enabled {
+                    if selected {
+                        actions.push(Action::Cut);
+                    }
+                    actions.push(Action::Paste);
+                }
+            }
             TextField {
                 text: masked(input),
                 hint: input.placeholder.clone(),
@@ -470,6 +492,9 @@ impl Projection<'_> {
             selected: node.states[1],
             expanded: node.states[2],
             busy: node.states[3],
+            value: select
+                .map(|_| node.text.clone())
+                .filter(|text| !text.is_empty()),
             scroll: node.scroll.as_ref().map(|scroll| ScrollPosition {
                 offset: scroll.offset,
                 max_offset: scroll.max_offset,

@@ -494,6 +494,9 @@
           "kind": "set-selection"
         },
         {
+          "kind": "paste"
+        },
+        {
           "kind": "show-on-screen"
         },
         {
@@ -546,6 +549,9 @@
           "kind": "set-selection"
         },
         {
+          "kind": "paste"
+        },
+        {
           "kind": "show-on-screen"
         },
         {
@@ -593,6 +599,9 @@
         },
         {
           "kind": "set-selection"
+        },
+        {
+          "kind": "paste"
         },
         {
           "kind": "show-on-screen"
@@ -670,6 +679,7 @@
       "text": "B",
       "text_field": null,
       "text_selection": null,
+      "value": "B",
       "visible": true
     },
     {
@@ -1042,6 +1052,7 @@
     "generation": 1,
     "images": [],
     "metrics": {
+      "activations": 0,
       "animationFrames": 0,
       "buildUs": 0,
       "composeUs": 0,
@@ -1056,6 +1067,7 @@
         "shadows": 0,
         "vectorElements": 3
       },
+      "droppedActivations": 0,
       "generation": 1,
       "imageCacheBytes": 0,
       "layoutPasses": 1,

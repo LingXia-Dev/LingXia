@@ -196,3 +196,20 @@ fn projected_roles_match_the_schema_vocabulary() {
     .collect();
     assert_eq!(serde_json::json!(roles), schema["semantics"]["roles"]);
 }
+
+#[test]
+fn a_select_speaks_its_chosen_label_else_its_placeholder() {
+    let options = "options:[{value:'monthly',label:'Monthly'},{value:'yearly',label:'Yearly'}]";
+    let frame = frame(&format!(
+        "h('column',{{}},h('select',{{testId:'chosen',accessibilityLabel:'Billing plan',placeholder:'Choose a plan',{options},value:'yearly',onChange(){{}}}}),h('select',{{testId:'empty',accessibilityLabel:'Billing plan',placeholder:'Choose a plan',{options},value:'',onChange(){{}}}}))"
+    ));
+    let chosen = semantic(&frame, "chosen").unwrap();
+    assert_eq!(
+        (chosen.role, chosen.name.as_str(), chosen.value.as_deref()),
+        (Role::ComboBox, "Billing plan", Some("Yearly"))
+    );
+    assert_eq!(
+        semantic(&frame, "empty").unwrap().value.as_deref(),
+        Some("Choose a plan")
+    );
+}

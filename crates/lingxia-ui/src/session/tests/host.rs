@@ -2902,3 +2902,92 @@ fn a_hosted_view_lab_keeps_a_nested_local_across_a_sibling_edit() {
         values()
     );
 }
+
+#[test]
+fn an_editor_selection_offers_copy_cut_and_paste_to_assistive_tech() {
+    use crate::interaction::view::AccessibilityAction;
+    use crate::semantics::projection::Action;
+    let worker = ViewWorker::spawn("test-editor-clipboard").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let page = "function render(){
+      const name=useLocal('name','Hello world'), pin=useLocal('pin','1234');
+      return h('column',{},
+        h('input',{testId:'name',bind:name,accessibilityLabel:'Name'}),
+        h('input',{testId:'pin',bind:pin,secure:true,accessibilityLabel:'PIN'}))
+    }";
+    let host = platform.host(&worker, &source(page), false);
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let ask = |request: serde_json::Value| -> serde_json::Value {
+        let (tx, rx) = channel();
+        host.input(request.to_string(), move |reply| {
+            let _ = tx.send(reply);
+        });
+        platform.settle(&[&host]);
+        serde_json::from_str(&rx.recv_timeout(Duration::from_secs(5)).unwrap().unwrap()).unwrap()
+    };
+    let select = |test_id: &str, anchor: u32, focus: u32| -> u32 {
+        let snapshot: serde_json::Value =
+            serde_json::from_str(&host.snapshot().unwrap().json).unwrap();
+        let node = snapshot["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|n| n["test_id"] == test_id)
+            .unwrap()
+            .clone();
+        let focused = ask(
+            serde_json::json!({"op": "focus", "identity": node["identity"], "generation": snapshot["generation"]}),
+        );
+        ask(
+            serde_json::json!({"op": "edit", "identity": node["identity"], "token": focused["token"], "submit": false,
+            "edits": [{"op": "selection", "anchor": anchor, "focus": focus}]}),
+        );
+        host.request_frame();
+        platform.settle(&[&host]);
+        host.semantics(|projection, _| {
+            let projection = projection.unwrap();
+            (0..projection.frame.nodes.len())
+                .filter_map(|index| projection.ids.id(index))
+                .find(|id| projection.node(*id).is_some_and(|n| n.test_id == test_id))
+                .unwrap()
+        })
+    };
+    let actions =
+        |id: u32| host.semantics(|projection, _| projection.unwrap().node(id).unwrap().actions);
+    let name = select("name", 0, 5);
+    assert!(
+        [Action::Copy, Action::Cut, Action::Paste]
+            .iter()
+            .all(|a| actions(name).contains(a)),
+        "{:?}",
+        actions(name)
+    );
+    assert!(host.accessibility(name, AccessibilityAction::Copy));
+    assert_eq!(host.adapter().log.lock().unwrap().copied, ["Hello"]);
+    assert!(host.accessibility(name, AccessibilityAction::Paste("Hi".into())));
+    platform.settle(&[&host]);
+    let replaced = |log: &Log| {
+        log.edits.iter().rev().find_map(|(effect, _)| match effect {
+            Effect::EditText {
+                text: Some(text), ..
+            } => Some(text.clone()),
+            _ => None,
+        })
+    };
+    assert_eq!(
+        replaced(&host.adapter().log.lock().unwrap()).as_deref(),
+        Some("Hi world")
+    );
+    // A secure editor never offers its text, not even a selected part of it.
+    let pin = select("pin", 0, 2);
+    let offered = actions(pin);
+    assert!(
+        !offered.contains(&Action::Copy)
+            && !offered.contains(&Action::Cut)
+            && !offered.contains(&Action::Paste),
+        "{offered:?}"
+    );
+    assert!(!host.accessibility(pin, AccessibilityAction::Copy));
+    assert_eq!(host.adapter().log.lock().unwrap().copied, ["Hello"]);
+}
