@@ -378,7 +378,7 @@ const errorNotes = {
   UI_GRID: 'An invalid grid track list or line.',
   UI_IMAGE: 'Invalid image source, alt, retry key or callback, or a failed load.',
   UI_INPUT: 'Invalid editor prop, binding or text.',
-  UI_KEY: 'A non-string or duplicate sibling key.',
+  UI_KEY: 'A non-string or duplicate sibling key, or a component keyed by its own function name.',
   UI_LEAVE: 'Invalid `useLeaveGuard` call or answer.',
   UI_LIMIT: 'A page limit was exceeded.',
   UI_LIST: 'Invalid list description, keys, anchor or row height.',

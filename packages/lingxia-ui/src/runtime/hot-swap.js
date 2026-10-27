@@ -6,7 +6,9 @@ import { immutable } from './data.js';
 function exportState() {
   const locals = [];
   // Resource cells (three-part keys) restart with their resource; plain locals carry over.
-  for (const [key, cell] of page.locals) if (JSON.parse(key).length === 2) locals.push([key, cell.value]);
+  // A set not yet committed by a frame is the newest state, so it travels too.
+  for (const [key, cell] of page.locals)
+    if (JSON.parse(key).length === 2) locals.push([key, page.updates.has(cell) ? page.updates.get(cell) : cell.value]);
   return JSON.stringify(locals);
 }
 

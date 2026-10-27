@@ -40,7 +40,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_GRID` | native | An invalid grid track list or line. |
 | `UI_IMAGE` | runtime, native | Invalid image source, alt, retry key or callback, or a failed load. |
 | `UI_INPUT` | runtime, native | Invalid editor prop, binding or text. |
-| `UI_KEY` | runtime, native | A non-string or duplicate sibling key. |
+| `UI_KEY` | build, runtime, native | A non-string or duplicate sibling key, or a component keyed by its own function name. |
 | `UI_LEAVE` | runtime, native | Invalid `useLeaveGuard` call or answer. |
 | `UI_LIMIT` | runtime, native | A page limit was exceeded. |
 | `UI_LIST` | runtime, native | Invalid list description, keys, anchor or row height. |

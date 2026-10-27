@@ -25,7 +25,19 @@ pub(crate) fn harden_release_output(project: &Project) -> Result<()> {
 
 fn harden_javascript_source(path: &Path, source: &str) -> Result<String> {
     let allocator = Allocator::default();
-    let output = minify_javascript_with_source_type(&allocator, path, source, source_type(path)?)?;
+    // A GPU View module names its components' local state by function name; renaming them
+    // would key a packaged page differently from the dev-served one it is swapped with.
+    let view_module = source
+        .lines()
+        .next()
+        .is_some_and(|line| line.starts_with(crate::lxapp::framework::UI_MODULE_HEADER));
+    let output = minify_javascript_with_source_type(
+        &allocator,
+        path,
+        source,
+        source_type(path)?,
+        view_module,
+    )?;
     // The native UI loader reads this declaration before executing the module.
     // Ordinary comments can be stripped; this one is part of the artifact ABI.
     if let Some(header) = source
@@ -57,6 +69,7 @@ pub(crate) fn harden_logic_bundle(source: &str) -> Result<String> {
         Path::new("logic.js"),
         source,
         SourceType::script(),
+        false,
     )
 }
 
@@ -82,6 +95,7 @@ fn minify_javascript_with_source_type<'a>(
     path: &Path,
     source: &'a str,
     source_type: SourceType,
+    keep_function_names: bool,
 ) -> Result<String> {
     let mut program = parse_javascript(allocator, path, source, source_type)?;
     let minifier_return = Minifier::new(MinifierOptions {
@@ -93,7 +107,7 @@ fn minify_javascript_with_source_type<'a>(
         mangle: Some(MangleOptions {
             top_level: Some(true),
             keep_names: MangleOptionsKeepNames {
-                function: false,
+                function: keep_function_names,
                 class: false,
             },
             debug: false,
@@ -500,6 +514,37 @@ fn format_diagnostics<T: std::fmt::Debug>(diagnostics: &[T]) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// What `Inputs.name` evaluates to after hardening `source`.
+    fn hardened_name(source: &str) -> String {
+        let hardened = harden_javascript_source(Path::new("page.js"), source).unwrap();
+        let out = std::process::Command::new("node")
+            .args([
+                "--input-type=module",
+                "--eval",
+                &format!("{hardened}\nconsole.log(globalThis.name)"),
+            ])
+            .output()
+            .expect("node runs the hardened module");
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8(out.stdout).unwrap().trim().to_owned()
+    }
+
+    #[test]
+    fn gpu_view_modules_keep_component_names_through_hardening() {
+        let body = "function Inputs(){return 1} function Other(){return Inputs()} globalThis.name = [Inputs, Other][0].name;";
+        let view = format!("{}abi=1\n{body}", crate::lxapp::framework::UI_MODULE_HEADER);
+        assert_eq!(
+            hardened_name(&view),
+            "Inputs",
+            "local state keys follow component names"
+        );
+        assert_ne!(hardened_name(body), "Inputs", "other bundles still mangle");
+    }
+
     use super::*;
     use crate::lxapp::framework::ProjectFramework;
     use crate::lxapp::project::{Project, ProjectKind};

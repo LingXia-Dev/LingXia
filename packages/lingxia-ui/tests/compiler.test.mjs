@@ -398,3 +398,9 @@ export function render() {
     assert.match(codes[5][1], /heavy.png is 9.0 MiB; images above 8.0 MiB fail to load/);
   });
 });
+
+test('a component keyed by its own function name fails the build: release builds rename functions', () => {
+  flags('function A(){return <text>a</text>} const parts=[A]; export function render(){ return <column>{parts.map(Part => <Part key={Part.name} />)}</column>; }',
+    /UI_KEY: Part\.name is not a stable key; release builds rename functions, so key by a label or index/);
+  clean('function A(){return <text>a</text>} const parts=[A]; export function render(){ return <column>{parts.map((Part, i) => <Part key={String(i)} />)}</column>; }');
+});

@@ -77,6 +77,15 @@ export function audit(source, filename, { literalColors = false } = {}) {
   const report = (node, message) => problems.push(`${filename}:${position(file, node)}: ${message}`);
   const visit = node => {
     if (ts.isJsxFragment(node)) report(node, 'UI_FRAGMENT: return one layout node; fragments are not supported');
+    if ((ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) && ts.isIdentifier(node.tagName) && /^[A-Z]/.test(node.tagName.text)) {
+      // `<Part key={Part.name}>`: release builds rename functions, so the key and every local
+      // state under it would change between builds.
+      for (const prop of node.attributes.properties) {
+        const value = ts.isJsxAttribute(prop) && prop.name.getText(file) === 'key' && prop.initializer && ts.isJsxExpression(prop.initializer) && prop.initializer.expression;
+        if (value && ts.isPropertyAccessExpression(value) && value.name.text === 'name' && ts.isIdentifier(value.expression) && value.expression.text === node.tagName.text)
+          report(prop, `UI_KEY: ${node.tagName.text}.name is not a stable key; release builds rename functions, so key by a label or index`);
+      }
+    }
     if ((ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) && ts.isIdentifier(node.tagName) && /^[a-z]/.test(node.tagName.text)) {
       const tag = node.tagName.text;
       const problem = has(elements, tag) && unnamed(tag, node, file);

@@ -92,7 +92,9 @@ fn view_lab_module() -> String {
 pub(crate) fn view_lab_module_edited(edit: Option<(&str, &str)>) -> String {
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
     let lab = std::path::Path::new(root).join("examples/lingxia-showcase-gpu/lxapp");
-    let tag = edit.map_or(0, |(from, _)| from.len());
+    // Tests build in parallel; each build gets its own directory.
+    static BUILDS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let tag = BUILDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let out = std::env::temp_dir().join(format!("lingxia-view-lab-{}-{tag}", std::process::id()));
     let mut source_root = lab.clone();
     if let Some((from, to)) = edit {
@@ -121,6 +123,70 @@ pub(crate) fn view_lab_module_edited(edit: Option<(&str, &str)>) -> String {
     let module = std::fs::read_to_string(dist.join("pages/view-lab/index.js")).unwrap();
     let _ = std::fs::remove_dir_all(&out);
     module
+}
+
+/// `module` minified as a release package ships it: top-level identifiers mangled, with or
+/// without function names kept.
+fn minified(module: &str, keep_names: bool) -> String {
+    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
+    let input = std::env::temp_dir().join(format!(
+        "lingxia-minify-{}-{keep_names}.js",
+        std::process::id()
+    ));
+    std::fs::write(&input, module).unwrap();
+    let script = format!(
+        "const {{ build }} = await import('{root}/packages/node_modules/esbuild/lib/main.js'); \
+         const out = await build({{ entryPoints: [{:?}], write: false, minify: true, keepNames: {keep_names}, format: 'esm', bundle: false }}); \
+         process.stdout.write(out.outputFiles[0].text);",
+        input
+    );
+    let out = std::process::Command::new("node")
+        .args(["--input-type=module", "--eval", &script])
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_file(&input);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let header = module.lines().next().unwrap();
+    format!("{header}\n{}", String::from_utf8(out.stdout).unwrap())
+}
+
+#[test]
+fn a_packaged_view_keeps_its_state_through_the_first_dev_swap() {
+    let dev = view_lab_module();
+    {
+        let (keep_names, survives) = (true, true);
+        let mut page = ViewSession::new(&minified(&dev, keep_names)).unwrap();
+        let find = |display: &crate::DisplayList, id: &str| {
+            display
+                .nodes
+                .iter()
+                .find(|n| n.test_id == id)
+                .cloned()
+                .unwrap()
+        };
+        let display = page.layout(400, 3000, 1.0).unwrap();
+        let tab = find(&display, "lab-tab-input").on_click.unwrap();
+        assert!(page.click(page.generation(), tab).unwrap());
+        let display = page.layout(400, 3000, 1.0).unwrap();
+        let plan = find(&display, "lab-input-plan");
+        assert!(
+            page.select_option(page.generation(), &plan.identity, 2)
+                .unwrap()
+        );
+        // The swap lands before a frame commits the choice: pending state carries over too.
+        page.swap_module(&dev).unwrap();
+        let display = page.layout(400, 3000, 1.0).unwrap();
+        let values = find(&display, "lab-input-values").text;
+        assert_eq!(
+            values.ends_with("plan=yearly"),
+            survives,
+            "keep_names={keep_names}: {values}"
+        );
+    }
 }
 
 fn copy_tree(from: &std::path::Path, to: &std::path::Path) {

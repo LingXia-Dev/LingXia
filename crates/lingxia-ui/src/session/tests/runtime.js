@@ -2514,7 +2514,8 @@
   // src/runtime/hot-swap.js
   function exportState() {
     const locals = [];
-    for (const [key, cell] of page.locals) if (JSON.parse(key).length === 2) locals.push([key, cell.value]);
+    for (const [key, cell] of page.locals)
+      if (JSON.parse(key).length === 2) locals.push([key, page.updates.has(cell) ? page.updates.get(cell) : cell.value]);
     return JSON.stringify(locals);
   }
   function importState(text) {

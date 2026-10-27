@@ -23,7 +23,7 @@ export function render() {
           </Button>
         ))}
       </row>
-      {groups[group.value].sections.map(Part => <Part key={Part.name} />)}
+      {groups[group.value].sections.map((Part, index) => <Part key={`${group.value}-${index}`} />)}
     </Page>
   );
 }
