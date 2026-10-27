@@ -2854,3 +2854,51 @@ fn every_tap_changes_state_exactly_once_while_the_presenter_declines_frames() {
         .count();
     assert_eq!(clicks, 100);
 }
+
+#[cfg(feature = "hot-swap")]
+#[test]
+fn a_hosted_view_lab_keeps_a_nested_local_across_a_sibling_edit() {
+    use crate::session::tests::hot_swap::view_lab_module_edited;
+    let worker = ViewWorker::spawn("test-lab-swap").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let module = view_lab_module_edited(None);
+    let host = platform.host(&worker, &module, false);
+    // A phone-sized page, so the tabs and the plan picker are on screen.
+    if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
+        (environment.width, environment.height, environment.scale) = (393 * 2, 852 * 2, 2.0);
+    }
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let act = |css: &str, action: serde_json::Value| {
+        host.automation_request(&serde_json::json!({"op": "act", "css": css, "action": action}))
+            .unwrap();
+        platform.settle(&[&host]);
+    };
+    let values = || {
+        host.automation_request(&serde_json::json!({"op": "query", "css": "[data-testid=\"lab-input-values\"]", "maxText": 400}))
+            .unwrap()["text"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned()
+    };
+    act(
+        "[data-testid=\"lab-tab-input\"]",
+        serde_json::json!({"kind": "click", "force": true}),
+    );
+    act(
+        "[data-testid=\"lab-input-plan\"]",
+        serde_json::json!({"kind": "select", "value": "yearly", "force": true}),
+    );
+    assert!(values().ends_with("plan=yearly"), "{}", values());
+    let edited = view_lab_module_edited(Some((
+        "Monthly bills</text>",
+        "Monthly bills and more</text>\n      <text className=\"text-xs\">Edited</text>",
+    )));
+    host.swap_module(edited);
+    platform.settle(&[&host]);
+    assert!(
+        values().ends_with("plan=yearly"),
+        "after swap: {}",
+        values()
+    );
+}
