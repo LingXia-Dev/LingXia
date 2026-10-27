@@ -1600,6 +1600,11 @@ pub struct MacosConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_name: Option<String>,
 
+    /// Architectures a packaged app supports: `arm64` (default), `x86_64`, or
+    /// `universal`. `lingxia publish` holds every package to it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arch: Option<String>,
+
     /// App Store Connect identity for `lingxia store`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub store: Option<AppStoreConfig>,

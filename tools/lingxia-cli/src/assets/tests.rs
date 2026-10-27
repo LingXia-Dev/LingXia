@@ -223,6 +223,7 @@ fn generated_app_json_embeds_store_listing_ids() {
         deployment_target: None,
         executable_name: None,
         target_name: None,
+        arch: None,
         store: Some(AppStoreConfig {
             app_id: Some("987654321".into()),
         }),

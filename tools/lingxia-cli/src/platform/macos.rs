@@ -15,7 +15,6 @@ use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use image::imageops::FilterType;
 use image::{DynamicImage, GenericImageView, ImageFormat};
-use std::borrow::Cow;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -27,6 +26,9 @@ pub use doctor::doctor_checks;
 
 const MACOS_ARM_TARGET: &str = "aarch64-apple-darwin";
 const MACOS_X86_TARGET: &str = "x86_64-apple-darwin";
+const DEFAULT_MACOS_ARCH: &str = "arm64";
+/// Info.plist key holding the declared `macos.arch`; read by `lingxia publish`.
+pub(crate) const DECLARED_ARCH_PLIST_KEY: &str = "LingXiaMacosArch";
 
 /// macOS platform implementation
 pub struct MacosPlatform;
@@ -58,30 +60,40 @@ impl MacosPlatform {
             .and_then(|c| c.macos.as_ref())
     }
 
-    /// Validate the requested macOS arch (falling back to host arch) and
-    /// derive the deployment target. Single source of truth shared by
-    /// `build` (Phase 3) and `build_rust_library` (Phase 1).
-    fn resolve_macos_params<'a>(&self, config: &'a BuildConfig) -> Result<(Cow<'a, str>, String)> {
-        let host_arch: &'static str = if cfg!(target_arch = "aarch64") {
+    /// Resolve the architectures to build and the deployment target. Single
+    /// source of truth shared by `build` (Phase 3) and `build_rust_library`
+    /// (Phase 1).
+    fn resolve_macos_params(&self, config: &BuildConfig) -> Result<(Vec<&'static str>, String)> {
+        let host_arch = if cfg!(target_arch = "aarch64") {
             "arm64"
         } else {
             "x86_64"
         };
-        let arch: Cow<'a, str> = match config.macos_arch.as_deref() {
-            Some(a) => Cow::Borrowed(a),
-            None => Cow::Borrowed(host_arch),
+        let declared = if (config.package || config.dmg) && config.lingxia_config.is_some() {
+            Some(self.declared_macos_arch(config)?)
+        } else {
+            None
         };
-        if arch != "arm64" && arch != "x86_64" {
-            return Err(anyhow!(
-                "Unsupported macOS arch '{}'. Supported values: arm64, x86_64",
-                arch
-            ));
-        }
+        let archs = resolve_macos_archs(config.macos_arch.as_deref(), declared, host_arch)?;
         let deployment_target = self
             .macos_config(config)
             .and_then(|c| c.deployment_target.clone())
             .unwrap_or_else(|| "14.0".to_string());
-        Ok((arch, deployment_target))
+        Ok((archs, deployment_target))
+    }
+
+    /// The `macos.arch` a project supports; recorded in the bundle so publish
+    /// can hold the package to it.
+    fn declared_macos_arch(&self, config: &BuildConfig) -> Result<&'static str> {
+        let arch = self.macos_config(config).and_then(|c| c.arch.as_deref());
+        match arch.unwrap_or(DEFAULT_MACOS_ARCH) {
+            "arm64" => Ok("arm64"),
+            "x86_64" => Ok("x86_64"),
+            "universal" => Ok("universal"),
+            other => Err(anyhow!(
+                "macos.arch '{other}' is not supported; use arm64, x86_64, or universal"
+            )),
+        }
     }
 
     /// Compute the path cargo will produce for the macOS static library
@@ -218,6 +230,44 @@ impl MacosPlatform {
         Ok(bin_dir)
     }
 
+    /// Swift-build one arch, relinking from scratch when the executable is
+    /// older than that arch's native library.
+    #[allow(clippy::too_many_arguments)]
+    fn swift_build_arch(
+        &self,
+        macos_dir: &Path,
+        config: &BuildConfig,
+        arch: &str,
+        deployment_target: &str,
+        preferred: &[String],
+        explicit_executable: Option<&str>,
+        native_lib_path: &Path,
+    ) -> Result<(PathBuf, PathBuf)> {
+        let build = || {
+            let bin_dir = self.swift_build_and_get_bin_dir(
+                macos_dir,
+                &config.project_root,
+                config.profile,
+                arch,
+                deployment_target,
+                &config.native_features,
+            )?;
+            let executable =
+                self.find_executable_in_bin_dir(&bin_dir, preferred, explicit_executable)?;
+            Ok::<_, anyhow::Error>((bin_dir, executable))
+        };
+        let (bin_dir, executable) = build()?;
+        if !executable_needs_native_relink(&executable, native_lib_path) {
+            return Ok((bin_dir, executable));
+        }
+        println!(
+            "  {} Swift executable is older than native library; forcing relink",
+            "ℹ".blue()
+        );
+        let _ = fs::remove_dir_all(macos_dir.join(".build"));
+        build()
+    }
+
     fn find_executable_in_bin_dir(
         &self,
         bin_dir: &Path,
@@ -313,8 +363,14 @@ impl Platform for MacosPlatform {
         apple::ensure_macos()?;
 
         let macos_config = self.macos_config(config);
-        let (arch, deployment_target) = self.resolve_macos_params(config)?;
-        let arch: &str = &arch;
+        let (archs, deployment_target) = self.resolve_macos_params(config)?;
+        if archs.len() > 1 {
+            println!(
+                "{} Building universal binary ({})",
+                "[macOS]".cyan(),
+                archs.join(" + ")
+            );
+        }
 
         // Resolve macOS project directory
         let macos_dir = resolve_macos_dir(&config.project_root, macos_config)?;
@@ -367,21 +423,29 @@ impl Platform for MacosPlatform {
         // Build Rust static library + refresh SwiftPM relink stamp.
         // Skipped when the orchestrator already ran Phase 1 via
         // `build_rust_library`.
-        let native_lib_path = if !config.skip_native_build {
-            let lib =
-                self.do_build_rust_library(&config.project_root, config, arch, &deployment_target)?;
-            if config.lingxia_config.is_some() {
-                apple::update_spm_rust_link_stamp(
+        let mut native_lib_paths = Vec::with_capacity(archs.len());
+        for &arch in &archs {
+            let lib = if !config.skip_native_build {
+                let lib = self.do_build_rust_library(
                     &config.project_root,
-                    &sdk_root,
-                    Self::rust_target(arch),
-                    config.profile.as_str(),
+                    config,
+                    arch,
+                    &deployment_target,
                 )?;
-            }
-            lib
-        } else {
-            Self::rust_lib_path(&config.project_root, arch, config.profile)
-        };
+                if config.lingxia_config.is_some() {
+                    apple::update_spm_rust_link_stamp(
+                        &config.project_root,
+                        &sdk_root,
+                        Self::rust_target(arch),
+                        config.profile.as_str(),
+                    )?;
+                }
+                lib
+            } else {
+                Self::rust_lib_path(&config.project_root, arch, config.profile)
+            };
+            native_lib_paths.push(lib);
+        }
 
         let mut preferred = Vec::new();
         if let Some(macos) = &macos_config
@@ -410,52 +474,43 @@ impl Platform for MacosPlatform {
 
         apple::ensure_sdk_package_dependency(&config.project_root, &macos_dir)?;
 
-        let (bin_dir, executable_path) =
-            apple::with_temporary_package_manifest(&macos_dir, || {
-                // SwiftPM takes its minimum OS from Package.swift even when --triple
-                // includes a newer version, so align the build-time manifest with
-                // lingxia.yaml without changing the project copy.
-                apple::sync_macos_deployment_target(&macos_dir, &deployment_target)?;
+        let explicit_executable = macos_config.and_then(|c| c.executable_name.as_deref());
+        let universal_stage = resolve_lingxia_target_dir(&config.project_root)
+            .join("macos")
+            .join("universal");
+        let linked = apple::with_temporary_package_manifest(&macos_dir, || {
+            // SwiftPM takes its minimum OS from Package.swift even when --triple
+            // includes a newer version, so align the build-time manifest with
+            // lingxia.yaml without changing the project copy.
+            apple::sync_macos_deployment_target(&macos_dir, &deployment_target)?;
 
-                let mut bin_dir = self.swift_build_and_get_bin_dir(
+            let mut built = Vec::with_capacity(archs.len());
+            for (&arch, native_lib_path) in archs.iter().zip(&native_lib_paths) {
+                let (bin_dir, executable_path) = self.swift_build_arch(
                     &macos_dir,
-                    &config.project_root,
-                    config.profile,
+                    config,
                     arch,
                     &deployment_target,
-                    &config.native_features,
-                )?;
-                let mut executable_path = self.find_executable_in_bin_dir(
-                    &bin_dir,
                     &preferred,
-                    macos_config
-                        .as_ref()
-                        .and_then(|c| c.executable_name.as_deref()),
+                    explicit_executable,
+                    native_lib_path,
                 )?;
-                if executable_needs_native_relink(&executable_path, &native_lib_path) {
-                    println!(
-                        "  {} Swift executable is older than native library; forcing relink",
-                        "ℹ".blue()
-                    );
-                    let _ = fs::remove_dir_all(macos_dir.join(".build"));
-                    bin_dir = self.swift_build_and_get_bin_dir(
-                        &macos_dir,
-                        &config.project_root,
-                        config.profile,
-                        arch,
-                        &deployment_target,
-                        &config.native_features,
-                    )?;
-                    executable_path = self.find_executable_in_bin_dir(
-                        &bin_dir,
-                        &preferred,
-                        macos_config
-                            .as_ref()
-                            .and_then(|c| c.executable_name.as_deref()),
-                    )?;
+                if archs.len() == 1 {
+                    return Ok(LinkedOutputs {
+                        linked_dir: bin_dir.clone(),
+                        bin_dir,
+                        executable: executable_path,
+                    });
                 }
-                Ok((bin_dir, executable_path))
-            })?;
+                // A later arch's forced relink wipes `.build`, so keep this
+                // arch's linked outputs out of it.
+                let staged =
+                    stage_arch_outputs(&bin_dir, &executable_path, &universal_stage.join(arch))?;
+                built.push((bin_dir, staged));
+            }
+            merge_universal_outputs(&built, &universal_stage.join("merged"))
+        })?;
+        let executable_path = linked.executable.clone();
 
         let product_name = config
             .lingxia_config
@@ -517,18 +572,23 @@ impl Platform for MacosPlatform {
             .and_then(serde_json::Value::as_bool)
             .unwrap_or(false);
 
+        let declared_arch = if config.lingxia_config.is_some() {
+            Some(self.declared_macos_arch(config)?)
+        } else {
+            None
+        };
         let app_path = create_macos_app_bundle(
             &resolve_lingxia_target_dir(&config.project_root).join("macos"),
             &macos_dir,
-            &bin_dir,
+            &linked,
             &host_target,
-            &executable_path,
             &product_name,
             &product_version,
             &bundle_id,
             &deployment_target,
             info_plist.as_ref(),
             hide_dock_icon,
+            declared_arch,
         )?;
         if let Some(app) = config.lingxia_config.as_ref().and_then(|c| c.app.as_ref()) {
             crate::product_i18n::write_apple_product_name_strings(
@@ -635,16 +695,17 @@ impl Platform for MacosPlatform {
     }
 
     fn build_rust_library(&self, config: &BuildConfig) -> Result<()> {
-        let (arch, deployment_target) = self.resolve_macos_params(config)?;
-        let arch: &str = &arch;
-        self.do_build_rust_library(&config.project_root, config, arch, &deployment_target)?;
-        if config.lingxia_config.is_some() {
-            apple::update_spm_rust_link_stamp(
-                &config.project_root,
-                &config.project_root,
-                Self::rust_target(arch),
-                config.profile.as_str(),
-            )?;
+        let (archs, deployment_target) = self.resolve_macos_params(config)?;
+        for arch in archs {
+            self.do_build_rust_library(&config.project_root, config, arch, &deployment_target)?;
+            if config.lingxia_config.is_some() {
+                apple::update_spm_rust_link_stamp(
+                    &config.project_root,
+                    &config.project_root,
+                    Self::rust_target(arch),
+                    config.profile.as_str(),
+                )?;
+            }
         }
         Ok(())
     }
@@ -703,6 +764,122 @@ fn load_cached_apple_entitlements(platform: PermissionPlatform, bundle_id: &str)
     current
 }
 
+/// Architectures a build produces. Packaged host apps build what the project
+/// declares; everything else builds the host arch to keep the local loop fast.
+fn resolve_macos_archs(
+    requested: Option<&str>,
+    declared: Option<&str>,
+    host_arch: &'static str,
+) -> Result<Vec<&'static str>> {
+    match requested.or(declared) {
+        Some("arm64") => Ok(vec!["arm64"]),
+        Some("x86_64") => Ok(vec!["x86_64"]),
+        Some("universal") => Ok(vec!["arm64", "x86_64"]),
+        Some(other) => Err(anyhow!(
+            "Unsupported macOS arch '{other}'. Supported values: arm64, x86_64, universal"
+        )),
+        None => Ok(vec![host_arch]),
+    }
+}
+
+/// What the app bundle is assembled from. `bin_dir` supplies SwiftPM resource
+/// bundles (arch-independent); `linked_dir` supplies dylibs and frameworks.
+struct LinkedOutputs {
+    bin_dir: PathBuf,
+    linked_dir: PathBuf,
+    executable: PathBuf,
+}
+
+/// Copy one arch's executable and dylibs into `stage_dir`; returns the staged
+/// executable.
+fn stage_arch_outputs(bin_dir: &Path, executable: &Path, stage_dir: &Path) -> Result<PathBuf> {
+    let _ = fs::remove_dir_all(stage_dir);
+    fs::create_dir_all(stage_dir)
+        .with_context(|| format!("Failed to create {}", stage_dir.display()))?;
+    for entry in fs::read_dir(bin_dir)? {
+        let path = entry?.path();
+        match path.extension().and_then(|e| e.to_str()) {
+            Some("framework") => {
+                return Err(anyhow!(
+                    "universal macOS builds do not support dynamic framework products ({}); use --macos-arch arm64 or x86_64",
+                    path.display()
+                ));
+            }
+            Some("dylib") => {
+                fs::copy(&path, stage_dir.join(path.file_name().unwrap()))?;
+            }
+            _ => {}
+        }
+    }
+    let staged = stage_dir.join(
+        executable
+            .file_name()
+            .ok_or_else(|| anyhow!("Invalid executable path: {}", executable.display()))?,
+    );
+    fs::copy(executable, &staged)
+        .with_context(|| format!("Failed to stage {}", executable.display()))?;
+    Ok(staged)
+}
+
+/// `lipo` the staged per-arch executables and dylibs into `merged_dir`.
+/// Resource bundles come from the last arch's bin dir, which no later build
+/// can have wiped.
+fn merge_universal_outputs(
+    built: &[(PathBuf, PathBuf)],
+    merged_dir: &Path,
+) -> Result<LinkedOutputs> {
+    let (last_bin_dir, last_exe) = built
+        .last()
+        .ok_or_else(|| anyhow!("no macOS architectures were built"))?;
+    let _ = fs::remove_dir_all(merged_dir);
+    fs::create_dir_all(merged_dir)
+        .with_context(|| format!("Failed to create {}", merged_dir.display()))?;
+
+    let stage_dirs: Vec<&Path> = built
+        .iter()
+        .map(|(_, exe)| exe.parent().expect("staged executable has a parent"))
+        .collect();
+    let mut names = vec![last_exe.file_name().unwrap().to_os_string()];
+    for entry in fs::read_dir(stage_dirs[0])? {
+        let path = entry?.path();
+        if path.extension().is_some_and(|e| e == "dylib") {
+            names.push(path.file_name().unwrap().to_os_string());
+        }
+    }
+
+    for name in &names {
+        let inputs: Vec<PathBuf> = stage_dirs.iter().map(|dir| dir.join(name)).collect();
+        if let Some(missing) = inputs.iter().find(|p| !p.exists()) {
+            return Err(anyhow!(
+                "{} was not built for every architecture",
+                missing.display()
+            ));
+        }
+        lipo_create(&inputs, &merged_dir.join(name))?;
+    }
+    println!("  {} Merged universal binary", "✓".green());
+
+    Ok(LinkedOutputs {
+        bin_dir: last_bin_dir.clone(),
+        linked_dir: merged_dir.to_path_buf(),
+        executable: merged_dir.join(&names[0]),
+    })
+}
+
+fn lipo_create(inputs: &[PathBuf], output: &Path) -> Result<()> {
+    let status = Command::new("lipo")
+        .arg("-create")
+        .args(inputs)
+        .arg("-output")
+        .arg(output)
+        .status()
+        .context("Failed to execute lipo")?;
+    if !status.success() {
+        return Err(anyhow!("lipo failed to create {}", output.display()));
+    }
+    Ok(())
+}
+
 fn executable_needs_native_relink(executable_path: &Path, native_lib_path: &Path) -> bool {
     let Ok(executable_modified) = fs::metadata(executable_path).and_then(|m| m.modified()) else {
         return false;
@@ -733,15 +910,15 @@ LingXia will not inject these entitlements until approval is confirmed.",
 fn create_macos_app_bundle(
     output_dir: &Path,
     macos_dir: &Path,
-    bin_dir: &Path,
+    linked: &LinkedOutputs,
     host_target: &str,
-    executable_path: &Path,
     product_name: &str,
     product_version: &str,
     bundle_id: &str,
     deployment_target: &str,
     info_plist_path: Option<&PathBuf>,
     hide_dock_icon: bool,
+    declared_arch: Option<&str>,
 ) -> Result<PathBuf> {
     // Finder only applies InfoPlist.strings names when the bundle filename
     // matches the default product name. Keep technical target names inside.
@@ -763,6 +940,7 @@ fn create_macos_app_bundle(
     fs::create_dir_all(&macos_exec_dir)?;
     fs::create_dir_all(&resources_dir)?;
 
+    let executable_path = &linked.executable;
     let executable_name = executable_path
         .file_name()
         .and_then(|n| n.to_str())
@@ -770,10 +948,10 @@ fn create_macos_app_bundle(
     let exe_dst = macos_exec_dir.join(executable_name);
     fs::copy(executable_path, &exe_dst)?;
 
-    apple::install_resource_bundles(macos_dir, bin_dir, host_target, &resources_dir)?;
+    apple::install_resource_bundles(macos_dir, &linked.bin_dir, host_target, &resources_dir)?;
 
     // Copy frameworks and dylibs into Contents/Frameworks
-    for entry in fs::read_dir(bin_dir)? {
+    for entry in fs::read_dir(&linked.linked_dir)? {
         let entry = entry?;
         let path = entry.path();
         if path.extension().map(|e| e == "framework").unwrap_or(false) {
@@ -800,6 +978,7 @@ fn create_macos_app_bundle(
         executable_name,
         info_plist_path,
         hide_dock_icon,
+        declared_arch,
     )?;
 
     Ok(app_bundle)
@@ -1147,6 +1326,7 @@ fn generate_macos_info_plist(
     executable_name: &str,
     info_plist_path: Option<&PathBuf>,
     hide_dock_icon: bool,
+    declared_arch: Option<&str>,
 ) -> Result<()> {
     let mut info: std::collections::HashMap<String, plist::Value> =
         std::collections::HashMap::new();
@@ -1226,6 +1406,9 @@ fn generate_macos_info_plist(
     // switch would cause.
     if hide_dock_icon {
         info.insert("LSUIElement".into(), true.into());
+    }
+    if let Some(arch) = declared_arch {
+        info.insert(DECLARED_ARCH_PLIST_KEY.into(), arch.into());
     }
 
     let info_plist_path = contents_dir.join("Info.plist");
@@ -1459,6 +1642,27 @@ mod name_tests {
     }
 
     #[test]
+    fn packaged_builds_follow_the_declared_arch() {
+        assert_eq!(
+            resolve_macos_archs(None, Some("arm64"), "x86_64").unwrap(),
+            ["arm64"]
+        );
+        assert_eq!(
+            resolve_macos_archs(None, Some("universal"), "x86_64").unwrap(),
+            ["arm64", "x86_64"]
+        );
+        assert_eq!(
+            resolve_macos_archs(None, None, "x86_64").unwrap(),
+            ["x86_64"]
+        );
+        assert_eq!(
+            resolve_macos_archs(Some("x86_64"), Some("universal"), "arm64").unwrap(),
+            ["x86_64"]
+        );
+        assert!(resolve_macos_archs(Some("i386"), None, "arm64").is_err());
+    }
+
+    #[test]
     fn bundle_and_localizations_use_product_name_but_keep_executable() {
         let dir = tempfile::tempdir().unwrap();
         let bin = dir.path().join("bin");
@@ -1467,15 +1671,19 @@ mod name_tests {
         let bundle = create_macos_app_bundle(
             &dir.path().join("output"),
             dir.path(),
-            &bin,
+            &LinkedOutputs {
+                bin_dir: bin.clone(),
+                linked_dir: bin.clone(),
+                executable: exe,
+            },
             "Technical",
-            &exe,
             "Product Display",
             "1.2.3",
             "com.example.product",
             "12.0",
             None,
             false,
+            Some("universal"),
         )
         .unwrap();
         assert_eq!(bundle.file_name().unwrap(), "Product Display.app");
@@ -1486,6 +1694,7 @@ mod name_tests {
             Some("Product Display")
         );
         assert_eq!(info["CFBundleExecutable"].as_string(), Some("Technical"));
+        assert_eq!(info[DECLARED_ARCH_PLIST_KEY].as_string(), Some("universal"));
         let names = std::collections::BTreeMap::from([("zh-CN".into(), "产品名称".into())]);
         crate::product_i18n::write_apple_product_name_strings(
             &bundle.join("Contents/Resources"),
