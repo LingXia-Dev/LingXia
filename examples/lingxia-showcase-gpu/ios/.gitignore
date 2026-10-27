@@ -1,0 +1,13 @@
+.DS_Store
+.build
+Packages
+xcuserdata/
+DerivedData/
+.swiftpm
+.netrc
+
+Sources/Resources/
+Sources/gpu/Resources/*
+!Sources/gpu/Resources/Assets.xcassets/
+!Sources/gpu/Resources/Assets.xcassets/AppIcon.appiconset/
+!Sources/gpu/Resources/Assets.xcassets/AppIcon.appiconset/**

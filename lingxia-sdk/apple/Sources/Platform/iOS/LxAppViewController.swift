@@ -40,6 +40,8 @@ final class LxAppViewController: UIViewController, ObservableObject {
     private var overflowHostView: UIView?
     private var overflowHostBottom: NSLayoutConstraint?
     private var webViewContainer: UIView!
+    /// The GPU page on screen, when the current page renders natively.
+    private weak var activeGpuView: UIView?
     private var globalCapsuleButton: UIView?
     var globalNavigationBar: LingXiaNavigationBar?
     var currentTabBar: LingXiaTabBar?
@@ -498,6 +500,11 @@ final class LxAppViewController: UIViewController, ObservableObject {
             NativeBridge.notifyPageInactive(for: existingWebView)
         }
 
+        if iOSLxApp.pageWebView(appId: appId, sessionId: currentSessionId, pageInstanceId: pageInstanceId) == nil,
+           showGpuPage(appId: appId, sessionId: currentSessionId, pageInstanceId: pageInstanceId, path: path) {
+            return
+        }
+
         if let targetWebView = iOSLxApp.pageWebView(
             appId: appId, sessionId: currentSessionId, pageInstanceId: pageInstanceId) {
 
@@ -564,6 +571,12 @@ final class LxAppViewController: UIViewController, ObservableObject {
                   self.currentSessionId == sessionId,
                   self.pendingNavigationPath == path,
                   self.pendingNavigationPageId == pageInstanceId else {
+                return
+            }
+
+            if ready,
+               iOSLxApp.pageWebView(appId: appId, sessionId: sessionId, pageInstanceId: pageInstanceId) == nil,
+               self.showGpuPage(appId: appId, sessionId: sessionId, pageInstanceId: pageInstanceId, path: path) {
                 return
             }
 
@@ -719,12 +732,45 @@ final class LxAppViewController: UIViewController, ObservableObject {
         }
     }
 
+    /// Show the page's GPU view when it renders natively; false for a WebView page.
+    private func showGpuPage(appId: String, sessionId: UInt64, pageInstanceId: String?, path: String) -> Bool {
+        let token = GpuPages.token(appId: appId, sessionId: sessionId, pageInstanceId: pageInstanceId)
+        guard token != 0, rootContainer != nil else { return false }
+        let view = GpuPages.view(for: token)
+        if let existing = getCurrentWebView() {
+            parkInactiveWebView(existing)
+        }
+        if activeGpuView !== view {
+            activeGpuView?.removeFromSuperview()
+            // Pinned where a WebView page sits, so chrome insets match.
+            view.translatesAutoresizingMaskIntoConstraints = false
+            rootContainer.addSubview(view)
+            NSLayoutConstraint.activate([
+                view.topAnchor.constraint(
+                    equalTo: rootContainer.topAnchor, constant: calculateTopOffset(for: appId, path: path)),
+                view.leadingAnchor.constraint(equalTo: self.view.leadingAnchor),
+                view.trailingAnchor.constraint(equalTo: self.view.trailingAnchor),
+                view.bottomAnchor.constraint(
+                    equalTo: self.view.bottomAnchor, constant: -standardTabBarInset(for: appId)),
+            ])
+            activeGpuView = view
+        }
+        LxAppCore.setCurrentPath(path, pageInstanceId: pageInstanceId)
+        lingxia.onPageShow(appId, path)
+        updateNavigationBar(appId: appId, path: path)
+        updateTabBar(for: appId, path: path)
+        bringUIElementsToFront()
+        return true
+    }
+
     private func attachWebViewToUI(
         webView: WKWebView,
         for appId: String,
         path: String,
         pageInstanceId: String?
     ) {
+        activeGpuView?.removeFromSuperview()
+        activeGpuView = nil
         // Check if WebView is already properly attached
         if webView.superview == rootContainer && !webView.isHidden {
             // WebView is already attached and visible, just ensure it's configured

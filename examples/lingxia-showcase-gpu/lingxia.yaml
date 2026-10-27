@@ -5,7 +5,7 @@ app:
   packageId: com.lingxia.example.gpu
   productName: LingXia GPU Showcase
   productVersion: 0.2.7
-  platforms: [android, macos]
+  platforms: [android, macos, ios]
   homeAppId: lingxia-showcase-gpu
   lingxiaServer:
     dev: http://127.0.0.1:39881
@@ -16,6 +16,10 @@ android:
   minSdk: 29
   targetSdk: 35
   compileSdk: 35
+
+ios:
+  deploymentTarget: "17.0"
+  targetName: gpu
 
 macos:
   deploymentTarget: "12.0"
