@@ -94,6 +94,16 @@ but shipping more than one Windows architecture needs separate feeds or
 identities. MSIX never overwrites its package directory; packaging does not
 host an `.appinstaller` feed.
 
+### macOS architecture
+
+`platform=macos` serves one package to every Mac, and the swap deletes the old
+bundle, so an update without a slice the hardware can run would leave an app
+that neither launches nor updates. `lingxia publish` holds packages to the
+declared `macos.arch` (`LingXiaMacosArch` in Info.plist; absent means arm64);
+the installer refuses a bundle without an x86_64 slice on Intel, or without
+arm64/x86_64 on Apple silicon (judged by `hw.optional.arm64`, so Rosetta does
+not count as Intel), and keeps the installed version.
+
 ### Channel and version signal
 
 Effective channel precedence is: detected store installation, per-platform

@@ -552,6 +552,12 @@ fn install_update_on_macos(
 
     let current_app = current_macos_app_bundle_path()?;
     let prepared = prepare_macos_update_source(platform, package_path, &current_app)?;
+    if let Err(error) = ensure_update_runs_on_this_mac(&prepared.source_app) {
+        if let Some(path) = &prepared.cleanup_path {
+            let _ = fs::remove_dir_all(path);
+        }
+        return Err(error);
+    }
     let helper = write_macos_update_helper(platform, &current_app, &prepared)?;
     let staged = StagedMacosUpdate {
         helper,
@@ -731,6 +737,110 @@ fn current_macos_app_bundle_path() -> Result<PathBuf, PlatformError> {
         "Current process is not running from a macOS app bundle: {}",
         current_exe.display()
     )))
+}
+
+#[cfg(target_os = "macos")]
+const CPU_TYPE_X86_64: u32 = 0x0100_0007;
+#[cfg(target_os = "macos")]
+const CPU_TYPE_ARM64: u32 = 0x0100_000c;
+
+/// Refuse an update whose executable this Mac cannot run. The swap deletes
+/// the old bundle, so installing it would leave an app that neither launches
+/// nor updates again; staying on the current version is recoverable.
+#[cfg(target_os = "macos")]
+fn ensure_update_runs_on_this_mac(source_app: &Path) -> Result<(), PlatformError> {
+    let executable = bundle_executable_path(source_app).ok_or_else(|| {
+        PlatformError::InvalidParameter(format!(
+            "Update bundle has no executable: {}",
+            source_app.display()
+        ))
+    })?;
+    let mut header = Vec::new();
+    fs::File::open(&executable)
+        .and_then(|file| file.take(4096).read_to_end(&mut header))
+        .map_err(|e| {
+            PlatformError::Platform(format!(
+                "Failed to read update executable {}: {}",
+                executable.display(),
+                e
+            ))
+        })?;
+    let slices = macho_cpu_types(&header).ok_or_else(|| {
+        PlatformError::InvalidParameter(format!(
+            "Update executable is not Mach-O: {}",
+            executable.display()
+        ))
+    })?;
+    if mac_can_run(&slices, mac_has_apple_silicon()) {
+        return Ok(());
+    }
+    Err(PlatformError::NotSupported(format!(
+        "Update {} has no slice this Mac can run; keeping the installed version",
+        source_app.display()
+    )))
+}
+
+/// Apple silicon runs arm64 natively and x86_64 under Rosetta; Intel runs
+/// only x86_64.
+#[cfg(target_os = "macos")]
+fn mac_can_run(slices: &[u32], apple_silicon: bool) -> bool {
+    slices.contains(&CPU_TYPE_X86_64) || (apple_silicon && slices.contains(&CPU_TYPE_ARM64))
+}
+
+/// The hardware, not this process: an x86_64 build under Rosetta still sees
+/// `hw.optional.arm64 = 1`.
+#[cfg(target_os = "macos")]
+fn mac_has_apple_silicon() -> bool {
+    unsafe extern "C" {
+        fn sysctlbyname(
+            name: *const std::ffi::c_char,
+            oldp: *mut std::ffi::c_void,
+            oldlenp: *mut usize,
+            newp: *mut std::ffi::c_void,
+            newlen: usize,
+        ) -> i32;
+    }
+    let mut value: i32 = 0;
+    let mut size = std::mem::size_of::<i32>();
+    let rc = unsafe {
+        sysctlbyname(
+            c"hw.optional.arm64".as_ptr(),
+            (&mut value as *mut i32).cast(),
+            &mut size,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    rc == 0 && value == 1
+}
+
+#[cfg(target_os = "macos")]
+fn bundle_executable_path(bundle_path: &Path) -> Option<PathBuf> {
+    use objc2::rc::Retained;
+    use objc2::{ClassType, msg_send};
+    use objc2_foundation::{NSBundle, NSString};
+
+    let path = NSString::from_str(bundle_path.to_str()?);
+    let bundle: Option<Retained<NSBundle>> =
+        unsafe { msg_send![NSBundle::class(), bundleWithPath: &*path] };
+    let executable: Option<Retained<NSString>> = unsafe { msg_send![&*bundle?, executablePath] };
+    Some(PathBuf::from(executable?.to_string()))
+}
+
+/// CPU types of a thin or fat Mach-O header; `None` if not Mach-O.
+#[cfg(target_os = "macos")]
+fn macho_cpu_types(header: &[u8]) -> Option<Vec<u32>> {
+    let be = |at: usize| Some(u32::from_be_bytes(header.get(at..at + 4)?.try_into().ok()?));
+    let le = |at: usize| Some(u32::from_le_bytes(header.get(at..at + 4)?.try_into().ok()?));
+    match be(0)? {
+        magic @ (0xcafe_babe | 0xcafe_babf) => {
+            let stride = if magic == 0xcafe_babf { 32 } else { 20 };
+            let count = be(4)? as usize;
+            (0..count).map(|i| be(8 + i * stride)).collect()
+        }
+        0xcffa_edfe | 0xcefa_edfe => Some(vec![le(4)?]),
+        _ => None,
+    }
 }
 
 /// Returns true if the file begins with the ZIP local-file-header magic
@@ -1184,4 +1294,36 @@ fn notification_word(word: String) -> Result<String, PlatformError> {
     } else {
         detail
     }))
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod update_arch_tests {
+    use super::{CPU_TYPE_ARM64, CPU_TYPE_X86_64, mac_can_run, macho_cpu_types};
+
+    #[test]
+    fn intel_macs_refuse_arm64_only_updates() {
+        assert!(mac_can_run(&[CPU_TYPE_ARM64], true));
+        assert!(mac_can_run(&[CPU_TYPE_X86_64], true));
+        assert!(mac_can_run(&[CPU_TYPE_X86_64, CPU_TYPE_ARM64], false));
+        assert!(!mac_can_run(&[CPU_TYPE_ARM64], false));
+    }
+
+    #[test]
+    fn reads_thin_and_fat_headers() {
+        let mut thin = 0xfeed_facf_u32.to_le_bytes().to_vec();
+        thin.extend(CPU_TYPE_ARM64.to_le_bytes());
+        assert_eq!(macho_cpu_types(&thin), Some(vec![CPU_TYPE_ARM64]));
+
+        let mut fat = 0xcafe_babe_u32.to_be_bytes().to_vec();
+        fat.extend(2u32.to_be_bytes());
+        for cpu in [CPU_TYPE_X86_64, CPU_TYPE_ARM64] {
+            fat.extend(cpu.to_be_bytes());
+            fat.extend([0; 16]);
+        }
+        assert_eq!(
+            macho_cpu_types(&fat),
+            Some(vec![CPU_TYPE_X86_64, CPU_TYPE_ARM64])
+        );
+        assert_eq!(macho_cpu_types(b"#!/bin/sh"), None);
+    }
 }

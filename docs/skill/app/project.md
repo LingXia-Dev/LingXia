@@ -318,7 +318,8 @@ A campaign screen after launch: [Launch screen](../native/splash.md).
 - `macos` — `deploymentTarget`, `targetName`, optional `executableName`, optional
   `bundleId`, optional `store:` (App Store Connect identity), optional `arch`:
   `arm64` (default), `x86_64`, or `universal`. Packages build it and
-  `lingxia publish` refuses one missing a declared slice.
+  `lingxia publish` refuses one missing a declared slice; installed Macs whose
+  CPU a later update drops keep their current version.
 - `windows` — optional `executableName`, `publisher` (MSIX Identity Publisher,
   a distinguished name; required for MSIX except `--self-signed`),
   `publisherDisplayName` (the publisher's name, default the `O=`/`CN=` of
