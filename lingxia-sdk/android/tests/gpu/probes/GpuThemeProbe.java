@@ -20,7 +20,8 @@ public class GpuThemeProbe {
   Rect input=bounds("todo-input");float scale=GpuPaddingProbe.density();
   Bitmap shot=GpuApiProbe.a.takeScreenshot(),bitmap=shot.copy(Bitmap.Config.ARGB_8888,false);shot.recycle();
   try {
-   pixel(bitmap,Math.round(4*scale),input.centerY(),dark?PAGE_DARK:PAGE_LIGHT,"page token");
+   // Right edge: dev-session builds draw their badge on the left.
+   pixel(bitmap,bitmap.getWidth()-Math.round(4*scale),input.centerY(),dark?PAGE_DARK:PAGE_LIGHT,"page token");
    pixel(bitmap,input.right-Math.round(12*scale),input.centerY(),dark?SURFACE_DARK:SURFACE_LIGHT,"surface token");
   }finally{bitmap.recycle();}
   GpuRadioProbe.screenshot(dark?"gpu-theme-dark":"gpu-theme-light");
