@@ -128,6 +128,12 @@ test('structural variants match sibling position, list rows and emptiness; DOM-s
   assert.deepEqual(rows, [[4, undefined, 'surface'], [undefined, undefined, 'text'], [undefined, 8, 'surface']]);
   assert.equal(rendered(() => h('column', {}, h('text', { className: 'only:p-4' }, 'x'))).children[0].props.paddingTop, 16);
   assert.equal(rendered(() => h('column', {}, false, h('text', { className: 'only:p-4' }, 'x'), null)).children[0].props.paddingTop, 16);
+  // Holes keep their slot in identity but never count as siblings.
+  const holes = rendered(() => h('column', {}, false, h('text', { className: 'first:pt-1' }, 'a'), null, h('text', { className: 'last:pb-2' }, 'b')));
+  assert.deepEqual(holes.children.map(child => [child.props.paddingTop, child.props.paddingBottom, child.props.childSlot]),
+    [[4, undefined, '1'], [undefined, 8, '3']]);
+  assert.equal(rendered(() => h('column', {}, h('text', {}, 'a'), h('text', {}, 'b'))).children[1].props.childSlot, undefined,
+    'a child at its rendered position sends no slot');
   assert.equal(rendered(() => h('column', { className: 'empty:hidden' })).props.display, 'none');
   assert.equal(rendered(() => h('column', { className: 'empty:hidden' }, h('text', {}, 'x'))).props.display, undefined);
   const page = () => h('list', { count: 3, row: i => h('text', { className: 'first:pt-1 last:pb-2' }, String(i)) });

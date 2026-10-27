@@ -459,7 +459,7 @@
   "vectorElements": 283,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 964
+  "wireValues": 986
  },
  "showcase-gpu/api@phone-light": {
   "backdrops": 0,
@@ -473,7 +473,7 @@
   "vectorElements": 283,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 964
+  "wireValues": 986
  },
  "showcase-gpu/api@tablet-dark": {
   "backdrops": 0,
@@ -487,7 +487,7 @@
   "vectorElements": 283,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 964
+  "wireValues": 986
  },
  "showcase-gpu/api@tablet-light": {
   "backdrops": 0,
@@ -501,7 +501,7 @@
   "vectorElements": 283,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 964
+  "wireValues": 986
  },
  "showcase-gpu/bridge-repro@phone-dark": {
   "backdrops": 0,
@@ -515,7 +515,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 522
+  "wireValues": 558
  },
  "showcase-gpu/bridge-repro@phone-light": {
   "backdrops": 0,
@@ -529,7 +529,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 522
+  "wireValues": 558
  },
  "showcase-gpu/bridge-repro@tablet-dark": {
   "backdrops": 0,
@@ -543,7 +543,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 522
+  "wireValues": 558
  },
  "showcase-gpu/bridge-repro@tablet-light": {
   "backdrops": 0,
@@ -557,7 +557,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 522
+  "wireValues": 558
  },
  "showcase-gpu/channel@phone-dark": {
   "backdrops": 0,
@@ -571,7 +571,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 410
+  "wireValues": 424
  },
  "showcase-gpu/channel@phone-light": {
   "backdrops": 0,
@@ -585,7 +585,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 410
+  "wireValues": 424
  },
  "showcase-gpu/channel@tablet-dark": {
   "backdrops": 0,
@@ -599,7 +599,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 410
+  "wireValues": 424
  },
  "showcase-gpu/channel@tablet-light": {
   "backdrops": 0,
@@ -613,7 +613,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 410
+  "wireValues": 424
  },
  "showcase-gpu/clipboard@phone-dark": {
   "backdrops": 0,
@@ -627,7 +627,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1008
+  "wireValues": 1028
  },
  "showcase-gpu/clipboard@phone-light": {
   "backdrops": 0,
@@ -641,7 +641,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1008
+  "wireValues": 1028
  },
  "showcase-gpu/clipboard@tablet-dark": {
   "backdrops": 0,
@@ -655,7 +655,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1008
+  "wireValues": 1028
  },
  "showcase-gpu/clipboard@tablet-light": {
   "backdrops": 0,
@@ -669,7 +669,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1008
+  "wireValues": 1028
  },
  "showcase-gpu/cloud@phone-dark": {
   "backdrops": 0,
@@ -683,7 +683,7 @@
   "vectorElements": 46,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 716
+  "wireValues": 734
  },
  "showcase-gpu/cloud@phone-light": {
   "backdrops": 0,
@@ -697,7 +697,7 @@
   "vectorElements": 46,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 716
+  "wireValues": 734
  },
  "showcase-gpu/cloud@tablet-dark": {
   "backdrops": 0,
@@ -711,7 +711,7 @@
   "vectorElements": 46,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 716
+  "wireValues": 734
  },
  "showcase-gpu/cloud@tablet-light": {
   "backdrops": 0,
@@ -725,7 +725,7 @@
   "vectorElements": 46,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 716
+  "wireValues": 734
  },
  "showcase-gpu/device@phone-dark": {
   "backdrops": 0,
@@ -739,7 +739,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 218
+  "wireValues": 222
  },
  "showcase-gpu/device@phone-light": {
   "backdrops": 0,
@@ -753,7 +753,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 218
+  "wireValues": 222
  },
  "showcase-gpu/device@tablet-dark": {
   "backdrops": 0,
@@ -767,7 +767,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 218
+  "wireValues": 222
  },
  "showcase-gpu/device@tablet-light": {
   "backdrops": 0,
@@ -781,7 +781,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 218
+  "wireValues": 222
  },
  "showcase-gpu/feedback@phone-dark": {
   "backdrops": 0,
@@ -795,7 +795,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 478
+  "wireValues": 488
  },
  "showcase-gpu/feedback@phone-light": {
   "backdrops": 0,
@@ -809,7 +809,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 478
+  "wireValues": 488
  },
  "showcase-gpu/feedback@tablet-dark": {
   "backdrops": 0,
@@ -823,7 +823,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 478
+  "wireValues": 488
  },
  "showcase-gpu/feedback@tablet-light": {
   "backdrops": 0,
@@ -837,7 +837,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 478
+  "wireValues": 488
  },
  "showcase-gpu/file@phone-dark": {
   "backdrops": 0,
@@ -851,7 +851,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 736
+  "wireValues": 752
  },
  "showcase-gpu/file@phone-light": {
   "backdrops": 0,
@@ -865,7 +865,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 736
+  "wireValues": 752
  },
  "showcase-gpu/file@tablet-dark": {
   "backdrops": 0,
@@ -879,7 +879,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 736
+  "wireValues": 752
  },
  "showcase-gpu/file@tablet-light": {
   "backdrops": 0,
@@ -893,7 +893,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 736
+  "wireValues": 752
  },
  "showcase-gpu/home@phone-dark": {
   "backdrops": 2,
@@ -907,7 +907,7 @@
   "vectorElements": 14,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 852
+  "wireValues": 866
  },
  "showcase-gpu/home@phone-light": {
   "backdrops": 2,
@@ -921,7 +921,7 @@
   "vectorElements": 14,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 852
+  "wireValues": 866
  },
  "showcase-gpu/home@tablet-dark": {
   "backdrops": 2,
@@ -935,7 +935,7 @@
   "vectorElements": 14,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 852
+  "wireValues": 866
  },
  "showcase-gpu/home@tablet-light": {
   "backdrops": 2,
@@ -949,7 +949,7 @@
   "vectorElements": 14,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 852
+  "wireValues": 866
  },
  "showcase-gpu/leaveguard@phone-dark": {
   "backdrops": 0,
@@ -963,7 +963,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 346
+  "wireValues": 354
  },
  "showcase-gpu/leaveguard@phone-light": {
   "backdrops": 0,
@@ -977,7 +977,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 346
+  "wireValues": 354
  },
  "showcase-gpu/leaveguard@tablet-dark": {
   "backdrops": 0,
@@ -991,7 +991,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 346
+  "wireValues": 354
  },
  "showcase-gpu/leaveguard@tablet-light": {
   "backdrops": 0,
@@ -1005,7 +1005,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 346
+  "wireValues": 354
  },
  "showcase-gpu/location@phone-dark": {
   "backdrops": 0,
@@ -1019,7 +1019,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 236
+  "wireValues": 246
  },
  "showcase-gpu/location@phone-light": {
   "backdrops": 0,
@@ -1033,7 +1033,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 236
+  "wireValues": 246
  },
  "showcase-gpu/location@tablet-dark": {
   "backdrops": 0,
@@ -1047,7 +1047,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 236
+  "wireValues": 246
  },
  "showcase-gpu/location@tablet-light": {
   "backdrops": 0,
@@ -1061,7 +1061,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 236
+  "wireValues": 246
  },
  "showcase-gpu/media@phone-dark": {
   "backdrops": 0,
@@ -1075,7 +1075,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 848
+  "wireValues": 866
  },
  "showcase-gpu/media@phone-light": {
   "backdrops": 0,
@@ -1089,7 +1089,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 848
+  "wireValues": 866
  },
  "showcase-gpu/media@tablet-dark": {
   "backdrops": 0,
@@ -1103,7 +1103,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 848
+  "wireValues": 866
  },
  "showcase-gpu/media@tablet-light": {
   "backdrops": 0,
@@ -1117,7 +1117,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 848
+  "wireValues": 866
  },
  "showcase-gpu/motion-lab@phone-dark": {
   "backdrops": 0,
@@ -1131,7 +1131,7 @@
   "vectorElements": 11,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 686
+  "wireValues": 698
  },
  "showcase-gpu/motion-lab@phone-light": {
   "backdrops": 0,
@@ -1145,7 +1145,7 @@
   "vectorElements": 11,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 686
+  "wireValues": 698
  },
  "showcase-gpu/motion-lab@tablet-dark": {
   "backdrops": 0,
@@ -1159,7 +1159,7 @@
   "vectorElements": 11,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 686
+  "wireValues": 698
  },
  "showcase-gpu/motion-lab@tablet-light": {
   "backdrops": 0,
@@ -1173,7 +1173,7 @@
   "vectorElements": 11,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 686
+  "wireValues": 698
  },
  "showcase-gpu/pulltorefresh@phone-dark": {
   "backdrops": 0,
@@ -1187,7 +1187,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 580
+  "wireValues": 596
  },
  "showcase-gpu/pulltorefresh@phone-light": {
   "backdrops": 0,
@@ -1201,7 +1201,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 580
+  "wireValues": 596
  },
  "showcase-gpu/pulltorefresh@tablet-dark": {
   "backdrops": 0,
@@ -1215,7 +1215,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 580
+  "wireValues": 596
  },
  "showcase-gpu/pulltorefresh@tablet-light": {
   "backdrops": 0,
@@ -1229,7 +1229,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 580
+  "wireValues": 596
  },
  "showcase-gpu/share@phone-dark": {
   "backdrops": 0,
@@ -1243,7 +1243,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 930
+  "wireValues": 948
  },
  "showcase-gpu/share@phone-light": {
   "backdrops": 0,
@@ -1257,7 +1257,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 930
+  "wireValues": 948
  },
  "showcase-gpu/share@tablet-dark": {
   "backdrops": 0,
@@ -1271,7 +1271,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 930
+  "wireValues": 948
  },
  "showcase-gpu/share@tablet-light": {
   "backdrops": 0,
@@ -1285,7 +1285,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 930
+  "wireValues": 948
  },
  "showcase-gpu/stream@phone-dark": {
   "backdrops": 0,
@@ -1299,7 +1299,7 @@
   "vectorElements": 43,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 350
+  "wireValues": 356
  },
  "showcase-gpu/stream@phone-light": {
   "backdrops": 0,
@@ -1313,7 +1313,7 @@
   "vectorElements": 43,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 350
+  "wireValues": 356
  },
  "showcase-gpu/stream@tablet-dark": {
   "backdrops": 0,
@@ -1327,7 +1327,7 @@
   "vectorElements": 43,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 350
+  "wireValues": 356
  },
  "showcase-gpu/stream@tablet-light": {
   "backdrops": 0,
@@ -1341,7 +1341,7 @@
   "vectorElements": 43,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 350
+  "wireValues": 356
  },
  "showcase-gpu/surface@phone-dark": {
   "backdrops": 0,
@@ -1355,7 +1355,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1234
+  "wireValues": 1268
  },
  "showcase-gpu/surface@phone-light": {
   "backdrops": 0,
@@ -1369,7 +1369,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1234
+  "wireValues": 1268
  },
  "showcase-gpu/surface@tablet-dark": {
   "backdrops": 0,
@@ -1383,7 +1383,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1234
+  "wireValues": 1268
  },
  "showcase-gpu/surface@tablet-light": {
   "backdrops": 0,
@@ -1397,7 +1397,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1234
+  "wireValues": 1268
  },
  "showcase-gpu/system@phone-dark": {
   "backdrops": 0,
@@ -1411,7 +1411,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 218
+  "wireValues": 222
  },
  "showcase-gpu/system@phone-light": {
   "backdrops": 0,
@@ -1425,7 +1425,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 218
+  "wireValues": 222
  },
  "showcase-gpu/system@tablet-dark": {
   "backdrops": 0,
@@ -1439,7 +1439,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 218
+  "wireValues": 222
  },
  "showcase-gpu/system@tablet-light": {
   "backdrops": 0,
@@ -1453,7 +1453,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 218
+  "wireValues": 222
  },
  "showcase-gpu/todo@phone-dark": {
   "backdrops": 1,
@@ -1467,7 +1467,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 182
+  "wireValues": 184
  },
  "showcase-gpu/todo@phone-light": {
   "backdrops": 1,
@@ -1481,7 +1481,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 182
+  "wireValues": 184
  },
  "showcase-gpu/todo@tablet-dark": {
   "backdrops": 1,
@@ -1495,7 +1495,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 182
+  "wireValues": 184
  },
  "showcase-gpu/todo@tablet-light": {
   "backdrops": 1,
@@ -1509,7 +1509,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 182
+  "wireValues": 184
  },
  "showcase-gpu/ui@phone-dark": {
   "backdrops": 0,
@@ -1523,7 +1523,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1406
+  "wireValues": 1444
  },
  "showcase-gpu/ui@phone-light": {
   "backdrops": 0,
@@ -1537,7 +1537,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1406
+  "wireValues": 1444
  },
  "showcase-gpu/ui@tablet-dark": {
   "backdrops": 0,
@@ -1551,7 +1551,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1406
+  "wireValues": 1444
  },
  "showcase-gpu/ui@tablet-light": {
   "backdrops": 0,
@@ -1565,7 +1565,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1406
+  "wireValues": 1444
  },
  "showcase-gpu/view-lab@phone-dark": {
   "backdrops": 0,
@@ -1579,7 +1579,7 @@
   "vectorElements": 141,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1452
+  "wireValues": 1458
  },
  "showcase-gpu/view-lab@phone-light": {
   "backdrops": 0,
@@ -1593,7 +1593,7 @@
   "vectorElements": 141,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1452
+  "wireValues": 1458
  },
  "showcase-gpu/view-lab@tablet-dark": {
   "backdrops": 0,
@@ -1607,7 +1607,7 @@
   "vectorElements": 161,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1452
+  "wireValues": 1458
  },
  "showcase-gpu/view-lab@tablet-light": {
   "backdrops": 0,
@@ -1621,7 +1621,7 @@
   "vectorElements": 161,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1452
+  "wireValues": 1458
  },
  "showcase-gpu/wifi@phone-dark": {
   "backdrops": 0,
@@ -1635,7 +1635,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 290
+  "wireValues": 294
  },
  "showcase-gpu/wifi@phone-light": {
   "backdrops": 0,
@@ -1649,7 +1649,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 290
+  "wireValues": 294
  },
  "showcase-gpu/wifi@tablet-dark": {
   "backdrops": 0,
@@ -1663,7 +1663,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 290
+  "wireValues": 294
  },
  "showcase-gpu/wifi@tablet-light": {
   "backdrops": 0,
@@ -1677,6 +1677,6 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 290
+  "wireValues": 294
  }
 }

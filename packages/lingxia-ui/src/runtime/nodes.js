@@ -38,3 +38,15 @@ export function flatten(children, depth = 0, result = []) {
 }
 
 export function childrenToArray(children) { return flatten([children]); }
+
+// Each kept child's slot, parallel to `flatten(children)`: its index among the authored children,
+// holes (`cond && <X/>` while false, null) included, and `i.j` inside nested arrays. A child that
+// appears or disappears therefore leaves its siblings' identity, local state and semantics alone.
+export function slots(children, prefix = '', result = []) {
+  children.forEach((child, index) => {
+    const slot = prefix ? `${prefix}.${index}` : String(index);
+    if (Array.isArray(child)) slots(child, slot, result);
+    else if (child !== null && child !== undefined && typeof child !== 'boolean' && child !== '') result.push(slot);
+  });
+  return result;
+}

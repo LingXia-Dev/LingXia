@@ -2991,3 +2991,45 @@ fn an_editor_selection_offers_copy_cut_and_paste_to_assistive_tech() {
     assert!(!host.accessibility(pin, AccessibilityAction::Copy));
     assert_eq!(host.adapter().log.lock().unwrap().copied, ["Hello"]);
 }
+
+#[test]
+fn a_sibling_after_an_appearing_conditional_keeps_its_local_and_semantic_id() {
+    let worker = ViewWorker::spawn("test-conditional-slots").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let page = "function Counter(){const n=useLocal('n',0);return h('button',{testId:'count',onClick(){n.set(n.value+1)}},'n '+n.value)}
+      function render(){const on=useLocal('on',false);
+        return h('column',{}, on.value && h('text',{testId:'banner'},'Hi'), h(Counter,{}),
+          h('button',{testId:'toggle',onClick(){on.set(!on.value)}},'Toggle'))}";
+    let host = platform.host(&worker, &source(page), false);
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let click = |test_id: &str| {
+        host.automation_request(&serde_json::json!({"op": "act", "css": format!("[data-testid=\"{test_id}\"]"), "action": {"kind": "click"}}))
+            .unwrap();
+        platform.settle(&[&host]);
+    };
+    let count = || {
+        host.semantics(|projection, _| {
+            let projection = projection.unwrap();
+            (0..projection.frame.nodes.len())
+                .filter_map(|index| projection.ids.id(index))
+                .filter_map(|id| projection.node(id))
+                .find(|node| node.test_id == "count")
+                .map(|node| (node.id, node.name))
+                .unwrap()
+        })
+    };
+    click("count");
+    let before = count();
+    assert_eq!(before.1, "n 1");
+    click("toggle");
+    let banner = host
+        .automation_request(&serde_json::json!({"op": "query", "css": "[data-testid=\"banner\"]"}))
+        .unwrap();
+    assert_eq!(banner["exists"], true, "the conditional child appeared");
+    assert_eq!(
+        count(),
+        before,
+        "same semantic id and the same local after the banner appears"
+    );
+}

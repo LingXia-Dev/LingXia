@@ -38,4 +38,4 @@ Page-wide bounds the runtime and the native decoder both enforce. Exceeding one 
 | `leaseFrames` | 6 | Frame-sized GPU textures a page may hold at once across prepared frames and kept animation layers (at least 64 MiB, under `compositeBytes`); past it the frame draws without the kept layer. |
 | `compositeBytes` | 268435456 (256 MiB) | Absolute ceiling on those working surfaces, for very large windows. |
 
-Wire ABI: 1. Highest field id: 183.
+Wire ABI: 1. Highest field id: 184.

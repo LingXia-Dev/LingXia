@@ -1,7 +1,7 @@
 import { elements, admission, limits, commonProps } from '../generated/contract.js';
 import { resolveClasses } from '../style/classes.js';
 import { lowerStyle, paintOnly, mergeStyle } from '../style/lower.js';
-import { h, readNode, isNode, nodeKey, flatten } from './nodes.js';
+import { h, readNode, isNode, nodeKey, flatten, slots } from './nodes.js';
 import { render, page } from './state.js';
 import { cellOf, envOf } from './hooks.js';
 import { located } from './errors.js';
@@ -145,7 +145,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
     throw Error(`UI_PROP: dir must be "ltr" or "rtl"${editor ? ' or "auto"' : ''}`);
   // `dir` overrides the direction inherited from the environment for its subtree; `auto` keeps the box's.
   const direction = (props.dir === 'auto' ? undefined : props.dir) ?? parent.direction ?? (envOf(render.view)?.direction === 'rtl' ? 'rtl' : 'ltr');
-  const flat = flatten(children);
+  const flat = flatten(children), slot = slots(children);
   const style = nodeStyle(tag, props, parent.extra, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat));
   const inline = child => typeof child === 'string' || typeof child === 'number';
   if ((tag === 'span' || tag === 'link') && !parent.inText) throw Error(`UI_TEXT: <${tag}> belongs inside <text>`);
@@ -280,7 +280,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
     // Nested spans flatten into one run list; inner runs layer over the outer span's style.
     const extra = tag === 'span' || tag === 'link' ? style.author : undefined;
     result.children = flat.flatMap((child, position) => {
-      const run = resolveNode(inline(child) ? h('span', {}, child) : child, `${identity}/${tag}/position:${position}`, depth + 1, {
+      const run = resolveNode(inline(child) ? h('span', {}, child) : child, `${identity}/${tag}/position:${slot[position]}`, depth + 1, {
         tag, typography: style.typography, direction, extra, inText: true, inControl: parent.inControl, inLink: parent.inLink || tag === 'link',
       });
       if (run === null) return [];
@@ -301,13 +301,20 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       if (key !== undefined && typeof key !== 'string') throw Error('UI_KEY: expected string');
       if (key !== undefined && keys.has(key)) throw Error('UI_KEY: duplicate sibling');
       if (key !== undefined) keys.add(key);
-      const part = key === undefined ? `position:${position}` : `key:${JSON.stringify(key)}`;
-      return resolveNode(child, `${identity}/${tag}/${part}`, depth + 1, {
+      const part = key === undefined ? `position:${slot[position]}` : `key:${JSON.stringify(key)}`;
+      const node = resolveNode(child, `${identity}/${tag}/${part}`, depth + 1, {
         tag, typography: style.typography, direction, extra: position < last ? style.children : undefined,
         sibling: { index: position, count: flat.length },
         inControl: parent.inControl || admission.tags[element.wire].children === 'content',
       });
+      return node && key === undefined ? { ...node, slot: slot[position] } : node;
     }).filter(child => child !== null);
+    // Native names an unkeyed child by its rendered position; where a hole moved it, send the slot.
+    result.children = result.children.map((child, ordinal) => {
+      if (child.slot === undefined) return child;
+      const { slot: at, ...rest } = child;
+      return at === String(ordinal) ? rest : { ...rest, slot: at };
+    });
   }
   return result;
 }

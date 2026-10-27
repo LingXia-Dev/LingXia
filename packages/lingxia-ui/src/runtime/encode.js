@@ -55,6 +55,7 @@ export function encodeTree(tree, windows) {
       if (plotWork > 16384) throw Error('UI_LIMIT: plot geometry budget exceeded');
     }
     if (node.rowIndex !== undefined) encoded.push(field.listRowIndex, node.rowIndex);
+    if (node.slot !== undefined) encoded.push(field.childSlot, node.slot);
     let window, seededAnchor = false;
     if (node.list) {
       window = windows[identity] ?? node.list.window ?? initialWindow(props.count);

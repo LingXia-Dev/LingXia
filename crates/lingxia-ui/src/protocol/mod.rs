@@ -93,7 +93,13 @@ pub(crate) fn identities(records: &[Record]) -> Vec<String> {
                 n
             })
             .unwrap_or(0);
-        let segment = if record.key.is_empty() {
+        let segment = if let Some(slot) = record
+            .string(field::CHILD_SLOT)
+            .filter(|_| record.key.is_empty())
+        {
+            // The authored position, holes included: a sibling appearing before it changes nothing.
+            format!("i:{slot}")
+        } else if record.key.is_empty() {
             format!("i:{ordinal}")
         } else {
             format!("k:{}:{}", record.key.len(), record.key)

@@ -245,7 +245,8 @@
     {"id": 180, "key": "rows", "wire": "rows", "kind": "textarea-rows", "tags": ["textarea"]},
     {"id": 181, "key": "maxRows", "wire": "maxRows", "kind": "textarea-rows", "tags": ["textarea"]},
     {"id": 182, "key": "imagePlaceholder", "wire": "placeholderSrc", "kind": "image-src", "tags": ["image"]},
-    {"id": 183, "key": "imagePosition", "wire": "objectPosition", "kind": "image-position", "tags": ["image"]}
+    {"id": 183, "key": "imagePosition", "wire": "objectPosition", "kind": "image-position", "tags": ["image"]},
+    {"id": 184, "key": "childSlot", "wire": "slot", "kind": "child-slot"}
   ],
   "input": {
     "autofill": {"username": "username", "current-password": "password", "new-password": "newPassword", "one-time-code": "smsOTPCode", "email": "emailAddress", "tel": "phone", "name": "personName", "given-name": "personGivenName", "family-name": "personFamilyName", "street-address": "postalAddress", "postal-code": "postalCode", "country": "addressCountry", "cc-number": "creditCardNumber", "cc-exp": "creditCardExpirationDate", "cc-csc": "creditCardSecurityCode", "bday": "birthDateFull"},

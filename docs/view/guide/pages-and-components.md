@@ -126,7 +126,8 @@ export function render() {
 ## Local state belongs to a component instance
 
 `useLocal(name, initial)` is keyed by `name` and the component's position (or key path) in the tree,
-not by call order. Two `useLocal` calls with the same name in one component fail (`UI_LOCAL`). A cell
+not by call order. A position counts the authored children, so `{cond && <Banner />}` appearing or
+disappearing leaves the state of the siblings after it alone. Two `useLocal` calls with the same name in one component fail (`UI_LOCAL`). A cell
 that a render does not declare is dropped when that render commits, so a conditionally declared
 cell loses its value while the condition is false.
 

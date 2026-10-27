@@ -276,6 +276,17 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             }),
             "UI_IMAGE: invalid alternative text",
         ),
+        // An authored child slot ("2", "0.1"): identity survives conditional siblings.
+        field::CHILD_SLOT => ensure(
+            value.as_str().is_some_and(|slot| {
+                !slot.is_empty()
+                    && slot.len() <= 64
+                    && slot
+                        .split('.')
+                        .all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
+            }),
+            "UI_FIELD: invalid child slot",
+        ),
         field::ACCESSIBILITY_LABEL => ensure(
             value.as_str().is_some_and(|s| {
                 s.len() <= 1024
