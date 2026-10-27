@@ -150,14 +150,20 @@ struct DevOptions {
     #[arg(long)]
     reinstall: bool,
 
-    /// Runner simulator device for `lingxia dev` on an lxapp or web URL (macOS and
-    /// Windows runners): e.g. `iphone-15-pro`, `ipad`, `desktop-1440`. Only
-    /// affects the lxapp runner window; ignored for native host apps.
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    /// Simulator frame for this Runner session: `iphone-15-pro`, `ipad`,
+    /// `desktop-1440`. Pass `--runner` alone to list frames. Ignored for a
+    /// native host app.
+    #[arg(
+        long,
+        help_heading = "Runner",
+        num_args = 0..=1,
+        default_missing_value = ""
+    )]
     runner: Option<String>,
 
-    /// Override the effective display language for this Runner session.
-    #[arg(long, value_parser = parse_display_language)]
+    /// This Runner session's UI language. `auto` follows the system. Shadows
+    /// `lx.host.displayLanguage` for this process and is not saved.
+    #[arg(long, help_heading = "Runner", value_parser = parse_display_language)]
     display_language: Option<String>,
 
     /// Hide the desktop Runner window; only for an http(s) URL TARGET
@@ -700,11 +706,6 @@ enum AuthAction {
         /// Channel to re-resolve next time
         #[arg(long, value_parser = ["ios", "macos", "harmony", "googleplay", "xiaomi", "oppo", "honor", "msstore"])]
         platform: String,
-    },
-    /// The standalone lxapp Runner's cloud identity (show, set, clear)
-    Runner {
-        #[command(subcommand)]
-        action: Option<commands::runner::RunnerAction>,
     },
 }
 
@@ -1362,9 +1363,6 @@ fn run() -> Result<()> {
             AuthAction::Forget { platform } => {
                 commands::auth::auth_forget(&platform)?;
             }
-            AuthAction::Runner { action } => {
-                commands::runner::execute(action)?;
-            }
         },
         Commands::Ds { platform } => {
             commands::ds::execute(platform)?;
@@ -1568,18 +1566,21 @@ mod cli_tests {
     }
 
     #[test]
-    fn runner_without_action_shows_config() {
-        let cli = Cli::try_parse_from(["lingxia", "auth", "runner"]).unwrap();
-        let Commands::Auth {
-            action: AuthAction::Runner { action },
-        } = cli.command
-        else {
-            panic!("expected auth runner command");
-        };
-        assert!(action.is_none());
-        // Moved under `auth` without an alias.
+    fn auth_runner_command_is_removed() {
+        assert!(Cli::try_parse_from(["lingxia", "auth", "runner"]).is_err());
+        assert!(
+            Cli::try_parse_from([
+                "lingxia",
+                "auth",
+                "runner",
+                "set",
+                "com.example.app",
+                "--dev",
+                "http://127.0.0.1:8787",
+            ])
+            .is_err()
+        );
         assert!(Cli::try_parse_from(["lingxia", "runner"]).is_err());
-        assert!(Cli::try_parse_from(["lingxia", "runner", "clear"]).is_err());
     }
 
     #[test]
@@ -1669,39 +1670,6 @@ mod cli_tests {
         assert_eq!(dev_options.name.as_deref(), Some("demo"));
         assert!(Cli::try_parse_from(["lingxia", "doctor", "--project"]).is_ok());
         assert!(Cli::try_parse_from(["lingxia", "doctor", "--project", "-p", "ios"]).is_err());
-    }
-
-    #[test]
-    fn runner_set_accepts_identity_and_environment_urls() {
-        let cli = Cli::try_parse_from([
-            "lingxia",
-            "auth",
-            "runner",
-            "set",
-            "com.example.app",
-            "--dev",
-            "http://127.0.0.1:8787",
-            "--prod",
-            "https://api.example.com",
-        ])
-        .unwrap();
-        let Commands::Auth {
-            action:
-                AuthAction::Runner {
-                    action:
-                        Some(commands::runner::RunnerAction::Set {
-                            lingxia_id,
-                            dev,
-                            prod,
-                        }),
-                },
-        } = cli.command
-        else {
-            panic!("expected runner set command");
-        };
-        assert_eq!(lingxia_id, "com.example.app");
-        assert_eq!(dev.as_deref(), Some("http://127.0.0.1:8787"));
-        assert_eq!(prod.as_deref(), Some("https://api.example.com"));
     }
 
     #[test]

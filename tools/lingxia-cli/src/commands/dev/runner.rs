@@ -17,6 +17,10 @@ const RUNNER_LXAPP_PATH_ENV: &str = "LINGXIA_LXAPP_PATH";
 const RUNNER_WEB_URL_ENV: &str = "LINGXIA_RUNNER_WEB_URL";
 const RUNNER_DEV_WS_URL_ENV: &str = "LINGXIA_DEV_WS_URL";
 const RUNNER_ENV_ENV: &str = "LINGXIA_RUNNER_ENV";
+/// Cloud server for this launch. `lingxia dev` resolves it from the server
+/// `lingxia auth login lingxia` saved for `--env`.
+const RUNNER_SERVER_ENV: &str = "LINGXIA_RUNNER_SERVER";
+const RUNNER_SERVER_ARG: &str = "--lingxia-server";
 const RUNNER_DISPLAY_LANGUAGE_ENV: &str = "LINGXIA_RUNNER_DISPLAY_LANGUAGE";
 const RUNNER_HEADLESS_ENV: &str = "LINGXIA_RUNNER_HEADLESS";
 const RUNNER_HEADLESS_ARG: &str = "--headless";
@@ -451,6 +455,9 @@ fn launch_runner_for_lxapp(
     command.env(RUNNER_ENV_ENV, runner_env.as_str());
     command.env(RUNNER_PID_FILE_ENV, &pid_file);
     command.env(RUNNER_INSTANCE_ENV, runner_instance_id(session_root));
+    if let Some(server) = runner_lingxia_server(runner_env) {
+        command.env(RUNNER_SERVER_ENV, server);
+    }
     if let Some(device) = runner_device.map(str::trim).filter(|s| !s.is_empty()) {
         command.env("LINGXIA_RUNNER_DEVICE", device);
     }
@@ -522,6 +529,9 @@ fn launch_runner_for_web(
     command.env(RUNNER_ENV_ENV, runner_env.as_str());
     command.env(RUNNER_PID_FILE_ENV, &pid_file);
     command.env(RUNNER_INSTANCE_ENV, runner_instance_id(session_root));
+    if let Some(server) = runner_lingxia_server(runner_env) {
+        command.env(RUNNER_SERVER_ENV, server);
+    }
     if let Some(device) = runner_device
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -812,6 +822,7 @@ fn launch_windows_runner_for_lxapp(
     if host_home.is_some() {
         note_host_home();
     }
+    let lingxia_server = runner_lingxia_server(runner_env);
     let launch_args = windows_runner_launch_args(
         lxapp_path,
         &assets_dir,
@@ -824,6 +835,7 @@ fn launch_windows_runner_for_lxapp(
         runner_env,
         &resource_lxapp_paths,
         host_home.as_deref(),
+        lingxia_server.as_deref(),
     )?;
 
     #[cfg(target_os = "windows")]
@@ -890,6 +902,7 @@ fn launch_windows_runner_for_web(
         display_language,
         headless,
         runner_env,
+        runner_lingxia_server(runner_env).as_deref(),
     );
 
     #[cfg(target_os = "windows")]
@@ -936,6 +949,7 @@ fn windows_web_runner_launch_args(
     display_language: Option<&str>,
     headless: bool,
     runner_env: crate::config::AppEnv,
+    lingxia_server: Option<&str>,
 ) -> Vec<String> {
     let mut launch_args = vec![
         "--web-url".to_string(),
@@ -964,6 +978,7 @@ fn windows_web_runner_launch_args(
     if headless {
         launch_args.extend([RUNNER_HEADLESS_ARG.to_string(), "1".to_string()]);
     }
+    push_runner_server(&mut launch_args, lingxia_server);
     launch_args
 }
 
@@ -978,6 +993,7 @@ fn windows_runner_launch_args(
     runner_env: crate::config::AppEnv,
     resource_lxapp_paths: &[WindowsRunnerResourceLxAppPath],
     host_home_app_id: Option<&str>,
+    lingxia_server: Option<&str>,
 ) -> Result<Vec<String>> {
     let mut args = vec![
         "--lxapp-path".to_string(),
@@ -1007,7 +1023,24 @@ fn windows_runner_launch_args(
         args.push(RUNNER_HOST_HOME_ARG.to_string());
         args.push(app_id.to_string());
     }
+    push_runner_server(&mut args, lingxia_server);
     Ok(args)
+}
+
+/// Server saved by `lingxia auth login lingxia` for `env`.
+fn runner_lingxia_server(env: crate::config::AppEnv) -> Option<String> {
+    crate::cli_config::CliConfig::load()
+        .ok()
+        .and_then(|config| config.publish)
+        .and_then(|publish| publish.lingxia_server_for(env).map(str::to_string))
+}
+
+fn push_runner_server(args: &mut Vec<String>, server: Option<&str>) {
+    let Some(server) = server.map(str::trim).filter(|value| !value.is_empty()) else {
+        return;
+    };
+    args.push(RUNNER_SERVER_ARG.to_string());
+    args.push(server.to_string());
 }
 
 fn windows_runner_resource_lxapp_paths(
@@ -1640,6 +1673,9 @@ mod tests {
 
         assert_eq!(app_json["env"], "prod");
         assert!(app_json.get("appLinks").is_none());
+        assert!(app_json.get("lingxiaId").is_none());
+        assert!(app_json.get("lingxiaServer").is_none());
+        assert!(app_json.get("lingxiaServers").is_none());
     }
 
     #[test]
@@ -1657,6 +1693,9 @@ mod tests {
         assert!(app_json.get("homeAppId").is_none());
         assert!(app_json.get("homeAppVersion").is_none());
         assert!(app_json.get("appLinks").is_none());
+        assert!(app_json.get("lingxiaId").is_none());
+        assert!(app_json.get("lingxiaServer").is_none());
+        assert!(app_json.get("lingxiaServers").is_none());
     }
 
     #[test]
@@ -1676,6 +1715,7 @@ mod tests {
             crate::config::AppEnv::Dev,
             &resources,
             None,
+            Some("https://api.example.com"),
         )
         .unwrap();
 
@@ -1701,6 +1741,10 @@ mod tests {
         );
         assert!(args.iter().any(|arg| arg.contains("com.example.extra")));
         assert!(!args.iter().any(|arg| arg == "--host-home-app-id"));
+        assert!(
+            args.windows(2)
+                .any(|pair| pair == ["--lingxia-server", "https://api.example.com"])
+        );
     }
 
     fn write_lxapp(dir: &std::path::Path, app_id: &str) {
@@ -1774,9 +1818,11 @@ mod tests {
             None,
             true,
             crate::config::AppEnv::Dev,
+            None,
         );
 
         assert!(args.windows(2).any(|pair| pair == ["--headless", "1"]));
+        assert!(!args.iter().any(|arg| arg == "--lingxia-server"));
         assert!(
             args.windows(2)
                 .any(|pair| pair == ["--web-url", "http://127.0.0.1:5173/"])

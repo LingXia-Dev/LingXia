@@ -83,7 +83,16 @@ lingxia dev <http(s)://url> --headless --background
 lingxia dev -p runner                      # the Runner explicitly
 lingxia dev --display-language sr-Latn-RS  # or auto; this process only
 lingxia dev --background --mock all        # answer from mocks/ (CI against mocks)
+lingxia dev --env prod --runner iphone-15-pro
 ```
+
+`--env` selects the Runner cloud server saved by
+`lingxia auth login lingxia --server` for that env (default `dev`).
+
+`--runner` and `--display-language` are this Runner session.
+`--runner` is the simulator frame (`--runner` alone lists them).
+`--display-language` (`auto` follows the system) shadows
+`lx.host.displayLanguage` for this process and is not saved.
 
 - **Takeover.** Re-running for the same platform stops that project's session
   and starts fresh. Different platforms run side by side.

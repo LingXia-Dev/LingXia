@@ -33,6 +33,7 @@ const ARG_STATE_ROOT: &str = "--state-root";
 const ARG_DEV_WS_URL: &str = "--dev-ws-url";
 const ARG_RUNNER_DEVICE: &str = "--runner-device";
 const ARG_RUNNER_ENV: &str = "--runner-env";
+const ARG_LINGXIA_SERVER: &str = "--lingxia-server";
 const ARG_DISPLAY_LANGUAGE: &str = "--display-language";
 const ARG_HEADLESS: &str = "--headless";
 const ARG_HOST_HOME_APP_ID: &str = "--host-home-app-id";
@@ -43,6 +44,7 @@ const ENV_DEV_WS_URL: &str = "LINGXIA_DEV_WS_URL";
 const ENV_STATE_ROOT: &str = "LINGXIA_STATE_ROOT";
 const ENV_RUNNER_DEVICE: &str = "LINGXIA_RUNNER_DEVICE";
 const ENV_RUNNER_ENV: &str = "LINGXIA_RUNNER_ENV";
+const ENV_LINGXIA_SERVER: &str = "LINGXIA_RUNNER_SERVER";
 const ENV_DISPLAY_LANGUAGE: &str = "LINGXIA_RUNNER_DISPLAY_LANGUAGE";
 const ENV_HEADLESS: &str = "LINGXIA_RUNNER_HEADLESS";
 const ENV_RESOURCE_LXAPP_PATHS: &str = "LINGXIA_RESOURCE_LXAPP_PATHS";
@@ -75,11 +77,14 @@ impl lingxia::HostAddon for RunnerDevtoolAddon {
     }
 
     // Cloud provider. Must register in this hook — the logic context is built
-    // before `start_services`. Injected via `--with-provider cloud`. The runner
-    // env contract is resolved before the provider initializes.
+    // before `start_services`. Injected via `--with-provider cloud`. Only a
+    // launch with a product id gets it.
     #[cfg(feature = "cloud")]
     fn install_logic_extensions(&self) {
-        if let Err(err) = lingxia_cloud_client::init(cloud_options()) {
+        let Some(options) = cloud_options() else {
+            return;
+        };
+        if let Err(err) = lingxia_cloud_client::init(options) {
             eprintln!("[cloud] provider init failed: {err}");
         }
     }
@@ -89,19 +94,17 @@ impl lingxia::HostAddon for RunnerDevtoolAddon {
     }
 }
 
-/// Map the shared, cloud-free runner config onto the cloud client's options.
+/// Cloud client options from `lingxia_runner_config`; `None` without a
+/// product id.
 #[cfg(feature = "cloud")]
-fn cloud_options() -> lingxia_cloud_client::CloudOptions {
+fn cloud_options() -> Option<lingxia_cloud_client::CloudOptions> {
     use lingxia_cloud_client::CloudOptions;
     let cfg = lingxia_runner_config::from_env();
-    let mut options = CloudOptions::default();
+    let mut options = CloudOptions::default().lingxia_id(cfg.lingxia_id?);
     if let Some(server) = cfg.lingxia_server {
         options = options.lingxia_server(server);
     }
-    if let Some(id) = cfg.lingxia_id {
-        options = options.lingxia_id(id);
-    }
-    options
+    Some(options)
 }
 
 pub(crate) fn run() -> lingxia_windows_sdk::Result<()> {
@@ -200,6 +203,7 @@ fn launch_arg_env_key(arg: &str) -> Option<&'static str> {
         ARG_DEV_WS_URL => Some(ENV_DEV_WS_URL),
         ARG_RUNNER_DEVICE => Some(ENV_RUNNER_DEVICE),
         ARG_RUNNER_ENV => Some(ENV_RUNNER_ENV),
+        ARG_LINGXIA_SERVER => Some(ENV_LINGXIA_SERVER),
         ARG_DISPLAY_LANGUAGE => Some(ENV_DISPLAY_LANGUAGE),
         ARG_HEADLESS => Some(ENV_HEADLESS),
         ARG_RESOURCE_LXAPP_PATHS => Some(ENV_RESOURCE_LXAPP_PATHS),
@@ -798,4 +802,17 @@ fn maintain_device_frame(home_app_id: String) {
             std::thread::sleep(std::time::Duration::from_millis(delay_ms));
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lingxia_server_arg_becomes_the_launch_env() {
+        assert_eq!(
+            launch_arg_env_key(ARG_LINGXIA_SERVER),
+            Some(ENV_LINGXIA_SERVER)
+        );
+    }
 }

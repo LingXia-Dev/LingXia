@@ -104,20 +104,19 @@ impl lingxia::HostAddon for RunnerDevtoolAddon {
     // hook — the logic context is built before `start_services`. Injected via
     // `--with-provider cloud`.
     //
-    // We bring the cloud client up, so we configure its endpoint here: a user can
-    // point the runner at a server / identity via ~/.lingxia/runner/config.toml
-    // without rebuilding. Unset fields fall back to the app config.
+    // Server and product id come from `lingxia_runner_config`; without a
+    // product id the Runner runs without the cloud client.
     #[cfg(feature = "cloud")]
     fn install_logic_extensions(&self) {
         use lingxia_cloud_client::CloudOptions;
 
         let cfg = lingxia_runner_config::from_env();
-        let mut options = CloudOptions::default();
+        let Some(id) = cfg.lingxia_id else {
+            return;
+        };
+        let mut options = CloudOptions::default().lingxia_id(id);
         if let Some(server) = cfg.lingxia_server {
             options = options.lingxia_server(server);
-        }
-        if let Some(id) = cfg.lingxia_id {
-            options = options.lingxia_id(id);
         }
         if let Err(err) = lingxia_cloud_client::init(options) {
             eprintln!("[cloud] provider init failed: {err}");

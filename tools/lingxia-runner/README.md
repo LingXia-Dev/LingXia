@@ -8,7 +8,7 @@ version and passes the lxapp path at launch.
 |---|---|
 | `macos/` | SwiftPM `LingXia Runner.app` plus its Rust static library (`macos/native`, crate `lingxia-runner-lib`) |
 | `windows/` | Rust executable crate for the Windows runner, on top of `crates/lingxia-windows-sdk` |
-| `config/` | shared crate resolving runner configuration (`~/.lingxia/runner/config.toml`, env vars, lxapp function routing) |
+| `config/` | shared crate resolving the Runner's cloud configuration (server from `lingxia dev`) and lxapp function routing |
 
 Platform startup code stays in its platform directory. Add shared Rust here
 only for real cross-platform runner behavior — `config/` is the model — never

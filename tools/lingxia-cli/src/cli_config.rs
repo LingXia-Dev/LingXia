@@ -8,9 +8,9 @@
 //! canonical server URL + env.
 //!
 //! Env-dependent values follow the same shape as `lingxia.yaml`'s
-//! `app.lingxiaServer` and the runner config: a value is either a scalar
-//! (applies to every env) or an env-keyed map (explicit per env, no fallback
-//! between the two forms).
+//! `app.lingxiaServer`: a value is either a scalar (applies to every env) or
+//! an env-keyed map (explicit per env, no fallback between the two forms).
+//! `lingxia dev` passes the server for `--env` to the Runner.
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -40,7 +40,8 @@ pub struct CliConfig {
 #[serde(rename_all = "camelCase")]
 pub struct PublishConfig {
     /// Upload server. Named like everywhere else (`app.lingxiaServer` in
-    /// lxapp.json/lingxia.yaml, runner config, `--lingxia-server`).
+    /// lxapp.json/lingxia.yaml, `--lingxia-server`). `lingxia dev` passes the
+    /// value for `--env` to the Runner.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lingxia_server: Option<EnvValue>,
 }
