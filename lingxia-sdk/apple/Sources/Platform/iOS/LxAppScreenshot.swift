@@ -25,8 +25,12 @@ enum LxAppScreenshot {
                 let frame = window.convert(window.bounds, to: nil)
                 ctx.cgContext.saveGState()
                 ctx.cgContext.translateBy(x: frame.minX, y: frame.minY)
-                window.layer.render(in: ctx.cgContext)
-                GpuPages.overlay(window, into: ctx.cgContext)
+                if GpuPages.shows(in: window) {
+                    // The on-screen snapshot includes Metal drawables, in their z-order.
+                    window.drawHierarchy(in: window.bounds, afterScreenUpdates: false)
+                } else {
+                    window.layer.render(in: ctx.cgContext)
+                }
                 ctx.cgContext.restoreGState()
                 overlayPlayerFrames(
                     from: window.layer,

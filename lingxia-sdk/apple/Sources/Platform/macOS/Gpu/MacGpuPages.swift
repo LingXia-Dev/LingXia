@@ -21,6 +21,13 @@ final class GpuPageView: NSView {
         layerContentsRedrawPolicy = .never
         layer?.contentsGravity = .topLeft
         layer?.isOpaque = true
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(accessibilityChanged),
+            name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
+    }
+
+    @objc private func accessibilityChanged() {
+        report()
     }
 
     @available(*, unavailable)
@@ -115,7 +122,8 @@ final class GpuPageView: NSView {
             0,
             Float(min(screen.width, screen.height)),
             Locale.preferredLanguages.first ?? "en",
-            NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+            NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
         )
         layer?.contentsScale = scale
         if !attached, presentable {

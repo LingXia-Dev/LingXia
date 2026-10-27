@@ -26,6 +26,7 @@ mod bridge {
             smallest_width: f32,
             locale: &str,
             reduce_motion: bool,
+            high_contrast: bool,
         );
 
         #[swift_bridge(swift_name = "gpuPageSetVisible")]
@@ -90,6 +91,7 @@ fn gpu_page_measured(
     smallest_width: f32,
     locale: &str,
     reduce_motion: bool,
+    high_contrast: bool,
 ) {
     #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     {
@@ -112,7 +114,7 @@ fn gpu_page_measured(
             fine_pointer: cfg!(target_os = "macos"),
             animation_scale: 1.0,
             reduce_motion,
-            high_contrast: false,
+            high_contrast,
             text_scale: None,
             runner: false,
         };
@@ -129,6 +131,7 @@ fn gpu_page_measured(
         [chrome_top, chrome_bottom, keyboard, smallest_width],
         locale,
         reduce_motion,
+        high_contrast,
     );
 }
 

@@ -25,6 +25,8 @@ final class GpuPageView: UIView {
         // No GPU work in the background: iOS ends an app that submits it.
         center.addObserver(self, selector: #selector(suspend), name: UIApplication.didEnterBackgroundNotification, object: nil)
         center.addObserver(self, selector: #selector(resume), name: UIApplication.willEnterForegroundNotification, object: nil)
+        center.addObserver(self, selector: #selector(resume), name: UIAccessibility.darkerSystemColorsStatusDidChangeNotification, object: nil)
+        center.addObserver(self, selector: #selector(resume), name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
     }
 
     @objc private func suspend() {
@@ -89,7 +91,8 @@ final class GpuPageView: UIView {
             0,
             Float(shorter),
             Locale.preferredLanguages.first ?? "en",
-            UIAccessibility.isReduceMotionEnabled
+            UIAccessibility.isReduceMotionEnabled,
+            UIAccessibility.isDarkerSystemColorsEnabled
         )
         layer.contentsScale = scale
         if !attached, UIApplication.shared.applicationState != .background {
@@ -118,24 +121,6 @@ final class GpuPageView: UIView {
     fileprivate func vsync() {
         vsyncLink?.isPaused = true
         gpuPageVsync(token)
-    }
-
-    /// The last presented GPU frame, from Rust's readback.
-    func lastFrame() -> CGImage? {
-        let frame = gpuPageReadback(token)
-        let length = Int(frame.len())
-        guard length > 8 else { return nil }
-        let bytes = UnsafeRawBufferPointer(start: frame.as_ptr(), count: length)
-        let width = Int(bytes.loadUnaligned(fromByteOffset: 0, as: UInt32.self).littleEndian)
-        let height = Int(bytes.loadUnaligned(fromByteOffset: 4, as: UInt32.self).littleEndian)
-        guard width > 0, height > 0, length == 8 + width * height * 4,
-              let provider = CGDataProvider(data: Data(bytes[8...]) as CFData)
-        else { return nil }
-        return CGImage(
-            width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32,
-            bytesPerRow: width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
-            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
-            provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
     }
 
     func show(pixels: UnsafeRawPointer, length: Int, width: Int, height: Int) -> Bool {
@@ -193,18 +178,9 @@ public enum GpuPages {
         }
     }
 
-    /// Draw each GPU page of `window` at its frame; layer rendering cannot see Metal drawables.
-    @MainActor static func overlay(_ window: UIWindow, into context: CGContext) {
-        for view in views.values where view.window === window && !view.isHidden {
-            guard let image = view.lastFrame() else { continue }
-            let rect = view.convert(view.bounds, to: window)
-            context.saveGState()
-            // UIKit contexts are flipped; CGImage draws bottom-up.
-            context.translateBy(x: rect.minX, y: rect.maxY)
-            context.scaleBy(x: 1, y: -1)
-            context.draw(image, in: CGRect(origin: .zero, size: rect.size))
-            context.restoreGState()
-        }
+    /// Whether `window` shows a GPU page, whose Metal frames layer rendering cannot see.
+    @MainActor static func shows(in window: UIWindow) -> Bool {
+        views.values.contains { $0.window === window && !$0.isHidden }
     }
 
     /// The GPU page token of a page of the app, or 0 when it is not a GPU page.
