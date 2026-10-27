@@ -13,6 +13,7 @@ export function List({ items, getKey, renderItem, getItemHeight, ...props }) {
     itemKeys: items.map(getKey), row: index => renderItem(items[index], index),
     ...(getItemHeight ? { height: index => getItemHeight(items[index], index) } : {}) });
 }
+List.__lxid = '@lingxia/ui#List';
 
 function runCandidate(view, lookup, build) {
   if (render.active) throw Error('UI_RENDER: recursive render');

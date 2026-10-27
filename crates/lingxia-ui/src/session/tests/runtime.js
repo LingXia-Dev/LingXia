@@ -1834,6 +1834,7 @@
   var componentNames = /* @__PURE__ */ new Map();
   var nextHandle = 1;
   function componentId(tag) {
+    if (typeof tag.__lxid === "string") return tag.__lxid;
     let id = componentIds.get(tag);
     if (id !== void 0) return id;
     const name = tag.name || "anonymous";
@@ -2410,6 +2411,7 @@
       ...getItemHeight ? { height: (index) => getItemHeight(items[index], index) } : {}
     });
   }
+  List.__lxid = "@lingxia/ui#List";
   function runCandidate(view, lookup, build) {
     if (render.active) throw Error("UI_RENDER: recursive render");
     resetArena();

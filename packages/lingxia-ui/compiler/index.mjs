@@ -146,6 +146,28 @@ export function annotate(source, filename, label) {
   return output;
 }
 
+/**
+ * Stamps each top-level component (a capitalized function declaration, or a const bound to a
+ * function) with `__lxid`, `<module path without extension>#<name>`: local state is keyed by it,
+ * so minified and dev builds of one source agree.
+ */
+export function identify(source, filename, label) {
+  const file = parseSource(filename, source);
+  const module = label.replace(/\.[jt]sx?$/, '');
+  const names = [];
+  for (const statement of file.statements) {
+    if (ts.isFunctionDeclaration(statement) && statement.name && /^[A-Z]/.test(statement.name.text) && statement.body)
+      names.push(statement.name.text);
+    if (ts.isVariableStatement(statement) && (statement.declarationList.flags & ts.NodeFlags.Const))
+      for (const declaration of statement.declarationList.declarations)
+        if (ts.isIdentifier(declaration.name) && /^[A-Z]/.test(declaration.name.text) && declaration.initializer &&
+            (ts.isArrowFunction(declaration.initializer) || ts.isFunctionExpression(declaration.initializer)))
+          names.push(declaration.name.text);
+  }
+  if (!names.length) return source;
+  return `${source}\n${names.map(name => `${name}.__lxid = ${JSON.stringify(`${module}#${name}`)};`).join('\n')}\n`;
+}
+
 // Flex-only properties on a grid name the grid property that does the same job.
 const hints = { grid: {
   flexWrap: '; grid items wrap into rows by themselves (use grid-cols-[repeat(auto-fit,minmax(…,1fr))])',
@@ -215,7 +237,7 @@ function analyse(path, contents, label, loader, literalColors) {
   collect(file);
   const analysed = {
     contents, file, names, problems: audit(contents, path, { literalColors }),
-    annotated: loader.endsWith('x') ? annotate(contents, path, label) : contents,
+    annotated: identify(loader.endsWith('x') ? annotate(contents, path, label) : contents, path, label),
   };
   analyses.delete(key);
   if (analyses.size >= 512) analyses.delete(analyses.keys().next().value);

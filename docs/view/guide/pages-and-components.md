@@ -130,6 +130,10 @@ not by call order. Two `useLocal` calls with the same name in one component fail
 that a render does not declare is dropped when that render commits, so a conditionally declared
 cell loses its value while the condition is false.
 
+A component's identity is its module and declaration name (`pages/lab/index#Inputs`), fixed at build
+time, so minified release builds and hot swaps agree. Declare components at the top level of a module;
+keying by `Component.name` fails the build (`UI_KEY`).
+
 ## testId
 
 Every element takes `testId`, the name automation (`lxdev`, the test runner) uses to find it. It has

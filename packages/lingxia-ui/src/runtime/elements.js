@@ -15,11 +15,13 @@ const semanticStates = { pressed: 'statePressed', selected: 'stateSelected', exp
 const accepts = (field, tag) => admission.fields[field].includes(elements[tag].wire);
 const bindCodes = { input: 'UI_INPUT', textarea: 'UI_INPUT', search: 'UI_INPUT', checkbox: 'UI_CHECK', switch: 'UI_CHECK', slider: 'UI_SLIDER', radio: 'UI_RADIO' };
 const optionStyle = ['fontSize', 'fontWeight', 'fontFamily', 'lineHeight', 'color', 'background'];
-// A component's id is its function name, numbered only when names repeat: it must not depend
-// on the order components first render, so a hot-swapped module finds the same state and nodes.
+// A component's id keys its local state and nodes. The compiler stamps each top-level component
+// with `__lxid` (module path and declaration name), which survives minification and hot swaps; a
+// component without one falls back to its function name, numbered only when names repeat.
 const componentIds = new WeakMap(), componentNames = new Map();
 let nextHandle = 1;
 function componentId(tag) {
+  if (typeof tag.__lxid === 'string') return tag.__lxid;
   let id = componentIds.get(tag);
   if (id !== undefined) return id;
   const name = tag.name || 'anonymous';

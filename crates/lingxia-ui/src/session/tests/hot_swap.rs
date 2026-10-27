@@ -158,7 +158,7 @@ fn minified(module: &str, keep_names: bool) -> String {
 fn a_packaged_view_keeps_its_state_through_the_first_dev_swap() {
     let dev = view_lab_module();
     {
-        let (keep_names, survives) = (true, true);
+        let (keep_names, survives) = (false, true);
         let mut page = ViewSession::new(&minified(&dev, keep_names)).unwrap();
         let find = |display: &crate::DisplayList, id: &str| {
             display
@@ -260,5 +260,46 @@ fn the_view_lab_keeps_a_chosen_plan_across_a_swap() {
     assert!(
         values(&mut page).ends_with("plan=monthly"),
         "a choice made after a swap survives the next"
+    );
+}
+
+/// A page whose `Card` component, declared as `name`, carries the compile-time id `id`.
+fn identified(name: &str, id: &str) -> String {
+    super::source(&format!(
+        "function {name}(){{const n=useLocal('n',0);return h('button',{{testId:'b',onClick(){{n.set(n.value+1)}}}},'Card '+n.value)}}\n\
+         {name}.__lxid={id:?};\n\
+         function render(){{return h('column',{{}},h({name},{{}}))}}"
+    )) + "\nenableHotSwap();"
+}
+
+#[test]
+fn component_state_follows_the_compile_time_id_not_the_function_name() {
+    let mut page = ViewSession::new(&identified("Card", "pages/a/index#Card")).unwrap();
+    let handle = page
+        .layout(200, 200, 1.0)
+        .unwrap()
+        .nodes
+        .iter()
+        .find(|n| n.test_id == "b")
+        .unwrap()
+        .on_click
+        .unwrap();
+    assert!(page.click(page.generation(), handle).unwrap());
+    assert_eq!(text(&mut page), "Card 1");
+    // A minifier renamed the function; the id it was compiled with is unchanged.
+    page.swap_module(&identified("q", "pages/a/index#Card"))
+        .unwrap();
+    assert_eq!(
+        text(&mut page),
+        "Card 1",
+        "a renamed function keeps its scope"
+    );
+    // The declaration moved to another module: a new id is a new component.
+    page.swap_module(&identified("Card", "shared/card#Card"))
+        .unwrap();
+    assert_eq!(
+        text(&mut page),
+        "Card 0",
+        "a moved declaration starts fresh"
     );
 }

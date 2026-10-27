@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { audit, buildPages } from '../compiler/index.mjs';
+import { audit, buildPages, identify } from '../compiler/index.mjs';
 import { moduleBanner } from '../compiler/compatibility.mjs';
 import { runInNewContext } from 'node:vm';
 import { maxField } from '../src/generated/wire.js';
@@ -403,4 +403,11 @@ test('a component keyed by its own function name fails the build: release builds
   flags('function A(){return <text>a</text>} const parts=[A]; export function render(){ return <column>{parts.map(Part => <Part key={Part.name} />)}</column>; }',
     /UI_KEY: Part\.name is not a stable key; release builds rename functions, so key by a label or index/);
   clean('function A(){return <text>a</text>} const parts=[A]; export function render(){ return <column>{parts.map((Part, i) => <Part key={String(i)} />)}</column>; }');
+});
+
+test('top-level components get a compile-time id from their module path and declaration name', () => {
+  const out = identify('export function Card(){} const Row = () => null; function helper(){} let Late = () => null;', 'pages/a/index.tsx', 'pages/a/index.tsx');
+  assert.match(out, /Card\.__lxid = "pages\/a\/index#Card";/);
+  assert.match(out, /Row\.__lxid = "pages\/a\/index#Row";/);
+  assert.doesNotMatch(out, /helper\.__lxid|Late\.__lxid/);
 });
