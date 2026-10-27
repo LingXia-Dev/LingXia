@@ -1,6 +1,13 @@
 use std::sync::{Arc, Mutex, Weak};
 
-const MAX_BYTES: u64 = 64 * 1024 * 1024;
+/// Live texture bytes allowed for a `width`×`height` frame: `leaseFrames` frames, at least
+/// 64 MiB, under the absolute `compositeBytes` ceiling.
+pub(crate) fn lease_budget(width: u16, height: u16) -> u64 {
+    let frame = u64::from(width) * u64::from(height) * 4;
+    (crate::protocol::limits::LEASE_FRAMES as u64 * frame)
+        .max(64 * 1024 * 1024)
+        .min(crate::protocol::limits::COMPOSITE_BYTES as u64)
+}
 
 #[derive(Clone)]
 struct Texture {
@@ -14,13 +21,26 @@ impl Texture {
     }
 }
 
-#[derive(Default)]
 struct State {
     free: Vec<Texture>,
     bytes: u64,
+    budget: u64,
     generation: u64,
     allocations: u64,
     reuses: u64,
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            free: Vec::new(),
+            bytes: 0,
+            budget: lease_budget(0, 0),
+            generation: 0,
+            allocations: 0,
+            reuses: 0,
+        }
+    }
 }
 
 /// RGBA bytes plus depth texture/pixel counts; not total driver allocations.
@@ -90,6 +110,18 @@ impl Pool {
         state.generation += 1;
     }
 
+    /// Size the budget for frames of `width`×`height`.
+    pub(crate) fn set_frame(&mut self, width: u16, height: u16) {
+        self.state.lock().unwrap().budget = lease_budget(width, height);
+    }
+
+    /// Bytes a new plan may still lease: the budget less what earlier frames hold.
+    pub(crate) fn available(&self) -> u64 {
+        let state = self.state.lock().unwrap();
+        let idle: u64 = state.free.iter().map(Texture::bytes).sum();
+        state.budget.saturating_sub(state.bytes - idle)
+    }
+
     pub(crate) fn stats(&self) -> TextureStats {
         let state = self.state.lock().unwrap();
         TextureStats {
@@ -120,7 +152,7 @@ impl Pool {
             state.reuses += 1;
             state.free.swap_remove(index)
         } else {
-            while state.bytes + bytes > MAX_BYTES {
+            while state.bytes + bytes > state.budget {
                 let Some(evicted) = state.free.pop() else {
                     return Err("UI_COMPOSITE: live texture leases exceed budget".into());
                 };
@@ -155,5 +187,51 @@ impl Pool {
                 generation: state.generation,
             }),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const RETINA: (u16, u16) = (2092, 1576);
+
+    #[test]
+    fn lease_budget_scales_with_the_frame() {
+        let frame = u64::from(RETINA.0) * u64::from(RETINA.1) * 4;
+        assert!(lease_budget(RETINA.0, RETINA.1) >= 5 * frame);
+        assert_eq!(lease_budget(390, 844), 64 * 1024 * 1024);
+        assert_eq!(
+            lease_budget(4096, 4096),
+            crate::protocol::limits::COMPOSITE_BYTES as u64
+        );
+    }
+
+    #[test]
+    #[ignore = "requires a GPU adapter; run explicitly with --features gpu -- --ignored"]
+    fn retina_frames_keep_five_leases_and_flatten_past_the_rest() {
+        use crate::scene::composite::{Layer, Plan, Step};
+        let domain = crate::renderer::gpu::Context::default();
+        let mut context = domain.lock().unwrap();
+        let id = pollster::block_on(context.device(None)).expect("GPU adapter required");
+        let device = &context.devices[id].device;
+        let mut compositor = crate::renderer::gpu::composite::Compositor::new(device);
+        let nested = |depth| {
+            let mut steps = vec![Step::Push(Layer::Opacity(0.5)); depth];
+            steps.push(Step::Draw(0..1));
+            steps.extend(vec![Step::Pop; depth]);
+            steps
+        };
+        let (plan, _) = Plan::flattened(RETINA.0, RETINA.1, 1, nested(8)).unwrap();
+        let plan = compositor.fit(plan);
+        let held: Vec<_> = (0..5)
+            .map(|_| compositor.lease(device, RETINA.0, RETINA.1).unwrap())
+            .collect();
+        assert!(!compositor.budget_warned(), "the first frame fit");
+        // With five frames held, the next plan flattens to the room left, warning once.
+        let refit = compositor.fit(Plan::flattened(RETINA.0, RETINA.1, 1, nested(8)).unwrap().0);
+        assert!(refit.working_bytes() < plan.working_bytes());
+        assert!(compositor.budget_warned());
+        drop(held);
     }
 }

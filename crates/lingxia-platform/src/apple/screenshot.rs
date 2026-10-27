@@ -443,6 +443,11 @@ async fn take_app_screenshot_macos(window_id: Option<&str>) -> Result<Vec<u8>, P
             cacheDisplayInRect: bounds,
             toBitmapImageRep: bitmap_rep
         ];
+        // GPU pages present through Metal drawables, which caching the display cannot see;
+        // the SDK draws their last presented frames over the bitmap when it is linked.
+        if let Some(capture) = objc2::runtime::AnyClass::get(c"LingXiaGpuCapture") {
+            let _: () = msg_send![capture, overlayContentView: content_view, into: bitmap_rep];
+        }
 
         let empty_props_class = class!(NSDictionary);
         let empty_props: *mut AnyObject = msg_send![empty_props_class, dictionary];

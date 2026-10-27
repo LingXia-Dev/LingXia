@@ -429,6 +429,9 @@ impl<A: PlatformAdapter> Inner<A> {
     }
 
     pub(super) fn vsync(self: &Arc<Self>) {
+        if self.window_hidden() {
+            return;
+        }
         let vsync = Instant::now();
         let at = self.adapter.now();
         let Some(prepared) = ({

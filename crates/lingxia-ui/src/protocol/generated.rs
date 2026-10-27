@@ -477,6 +477,7 @@ pub mod limits {
     pub const PLOT_WORK: usize = 16384;
     pub const SHADOW_MASK_BYTES: usize = 16777216;
     pub const COMPOSITE_FRAMES: usize = 6;
+    pub const LEASE_FRAMES: usize = 6;
     pub const COMPOSITE_BYTES: usize = 268435456;
 }
 

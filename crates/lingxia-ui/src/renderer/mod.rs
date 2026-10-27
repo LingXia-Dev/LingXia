@@ -5,6 +5,8 @@ pub(crate) mod cpu_paint;
 pub mod gpu;
 pub mod pool;
 pub mod sentinel;
+#[cfg(feature = "gpu")]
+pub mod surfaces;
 
 #[cfg(test)]
 pub(crate) mod backdrop_tests;

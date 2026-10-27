@@ -8,7 +8,7 @@ import UIKit
 /// `AVPlayerLayer`. Stamp the current `AVPlayerItem` frame over each player
 /// layer so a playing preview is visible without losing the rest of the UI.
 enum LxAppScreenshot {
-    static func pngData() -> Data? {
+    @MainActor static func pngData() -> Data? {
         let windows = captureWindows()
         guard let first = windows.first else { return nil }
         let bounds = first.windowScene?.coordinateSpace.bounds ?? first.screen.bounds
@@ -26,6 +26,7 @@ enum LxAppScreenshot {
                 ctx.cgContext.saveGState()
                 ctx.cgContext.translateBy(x: frame.minX, y: frame.minY)
                 window.layer.render(in: ctx.cgContext)
+                GpuPages.overlay(window, into: ctx.cgContext)
                 ctx.cgContext.restoreGState()
                 overlayPlayerFrames(
                     from: window.layer,
@@ -98,8 +99,8 @@ enum LxAppScreenshot {
 public func lingxia_ios_capture_app_png(
     outLen: UnsafeMutablePointer<Int>
 ) -> UnsafeMutablePointer<UInt8>? {
-    let capture: () -> Data? = {
-        LxAppScreenshot.pngData()
+    let capture: @Sendable () -> Data? = {
+        MainActor.assumeIsolated { LxAppScreenshot.pngData() }
     }
     let data: Data?
     if Thread.isMainThread {

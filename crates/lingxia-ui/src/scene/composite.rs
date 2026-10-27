@@ -72,6 +72,9 @@ pub struct Plan {
     steps: Vec<Step>,
     width: u16,
     height: u16,
+    draw_count: usize,
+    /// Peak bytes of the frame-sized surfaces this plan holds at once.
+    working_bytes: u64,
 }
 
 const OVER_BUDGET: &str = "UI_COMPOSITE: working surfaces exceed limit";
@@ -188,7 +191,32 @@ impl Plan {
             steps,
             width,
             height,
+            draw_count,
+            working_bytes,
         })
+    }
+
+    pub fn working_bytes(&self) -> u64 {
+        self.working_bytes
+    }
+
+    /// Flatten the deepest groups until the working surfaces fit in `bytes`, or no group is
+    /// left. Returns how many were flattened.
+    pub fn within(self, bytes: u64) -> (Self, usize) {
+        let mut plan = self;
+        let mut flattened = 0;
+        while plan.working_bytes > bytes {
+            let mut steps = plan.steps.clone();
+            if !flatten_deepest(&mut steps) {
+                break;
+            }
+            match Self::new(plan.width, plan.height, plan.draw_count, steps) {
+                Ok(next) => plan = next,
+                Err(_) => break,
+            }
+            flattened += 1;
+        }
+        (plan, flattened)
     }
 
     pub fn render<B: Backend>(&self, backend: &mut B) -> Result<B::Surface, String> {
@@ -325,6 +353,14 @@ mod tests {
                 .count()
                 < 8
         );
+        // Beside frames still held, a Retina desktop plan flattens to the room left, never fails.
+        let frame = 2092 * 1576 * 4;
+        let (plan, _) = Plan::flattened(2092, 1576, 1, nested(8)).unwrap();
+        let (fitted, flattened) = plan.within(3 * frame);
+        assert!(flattened >= 1);
+        assert!(fitted.working_bytes() <= 3 * frame);
+        let (bare, _) = fitted.within(0);
+        assert!(!bare.steps().iter().any(|s| matches!(s, Step::Push(_))));
         let steps: Vec<_> = (0..20).map(|index| Step::Draw(index..index + 1)).collect();
         assert!(
             Plan::new(1024, 1024, 20, steps).is_ok(),

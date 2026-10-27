@@ -728,6 +728,7 @@ fn contract_drift(schema: &Value) -> Vec<String> {
             ("plotWork", limits::PLOT_WORK),
             ("shadowMaskBytes", limits::SHADOW_MASK_BYTES),
             ("compositeFrames", limits::COMPOSITE_FRAMES),
+            ("leaseFrames", limits::LEASE_FRAMES),
             ("compositeBytes", limits::COMPOSITE_BYTES),
         ];
         let names: Vec<&str> = native.iter().map(|(name, _)| *name).collect();

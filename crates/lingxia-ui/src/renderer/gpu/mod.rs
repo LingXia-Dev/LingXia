@@ -147,6 +147,7 @@ pub struct Presenter {
     images: crate::renderer::gpu::images::ImageTextures,
     compositor: Option<crate::renderer::gpu::composite::Compositor>,
     composed: [Option<crate::renderer::gpu::composite::Surface>; 2],
+
     depth: Option<wgpu::TextureView>,
     context: Context,
     /// This presenter's adapter record for the crash sentinel.
@@ -402,6 +403,8 @@ impl Presenter {
         self.prepared[slot] = None;
 
         if composed {
+            // The slot's previous output was presented; its texture can serve this frame.
+            self.composed[slot] = None;
             let started = Instant::now();
             let compositor = self.compositor.get_or_insert_with(|| {
                 crate::renderer::gpu::composite::Compositor::with_renderer(self.renderer.clone())
@@ -606,6 +609,97 @@ impl Presenter {
         self.keep_base = true;
         Ok(true)
     }
+
+    /// The newest frame this presenter holds, shown or waiting to be, as straight-alpha RGBA rows.
+    pub fn readback(&self) -> Result<Option<(u32, u32, Vec<u8>)>, String> {
+        let Some(surface) = &self.surface else {
+            return Ok(None);
+        };
+        let Some(slot) = (0..2)
+            .filter(|slot| self.prepared[*slot].is_some())
+            .max_by_key(|slot| self.prepared[*slot])
+        else {
+            return Ok(None);
+        };
+        let texture = self.composed[slot]
+            .as_ref()
+            .map_or(surface.target_views[slot].texture(), |output| {
+                output.texture()
+            });
+        let context = self.context.lock()?;
+        let device = &context.devices[surface.dev_id];
+        let pixels = read_texture(&device.device, &device.queue, texture)?;
+        let size = texture.size();
+        Ok(Some((size.width, size.height, pixels)))
+    }
+}
+
+/// Copy an RGBA8 texture to the CPU: rows packed, premultiplied alpha undone.
+fn read_texture(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    texture: &wgpu::Texture,
+) -> Result<Vec<u8>, String> {
+    let size = texture.size();
+    let row = size.width * 4;
+    let stride =
+        row.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+    let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("LingXia UI readback"),
+        size: u64::from(stride) * u64::from(size.height),
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
+    let mut encoder = device.create_command_encoder(&Default::default());
+    encoder.copy_texture_to_buffer(
+        texture.as_image_copy(),
+        wgpu::TexelCopyBufferInfo {
+            buffer: &buffer,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(stride),
+                rows_per_image: Some(size.height),
+            },
+        },
+        size,
+    );
+    queue.submit([encoder.finish()]);
+    let (send, receive) = std::sync::mpsc::channel();
+    buffer
+        .slice(..)
+        .map_async(wgpu::MapMode::Read, move |result| {
+            let _ = send.send(result);
+        });
+    let timeout = std::time::Duration::from_secs(5);
+    device
+        .poll(wgpu::PollType::Wait {
+            submission_index: None,
+            timeout: Some(timeout),
+        })
+        .map_err(|e| format!("UI_SURFACE: readback: {e}"))?;
+    receive
+        .recv_timeout(timeout)
+        .map_err(|e| format!("UI_SURFACE: readback: {e}"))?
+        .map_err(|e| format!("UI_SURFACE: readback: {e}"))?;
+    let mapped = buffer
+        .slice(..)
+        .get_mapped_range()
+        .map_err(|e| format!("UI_SURFACE: readback: {e}"))?;
+    let mut pixels = Vec::with_capacity((row * size.height) as usize);
+    for line in mapped.chunks(stride as usize) {
+        pixels.extend_from_slice(&line[..row as usize]);
+    }
+    drop(mapped);
+    buffer.unmap();
+    for pixel in pixels.chunks_exact_mut(4) {
+        let alpha = u16::from(pixel[3]);
+        if alpha != 0 && alpha != 255 {
+            for channel in &mut pixel[..3] {
+                *channel = ((u16::from(*channel) * 255 + alpha / 2) / alpha).min(255) as u8;
+            }
+        }
+    }
+    Ok(pixels)
 }
 
 /// Adapter, driver and renderer release: an update to any of them is tried again.
@@ -636,6 +730,37 @@ fn depth_view(surface: &RenderSurface<'_>, device: &wgpu::Device) -> wgpu::Textu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "requires a GPU adapter; run explicitly with --features gpu -- --ignored"]
+    fn readback_packs_rows_and_undoes_premultiplied_alpha() {
+        let domain = Context::default();
+        let mut context = domain.lock().unwrap();
+        let id = pollster::block_on(context.device(None)).expect("GPU adapter required");
+        let device = &context.devices[id].device;
+        let queue = &context.devices[id].queue;
+        // 3 px wide: 12-byte rows that the copy pads to 256.
+        let texture = crate::renderer::gpu::device::target_view(device, 3, 2)
+            .texture()
+            .clone();
+        let pixels: Vec<u8> = [[255, 0, 0, 255], [64, 32, 0, 128], [0, 0, 0, 0]]
+            .repeat(2)
+            .concat();
+        queue.write_texture(
+            texture.as_image_copy(),
+            &pixels,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(12),
+                rows_per_image: Some(2),
+            },
+            texture.size(),
+        );
+        let read = read_texture(device, queue, &texture).unwrap();
+        assert_eq!(read.len(), 3 * 2 * 4);
+        assert_eq!(&read[..12], &[255, 0, 0, 255, 128, 64, 0, 128, 0, 0, 0, 0]);
+        assert_eq!(&read[..12], &read[12..]);
+    }
 
     #[test]
     #[ignore = "requires a GPU adapter; run explicitly with --features gpu -- --ignored"]

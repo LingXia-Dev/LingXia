@@ -1393,6 +1393,27 @@ fn a_stopped_window_pauses_the_deadline_and_a_failure_reveals_at_once() {
 }
 
 #[test]
+fn a_window_nothing_of_which_shows_holds_its_frame_until_it_returns() {
+    let worker = ViewWorker::spawn("test-window-hidden").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = revealing_page(&platform, &worker);
+    platform.settle(&[&host]);
+    let presented = || host.adapter().log.lock().unwrap().presented.len();
+    let frames = presented();
+    host.window_visible(false);
+    resize(&host, 180);
+    host.surface_changed();
+    platform.settle(&[&host]);
+    assert_eq!(presented(), frames, "an occluded window presents nothing");
+    host.window_visible(true);
+    platform.settle(&[&host]);
+    assert!(
+        presented() > frames,
+        "the held frame shows when the window returns"
+    );
+}
+
+#[test]
 fn a_page_that_never_presents_is_revealed_held_by_the_watchdog() {
     let worker = ViewWorker::spawn("test-reveal-watchdog").unwrap();
     let platform = Platform::new(&[&worker]);

@@ -226,7 +226,10 @@ struct SdkLogger;
 
 impl Log for SdkLogger {
     fn enabled(&self, metadata: &Metadata<'_>) -> bool {
-        metadata.level() <= Level::Trace
+        // Renderer internals log every shader and device step; at debug they flood the dev log.
+        const QUIET: [&str; 3] = ["wgpu", "naga", "vello"];
+        let target = metadata.target();
+        metadata.level() <= Level::Warn || !QUIET.iter().any(|quiet| target.starts_with(quiet))
     }
 
     fn log(&self, record: &Record<'_>) {

@@ -1,5 +1,5 @@
-//! `PlatformAdapter` over the Swift page view. Frames rasterize on the CPU pool
-//! and reach the view as pixels; input, IME and accessibility arrive in later steps.
+//! `PlatformAdapter` over the Swift page view. Frames present through Metal on the
+//! view's layer, or rasterize on the CPU pool and reach the view as pixels.
 use crate::Shell;
 use lingxia_ui::DisplayList;
 use lingxia_ui::interaction::view::{AccessibilityEffect, Dispatch, Effect};
@@ -19,7 +19,11 @@ pub struct AppleAdapter {
     pub(crate) host: OnceLock<WeakViewHost<AppleAdapter>>,
     /// The view's latest measurement; `None` until it has a size.
     pub(crate) facts: Mutex<Option<DeviceFacts>>,
-    raster: OnceLock<Arc<Mailbox<DisplayList>>>,
+    raster: OnceLock<Arc<Mailbox<(DisplayList, CommitTicket)>>>,
+    /// The attached GPU presenter, or 0.
+    pub(crate) gpu: std::sync::atomic::AtomicU64,
+    #[cfg(feature = "gpu")]
+    pub(crate) target: Mutex<lingxia_ui::renderer::surfaces::Target>,
     /// In-flight loads; dropping a handle cancels its transport.
     images: Mutex<HashMap<u64, Box<dyn Send>>>,
 }
@@ -33,6 +37,10 @@ impl AppleAdapter {
             host: OnceLock::new(),
             facts: Mutex::new(None),
             raster: OnceLock::new(),
+            gpu: std::sync::atomic::AtomicU64::new(0),
+            #[cfg(feature = "gpu")]
+            // CPU frames until the view attaches a Metal presenter.
+            target: Mutex::new(lingxia_ui::renderer::surfaces::Target::Unavailable),
             images: Mutex::new(HashMap::new()),
         }
     }
@@ -43,44 +51,105 @@ impl AppleAdapter {
 }
 
 pub(crate) fn log(message: &str) {
-    eprintln!("LingXia.UI: {message}");
+    log::info!(target: "lingxia_ui", "{message}");
+}
+
+pub enum Frame {
+    #[cfg_attr(not(feature = "gpu"), allow(dead_code))]
+    Gpu {
+        surface: u64,
+        revision: u64,
+        metrics: serde_json::Value,
+    },
+    /// Rasterized off the View worker when presented.
+    Cpu(DisplayList, CommitTicket),
+}
+
+impl AppleAdapter {
+    #[cfg(feature = "gpu")]
+    fn route(&self) -> lingxia_ui::renderer::surfaces::Route {
+        let target = *self.target.lock().unwrap_or_else(|p| p.into_inner());
+        lingxia_ui::renderer::surfaces::route(self.gpu.load(Ordering::Acquire), target)
+    }
 }
 
 impl Presenter for AppleAdapter {
-    type Frame = DisplayList;
+    type Frame = Frame;
 
     fn prepare(
         &self,
         display: DisplayList,
         _: SurfaceTicket,
-        _: CommitTicket,
-    ) -> Result<Option<DisplayList>, String> {
-        Ok(Some(display))
+        generation: CommitTicket,
+    ) -> Result<Option<Frame>, String> {
+        #[cfg(feature = "gpu")]
+        {
+            use lingxia_ui::renderer::surfaces::{self, Route};
+            match self.route() {
+                Route::Wait => return Ok(None),
+                Route::Gpu(surface) => {
+                    return Ok(surfaces::prepare(surface, &display, generation.get())?.map(
+                        |metrics| Frame::Gpu {
+                            surface,
+                            revision: generation.get(),
+                            metrics,
+                        },
+                    ));
+                }
+                Route::Cpu => {}
+            }
+        }
+        Ok(Some(Frame::Cpu(display, generation)))
     }
 
-    fn metrics(&self, _: &DisplayList) -> Option<serde_json::Value> {
-        Some(serde_json::json!({"backend": "vello-cpu"}))
+    fn metrics(&self, frame: &Frame) -> Option<serde_json::Value> {
+        Some(match frame {
+            Frame::Gpu { metrics, .. } => metrics.clone(),
+            Frame::Cpu(..) => serde_json::json!({"backend": "vello-cpu"}),
+        })
     }
 
-    fn present(&self, display: DisplayList) -> Result<bool, String> {
-        let Some(host) = self.host.get().cloned() else {
-            return Ok(false);
-        };
-        self.raster
-            .get_or_init(|| Mailbox::new(move |display| rasterize(&host, display)))
-            .submit(display);
-        Ok(true)
+    fn present(&self, frame: Frame) -> Result<bool, String> {
+        match frame {
+            #[cfg(feature = "gpu")]
+            Frame::Gpu {
+                surface, revision, ..
+            } => Ok(lingxia_ui::renderer::surfaces::present(surface, revision)?.is_some()),
+            #[cfg(not(feature = "gpu"))]
+            Frame::Gpu { .. } => Ok(false),
+            Frame::Cpu(display, generation) => {
+                let Some(host) = self.host.get().cloned() else {
+                    return Ok(false);
+                };
+                self.raster
+                    .get_or_init(|| {
+                        Mailbox::new(move |(display, generation)| {
+                            rasterize(&host, display, generation)
+                        })
+                    })
+                    .submit((display, generation));
+                Ok(true)
+            }
+        }
+    }
+
+    fn deferred(&self, frame: &Frame) -> bool {
+        matches!(frame, Frame::Cpu(..))
     }
 }
 
-/// Raster thread; the pixels go to the view on the main thread.
-fn rasterize(host: &WeakViewHost<AppleAdapter>, display: DisplayList) {
+/// Raster thread; the pixels go to the view on the main thread. Every frame is
+/// reported once, shown or dropped; the host re-prepares a dropped one.
+fn rasterize(host: &WeakViewHost<AppleAdapter>, display: DisplayList, generation: CommitTicket) {
     let Some(strong) = host.upgrade() else {
         return;
     };
     let frame = match display.rasterize() {
         Ok(frame) => frame,
-        Err(error) => return strong.fail(error),
+        Err(error) => {
+            strong.deferred_presented(generation, false);
+            return strong.fail(error);
+        }
     };
     drop(strong);
     let host = host.clone();
@@ -98,15 +167,16 @@ fn rasterize(host: &WeakViewHost<AppleAdapter>, display: DisplayList) {
                 u32::from(width),
                 u32::from(height),
             );
-            if !shown {
-                host.redraw();
-            }
+            host.deferred_presented(generation, shown);
         }),
     );
 }
 
 impl FrameScheduler for AppleAdapter {
     fn request_vsync(&self) {
+        if self.shell.request_vsync(self.token) {
+            return;
+        }
         let Some(host) = self.host.get().cloned() else {
             return;
         };
@@ -224,7 +294,7 @@ impl HostEvents for AppleAdapter {
         self.shell.bootstrap_overdue(self.token, overdue);
     }
     fn warn(&self, message: &str) {
-        log(message);
+        log::warn!(target: "lingxia_ui", "{message}");
     }
 }
 

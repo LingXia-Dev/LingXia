@@ -111,8 +111,28 @@ impl<A: PlatformAdapter> Inner<A> {
         self.adapter.revealed(hold);
     }
 
-    pub(super) fn window_visible(&self, visible: bool) {
-        self.main().reveal.window_hidden = !visible;
+    /// A window nothing of which can be seen keeps its prepared frame instead of presenting:
+    /// a drawable for it may never come back.
+    pub(super) fn window_visible(self: &Arc<Self>, visible: bool) {
+        let changed = {
+            let mut main = self.main();
+            let changed = main.reveal.window_hidden == visible;
+            main.reveal.window_hidden = !visible;
+            changed
+        };
+        if !changed {
+            return;
+        }
+        if visible {
+            self.adapter.request_vsync();
+            self.schedule();
+        } else {
+            self.park_animations();
+        }
+    }
+
+    pub(super) fn window_hidden(&self) -> bool {
+        self.main().reveal.window_hidden
     }
 
     /// A frame reached the screen: a waiting or held reveal completes.

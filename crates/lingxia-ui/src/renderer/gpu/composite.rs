@@ -19,6 +19,7 @@ pub struct Compositor {
     depth_allocations: u64,
     images: crate::renderer::gpu::images::ImageTextures,
     glyph_cache: glifo::GlyphPrepCache,
+    budget_warned: bool,
 }
 
 impl Compositor {
@@ -55,7 +56,43 @@ impl Compositor {
             depth_allocations: 0,
             images: Default::default(),
             glyph_cache: Default::default(),
+            budget_warned: false,
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn lease(
+        &mut self,
+        device: &wgpu::Device,
+        width: u16,
+        height: u16,
+    ) -> Result<Surface, String> {
+        self.pool.lease(device, width, height)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn budget_warned(&self) -> bool {
+        self.budget_warned
+    }
+
+    /// Fit `plan` beside the textures earlier frames still hold; a frame that does not fit
+    /// draws its deepest groups flattened rather than failing.
+    pub(crate) fn fit(
+        &mut self,
+        plan: crate::scene::composite::Plan,
+    ) -> crate::scene::composite::Plan {
+        let (width, height) = plan.dimensions();
+        self.pool.set_frame(width, height);
+        let available = self.pool.available();
+        let (plan, flattened) = plan.within(available);
+        if flattened > 0 && !self.budget_warned {
+            self.budget_warned = true;
+            log::warn!(
+                target: "lingxia_ui",
+                "UI_BUDGET: this page's layers need more GPU texture memory than `leaseFrames` allows ({available} bytes free at {width}x{height}); {flattened} nested group(s) draw flattened"
+            );
+        }
+        plan
     }
 
     fn depth_view(
@@ -120,7 +157,7 @@ impl Compositor {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Result<Surface, String> {
-        let plan = display.composition_plan()?;
+        let plan = self.fit(display.composition_plan()?);
         // Move caches out for the callback's lifetime; restore them on errors too.
         let mut images = std::mem::take(&mut self.images);
         let mut glyph_cache = std::mem::take(&mut self.glyph_cache);

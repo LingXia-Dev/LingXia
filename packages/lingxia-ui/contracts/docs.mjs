@@ -296,6 +296,7 @@ const limitNotes = {
   plotWork: 'Geometry all plots of one frame draw.',
   shadowMaskBytes: 'Blurred shadow masks one frame rasterizes.',
   compositeFrames: 'Frame-sized working surfaces nested opacity, clip and backdrop layers may hold at once (at least 64 MiB); past it the deepest groups flatten.',
+  leaseFrames: 'Frame-sized GPU textures a page may hold at once across prepared frames and kept animation layers (at least 64 MiB, under `compositeBytes`); past it the frame draws without the kept layer.',
   compositeBytes: 'Absolute ceiling on those working surfaces, for very large windows.',
 };
 

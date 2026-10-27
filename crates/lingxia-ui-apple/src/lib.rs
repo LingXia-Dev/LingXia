@@ -6,6 +6,8 @@ use std::sync::Arc;
 
 mod adapter;
 mod dispatch;
+#[cfg(feature = "gpu")]
+mod surface;
 
 pub use adapter::AppleAdapter;
 pub use lingxia_ui;
@@ -20,6 +22,8 @@ pub trait Shell: Send + Sync + 'static {
     /// Show an opaque premultiplied RGBA8 frame; false when the view cannot take it now.
     fn present_pixels(&self, token: i64, pixels: &[u8], width: u32, height: u32) -> bool;
     fn loaded(&self, token: i64);
+    /// Call [`ViewHost::vsync`] on the next display refresh; false without a display link.
+    fn request_vsync(&self, token: i64) -> bool;
     /// A frame for `connection` reached the screen; 0 is a standalone page.
     fn presented(&self, token: i64, connection: u64);
     fn message(&self, token: i64, connection: u64, message: &str);
@@ -85,8 +89,104 @@ impl Page {
     }
 }
 
+impl Page {
+    /// Bind the view (an NSView or UIView backed by a CAMetalLayer) to a Metal
+    /// presenter on the main thread; frames use the CPU until it is ready and
+    /// whenever it fails.
+    #[cfg(feature = "gpu")]
+    pub fn attach(&self, view: usize, width: u32, height: u32) {
+        use lingxia_ui::renderer::surfaces::{self, Target};
+        use std::sync::atomic::Ordering;
+        let adapter = self.host.adapter();
+        let Some(view) = surface::AppleView::new(view) else {
+            return;
+        };
+        let existing = adapter.gpu.load(Ordering::Acquire);
+        let started = std::time::Instant::now();
+        // AppKit and UIKit give up a view's layer only on the main thread.
+        let attached = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            surfaces::attach(view, width, height, existing)
+        }))
+        .unwrap_or_else(|panic| {
+            Err(panic
+                .downcast_ref::<&str>()
+                .map(|s| s.to_string())
+                .or_else(|| panic.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "presenter setup panicked".into()))
+        });
+        let ms = started.elapsed().as_millis();
+        let target = match attached {
+            Ok(id) => {
+                adapter.gpu.store(id, Ordering::Release);
+                let (record, backend) = surfaces::describe(id).unwrap_or_default();
+                adapter::log(&format!(
+                    "backend={backend} surface={id} attachMs={ms} adapter={record}"
+                ));
+                Target::Ready
+            }
+            Err(error) => {
+                adapter::log(&format!("GPU unavailable; using CPU renderer: {error}"));
+                Target::Unavailable
+            }
+        };
+        *adapter.target.lock().unwrap_or_else(|p| p.into_inner()) = target;
+        self.host.surface_changed();
+    }
+
+    /// The newest GPU frame: width, height and straight-alpha RGBA rows.
+    #[cfg(feature = "gpu")]
+    pub fn readback(&self) -> Result<Option<(u32, u32, Vec<u8>)>, String> {
+        let id = self
+            .host
+            .adapter()
+            .gpu
+            .load(std::sync::atomic::Ordering::Acquire);
+        if id == 0 {
+            return Ok(None);
+        }
+        lingxia_ui::renderer::surfaces::readback(id)
+    }
+
+    /// The newest GPU frame as a PNG.
+    #[cfg(feature = "gpu")]
+    pub fn screenshot_png(&self) -> Result<Option<Vec<u8>>, String> {
+        let id = self
+            .host
+            .adapter()
+            .gpu
+            .load(std::sync::atomic::Ordering::Acquire);
+        if id == 0 {
+            return Ok(None);
+        }
+        lingxia_ui::renderer::surfaces::screenshot_png(id)
+    }
+
+    /// The view left the window or the app went to the background: nothing presents.
+    #[cfg(feature = "gpu")]
+    pub fn suspend(&self) {
+        lingxia_ui::renderer::surfaces::suspend(
+            self.host
+                .adapter()
+                .gpu
+                .load(std::sync::atomic::Ordering::Acquire),
+        );
+        self.host.surface_lost();
+    }
+}
+
 impl Drop for Page {
     fn drop(&mut self) {
         self.host.dispose();
+        #[cfg(feature = "gpu")]
+        {
+            let surface = self
+                .host
+                .adapter()
+                .gpu
+                .swap(0, std::sync::atomic::Ordering::AcqRel);
+            if surface != 0 {
+                lingxia_ui::renderer::surfaces::detach(surface);
+            }
+        }
     }
 }

@@ -30,6 +30,27 @@ mod bridge {
 
         #[swift_bridge(swift_name = "gpuPageSetVisible")]
         fn gpu_page_set_visible(token: i64, visible: bool);
+
+        // The window became occluded, minimized or hidden, or came back.
+        #[swift_bridge(swift_name = "gpuPageWindowVisible")]
+        fn gpu_page_window_visible(token: i64, visible: bool);
+
+        // Bind the view's CAMetalLayer to a Metal presenter; device pixels.
+        #[swift_bridge(swift_name = "gpuPageAttach")]
+        fn gpu_page_attach(token: i64, view: usize, width: u32, height: u32);
+
+        // The view left its window or the app went to the background.
+        #[swift_bridge(swift_name = "gpuPageSuspend")]
+        fn gpu_page_suspend(token: i64);
+
+        // The newest frame for a host screenshot: width and height as
+        // little-endian u32, then RGBA rows; empty when no frame is held.
+        #[swift_bridge(swift_name = "gpuPageReadback")]
+        fn gpu_page_readback(token: i64) -> Vec<u8>;
+
+        // The display link fired for a requested frame.
+        #[swift_bridge(swift_name = "gpuPageVsync")]
+        fn gpu_page_vsync(token: i64);
     }
 
     extern "Swift" {
@@ -45,6 +66,10 @@ mod bridge {
 
         #[swift_bridge(swift_name = "GpuPages.dispose")]
         fn gpu_pages_dispose(token: i64);
+
+        // Call `gpuPageVsync` on the next display refresh; false without a display link.
+        #[swift_bridge(swift_name = "GpuPages.requestVsync")]
+        fn gpu_pages_request_vsync(token: i64) -> bool;
     }
 }
 
@@ -72,7 +97,12 @@ fn gpu_page_measured(
             width,
             height,
             scale,
-            os: if cfg!(target_os = "macos") { "macos" } else { "ios" }.into(),
+            os: if cfg!(target_os = "macos") {
+                "macos"
+            } else {
+                "ios"
+            }
+            .into(),
             dark,
             system_insets: [inset_top, inset_right, inset_bottom, inset_left],
             chrome_insets: [chrome_top, 0.0, chrome_bottom, 0.0],
@@ -101,9 +131,63 @@ fn gpu_page_measured(
     );
 }
 
+fn gpu_page_attach(token: i64, view: usize, width: u32, height: u32) {
+    log::debug!(target: "lingxia_ui", "attach token={token} {width}x{height}");
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    with_page(token, |page| page.attach(view, width, height));
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    let _ = (token, view, width, height);
+}
+
+fn gpu_page_suspend(token: i64) {
+    log::debug!(target: "lingxia_ui", "suspend token={token}");
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    with_page(token, |page| page.suspend());
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    let _ = token;
+}
+
 fn gpu_page_set_visible(token: i64, visible: bool) {
     #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     with_page(token, |page| page.host().set_visible(visible));
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    let _ = (token, visible);
+}
+
+fn gpu_page_readback(token: i64) -> Vec<u8> {
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    {
+        let mut out = Vec::new();
+        with_page(token, |page| match page.readback() {
+            Ok(Some((width, height, pixels))) => {
+                out.reserve(8 + pixels.len());
+                out.extend_from_slice(&width.to_le_bytes());
+                out.extend_from_slice(&height.to_le_bytes());
+                out.extend_from_slice(&pixels);
+            }
+            Ok(None) => {}
+            Err(error) => log::warn!(target: "lingxia_ui", "GPU readback: {error}"),
+        });
+        out
+    }
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    {
+        let _ = token;
+        Vec::new()
+    }
+}
+
+fn gpu_page_vsync(token: i64) {
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    with_page(token, |page| page.host().vsync());
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    let _ = token;
+}
+
+fn gpu_page_window_visible(token: i64, visible: bool) {
+    log::debug!(target: "lingxia_ui", "window token={token} visible={visible}");
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    with_page(token, |page| page.host().window_visible(visible));
     #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
     let _ = (token, visible);
 }
@@ -157,6 +241,9 @@ mod live {
             )
         }
         fn loaded(&self, _: i64) {}
+        fn request_vsync(&self, token: i64) -> bool {
+            super::bridge::gpu_pages_request_vsync(token)
+        }
         fn presented(&self, token: i64, connection: u64) {
             gpu_page::presented(token, connection);
         }
@@ -244,8 +331,26 @@ mod live {
         fn retain_surface(&self, _: bool) -> Result<(), LxAppError> {
             Ok(())
         }
-        fn automation(&self, _: serde_json::Value, reply: AutomationReply) {
-            reply(Err("GPU automation is not available on iOS yet".into()));
+        fn automation(&self, request: serde_json::Value, reply: AutomationReply) {
+            let token = self.token;
+            lingxia_ui_apple::post_main(Box::new(move || {
+                let mut answer = None;
+                with_page(token, |page| {
+                    answer = Some(if request["op"] != "screenshot" {
+                        page.host().automation_request(&request)
+                    } else {
+                        use base64::Engine;
+                        match page.screenshot_png() {
+                            Ok(Some(png)) => Ok(serde_json::json!({
+                                "png": base64::engine::general_purpose::STANDARD.encode(png)
+                            })),
+                            Ok(None) => Err("E_PAGE_NOT_READY: no presented frame".into()),
+                            Err(error) => Err(error),
+                        }
+                    });
+                });
+                reply(answer.unwrap_or_else(|| Err("page is not active".into())));
+            }));
         }
         fn as_any(&self) -> &dyn std::any::Any {
             self
