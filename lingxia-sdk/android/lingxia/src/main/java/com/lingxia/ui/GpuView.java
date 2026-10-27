@@ -124,6 +124,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     // CPU frames are drawn from a raster thread, which reads these too.
     private volatile boolean active, destroyed, attaching, gpuAttached;
     private boolean hasSurfaceFrame;
+    private final String worker;
+    private long refusedInputLoggedAt = -1000;
     // The presented frame as JSON, for the input method and its chrome.
     private JSONObject snapshot;
     private JSONObject decodedFor;
@@ -167,6 +169,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     /** {@code imageOwner} names this page to the host's image loader; 0 loads no images. */
     public GpuView(Context context, String source, String worker, long imageOwner, Listener listener, boolean logic) {
         super(context);
+        this.worker = worker;
         nativeGpuSentinel(context.getNoBackupFilesDir().getAbsolutePath());
         hostConfiguration = new android.content.res.Configuration(context.getResources().getConfiguration());
         this.listener = listener;
@@ -971,7 +974,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
         }
         @Override public boolean onTouchEvent(MotionEvent event) {
-            if (destroyed || !active || nativeInputBlocked(host)) return false;
+            String refused = destroyed ? "destroyed" : !active ? "inactive" : nativeInputBlocked(host) ? "session failed" : null;
+            if (refused != null) { inputRefused(refused, event); return false; }
             if (staticSelection.touch(event)) {
                 cancel();
                 getParent().requestDisallowInterceptTouchEvent(staticSelection.dragging());
@@ -1014,6 +1018,14 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             if (phase >= 2 && velocity != null) { velocity.recycle(); velocity = null; }
             if (phase == 0 && !handled) return pullToRefresh != null;
             return true;
+        }
+        /** Pointers dropped before the core would otherwise vanish without a trace. */
+        private void inputRefused(String reason, MotionEvent event) {
+            long now = android.os.SystemClock.uptimeMillis();
+            if (now - refusedInputLoggedAt < 1000) return;
+            refusedInputLoggedAt = now;
+            Log.w("LingXia.UI", "UI_INPUT: pointer refused before core worker=" + worker + " reason=" + reason
+                + " action=" + MotionEvent.actionToString(event.getActionMasked()));
         }
         @Override public boolean performClick() { super.performClick(); return true; }
         @Override public boolean onCheckIsTextEditor() { return ime != null && ime.hasFocus(); }
