@@ -33,6 +33,11 @@ public class GpuProductContractTest {
         instrumentation.runOnMainSync(()->{try {result.set(work.get());} catch(Throwable e){error.set(e);}});
         if(error.get()!=null)throw new AssertionError(error.get()); return result.get();
     }
+    static boolean hasGpuView(android.view.View view) {
+        if(view instanceof GpuView)return true;
+        if(view instanceof ViewGroup)for(int i=0;i<((ViewGroup)view).getChildCount();i++)if(hasGpuView(((ViewGroup)view).getChildAt(i)))return true;
+        return false;
+    }
     void await(Work<Boolean> condition) throws Exception {
         long end=android.os.SystemClock.uptimeMillis()+15000;
         do {if(condition.get())return;Thread.sleep(50);} while(android.os.SystemClock.uptimeMillis()<end);
@@ -69,8 +74,9 @@ public class GpuProductContractTest {
         instrumentation.getTargetContext().startActivity(launch);
         AtomicReference<Activity> activity=new AtomicReference<>();
         await(()->main(()->{for(Activity a:ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)){activity.set(a);return true;}return false;}));
-        // The launcher may hand off to the lxapp activity while the host boots.
-        await(()->main(()->{for(Activity a:ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)){activity.set(a);return true;}return false;}));
+        // Wait for the host's own GPU page: native methods are registered only once the host initialises.
+        await(()->main(()->{for(Activity a:ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)){
+            if(hasGpuView(a.getWindow().getDecorView())){activity.set(a);return true;}}return false;}));
         String source;
         try(java.io.InputStream stream=instrumentation.getContext().getAssets().open("pages/home/index.js")){
             ByteArrayOutputStream bytes=new ByteArrayOutputStream();byte[] chunk=new byte[8192];int n;
