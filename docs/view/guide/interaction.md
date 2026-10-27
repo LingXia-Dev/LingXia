@@ -73,6 +73,10 @@ While a control is pressed, its `active:` styles apply (paint only, transforms i
 gets the platform's pressed overlay over its shape instead. `disabled` removes the control's handler; its
 `disabled:` styles replace its whole class cascade. A click plays the platform's click feedback.
 
+A press belongs to its control, not to the frame it started on. If the View re-renders under the
+finger (a toggle's label flips), releasing still runs that control's current handler; only a control
+that went away cancels the press.
+
 `hover:` applies only when `env.pointer` is `fine` (a mouse or trackpad). Touch devices never hover.
 
 ## Gestures

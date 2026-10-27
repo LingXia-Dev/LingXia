@@ -115,7 +115,9 @@ Either change is an environment change, so a hidden page renders one catch-up fr
 
 `FrameMetrics.animationFrames` counts visible presentations in the last second that
 showed or cleared animated values; parked frames never count. Tests assert silence with
-it and with presentation counts, not with log greps.
+it and with presentation counts, not with log greps. `FrameMetrics.activations` counts
+executed clicks (each also goes to `HostEvents::debug`); a declined candidate keeps the View's
+pending updates (`discard(true)` only for `FRAME_DECLINED`), any other failure reverts them.
 
 ## Android path
 

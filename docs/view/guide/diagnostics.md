@@ -82,7 +82,9 @@ UI_KEY: duplicate sibling
 
 `<tag>` lines are elements, bare names are components. The page keeps showing its last good frame;
 the host offers a Retry that renders again in the same session. Read these messages with
-`lxdev logs --grep UI_`.
+`lxdev logs --grep UI_`. At debug level every executed tap also logs a
+`UI_INPUT: click page=… node=… commit=… current=… reresolved=…` line, and a tap whose handler is gone
+warns as a dropped activation.
 
 Common runtime codes: `UI_KEY` (duplicate or non-string keys), `UI_LOCAL` (a duplicate `useLocal` name, or
 `set` on an unmounted cell), `UI_RENDER` (state changed or an action called during render), `UI_CLASS`

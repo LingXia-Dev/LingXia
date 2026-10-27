@@ -71,8 +71,9 @@ A cell of JSON state that belongs to the component instance ([Pages and componen
   (`UI_RENDER`) and on a cell whose component has unmounted (`UI_LOCAL`).
 - Values are JSON: strings, numbers, booleans, `null`, arrays and plain objects. Object fields that
   are `undefined` are dropped. Functions, `Date`, `Map` and class instances are refused.
-- A `set` made while a render is being prepared applies when that render commits; if the frame fails,
-  the change is discarded with it.
+- A `set` made while a render is being prepared applies when that render commits. A frame the screen
+  only declined keeps the change for the next one; a frame that fails (the render throws, or its
+  description is rejected with a `UI_*` error) discards it, and the page keeps its last good state.
 - Custom hooks namespace their cells by name: ``useLocal(`${name}/draft`, '')``.
 
 ## `useRequest(name, action, params?)`
