@@ -85,21 +85,55 @@ fn component_locals_survive_a_swap_whatever_order_components_first_rendered_in()
 
 /// The showcase view lab compiled as `lingxia dev` compiles it (dev, hot swap on).
 fn view_lab_module() -> String {
+    view_lab_module_edited(None)
+}
+
+/// The view lab with one source replacement applied to a copy, as a save in an editor would.
+pub(crate) fn view_lab_module_edited(edit: Option<(&str, &str)>) -> String {
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
-    let out = std::env::temp_dir().join(format!("lingxia-view-lab-{}", std::process::id()));
+    let lab = std::path::Path::new(root).join("examples/lingxia-showcase-gpu/lxapp");
+    let tag = edit.map_or(0, |(from, _)| from.len());
+    let out = std::env::temp_dir().join(format!("lingxia-view-lab-{}-{tag}", std::process::id()));
+    let mut source_root = lab.clone();
+    if let Some((from, to)) = edit {
+        let copy = out.join("src");
+        for dir in ["pages/view-lab", "shared", "theme"] {
+            copy_tree(&lab.join(dir), &copy.join(dir));
+        }
+        std::fs::copy(lab.join("lxapp.json"), copy.join("lxapp.json")).unwrap();
+        let page = copy.join("pages/view-lab/index.tsx");
+        let text = std::fs::read_to_string(&page).unwrap();
+        assert!(text.contains(from), "the edit applies");
+        std::fs::write(&page, text.replacen(from, to, 1)).unwrap();
+        source_root = copy;
+    }
+    let dist = out.join("dist");
     let script = format!(
         "const {{ buildPages }} = await import('{root}/packages/lingxia-ui/compiler/index.mjs'); \
-         await buildPages('{root}/examples/lingxia-showcase-gpu/lxapp', ['pages/view-lab/index.tsx'], {:?}, {{}}, {{ dev: true }});",
-        out
+         await buildPages({:?}, ['pages/view-lab/index.tsx'], {:?}, {{}}, {{ dev: true }});",
+        source_root, dist
     );
     let status = std::process::Command::new("node")
         .args(["--input-type=module", "--eval", &script])
         .status()
         .expect("node builds the view lab");
     assert!(status.success(), "the view lab compiles");
-    let module = std::fs::read_to_string(out.join("pages/view-lab/index.js")).unwrap();
+    let module = std::fs::read_to_string(dist.join("pages/view-lab/index.js")).unwrap();
     let _ = std::fs::remove_dir_all(&out);
     module
+}
+
+fn copy_tree(from: &std::path::Path, to: &std::path::Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let target = to.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_tree(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), target).unwrap();
+        }
+    }
 }
 
 #[test]
@@ -132,5 +166,33 @@ fn the_view_lab_keeps_a_chosen_plan_across_a_swap() {
     assert!(
         values(&mut page).ends_with("plan=yearly"),
         "the Inputs tab and its plan survive"
+    );
+    // A save that edits a sibling component above Inputs.
+    let edited = view_lab_module_edited(Some((
+        "Monthly bills</text>",
+        "Monthly bills and more</text>\n      <text className=\"text-xs\">Edited</text>",
+    )));
+    page.swap_module(&edited).unwrap();
+    assert!(
+        values(&mut page).ends_with("plan=yearly"),
+        "the plan survives an edit of a sibling component"
+    );
+    // Back to the original source, a second edit in a row.
+    page.swap_module(&module).unwrap();
+    assert!(
+        values(&mut page).ends_with("plan=yearly"),
+        "and a second swap"
+    );
+    let display = page.layout(400, 3000, 1.0).unwrap();
+    let plan = find(&display, "lab-input-plan");
+    assert!(
+        page.select_option(page.generation(), &plan.identity, 0)
+            .unwrap()
+    );
+    assert!(values(&mut page).ends_with("plan=monthly"));
+    page.swap_module(&edited).unwrap();
+    assert!(
+        values(&mut page).ends_with("plan=monthly"),
+        "a choice made after a swap survives the next"
     );
 }
