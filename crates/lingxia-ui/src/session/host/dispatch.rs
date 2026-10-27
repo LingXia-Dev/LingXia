@@ -164,8 +164,8 @@ impl<A: PlatformAdapter> Inner<A> {
                     self.activate_reporting(
                         page,
                         true,
-                        identity,
-                        Box::new(move |session| session.click(commit, handle)),
+                        identity.clone(),
+                        Box::new(move |session| session.click_control(commit, handle, &identity)),
                     );
                 }
                 Dispatch::Plot {
@@ -263,14 +263,8 @@ impl<A: PlatformAdapter> Inner<A> {
                 inner.main().activating -= 1;
                 let result = result.map(|result| {
                     result.map(|(rejected, drained)| {
-                        for (commit, current) in rejected {
-                            inner.report_dropped(
-                                page,
-                                &identity,
-                                "its frame was superseded before the click ran",
-                                commit,
-                                current,
-                            );
+                        for (commit, current, reason) in rejected {
+                            inner.report_dropped(page, &identity, reason, commit, current);
                         }
                         drained
                     })

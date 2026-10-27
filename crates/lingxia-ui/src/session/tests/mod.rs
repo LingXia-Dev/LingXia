@@ -1719,6 +1719,20 @@ fn a_click_refused_for_a_superseded_frame_is_recorded_for_the_host() {
     page.layout(100, 50, 1.0).unwrap();
     assert!(page.take_rejected_clicks().is_empty());
     assert!(!page.click(old, handle).unwrap());
-    assert_eq!(page.take_rejected_clicks(), [(old, page.generation())]);
+    assert_eq!(
+        page.take_rejected_clicks(),
+        [(
+            old,
+            page.generation(),
+            "its frame was superseded before the click ran"
+        )]
+    );
     assert!(page.take_rejected_clicks().is_empty());
+    // By control, the same tap re-resolves to its current callback; a gone control drops it.
+    let identity = first.nodes[0].identity.clone();
+    assert!(page.click_control(old, handle, &identity).unwrap());
+    assert_eq!(page.layout(100, 50, 1.0).unwrap().nodes[0].text, "n 2");
+    assert!(page.take_rejected_clicks().is_empty());
+    assert!(!page.click_control(old, handle, "/gone").unwrap());
+    assert_eq!(page.take_rejected_clicks()[0].2, "the control is gone");
 }
