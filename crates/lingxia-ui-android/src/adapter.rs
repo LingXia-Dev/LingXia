@@ -91,19 +91,35 @@ pub(super) enum Frame {
     Cpu(DisplayList, CommitTicket),
 }
 
-pub(super) fn log(message: &str) {
+/// Android log priorities: 3 debug, 4 info, 5 warn.
+fn write(priority: i32, message: &str) {
     #[cfg(target_os = "android")]
     {
         unsafe extern "C" {
             fn __android_log_write(priority: i32, tag: *const u8, text: *const u8) -> i32;
         }
         if let Ok(text) = std::ffi::CString::new(message) {
-            // ANDROID_LOG_WARN
-            unsafe { __android_log_write(5, c"LingXia.UI".as_ptr().cast(), text.as_ptr().cast()) };
+            unsafe {
+                __android_log_write(
+                    priority,
+                    c"LingXia.UI".as_ptr().cast(),
+                    text.as_ptr().cast(),
+                )
+            };
         }
     }
     #[cfg(not(target_os = "android"))]
-    eprintln!("LingXia.UI: {message}");
+    if priority >= 5 {
+        eprintln!("LingXia.UI: {message}");
+    }
+}
+
+pub(super) fn log(message: &str) {
+    write(5, message);
+}
+
+pub(super) fn info(message: &str) {
+    write(4, message);
 }
 
 impl AndroidAdapter {
@@ -308,21 +324,6 @@ fn rasterize(host: &WeakViewHost<AndroidAdapter>, display: DisplayList, generati
         started.elapsed().as_micros()
     ));
     host.deferred_presented(generation, presented);
-}
-
-pub(super) fn info(message: &str) {
-    #[cfg(target_os = "android")]
-    {
-        unsafe extern "C" {
-            fn __android_log_write(priority: i32, tag: *const u8, text: *const u8) -> i32;
-        }
-        if let Ok(text) = std::ffi::CString::new(message) {
-            // ANDROID_LOG_INFO
-            unsafe { __android_log_write(4, c"LingXia.UI".as_ptr().cast(), text.as_ptr().cast()) };
-        }
-    }
-    #[cfg(not(target_os = "android"))]
-    let _ = message;
 }
 
 impl FrameScheduler for AndroidAdapter {
@@ -795,6 +796,10 @@ impl HostEvents for AndroidAdapter {
     }
     fn warn(&self, message: &str) {
         log(message);
+    }
+
+    fn debug(&self, message: &str) {
+        write(3, message);
     }
 }
 
