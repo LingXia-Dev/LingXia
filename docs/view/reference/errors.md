@@ -14,7 +14,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_BRIDGE` | native | The View-Logic connection failed or was replaced. |
 | `UI_BUDGET` | native | A warning, once per page and limit: a frame used at least three quarters of a page limit. |
 | `UI_BUFFER` | native | A malformed wire buffer reached the native decoder. |
-| `UI_BUTTON` | runtime, native | Invalid button label, or an interactive element inside a composed control. |
+| `UI_BUTTON` | build, runtime, native | Invalid button label, or an interactive element inside a composed control. |
 | `UI_CHANNEL` | runtime | Invalid `useChannel` call or channel failure. |
 | `UI_CHECK` | runtime, native | Invalid checkbox or switch value, label or binding. |
 | `UI_CHILD` | runtime, native | An element has children it does not accept, or lacks its required parent. |
@@ -34,6 +34,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_FIELD` | native | A wire field on a tag that does not accept it. |
 | `UI_FIELDS` | native | A malformed field list reached the native decoder. |
 | `UI_FILTER` | native | A backdrop filter outside its bounds. |
+| `UI_FONT` | native | A named system font in the platform fallback chain could not be read or found; text falls back to the next font. |
 | `UI_FRAGMENT` | build | A JSX fragment; return one element. |
 | `UI_FRAME` | native | The platform presenter kept refusing frames prepared ahead; the page falls back to one frame at a time. |
 | `UI_GRADIENT` | runtime, native | A gradient with geometry its kind does not take, or invalid stops. |

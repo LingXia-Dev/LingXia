@@ -342,10 +342,12 @@ function semantics(schema) {
 const untestable = {
   UI_SURFACE: 'needs a device without a compatible GPU or surface format',
   UI_WORKER: 'needs the OS to refuse a thread',
+  UI_FONT: "needs the platform's system font files",
 };
 
 const errorNotes = {
   UI_SELECT: 'Invalid `<select>` options, value or selection reply.',
+  UI_FONT: 'A named system font in the platform fallback chain could not be read or found; text falls back to the next font.',
   UI_FRAME: 'The platform presenter kept refusing frames prepared ahead; the page falls back to one frame at a time.',
   UI_BUDGET: 'A warning, once per page and limit: a frame used at least three quarters of a page limit.',
   UI_ACTION: 'An action call was malformed or its reply invalid.',
