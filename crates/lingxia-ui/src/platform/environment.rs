@@ -32,6 +32,8 @@ pub struct DeviceFacts {
     pub animation_scale: f32,
     /// The OS's explicit reduce-motion switch.
     pub reduce_motion: bool,
+    /// The OS asks for increased contrast.
+    pub high_contrast: bool,
     /// `[authored, shown]` font sizes in logical pixels, from `[0, 0]` to `[16384, _]`.
     pub text_scale: Option<Vec<[f32; 2]>>,
     /// Hosted by the desktop runner rather than an app.
@@ -72,6 +74,7 @@ impl DeviceFacts {
             "runner": self.runner,
             "animatorDurationScale": animation_scale,
             "reducedMotion": self.reduce_motion || animation_scale == 0.0,
+            "highContrast": self.high_contrast,
             "renderer": {
                 "fallback": crate::renderer::sentinel::fallback().map(|_| "driver"),
             },
@@ -106,6 +109,14 @@ mod tests {
             animation_scale: 1.0,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn the_increased_contrast_switch_reaches_the_environment() {
+        let mut facts = phone();
+        assert_eq!(facts.environment().unwrap().value["highContrast"], false);
+        facts.high_contrast = true;
+        assert_eq!(facts.environment().unwrap().value["highContrast"], true);
     }
 
     #[test]

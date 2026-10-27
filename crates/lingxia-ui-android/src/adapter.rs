@@ -401,6 +401,7 @@ impl EnvironmentSource for AndroidAdapter {
             fine_pointer: facts["fine_pointer"].as_bool().unwrap_or(false),
             animation_scale: facts["animation_scale"].as_f64().map_or(1.0, |v| v as f32),
             reduce_motion: facts["reduce_motion"].as_bool().unwrap_or(false),
+            high_contrast: facts["high_contrast"].as_bool().unwrap_or(false),
             text_scale,
             runner: facts["runner"].as_bool().unwrap_or(false),
         }

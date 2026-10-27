@@ -112,6 +112,7 @@ fn gpu_page_measured(
             fine_pointer: cfg!(target_os = "macos"),
             animation_scale: 1.0,
             reduce_motion,
+            high_contrast: false,
             text_scale: None,
             runner: false,
         };

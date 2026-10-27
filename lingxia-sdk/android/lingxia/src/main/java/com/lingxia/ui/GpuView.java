@@ -489,10 +489,14 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     private final android.database.ContentObserver animatorScale = new android.database.ContentObserver(main) {
         @Override public void onChange(boolean selfChange) { requestFrame(); }
     };
+    // Settings.Secure.ACCESSIBILITY_HIGH_TEXT_CONTRAST_ENABLED, hidden but readable.
+    private static final String HIGH_TEXT_CONTRAST = "high_text_contrast_enabled";
     @Override protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         getContext().getContentResolver().registerContentObserver(
             android.provider.Settings.Global.getUriFor(android.provider.Settings.Global.ANIMATOR_DURATION_SCALE), false, animatorScale);
+        getContext().getContentResolver().registerContentObserver(
+            android.provider.Settings.Secure.getUriFor(HIGH_TEXT_CONTRAST), false, animatorScale);
         requestFrame();
     }
     @Override protected void onDetachedFromWindow() {
@@ -617,6 +621,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 .put("animation_scale", (double)android.provider.Settings.Global.getFloat(
                     getContext().getContentResolver(), android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f))
                 .put("reduce_motion", false)
+                .put("high_contrast", android.provider.Settings.Secure.getInt(getContext().getContentResolver(), HIGH_TEXT_CONTRAST, 0) == 1)
                 .put("text_scale", textScale)
                 .put("runner", false).toString();
         } catch (org.json.JSONException error) { throw new IllegalStateException("Invalid native environment", error); }
