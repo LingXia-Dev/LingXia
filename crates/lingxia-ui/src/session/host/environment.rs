@@ -5,8 +5,9 @@ use serde::Deserialize;
 pub(super) struct HostEnvironment {
     language: Option<(u64, String)>,
     surface: Option<(u64, SurfaceContext)>,
-    /// The lxapp's theme pack, resolved into light and dark palette pushes.
-    theme: Option<(u64, [serde_json::Value; 2])>,
+    /// The lxapp's theme pack, resolved into palette pushes for light, dark and their
+    /// high-contrast variants.
+    theme: Option<(u64, [serde_json::Value; 4])>,
     /// The View's last run read a host-context key, so a surface push must rebuild it.
     ignores_host_context: bool,
 }
@@ -146,13 +147,16 @@ impl HostEnvironment {
         if let Some((_, palettes)) = &self.theme
             && env.get("palette").is_none()
         {
-            env["palette"] = palettes[usize::from(env["theme"] == "dark")].clone();
+            let look =
+                usize::from(env["theme"] == "dark") + 2 * usize::from(env["highContrast"] == true);
+            env["palette"] = palettes[look].clone();
         }
     }
 }
 
-/// The pack resolved for each appearance by the resolver host chrome uses, as palette pushes.
-fn palettes(pack: &lingxia_theme::Pack, revision: u64) -> Result<[serde_json::Value; 2], String> {
+/// The pack resolved for each look by the resolver host chrome uses, as palette pushes:
+/// light, dark, high-contrast light, high-contrast dark.
+fn palettes(pack: &lingxia_theme::Pack, revision: u64) -> Result<[serde_json::Value; 4], String> {
     let pack = lingxia_theme::complete(pack.clone());
     if let Some(problem) = lingxia_theme::check(&pack).first() {
         return Err(format!(
@@ -160,9 +164,10 @@ fn palettes(pack: &lingxia_theme::Pack, revision: u64) -> Result<[serde_json::Va
             pack.name
         ));
     }
-    let resolve = |appearance| {
+    let resolve = |appearance, high_contrast| {
         let prefs = lingxia_theme::Prefs {
             appearance,
+            high_contrast,
             ..Default::default()
         };
         lingxia_theme::resolve(&pack, &prefs)
@@ -172,9 +177,12 @@ fn palettes(pack: &lingxia_theme::Pack, revision: u64) -> Result<[serde_json::Va
             })
             .map_err(|error| format!("UI_ENVIRONMENT: {error}"))
     };
+    use lingxia_theme::Appearance::{Dark, Light};
     Ok([
-        resolve(lingxia_theme::Appearance::Light)?,
-        resolve(lingxia_theme::Appearance::Dark)?,
+        resolve(Light, false)?,
+        resolve(Dark, false)?,
+        resolve(Light, true)?,
+        resolve(Dark, true)?,
     ])
 }
 
@@ -246,6 +254,12 @@ mod tests {
                 crate::theme::Palette::builtin(theme == "dark").role(lingxia_theme::Role::Surface)
             );
         }
+        // The increased-contrast preference picks the pack's high-contrast look.
+        let mut base = json!({"theme": "light"});
+        let mut high = json!({"theme": "light", "highContrast": true});
+        host.apply(&mut base);
+        host.apply(&mut high);
+        assert_ne!(base["palette"], high["palette"]);
         let mut env = json!({"theme": "light", "palette": {"revision": 9, "colors": ["#000000"]}});
         host.apply(&mut env);
         assert_eq!(env["palette"]["revision"], 9, "the platform's palette wins");

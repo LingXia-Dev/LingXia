@@ -26,7 +26,8 @@
       "chart-3": "#2b8a3e",
       "chart-4": "#9c36b5",
       "chart-5": "#0b7285",
-      "line-strong": "#7d8697"
+      "line-strong": "#7d8697",
+      "shadow": "#000000"
     },
     "dark": {
       "canvas": "#0f131a",
@@ -52,7 +53,8 @@
       "chart-3": "#4cc38a",
       "chart-4": "#d68cf0",
       "chart-5": "#3cc7d9",
-      "line-strong": "#6b768c"
+      "line-strong": "#6b768c",
+      "shadow": "#000000"
     }
   },
   "accent": {"seed": "#365cdd", "derive": true},

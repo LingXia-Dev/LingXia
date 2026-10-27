@@ -291,6 +291,14 @@ function gradientDeclaration(prop, raw, local, gradient) {
   }
 }
 
+// Tailwind's elevation layers are black at a low alpha; they take the theme's shadow ink instead.
+function shadowInk(value) {
+  const black = /^#000000([0-9a-f]{2})?$/i.exec(value);
+  const alpha = black ? parseInt(black[1] ?? 'ff', 16) : 0;
+  // A transparent layer stays transparent: it is an off state, not an ink.
+  return alpha > 0 ? `shadow/${Math.max(1, Math.round(alpha / 2.55))}` : value;
+}
+
 function shadowLayers(value, local) {
   if (value === 'none') return [];
   // A variable may hold several layers, so split again after substitution.
@@ -312,7 +320,7 @@ function shadowLayers(value, local) {
     const [offsetX,offsetY,blur=0,spread=0] = lengths;
     if ([offsetX,offsetY,spread].some(value => Math.abs(value)>1024) || blur<0 || blur>256) unsupported('shadow exceeds native bounds');
     const tint = colors[0] ?? 'currentColor';
-    return {offsetX,offsetY,blur,spread,color:tint.toLowerCase()==='currentcolor'?'currentColor':color(tint),useColor};
+    return {offsetX,offsetY,blur,spread,color:tint.toLowerCase()==='currentcolor'?'currentColor':shadowInk(color(tint)),useColor};
   });
   if (layers.length > 8) unsupported('too many box shadows');
   return layers;

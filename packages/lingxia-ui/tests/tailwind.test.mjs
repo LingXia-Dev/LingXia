@@ -267,8 +267,8 @@ test('outer shadows preserve layers, color overrides, variants and CSS order', a
   assert.deepEqual(rules.filter(rule => rule.error), []);
   configureClasses(rules);
   assert.deepEqual(classStyle('shadow-lg').boxShadow, [
-    { offsetX: 0, offsetY: 10, blur: 15, spread: -3, color: '#0000001a' },
-    { offsetX: 0, offsetY: 4, blur: 6, spread: -4, color: '#0000001a' },
+    { offsetX: 0, offsetY: 10, blur: 15, spread: -3, color: 'shadow/10' },
+    { offsetX: 0, offsetY: 4, blur: 6, spread: -4, color: 'shadow/10' },
   ]);
   const classes = 'shadow-sm shadow-danger/40 md:shadow-none';
   const style = classStyle(classes, env());
@@ -298,10 +298,12 @@ test('shadow tokens and arbitrary variables expand to every layer they hold in e
   await use(['shadow-card', 'shadow-[var(--elev)]', '[box-shadow:var(--elev)]', 'shadow-[var(--nine)]', 'shadow-danger'], theme);
   assert.deepEqual(classStyle('shadow-card', env()).boxShadow.map(layer => layer.offsetY), [1, 4]);
   assert.deepEqual(classStyle('shadow-card', env('dark')).boxShadow, [{ offsetX: 0, offsetY: 0, blur: 0, spread: 1, color: '#ffffff1a' }]);
-  assert.deepEqual(classStyle('shadow-[var(--elev)]').boxShadow.map(layer => layer.color), ['#00000022', '#00000033']);
+  // Black layers take the theme's shadow ink at their own alpha.
+  assert.deepEqual(classStyle('shadow-[var(--elev)]').boxShadow.map(layer => layer.color), ['shadow/13', 'shadow/20']);
   assert.deepEqual(classStyle('[box-shadow:var(--elev)]').boxShadow.length, 2);
   // A layer Tailwind did not wrap in --tw-shadow-color keeps its own color, as in CSS.
-  assert.equal(classStyle('shadow-[var(--elev)] shadow-danger').boxShadow[0].color, '#00000022');
+  assert.equal(classStyle('shadow-[var(--elev)] shadow-danger').boxShadow[0].color, 'shadow/13');
+  assert.equal(classStyle('shadow-card', env()).boxShadow[1].color.startsWith('#'), true, 'a tinted layer keeps its colour');
   assert.throws(() => classStyle('shadow-[var(--nine)]'), /too many box shadows/);
 });
 
@@ -575,4 +577,10 @@ test('relative variants, undrawn properties and no-op utilities fail with what t
 test('justify-self-start and -end place grid items like justify-items', async () => {
   await use(['justify-self-start', 'justify-self-end', 'justify-self-center']);
   assert.deepEqual(['start', 'end', 'center'].map(edge => classStyle(`justify-self-${edge}`).justifySelf), ['start', 'end', 'center']);
+});
+
+test('elevation shadows take the theme shadow ink; literal tints and transparent layers stay', async () => {
+  await use(['shadow-md', 'shadow-xs']);
+  assert.deepEqual(classStyle('shadow-md').boxShadow.map(layer => layer.color), ['shadow/10', 'shadow/10']);
+  assert.deepEqual(classStyle('shadow-xs').boxShadow.map(layer => layer.color), ['shadow/5']);
 });

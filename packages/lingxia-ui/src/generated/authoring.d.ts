@@ -160,6 +160,8 @@ export interface Env {
   readonly displayLanguage: string;
   /** The system asks for reduced motion; `motion-reduce:`/`motion-safe:` follow it. */
   readonly reducedMotion: boolean;
+  /** The system asks for increased contrast; the palette resolves its high-contrast variant. */
+  readonly highContrast: boolean;
   /** The platform's animation duration multiplier (0..10, default 1); 0 also sets `reducedMotion`. */
   readonly animatorDurationScale: number;
   /** Inline direction derived from `displayLanguage`. */

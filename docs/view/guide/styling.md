@@ -64,6 +64,9 @@ appearance, so `dark:` on a colour, palette ladders (`gray-200`) and hex fail wi
 colours in `style`. Complete CSS gradients (`bg-[radial-gradient(…)]`) and shadow layers may use literal
 colours. The roles are listed in [styles](../reference/styles.md#colour-roles).
 
+The system's increased-contrast setting (`env.highContrast`) resolves the pack's high-contrast palette.
+`shadow-*` elevation layers take the `shadow` role at their alpha, so a pack can tint shadows.
+
 An lxapp sets its own look with `theme/pack.json`. A pack may name only an accent seed and derive the
 accent family from it; every role it leaves out comes from the default pack. `lingxia build` proves the
 pack's contrast pairs and ships it; the host resolves it when a page opens:

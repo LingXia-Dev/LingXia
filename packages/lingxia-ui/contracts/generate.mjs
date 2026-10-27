@@ -673,9 +673,13 @@ const main = async () => {
       process.exit(1);
     }
   } else {
+    // Unchanged outputs keep their bytes and mtime: platform builds watch some of them.
     for (const [path, content] of Object.entries(await generate(schema))) {
-      await mkdir(dirname(join(repositoryRoot, path)), { recursive: true });
-      await writeFile(join(repositoryRoot, path), content);
+      const target = join(repositoryRoot, path);
+      if (await readFile(target, 'utf8').catch(() => undefined) === content) continue;
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, content);
+      console.log(`wrote ${path}`);
     }
   }
 };

@@ -289,7 +289,8 @@
     {"name": "chart-4", "on": {"surface": 3, "canvas": 3}, "doc": "Fourth categorical series."},
     {"name": "chart-5", "on": {"surface": 3, "canvas": 3}, "doc": "Fifth categorical series."},
     {"name": "line-strong", "on": {"surface": 3, "canvas": 3}, "doc": "Interactive boundaries: editor borders and control outlines."},
-    {"name": "selection", "on": {"surface": 3, "canvas": 3}, "doc": "Selected-text background; derived from the accent when a pack omits it."}
+    {"name": "selection", "on": {"surface": 3, "canvas": 3}, "doc": "Selected-text background; derived from the accent when a pack omits it."},
+    {"name": "shadow", "doc": "Elevation shadow ink; `shadow-*` layers take it at their alpha."}
   ],
   "frame": {
     "doc": "Every message the core hands a platform adapter: the presented frame snapshot, semantic nodes, automation exchanges, input-protocol replies and the text menu. Type grammar: string, bool, u8, u32, u64, i64, usize, f32, f64, any; T? may be absent or null; T[] is a list; T[n] a fixed list; other names refer to types below.",
@@ -353,6 +354,7 @@
     "sizeClass": {"type": "\"compact\" | \"regular\"", "check": "enum", "values": ["compact", "regular"], "origin": "push", "optional": true, "doc": "`compact` below 600 logical pixels of page width, else `regular`."},
     "displayLanguage": {"type": "string", "check": "name", "origin": "device"},
     "reducedMotion": {"type": "boolean", "check": "bool", "origin": "device", "optional": true, "doc": "The system asks for reduced motion; `motion-reduce:`/`motion-safe:` follow it."},
+    "highContrast": {"type": "boolean", "check": "bool", "origin": "device", "optional": true, "doc": "The system asks for increased contrast; the palette resolves its high-contrast variant."},
     "animatorDurationScale": {"type": "number", "check": "range", "range": [0, 10], "origin": "device", "optional": true, "doc": "The platform's animation duration multiplier (0..10, default 1); 0 also sets `reducedMotion`."},
     "direction": {"type": "\"ltr\" | \"rtl\"", "check": "none", "origin": "session", "doc": "Inline direction derived from `displayLanguage`."},
     "canDock": {"type": "boolean", "check": "bool", "origin": "push", "doc": "Whether the window can dock an `as: 'aside'` beside the main; false until the host reports it."},

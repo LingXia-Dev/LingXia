@@ -20,6 +20,9 @@ impl ViewSession {
         if value.get("reducedMotion").is_none() {
             value["reducedMotion"] = serde_json::json!(false);
         }
+        if value.get("highContrast").is_none() {
+            value["highContrast"] = serde_json::json!(false);
+        }
         if value.get("animatorDurationScale").is_none() {
             value["animatorDurationScale"] = serde_json::json!(1);
         }
@@ -40,13 +43,14 @@ impl ViewSession {
             crate::layout::list_layout::invalidate_measurements(&mut self.lists);
         }
         let dark = value["theme"] == "dark";
+        let high_contrast = value["highContrast"] == true;
         // Pages never read colours: the palette is taken out before the View sees the snapshot.
         let palette = match value
             .as_object_mut()
             .and_then(|object| object.remove("palette"))
         {
             Some(pushed) => crate::theme::Palette::decode(&pushed, dark)?,
-            None => crate::theme::Palette::builtin(dark),
+            None => crate::theme::Palette::builtin_for(dark, high_contrast),
         };
         if self.renderer.dark != dark || self.renderer.palette != palette {
             self.renderer.dark = dark;

@@ -145,6 +145,7 @@ is still refused on an element that does not render its style ([styles.md](style
 | `stacked` | `stacked-fractions` |  |
 | `tabular` | `tabular-nums` |  |
 | `text` | `text-2xl`, `text-3xl`, `text-4xl`, `text-5xl`, `text-6xl`, … (52) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); text-wrap (4); unsupported color (2) |
+| `text-shadow` | `text-shadow` | text shadows (323); text-shadow (6) |
 | `tracking` | `tracking-normal`, `tracking-tight`, `tracking-tighter`, `tracking-wide`, `tracking-wider`, `tracking-widest` | unsupported length (6) |
 | `truncate` | `truncate` |  |
 | `underline` | `underline` |  |
@@ -156,13 +157,13 @@ is still refused on an element that does not render its style ([styles.md](style
 
 | Family | Supported | Refused |
 | --- | --- | --- |
-| `bg` | `bg-accent`, `bg-accent-soft`, `bg-canvas`, `bg-chart-1`, `bg-chart-2`, … (33) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); background-blend-mode (16); background-position (9) |
+| `bg` | `bg-accent`, `bg-accent-soft`, `bg-canvas`, `bg-chart-1`, `bg-chart-2`, … (34) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); background-blend-mode (16); background-position (9) |
 | `bg-conic` | `bg-conic`, `bg-conic-0`, `bg-conic-30`, `bg-conic-60`, `bg-conic-90`, … (13) | unsupported gradient shape (12) |
 | `bg-linear` | `bg-linear-0`, `bg-linear-30`, `bg-linear-60`, `bg-linear-90`, `bg-linear-120`, … (20) | unsupported gradient shape (12) |
 | `bg-radial` | `bg-radial` |  |
-| `from` | `from-0%`, `from-5%`, `from-10%`, `from-15%`, `from-20%`, … (52) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2) |
-| `to` | `to-0%`, `to-5%`, `to-10%`, `to-15%`, `to-20%`, … (52) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2) |
-| `via` | `via-0%`, `via-5%`, `via-10%`, `via-15%`, `via-20%`, … (53) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2) |
+| `from` | `from-0%`, `from-5%`, `from-10%`, `from-15%`, `from-20%`, … (53) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2) |
+| `to` | `to-0%`, `to-5%`, `to-10%`, `to-15%`, `to-20%`, … (53) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2) |
+| `via` | `via-0%`, `via-5%`, `via-10%`, `via-15%`, `via-20%`, … (54) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2) |
 
 ## Radius
 
@@ -188,18 +189,18 @@ is still refused on an element that does not render its style ([styles.md](style
 
 | Family | Supported | Refused |
 | --- | --- | --- |
-| `border` | `border`, `border-0`, `border-2`, `border-4`, `border-8`, … (40) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); border-style (3); border-collapse (2) |
-| `border-b` | `border-b`, `border-b-0`, `border-b-2`, `border-b-4`, `border-b-8` | border-bottom-color (321) |
-| `border-be` | `border-be`, `border-be-0`, `border-be-2`, `border-be-4`, `border-be-8` | border-block-end-color (321) |
-| `border-bs` | `border-bs`, `border-bs-0`, `border-bs-2`, `border-bs-4`, `border-bs-8` | border-block-start-color (321) |
-| `border-e` | `border-e`, `border-e-0`, `border-e-2`, `border-e-4`, `border-e-8` | border-inline-end-color (321) |
-| `border-l` | `border-l`, `border-l-0`, `border-l-2`, `border-l-4`, `border-l-8` | border-left-color (321) |
-| `border-r` | `border-r`, `border-r-0`, `border-r-2`, `border-r-4`, `border-r-8` | border-right-color (321) |
-| `border-s` | `border-s`, `border-s-0`, `border-s-2`, `border-s-4`, `border-s-8` | border-inline-start-color (321) |
-| `border-t` | `border-t`, `border-t-0`, `border-t-2`, `border-t-4`, `border-t-8` | border-top-color (321) |
-| `border-x` | `border-x`, `border-x-0`, `border-x-2`, `border-x-4`, `border-x-8` | border-inline-color (321) |
-| `border-y` | `border-y`, `border-y-0`, `border-y-2`, `border-y-4`, `border-y-8` | border-block-color (321) |
-| `divide` | `divide-accent`, `divide-accent-soft`, `divide-canvas`, `divide-chart-1`, `divide-chart-2`, … (35) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); border-style (2); unsupported color (1) |
+| `border` | `border`, `border-0`, `border-2`, `border-4`, `border-8`, … (41) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); border-style (3); border-collapse (2) |
+| `border-b` | `border-b`, `border-b-0`, `border-b-2`, `border-b-4`, `border-b-8` | border-bottom-color (322) |
+| `border-be` | `border-be`, `border-be-0`, `border-be-2`, `border-be-4`, `border-be-8` | border-block-end-color (322) |
+| `border-bs` | `border-bs`, `border-bs-0`, `border-bs-2`, `border-bs-4`, `border-bs-8` | border-block-start-color (322) |
+| `border-e` | `border-e`, `border-e-0`, `border-e-2`, `border-e-4`, `border-e-8` | border-inline-end-color (322) |
+| `border-l` | `border-l`, `border-l-0`, `border-l-2`, `border-l-4`, `border-l-8` | border-left-color (322) |
+| `border-r` | `border-r`, `border-r-0`, `border-r-2`, `border-r-4`, `border-r-8` | border-right-color (322) |
+| `border-s` | `border-s`, `border-s-0`, `border-s-2`, `border-s-4`, `border-s-8` | border-inline-start-color (322) |
+| `border-t` | `border-t`, `border-t-0`, `border-t-2`, `border-t-4`, `border-t-8` | border-top-color (322) |
+| `border-x` | `border-x`, `border-x-0`, `border-x-2`, `border-x-4`, `border-x-8` | border-inline-color (322) |
+| `border-y` | `border-y`, `border-y-0`, `border-y-2`, `border-y-4`, `border-y-8` | border-block-color (322) |
+| `divide` | `divide-accent`, `divide-accent-soft`, `divide-canvas`, `divide-chart-1`, `divide-chart-2`, … (36) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); border-style (2); unsupported color (1) |
 | `divide-x` | `divide-x`, `divide-x-0`, `divide-x-2`, `divide-x-4`, `divide-x-8` | reversed space/divide order (1) |
 | `divide-y` | `divide-y`, `divide-y-0`, `divide-y-2`, `divide-y-4`, `divide-y-8` | reversed space/divide order (1) |
 
@@ -210,8 +211,8 @@ is still refused on an element that does not render its style ([styles.md](style
 | `backdrop-blur` | `backdrop-blur-2xl`, `backdrop-blur-3xl`, `backdrop-blur-lg`, `backdrop-blur-md`, `backdrop-blur-none`, … (8) |  |
 | `backdrop-saturate` | `backdrop-saturate-0`, `backdrop-saturate-50`, `backdrop-saturate-100`, `backdrop-saturate-150`, `backdrop-saturate-200` |  |
 | `opacity` | `opacity-0`, `opacity-5`, `opacity-10`, `opacity-15`, `opacity-20`, … (21) |  |
-| `ring` | `ring`, `ring-0`, `ring-1`, `ring-2`, `ring-4`, … (37) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2); unsupported shadow property (1) |
-| `shadow` | `shadow`, `shadow-2xl`, `shadow-2xs`, `shadow-accent`, `shadow-accent-soft`, … (40) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (3); inset shadows are not supported yet (1) |
+| `ring` | `ring`, `ring-0`, `ring-1`, `ring-2`, `ring-4`, … (38) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2); unsupported shadow property (1) |
+| `shadow` | `shadow`, `shadow-2xl`, `shadow-2xs`, `shadow-accent`, `shadow-accent-soft`, … (41) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (3); inset shadows are not supported yet (1) |
 
 ## Transforms
 
@@ -246,7 +247,7 @@ is still refused on an element that does not render its style ([styles.md](style
 
 | Family | Supported | Refused |
 | --- | --- | --- |
-| `placeholder` | `placeholder-accent`, `placeholder-accent-soft`, `placeholder-canvas`, `placeholder-chart-1`, `placeholder-chart-2`, … (31) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2) |
+| `placeholder` | `placeholder-accent`, `placeholder-accent-soft`, `placeholder-canvas`, `placeholder-chart-1`, `placeholder-chart-2`, … (32) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2) |
 
 ## Images and vectors
 
@@ -259,7 +260,7 @@ is still refused on an element that does not render its style ([styles.md](style
 | Family | Utilities | Reason |
 | --- | --- | --- |
 | `@container` | 2 | container-type (2) |
-| `accent` | 322 | accent-color (322) |
+| `accent` | 323 | accent-color (323) |
 | `align` | 8 | vertical-align (8) |
 | `antialiased` | 1 | -webkit-font-smoothing (1) |
 | `appearance` | 2 | appearance (2) |
@@ -278,7 +279,7 @@ is still refused on an element that does not render its style ([styles.md](style
 | `box` | 4 | -webkit-box-decoration-break (2); box-sizing (2) |
 | `brightness` | 11 | filters (11) |
 | `caption` | 2 | caption-side (2) |
-| `caret` | 321 | caret-color (321) |
+| `caret` | 322 | caret-color (322) |
 | `clear` | 6 | clear (6) |
 | `collapse` | 1 | visibility (1) |
 | `columns` | 26 | columns (26) |
@@ -287,10 +288,10 @@ is still refused on an element that does not render its style ([styles.md](style
 | `contents` | 1 | display (1) |
 | `contrast` | 7 | filters (7) |
 | `cursor` | 36 | cursor (36) |
-| `decoration` | 331 | text-decoration-color (321); text-decoration-style (5); text-decoration-thickness (5) |
-| `drop-shadow` | 328 | drop-shadow colors (321); filters (7) |
+| `decoration` | 332 | text-decoration-color (322); text-decoration-style (5); text-decoration-thickness (5) |
+| `drop-shadow` | 329 | drop-shadow colors (322); filters (7) |
 | `field` | 2 | field-sizing (2) |
-| `fill` | 322 | fill (322) |
+| `fill` | 323 | fill (323) |
 | `float` | 5 | float (5) |
 | `flow` | 1 | display (1) |
 | `font-stretch` | 19 | font-stretch (19) |
@@ -301,8 +302,8 @@ is still refused on an element that does not render its style ([styles.md](style
 | `indent` | 70 | text-indent (70) |
 | `inset-be` | 125 | inset-block-end (125) |
 | `inset-bs` | 125 | inset-block-start (125) |
-| `inset-ring` | 327 | unsupported shadow property (327) |
-| `inset-shadow` | 326 | unsupported shadow property (326) |
+| `inset-ring` | 328 | unsupported shadow property (328) |
+| `inset-shadow` | 327 | unsupported shadow property (327) |
 | `invert` | 6 | filters (6) |
 | `invisible` | 1 | visibility (1) |
 | `isolate` | 1 | isolation (1) |
@@ -310,41 +311,41 @@ is still refused on an element that does not render its style ([styles.md](style
 | `list` | 6 | list-style-type (3); list-style-position (2); display (1) |
 | `list-image` | 1 | list-style-image (1) |
 | `mask` | 43 | mask-position (9); mask-clip (7); mask-origin (6) |
-| `mask-b-from` | 376 | mask-image (376) |
-| `mask-b-to` | 376 | mask-image (376) |
+| `mask-b-from` | 377 | mask-image (377) |
+| `mask-b-to` | 377 | mask-image (377) |
 | `mask-conic` | 18 | mask-image (18) |
-| `mask-conic-from` | 376 | mask-image (376) |
-| `mask-conic-to` | 376 | mask-image (376) |
-| `mask-l-from` | 376 | mask-image (376) |
-| `mask-l-to` | 376 | mask-image (376) |
+| `mask-conic-from` | 377 | mask-image (377) |
+| `mask-conic-to` | 377 | mask-image (377) |
+| `mask-l-from` | 377 | mask-image (377) |
+| `mask-l-to` | 377 | mask-image (377) |
 | `mask-linear` | 18 | mask-image (18) |
-| `mask-linear-from` | 376 | mask-image (376) |
-| `mask-linear-to` | 376 | mask-image (376) |
-| `mask-r-from` | 376 | mask-image (376) |
-| `mask-r-to` | 376 | mask-image (376) |
+| `mask-linear-from` | 377 | mask-image (377) |
+| `mask-linear-to` | 377 | mask-image (377) |
+| `mask-r-from` | 377 | mask-image (377) |
+| `mask-r-to` | 377 | mask-image (377) |
 | `mask-radial` | 4 | masks (4) |
 | `mask-radial-at` | 9 | masks (9) |
-| `mask-radial-from` | 376 | mask-image (376) |
-| `mask-radial-to` | 376 | mask-image (376) |
-| `mask-t-from` | 376 | mask-image (376) |
-| `mask-t-to` | 376 | mask-image (376) |
-| `mask-x-from` | 376 | mask-image (376) |
-| `mask-x-to` | 376 | mask-image (376) |
-| `mask-y-from` | 376 | mask-image (376) |
-| `mask-y-to` | 376 | mask-image (376) |
+| `mask-radial-from` | 377 | mask-image (377) |
+| `mask-radial-to` | 377 | mask-image (377) |
+| `mask-t-from` | 377 | mask-image (377) |
+| `mask-t-to` | 377 | mask-image (377) |
+| `mask-x-from` | 377 | mask-image (377) |
+| `mask-x-to` | 377 | mask-image (377) |
+| `mask-y-from` | 377 | mask-image (377) |
+| `mask-y-to` | 377 | mask-image (377) |
 | `max-block` | 71 | max-block-size (71) |
 | `max-inline` | 83 | max-inline-size (83) |
 | `min-block` | 71 | min-block-size (71) |
 | `min-inline` | 83 | min-inline-size (83) |
 | `mix` | 18 | mix-blend-mode (18) |
-| `outline` | 333 | outline (333) |
+| `outline` | 334 | outline (334) |
 | `outline-offset` | 10 | outline (10) |
 | `overline` | 1 | text-decoration-line (1) |
 | `perspective` | 6 | perspective (6) |
 | `perspective-origin` | 9 | perspective-origin (9) |
 | `pointer` | 2 | pointer-events (2) |
 | `resize` | 4 | resize (4) |
-| `ring-offset` | 326 | unsupported shadow property (326) |
+| `ring-offset` | 327 | unsupported shadow property (327) |
 | `rotate-x` | 18 | transform (18) |
 | `rotate-y` | 18 | transform (18) |
 | `rotate-z` | 18 | transform (18) |
@@ -375,8 +376,8 @@ is still refused on an element that does not render its style ([styles.md](style
 | `scroll-px` | 35 | scroll-padding-inline (35) |
 | `scroll-py` | 35 | scroll-padding-block (35) |
 | `scrollbar` | 6 | scrollbar-gutter (3); scrollbar-width (3) |
-| `scrollbar-thumb` | 321 | scrollbar-color (321) |
-| `scrollbar-track` | 321 | scrollbar-color (321) |
+| `scrollbar-thumb` | 322 | scrollbar-color (322) |
+| `scrollbar-track` | 322 | scrollbar-color (322) |
 | `sepia` | 4 | filters (4) |
 | `skew` | 12 | transform (12) |
 | `skew-x` | 12 | transform (12) |
@@ -384,11 +385,10 @@ is still refused on an element that does not render its style ([styles.md](style
 | `snap` | 12 | scroll-snap-align (4); scroll-snap-type (4); scroll-snap-stop (2) |
 | `sr` | 1 | clip-path (1) |
 | `static` | 1 | position (1) |
-| `stroke` | 326 | stroke (322); stroke-width (4) |
+| `stroke` | 327 | stroke (323); stroke-width (4) |
 | `subpixel` | 1 | -webkit-font-smoothing (1) |
 | `tab` | 3 | tab-size (3) |
 | `table` | 11 | display (9); table-layout (2) |
-| `text-shadow` | 328 | text shadows (322); text-shadow (6) |
 | `touch` | 10 | touch-action (10) |
 | `transform` | 11 | transform-box (5); transform (4); transform-style (2) |
 | `translate-z` | 70 | translate-z (70) |

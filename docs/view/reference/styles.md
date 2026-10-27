@@ -255,3 +255,4 @@ listed contrast minimums.
 | `chart-5` | 3:1 on `surface`, 3:1 on `canvas` | Fifth categorical series. |
 | `line-strong` | 3:1 on `surface`, 3:1 on `canvas` | Interactive boundaries: editor borders and control outlines. |
 | `selection` | 3:1 on `surface`, 3:1 on `canvas` | Selected-text background; derived from the accent when a pack omits it. |
+| `shadow` |  | Elevation shadow ink; `shadow-*` layers take it at their alpha. |

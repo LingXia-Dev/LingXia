@@ -9,21 +9,31 @@ pub struct Palette(pub [[u8; 4]; ROLE_COUNT]);
 impl Palette {
     /// The default pack for `dark`, used until the host pushes a palette.
     pub fn builtin(dark: bool) -> Palette {
-        static BUILTIN: OnceLock<[Palette; 2]> = OnceLock::new();
+        Self::builtin_for(dark, false)
+    }
+
+    /// The default pack for `dark` and the system's increased-contrast preference.
+    pub fn builtin_for(dark: bool, high_contrast: bool) -> Palette {
+        static BUILTIN: OnceLock<[Palette; 4]> = OnceLock::new();
         BUILTIN.get_or_init(|| {
             let pack = lingxia_theme::default_pack();
-            [Appearance::Light, Appearance::Dark].map(|appearance| {
-                let theme = lingxia_theme::resolve(
-                    &pack,
-                    &Prefs {
-                        appearance,
+            [(false, false), (true, false), (false, true), (true, true)].map(
+                |(dark, high_contrast)| {
+                    let prefs = Prefs {
+                        appearance: if dark {
+                            Appearance::Dark
+                        } else {
+                            Appearance::Light
+                        },
+                        high_contrast,
                         ..Prefs::default()
-                    },
-                )
-                .expect("default pack resolves");
-                Palette(theme.palette.map(|color| color.0))
-            })
-        })[usize::from(dark)]
+                    };
+                    let theme =
+                        lingxia_theme::resolve(&pack, &prefs).expect("default pack resolves");
+                    Palette(theme.palette.map(|color| color.0))
+                },
+            )
+        })[usize::from(dark) + 2 * usize::from(high_contrast)]
     }
 
     /// The environment's `palette` push: `{ revision, colors }`, one hex per slot. A host
@@ -115,6 +125,25 @@ mod tests {
         for bad in ["brand", "text/101", "text/x", "#1234", "Surface", "text/+5"] {
             assert!(light.resolve(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn the_increased_contrast_preference_resolves_the_high_contrast_variant() {
+        for dark in [false, true] {
+            let (base, high) = (Palette::builtin(dark), Palette::builtin_for(dark, true));
+            let ratio = |p: Palette| {
+                lingxia_theme::contrast(
+                    lingxia_theme::Rgba(p.role(Role::TextMuted)),
+                    lingxia_theme::Rgba(p.role(Role::Surface)),
+                )
+            };
+            assert!(ratio(high) > ratio(base), "dark={dark}");
+            assert!(ratio(high) >= 7.0, "AAA for body-like text, dark={dark}");
+        }
+        assert_eq!(
+            Palette::builtin(false).resolve("shadow/10").unwrap(),
+            [0, 0, 0, 26]
+        );
     }
 
     #[test]

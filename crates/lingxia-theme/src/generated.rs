@@ -64,9 +64,11 @@ pub enum Role {
     LineStrong = 28,
     /// Selected-text background; derived from the accent when a pack omits it.
     Selection = 29,
+    /// Elevation shadow ink; `shadow-*` layers take it at their alpha.
+    Shadow = 30,
 }
 
-pub const ROLE_COUNT: usize = 30;
+pub const ROLE_COUNT: usize = 31;
 
 impl Role {
     pub const ALL: [Role; ROLE_COUNT] = [
@@ -100,6 +102,7 @@ impl Role {
         Role::Chart5,
         Role::LineStrong,
         Role::Selection,
+        Role::Shadow,
     ];
 
     pub const fn name(self) -> &'static str {
@@ -134,6 +137,7 @@ impl Role {
             Role::Chart5 => "chart-5",
             Role::LineStrong => "line-strong",
             Role::Selection => "selection",
+            Role::Shadow => "shadow",
         }
     }
 
