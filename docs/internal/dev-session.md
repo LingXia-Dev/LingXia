@@ -94,4 +94,9 @@ including when there are no mocks or a load failed (that app runs without
 mocks). The 30-second startup deadline is an idle window: the connection and
 each `mock.load` re-arm it, so it bounds a stalled dev server, not the number
 of apps; each load is capped well below it. Readiness uses a watch
-notification.
+notification. The deadline refuses Logic only once the server has answered this
+process: a first attempt can block without failing (iOS resolves a `.local` dev
+host only after the local-network prompt is answered), and an app must not die on
+that, so a never-reached server lets Logic start offline with a warning. When that
+server then connects and reports `session.network.mock.ready`, every open lxapp's
+Logic cold-restarts (the dev rebuild path) under the session's mocks, once.

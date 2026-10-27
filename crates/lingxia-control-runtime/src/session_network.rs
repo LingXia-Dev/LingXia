@@ -98,6 +98,9 @@ pub(crate) fn handle(handler: &str, args: Option<Value>) -> Result<Option<Value>
                 network::mock_baseline(mode_arg(&args, "baseline")?);
             }
             network::mocks_ready();
+            if network::take_offline_recovery() {
+                reload_offline_logic();
+            }
             Ok(Some(json!({ "ready": true })))
         }
         method::MOCK_LOAD => {
@@ -207,6 +210,27 @@ fn unknown_app_message(appid: &str, known: bool) -> Option<String> {
 /// The dev session that installed a scenario disconnected.
 pub(crate) fn session_ended() {
     network::session_ended();
+}
+
+/// Logic that started offline (the dev server was not reachable yet) reloads under the
+/// connected session's mocks, through the same cold restart a dev rebuild uses.
+fn reload_offline_logic() {
+    let apps: Vec<String> = lxapp::list_lxapps()
+        .into_iter()
+        .filter(|app| app.status == "opened")
+        .map(|app| app.appid)
+        .collect();
+    log::info!("dev server connected after an offline start; reloading Logic for {apps:?}");
+    // Off the bridge thread: the server waits for this reply before it drives the app.
+    std::thread::spawn(move || {
+        for appid in apps {
+            let restart =
+                crate::devtool::lxapp_dev_restart(&appid, std::time::Duration::from_secs(30));
+            if let Err(error) = crate::util::run_async(restart) {
+                log::warn!("reload after offline start failed for {appid}: {error}");
+            }
+        }
+    });
 }
 
 #[cfg(test)]

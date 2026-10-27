@@ -388,6 +388,27 @@ pub fn session_starting() {
     MOCK_BOOTSTRAP.send_replace(true);
 }
 
+/// Whether the dev server has answered this process at least once.
+static SERVER_REACHED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Logic started without mocks because the server had not answered; the first
+/// connected session's readiness reloads it.
+static STARTED_OFFLINE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Once after Logic started offline and a connected server's mocks are ready: the caller
+/// reloads Logic so it runs under the session's mocks.
+pub fn take_offline_recovery() -> bool {
+    SERVER_REACHED.load(std::sync::atomic::Ordering::Acquire)
+        && !*MOCK_BOOTSTRAP.borrow()
+        && STARTED_OFFLINE.swap(false, std::sync::atomic::Ordering::AcqRel)
+}
+
+/// The dev websocket connected; mocks follow from the server.
+pub fn server_connected() {
+    SERVER_REACHED.store(true, std::sync::atomic::Ordering::Release);
+    session_starting();
+}
+
 pub fn mocks_ready() {
     MOCK_BOOTSTRAP.send_replace(false);
 }
@@ -415,17 +436,28 @@ fn mock_bootstrap_progress() {
 const MOCK_BOOTSTRAP_IDLE: std::time::Duration = std::time::Duration::from_secs(30);
 
 pub(crate) async fn wait_for_mocks() -> Result<(), String> {
-    wait_for_bootstrap(MOCK_BOOTSTRAP.subscribe(), MOCK_BOOTSTRAP_IDLE).await
+    wait_for_bootstrap(MOCK_BOOTSTRAP.subscribe(), MOCK_BOOTSTRAP_IDLE, || {
+        SERVER_REACHED.load(std::sync::atomic::Ordering::Acquire)
+    })
+    .await
 }
 
+/// A server that never answered (unreachable, or iOS still asking for local network
+/// access) leaves the launch offline: Logic starts without mocks rather than never.
 async fn wait_for_bootstrap(
     mut state: tokio::sync::watch::Receiver<bool>,
     idle: std::time::Duration,
+    reached: impl Fn() -> bool,
 ) -> Result<(), String> {
     while *state.borrow_and_update() {
         match tokio::time::timeout(idle, state.changed()).await {
             Ok(Ok(())) => {}
             Ok(Err(_)) => break,
+            Err(_) if !reached() => {
+                log::warn!("dev server not reached; Logic starts without dev mocks");
+                STARTED_OFFLINE.store(true, std::sync::atomic::Ordering::Release);
+                break;
+            }
             Err(_) => {
                 return Err("dev mock initialization timed out; Logic was not started".to_string());
             }
@@ -572,10 +604,12 @@ mod bootstrap_tests {
     #[tokio::test]
     async fn bootstrap_waits_for_a_signal_and_offline_launches_do_not_wait() {
         let (signal, state) = tokio::sync::watch::channel(false);
-        wait_for_bootstrap(state.clone(), IDLE).await.unwrap();
+        wait_for_bootstrap(state.clone(), IDLE, || true)
+            .await
+            .unwrap();
         for _ in 0..2 {
             signal.send_replace(true);
-            let waiting = wait_for_bootstrap(state.clone(), IDLE);
+            let waiting = wait_for_bootstrap(state.clone(), IDLE, || true);
             tokio::pin!(waiting);
             assert!(
                 tokio::time::timeout(std::time::Duration::from_millis(5), &mut waiting)
@@ -586,7 +620,9 @@ mod bootstrap_tests {
             // release startup. A reconnect opens a fresh gate.
             signal.send_replace(false);
             waiting.await.unwrap();
-            wait_for_bootstrap(state.clone(), IDLE).await.unwrap();
+            wait_for_bootstrap(state.clone(), IDLE, || true)
+                .await
+                .unwrap();
         }
     }
 
@@ -594,7 +630,7 @@ mod bootstrap_tests {
     async fn bootstrap_progress_rearms_the_deadline_and_silence_expires_it() {
         let idle = std::time::Duration::from_millis(80);
         let (signal, state) = tokio::sync::watch::channel(true);
-        let waiting = tokio::spawn(wait_for_bootstrap(state.clone(), idle));
+        let waiting = tokio::spawn(wait_for_bootstrap(state.clone(), idle, || true));
         // Several loads, together longer than one idle window, keep it waiting.
         for _ in 0..4 {
             tokio::time::sleep(idle / 2).await;
@@ -605,7 +641,36 @@ mod bootstrap_tests {
         waiting.await.unwrap().unwrap();
 
         signal.send_replace(true);
-        let error = wait_for_bootstrap(state, idle).await.unwrap_err();
+        let error = wait_for_bootstrap(state.clone(), idle, || true)
+            .await
+            .unwrap_err();
         assert!(error.contains("timed out"), "{error}");
+        // Never reached (an unanswered iOS network prompt): the launch goes on offline.
+        wait_for_bootstrap(state, idle, || false).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn an_offline_start_recovers_once_the_server_connects_and_mocks_are_ready() {
+        STARTED_OFFLINE.store(false, std::sync::atomic::Ordering::Release);
+        SERVER_REACHED.store(false, std::sync::atomic::Ordering::Release);
+        session_starting();
+        let idle = std::time::Duration::from_millis(20);
+        wait_for_bootstrap(MOCK_BOOTSTRAP.subscribe(), idle, || {
+            SERVER_REACHED.load(std::sync::atomic::Ordering::Acquire)
+        })
+        .await
+        .unwrap();
+        assert!(
+            !take_offline_recovery(),
+            "nothing to recover before a connection"
+        );
+        server_connected();
+        assert!(!take_offline_recovery(), "mocks are still loading");
+        mocks_ready();
+        assert!(
+            take_offline_recovery(),
+            "the connected session reloads Logic"
+        );
+        assert!(!take_offline_recovery(), "once");
     }
 }

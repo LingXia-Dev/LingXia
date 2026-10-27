@@ -161,7 +161,7 @@ fn run_dev_bridge(ws_url: String) {
         match connect_with_timeout(ws_url.as_str()) {
             Ok(mut websocket) => {
                 #[cfg(feature = "test-runtime")]
-                lingxia_network_dev::dev::session_starting();
+                lingxia_network_dev::dev::server_connected();
                 if connect_failures > 0 {
                     log::info!(
                         "Connected devtool websocket after {} failed attempts",
