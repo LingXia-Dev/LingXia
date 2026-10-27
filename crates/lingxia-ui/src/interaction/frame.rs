@@ -92,6 +92,17 @@ impl PresentedFrame {
             .collect()
     }
 
+    /// The control with `previous`'s identity, if it can still be activated and is visible.
+    pub fn press_target(&self, previous: &NodeSnapshot) -> Option<usize> {
+        if editable(previous) || previous.identity.is_empty() {
+            return None;
+        }
+        self.index_of(&previous.identity).filter(|index| {
+            let node = &self.nodes[*index];
+            activatable(node) && !editable(node) && visible(node)
+        })
+    }
+
     /// The same control in this frame, when only its callback handles changed.
     pub fn rebind(&self, previous: &NodeSnapshot) -> Option<usize> {
         if editable(previous) || !activatable(previous) || previous.identity.is_empty() {
@@ -135,7 +146,10 @@ pub fn plot_can_clear(node: &NodeSnapshot) -> bool {
 fn activatable(node: &NodeSnapshot) -> bool {
     node.on_click.is_some_and(|handle| handle != 0)
         || plot_enabled(node)
-        || node.select.as_ref().is_some_and(|select| select.on_select.is_some())
+        || node
+            .select
+            .as_ref()
+            .is_some_and(|select| select.on_select.is_some())
 }
 
 /// Targets of pointer activation and keyboard focus.

@@ -53,6 +53,7 @@ struct Log {
     feedback: Vec<serde_json::Value>,
     /// Deferred frames handed to the fake raster thread, in order.
     handed: Vec<CommitTicket>,
+    debug: Vec<String>,
     released_transient: usize,
 }
 
@@ -86,6 +87,16 @@ struct Encoded {
     texts: Vec<String>,
     caret: bool,
     generation: CommitTicket,
+    /// The offscreen target this frame holds until it is presented or dropped.
+    target: Option<Arc<Mutex<Vec<CommitTicket>>>>,
+}
+
+impl Drop for Encoded {
+    fn drop(&mut self) {
+        if let Some(held) = &self.target {
+            held.lock().unwrap().retain(|g| *g != self.generation);
+        }
+    }
 }
 
 impl Presenter for Fake {
@@ -97,7 +108,30 @@ impl Presenter for Fake {
         generation: CommitTicket,
     ) -> Result<Option<Encoded>, String> {
         self.log.lock().unwrap().generations.push(generation);
+        let texts: Vec<String> = display
+            .nodes
+            .iter()
+            .map(|node| node.text.clone())
+            .filter(|t| !t.is_empty())
+            .collect();
         if let Some(costs) = self.costs.lock().unwrap().as_mut() {
+            if costs.decline_new_views && costs.declined_view.as_ref() != Some(&texts) {
+                // The first frame of each new View finds no target free.
+                costs.declined_view = Some(texts);
+                costs.declined += 1;
+                return Ok(None);
+            }
+            if costs
+                .targets
+                .is_some_and(|targets| costs.held.lock().unwrap().len() >= targets)
+            {
+                // Every offscreen target holds a frame not yet presented or dropped.
+                costs.declined += 1;
+                return Ok(None);
+            }
+            if costs.targets.is_some() {
+                costs.held.lock().unwrap().push(generation);
+            }
             // A worker job starts when the worker and the main thread that queued it are free.
             let start = costs.worker_free.max(costs.main_free);
             costs.worker_free = start + costs.worker;
@@ -127,6 +161,13 @@ impl Presenter for Fake {
                 .collect(),
             caret: display.caret_paint.is_some(),
             generation,
+            target: self
+                .costs
+                .lock()
+                .unwrap()
+                .as_ref()
+                .filter(|costs| costs.targets.is_some())
+                .map(|costs| costs.held.clone()),
         }))
     }
     fn present(&self, frame: Encoded) -> Result<bool, String> {
@@ -136,6 +177,7 @@ impl Presenter for Fake {
         if let Some(costs) = self.costs.lock().unwrap().as_mut() {
             costs.ready.pop_front();
             costs.main_free = *self.clock.lock().unwrap() + costs.ui;
+
             let newest = self.log.lock().unwrap().generations.last().copied();
             if costs.single_target && newest.is_some_and(|newest| newest != frame.generation) {
                 // One offscreen target: a later prepare overwrote this frame.
@@ -151,8 +193,15 @@ impl Presenter for Fake {
         }
         let mut log = self.main();
         log.carets.push(frame.caret);
-        log.presented.push(frame.texts);
+        log.presented.push(frame.texts.clone());
         log.presented_at.push(std::time::Instant::now());
+        drop(log);
+        if let Some(costs) = self.costs.lock().unwrap().as_mut()
+            && costs.targets.is_some()
+        {
+            // The frame on screen keeps its target until the next one replaces it.
+            costs.on_screen = Some(frame);
+        }
         Ok(true)
     }
     fn deferred(&self, _: &Encoded) -> bool {
@@ -264,6 +313,9 @@ impl HostEvents for Fake {
     // Warnings may come from the worker, so they skip the main-thread record.
     fn warn(&self, message: &str) {
         self.log.lock().unwrap().warnings.push(message.to_owned());
+    }
+    fn debug(&self, message: &str) {
+        self.log.lock().unwrap().debug.push(message.to_owned());
     }
 }
 impl Clock for Fake {
@@ -1995,6 +2047,14 @@ struct Costs {
     decline: u32,
     /// Keep only the newest prepared frame, as a presenter with one target does.
     single_target: bool,
+    /// Decline a frame while this many prepared frames still hold a target.
+    targets: Option<usize>,
+    held: Arc<Mutex<Vec<CommitTicket>>>,
+    declined: u32,
+    on_screen: Option<Encoded>,
+    /// Decline the first frame showing each new View, as a presenter short of targets may.
+    decline_new_views: bool,
+    declined_view: Option<Vec<String>>,
 }
 
 /// One display frame per 16.67 ms; a vsync presents only a frame that is ready by then.
@@ -2744,4 +2804,53 @@ fn quick_taps_on_a_changing_toggle_during_an_animation_are_never_dropped() {
     assert_eq!(last(&host), ["Count 100"]);
     let json: serde_json::Value = serde_json::from_str(&host.snapshot().unwrap().json).unwrap();
     assert_eq!(json["metrics"]["droppedActivations"], 0);
+}
+
+#[test]
+fn every_tap_changes_state_exactly_once_while_the_presenter_declines_frames() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = costly_spinner(&platform, &worker, true);
+    // Two offscreen targets, one held by the frame on screen; and the first frame of each
+    // new View (each tap's rebuild) is declined once.
+    {
+        let mut costs = host.adapter().costs.lock().unwrap();
+        let costs = costs.as_mut().unwrap();
+        costs.targets = Some(2);
+        costs.decline_new_views = true;
+    }
+    run_timed(&platform, &host, 20);
+    for round in 0..100usize {
+        run_timed_tapping(&platform, &host, round % 7, (round % 3) as u32);
+        run_timed(&platform, &host, 1 + (round % 3) as u32);
+    }
+    run_timed(&platform, &host, 10);
+    let declined = host
+        .adapter()
+        .costs
+        .lock()
+        .unwrap()
+        .as_ref()
+        .unwrap()
+        .declined;
+    assert!(declined >= 10, "the presenter declined frames: {declined}");
+    assert_eq!(last(&host), ["Count 100"], "one state change per tap");
+    assert!(
+        dropped_warnings(&host).is_empty(),
+        "{:?}",
+        dropped_warnings(&host)
+    );
+    let json: serde_json::Value = serde_json::from_str(&host.snapshot().unwrap().json).unwrap();
+    assert_eq!(json["metrics"]["activations"], 100);
+    assert_eq!(json["metrics"]["droppedActivations"], 0);
+    let clicks = host
+        .adapter()
+        .log
+        .lock()
+        .unwrap()
+        .debug
+        .iter()
+        .filter(|line| line.starts_with("UI_INPUT: click page="))
+        .count();
+    assert_eq!(clicks, 100);
 }

@@ -266,10 +266,12 @@ impl ViewInteraction {
             let rebound = if scale_changed {
                 None
             } else {
+                // A press holds onto its control when a newer View changed it (a label that
+                // flipped under the finger): releasing it still activates that control.
                 previous
                     .as_ref()
                     .and_then(|frame| self.gesture.pressed.and_then(|index| frame.node(index)))
-                    .and_then(|node| next.rebind(node))
+                    .and_then(|node| next.rebind(node).or_else(|| next.press_target(node)))
             };
             if rebound.is_none() {
                 effects.extend(self.cancel_press());

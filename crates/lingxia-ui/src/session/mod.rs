@@ -41,12 +41,8 @@ pub struct ViewSession {
     layout_revision: u64,
     /// The first commit of the current layout revision.
     layout_commit: lifecycle::CommitTicket,
-    /// Clicks refused for a commit no longer current: (their commit, the session's).
-    rejected_clicks: Vec<(
-        lifecycle::CommitTicket,
-        lifecycle::CommitTicket,
-        &'static str,
-    )>,
+    /// Clicks since the host last collected them.
+    clicks: Vec<ClickRecord>,
     /// The first commit of the current retained layout (editor geometry is valid from here).
     retained_commit: lifecycle::CommitTicket,
     input_hits: Option<crate::interaction::input_hits::InputHitMap>,
@@ -89,6 +85,22 @@ pub struct ViewSession {
     /// Limits this page has come near, each warned once; drained by the host.
     budget_warned: std::collections::BTreeSet<&'static str>,
     budget_warnings: Vec<String>,
+}
+
+/// The error a frame build returns when the presenter declines the frame; the candidate is
+/// dropped but the View's pending state survives for the next frame.
+pub const FRAME_DECLINED: &str = "frame declined by the target";
+
+/// One click the session handled, for the host to log and count.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ClickRecord {
+    /// The frame the click was made on and the session's commit when it ran.
+    pub commit: lifecycle::CommitTicket,
+    pub current: lifecycle::CommitTicket,
+    /// It ran the same control's current callback because its frame was superseded.
+    pub reresolved: bool,
+    /// Whether a callback ran, or why the click was refused.
+    pub outcome: Result<bool, &'static str>,
 }
 
 struct ViewBridge {
@@ -158,7 +170,7 @@ impl ViewSession {
             retained: None,
             layout_revision: 0,
             layout_commit: lifecycle::CommitTicket::new(0),
-            rejected_clicks: Vec::new(),
+            clicks: Vec::new(),
             retained_commit: lifecycle::CommitTicket::new(0),
             input_hits: None,
             viewport: None,

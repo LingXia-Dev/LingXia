@@ -253,18 +253,18 @@ impl<A: PlatformAdapter> Inner<A> {
             Guard::Page(page),
             move |inner, session| {
                 let changed = activation(session);
-                let rejected = session.take_rejected_clicks();
+                let clicks = session.take_clicks();
                 if !changed? {
-                    return Ok((rejected, None));
+                    return Ok((clicks, None));
                 }
-                Ok((rejected, Some(inner.drained(session)?)))
+                Ok((clicks, Some(inner.drained(session)?)))
             },
             move |inner, result| {
                 inner.main().activating -= 1;
                 let result = result.map(|result| {
-                    result.map(|(rejected, drained)| {
-                        for (commit, current, reason) in rejected {
-                            inner.report_dropped(page, &identity, reason, commit, current);
+                    result.map(|(clicks, drained)| {
+                        for click in clicks {
+                            inner.report_click(page, &identity, &click);
                         }
                         drained
                     })
@@ -272,6 +272,29 @@ impl<A: PlatformAdapter> Inner<A> {
                 inner.activated(page, announce, result)
             },
         );
+    }
+
+    fn report_click(&self, page: PageTicket, identity: &str, click: &crate::session::ClickRecord) {
+        match click.outcome {
+            Ok(true) => {
+                self.main().activations += 1;
+                self.adapter.debug(&format!(
+                    "UI_INPUT: click page={} node={identity:?} commit={} current={} reresolved={}",
+                    page.get(),
+                    click.commit.get(),
+                    click.current.get(),
+                    click.reresolved
+                ));
+            }
+            Ok(false) => self.report_dropped(
+                page,
+                identity,
+                "its callback is no longer registered",
+                click.commit,
+                click.current,
+            ),
+            Err(reason) => self.report_dropped(page, identity, reason, click.commit, click.current),
+        }
     }
 
     /// A user activation that did nothing is never silent: warn and count it.
@@ -339,7 +362,7 @@ impl<A: PlatformAdapter> Inner<A> {
                     changed |= session.click(commit, handle)?;
                 }
                 // Edges a superseded frame reached are reached again by the current one.
-                session.take_rejected_clicks();
+                session.take_clicks();
                 let update = if changed {
                     inner.drained(session)?
                 } else {
