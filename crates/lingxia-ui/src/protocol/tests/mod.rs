@@ -147,7 +147,8 @@ fn composed_buttons_validate_names_and_descendants_on_the_wire() {
         3, -1, "", "button", "", 1, 8, 1, 0, 0, "", "", "", 0, 2, 8, "", "", "Inbox", 0
     ]);
     assert_eq!(decode(unlabeled.as_array().unwrap()).unwrap().len(), 3);
-    for tag in [3, 5, 6, 8, 9, 10, 11, 12, 14, 15, 18] {
+    // Controls may nest (each keeps its own target); a scroll or list may not.
+    for tag in [5, 6] {
         let mut invalid = valid.clone();
         invalid[16] = json!(tag);
         assert!(
@@ -192,7 +193,8 @@ fn composed_checkboxes_validate_names_and_descendants_on_the_wire() {
         0
     ]);
     assert_eq!(decode(valid.as_array().unwrap()).unwrap().len(), 3);
-    for tag in [3, 5, 6, 8, 9, 10, 11, 12, 14, 15, 18] {
+    // Controls may nest (each keeps its own target); a scroll or list may not.
+    for tag in [5, 6] {
         let mut invalid = valid.clone();
         invalid[16] = json!(tag);
         assert!(

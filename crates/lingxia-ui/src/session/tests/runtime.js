@@ -1836,6 +1836,7 @@
   var common = new Set(commonProps);
   var semanticStates = { pressed: "statePressed", selected: "stateSelected", expanded: "stateExpanded", busy: "stateBusy" };
   var accepts = (field2, tag) => admission.fields[field2].includes(elements[tag].wire);
+  var interactiveTags = /* @__PURE__ */ new Set(["button", "link", "checkbox", "switch", "radio", "input", "textarea", "search", "select", "slider"]);
   var bindCodes = { input: "UI_INPUT", textarea: "UI_INPUT", search: "UI_INPUT", checkbox: "UI_CHECK", switch: "UI_CHECK", slider: "UI_SLIDER", radio: "UI_RADIO" };
   var optionStyle = ["fontSize", "fontWeight", "fontFamily", "lineHeight", "color", "background"];
   var componentIds = /* @__PURE__ */ new WeakMap();
@@ -1954,7 +1955,7 @@
     const element = elements[tag];
     const props = { ...original };
     admit2(tag, element, props);
-    if (parent.inControl && !admission.tags[element.wire].content) throw Error("UI_BUTTON: descendants must be noninteractive content");
+    if (parent.inControl && (tag === "scroll" || tag === "list")) throw Error("UI_BUTTON: a scroll or list cannot sit inside a pressable control");
     if (element.binding) bind(tag, element, props);
     const editor2 = ["input", "textarea", "search"].includes(tag);
     if (props.dir !== void 0 && !(["ltr", "rtl"].includes(props.dir) || editor2 && props.dir === "auto"))
@@ -2160,6 +2161,8 @@
         });
         return node && key === void 0 ? { ...node, slot: slot[position] } : node;
       }).filter((child) => child !== null);
+      if ((tag === "button" || tag === "checkbox") && result.children.length === 1 && interactiveTags.has(result.children[0].tag))
+        throw Error(`UI_BUTTON: <${tag}> holds only a <${result.children[0].tag}>; put the action on that control`);
       result.children = result.children.map((child, ordinal) => {
         if (child.slot === void 0) return child;
         const { slot: at, ...rest } = child;

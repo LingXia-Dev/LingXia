@@ -2299,7 +2299,7 @@ fn every_message_adapters_receive_matches_the_frame_schema() {
         h('vector',{testId:'icon',accessibilityHidden:true,paths:[{d:'M0 0H10V10Z'}],style:{width:10,height:10}}),
         h('image',{testId:'photo',src:'a.png',alt:'Photo',style:{width:20,height:20,borderRadius:4}}),
         h('text',{},'Read the ',h('link',{onPress(){}},'terms')),
-        h('button',{testId:'go',onClick(){}},'Go'),
+        h('button',{testId:'go',onClick(){}},h('row',{},h('text',{},'Go'),h('checkbox',{testId:'remember',bind:on,accessibilityLabel:'Remember'}))),
         h('scroll',{testId:'inner',style:{height:20,overflowX:'auto'}},h('row',{style:{width:900,height:20}})))
     }";
     let host = platform.host(&worker, &source(page), false);
@@ -3031,5 +3031,131 @@ fn a_sibling_after_an_appearing_conditional_keeps_its_local_and_semantic_id() {
         count(),
         before,
         "same semantic id and the same local after the banner appears"
+    );
+}
+
+#[test]
+fn a_pressable_row_holds_its_own_controls() {
+    let worker = ViewWorker::spawn("test-nested-controls").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let page = "function render(){
+      const rows=useLocal('rows',0), on=useLocal('on',false), deletes=useLocal('deletes',0);
+      return h('column',{},
+        h('button',{testId:'row',onClick(){rows.set(rows.value+1)},style:{height:60,width:190}},
+          h('row',{},h('text',{testId:'label'},'Wi'),
+            h('switch',{testId:'wifi',bind:on,accessibilityLabel:'Wi-Fi'}),
+            h('button',{testId:'delete',onClick(){deletes.set(deletes.value+1)}},'Del'))),
+        h('text',{testId:'state'},`rows=${rows.value} on=${on.value} deletes=${deletes.value}`))
+    }";
+    let host = platform.host(&worker, &source(page), false);
+    if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
+        (environment.width, environment.height) = (800, 800);
+    }
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let state = || {
+        host.automation_request(
+            &serde_json::json!({"op": "query", "css": "[data-testid=\"state\"]"}),
+        )
+        .unwrap()["text"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+    // A real press at the center of a node, in device pixels.
+    let press = |id: &str| {
+        let snapshot: serde_json::Value =
+            serde_json::from_str(&host.snapshot().unwrap().json).unwrap();
+        let node = snapshot["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|n| n["test_id"] == id)
+            .unwrap()
+            .clone();
+        let b = |i: usize| node["bounds"][i].as_f64().unwrap() as f32;
+        tap(&host, (b(0) + b(2) / 2.0) * 2.0, (b(1) + b(3) / 2.0) * 2.0);
+        platform.settle(&[&host]);
+    };
+    // Only the innermost control shows the press.
+    let snapshot: serde_json::Value = serde_json::from_str(&host.snapshot().unwrap().json).unwrap();
+    let nodes = snapshot["nodes"].as_array().unwrap().clone();
+    let index = |id: &str| nodes.iter().position(|n| n["test_id"] == id).unwrap();
+    let b = |i: usize| nodes[index("wifi")]["bounds"][i].as_f64().unwrap() as f32;
+    host.pointer(Pointer {
+        phase: PointerPhase::Down,
+        x: (b(0) + b(2) / 2.0) * 2.0,
+        y: (b(1) + b(3) / 2.0) * 2.0,
+        slop: 8.0,
+        velocity: [0.0; 2],
+        min_fling: 50.0,
+    });
+    platform.settle(&[&host]);
+    let pressed: Vec<usize> = host
+        .adapter()
+        .log
+        .lock()
+        .unwrap()
+        .effects
+        .iter()
+        .filter_map(|effect| match effect {
+            Effect::Press { node, .. } => Some(*node),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        pressed,
+        [index("wifi")],
+        "the switch is pressed, not the row"
+    );
+    host.pointer(Pointer {
+        phase: PointerPhase::Cancel,
+        x: 0.0,
+        y: 0.0,
+        slop: 8.0,
+        velocity: [0.0; 2],
+        min_fling: 50.0,
+    });
+    platform.settle(&[&host]);
+    press("wifi");
+    assert_eq!(
+        state(),
+        "rows=0 on=true deletes=0",
+        "the switch takes its own press"
+    );
+    press("delete");
+    assert_eq!(
+        state(),
+        "rows=0 on=true deletes=1",
+        "the inner button takes its own press"
+    );
+    press("label");
+    assert_eq!(
+        state(),
+        "rows=1 on=true deletes=1",
+        "content outside the controls presses the row"
+    );
+    let nodes = host.semantics(|projection, _| {
+        let projection = projection.unwrap();
+        (0..projection.frame.nodes.len())
+            .filter_map(|index| projection.ids.id(index))
+            .filter_map(|id| projection.node(id))
+            .map(|node| (node.test_id.clone(), node.role, node.name.clone()))
+            .collect::<Vec<_>>()
+    });
+    let named = |id: &str| nodes.iter().find(|(test_id, ..)| test_id == id).cloned();
+    assert_eq!(
+        named("row").map(|n| (n.1, n.2)),
+        Some((Role::Button, "Wi".to_string())),
+        "the row keeps its own name"
+    );
+    assert_eq!(
+        named("wifi").map(|n| n.1),
+        Some(Role::Switch),
+        "the switch is its own node"
+    );
+    assert_eq!(
+        named("delete").map(|n| (n.1, n.2)),
+        Some((Role::Button, "Del".to_string()))
     );
 }

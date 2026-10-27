@@ -8,7 +8,7 @@ const groups = {
   paint: { label: 'Paint', sections: [Grid, Gradients, Vectors, Borders, Transforms] },
   layout: { label: 'Layout', sections: [Display, Sizing, Direction, Structure, StickyHeaders] },
   text: { label: 'Text', sections: [TextLayout, RichText, Selection] },
-  input: { label: 'Input', sections: [Accessibility, Inputs, Focus] },
+  input: { label: 'Input', sections: [Accessibility, Inputs, Focus, NestedControls] },
 };
 type Group = keyof typeof groups;
 
@@ -300,6 +300,25 @@ function Focus() {
           </row>
         </column>
       ) : null}
+    </Section>
+  );
+}
+
+// A pressable row holding its own controls: each press goes to the innermost control under it.
+function NestedControls() {
+  const opened = useLocal('opened', 0);
+  const wifi = useLocal('wifi', true);
+  const removed = useLocal('removed', 0);
+  return (
+    <Section title="Nested controls" testId="lab-nested">
+      <button testId="lab-nested-row" onClick={() => opened.set(opened.value + 1)} className="rounded-xl bg-surface-sunken px-4 py-3">
+        <row className="items-center gap-3">
+          <text className="grow text-sm">Wi-Fi</text>
+          <switch testId="lab-nested-switch" bind={wifi} accessibilityLabel="Wi-Fi" />
+          <button testId="lab-nested-remove" onClick={() => removed.set(removed.value + 1)} className="rounded-lg px-2 py-1 text-sm text-danger">Remove</button>
+        </row>
+      </button>
+      <text testId="lab-nested-state" className="text-xs text-muted tabular-nums">{`opened=${opened.value} wifi=${wifi.value} removed=${removed.value}`}</text>
     </Section>
   );
 }

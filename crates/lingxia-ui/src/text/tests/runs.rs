@@ -155,7 +155,7 @@ fn run_admission_and_budgets_are_native() {
             .unwrap_err()
             .contains("runs")
     );
-    // A link is interactive, so a button's text may not hold one.
+    // A link inside a button's text keeps its own target.
     let wire = json!([
         tag::BUTTON,
         -1,
@@ -176,11 +176,7 @@ fn run_admission_and_budgets_are_native() {
         "go",
         0
     ]);
-    assert!(
-        decode(wire.as_array().unwrap())
-            .unwrap_err()
-            .contains("UI_BUTTON")
-    );
+    assert_eq!(decode(wire.as_array().unwrap()).unwrap().len(), 3);
 }
 
 #[test]

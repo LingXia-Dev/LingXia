@@ -13,6 +13,8 @@ import { defaultSeries } from '../style/color.js';
 const common = new Set(commonProps);
 const semanticStates = { pressed: 'statePressed', selected: 'stateSelected', expanded: 'stateExpanded', busy: 'stateBusy' };
 const accepts = (field, tag) => admission.fields[field].includes(elements[tag].wire);
+// Elements that take input of their own; they may sit inside a pressable control.
+const interactiveTags = new Set(['button', 'link', 'checkbox', 'switch', 'radio', 'input', 'textarea', 'search', 'select', 'slider']);
 const bindCodes = { input: 'UI_INPUT', textarea: 'UI_INPUT', search: 'UI_INPUT', checkbox: 'UI_CHECK', switch: 'UI_CHECK', slider: 'UI_SLIDER', radio: 'UI_RADIO' };
 const optionStyle = ['fontSize', 'fontWeight', 'fontFamily', 'lineHeight', 'color', 'background'];
 // A component's id keys its local state and nodes. The compiler stamps each top-level component
@@ -138,7 +140,8 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   const element = elements[tag];
   const props = { ...original };
   admit(tag, element, props);
-  if (parent.inControl && !admission.tags[element.wire].content) throw Error('UI_BUTTON: descendants must be noninteractive content');
+  // Controls nest inside a pressable control and take presses in their own bounds; scrolls do not.
+  if (parent.inControl && (tag === 'scroll' || tag === 'list')) throw Error('UI_BUTTON: a scroll or list cannot sit inside a pressable control');
   if (element.binding) bind(tag, element, props);
   const editor = ['input', 'textarea', 'search'].includes(tag);
   if (props.dir !== undefined && !(['ltr', 'rtl'].includes(props.dir) || (editor && props.dir === 'auto')))
@@ -309,6 +312,9 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       });
       return node && key === undefined ? { ...node, slot: slot[position] } : node;
     }).filter(child => child !== null);
+    // A pressable control around nothing but another control adds a second target for one action.
+    if ((tag === 'button' || tag === 'checkbox') && result.children.length === 1 && interactiveTags.has(result.children[0].tag))
+      throw Error(`UI_BUTTON: <${tag}> holds only a <${result.children[0].tag}>; put the action on that control`);
     // Native names an unkeyed child by its rendered position; where a hole moved it, send the slot.
     result.children = result.children.map((child, ordinal) => {
       if (child.slot === undefined) return child;

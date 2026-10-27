@@ -355,7 +355,7 @@ const errorNotes = {
   UI_BOOTSTRAP_TIMEOUT: 'Logic did not deliver the first page state in time.',
   UI_BRIDGE: 'The View-Logic connection failed or was replaced.',
   UI_BUFFER: 'A malformed wire buffer reached the native decoder.',
-  UI_BUTTON: 'Invalid button label, or an interactive element inside a composed control.',
+  UI_BUTTON: 'Invalid button label, a scroll or list inside a composed control, or a control whose only content is another control.',
   UI_CHANNEL: 'Invalid `useChannel` call or channel failure.',
   UI_CHECK: 'Invalid checkbox or switch value, label or binding.',
   UI_CHROME: 'Invalid host chrome geometry from the platform adapter.',

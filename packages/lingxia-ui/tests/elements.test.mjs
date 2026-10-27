@@ -266,12 +266,17 @@ test('composed buttons take their accessible name from descendant text unless la
   assert.deepEqual(mixed.children.map(child => [child.tag, child.text]), [['text', 'plain'], ['text', 'child']]);
 });
 
-test('composed controls reject interactive descendants through components and containers', () => {
-  for (const tag of ['button', 'input', 'textarea', 'search', 'checkbox', 'switch', 'radio', 'slider', 'plot', 'scroll', 'list']) {
+test('composed controls hold controls of their own, never a scroll or list, and never just one control', () => {
+  for (const tag of ['scroll', 'list']) {
     function Nested() { return h('column', {}, h(tag, {})); }
-    throwsOn(() => h('button', {}, h(Nested, {})), /UI_BUTTON/);
+    throwsOn(() => h('button', {}, h(Nested, {})), /UI_BUTTON: a scroll or list cannot sit inside a pressable control/);
     throwsOn(() => h('checkbox', {}, h(Nested, {})), /UI_BUTTON/);
   }
+  const row = rendered(() => h('button', { onClick() {} }, h('row', {}, h('text', {}, 'Wi-Fi'),
+    h('switch', { value: true, onChange() {}, accessibilityLabel: 'Wi-Fi' }), h('button', { onClick() {} }, 'Delete'))));
+  assert.deepEqual(row.children[0].children.map(child => child.tag), ['text', 'switch', 'button']);
+  function Only() { return h('switch', { value: true, onChange() {}, accessibilityLabel: 'x' }); }
+  throwsOn(() => h('button', { onClick() {} }, h(Only, {})), /UI_BUTTON: <button> holds only a <switch>; put the action on that control/);
   let checked;
   const box = rendered(() => h('checkbox', { value: false, onChange: value => checked = value }, h('row', {}, h('text', {}, 'Task'))));
   assert.equal(box.tag, 'checkbox'); assert.equal(box.text, '');
@@ -310,7 +315,7 @@ test('text flattens nested spans and links into styled runs under one paragraph'
   assert.equal(typeof tree.children[5].props.onClick, 'number');
   assert.equal(rendered(() => h('text', {}, 'plain ', 'text')).text, 'plain text');
   throwsOn(() => h('column', {}, h('span', {}, 'loose')), /UI_TEXT: <span> belongs inside <text>/);
-  throwsOn(() => h('button', {}, h('text', {}, h('link', { onPress() {} }, 'nested'))), /UI_BUTTON/);
+  assert.equal(rendered(() => h('button', {}, h('text', {}, 'Read ', h('link', { onPress() {} }, 'terms')))).tag, 'button');
   throwsOn(() => h('text', {}, h('link', {}, h('link', {}, 'x'))), /UI_TEXT: links do not nest/);
   const pieces = rendered(() => h('text', {}, h('link', { onPress() {}, accessibilityLabel: 'Terms' }, 'the ', h('span', { style: { fontWeight: 700 } }, 'terms')))).children;
   assert.deepEqual(pieces.map(piece => [piece.tag, piece.text, piece.props.fontWeight, piece.props.accessibilityLabel]), [['link', 'the ', undefined, 'Terms'], ['link', 'terms', 700, undefined]]);

@@ -411,3 +411,9 @@ test('top-level components get a compile-time id from their module path and decl
   assert.match(out, /Row\.__lxid = "pages\/a\/index#Row";/);
   assert.doesNotMatch(out, /helper\.__lxid|Late\.__lxid/);
 });
+
+test('a pressable control around a single control fails the build; controls beside content are fine', () => {
+  flags('export function render(){ return <button onClick={() => {}}><switch value={true} onChange={() => {}} accessibilityLabel="x" /></button>; }',
+    /UI_BUTTON: <button> holds only a <switch>; put the action on that control/);
+  clean('export function render(){ return <button onClick={() => {}}><row><text>Wi-Fi</text><switch value={true} onChange={() => {}} accessibilityLabel="Wi-Fi" /></row></button>; }');
+});

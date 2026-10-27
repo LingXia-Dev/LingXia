@@ -172,7 +172,8 @@ convert OS events and report pointer state; they compute no geometry.
   emits only for fine pointers. `pointer` is part of the environment.
 - Buttons and checkboxes may compose noninteractive content. They form one
   semantic node; its name is the explicit label or else the descendant text
-  and image alternatives in order. Nested interactive controls are rejected.
+  and image alternatives in order. Controls nested in a composed control stay their own nodes and targets
+  (`semantics/groups.rs`); a scroll or list inside one is rejected.
 - Image `alt=""` marks decoration; omitted alt keeps the image exposed.
 - Editor focus survives reorder by token; disable, removal and reset end it.
 

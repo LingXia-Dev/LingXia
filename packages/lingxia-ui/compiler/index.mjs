@@ -22,6 +22,8 @@ const has = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 const common = new Set(commonProps);
 const editors = new Set(['input', 'textarea', 'search']);
 const controls = new Set(['button', 'checkbox', 'switch', 'radio', 'link']);
+// Elements that take input of their own; they may sit inside a pressable control.
+const interactiveTags = new Set(['button', 'link', 'checkbox', 'switch', 'radio', 'input', 'textarea', 'search', 'select', 'slider']);
 
 export function acceptsProp(tag, key) {
   const element = elements[tag];
@@ -77,6 +79,13 @@ export function audit(source, filename, { literalColors = false } = {}) {
   const report = (node, message) => problems.push(`${filename}:${position(file, node)}: ${message}`);
   const visit = node => {
     if (ts.isJsxFragment(node)) report(node, 'UI_FRAGMENT: return one layout node; fragments are not supported');
+    if (ts.isJsxElement(node) && ['button', 'checkbox'].includes(node.openingElement.tagName.getText(file))) {
+      const content = node.children.filter(child => !(ts.isJsxText(child) && !child.text.trim()));
+      const only = content.length === 1 && (ts.isJsxElement(content[0]) || ts.isJsxSelfClosingElement(content[0])) ? content[0] : undefined;
+      const inner = only && (ts.isJsxElement(only) ? only.openingElement.tagName : only.tagName).getText(file);
+      if (inner && interactiveTags.has(inner))
+        report(node.openingElement, `UI_BUTTON: <${node.openingElement.tagName.getText(file)}> holds only a <${inner}>; put the action on that control`);
+    }
     if ((ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) && ts.isIdentifier(node.tagName) && /^[A-Z]/.test(node.tagName.text)) {
       // `<Part key={Part.name}>`: release builds rename functions, so the key and every local
       // state under it would change between builds.

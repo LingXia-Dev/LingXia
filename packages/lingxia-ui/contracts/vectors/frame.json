@@ -67,12 +67,12 @@
         "op": "query"
       },
       "value": {
-        "count": 4,
+        "count": 5,
         "items": [
           {
             "aria_label": "Name",
             "checked": null,
-            "count": 4,
+            "count": 5,
             "editable": true,
             "enabled": true,
             "exists": true,
@@ -106,7 +106,7 @@
           {
             "aria_label": "Day",
             "checked": null,
-            "count": 4,
+            "count": 5,
             "editable": true,
             "enabled": true,
             "exists": true,
@@ -140,7 +140,7 @@
           {
             "aria_label": "Level",
             "checked": null,
-            "count": 4,
+            "count": 5,
             "editable": false,
             "enabled": true,
             "exists": true,
@@ -174,7 +174,7 @@
           {
             "aria_label": "On",
             "checked": true,
-            "count": 4,
+            "count": 5,
             "editable": false,
             "enabled": true,
             "exists": true,
@@ -199,6 +199,40 @@
             "role": "checkbox",
             "tag": "input",
             "text": "On",
+            "text_truncated": false,
+            "type": "checkbox",
+            "value": null,
+            "value_truncated": false,
+            "visible": true
+          },
+          {
+            "aria_label": "Remember",
+            "checked": true,
+            "count": 5,
+            "editable": false,
+            "enabled": true,
+            "exists": true,
+            "id": null,
+            "inViewport": false,
+            "index": 4,
+            "name": null,
+            "placeholder": null,
+            "rect": {
+              "bottom": 480.0,
+              "center_x": 63.0,
+              "center_y": 456.0,
+              "height": 48.0,
+              "left": 31.0,
+              "right": 95.0,
+              "top": 432.0,
+              "viewport_height": 400.0,
+              "viewport_width": 100.0,
+              "width": 64.0
+            },
+            "renderer": "gpu",
+            "role": "checkbox",
+            "tag": "input",
+            "text": "Remember",
             "text_truncated": false,
             "type": "checkbox",
             "value": null,
@@ -289,7 +323,7 @@
             "role": "scroll-view",
             "scroll": [
               0.0,
-              78.0
+              112.0
             ],
             "testId": "page"
           }
@@ -438,7 +472,7 @@
       "role": "scroll-view",
       "scroll": {
         "horizontal": false,
-        "max_offset": 78.0,
+        "max_offset": 112.0,
         "offset": 0.0
       },
       "scrollable": true,
@@ -963,6 +997,43 @@
     {
       "actions": [
         {
+          "kind": "show-on-screen"
+        },
+        {
+          "kind": "click"
+        }
+      ],
+      "bounds": [
+        31.0,
+        432.0,
+        64.0,
+        0.0
+      ],
+      "checked": true,
+      "children": [],
+      "clickable": true,
+      "enabled": true,
+      "focusable": true,
+      "focused": false,
+      "heading_level": null,
+      "id": 18,
+      "index": 17,
+      "live_region": null,
+      "name": "Remember",
+      "parent": 1,
+      "position": null,
+      "range": null,
+      "role": "check-box",
+      "scrollable": false,
+      "test_id": "remember",
+      "text": "Remember",
+      "text_field": null,
+      "text_selection": null,
+      "visible": false
+    },
+    {
+      "actions": [
+        {
           "kind": "scroll-forward"
         },
         {
@@ -971,7 +1042,7 @@
       ],
       "bounds": [
         0.0,
-        458.0,
+        492.0,
         100.0,
         0.0
       ],
@@ -982,8 +1053,8 @@
       "focusable": false,
       "focused": false,
       "heading_level": null,
-      "id": 16,
-      "index": 15,
+      "id": 19,
+      "index": 18,
       "live_region": null,
       "name": "",
       "parent": 1,
@@ -1006,7 +1077,7 @@
       "actions": [],
       "bounds": [
         0.0,
-        458.0,
+        492.0,
         100.0,
         0.0
       ],
@@ -1017,8 +1088,8 @@
       "focusable": false,
       "focused": false,
       "heading_level": null,
-      "id": 17,
-      "index": 16,
+      "id": 20,
+      "index": 19,
       "live_region": null,
       "name": "",
       "parent": 1,
@@ -1062,7 +1133,7 @@
         "imagePixels": 0,
         "images": 0,
         "layers": 5,
-        "nodes": 17,
+        "nodes": 20,
         "paints": 21,
         "shadows": 0,
         "vectorElements": 3
@@ -1072,7 +1143,7 @@
       "imageCacheBytes": 0,
       "layoutPasses": 1,
       "layoutUs": 0,
-      "nodes": 17,
+      "nodes": 20,
       "paints": 21,
       "textUs": 0,
       "totalUs": 0,
@@ -1081,7 +1152,7 @@
       "viewPasses": 1,
       "viewTransferUs": 0,
       "viewUs": 0,
-      "wireValues": 216
+      "wireValues": 240
     },
     "nodes": [
       {
@@ -1098,7 +1169,7 @@
         "scroll": {
           "axis": "vertical",
           "id": "/i:0:5",
-          "max_offset": 78.0,
+          "max_offset": 112.0,
           "offset": 0.0,
           "parent": null
         },
@@ -1669,8 +1740,9 @@
           0.0,
           420.0,
           100.0,
-          38.0
+          72.0
         ],
+        "button_content": "9d21f5c68805211f",
         "identity": "/i:0:5/i:11:3",
         "on_click": 7,
         "order": 14,
@@ -1687,15 +1759,85 @@
         ]
       },
       {
+        "accessibility_hidden": true,
+        "bounds": [
+          12.0,
+          432.0,
+          76.0,
+          48.0
+        ],
+        "identity": "/i:0:5/i:11:3/i:0:1",
+        "on_click": null,
+        "order": 15,
+        "radius": 0.0,
+        "scroll_parent": "/i:0:5",
+        "tag": "row",
+        "test_id": "",
+        "text": "",
+        "visible_bounds": [
+          12.0,
+          432.0,
+          76.0,
+          0.0
+        ]
+      },
+      {
+        "accessibility_hidden": true,
+        "bounds": [
+          12.0,
+          432.0,
+          19.0,
+          48.0
+        ],
+        "identity": "/i:0:5/i:11:3/i:0:1/i:0:2",
+        "on_click": null,
+        "order": 16,
+        "radius": 0.0,
+        "scroll_parent": "/i:0:5",
+        "tag": "text",
+        "test_id": "",
+        "text": "Go",
+        "visible_bounds": [
+          12.0,
+          432.0,
+          19.0,
+          0.0
+        ]
+      },
+      {
+        "accessibility_label": "Remember",
+        "bounds": [
+          31.0,
+          432.0,
+          64.0,
+          48.0
+        ],
+        "checked": true,
+        "identity": "/i:0:5/i:11:3/i:0:1/i:1:10",
+        "on_click": 8,
+        "order": 17,
+        "radius": 0.0,
+        "scroll_parent": "/i:0:5",
+        "tag": "checkbox",
+        "test_id": "remember",
+        "text": "Remember",
+        "visible_bounds": [
+          31.0,
+          432.0,
+          64.0,
+          0.0
+        ]
+      },
+      {
         "bounds": [
           0.0,
-          458.0,
+          492.0,
           100.0,
           20.0
         ],
         "identity": "/i:0:5/i:12:5",
         "on_click": null,
-        "order": 15,
+        "order": 18,
         "radius": 0.0,
         "scroll": {
           "axis": "horizontal",
@@ -1710,7 +1852,7 @@
         "text": "",
         "visible_bounds": [
           0.0,
-          458.0,
+          492.0,
           100.0,
           0.0
         ]
@@ -1718,13 +1860,13 @@
       {
         "bounds": [
           0.0,
-          458.0,
+          492.0,
           900.0,
           20.0
         ],
         "identity": "/i:0:5/i:12:5/i:0:1",
         "on_click": null,
-        "order": 16,
+        "order": 19,
         "radius": 0.0,
         "scroll_parent": "/i:0:5/i:12:5",
         "tag": "row",
@@ -1732,7 +1874,7 @@
         "text": "",
         "visible_bounds": [
           0.0,
-          458.0,
+          492.0,
           100.0,
           0.0
         ]

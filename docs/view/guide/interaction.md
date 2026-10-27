@@ -45,26 +45,46 @@ export function render() {
 ## Composed controls
 
 `<button>` and `<checkbox>` may contain layout, text, images and vectors. A button stacks its content
-in a column and cannot change direction; wrap side-by-side content in a `<row>`, as above. The whole control is one target and one accessibility node, named by its
-`accessibilityLabel` or else by its descendants' text and image `alt`, in order.
+in a column and cannot change direction; wrap side-by-side content in a `<row>`, as above. The control
+is named by its `accessibilityLabel` or else by its descendants' text and image `alt`, in order.
 
-Controls cannot nest. A control, editor, `<scroll>`, `<list>` or `<link>` inside a composed control
-fails (`UI_BUTTON`):
+A composed control may also hold controls of its own: a row that opens a page can carry a switch and a
+delete button. A press goes to the innermost control under the finger, and only that control shows it
+pressed; the row activates when the press lands on its other content. Assistive technology sees the row
+and each inner control as separate nodes, and the row's name leaves the inner controls' text out.
 
-```tsx error UI_BUTTON
+```tsx
+import { useLocal } from '@lingxia/ui';
+
 export function render() {
+  const on = useLocal('on', true);
   return (
     <page>
-      <button onClick={() => {}}>
-        <text>Item</text>
-        <button onClick={() => {}}>Delete</button>
+      <button onClick={() => {}} className="rounded-xl bg-surface px-4 py-3">
+        <row className="items-center gap-3">
+          <text className="grow">Wi-Fi</text>
+          <switch bind={on} accessibilityLabel="Wi-Fi" />
+        </row>
       </button>
     </page>
   );
 }
 ```
 
-Put sibling controls side by side in a `<row>` instead.
+A `<scroll>` or `<list>` inside a composed control fails (`UI_BUTTON`): a drag in it would both scroll
+and press. So does a control whose only content is another control; put the action on that control:
+
+```tsx error UI_BUTTON
+export function render() {
+  return (
+    <page>
+      <button onClick={() => {}}>
+        <button onClick={() => {}}>Delete</button>
+      </button>
+    </page>
+  );
+}
+```
 
 ## Press states
 

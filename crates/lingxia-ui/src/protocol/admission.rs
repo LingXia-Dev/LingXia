@@ -1,6 +1,6 @@
 //! Which records may nest, carry inline text, or carry a field on a tag; the
 //! tables are generated from the contract schema.
-use super::{Children, FIELD_ADMISSION, FIELDS, Record, TAG_ADMISSION, TAGS, field};
+use super::{Children, FIELD_ADMISSION, FIELDS, Record, TAG_ADMISSION, TAGS, field, tag};
 use serde_json::Value;
 
 /// A child of `parent` with `child` tag may be appended.
@@ -28,11 +28,15 @@ pub(super) fn child(records: &[Record], parent: usize, child: usize) -> Result<(
         }
         _ => {}
     }
-    if !TAG_ADMISSION[child].content {
+    // A pressable container may hold controls (they take presses inside their own bounds),
+    // but not a scroll or list: a drag in it would both scroll and press.
+    if matches!(child, tag::SCROLL | tag::LIST) {
         let mut ancestor = Some(parent);
         while let Some(owner) = ancestor {
             if TAG_ADMISSION[records[owner].tag].children == Children::Content {
-                return Err("UI_BUTTON: descendants must be noninteractive content".into());
+                return Err(
+                    "UI_BUTTON: a scroll or list cannot sit inside a pressable control".into(),
+                );
             }
             ancestor = records[owner].parent;
         }

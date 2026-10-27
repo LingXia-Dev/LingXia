@@ -1,4 +1,5 @@
-//! Composed controls: descendants of a button or checkbox form one semantic node.
+//! Composed controls: descendants of a button or checkbox form one semantic node, except the
+//! controls nested in it, which stay their own.
 use crate::protocol::{Record, tag};
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
@@ -13,18 +14,40 @@ pub(crate) struct ControlGroups {
     pub(crate) names: HashMap<usize, String>,
 }
 
+/// Tags that take input of their own.
+pub(crate) fn interactive(tag: usize) -> bool {
+    matches!(
+        tag,
+        tag::BUTTON
+            | tag::LINK
+            | tag::CHECKBOX
+            | tag::SWITCH
+            | tag::RADIO
+            | tag::INPUT
+            | tag::TEXTAREA
+            | tag::SEARCH
+            | tag::SELECT
+            | tag::SLIDER
+    )
+}
+
 pub(crate) fn control_groups(records: &[Record]) -> Result<ControlGroups, String> {
     let mut button_owners: Vec<Option<usize>> = Vec::with_capacity(records.len());
     let mut button_hashes: HashMap<usize, DefaultHasher> = HashMap::new();
     let mut names: HashMap<usize, String> = HashMap::new();
     for record in records {
-        let owner = record.parent.and_then(|parent| {
-            if matches!(records[parent].tag, tag::BUTTON | tag::CHECKBOX) {
-                Some(parent)
-            } else {
-                button_owners[parent]
-            }
-        });
+        // A control nested in a composed one is its own target and semantic node; the
+        // outer control's name and content digest leave it out.
+        let owner = record
+            .parent
+            .and_then(|parent| {
+                if matches!(records[parent].tag, tag::BUTTON | tag::CHECKBOX) {
+                    Some(parent)
+                } else {
+                    button_owners[parent]
+                }
+            })
+            .filter(|_| !interactive(record.tag));
         button_owners.push(owner);
         if let Some(owner) = owner {
             let part = if record.tag == tag::IMAGE {
