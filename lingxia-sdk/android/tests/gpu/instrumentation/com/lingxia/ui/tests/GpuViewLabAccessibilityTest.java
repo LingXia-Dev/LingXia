@@ -34,7 +34,7 @@ public class GpuViewLabAccessibilityTest {
     }
 
     @Test public void rolesReachServicesAndLiveRegionsAnnounce() throws Exception {
-        driver.openTab("Lab");
+        driver.openPage(GpuViewLabWalk.VIEW_LAB);
         driver.openGroup("Input");
         driver.reveal("lab-a11y-save");
         AccessibilityNodeInfo heading = driver.node("lab-a11y-heading");

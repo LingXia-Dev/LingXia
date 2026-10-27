@@ -99,6 +99,22 @@ final class A11yDriver {
         Thread.sleep(1500);
     }
 
+    /** Open `path` of the showcase lxapp the way an app link does: the host's page activity with app id and path. */
+    void openPage(String path) throws Exception {
+        declineTalkBackPrompts();
+        android.content.Context context = instrumentation.getTargetContext();
+        Intent launch = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        context.startActivity(launch);
+        Thread.sleep(3000);
+        Intent page = new Intent(context, com.lingxia.lxapp.LxAppActivity.class)
+            .putExtra(com.lingxia.lxapp.LxAppActivity.EXTRA_APP_ID, "lingxia-showcase-gpu")
+            .putExtra(com.lingxia.lxapp.LxAppActivity.EXTRA_PATH, path)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        context.startActivity(page);
+        Thread.sleep(2500);
+    }
+
     /** View lab renders one group at a time: scroll back to its group buttons and pick one. */
     void openGroup(String label) throws Exception {
         String button = id("lab-tab-" + label.toLowerCase());

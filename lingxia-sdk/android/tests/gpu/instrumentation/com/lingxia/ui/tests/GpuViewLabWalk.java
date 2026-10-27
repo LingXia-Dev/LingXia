@@ -29,11 +29,12 @@ import static org.junit.Assert.*;
 /**
  * Pages through view-lab: a screenshot per scroll page and one line per accessibility node as a
  * service reads it. With `-e talkback 1` each node also takes TalkBack focus and its speech caption
- * is saved; `-e rotation 1` runs in landscape; `-e tab <label>` and `-e group <label>` walk another
- * tab or view-lab group. Output: the host's external files, `walk-<tag>*`.
+ * is saved; `-e rotation 1` runs in landscape; `-e page <path>` (default view lab), `-e tab <label>`
+ * and `-e group <label>` walk another page, tab or view-lab group. Output: the host's external files, `walk-<tag>*`.
  */
 @RunWith(AndroidJUnit4.class)
 public class GpuViewLabWalk {
+    static final String VIEW_LAB = "pages/view-lab/index";
     private final A11yDriver driver = new A11yDriver(InstrumentationRegistry.getInstrumentation());
 
     private static void visible(AccessibilityNodeInfo node, String pkg, List<AccessibilityNodeInfo> out) {
@@ -73,11 +74,12 @@ public class GpuViewLabWalk {
         Bundle args = InstrumentationRegistry.getArguments();
         boolean talkback = "1".equals(args.getString("talkback"));
         boolean landscape = "1".equals(args.getString("rotation"));
-        String tab = args.getString("tab", "Lab"), group = args.getString("group");
-        String tag = (landscape ? "land" : "port") + ("Lab".equals(tab) ? "" : "-" + tab) + (group == null ? "" : "-" + group);
+        String tab = args.getString("tab"), page = args.getString("page", tab == null ? VIEW_LAB : null), group = args.getString("group");
+        String where = page != null ? page.replaceAll("^pages/|/index$", "") : tab;
+        String tag = (landscape ? "land" : "port") + "-" + where + (group == null ? "" : "-" + group);
         driver.automation.setRotation(landscape ? UiAutomation.ROTATION_FREEZE_90 : UiAutomation.ROTATION_FREEZE_0);
         Thread.sleep(1500);
-        driver.openTab(tab);
+        if (page != null) driver.openPage(page); else driver.openTab(tab);
         if (group != null) driver.openGroup(group);
         String pkg = driver.instrumentation.getTargetContext().getPackageName();
         Set<String> seen = new HashSet<>();
@@ -118,7 +120,7 @@ public class GpuViewLabWalk {
 
     /** Every projected node of view-lab, as the core serves it, one JSON per line: `walk-semantics.jsonl`. */
     @Test public void semantics() throws Exception {
-        driver.openTab("Lab");
+        driver.openPage(VIEW_LAB);
         AtomicReference<String> dump = new AtomicReference<>();
         AtomicReference<Exception> failure = new AtomicReference<>();
         driver.instrumentation.runOnMainSync(() -> {
@@ -155,7 +157,7 @@ public class GpuViewLabWalk {
 
     /** A locator click through the page shell's automation entry, as lx.automation sends it. */
     @Test public void automationClick() throws Exception {
-        driver.openTab("Lab");
+        driver.openPage(VIEW_LAB);
         driver.openGroup("Input");
         driver.reveal("lab-a11y-save");
         driver.instrumentation.runOnMainSync(() -> {
@@ -175,7 +177,7 @@ public class GpuViewLabWalk {
 
     /** Sticky headers mid-scroll: a screenshot per inner scroll step with the frame's scroll offset and header bounds. */
     @Test public void sticky() throws Exception {
-        driver.openTab("Lab");
+        driver.openPage(VIEW_LAB);
         driver.openGroup("Layout");
         driver.reveal("lab-sticky-scroll");
         try (FileWriter log = new FileWriter(driver.out("sticky.txt"))) {
@@ -211,7 +213,7 @@ public class GpuViewLabWalk {
 
     /** Static text: select a range and copy it the way an accessibility service does; the clipboard gets that range. */
     @Test public void copyThroughAccessibility() throws Exception {
-        driver.openTab("Lab");
+        driver.openPage(VIEW_LAB);
         driver.node("lab-tab-text").performAction(AccessibilityNodeInfo.ACTION_CLICK);
         Thread.sleep(1500);
         AccessibilityNodeInfo text = driver.reveal("lab-select-all");
@@ -239,7 +241,7 @@ public class GpuViewLabWalk {
 
     /** An editor driven the way TalkBack's editing menu does: set text, select a range, copy, cut and paste. Writes the offered actions to `editor-actions.txt`. */
     @Test public void editorThroughAccessibility() throws Exception {
-        driver.openTab("Lab");
+        driver.openPage(VIEW_LAB);
         driver.openGroup("Input");
         AccessibilityNodeInfo editor = driver.reveal("lab-input-name");
         assertTrue("editable", editor.isEditable());
