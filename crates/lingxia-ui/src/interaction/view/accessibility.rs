@@ -49,6 +49,26 @@ impl ViewInteraction {
         (self.hover.is_some(), effects)
     }
 
+    /// Why an accessibility action on `id` would be refused, for diagnostics.
+    pub fn accessibility_refusal(&self, id: u32) -> &'static str {
+        let Some(frame) = &self.frame else {
+            return "no frame";
+        };
+        let Some(index) = self.ids.index(id) else {
+            return "unknown id";
+        };
+        if frame.nodes[index].accessibility_hidden.unwrap_or(false) {
+            return "hidden";
+        }
+        if self.inert {
+            return "inert";
+        }
+        if self.accessibility_focus == Some(id) {
+            return "already focused";
+        }
+        "not applicable"
+    }
+
     pub fn accessibility(
         &mut self,
         id: u32,

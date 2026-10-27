@@ -674,11 +674,19 @@ impl<A: PlatformAdapter> ViewHost<A> {
             return handled;
         }
         let page = self.inner.lifecycle.page();
-        let (handled, effects) = self
-            .inner
-            .main()
-            .interaction
-            .accessibility(id, action, page);
+        let label = format!("{action:?}");
+        let (handled, effects, refusal) = {
+            let mut main = self.inner.main();
+            let (handled, effects) = main.interaction.accessibility(id, action, page);
+            let refusal = (!handled).then(|| main.interaction.accessibility_refusal(id));
+            (handled, effects, refusal)
+        };
+        if let Some(reason) = refusal {
+            self.adapter().debug(&format!(
+                "UI_A11Y: refused page={} id={id} action={label} reason={reason}",
+                page.get()
+            ));
+        }
         self.inner.deliver(effects);
         handled && !self.inner.take_edit_failure()
     }
