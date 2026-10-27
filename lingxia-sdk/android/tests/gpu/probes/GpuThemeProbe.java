@@ -5,7 +5,7 @@ import android.view.accessibility.AccessibilityNodeInfo;
 
 public class GpuThemeProbe {
  // Resolved by the showcase theme pack (accent #0f9d58) through the default roles.
- static final int PAGE_LIGHT=0xfff2f3f7, PAGE_DARK=0xff0e1219, SURFACE_LIGHT=0xfffefeff, SURFACE_DARK=0xff181e2a;
+ static final int PAGE_LIGHT=0xfff2f3f7, PAGE_DARK=0xff0e1219, SURFACE_LIGHT=0xfffefeff, SURFACE_DARK=0xff171c27;
  static Rect bounds(String id)throws Exception {
   AccessibilityNodeInfo n=GpuApiProbe.node(id);Rect box=new Rect();n.getBoundsInScreen(box);n.recycle();return box;
  }
