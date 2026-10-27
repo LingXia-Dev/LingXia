@@ -48,8 +48,12 @@ public class GpuTextMenuTest {
         final Surface view=new Surface();
         final GpuTextMenu menu=new GpuTextMenu(view,this);
         final java.util.ArrayList<String> calls=new java.util.ArrayList<>();
-        boolean coreRuns;
-        public boolean coreAction(int code) { calls.add("core:"+GpuTextMenu.ACTIONS[code]); return coreRuns; }
+        boolean coreRuns, coreCloses;
+        public boolean coreAction(int code) {
+            calls.add("core:"+GpuTextMenu.ACTIONS[code]);
+            if (coreCloses) menu.show(null,1);
+            return coreRuns;
+        }
         public boolean editorAction(int itemId) { calls.add("editor:"+itemId); return true; }
         public void dismissed() { calls.add("dismissed"); }
         static JSONObject menu(String kind,double x,String... actions) throws Exception {
@@ -71,6 +75,13 @@ public class GpuTextMenuTest {
         assertEquals(java.util.Arrays.asList("core:select_all"),c.calls);
         c.menu.show(null,2); assertTrue(mode.finished);
         assertEquals("closing for the core is not a user dismissal",java.util.Arrays.asList("core:select_all"),c.calls);
+    }
+    @Test public void editorActionRunsAfterTheCoreClosesTheMenu() throws Exception {
+        Client c=new Client(); c.coreCloses=true;
+        c.menu.show(Client.menu("editor",0,"cut","paste"),1); Mode mode=c.view.latest;
+        assertTrue(mode.click(android.R.id.cut));
+        assertEquals(java.util.Arrays.asList("core:cut","editor:"+android.R.id.cut),c.calls);
+        assertTrue(mode.finished);
     }
     @Test public void editorActionsRunInTheInputConnectionAndUserDismissalIsReported() throws Exception {
         Client c=new Client();

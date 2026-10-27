@@ -5,6 +5,7 @@ import android.view.ActionMode;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import com.lingxia.ui.generated.GpuFrame;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -19,7 +20,8 @@ final class GpuTextMenu {
         void dismissed();
     }
     /** Core action codes, in `MenuAction` order. */
-    static final String[] ACTIONS = {"cut", "copy", "paste", "select_all", "undo", "redo"};
+    static final String[] ACTIONS = {GpuFrame.MENU_ACTION_CUT, GpuFrame.MENU_ACTION_COPY, GpuFrame.MENU_ACTION_PASTE,
+        GpuFrame.MENU_ACTION_SELECT_ALL, GpuFrame.MENU_ACTION_UNDO, GpuFrame.MENU_ACTION_REDO};
     private static final int[] ITEMS = {android.R.id.cut, android.R.id.copy, android.R.id.paste,
         android.R.id.selectAll, android.R.id.undo, android.R.id.redo};
     private final View view;
@@ -33,9 +35,9 @@ final class GpuTextMenu {
     /** Show or update `menu` (`{target, anchor, actions}`), or close it for null. */
     void show(JSONObject menu, float scale) {
         if (menu == null) { dismiss(); return; }
-        JSONArray rect = menu.optJSONArray("anchor");
-        Rect next = rect == null ? new Rect() : new Rect((int)(rect.optDouble(0) * scale), (int)(rect.optDouble(1) * scale),
-            (int)((rect.optDouble(0) + rect.optDouble(2)) * scale), (int)((rect.optDouble(1) + rect.optDouble(3)) * scale));
+        float[] rect = new GpuFrame.TextMenu(menu).anchor();
+        Rect next = rect == null || rect.length < 4 ? new Rect() : new Rect((int)(rect[0] * scale), (int)(rect[1] * scale),
+            (int)((rect[0] + rect[2]) * scale), (int)((rect[1] + rect[3]) * scale));
         this.menu = menu;
         if (mode != null) {
             mode.invalidate();
@@ -50,8 +52,10 @@ final class GpuTextMenu {
                 if (actionMode != mode) return false;
                 int code = code(item.getItemId());
                 if (code < 0) return false;
+                // The core closes an editor menu before declining, so read the target first.
+                boolean editor = editor();
                 if (host.coreAction(code)) return true;
-                return editor() && host.editorAction(item.getItemId());
+                return editor && host.editorAction(item.getItemId());
             }
             @Override public void onDestroyActionMode(ActionMode actionMode) {
                 if (actionMode != mode) return;
@@ -63,15 +67,15 @@ final class GpuTextMenu {
     }
 
     private boolean editor() {
-        JSONObject target = menu == null ? null : menu.optJSONObject("target");
-        return target != null && "editor".equals(target.optString("kind"));
+        GpuFrame.TextMenuTarget target = menu == null ? null : new GpuFrame.TextMenu(menu).target();
+        return target != null && GpuFrame.TEXT_MENU_TARGET_EDITOR.equals(target.kind());
     }
 
     private void fill(Menu items) {
         items.clear();
-        JSONArray actions = menu == null ? null : menu.optJSONArray("actions");
-        for (int i = 0; actions != null && i < actions.length(); i++) {
-            int code = java.util.Arrays.asList(ACTIONS).indexOf(actions.optString(i));
+        String[] actions = menu == null ? null : new GpuFrame.TextMenu(menu).actions();
+        for (int i = 0; actions != null && i < actions.length; i++) {
+            int code = java.util.Arrays.asList(ACTIONS).indexOf(actions[i]);
             if (code < 0) continue;
             int title = code == 4 ? com.lingxia.lxapp.R.string.lingxia_ui_undo
                 : code == 5 ? com.lingxia.lxapp.R.string.lingxia_ui_redo
