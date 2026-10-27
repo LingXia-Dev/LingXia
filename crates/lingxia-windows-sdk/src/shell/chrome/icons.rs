@@ -98,9 +98,20 @@ pub(super) fn cached_png_bytes_icon_handle(
 }
 
 fn create_icon_from_path(path: &Path, size: u32, tint: Option<u32>) -> Result<isize, String> {
-    if is_svg_path(path) {
-        let data = std::fs::read(path)
-            .map_err(|err| format!("Failed to read SVG icon {}: {err}", path.display()))?;
+    let data = std::fs::read(path)
+        .map_err(|err| format!("Failed to read icon {}: {err}", path.display()))?;
+    let source = path.display().to_string();
+    // The filename is not the container. A brand logo is often WebP bytes
+    // behind a `.png` URL, and the lxapp caches that suffix. `image::open`
+    // trusts the suffix, so the PNG decoder rejects the file and the slot
+    // stays empty. macOS ImageIO sniffs, which is why the same file shows
+    // there. Sniff here too; the suffix still decides an SVG template.
+    if let Some(image) = decode_raster(&data) {
+        // Raster tiles get an anti-aliased 22% corner in the bitmap. GDI
+        // `CreateRoundRectRgn` clip aliases that arc into a staircase at 16px.
+        return create_icon_from_image(image, size, &source, true);
+    }
+    if is_svg_path(path) || looks_like_svg(&data) {
         let mut image = rasterize_svg(&data, size)?;
         if let Some(tint) = tint {
             let [_, r, g, b] = tint.to_be_bytes();
@@ -111,19 +122,35 @@ fn create_icon_from_path(path: &Path, size: u32, tint: Option<u32>) -> Result<is
         return create_icon_from_image(
             image::DynamicImage::ImageRgba8(image),
             size,
-            &path.display().to_string(),
+            &source,
             false,
         );
     }
-    let image = image::open(path).map_err(|err| {
-        format!(
-            "Failed to load Windows shell icon {}: {err}",
-            path.display()
-        )
-    })?;
-    // Raster tiles get an anti-aliased 22% corner in the bitmap. GDI
-    // `CreateRoundRectRgn` clip aliases that arc into a staircase at 16px.
-    create_icon_from_image(image, size, &path.display().to_string(), true)
+    Err(format!(
+        "Failed to load Windows shell icon {source}: unrecognized image"
+    ))
+}
+
+/// Raster containers, identified from the bytes. `None` when this is not a
+/// raster the shell can decode (an SVG, or something we do not support).
+fn decode_raster(data: &[u8]) -> Option<image::DynamicImage> {
+    image::ImageReader::new(std::io::Cursor::new(data))
+        .with_guessed_format()
+        .ok()
+        .and_then(|reader| reader.decode().ok())
+}
+
+fn looks_like_svg(data: &[u8]) -> bool {
+    let mut start = 0;
+    if data.len() >= 3 && data[0] == 0xef && data[1] == 0xbb && data[2] == 0xbf {
+        start = 3;
+    }
+    while start < data.len() && matches!(data[start], b' ' | b'\t' | b'\n' | b'\r') {
+        start += 1;
+    }
+    let end = data.len().min(start.saturating_add(64));
+    let head = data[start..end].to_ascii_lowercase();
+    head.starts_with(b"<svg") || head.starts_with(b"<?xml") || head.starts_with(b"<!doctype")
 }
 
 /// Rasterizes an SVG (icons may be SVG, as on macOS) to an `size`x`size`
@@ -278,6 +305,29 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn webp_bytes_decode_even_when_a_url_named_them_png() {
+        let pixel = image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(
+            2,
+            2,
+            image::Rgba([12, 34, 56, 255]),
+        ));
+        let mut webp = Vec::new();
+        pixel
+            .write_to(
+                &mut std::io::Cursor::new(&mut webp),
+                image::ImageFormat::WebP,
+            )
+            .expect("webp encoder");
+        let decoded = decode_raster(&webp).expect("sniffed webp").to_rgba8();
+        assert_eq!(decoded.dimensions(), (2, 2));
+        assert_eq!(decoded.get_pixel(0, 0).0, [12, 34, 56, 255]);
+
+        let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"></svg>"#;
+        assert!(decode_raster(svg).is_none());
+        assert!(looks_like_svg(svg));
+    }
 
     #[test]
     fn app_tile_corners_are_transparent_and_center_stays_opaque() {
