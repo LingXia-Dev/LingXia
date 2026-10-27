@@ -394,6 +394,9 @@ fn resolve_publish_target(
         }
         let path = host_package_path(&cwd.join(package))?;
         let (platform, metadata) = read_host_package(&path)?;
+        if platform == "macos" {
+            require_declared_macos_archs(&path)?;
+        }
         reject_env_mismatch(opts.env.as_deref(), &path, metadata.env)?;
         let meta = PackageMeta {
             target: "app".to_string(),
@@ -572,6 +575,84 @@ fn read_host_package(path: &Path) -> Result<(&'static str, AppPackageMetadata)> 
         .read_to_end(&mut data)
         .with_context(|| format!("Failed to read {app_json} from {}", path.display()))?;
     Ok((platform, parse_app_json(&data)?))
+}
+
+const CPU_TYPE_X86_64: u32 = 0x0100_0007;
+const CPU_TYPE_ARM64: u32 = 0x0100_000c;
+
+/// `platform=macos` serves every Mac that installed the app, so a package
+/// missing a declared slice would update those Macs to an app that cannot
+/// launch. Packages from before `macos.arch` declare nothing and mean arm64.
+fn require_declared_macos_archs(path: &Path) -> Result<()> {
+    let file =
+        fs::File::open(path).with_context(|| format!("Failed to open {}", path.display()))?;
+    let mut zip =
+        zip::ZipArchive::new(file).with_context(|| format!("Failed to read {}", path.display()))?;
+    let names: Vec<String> = zip
+        .file_names()
+        .map(|name| name.map(|name| name.into_owned()))
+        .collect::<zip::result::ZipResult<_>>()?;
+    let info_name = names
+        .iter()
+        .find(|name| {
+            name.replace('\\', "/")
+                .strip_suffix("/Contents/Info.plist")
+                .is_some_and(|bundle| bundle.ends_with(".app") && !bundle.contains('/'))
+        })
+        .cloned()
+        .with_context(|| format!("{} has no app Info.plist", path.display()))?;
+    let mut data = Vec::new();
+    zip.by_name(&info_name)?.read_to_end(&mut data)?;
+    let info: plist::Dictionary = plist::from_bytes(&data)
+        .with_context(|| format!("Failed to parse {info_name} in {}", path.display()))?;
+    let executable = info
+        .get("CFBundleExecutable")
+        .and_then(plist::Value::as_string)
+        .with_context(|| format!("{info_name} has no CFBundleExecutable"))?;
+    let declared = info
+        .get(crate::platform::macos::DECLARED_ARCH_PLIST_KEY)
+        .and_then(plist::Value::as_string)
+        .unwrap_or("arm64");
+    let required: &[u32] = match declared {
+        "arm64" => &[CPU_TYPE_ARM64],
+        "x86_64" => &[CPU_TYPE_X86_64],
+        "universal" => &[CPU_TYPE_ARM64, CPU_TYPE_X86_64],
+        other => bail!("{info_name} declares unknown macOS arch '{other}'"),
+    };
+
+    let exe_name = info_name.replace(
+        "/Contents/Info.plist",
+        &format!("/Contents/MacOS/{executable}"),
+    );
+    let mut header = Vec::new();
+    zip.by_name(&exe_name)
+        .with_context(|| format!("{} is missing {exe_name}", path.display()))?
+        .take(4096)
+        .read_to_end(&mut header)?;
+    let built = macho_cpu_types(&header)
+        .with_context(|| format!("{exe_name} is not a Mach-O executable"))?;
+    if required.iter().any(|cpu| !built.contains(cpu)) {
+        bail!(
+            "{} declares macos.arch {declared} but {exe_name} lacks a slice; Macs that installed it could not launch this update. Re-run `lingxia package -p macos` without --macos-arch.",
+            path.display()
+        );
+    }
+    Ok(())
+}
+
+/// CPU types of a thin or fat Mach-O header; `None` if not Mach-O.
+fn macho_cpu_types(header: &[u8]) -> Option<Vec<u32>> {
+    let be = |at: usize| Some(u32::from_be_bytes(header.get(at..at + 4)?.try_into().ok()?));
+    let le = |at: usize| Some(u32::from_le_bytes(header.get(at..at + 4)?.try_into().ok()?));
+    match be(0)? {
+        magic @ (0xcafe_babe | 0xcafe_babf) => {
+            let stride = if magic == 0xcafe_babf { 32 } else { 20 };
+            let count = be(4)? as usize;
+            (0..count).map(|i| be(8 + i * stride)).collect()
+        }
+        0xcffa_edfe | 0xcefa_edfe => Some(vec![le(4)?]),
+        _ => None,
+    }
 }
 
 /// The platform and the `app.json` entry of a host package layout; `None`
@@ -922,6 +1003,7 @@ mod tests {
         publish_upload, read_host_package, reject_env_mismatch, resolve_meta,
         resolve_publish_target, signed_multipart_fields,
     };
+    use super::{CPU_TYPE_ARM64, CPU_TYPE_X86_64, require_declared_macos_archs};
     use super::{draft_open_url, draft_qr_png};
     use crate::config::AppEnv;
     use std::fs;
@@ -1545,14 +1627,89 @@ mod tests {
         write_zip(
             &path,
             &[
-                ("Flourish.app/Contents/Info.plist", b""),
+                (
+                    "Flourish.app/Contents/Info.plist",
+                    &info_plist("Flourish", Some("universal")),
+                ),
                 (
                     "Flourish.app/Contents/Resources/app.json",
                     app_json.as_bytes(),
                 ),
+                (
+                    "Flourish.app/Contents/MacOS/Flourish",
+                    &fat_macho(&[CPU_TYPE_X86_64, CPU_TYPE_ARM64]),
+                ),
             ],
         );
         path
+    }
+
+    fn info_plist(executable: &str, declared: Option<&str>) -> Vec<u8> {
+        let mut dict = plist::Dictionary::new();
+        dict.insert("CFBundleExecutable".into(), executable.into());
+        if let Some(arch) = declared {
+            dict.insert(
+                crate::platform::macos::DECLARED_ARCH_PLIST_KEY.into(),
+                arch.into(),
+            );
+        }
+        let mut out = Vec::new();
+        plist::to_writer_xml(&mut out, &dict).unwrap();
+        out
+    }
+
+    fn thin_macho(cpu: u32) -> Vec<u8> {
+        let mut data = 0xfeed_facf_u32.to_le_bytes().to_vec();
+        data.extend(cpu.to_le_bytes());
+        data
+    }
+
+    fn fat_macho(cpu_types: &[u32]) -> Vec<u8> {
+        let mut data = 0xcafe_babe_u32.to_be_bytes().to_vec();
+        data.extend((cpu_types.len() as u32).to_be_bytes());
+        for cpu in cpu_types {
+            data.extend(cpu.to_be_bytes());
+            data.extend([0; 16]);
+        }
+        data
+    }
+
+    #[test]
+    fn macos_publish_requires_the_declared_architectures() {
+        let temp = tempfile::tempdir().unwrap();
+        let package = |name: &str, declared: Option<&str>, exe: Vec<u8>| {
+            let path = temp.path().join(name);
+            write_zip(
+                &path,
+                &[
+                    (
+                        "Demo.app/Contents/Info.plist",
+                        &info_plist("Demo", declared),
+                    ),
+                    ("Demo.app/Contents/MacOS/Demo", &exe),
+                ],
+            );
+            path
+        };
+        let both = || fat_macho(&[CPU_TYPE_X86_64, CPU_TYPE_ARM64]);
+
+        // Undeclared means arm64; extra slices are fine.
+        require_declared_macos_archs(&package("a.zip", None, thin_macho(CPU_TYPE_ARM64))).unwrap();
+        require_declared_macos_archs(&package("b.zip", Some("arm64"), both())).unwrap();
+        require_declared_macos_archs(&package("c.zip", Some("universal"), both())).unwrap();
+
+        let error = require_declared_macos_archs(&package(
+            "d.zip",
+            Some("universal"),
+            thin_macho(CPU_TYPE_ARM64),
+        ))
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("lacks a slice"), "{error}");
+        assert!(
+            require_declared_macos_archs(&package("e.zip", None, thin_macho(CPU_TYPE_X86_64)))
+                .is_err()
+        );
     }
 
     #[test]

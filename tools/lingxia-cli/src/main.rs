@@ -102,8 +102,9 @@ struct PlatformBuildOptions {
     )]
     android_abis: Vec<String>,
 
-    /// macOS architecture for native build; defaults to the host architecture
-    #[arg(long, value_parser = ["arm64", "x86_64"])]
+    /// macOS architecture: arm64, x86_64, or universal. Packaging defaults to
+    /// `macos.arch` (arm64); other builds to the host architecture
+    #[arg(long, value_parser = ["arm64", "x86_64", "universal"])]
     macos_arch: Option<String>,
 }
 
