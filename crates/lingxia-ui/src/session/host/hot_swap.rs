@@ -7,6 +7,7 @@ impl<A: PlatformAdapter> Inner<A> {
     pub(super) fn swap_module(self: &Arc<Self>, source: String) {
         let page = self.lifecycle.page();
         let next = source.clone();
+        let started = std::time::Instant::now();
         self.work(
             Guard::Page(page),
             move |inner, session| {
@@ -15,6 +16,11 @@ impl<A: PlatformAdapter> Inner<A> {
             },
             move |inner, result| match result {
                 Some(Ok(update)) => {
+                    log::info!(
+                        target: "lingxia_ui",
+                        "UI_SWAP applied ms={}",
+                        started.elapsed().as_millis()
+                    );
                     if let Some((connection, update)) = update {
                         inner.publish(connection, update);
                     }

@@ -714,12 +714,25 @@ function inert(name) {
 const paintsColor = result => Object.keys(result.style).some(key => styleTable[key]?.lower === 'color') ||
   Boolean(result.gradient) || result.shadow?.color !== undefined || result.shadow?.ringColor !== undefined;
 
+// A warm dev compiler rebuilds one page per save; Tailwind's compile of the theme is the slow part.
+const compilers = new Map();
+function compilerFor(theme) {
+  let compiler = compilers.get(theme);
+  if (!compiler) {
+    compiler = readFile(new URL(import.meta.resolve('tailwindcss/theme.css')), 'utf8')
+      .then(defaults => compile(`${defaults}\n${theme}\n${roleTheme}\n@tailwind utilities;`));
+    compiler.catch(() => compilers.delete(theme));
+    if (compilers.size >= 8) compilers.delete(compilers.keys().next().value);
+    compilers.set(theme, compiler);
+  }
+  return compiler;
+}
+
 /** Lowered rules for every candidate Tailwind generates; unsupported ones carry an error. */
 export async function compileUtilities(candidates, theme = '', { literalColors: literal = false } = {}) {
   const tokens = postcss.parse(theme);
   validateTokens(tokens);
-  const defaults = await readFile(new URL(import.meta.resolve('tailwindcss/theme.css')), 'utf8');
-  const compiler = await compile(`${defaults}\n${theme}\n${roleTheme}\n@tailwind utilities;`);
+  const compiler = await compilerFor(theme);
   const root = postcss.parse(compiler.build([...candidates]));
   const palettes = { light: Object.create(null), dark: Object.create(null) }, rules = [];
   root.walkAtRules('property', rule => {

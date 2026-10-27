@@ -190,6 +190,30 @@ function report(problems, page) {
   return { count: text.length, text: text.join('\n') };
 }
 
+// A warm dev compiler rebuilds the files of one page per save; unchanged ones keep their analysis.
+const analyses = new Map();
+function analyse(path, contents, label, loader, literalColors) {
+  const key = `${literalColors}\0${label}\0${path}`;
+  const cached = analyses.get(key);
+  if (cached?.contents === contents) return cached;
+  const file = parseSource(path, contents);
+  const names = new Set();
+  const collect = node => {
+    if (ts.isStringLiteralLike(node) || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node))
+      for (const name of node.text.split(/\s+/)) if (name) names.add(name);
+    ts.forEachChild(node, collect);
+  };
+  collect(file);
+  const analysed = {
+    contents, file, names, problems: audit(contents, path, { literalColors }),
+    annotated: loader.endsWith('x') ? annotate(contents, path, label) : contents,
+  };
+  analyses.delete(key);
+  if (analyses.size >= 512) analyses.delete(analyses.keys().next().value);
+  analyses.set(key, analysed);
+  return analysed;
+}
+
 /**
  * Compiles GPU pages. `pages` are page source paths relative to `root`; each
  * page's sibling `.json` must declare `"renderer": "gpu"`, which is the only
@@ -233,18 +257,13 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
           builder.onLoad({ filter: /\.[jt]sx?$/ }, async ({ path }) => {
             if (path.toLowerCase().startsWith(runtimeRoot)) return;
             const contents = await readFile(path, 'utf8');
-            problems.push(...audit(contents, path, { literalColors }));
-            const file = parseSource(path, contents);
-            sourceFiles.push(file);
-            const collect = node => {
-              if (ts.isStringLiteralLike(node) || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node))
-                for (const name of node.text.split(/\s+/)) if (name) candidates.add(name);
-              ts.forEachChild(node, collect);
-            };
-            collect(file);
             const loader = path.endsWith('.tsx') ? 'tsx' : path.endsWith('.ts') ? 'ts' : path.endsWith('.jsx') ? 'jsx' : 'js';
-            const annotated = loader.endsWith('x') ? annotate(contents, path, relative(root, path).split('\\').join('/')) : contents;
-            return { contents: annotated, loader, resolveDir: dirname(path) };
+            const label = relative(root, path).split('\\').join('/');
+            const analysed = analyse(path, contents, label, loader, literalColors);
+            problems.push(...analysed.problems);
+            sourceFiles.push(analysed.file);
+            for (const name of analysed.names) candidates.add(name);
+            return { contents: analysed.annotated, loader, resolveDir: dirname(path) };
           });
         } }],
         banner: { js: moduleBanner(version) },

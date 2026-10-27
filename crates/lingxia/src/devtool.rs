@@ -380,7 +380,14 @@ fn register_bundle_source_override() {
 /// Dev sessions: pull `appid`'s latest bundle and swap the module of its live GPU
 /// pages at `path`, keeping their state. Returns how many pages took it.
 pub fn hot_swap_gpu_page(appid: &str, path: &str) -> Result<usize, String> {
+    let started = std::time::Instant::now();
     sync_dev_bundle(appid)?;
+    // Device-side swap timing: the bundle sync here, the module swap in the page host.
+    log::info!(
+        target: "lingxia_ui",
+        "UI_SWAP page={path} sync_ms={}",
+        started.elapsed().as_millis()
+    );
     #[cfg(any(
         target_os = "android",
         all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"),

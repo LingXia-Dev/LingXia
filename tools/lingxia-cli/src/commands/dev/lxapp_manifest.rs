@@ -256,15 +256,45 @@ fn collect_files(dist_dir: &Path) -> Result<Vec<DevLxAppManifestFile>> {
     for rel in rel_paths {
         validate_relative_path(&rel)?;
         let path = dist_dir.join(&rel);
-        let bytes =
-            fs::read(&path).with_context(|| format!("Failed to read {}", path.display()))?;
+        let (hash, size) = file_hash(&path)?;
         files.push(DevLxAppManifestFile {
             path: rel,
-            hash: sha256_hex(&bytes),
-            size: bytes.len() as u64,
+            hash,
+            size,
         });
     }
     Ok(files)
+}
+
+/// A file's sha256 and size; a dev session rehashes only files whose size or mtime moved.
+fn file_hash(path: &Path) -> Result<(String, u64)> {
+    use std::collections::HashMap;
+    use std::sync::{LazyLock, Mutex};
+    type Stamp = (u64, std::time::SystemTime);
+    static HASHES: LazyLock<Mutex<HashMap<PathBuf, (Stamp, String)>>> =
+        LazyLock::new(Default::default);
+    let meta = fs::metadata(path).with_context(|| format!("Failed to read {}", path.display()))?;
+    // A file written in the last two seconds is rehashed: a coarse mtime could hide a rewrite.
+    let stamp = meta
+        .modified()
+        .ok()
+        .filter(|modified| modified.elapsed().is_ok_and(|age| age.as_secs() >= 2))
+        .map(|modified| (meta.len(), modified));
+    if let Some(stamp) = stamp
+        && let Some((held, hash)) = HASHES.lock().unwrap_or_else(|p| p.into_inner()).get(path)
+        && *held == stamp
+    {
+        return Ok((hash.clone(), stamp.0));
+    }
+    let bytes = fs::read(path).with_context(|| format!("Failed to read {}", path.display()))?;
+    let hash = sha256_hex(&bytes);
+    if let Some(stamp) = stamp.filter(|(size, _)| *size == bytes.len() as u64) {
+        HASHES
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .insert(path.to_path_buf(), (stamp, hash.clone()));
+    }
+    Ok((hash, bytes.len() as u64))
 }
 
 fn collect_file_paths(root: &Path, current: &Path, out: &mut BTreeSet<String>) -> Result<()> {
