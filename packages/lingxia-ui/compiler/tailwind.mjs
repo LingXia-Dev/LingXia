@@ -716,6 +716,9 @@ const paintsColor = result => Object.keys(result.style).some(key => styleTable[k
 
 // A warm dev compiler rebuilds one page per save; Tailwind's compile of the theme is the slow part.
 const compilers = new Map();
+/** Whether `theme` already has a warm Tailwind compile. */
+export const tailwindWarm = theme => compilers.has(theme);
+
 function compilerFor(theme) {
   let compiler = compilers.get(theme);
   if (!compiler) {

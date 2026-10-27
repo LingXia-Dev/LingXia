@@ -4,7 +4,7 @@ import { collectClassUsage } from './class-usage.mjs';
 import { perfWarnings } from './perf.mjs';
 import { sourceChecker, moduleChecker, parseSource } from './source.mjs';
 import { moduleBanner } from './compatibility.mjs';
-import { compileUtilities } from './tailwind.mjs';
+import { compileUtilities, tailwindWarm } from './tailwind.mjs';
 import { nearestSupported } from './suggest.mjs';
 import { loadStylesheet, validateTokens } from './stylesheets.mjs';
 import { colorProblem, seriesProblem } from '../src/style/color.js';
@@ -223,10 +223,12 @@ function report(problems, page) {
 
 // A warm dev compiler rebuilds the files of one page per save; unchanged ones keep their analysis.
 const analyses = new Map();
+let analysisHits = 0, analysisMisses = 0;
 function analyse(path, contents, label, loader, literalColors) {
   const key = `${literalColors}\0${label}\0${path}`;
   const cached = analyses.get(key);
-  if (cached?.contents === contents) return cached;
+  if (cached?.contents === contents) { analysisHits++; return cached; }
+  analysisMisses++;
   const file = parseSource(path, contents);
   const names = new Set();
   const collect = node => {
@@ -249,7 +251,8 @@ function analyse(path, contents, label, loader, literalColors) {
  * Compiles GPU pages. `pages` are page source paths relative to `root`; each
  * page's sibling `.json` must declare `"renderer": "gpu"`, which is the only
  * thing that makes a page native. Output is `<base>.js` beside a copy of the config.
- * Returns the `UI_PERF` warnings, which are also printed; they never stop the build.
+ * Returns the `UI_PERF` warnings (also printed; they never stop the build), whether Tailwind ran
+ * warm, and how many files were analysed afresh.
  */
 /**
  * `literalColors` admits hex and palette colours for renderer test fixtures whose probes read exact
@@ -259,6 +262,9 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
   const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   root = await realpath(resolve(root)); output = resolve(output);
   const inputs = {}, warnings = [];
+  // Whether the theme's Tailwind compile was warm, and how many files needed fresh analysis.
+  let warm = true;
+  analysisHits = analysisMisses = 0;
   for (const page of pages) {
     const source = resolve(root, page);
     const rel = relative(root, source);
@@ -303,6 +309,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
       if (!problems.length) throw error;
     }
     if (themes.size > 1) problems.push(`${page}: UI_CSS: import one shared @theme stylesheet per page`);
+    warm &&= tailwindWarm([...themes.values()].join('\n'));
     const classes = await compileUtilities(candidates, [...themes.values()].join('\n'), { literalColors });
     const checker = moduleChecker(sourceFiles);
     const rulesByName = new Map();
@@ -348,5 +355,5 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, JSON.stringify({ ...previous, ...inputs }, null, 1) + '\n');
   }
-  return { warnings };
+  return { warnings, warm, analysed: analysisMisses };
 }

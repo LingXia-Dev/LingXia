@@ -54,12 +54,20 @@ fn canonical(path: &Path) -> PathBuf {
         })
 }
 
+// A `prime` request compiles into a scratch directory: it only fills the warm caches.
 const COMPILER: &str = "import { buildPages } from '@lingxia/ui/compiler';
 import { createInterface } from 'node:readline';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 for await (const line of createInterface({ input: process.stdin })) {
-  const { pages, output, catalogs } = JSON.parse(line);
-  try { await buildPages(process.cwd(), pages, output, catalogs, { dev: true }); console.log(JSON.stringify({ ok: true })); }
-  catch (error) { console.log(JSON.stringify({ ok: false, error: String(error?.message ?? error) })); }
+  const { pages, output, catalogs, prime } = JSON.parse(line);
+  const target = prime ? await mkdtemp(join(tmpdir(), 'lingxia-prime-')) : output;
+  try {
+    const { warm, analysed } = await buildPages(process.cwd(), pages, target, catalogs, { dev: true });
+    console.log(JSON.stringify({ ok: true, warm, analysed }));
+  } catch (error) { console.log(JSON.stringify({ ok: false, error: String(error?.message ?? error) })); }
+  finally { if (prime) await rm(target, { recursive: true, force: true }); }
 }";
 
 /// A page compiler kept warm for the session: loading it costs seconds, a page does not.
@@ -68,6 +76,15 @@ pub(super) struct Compiler {
     child: Child,
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
+    /// Replies to prime requests not read yet; they precede the next compile's reply.
+    pending: usize,
+}
+
+/// How a compile ran: warm Tailwind, and how many files it analysed afresh.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct Compiled {
+    pub warm: bool,
+    pub analysed: u64,
 }
 
 impl Compiler {
@@ -81,12 +98,34 @@ impl Compiler {
             .context("Failed to start the GPU page compiler")?;
         let stdin = child.stdin.take().context("compiler stdin")?;
         let stdout = BufReader::new(child.stdout.take().context("compiler stdout")?);
-        Ok(Self {
+        let mut compiler = Self {
             dir: dir.to_path_buf(),
             child,
             stdin,
             stdout,
-        })
+            pending: 0,
+        };
+        compiler.prime();
+        Ok(compiler)
+    }
+
+    /// Compile every GPU page of the last dev build into a scratch directory in the background,
+    /// so the first save of the session compiles warm.
+    fn prime(&mut self) {
+        let inputs = std::fs::read_to_string(self.dir.join(".lingxia").join("gpu-inputs.json"))
+            .ok()
+            .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok());
+        let Some(pages) = inputs.as_ref().and_then(|v| v.as_object()) else {
+            return;
+        };
+        let pages: Vec<String> = pages.keys().cloned().collect();
+        let Ok((_, catalogs)) = crate::lxapp::gpu_dev_inputs(&self.dir, &pages) else {
+            return;
+        };
+        let request = serde_json::json!({ "pages": pages, "catalogs": catalogs, "prime": true });
+        if writeln!(self.stdin, "{request}").is_ok() {
+            self.pending += 1;
+        }
     }
 
     pub(super) fn dir(&self) -> &Path {
@@ -94,16 +133,26 @@ impl Compiler {
     }
 
     /// Recompile `pages` (`pages/x/index.tsx`) into the lxapp's build output.
-    pub(super) fn compile(&mut self, pages: &[String]) -> Result<()> {
+    pub(super) fn compile(&mut self, pages: &[String]) -> Result<Compiled> {
         let (output, catalogs) = crate::lxapp::gpu_dev_inputs(&self.dir, pages)?;
         let request = serde_json::json!({ "pages": pages, "output": output, "catalogs": catalogs });
         writeln!(self.stdin, "{request}").context("GPU page compiler exited")?;
         let mut line = String::new();
+        // A prime still running answers first; its result does not matter.
+        while self.pending > 0 {
+            line.clear();
+            self.stdout.read_line(&mut line)?;
+            self.pending -= 1;
+        }
+        line.clear();
         self.stdout.read_line(&mut line)?;
         let reply: serde_json::Value =
             serde_json::from_str(&line).map_err(|_| anyhow!("GPU page compiler exited"))?;
         if reply["ok"] == true {
-            Ok(())
+            Ok(Compiled {
+                warm: reply["warm"] == true,
+                analysed: reply["analysed"].as_u64().unwrap_or(0),
+            })
         } else {
             Err(anyhow!(
                 "{}",
@@ -130,6 +179,64 @@ pub(super) fn page_path(page: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An lxapp with one GPU page that resolves `@lingxia/ui` from this repository.
+    fn gpu_lxapp() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let write = |path: &str, text: &str| {
+            let path = root.join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        write(
+            "lxapp.json",
+            r#"{"appId":"prime-test","appName":"Prime","version":"1.0.0","pages":[{"name":"a","path":"pages/a/index"}]}"#,
+        );
+        write("package.json", r#"{"name":"prime-test","private":true}"#);
+        write("pages/a/index.json", r#"{"renderer":"gpu"}"#);
+        write(
+            "pages/a/index.tsx",
+            "export function render() { return <column className=\"p-4 gap-2\"><text className=\"text-sm\">Hello</text></column>; }\n",
+        );
+        write(
+            ".lingxia/gpu-inputs.json",
+            r#"{"pages/a/index.tsx":["pages/a/index.tsx"]}"#,
+        );
+        let packages = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/lingxia-ui");
+        std::fs::create_dir_all(root.join("node_modules/@lingxia")).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(
+            packages.canonicalize().unwrap(),
+            root.join("node_modules/@lingxia/ui"),
+        )
+        .unwrap();
+        dir
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_primed_compiler_compiles_the_first_save_warm() {
+        let lxapp = gpu_lxapp();
+        let mut compiler = Compiler::spawn(lxapp.path()).unwrap();
+        assert_eq!(
+            compiler.pending, 1,
+            "spawning primes every GPU page of the last dev build"
+        );
+        let first = compiler.compile(&["pages/a/index.tsx".to_owned()]).unwrap();
+        assert_eq!(
+            first,
+            Compiled {
+                warm: true,
+                analysed: 0
+            },
+            "the first save finds warm caches"
+        );
+        assert!(
+            lxapp.path().join("dist/pages/a/index.js").is_file(),
+            "the compile still writes its output"
+        );
+    }
 
     #[test]
     fn view_edits_name_their_pages_and_anything_else_rebuilds() {

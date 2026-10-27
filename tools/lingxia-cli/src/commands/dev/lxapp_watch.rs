@@ -520,11 +520,14 @@ fn hot_swap(
         .iter()
         .position(|compiler| compiler.dir() == dir)
         .unwrap();
-    if let Err(err) = compilers[index].compile(&pages) {
-        // The running page stays; the next save tries again.
-        eprintln!("  {} {app_id}: {err:#}", "✗".red());
-        return true;
-    }
+    let compiled_run = match compilers[index].compile(&pages) {
+        Ok(compiled) => compiled,
+        Err(err) => {
+            // The running page stays; the next save tries again.
+            eprintln!("  {} {app_id}: {err:#}", "✗".red());
+            return true;
+        }
+    };
     let compiled = started.elapsed();
     // The manifest hash moves with the new module, so a cold start serves it too.
     if let Err(err) = state.refresh_manifests() {
@@ -536,12 +539,17 @@ fn hot_swap(
         let path = super::gpu_swap::page_path(page);
         match state.hot_swap_page(app_id, &path) {
             Ok(RestartOutcome::Restarted) => println!(
-                "  {} swapped {} in {} ms (edit settled {} ms, compile {} ms, manifests {} ms, runtime {} ms)",
+                "  {} swapped {} in {} ms (edit settled {} ms, compile {} ms {}, manifests {} ms, runtime {} ms)",
                 "✓".green(),
                 path.cyan(),
                 (waited + started.elapsed()).as_millis(),
                 waited.as_millis(),
                 compiled.as_millis(),
+                if compiled_run.warm {
+                    format!("warm, {} files reanalysed", compiled_run.analysed)
+                } else {
+                    "cold".to_string()
+                },
                 (published - compiled).as_millis(),
                 (started.elapsed() - published).as_millis()
             ),
