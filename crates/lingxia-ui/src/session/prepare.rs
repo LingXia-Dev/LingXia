@@ -257,6 +257,7 @@ impl ViewSession {
         self.animations = *timeline;
         self.animation_visible = visible;
         self.metrics.ghosts = frame.as_ref().map_or(0, |frame| frame.ghosts().len());
+        self.metrics.layout_motions = frame.as_ref().map_or(0, |frame| frame.layout_motions());
         let frame = frame.map(|frame| (self.generation, surface, *frame));
         if base.is_some() && frame.is_some() {
             self.presenting_animation = self.pending_animation.take();

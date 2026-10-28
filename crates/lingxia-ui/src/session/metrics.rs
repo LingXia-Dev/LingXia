@@ -23,6 +23,9 @@ pub struct FrameMetrics {
     /// Removed nodes still drawn while their exit transition runs.
     #[serde(skip_serializing_if = "is_zero")]
     pub ghosts: usize,
+    /// Nodes moving to a new layout position under `transition-layout`.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub layout_motions: usize,
     /// Deterministic counters of the frame, compared against the page limits.
     pub cost: crate::FrameCost,
 }
@@ -61,7 +64,7 @@ impl crate::ViewSession {
         let metrics = &self.metrics;
         let cost = &metrics.cost;
         let fails = "past it the frame fails";
-        let uses: [(&'static str, u64, u64, &str); 5] = [
+        let uses: [(&'static str, u64, u64, &str); 7] = [
             ("nodes", metrics.nodes as u64, limits::NODES as u64, fails),
             (
                 "wireValues",
@@ -86,6 +89,18 @@ impl crate::ViewSession {
                 metrics.ghosts as u64,
                 limits::GHOSTS as u64,
                 "past it further removals vanish at once",
+            ),
+            (
+                "layoutMotions",
+                metrics.layout_motions as u64,
+                limits::LAYOUT_MOTIONS as u64,
+                "past it further moves land at once",
+            ),
+            (
+                "outlineGlyphs",
+                cost.outline_glyphs as u64,
+                limits::OUTLINE_GLYPHS as u64,
+                "each is filled as a path, so frames take longer",
             ),
         ];
         for (name, used, limit, consequence) in uses {

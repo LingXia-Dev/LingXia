@@ -47,7 +47,7 @@ export function render() {
 }
 ```
 
-Animate a scale or translate instead of a size.
+Animate a scale or translate instead of a size, or let `transition-layout` move the box (below).
 
 ## Enter and exit
 
@@ -77,6 +77,30 @@ outermost removed element plays its exit, and at most 64 play at once per page; 
 vanish. An element that comes back mid-exit enters from where its exit had got to. A hidden page, and
 reduced motion, add and remove elements at once.
 
+## Layout motion
+
+`transition-layout` slides an element from where layout last put it to its new position, with the
+element's `duration-*`, `delay-*` and `ease-*`; it adds to the properties `transition-*` sets
+(`transition-opacity transition-layout`). Use it on keyed rows so a reorder, an insertion or a removal
+moves the others instead of jumping:
+
+```tsx
+import { useLocal } from '@lingxia/ui';
+
+export function render() {
+  const rows = useLocal('rows', ['a', 'b', 'c']);
+  return (
+    <page className="p-4 gap-2">
+      <button onClick={() => rows.set([...rows.value].reverse())} className="self-start rounded-xl bg-accent text-on-accent px-4 py-2">Reverse</button>
+      {rows.value.map(row => <view key={row} className="h-10 rounded-lg bg-surface-raised transition-layout duration-200" />)}
+    </page>
+  );
+}
+```
+
+Only position moves: a size change lands at once. Input follows the box where it is drawn. A box whose
+subtree holds an editor, a `<scroll>` or a `<slider>` moves at once, as do more than 256 at a time.
+
 ## Animations
 
 `animate-spin`, `animate-ping`, `animate-pulse`, `animate-bounce` and your own `--animate-*` tokens with
@@ -99,6 +123,6 @@ variant applies. The system animation speed scales every duration and delay; 0 r
 
 ## Not supported
 
-Layout transitions, 3D transforms, `transition-behavior`, scroll-driven
+Size transitions, shared-element transitions between pages, 3D transforms, `transition-behavior`, scroll-driven
 animations, View-side timers (`setTimeout`, `requestAnimationFrame`) and per-frame JavaScript
 animation. An inline `style.animation` fails with `UI_ANIMATION`; use `animate-*`.

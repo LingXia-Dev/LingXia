@@ -122,6 +122,10 @@ impl Prepared {
     pub(crate) fn ghosts(&self) -> Vec<(String, transition::Origin)> {
         self.transitions.ghosts(self.elapsed)
     }
+    /// Nodes this frame moves toward a new layout position (`transition-layout`).
+    pub(crate) fn layout_motions(&self) -> usize {
+        self.transitions.layout_motions(self.elapsed)
+    }
 
     /// Only active effects; absent entries use the node's unanimated base style.
     pub fn visuals(&self) -> &BTreeMap<String, Visual> {

@@ -55,8 +55,9 @@ function cascade(rules, meta) {
   if (filter && (filter.blur != null || filter.saturation != null))
     style.backdropFilter = `blur(${pixels(filter.blur ?? 0)}) saturate(${filter.saturation ?? 1})`;
   // Durations and easings from duration-*/ease-* win over a transition-* default whatever the order.
-  if (motion.properties?.length) style.transition = {
-    properties: [...motion.properties], durationMs: motion.duration ?? motion.durationDefault ?? 150, delayMs: motion.delay ?? 0,
+  const properties = [...(motion.properties ?? []), ...(motion.layout ? ['layout'] : [])];
+  if (properties.length) style.transition = {
+    properties, durationMs: motion.duration ?? motion.durationDefault ?? 150, delayMs: motion.delay ?? 0,
     easing: copy(motion.easing ?? motion.easingDefault ?? [0.4, 0, 0.2, 1]),
   };
   else if (motion.properties) style.transition = 'none';

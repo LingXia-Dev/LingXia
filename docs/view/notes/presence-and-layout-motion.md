@@ -1,6 +1,6 @@
 # Design note: presence (enter/exit) and layout motion (FLIP)
 
-Status: approved; implementation in progress. Builds on `transition-*` ([Motion](../guide/motion.md)) and on
+Status: implemented. Builds on `transition-*` ([Motion](../guide/motion.md)) and on
 `childSlot` identity, which keeps a conditional child's identity stable while it comes and goes.
 
 ## Authoring (Tailwind dialect)

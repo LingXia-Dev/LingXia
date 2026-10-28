@@ -253,6 +253,14 @@ test('starting and exit variants lower to presence states', async () => {
   assert.throws(() => rendered(() => h('column', { className: 'starting:p-2' })), /starting: supports paint properties only, not paddingTop/);
 });
 
+test('transition-layout adds layout motion to whatever transition-* sets', async () => {
+  await use(['transition-layout', 'transition-opacity', 'duration-300', 'transition-none']);
+  assert.deepEqual(classStyle('transition-layout').transition.properties, ['layout']);
+  const both = classStyle('transition-opacity transition-layout duration-300').transition;
+  assert.deepEqual([both.properties, both.durationMs], [['opacity', 'layout'], 300]);
+  assert.equal(classStyle('transition-none').transition, 'none');
+});
+
 test('text utilities: transform, decoration, nowrap, alignment and families', async () => {
   const aligns = ['left', 'center', 'right', 'start', 'end', 'justify'];
   await use(['uppercase', 'capitalize', 'underline', 'line-through', 'no-underline', 'whitespace-nowrap', 'font-mono', 'font-sans', 'font-serif',

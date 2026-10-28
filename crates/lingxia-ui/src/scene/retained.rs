@@ -294,7 +294,11 @@ impl RetainedLayout {
         blocked: bool,
     ) -> crate::animation::transition::Resolved {
         let style = &self.paint_styles[index];
-        let [_, _, w, h] = self.nodes[index].bounds;
+        let [x, y, w, h] = self.nodes[index].bounds;
+        let moved = style
+            .transform
+            .map(|t| t.translation([w, h]))
+            .unwrap_or_default();
         let painted = |command: usize| match &self.commands[command] {
             Paint::Rect { color, .. } | Paint::Border { color, .. } => *color,
             _ => [0; 4],
@@ -326,6 +330,7 @@ impl RetainedLayout {
                     })
                     .collect()
             }),
+            position: (!blocked).then(|| [f64::from(x - moved[0]), f64::from(y - moved[1])]),
         }
     }
 

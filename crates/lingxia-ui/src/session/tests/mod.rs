@@ -1622,6 +1622,7 @@ fn native_validation_failure_does_not_commit_state_or_handlers() {
 mod editor_focus;
 #[path = "editor_rules.rs"]
 mod editor_rules;
+mod flip;
 #[cfg(feature = "hot-swap")]
 #[path = "hot_swap.rs"]
 mod hot_swap;

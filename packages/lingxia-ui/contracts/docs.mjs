@@ -133,8 +133,8 @@ async function lowering(generated) {
 async function designSystem() {
   const { __unstable__loadDesignSystem: load } = await import('tailwindcss');
   const theme = await readFile(new URL(import.meta.resolve('tailwindcss/theme.css')), 'utf8');
-  const { roleTheme } = await import('../compiler/tailwind.mjs');
-  return load(`${theme}\n${roleTheme}\n@tailwind utilities;`);
+  const { roleTheme, viewExtensions } = await import('../compiler/tailwind.mjs');
+  return load(`${theme}\n${roleTheme}\n${viewExtensions}\n@tailwind utilities;`);
 }
 
 const strip = name => name.replace(/^-/, '');
@@ -231,9 +231,7 @@ const variantSamples = {
 };
 
 const probe = 'opacity-50';
-// `exit:` is the View's own variant, added to the compile input rather than Tailwind's design system.
-const variantCandidates = system => [...system.getVariants().map(variant => [variant.name, `${variantSamples[variant.name] ?? variant.name}:${probe}`]),
-  ['exit', `exit:${probe}`]];
+const variantCandidates = system => system.getVariants().map(variant => [variant.name, `${variantSamples[variant.name] ?? variant.name}:${probe}`]);
 
 function variants(schema, system, rules) {
   const candidates = variantCandidates(system);
@@ -302,6 +300,7 @@ const limitNotes = {
   leaseFrames: 'Frame-sized GPU textures a page may hold at once across prepared frames and kept animation layers (at least 64 MiB, under `compositeBytes`); past it the frame draws without the kept layer.',
   compositeBytes: 'Absolute ceiling on those working surfaces, for very large windows.',
   ghosts: 'Removed elements still drawing their exit at once; past it further removals vanish at once.',
+  layoutMotions: 'Elements moving to a new layout position under `transition-layout` at once; past it further moves land at once.',
   outlineGlyphs: "Glyphs the platform outlines (Apple's PingFang UI faces) in one frame, each filled as a path; past it frames slow down.",
 };
 

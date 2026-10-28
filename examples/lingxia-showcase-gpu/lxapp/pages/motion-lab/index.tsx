@@ -10,6 +10,7 @@ interface Actions {
 export function render({ data, actions }: View<Actions, { dipped: boolean }>) {
   const shown = useLocal('shown', true);
   const present = useLocal('present', true);
+  const order = useLocal('order', ['One', 'Two', 'Three', 'Four']);
   const visible = shown.value && !data.dipped;
   return (
     <Page testId="motion-lab" title="Motion lab">
@@ -31,6 +32,18 @@ export function render({ data, actions }: View<Actions, { dipped: boolean }>) {
           <view testId="motion-presence-card" className="h-12 rounded-lg bg-accent transition duration-300 starting:opacity-0 starting:translate-y-3 exit:opacity-0 exit:-translate-y-3" />
         )}
         <text className="text-xs text-muted">Slides in on Add and out on Remove; the gap closes at once.</text>
+      </Section>
+      <Section title="Reorder" testId="motion-layout">
+        <row className="items-center gap-3">
+          <Button testId="motion-layout-rotate" onClick={() => order.set([...order.value.slice(1), order.value[0]])}>Rotate</Button>
+          <Button testId="motion-layout-reverse" onClick={() => order.set([...order.value].reverse())}>Reverse</Button>
+        </row>
+        {order.value.map(label => (
+          <row key={label} testId={`motion-layout-${label}`} className="h-10 px-3 items-center rounded-lg bg-surface-sunken transition-layout duration-300">
+            <text>{label}</text>
+          </row>
+        ))}
+        <text className="text-xs text-muted">Rows slide to their new places; Reduce Motion lands them at once.</text>
       </Section>
       <Section title="Spin" testId="motion-spin">
         <vector testId="motion-spin-icon" className="w-10 h-10 text-accent animate-spin" paths={[{ d: 'M12 3a9 9 0 1 0 9 9', fill: 'none', stroke: 'currentColor', strokeWidth: 2.5, strokeLinecap: 'round' }]} />

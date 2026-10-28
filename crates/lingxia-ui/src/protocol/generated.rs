@@ -447,7 +447,7 @@ pub fn options(kind: &str) -> Option<&'static [&'static str]> {
         "auto-complete" => Some(&["off", "on", "username", "current-password", "new-password", "one-time-code", "email", "tel", "name", "given-name", "family-name", "street-address", "postal-code", "country", "cc-number", "cc-exp", "cc-csc", "bday"]),
         "enter-key-hint" => Some(&["enter", "done", "go", "next", "previous", "search", "send"]),
         "auto-capitalize" => Some(&["none", "sentences", "words", "characters"]),
-        "transition-property" => Some(&["opacity", "transform", "bg", "fg", "border", "shadow"]),
+        "transition-property" => Some(&["opacity", "transform", "bg", "fg", "border", "shadow", "layout"]),
         "user-select" => Some(&["none", "text", "all"]),
         _ => None,
     }
@@ -487,6 +487,7 @@ pub mod limits {
     pub const COMPOSITE_BYTES: usize = 268435456;
     pub const OUTLINE_GLYPHS: usize = 4096;
     pub const GHOSTS: usize = 64;
+    pub const LAYOUT_MOTIONS: usize = 256;
 }
 
 /// Environment keys and where each comes from: `device` facts, a host `push`, or the `session`.

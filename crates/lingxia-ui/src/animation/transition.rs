@@ -13,8 +13,11 @@ pub enum Property {
     Foreground,
     Border,
     Shadow,
+    /// FLIP: the offset from where layout last put the node, animating to zero.
+    Layout,
 }
 
+/// The paint properties; `Layout` is reconciled on its own.
 const PROPERTIES: [Property; 6] = [
     Property::Opacity,
     Property::Transform,
@@ -26,7 +29,7 @@ const PROPERTIES: [Property; 6] = [
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TransitionDef {
-    properties: [bool; 6],
+    properties: [bool; 7],
     duration: Duration,
     delay: Duration,
     easing: Easing,
@@ -48,12 +51,20 @@ impl TransitionDef {
             return Err(invalid());
         }
         let wire: Wire = serde_json::from_str(source).map_err(|_| invalid())?;
-        let mut properties = [false; 6];
+        let mut properties = [false; 7];
         for name in &wire.properties {
-            let index = ["opacity", "transform", "bg", "fg", "border", "shadow"]
-                .iter()
-                .position(|known| known == name)
-                .ok_or_else(invalid)?;
+            let index = [
+                "opacity",
+                "transform",
+                "bg",
+                "fg",
+                "border",
+                "shadow",
+                "layout",
+            ]
+            .iter()
+            .position(|known| known == name)
+            .ok_or_else(invalid)?;
             if std::mem::replace(&mut properties[index], true) {
                 return Err(invalid());
             }
@@ -163,6 +174,8 @@ pub struct Resolved {
     pub foreground: [u8; 4],
     pub border: Option<[u8; 4]>,
     pub shadows: Option<Vec<ShadowLayer>>,
+    /// Where layout put the box, before its own transform; `None` when it cannot take one.
+    pub position: Option<[f64; 2]>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -171,6 +184,7 @@ enum Value {
     Transform(Decomposed),
     Color([u8; 4]),
     Shadows(Vec<ShadowLayer>),
+    Offset([f64; 2]),
 }
 
 impl Resolved {
@@ -182,6 +196,7 @@ impl Resolved {
             Property::Foreground => Some(Value::Color(self.foreground)),
             Property::Border => self.border.map(Value::Color),
             Property::Shadow => self.shadows.clone().map(Value::Shadows),
+            Property::Layout => None,
         }
     }
 }
@@ -191,6 +206,9 @@ fn mix(from: &Value, to: &Value, t: f64) -> Value {
         (Value::Number(a), Value::Number(b)) => Value::Number(a + (b - a) * t),
         (Value::Transform(a), Value::Transform(b)) => Value::Transform(a.mix(b, t)),
         (Value::Color(a), Value::Color(b)) => Value::Color(mix_oklab(*a, *b, t)),
+        (Value::Offset(a), Value::Offset(b)) => {
+            Value::Offset([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t])
+        }
         (Value::Shadows(a), Value::Shadows(b)) => Value::Shadows(
             (0..a.len().max(b.len()))
                 .map(|i| {
@@ -362,6 +380,54 @@ impl From<(String, TransitionDef, Resolved)> for Input {
     }
 }
 
+impl Node {
+    /// The FLIP motion of a node that layout moved: from where it was on screen back to zero.
+    fn layout_motion(
+        &self,
+        target: &Resolved,
+        definition: &TransitionDef,
+        now: Duration,
+        policy: Policy,
+    ) -> Result<Option<Instance>, String> {
+        let (Some(before), Some(after)) = (self.target.position, target.position) else {
+            return Ok(None);
+        };
+        if !definition.covers(Property::Layout) {
+            return Ok(None);
+        }
+        let running = self
+            .instances
+            .get(&Property::Layout)
+            .filter(|instance| policy.keep && !instance.finished(now));
+        if before == after {
+            return Ok(running.cloned());
+        }
+        if !policy.start {
+            return Ok(None);
+        }
+        let shown = match running.map(|instance| instance.sample(now)).transpose()? {
+            Some(Value::Offset(offset)) => offset,
+            _ => [0.0; 2],
+        };
+        let from = [
+            before[0] + shown[0] - after[0],
+            before[1] + shown[1] - after[1],
+        ];
+        // Sub-pixel reflows (rounding, a scrollbar) are not worth a motion.
+        if from[0].abs() < 0.5 && from[1].abs() < 0.5 {
+            return Ok(None);
+        }
+        Ok(Some(Instance {
+            from: Value::Offset(from),
+            to: Value::Offset([0.0; 2]),
+            duration: definition.duration.mul_f64(policy.scale),
+            delay: definition.delay.mul_f64(policy.scale),
+            easing: definition.easing,
+            started: None,
+        }))
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 struct Node {
     target: Resolved,
@@ -414,6 +480,7 @@ impl Transitions {
         policy: Policy,
     ) -> Result<Self, String> {
         let mut next = BTreeMap::new();
+        let mut moving = 0;
         for input in inputs {
             let Input {
                 identity,
@@ -499,6 +566,13 @@ impl Transitions {
                             started: None,
                         },
                     );
+                }
+                if let Some(instance) = old
+                    .layout_motion(&target, &definition, now, policy)?
+                    .filter(|_| moving < crate::protocol::limits::LAYOUT_MOTIONS)
+                {
+                    instances.insert(Property::Layout, instance);
+                    moving += 1;
                 }
             }
             next.insert(
@@ -599,6 +673,18 @@ impl Transitions {
             .collect()
     }
 
+    /// Nodes still moving to a new layout position.
+    pub(crate) fn layout_motions(&self, now: Duration) -> usize {
+        self.0
+            .values()
+            .filter(|node| {
+                node.instances
+                    .get(&Property::Layout)
+                    .is_some_and(|instance| !instance.finished(now))
+            })
+            .count()
+    }
+
     pub(crate) fn start(&mut self, now: Duration) {
         for node in self.0.values_mut() {
             for instance in node.instances.values_mut() {
@@ -620,6 +706,7 @@ impl Transitions {
         let Some(node) = self.0.get(identity) else {
             return Ok(overrides);
         };
+        let mut offset = None;
         for (property, instance) in &node.instances {
             if instance.finished(now) {
                 continue;
@@ -633,8 +720,17 @@ impl Transitions {
                 (Property::Foreground, Value::Color(v)) => overrides.foreground = Some(v),
                 (Property::Border, Value::Color(v)) => overrides.border = Some(v),
                 (Property::Shadow, Value::Shadows(v)) => overrides.shadows = Some(v),
+                (Property::Layout, Value::Offset(v)) => offset = Some(v),
                 _ => return Err("UI_TRANSITION: mismatched value".into()),
             }
+        }
+        // The FLIP offset rides on top of the node's own (possibly transitioning) transform.
+        if let (Some([dx, dy]), Some(mut transform)) =
+            (offset, overrides.transform.or(node.target.transform))
+        {
+            transform.translate[0] += dx;
+            transform.translate[1] += dy;
+            overrides.transform = Some(transform);
         }
         Ok(overrides)
     }
@@ -707,6 +803,7 @@ mod tests {
             foreground: [0, 0, 0, 255],
             border: None,
             shadows: Some(Vec::new()),
+            position: Some([0.0; 2]),
         }
     }
 

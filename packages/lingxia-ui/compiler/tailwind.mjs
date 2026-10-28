@@ -123,6 +123,14 @@ function roleColor(value) {
 }
 
 /** The Tailwind colour names for the roles: `text-muted` is `muted`, so the class reads `text-muted`. */
+// The View's own variant and utility: `exit:` styles a removed element's ghost; `transition-layout`
+// adds FLIP position motion to whatever `transition-*` sets.
+export const viewExtensions = `@custom-variant exit (&:where(.lx-exit));
+@utility transition-layout {
+  --lx-transition-layout: 1;
+  transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
+  transition-duration: var(--tw-duration, var(--default-transition-duration));
+}`;
 export const roleTheme = `@theme inline {\n${roles.map(role => `  --color-${role.replace(/^text-/, '')}: role(${role});`).join('\n')}\n}`;
 
 function variables(value, vars, depth = 0) {
@@ -538,7 +546,8 @@ function transitionDeclaration(prop, raw, local, motion) {
       else if (!transitionInert.has(name)) unsupported(`transition of ${name}`);
     }
     motion.properties = [...properties];
-  } else if (prop === '--tw-duration') motion.duration = transitionMs(value);
+  } else if (prop === '--lx-transition-layout') motion.layout = true;
+  else if (prop === '--tw-duration') motion.duration = transitionMs(value);
   else if (prop === 'transition-duration') {
     // `var(--tw-duration, default)` follows whichever duration-* utility applies.
     if (raw.includes('var(--tw-duration')) motion.durationDefault = transitionMs(value);
@@ -566,7 +575,7 @@ function declarations(nodes, vars, root) {
       style.animation = lowerAnimation(node.value, root, value => variables(value, local));
       continue;
     }
-    if (/^transition(?:-property|-duration|-delay|-timing-function)?$/.test(prop) || prop === '--tw-duration' || prop === '--tw-ease') {
+    if (/^transition(?:-property|-duration|-delay|-timing-function)?$/.test(prop) || ['--tw-duration', '--tw-ease', '--lx-transition-layout'].includes(prop)) {
       transitionDeclaration(prop, node.value, local, motion); continue;
     }
     if (prop.startsWith('--tw-backdrop-') || prop === 'backdrop-filter' || prop === '-webkit-backdrop-filter') { backdropDeclaration(prop, node.value, local, backdrop); continue; }
@@ -735,7 +744,7 @@ function compilerFor(theme) {
   let compiler = compilers.get(theme);
   if (!compiler) {
     compiler = readFile(new URL(import.meta.resolve('tailwindcss/theme.css')), 'utf8')
-      .then(defaults => compile(`${defaults}\n${theme}\n${roleTheme}\n@custom-variant exit (&:where(.lx-exit));\n@tailwind utilities;`));
+      .then(defaults => compile(`${defaults}\n${theme}\n${roleTheme}\n${viewExtensions}\n@tailwind utilities;`));
     compiler.catch(() => compilers.delete(theme));
     if (compilers.size >= 8) compilers.delete(compilers.keys().next().value);
     compilers.set(theme, compiler);

@@ -124,6 +124,8 @@ public final class GpuFrame {
         public long animationFrames() { return json.optLong("animationFrames"); }
         /** `ghosts`: usize? */
         public Long ghosts() { if (json.isNull("ghosts")) return null; return json.optLong("ghosts"); }
+        /** `layoutMotions`: usize? */
+        public Long layoutMotions() { if (json.isNull("layoutMotions")) return null; return json.optLong("layoutMotions"); }
         /** `cost`: FrameCost */
         public FrameCost cost() { JSONObject o = json.optJSONObject("cost"); return o == null ? null : new FrameCost(o); }
         /** `imageCacheBytes`: u64? */
