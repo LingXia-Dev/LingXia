@@ -24,11 +24,14 @@ test("skipSpecFiles skips a file's specs with the reason", async () => {
   assert.equal(report.cases[0].reason, "reads the WebView DOM");
 });
 
-test("a skip naming a file the run does not carry fails the run", async () => {
+test("a skip naming a file the run does not carry warns and is listed as skipUnused", async () => {
   spec("one", async () => {});
   skipSpecFiles({ "tests/gone.test.ts": "removed" });
-  installFakeHost(createWorld());
-  await assert.rejects(run(), /not part of this run/);
+  const host = installFakeHost(createWorld());
+  const report = await run();
+  assert.equal(report.cases[0].status, "passed");
+  assert.deepEqual(report.skipUnused, ["tests/gone.test.ts"]);
+  assert.ok(host.events.some((e) => e.type === "diagnostic" && /not part of this run/.test(e.message)));
 });
 
 test("a skip naming a bundled file that registers no spec warns and is listed as skipUnused", async () => {

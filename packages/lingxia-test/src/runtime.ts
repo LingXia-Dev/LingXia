@@ -139,8 +139,9 @@ let skipUnused: string[] = [];
  * Skip every spec of the named files, with the reason, in this run: for a
  * suite shared by several apps, the files one of them cannot run. Names are
  * source names as reports print them (`../other/lxapp/tests/pages/x.test.ts`).
- * A bundled file that registers no spec is a warning (`skipUnused` in the
- * report); a name the bundle does not carry fails the run.
+ * A name that registers no spec, or that the run does not carry, is a
+ * warning listed as `skipUnused` in the report; keep the list current with a
+ * commit-time check.
  */
 function skipSpecFiles(skips: Record<string, string>): void {
   for (const [file, reason] of Object.entries(skips)) {
@@ -692,10 +693,10 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
   skipUnused = [];
   for (const [file, reason] of fileSkips) {
     if (!specFiles.has(file)) {
-      if (!bundledSources()?.includes(file)) throw new Error(`skipSpecFiles names ${file}, which is not part of this run`);
       skipUnused.push(file);
+      const why = bundledSources()?.includes(file) ? "registered no spec" : "is not part of this run";
       await host.emit({ type: "diagnostic", phase: "collect", level: "warn",
-        message: `skipSpecFiles names ${file}, which registered no spec` });
+        message: `skipSpecFiles names ${file}, which ${why}` });
       continue;
     }
     for (const item of specs) {
