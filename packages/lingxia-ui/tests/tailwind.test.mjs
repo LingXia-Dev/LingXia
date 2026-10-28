@@ -188,7 +188,9 @@ test('flex growth, basis and shorthands retain independent cascade values', asyn
   assert.deepEqual(classStyle('flex-initial'), { flexGrow: 0, flexShrink: 1, flexBasis: 'auto' });
   assert.equal(classStyle('basis-1/2').flexBasis, '50%');
   assert.equal(classStyle('basis-1/2 md:basis-12', env('light', 900)).flexBasis, 48);
-  assert.deepEqual(classStyle('flex-1 basis-auto'), classStyle('basis-auto flex-1'));
+  // The class written later wins a conflict, as tailwind-merge resolves it.
+  assert.equal(classStyle('flex-1 basis-auto').flexBasis, 'auto');
+  assert.equal(classStyle('basis-auto flex-1').flexBasis, '0%');
   assert.equal(node('column', { className: 'basis-12', style: { flexBasis: '25%' } }).flexBasis, '25%');
 });
 
@@ -423,10 +425,10 @@ test('radial, conic and complete CSS gradients lower from utilities, arbitrary v
   const hero = classStyle('bg-(image:--gradient-hero)').backgroundImage;
   assert.deepEqual([hero.kind, hero.angle, hero.stops[1].offset], [undefined, 135, .8]);
   assert.deepEqual(classStyle('bg-[conic-gradient(from_90deg,#fff_0deg,#000_0.5turn)]').backgroundImage.stops.map(stop => stop.offset), [0, .5]);
-  // Both set one background-image; Tailwind's order decides, never the class string.
+  // Both set one background-image: the class written later wins.
   const mixed = 'bg-(image:--gradient-hero) bg-linear-45 from-danger to-accent';
-  assert.deepEqual(classStyle(mixed), classStyle(mixed.split(' ').reverse().join(' ')));
-  assert.equal(classStyle(mixed).backgroundImage.angle, 135);
+  assert.equal(classStyle(mixed).backgroundImage.angle, 45);
+  assert.equal(classStyle('bg-linear-45 bg-(image:--gradient-hero) from-danger to-accent').backgroundImage.angle, 135);
   for (const [name, message] of [['bg-[repeating-linear-gradient(#fff,#000)]', /background-image/], ['bg-[radial-gradient(#fff_10px,#000)]', /percentages/],
     ['bg-[linear-gradient(at_top,#fff,#000)]', /linear gradients do not take at/]])
     assert.throws(() => classStyle(name), message);
@@ -447,7 +449,7 @@ test('radii: infinite radius clamps and corners cascade under shorthands', async
   assert.deepEqual(classStyle('rounded-full'), { borderRadius: 16384 });
   assert.deepEqual(classStyle('rounded-none'), { borderRadius: 0 });
   assert.deepEqual(classStyle('rounded-3xl rounded-br-md'), { borderRadius: 24, borderBottomRightRadius: 6 });
-  assert.deepEqual(classStyle('rounded-br-md rounded-3xl'), classStyle('rounded-3xl rounded-br-md'));
+  assert.deepEqual(classStyle('rounded-br-md rounded-3xl'), { borderRadius: 24 }, 'a later shorthand clears the corner');
   assert.deepEqual(classStyle('rounded-3xl rounded-t-none'), { borderRadius: 24, borderTopLeftRadius: 0, borderTopRightRadius: 0 });
   assert.equal(classStyle('rounded-br-full').borderBottomRightRadius, 16384);
   const inline = node('column', { className: 'rounded-3xl rounded-br-md', style: { borderRadius: 8 } });
@@ -465,9 +467,10 @@ test('real Tailwind utilities lower to native dimensions, typography and colors'
   assert.equal(classStyle('bg-accent/80').backgroundColor, 'accent/80');
 });
 
-test('cascade follows Tailwind order and responds to viewport and appearance', async () => {
+test('conflicts go to the class written later; variants keep Tailwind order and respond to viewport and appearance', async () => {
   await use(['gap-2', 'md:gap-4', 'bg-surface', 'dark:p-1', 'p-4', 'p-2', 'pl-1', 'md:p-8']);
-  assert.equal(classStyle('p-4 p-2').paddingLeft, 16);
+  assert.equal(classStyle('p-4 p-2').paddingLeft, 8);
+  assert.equal(classStyle('md:gap-4 gap-2', env('light', 900)).gap, 16, 'a later base class does not beat a breakpoint');
   assert.equal(classStyle('p-2 p-4').paddingLeft, 16);
   assert.deepEqual(classStyle('gap-2 md:gap-4 bg-surface', env('light', 767)), { gap: 8, backgroundColor: 'surface' });
   assert.deepEqual(classStyle('gap-2 md:gap-4 bg-surface dark:p-1', env('dark', 768)), { gap: 16, backgroundColor: 'surface', paddingTop: 4, paddingRight: 4, paddingBottom: 4, paddingLeft: 4 });
@@ -545,7 +548,7 @@ test('padding, borders and word breaking keep shorthand, axis, edge and variant 
   await use(['p-2', 'px-6', 'py-3', 'pl-1', 'md:p-4', 'dark:px-3', '[padding:1px_2px_3px_4px]', 'border', 'border-4', 'border-t-2', 'border-x-8',
     'border-accent/50', 'border-current', 'border-dashed', 'border-none', 'break-all', 'break-normal', 'wrap-anywhere', 'h-auto', 'min-h-[42px]', 'max-h-[120px]']);
   const names = 'pl-1 px-6 p-2 py-3 md:p-4 dark:px-3';
-  assert.deepEqual(classStyle(names, env('light', 600)), { paddingTop: 12, paddingRight: 24, paddingBottom: 12, paddingLeft: 4 });
+  assert.deepEqual(classStyle(names, env('light', 600)), { paddingTop: 12, paddingRight: 8, paddingBottom: 12, paddingLeft: 8 });
   assert.deepEqual(classStyle(names, env('light', 800)), { paddingTop: 16, paddingRight: 16, paddingBottom: 16, paddingLeft: 16 });
   assert.deepEqual(classStyle(names, env('dark', 800)), { paddingTop: 16, paddingRight: 12, paddingBottom: 16, paddingLeft: 12 });
   assert.deepEqual(classStyle('[padding:1px_2px_3px_4px]'), { paddingTop: 1, paddingRight: 2, paddingBottom: 3, paddingLeft: 4 });
@@ -687,4 +690,16 @@ test('dir="auto" takes the direction of the content\'s first strong character', 
     h('row', { dir: 'auto' }, h('text', {}, 'مرحبا')), h('text', { dir: 'auto' }, '123')));
   assert.deepEqual(root.children.map(child => child.props.direction), ['rtl', 'ltr', 'rtl', undefined]);
   assert.throws(() => rendered(() => h('text', { dir: 'up' }, 'x')), /UI_PROP: dir must be "ltr", "rtl" or "auto"/);
+});
+
+// cva components merge the caller's className after their own, as tailwind-merge does.
+test('a caller class overrides a component class of the same property; variants stay separate', async () => {
+  await use(['h-10', 'px-4', 'rounded-md', 'bg-accent', 'text-on-accent', 'rounded-full', 'px-2', 'bg-danger', 'active:bg-accent', 'p-2', 'p-[3px]', 'md:px-6']);
+  const component = 'h-10 px-4 rounded-md bg-accent text-on-accent active:bg-accent md:px-6';
+  const merged = resolveClasses(`${component} rounded-full px-2 bg-danger`, env('light', 400));
+  assert.deepEqual([merged.base.borderRadius, merged.base.paddingLeft, merged.base.backgroundColor, merged.base.color], [16384, 8, 'danger', 'on-accent']);
+  assert.equal(merged.active.backgroundColor, 'accent', 'the pressed variant is not overridden by a base class');
+  assert.equal(classStyle(`${component} px-2`, env('light', 900)).paddingLeft, 24, 'nor is a breakpoint');
+  assert.equal(classStyle('p-2 p-[3px]').paddingTop, 3, 'arbitrary values take part');
+  assert.equal(classStyle('p-[3px] p-2').paddingTop, 8);
 });

@@ -1,18 +1,9 @@
 // The h-app primitives the ports use (components/ui/button, badge, skeleton, network/status), with
-// their class strings kept. h-app merges classes with `cn` (later wins); here Tailwind's cascade
-// decides, so overrides below only add utilities the variant does not set.
+// their class strings kept. A caller's class overrides the variant's, as with h-app's twMerge `cn`.
 import type { VectorPath } from '@lingxia/ui';
 import { icons, type IconName } from './icons';
 
 export const cn = (...parts: (string | false | null | undefined)[]) => parts.filter(Boolean).join(' ');
-
-// h-app's `cn` is twMerge: a caller's `rounded-full` replaces the variant's `rounded-sm`. The View
-// keeps every class and lets Tailwind's order decide, so the variant drops what the caller sets.
-const group = (token: string) => token.match(/^(rounded(?:-[tbsel]{1,2})?|size|h|w|p[xytrbl]?)-/)?.[1];
-const merge = (base: string, override?: string) => {
-  const taken = new Set((override ?? '').split(/\s+/).map(group).filter(Boolean));
-  return cn(...base.split(/\s+/).filter(token => !taken.has(group(token))), override);
-};
 
 export function Icon({ name, size = 24, strokeWidth = 2, fill = 'none', className }: { name: IconName; size?: number; strokeWidth?: number; fill?: string; className?: string }) {
   const paths: VectorPath[] = icons[name].map(d => ({ d, fill, stroke: 'currentColor', strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round' }));
@@ -41,7 +32,7 @@ export function Button({ variant = 'default', size = 'default', className, disab
   const inert = disabled && (variant === 'default' || variant === 'destructive') ? 'bg-surface-sunken text-muted-foreground' : disabled ? 'opacity-50' : '';
   return (
     <button testId={testId} accessibilityLabel={accessibilityLabel} disabled={disabled} onClick={onClick}
-      className={merge(cn(BUTTON, inert || VARIANT[variant], SIZE[size]), className)}>
+      className={cn(BUTTON, inert || VARIANT[variant], SIZE[size], className)}>
       {children}
     </button>
   );

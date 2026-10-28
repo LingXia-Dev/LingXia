@@ -259,6 +259,10 @@
     return map;
   };
   var aliasesByDirection = { ltr: aliases("ltr"), rtl: aliases("rtl") };
+  function resetLonghands(result, layer2) {
+    for (const name of Object.keys(layer2))
+      for (const longhand of longhands[name] ?? []) if (!(longhand in layer2)) delete result[longhand];
+  }
   function mergeStyle(direction, ...layers) {
     const result = {};
     const alias = aliasesByDirection[direction] ?? aliasesByDirection.ltr;
@@ -1979,6 +1983,7 @@
     const style2 = {}, gradient = {}, shadow = {}, backdrop2 = {}, transform = {}, motion = {}, mask = {};
     let numeric = {};
     for (const rule of rules) {
+      if (rule.style) resetLonghands(style2, rule.style);
       Object.assign(style2, copy(rule.style));
       if (meta && rule.style?.lineHeight !== void 0) meta.pairedLeading = rule.pairedLeading === true;
       Object.assign(motion, rule.motion);
@@ -2058,15 +2063,31 @@
     const key = `${environment}\0${className}`;
     if (cache.has(key)) return copy(cache.get(key));
     const matched = [];
-    for (const name of new Set(className.split(/\s+/).filter(Boolean))) {
+    const tokens = className.split(/\s+/).filter(Boolean);
+    const position = new Map(tokens.map((name, index) => [name, index]));
+    for (const name of position.keys()) {
       const rules = byName.get(name);
       if (!rules) throw Error(`UI_CLASS: ${name} was not compiled; use complete utility names in source`);
       for (const rule of rules) {
         if (rule.error) throw Error(`UI_CLASS: ${name}: ${rule.error.message}`);
-        if (applies(rule, env)) matched.push(rule);
+        if (applies(rule, env)) matched.push({ ...rule, position: position.get(name) });
       }
     }
     matched.sort((a, b) => Number(!!a.when?.state) - Number(!!b.when?.state) || a.order - b.order);
+    const slots = /* @__PURE__ */ new Map();
+    matched.forEach((rule, index) => {
+      const variant = JSON.stringify(rule.when ?? {});
+      if (!slots.has(variant)) slots.set(variant, []);
+      slots.get(variant).push(index);
+    });
+    const ordered = [...matched];
+    for (const indices of slots.values()) {
+      const group = indices.map((index) => matched[index]).sort((a, b) => a.position - b.position || a.order - b.order);
+      indices.forEach((index, at) => {
+        ordered[index] = group[at];
+      });
+    }
+    matched.splice(0, matched.length, ...ordered);
     const own2 = matched.filter((rule) => !rule.when?.children);
     const plain2 = own2.filter((rule) => !rule.when?.state);
     const meta = {};

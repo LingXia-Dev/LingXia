@@ -35,6 +35,12 @@ const aliases = direction => {
 };
 const aliasesByDirection = { ltr: aliases('ltr'), rtl: aliases('rtl') };
 
+/** Clear what a later `layer` resets in `result`: the longhands of each shorthand it sets. */
+export function resetLonghands(result, layer) {
+  for (const name of Object.keys(layer))
+    for (const longhand of longhands[name] ?? []) if (!(longhand in layer)) delete result[longhand];
+}
+
 /**
  * Layers styles the way the CSS cascade does: a shorthand in a later layer
  * resets the longhands earlier layers set; within one layer longhands win.

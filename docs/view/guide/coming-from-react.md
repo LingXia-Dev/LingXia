@@ -92,7 +92,8 @@ A render that throws keeps the previous frame on screen ([Diagnostics](diagnosti
 - Tailwind utilities and the `style` prop only. CSS files, CSS modules, CSS-in-JS and `<style>` do not
   exist; the one stylesheet a page may import holds theme tokens.
 - Write complete class names. Helpers such as `clsx` work when every class is a complete literal, but the
-  build can check only classes it can trace through literals, conditionals and `const`s.
+  build can check only classes it can trace through literals, conditionals and `const`s. Conflicts resolve
+  as tailwind-merge does (the later class wins per property and variant), so a `cn` that only joins is enough.
 - There is no block or inline flow: every box is flexbox or grid, and `display: inline` is not supported.
   Flex items do not shrink by default ([Layout](layout.md)).
 - There is no stylesheet cascade. Text styles inherit through containers; nothing else inherits.

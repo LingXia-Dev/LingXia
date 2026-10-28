@@ -53,7 +53,9 @@ export function render() {
 
 Choose between complete names instead: `size.value === 4 ? 'p-4' : 'p-8'`.
 
-The order of classes in a string never matters; Tailwind's cascade decides, as in CSS. Every utility
+When two classes set the same property under the same variants, the one written later wins, as with
+tailwind-merge, so a caller's `className` overrides a component's: `cn('rounded-md px-4', 'rounded-full')`
+is round. Classes under different variants keep Tailwind's order (`md:p-8` beats a later `p-2` at `md`). Every utility
 the default theme defines is listed in [utilities](../reference/utilities.md) as supported or refused.
 
 ## Colours are roles
