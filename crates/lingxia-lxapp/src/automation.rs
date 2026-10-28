@@ -6,6 +6,7 @@
 //! script can never drift between them. Errors are plain strings; each
 //! front-end maps them into its own error type.
 
+use crate::debug;
 use crate::lxapp::LxApp;
 use crate::startup::split_path_query;
 use crate::{NavigationType, PageInstance};
