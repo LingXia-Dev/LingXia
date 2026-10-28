@@ -29,6 +29,7 @@ internal object LxAppGesture {
     private class Finger(
         val downTime: Long,
         val window: Boolean,
+        val origin: Triple<Float, Float, Float>,
         var x: Float,
         var y: Float,
     )
@@ -103,13 +104,13 @@ internal object LxAppGesture {
         if (points.length() == 0) throw IllegalArgumentException("gesture has no points")
         val end = request.optString("end", "up")
         val continued = request.optLong("finger", 0L)
-        // Screen origin and scale of the coordinate space, read once so a
-        // pull that moves the page does not move the finger with it.
-        val (originX, originY, scale) = onMain { origin(appId, webtag) }
-
         var finger = if (continued != 0L) {
             fingers.remove(continued) ?: throw IllegalStateException("finger $continued is not held")
         } else null
+        // Screen origin and scale of the coordinate space, fixed at the down
+        // so a pull that moves the page does not move the finger with it.
+        val origin = finger?.origin ?: onMain { origin(appId, webtag) }
+        val (originX, originY, scale) = origin
         val startedAt = SystemClock.uptimeMillis()
         var events = 0
         var window = finger?.window ?: true
@@ -123,7 +124,7 @@ internal object LxAppGesture {
             if (finger == null) {
                 val downTime = SystemClock.uptimeMillis()
                 window = inject(MotionEvent.ACTION_DOWN, downTime, x, y, preferWindow = true)
-                finger = Finger(downTime, window, x, y)
+                finger = Finger(downTime, window, origin, x, y)
             } else {
                 inject(MotionEvent.ACTION_MOVE, finger.downTime, x, y, preferWindow = finger.window)
                 finger.x = x
