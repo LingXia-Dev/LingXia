@@ -1,0 +1,12 @@
+{
+ "userName": "Dana",
+ "routerName": "Main router",
+ "title": null,
+ "thinking": true,
+ "messages": [
+  { "id": "1", "role": "user", "text": "Why is the TV buffering in the living room?" },
+  { "id": "2", "role": "assistant", "text": "The living-room TV is on the 2.4 GHz band, 9 m from the nearest Wi‑Fi point, and it dropped to 18 Mbps around 8 PM.\n\nMoving it to 5 GHz should fix the buffering. Want me to do that now?", "question": { "state": "waiting", "options": [{ "id": "yes", "label": "Yes, move it" }, { "id": "no", "label": "Not now" }] } },
+  { "id": "3", "role": "assistant", "notice": "rateLimited" },
+  { "id": "4", "role": "user", "text": "ok" }
+ ]
+}

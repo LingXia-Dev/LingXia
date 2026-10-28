@@ -223,7 +223,7 @@ function StepRing({ phase, elapsed }: { phase?: Phase; elapsed: number }) {
         <view className="relative grid size-44 place-items-center rounded-full">
           <vector accessibilityHidden className="absolute inset-0 animate-[speedtest-spin_1.6s_linear_infinite]" viewBox={[0, 0, 176, 176]}
             paths={[{ d: circle(88, 86.5), fill: 'none', stroke: 'url(#orbit)', strokeWidth: 3 }]}
-            gradients={{ orbit: { type: 'conic', cx: 88, cy: 88, from: 0, stops: [{ offset: 0, color: '#00000000' }, { offset: 0.6, color: '#00000000' }, { offset: 1, color: 'chart-1' }] } }} />
+            gradients={{ orbit: { type: 'conic', from: 0, stops: [{ offset: 0, color: '#00000000' }, { offset: 0.6, color: '#00000000' }, { offset: 1, color: 'chart-1' }] } }} />
           <view className="grid max-w-[9.5rem] justify-items-center gap-2 text-center">
             <view key={phase ?? 'none'} className="speedtest-pop brand-gradient grid size-11 place-items-center rounded-full text-brand-foreground">
               <Icon name={phase ? PHASE_ICON[phase] : 'Gauge'} size={20} />

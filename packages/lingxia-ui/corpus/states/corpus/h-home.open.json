@@ -1,0 +1,73 @@
+{
+ "locationName": "Maple Street",
+ "network": "online",
+ "dateLabel": "Tuesday, October 28",
+ "greeting": "Good afternoon",
+ "userName": "Dana",
+ "experience": {
+  "band": {
+   "code": "fair",
+   "label": "Fair",
+   "score": 64
+  },
+  "headline": "Video calls stuttered a few times this evening.",
+  "since": "6:40 PM",
+  "categories": [
+   {
+    "name": "rtc",
+    "label": "Video calls",
+    "band": {
+     "code": "poor",
+     "label": "Poor",
+     "score": 41
+    },
+    "affected": true
+   },
+   {
+    "name": "gaming",
+    "label": "Gaming",
+    "band": {
+     "code": "good",
+     "label": "Good",
+     "score": 82
+    },
+    "affected": false
+   },
+   {
+    "name": "streaming",
+    "label": "Streaming",
+    "band": {
+     "code": "excellent",
+     "label": "Excellent",
+     "score": 95
+    },
+    "affected": false
+   },
+   {
+    "name": "live",
+    "label": "Live video",
+    "band": null,
+    "affected": false
+   },
+   {
+    "name": "web",
+    "label": "Browsing",
+    "band": {
+     "code": "good",
+     "label": "Good",
+     "score": 88
+    },
+    "affected": false
+   }
+  ]
+ },
+ "onlineDevices": 14,
+ "nodeCount": 3,
+ "lastSpeed": {
+  "downMbps": 431,
+  "upMbps": 38,
+  "ago": "3 days ago"
+ },
+ "channelLinked": false,
+ "experienceOpen": true
+}

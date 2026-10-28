@@ -1,0 +1,11 @@
+{
+ "userName": "Dana",
+ "routerName": "Main router",
+ "title": "TV buffering in the living room",
+ "thinking": false,
+ "messages": [
+  { "id": "1", "role": "user", "text": "Why is the TV buffering in the living room?" },
+  { "id": "2", "role": "assistant", "text": "Moving it to 5 GHz should fix the buffering. Want me to do that now?", "question": { "state": "answered", "chosen": "yes", "options": [{ "id": "yes", "label": "Yes, move it" }, { "id": "no", "label": "Not now" }] } },
+  { "id": "3", "role": "assistant", "notice": "sendFailed" }
+ ]
+}

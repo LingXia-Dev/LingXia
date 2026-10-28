@@ -12,6 +12,8 @@
     { "name": "devices", "path": "pages/devices/index" },
     { "name": "telemetry", "path": "pages/telemetry/index" },
     { "name": "rtl", "path": "pages/rtl/index" },
-    { "name": "h-speedtest", "path": "pages/h-speedtest/index" }
+    { "name": "h-speedtest", "path": "pages/h-speedtest/index" },
+    { "name": "h-home", "path": "pages/h-home/index" },
+    { "name": "h-ask", "path": "pages/h-ask/index" }
   ]
 }
