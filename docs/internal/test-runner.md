@@ -1417,8 +1417,9 @@ the same cases the Rust parsers reject.
   with reasons. CI runs it on the sources; `--report` grades a device run
   (passed cases that recorded an action or gesture only).
 - `scripts/automation/device-readiness.sh --platform android|macos` builds
-  a `git archive` export of one commit, runs both showcases' full suites on
-  one device, writes `report.json`, logs and feature coverage per app plus
+  a `git archive` export of one commit in its own target directory, runs
+  both showcases' full suites on release builds on one device (`--dev-smoke`
+  adds the GPU showcase's edit, dialog and pull specs on a dev build), writes `report.json`, logs and feature coverage per app plus
   `summary.json` under the evidence directory, and deletes the export.
   Readiness rounds use it instead of hand-picked specs. On Android a
   watchdog unlocks the phone whenever the keyguard returns mid-run and

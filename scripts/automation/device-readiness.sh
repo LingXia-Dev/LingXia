@@ -6,13 +6,19 @@
 #   scripts/automation/device-readiness.sh --platform android --device SERIAL
 #   scripts/automation/device-readiness.sh --platform macos [--rev REV] [--keep-export]
 #     [--app lingxia-showcase-gpu]   (one showcase only)
+#     [--dev-smoke]                  (also a dev-build subset of the GPU showcase)
+#
+# Suites run on release builds, which is what ships; --dev-smoke adds the specs
+# that guard dev-session behaviour on a debug build in the same round.
 #
 # Writes <evidence>/<rev>/<app>-<platform>/ (report.json, junit.xml, logs) and
 # <evidence>/<rev>/summary.json. Exits non-zero when a suite fails or its
 # feature-coverage check does.
 set -euo pipefail
 
-platform="" device="" rev="HEAD" keep=0 apps="lingxia-showcase lingxia-showcase-gpu"
+platform="" device="" rev="HEAD" keep=0 apps="lingxia-showcase lingxia-showcase-gpu" dev_smoke=0
+# Edits and dialogs in a dev build: what developers see in every dev session.
+DEV_SMOKE='select below the fold|view lab editors take text|the controls take|a guarded page asks|UI-FEEDBACK-001|PULL-002' 
 evidence="${LINGXIA_EVIDENCE_DIR:-$HOME/.cache/lingxia-gpu-evidence/quality/readiness}"
 while (( $# )); do
   case "$1" in
@@ -22,6 +28,7 @@ while (( $# )); do
     --evidence) evidence=$2; shift 2 ;;
     --keep-export) keep=1; shift ;;
     --app) apps=$2; shift 2 ;;
+    --dev-smoke) dev_smoke=1; shift ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -50,9 +57,10 @@ for sibling in "$(dirname "$repo")"/*; do
   fi
 done
 
-# shellcheck source=../lib/cargo-target-dir.sh
-source "$repo/scripts/lib/cargo-target-dir.sh"
-target=$(resolve_cargo_target_dir "$export_dir")
+# The round's own target directory, removed with the export: nothing another
+# build leaves behind reaches it, and its disk comes back after the round.
+export CARGO_TARGET_DIR="$export_dir/target"
+target="$CARGO_TARGET_DIR"
 # The CLI embeds the bridge and polyfills from packages/, so those install first.
 (cd "$export_dir/packages" && npm install --no-audit --no-fund >/dev/null)
 (cd "$export_dir" && cargo build -p lingxia-cli -p lingxia-devtools-cli)
@@ -157,14 +165,22 @@ cleanup_fixture() {
 }
 trap cleanup_fixture EXIT
 
+runs=()
+for app in $apps; do runs+=("$app|release"); done
+(( dev_smoke )) && runs+=("lingxia-showcase-gpu|debug")
+
 status=0
 summary="["
-for app in $apps; do
+for entry in "${runs[@]}"; do
+  app=${entry%%|*}
+  profile=${entry##*|}
   project="$export_dir/examples/$app"
   result="$out/$app-$platform"
+  [[ "$profile" == debug ]] && result+="-dev"
   mkdir -p "$result"
-  session="readiness-$app"
+  session="readiness-$app-$profile"
   dev=(dev --background --platform "$platform" --name "$session")
+  [[ "$profile" == release ]] && dev+=(--release)
   [[ -n "$device" ]] && dev+=(--device "$device")
   wake
   echo "Starting $app on $platform"
@@ -177,6 +193,7 @@ for app in $apps; do
   test=(--session "$session" test --output-dir "$result/run" ${fixture_args[@]+"${fixture_args[@]}"})
   # The React showcase picks its platform entry by preset; the GPU one runs tests/.
   [[ "$app" == lingxia-showcase ]] && test+=(--preset "$platform")
+  [[ "$profile" == debug ]] && test+=(--grep "$DEV_SMOKE")
   wake
   : >"$result/keyguard.jsonl"
   : >"$result/anr.jsonl"
@@ -200,9 +217,12 @@ for app in $apps; do
   set -e
   (cd "$project" && "$lxdev" --session "$session" logs --jsonl --limit 5000) >"$result/session.jsonl" 2>/dev/null || true
   (cd "$project" && "$lingxia" dev stop "$platform") >/dev/null 2>&1 || true
+  [[ "$platform" == android ]] && adb -s "$device" uninstall "$(cd "$project" && sed -n 's/^  packageId: //p' lingxia.yaml | tail -1).dev" >/dev/null 2>&1 || true
   report="$result/run/report.json"
   coverage=1 covered=false
-  if [[ -f "$report" ]]; then
+  # A dev smoke is a subset: coverage is graded on the release suites.
+  [[ "$profile" == debug ]] && coverage=0 covered=null
+  if [[ -f "$report" && "$profile" == release ]]; then
     kind=react; [[ "$app" == lingxia-showcase-gpu ]] && kind=gpu
     node "$export_dir/examples/lingxia-showcase/lxapp/tests/feature-coverage.mjs" \
       --report "$report" --app "$kind" >"$result/feature-coverage.txt" 2>&1 && coverage=0 covered=true
@@ -218,7 +238,7 @@ for app in $apps; do
     const tainted = [...new Set([...locks, ...anrEvents].map((event) => event.case).filter(Boolean))];
     process.stdout.write(JSON.stringify({ passed: r.passed, failed: r.failed, skipped: r.skipped, timeout: r.timeout, total: (r.cases ?? []).length, renderers, keyguardEvents: locks.length, anrEvents, lockTainted: tainted }));
   ' "$report" "$result/keyguard.jsonl" "$result/anr.jsonl" 2>/dev/null || echo '{}')
-  summary+="{\"app\":\"$app\",\"started\":true,\"exit\":$code,\"featureCoverage\":$covered,\"result\":$counts},"
+  summary+="{\"app\":\"$app\",\"profile\":\"$profile\",\"started\":true,\"exit\":$code,\"featureCoverage\":$covered,\"result\":$counts},"
   echo "$app: exit $code, $counts"
 done
 summary="${summary%,}]"
