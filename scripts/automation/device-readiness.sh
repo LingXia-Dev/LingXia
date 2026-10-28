@@ -5,13 +5,14 @@
 #
 #   scripts/automation/device-readiness.sh --platform android --device SERIAL
 #   scripts/automation/device-readiness.sh --platform macos [--rev REV] [--keep-export]
+#     [--app lingxia-showcase-gpu]   (one showcase only)
 #
 # Writes <evidence>/<rev>/<app>-<platform>/ (report.json, junit.xml, logs) and
 # <evidence>/<rev>/summary.json. Exits non-zero when a suite fails or its
 # feature-coverage check does.
 set -euo pipefail
 
-platform="" device="" rev="HEAD" keep=0
+platform="" device="" rev="HEAD" keep=0 apps="lingxia-showcase lingxia-showcase-gpu"
 evidence="${LINGXIA_EVIDENCE_DIR:-$HOME/.cache/lingxia-gpu-evidence/quality/readiness}"
 while (( $# )); do
   case "$1" in
@@ -20,6 +21,7 @@ while (( $# )); do
     --rev) rev=$2; shift 2 ;;
     --evidence) evidence=$2; shift 2 ;;
     --keep-export) keep=1; shift ;;
+    --app) apps=$2; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -94,9 +96,25 @@ wake() {
 # The keyguard can come back mid-run even with stayon set. While a suite
 # runs, a watchdog wakes and unlocks the phone within 3 s and records which
 # case was running, so no failure is mistaken for a product defect.
+anr_count() {
+  adb -s "$device" shell dumpsys dropbox data_app_anr 2>/dev/null | grep -c ' data_app_anr ' || true
+}
+
+# The same watchdog notes each new ANR record (an "isn't responding" dialog
+# holds focus and fails whatever runs under it) with the case it hit.
 keyguard_watch() {
-  local runner=$1 events=$2 log=$3
+  local runner=$1 events=$2 log=$3 anrs=$4
+  local seen
+  seen=$(anr_count)
   while kill -0 "$runner" 2>/dev/null; do
+    local now
+    now=$(anr_count)
+    if (( now > seen )); then
+      local hit
+      hit=$(grep '"case_started"' "$events" 2>/dev/null | tail -1 | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+      printf '{"at":"%s","case":"%s"}\n' "$(date -u +%FT%TZ)" "$hit" >>"$anrs"
+      seen=$now
+    fi
     local window power
     window=$(adb -s "$device" shell dumpsys window 2>/dev/null | grep -c 'isKeyguardShowing=true' || true)
     power=$(adb -s "$device" shell dumpsys power 2>/dev/null | grep -c 'mWakefulness=Asleep' || true)
@@ -110,7 +128,7 @@ keyguard_watch() {
   done
 }
 
-for app in lingxia-showcase lingxia-showcase-gpu; do
+for app in $apps; do
   (cd "$export_dir/examples/$app/lxapp" && npm install --no-audit --no-fund >/dev/null)
 done
 check_purity
@@ -139,7 +157,7 @@ trap cleanup_fixture EXIT
 
 status=0
 summary="["
-for app in lingxia-showcase lingxia-showcase-gpu; do
+for app in $apps; do
   project="$export_dir/examples/$app"
   result="$out/$app-$platform"
   mkdir -p "$result"
@@ -159,13 +177,24 @@ for app in lingxia-showcase lingxia-showcase-gpu; do
   [[ "$app" == lingxia-showcase ]] && test+=(--preset "$platform")
   wake
   : >"$result/keyguard.jsonl"
+  : >"$result/anr.jsonl"
+  # A first launch syncs the dev bundle; restart once so the suite starts warm.
+  if [[ "$platform" == android ]]; then
+    (cd "$project" && "$lxdev" --session "$session" lxapp restart) >>"$result/dev.log" 2>&1 || true
+    sleep 5
+  fi
   set +e
   (cd "$project/lxapp" && "$lxdev" "${test[@]}") >"$result/test.log" 2>&1 &
   runner=$!
-  [[ "$platform" == android ]] && keyguard_watch "$runner" "$result/run/events.jsonl" "$result/keyguard.jsonl" &
+  watch=""
+  if [[ "$platform" == android ]]; then
+    keyguard_watch "$runner" "$result/run/events.jsonl" "$result/keyguard.jsonl" "$result/anr.jsonl" &
+    watch=$!
+  fi
   wait "$runner"
   code=$?
-  wait
+  # Only the watchdog: a bare wait would also wait for the device fixture.
+  [[ -n "$watch" ]] && wait "$watch"
   set -e
   (cd "$project" && "$lxdev" --session "$session" logs --jsonl --limit 5000) >"$result/session.jsonl" 2>/dev/null || true
   (cd "$project" && "$lingxia" dev stop "$platform") >/dev/null 2>&1 || true
@@ -181,10 +210,12 @@ for app in lingxia-showcase lingxia-showcase-gpu; do
     const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
     const renderers = {};
     for (const c of r.cases ?? []) for (const name of c.renderers ?? []) renderers[name] = (renderers[name] ?? 0) + 1;
-    const locks = require("fs").readFileSync(process.argv[2], "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line));
-    const tainted = [...new Set(locks.map((lock) => lock.case).filter(Boolean))];
-    process.stdout.write(JSON.stringify({ passed: r.passed, failed: r.failed, skipped: r.skipped, timeout: r.timeout, total: (r.cases ?? []).length, renderers, keyguardEvents: locks.length, lockTainted: tainted }));
-  ' "$report" "$result/keyguard.jsonl" 2>/dev/null || echo '{}')
+    const lines = (file) => require("fs").readFileSync(file, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    const locks = lines(process.argv[2]);
+    const anrEvents = lines(process.argv[3]);
+    const tainted = [...new Set([...locks, ...anrEvents].map((event) => event.case).filter(Boolean))];
+    process.stdout.write(JSON.stringify({ passed: r.passed, failed: r.failed, skipped: r.skipped, timeout: r.timeout, total: (r.cases ?? []).length, renderers, keyguardEvents: locks.length, anrEvents, lockTainted: tainted }));
+  ' "$report" "$result/keyguard.jsonl" "$result/anr.jsonl" 2>/dev/null || echo '{}')
   summary+="{\"app\":\"$app\",\"started\":true,\"exit\":$code,\"featureCoverage\":$covered,\"result\":$counts},"
   echo "$app: exit $code, $counts"
 done
