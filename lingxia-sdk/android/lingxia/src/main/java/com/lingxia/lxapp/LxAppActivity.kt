@@ -133,6 +133,8 @@ class LxAppActivity : AppCompatActivity() {
     )
     companion object {
         private const val TAG = "LingXia.WebView"
+        /** GPU navigation stages, at debug level: transitions are timing-sensitive. */
+        private const val NAV_TAG = "LingXia.Nav"
         const val META_FORCE_IMMERSIVE = "com.lingxia.FORCE_IMMERSIVE"
         const val EXTRA_APP_ID = "appId"
         /** Route of the first page: only the orientation to take before its WebView exists. */
@@ -1260,7 +1262,10 @@ class LxAppActivity : AppCompatActivity() {
         status: Int,
         resolvesLeft: Int
     ) {
-        if (ticket != presentTicket || isFinishing || isDestroyed) return
+        if (ticket != presentTicket || isFinishing || isDestroyed) {
+            LxLog.d(NAV_TAG, "present $webtag superseded (ticket $ticket, now $presentTicket)")
+            return
+        }
         if (webView != null) {
             showPresentation(webView, request)
             return
@@ -1711,6 +1716,7 @@ class LxAppActivity : AppCompatActivity() {
     internal fun navigate(webtag: String?, animationType: AnimationType): Boolean {
         if (!::appId.isInitialized) return false
         val version = ++gpuTransitionVersion
+        LxLog.d(NAV_TAG, "navigate $webtag $animationType v$version cover=${gpuTransitionCover != null}")
         ++presentTicket
         if (gpuOutgoingCover != null) clearGpuTransitionCover()
         // A replace between kept surfaces needs no cover; see navigateToPage.
@@ -1764,6 +1770,7 @@ class LxAppActivity : AppCompatActivity() {
     private fun prepareGpuTransition(version: Long, navigate: Runnable) {
         val previous = currentWebView as? GpuPage ?: return navigate.run()
         previous.captureReadyPreview { preview ->
+            LxLog.d(NAV_TAG, "outgoing preview ${previous.getWebTag()} ready=${preview != null} v$version now v$gpuTransitionVersion")
             if (version != gpuTransitionVersion || isFinishing || isDestroyed) {
                 preview?.recycle()
                 return@captureReadyPreview
@@ -1833,6 +1840,7 @@ class LxAppActivity : AppCompatActivity() {
         previous.animate().translationX(-distance).setDuration(300L).setInterpolator(interpolator).start()
         incoming.animate().translationX(0f).setDuration(300L).setInterpolator(interpolator)
             .withEndAction {
+                LxLog.d(NAV_TAG, "slide ${page.getWebTag()} done v$version now v$gpuTransitionVersion")
                 if (version == gpuTransitionVersion) {
                     clearGpuTransitionCover()
                     (page.parent as? FrameLayout)?.let { triggerOnPageShow(it) }
@@ -2220,6 +2228,7 @@ class LxAppActivity : AppCompatActivity() {
                 val webView = container.getChildAt(0) as? View
                 if (webView?.getAppId() != null && webView.getCurrentPath() != null) {
                     val pagePath = webView.getCurrentPath()!!
+                    LxLog.d(NAV_TAG, "onPageShow ${webView.getWebTag()}")
                     NativeApi.onPageShow(webView.getAppId()!!, pagePath)
                     applyPageOrientation(pagePath)
                 }
@@ -2314,6 +2323,7 @@ class LxAppActivity : AppCompatActivity() {
         val version = gpuTransitionVersion
         val animateGpu = newWebView is GpuPage && gpuTransitionCover != null && !isReplace
         fun failedGpuPresentation() {
+            LxLog.d(NAV_TAG, "reveal ${newWebView.getWebTag()} failed v$version")
             clearGpuTransitionCover()
             if (animateGpu) (newWebView.parent as? FrameLayout)?.let { triggerOnPageShow(it) }
         }
@@ -2355,6 +2365,7 @@ class LxAppActivity : AppCompatActivity() {
                 }
             }
             newWebView.afterNextPresentation { success ->
+                LxLog.d(NAV_TAG, "presented ${newWebView.getWebTag()} ok=$success v$version now v$gpuTransitionVersion")
                 if (version == gpuTransitionVersion) {
                     if (success) revealPresentedFrame() else failedGpuPresentation()
                 }
