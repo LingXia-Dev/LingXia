@@ -2,6 +2,9 @@ import { type View } from '@lingxia/ui';
 import '../../theme/index.css';
 import { Button, InfoList, InfoRow, Page, Section } from '../../shared/ui';
 
+// Enough rows to scroll on a phone, so a pull below the top scrolls instead.
+const ROWS = Array.from({ length: 24 }, (_, i) => i + 1);
+
 export function render({ data, actions }: View) {
   const refreshing = Boolean(data.isRefreshing);
   return (
@@ -32,6 +35,13 @@ export function render({ data, actions }: View) {
         <Button variant="secondary" testId="pull-refresh-stop" onClick={() => actions.stopRefresh()}>
           lx.stopPullDownRefresh()
         </Button>
+      </Section>
+      <Section title="Sample Rows" description="Scroll the page: a pull refreshes only from the top">
+        <InfoList>
+          {ROWS.map((row) => (
+            <text key={String(row)} testId="pull-refresh-row" className="text-sm py-2.5">Row {row}</text>
+          ))}
+        </InfoList>
       </Section>
     </Page>
   );

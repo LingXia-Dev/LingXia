@@ -99,3 +99,95 @@ spec("start, render, and stop the native pull-to-refresh lifecycle", { id: "PULL
       .toContain('enablePullDownRefresh: true');
   });
 });
+
+/** What the page shows before any pull; a pull or refresh must not take any of it away. */
+const PULL_PAGE_IDS = ['pull-refresh-status', 'pull-refresh-count', 'pull-refresh-start', 'pull-refresh-stop'];
+
+async function expectPageIntact(view: TestView, when: string): Promise<void> {
+  for (const id of PULL_PAGE_IDS) {
+    await expect(view.testId(id), `${id} ${when}`).toBeVisible({ timeout: 3_000 });
+  }
+}
+
+spec("a pull follows the finger, refreshes once past the threshold, and leaves the page whole", { id: "PULL-002", covers: ['page:enablePullDownRefresh'], app: SHOWCASE_APP_ID, requires: { input: ['touch', 'trackpad'] } }, async (t) => {
+  const { app } = bindFixture(t, "PULL-002");
+  await app.nav.relaunch({ page: 'pullToRefresh' });
+  const view = (await app.page({ name: 'pullToRefresh' }, { timeout: 30_000 })).view;
+  await view.testId('pull-refresh-page').waitFor({ timeout: 30_000 });
+  await expectPageIntact(view, 'before the pull');
+  const before = await refreshState(app);
+
+  await t.step('the indicator follows the finger and arms past the threshold', async () => {
+    const start: [number, number] = [180, 140];
+    const finger = await view.touch(start);
+    const offsets: number[] = [];
+    for (const dy of [40, 80, 120, 160]) {
+      await finger.moveTo([start[0], start[1] + dy], { durationMs: 80 });
+      offsets.push((await view.refreshIndicator()).offset);
+    }
+    await t.attach('offsets.json', JSON.stringify(offsets));
+    expect(offsets.every((offset, i) => i === 0 || offset > offsets[i - 1]!)).toBe(true);
+    expect((await view.refreshIndicator()).phase).toBe('armed');
+    await finger.up();
+  });
+
+  const refreshing = await waitForRefreshState(app, (state) => state.refreshing && state.count > before.count);
+  expect(refreshing.count).toBe(before.count + 1);
+  expect(await waitForStatus(t, view, 'Refreshing')).toContain('Refreshing');
+  await expect.poll(async () => (await view.refreshIndicator()).phase).toBe('refreshing');
+
+  await t.step('the page stays whole while the refresh holds it open', async () => {
+    await t.attach('refreshing.png', await view.screenshot());
+    await expectPageIntact(view, 'while refreshing');
+    await expect(view.testId('pull-refresh-stop')).toBeInViewport();
+  });
+
+  // onPullDownRefresh fired once, not once per move or on release and again on settle.
+  await new Promise<void>((resolve) => setTimeout(resolve, 800));
+  expect((await refreshState(app)).count).toBe(before.count + 1);
+
+  await view.testId('pull-refresh-stop').click();
+  await waitForRefreshState(app, (state) => !state.refreshing);
+  await expect.poll(async () => (await view.refreshIndicator()).phase, { timeout: 3_000 }).toBe('idle');
+  await expectPageIntact(view, 'after stop');
+
+  await t.step('a short pull snaps back without refreshing', async () => {
+    const short = await view.pullToRefresh({ distance: 30, hold: 100 });
+    expect(short.refreshed).toBe(false);
+    await expect.poll(async () => (await view.refreshIndicator()).offset, { timeout: 3_000 }).toBe(0);
+    expect((await refreshState(app)).count).toBe(before.count + 1);
+    await expectPageIntact(view, 'after a short pull');
+  });
+});
+
+spec("a swipe scrolls the page, a fling carries it on, and a pull below the top scrolls back instead of refreshing", { id: "PULL-003", covers: ['view:scroll'], app: SHOWCASE_APP_ID, requires: { input: ['touch', 'trackpad'] } }, async (t) => {
+  const { app } = bindFixture(t, "PULL-003");
+  await app.nav.relaunch({ page: 'pullToRefresh' });
+  const view = (await app.page({ name: 'pullToRefresh' }, { timeout: 30_000 })).view;
+  await view.testId('pull-refresh-page').waitFor({ timeout: 30_000 });
+  const status = view.testId('pull-refresh-status');
+  const lastRow = view.testId('pull-refresh-row').last();
+  await expect(status).toBeInViewport();
+  await expect(lastRow).not.toBeInViewport();
+  const before = await refreshState(app);
+
+  await t.step('a slow swipe scrolls the top of the page away', async () => {
+    await view.swipe({ from: [180, 520], to: [180, 220], durationMs: 400 });
+    await view.swipe({ from: [180, 520], to: [180, 220], durationMs: 400 });
+    await expect(status).not.toBeInViewport();
+  });
+
+  await t.step('a downward pull below the top scrolls back and never arms', async () => {
+    const finger = await view.touch([180, 220]);
+    await finger.moveTo([180, 340], { durationMs: 200 });
+    expect((await view.refreshIndicator()).phase).toBe('idle');
+    await finger.up();
+    await new Promise<void>((resolve) => setTimeout(resolve, 500));
+    expect((await refreshState(app)).count).toBe(before.count);
+  });
+
+  await t.step('a fling carries the page past where the finger stopped', async () => {
+    await view.fling('up', 4000);
+    await expect(lastRow).toBeInViewport({ timeout: 3_000 });
+  });
+});

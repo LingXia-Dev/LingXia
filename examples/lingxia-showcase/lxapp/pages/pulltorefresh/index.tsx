@@ -1,6 +1,9 @@
 import { useLxPage } from '@lingxia/react';
 import '../../tailwind.css';
 
+// Enough rows to scroll on a phone, so a pull below the top scrolls instead.
+const ROWS = Array.from({ length: 24 }, (_, i) => i + 1);
+
 export default function PullDownRefreshPage() {
   const { data, actions } = useLxPage();
   const { startRefresh, stopRefresh } = actions;
@@ -84,6 +87,19 @@ export default function PullDownRefreshPage() {
               lx.stopPullDownRefresh()
             </button>
           </div>
+        </div>
+
+        {/* Sample rows */}
+        <div className="bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
+          <div className="px-4 py-3 border-b border-line-100">
+            <h3 className="text-base font-medium text-gray-900">Sample Rows</h3>
+            <p className="text-sm text-gray-500 mt-1">Scroll the page: a pull refreshes only from the top</p>
+          </div>
+          {ROWS.map((row) => (
+            <div key={row} data-testid="pull-refresh-row" className="px-4 py-3 border-b border-line-100 text-sm text-gray-700">
+              Row {row}
+            </div>
+          ))}
         </div>
 
       </div>
