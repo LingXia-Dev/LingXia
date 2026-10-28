@@ -45,6 +45,23 @@ fn key(name: &str) -> Result<(super::Key, bool), String> {
     Ok((key, shift))
 }
 
+/// The nearest control enclosing `node`, enabled or not.
+fn control_ancestor(frame: &super::PresentedFrame, node: usize) -> Option<usize> {
+    let target = &frame.nodes[node].identity;
+    frame
+        .nodes
+        .iter()
+        .enumerate()
+        .filter(|(_, candidate)| {
+            matches!(
+                candidate.tag,
+                "button" | "checkbox" | "switch" | "radio" | "link" | "select"
+            ) && target.starts_with(&format!("{}/", candidate.identity))
+        })
+        .max_by_key(|(_, candidate)| candidate.identity.len())
+        .map(|(index, _)| index)
+}
+
 impl ViewInteraction {
     /// The WebView query payload for `selector` over the presented frame.
     pub fn automation_query(
@@ -92,9 +109,18 @@ impl ViewInteraction {
                 .ok_or("E_PAGE_NOT_READY: no presented frame")?;
             let matches = query::select(&projection, selector)?;
             let position = index.unwrap_or(0);
-            let node = *matches
+            let mut node = *matches
                 .get(position)
                 .ok_or_else(|| format!("Element not found: {selector} (index {position})"))?;
+            // A click on content inside a control lands on that control, as a finger's does.
+            if matches!(act, AutomationAct::Click | AutomationAct::DoubleClick)
+                && let Some(frame) = &self.frame
+                && !crate::interaction::frame::interactive(&frame.nodes[node])
+                && !(act == AutomationAct::DoubleClick && frame.nodes[node].selectable.is_some())
+                && let Some(control) = control_ancestor(frame, node)
+            {
+                node = control;
+            }
             let id = projection
                 .ids
                 .id(node)

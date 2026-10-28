@@ -502,3 +502,45 @@ fn a_details_summary_is_a_button_that_announces_expanded() {
     assert_eq!(summary["role"], "button");
     let _ = &mut i;
 }
+
+#[test]
+fn a_click_on_a_controls_label_lands_on_the_control() {
+    let row = |disabled: bool| {
+        format!(
+            "h('column',{{}},h('checkbox',{{testId:'box',value:false,onChange(){{}},disabled:{disabled},accessibilityLabel:'Wi-Fi'}},h('row',{{}},h('text',{{testId:'label'}},'Wi-Fi'))),h('text',{{testId:'loose'}},'Not a control'))"
+        )
+    };
+    let page = PageTicket::new(1);
+    let mut i = interaction(&row(false));
+    let effects = i
+        .automate(
+            "[data-testid=\"label\"]",
+            None,
+            AutomationAct::Click,
+            false,
+            page,
+        )
+        .unwrap();
+    assert!(effects.contains(&Effect::Dispatch), "{effects:?}");
+    let refused = i
+        .automate(
+            "[data-testid=\"loose\"]",
+            None,
+            AutomationAct::Click,
+            false,
+            page,
+        )
+        .unwrap_err();
+    assert!(refused.contains("not interactable"), "{refused}");
+    let mut i = interaction(&row(true));
+    let refused = i
+        .automate(
+            "[data-testid=\"label\"]",
+            None,
+            AutomationAct::Click,
+            false,
+            page,
+        )
+        .unwrap_err();
+    assert!(refused.contains("not enabled"), "{refused}");
+}

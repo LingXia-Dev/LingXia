@@ -72,6 +72,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - `<select options={[{value,label,disabled?}]} bind={cell} placeholder accessibilityLabel/>` opens the platform
   picker; arrows change the choice; automation uses `locator.selectOption(valueOrLabel)`.
 - `locator.dblclick()` selects the word at an element's center in selectable text and editors (a long press on touch).
+- `locator.click()` on content inside a control (a checkbox's label) clicks that control, as a finger would; it fails when the control is disabled.
 - `enterKeyHint="next"|"previous"` moves focus to the adjacent enabled editor in reading order
   (the last one submits); `cell.focus()` focuses the editor bound to that `useLocal` cell.
 - Buttons may contain text, icons and images; their text names them for
