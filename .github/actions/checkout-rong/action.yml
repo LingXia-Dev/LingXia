@@ -2,7 +2,8 @@ name: Check out the patched rong
 description: >
   While the workspace patches `rong` to a sibling checkout (`path = "../rong"`, temporary until
   rong's multi-engine branch is published), clone it at a pinned ref beside the repository.
-  A no-op once the patch is gone.
+  A no-op once the patch is gone. The workspace also path-patches `../fontique` (hvgl feature)
+  and `../taffy` (branch `lingxia-0.14`); CI needs those forks published and cloned the same way.
 
 inputs:
   repository:

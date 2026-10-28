@@ -898,3 +898,31 @@ mod rtl;
 
 #[path = "tests/sticky.rs"]
 mod sticky;
+
+/// `aspect-square w-full max-w-60` in an auto-height column: the column is the box's height,
+/// not its unclamped width (native items do not shrink by default).
+#[test]
+fn an_aspect_ratio_box_capped_by_max_width_sizes_its_auto_height_parent() {
+    let source = crate::session::tests::source(
+        "function render(){return h('column',{style:{width:327}},h('column',{testId:'wrap'},h('view',{testId:'dial',style:{width:'100%',maxWidth:240,aspectRatio:1,marginLeft:'auto',marginRight:'auto'}})),h('text',{testId:'after'},'Below'))}",
+    );
+    let display = crate::ViewSession::new(&source)
+        .unwrap()
+        .layout(400, 800, 1.0)
+        .unwrap();
+    let bounds = |id: &str| {
+        display
+            .nodes
+            .iter()
+            .find(|n| n.test_id == id)
+            .unwrap()
+            .bounds
+    };
+    assert_eq!(bounds("dial")[2..], [240.0, 240.0]);
+    assert_eq!(bounds("wrap")[3], 240.0);
+    assert_eq!(
+        bounds("after")[1],
+        240.0,
+        "the next sibling starts right below"
+    );
+}
