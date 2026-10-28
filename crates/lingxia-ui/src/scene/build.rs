@@ -330,6 +330,11 @@ impl Renderer {
                 }
             }
 
+            // `bg-clip-text`: the text's background paints its glyphs instead of its box.
+            let clip_text =
+                record.tag == tag::TEXT && record.string(field::BACKGROUND_CLIP) == Some("text");
+            let mut text_fill: Option<[u8; 4]> = None;
+            let mut text_gradient: Option<Arc<crate::scene::gradient::GradientBrush>> = None;
             if let Some(background) =
                 record
                     .string(field::BACKGROUND)
@@ -351,25 +356,38 @@ impl Renderer {
                 } else {
                     background
                 })?;
-                paint_style.background = Some(commands.len());
-                commands.push(Paint::Rect {
-                    corners,
-                    color: [r, g, b, a],
-                    bounds: [x, y, layout.size.width, layout.size.height],
-                    radius,
-                });
+                if clip_text {
+                    text_fill = Some([r, g, b, a]);
+                } else {
+                    paint_style.background = Some(commands.len());
+                    commands.push(Paint::Rect {
+                        corners,
+                        color: [r, g, b, a],
+                        bounds: [x, y, layout.size.width, layout.size.height],
+                        radius,
+                    });
+                }
             }
             if let Some(source) = record.string(field::BACKGROUND_GRADIENT)
                 && let Some(gradient) =
                     crate::scene::gradient::BackgroundGradient::parse_with(source, &palette)?
             {
                 paint_style.gradient = true;
-                commands.push(Paint::Gradient {
-                    corners,
-                    gradient: Arc::new(gradient),
-                    bounds: [x, y, layout.size.width, layout.size.height],
-                    radius,
-                });
+                if clip_text {
+                    text_gradient = Some(Arc::new(gradient.brush([
+                        x,
+                        y,
+                        layout.size.width,
+                        layout.size.height,
+                    ])));
+                } else {
+                    commands.push(Paint::Gradient {
+                        corners,
+                        gradient: Arc::new(gradient),
+                        bounds: [x, y, layout.size.width, layout.size.height],
+                        radius,
+                    });
+                }
             }
             if border.is_some() {
                 let editor = matches!(
@@ -692,7 +710,8 @@ impl Renderer {
                             }
                             commands.push(Paint::Text {
                                 ink,
-                                color: [r, g, b, a],
+                                gradient: text_gradient.clone(),
+                                color: text_fill.unwrap_or([r, g, b, a]),
                                 font: run.font().clone(),
                                 size: run.font_size(),
                                 coordinates,

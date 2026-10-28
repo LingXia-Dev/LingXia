@@ -222,6 +222,7 @@ pub mod field {
     pub const EXIT_STYLE: usize = 186;
     pub const FOCUS_WITHIN_STYLE: usize = 187;
     pub const DATA_ATTRIBUTES: usize = 188;
+    pub const BACKGROUND_CLIP: usize = 189;
 }
 
 pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page", "span", "link", "select"];
@@ -417,6 +418,7 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("exitStyle", "state-style"),
     ("focusWithinStyle", "state-style"),
     ("dataAttributes", "string"),
+    ("backgroundClip", "background-clip"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -437,6 +439,7 @@ pub fn options(kind: &str) -> Option<&'static [&'static str]> {
         "position" => Some(&["relative", "absolute", "fixed", "sticky"]),
         "overflow" => Some(&["visible", "hidden"]),
         "text-transform" => Some(&["none", "uppercase", "lowercase", "capitalize"]),
+        "background-clip" => Some(&["border-box", "text"]),
         "white-space" => Some(&["normal", "nowrap", "pre", "pre-wrap", "pre-line"]),
         "text-overflow" => Some(&["clip", "ellipsis"]),
         "sizing-keyword" => Some(&["fit-content", "max-content", "min-content"]),
@@ -787,6 +790,7 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::TEXTAREA]), parent: None },
     FieldAdmission { tags: Some(&[tag::IMAGE]), parent: None },
     FieldAdmission { tags: Some(&[tag::IMAGE]), parent: None },
+    FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },

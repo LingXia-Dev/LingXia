@@ -894,6 +894,7 @@ impl RetainedLayout {
                         skew,
                         glyphs,
                         ink,
+                        gradient,
                     } => {
                         let ink = ink.map(|mut bounds| {
                             bounds[0] -= translation[0];
@@ -917,6 +918,12 @@ impl RetainedLayout {
                             .ok()
                             .and_then(|at| foregrounds[paint_style.texts[at].1]);
                         painted.push(Paint::Text {
+                            gradient: gradient.as_ref().map(|brush| {
+                                Arc::new(brush.then(Affine::translate((
+                                    -f64::from(translation[0]),
+                                    -f64::from(translation[1]),
+                                ))))
+                            }),
                             color: inherited.unwrap_or(*color),
                             font: font.clone(),
                             size: *size,

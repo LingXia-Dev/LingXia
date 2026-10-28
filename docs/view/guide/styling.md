@@ -64,6 +64,10 @@ appearance, so `dark:` on a colour, palette ladders (`gray-200`) and hex fail wi
 colours in `style`. Complete CSS gradients (`bg-[radial-gradient(…)]`) and shadow layers may use literal
 colours. The roles are listed in [styles](../reference/styles.md#colour-roles).
 
+On `<text>`, `bg-clip-text` draws its background (colour or gradient) through the glyphs instead of
+behind the box: `bg-clip-text text-transparent bg-linear-to-r from-accent to-danger`. Each such text costs
+two layers.
+
 The system's increased-contrast setting (`env.highContrast`) resolves the pack's high-contrast palette.
 `shadow-*` elevation layers take the `shadow` role at their alpha, so a pack can tint shadows.
 

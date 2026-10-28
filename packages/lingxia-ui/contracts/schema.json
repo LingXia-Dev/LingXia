@@ -44,6 +44,7 @@
     "position": ["relative", "absolute", "fixed", "sticky"],
     "overflow": ["visible", "hidden"],
     "text-transform": ["none", "uppercase", "lowercase", "capitalize"],
+    "background-clip": ["border-box", "text"],
     "white-space": ["normal", "nowrap", "pre", "pre-wrap", "pre-line"],
     "text-overflow": ["clip", "ellipsis"],
     "sizing-keyword": ["fit-content", "max-content", "min-content"],
@@ -250,7 +251,8 @@
     {"id": 185, "key": "startingStyle", "wire": "startingStyle", "kind": "state-style"},
     {"id": 186, "key": "exitStyle", "wire": "exitStyle", "kind": "state-style"},
     {"id": 187, "key": "focusWithinStyle", "wire": "focusWithinStyle", "kind": "state-style"},
-    {"id": 188, "key": "dataAttributes", "wire": "dataAttributes", "kind": "string"}
+    {"id": 188, "key": "dataAttributes", "wire": "dataAttributes", "kind": "string"},
+    {"id": 189, "key": "backgroundClip", "wire": "backgroundClip", "kind": "background-clip"}
   ],
   "input": {
     "autofill": {"username": "username", "current-password": "password", "new-password": "newPassword", "one-time-code": "smsOTPCode", "email": "emailAddress", "tel": "phone", "name": "personName", "given-name": "personGivenName", "family-name": "personFamilyName", "street-address": "postalAddress", "postal-code": "postalCode", "country": "addressCountry", "cc-number": "creditCardNumber", "cc-exp": "creditCardExpirationDate", "cc-csc": "creditCardSecurityCode", "bday": "birthDateFull"},
@@ -470,6 +472,7 @@
     "textAlign": {"type": "\"start\" | \"end\" | \"left\" | \"center\" | \"right\" | \"justify\"", "group": "text", "lower": "option", "wire": "textAlign", "css": "text-align"},
     "textDecorationLine": {"type": "\"none\" | \"line-through\" | \"underline\"", "group": "text", "lower": "option", "wire": "textDecorationLine", "css": "text-decoration-line"},
     "textTransform": {"type": "\"none\" | \"uppercase\" | \"lowercase\" | \"capitalize\"", "group": "text", "lower": "option", "wire": "textTransform", "css": "text-transform"},
+    "backgroundClip": {"type": "\"border-box\" | \"text\"", "group": "textBlock", "lower": "option", "wire": "backgroundClip", "css": "background-clip"},
     "whiteSpace": {"type": "\"normal\" | \"nowrap\" | \"pre\" | \"pre-wrap\" | \"pre-line\"", "group": "text", "lower": "option", "wire": "whiteSpace", "css": "white-space"},
     "wordBreak": {"type": "\"normal\" | \"break-all\" | \"keep-all\"", "group": "text", "lower": "option", "wire": "wordBreak", "css": "word-break"},
     "overflowWrap": {"type": "\"normal\" | \"break-word\" | \"anywhere\"", "group": "text", "lower": "option", "wire": "overflowWrap", "css": "overflow-wrap"},

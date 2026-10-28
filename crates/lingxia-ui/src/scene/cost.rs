@@ -31,8 +31,17 @@ impl crate::DisplayList {
         let scale = f64::from(self.scale);
         for paint in &self.commands {
             match paint {
-                Paint::Text { glyphs, font, .. } => {
+                Paint::Text {
+                    glyphs,
+                    font,
+                    gradient,
+                    ..
+                } => {
                     cost.glyphs += glyphs.len();
+                    // `bg-clip-text` draws through a mask layer and a blend layer.
+                    if gradient.is_some() {
+                        cost.layers += 2;
+                    }
                     if crate::text::outlines::external(font) {
                         cost.outline_glyphs += glyphs.len();
                     }

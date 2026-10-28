@@ -297,38 +297,62 @@ impl DisplayList {
                     coordinates,
                     skew,
                     glyphs,
-                    ..
+                    ink,
+                    gradient,
                 } => {
-                    context.set_paint(AlphaColor::<Srgb>::from_rgba8(*r, *g, *b, *a));
+                    // `bg-clip-text`: the glyphs are a coverage mask the gradient is drawn through.
+                    let clipped = gradient.as_ref().zip(*ink);
+                    if clipped.is_some() {
+                        context.push_layer(None, None, None, None, None);
+                        context.set_paint(AlphaColor::<Srgb>::from_rgba8(0, 0, 0, 255));
+                    } else {
+                        context.set_paint(AlphaColor::<Srgb>::from_rgba8(*r, *g, *b, *a));
+                    }
                     if crate::text::outlines::external(font) {
-                        if let Some(path) = crate::text::outlines::run_path(
-                            font,
-                            *size,
-                            coordinates,
-                            *skew,
-                            glyphs,
-                        ) {
+                        if let Some(path) =
+                            crate::text::outlines::run_path(font, *size, coordinates, *skew, glyphs)
+                        {
                             context.fill_path(&path);
                         }
-                        continue;
-                    }
-                    glifo::GlyphRunBuilder::new(
-                        font.clone(),
-                        transform,
-                        Affine::IDENTITY,
-                        crate::renderer::gpu::text::Backend {
-                            sink: crate::renderer::gpu::text::GlyphSink {
-                                scene: context,
-                                images: glyph_images,
+                    } else {
+                        glifo::GlyphRunBuilder::new(
+                            font.clone(),
+                            transform,
+                            Affine::IDENTITY,
+                            crate::renderer::gpu::text::Backend {
+                                sink: crate::renderer::gpu::text::GlyphSink {
+                                    scene: context,
+                                    images: glyph_images,
+                                },
+                                cache,
                             },
-                            cache,
-                        },
-                    )
-                    .font_size(*size)
-                    .glyph_transform(Affine::new([1.0, 0.0, -*skew, 1.0, 0.0, 0.0]))
-                    .normalized_coords(coordinates)
-                    .fill_glyphs(glyphs.iter().copied())
-                    .map_err(|e| e.to_string())?;
+                        )
+                        .font_size(*size)
+                        .glyph_transform(Affine::new([1.0, 0.0, -*skew, 1.0, 0.0, 0.0]))
+                        .normalized_coords(coordinates)
+                        .fill_glyphs(glyphs.iter().copied())
+                        .map_err(|e| e.to_string())?;
+                    }
+                    if let Some((brush, [x, y, w, h])) = clipped {
+                        context.push_layer(
+                            None,
+                            Some(crate::renderer::cpu_paint::text_clip_blend()),
+                            None,
+                            None,
+                            None,
+                        );
+                        context.set_paint(brush.gradient.clone());
+                        context.set_paint_transform(brush.transform);
+                        context.fill_rect(&PaintRect::new(
+                            f64::from(x),
+                            f64::from(y),
+                            f64::from(x + w),
+                            f64::from(y + h),
+                        ));
+                        context.reset_paint_transform();
+                        context.pop_layer();
+                        context.pop_layer();
+                    }
                 }
             }
         }

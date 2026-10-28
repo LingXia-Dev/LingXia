@@ -806,3 +806,49 @@ fn boolean_controls_present_checked_state_and_distinct_pixels_at_each_scale() {
         }
     }
 }
+
+#[test]
+fn clipped_text_shows_its_gradient_only_through_its_glyphs() {
+    let module = crate::session::tests::source(
+        "function render(){return h('column',{style:{width:200,height:80,backgroundColor:'#ffffff'}},h('text',{style:{fontSize:64,fontWeight:700,color:'#00000000',backgroundClip:'text',backgroundImage:{direction:'right',colorSpace:'srgb',stops:[{offset:0,color:'#ff0000'},{offset:1,color:'#0000ff'}]}}},'WWW'))}",
+    );
+    let mut page = crate::ViewSession::new(&module).unwrap();
+    let display = page.layout(200, 80, 1.0).unwrap();
+    let text = display
+        .nodes
+        .iter()
+        .find(|node| node.tag == "text")
+        .unwrap()
+        .bounds;
+    assert!(display.cost().layers >= 2, "a mask and a blend layer");
+    let retained = display.retained.clone();
+    let frame = display.rasterize().unwrap();
+    let data = frame.pixels.data_as_u8_slice();
+    let (mut red, mut blue, mut white, mut inside) = (0, 0, 0, 0);
+    for y in text[1] as usize..(text[1] + text[3]) as usize {
+        for x in text[0] as usize..(text[0] + text[2]).min(200.0) as usize {
+            let [r, g, b, _] = data[(y * 200 + x) * 4..(y * 200 + x) * 4 + 4] else {
+                unreachable!()
+            };
+            inside += 1;
+            if g > 240 && r > 240 && b > 240 {
+                white += 1;
+            } else if g < 40 && r > 200 && b < 80 && x < (text[0] + text[2] / 3.0) as usize {
+                red += 1;
+            } else if g < 40 && b > 200 && r < 80 && x > (text[0] + text[2] * 2.0 / 3.0) as usize {
+                blue += 1;
+            }
+        }
+    }
+    assert!(red > 50 && blue > 50, "red {red} blue {blue}");
+    assert!(
+        white > inside / 4,
+        "the box around the glyphs stays clear: {white}/{inside}"
+    );
+    let recomposed = retained
+        .compose(&HashMap::new())
+        .unwrap()
+        .rasterize()
+        .unwrap();
+    assert_eq!(data, recomposed.pixels.data_as_u8_slice());
+}

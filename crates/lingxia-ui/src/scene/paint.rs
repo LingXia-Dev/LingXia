@@ -224,5 +224,7 @@ pub(crate) enum Paint {
         skew: f64,
         glyphs: Vec<Glyph>,
         ink: Option<[f32; 4]>,
+        /// `bg-clip-text`: the glyphs show this gradient instead of `color`.
+        gradient: Option<Arc<crate::scene::gradient::GradientBrush>>,
     },
 }

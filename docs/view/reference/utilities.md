@@ -157,7 +157,7 @@ is still refused on an element that does not render its style ([styles.md](style
 
 | Family | Supported | Refused |
 | --- | --- | --- |
-| `bg` | `bg-accent`, `bg-accent-soft`, `bg-canvas`, `bg-chart-1`, `bg-chart-2`, … (34) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); background-blend-mode (16); background-position (9) |
+| `bg` | `bg-accent`, `bg-accent-soft`, `bg-canvas`, `bg-chart-1`, `bg-chart-2`, … (36) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); background-blend-mode (16); background-position (9) |
 | `bg-conic` | `bg-conic`, `bg-conic-0`, `bg-conic-30`, `bg-conic-60`, `bg-conic-90`, … (13) | unsupported gradient shape (12) |
 | `bg-linear` | `bg-linear-0`, `bg-linear-30`, `bg-linear-60`, `bg-linear-90`, `bg-linear-120`, … (20) | unsupported gradient shape (12) |
 | `bg-radial` | `bg-radial` |  |

@@ -262,6 +262,15 @@ test('transition-layout adds layout motion to whatever transition-* sets', async
   assert.equal(classStyle('transition-none').transition, 'none');
 });
 
+test('bg-clip-text paints a text background through its glyphs, on <text> only', async () => {
+  await use(['bg-clip-text', 'bg-clip-border', 'text-transparent', 'bg-linear-to-r', 'from-accent', 'to-danger']);
+  assert.deepEqual(classStyle('bg-clip-text'), { backgroundClip: 'text' });
+  const text = rendered(() => h('text', { className: 'bg-clip-text text-transparent bg-linear-to-r from-accent to-danger' }, 'Thinking')).props;
+  assert.equal(text.backgroundClip, 'text');
+  assert.ok(text.backgroundGradient);
+  assert.throws(() => describe(() => h('column', { className: 'bg-clip-text' }), {}), /backgroundClip is not supported on <column>/);
+});
+
 test('text utilities: transform, decoration, nowrap, alignment and families', async () => {
   const aligns = ['left', 'center', 'right', 'start', 'end', 'justify'];
   await use(['uppercase', 'capitalize', 'underline', 'line-through', 'no-underline', 'whitespace-nowrap', 'font-mono', 'font-sans', 'font-serif',
