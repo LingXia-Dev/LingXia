@@ -45,10 +45,13 @@ fn flex_container_directions_reflow_without_changing_identity() {
 fn wire_keeps_flex_layout_options_bounded_and_container_specific() {
     assert_eq!(protocol::FIELDS[103], ("flexDirection", "flex-direction"));
     assert_eq!(protocol::FIELDS[104], ("display", "display"));
-    for tag in [2, 3, 5, 6, 16, 17] {
+    for tag in [2, 5, 6, 16, 17] {
         let wire = json!([tag, -1, "", "", "", 1, 103, "row"]);
         assert!(protocol::decode(wire.as_array().unwrap()).is_err());
     }
+    // A composed button may lay its content out in a row.
+    let wire = json!([3, -1, "", "", "", 1, 103, "row"]);
+    assert!(protocol::decode(wire.as_array().unwrap()).is_ok());
     // Any box may leave layout.
     for tag in [2, 3, 5, 17] {
         let wire = json!([tag, -1, "", "", "", 1, 104, "none"]);

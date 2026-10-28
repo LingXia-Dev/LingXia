@@ -171,6 +171,25 @@ export function resolveNode(node, identity, depth = 0, parent = {}) {
   catch (error) { throw located(error, `<${tag}>${location ? ` (${location})` : ''}`); }
 }
 
+// The first strong directional character of authored content: Hebrew, Arabic and the other
+// right-to-left scripts are rtl, any other letter ltr; `undefined` when there is none.
+const rtlScripts = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/u;
+function strongDirection(children, depth = 0) {
+  for (const child of Array.isArray(children) ? children : [children]) {
+    if (typeof child === 'string') {
+      const letter = child.match(/\p{L}/u)?.[0];
+      if (letter) return rtlScripts.test(letter) ? 'rtl' : 'ltr';
+    } else if (Array.isArray(child) && depth < 32) {
+      const found = strongDirection(child, depth + 1);
+      if (found) return found;
+    } else if (isNode(child) && depth < 32) {
+      const found = strongDirection(readNode(child)[2], depth + 1);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
+
 function resolveElement(tag, original, children, identity, depth, parent) {
   if (typeof tag !== 'string' || !has(elements, tag)) throw Error(`UI_TAG: ${String(tag)}`);
   const element = elements[tag];
@@ -180,10 +199,12 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   if (parent.inControl && (tag === 'scroll' || tag === 'list')) throw Error('UI_BUTTON: a scroll or list cannot sit inside a pressable control');
   if (element.binding) bind(tag, element, props);
   const editor = ['input', 'textarea', 'search'].includes(tag);
-  if (props.dir !== undefined && !(['ltr', 'rtl'].includes(props.dir) || (editor && props.dir === 'auto')))
-    throw Error(`UI_PROP: dir must be "ltr" or "rtl"${editor ? ' or "auto"' : ''}`);
-  // `dir` overrides the direction inherited from the environment for its subtree; `auto` keeps the box's.
-  const direction = (props.dir === 'auto' ? undefined : props.dir) ?? parent.direction ?? (envOf(render.view)?.direction === 'rtl' ? 'rtl' : 'ltr');
+  if (props.dir !== undefined && !['ltr', 'rtl', 'auto'].includes(props.dir)) throw Error('UI_PROP: dir must be "ltr", "rtl" or "auto"');
+  // `dir` overrides the direction inherited from the environment for its subtree. `auto` takes the
+  // direction of the content's first strong character, as in HTML; an editor follows its live text.
+  const own = props.dir === 'auto' && !editor ? strongDirection(children) : props.dir === 'auto' ? undefined : props.dir;
+  if (props.dir === 'auto' && !editor) props.dir = own;
+  const direction = own ?? parent.direction ?? (envOf(render.view)?.direction === 'rtl' ? 'rtl' : 'ltr');
   const authored = entries(children), flat = authored.map(entry => entry.child), slot = authored.map(entry => entry.slot);
   const style = nodeStyle(tag, props, parent.extra, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat));
   const inline = child => typeof child === 'string' || typeof child === 'number';

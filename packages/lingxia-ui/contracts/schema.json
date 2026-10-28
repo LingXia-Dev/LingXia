@@ -166,7 +166,7 @@
     {"id": 100, "key": "scrollAxis", "wire": "scrollAxis", "kind": "scroll-axis", "tags": ["scroll"]},
     {"id": 101, "key": "animation", "wire": "animation", "kind": "animation"},
     {"id": 102, "key": "listItemKeys", "wire": "itemKeys", "kind": "list-keys", "tags": ["list"]},
-    {"id": 103, "key": "flexDirection", "wire": "flexDirection", "kind": "flex-direction", "tags": ["column", "row", "page"]},
+    {"id": 103, "key": "flexDirection", "wire": "flexDirection", "kind": "flex-direction", "tags": ["column", "row", "page", "button"]},
     {"id": 104, "key": "display", "wire": "display", "kind": "display"},
     {"id": 105, "key": "imageAlt", "wire": "alt", "kind": "image-alt", "tags": ["image"]},
     {"id": 106, "key": "imageRetryKey", "wire": "retryKey", "kind": "image-retry", "tags": ["image"]},

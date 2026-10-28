@@ -116,7 +116,7 @@ test('flow-relative utilities stay logical on the wire and rtl:/ltr: follow the 
   assert.equal(tree.children[0].props.marginLeft, undefined);
   assert.deepEqual([tree.children[1].children[0].props.marginLeft, tree.children[1].children[0].props.marginRight], [8, undefined]);
   assert.equal(rendered(() => h('column', { className: 'rtl:mr-2' }), { env: { direction: 'rtl' } }).props.marginRight, 8);
-  assert.throws(() => describe(() => h('column', { dir: 'auto' }), {}), /UI_PROP: dir/);
+  assert.throws(() => describe(() => h('column', { dir: 'sideways' }), {}), /UI_PROP: dir/);
   assert.equal(rendered(() => h('input', { value: '', dir: 'auto' })).props.direction, 'auto');
 });
 
@@ -680,4 +680,11 @@ test('group-active: paints while the enclosing control is pressed', async () => 
   const child = button.children[0].props;
   assert.ok(child.groupPressedStyle, 'the child carries its group-pressed paint');
   assert.equal(button.props.pressedStyle, undefined);
+});
+
+test('dir="auto" takes the direction of the content\'s first strong character', () => {
+  const root = rendered(() => h('column', {}, h('text', { dir: 'auto' }, '42 שלום world'), h('text', { dir: 'auto' }, '123 hello'),
+    h('row', { dir: 'auto' }, h('text', {}, 'مرحبا')), h('text', { dir: 'auto' }, '123')));
+  assert.deepEqual(root.children.map(child => child.props.direction), ['rtl', 'ltr', 'rtl', undefined]);
+  assert.throws(() => rendered(() => h('text', { dir: 'up' }, 'x')), /UI_PROP: dir must be "ltr", "rtl" or "auto"/);
 });

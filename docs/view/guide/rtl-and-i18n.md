@@ -37,8 +37,8 @@ export function render() {
 `env.direction` is `'rtl'` when the display language is written right to left (Arabic, Hebrew,
 Persian, Urdu, …), otherwise `'ltr'`. Every element inherits it. `dir="rtl"` or `dir="ltr"` on an element
 sets the direction of its subtree, for content whose direction does not follow the UI language (phone
-numbers, code, a quoted message). Editors also take `dir="auto"`: the direction of the first strong
-character typed.
+numbers, code, a quoted message). `dir="auto"` takes the direction of the first strong character of the
+element's content, as in HTML, for user text such as a chat message; an editor follows the text typed.
 
 In a right-to-left subtree, rows run from right to left, grid columns are placed from the right, and
 `text-start` aligns right. Horizontal scrolls start at their right edge.

@@ -716,7 +716,7 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::SCROLL]), parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::LIST]), parent: None },
-    FieldAdmission { tags: Some(&[tag::COLUMN, tag::ROW, tag::PAGE]), parent: None },
+    FieldAdmission { tags: Some(&[tag::COLUMN, tag::ROW, tag::PAGE, tag::BUTTON]), parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::IMAGE]), parent: None },
     FieldAdmission { tags: Some(&[tag::IMAGE]), parent: None },
