@@ -2353,9 +2353,14 @@ class LxAppActivity : AppCompatActivity() {
                         animateGpuTransition(outgoing, isBackNavigation, version, newWebView)
                         return
                     }
+                    // The show waited for a slide; another cover owner (a tab bar change) took
+                    // the outgoing cover, so no slide runs and the show is due now.
+                    if (animateGpu) LxLog.d(NAV_TAG, "reveal ${newWebView.getWebTag()} without slide v$version")
                     val committed = Runnable {
                         webViewContainer.postOnAnimation {
                             if (version == gpuTransitionVersion) clearGpuTransitionCover()
+                            if (animateGpu && version == gpuTransitionVersion)
+                                (newWebView.parent as? FrameLayout)?.let { triggerOnPageShow(it) }
                         }
                     }
                     if (Build.VERSION.SDK_INT >= 29 && webViewContainer.isHardwareAccelerated) {
