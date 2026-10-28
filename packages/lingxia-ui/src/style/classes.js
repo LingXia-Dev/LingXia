@@ -3,7 +3,7 @@
 // children a `space-*`/`divide-*` rule targets.
 let byName = new Map();
 const cache = new Map();
-const states = ['focus', 'active', 'hover', 'disabled'];
+const states = ['focus', 'active', 'hover', 'disabled', 'starting', 'exit'];
 const geometryKeys = { linear: ['direction', 'angle'], radial: ['shape', 'size', 'at'], conic: ['from', 'at'] };
 
 function copy(value) {

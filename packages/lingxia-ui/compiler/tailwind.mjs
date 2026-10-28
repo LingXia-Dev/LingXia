@@ -637,6 +637,8 @@ function conditions(rule) {
   const result = {};
   for (let parent = rule.parent; parent?.type !== 'root'; parent = parent.parent) {
     if (parent.type === 'atrule' && (parent.name === 'layer' || (parent.name === 'supports' && supportedConditions.includes(parent.params)))) continue;
+    // `starting:` is Tailwind's @starting-style: the values an element enters from.
+    if (parent.type === 'atrule' && parent.name === 'starting-style') { result.starting = true; continue; }
     if (parent.type !== 'atrule' || parent.name !== 'media') unsupported('nested selector');
     if (parent.params === '(prefers-color-scheme: dark)') result.theme = 'dark';
     else if (parent.params === '(hover: hover)') result.hoverMedia = true;
@@ -701,6 +703,8 @@ function selectorParts(selector) {
   let remaining = rest, structure;
   for (const [pseudo, kind] of Object.entries(structures))
     if (remaining.startsWith(pseudo) && !structure) { structure = kind; remaining = remaining.slice(pseudo.length); }
+  // `exit:` is LingXia's presence variant: the values a removed element leaves toward.
+  if (remaining === ':where(.lx-exit)') return { name, state: 'exit', ...(structure ? { structure } : {}) };
   const state = remaining.match(/^:(focus|active|hover|disabled)$/)?.[1];
   if (!remaining || state) return { name, ...(state ? { state } : {}), ...(structure ? { structure } : {}) };
   return { name, error: relatives(selector) ?? `selector ${rest}${alternative(rest)}` };
@@ -731,7 +735,7 @@ function compilerFor(theme) {
   let compiler = compilers.get(theme);
   if (!compiler) {
     compiler = readFile(new URL(import.meta.resolve('tailwindcss/theme.css')), 'utf8')
-      .then(defaults => compile(`${defaults}\n${theme}\n${roleTheme}\n@tailwind utilities;`));
+      .then(defaults => compile(`${defaults}\n${theme}\n${roleTheme}\n@custom-variant exit (&:where(.lx-exit));\n@tailwind utilities;`));
     compiler.catch(() => compilers.delete(theme));
     if (compilers.size >= 8) compilers.delete(compilers.keys().next().value);
     compilers.set(theme, compiler);
@@ -763,7 +767,9 @@ export async function compileUtilities(candidates, theme = '', { literalColors: 
     const { name } = target;
     try {
       if (target.error) unsupported(target.error);
-      const { hoverMedia, ...media } = conditions(rule);
+      const { hoverMedia, starting, ...media } = conditions(rule);
+      if (starting && target.state) unsupported('starting: with another state variant');
+      if (starting) target.state = 'starting';
       if (hoverMedia && target.state !== 'hover') unsupported('(hover: hover) outside a hover variant');
       const when = { ...media, ...(target.state ? { state: target.state } : {}), ...(target.children ? { children: true } : {}),
         ...(target.direction ? { direction: target.direction } : {}), ...(target.structure ? { structure: target.structure } : {}) };

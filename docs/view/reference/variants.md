@@ -32,6 +32,8 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 | `ltr:` | any element |
 | `rtl:` | any element |
 | `dark:` | any element; not on colours, which follow appearance |
+| `starting:` | any element; paint only, the values it enters from |
+| `exit:` | any element; paint only, the values a removed element leaves toward |
 
 `space-x-*`, `space-y-*` and `divide-*` are utilities, not variants: they style every child but the last.
 
@@ -93,7 +95,6 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 | `@min:` | `@min-md:` | nested selector |
 | `portrait:` | `portrait:` | media query (orientation: portrait) |
 | `landscape:` | `landscape:` | media query (orientation: landscape) |
-| `starting:` | `starting:` | nested selector |
 | `print:` | `print:` | media query print |
 | `forced-colors:` | `forced-colors:` | media query (forced-colors: active) |
 | `inverted-colors:` | `inverted-colors:` | media query (inverted-colors: inverted) |

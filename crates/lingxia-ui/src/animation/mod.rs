@@ -1,5 +1,6 @@
 //! Shared presentation-bound animation time. No platform clock or guest timers.
 mod effect;
+pub(crate) mod presence;
 pub(crate) mod records;
 pub mod transition;
 mod wire;
@@ -117,6 +118,11 @@ impl Prepared {
             .get(identity)
             .is_some_and(|instance| &instance.definition == definition)
     }
+    /// Exit ghosts this frame draws, with the layout each was last committed in.
+    pub(crate) fn ghosts(&self) -> Vec<(String, transition::Origin)> {
+        self.transitions.ghosts(self.elapsed)
+    }
+
     /// Only active effects; absent entries use the node's unanimated base style.
     pub fn visuals(&self) -> &BTreeMap<String, Visual> {
         &self.visuals
@@ -261,7 +267,19 @@ impl Timeline {
             return Ok(Wakeup::None);
         }
         let mut next = Wakeup::None;
-        for identity in visible_identities {
+        // Exit ghosts are not in the View any more, so the caller cannot name them.
+        let ghosts: Vec<String> = self
+            .transitions
+            .ghosts(active_time)
+            .into_iter()
+            .map(|(identity, _)| identity)
+            .collect();
+        let identities: Vec<String> = visible_identities
+            .into_iter()
+            .map(str::to_owned)
+            .chain(ghosts)
+            .collect();
+        for identity in identities.iter().map(String::as_str) {
             let instance = self.instances.get(identity);
             let mut current = match instance {
                 Some(instance) => self.keyframe_visual(instance, active_time)?,
@@ -388,7 +406,7 @@ impl Timeline {
         now: Duration,
         sample: Duration,
         definitions: impl IntoIterator<Item = (String, Definition)>,
-        transitions: Vec<(String, transition::TransitionDef, transition::Resolved)>,
+        transitions: Vec<transition::Input>,
         visible_identities: impl IntoIterator<Item = &'a str>,
         base: Option<&Prepared>,
     ) -> Result<Prepared, String> {
@@ -409,7 +427,7 @@ impl Timeline {
         now: Duration,
         sample: Duration,
         definitions: impl IntoIterator<Item = (String, Definition)>,
-        transitions: Vec<(String, transition::TransitionDef, transition::Resolved)>,
+        transitions: Vec<transition::Input>,
         mut visible: Option<std::collections::BTreeSet<String>>,
         base: Option<&Prepared>,
     ) -> Result<Prepared, String> {

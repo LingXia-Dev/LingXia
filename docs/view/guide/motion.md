@@ -32,7 +32,7 @@ continues from the value on screen.
 
 Some changes land at once instead of animating:
 
-- an element seen for the first time (there are no enter or exit transitions yet);
+- an element seen for the first time, unless it has `starting:` values (see below);
 - a transform of a subtree that holds an editor, a `<scroll>` or a `<slider>`;
 - a gradient background;
 - a shadow on an element with unequal corner radii;
@@ -48,6 +48,34 @@ export function render() {
 ```
 
 Animate a scale or translate instead of a size.
+
+## Enter and exit
+
+`starting:` sets the values an element enters from the first time it renders; `exit:` sets the values it
+leaves toward when a re-render removes it. Both take paint properties only and animate with the element's
+own transition:
+
+```tsx
+import { useLocal } from '@lingxia/ui';
+
+export function render() {
+  const open = useLocal('open', false);
+  return (
+    <page className="p-4 gap-4">
+      <button onClick={() => open.set(!open.value)} className="self-start rounded-xl bg-accent text-on-accent px-4 py-2">Toggle</button>
+      {open.value && (
+        <view className="h-16 rounded-xl bg-surface-raised transition duration-200 starting:opacity-0 starting:translate-y-2 exit:opacity-0 exit:-translate-y-2" />
+      )}
+    </page>
+  );
+}
+```
+
+A removed element keeps drawing where it was until its exit ends, clipped and scrolled with its old parent,
+but it takes no input and is hidden from accessibility; the layout closes the gap at once. Only the
+outermost removed element plays its exit, and at most 64 play at once per page; past that, removed elements
+vanish. An element that comes back mid-exit enters from where its exit had got to. A hidden page, and
+reduced motion, add and remove elements at once.
 
 ## Animations
 
@@ -71,6 +99,6 @@ variant applies. The system animation speed scales every duration and delay; 0 r
 
 ## Not supported
 
-Enter and exit animations, layout transitions, 3D transforms, `transition-behavior`, scroll-driven
+Layout transitions, 3D transforms, `transition-behavior`, scroll-driven
 animations, View-side timers (`setTimeout`, `requestAnimationFrame`) and per-frame JavaScript
 animation. An inline `style.animation` fails with `UI_ANIMATION`; use `animate-*`.

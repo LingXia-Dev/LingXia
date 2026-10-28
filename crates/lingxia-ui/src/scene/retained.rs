@@ -174,6 +174,119 @@ impl RetainedLayout {
         blocked
     }
 
+    /// This layout with each exit ghost's subtree, copied from the layout it was last committed
+    /// in, grafted under its nearest surviving ancestor: it scrolls with that ancestor's
+    /// scrollers and is clipped by its clip chain. Ghosts take no input and no semantics.
+    pub(crate) fn with_ghosts(
+        self: &Arc<Self>,
+        ghosts: &[(String, crate::animation::transition::Origin)],
+    ) -> Arc<Self> {
+        let mut next = (**self).clone();
+        for (identity, crate::animation::transition::Origin(old, root)) in ghosts {
+            let root = *root;
+            if old
+                .nodes
+                .get(root)
+                .is_none_or(|node| &node.identity != identity)
+                || next.nodes.iter().any(|node| &node.identity == identity)
+            {
+                continue;
+            }
+            // Preorder: a subtree is the run of nodes whose parent chain reaches the root.
+            let mut members = vec![root];
+            for index in root + 1..old.nodes.len() {
+                match old.parents[index] {
+                    Some(parent) if members.contains(&parent) => members.push(index),
+                    _ => break,
+                }
+            }
+            let anchor =
+                std::iter::successors(old.parents[root], |&p| old.parents[p]).find_map(|p| {
+                    next.nodes
+                        .iter()
+                        .position(|node| node.identity == old.nodes[p].identity)
+                });
+            let base = next.nodes.len();
+            let place = |old_index: usize| {
+                members
+                    .iter()
+                    .position(|&m| m == old_index)
+                    .map(|k| base + k)
+            };
+            for &index in &members {
+                let mut node = old.nodes[index].clone();
+                node.test_id.clear();
+                node.on_click = None;
+                node.accessibility_hidden = Some(true);
+                node.selectable = None;
+                node.text_selection = None;
+                node.input = None;
+                node.select = None;
+                node.plot = None;
+                node.range = None;
+                node.radio_group = None;
+                node.scroll_parent = None;
+                next.nodes.push(node);
+                let start = next.commands.len();
+                let shift = |command: usize| command + start - old.ranges[index].start;
+                next.commands
+                    .extend_from_slice(&old.commands[old.ranges[index].clone()]);
+                next.ranges.push(start..next.commands.len());
+                let mut style = old.paint_styles[index].clone();
+                style.background = style.background.map(shift);
+                style.border = style.border.map(shift);
+                style.shadows = style
+                    .shadows
+                    .map(|layers| layers.into_iter().map(shift).collect());
+                style.texts = style
+                    .texts
+                    .into_iter()
+                    .filter_map(|(command, record)| Some((shift(command), place(record)?)))
+                    .collect();
+                next.paint_styles.push(style);
+                next.parents.push(if index == root {
+                    anchor
+                } else {
+                    old.parents[index].and_then(place)
+                });
+                next.opacities.push(old.opacities[index]);
+                next.transforms.push(old.transforms[index]);
+                next.stickies.push(None);
+                next.backdrops.push(old.backdrops[index]);
+                next.inputs.push(None);
+                next.selectables.push(None);
+            }
+            // Painted right after the anchor's subtree, so above its other children.
+            let added: Vec<usize> = (base..next.nodes.len()).collect();
+            let at = match anchor {
+                Some(anchor) => {
+                    let mut end = next
+                        .order
+                        .iter()
+                        .position(|&i| i == anchor)
+                        .map_or(next.order.len(), |p| p + 1);
+                    while end < next.order.len() && next.descends(next.order[end], anchor) {
+                        end += 1;
+                    }
+                    end
+                }
+                None => next.order.len(),
+            };
+            next.order.splice(at..at, added);
+        }
+        Arc::new(next)
+    }
+
+    fn descends(&self, mut index: usize, ancestor: usize) -> bool {
+        while let Some(parent) = self.parents[index] {
+            if parent == ancestor {
+                return true;
+            }
+            index = parent;
+        }
+        false
+    }
+
     /// The node's transitionable paint values after state variants.
     pub(crate) fn resolved(
         &self,

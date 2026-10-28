@@ -243,6 +243,16 @@ test('state variants lower to state styles and disabled replaces the cascade', a
   assert.ok(rendered(() => h('input', { className: 'focus:bg-danger' })).props.focusStyle.background);
 });
 
+test('starting and exit variants lower to presence states', async () => {
+  await use(['opacity-100', 'starting:opacity-0', 'exit:opacity-0', 'exit:translate-y-2', 'starting:p-2']);
+  const states = resolveClasses('opacity-100 starting:opacity-0 exit:opacity-0 exit:translate-y-2');
+  assert.equal(states.starting.opacity, 0);
+  assert.equal(states.exit.opacity, 0);
+  const panel = rendered(() => h('column', { className: 'opacity-100 starting:opacity-0 exit:opacity-0' })).props;
+  assert.deepEqual([panel.startingStyle, panel.exitStyle], ['[58,0]', '[58,0]'], 'opacity 0, wire-encoded');
+  assert.throws(() => rendered(() => h('column', { className: 'starting:p-2' })), /starting: supports paint properties only, not paddingTop/);
+});
+
 test('text utilities: transform, decoration, nowrap, alignment and families', async () => {
   const aligns = ['left', 'center', 'right', 'start', 'end', 'justify'];
   await use(['uppercase', 'capitalize', 'underline', 'line-through', 'no-underline', 'whitespace-nowrap', 'font-mono', 'font-sans', 'font-serif',

@@ -20,8 +20,15 @@ pub struct FrameMetrics {
     pub paints: usize,
     /// Visible presentations that showed animated values in the last second.
     pub animation_frames: usize,
+    /// Removed nodes still drawn while their exit transition runs.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub ghosts: usize,
     /// Deterministic counters of the frame, compared against the page limits.
     pub cost: crate::FrameCost,
+}
+
+fn is_zero(value: &usize) -> bool {
+    *value == 0
 }
 
 pub(crate) fn micros(start: std::time::Instant) -> u64 {
@@ -54,7 +61,7 @@ impl crate::ViewSession {
         let metrics = &self.metrics;
         let cost = &metrics.cost;
         let fails = "past it the frame fails";
-        let uses: [(&'static str, u64, u64, &str); 4] = [
+        let uses: [(&'static str, u64, u64, &str); 5] = [
             ("nodes", metrics.nodes as u64, limits::NODES as u64, fails),
             (
                 "wireValues",
@@ -73,6 +80,12 @@ impl crate::ViewSession {
                 cost.image_pixels * 4,
                 limits::VISIBLE_IMAGE_BYTES as u64,
                 "past it further images show their placeholder",
+            ),
+            (
+                "ghosts",
+                metrics.ghosts as u64,
+                limits::GHOSTS as u64,
+                "past it further removals vanish at once",
             ),
         ];
         for (name, used, limit, consequence) in uses {

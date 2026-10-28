@@ -256,6 +256,7 @@ impl ViewSession {
         self.animation_inventory = inventory;
         self.animations = *timeline;
         self.animation_visible = visible;
+        self.metrics.ghosts = frame.as_ref().map_or(0, |frame| frame.ghosts().len());
         let frame = frame.map(|frame| (self.generation, surface, *frame));
         if base.is_some() && frame.is_some() {
             self.presenting_animation = self.pending_animation.take();
@@ -373,6 +374,7 @@ impl ViewSession {
                         self.input_records.as_deref().unwrap_or_default(),
                         display,
                         &offsets,
+                        &self.renderer.palette,
                     )?
                     .0;
                 metrics.compose_us += crate::session::metrics::micros(started);
@@ -546,7 +548,8 @@ impl ViewSession {
                     let applied = applied_offsets(&display);
                     let retained = Arc::clone(&display.retained);
                     let started = std::time::Instant::now();
-                    let (composed, redecorate) = animation.compose(&records, display, &applied)?;
+                    let (composed, redecorate) =
+                        animation.compose(&records, display, &applied, &self.renderer.palette)?;
                     display = composed;
                     metrics.compose_us += crate::session::metrics::micros(started);
                     if redecorate {

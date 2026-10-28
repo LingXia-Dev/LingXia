@@ -1,6 +1,6 @@
 {
   "uiAbi": 1,
-  "limits": {"nodes": 4096, "depth": 128, "animationBytes": 262144, "itemKeyBytes": 262144, "imageBytes": 8388608, "sourceBytes": 8192, "visibleImageBytes": 67108864, "decodedImageBytes": 100663296, "runs": 256, "transitionMs": 10000, "evalBudgetMs": 100, "evalBudgetDebugMultiplier": 8, "editorTextBytes": 65536, "inputRequestBytes": 524288, "inputBatchEdits": 64, "clipboardItems": 128, "wireValues": 100000, "textBytes": 65536, "identifierBytes": 256, "listRows": 100000, "gridTracks": 64, "vectorSourceBytes": 32768, "vectorPathBytes": 16384, "vectorPathWork": 16384, "vectorWork": 32768, "plotWork": 16384, "shadowMaskBytes": 16777216, "compositeFrames": 6, "leaseFrames": 6, "compositeBytes": 268435456},
+  "limits": {"nodes": 4096, "depth": 128, "animationBytes": 262144, "itemKeyBytes": 262144, "imageBytes": 8388608, "sourceBytes": 8192, "visibleImageBytes": 67108864, "decodedImageBytes": 100663296, "runs": 256, "transitionMs": 10000, "evalBudgetMs": 100, "evalBudgetDebugMultiplier": 8, "editorTextBytes": 65536, "inputRequestBytes": 524288, "inputBatchEdits": 64, "clipboardItems": 128, "wireValues": 100000, "textBytes": 65536, "identifierBytes": 256, "listRows": 100000, "gridTracks": 64, "vectorSourceBytes": 32768, "vectorPathBytes": 16384, "vectorPathWork": 16384, "vectorWork": 32768, "plotWork": 16384, "shadowMaskBytes": 16777216, "compositeFrames": 6, "leaseFrames": 6, "compositeBytes": 268435456, "outlineGlyphs": 4096, "ghosts": 64},
   "tags": ["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page", "span", "link", "select"],
   "admission": {
     "column": {"children": "any", "content": true},
@@ -246,7 +246,9 @@
     {"id": 181, "key": "maxRows", "wire": "maxRows", "kind": "textarea-rows", "tags": ["textarea"]},
     {"id": 182, "key": "imagePlaceholder", "wire": "placeholderSrc", "kind": "image-src", "tags": ["image"]},
     {"id": 183, "key": "imagePosition", "wire": "objectPosition", "kind": "image-position", "tags": ["image"]},
-    {"id": 184, "key": "childSlot", "wire": "slot", "kind": "child-slot"}
+    {"id": 184, "key": "childSlot", "wire": "slot", "kind": "child-slot"},
+    {"id": 185, "key": "startingStyle", "wire": "startingStyle", "kind": "state-style"},
+    {"id": 186, "key": "exitStyle", "wire": "exitStyle", "kind": "state-style"}
   ],
   "input": {
     "autofill": {"username": "username", "current-password": "password", "new-password": "newPassword", "one-time-code": "smsOTPCode", "email": "emailAddress", "tel": "phone", "name": "personName", "given-name": "personGivenName", "family-name": "personFamilyName", "street-address": "postalAddress", "postal-code": "postalCode", "country": "addressCountry", "cc-number": "creditCardNumber", "cc-exp": "creditCardExpirationDate", "cc-csc": "creditCardSecurityCode", "bday": "birthDateFull"},
@@ -298,8 +300,8 @@
     "types": {
       "FrameSnapshot": {"generation": "u64", "nodes": "Node[]", "images": "ImageSource[]", "metrics": "FrameMetrics", "feedback": "FeedbackStyle"},
       "ImageSource": {"source": "string", "retry_key": "string"},
-      "FrameMetrics": {"generation": "u64", "totalUs": "u64", "viewUs": "u64", "viewEvalUs": "u64", "viewTransferUs": "u64", "viewDecodeUs": "u64", "wireValues": "usize", "layoutUs": "u64", "textUs": "u64", "composeUs": "u64", "buildUs": "u64", "viewPasses": "u32", "layoutPasses": "u32", "nodes": "usize", "paints": "usize", "animationFrames": "usize", "cost": "FrameCost", "imageCacheBytes": "u64?", "presenterSingleTarget": "bool?", "activations": "u64?", "droppedActivations": "u64?", "...": "any"},
-      "FrameCost": {"nodes": "usize", "paints": "usize", "glyphs": "usize", "vectorElements": "usize", "layers": "usize", "backdrops": "usize", "shadows": "usize", "images": "usize", "imagePixels": "u64"},
+      "FrameMetrics": {"generation": "u64", "totalUs": "u64", "viewUs": "u64", "viewEvalUs": "u64", "viewTransferUs": "u64", "viewDecodeUs": "u64", "wireValues": "usize", "layoutUs": "u64", "textUs": "u64", "composeUs": "u64", "buildUs": "u64", "viewPasses": "u32", "layoutPasses": "u32", "nodes": "usize", "paints": "usize", "animationFrames": "usize", "ghosts": "usize?", "cost": "FrameCost", "imageCacheBytes": "u64?", "presenterSingleTarget": "bool?", "activations": "u64?", "droppedActivations": "u64?", "...": "any"},
+      "FrameCost": {"nodes": "usize", "paints": "usize", "glyphs": "usize", "vectorElements": "usize", "layers": "usize", "backdrops": "usize", "shadows": "usize", "images": "usize", "imagePixels": "u64", "outlineGlyphs": "usize"},
       "FeedbackStyle": {"pressOverlay": "u32", "focusRing": "u32", "focusRingWidth": "f32", "selectionHandle": "u32", "noticeBackground": "u32", "noticeText": "u32"},
       "Node": {"identity": "string", "tag": "string", "test_id": "string", "text": "string", "bounds": "f32[4]", "visible_bounds": "f32[4]", "selectable": "string?", "text_selection": "InputGeometry?", "selection_range": "u32[2]?", "hit_rects": "f32[4][]?", "clips": "Clip[]?", "scroll": "Scroll?", "on_click": "u64?", "checked": "bool?", "range": "Slider?", "plot": "Plot?", "radio_group": "string?", "scroll_parent": "string?", "accessibility_label": "string?", "accessibility_hidden": "bool?", "role": "string?", "heading_level": "u8?", "live_region": "string?", "select": "Select?", "button_content": "string?", "radii": "f32[2][4]?", "radius": "f32", "content_clip": "Clip?", "control_bounds": "f32[4]?", "input": "Input?", "clips_children": "bool?", "pressed_style": "bool?", "focus_style": "bool?", "order": "u32"},
       "Clip": {"radii": "f32[2][4]?", "bounds": "f32[4]", "radius": "f32", "transform": "f64[6]?"},

@@ -122,6 +122,8 @@ public final class GpuFrame {
         public long paints() { return json.optLong("paints"); }
         /** `animationFrames`: usize */
         public long animationFrames() { return json.optLong("animationFrames"); }
+        /** `ghosts`: usize? */
+        public Long ghosts() { if (json.isNull("ghosts")) return null; return json.optLong("ghosts"); }
         /** `cost`: FrameCost */
         public FrameCost cost() { JSONObject o = json.optJSONObject("cost"); return o == null ? null : new FrameCost(o); }
         /** `imageCacheBytes`: u64? */
@@ -155,6 +157,8 @@ public final class GpuFrame {
         public long images() { return json.optLong("images"); }
         /** `imagePixels`: u64 */
         public long imagePixels() { return json.optLong("imagePixels"); }
+        /** `outlineGlyphs`: usize */
+        public long outlineGlyphs() { return json.optLong("outlineGlyphs"); }
     }
 
     public static final class FeedbackStyle {

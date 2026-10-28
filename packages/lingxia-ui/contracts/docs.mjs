@@ -231,7 +231,9 @@ const variantSamples = {
 };
 
 const probe = 'opacity-50';
-const variantCandidates = system => system.getVariants().map(variant => [variant.name, `${variantSamples[variant.name] ?? variant.name}:${probe}`]);
+// `exit:` is the View's own variant, added to the compile input rather than Tailwind's design system.
+const variantCandidates = system => [...system.getVariants().map(variant => [variant.name, `${variantSamples[variant.name] ?? variant.name}:${probe}`]),
+  ['exit', `exit:${probe}`]];
 
 function variants(schema, system, rules) {
   const candidates = variantCandidates(system);
@@ -248,6 +250,7 @@ function variants(schema, system, rules) {
     hover: 'any element, only when `env.pointer` is `fine`; paint only', disabled: `${disableable}; replaces the whole class cascade`,
     placeholder: `editors; \`text-*\` color only`,
     dark: 'any element; not on colours, which follow appearance',
+    starting: 'any element; paint only, the values it enters from', exit: 'any element; paint only, the values a removed element leaves toward',
   };
   const supported = [], refused = [];
   for (const [name, candidate] of candidates) {
@@ -298,6 +301,8 @@ const limitNotes = {
   compositeFrames: 'Frame-sized working surfaces nested opacity, clip and backdrop layers may hold at once (at least 64 MiB); past it the deepest groups flatten.',
   leaseFrames: 'Frame-sized GPU textures a page may hold at once across prepared frames and kept animation layers (at least 64 MiB, under `compositeBytes`); past it the frame draws without the kept layer.',
   compositeBytes: 'Absolute ceiling on those working surfaces, for very large windows.',
+  ghosts: 'Removed elements still drawing their exit at once; past it further removals vanish at once.',
+  outlineGlyphs: "Glyphs the platform outlines (Apple's PingFang UI faces) in one frame, each filled as a path; past it frames slow down.",
 };
 
 const size = value => value >= 1 << 20 && value % (1 << 20) === 0 ? `${value / (1 << 20)} MiB`

@@ -317,10 +317,60 @@ impl Instance {
     }
 }
 
+/// Where a node was laid out in a committed frame: an exit ghost repaints it from there.
+#[derive(Clone)]
+pub(crate) struct Origin(
+    pub(crate) std::sync::Arc<crate::scene::retained::RetainedLayout>,
+    pub(crate) usize,
+);
+
+impl std::fmt::Debug for Origin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Origin({})", self.1)
+    }
+}
+
+impl PartialEq for Origin {
+    fn eq(&self, other: &Self) -> bool {
+        std::sync::Arc::ptr_eq(&self.0, &other.0) && self.1 == other.1
+    }
+}
+
+/// One realized node with a transition, its resolved paint and its presence values.
+#[derive(Clone, Debug)]
+pub(crate) struct Input {
+    pub identity: String,
+    pub definition: TransitionDef,
+    pub target: Resolved,
+    /// `starting:` values: a node seen for the first time enters from them.
+    pub starting: Option<Resolved>,
+    /// `exit:` values: a removed node leaves toward them as a ghost.
+    pub exit: Option<Resolved>,
+    pub origin: Option<Origin>,
+}
+
+impl From<(String, TransitionDef, Resolved)> for Input {
+    fn from((identity, definition, target): (String, TransitionDef, Resolved)) -> Self {
+        Self {
+            identity,
+            definition,
+            target,
+            starting: None,
+            exit: None,
+            origin: None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 struct Node {
     target: Resolved,
     instances: BTreeMap<Property, Instance>,
+    definition: TransitionDef,
+    exit: Option<Resolved>,
+    origin: Option<Origin>,
+    /// The node left the View; its last paint is kept until the exit finishes.
+    ghost: bool,
 }
 
 /// The paint values a transition currently overrides; absent fields use the base style.
@@ -357,19 +407,61 @@ pub(crate) struct Transitions(BTreeMap<String, Node>);
 
 impl Transitions {
     /// `now` is the timeline's active time. Inputs are the frame's nodes with a transition.
-    pub(crate) fn reconcile(
+    pub(crate) fn reconcile<I: Into<Input>>(
         &self,
-        inputs: impl IntoIterator<Item = (String, TransitionDef, Resolved)>,
+        inputs: impl IntoIterator<Item = I>,
         now: Duration,
         policy: Policy,
     ) -> Result<Self, String> {
         let mut next = BTreeMap::new();
-        for (identity, definition, target) in inputs {
+        for input in inputs {
+            let Input {
+                identity,
+                definition,
+                target,
+                starting,
+                exit,
+                origin,
+            } = input.into();
             if next.len() == super::MAX_INSTANCES {
                 return Err("UI_TRANSITION: instance budget exceeded".into());
             }
             let mut instances = BTreeMap::new();
-            if let Some(old) = self.0.get(&identity) {
+            let old = self.0.get(&identity);
+            let entering = old.is_none_or(|old| old.ghost);
+            if entering {
+                // Enters from its `starting:` values, or from where its exit ghost had got to.
+                if let Some(from) = starting.as_ref().filter(|_| policy.start) {
+                    for property in PROPERTIES {
+                        if !definition.covers(property) {
+                            continue;
+                        }
+                        let ghost = old
+                            .and_then(|old| old.instances.get(&property))
+                            .filter(|instance| policy.keep && !instance.finished(now));
+                        let begin = match ghost {
+                            Some(instance) => Some(instance.sample(now)?),
+                            None => from.value(property),
+                        };
+                        let (Some(begin), Some(end)) = (begin, target.value(property)) else {
+                            continue;
+                        };
+                        if begin != end {
+                            instances.insert(
+                                property,
+                                Instance {
+                                    from: begin,
+                                    to: end,
+                                    duration: definition.duration.mul_f64(policy.scale),
+                                    delay: definition.delay.mul_f64(policy.scale),
+                                    easing: definition.easing,
+                                    started: None,
+                                },
+                            );
+                        }
+                    }
+                }
+            } else if let Some(old) = old {
                 for property in PROPERTIES {
                     if !definition.covers(property) {
                         continue;
@@ -409,9 +501,102 @@ impl Transitions {
                     );
                 }
             }
-            next.insert(identity, Node { target, instances });
+            next.insert(
+                identity,
+                Node {
+                    target,
+                    instances,
+                    definition,
+                    exit,
+                    origin,
+                    ghost: false,
+                },
+            );
+        }
+        // Removed nodes: a running ghost carries on; one with `exit:` values starts one.
+        let mut ghosts = next.values().filter(|node| node.ghost).count();
+        for (identity, old) in &self.0 {
+            if next.contains_key(identity) || !policy.start {
+                continue;
+            }
+            if old.ghost {
+                if old.instances.values().any(|i| !i.finished(now)) {
+                    next.insert(identity.clone(), old.clone());
+                    ghosts += 1;
+                }
+                continue;
+            }
+            let (Some(exit), Some(origin)) = (&old.exit, &old.origin) else {
+                continue;
+            };
+            if ghosts == crate::protocol::limits::GHOSTS || self.removed_within(identity, &next) {
+                continue;
+            }
+            let mut instances = BTreeMap::new();
+            for property in PROPERTIES {
+                if !old.definition.covers(property) {
+                    continue;
+                }
+                let running = old
+                    .instances
+                    .get(&property)
+                    .filter(|instance| policy.keep && !instance.finished(now));
+                let begin = match running {
+                    Some(instance) => Some(instance.sample(now)?),
+                    None => old.target.value(property),
+                };
+                let (Some(begin), Some(end)) = (begin, exit.value(property)) else {
+                    continue;
+                };
+                if begin != end {
+                    instances.insert(
+                        property,
+                        Instance {
+                            from: begin,
+                            to: end,
+                            duration: old.definition.duration.mul_f64(policy.scale),
+                            delay: old.definition.delay.mul_f64(policy.scale),
+                            easing: old.definition.easing,
+                            started: None,
+                        },
+                    );
+                }
+            }
+            if !instances.is_empty() {
+                next.insert(
+                    identity.clone(),
+                    Node {
+                        target: exit.clone(),
+                        instances,
+                        definition: old.definition,
+                        exit: None,
+                        origin: Some(origin.clone()),
+                        ghost: true,
+                    },
+                );
+                ghosts += 1;
+            }
         }
         Ok(Self(next))
+    }
+
+    /// Only the outermost removed node ghosts: one inside an exiting ancestor is part of it.
+    fn removed_within(&self, identity: &str, next: &BTreeMap<String, Node>) -> bool {
+        self.0.iter().any(|(other, node)| {
+            other.len() < identity.len()
+                && identity.starts_with(other.as_str())
+                && identity.as_bytes()[other.len()] == b'/'
+                && (node.ghost || (node.exit.is_some() && !next.contains_key(other)))
+        })
+    }
+
+    /// The exit ghosts still drawing, with the frame each was laid out in.
+    pub(crate) fn ghosts(&self, now: Duration) -> Vec<(String, Origin)> {
+        self.0
+            .iter()
+            .filter(|(_, node)| node.ghost && node.instances.values().any(|i| !i.finished(now)))
+            .filter_map(|(identity, node)| Some((identity.clone(), node.origin.clone()?)))
+            .collect()
     }
 
     pub(crate) fn start(&mut self, now: Duration) {
@@ -551,7 +736,7 @@ mod tests {
         assert_eq!(back.overrides("a", ms(200)).unwrap().opacity, Some(0.75));
         assert!(back.overrides("a", ms(300)).unwrap().is_empty());
         assert_eq!(back.wakeup("a", ms(300)), super::super::Wakeup::None);
-        let removed = back.reconcile([], ms(150), MOVE).unwrap();
+        let removed = back.reconcile(Vec::<Input>::new(), ms(150), MOVE).unwrap();
         assert!(!removed.contains("a"));
         let hidden = fading
             .reconcile(

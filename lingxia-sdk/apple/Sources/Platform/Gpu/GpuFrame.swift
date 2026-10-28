@@ -118,6 +118,7 @@ public struct GpuFrameFrameMetrics: Decodable, Sendable {
     public let nodes: UInt64
     public let paints: UInt64
     public let animationFrames: UInt64
+    public let ghosts: UInt64?
     public let cost: GpuFrameFrameCost
     public let imageCacheBytes: UInt64?
     public let presenterSingleTarget: Bool?
@@ -141,6 +142,7 @@ public struct GpuFrameFrameMetrics: Decodable, Sendable {
         case nodes = "nodes"
         case paints = "paints"
         case animationFrames = "animationFrames"
+        case ghosts = "ghosts"
         case cost = "cost"
         case imageCacheBytes = "imageCacheBytes"
         case presenterSingleTarget = "presenterSingleTarget"
@@ -160,6 +162,7 @@ public struct GpuFrameFrameCost: Decodable, Sendable {
     public let shadows: UInt64
     public let images: UInt64
     public let imagePixels: UInt64
+    public let outlineGlyphs: UInt64
 
     enum CodingKeys: String, CodingKey {
         case nodes = "nodes"
@@ -171,6 +174,7 @@ public struct GpuFrameFrameCost: Decodable, Sendable {
         case shadows = "shadows"
         case images = "images"
         case imagePixels = "imagePixels"
+        case outlineGlyphs = "outlineGlyphs"
     }
 }
 

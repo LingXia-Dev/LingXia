@@ -1627,6 +1627,7 @@ mod editor_rules;
 mod hot_swap;
 #[path = "motion.rs"]
 mod motion;
+mod presence;
 #[path = "select.rs"]
 mod select;
 #[path = "text_selection.rs"]

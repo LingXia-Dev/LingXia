@@ -5,6 +5,7 @@ use crate::{
 };
 use std::{
     collections::{BTreeSet, HashMap},
+    sync::Arc,
     time::Duration,
 };
 
@@ -38,6 +39,7 @@ impl FrameAnimations<'_> {
         records: &[crate::protocol::Record],
         display: DisplayList,
         offsets: &HashMap<String, f32>,
+        palette: &crate::theme::Palette,
     ) -> Result<(DisplayList, bool), String> {
         match self {
             Self::Disabled => Ok((display, false)),
@@ -53,7 +55,7 @@ impl FrameAnimations<'_> {
                 visible,
             } => {
                 let candidate = inventory.reconcile(records)?;
-                let transitions = transition_inputs(records, &display)?;
+                let transitions = transition_inputs(records, &display, palette)?;
                 let realized: BTreeSet<_> = records
                     .iter()
                     .zip(&display.nodes)
@@ -91,9 +93,7 @@ impl FrameAnimations<'_> {
                         visible.iter().map(String::as_str),
                         base.as_deref(),
                     )?;
-                    let rendered = rendered
-                        .retained
-                        .compose_animated(offsets, prepared.visuals())?;
+                    let rendered = compose(rendered, offsets, &prepared)?;
                     (prepared, rendered)
                 };
                 *inventory = candidate;
@@ -104,18 +104,14 @@ impl FrameAnimations<'_> {
     }
 }
 
-/// Each realized node with a transition, paired with its natively resolved paint.
+/// Each realized node with a transition: its natively resolved paint, the presence values it
+/// enters from and leaves toward, and where it was laid out (for an exit ghost).
 fn transition_inputs(
     records: &[crate::protocol::Record],
     display: &DisplayList,
-) -> Result<
-    Vec<(
-        String,
-        crate::animation::transition::TransitionDef,
-        crate::animation::transition::Resolved,
-    )>,
-    String,
-> {
+    palette: &crate::theme::Palette,
+) -> Result<Vec<crate::animation::transition::Input>, String> {
+    use crate::animation::{presence, transition};
     let mut blocked = None;
     let mut inputs = Vec::new();
     for (index, record) in records.iter().enumerate() {
@@ -124,11 +120,28 @@ fn transition_inputs(
         };
         let retained = &display.retained;
         let blocked = blocked.get_or_insert_with(|| retained.transform_blocked());
-        inputs.push((
-            retained.nodes[index].identity.clone(),
-            crate::animation::transition::TransitionDef::decode(source)?,
-            retained.resolved(index, blocked[index]),
-        ));
+        let target = retained.resolved(index, blocked[index]);
+        let [_, _, w, h] = retained.nodes[index].bounds;
+        let presence = |id| {
+            record
+                .string(id)
+                .map(|delta| presence::apply(&target, delta, palette, [w, h]))
+                .transpose()
+        };
+        let (starting, exit) = (
+            presence(field::STARTING_STYLE)?,
+            presence(field::EXIT_STYLE)?,
+        );
+        inputs.push(transition::Input {
+            identity: retained.nodes[index].identity.clone(),
+            definition: transition::TransitionDef::decode(source)?,
+            origin: exit
+                .is_some()
+                .then(|| transition::Origin(Arc::clone(retained), index)),
+            target,
+            starting,
+            exit,
+        });
     }
     Ok(inputs)
 }
@@ -151,10 +164,16 @@ fn compose(
     offsets: &HashMap<String, f32>,
     frame: &Prepared,
 ) -> Result<DisplayList, String> {
-    if frame.visuals().is_empty() {
+    let ghosts = frame.ghosts();
+    if frame.visuals().is_empty() && ghosts.is_empty() {
         Ok(display)
-    } else {
+    } else if ghosts.is_empty() {
         display.retained.compose_animated(offsets, frame.visuals())
+    } else {
+        display
+            .retained
+            .with_ghosts(&ghosts)
+            .compose_animated(offsets, frame.visuals())
     }
 }
 

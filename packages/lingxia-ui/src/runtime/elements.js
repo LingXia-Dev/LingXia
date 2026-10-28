@@ -112,6 +112,9 @@ function lowerNodeStyle(tag, props, extra, inherited, direction, structure) {
     state('active', 'pressedStyle', accepts('pressedStyle', tag), 'a control');
     state('hover', 'hoverStyle', true);
   }
+  // Presence: the paint an element enters from and leaves toward, with its own transition.
+  state('starting', 'startingStyle', true);
+  state('exit', 'exitStyle', true);
   return { fields, states, typography, author, children: classes?.children };
 }
 

@@ -1134,6 +1134,7 @@
         "images": 0,
         "layers": 5,
         "nodes": 20,
+        "outlineGlyphs": 0,
         "paints": 21,
         "shadows": 0,
         "vectorElements": 3
