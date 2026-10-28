@@ -241,7 +241,28 @@ impl ImageProvider for AppleAdapter {
 }
 
 impl AccessibilitySink for AppleAdapter {
-    fn announce(&self, _: &[AccessibilityEffect]) {}
+    fn announce(&self, events: &[AccessibilityEffect]) {
+        use lingxia_ui::semantics::projection::Event;
+        for event in events {
+            let (kind, id, text) = match event {
+                AccessibilityEffect::Focused { id } => (0, *id, ""),
+                AccessibilityEffect::FocusCleared { id } => (1, *id, ""),
+                AccessibilityEffect::InputFocused { id } => (2, *id, ""),
+                AccessibilityEffect::Change(Event::ValueChanged { id }) => (5, *id, ""),
+                AccessibilityEffect::Change(Event::ContentChanged) => (6, u32::MAX, ""),
+                AccessibilityEffect::Change(Event::Announce {
+                    id,
+                    text,
+                    assertive,
+                }) => (if *assertive { 8 } else { 7 }, *id, text.as_str()),
+                // VoiceOver reads text and selection from the element itself; hovering is
+                // the system's own exploration.
+                _ => continue,
+            };
+            self.shell.accessibility_event(self.token, kind, id, text);
+        }
+    }
+    // Apple plays no click sound for an activation.
     fn clicked(&self) {}
 }
 

@@ -13,6 +13,21 @@ final class GpuPageView: UIView {
     private var attached = false
     /// Paused between requested frames.
     private var vsyncLink: CADisplayLink?
+    private lazy var semantics = GpuAccessibility(view: self)
+
+    override var isAccessibilityElement: Bool {
+        get { false }
+        set {}
+    }
+
+    override var accessibilityElements: [Any]? {
+        get { semantics.list }
+        set {}
+    }
+
+    func accessibilityEvent(kind: UInt8, id: UInt32, text: String) {
+        semantics.event(kind: kind, id: id, text: text)
+    }
 
     override class var layerClass: AnyClass { CAMetalLayer.self }
 
@@ -369,6 +384,11 @@ public enum GpuPages {
     static func fling(token: Int64, region: RustStr, horizontal: Bool, velocity: Float) {
         let region = region.toString()
         MainActor.assumeIsolated { views[token]?.startFling(region: region, horizontal: horizontal, velocity: velocity) }
+    }
+
+    static func accessibilityEvent(token: Int64, kind: UInt8, id: UInt32, text: RustStr) {
+        let text = text.toString()
+        MainActor.assumeIsolated { views[token]?.accessibilityEvent(kind: kind, id: id, text: text) }
     }
 
     static func stopFling(token: Int64) {

@@ -33,6 +33,9 @@ pub trait Shell: Send + Sync + 'static {
     /// [`ViewHost::scroll_by`] for `region` until it stops or the region does not move.
     fn fling(&self, token: i64, region: &str, horizontal: bool, velocity: f32);
     fn stop_fling(&self, token: i64);
+    /// An accessibility event for the OS: `kind` 0 focused, 1 focus cleared, 2 input focused,
+    /// 5 value changed, 6 content changed, 7 announce `text` politely, 8 assertively.
+    fn accessibility_event(&self, token: i64, kind: u8, id: u32, text: &str);
     /// A frame for `connection` reached the screen; 0 is a standalone page.
     fn presented(&self, token: i64, connection: u64);
     fn message(&self, token: i64, connection: u64, message: &str);

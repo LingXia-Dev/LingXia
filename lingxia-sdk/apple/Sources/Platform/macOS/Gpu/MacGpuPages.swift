@@ -11,6 +11,15 @@ final class GpuPageView: NSView {
     let token: Int64
     /// The Metal presenter is bound to this view's layer for the current window.
     private var attached = false
+    private lazy var semantics = MacGpuAccessibility(view: self)
+
+    override func isAccessibilityElement() -> Bool { false }
+
+    override func accessibilityChildren() -> [Any]? { semantics.list }
+
+    func accessibilityEvent(kind: UInt8, id: UInt32, text: String) {
+        semantics.event(kind: kind, id: id, text: text)
+    }
     /// Paused between requested frames; follows the display the view is on.
     private var vsyncLink: AnyObject?
 
@@ -358,6 +367,11 @@ public enum GpuPages {
     static func fling(token: Int64, region: RustStr, horizontal: Bool, velocity: Float) {}
 
     static func stopFling(token: Int64) {}
+
+    static func accessibilityEvent(token: Int64, kind: UInt8, id: UInt32, text: RustStr) {
+        let text = text.toString()
+        MainActor.assumeIsolated { views[token]?.accessibilityEvent(kind: kind, id: id, text: text) }
+    }
 
     static func requestVsync(token: Int64) -> Bool {
         guard Thread.isMainThread else { return false }

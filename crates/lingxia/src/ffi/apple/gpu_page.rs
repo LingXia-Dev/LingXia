@@ -98,6 +98,27 @@ mod bridge {
         #[swift_bridge(swift_name = "gpuPageCanScrollVertically")]
         fn gpu_page_can_scroll_vertically(token: i64, direction: i32) -> bool;
 
+        // The semantic roots of the presented frame, in order; empty without a frame.
+        #[swift_bridge(swift_name = "gpuPageSemanticRoots")]
+        fn gpu_page_semantic_roots(token: i64) -> Vec<u32>;
+
+        // A semantic node as the frame contract's `SemanticNode` JSON; empty when gone.
+        #[swift_bridge(swift_name = "gpuPageSemanticNode")]
+        fn gpu_page_semantic_node(token: i64, id: u32) -> String;
+
+        // An assistive action on node `id`: 0 focus, 1 clear focus, 2 click, 3 show on screen,
+        // 4 scroll forward, 5 scroll backward, 6 set progress `number`, 7 set text `argument`,
+        // 8 set selection `number`..`argument`, 9 clear selection, 10 select item `number`,
+        // 11 copy, 12 cut, 13 paste `argument`. True when the page took it.
+        #[swift_bridge(swift_name = "gpuPageAccessibility")]
+        fn gpu_page_accessibility(
+            token: i64,
+            id: u32,
+            action: u8,
+            number: f64,
+            argument: &str,
+        ) -> bool;
+
         // The long-press delay armed by the page elapsed.
         #[swift_bridge(swift_name = "gpuPageLongPress")]
         fn gpu_page_long_press(token: i64);
@@ -133,6 +154,8 @@ mod bridge {
         fn gpu_pages_fling(token: i64, region: &str, horizontal: bool, velocity: f32);
         #[swift_bridge(swift_name = "GpuPages.stopFling")]
         fn gpu_pages_stop_fling(token: i64);
+        #[swift_bridge(swift_name = "GpuPages.accessibilityEvent")]
+        fn gpu_pages_accessibility_event(token: i64, kind: u8, id: u32, text: &str);
 
         // Call `gpuPageVsync` on the next display refresh; false without a display link.
         #[swift_bridge(swift_name = "GpuPages.requestVsync")]
@@ -369,6 +392,77 @@ fn gpu_page_can_scroll_vertically(token: i64, direction: i32) -> bool {
     }
 }
 
+fn gpu_page_semantic_roots(token: i64) -> Vec<u32> {
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    {
+        let mut roots = Vec::new();
+        with_page(token, |page| {
+            roots = page
+                .host()
+                .semantics(|projection, _| projection.map(|p| p.roots()).unwrap_or_default())
+        });
+        roots
+    }
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    {
+        let _ = token;
+        Vec::new()
+    }
+}
+
+fn gpu_page_semantic_node(token: i64, id: u32) -> String {
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    {
+        let mut node = String::new();
+        with_page(token, |page| {
+            node = page.host().semantics(|projection, _| {
+                projection
+                    .and_then(|p| p.node(id))
+                    .and_then(|n| serde_json::to_string(&n).ok())
+                    .unwrap_or_default()
+            })
+        });
+        node
+    }
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    {
+        let _ = (token, id);
+        String::new()
+    }
+}
+
+fn gpu_page_accessibility(token: i64, id: u32, action: u8, number: f64, argument: &str) -> bool {
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    {
+        use lingxia_ui_apple::lingxia_ui::interaction::view::AccessibilityAction as A;
+        let action = match action {
+            0 => A::Focus,
+            1 => A::ClearFocus,
+            2 => A::Click,
+            3 => A::ShowOnScreen,
+            4 => A::ScrollForward,
+            5 => A::ScrollBackward,
+            6 => A::SetProgress(number),
+            7 => A::SetText(argument.to_owned()),
+            8 => A::SetSelection(number as i32, argument.parse().unwrap_or(-1)),
+            9 => A::ClearSelection,
+            10 => A::SelectItem(number as usize),
+            11 => A::Copy,
+            12 => A::Cut,
+            13 => A::Paste(argument.to_owned()),
+            _ => return false,
+        };
+        let mut handled = false;
+        with_page(token, |page| handled = page.host().accessibility(id, action));
+        handled
+    }
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    {
+        let _ = (token, id, action, number, argument);
+        false
+    }
+}
+
 fn gpu_page_long_press(token: i64) {
     #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     with_page(token, |page| page.host().long_press());
@@ -468,6 +562,9 @@ mod live {
         }
         fn stop_fling(&self, token: i64) {
             super::bridge::gpu_pages_stop_fling(token);
+        }
+        fn accessibility_event(&self, token: i64, kind: u8, id: u32, text: &str) {
+            super::bridge::gpu_pages_accessibility_event(token, kind, id, text);
         }
         fn presented(&self, token: i64, connection: u64) {
             gpu_page::presented(token, connection);
