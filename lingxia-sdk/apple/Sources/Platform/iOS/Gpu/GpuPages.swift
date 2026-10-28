@@ -22,6 +22,10 @@ final class GpuPageView: UIView {
     var textTokenizer: UITextInputTokenizer?
     /// The open date or time picker of the connected editor.
     var valuePicker: GpuValuePickerController?
+    /// The edit menu the core's text menu shows through, and the menu it shows.
+    var editMenu: UIEditMenuInteraction?
+    var textMenu: GpuFrameTextMenu?
+    var menuChosen = false
     /// The colours the page asks its host to paint around it; nil before its first frame.
     var hostChrome: GpuHostChrome? {
         didSet {
@@ -488,7 +492,10 @@ public enum GpuPages {
             if let ime = views[token]?.ime, ime.isActive { ime.clear(blur: true) }
         }
     }
-    static func textMenu(token: Int64, menu: RustStr) {}
+    static func textMenu(token: Int64, menu: RustStr) {
+        let menu = menu.toString()
+        MainActor.assumeIsolated { views[token]?.showTextMenu(menu) }
+    }
     static func hostChrome(token: Int64, canvas: UInt32, bar: UInt32, bar_line barLine: UInt32, content: UInt32, content_muted contentMuted: UInt32, accent: UInt32, dark: Bool) {
         MainActor.assumeIsolated {
             guard let view = views[token] else { return }
