@@ -571,7 +571,9 @@ extern "system" fn key<'a>(
             4 => Key::Right,
             5 => Key::Home,
             6 => Key::End,
-            _ => Key::Activate,
+            7 => Key::Activate,
+            8 => Key::Escape,
+            _ => return Ok(false),
         };
         Ok(host(handle)?.key(key, shift, repeat))
     })

@@ -877,9 +877,11 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
 
     private static final int[] KEYS = {KeyEvent.KEYCODE_TAB, KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
         KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MOVE_HOME, KeyEvent.KEYCODE_MOVE_END};
-    private static int key(int code) {
+    static int key(int code) {
         for (int i = 0; i < KEYS.length; i++) if (KEYS[i] == code) return i;
-        return code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_SPACE || code == KeyEvent.KEYCODE_DPAD_CENTER ? 7 : -1;
+        if (code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_SPACE || code == KeyEvent.KEYCODE_DPAD_CENTER) return 7;
+        // Dismisses the View's own overlays; Back keeps its navigation meaning.
+        return code == KeyEvent.KEYCODE_ESCAPE ? 8 : -1;
     }
 
     private static JSONObject json(String encoded) {
