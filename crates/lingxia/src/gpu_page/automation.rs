@@ -12,8 +12,6 @@ const INACTIVE: &str = "page is not active: the GPU page was disposed";
 /// inside the 5 s locator action budget, so a stuck act reports itself.
 const ACT_POLL: std::time::Duration = std::time::Duration::from_millis(16);
 const ACT_SETTLE: std::time::Duration = std::time::Duration::from_secs(4);
-/// A poll the page leaves unanswered this long means it stopped presenting.
-const ACT_ANSWER: std::time::Duration = std::time::Duration::from_millis(500);
 
 pub(super) struct GpuAutomation {
     pub native: Weak<dyn NativePage>,
@@ -75,17 +73,16 @@ impl GpuPageAutomation for GpuAutomation {
             let poll = GpuAutomation { native };
             let deadline = std::time::Instant::now() + ACT_SETTLE;
             loop {
-                let answer = tokio::time::timeout(
-                    ACT_ANSWER,
+                let answer = tokio::time::timeout_at(
+                    deadline.into(),
                     poll.request(json!({"op": "result", "call": call})),
                 )
                 .await;
                 match act_progress(answer) {
                     ActProgress::Done => return Ok(()),
-                    ActProgress::Left(why) => {
-                        // The act's own handler took the page away (navigate, dialog,
-                        // park): the dispatching instance can no longer settle it.
-                        log::info!("act on {css} counted done: its page {why}");
+                    ActProgress::Disposed => {
+                        // The act's handler navigated away and the dispatching page went.
+                        log::info!("act on {css} counted done: its page was disposed");
                         return Ok(());
                     }
                     ActProgress::Failed(error) => return Err(error),
@@ -145,8 +142,8 @@ impl GpuPageAutomation for GpuAutomation {
 pub(super) enum ActProgress {
     Done,
     Pending,
-    /// The page that dispatched the act is gone or stopped answering.
-    Left(&'static str),
+    /// The page that dispatched the act is gone.
+    Disposed,
     Failed(String),
 }
 
@@ -155,8 +152,8 @@ pub(super) fn act_progress(
     answer: Result<Result<Value, String>, tokio::time::error::Elapsed>,
 ) -> ActProgress {
     match answer {
-        Err(_) => ActProgress::Left("stopped answering"),
-        Ok(Err(error)) if error.starts_with("page is not active") => ActProgress::Left("is gone"),
+        Err(_) => ActProgress::Pending,
+        Ok(Err(error)) if error.starts_with("page is not active") => ActProgress::Disposed,
         Ok(Err(error)) => ActProgress::Failed(error),
         Ok(Ok(reply)) if reply["done"] == true => ActProgress::Done,
         Ok(Ok(_)) => ActProgress::Pending,

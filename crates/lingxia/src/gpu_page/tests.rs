@@ -274,14 +274,16 @@ fn act_on(results: fn(AutomationReply)) -> Result<(), String> {
 
 #[cfg(feature = "automation")]
 #[test]
-fn an_act_whose_page_leaves_counts_done() {
-    // Parked behind the page the click opened: the poll goes unanswered.
-    let started = std::time::Instant::now();
-    act_on(std::mem::forget).unwrap();
-    assert!(started.elapsed() < std::time::Duration::from_secs(2));
-    // Disposed by the navigation.
+fn an_act_whose_page_goes_counts_done() {
     act_on(|reply| reply(Err("page is not active".into()))).unwrap();
     act_on(|reply| reply(Ok(serde_json::json!({"done": true})))).unwrap();
+}
+
+#[cfg(feature = "automation")]
+#[test]
+fn an_unanswered_act_reports_its_timeout() {
+    let error = act_on(std::mem::forget).unwrap_err();
+    assert!(error.starts_with("E_TIMEOUT: the act on button"), "{error}");
 }
 
 #[cfg(feature = "automation")]
