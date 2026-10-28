@@ -511,6 +511,44 @@ pub(crate) fn apply_focus_within(records: &mut [Record], identity: &str) -> Resu
     Ok(())
 }
 
+/// `group-active:`: the pressed control's descendants take their group-pressed paint.
+pub(crate) fn apply_group_pressed(records: &mut [Record], identity: &str) -> Result<(), String> {
+    if !records
+        .iter()
+        .any(|record| record.string(field::GROUP_PRESSED_STYLE).is_some())
+    {
+        return Ok(());
+    }
+    let ids = identities(records);
+    let Some(target) = ids.iter().position(|id| id == identity) else {
+        return Ok(());
+    };
+    let mut inside = vec![false; records.len()];
+    for index in target + 1..records.len() {
+        inside[index] = records[index]
+            .parent
+            .is_some_and(|parent| parent == target || inside[parent]);
+        if !inside[index] {
+            continue;
+        }
+        let record = &mut records[index];
+        if let Some((_, value)) = record
+            .fields
+            .iter()
+            .find(|(field, _)| *field == field::GROUP_PRESSED_STYLE)
+        {
+            for (field, value) in crate::protocol::focus_style(value)? {
+                if let Some((_, old)) = record.fields.iter_mut().find(|(id, _)| *id == field) {
+                    *old = value;
+                } else {
+                    record.fields.push((field, value));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn apply_state_style(
     records: &mut [Record],
     identity: &str,

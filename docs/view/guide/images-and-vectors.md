@@ -89,7 +89,7 @@ keeps the image exposed without a name.
 | `viewBox` | `[x, y, width, height]`, default `[0, 0, 24, 24]` |
 | `gradients` | up to 8 named SVG gradients (`linear` or `radial`, up to 16 stops), used as `fill: 'url(#id)'` |
 
-`fill` and `stroke` take a hex color, `currentColor`, `none` or `url(#id)`. `currentColor` is the
+`fill` and `stroke` take a hex color, a role (`'line-strong/65'`), `currentColor`, `none` or `url(#id)`; gradient stops take hex or roles. `currentColor` is the
 vector's text color, so `text-*` utilities color an icon. `transform` is an SVG transform list
 (`translate`, `scale`, `rotate`, `skewX`, `skewY`, `matrix`). `vectorEffect: 'non-scaling-stroke'` keeps
 stroke widths constant when the vector is scaled. `object-contain` (default) and `object-fill` map the

@@ -47,6 +47,9 @@ function shorthand(value) {
       result.iterations = part === 'infinite' ? null : numeric(part,1,4294967295);
       if (result.iterations !== null && !Number.isInteger(result.iterations)) fail('fractional iterations unsupported');
       hasIterations = true;
+    } else if (/^(forwards|backwards|both)$/.test(part)) {
+      if (result.fill) fail('duplicate fill mode');
+      result.fill = part;
     } else {
       if (!/^[-_a-zA-Z][-_a-zA-Z0-9]*$/.test(part) || /^(none|normal|reverse|alternate|alternate-reverse|forwards|backwards|both|running|paused|initial|inherit|unset|revert)$/.test(part)) fail(`unsupported animation token ${part}`);
       if (name) fail('multiple names or unsupported animation mode');

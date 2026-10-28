@@ -65,6 +65,29 @@ fn pressed_states_may_scale_through_the_paint_delta() {
 }
 
 #[test]
+fn group_pressed_paint_applies_to_the_pressed_controls_descendants() {
+    let module = super::source(
+        "function render(){return h('page',{},h('button',{testId:'b',onClick(){},className:'group',style:{width:100,height:40,padding:0}},h('view',{testId:'disc',className:'group-active:opacity-50',style:{width:20,height:20}})),h('view',{testId:'outside',className:'group-active:opacity-50',style:{width:20,height:20}}))}",
+    )
+    .replace(
+        "__lingxiaPublish(render);",
+        "configureClasses([{name:'group',when:{},style:{}},{name:'group-active:opacity-50',when:{state:'groupActive'},style:{opacity:0.5}}]);__lingxiaPublish(render);",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    let display = page.layout(200, 100, 1.0).unwrap();
+    let button = display.nodes.iter().find(|n| n.test_id == "b").unwrap();
+    assert!(button.pressed_style, "a group control repaints on press");
+    let identity = button.identity.clone();
+    page.set_pointer_state(Some(&identity), None);
+    let pressed = page.layout(200, 100, 1.0).unwrap();
+    let opacity = |id: &str| {
+        pressed.retained.opacities[pressed.nodes.iter().position(|n| n.test_id == id).unwrap()]
+    };
+    assert_eq!(opacity("disc"), 0.5);
+    assert_eq!(opacity("outside"), 1.0);
+}
+
+#[test]
 fn environments_default_reduced_motion_off_and_reject_bad_values() {
     let module =
         super::source("function render({env}){return h('text',{},String(env.reducedMotion))}");

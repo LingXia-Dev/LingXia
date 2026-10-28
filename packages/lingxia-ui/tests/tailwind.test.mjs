@@ -638,3 +638,46 @@ test('elevation shadows take the theme shadow ink; literal tints and transparent
   assert.deepEqual(classStyle('shadow-md').boxShadow.map(layer => layer.color), ['shadow/10', 'shadow/10']);
   assert.deepEqual(classStyle('shadow-xs').boxShadow.map(layer => layer.color), ['shadow/5']);
 });
+
+// A web app's theme layer ported to View tokens: its classes are `@utility` rules.
+test('theme @utility classes lower like utilities, with background and border shorthands', async () => {
+  const theme = `@theme inline { --color-card: var(--color-surface); --color-primary: var(--color-accent); }
+:root { --card-shadow: 0 1px 2px rgb(0 0 0 / 6%); }
+[data-theme='dark'] { --card-shadow: none; }
+@utility hero { background: radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--color-primary) 10%, transparent) 0%, transparent 58%), var(--color-card); }
+@utility brand { background-image: linear-gradient(135deg, var(--color-primary) 0%, var(--color-chart-1) 100%); }
+@utility ring-soft { border: 1px solid color-mix(in srgb, var(--color-primary) 30%, transparent); }
+@utility numeric { font-variant-numeric: tabular-nums; }
+@utility density-compact {}`;
+  const rules = await compileUtilities(new Set(['hero', 'brand', 'ring-soft', 'numeric', 'density-compact', 'group', 'shadow-[var(--card-shadow)]', 'unknown-marker']), theme);
+  const rule = (name, when) => rules.find(r => r.name === name && (!when || r.when?.theme === when));
+  assert.equal(rule('hero').style.backgroundColor, 'surface');
+  assert.deepEqual(rule('hero').gradient.fixed, { kind: 'radial', at: [0.5, 0], radii: [1.2, 0.9], colorSpace: 'srgb', stops: [{ offset: 0, color: 'accent/10' }, { offset: 0.58, color: '#00000000' }] });
+  assert.deepEqual(rule('brand').gradient.fixed.stops.map(stop => stop.color), ['accent', 'chart-1']);
+  assert.deepEqual([rule('ring-soft').style.borderTopWidth, rule('ring-soft').style.borderStyle, rule('ring-soft').style.borderColor], [1, 'solid', 'accent/30']);
+  assert.equal(rule('numeric').numeric.fixed, 'tabular-nums');
+  for (const marker of ['density-compact', 'group']) assert.deepEqual(rule(marker).style, {});
+  assert.equal(rule('unknown-marker'), undefined);
+  assert.deepEqual(rule('shadow-[var(--card-shadow)]', 'dark').shadow.layers, []);
+  await assert.rejects(compileUtilities(new Set(['x']), '@utility x { &:hover { color: red; } }'), /UI_CSS: @utility x takes declarations only/);
+});
+
+test('safe-area env() is zero inside a page; max(), min() and system font stacks fold', async () => {
+  const rules = await compileUtilities(new Set(['pb-[max(1.5rem,env(safe-area-inset-bottom))]', 'w-[min(10px,2rem)]', 'w-[max(10px,50%)]', 'font-brand', 'font-ui', 'sr-only']),
+    `@theme { --font-brand: 'Songti SC', ui-serif, serif; --font-ui: system-ui, -apple-system, 'PingFang SC', sans-serif; }`);
+  const rule = name => rules.find(r => r.name === name);
+  assert.equal(rule('pb-[max(1.5rem,env(safe-area-inset-bottom))]').style.paddingBottom, 24);
+  assert.equal(rule('w-[min(10px,2rem)]').style.width, 10);
+  assert.match(rule('w-[max(10px,50%)]').error.message, /unsupported calculation/);
+  assert.deepEqual([rule('font-brand').style.fontFamily, rule('font-ui').style.fontFamily], ['serif', 'sans-serif']);
+  // Visually hidden, still read: opacity leaves semantics.
+  assert.deepEqual([rule('sr-only').style.position, rule('sr-only').style.opacity], ['absolute', 0]);
+});
+
+test('group-active: paints while the enclosing control is pressed', async () => {
+  await use(['group', 'group-active:scale-95', 'group-active:opacity-50']);
+  const button = rendered(() => h('button', { className: 'group', onClick() {} }, h('view', { className: 'group-active:scale-95 group-active:opacity-50' })));
+  const child = button.children[0].props;
+  assert.ok(child.groupPressedStyle, 'the child carries its group-pressed paint');
+  assert.equal(button.props.pressedStyle, undefined);
+});

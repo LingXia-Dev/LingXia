@@ -98,7 +98,9 @@ export function render() {
 ## Arbitrary values
 
 `w-[72px]`, `text-[13px]`, `grid-cols-[1fr_auto]`, `bg-(--brand-image)` and opacity modifiers
-(`bg-text/50`) work wherever the family works. `calc()` folds when its operands share a unit.
+(`bg-text/50`) work wherever the family works. `calc()`, `min()` and `max()` fold when their operands
+share a unit. `env(safe-area-inset-*)` is 0, because `<page>` already pads by the insets, so
+`pb-[max(1.5rem,env(safe-area-inset-bottom))]` is 24 px on top of the page's inset.
 `url()` backgrounds, `!important` and unresolved `var()` are refused.
 
 ## Themes and tokens
@@ -108,10 +110,15 @@ A page imports at most one stylesheet (it may `@import` relative token files). I
 - `@theme { … }` and `@theme inline { … }` define Tailwind tokens (`--radius-*`, `--text-*`, `--shadow-*`, …);
   colour tokens never override a role.
 - `:root { … }` and `[data-theme='light' | 'dark'] { … }` define custom properties, such as shadow tints.
+- `@utility name { … }` defines a theme-owned class from plain declarations, where CSS would write
+  `.brand-gradient { … }`. `background: <gradient>, <colour>` and `border: 1px solid <colour>` work there.
+  An empty `@utility name {}` declares a class that sets nothing here (such as a web density scope).
+- `@font-face` declares a bundled face ([text](text.md#fonts)).
 
-Rules, selectors and `@apply` are refused (`UI_CSS`). A token that differs between the two blocks
-compiles into a light and a dark rule; the View picks one from `env.theme`. Font tokens accept only the
-standard system sans and mono stacks.
+Rules, selectors, nested rules in `@utility` and `@apply` are refused (`UI_CSS`). A token that differs
+between the two blocks compiles into a light and a dark rule; the View picks one from `env.theme`. A font
+stack lowers to its declared face, or to the generic of a system stack (`system-ui, …, sans-serif`,
+`ui-serif, …, serif`).
 
 ## Variants
 
@@ -130,15 +137,16 @@ standard system sans and mono stacks.
 | `data-active:`, `data-[state=open]:` | the element's own `data-active` / `data-state="open"` prop (a string, number or `true`) |
 | `has-checked:`, `has-disabled:` | a checked checkbox, switch or answered radio, or a disabled element, anywhere below it |
 | `focus-within:`, `has-focus:` | it or an element below it has focus |
+| `group-active:` | the control the element sits in is pressed (mark it `group`) |
 
-`data-*` resolves at render, so it may set any utility. `active:`, `focus:`, `hover:`, `has-*` and
-`focus-within:` may change paint only: color, background color and image, opacity,
+`data-*` resolves at render, so it may set any utility. `active:`, `focus:`, `hover:`, `has-*`,
+`group-active:` and `focus-within:` may change paint only: color, background color and image, opacity,
 border color, box shadow, placeholder color and the static transforms (`active:scale-95`). They cannot
 change size or spacing (`UI_CLASS_ELEMENT`). The change is immediate unless a `transition-*` utility
 animates it ([motion](motion.md)).
 `2xl:` is not recognized and fails as an unknown utility; write `min-[96rem]:`.
 
-Variants that test DOM state are refused with the alternative named in the message: `group-*`, `peer-*`,
+Variants that test DOM state are refused with the alternative named in the message: other `group-*`, `peer-*`,
 other `has-[…]` selectors and `has-*` combined with another state, `aria-*`, `checked:`, `focus-visible:`,
 `nth-*`, `before:`, `after:` and container queries (`@md:`). Compute the condition in TypeScript and pick the class.
 The full list is in [variants](../reference/variants.md).

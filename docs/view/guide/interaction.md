@@ -45,7 +45,7 @@ export function render() {
 ## Composed controls
 
 `<button>` and `<checkbox>` may contain layout, text, images and vectors. A button stacks its content
-in a column and cannot change direction; wrap side-by-side content in a `<row>`, as above. The control
+in a column unless its classes say otherwise (`flex-row`, `grid`). The control
 is named by its `accessibilityLabel` or else by its descendants' text and image `alt`, in order.
 
 A composed control may also hold controls of its own: a row that opens a page can carry a switch and a

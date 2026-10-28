@@ -43,4 +43,4 @@ Page-wide bounds the runtime and the native decoder both enforce. Exceeding one 
 | `dataAttributeBytes` | 65536 (64 KiB) | `data-*` props of a page, as UTF-8 JSON; automation reads them, nothing draws them. |
 | `blurLayers` | 8 | Elements a frame draws with `blur-*`; past it further ones draw sharp. |
 
-Wire ABI: 1. Highest field id: 191.
+Wire ABI: 1. Highest field id: 192.

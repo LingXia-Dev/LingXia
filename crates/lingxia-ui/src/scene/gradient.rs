@@ -62,6 +62,9 @@ pub(crate) struct BackgroundGradient {
     shape: Option<Shape>,
     #[serde(default, deserialize_with = "present")]
     size: Option<Extent>,
+    /// An explicit ellipse (`120% 90%`): radii as fractions of the box width and height.
+    #[serde(default, deserialize_with = "present")]
+    radii: Option<[f64; 2]>,
     /// Center as fractions of the box.
     #[serde(default, deserialize_with = "present")]
     at: Option<[f64; 2]>,
@@ -136,18 +139,26 @@ impl BackgroundGradient {
             Kind::Linear => {
                 value.shape.is_some()
                     || value.size.is_some()
+                    || value.radii.is_some()
                     || value.at.is_some()
                     || value.from.is_some()
                     || value.direction.is_some() && value.angle.is_some()
             }
             Kind::Radial => {
-                value.direction.is_some() || value.angle.is_some() || value.from.is_some()
+                value.direction.is_some()
+                    || value.angle.is_some()
+                    || value.from.is_some()
+                    || value.radii.is_some() && (value.size.is_some() || value.shape.is_some())
+                    || value
+                        .radii
+                        .is_some_and(|r| r.iter().any(|v| !v.is_finite() || *v <= 0.0 || *v > 16.0))
             }
             Kind::Conic => {
                 value.direction.is_some()
                     || value.angle.is_some()
                     || value.shape.is_some()
                     || value.size.is_some()
+                    || value.radii.is_some()
             }
         };
         // Radial and conic stops have no box line to extend beyond.
@@ -213,6 +224,9 @@ impl BackgroundGradient {
         let sides = [cx.abs(), (w - cx).abs(), cy.abs(), (h - cy).abs()];
         let [near_x, far_x] = [sides[0].min(sides[1]), sides[0].max(sides[1])];
         let [near_y, far_y] = [sides[2].min(sides[3]), sides[2].max(sides[3])];
+        if let Some([x, y]) = self.radii {
+            return [(x * w).max(1e-3), (y * h).max(1e-3)];
+        }
         let size = self.size.unwrap_or_default();
         let radii = match (self.shape.unwrap_or_default(), size) {
             (Shape::Circle, Extent::ClosestSide) => [near_x.min(near_y); 2],
@@ -304,6 +318,27 @@ mod tests {
     fn gradient(direction: &str) -> BackgroundGradient {
         BackgroundGradient::parse(&format!(r##"{{{direction},"stops":[{{"offset":0,"color":"#ff0000"}},{{"offset":1,"color":"#0000ff"}}]}}"##)).unwrap().unwrap()
     }
+    #[test]
+    fn explicit_radial_radii_are_fractions_of_the_box_and_exclude_extents() {
+        let parse = |geometry: &str| {
+            BackgroundGradient::parse(&format!(
+                r##"{{"kind":"radial",{geometry}"stops":[{{"offset":0,"color":"#ff0000"}},{{"offset":1,"color":"#0000ff"}}]}}"##
+            ))
+        };
+        let g = parse(r#""radii":[1.2,0.5],"at":[0.5,0],"#)
+            .unwrap()
+            .unwrap();
+        assert_eq!(g.radii([200.0, 100.0], [100.0, 0.0]), [240.0, 50.0]);
+        for bad in [
+            r#""radii":[0,1],"#,
+            r#""radii":[1,1],"size":"closest-side","#,
+            r#""radii":[1,1],"shape":"circle","#,
+        ] {
+            assert!(parse(bad).is_err(), "{bad}");
+        }
+        assert!(BackgroundGradient::parse(r##"{"radii":[1,1],"stops":[{"offset":0,"color":"#ff0000"},{"offset":1,"color":"#0000ff"}]}"##).is_err());
+    }
+
     #[test]
     fn corner_geometry_preserves_css_magic_corners_on_rectangles() {
         let g = gradient(r#""direction":"bottom-right""#);

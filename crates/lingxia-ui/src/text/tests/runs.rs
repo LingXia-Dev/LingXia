@@ -236,3 +236,19 @@ fn styled_links_are_one_target_and_one_semantic_link() {
         false
     ));
 }
+
+#[test]
+fn a_run_spaces_its_own_letters() {
+    let width = |span: &str| {
+        let display = layout(
+            &format!(
+                "h('row',{{}},h('text',{{testId:'p',style:{{fontSize:16}}}},'ab ',h('span',{{style:{{{span}}}}},'cdef')))"
+            ),
+            400,
+        );
+        node(&display, "p").bounds[2]
+    };
+    let plain = width("");
+    let spaced = width("letterSpacing:4");
+    assert!((spaced - plain - 16.0).abs() < 0.5, "{plain} -> {spaced}");
+}

@@ -225,6 +225,7 @@ pub mod field {
     pub const BACKGROUND_CLIP: usize = 189;
     pub const MASK_IMAGE: usize = 190;
     pub const FILTER_BLUR: usize = 191;
+    pub const GROUP_PRESSED_STYLE: usize = 192;
 }
 
 pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page", "span", "link", "select"];
@@ -423,6 +424,7 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("backgroundClip", "background-clip"),
     ("maskImage", "string"),
     ("filterBlur", "number"),
+    ("groupPressedStyle", "state-style"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -795,6 +797,7 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::TEXTAREA]), parent: None },
     FieldAdmission { tags: Some(&[tag::IMAGE]), parent: None },
     FieldAdmission { tags: Some(&[tag::IMAGE]), parent: None },
+    FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },

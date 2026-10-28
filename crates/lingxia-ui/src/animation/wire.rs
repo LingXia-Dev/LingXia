@@ -19,6 +19,18 @@ struct Wire {
     /// `keep` when authored under `motion-reduce:`/`motion-safe:`; `base` shows the base
     /// style under reduced motion.
     when_reduced: WhenReduced,
+    #[serde(default)]
+    fill: FillMode,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum FillMode {
+    #[default]
+    None,
+    Forwards,
+    Backwards,
+    Both,
 }
 
 #[derive(Deserialize)]
@@ -131,7 +143,11 @@ pub fn decode_definition(source: &str) -> Result<Definition, String> {
         interval(wire.duration_ms)?,
         interval(wire.delay_ms)?,
         iterations,
-    )?;
+    )?
+    .with_fill(super::Fill {
+        backwards: matches!(wire.fill, FillMode::Backwards | FillMode::Both),
+        forwards: matches!(wire.fill, FillMode::Forwards | FillMode::Both),
+    });
     let easing = easing(wire.easing)?;
     if wire.transforms.len() > 8 || (wire.opacity.is_none() && wire.transforms.is_empty()) {
         return Err("UI_ANIMATION: invalid effect tracks".into());

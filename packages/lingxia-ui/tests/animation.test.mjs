@@ -138,9 +138,14 @@ test('transform order, identity endpoints, axes and unit conversion survive lowe
   assert.deepEqual(axes.transforms[2].x.map(k=>k.value),[1,1]);
 });
 
+test('fill modes hold the first or last keyframe around the run', () => {
+  for (const fill of ['forwards', 'backwards', 'both']) assert.equal(lower(fade, `enter 1s ${fill}`).fill, fill);
+  assert.equal(lower(fade, 'enter 1s').fill, undefined);
+});
+
 test('unsupported modes and unbounded effects fail explicitly', () => {
   for (const value of ['enter 0ms','enter -1s','enter 1s -1s','enter 86401s','enter 1s 1.5',
-    'enter 1s reverse','enter 1s forwards','enter 1s paused','enter 1s, enter 2s',
+    'enter 1s reverse','enter 1s forwards both','enter 1s paused','enter 1s, enter 2s',
     'enter 1s steps(2)','enter 1s cubic-bezier(2,0,1,1)','enter 1s 4294967296']) {
     assert.throws(()=>lower(fade,value),/UI_ANIMATION/,value);
   }

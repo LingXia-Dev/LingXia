@@ -203,6 +203,7 @@ is still refused on an element that does not render its style ([styles.md](style
 | `divide` | `divide-accent`, `divide-accent-soft`, `divide-canvas`, `divide-chart-1`, `divide-chart-2`, … (36) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); border-style (2); unsupported color (1) |
 | `divide-x` | `divide-x`, `divide-x-0`, `divide-x-2`, `divide-x-4`, `divide-x-8` | reversed space/divide order (1) |
 | `divide-y` | `divide-y`, `divide-y-0`, `divide-y-2`, `divide-y-4`, `divide-y-8` | reversed space/divide order (1) |
+| `sr` | `sr-only` |  |
 
 ## Effects
 
@@ -388,7 +389,6 @@ is still refused on an element that does not render its style ([styles.md](style
 | `skew-x` | 12 | transform (12) |
 | `skew-y` | 12 | transform (12) |
 | `snap` | 12 | scroll-snap-align (4); scroll-snap-type (4); scroll-snap-stop (2) |
-| `sr` | 1 | clip-path (1) |
 | `static` | 1 | position (1) |
 | `stroke` | 327 | stroke (323); stroke-width (4) |
 | `subpixel` | 1 | -webkit-font-smoothing (1) |

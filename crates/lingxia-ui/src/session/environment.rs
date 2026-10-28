@@ -134,6 +134,7 @@ impl ViewSession {
                 identity,
                 crate::protocol::field::PRESSED_STYLE,
             )?;
+            crate::interaction::input_state::apply_group_pressed(records, identity)?;
         }
         Ok(())
     }

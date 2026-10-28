@@ -98,7 +98,7 @@ A `<text>` may contain strings, `<span>` and `<link>`. Nested spans flatten into
 paragraph, so wrapping, alignment and selection treat the whole `<text>` as one block. A `<text>` holds
 at most 256 runs.
 
-Runs take text paint only: color, size, weight, family, italic, decoration, numeric variants and a
+Runs take text paint only: color, size, weight, family, italic, letter spacing, decoration, numeric variants and a
 background color. Layout, padding and borders on a run are refused.
 
 ```tsx error UI_CLASS_ELEMENT

@@ -106,8 +106,9 @@ subtree holds an editor, a `<scroll>` or a `<slider>` moves at once, as do more 
 `animate-spin`, `animate-ping`, `animate-pulse`, `animate-bounce` and your own `--animate-*` tokens with
 `@keyframes` in the stylesheet run keyframe animations of opacity and transforms (translate, including
 `%`, rotate, scale). Keyframes may omit their endpoints, and each keyframe may set its own easing.
-`animate-none` removes an animation. An element runs one animation; several comma-separated
-animations, `alternate`/`reverse` directions and fill modes are refused, as are keyframes of any other
+`animate-none` removes an animation. Fill modes work as in CSS: `forwards` keeps the last keyframe after
+the run, `backwards` shows the first during the delay, `both` does both. An element runs one animation; several comma-separated
+animations and `alternate`/`reverse` directions are refused, as are keyframes of any other
 property (`UI_CLASS_UNSUPPORTED`). An animation starts when its element first appears on screen; an
 element scrolled out of a list and back does not restart it. A keyframe value wins over a transition of
 the same property.

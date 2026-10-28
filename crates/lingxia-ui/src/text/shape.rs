@@ -236,6 +236,17 @@ impl Renderer {
                     Self::font_stack(&self.font_faces, &run.family),
                     range.clone(),
                 );
+                if run.letter_spacing != style.letter_spacing {
+                    let ratio = if run.size > 0.0 {
+                        self.text_scale.map(run.size) / run.size
+                    } else {
+                        1.0
+                    };
+                    builder.push(
+                        StyleProperty::LetterSpacing(run.letter_spacing * ratio),
+                        range.clone(),
+                    );
+                }
                 if run.features != style.features {
                     builder.push(
                         StyleProperty::FontFeatures(run.features.as_str().into()),

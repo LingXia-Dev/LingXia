@@ -136,6 +136,7 @@ function lowerNodeStyle(tag, props, extra, inherited, direction, structure) {
   state('starting', 'startingStyle', true);
   state('exit', 'exitStyle', true);
   state('focusWithin', 'focusWithinStyle', true);
+  state('groupActive', 'groupPressedStyle', true);
   // `has-checked:`/`has-disabled:` depend on descendants, known once the children resolve.
   const descendants = {};
   for (const [name, kind] of [['hasChecked', 'checked'], ['hasDisabled', 'disabled']]) {

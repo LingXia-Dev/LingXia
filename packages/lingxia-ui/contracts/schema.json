@@ -254,7 +254,8 @@
     {"id": 188, "key": "dataAttributes", "wire": "dataAttributes", "kind": "string"},
     {"id": 189, "key": "backgroundClip", "wire": "backgroundClip", "kind": "background-clip"},
     {"id": 190, "key": "maskImage", "wire": "maskImage", "kind": "string"},
-    {"id": 191, "key": "filterBlur", "wire": "filterBlur", "kind": "number"}
+    {"id": 191, "key": "filterBlur", "wire": "filterBlur", "kind": "number"},
+    {"id": 192, "key": "groupPressedStyle", "wire": "groupPressedStyle", "kind": "state-style"}
   ],
   "input": {
     "autofill": {"username": "username", "current-password": "password", "new-password": "newPassword", "one-time-code": "smsOTPCode", "email": "emailAddress", "tel": "phone", "name": "personName", "given-name": "personGivenName", "family-name": "personFamilyName", "street-address": "postalAddress", "postal-code": "postalCode", "country": "addressCountry", "cc-number": "creditCardNumber", "cc-exp": "creditCardExpirationDate", "cc-csc": "creditCardSecurityCode", "bday": "birthDateFull"},
@@ -376,7 +377,7 @@
     "textScale": {"type": "never", "check": "external", "origin": "device", "optional": true, "internal": true},
     "palette": {"type": "never", "check": "external", "origin": "push", "optional": true, "internal": true, "doc": "The resolved theme: `{ revision, colors }`, one #rrggbbaa per role slot; the page never sees it."}
   },
-  "styleGroups": {"accent": ["color"], "run": ["color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "textDecorationLine", "fontVariantNumeric", "backgroundColor"]},
+  "styleGroups": {"accent": ["color"], "run": ["color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "letterSpacing", "textDecorationLine", "fontVariantNumeric", "backgroundColor"]},
   "style": {
     "width": {"type": "number | `${number}%` | `${number}vw` | `${number}vh` | \"auto\" | \"fit-content\" | \"max-content\" | \"min-content\"", "group": "box", "lower": "dimension", "wire": "width", "css": "width"},
     "height": {"type": "number | `${number}%` | `${number}vw` | `${number}vh` | \"auto\" | \"fit-content\" | \"max-content\" | \"min-content\"", "group": "box", "lower": "dimension", "wire": "height", "css": "height"},
@@ -498,7 +499,7 @@
     "row": {"wire": "row", "children": "any", "style": ["box", "padding", "flex", "align", "direction", "gap", "text", "grid"], "props": {"accessibilityLabel": {"type": "string"}}},
     "page": {"wire": "page", "children": "any", "style": ["box", "padding", "flex", "align", "direction", "gap", "text", "grid"], "props": {"accessibilityLabel": {"type": "string"}}},
     "text": {"wire": "text", "children": "runs", "style": ["box", "padding", "text", "textBlock"], "props": {"accessibilityLabel": {"type": "string"}}},
-    "button": {"wire": "button", "children": "content", "style": ["box", "padding", "flex", "align", "gap", "text"], "props": {"onClick": {"type": "() => void"}, "disabled": {"type": "boolean"}, "accessibilityLabel": {"type": "string"}}},
+    "button": {"wire": "button", "children": "content", "style": ["box", "padding", "flex", "align", "direction", "gap", "text", "grid"], "props": {"onClick": {"type": "() => void"}, "disabled": {"type": "boolean"}, "accessibilityLabel": {"type": "string"}}},
     "spacer": {"wire": "spacer", "children": "none", "style": ["box"], "props": {}},
     "scroll": {"wire": "scroll", "children": "any", "style": ["box", "padding", "flex", "align", "gap", "text", "scroll", "overscroll"], "props": {"onReachStart": {"type": "() => void"}, "onReachEnd": {"type": "() => void"}}},
     "list": {"wire": "list", "children": "none", "style": ["box", "padding", "gap", "text", "overscroll"], "props": {"count": {"type": "number", "required": true}, "row": {"type": "(index: number) => JSX.Element", "required": true}, "height": {"type": "(index: number) => number"}, "anchor": {"type": "\"end\" | { index: number; align: \"start\" | \"end\"; seq?: number }"}, "itemKeys": {"type": "readonly string[]"}, "onReachStart": {"type": "() => void"}, "onReachEnd": {"type": "() => void"}}},

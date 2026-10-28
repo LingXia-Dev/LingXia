@@ -27,6 +27,20 @@ function evaluate(text) {
       i += source[i] === '(' ? 1 : 5;
       const value = sum(); expect(')'); return value;
     }
+    // `<page>` already pads by the safe-area insets, so content inside it sees none left.
+    const env = source.slice(i).match(/^env\(\s*safe-area-inset-(?:top|right|bottom|left)\s*(?:,[^()]*)?\)/);
+    if (env) { i += env[0].length; return { value: 0, unit: 'px' }; }
+    const extreme = source.slice(i).match(/^(max|min)\(/);
+    if (extreme) {
+      i += extreme[0].length;
+      const values = [sum()];
+      for (space(); source[i] === ','; space()) { i++; values.push(sum()); }
+      expect(')');
+      const units = new Set(values.filter(v => v.value !== 0).map(v => v.unit));
+      if (units.size > 1) unsupported(`unsupported calculation: ${text}`);
+      const pick = Math[extreme[1]](...values.map(v => v.value));
+      return { value: pick, unit: [...units][0] ?? 'px' };
+    }
     const match = source.slice(i).match(/^(-?(?:\d*\.)?\d+(?:e[+-]?\d+)?)(px|rem|em|%|[dsl]?vw|[dsl]?vh)?/i);
     if (!match) unsupported(`unsupported value: ${text}`);
     i += match[0].length;
@@ -162,6 +176,12 @@ function fontFamily(value) {
     return `${named[0]}, ${generic}`;
   }
   const families = named.map(family => family.toLowerCase());
+  // A stack that names the platform's own UI family is a system stack: the named faces before it
+  // are what that platform's generic already resolves to.
+  const system = { 'ui-serif': 'serif', 'ui-monospace': 'monospace', 'ui-sans-serif': 'sans-serif', 'system-ui': 'sans-serif', '-apple-system': 'sans-serif' };
+  const marker = families.find(family => system[family]);
+  const tail = families.at(-1);
+  if (marker && (['serif', 'sans-serif', 'monospace'].includes(tail) ? tail === system[marker] : true)) return system[marker];
   const stacks = [
     ['serif', ['ui-serif', 'georgia', 'cambria', 'times new roman', 'times', 'serif']],
     ['monospace', ['ui-monospace', 'sfmono-regular', 'menlo', 'monaco', 'consolas', 'liberation mono', 'courier new', 'monospace']],
@@ -215,7 +235,8 @@ function gradientPosition(text) {
       'to top right':'top-right', 'to right top':'top-right', 'to bottom right':'bottom-right', 'to right bottom':'bottom-right',
       'to bottom left':'bottom-left', 'to left bottom':'bottom-left', 'to top left':'top-left', 'to left top':'top-left' };
     out.direction = directions[rest.replace(/\s+/g, ' ')] ?? unsupported(`unsupported gradient direction: ${text}`);
-  } else for (const token of rest.split(/\s+/).filter(Boolean)) {
+  } else if (/^(?:\d*\.)?\d+%\s+(?:\d*\.)?\d+%$/.test(rest)) out.radii = rest.split(/\s+/).map(part => number(part));
+  else for (const token of rest.split(/\s+/).filter(Boolean)) {
     if (['circle', 'ellipse'].includes(token) && !out.shape) out.shape = token;
     else if (['closest-side', 'closest-corner', 'farthest-side', 'farthest-corner'].includes(token) && !out.size) out.size = token;
     else unsupported(`unsupported gradient shape: ${text}`);
@@ -223,7 +244,7 @@ function gradientPosition(text) {
   return out;
 }
 
-const geometryKeys = { linear: ['direction', 'angle'], radial: ['shape', 'size', 'at'], conic: ['from', 'at'] };
+const geometryKeys = { linear: ['direction', 'angle'], radial: ['shape', 'size', 'radii', 'at'], conic: ['from', 'at'] };
 
 /** The wire gradient for a kind, rejecting geometry CSS would drop the declaration for. */
 function gradientValue(kind, position, stops) {
@@ -241,7 +262,7 @@ function cssGradient(value) {
   const match = value.trim().match(/^(linear|radial|conic)-gradient\(([\s\S]*)\)$/);
   if (!match) unsupported(`unsupported background-image: ${value}`);
   const kind = match[1], args = postcss.list.comma(match[2]);
-  const isStop = text => Boolean(parse(postcss.list.space(text)[0] ?? '')) || /^color-mix\(/.test(text);
+  const isStop = text => Boolean(parse(postcss.list.space(text)[0] ?? '')) || /^(?:color-mix|role)\(/.test(text);
   const position = args.length && !isStop(args[0]) ? gradientPosition(args.shift()) : undefined;
   const offset = token => {
     if (/^-?(?:\d*\.)?\d+%$/.test(token)) return number(token);
@@ -322,7 +343,7 @@ function shadowLayers(value, local) {
   // A variable may hold several layers, so split again after substitution.
   const layers = postcss.list.comma(value).flatMap(layer => {
     const useColor = layer.includes('var(--tw-shadow-color,');
-    return postcss.list.comma(variables(layer, local)).map(part => [part, useColor]);
+    return postcss.list.comma(variables(layer, local)).filter(part => part !== 'none').map(part => [part, useColor]);
   }).map(([layer, useColor]) => {
     const tokens = postcss.list.space(layer);
     const lengths = [], colors = [];
@@ -662,6 +683,27 @@ function declarations(nodes, vars, root) {
     if (prop.startsWith('--tw-backdrop-') || prop === 'backdrop-filter' || prop === '-webkit-backdrop-filter') { backdropDeclaration(prop, node.value, local, backdrop); continue; }
     if (prop.startsWith('--tw-shadow') || prop.startsWith('--tw-ring-') || prop.startsWith('--tw-inset-') || prop === 'box-shadow') { shadowDeclaration(prop, node.value, local, shadow); continue; }
     if (prop.startsWith('--tw-gradient-') || prop === 'background-image') { gradientDeclaration(prop, node.value, local, gradient); continue; }
+    // `background: <gradient>, <colour>`: one image layer over the base colour.
+    if (prop === 'background') {
+      const layers = postcss.list.comma(variables(node.value, local).trim());
+      const base = /gradient\(/.test(layers.at(-1)) ? undefined : layers.pop();
+      if (layers.length > 1) unsupported('background with more than one image layer');
+      if (layers.length) gradientDeclaration('background-image', layers[0], local, gradient);
+      if (base !== undefined) style.backgroundColor = longhand('background-color', base);
+      continue;
+    }
+    if (prop === 'border') {
+      const parts = postcss.list.space(variables(node.value, local).trim());
+      const width = parts.find(part => /^(?:\d*\.)?\d+(?:px|rem)?$/.test(part));
+      const kind = parts.find(part => ['solid', 'dashed', 'dotted'].includes(part));
+      const tint = parts.filter(part => part !== width && part !== kind);
+      if (tint.length > 1 || parts.includes('none')) unsupported(`border: ${node.value}`);
+      const lowered = number(width ?? '3px', true);
+      for (const edge of edges) style[cssStyle[`border-${edge}-width`]] = lowered;
+      if (kind) style.borderStyle = longhand('border-style', kind);
+      if (tint.length) style.borderColor = longhand('border-color', tint[0]);
+      continue;
+    }
     const numeric = { '--tw-ordinal': 'ordinal', '--tw-slashed-zero': 'slashedZero', '--tw-numeric-figure': 'figure', '--tw-numeric-spacing': 'spacing', '--tw-numeric-fraction': 'fraction' }[prop];
     if (numeric) { variant[numeric] = variables(node.value, local).trim(); continue; }
     if (prop === 'font-variant-numeric') {
@@ -679,6 +721,12 @@ function declarations(nodes, vars, root) {
     // Tailwind writes the prefixed twin of user-select; it carries nothing more.
     if (prop === '-webkit-user-select') continue;
     if (prop === 'user-select' && node.value.trim() === 'auto') unsupported('select-auto (text is unselectable by default; use select-text or select-none)');
+    // `sr-only`: clipped to nothing, still read by assistive technology (opacity leaves semantics).
+    if (prop === 'clip-path' || prop === 'clip') {
+      const value = node.value.replace(/\s/g, '');
+      if (value === 'inset(50%)' || value === 'rect(0,0,0,0)') { style.opacity = 0; continue; }
+      if (value === 'auto' || value === 'none') { style.opacity = 1; continue; }
+    }
     const missing = undrawn.find(([test]) => test.test(prop));
     if (missing) unsupported(missing[1]);
     const value = variables(node.value, local).trim();
@@ -804,6 +852,8 @@ function selectorParts(selector) {
   if (has) return { name, state: has, ...extra };
   // `exit:` is LingXia's presence variant: the values a removed element leaves toward.
   if (remaining === ':where(.lx-exit)') return { name, state: 'exit', ...extra };
+  // `group-active:` paints while the control the element sits in is pressed.
+  if (remaining === ':is(:where(.group):active *)') return { name, state: 'groupActive', ...extra };
   const state = remaining.match(/^:(focus|active|hover|disabled)$/)?.[1];
   if (!remaining || state) return { name, ...(state ? { state } : {}), ...extra };
   return { name, error: relatives(selector) ?? `selector ${rest}${alternative(rest)}` };
@@ -847,7 +897,12 @@ export async function compileUtilities(candidates, theme = '', { literalColors: 
   const tokens = postcss.parse(theme);
   validateTokens(tokens);
   declaredFaces = new Set(fontFaces(tokens).map(face => face.family));
-  const compiler = await compilerFor(theme);
+  // An empty `@utility` names a class the theme keeps for its web build (a density scope, a
+  // focus marker); it lowers to nothing instead of an unknown class.
+  // Tailwind's `group`/`peer` markers carry no style either.
+  const markers = new Set(['group', 'peer']);
+  tokens.walkAtRules('utility', rule => { if (!rule.nodes?.some(node => node.type === 'decl')) { markers.add(rule.params); rule.remove(); } });
+  const compiler = await compilerFor(markers.size > 2 ? tokens.toString() : theme);
   const root = postcss.parse(compiler.build([...candidates]));
   const palettes = { light: Object.create(null), dark: Object.create(null) }, rules = [];
   root.walkAtRules('property', rule => {
@@ -893,5 +948,6 @@ export async function compileUtilities(candidates, theme = '', { literalColors: 
       rules.push({ name, error: { category: error instanceof RoleError ? 'color' : 'unsupported', message: error.message } });
     }
   }); } finally { literalColors = false; }
+  for (const name of markers) if (candidates.has(name)) rules.push({ name, when: {}, style: {} });
   return rules;
 }

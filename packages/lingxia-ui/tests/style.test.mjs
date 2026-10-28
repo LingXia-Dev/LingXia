@@ -125,7 +125,7 @@ test('opacity, placeholder and scroll axes accept only their element and range',
 
 test('every style property is checked against the element that renders it', () => {
   for (const [tag, name, value] of [['text', 'alignItems', 'center'], ['text', 'gap', 4], ['image', 'color', 'text'], ['spacer', 'padding', 4],
-    ['plot', 'fontSize', 12], ['row', 'lineClamp', 2], ['button', 'flexDirection', 'row'], ['slider', 'fontSize', 12]])
+    ['plot', 'fontSize', 12], ['row', 'lineClamp', 2], ['checkbox', 'flexDirection', 'row'], ['slider', 'fontSize', 12]])
     rejects({ [name]: value }, new RegExp(`UI_STYLE: ${name} is not supported on <${tag}>`), tag);
   rejects({ unknownThing: 1 }, /UI_STYLE: unknown style property unknownThing/);
 });

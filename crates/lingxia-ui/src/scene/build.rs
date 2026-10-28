@@ -98,6 +98,15 @@ impl Renderer {
                     .transpose()
             })
             .collect::<Result<Vec<_>, _>>()?;
+        // A control repaints on press when it or a descendant has pressed paint (`group-active:`).
+        let mut group_pressed = vec![false; records.len()];
+        for (index, record) in records.iter().enumerate().rev() {
+            if (record.string(field::GROUP_PRESSED_STYLE).is_some() || group_pressed[index])
+                && let Some(parent) = record.parent
+            {
+                group_pressed[parent] = true;
+            }
+        }
         // A zero scale hides paint and hits for its subtree but keeps layout and semantics.
         let mut collapsed: Vec<bool> = Vec::with_capacity(records.len());
         for (index, record) in records.iter().enumerate() {
@@ -988,10 +997,11 @@ impl Renderer {
                     .and_then(|source| serde_json::from_str(source).ok())
                     .map(std::sync::Arc::new),
                 clips_children: record.string(field::OVERFLOW) == Some("hidden"),
-                pressed_style: record
-                    .fields
-                    .iter()
-                    .any(|(id, _)| *id == field::PRESSED_STYLE),
+                pressed_style: group_pressed[index]
+                    || record
+                        .fields
+                        .iter()
+                        .any(|(id, _)| *id == field::PRESSED_STYLE),
                 hover_style: record
                     .fields
                     .iter()

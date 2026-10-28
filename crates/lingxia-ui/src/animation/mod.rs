@@ -18,6 +18,15 @@ pub struct Timing {
     duration: Duration,
     delay: Duration,
     iterations: Option<NonZeroU32>,
+    fill: Fill,
+}
+
+/// CSS `animation-fill-mode`: whether the first keyframe shows during the delay and the last
+/// one stays after the run.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Fill {
+    pub backwards: bool,
+    pub forwards: bool,
 }
 
 impl Timing {
@@ -34,7 +43,23 @@ impl Timing {
             duration,
             delay,
             iterations,
+            fill: Fill::default(),
         })
+    }
+
+    pub fn with_fill(mut self, fill: Fill) -> Self {
+        self.fill = fill;
+        self
+    }
+
+    /// The progress the element shows: while running, or held by its fill mode around the run.
+    pub fn shown(&self, sample: &Sample) -> Option<f64> {
+        match sample.phase {
+            Phase::Active => Some(sample.progress),
+            Phase::Delayed if self.fill.backwards => Some(0.0),
+            Phase::Finished if self.fill.forwards => Some(1.0),
+            _ => None,
+        }
     }
 
     pub fn sample(self, elapsed: Duration) -> Sample {
@@ -248,11 +273,12 @@ impl Timeline {
             .definition
             .timing
             .sample(self.local(active_time.saturating_sub(started)));
-        Ok(if sample.phase == Phase::Active {
-            Some(instance.definition.effect.sample(sample.progress)?)
-        } else {
-            None
-        })
+        instance
+            .definition
+            .timing
+            .shown(&sample)
+            .map(|progress| instance.definition.effect.sample(progress))
+            .transpose()
     }
 
     pub(crate) fn clear(&mut self) -> Result<(), String> {
@@ -499,10 +525,10 @@ impl Timeline {
                             .unwrap_or_default(),
                     ),
                 );
-                if sample.phase == Phase::Active
+                if let Some(progress) = definition.timing.shown(&sample)
                     && (!self.motion.reduced || definition.keep_reduced)
                 {
-                    visuals.insert(identity.clone(), definition.effect.sample(sample.progress)?);
+                    visuals.insert(identity.clone(), definition.effect.sample(progress)?);
                 }
                 samples.insert(identity.clone(), sample);
             }
@@ -673,6 +699,27 @@ mod tests {
         let repeating = Timing::new(ms(100), Duration::ZERO, None).unwrap();
         assert_eq!(repeating.sample(ms(10_050)).progress, 0.5);
         assert_eq!(repeating.sample(Duration::MAX).phase, Phase::Active);
+    }
+
+    #[test]
+    fn fill_modes_hold_the_first_keyframe_before_and_the_last_after() {
+        let timing = effect().timing;
+        let held = |fill: Fill, at| timing.with_fill(fill).shown(&timing.sample(ms(at)));
+        assert_eq!(held(Fill::default(), 0), None);
+        assert_eq!(held(Fill::default(), 500), None);
+        let both = Fill {
+            backwards: true,
+            forwards: true,
+        };
+        assert_eq!(held(both, 0), Some(0.0));
+        assert_eq!(held(both, 70), Some(0.5));
+        assert_eq!(held(both, 500), Some(1.0));
+        let forwards = Fill {
+            backwards: false,
+            forwards: true,
+        };
+        assert_eq!(held(forwards, 0), None);
+        assert_eq!(held(forwards, 500), Some(1.0));
     }
 
     #[test]

@@ -2,7 +2,7 @@ import { isRole } from './color.js';
 
 const hex = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/;
 const directions = ['top', 'right', 'bottom', 'left', 'top-right', 'bottom-right', 'bottom-left', 'top-left'];
-const geometry = { linear: ['direction', 'angle'], radial: ['shape', 'size', 'at'], conic: ['from', 'at'] };
+const geometry = { linear: ['direction', 'angle'], radial: ['shape', 'size', 'radii', 'at'], conic: ['from', 'at'] };
 const sizes = ['closest-side', 'closest-corner', 'farthest-side', 'farthest-corner'];
 const angle = value => typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 36000;
 
@@ -19,6 +19,8 @@ export function normalizeGradient(value) {
       (value.from !== undefined && !angle(value.from)) ||
       (value.shape !== undefined && !['circle', 'ellipse'].includes(value.shape)) ||
       (value.size !== undefined && !sizes.includes(value.size)) ||
+      (value.radii !== undefined && (value.size !== undefined || value.shape !== undefined || !Array.isArray(value.radii) || value.radii.length !== 2 ||
+        value.radii.some(v => typeof v !== 'number' || !Number.isFinite(v) || v <= 0 || v > 16))) ||
       (value.at !== undefined && (!Array.isArray(value.at) || value.at.length !== 2 ||
         value.at.some(v => typeof v !== 'number' || !Number.isFinite(v) || Math.abs(v) > 16))) ||
       (value.colorSpace !== undefined && !['srgb', 'oklab'].includes(value.colorSpace)) ||

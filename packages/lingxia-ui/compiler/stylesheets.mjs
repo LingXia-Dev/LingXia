@@ -59,6 +59,13 @@ export function validateTokens(root) {
     if (node.type === 'comment') continue;
     // Bundled faces are declared at the top level, as in CSS.
     if (node.type === 'atrule' && node.name === 'font-face') continue;
+    // A theme-owned class (`.brand-gradient {…}` in CSS) is a Tailwind `@utility` of plain declarations.
+    if (node.type === 'atrule' && node.name === 'utility') {
+      if (!/^[a-z][a-z0-9-]*$/.test(node.params)) throw node.error(`UI_CSS: @utility ${node.params}: name a plain utility, such as brand-gradient`);
+      for (const child of node.nodes ?? []) if (child.type !== 'decl' && child.type !== 'comment')
+        throw child.error(`UI_CSS: @utility ${node.params} takes declarations only; put states on the element (focus:, active:)`);
+      continue;
+    }
     const isTheme = node.type === 'atrule' && node.name === 'theme';
     const palette = node.type === 'rule' && tokenSelectorTheme(node.selector);
     if (!isTheme && !palette) throw node.error('UI_CSS: expected @theme, :root or [data-theme] token declarations');

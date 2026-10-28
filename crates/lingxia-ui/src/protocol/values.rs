@@ -203,7 +203,9 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
                 .ok_or("UI_TRANSFORM: expected encoded transform")?,
         )
         .map(drop),
-        field::FOCUS_STYLE | field::FOCUS_WITHIN_STYLE => focus_style(value).map(drop),
+        field::FOCUS_STYLE | field::FOCUS_WITHIN_STYLE | field::GROUP_PRESSED_STYLE => {
+            focus_style(value).map(drop)
+        }
         field::FONT_FAMILY => ensure(
             value.as_str().is_some_and(|family| {
                 matches!(family, "sans" | "mono" | "serif")
