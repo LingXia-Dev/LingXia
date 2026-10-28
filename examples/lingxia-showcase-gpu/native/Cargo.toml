@@ -79,6 +79,8 @@ codegen-units = 1
 strip = true
 
 [patch.crates-io]
+# Temporary: fontique with the `hvgl` feature (keep hvgl-outline faces), until upstream takes it.
+fontique = { path = "../../../../fontique" }
 # Temporary: rong's additive engine features (feat/multi-engine), until the owner publishes `rong`.
 # The facade's path dependencies must resolve to the same checkout, hence every engine crate.
 rong = { path = "../../../../rong" }

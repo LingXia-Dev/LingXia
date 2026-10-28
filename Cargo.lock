@@ -2113,8 +2113,6 @@ dependencies = [
 [[package]]
 name = "fontique"
 version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbf1df16263783918b7da396077521f92b729ef7c429444dfcf03581f1448b77"
 dependencies = [
  "hashbrown 0.17.1",
  "linebender_resource_handle",
@@ -4327,6 +4325,7 @@ dependencies = [
 name = "lingxia-ui"
 version = "0.28.0"
 dependencies = [
+ "fontique",
  "glifo",
  "image",
  "lingxia-theme",
@@ -4362,12 +4361,16 @@ dependencies = [
 name = "lingxia-ui-apple"
 version = "0.28.0"
 dependencies = [
+ "fontique",
  "lingxia-ui",
  "log",
  "objc2-core-foundation",
+ "objc2-core-graphics",
  "objc2-core-text",
  "raw-window-handle",
  "serde_json",
+ "skrifa 0.44.0",
+ "vello_cpu",
 ]
 
 [[package]]
@@ -5227,6 +5230,7 @@ checksum = "0cde0dfb48d25d2b4862161a4d5fcc0e3c24367869ad306b0c9ec0073bfed92d"
 dependencies = [
  "bitflags 2.13.2",
  "objc2-core-foundation",
+ "objc2-core-graphics",
 ]
 
 [[package]]

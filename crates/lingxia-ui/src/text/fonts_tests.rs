@@ -146,7 +146,7 @@ fn a_fallback_face_by_file_shapes_han() {
     SystemFonts::from_files(vec![(
         "zh-Hans".into(),
         han.to_path_buf(),
-        "Hiragino Sans GB".into(),
+        "HiraginoSansGB-W3".into(),
     )])
     .apply(&mut fonts.collection);
     let mut layouts = LayoutContext::<()>::new();
@@ -168,4 +168,72 @@ fn a_fallback_face_by_file_shapes_han() {
         }
     }
     assert_eq!(glyphs, 2);
+}
+
+/// A face whose outlines live only in `hvgl` registers by file, shapes Han from its own tables
+/// and draws through the platform's outlines.
+#[test]
+fn an_hvgl_face_shapes_and_draws_through_platform_outlines() {
+    use crate::text::outlines::{self, GlyphOutlines};
+    use vello_cpu::kurbo::{BezPath, Rect, Shape};
+    let path = Path::new(
+        "/System/Library/PrivateFrameworks/FontServices.framework/Versions/A/Resources/Reserved/PingFangUI.ttc",
+    );
+    let Ok(data) = std::fs::read(path) else {
+        eprintln!("skipped: no PingFang UI on this host");
+        return;
+    };
+    let postscript = postscript_name(&data, 0).unwrap();
+    struct Square;
+    impl GlyphOutlines for Square {
+        fn outline(
+            &self,
+            _: &outlines::FontData,
+            file: Option<&Path>,
+            _: u16,
+            _: &[i16],
+        ) -> Option<BezPath> {
+            file?;
+            Some(Rect::new(0.0, 0.0, 1000.0, 1000.0).to_path(0.1))
+        }
+    }
+    outlines::set_glyph_outlines(Box::new(Square));
+    let mut fonts = FontContext {
+        collection: Collection::new(CollectionOptions {
+            shared: false,
+            system_fonts: false,
+        }),
+        source_cache: Default::default(),
+    };
+    SystemFonts::from_files(vec![("zh-Hans".into(), path.to_path_buf(), postscript)])
+        .apply(&mut fonts.collection);
+    let mut layouts = LayoutContext::<()>::new();
+    let text = "首页轻输语";
+    let mut builder = layouts.ranged_builder(&mut fonts, text, 1.0, true);
+    builder.push_default(Generic::SansSerif);
+    builder.push_default(StyleProperty::Locale(locale("zh-Hans-CN")));
+    let mut layout = builder.build(text);
+    layout.break_all_lines(None);
+    let mut drawn = 0;
+    for line in layout.lines() {
+        for item in line.items() {
+            if let parley::PositionedLayoutItem::GlyphRun(run) = item {
+                let font = run.run().font().clone();
+                assert!(outlines::external(&font), "PingFang UI outlines through the platform");
+                let glyphs: Vec<_> = run
+                    .glyphs()
+                    .map(|g| vello_cpu::Glyph {
+                        id: g.id,
+                        x: g.x,
+                        y: g.y,
+                    })
+                    .collect();
+                assert!(glyphs.iter().all(|g| g.id != 0), "no notdef glyphs");
+                let path = outlines::run_path(&font, 16.0, &[], 0.0, &glyphs).unwrap();
+                assert!(path.bounding_box().width() > 0.0);
+                drawn += glyphs.len();
+            }
+        }
+    }
+    assert_eq!(drawn, 5);
 }

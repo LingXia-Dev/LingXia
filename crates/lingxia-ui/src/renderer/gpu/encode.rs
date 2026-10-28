@@ -300,6 +300,18 @@ impl DisplayList {
                     ..
                 } => {
                     context.set_paint(AlphaColor::<Srgb>::from_rgba8(*r, *g, *b, *a));
+                    if crate::text::outlines::external(font) {
+                        if let Some(path) = crate::text::outlines::run_path(
+                            font,
+                            *size,
+                            coordinates,
+                            *skew,
+                            glyphs,
+                        ) {
+                            context.fill_path(&path);
+                        }
+                        continue;
+                    }
                     glifo::GlyphRunBuilder::new(
                         font.clone(),
                         transform,

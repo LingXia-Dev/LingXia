@@ -8,6 +8,8 @@ pub struct FrameCost {
     pub nodes: usize,
     pub paints: usize,
     pub glyphs: usize,
+    /// Glyphs the platform outlines (Apple hvgl faces), each filled as a path.
+    pub outline_glyphs: usize,
     /// Path elements of vectors, plots and strokes, outlined.
     pub vector_elements: usize,
     /// Opacity groups, clips and backdrops, each an offscreen or clip layer.
@@ -29,7 +31,12 @@ impl crate::DisplayList {
         let scale = f64::from(self.scale);
         for paint in &self.commands {
             match paint {
-                Paint::Text { glyphs, .. } => cost.glyphs += glyphs.len(),
+                Paint::Text { glyphs, font, .. } => {
+                    cost.glyphs += glyphs.len();
+                    if crate::text::outlines::external(font) {
+                        cost.outline_glyphs += glyphs.len();
+                    }
+                }
                 Paint::Vector { path, .. } => cost.vector_elements += path.elements().len(),
                 Paint::Area { points, .. } | Paint::Stroke { points, .. } => {
                     cost.vector_elements += points.len()

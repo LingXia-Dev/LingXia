@@ -12,6 +12,8 @@ pub struct SystemFonts {
     monospace: Option<String>,
     /// Face files the system collection may not expose, registered before the fallbacks.
     files: Vec<std::path::PathBuf>,
+    /// Fallback faces in those files by PostScript name, per language tag.
+    faces: Vec<(String, String)>,
 }
 
 /// Languages whose script needs its own fallback face: a sample of the script, then named
@@ -76,22 +78,20 @@ impl SystemFonts {
             .unwrap_or_default()
     }
 
-    /// Fallback faces by file, as `(language, file, family)`: the platform names the face its
-    /// own text system picks for each of [`FALLBACK_SAMPLES`], which the system collection may
-    /// hide (Apple's PingFang, for one).
+    /// Fallback faces by file, as `(language, file, PostScript name)`: the platform names the
+    /// face its own text system picks for each of [`FALLBACK_SAMPLES`], which the system
+    /// collection may hide, and whose family names may differ from the platform's.
     pub fn from_files(faces: Vec<(String, std::path::PathBuf, String)>) -> Self {
         let mut fonts = Self::default();
-        for (lang, file, family) in faces {
+        for (lang, file, face) in faces {
             if !fonts.files.contains(&file) {
                 fonts.files.push(file);
             }
-            fonts.fallbacks.push((lang.clone(), family));
             // Han text shapes as `Hani` whatever its locale; the first Han face keys it too.
             if lang.starts_with("zh-Hans") {
-                fonts
-                    .fallbacks
-                    .push(("und-Hani".into(), fonts.fallbacks.last().unwrap().1.clone()));
+                fonts.faces.push(("und-Hani".into(), face.clone()));
             }
+            fonts.faces.push((lang, face));
         }
         fonts
     }
@@ -133,9 +133,8 @@ impl SystemFonts {
     }
 
     fn apply(&self, collection: &mut Collection) {
-        // Families the files registered, by name: a hidden system face (".PingFang SC") may
-        // answer to its name only through the file that holds it.
-        let mut registered: Vec<(String, parley::fontique::FamilyId)> = Vec::new();
+        let mut by_postscript: std::collections::HashMap<String, parley::fontique::FamilyId> =
+            Default::default();
         for path in &self.files {
             let Some(data) = std::fs::File::open(path)
                 .ok()
@@ -145,33 +144,32 @@ impl SystemFonts {
                 log::warn!(target: "lingxia_ui", "UI_FONT: cannot read {}", path.display());
                 continue;
             };
+            let blob = parley::fontique::Blob::new(std::sync::Arc::new(data));
+            crate::text::outlines::note_file(blob.id(), path);
             let mut held = Vec::new();
-            for (id, _) in collection
-                .register_fonts(parley::fontique::Blob::new(std::sync::Arc::new(data)), None)
-            {
-                if let Some(family) = collection.family(id) {
-                    held.push(family.name().to_owned());
-                    registered.push((family.name().to_owned(), id));
+            for (id, infos) in collection.register_fonts(blob.clone(), None) {
+                for info in infos {
+                    if let Some(name) = postscript_name(blob.as_ref(), info.index()) {
+                        held.push(name.clone());
+                        by_postscript.entry(name).or_insert(id);
+                    }
                 }
             }
             log::debug!(target: "lingxia_ui", "UI_FONT: {} holds {held:?}", path.display());
         }
-        let named = |collection: &mut Collection, name: &str| {
-            collection.family_by_name(name).map(|f| f.id()).or_else(|| {
-                registered
-                    .iter()
-                    .find(|(family, _)| family.trim_start_matches('.') == name)
-                    .map(|(_, id)| *id)
-            })
-        };
-        for (lang, name) in &self.fallbacks {
-            let Some(id) = named(collection, name) else {
-                if !self.files.is_empty() {
-                    log::warn!(target: "lingxia_ui", "UI_FONT: no family {name} for {lang}");
-                }
-                continue;
-            };
-            for (script, locale) in keys(lang) {
+        let faces = self.faces.iter().filter_map(|(lang, face)| {
+            let id = by_postscript.get(face).copied();
+            if id.is_none() {
+                log::warn!(target: "lingxia_ui", "UI_FONT: no face {face} for {lang}");
+            }
+            Some((lang, id?))
+        });
+        let named = self.fallbacks.iter().filter_map(|(lang, name)| {
+            Some((lang, collection.family_by_name(name).map(|f| f.id())?))
+        });
+        let chain: Vec<_> = faces.chain(named).map(|(l, id)| (l.clone(), id)).collect();
+        for (lang, id) in chain {
+            for (script, locale) in keys(&lang) {
                 collection.append_fallbacks(
                     FallbackKey::new(script, locale.as_ref()),
                     std::iter::once(id),
@@ -220,6 +218,14 @@ fn keys(lang: &str) -> Vec<(Script, Option<Language>)> {
         _ => {}
     }
     keys
+}
+
+/// A face's PostScript name, which names one face across platforms and name tables.
+fn postscript_name(data: &[u8], index: u32) -> Option<String> {
+    let font = FontRef::from_index(data, index).ok()?;
+    font.localized_strings(StringId::POSTSCRIPT_NAME)
+        .english_or_first()
+        .map(|name| name.chars().collect())
 }
 
 /// The family fontique registers for a face: typographic family, else family.

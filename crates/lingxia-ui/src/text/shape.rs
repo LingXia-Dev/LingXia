@@ -36,6 +36,21 @@ pub(crate) fn glyph_ink(
         FontRef, GlyphId, MetadataProvider,
         instance::{NormalizedCoord, Size},
     };
+    // Platform-outlined faces have no glyph bounds in their data; the outlines give ink.
+    if crate::text::outlines::external(font) {
+        let b = crate::text::outlines::run_ink(font, size, coordinates, f64::from(skew), glyphs)
+            .unwrap_or([0.0; 4]);
+        return Some(if b == [0.0; 4] {
+            b
+        } else {
+            [
+                b[0] - fringe,
+                b[1] - fringe,
+                b[2] - b[0] + 2.0 * fringe,
+                b[3] - b[1] + 2.0 * fringe,
+            ]
+        });
+    }
     let font = FontRef::from_index(font.data.as_ref(), font.index).ok()?;
     let coordinates: Vec<_> = coordinates
         .iter()

@@ -6,6 +6,7 @@ pub(crate) mod cache;
 pub(crate) mod editing;
 pub mod fonts;
 pub mod input;
+pub mod outlines;
 pub(crate) mod runs;
 pub(crate) mod scale;
 pub(crate) mod shape;
