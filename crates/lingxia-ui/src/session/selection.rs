@@ -63,6 +63,32 @@ impl ViewSession {
         Ok(true)
     }
 
+    /// A mouse drag across selectable text: select from the text under `from` to the text
+    /// under `to`, both logical points of the presented frame.
+    pub fn drag_select_text(
+        &mut self,
+        generation: lifecycle::CommitTicket,
+        identity: &str,
+        from: [f32; 2],
+        to: [f32; 2],
+    ) -> Result<bool, String> {
+        self.check_input_active()?;
+        if !self.presented_commit(generation) || from.iter().chain(&to).any(|v| !v.is_finite()) {
+            return Ok(false);
+        }
+        let (Some(text), Some([fx, fy]), Some([tx, ty])) = (
+            self.selectable(identity),
+            self.local(identity, from),
+            self.local(identity, to),
+        ) else {
+            return Ok(false);
+        };
+        let anchor = Cursor::from_point(&text.layout, fx, fy).index();
+        let focus = Cursor::from_point(&text.layout, tx, ty).index();
+        self.set_selection(identity, &text.text, anchor, focus);
+        Ok(true)
+    }
+
     /// Move the anchor (0) or focus (1) end to the text under `point`.
     pub fn move_text_selection(
         &mut self,

@@ -125,6 +125,9 @@ impl<A: PlatformAdapter> Inner<A> {
             let Some(environment) = environment else {
                 return;
             };
+            let fine = environment.value["pointer"] == "fine";
+            main.interaction.set_fine_pointer(fine);
+            main.text_menu.set_fine_pointer(fine);
             let same = main
                 .environment
                 .as_ref()

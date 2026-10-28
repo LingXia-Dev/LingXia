@@ -61,6 +61,8 @@ struct Gesture {
     long_pressed: bool,
     /// A selectable static text under the press, for long-press selection.
     selectable: Option<usize>,
+    /// A fine pointer is dragging a selection across `selectable` text.
+    selecting: bool,
 }
 
 struct PendingFocus {
@@ -91,6 +93,8 @@ pub struct ViewInteraction {
     parked: bool,
     /// Open dialogs, innermost last, each with what had keyboard focus before it opened.
     dialogs: Vec<(String, Option<String>)>,
+    /// A mouse or trackpad drives the pointer: drags select text instead of scrolling.
+    fine_pointer: bool,
     /// The last input was a key, not a pointer: focus moves (and its ring) follow it.
     keyboard_used: bool,
     /// Activations that could not be resolved against the presented frame.
@@ -145,6 +149,27 @@ impl ViewInteraction {
     /// Only an interrupted session sets this; content stays readable, input stops.
     pub fn set_inert(&mut self, inert: bool) {
         self.inert = inert;
+    }
+
+    pub fn set_fine_pointer(&mut self, fine: bool) {
+        self.fine_pointer = fine;
+    }
+
+    /// A double click at a device-pixel point: select the word of selectable text there.
+    pub fn select_word_at(&mut self, x: f32, y: f32) -> Vec<Effect> {
+        let Some(frame) = self.frame.clone().filter(|_| !self.inert) else {
+            return Vec::new();
+        };
+        let point = self.logical(x, y);
+        let Some(index) = frame.selectable_hit(point) else {
+            return Vec::new();
+        };
+        self.dispatches.push(Dispatch::SelectText {
+            commit: frame.commit,
+            identity: frame.nodes[index].identity.clone(),
+            point,
+        });
+        vec![Effect::Dispatch]
     }
 
     /// A parked page keeps its last frame and ids so read-only automation still answers

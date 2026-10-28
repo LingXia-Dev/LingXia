@@ -105,6 +105,13 @@ pub enum Dispatch {
         identity: String,
         point: [f32; 2],
     },
+    /// A mouse drag over selectable text: the session selects `from..to` (`drag_select_text`).
+    DragSelectText {
+        commit: CommitTicket,
+        identity: String,
+        from: [f32; 2],
+        to: [f32; 2],
+    },
     /// A `<select>` chose option `index` without its picker (arrow keys, automation).
     Select {
         commit: CommitTicket,

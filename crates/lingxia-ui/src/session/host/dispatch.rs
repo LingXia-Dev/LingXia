@@ -228,6 +228,21 @@ impl<A: PlatformAdapter> Inner<A> {
                         Box::new(move |session| session.select_text(commit, &identity, point)),
                     );
                 }
+                Dispatch::DragSelectText {
+                    commit,
+                    identity,
+                    from,
+                    to,
+                } => {
+                    self.adapter.activation();
+                    self.activate(
+                        page,
+                        false,
+                        Box::new(move |session| {
+                            session.drag_select_text(commit, &identity, from, to)
+                        }),
+                    );
+                }
                 Dispatch::Select {
                     commit,
                     identity,

@@ -2198,6 +2198,79 @@ fn a_static_selection_shows_its_menu_which_hides_while_dragging_and_clears_on_di
     );
 }
 
+fn fine_pointer_text_host(platform: &Platform, worker: &Arc<ViewWorker>) -> ViewHost<Fake> {
+    let host = platform.host(
+        worker,
+        &source("function render(){return h('text',{testId:'p',style:{userSelect:'text'}},'hello brave world')}"),
+        false,
+    );
+    if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
+        environment.value["pointer"] = "fine".into();
+    }
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    host
+}
+
+#[test]
+fn a_mouse_drag_selects_static_text_and_its_menu_waits_for_a_secondary_click() {
+    let worker = ViewWorker::spawn("test-mouse-select").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = fine_pointer_text_host(&platform, &worker);
+    // The text wraps in its 100-point box; points on its first line, device pixels at scale 2.
+    let [x, y, w, h] = host.snapshot().unwrap().frame.nodes[0].bounds;
+    let line = (y + 8.0) * 2.0;
+    let at = |px: f32, phase| Pointer {
+        phase,
+        x: px * 2.0,
+        y: line,
+        slop: 8.0,
+        velocity: [0.0; 2],
+        min_fling: 50.0,
+    };
+    assert!(host.pointer(at(x + 1.0, PointerPhase::Down)));
+    assert!(host.pointer(at(x + w / 2.0, PointerPhase::Move)));
+    assert!(host.pointer(at(x + w - 1.0, PointerPhase::Move)));
+    assert!(host.pointer(at(x + w - 1.0, PointerPhase::Up)));
+    platform.settle(&[&host]);
+    let range = host.snapshot().unwrap().frame.nodes[0].selection_range;
+    assert!(
+        range.is_some_and(|[a, b]| a == 0 && b >= 10),
+        "the drag selects what it crossed: {range:?}"
+    );
+    assert!(menu(&host).is_none(), "a mouse selects without a menu");
+    assert!(
+        !host.context_menu([0.0, (y + h + 40.0) * 2.0]),
+        "nothing under the click"
+    );
+    assert!(host.context_menu([(x + 4.0) * 2.0, line]));
+    assert!(
+        menu(&host).is_some_and(|m| m.actions.contains(&crate::session::host::MenuAction::Copy))
+    );
+    host.text_menu_dismissed();
+    platform.settle(&[&host]);
+    assert_eq!(
+        host.snapshot().unwrap().frame.nodes[0].selection_range,
+        range,
+        "closing a context menu keeps the selection"
+    );
+}
+
+#[test]
+fn a_double_click_selects_the_word_under_it() {
+    let worker = ViewWorker::spawn("test-double-click").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = fine_pointer_text_host(&platform, &worker);
+    let [x, y, ..] = host.snapshot().unwrap().frame.nodes[0].bounds;
+    host.select_word_at([(x + 2.0) * 2.0, (y + 8.0) * 2.0]);
+    platform.settle(&[&host]);
+    assert_eq!(
+        host.snapshot().unwrap().frame.nodes[0].selection_range,
+        Some([0, 5])
+    );
+    assert!(menu(&host).is_none());
+}
+
 #[test]
 fn an_editor_menu_offers_what_the_editor_allows_and_goes_when_its_text_changes() {
     use crate::session::host::{MenuAction, MenuTarget};

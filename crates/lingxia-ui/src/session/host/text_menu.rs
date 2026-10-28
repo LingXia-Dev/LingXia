@@ -49,6 +49,9 @@ pub(super) struct MenuState {
     editor: Option<EditorRequest>,
     dragging: bool,
     shown: Option<TextMenu>,
+    /// A mouse selects without a menu; it shows for the static text a secondary click asked for.
+    fine: bool,
+    requested: Option<String>,
 }
 
 fn union(rects: &[[f32; 4]]) -> Option<[f32; 4]> {
@@ -68,14 +71,21 @@ impl<F> super::Main<F> {
 }
 
 impl MenuState {
+    pub(super) fn set_fine_pointer(&mut self, fine: bool) {
+        self.fine = fine;
+    }
+
     fn decide(&mut self, nodes: &[NodeSnapshot]) -> Option<TextMenu> {
         if self.dragging {
             return None;
         }
-        if let Some(node) = nodes
+        let selected = nodes
             .iter()
-            .find(|node| node.input.is_none() && node.text_selection.is_some())
-        {
+            .find(|node| node.input.is_none() && node.text_selection.is_some());
+        if selected.is_none_or(|node| self.requested.as_ref() != Some(&node.identity)) {
+            self.requested = None;
+        }
+        if let Some(node) = selected.filter(|_| !self.fine || self.requested.is_some()) {
             let selection = node.text_selection.as_ref().unwrap();
             let mut actions = Vec::new();
             if node.selection_range.is_some_and(|[a, b]| a != b) {
@@ -195,19 +205,65 @@ impl<A: PlatformAdapter> Inner<A> {
         }
     }
 
-    /// The user closed the menu (back, outside touch): a static selection goes with it.
+    /// The user closed the menu (back, outside touch): a static selection goes with it,
+    /// except a mouse's, which outlives its context menu.
     pub(super) fn text_menu_dismissed(self: &Arc<Self>) -> bool {
-        let shown = {
+        let (shown, fine) = {
             let mut main = self.main();
             main.text_menu.editor = None;
-            main.text_menu.shown.take()
+            main.text_menu.requested = None;
+            (main.text_menu.shown.take(), main.text_menu.fine)
         };
-        matches!(
-            shown,
-            Some(TextMenu {
-                target: MenuTarget::Text { .. },
-                ..
-            })
-        )
+        !fine
+            && matches!(
+                shown,
+                Some(TextMenu {
+                    target: MenuTarget::Text { .. },
+                    ..
+                })
+            )
+    }
+
+    /// A secondary click at a logical point: the menu for the static selection or the
+    /// focused editor there. False when neither is under the point.
+    pub(super) fn context_menu(self: &Arc<Self>, point: [f32; 2]) -> bool {
+        let inside = |b: [f32; 4]| {
+            point[0] >= b[0] && point[1] >= b[1] && point[0] < b[0] + b[2] && point[1] < b[1] + b[3]
+        };
+        let (text, editor) = {
+            let main = self.main();
+            let Some(snapshot) = main.snapshot.clone() else {
+                return false;
+            };
+            let nodes = &snapshot.frame.nodes;
+            let text = nodes
+                .iter()
+                .rev()
+                .find(|n| {
+                    n.input.is_none() && n.text_selection.is_some() && inside(n.visible_bounds)
+                })
+                .map(|n| n.identity.clone());
+            let editor = nodes
+                .iter()
+                .rev()
+                .find(|n| {
+                    n.input
+                        .as_ref()
+                        .is_some_and(|i| i.edit_token.is_some_and(|t| t > 0))
+                        && inside(n.visible_bounds)
+                })
+                .map(|n| n.identity.clone());
+            (text, editor)
+        };
+        if let Some(identity) = text {
+            self.main().text_menu.requested = Some(identity);
+            self.update_text_menu();
+            return true;
+        }
+        if let Some(identity) = editor {
+            self.request_editor_menu(identity);
+            return true;
+        }
+        false
     }
 }

@@ -68,13 +68,18 @@ impl ViewInteraction {
                     } else if frame.node(index).is_some_and(|node| node.tag == "link")
                         && let Some(text) = frame.selectable_hit(point)
                     {
-                        // In selectable text a long-press selects instead of pressing the link.
+                        // In selectable text a long-press selects instead of pressing the link;
+                        // a mouse drags a selection instead.
                         self.gesture.selectable = Some(text);
-                        effects.push(Effect::ArmLongPress);
+                        if !self.fine_pointer {
+                            effects.push(Effect::ArmLongPress);
+                        }
                     }
                 } else if let Some(index) = frame.selectable_hit(point) {
                     self.gesture.selectable = Some(index);
-                    effects.push(Effect::ArmLongPress);
+                    if !self.fine_pointer {
+                        effects.push(Effect::ArmLongPress);
+                    }
                 }
             }
             PointerPhase::Move => {
@@ -95,6 +100,32 @@ impl ViewInteraction {
                 let dy = event.y - self.gesture.down[1];
                 if dx.abs() > event.slop || dy.abs() > event.slop {
                     self.gesture.moved = true;
+                }
+                // A mouse drag that starts in selectable text selects it rather than scrolling.
+                if self.fine_pointer
+                    && self.gesture.moved
+                    && !self.gesture.dragging
+                    && let Some(index) = self.gesture.selectable
+                    && frame.nodes.get(index).is_some_and(|node| {
+                        node.selectable.is_some()
+                            && (self.gesture.pressed_commit == Some(frame.commit)
+                                || node.text_selection.is_some())
+                    })
+                {
+                    // Selection repaints present new frames; the text stays where it was.
+                    let commit = frame.commit;
+                    if !self.gesture.selecting {
+                        self.gesture.selecting = true;
+                        effects.extend(self.cancel_press());
+                    }
+                    self.dispatches.push(Dispatch::DragSelectText {
+                        commit,
+                        identity: frame.nodes[index].identity.clone(),
+                        from: self.logical(self.gesture.down[0], self.gesture.down[1]),
+                        to: point,
+                    });
+                    effects.push(Effect::Dispatch);
+                    return (true, effects);
                 }
                 if !self.gesture.dragging && self.gesture.moved && self.gesture.target.is_some() {
                     let axis = if dx.abs() > dy.abs() {

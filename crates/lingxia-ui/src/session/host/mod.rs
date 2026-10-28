@@ -629,6 +629,27 @@ impl<A: PlatformAdapter> ViewHost<A> {
         self.inner.set_handle_drag(active);
     }
 
+    /// A double click at a device-pixel point selects the word of selectable text there.
+    pub fn select_word_at(&self, point: [f32; 2]) {
+        let effects = self
+            .inner
+            .main()
+            .interaction
+            .select_word_at(point[0], point[1]);
+        self.inner.deliver(effects);
+    }
+
+    /// A secondary click at a device-pixel point opens the text menu of the static
+    /// selection or focused editor there; false when there is none.
+    pub fn context_menu(&self, point: [f32; 2]) -> bool {
+        let scale = self
+            .snapshot()
+            .map_or(1.0, |s| s.scale)
+            .max(f32::MIN_POSITIVE);
+        self.inner
+            .context_menu([point[0] / scale, point[1] / scale])
+    }
+
     /// The user closed the text menu; a static selection is cleared with it.
     pub fn text_menu_dismissed(&self) {
         if self.inner.text_menu_dismissed() {
