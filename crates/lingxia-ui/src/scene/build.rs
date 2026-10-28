@@ -969,6 +969,10 @@ impl Renderer {
                     .fields
                     .iter()
                     .any(|(id, _)| *id == field::PRESSED_STYLE),
+                hover_style: record
+                    .fields
+                    .iter()
+                    .any(|(id, _)| *id == field::HOVER_STYLE),
                 focus_style: record.tag == tag::SELECT
                     && record
                         .fields

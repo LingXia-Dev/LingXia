@@ -49,6 +49,7 @@ pub(crate) fn node(identity: &str, tag: &'static str, bounds: [f32; 4]) -> NodeS
         input: None,
         clips_children: false,
         pressed_style: false,
+        hover_style: false,
         focus_style: false,
         order: 0,
         plot_local: None,
@@ -637,6 +638,55 @@ fn drags_scroll_past_slop_and_release_into_a_fling() {
         velocity: 900.0
     }));
     assert!(interaction.take_dispatch().is_empty());
+}
+
+#[test]
+fn hover_finds_the_topmost_node_with_a_hover_delta() {
+    let mut card = node("card", "column", [0.0, 0.0, 100.0, 100.0]);
+    card.hover_style = true;
+    let mut button = node("button", "button", [10.0, 10.0, 40.0, 20.0]);
+    button.hover_style = true;
+    button.order = 1;
+    let plain = node("plain", "text", [60.0, 60.0, 20.0, 20.0]);
+    let frame = frame(vec![card, button, plain]);
+    assert_eq!(frame.hover_hit([20.0, 20.0]), Some(1));
+    assert_eq!(frame.hover_hit([70.0, 70.0]), Some(0), "plain text has no delta");
+    assert_eq!(frame.hover_hit([200.0, 200.0]), None);
+}
+
+#[test]
+fn a_wheel_gesture_stays_on_its_region_through_momentum() {
+    use crate::interaction::view::{Wheel, WheelPhase};
+    let mut list = node("list", "scroll", [0.0, 0.0, 100.0, 100.0]);
+    list.scroll = Some(region("list", None, 0.0, 300.0));
+    let mut interaction = ViewInteraction::default();
+    presented(&mut interaction, vec![list], 1);
+    let wheel = |phase, dy, precise| Wheel {
+        x: 50.0,
+        y: 50.0,
+        dx: 0.0,
+        dy,
+        precise,
+        phase,
+    };
+    // AppKit's deltas move content toward the end, so a negative delta advances the offset.
+    let (moved, effects) = interaction.wheel(wheel(WheelPhase::Began, -10.0, true));
+    assert!(moved && effects.contains(&Effect::Redraw));
+    // Precise deltas are device pixels; the frame is at scale 2.
+    assert_eq!(interaction.scroll().offset("list"), 5.0);
+    interaction.wheel(wheel(WheelPhase::Ended, 0.0, true));
+    // Momentum after the fingers lift follows the latched region even off it.
+    let mut off = wheel(WheelPhase::Momentum, -20.0, true);
+    off.x = 500.0;
+    assert!(interaction.wheel(off).0);
+    assert_eq!(interaction.scroll().offset("list"), 15.0);
+    // A notch without a pixel distance scrolls three 16 px lines.
+    assert!(interaction.wheel(wheel(WheelPhase::Discrete, -1.0, false)).0);
+    assert_eq!(interaction.scroll().offset("list"), 63.0);
+    // Nothing scrollable under a fresh gesture: nothing moves.
+    let mut outside = wheel(WheelPhase::Began, -10.0, true);
+    outside.y = 500.0;
+    assert!(!interaction.wheel(outside).0);
 }
 
 #[test]

@@ -88,6 +88,10 @@ pub struct NodeSnapshot {
     /// An `active:` paint delta exists; the session repaints it while pressed.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub pressed_style: bool,
+    /// A `hover:` paint delta exists; the session repaints it under a fine pointer. In-process
+    /// only: the platform never needs it.
+    #[serde(skip)]
+    pub hover_style: bool,
     /// A `<select>` with a `focus:` paint delta; the session repaints it while it holds focus.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub focus_style: bool,

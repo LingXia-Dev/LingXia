@@ -123,7 +123,8 @@ final class GpuPageView: NSView {
             Float(min(screen.width, screen.height)),
             Locale.preferredLanguages.first ?? "en",
             NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
-            NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+            NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast,
+            RustVec<Float>()
         )
         layer?.contentsScale = scale
         if !attached, presentable {
@@ -173,6 +174,91 @@ final class GpuPageView: NSView {
             bytesPerRow: width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
             bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
             provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
+    }
+
+    // MARK: Mouse
+
+    private var longPress: Timer?
+    /// AppKit's drag threshold, in points.
+    private static let slopPoints: CGFloat = 3
+
+    @discardableResult
+    private func send(_ phase: UInt8, _ event: NSEvent) -> Bool {
+        let point = convert(event.locationInWindow, from: nil)
+        let scale = window?.backingScaleFactor ?? 2
+        return gpuPagePointer(
+            token, phase, Float(point.x * scale), Float(point.y * scale),
+            Float(Self.slopPoints * scale), 0, 0, .greatestFiniteMagnitude)
+    }
+
+    private func pixels(_ event: NSEvent) -> (Float, Float) {
+        let point = convert(event.locationInWindow, from: nil)
+        let scale = window?.backingScaleFactor ?? 2
+        return (Float(point.x * scale), Float(point.y * scale))
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(
+            rect: .zero,
+            options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+            owner: self))
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        let (x, y) = pixels(event)
+        gpuPageHover(token, true, x, y)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        gpuPageHover(token, false, 0, 0)
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        let (x, y) = pixels(event)
+        let scale = Float(window?.backingScaleFactor ?? 2)
+        let precise = event.hasPreciseScrollingDeltas
+        let unit: Float = precise ? scale : 1
+        let phase: UInt8
+        if !event.momentumPhase.isEmpty {
+            phase = event.momentumPhase.contains(.ended) ? 3 : 4
+        } else if event.phase.contains(.began) || event.phase.contains(.mayBegin) {
+            phase = 1
+        } else if event.phase.contains(.changed) {
+            phase = 2
+        } else if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
+            phase = 3
+        } else {
+            phase = 0
+        }
+        if !gpuPageWheel(
+            token, x, y, Float(event.scrollingDeltaX) * unit, Float(event.scrollingDeltaY) * unit,
+            precise, phase)
+        {
+            super.scrollWheel(with: event)
+        }
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func mouseDown(with event: NSEvent) { send(0, event) }
+    override func mouseDragged(with event: NSEvent) { send(1, event) }
+    override func mouseUp(with event: NSEvent) { send(2, event) }
+
+    func armLongPress() {
+        longPress?.invalidate()
+        longPress = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.longPress = nil
+                gpuPageLongPress(self.token)
+            }
+        }
+    }
+
+    func cancelLongPress() {
+        longPress?.invalidate()
+        longPress = nil
     }
 
     func show(pixels: UnsafeRawPointer, length: Int, width: Int, height: Int) -> Bool {
@@ -229,6 +315,19 @@ public enum GpuPages {
             return view.show(pixels: pointer, length: Int(length), width: Int(width), height: Int(height))
         }
     }
+
+    static func armLongPress(token: Int64) {
+        MainActor.assumeIsolated { views[token]?.armLongPress() }
+    }
+
+    static func cancelLongPress(token: Int64) {
+        MainActor.assumeIsolated { views[token]?.cancelLongPress() }
+    }
+
+    /// A mouse release carries no velocity, so the page never asks a desktop view to fling.
+    static func fling(token: Int64, region: RustStr, horizontal: Bool, velocity: Float) {}
+
+    static func stopFling(token: Int64) {}
 
     static func requestVsync(token: Int64) -> Bool {
         guard Thread.isMainThread else { return false }

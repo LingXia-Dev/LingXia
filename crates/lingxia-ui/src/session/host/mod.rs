@@ -248,6 +248,7 @@ struct Main<F> {
     no_frames_ahead: bool,
     failure: Option<Failure>,
     styled_press: Option<String>,
+    styled_hover: Option<String>,
     styled_focus: Option<String>,
     caret: Caret,
     visible: bool,
@@ -369,6 +370,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     no_frames_ahead: false,
                     failure: None,
                     styled_press: None,
+                    styled_hover: None,
                     styled_focus: None,
                     caret: Caret::default(),
                     visible: false,
@@ -553,6 +555,34 @@ impl<A: PlatformAdapter> ViewHost<A> {
         let (handled, effects) = self.inner.main().interaction.pointer(event, page);
         self.inner.deliver(effects);
         handled
+    }
+
+    /// A fine pointer moved to `point` (device pixels), or left the page: `hover:` deltas
+    /// repaint without running the View.
+    pub fn hover(&self, point: Option<[f32; 2]>) {
+        if !self.inner.lifecycle.accepts_input() {
+            return;
+        }
+        let identity = {
+            let main = self.inner.main();
+            point.and_then(|[x, y]| {
+                let frame = main.interaction.frame()?;
+                let scale = if frame.scale > 0.0 { frame.scale } else { 1.0 };
+                let index = frame.hover_hit([x / scale, y / scale])?;
+                frame.nodes.get(index).map(|node| node.identity.clone())
+            })
+        };
+        self.inner.set_hovered(identity);
+    }
+
+    /// A wheel or trackpad scroll; returns whether a region moved.
+    pub fn wheel(&self, event: crate::interaction::view::Wheel) -> bool {
+        if !self.inner.lifecycle.accepts_input() {
+            return false;
+        }
+        let (moved, effects) = self.inner.main().interaction.wheel(event);
+        self.inner.deliver(effects);
+        moved
     }
 
     pub fn long_press(&self) {
@@ -1002,6 +1032,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.dirty = true;
             main.caret.stop();
             main.styled_press = None;
+            main.styled_hover = None;
             main.styled_focus = None;
             let effects = main.interaction.reset();
             main.interaction.set_inert(false);
@@ -1063,6 +1094,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.dirty = true;
             main.caret.stop();
             main.styled_press = None;
+            main.styled_hover = None;
             main.styled_focus = None;
             let effects = main.interaction.reset();
             let cancelled = main.images.inflight_tokens();

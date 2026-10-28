@@ -20,6 +20,8 @@ mod effects;
 mod keyboard;
 mod number;
 mod pointer;
+mod wheel;
+pub use wheel::{Wheel, WheelPhase};
 
 pub use accessibility::AccessibilityAction;
 use effects::press;
@@ -80,6 +82,8 @@ pub struct ViewInteraction {
     accessibility_focus: Option<u32>,
     hover: Option<u32>,
     exploring: Option<[f32; 2]>,
+    /// The region a wheel or trackpad gesture scrolls, until the next one begins.
+    wheel_target: Option<String>,
     activation: Option<Activation>,
     dispatches: Vec<Dispatch>,
     inert: bool,

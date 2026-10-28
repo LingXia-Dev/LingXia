@@ -446,9 +446,9 @@ impl<A: PlatformAdapter> Inner<A> {
     }
 
     pub(super) fn vsync(self: &Arc<Self>) {
-        if self.window_hidden() {
-            return;
-        }
+        // A window nothing of which shows still completes its frames, so the page's lifecycle,
+        // hit-testing and readback advance, but nothing reaches a drawable that may not return.
+        let hidden = self.window_hidden();
         let vsync = Instant::now();
         let at = self.adapter.now();
         let Some(prepared) = ({
@@ -499,12 +499,17 @@ impl<A: PlatformAdapter> Inner<A> {
                 prepared_at,
             } = prepared;
             timing.wait_us = micros(vsync.saturating_duration_since(prepared_at));
-            let deferred = self.adapter.deferred(&frame);
+            let deferred = !hidden && self.adapter.deferred(&frame);
             let newer = {
                 let main = self.main();
                 main.prepared.is_some() || main.ahead
             };
-            match self.adapter.present(frame) {
+            let shown = if hidden {
+                Ok(true)
+            } else {
+                self.adapter.present(frame)
+            };
+            match shown {
                 Ok(true) if deferred => {
                     // Nothing else prepares until this frame is on screen.
                     let mut main = self.main();

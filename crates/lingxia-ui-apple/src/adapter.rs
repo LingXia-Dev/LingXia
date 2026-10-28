@@ -256,7 +256,25 @@ impl InputMethod for AppleAdapter {
 }
 
 impl Feedback for AppleAdapter {
-    fn apply(&self, _: &[Effect]) {}
+    fn apply(&self, effects: &[Effect]) {
+        for effect in effects {
+            match effect {
+                Effect::ArmLongPress => self.shell.arm_long_press(self.token),
+                Effect::CancelLongPress => self.shell.cancel_long_press(self.token),
+                Effect::Fling {
+                    region,
+                    horizontal,
+                    velocity,
+                } => self
+                    .shell
+                    .fling(self.token, region, *horizontal, *velocity),
+                Effect::StopFling => self.shell.stop_fling(self.token),
+                // Nothing on the page's Apple host can take a gesture from it.
+                Effect::Claim { .. } => {}
+                _ => {}
+            }
+        }
+    }
 }
 
 impl HostEvents for AppleAdapter {
@@ -297,6 +315,9 @@ impl HostEvents for AppleAdapter {
     }
     fn warn(&self, message: &str) {
         log::warn!(target: "lingxia_ui", "{message}");
+    }
+    fn debug(&self, message: &str) {
+        log::debug!(target: "lingxia_ui", "{message}");
     }
 }
 

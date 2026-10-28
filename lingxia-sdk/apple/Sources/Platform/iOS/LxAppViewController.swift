@@ -760,6 +760,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
         updateNavigationBar(appId: appId, path: path)
         updateTabBar(for: appId, path: path)
         bringUIElementsToFront()
+        view.chromeChanged()
         return true
     }
 

@@ -73,16 +73,33 @@ impl<A: PlatformAdapter> Inner<A> {
     }
 
     fn set_pressed(self: &Arc<Self>, identity: Option<String>) {
-        {
+        let hovered = {
             let mut main = self.main();
             if main.styled_press == identity {
                 return;
             }
             main.styled_press = identity.clone();
-        }
+            main.styled_hover.clone()
+        };
+        self.apply_pointer_state(identity, hovered);
+    }
+
+    pub(super) fn set_hovered(self: &Arc<Self>, identity: Option<String>) {
+        let pressed = {
+            let mut main = self.main();
+            if main.styled_hover == identity {
+                return;
+            }
+            main.styled_hover = identity.clone();
+            main.styled_press.clone()
+        };
+        self.apply_pointer_state(pressed, identity);
+    }
+
+    fn apply_pointer_state(self: &Arc<Self>, pressed: Option<String>, hovered: Option<String>) {
         self.work(
             Guard::Page(self.lifecycle.page()),
-            move |_, session| Ok(session.set_pointer_state(identity.as_deref(), None)),
+            move |_, session| Ok(session.set_pointer_state(pressed.as_deref(), hovered.as_deref())),
             |inner, result| match result {
                 Some(Ok(true)) => inner.schedule(),
                 Some(Err(error)) => inner.fail(error),

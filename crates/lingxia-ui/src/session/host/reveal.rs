@@ -111,8 +111,8 @@ impl<A: PlatformAdapter> Inner<A> {
         self.adapter.revealed(hold);
     }
 
-    /// A window nothing of which can be seen keeps its prepared frame instead of presenting:
-    /// a drawable for it may never come back.
+    /// A window nothing of which can be seen completes frames without presenting them (a
+    /// drawable for it may never come back) and redraws when it shows again.
     pub(super) fn window_visible(self: &Arc<Self>, visible: bool) {
         let changed = {
             let mut main = self.main();
@@ -124,6 +124,8 @@ impl<A: PlatformAdapter> Inner<A> {
             return;
         }
         if visible {
+            // Frames completed while hidden never reached the screen.
+            self.main().dirty = true;
             self.adapter.request_vsync();
             self.schedule();
         } else {

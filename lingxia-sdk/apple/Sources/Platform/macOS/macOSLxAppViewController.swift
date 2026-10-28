@@ -273,6 +273,8 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
             view.bottomAnchor.constraint(equalTo: webViewContainer.bottomAnchor),
         ])
         activeGpuView = view
+        // As attaching a page's WebView does: the page's onShow, then onReady after its frame.
+        lingxia.onPageShow(appId, currentPath)
         return true
     }
 

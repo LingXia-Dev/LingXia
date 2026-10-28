@@ -58,6 +58,13 @@ impl PresentedFrame {
             .map(|(index, _)| index)
     }
 
+    /// The topmost node with a `hover:` delta under a logical point.
+    pub fn hover_hit(&self, point: [f32; 2]) -> Option<usize> {
+        self.hit_order()
+            .find(|(_, node)| node.hover_style && contains(node, point, false))
+            .map(|(index, _)| index)
+    }
+
     /// The topmost selectable static text under a logical point.
     pub fn selectable_hit(&self, point: [f32; 2]) -> Option<usize> {
         self.hit_order()

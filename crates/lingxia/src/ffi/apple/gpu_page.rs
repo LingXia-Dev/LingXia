@@ -27,6 +27,8 @@ mod bridge {
             locale: &str,
             reduce_motion: bool,
             high_contrast: bool,
+            // `[authored, shown]` font sizes flattened; empty when the system has no text size.
+            text_scale: Vec<f32>,
         );
 
         #[swift_bridge(swift_name = "gpuPageSetVisible")]
@@ -49,6 +51,45 @@ mod bridge {
         #[swift_bridge(swift_name = "gpuPageReadback")]
         fn gpu_page_readback(token: i64) -> Vec<u8>;
 
+        // A touch in device pixels: phase 0 down, 1 move, 2 up, 3 cancel; velocity in px/s
+        // on release. True when the page consumed the gesture.
+        #[swift_bridge(swift_name = "gpuPagePointer")]
+        fn gpu_page_pointer(
+            token: i64,
+            phase: u8,
+            x: f32,
+            y: f32,
+            slop: f32,
+            velocity_x: f32,
+            velocity_y: f32,
+            min_fling: f32,
+        ) -> bool;
+
+        // A wheel or trackpad scroll in device pixels (notches when not precise), positive
+        // toward the end of the axis; phase 0 discrete, 1 began, 2 changed, 3 ended, 4 momentum.
+        #[swift_bridge(swift_name = "gpuPageWheel")]
+        fn gpu_page_wheel(
+            token: i64,
+            x: f32,
+            y: f32,
+            dx: f32,
+            dy: f32,
+            precise: bool,
+            phase: u8,
+        ) -> bool;
+
+        // A fine pointer moved over the page (device pixels), or left it (`inside` false).
+        #[swift_bridge(swift_name = "gpuPageHover")]
+        fn gpu_page_hover(token: i64, inside: bool, x: f32, y: f32);
+
+        // The long-press delay armed by the page elapsed.
+        #[swift_bridge(swift_name = "gpuPageLongPress")]
+        fn gpu_page_long_press(token: i64);
+
+        // One fling frame's distance in device pixels; false when the region did not move.
+        #[swift_bridge(swift_name = "gpuPageScrollBy")]
+        fn gpu_page_scroll_by(token: i64, region: &str, delta: f32) -> bool;
+
         // The display link fired for a requested frame.
         #[swift_bridge(swift_name = "gpuPageVsync")]
         fn gpu_page_vsync(token: i64);
@@ -67,6 +108,15 @@ mod bridge {
 
         #[swift_bridge(swift_name = "GpuPages.dispose")]
         fn gpu_pages_dispose(token: i64);
+
+        #[swift_bridge(swift_name = "GpuPages.armLongPress")]
+        fn gpu_pages_arm_long_press(token: i64);
+        #[swift_bridge(swift_name = "GpuPages.cancelLongPress")]
+        fn gpu_pages_cancel_long_press(token: i64);
+        #[swift_bridge(swift_name = "GpuPages.fling")]
+        fn gpu_pages_fling(token: i64, region: &str, horizontal: bool, velocity: f32);
+        #[swift_bridge(swift_name = "GpuPages.stopFling")]
+        fn gpu_pages_stop_fling(token: i64);
 
         // Call `gpuPageVsync` on the next display refresh; false without a display link.
         #[swift_bridge(swift_name = "GpuPages.requestVsync")]
@@ -92,6 +142,7 @@ fn gpu_page_measured(
     locale: &str,
     reduce_motion: bool,
     high_contrast: bool,
+    text_scale: Vec<f32>,
 ) {
     #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     {
@@ -115,7 +166,8 @@ fn gpu_page_measured(
             animation_scale: 1.0,
             reduce_motion,
             high_contrast,
-            text_scale: None,
+            text_scale: (!text_scale.is_empty())
+                .then(|| text_scale.chunks_exact(2).map(|p| [p[0], p[1]]).collect()),
             runner: false,
         };
         with_page(token, |page| page.measured(facts));
@@ -132,6 +184,7 @@ fn gpu_page_measured(
         locale,
         reduce_motion,
         high_contrast,
+        text_scale,
     );
 }
 
@@ -178,6 +231,114 @@ fn gpu_page_readback(token: i64) -> Vec<u8> {
     {
         let _ = token;
         Vec::new()
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn gpu_page_pointer(
+    token: i64,
+    phase: u8,
+    x: f32,
+    y: f32,
+    slop: f32,
+    velocity_x: f32,
+    velocity_y: f32,
+    min_fling: f32,
+) -> bool {
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    {
+        use lingxia_ui_apple::lingxia_ui::interaction::view::{Pointer, PointerPhase};
+        let phase = match phase {
+            0 => PointerPhase::Down,
+            1 => PointerPhase::Move,
+            2 => PointerPhase::Up,
+            _ => PointerPhase::Cancel,
+        };
+        let mut handled = false;
+        with_page(token, |page| {
+            handled = page.host().pointer(Pointer {
+                phase,
+                x,
+                y,
+                slop,
+                velocity: [velocity_x, velocity_y],
+                min_fling,
+            })
+        });
+        handled
+    }
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    {
+        let _ = (token, phase, x, y, slop, velocity_x, velocity_y, min_fling);
+        false
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn gpu_page_wheel(
+    token: i64,
+    x: f32,
+    y: f32,
+    dx: f32,
+    dy: f32,
+    precise: bool,
+    phase: u8,
+) -> bool {
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    {
+        use lingxia_ui_apple::lingxia_ui::interaction::view::{Wheel, WheelPhase};
+        let phase = match phase {
+            1 => WheelPhase::Began,
+            2 => WheelPhase::Changed,
+            3 => WheelPhase::Ended,
+            4 => WheelPhase::Momentum,
+            _ => WheelPhase::Discrete,
+        };
+        let mut moved = false;
+        with_page(token, |page| {
+            moved = page.host().wheel(Wheel {
+                x,
+                y,
+                dx,
+                dy,
+                precise,
+                phase,
+            })
+        });
+        moved
+    }
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    {
+        let _ = (token, x, y, dx, dy, precise, phase);
+        false
+    }
+}
+
+fn gpu_page_hover(token: i64, inside: bool, x: f32, y: f32) {
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    with_page(token, |page| page.host().hover(inside.then_some([x, y])));
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    let _ = (token, inside, x, y);
+}
+
+fn gpu_page_long_press(token: i64) {
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    with_page(token, |page| page.host().long_press());
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    let _ = token;
+}
+
+fn gpu_page_scroll_by(token: i64, region: &str, delta: f32) -> bool {
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    {
+        let mut moved = false;
+        with_page(token, |page| moved = page.host().scroll_by(region, delta));
+        moved
+    }
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    {
+        let _ = (token, region, delta);
+        false
     }
 }
 
@@ -247,6 +408,18 @@ mod live {
         fn loaded(&self, _: i64) {}
         fn request_vsync(&self, token: i64) -> bool {
             super::bridge::gpu_pages_request_vsync(token)
+        }
+        fn arm_long_press(&self, token: i64) {
+            super::bridge::gpu_pages_arm_long_press(token);
+        }
+        fn cancel_long_press(&self, token: i64) {
+            super::bridge::gpu_pages_cancel_long_press(token);
+        }
+        fn fling(&self, token: i64, region: &str, horizontal: bool, velocity: f32) {
+            super::bridge::gpu_pages_fling(token, region, horizontal, velocity);
+        }
+        fn stop_fling(&self, token: i64) {
+            super::bridge::gpu_pages_stop_fling(token);
         }
         fn presented(&self, token: i64, connection: u64) {
             gpu_page::presented(token, connection);

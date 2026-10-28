@@ -26,6 +26,13 @@ pub trait Shell: Send + Sync + 'static {
     fn loaded(&self, token: i64);
     /// Call [`ViewHost::vsync`] on the next display refresh; false without a display link.
     fn request_vsync(&self, token: i64) -> bool;
+    /// Call [`ViewHost::long_press`] after the platform's long-press delay, unless disarmed.
+    fn arm_long_press(&self, token: i64);
+    fn cancel_long_press(&self, token: i64);
+    /// Decay `velocity` (px/s) the platform's way, feeding each frame's distance to
+    /// [`ViewHost::scroll_by`] for `region` until it stops or the region does not move.
+    fn fling(&self, token: i64, region: &str, horizontal: bool, velocity: f32);
+    fn stop_fling(&self, token: i64);
     /// A frame for `connection` reached the screen; 0 is a standalone page.
     fn presented(&self, token: i64, connection: u64);
     fn message(&self, token: i64, connection: u64, message: &str);
