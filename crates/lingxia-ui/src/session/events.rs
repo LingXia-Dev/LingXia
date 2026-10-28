@@ -151,7 +151,8 @@ impl ViewSession {
         match current {
             Some(index) => self.select_option(self.generation, identity, index),
             None => {
-                log::debug!(target: "lingxia_ui", "UI_INPUT: select {identity} dropped: option {value:?} is gone");
+                // Reported like a refused click: the host warns and fails the automation call.
+                self.record_click(generation, true, Err("its option is gone"));
                 Ok(false)
             }
         }

@@ -1592,12 +1592,15 @@ fn automation_requests_query_and_act_through_the_core_driver() {
     let found = host.automation_request(&query).unwrap();
     assert!(found.to_string().contains("Count 0"), "{found}");
     let click = serde_json::json!({"op": "act", "css": "[data-testid=\"add\"]", "action": {"kind": "click"}});
-    assert_eq!(
-        host.automation_request(&click).unwrap(),
-        serde_json::Value::Null
-    );
+    // An act names a call; `result` reports once the worker applied it and the frame settled.
+    let call = host.automation_request(&click).unwrap()["call"].clone();
     platform.settle(&[&host]);
     assert_eq!(last(&host), ["Count 1"]);
+    let result = serde_json::json!({"op": "result", "call": call});
+    assert_eq!(
+        host.automation_request(&result).unwrap(),
+        serde_json::json!({"done": true, "value": null})
+    );
     let tree = host
         .automation_request(&serde_json::json!({"op": "tree"}))
         .unwrap();
@@ -3989,4 +3992,42 @@ fn an_off_screen_list_row_is_found_revealed_and_clicked_by_test_id() {
     host.request_frame();
     platform.settle(&[&host]);
     assert_eq!(query("[data-testid=\"picked\"]")["text"], "picked=Row 31");
+}
+
+/// The act request/reply vectors the automation clients are written against.
+#[test]
+fn act_replies_match_the_automation_vectors() {
+    let vectors: serde_json::Value =
+        serde_json::from_str(include_str!("vectors/automation_act.json")).unwrap();
+    let worker = ViewWorker::spawn("test-act-vectors").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source("function render(){const n=useLocal('n',0);return h('button',{testId:'add',onClick:()=>n.set(n.value+1)},`Count ${n.value}`)}"),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let act = &vectors["act"];
+    assert_eq!(
+        host.automation_request(&act["request"]).unwrap(),
+        act["reply"]
+    );
+    platform.settle(&[&host]);
+    let applied = &vectors["applied"];
+    assert_eq!(
+        host.automation_request(&applied["request"]).unwrap(),
+        applied["reply"]
+    );
+    let refused = &vectors["refused"];
+    assert_eq!(
+        host.automation_request(&refused["request"]).unwrap_err(),
+        refused["error"]
+    );
+    assert!(
+        vectors["dropped"]["error"]
+            .as_str()
+            .unwrap()
+            .starts_with("E_ACT_DROPPED: ")
+    );
 }

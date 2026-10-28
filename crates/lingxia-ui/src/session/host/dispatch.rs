@@ -291,7 +291,11 @@ impl<A: PlatformAdapter> Inner<A> {
         identity: String,
         activation: Activation,
     ) {
-        self.main().activating += 1;
+        let act = {
+            let mut main = self.main();
+            main.activating += 1;
+            main.act_call.take()
+        };
         self.work(
             Guard::Page(page),
             move |inner, session| {
@@ -304,14 +308,31 @@ impl<A: PlatformAdapter> Inner<A> {
             },
             move |inner, result| {
                 inner.main().activating -= 1;
+                let mut dropped = None;
                 let result = result.map(|result| {
                     result.map(|(clicks, drained)| {
                         for click in clicks {
+                            dropped = dropped.or(match click.outcome {
+                                Ok(false) => Some("its callback is no longer registered"),
+                                Err(reason) => Some(reason),
+                                Ok(true) => None,
+                            });
                             inner.report_click(page, &identity, &click);
                         }
                         drained
                     })
                 });
+                if let Some((call, css)) = act {
+                    let outcome = match (&result, dropped) {
+                        (Some(Err(error)), _) => Err(error.clone()),
+                        (None, _) => Err("E_PAGE_NOT_READY: the page went away".into()),
+                        (_, Some(reason)) => Err(format!("E_ACT_DROPPED: {css} {reason}")),
+                        _ => Ok(serde_json::Value::Null),
+                    };
+                    if let Some(slot) = inner.main().automation_calls.get_mut(&call) {
+                        *slot = Some(outcome);
+                    }
+                }
                 inner.activated(page, announce, result)
             },
         );

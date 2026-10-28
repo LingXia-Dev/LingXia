@@ -179,5 +179,10 @@ fn a_view_side_choice_on_a_superseded_frame_finds_its_option_by_value() {
     assert!(!page.select_option(seen, &select, 1).unwrap());
     assert!(page.choose_option(seen, &select, 1, "y").unwrap());
     assert_eq!(shown(&mut page), "y");
+    page.take_clicks();
     assert!(!page.choose_option(seen, &select, 1, "gone").unwrap());
+    // Recorded like a refused click, so the host warns and fails the automation call.
+    let refused = page.take_clicks();
+    assert_eq!(refused.len(), 1);
+    assert_eq!(refused[0].outcome, Err("its option is gone"));
 }

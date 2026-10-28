@@ -1,0 +1,7 @@
+{
+  "act": { "request": { "op": "act", "css": "[data-testid=\"add\"]", "action": { "kind": "click" } }, "reply": { "call": 1 } },
+  "pending": { "request": { "op": "result", "call": 1 }, "reply": { "done": false } },
+  "applied": { "request": { "op": "result", "call": 1 }, "reply": { "done": true, "value": null } },
+  "dropped": { "request": { "op": "result", "call": 2 }, "error": "E_ACT_DROPPED: [data-testid=\"plan\"] its option is gone" },
+  "refused": { "request": { "op": "act", "css": "[data-testid=\"missing\"]", "action": { "kind": "click" } }, "error": "Element not found: [data-testid=\"missing\"] (index 0)" }
+}

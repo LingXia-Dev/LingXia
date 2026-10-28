@@ -243,6 +243,8 @@ struct Main<F> {
     /// Automation `action`/`data` calls by id; `Some` once answered.
     automation_calls: std::collections::BTreeMap<u64, Option<Result<serde_json::Value, String>>>,
     next_automation_call: u64,
+    /// The automation act being delivered; the first activation it starts reports to it.
+    act_call: Option<(u64, String)>,
     virtual_rows: virtual_rows::VirtualRows,
     /// User activations reported dropped, and clicks that ran a callback, for frame metrics.
     dropped_activations: u64,
@@ -377,6 +379,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     activating: 0,
                     automation_calls: Default::default(),
                     next_automation_call: 0,
+                    act_call: None,
                     virtual_rows: Default::default(),
                     dropped_activations: 0,
                     activations: 0,
@@ -865,8 +868,25 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     other => return Err(format!("E_UNSUPPORTED: automation action {other:?}")),
                 };
                 let force = action["force"].as_bool().unwrap_or(false);
-                self.automate(css, index, act, force)
-                    .map(|()| serde_json::Value::Null)
+                // The reply names a call; `result` reports once the worker applied the act.
+                let call = self.automation_call()?;
+                self.inner.main().act_call = Some((call, css.to_owned()));
+                let acted = self.automate(css, index, act, force);
+                let mut main = self.inner.main();
+                let unclaimed = main.act_call.take().is_some();
+                match acted {
+                    Err(error) => {
+                        main.automation_calls.remove(&call);
+                        Err(error)
+                    }
+                    Ok(()) => {
+                        // Nothing reached the worker (fill, scroll, a local key): applied already.
+                        if unclaimed && let Some(slot) = main.automation_calls.get_mut(&call) {
+                            *slot = Some(Ok(serde_json::Value::Null));
+                        }
+                        Ok(serde_json::json!({ "call": call }))
+                    }
+                }
             }
             Some("tree") => self.inner.main().interaction.automation_tree(),
             Some("action") => self.automation_action(

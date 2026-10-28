@@ -8,6 +8,9 @@ use std::sync::Weak;
 use tokio::sync::oneshot;
 
 const INACTIVE: &str = "page is not active: the GPU page was disposed";
+/// How often an act's result is polled (about once per frame), and for how long.
+const ACT_POLL: std::time::Duration = std::time::Duration::from_millis(16);
+const ACT_SETTLE: std::time::Duration = std::time::Duration::from_secs(5);
 
 pub(super) struct GpuAutomation {
     pub native: Weak<dyn NativePage>,
@@ -58,7 +61,28 @@ impl GpuPageAutomation for GpuAutomation {
         };
         let reply =
             self.request(json!({"op": "act", "css": css, "index": index, "action": action}));
-        Box::pin(async move { reply.await.map(|_| ()) })
+        let native = self.native.clone();
+        Box::pin(async move {
+            // The act names a call; it has happened once the worker applied it and the frame
+            // settled. A drop (`E_ACT_DROPPED`) is an error the locator retries on.
+            let Some(call) = reply.await?["call"].as_u64() else {
+                return Ok(());
+            };
+            let poll = GpuAutomation { native };
+            let deadline = std::time::Instant::now() + ACT_SETTLE;
+            loop {
+                if poll.request(json!({"op": "result", "call": call})).await?["done"] == true {
+                    return Ok(());
+                }
+                if std::time::Instant::now() >= deadline {
+                    return Err(format!(
+                        "E_TIMEOUT: the act on {css} did not settle within {}ms",
+                        ACT_SETTLE.as_millis()
+                    ));
+                }
+                tokio::time::sleep(ACT_POLL).await;
+            }
+        })
     }
 
     fn action(&self, name: &str, args: Option<Value>) -> GpuFuture<u64> {
