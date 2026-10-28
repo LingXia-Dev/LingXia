@@ -958,7 +958,10 @@ impl<A: PlatformAdapter> ViewHost<A> {
     /// `done` once the call answered and the frame its changes produced is committed.
     fn automation_result(&self, call: u64) -> Result<serde_json::Value, String> {
         let mut main = self.inner.main();
-        let settled = !main.dirty && !main.busy && main.activating == 0;
+        // A page that left (parked) or is not on screen commits no further frame: what its
+        // worker already ran is the answer, as when a click navigates away or a dialog covers it.
+        let settled = (!main.dirty && !main.busy && main.activating == 0)
+            || (main.activating == 0 && (main.interaction.parked() || !main.visible));
         match main.automation_calls.get(&call) {
             None => Err(format!(
                 "E_UNSUPPORTED: automation call {call} expired or was never made"

@@ -4031,3 +4031,45 @@ fn act_replies_match_the_automation_vectors() {
             .starts_with("E_ACT_DROPPED: ")
     );
 }
+
+/// A click whose handler navigates away (the page parks) or brings a dialog over it (the page
+/// hides) settles once its handler ran, though no further frame of the page commits.
+#[test]
+fn an_act_settles_when_its_page_leaves_or_hides_before_the_next_frame() {
+    for leave in ["park", "hide"] {
+        let worker = ViewWorker::spawn("test-act-leaves").unwrap();
+        let platform = Platform::new(&[&worker]);
+        let host = platform.host(
+            &worker,
+            &source(
+                "function render(){const n=useLocal('n',0);return h('button',{testId:'go',onClick:()=>n.set(n.value+1)},`Go ${n.value}`)}",
+            ),
+            false,
+        );
+        host.set_visible(true);
+        platform.settle(&[&host]);
+        let call = host
+            .automation_request(&serde_json::json!({"op":"act","css":"[data-testid=\"go\"]","action":{"kind":"click"}}))
+            .unwrap()["call"]
+            .clone();
+        // The handler runs on the worker; the navigation or dialog lands before its frame does.
+        let (done, wait) = channel();
+        worker.run_background(move |_| {
+            let _ = done.send(());
+        });
+        wait.recv_timeout(Duration::from_secs(30)).unwrap();
+        while let Ok(task) = platform.tasks.try_recv() {
+            task();
+        }
+        if leave == "park" {
+            host.park();
+        } else {
+            host.set_visible(false);
+        }
+        platform.settle(&[&host]);
+        let result = host
+            .automation_request(&serde_json::json!({"op":"result","call":call}))
+            .unwrap();
+        assert_eq!(result["done"], true, "{leave}: {result}");
+    }
+}
