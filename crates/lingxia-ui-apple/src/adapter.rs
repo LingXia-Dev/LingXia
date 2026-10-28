@@ -432,6 +432,15 @@ impl HostEvents for AppleAdapter {
     fn copy_text(&self, text: &str) {
         self.shell.copy_text(text);
     }
+    fn text_menu(&self, menu: Option<&lingxia_ui::session::host::TextMenu>) {
+        let json = menu
+            .and_then(|menu| serde_json::to_string(menu).ok())
+            .unwrap_or_default();
+        self.shell.text_menu(self.token, &json);
+    }
+    fn host_chrome(&self, chrome: &lingxia_ui::platform::HostChrome) {
+        self.shell.host_chrome(self.token, chrome);
+    }
     fn warn(&self, message: &str) {
         log::warn!(target: "lingxia_ui", "{message}");
     }

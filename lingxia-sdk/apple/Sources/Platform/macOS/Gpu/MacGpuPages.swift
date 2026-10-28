@@ -15,6 +15,15 @@ final class GpuPageView: NSView {
     lazy var ime = GpuIme(host: self)
     var inputReplies: [UInt64: (GpuFrameInputReply?) -> Void] = [:]
     var nextInputReply: UInt64 = 0
+    /// The colours the page asks its host to paint around it; nil before its first frame.
+    var chrome: GpuHostChrome? {
+        didSet {
+            layer?.backgroundColor = chrome?.canvas.cgColor
+            NotificationCenter.default.post(name: GpuHostChrome.changed, object: self)
+        }
+    }
+    /// The text menu on screen, closed when the core takes it away.
+    var textMenu: NSMenu?
     /// The open date or time picker of the connected editor.
     var valuePicker: GpuValuePickerDelegate?
 
@@ -134,7 +143,12 @@ final class GpuPageView: NSView {
         let scale = window.backingScaleFactor
         let insets = safeAreaInsets
         let screen = window.screen?.frame.size ?? window.frame.size
-        let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        // The lxapp's chosen scheme, as its WebView pages get it; a float's own window
+        // does not carry the main window's appearance.
+        let appId = gpuPageInfo(token).app_id.toString()
+        let dark = appId.isEmpty
+            ? effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            : WebViewManager.resolvedDarkAppearance(appId: appId)
         gpuPageMeasured(
             token,
             UInt32((bounds.width * scale).rounded()),
@@ -313,6 +327,7 @@ final class GpuPageView: NSView {
         case 115: 5
         case 119: 6
         case 36, 76, 49: 7
+        case 53: 8
         default: nil
         }
         let plain = event.modifierFlags.isDisjoint(with: [.command, .control, .option])
@@ -321,7 +336,18 @@ final class GpuPageView: NSView {
         else { return super.keyDown(with: event) }
     }
     override func mouseDragged(with event: NSEvent) { send(1, event) }
-    override func mouseUp(with event: NSEvent) { send(2, event) }
+    override func mouseUp(with event: NSEvent) {
+        send(2, event)
+        if event.clickCount == 2 {
+            let (x, y) = pixels(event)
+            gpuPageSelectWordAt(token, x, y)
+        }
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        let (x, y) = pixels(event)
+        if gpuPageInputBlocked(token) || !gpuPageContextMenu(token, x, y) { super.rightMouseDown(with: event) }
+    }
 
     func armLongPress() {
         longPress?.invalidate()
@@ -375,6 +401,19 @@ final class GpuPageView: NSView {
     }
 }
 
+/// Colours for the host chrome around a GPU page, chosen by the core from its palette.
+struct GpuHostChrome {
+    /// Posted on the main thread with the page view as object.
+    static let changed = Notification.Name("LingXiaGpuHostChromeChanged")
+    let canvas: NSColor
+    let bar: NSColor
+    let barLine: NSColor
+    let content: NSColor
+    let contentMuted: NSColor
+    let accent: NSColor
+    let dark: Bool
+}
+
 /// Host screenshots reach this through the Objective-C runtime, so the capture code needs
 /// no link-time dependency on the SDK.
 @MainActor
@@ -399,7 +438,7 @@ extension GpuPageView: PullRefreshPage {
     var refreshAppId: String? { info.app_id.toString().nilIfEmpty }
     var refreshPath: String? { info.path.toString().nilIfEmpty }
     var refreshWebTag: String? { info.webtag.toString().nilIfEmpty }
-    var refreshBackground: NSColor? { nil }
+    var refreshBackground: NSColor? { chrome?.canvas }
 }
 
 private extension String {
@@ -482,6 +521,24 @@ public enum GpuPages {
                 view.ime.focus(node, generation: generation)
             }
         }
+    }
+
+    static func hostChrome(token: Int64, canvas: UInt32, bar: UInt32, bar_line barLine: UInt32, content: UInt32, content_muted contentMuted: UInt32, accent: UInt32, dark: Bool) {
+        MainActor.assumeIsolated {
+            guard let view = views[token] else { return }
+            let color = { (argb: UInt32) in
+                NSColor(srgbRed: CGFloat((argb >> 16) & 0xff) / 255, green: CGFloat((argb >> 8) & 0xff) / 255,
+                        blue: CGFloat(argb & 0xff) / 255, alpha: CGFloat(argb >> 24) / 255)
+            }
+            view.chrome = GpuHostChrome(
+                canvas: color(canvas), bar: color(bar), barLine: color(barLine), content: color(content),
+                contentMuted: color(contentMuted), accent: color(accent), dark: dark)
+        }
+    }
+
+    static func textMenu(token: Int64, menu: RustStr) {
+        let menu = menu.toString()
+        MainActor.assumeIsolated { views[token]?.showTextMenu(menu) }
     }
 
     static func openPicker(token: Int64, generation: UInt64, node: RustStr) {

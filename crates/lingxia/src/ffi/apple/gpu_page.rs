@@ -87,7 +87,8 @@ mod bridge {
         ) -> bool;
 
         // A hardware key while no editor has focus: 0 tab, 1 up, 2 down, 3 left, 4 right,
-        // 5 home, 6 end, 7 activate. False leaves it to the platform (Tab leaves the page).
+        // 5 home, 6 end, 7 activate, 8 escape. False leaves it to the platform (Tab leaves the
+        // page).
         #[swift_bridge(swift_name = "gpuPageKey")]
         fn gpu_page_key(token: i64, key: u8, shift: bool, repeating: bool) -> bool;
 
@@ -121,6 +122,27 @@ mod bridge {
             composition_start: i32,
             composition_end: i32,
         );
+
+        // A double click selects the word of selectable text at a device-pixel point.
+        #[swift_bridge(swift_name = "gpuPageSelectWordAt")]
+        fn gpu_page_select_word_at(token: i64, x: f32, y: f32);
+
+        // A secondary click at a device-pixel point: true when it opened a text menu.
+        #[swift_bridge(swift_name = "gpuPageContextMenu")]
+        fn gpu_page_context_menu(token: i64, x: f32, y: f32) -> bool;
+
+        // A text menu item: 0 cut, 1 copy, 2 paste, 3 select all, 4 undo, 5 redo. True when
+        // the core ran it; an editor's items run in the platform's input connection.
+        #[swift_bridge(swift_name = "gpuPageTextMenuAction")]
+        fn gpu_page_text_menu_action(token: i64, action: u8) -> bool;
+
+        // The user closed the text menu without an item.
+        #[swift_bridge(swift_name = "gpuPageTextMenuDismissed")]
+        fn gpu_page_text_menu_dismissed(token: i64);
+
+        // Copy the static-text selection to the pasteboard, if there is one.
+        #[swift_bridge(swift_name = "gpuPageCopySelection")]
+        fn gpu_page_copy_selection(token: i64);
 
         // Present again for an input reply: `rebuild` reruns the View, otherwise redraws.
         #[swift_bridge(swift_name = "gpuPageRender")]
@@ -246,6 +268,22 @@ mod bridge {
         // The single-choice picker for a `<select>` node (frame-contract `Node` JSON).
         #[swift_bridge(swift_name = "GpuPages.openPicker")]
         fn gpu_pages_open_picker(token: i64, generation: u64, node: &str);
+        // The host chrome around the page, as ARGB: canvas, bars, their line, their content,
+        // muted content and accent; `dark` when system glyphs over them go light.
+        #[swift_bridge(swift_name = "GpuPages.hostChrome")]
+        fn gpu_pages_host_chrome(
+            token: i64,
+            canvas: u32,
+            bar: u32,
+            bar_line: u32,
+            content: u32,
+            content_muted: u32,
+            accent: u32,
+            dark: bool,
+        );
+        // Show or move the text menu (frame-contract `TextMenu` JSON), or close it (empty).
+        #[swift_bridge(swift_name = "GpuPages.textMenu")]
+        fn gpu_pages_text_menu(token: i64, menu: &str);
         #[swift_bridge(swift_name = "GpuPages.haptic")]
         fn gpu_pages_haptic(token: i64);
         #[swift_bridge(swift_name = "GpuPages.copyText")]
@@ -461,6 +499,7 @@ fn gpu_page_key(token: i64, key: u8, shift: bool, repeating: bool) -> bool {
             5 => Key::Home,
             6 => Key::End,
             7 => Key::Activate,
+            8 => Key::Escape,
             _ => return false,
         };
         let mut handled = false;
@@ -558,6 +597,71 @@ fn gpu_page_caret(
         text,
         [anchor, focus, composition_start, composition_end],
     );
+}
+
+fn gpu_page_select_word_at(token: i64, x: f32, y: f32) {
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    with_page(token, |page| page.host().select_word_at([x, y]));
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    let _ = (token, x, y);
+}
+
+fn gpu_page_context_menu(token: i64, x: f32, y: f32) -> bool {
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    {
+        let mut opened = false;
+        with_page(token, |page| opened = page.host().context_menu([x, y]));
+        opened
+    }
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    {
+        let _ = (token, x, y);
+        false
+    }
+}
+
+fn gpu_page_text_menu_action(token: i64, action: u8) -> bool {
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    {
+        use lingxia_ui_apple::lingxia_ui::session::host::MenuAction;
+        let action = match action {
+            0 => MenuAction::Cut,
+            1 => MenuAction::Copy,
+            2 => MenuAction::Paste,
+            3 => MenuAction::SelectAll,
+            4 => MenuAction::Undo,
+            5 => MenuAction::Redo,
+            _ => return false,
+        };
+        let mut ran = false;
+        with_page(token, |page| ran = page.host().text_menu_action(action));
+        ran
+    }
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    {
+        let _ = (token, action);
+        false
+    }
+}
+
+fn gpu_page_text_menu_dismissed(token: i64) {
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    with_page(token, |page| page.host().text_menu_dismissed());
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    let _ = token;
+}
+
+fn gpu_page_copy_selection(token: i64) {
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    with_page(token, |page| {
+        page.host().copy_text_selection(|text| {
+            if let Some(text) = text {
+                bridge::gpu_pages_copy_text(&text);
+            }
+        })
+    });
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    let _ = token;
 }
 
 fn gpu_page_render(token: i64, rebuild: bool) {
@@ -867,6 +971,26 @@ mod live {
         }
         fn open_picker(&self, token: i64, generation: u64, node: &str) {
             super::bridge::gpu_pages_open_picker(token, generation, node);
+        }
+        fn host_chrome(
+            &self,
+            token: i64,
+            chrome: &lingxia_ui_apple::lingxia_ui::platform::HostChrome,
+        ) {
+            let argb = |[r, g, b, a]: [u8; 4]| u32::from_be_bytes([a, r, g, b]);
+            super::bridge::gpu_pages_host_chrome(
+                token,
+                argb(chrome.canvas),
+                argb(chrome.bar),
+                argb(chrome.bar_line),
+                argb(chrome.content),
+                argb(chrome.content_muted),
+                argb(chrome.accent),
+                chrome.dark,
+            );
+        }
+        fn text_menu(&self, token: i64, menu: &str) {
+            super::bridge::gpu_pages_text_menu(token, menu);
         }
         fn haptic(&self, token: i64) {
             super::bridge::gpu_pages_haptic(token);

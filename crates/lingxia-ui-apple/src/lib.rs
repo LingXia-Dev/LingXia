@@ -45,6 +45,10 @@ pub trait Shell: Send + Sync + 'static {
     fn open_picker(&self, token: i64, generation: u64, node: &str);
     /// Put `text` on the system pasteboard.
     fn copy_text(&self, text: &str);
+    /// Show or move the text menu (frame-contract `TextMenu` JSON), or close it (empty).
+    fn text_menu(&self, token: i64, menu: &str);
+    /// The colours the host paints around this page while it is shown.
+    fn host_chrome(&self, token: i64, chrome: &lingxia_ui::platform::HostChrome);
     /// A frame presented; `node` is the focused editor's frame node JSON, or empty.
     fn ime_presented(&self, token: i64, generation: u64, node: &str);
     /// Focus the editor `node` of frame `generation`, placing the caret at a logical

@@ -438,6 +438,8 @@ public enum GpuPages {
     static func imePresented(token: Int64, generation: UInt64, node: RustStr) {}
     static func imeFocus(token: Int64, generation: UInt64, node: RustStr, touch: Bool, x: Float, y: Float, word: Bool) {}
     static func imeActivation(token: Int64) {}
+    static func textMenu(token: Int64, menu: RustStr) {}
+    static func hostChrome(token: Int64, canvas: UInt32, bar: UInt32, bar_line barLine: UInt32, content: UInt32, content_muted contentMuted: UInt32, accent: UInt32, dark: Bool) {}
     static func openPicker(token: Int64, generation: UInt64, node: RustStr) {}
     static func imeReset(token: Int64) {}
     static func imeEdit(token: Int64, generation: UInt64, node: RustStr, replace: Bool, text: RustStr, start: Int32, end: Int32) -> UInt8 { 2 }

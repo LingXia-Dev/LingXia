@@ -93,7 +93,11 @@ extension GpuPageView: GpuImeHost, @preconcurrency NSTextInputClient {
         return editor.replace(value, composing: false, key: true)
     }
 
-    @objc func copy(_ sender: Any?) { _ = copyEditor(cut: false) }
+    /// Copy from the focused editor, or else the page's static-text selection.
+    @objc func copy(_ sender: Any?) {
+        if ime.editor == nil { return gpuPageCopySelection(token) }
+        _ = copyEditor(cut: false)
+    }
     @objc func cut(_ sender: Any?) { _ = copyEditor(cut: true) }
     @objc func paste(_ sender: Any?) { _ = pasteEditor() }
     override func selectAll(_ sender: Any?) { _ = ime.editor?.selectAll() }

@@ -29,6 +29,7 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     /// The app's tabBar inside the aside (asides never enter the sidebar).
     private var asideTabBar: AsideTabBarView?
     nonisolated(unsafe) private var tabBarObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var gpuChromeObserver: NSObjectProtocol?
     private var webViewContainer: NSView!
     private weak var activeWebView: WKWebView?
     /// The GPU page on screen, when the current page renders natively.
@@ -58,6 +59,7 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     deinit {
         closeAppObserver.map(NotificationCenter.default.removeObserver)
         tabBarObserver.map(NotificationCenter.default.removeObserver)
+        gpuChromeObserver.map(NotificationCenter.default.removeObserver)
     }
 
     override func loadView() {
@@ -236,7 +238,10 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         }
         activeGpuView?.lxPullToRefreshController?.unmount()
         activeGpuView?.removeFromSuperview()
-        activeGpuView = nil
+        if activeGpuView != nil {
+            activeGpuView = nil
+            applyPageCanvasBackground()
+        }
 
         for subview in webViewContainer.subviews {
             guard let existingWebView = subview as? WKWebView, existingWebView !== webView else {
@@ -273,6 +278,7 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         NSLayoutConstraint.activate(pullToRefresh.pageConstraints(in: webViewContainer))
         pullToRefresh.didAttachPage()
         activeGpuView = view
+        applyGpuChrome()
         // As attaching a page's WebView does: the page's onShow, then onReady after its frame.
         lingxia.onPageShow(appId, currentPath)
         return true
@@ -288,6 +294,14 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     /// The ground behind the page. Anything that exposes it — a fade, a seam
     /// during a swap, rubber-band overscroll — should show the page's own
     /// canvas rather than the window chrome colour, which is a different grey.
+    /// A GPU page's palette paints the ground around it; its pull-to-refresh strip reads the
+    /// same canvas through `refreshBackground`.
+    private func applyGpuChrome() {
+        guard let chrome = (activeGpuView as? GpuPageView)?.chrome else { return }
+        view.layer?.backgroundColor = chrome.canvas.cgColor
+        webViewContainer.layer?.backgroundColor = chrome.canvas.cgColor
+    }
+
     private func applyPageCanvasBackground() {
         WebViewManager.configureOpaquePagePlaceholder(view, appId: appId)
     }
@@ -438,6 +452,15 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     // MARK: - Notifications
 
     private func setupNotificationObservers() {
+        gpuChromeObserver = NotificationCenter.default.addObserver(
+            forName: GpuHostChrome.changed, object: nil, queue: .main
+        ) { [weak self] notification in
+            let page = notification.object as? NSView
+            MainActor.assumeIsolated {
+                guard let self, page != nil, page === self.activeGpuView else { return }
+                self.applyGpuChrome()
+            }
+        }
         if hostsAside {
             tabBarObserver = NotificationCenter.default.addObserver(
                 forName: .tabBarStateChanged, object: nil, queue: .main
