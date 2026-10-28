@@ -1,3 +1,4 @@
+import { tabIndex } from '../helpers/tabs.js';
 import type { JsonValue, TestApp } from '@lingxia/test';
 import { expect, spec } from '@lingxia/test';
 import type { LxAppRuntimeNavigationBarInfo, LxAppRuntimeTabBarInfo } from '@lingxia/types/automation';
@@ -397,6 +398,7 @@ spec("assert tabBar failure codes, resets, and button-driven patches", {
   const ui = await app.page({ name: 'ui' }, { timeout: 30_000 });
   await ui.view.testId('tabbar-show').click({ timeout: 30_000 });
   await waitForTabBar(app, (state) => state.effectiveVisible, 'forced tab bar');
+  const todoIndex = await tabIndex(app, ['ToDo', '待办']);
 
   await t.step('drive showcase badge and red-dot buttons', async () => {
     await ui.view.testId('tabbar-reddot-show').click();
@@ -475,7 +477,7 @@ spec("assert tabBar failure codes, resets, and button-driven patches", {
     await waitForCurrentPage(app, 'todo');
     const state = await waitForTabBar(
       app,
-      (item) => item.selectedIndex === 3 && item.routeVisible,
+      (item) => item.selectedIndex === todoIndex && item.routeVisible,
       'todo tab selected',
     );
     expect(state.items[1]?.text === 'API+' || state.items[1]?.text === 'Second' || state.items[1]?.text === 'First')
