@@ -443,6 +443,8 @@ export interface TestView {
   touch(at: GestureTarget, options?: TouchOptions): Promise<TestFinger>;
   /** The page's pull-to-refresh indicator; `E_UNSUPPORTED` without one. */
   refreshIndicator(): Promise<RefreshIndicator>;
+  /** The on-screen part of the page, in page CSS pixels. */
+  viewport(): Promise<{ left: number; top: number; width: number; height: number }>;
 }
 
 /** A gesture point: `[x, y]` in page CSS pixels, or a locator's center. */
@@ -555,6 +557,11 @@ export interface TestWindow {
   /** Pointer input; coordinates and window selection follow the native driver. */
   readonly pointer: PagePointer;
   readonly key: PageKey;
+  /**
+   * Make a desktop host window landscape (wider) or portrait (taller), as a
+   * user resizes it; `E_UNSUPPORTED` on a phone, which turns with its device.
+   */
+  orient(orientation: "landscape" | "portrait"): Promise<{ width: number; height: number }>;
 }
 
 /**

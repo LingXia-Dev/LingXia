@@ -40,6 +40,11 @@ impl AppGesture for Platform {
     }
 
     #[cfg(target_os = "macos")]
+    async fn orient_window(&self, landscape: bool) -> Result<[f64; 2], PlatformError> {
+        mac::orient_window(landscape).await
+    }
+
+    #[cfg(target_os = "macos")]
     async fn chrome_elements(
         &self,
         scope: Option<String>,
@@ -484,6 +489,24 @@ mod mac {
         }
         on_main(move || post_scroll(window, at.0, at.1, 0.0, 0.0, Scroll::Momentum(3))).await?;
         Ok(events + 1)
+    }
+
+    pub(super) async fn orient_window(landscape: bool) -> Result<[f64; 2], PlatformError> {
+        use objc2_foundation::{NSRect, NSSize};
+        on_main(move || unsafe {
+            let app: *mut AnyObject = msg_send![objc2::class!(NSApplication), sharedApplication];
+            let window = resolve_window(app, None).ok_or("no NSWindow available")?;
+            let content: *mut AnyObject = msg_send![window, contentView];
+            let bounds: NSRect = msg_send![content, bounds];
+            let (w, h) = (bounds.size.width, bounds.size.height);
+            if (w > h) != landscape {
+                let size = NSSize::new(h, w);
+                let _: () = msg_send![window, setContentSize: size];
+            }
+            let bounds: NSRect = msg_send![content, bounds];
+            Ok([bounds.size.width, bounds.size.height])
+        })
+        .await
     }
 
     /// Pressable shell chrome of the key window: controls and sidebar rows,

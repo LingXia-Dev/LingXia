@@ -2236,6 +2236,8 @@ export interface ChromeElement {
 
 /** Real pointer gestures; `E_UNSUPPORTED` where the host cannot inject them. */
 export interface PageGesture {
+  /** Turn the host window wider or taller than it is, as a desktop user resizes it. */
+  orientWindow(options: { orientation: 'landscape' | 'portrait' }): Promise<{ width: number; height: number }>;
   /** Pressable host chrome, optionally in one `scope`. */
   chrome(options?: { scope?: string }): Promise<ChromeElement[]>;
   perform(options: GestureOptions): Promise<GestureResult>;

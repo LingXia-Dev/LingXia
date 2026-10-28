@@ -3,13 +3,11 @@
   "gaps": {
     "react": {
       "app:tabBar.style": "its colours are not observable to automation: runtime info reports only runtime style overrides",
-      "page:navigationBar.style": "its colours are not observable to automation: runtime info reports only runtime style overrides",
-      "page:pageOrientation=landscape": "rotating to a landscape-only page needs a device orientation driver in specs"
+      "page:navigationBar.style": "its colours are not observable to automation: runtime info reports only runtime style overrides"
     },
     "gpu": {
       "app:tabBar.style": "its colours are not observable to automation: runtime info reports only runtime style overrides",
-      "page:navigationBar.style": "its colours are not observable to automation: runtime info reports only runtime style overrides",
-      "page:pageOrientation=auto": "rotating a page needs a device orientation driver in specs"
+      "page:navigationBar.style": "its colours are not observable to automation: runtime info reports only runtime style overrides"
     }
   }
 }

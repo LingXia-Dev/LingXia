@@ -54,6 +54,16 @@ export function createAndroidDeviceFixture(runAdb, token = randomBytes(24).toStr
       }
       let input;
       try { input = JSON.parse(body); } catch { return reply(400, { error: 'invalid JSON' }); }
+      if (operation === 'rotate' && ['portrait', 'landscape', 'auto'].includes(input?.orientation)) {
+        // As a user turns the phone with auto-rotate off; `auto` gives the sensor back.
+        if (input.orientation === 'auto') {
+          await runAdb(['shell', 'settings', 'put', 'system', 'accelerometer_rotation', '1']);
+        } else {
+          await runAdb(['shell', 'settings', 'put', 'system', 'accelerometer_rotation', '0']);
+          await runAdb(['shell', 'settings', 'put', 'system', 'user_rotation', input.orientation === 'landscape' ? '1' : '0']);
+        }
+        return reply(200, { ok: true });
+      }
       let args;
       if (operation === 'key' && Object.hasOwn(keys, input?.key)) {
         args = ['keyevent', keys[input.key]];

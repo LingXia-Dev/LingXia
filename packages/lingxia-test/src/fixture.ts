@@ -1014,6 +1014,8 @@ export class LiveFixture implements Fixture {
       window: {
         get pointer() { return input.pointer; },
         get key() { return input.key; },
+        orient: (orientation) => this.act("window.orient", orientation, () =>
+          driver().page.gesture.orientWindow({ orientation })),
       },
       ...(() => {
         const gestures = new Gestures(this.gestureScope(() => driver().page, undefined), true);
@@ -1361,6 +1363,7 @@ export class LiveFixture implements Fixture {
       pullToRefresh: (options) => gestures.pullToRefresh(options),
       touch: (at, options) => gestures.touch(at, options),
       refreshIndicator: () => gestures.refreshIndicator(),
+      viewport: () => gestures.pageViewport(),
     };
   }
 

@@ -107,6 +107,11 @@ struct PageOptions {
     page: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct OrientOptions {
+    orientation: String,
+}
+
 #[derive(Deserialize, Default)]
 struct ChromeOptions {
     #[serde(default)]
@@ -227,6 +232,31 @@ impl JSPageGesture {
         json_to_js(
             &ctx,
             &serde_json::json!({ "left": left, "top": top, "width": width, "height": height }),
+        )
+    }
+
+    /// Turn the host window to `orientation` (`landscape` | `portrait`) as a
+    /// desktop user resizes it; resolves to its new `{width, height}`.
+    #[js_method(rename = "orientWindow")]
+    async fn orient_window(&self, ctx: JSContext, options: JSObject) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
+        let options: OrientOptions = parse(Some(options), "gesture.orientWindow")?;
+        let landscape = match options.orientation.as_str() {
+            "landscape" => true,
+            "portrait" => false,
+            other => {
+                return Err(auto_err(format!(
+                    "orientation must be landscape or portrait, not {other}"
+                )));
+            }
+        };
+        let [width, height] = platform()?
+            .orient_window(landscape)
+            .await
+            .map_err(platform_err)?;
+        json_to_js(
+            &ctx,
+            &serde_json::json!({ "width": width, "height": height }),
         )
     }
 

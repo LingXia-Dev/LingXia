@@ -115,6 +115,28 @@ for app in lingxia-showcase lingxia-showcase-gpu; do
 done
 check_purity
 
+# Host-side device control for specs that turn the phone or read its native
+# view tree: a capability URL reached from the phone through adb reverse.
+fixture_args=()
+fixture_pid=""
+if [[ "$platform" == android ]]; then
+  fixture_log="$out/device-fixture.log"
+  fixture_port=$((20000 + RANDOM % 20000))
+  node "$export_dir/examples/lingxia-showcase/lxapp/tests/harness/android-device-fixture.mjs" \
+    --device "$device" --port "$fixture_port" >"$fixture_log" 2>&1 &
+  fixture_pid=$!
+  for _ in $(seq 1 50); do grep -q '^http' "$fixture_log" 2>/dev/null && break; sleep 0.1; done
+  adb -s "$device" reverse "tcp:$fixture_port" "tcp:$fixture_port" >/dev/null
+  fixture_args=(--secret-arg "androidDevice=$(head -1 "$fixture_log")")
+fi
+cleanup_fixture() {
+  [[ -n "$fixture_pid" ]] || return 0
+  kill "$fixture_pid" 2>/dev/null || true
+  adb -s "$device" reverse --remove "tcp:$fixture_port" >/dev/null 2>&1 || true
+  adb -s "$device" shell settings put system accelerometer_rotation 1 >/dev/null 2>&1 || true
+}
+trap cleanup_fixture EXIT
+
 status=0
 summary="["
 for app in lingxia-showcase lingxia-showcase-gpu; do
@@ -132,7 +154,7 @@ for app in lingxia-showcase lingxia-showcase-gpu; do
     summary+="{\"app\":\"$app\",\"started\":false},"
     continue
   fi
-  test=(--session "$session" test --output-dir "$result/run")
+  test=(--session "$session" test --output-dir "$result/run" ${fixture_args[@]+"${fixture_args[@]}"})
   # The React showcase picks its platform entry by preset; the GPU one runs tests/.
   [[ "$app" == lingxia-showcase ]] && test+=(--preset "$platform")
   wake

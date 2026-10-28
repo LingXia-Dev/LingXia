@@ -286,6 +286,15 @@ pub trait AppGesture: Send + Sync {
         ))
     }
 
+    /// Turn the host window to `landscape` (wider than tall) or portrait, as
+    /// a desktop user resizes it; returns the new content size in points.
+    async fn orient_window(&self, landscape: bool) -> Result<[f64; 2], PlatformError> {
+        let _ = landscape;
+        Err(PlatformError::NotSupported(
+            "this host turns with its device: rotate it through the device fixture".to_string(),
+        ))
+    }
+
     /// Pressable host chrome, optionally limited to one `scope`.
     async fn chrome_elements(
         &self,

@@ -16,6 +16,7 @@ import '../../../lingxia-showcase/lxapp/tests/pages/lifecycle.test.js';
 import '../../../lingxia-showcase/lxapp/tests/pages/media-info.test.js';
 import '../../../lingxia-showcase/lxapp/tests/pages/native-components.test.js';
 import '../../../lingxia-showcase/lxapp/tests/pages/navigator.test.js';
+import '../../../lingxia-showcase/lxapp/tests/pages/orientation.test.js';
 import '../../../lingxia-showcase/lxapp/tests/pages/page-globals.test.js';
 import '../../../lingxia-showcase/lxapp/tests/pages/preview-https.test.js';
 import '../../../lingxia-showcase/lxapp/tests/pages/pull-to-refresh.test.js';

@@ -1,6 +1,6 @@
 {
   "renderer": "gpu",
-  "pageOrientation": "auto",
+  "pageOrientation": "landscape",
   "navigationBar": {
     "title": {
       "default": "WiFi",

@@ -45,3 +45,19 @@ test('a failed UI dump never returns an old hierarchy', async (t) => {
   assert.equal(calls.length, 3);
   assert.ok(calls.every((args) => args[1] === 'uiautomator'));
 });
+
+test('rotate turns auto-rotate off and sets the user rotation, or gives the sensor back', async (t) => {
+  const calls = [];
+  const { server, token } = createAndroidDeviceFixture(async (args) => { calls.push(args); return ''; });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve) => { server.close(resolve); server.closeAllConnections(); }));
+  const post = (body) => fetch(`http://127.0.0.1:${server.address().port}/${token}/rotate`, { method: 'POST', body: JSON.stringify(body) });
+  assert.equal((await post({ orientation: 'sideways; reboot' })).status, 400);
+  assert.equal((await post({ orientation: 'landscape' })).status, 200);
+  assert.equal((await post({ orientation: 'auto' })).status, 200);
+  assert.deepEqual(calls, [
+    ['shell', 'settings', 'put', 'system', 'accelerometer_rotation', '0'],
+    ['shell', 'settings', 'put', 'system', 'user_rotation', '1'],
+    ['shell', 'settings', 'put', 'system', 'accelerometer_rotation', '1'],
+  ]);
+});

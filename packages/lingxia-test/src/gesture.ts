@@ -180,6 +180,10 @@ export class Gestures {
     };
   }
 
+  pageViewport(): Promise<{ left: number; top: number; width: number; height: number }> {
+    return this.scope.act("view.viewport", "", () => this.viewport());
+  }
+
   refreshIndicator(): Promise<RefreshIndicator> {
     return this.scope.act("gesture.refreshIndicator", "", () => this.scope.driver().refreshIndicator(this.scope.target));
   }
