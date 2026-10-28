@@ -163,6 +163,17 @@ internal class PullToRefreshHelper(
 
     fun isEnabled(): Boolean = isEnabled
 
+    /** Read-only state for test automation: idle, pulling, armed, refreshing or ending. */
+    fun indicatorPhase(): String = when {
+        isRefreshing -> "refreshing"
+        isPulling -> if (currentPullDistance >= triggerDistancePx) "armed" else "pulling"
+        pendingDismiss != null || indicatorOffsetPx() > 1f -> "ending"
+        else -> "idle"
+    }
+
+    /** How far the page is moved down, in px, as drawn (animations included). */
+    fun indicatorOffsetPx(): Float = movedWrapper?.translationY ?: currentPullDistance
+
     /** The indicator is busy: refreshing, or lingering after a stop. */
     private fun isBusy(): Boolean = isRefreshing || pendingDismiss != null
 
