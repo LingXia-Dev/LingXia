@@ -366,10 +366,28 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         // screen while its surface is retained (SurfaceView ignores alpha), otherwise by releasing it.
         boolean shown = isShown();
         surface.setVisibility(shown && (active || surfaceRetained) ? View.VISIBLE : View.INVISIBLE);
-        if (KEEP_SURFACES) surface.setTranslationX(active && revealed && !holdSurface ? 0f : OFF_SCREEN);
+        if (KEEP_SURFACES) {
+            boolean onScreen = active && revealed && !holdSurface;
+            surface.setTranslationX(onScreen ? 0f : OFF_SCREEN);
+            showLayer(onScreen && shown);
+        }
         setImportantForAccessibility(active ? View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
             : View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         if (ime != null) updateCaretActivity();
+    }
+    /**
+     * Hide or show the retained surface's layer itself. Moving the view off screen is not
+     * enough: a SurfaceView repositions its layer only when its render node reports a new
+     * position, and a node outside the window can skip that, leaving the layer under the page.
+     */
+    /** The layer visibility last asked for, whether or not a layer existed to take it. */
+    boolean layerShown = true;
+    private void showLayer(boolean shown) {
+        layerShown = shown;
+        if (android.os.Build.VERSION.SDK_INT < 29) return;
+        android.view.SurfaceControl control = surface.getSurfaceControl();
+        if (control == null || !control.isValid()) return;
+        new android.view.SurfaceControl.Transaction().setVisibility(control, shown).apply();
     }
     private void updateCaretActivity() {
         ime.setCaretActive(active && isShown() && !destroyed && hasWindowFocus() && surface.getHolder().getSurface().isValid());
@@ -641,7 +659,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         host = 0;
         nativeHostRelease(released);
     }
-    @Override public void surfaceCreated(SurfaceHolder holder) { updateCaretActivity(); }
+    @Override public void surfaceCreated(SurfaceHolder holder) { updateCaretActivity(); updateSurfaceVisibility(); }
     @Override public void surfaceDestroyed(SurfaceHolder holder) {
         surface.cancelRefreshGesture();
         hasSurfaceFrame = false;
@@ -656,6 +674,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         surfaceEpoch++;
         if (destroyed) return;
         nativeSurfaceChanged(host);
+        // The SurfaceView shows its layer again when it resizes it.
+        updateSurfaceVisibility();
         if (!gpuAttached) attachGpu();
     }
 

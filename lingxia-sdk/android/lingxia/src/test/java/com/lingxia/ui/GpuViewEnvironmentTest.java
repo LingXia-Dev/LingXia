@@ -91,6 +91,20 @@ public class GpuViewEnvironmentTest {
         view.dispose();
     }
 
+    @Test @Config(sdk = 31) public void aKeptPageHidesItsSurfaceLayerAndTheCurrentPageShowsIt() throws Exception {
+        android.app.Activity activity = org.robolectric.Robolectric.buildActivity(android.app.Activity.class).setup().get();
+        android.widget.FrameLayout parent = new android.widget.FrameLayout(activity);
+        GpuView view = new GpuView(activity, "", "test:environment", null);
+        parent.addView(view); activity.setContentView(parent);
+        view.resume(); assertTrue("current: shown", view.layerShown);
+        view.pause(); assertFalse("kept: hidden, not only moved", view.layerShown);
+        assertEquals("kept: the surface survives", android.view.View.VISIBLE, view.getChildAt(0).getVisibility());
+        view.resume(); assertTrue("current again: shown", view.layerShown);
+        parent.setVisibility(android.view.View.GONE); assertFalse("not shown: hidden", view.layerShown);
+        parent.setVisibility(android.view.View.VISIBLE); assertTrue(view.layerShown);
+        view.dispose();
+    }
+
     @Test @Config(sdk = 31) public void hiddenPagesMoveARetainedSurfaceOffScreenAndTakeNoInputOrSemantics() throws Exception {
         android.app.Activity activity = org.robolectric.Robolectric.buildActivity(android.app.Activity.class).setup().get();
         android.widget.FrameLayout parent = new android.widget.FrameLayout(activity);

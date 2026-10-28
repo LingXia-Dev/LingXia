@@ -212,8 +212,11 @@ GPU attach its own thread, and a page whose attach is pending declines frames.
 A hidden GPU page is frozen (no frames, input or semantics). `lxapp::surface_retention`
 decides whether it keeps its surface: every tab page of the shown app plus the three
 most recently shown others (~32 MB each at 1080×2504, so at most (tabs + 3) × 32 MB),
-none under memory pressure (backgrounding alone is not). Android moves a kept layer off
-screen (SurfaceView ignores alpha) and reports its insets as it will be shown. A kept page
+none under memory pressure (backgrounding alone is not). Android hides a kept layer through
+its SurfaceControl and also moves it off screen (SurfaceView ignores alpha); the move alone
+is not enough, since a node outside the window may never report its new position and the
+layer stays under the current page, where any reveal, slide or pull-to-refresh exposes it.
+It reports the kept page's insets as it will be shown. A kept page
 shows at once only when `ViewHost::frame_is_current` holds; a hidden page whose target or
 environment changed renders one catch-up frame as background work. Otherwise the outgoing
 page stays on screen, frozen, until the incoming one presents: at most 300 ms when its
