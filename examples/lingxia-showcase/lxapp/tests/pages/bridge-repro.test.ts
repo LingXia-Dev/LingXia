@@ -13,9 +13,9 @@ spec('keeps bootstrap, calls, and streams healthy across the page bridge', { app
     await app.nav.relaunch({ page: 'bridge-repro' });
     repro = (await app.page({ name: 'bridge-repro' }, { timeout: 30_000 })).view;
     await repro.css('[data-testid="bridge-repro-page"][data-automation-contract="bridge-v1"]').first().waitFor({ timeout: 30_000 });
-    await repro.css('#bootstrap-verdict').first().waitFor({ timeout: 30_000 });
+    await repro.css('[data-testid="bootstrap-verdict"]').first().waitFor({ timeout: 30_000 });
 
-    expect(await waitForText('#bootstrap-verdict', (text) => text.includes('PASS')))
+    expect(await waitForText('[data-testid="bootstrap-verdict"]', (text) => text.includes('PASS')))
       .toContain('PASS');
 
     await repro.css('#btn-echo').click();

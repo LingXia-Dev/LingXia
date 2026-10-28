@@ -352,7 +352,7 @@ function Navigation({ data, actions }: Pane) {
   const pages = (data.pageStack || []) as { index: number; name: string; current: boolean }[];
   const events = (data.events || []) as string[];
   return (
-    <page className="bg-canvas text-text">
+    <page testId="ui-page" data-instance-tag={String(data.instanceTag ?? '')} className="bg-canvas text-text">
       <scroll testId="page-scroll" className="grow basis-0">
         <column className="w-full max-w-3xl self-center px-4 pt-5 pb-10 gap-4">
           <ChromeError data={data} />
@@ -550,7 +550,7 @@ function Surface({ data, actions }: Pane) {
       });
   };
   return (
-    <Page title="lx.surface">
+    <Page testId="ui-page" data={{ 'data-instance-tag': String(data.instanceTag ?? '') }} title="lx.surface">
       <Section title="Open a surface" description={kinds.find(item => item.value === kind.value)?.hint}>
         <Options label="Kind" testId="surface-kind" bind={kind} options={kinds} disabled={active} />
         {kind.value === 'aside' && <Options label="Edge" testId="surface-edge" bind={edge} options={titled(['left', 'right', 'top', 'bottom'])} />}

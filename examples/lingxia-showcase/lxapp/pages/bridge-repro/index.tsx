@@ -151,6 +151,7 @@ export default function BridgeReproPage() {
       <div
         className={`rounded-lg px-4 py-3 text-white font-bold text-lg ${bootstrapColor}`}
         id="bootstrap-verdict"
+        data-testid="bootstrap-verdict"
       >
         Bootstrap: {bootstrapVerdict}
       </div>
