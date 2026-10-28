@@ -146,16 +146,13 @@ impl SystemFonts {
             };
             let blob = parley::fontique::Blob::new(std::sync::Arc::new(data));
             crate::text::outlines::note_file(blob.id(), path);
-            let mut held = Vec::new();
             for (id, infos) in collection.register_fonts(blob.clone(), None) {
                 for info in infos {
                     if let Some(name) = postscript_name(blob.as_ref(), info.index()) {
-                        held.push(name.clone());
                         by_postscript.entry(name).or_insert(id);
                     }
                 }
             }
-            log::debug!(target: "lingxia_ui", "UI_FONT: {} holds {held:?}", path.display());
         }
         // A platform may name a named instance ("PingFangSC-Regular") of a variable face the
         // file lists under its default ("PingFangSC-Medium"): the same PostScript family.
