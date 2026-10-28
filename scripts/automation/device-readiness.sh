@@ -51,11 +51,15 @@ done
 # shellcheck source=../lib/cargo-target-dir.sh
 source "$repo/scripts/lib/cargo-target-dir.sh"
 target=$(resolve_cargo_target_dir "$export_dir")
-lingxia="$target/debug/lingxia"
-lxdev="$target/debug/lxdev"
 # The CLI embeds the bridge and polyfills from packages/, so those install first.
 (cd "$export_dir/packages" && npm install --no-audit --no-fund >/dev/null)
 (cd "$export_dir" && cargo build -p lingxia-cli -p lingxia-devtools-cli)
+# Copied out at once: the target directory is shared, and another build may
+# replace its binaries while this round runs.
+mkdir -p "$export_dir/.bin"
+cp "$target/debug/lingxia" "$target/debug/lxdev" "$export_dir/.bin/"
+lingxia="$export_dir/.bin/lingxia"
+lxdev="$export_dir/.bin/lxdev"
 (cd "$export_dir" && "$lingxia" gen i18n >/dev/null)
 # Generated SDK resources are not committed.
 (cd "$export_dir" && "$lingxia" gen icons --input design/icons/svg \
@@ -63,6 +67,22 @@ lxdev="$target/debug/lxdev"
 (cd "$export_dir" && "$lingxia" gen icons --input design/icons/svg \
   --ios-out lingxia-sdk/apple/Sources/Resources/icons >/dev/null)
 (cd "$export_dir/packages/lingxia-test" && npm run build >/dev/null)
+
+# Every package an lxapp or the workspace resolves must be the export's own:
+# a link back into a checkout would bundle its uncommitted code.
+check_purity() {
+  local root
+  root=$(cd "$export_dir" && pwd -P)
+  local link resolved bad=0
+  while IFS= read -r link; do
+    resolved=$(cd "$(dirname "$link")" && cd "$(readlink "$link")" 2>/dev/null && pwd -P) || resolved="(broken)"
+    case "$resolved" in
+      "$root"/*) ;;
+      *) echo "node_modules link $link resolves outside the export: $resolved" >&2; bad=1 ;;
+    esac
+  done < <(find "$export_dir/packages/node_modules" "$export_dir"/examples/*/lxapp/node_modules -maxdepth 2 -type l 2>/dev/null)
+  (( bad == 0 )) || { echo "the export is not self-contained" >&2; exit 1; }
+}
 
 wake() {
   [[ "$platform" == android ]] || return 0
@@ -90,11 +110,15 @@ keyguard_watch() {
   done
 }
 
+for app in lingxia-showcase lingxia-showcase-gpu; do
+  (cd "$export_dir/examples/$app/lxapp" && npm install --no-audit --no-fund >/dev/null)
+done
+check_purity
+
 status=0
 summary="["
 for app in lingxia-showcase lingxia-showcase-gpu; do
   project="$export_dir/examples/$app"
-  (cd "$project/lxapp" && npm install --no-audit --no-fund >/dev/null)
   result="$out/$app-$platform"
   mkdir -p "$result"
   session="readiness-$app"
