@@ -18,17 +18,17 @@ spec('keeps bootstrap, calls, and streams healthy across the page bridge', { app
     expect(await waitForText('[data-testid="bootstrap-verdict"]', (text) => text.includes('PASS')))
       .toContain('PASS');
 
-    await repro.css('#btn-echo').click();
-    expect(await waitForText('#stat-echo', (text) => text.includes('echo #1 ok')))
+    await repro.css('[data-testid="btn-echo"]').click();
+    expect(await waitForText('[data-testid="stat-echo"]', (text) => text.includes('echo #1 ok')))
       .toContain('echo #1 ok');
 
-    await repro.css('#btn-restart').click();
-    await waitForText('#stat-received', (text) => Number.parseInt(text.replace(/\D+/g, ''), 10) >= 2);
-    expect(await waitForText('#stream-verdict', (text) => text.includes('PASS')))
+    await repro.css('[data-testid="btn-restart"]').click();
+    await waitForText('[data-testid="stat-received"]', (text) => Number.parseInt(text.replace(/\D+/g, ''), 10) >= 2);
+    expect(await waitForText('[data-testid="stream-verdict"]', (text) => text.includes('PASS')))
       .toContain('PASS');
-    expect(await waitForText('#stat-gaps', (text) => text.includes('none'))).toContain('none');
-    expect(await waitForText('#stat-error', (text) => text.includes('none'))).toContain('none');
-    await repro.css('#btn-stop').click();
+    expect(await waitForText('[data-testid="stat-gaps"]', (text) => text.includes('none'))).toContain('none');
+    expect(await waitForText('[data-testid="stat-error"]', (text) => text.includes('none'))).toContain('none');
+    await repro.css('[data-testid="btn-stop"]').click();
     await new Promise<void>((resolve) => setTimeout(() => resolve(), 100));
   } catch (error) {
     try {

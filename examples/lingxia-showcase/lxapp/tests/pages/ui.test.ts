@@ -185,7 +185,7 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
 
   await app.nav.relaunch({ page: 'home' });
   const home = await app.page({ name: 'home' }, { timeout: 30_000 });
-  await home.view.css('body').waitFor({ state: 'attached', timeout: 30_000 });
+  await home.view.testId('home-page').waitFor({ state: 'attached', timeout: 30_000 });
   await waitForTabBar(
     ({ visibility, routeVisible, effectiveVisible, selectedIndex }) => (
       visibility === 'auto' && routeVisible && effectiveVisible && selectedIndex === 0

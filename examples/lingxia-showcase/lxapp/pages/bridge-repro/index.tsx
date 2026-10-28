@@ -176,23 +176,23 @@ export default function BridgeReproPage() {
 
       <div
         className={`rounded-lg px-4 py-3 text-white font-bold text-lg ${streamColor}`}
-        id="stream-verdict"
+        id="stream-verdict" data-testid="stream-verdict"
       >
         Stream: {streamVerdict}
       </div>
 
       <div className="bg-surface rounded-lg p-4 space-y-1">
-        <div id="stat-received">received: {audit.received}</div>
+        <div id="stat-received" data-testid="stat-received">received: {audit.received}</div>
         <div id="stat-last">last seq: {audit.last}</div>
         <div id="stat-first">first tick after: {audit.firstAtMs ?? '-'} ms</div>
-        <div id="stat-gaps" className={audit.gaps.length ? 'text-red-600 dark:text-red-400 font-semibold' : ''}>
+        <div id="stat-gaps" data-testid="stat-gaps" className={audit.gaps.length ? 'text-red-600 dark:text-red-400 font-semibold' : ''}>
           gaps: {audit.gaps.length ? audit.gaps.join(', ') : 'none'}
         </div>
-        <div id="stat-error" className={streamError ? 'text-red-600 dark:text-red-400 font-semibold' : ''}>
+        <div id="stat-error" data-testid="stat-error" className={streamError ? 'text-red-600 dark:text-red-400 font-semibold' : ''}>
           stream error: {streamError ?? 'none'}
         </div>
         <div id="stat-reconnects">reconnects: {reconnects}</div>
-        <div id="stat-echo">{echoLog || 'echo: -'}</div>
+        <div id="stat-echo" data-testid="stat-echo">{echoLog || 'echo: -'}</div>
       </div>
 
       <div className="flex gap-2">
@@ -204,7 +204,7 @@ export default function BridgeReproPage() {
           Reconnect
         </button>
         <button
-          id="btn-echo"
+          id="btn-echo" data-testid="btn-echo"
           onClick={echo}
           className="flex-1 bg-blue-500 text-white rounded-lg py-3 font-semibold active:opacity-70"
         >
@@ -214,7 +214,7 @@ export default function BridgeReproPage() {
 
       <div className="flex gap-2">
         <button
-          id="btn-restart"
+          id="btn-restart" data-testid="btn-restart"
           onClick={() => {
             setStreamError(null);
             ticks.start();
@@ -224,7 +224,7 @@ export default function BridgeReproPage() {
           {audit.received === 0 ? 'Start stream' : 'Restart stream'}
         </button>
         <button
-          id="btn-stop"
+          id="btn-stop" data-testid="btn-stop"
           onClick={() => ticks.cancel()}
           className="bg-surface-500 px-5 text-white rounded-lg py-3 font-semibold active:opacity-70"
         >
