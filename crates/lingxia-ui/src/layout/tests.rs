@@ -926,3 +926,32 @@ fn an_aspect_ratio_box_capped_by_max_width_sizes_its_auto_height_parent() {
         "the next sibling starts right below"
     );
 }
+
+/// A shrinking text item in a centered row wraps inside it: its automatic minimum is its
+/// longest word, as in CSS, with or without `min-w-0`.
+#[test]
+fn long_text_in_a_centered_row_wraps_when_it_may_shrink() {
+    for text_style in ["flexShrink:1", "minWidth:0,flexShrink:1,textAlign:'center'"] {
+        let source = crate::session::tests::source(&format!(
+            "function render(){{return h('column',{{style:{{width:300}}}},h('row',{{style:{{justifyContent:'center',alignItems:'flex-start',gap:6,paddingLeft:12,paddingRight:12}}}},h('view',{{style:{{width:13,height:13}}}}),h('text',{{testId:'t',style:{{fontSize:12,{text_style}}}}},'Keep this screen open while we measure. You can cancel at any time.')))}}"
+        ));
+        let display = crate::ViewSession::new(&source)
+            .unwrap()
+            .layout(400, 400, 1.0)
+            .unwrap();
+        let [x, _, width, height] = display
+            .nodes
+            .iter()
+            .find(|n| n.test_id == "t")
+            .unwrap()
+            .bounds;
+        assert!(
+            x + width <= 288.0 + 0.5,
+            "{text_style}: {x} + {width} overflows the row"
+        );
+        assert!(
+            height > 15.0,
+            "{text_style}: wrapped onto more lines ({height})"
+        );
+    }
+}

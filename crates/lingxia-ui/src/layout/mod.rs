@@ -265,9 +265,12 @@ impl Renderer {
                         };
                         // Taffy supplies border-box known dimensions but content-box
                         // available space. Wrapping must match the painted content box.
+                        // Min-content breaks at every opportunity: the longest word, as CSS
+                        // sizes a shrinking text item's automatic minimum.
                         let max_width = match available.width {
                             AvailableSpace::Definite(w) => Some(w),
-                            _ => None,
+                            AvailableSpace::MinContent => Some(0.0),
+                            AvailableSpace::MaxContent => None,
                         };
                         let started = std::time::Instant::now();
                         layout.break_all_lines(if single_line {

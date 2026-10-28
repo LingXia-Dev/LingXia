@@ -97,8 +97,14 @@ A render that throws keeps the previous frame on screen ([Diagnostics](diagnosti
   Flex items do not shrink by default ([Layout](layout.md)).
 - There is no stylesheet cascade. Text styles inherit through containers; nothing else inherits.
 - `data-*` variants match `data-*` props on the element itself; `has-*` covers checked, disabled and
-  focused descendants. `aria-*`, `group-*`, `peer-*` and container queries are refused: compute the
-  condition in TypeScript and choose the class.
+  focused descendants; `group-active:` follows the enclosing pressed control. `aria-*`, other `group-*`,
+  `peer-*` and container queries are refused: compute the condition in TypeScript and choose the class.
+- A shadcn-style theme ports by aliasing its colour names to roles in `@theme` (`--color-card:
+  var(--color-surface)`), its classes become `@utility` rules ([Styling](styling.md#themes-and-tokens)).
+  Two names are roles already and cannot be rebound: write its soft `bg-accent` as `bg-accent-soft` and its
+  grey `bg-muted` as `bg-surface-sunken`.
+- There is no preflight: a `<button>` paints the accent with 12 px padding until its classes say
+  otherwise. A web button styled from Tailwind's reset needs `bg-transparent p-0`.
 - Transitions and animations are utilities ([Motion](motion.md)), including `starting:`/`exit:` and
   `transition-layout`; size transitions and 3D transforms are not supported.
 
