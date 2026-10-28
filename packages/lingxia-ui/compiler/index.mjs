@@ -110,7 +110,7 @@ export function audit(source, filename, { literalColors = false } = {}) {
       const tag = node.tagName.text;
       const problem = has(elements, tag) && unnamed(tag, node, file);
       if (problem) report(node, problem);
-      if (!has(elements, tag)) report(node, `UI_TAG: unsupported tag <${tag}>`);
+      if (!has(elements, tag)) report(node, `UI_TAG: unsupported tag <${tag}>${tag === 'details' || tag === 'summary' ? `; use <${tag === 'details' ? 'Details' : 'Summary'}> from @lingxia/ui` : ''}`);
       else for (const prop of node.attributes.properties) {
         if (ts.isJsxSpreadAttribute(prop)) {
           for (const symbol of checker.getTypeAtLocation(prop.expression).getProperties())

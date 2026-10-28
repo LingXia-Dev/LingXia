@@ -116,6 +116,10 @@ export interface DataListProps<T> extends Omit<ListProps, "count" | "itemKeys" |
   getItemHeight?: (item: T, index: number) => number;
 }
 export declare function List<T>(props: DataListProps<T>): JSX.Element;
+/** A disclosure, as HTML's details: a `<Summary>` toggle that announces its expanded state, and a body that exists while open. Uncontrolled with `defaultOpen`, controlled with `open` and `onToggle`. */
+export declare function Details(props: { open?: boolean; defaultOpen?: boolean; onToggle?: (open: boolean) => void; className?: string; testId?: string; children?: Child }): JSX.Element;
+/** The label row of a `<Details>`; `className` styles its toggle. */
+export declare function Summary(props: { className?: string; children?: Child }): JSX.Element;
 
 export interface BoxShadow { offsetX?: number; offsetY?: number; blur?: number; spread?: number; color?: string }
 export interface GradientStop { offset: number; color: string }

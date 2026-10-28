@@ -242,14 +242,14 @@
   "imagePixels": 0,
   "images": 0,
   "layers": 1,
-  "nodes": 223,
+  "nodes": 230,
   "outlineGlyphs": 0,
-  "paints": 75,
+  "paints": 80,
   "shadows": 0,
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 2352
+  "wireValues": 2438
  },
  "corpus/legal@phone-light": {
   "backdrops": 0,
@@ -257,14 +257,14 @@
   "imagePixels": 0,
   "images": 0,
   "layers": 1,
-  "nodes": 223,
+  "nodes": 230,
   "outlineGlyphs": 0,
-  "paints": 75,
+  "paints": 80,
   "shadows": 0,
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 2352
+  "wireValues": 2438
  },
  "corpus/legal@tablet-dark": {
   "backdrops": 0,
@@ -272,14 +272,14 @@
   "imagePixels": 0,
   "images": 0,
   "layers": 1,
-  "nodes": 223,
+  "nodes": 230,
   "outlineGlyphs": 0,
-  "paints": 117,
+  "paints": 122,
   "shadows": 0,
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 2352
+  "wireValues": 2438
  },
  "corpus/legal@tablet-light": {
   "backdrops": 0,
@@ -287,14 +287,14 @@
   "imagePixels": 0,
   "images": 0,
   "layers": 1,
-  "nodes": 223,
+  "nodes": 230,
   "outlineGlyphs": 0,
-  "paints": 117,
+  "paints": 122,
   "shadows": 0,
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 2352
+  "wireValues": 2438
  },
  "corpus/rtl@phone-dark": {
   "backdrops": 0,

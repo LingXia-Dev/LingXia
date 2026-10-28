@@ -1,4 +1,4 @@
-import { Fragment, List, useLocal, useView, type VectorPath } from '@lingxia/ui';
+import { Details, Fragment, List, Summary, useLocal, useView, type VectorPath } from '@lingxia/ui';
 import '../../theme/index.css';
 import { Button, Icon, Page, Section } from '../../shared/ui';
 
@@ -6,7 +6,7 @@ import { Button, Icon, Page, Section } from '../../shared/ui';
 // One group renders at a time: a whole-lab render exceeds the per-render budget on slower phones.
 const groups = {
   paint: { label: 'Paint', sections: [Grid, Gradients, Vectors, Borders, Transforms] },
-  layout: { label: 'Layout', sections: [Display, Sizing, Direction, Structure, StickyHeaders, Fragments] },
+  layout: { label: 'Layout', sections: [Display, Sizing, Direction, Structure, StickyHeaders, Fragments, Disclosure] },
   text: { label: 'Text', sections: [TextLayout, RichText, Selection] },
   input: { label: 'Input', sections: [Accessibility, Inputs, Controls, Focus, NestedControls, StateVariants] },
 };
@@ -400,6 +400,18 @@ function Controls() {
           <button testId={`lab-controls-${row.id}`} onClick={() => picked.set(row.label)} className="px-3 py-2 border-b border-line text-sm">{row.label}</button>
         )} />
       <text testId="lab-controls-values" className="text-xs text-muted tabular-nums">{`size=${size.value} volume=${volume.value} notes=${notes.value.length} query=${query.value} picked=${picked.value}`}</text>
+    </Section>
+  );
+}
+
+// HTML's details/summary: the summary announces expanded; the body exists only while open.
+function Disclosure() {
+  return (
+    <Section title="Disclosure" testId="lab-disclosure">
+      <Details testId="lab-disclosure-licenses">
+        <Summary className="py-2 text-sm font-semibold">Open-source licenses</Summary>
+        <text testId="lab-disclosure-body" className="text-sm text-muted">MIT, Apache-2.0, BSD-3-Clause</text>
+      </Details>
     </Section>
   );
 }

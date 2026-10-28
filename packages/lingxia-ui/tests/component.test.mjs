@@ -1,8 +1,9 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { Fragment } from '../src/runtime/nodes.js';
+import * as details from '../src/runtime/details.js';
 import { rendered } from './support/wire.mjs';
-import { h, List, childrenToArray, describe, prepare, discard, reset, useLocal, useRequest, configureActions, createView, takeActionRequests } from '../src/internal.js';
+import { h, List, childrenToArray, describe, prepare, discard, reset, dispatch, useLocal, useRequest, configureActions, createView, takeActionRequests } from '../src/internal.js';
 
 beforeEach(() => reset());
 
@@ -123,4 +124,28 @@ test('local state inside a fragment child survives a sibling appearing before th
   describe(render, {}); cell.set(5); describe(render, {});
   extra = true;
   assert.ok(rendered(render).children.some(child => child.text === '5'));
+});
+
+test('Details discloses its body behind a Summary toggle that announces expanded', () => {
+  const { Details, Summary } = details;
+  const view = () => h('column', {}, h(Details, { testId: 'lic' }, h(Summary, {}, 'Licenses'), h('text', {}, 'MIT')));
+  let root = rendered(view);
+  const summary = root.children[0].children[0];
+  assert.equal(summary.testId, 'lic-summary');
+  assert.equal(JSON.stringify(summary.props).includes('stateExpanded'), true);
+  assert.equal(summary.props.stateExpanded, 0);
+  assert.equal(root.children[0].children.length, 1, 'closed: no body');
+  // Clicking the summary opens it.
+  const click = summary.props.onClick;
+  assert.ok(click);
+  dispatch(click);
+  root = rendered(view);
+  assert.equal(root.children[0].children[0].props.stateExpanded, 1);
+  assert.equal(root.children[0].children[1].children[0].text, 'MIT');
+  // Controlled: `open` wins and `onToggle` hears the request.
+  let asked;
+  const controlled = rendered(() => h(Details, { open: true, onToggle: next => { asked = next; } }, h(Summary, {}, 'More'), h('text', {}, 'body')));
+  assert.equal(controlled.children.length, 2);
+  dispatch(controlled.children[0].props.onClick);
+  assert.equal(asked, false);
 });

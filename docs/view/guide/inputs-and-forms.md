@@ -145,3 +145,25 @@ disables every option.
 There is no `<form>` element. Keep the form state in `useLocal` cells, validate in TypeScript, call a
 Logic action to submit, and disable the submit button while the action runs (as in the first example).
 `disabled:` styles replace the button's whole class cascade while it is disabled.
+
+## Disclosure
+
+`<Details>` with a `<Summary>` (both from `@lingxia/ui`) is HTML's details/summary: the summary is a
+button that shows a chevron and announces expanded or collapsed, and the rest of the children exist only
+while open. It keeps its own open state, starting from `defaultOpen`; pass `open` and `onToggle` to
+control it. `className` on `<Summary>` styles the toggle.
+
+```tsx
+import { Details, Summary } from '@lingxia/ui';
+
+export function render() {
+  return (
+    <page className="p-4 gap-2">
+      <Details defaultOpen>
+        <Summary className="py-2 text-sm font-semibold">Open-source licenses</Summary>
+        <text className="text-sm text-muted">MIT, Apache-2.0</text>
+      </Details>
+    </page>
+  );
+}
+```

@@ -480,3 +480,25 @@ fn unlabelled_editors_answer_placeholder_selectors() {
         2
     );
 }
+
+#[test]
+fn a_details_summary_is_a_button_that_announces_expanded() {
+    let mut i = interaction(
+        "h(Details,{testId:'lic'},h(Summary,{},'Licenses'),h('text',{testId:'body'},'MIT'))",
+    );
+    let tree = i.automation_tree().unwrap().to_string();
+    assert!(
+        tree.contains("Licenses") && tree.contains("\"expanded\":false"),
+        "{tree}"
+    );
+    assert_eq!(
+        i.automation_query("[data-testid=\"body\"]", None, false, None)
+            .unwrap()["exists"],
+        false
+    );
+    let summary = i
+        .automation_query("[data-testid=\"lic-summary\"]", None, false, None)
+        .unwrap();
+    assert_eq!(summary["role"], "button");
+    let _ = &mut i;
+}
