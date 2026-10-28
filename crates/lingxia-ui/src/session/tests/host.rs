@@ -1731,17 +1731,62 @@ fn automation_calls_page_actions_and_reads_data_once_the_frame_commits() {
 
 #[test]
 fn platform_edits_and_picks_reach_the_bound_locals() {
+    fill_and_pick(false, false, false);
+}
+
+#[test]
+fn platform_edits_and_picks_reach_the_bound_locals_in_a_dev_module() {
+    fill_and_pick(true, false, false);
+}
+
+#[cfg(feature = "hot-swap")]
+#[test]
+fn platform_edits_and_picks_reach_the_bound_locals_after_a_hot_swap() {
+    fill_and_pick(true, true, false);
+    fill_and_pick(true, true, true);
+}
+
+/// The automation fill and pick flow; `dev` loads the module as `lingxia dev` compiles it, `swap`
+/// replaces it in place first, and `logic` connects a Logic page.
+fn fill_and_pick(dev: bool, swap: bool, logic: bool) {
     let worker = ViewWorker::spawn("test-fill-select").unwrap();
     let platform = Platform::new(&[&worker]);
-    let host = platform.host(
-        &worker,
-        &source(
-            "function render(){const name=useLocal('name',''),plan=useLocal('plan','');return h('column',{},h('input',{testId:'name',bind:name,accessibilityLabel:'Name'}),h('select',{testId:'plan',bind:plan,accessibilityLabel:'Plan',options:[{value:'a',label:'A'},{value:'b',label:'B'}]}),h('text',{testId:'out'},`name=${name.value} plan=${plan.value}`))}",
-        ),
-        false,
+    let mut page = source(
+        "function render(){const name=useLocal('name',''),plan=useLocal('plan','');return h('column',{},h('input',{testId:'name',bind:name,accessibilityLabel:'Name'}),h('select',{testId:'plan',bind:plan,accessibilityLabel:'Plan',options:[{value:'a',label:'A'},{value:'b',label:'B'}]}),h('text',{testId:'out'},`name=${name.value} plan=${plan.value}`))}",
     );
+    if dev {
+        page.push_str("\nconfigureSourceMap({sources:[null],mappings:''});\nenableHotSwap();\n");
+    }
+    if logic {
+        page.push_str("\nglobalThis.__lingxiaActionCatalog={__names:[],__modes:{}};");
+    }
+    let host = platform.host(&worker, &page, logic);
+    host.adapter()
+        .environment
+        .lock()
+        .unwrap()
+        .as_mut()
+        .unwrap()
+        .value["reducedMotion"] = serde_json::json!(true);
     host.set_visible(true);
+    if logic {
+        let connection = ConnectionTicket::new(1);
+        host.connect(connection, "nonce".into());
+        for frame in [
+            serde_json::json!({"v":2,"kind":"helloAck","nonce":"nonce","protocol":2,"sessionId":"s"}),
+            serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"n":0}}),
+            serde_json::json!({"v":2,"kind":"ready","sessionId":"s"}),
+        ] {
+            host.receive(connection, frame.to_string());
+        }
+    }
     platform.settle(&[&host]);
+    #[cfg(feature = "hot-swap")]
+    if swap {
+        host.swap_module(page.clone());
+        platform.settle(&[&host]);
+    }
+    let _ = swap;
     // What a platform editor does for an automation fill: focus, replace, and on a pick, select.
     let ask = |request: serde_json::Value| -> serde_json::Value {
         let (tx, rx) = channel();
