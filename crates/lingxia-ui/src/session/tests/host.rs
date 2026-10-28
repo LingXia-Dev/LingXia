@@ -1554,6 +1554,98 @@ fn automation_requests_query_and_act_through_the_core_driver() {
 }
 
 #[test]
+fn automation_calls_page_actions_and_reads_data_once_the_frame_commits() {
+    if !bounded_jobs() {
+        return;
+    }
+    let worker = ViewWorker::spawn("test-automation-action").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &(source(
+            "function render({data}){return h('text',{testId:'count'},`count ${data.count}`)}",
+        ) + "\nglobalThis.__lingxiaActionCatalog={__names:['bump'],__modes:{bump:'call'}};"),
+        true,
+    );
+    host.set_visible(true);
+    let connection = ConnectionTicket::new(1);
+    host.connect(connection, "nonce".into());
+    for frame in [
+        serde_json::json!({"v":2,"kind":"helloAck","nonce":"nonce","protocol":2,"sessionId":"s"}),
+        serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"count":1}}),
+        serde_json::json!({"v":2,"kind":"ready","sessionId":"s"}),
+    ] {
+        host.receive(connection, frame.to_string());
+    }
+    platform.settle(&[&host]);
+    let ask = |request: serde_json::Value| host.automation_request(&request);
+    let poll = |call: &serde_json::Value| {
+        platform.settle(&[&host]);
+        ask(serde_json::json!({"op": "result", "call": call}))
+    };
+    let data = ask(serde_json::json!({"op": "data"})).unwrap();
+    assert_eq!(
+        poll(&data["call"]).unwrap(),
+        serde_json::json!({"done": true, "value": {"count": 1}})
+    );
+    let started =
+        ask(serde_json::json!({"op": "action", "name": "bump", "args": {"by": 2}})).unwrap();
+    platform.settle(&[&host]);
+    // The View sent the request as `view.actions.bump({by: 2})` would.
+    let request: serde_json::Value = {
+        let log = host.adapter().log.lock().unwrap();
+        serde_json::from_str(&log.messages.last().unwrap().1).unwrap()
+    };
+    assert_eq!(
+        (request["method"].as_str(), &request["params"]),
+        (Some("bump"), &serde_json::json!({"by": 2}))
+    );
+    assert_eq!(
+        poll(&started["call"]).unwrap(),
+        serde_json::json!({"done": false})
+    );
+    // Logic sets data, then answers; the result waits for the frame that shows it.
+    host.receive(
+        connection,
+        serde_json::json!({"v":2,"kind":"state.snapshot","rev":1,"state":{"count":3}}).to_string(),
+    );
+    host.receive(
+        connection,
+        serde_json::json!({"v":2,"kind":"res","id":request["id"],"ok":true,"result":{"count":3}})
+            .to_string(),
+    );
+    assert_eq!(
+        poll(&started["call"]).unwrap(),
+        serde_json::json!({"done": true, "value": {"count": 3}})
+    );
+    assert_eq!(last(&host), ["count 3"]);
+    let data = ask(serde_json::json!({"op": "data"})).unwrap();
+    assert_eq!(
+        poll(&data["call"]).unwrap()["value"],
+        serde_json::json!({"count": 3})
+    );
+    // Unknown actions and Logic failures come back as errors.
+    let missing = ask(serde_json::json!({"op": "action", "name": "nope"})).unwrap();
+    let error = poll(&missing["call"]).unwrap_err();
+    assert!(
+        error.starts_with("UI_ACTION") && error.contains("nope"),
+        "{error}"
+    );
+    let failing = ask(serde_json::json!({"op": "action", "name": "bump"})).unwrap();
+    platform.settle(&[&host]);
+    let id = {
+        let log = host.adapter().log.lock().unwrap();
+        serde_json::from_str::<serde_json::Value>(&log.messages.last().unwrap().1).unwrap()["id"]
+            .clone()
+    };
+    host.receive(
+        connection,
+        serde_json::json!({"v":2,"kind":"res","id":id,"ok":false,"error":{"code":"E_LIMIT","message":"too many"}}).to_string(),
+    );
+    assert_eq!(poll(&failing["call"]).unwrap_err(), "E_LIMIT: too many");
+}
+
+#[test]
 fn a_parked_page_reads_its_last_frame_and_refuses_actions() {
     let worker = ViewWorker::spawn("test-automation-parked").unwrap();
     let platform = Platform::new(&[&worker]);
@@ -2398,6 +2490,20 @@ fn every_message_adapters_receive_matches_the_frame_schema() {
         } else {
             exchanges.push(serde_json::json!({ "request": request }));
         }
+    }
+    // A data read answers through `result` once the worker has it.
+    let read = serde_json::json!({"op":"data"});
+    let call = host.automation_request(&read).unwrap();
+    platform.settle(&[&host]);
+    let poll = serde_json::json!({"op":"result","call":call["call"]});
+    let done = host.automation_request(&poll).unwrap();
+    for (request, message, value) in [
+        (read, "automationCall", call),
+        (poll, "automationResult", done),
+    ] {
+        assert_eq!(conform("automationRequest", &request), Vec::<String>::new());
+        assert_eq!(conform(message, &value), Vec::<String>::new(), "{value}");
+        exchanges.push(serde_json::json!({"request": request, "reply": message, "value": value}));
     }
     assert!(
         !conform(

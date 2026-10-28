@@ -167,9 +167,12 @@ Locators read a native page like a DOM page:
 
 - An element's text is its rendered text, or its descendants' text in order when it has none, as
   `textContent`/`toContainText` read it in a WebView. Editor values stay values.
+- `[placeholder="…"]` finds an unlabelled editor by its placeholder.
 - `data-*` props are its only attributes: `[data-mode="dark"]` and `[data-selected]` select by them,
   and `getAttribute`/`toHaveAttribute` read them (`true` reads as `""`). They never reach accessibility
   and draw nothing; at most 16 per element and 64 KiB per page (`dataAttributeBytes`).
+- `page.action(name, args)` calls a Logic action exactly as `view.actions[name](args)` does and
+  resolves with its result once the frame it produced is committed; `page.data()` reads `view.data`.
 - A page that left the stack keeps its last frame for reading: queries, the tree, text and
   attributes answer from it. Clicks, fills, scrolls and gestures fail with `E_PAGE_NOT_READY`
   (parked) until it is shown again.

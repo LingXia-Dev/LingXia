@@ -234,6 +234,9 @@ struct Main<F> {
     /// Activations dispatched to the worker whose result has not come back: an animation
     /// frame prepared meanwhile would run before the View they change.
     activating: u32,
+    /// Automation `action`/`data` calls by id; `Some` once answered.
+    automation_calls: std::collections::HashMap<u64, Option<Result<serde_json::Value, String>>>,
+    next_automation_call: u64,
     /// User activations reported dropped, and clicks that ran a callback, for frame metrics.
     dropped_activations: u64,
     activations: u64,
@@ -363,6 +366,8 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     last_vsync: None,
                     vsync_interval: Duration::from_micros(16_667),
                     activating: 0,
+                    automation_calls: Default::default(),
+                    next_automation_call: 0,
                     dropped_activations: 0,
                     activations: 0,
                     chrome: None,
@@ -817,8 +822,91 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     .map(|()| serde_json::Value::Null)
             }
             Some("tree") => self.inner.main().interaction.automation_tree(),
+            Some("action") => self.automation_action(
+                request["name"].as_str().unwrap_or_default(),
+                request.get("args").filter(|args| !args.is_null()).cloned(),
+            ),
+            Some("data") => self.automation_data(),
+            Some("result") => self.automation_result(request["call"].as_u64().unwrap_or(u64::MAX)),
             Some("frame") => Ok(self.inner.frame_metrics()),
             other => Err(format!("E_UNSUPPORTED: automation op {other:?}")),
+        }
+    }
+
+    fn automation_call(&self) -> Result<u64, String> {
+        let mut main = self.inner.main();
+        if main.disposed {
+            return Err("E_PAGE_NOT_READY: the page is disposed".into());
+        }
+        if main.interaction.parked() {
+            return Err("E_PAGE_NOT_READY: the page is parked (it left the stack)".into());
+        }
+        if main.automation_calls.len() >= 64 {
+            return Err(
+                "E_UNSUPPORTED: more than 64 automation calls awaiting their result".into(),
+            );
+        }
+        main.next_automation_call += 1;
+        let call = main.next_automation_call;
+        main.automation_calls.insert(call, None);
+        Ok(call)
+    }
+
+    /// Call page action `name` as `view.actions[name](args)` would; poll `result` for its outcome.
+    fn automation_action(
+        &self,
+        name: &str,
+        args: Option<serde_json::Value>,
+    ) -> Result<serde_json::Value, String> {
+        if !self.inner.logic {
+            return Err("UI_ACTION: this page has no Logic".into());
+        }
+        let call = self.automation_call()?;
+        let name = name.to_owned();
+        self.inner.activate(
+            self.inner.lifecycle.page(),
+            false,
+            Box::new(move |session| session.automation_action(call, &name, args.as_ref())),
+        );
+        Ok(serde_json::json!({ "call": call }))
+    }
+
+    /// Read the page's current `view.data`; poll `result` for it.
+    fn automation_data(&self) -> Result<serde_json::Value, String> {
+        let call = self.automation_call()?;
+        self.inner.work(
+            Guard::Page(self.inner.lifecycle.page()),
+            |_, session| Ok(session.automation_data()),
+            move |inner, result| {
+                if let Some(slot) = inner.main().automation_calls.get_mut(&call) {
+                    *slot = Some(
+                        result
+                            .unwrap_or_else(|| Err("E_PAGE_NOT_READY: the page went away".into())),
+                    );
+                }
+            },
+        );
+        Ok(serde_json::json!({ "call": call }))
+    }
+
+    /// `done` once the call answered and the frame its changes produced is committed.
+    fn automation_result(&self, call: u64) -> Result<serde_json::Value, String> {
+        let mut main = self.inner.main();
+        let settled = !main.dirty && !main.busy && main.activating == 0;
+        match main.automation_calls.get(&call) {
+            None => Err(format!("E_UNSUPPORTED: no automation call {call}")),
+            Some(Some(Err(_))) => Err(main
+                .automation_calls
+                .remove(&call)
+                .flatten()
+                .unwrap()
+                .unwrap_err()),
+            Some(Some(_)) if settled => match main.automation_calls.remove(&call).flatten() {
+                Some(Ok(value)) => Ok(serde_json::json!({ "done": true, "value": value })),
+                Some(Err(error)) => Err(error),
+                None => unreachable!(),
+            },
+            Some(_) => Ok(serde_json::json!({ "done": false })),
         }
     }
 
@@ -1101,6 +1189,9 @@ impl<A: PlatformAdapter> Inner<A> {
             main.styled_focus = None;
             // Automation keeps reading the last frame of a parked page; input stops.
             let effects = main.interaction.park();
+            for slot in main.automation_calls.values_mut() {
+                slot.get_or_insert_with(|| Err("E_PAGE_NOT_READY: the page was parked".into()));
+            }
             let cancelled = main.images.inflight_tokens();
             main.images.clear();
             (page, effects, cancelled)

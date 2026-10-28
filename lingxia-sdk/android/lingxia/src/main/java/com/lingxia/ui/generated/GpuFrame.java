@@ -6,7 +6,7 @@ import org.json.JSONObject;
 
 /**
  * Typed readers over the frame contract (schema.json `frame`): Every message the core hands a platform adapter.
- * Messages: snapshot = FrameSnapshot, semanticNode = SemanticNode, automationRequest = AutomationRequest, automationElement = AutomationElement, automationQueryAll = AutomationQueryAll, automationTree = AutomationTree, automationFrame = AutomationFrame, inputReply = InputReply, copySelection = CopyReply, semanticRoots = SemanticRoots, textMenu = TextMenu.
+ * Messages: snapshot = FrameSnapshot, semanticNode = SemanticNode, automationRequest = AutomationRequest, automationElement = AutomationElement, automationQueryAll = AutomationQueryAll, automationTree = AutomationTree, automationFrame = AutomationFrame, automationCall = AutomationCall, automationResult = AutomationResult, inputReply = InputReply, copySelection = CopyReply, semanticRoots = SemanticRoots, textMenu = TextMenu.
  */
 public final class GpuFrame {
     private GpuFrame() {}
@@ -47,6 +47,9 @@ public final class GpuFrame {
     public static final String AUTOMATION_REQUEST_ACT = "act";
     public static final String AUTOMATION_REQUEST_TREE = "tree";
     public static final String AUTOMATION_REQUEST_FRAME = "frame";
+    public static final String AUTOMATION_REQUEST_ACTION = "action";
+    public static final String AUTOMATION_REQUEST_DATA = "data";
+    public static final String AUTOMATION_REQUEST_RESULT = "result";
     public static final String AUTOMATION_ACTION_CLICK = "click";
     public static final String AUTOMATION_ACTION_FILL = "fill";
     public static final String AUTOMATION_ACTION_TYPE = "type";
@@ -615,6 +618,28 @@ public final class GpuFrame {
         public Long maxText() { if (json.isNull("maxText")) return null; return json.optLong("maxText"); }
         /** `action`: AutomationAction? */
         public AutomationAction action() { JSONObject o = json.optJSONObject("action"); return o == null ? null : new AutomationAction(o); }
+        /** `name`: string? */
+        public String name() { return json.isNull("name") ? null : json.optString("name", null); }
+        /** `args`: any? */
+        public Object args() { return json.isNull("args") ? null : json.opt("args"); }
+        /** `call`: u64? */
+        public Long call() { if (json.isNull("call")) return null; return json.optLong("call"); }
+    }
+
+    public static final class AutomationCall {
+        public final JSONObject json;
+        public AutomationCall(JSONObject json) { this.json = json; }
+        /** `call`: u64 */
+        public long call() { return json.optLong("call"); }
+    }
+
+    public static final class AutomationResult {
+        public final JSONObject json;
+        public AutomationResult(JSONObject json) { this.json = json; }
+        /** `done`: bool */
+        public boolean done() { return json.optBoolean("done"); }
+        /** `value`: any? */
+        public Object value() { return json.isNull("value") ? null : json.opt("value"); }
     }
 
     public static final class AutomationAction {
@@ -951,6 +976,8 @@ public final class GpuFrame {
             case "ScrollPosition": return ScrollPosition.class;
             case "SemanticAction": return SemanticAction.class;
             case "AutomationRequest": return AutomationRequest.class;
+            case "AutomationCall": return AutomationCall.class;
+            case "AutomationResult": return AutomationResult.class;
             case "AutomationAction": return AutomationAction.class;
             case "AutomationElement": return AutomationElement.class;
             case "AutomationQueryAll": return AutomationQueryAll.class;
@@ -997,6 +1024,8 @@ public final class GpuFrame {
             case "ScrollPosition": return new ScrollPosition(json);
             case "SemanticAction": return new SemanticAction(json);
             case "AutomationRequest": return new AutomationRequest(json);
+            case "AutomationCall": return new AutomationCall(json);
+            case "AutomationResult": return new AutomationResult(json);
             case "AutomationAction": return new AutomationAction(json);
             case "AutomationElement": return new AutomationElement(json);
             case "AutomationQueryAll": return new AutomationQueryAll(json);

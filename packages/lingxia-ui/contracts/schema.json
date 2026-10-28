@@ -298,7 +298,7 @@
   ],
   "frame": {
     "doc": "Every message the core hands a platform adapter: the presented frame snapshot, semantic nodes, automation exchanges, input-protocol replies and the text menu. Type grammar: string, bool, u8, u32, u64, i64, usize, f32, f64, any; T? may be absent or null; T[] is a list; T[n] a fixed list; other names refer to types below.",
-    "messages": {"snapshot": "FrameSnapshot", "semanticNode": "SemanticNode", "automationRequest": "AutomationRequest", "automationElement": "AutomationElement", "automationQueryAll": "AutomationQueryAll", "automationTree": "AutomationTree", "automationFrame": "AutomationFrame", "inputReply": "InputReply", "copySelection": "CopyReply", "semanticRoots": "SemanticRoots", "textMenu": "TextMenu"},
+    "messages": {"snapshot": "FrameSnapshot", "semanticNode": "SemanticNode", "automationRequest": "AutomationRequest", "automationElement": "AutomationElement", "automationQueryAll": "AutomationQueryAll", "automationTree": "AutomationTree", "automationFrame": "AutomationFrame", "automationCall": "AutomationCall", "automationResult": "AutomationResult", "inputReply": "InputReply", "copySelection": "CopyReply", "semanticRoots": "SemanticRoots", "textMenu": "TextMenu"},
     "types": {
       "FrameSnapshot": {"generation": "u64", "nodes": "Node[]", "images": "ImageSource[]", "metrics": "FrameMetrics", "feedback": "FeedbackStyle"},
       "ImageSource": {"source": "string", "retry_key": "string"},
@@ -328,7 +328,9 @@
       "TextField": {"text": "string", "hint": "string", "secure": "bool", "multiline": "bool", "selection": "u32[2]?"},
       "ScrollPosition": {"offset": "f32", "max_offset": "f32", "horizontal": "bool"},
       "SemanticAction": {"tagged": "kind", "variants": {"click": {}, "scroll-forward": {}, "scroll-backward": {}, "set-text": {}, "set-selection": {}, "set-progress": {}, "clear-selection": {}, "select-item": {"index": "usize", "label": "string"}, "show-on-screen": {}, "copy": {}, "cut": {}, "paste": {}}},
-      "AutomationRequest": {"tagged": "op", "variants": {"query": {"css": "string", "index": "usize?", "all": "bool?", "maxText": "usize?"}, "act": {"css": "string", "index": "usize?", "action": "AutomationAction"}, "tree": {}, "frame": {}}},
+      "AutomationRequest": {"tagged": "op", "variants": {"query": {"css": "string", "index": "usize?", "all": "bool?", "maxText": "usize?"}, "act": {"css": "string", "index": "usize?", "action": "AutomationAction"}, "tree": {}, "frame": {}, "action": {"name": "string", "args": "any?"}, "data": {}, "result": {"call": "u64"}}},
+      "AutomationCall": {"call": "u64"},
+      "AutomationResult": {"done": "bool", "value": "any?"},
       "AutomationAction": {"tagged": "kind", "variants": {"click": {"force": "bool?"}, "fill": {"text": "string", "force": "bool?"}, "type": {"text": "string", "force": "bool?"}, "scroll": {"force": "bool?"}, "press": {"key": "string", "force": "bool?"}, "select": {"value": "string", "force": "bool?"}, "dblclick": {"force": "bool?"}}},
       "AutomationElement": {"exists": "bool", "renderer": "string", "index": "usize", "count": "usize", "tag": "string?", "type": "string?", "id": "string?", "name": "string?", "role": "string?", "aria_label": "string?", "placeholder": "string?", "visible": "bool", "inViewport": "bool", "enabled": "bool", "editable": "bool", "checked": "bool?", "text": "string?", "text_truncated": "bool?", "value": "string?", "value_truncated": "bool?", "rect": "AutomationRect?", "attributes": "any?"},
       "AutomationQueryAll": {"count": "usize", "renderer": "string", "items": "AutomationElement[]"},

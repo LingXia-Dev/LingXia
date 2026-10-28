@@ -6,7 +6,7 @@ use crate::scene::node::NodeSnapshot;
 use serde_json::{Value, json};
 
 /// Selector forms GPU pages answer; anything else is rejected by name.
-pub const SUPPORTED: &str = "tag names (button, a, input, textarea, img, h1-h6, ul, li, dialog, div, span), [data-testid=\"…\"], [data-*] and [data-*=\"…\"] (authored data-* props), [role=\"…\"], [aria-label=\"…\"], [type=\"…\"], [href], comma lists of these";
+pub const SUPPORTED: &str = "tag names (button, a, input, textarea, img, h1-h6, ul, li, dialog, div, span), [data-testid=\"…\"], [data-*] and [data-*=\"…\"] (authored data-* props), [role=\"…\"], [aria-label=\"…\"], [placeholder=\"…\"], [type=\"…\"], [href], comma lists of these";
 
 #[derive(Debug, PartialEq)]
 struct Simple {
@@ -47,7 +47,11 @@ fn simple(source: &str) -> Result<Simple, String> {
             }
             None => (body, None),
         };
-        if !matches!(name, "role" | "aria-label" | "type" | "href") && !data_name(name) {
+        if !matches!(
+            name,
+            "role" | "aria-label" | "placeholder" | "type" | "href"
+        ) && !data_name(name)
+        {
             return Err(unsupported(source));
         }
         attributes.push((name.to_owned(), value));
@@ -173,6 +177,11 @@ fn matches(simple: &Simple, element: &Virtual, node: &NodeSnapshot, name: &str) 
                 "aria-label" => (!name.is_empty()).then_some(name),
                 "type" => element.kind,
                 "href" => element.link.then_some(""),
+                "placeholder" => node
+                    .input
+                    .as_ref()
+                    .map(|input| input.placeholder.as_str())
+                    .filter(|placeholder| !placeholder.is_empty()),
                 data => node
                     .data
                     .as_ref()

@@ -1244,6 +1244,29 @@
     requests = [];
     return result;
   }
+  var automationResults = [];
+  var automationError = (call, error) => automationResults.push({ call, error: {
+    code: typeof error?.code === "string" ? error.code : "UI_ACTION",
+    message: String(error?.message ?? error)
+  } });
+  function automationAction(call, name, payload) {
+    const action = typeof name === "string" && has(actions, name) ? actions[name] : void 0;
+    if (!action) return automationError(call, { code: "UI_ACTION", message: `no page action ${JSON.stringify(name)}` });
+    if (actionModes.get(action) !== "call") return automationError(call, { code: "UI_ACTION", message: `${name} streams; automation calls only call actions` });
+    try {
+      (payload === void 0 ? action() : action(payload)).then(
+        (value) => automationResults.push({ call, value: value === void 0 ? null : value }),
+        (error) => automationError(call, error)
+      );
+    } catch (error) {
+      automationError(call, error);
+    }
+  }
+  function takeAutomationResults() {
+    const result = automationResults;
+    automationResults = [];
+    return JSON.stringify(result);
+  }
   function takeActionErrors() {
     const result = actionErrors;
     actionErrors = [];
@@ -2630,6 +2653,8 @@
       __lingxiaHasLocalUpdates: hasLocalUpdates,
       __lingxiaRequestLeave: requestLeave,
       __lingxiaReadsHostContext: readsHostContext,
+      __lingxiaAutomationAction: automationAction,
+      __lingxiaTakeAutomationResults: takeAutomationResults,
       // Cleared when a render completes, so it names only a render that never returned.
       __lingxiaSite: () => render.site || ""
     });

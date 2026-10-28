@@ -253,7 +253,12 @@ impl<A: PlatformAdapter> Inner<A> {
     }
 
     /// Run an activation; a changed View drains Logic actions and rebuilds.
-    fn activate(self: &Arc<Self>, page: PageTicket, announce: bool, activation: Activation) {
+    pub(super) fn activate(
+        self: &Arc<Self>,
+        page: PageTicket,
+        announce: bool,
+        activation: Activation,
+    ) {
         self.activate_reporting(page, announce, String::new(), activation);
     }
 

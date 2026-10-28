@@ -57,6 +57,8 @@ final class GpuFrameVectorsTests: XCTestCase {
             case "automationQueryAll": XCTAssertGreaterThan(try JSONDecoder().decode(GpuFrameAutomationQueryAll.self, from: value).count, 0)
             case "automationTree": XCTAssertFalse(try JSONDecoder().decode(GpuFrameAutomationTree.self, from: value).nodes.isEmpty)
             case "automationFrame": _ = try JSONDecoder().decode(GpuFrameAutomationFrame.self, from: value)
+            case "automationCall": XCTAssertGreaterThan(try JSONDecoder().decode(GpuFrameAutomationCall.self, from: value).call, 0)
+            case "automationResult": XCTAssertTrue(try JSONDecoder().decode(GpuFrameAutomationResult.self, from: value).done)
             default: XCTFail("unknown reply \(reply)")
             }
         }

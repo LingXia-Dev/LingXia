@@ -390,6 +390,26 @@
         "css": "[data-testid=\"name\"]",
         "op": "act"
       }
+    },
+    {
+      "reply": "automationCall",
+      "request": {
+        "op": "data"
+      },
+      "value": {
+        "call": 1
+      }
+    },
+    {
+      "reply": "automationResult",
+      "request": {
+        "call": 1,
+        "op": "result"
+      },
+      "value": {
+        "done": true,
+        "value": {}
+      }
     }
   ],
   "copySelection": {

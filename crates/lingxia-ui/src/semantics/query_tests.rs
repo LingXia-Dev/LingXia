@@ -459,3 +459,24 @@ fn a_parked_page_answers_queries_from_its_last_frame_and_refuses_actions() {
         "{error}"
     );
 }
+
+#[test]
+fn unlabelled_editors_answer_placeholder_selectors() {
+    let i = interaction(
+        "h('column',{},h('input',{testId:'email',value:'',placeholder:'Email'}),h('textarea',{testId:'note',value:'',placeholder:'Note'}),h('input',{testId:'bare',value:''}))",
+    );
+    let email = i
+        .automation_query("input[placeholder=\"Email\"]", None, false, None)
+        .unwrap();
+    assert_eq!(email["placeholder"], "Email");
+    assert_eq!(
+        i.automation_query("[placeholder=\"Note\"]", None, false, None)
+            .unwrap()["placeholder"],
+        "Note"
+    );
+    assert_eq!(
+        i.automation_query("[placeholder]", None, true, None)
+            .unwrap()["count"],
+        2
+    );
+}

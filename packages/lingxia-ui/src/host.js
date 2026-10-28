@@ -1,7 +1,7 @@
 import { render as rendering } from './runtime/state.js';
 import { describe, prepare, prepareWindows, commit, discard, reset, dispatch } from './runtime/tree.js';
 import { createView, hasLocalUpdates, readsHostContext } from './runtime/hooks.js';
-import { configureActions, takeActionRequests, receiveActionResponse, takeActionErrors, requestLeave } from './runtime/actions.js';
+import { configureActions, takeActionRequests, receiveActionResponse, takeActionErrors, requestLeave, automationAction, takeAutomationResults } from './runtime/actions.js';
 
 // The native session calls only these globals; module code stays unreachable from the host.
 export function publishHost(render, catalog) {
@@ -13,6 +13,7 @@ export function publishHost(render, catalog) {
     __lingxiaReceiveActionResponse: receiveActionResponse, __lingxiaTakeActionErrors: takeActionErrors,
     __lingxiaHasLocalUpdates: hasLocalUpdates, __lingxiaRequestLeave: requestLeave,
     __lingxiaReadsHostContext: readsHostContext,
+    __lingxiaAutomationAction: automationAction, __lingxiaTakeAutomationResults: takeAutomationResults,
     // Cleared when a render completes, so it names only a render that never returned.
     __lingxiaSite: () => rendering.site || '',
   });

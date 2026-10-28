@@ -146,6 +146,69 @@ impl ViewSession {
         })
     }
 
+    /// Call page action `name` with `payload` as the View would; its outcome arrives through
+    /// [`Self::take_automation_results`] once Logic answers.
+    pub fn automation_action(
+        &self,
+        call: u64,
+        name: &str,
+        payload: Option<&serde_json::Value>,
+    ) -> Result<bool, String> {
+        let name = serde_json::to_string(name).map_err(|e| e.to_string())?;
+        let payload = match payload {
+            Some(payload) => {
+                let json =
+                    serde_json::to_string(&payload.to_string()).map_err(|e| e.to_string())?;
+                format!("JSON.parse({json})")
+            }
+            None => "undefined".into(),
+        };
+        self.eval(&format!(
+            "__lingxiaAutomationAction({call}, {name}, {payload})"
+        ))?;
+        Ok(true)
+    }
+
+    /// Settled automation action calls: `(call, value or "CODE: message")`.
+    pub fn take_automation_results(
+        &self,
+    ) -> Result<Vec<AutomationOutcome>, String> {
+        let json: String = self.execute(|| {
+            self.context
+                .eval(Source::from_bytes(
+                    "typeof __lingxiaTakeAutomationResults === 'function' ? __lingxiaTakeAutomationResults() : '[]'",
+                ))
+                .map_err(|e| e.to_string())
+        })?;
+        let entries: Vec<serde_json::Value> =
+            serde_json::from_str(&json).map_err(|e| e.to_string())?;
+        Ok(entries
+            .into_iter()
+            .filter_map(|entry| {
+                let call = entry["call"].as_u64()?;
+                Some(match entry.get("error") {
+                    Some(error) => (
+                        call,
+                        Err(format!(
+                            "{}: {}",
+                            error["code"].as_str().unwrap_or("UI_ACTION"),
+                            error["message"].as_str().unwrap_or_default()
+                        )),
+                    ),
+                    None => (call, Ok(entry["value"].clone())),
+                })
+            })
+            .collect())
+    }
+
+    /// The page's current `view.data`, as Logic last set it.
+    pub fn automation_data(&self) -> serde_json::Value {
+        self.state
+            .data()
+            .cloned()
+            .unwrap_or(serde_json::Value::Null)
+    }
+
     pub fn receive_action_response(&self, frame: &serde_json::Value) -> Result<bool, String> {
         let json = serde_json::to_string(&frame.to_string()).map_err(|e| e.to_string())?;
         self.execute(|| {
@@ -157,6 +220,9 @@ impl ViewSession {
         })
     }
 }
+
+/// A settled automation call: its id and the action's value or `CODE: message`.
+pub type AutomationOutcome = (u64, Result<serde_json::Value, String>);
 
 // Page actions resolve through microtasks; an unbounded continuation would hang the worker.
 fn require_bounded_jobs() -> Result<(), String> {

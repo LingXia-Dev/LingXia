@@ -121,6 +121,8 @@ public class GpuFrameVectorsTest {
                 case "automationQueryAll": walk(new GpuFrame.AutomationQueryAll(value)); break;
                 case "automationTree": walk(new GpuFrame.AutomationTree(value)); break;
                 case "automationFrame": walk(new GpuFrame.AutomationFrame(value)); break;
+                case "automationCall": walk(new GpuFrame.AutomationCall(value)); break;
+                case "automationResult": walk(new GpuFrame.AutomationResult(value)); break;
                 default: fail("unknown reply " + reply);
             }
         }

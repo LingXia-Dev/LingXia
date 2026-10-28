@@ -16,6 +16,8 @@ pub struct BridgeUpdate {
     pub local_changed: bool,
     pub outbound: Vec<String>,
     pub errors: Vec<String>,
+    /// Settled automation action calls.
+    pub automation: Vec<crate::session::bridge::AutomationOutcome>,
 }
 
 /// Collect queued Logic actions after a View step.
@@ -31,6 +33,7 @@ pub(super) fn update(
         local_changed: session.has_local_updates()?,
         outbound,
         errors: session.take_action_errors()?,
+        automation: session.take_automation_results()?,
     })
 }
 
@@ -59,6 +62,14 @@ impl<A: PlatformAdapter> Inner<A> {
         }
         if self.main().disposed || !self.lifecycle.is_current_connection(connection) {
             return;
+        }
+        if !update.automation.is_empty() {
+            let mut main = self.main();
+            for (call, result) in update.automation {
+                if let Some(slot) = main.automation_calls.get_mut(&call) {
+                    *slot = Some(result);
+                }
+            }
         }
         for message in &update.outbound {
             self.adapter.message(connection, message);

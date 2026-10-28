@@ -148,6 +148,22 @@ export function requestLeave(reason) {
 }
 
 export function takeActionRequests() { const result = requests; requests = []; return result; }
+
+// Test automation calls a page action exactly as `view.actions[name](payload)` would.
+let automationResults = [];
+const automationError = (call, error) => automationResults.push({ call, error: {
+  code: typeof error?.code === 'string' ? error.code : 'UI_ACTION', message: String(error?.message ?? error) } });
+export function automationAction(call, name, payload) {
+  const action = typeof name === 'string' && has(actions, name) ? actions[name] : undefined;
+  if (!action) return automationError(call, { code: 'UI_ACTION', message: `no page action ${JSON.stringify(name)}` });
+  if (actionModes.get(action) !== 'call') return automationError(call, { code: 'UI_ACTION', message: `${name} streams; automation calls only call actions` });
+  try {
+    (payload === undefined ? action() : action(payload)).then(
+      value => automationResults.push({ call, value: value === undefined ? null : value }),
+      error => automationError(call, error));
+  } catch (error) { automationError(call, error); }
+}
+export function takeAutomationResults() { const result = automationResults; automationResults = []; return JSON.stringify(result); }
 export function takeActionErrors() { const result = actionErrors; actionErrors = []; return result; }
 export function hasActionEpoch(epoch) { return epoch === actionEpoch; }
 export function actionEpochNow() { return actionEpoch; }

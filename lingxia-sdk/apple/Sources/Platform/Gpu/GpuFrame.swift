@@ -1,5 +1,5 @@
 // Generated from packages/lingxia-ui/contracts/schema.json; do not edit.
-// The frame contract every Apple platform decodes: snapshot = FrameSnapshot, semanticNode = SemanticNode, automationRequest = AutomationRequest, automationElement = AutomationElement, automationQueryAll = AutomationQueryAll, automationTree = AutomationTree, automationFrame = AutomationFrame, inputReply = InputReply, copySelection = CopyReply, semanticRoots = SemanticRoots, textMenu = TextMenu.
+// The frame contract every Apple platform decodes: snapshot = FrameSnapshot, semanticNode = SemanticNode, automationRequest = AutomationRequest, automationElement = AutomationElement, automationQueryAll = AutomationQueryAll, automationTree = AutomationTree, automationFrame = AutomationFrame, automationCall = AutomationCall, automationResult = AutomationResult, inputReply = InputReply, copySelection = CopyReply, semanticRoots = SemanticRoots, textMenu = TextMenu.
 import Foundation
 
 /// Any JSON value, for contract fields typed `any`.
@@ -663,6 +663,9 @@ public struct GpuFrameAutomationRequest: Decodable, Sendable {
     public let all: Bool?
     public let maxText: UInt64?
     public let action: GpuFrameAutomationAction?
+    public let name: String?
+    public let args: GpuJSON?
+    public let call: UInt64?
 
     enum CodingKeys: String, CodingKey {
         case op = "op"
@@ -671,6 +674,29 @@ public struct GpuFrameAutomationRequest: Decodable, Sendable {
         case all = "all"
         case maxText = "maxText"
         case action = "action"
+        case name = "name"
+        case args = "args"
+        case call = "call"
+    }
+}
+
+/// `AutomationCall` in the frame contract.
+public struct GpuFrameAutomationCall: Decodable, Sendable {
+    public let call: UInt64
+
+    enum CodingKeys: String, CodingKey {
+        case call = "call"
+    }
+}
+
+/// `AutomationResult` in the frame contract.
+public struct GpuFrameAutomationResult: Decodable, Sendable {
+    public let done: Bool
+    public let value: GpuJSON?
+
+    enum CodingKeys: String, CodingKey {
+        case done = "done"
+        case value = "value"
     }
 }
 
