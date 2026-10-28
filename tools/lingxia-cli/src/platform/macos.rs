@@ -52,6 +52,12 @@ impl MacosPlatform {
         format!("{arch}-apple-macosx{deployment_target}")
     }
 
+    fn swift_scratch_dir(macos_dir: &Path, arch: &str) -> PathBuf {
+        // SwiftPM shares its build database and plan across --triple values.
+        // Switching architectures can reuse commands from the previous plan.
+        macos_dir.join(".build").join("lingxia").join(arch)
+    }
+
     /// Resolve the macOS-specific section of the project config, if any.
     fn macos_config<'a>(&self, config: &'a BuildConfig) -> Option<&'a MacosConfig> {
         config
@@ -165,6 +171,7 @@ impl MacosPlatform {
         let is_release = matches!(profile, BuildProfile::Release);
         let build_config = if is_release { "release" } else { "debug" };
         let triple = Self::swift_triple(arch, deployment_target);
+        let scratch_dir = Self::swift_scratch_dir(macos_dir, arch);
         let cargo_target_dir = resolve_cargo_target_dir(project_root);
 
         let mut build_cmd = Command::new("swift");
@@ -175,7 +182,9 @@ impl MacosPlatform {
             .env("LINGXIA_BUILD_CONFIG", build_config)
             .env("LINGXIA_NATIVE_FEATURES", native_features.join(","))
             .env("RUNNER_TARGET_TRIPLE", &triple)
-            .args(["build", "--disable-sandbox", "--triple", &triple]);
+            .args(["build", "--disable-sandbox", "--triple", &triple])
+            .arg("--scratch-path")
+            .arg(&scratch_dir);
 
         if is_release {
             build_cmd.args(["-c", "release"]);
@@ -197,6 +206,7 @@ impl MacosPlatform {
             .env("RUNNER_TARGET_TRIPLE", &triple)
             .args(["build", "--disable-sandbox", "--show-bin-path"]);
         cmd.args(["--triple", &triple]);
+        cmd.arg("--scratch-path").arg(&scratch_dir);
 
         if is_release {
             cmd.args(["-c", "release"]);
@@ -264,7 +274,8 @@ impl MacosPlatform {
             "  {} Swift executable is older than native library; forcing relink",
             "ℹ".blue()
         );
-        let _ = fs::remove_dir_all(macos_dir.join(".build"));
+        fs::remove_dir_all(Self::swift_scratch_dir(macos_dir, arch))
+            .context("Failed to clear SwiftPM cache for native relink")?;
         build()
     }
 
@@ -502,8 +513,7 @@ impl Platform for MacosPlatform {
                         executable: executable_path,
                     });
                 }
-                // A later arch's forced relink wipes `.build`, so keep this
-                // arch's linked outputs out of it.
+                // Keep linked slices separate from the merged output.
                 let staged =
                     stage_arch_outputs(&bin_dir, &executable_path, &universal_stage.join(arch))?;
                 built.push((bin_dir, staged));
@@ -1597,6 +1607,69 @@ fn apply_rounded_corner_mask(img: &mut image::RgbaImage, radius: f32) {
 #[cfg(test)]
 mod name_tests {
     use super::*;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "requires the macOS Swift toolchain and both architecture SDKs"]
+    fn swift_builds_keep_architecture_caches_separate() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        let macos = root.join("macos");
+        fs::create_dir_all(macos.join("Sources/CacheProbe/Resources")).unwrap();
+        fs::write(
+            macos.join("Package.swift"),
+            r#"// swift-tools-version: 6.0
+import PackageDescription
+let package = Package(name: "CacheProbe", platforms: [.macOS(.v12)], targets: [
+    .executableTarget(name: "CacheProbe", resources: [.copy("Resources")])
+])
+"#,
+        )
+        .unwrap();
+        fs::write(
+            macos.join("Sources/CacheProbe/main.swift"),
+            "print(\"probe\")\n",
+        )
+        .unwrap();
+        let platform = MacosPlatform::new();
+        let mut bins = std::collections::BTreeMap::new();
+        // Alternate targets twice, changing a bundled resource between builds.
+        for (i, arch) in ["arm64", "x86_64", "arm64", "x86_64"].iter().enumerate() {
+            let version = i.to_string();
+            fs::write(
+                macos.join("Sources/CacheProbe/Resources/version.txt"),
+                &version,
+            )
+            .unwrap();
+            let bin = platform
+                .swift_build_and_get_bin_dir(
+                    &macos,
+                    &root,
+                    BuildProfile::Release,
+                    arch,
+                    "12.0",
+                    &[],
+                )
+                .unwrap();
+            let output = Command::new("lipo")
+                .arg("-archs")
+                .arg(bin.join("CacheProbe"))
+                .output()
+                .unwrap();
+            assert!(output.status.success());
+            assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), *arch);
+            assert_eq!(
+                fs::read_to_string(bin.join("CacheProbe_CacheProbe.bundle/Resources/version.txt"))
+                    .unwrap(),
+                version
+            );
+            bins.insert(*arch, bin);
+        }
+        // Native relinking must not invalidate the other architecture's output.
+        fs::remove_dir_all(MacosPlatform::swift_scratch_dir(&macos, "arm64")).unwrap();
+        assert!(!bins["arm64"].exists());
+        assert!(bins["x86_64"].join("CacheProbe").is_file());
+    }
 
     fn executable(dir: &Path, name: &str) -> PathBuf {
         let path = dir.join(name);
