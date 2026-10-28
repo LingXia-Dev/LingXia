@@ -75,7 +75,7 @@ check_purity() {
   root=$(cd "$export_dir" && pwd -P)
   local link resolved bad=0
   while IFS= read -r link; do
-    resolved=$(cd "$(dirname "$link")" && cd "$(readlink "$link")" 2>/dev/null && pwd -P) || resolved="(broken)"
+    resolved=$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$link")
     case "$resolved" in
       "$root"/*) ;;
       *) echo "node_modules link $link resolves outside the export: $resolved" >&2; bad=1 ;;
