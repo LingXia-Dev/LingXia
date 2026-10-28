@@ -2,7 +2,10 @@
 // appearances through `examples/corpus.rs`, and fails on any UI_* error or on a deterministic
 // cost counter above its budget in budgets.json. Timings are informative only.
 //   node corpus/run.mjs [--update-budgets] [--png] [--nodes] [--only <substring>]
-import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
+//   node corpus/run.mjs --visual [--update-visual] [--only <substring>]
+// `--visual` compares each render's fingerprint (16-px block means) with visual/<id>.png and writes
+// the frame with its changed blocks outlined to target/corpus/visual-diff/; it checks no budgets.
+import { readFile, writeFile, mkdir, readdir, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -51,6 +54,7 @@ async function states(app, page) {
 }
 
 const jobs = [], problems = [];
+const visual = flag('--visual') || flag('--update-visual');
 for (const app of apps) {
   if (!existsSync(join(app.root, 'lxapp.json'))) continue;
   const pages = await gpuPages(app.root);
@@ -67,12 +71,19 @@ for (const app of apps) {
           jobs.push({ id, module: join(dist, page.replace(/\.tsx$/, '.js')), width: viewport.width, height: viewport.height,
             scale: viewport.scale, dark: theme === 'dark', locale: state.__locale ?? 'en', state,
             ...(flag('--png') ? { png: join(out, 'png', `${id.replace(/[/@]/g, '_')}.png`) } : {}),
-            ...(flag('--nodes') ? { nodes: join(out, 'nodes', `${id.replace(/[/@]/g, '_')}.json`) } : {}) });
+            ...(flag('--nodes') ? { nodes: join(out, 'nodes', `${id.replace(/[/@]/g, '_')}.json`) } : {}),
+            ...(visual ? { visual: { reference: join(here, 'visual', `${id.replace(/[/@]/g, '_')}.png`),
+              diff: join(out, 'visual-diff', `${id.replace(/[/@]/g, '_')}.png`), update: flag('--update-visual') } } : {}) });
         }
   }
 }
 await mkdir(join(out, 'png'), { recursive: true });
 await mkdir(join(out, 'nodes'), { recursive: true });
+if (visual) {
+  await mkdir(join(here, 'visual'), { recursive: true });
+  await rm(join(out, 'visual-diff'), { recursive: true, force: true });
+  await mkdir(join(out, 'visual-diff'), { recursive: true });
+}
 const jobsPath = join(out, 'jobs.json'), resultsPath = join(out, 'results.json');
 await writeFile(jobsPath, JSON.stringify(jobs));
 execFileSync('cargo', ['run', '-q', '-p', 'lingxia-ui', '--example', 'corpus', '--', jobsPath, resultsPath], { cwd: repo, stdio: 'inherit' });
@@ -84,6 +95,12 @@ const counters = result => ({ ...result.cost, layoutPasses: result.layoutPasses,
 const next = {};
 for (const result of results) {
   if (result.error) { problems.push(`${result.id}: ${result.error}`); continue; }
+  if (visual) {
+    const seen = result.visual ?? {};
+    if (seen.missing) problems.push(`${result.id}: no visual reference; run with --update-visual`);
+    else if (seen.changed) problems.push(`${result.id}: ${seen.changed} blocks differ from visual/${result.id.replace(/[/@]/g, '_')}.png (outlined in target/corpus/visual-diff)`);
+    continue;
+  }
   const measured = counters(result);
   next[result.id] = measured;
   const budget = budgets[result.id];

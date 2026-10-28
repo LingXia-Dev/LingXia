@@ -252,3 +252,28 @@ fn a_run_spaces_its_own_letters() {
     let spaced = width("letterSpacing:4");
     assert!((spaced - plain - 16.0).abs() < 0.5, "{plain} -> {spaced}");
 }
+
+/// Every fresh font context picks the same face for fallback text: the system scan order used to
+/// vary per context, so a weight between two faces of one family resolved differently per page.
+#[test]
+fn fallback_faces_are_the_same_in_every_font_context() {
+    let face = || {
+        let display = layout(
+            "h('row',{},h('text',{testId:'p',style:{fontSize:14,fontWeight:500}},'中文'))",
+            400,
+        );
+        let index = display.nodes.iter().position(|n| n.test_id == "p").unwrap();
+        display.retained.commands[display.retained.ranges[index].clone()]
+            .iter()
+            .find_map(|paint| match paint {
+                crate::scene::paint::Paint::Text { font, .. } => {
+                    Some((font.data.data().len(), font.index))
+                }
+                _ => None,
+            })
+    };
+    let first = face();
+    for _ in 0..12 {
+        assert_eq!(face(), first);
+    }
+}

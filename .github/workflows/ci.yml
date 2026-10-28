@@ -1797,6 +1797,50 @@ jobs:
           path: target/corpus/report.json
           if-no-files-found: ignore
 
+  # The same renders on the CPU painter, compared block by block with the committed fingerprints
+  # in packages/lingxia-ui/corpus/visual (re-record with `--update-visual`): counters miss a wrong
+  # corner, colour or glyph run, this does not. On a failure each frame is uploaded with its
+  # changed blocks outlined.
+  view-corpus-visual:
+    needs: changes
+    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.npm == 'true' }}
+    name: View corpus pixels
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/checkout-rong
+        with:
+          repository: ${{ vars.RONG_GIT || secrets.RONG_GIT }}
+          ref: ${{ vars.RONG_REF || secrets.RONG_REF }}
+
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: macos
+          save-if: false
+
+      - uses: ./.github/actions/build-web-runtime
+
+      - name: Install the GPU showcase
+        working-directory: examples/lingxia-showcase-gpu/lxapp
+        run: npm ci
+
+      - name: Compare the corpus with its visual fingerprints
+        run: node packages/lingxia-ui/corpus/run.mjs --visual
+
+      - name: Upload the changed frames
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: view-corpus-visual-diff
+          path: target/corpus/visual-diff
+          if-no-files-found: ignore
+
   # libFuzzer smoke of the View wire decoder, layout, automation requests and strict JSON
   # contracts (crates/lingxia-ui/fuzz); cargo-fuzz needs nightly.
   ui-fuzz:
@@ -1904,6 +1948,7 @@ jobs:
       - sdk-android
       - npm-packages
       - view-corpus
+      - view-corpus-visual
       - ui-fuzz
       - showcase-feature-coverage
       - harmony-native
