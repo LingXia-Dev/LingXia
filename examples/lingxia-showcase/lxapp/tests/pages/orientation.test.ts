@@ -43,7 +43,9 @@ spec('a landscape page lies down while the phone is upright, and the next page s
   await app.nav.relaunch({ page: 'home' });
   await expect.poll(() => wide(app.view), { timeout: 10_000 }).toBe(false);
   await app.nav.to({ page: 'wifi' });
-  await expect.poll(() => wide(app.view), { timeout: 10_000 }).toBe(true);
+  // Turning the window relays the page out; a read can wait on that.
+  const wifi = (await app.page({ name: 'wifi' }, { timeout: 30_000 })).view;
+  await expect.poll(() => wide(wifi), { timeout: 20_000 }).toBe(true);
   await app.nav.back();
-  await expect.poll(() => wide(app.view), { timeout: 10_000 }).toBe(false);
+  await expect.poll(() => wide(app.view), { timeout: 20_000 }).toBe(false);
 });

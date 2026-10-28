@@ -113,6 +113,24 @@ internal object LxAppGesture {
                         return
                     }
                 }
+                // Text the host draws outside pages and bars (a toast, a dialog's
+                // title), listed so a spec can see what the user reads.
+                if (view is android.widget.TextView && !view.isClickable && here == "window" && (scope.isEmpty() || scope == here)) {
+                    val text = view.text?.toString().orEmpty()
+                    if (text.isNotBlank()) {
+                        val at = IntArray(2).also { view.getLocationOnScreen(it) }
+                        out.put(JSONObject()
+                            .put("label", text)
+                            .put("role", "text")
+                            .put("scope", here)
+                            .put("selected", false)
+                            .put("bounds", JSONArray()
+                                .put(((at[0] - origin[0]) / density).toDouble())
+                                .put(((at[1] - origin[1]) / density).toDouble())
+                                .put((view.width / density).toDouble())
+                                .put((view.height / density).toDouble())))
+                    }
+                }
                 if (view is ViewGroup) for (i in 0 until view.childCount) visit(view.getChildAt(i), here)
             }
             visit(decor, "window")

@@ -2226,7 +2226,7 @@ export interface RefreshIndicator {
 /** Host chrome a user can press, from the host's own view or accessibility tree. */
 export interface ChromeElement {
   label: string;
-  role: 'tab' | 'button';
+  role: 'tab' | 'button' | 'text';
   /** `tabBar`, `navigationBar`, `capsule`, `sidebar` or `window`. */
   scope: string;
   selected: boolean;
