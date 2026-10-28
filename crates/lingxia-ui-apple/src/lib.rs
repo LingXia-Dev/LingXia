@@ -7,6 +7,7 @@ use std::sync::Arc;
 mod adapter;
 mod dispatch;
 mod fonts;
+mod outlines;
 #[cfg(feature = "gpu")]
 mod surface;
 
@@ -55,6 +56,9 @@ impl Page {
         logic: bool,
     ) -> Result<Self, String> {
         lingxia_ui::text::fonts::set_system_fonts(fonts::system_fonts);
+        lingxia_ui::text::outlines::set_glyph_outlines(Box::new(
+            outlines::CoreTextOutlines::default(),
+        ));
         let worker = ViewWorker::shared(worker)?;
         let host = ViewHost::new(AppleAdapter::new(token, shell), worker, logic);
         let _ = host.adapter().host.set(host.downgrade());

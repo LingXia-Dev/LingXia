@@ -157,8 +157,20 @@ impl SystemFonts {
             }
             log::debug!(target: "lingxia_ui", "UI_FONT: {} holds {held:?}", path.display());
         }
+        // A platform may name a named instance ("PingFangSC-Regular") of a variable face the
+        // file lists under its default ("PingFangSC-Medium"): the same PostScript family.
+        let family_of = |name: &str| name.split('-').next().unwrap_or(name).to_owned();
+        let mut by_family: Vec<(&String, parley::fontique::FamilyId)> =
+            by_postscript.iter().map(|(name, id)| (name, *id)).collect();
+        by_family.sort_by_key(|(name, _)| (name.starts_with('.'), (*name).clone()));
         let faces = self.faces.iter().filter_map(|(lang, face)| {
-            let id = by_postscript.get(face).copied();
+            let id = by_postscript.get(face).copied().or_else(|| {
+                let wanted = family_of(face.trim_start_matches('.'));
+                by_family
+                    .iter()
+                    .find(|(name, _)| family_of(name.trim_start_matches('.')) == wanted)
+                    .map(|(_, id)| *id)
+            });
             if id.is_none() {
                 log::warn!(target: "lingxia_ui", "UI_FONT: no face {face} for {lang}");
             }

@@ -183,7 +183,9 @@ fn an_hvgl_face_shapes_and_draws_through_platform_outlines() {
         eprintln!("skipped: no PingFang UI on this host");
         return;
     };
-    let postscript = postscript_name(&data, 0).unwrap();
+    assert!(postscript_name(&data, 0).is_some());
+    // CoreText names an instance of the variable face, not the face the file lists.
+    let postscript = "PingFangSC-Regular".to_owned();
     struct Square;
     impl GlyphOutlines for Square {
         fn outline(
@@ -219,7 +221,10 @@ fn an_hvgl_face_shapes_and_draws_through_platform_outlines() {
         for item in line.items() {
             if let parley::PositionedLayoutItem::GlyphRun(run) = item {
                 let font = run.run().font().clone();
-                assert!(outlines::external(&font), "PingFang UI outlines through the platform");
+                assert!(
+                    outlines::external(&font),
+                    "PingFang UI outlines through the platform"
+                );
                 let glyphs: Vec<_> = run
                     .glyphs()
                     .map(|g| vello_cpu::Glyph {

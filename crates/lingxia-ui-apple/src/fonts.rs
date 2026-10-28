@@ -25,11 +25,9 @@ pub(crate) fn system_fonts() -> SystemFonts {
         });
         for font in std::iter::once(picked).chain(named) {
             let Some(path) = file(&font) else { continue };
-            // System UI faces carry a hidden ".Name"; the file's own family drops the dot.
-            let family = unsafe { font.family_name() }.to_string();
-            let family = family.trim_start_matches('.').to_owned();
-            log::debug!(target: "lingxia_ui", "fallback {lang}: {family} at {}", path.display());
-            faces.push((lang.to_string(), path, family));
+            let face = unsafe { font.post_script_name() }.to_string();
+            log::debug!(target: "lingxia_ui", "fallback {lang}: {face} at {}", path.display());
+            faces.push((lang.to_string(), path, face));
         }
     }
     SystemFonts::from_files(faces)
