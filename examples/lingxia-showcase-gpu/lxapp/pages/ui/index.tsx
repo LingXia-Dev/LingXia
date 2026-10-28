@@ -74,7 +74,7 @@ function Dialogs({ data, actions }: Pane) {
       confirmText: confirmText.value,
     });
   return (
-    <Page testId="ui-page">
+    <Page testId="ui-page" data={{ 'data-instance-tag': String(data.instanceTag ?? '') }}>
       <ChromeError data={data} />
       {type === 'toast' && (
         <Section title="Toast Parameters">
@@ -153,7 +153,7 @@ function Appearance({ data, actions }: Pane) {
   const appearance = data.appearance as { preference: string; resolved: string } | undefined;
   const preference = appearance?.preference || 'auto';
   return (
-    <Page testId="ui-page">
+    <Page testId="ui-page" data={{ 'data-instance-tag': String(data.instanceTag ?? '') }}>
       <ChromeError data={data} />
       <Section
         title="Light / Dark"
@@ -200,7 +200,7 @@ function Navbar({ data, actions }: Pane) {
     </Button>
   );
   return (
-    <Page testId="ui-page">
+    <Page testId="ui-page" data={{ 'data-instance-tag': String(data.instanceTag ?? '') }}>
       <ChromeError data={data} />
       <Section title="NavigationBar APIs">
         <Field testId="navbar-title-input" label="Title" bind={title} placeholder="Enter title" />
@@ -264,7 +264,7 @@ function Tabbar({ data, actions }: Pane) {
     </grid>
   );
   return (
-    <Page testId="ui-page">
+    <Page testId="ui-page" data={{ 'data-instance-tag': String(data.instanceTag ?? '') }}>
       <ChromeError data={data} />
       <Section title="Visibility Controls" description="Show or hide the TabBar and update item text">
         {pair(
@@ -567,7 +567,7 @@ function Surface({ data, actions }: Pane) {
             {sizeError}
           </text>
         )}
-        <Button testId="open-surface" disabled={active} onClick={open}>{`Open ${kind.value}${active ? ' (already open)' : ''}`}</Button>
+        <Button testId="open-surface" data={{ 'data-surface-width': width.value, 'data-surface-height': height.value }} disabled={active} onClick={open}>{`Open ${kind.value}${active ? ' (already open)' : ''}`}</Button>
         <text className="text-xs text-muted">
           Placement applies when the surface opens; hiding and showing keeps it. Close and reopen to change it.
         </text>

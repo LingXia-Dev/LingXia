@@ -1,21 +1,26 @@
 import type { Child } from '@lingxia/ui';
 
 /** A scrolling page inside the safe area; `<page>` owns insets and the keyboard. */
+/** Authored `data-*` props: page state automation reads as attributes. */
+export type DataAttributes = Record<`data-${string}`, string>;
+
 export function Page({
   testId,
+  data,
   scrollId = 'page-scroll',
   title,
   subtitle,
   children,
 }: {
   testId?: string;
+  data?: DataAttributes;
   scrollId?: string;
   title?: string;
   subtitle?: string;
   children?: Child;
 }) {
   return (
-    <page testId={testId} className="bg-canvas text-text">
+    <page testId={testId} {...data} className="bg-canvas text-text">
       <scroll testId={scrollId} className="grow basis-0">
         <column className="w-full max-w-3xl self-center px-4 pt-5 pb-10 gap-4">
           {title ? <Header title={title} subtitle={subtitle} /> : null}

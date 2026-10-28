@@ -17,12 +17,7 @@
       "page:navigationBar.style": "no spec yet reaches a page with this config by a tap and checks the chrome it shows; ANDROID-PAGE-CONFIG-001 checks it through Logic and the Android view tree",
       "page:navigationStyle=custom": "no spec yet reaches a page with this config by a tap and checks the chrome it shows; ANDROID-PAGE-CONFIG-001 checks it through Logic and the Android view tree",
       "page:navigationStyle=default": "no spec yet reaches a page with this config by a tap and checks the chrome it shows; ANDROID-PAGE-CONFIG-001 checks it through Logic and the Android view tree",
-      "page:pageOrientation=auto": "rotating a page needs a device orientation driver in specs",
-      "view:list": "view-lab has no list demo yet (the View agent is adding one)",
-      "view:radio": "view-lab has no radio demo yet (the View agent is adding one)",
-      "view:search": "view-lab has no search demo yet (the View agent is adding one)",
-      "view:slider": "view-lab has no slider demo yet (the View agent is adding one)",
-      "view:textarea": "view-lab has no textarea demo yet (the View agent is adding one)"
+      "page:pageOrientation=auto": "rotating a page needs a device orientation driver in specs"
     }
   }
 }

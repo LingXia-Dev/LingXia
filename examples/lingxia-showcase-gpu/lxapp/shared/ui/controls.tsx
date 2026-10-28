@@ -1,4 +1,5 @@
 import type { Child, Local } from '@lingxia/ui';
+import type { DataAttributes } from './layout';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'destructive' | 'ghost';
 const variants: Record<ButtonVariant, string> = {
@@ -13,6 +14,7 @@ export function Button({
   variant = 'primary',
   size = 'md',
   testId,
+  data,
   label,
   disabled,
   onClick,
@@ -22,6 +24,7 @@ export function Button({
   variant?: ButtonVariant;
   size?: keyof typeof sizes;
   testId?: string;
+  data?: DataAttributes;
   label?: string;
   disabled?: boolean;
   onClick?: () => unknown;
@@ -31,6 +34,7 @@ export function Button({
   return (
     <button
       testId={testId}
+      {...data}
       accessibilityLabel={label}
       disabled={disabled}
       onClick={
@@ -51,6 +55,7 @@ export function Button({
 export function Field({
   label,
   testId,
+  data,
   bind,
   placeholder,
   keyboard,
@@ -60,6 +65,7 @@ export function Field({
 }: {
   label: string;
   testId?: string;
+  data?: DataAttributes;
   bind: Local<string>;
   placeholder?: string;
   keyboard?: 'text' | 'number' | 'email' | 'phone';
@@ -72,6 +78,7 @@ export function Field({
       <text className="text-sm font-medium">{label}</text>
       <input
         testId={testId}
+        {...data}
         accessibilityLabel={label}
         bind={bind}
         placeholder={placeholder}
@@ -105,6 +112,7 @@ export function Segmented<T extends string>({
         <button
           key={option.value}
           testId={`${testId}-${option.value}`}
+          data-selected={String(option.value === value)}
           disabled={disabled}
           onClick={() => {
             void onChange(option.value);

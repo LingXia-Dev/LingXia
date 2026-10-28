@@ -38,7 +38,7 @@ export function render({ data, actions }: View) {
         </text>
       </Section>
       <Section title="Message">
-        <Field testId="surface-message" label="Message to parent page" bind={message} placeholder="Message to parent page" />
+        <Field testId="surface-message" data={{ 'data-controlled-value': message.value }} label="Message to parent page" bind={message} placeholder="Message to parent page" />
         <Button testId="surface-send-message" disabled={!message.value.trim()} onClick={send}>
           Send then close
         </Button>

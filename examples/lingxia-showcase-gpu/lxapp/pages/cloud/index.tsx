@@ -43,6 +43,7 @@ function Auth({ data, actions }: Pane) {
   return (
     <Page
       testId="cloud-page"
+      data={{ 'data-mode': 'auth' }}
       title="Cloud Authentication"
       subtitle="Login returns the active identity; the home lxapp manages identity list, activation and logout."
     >
@@ -148,7 +149,7 @@ function Mqtt({ data, actions }: Pane) {
   const dot = connected ? 'bg-success' : waiting ? 'bg-warning' : failed ? 'bg-danger' : 'bg-line-strong';
   const active = !!data.mqttSubscribed;
   return (
-    <Page testId="cloud-page" title="Cloud MQTT">
+    <Page testId="cloud-page" data={{ 'data-mode': 'mqtt' }} title="Cloud MQTT">
       <Section title="Runtime Connection" description="MQTT runtime status for the shared cloud session.">
         <row className="items-center justify-between gap-3">
           <text className="text-xs text-muted">Connection state</text>
@@ -228,7 +229,7 @@ function Mqtt({ data, actions }: Pane) {
 function Functions({ data, actions }: Pane) {
   const names = (data.functionsAvailable || []) as string[];
   return (
-    <Page testId="cloud-page" title="Cloud Functions">
+    <Page testId="cloud-page" data={{ 'data-mode': 'functions' }} title="Cloud Functions">
       <Section
         title="Current LxApp Functions"
         description="These sample calls use lx.cloud.invoke(...) for the current lxapp. They are demo actions, not a runtime-discovered manifest list."

@@ -110,6 +110,7 @@ export function render({ data, actions }: View<Actions, StreamPageData>) {
       <row className="items-end gap-2 px-3 py-3 border-t border-line bg-surface">
         <textarea
           testId="stream-input"
+          data-controlled-value={draft.value}
           accessibilityLabel="Message"
           bind={draft}
           submitOnEnter

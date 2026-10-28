@@ -35,3 +35,31 @@ spec('a tap on a nested switch, a row button and a rich-text link reaches only t
   await view.testId('lab-rich-link').click();
   await expect(view.testId('lab-rich-presses')).toHaveText('Link pressed 1 times');
 });
+
+spec('the controls take a tap, a drag, typing and a fling as a user gives them', { covers: ['view:radio', 'view:slider', 'view:textarea', 'view:search', 'view:list'], start: { page: 'view-lab' } }, async (t) => {
+  const view = t.app.view;
+  await view.testId('lab-tab-input').click();
+  const values = view.testId('lab-controls-values');
+  await expect(values).toContainText('size=m volume=40 notes=0 query= picked=');
+
+  await view.testId('lab-controls-size-l').click();
+  await expect(values).toContainText('size=l');
+  await expect(view.testId('lab-controls-size-xl')).not.toBeEnabled();
+
+  // Filling the notes brings the slider above them on screen for the drag.
+  await view.testId('lab-controls-notes').fill('two\nlines');
+  await expect(values).toContainText('notes=9');
+  await view.drag(view.testId('lab-controls-volume'), { dx: 200, dy: 0, durationMs: 400 });
+  await expect.poll(async () => Number((await values.textContent()).match(/volume=(\d+)/)?.[1])).toBeGreaterThan(40);
+
+  await view.testId('lab-controls-search').type('Row 3');
+  await expect(values).toContainText('query=Row 3');
+  await expect(view.testId('lab-controls-row-2')).not.toBeAttached();
+  await view.testId('lab-controls-row-31').click();
+  await expect(values).toContainText('picked=Row 31');
+
+  await view.testId('lab-controls-search').fill('');
+  const list = view.testId('lab-controls-list');
+  await view.fling('up', 3000, { at: list });
+  await expect(view.testId('lab-controls-row-40')).toBeInViewport({ timeout: 3_000 });
+});

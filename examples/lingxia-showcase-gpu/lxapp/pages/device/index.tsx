@@ -26,7 +26,7 @@ export function render({ data, actions }: View) {
   const changed = (data.networkChange ?? {}) as Record<string, unknown>;
   const events = (data.orientationEvents ?? []) as string[];
   return (
-    <Page testId="device-page">
+    <Page testId="device-page" data={{ 'data-mode': type }}>
       <text testId="device-mode-title" className="text-2xl font-light text-center">
         {titles[type]}
       </text>

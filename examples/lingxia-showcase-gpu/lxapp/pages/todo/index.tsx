@@ -96,6 +96,7 @@ export function render({ data, actions, env }: View<TodoActions, TodoPageData>) 
           )}
           <input
             testId="todo-input"
+            data-controlled-value={draft.value}
             accessibilityLabel="New task"
             bind={draft}
             disabled={blocked}

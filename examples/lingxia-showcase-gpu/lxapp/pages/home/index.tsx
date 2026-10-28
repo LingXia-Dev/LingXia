@@ -44,6 +44,7 @@ export function render({ data, actions, env }: View<HomeActions, HomePageData>) 
             </column>
             <input
               testId="home-name"
+              data-controlled-value={name.value}
               accessibilityLabel={t('nameLabel')}
               bind={name}
               disabled={sending.value}

@@ -51,7 +51,7 @@ export function render({ data, actions }: View<Actions, Data>) {
   const streamVerdict = audit.value.gaps.length || ticks.error ? 'FAIL' : audit.value.received ? 'PASS' : 'WAITING';
   const loaded = Number(data.logicLoadedAt);
   return (
-    <Page testId="bridge-repro-page">
+    <Page testId="bridge-repro-page" data={{ 'data-automation-contract': 'bridge-v1' }}>
       <text testId="bootstrap-verdict" className={verdictClass(bootstrapVerdict)}>{`Bootstrap: ${bootstrapVerdict}`}</text>
       <Card className="p-4 gap-1">
         <text testId="bootstrap-ready" className="text-sm">{`bridge ready: ${probe.value ? 'yes' : 'no'}`}</text>

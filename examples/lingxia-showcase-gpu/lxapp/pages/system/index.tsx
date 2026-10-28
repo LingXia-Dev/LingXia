@@ -35,7 +35,7 @@ export function render({ data, actions, env }: View) {
   const setting = (data.systemSetting || {}) as Record<string, unknown>;
   const desktop = env.os === 'macOS' || env.os === 'Windows';
   return (
-    <Page testId="system-page">
+    <Page testId="system-page" data={{ 'data-mode': type }}>
       <text testId="system-mode-title" className="text-2xl font-light text-center">
         {titles[type]}
       </text>
