@@ -1,7 +1,7 @@
 import { render, page, outsideRender } from './state.js';
 import { h, resetArena, clearArena } from './nodes.js';
 import { resolveNode } from './elements.js';
-import { encodeTree, copyTree, retainCells } from './encode.js';
+import { encodeTree, copyTree, retainCells, renderRow } from './encode.js';
 import { validInputText } from './data.js';
 import { report, resetActions, actionEpochNow, hasActionEpoch } from './actions.js';
 import { sited } from './errors.js';
@@ -79,6 +79,39 @@ export function commit() {
 
 // Native drops the candidate. A frame the target merely declined keeps pending updates
 // (the user's taps survive it); any other candidate failure reverts them.
+// Automation: which off-screen row of a committed list would hold `testId`. Rows outside the
+// window are rendered into a throwaway candidate and searched; nothing is committed.
+const probeRows = 2000;
+export function probeListRow(testId) {
+  const base = page.committed;
+  if (!base || render.active || typeof testId !== 'string') return 'null';
+  const lists = [];
+  const walk = (node, depth) => {
+    if (!node || depth > 256) return;
+    if (node.list && typeof node.props?.row === 'function') lists.push([node, depth]);
+    for (const child of node.children ?? []) walk(child, depth + 1);
+  };
+  walk(base.tree, 0);
+  const holds = node => node?.props?.testId === testId || (node?.children ?? []).some(holds);
+  const saved = render.candidate;
+  try {
+    return JSON.stringify(runCandidate(base.view, base.locals, () => {
+      for (const [node, depth] of lists) {
+        const { window } = node.list;
+        for (let i = 0; i < Math.min(node.props.count, probeRows); i++) {
+          if (window && i >= window.start && i < window.end) continue;
+          const cells = new Map(); render.collectors.push(cells);
+          try { if (holds(renderRow(node, i, cells, depth).row)) return { list: node.identity, index: i }; }
+          catch { /* a row that cannot render here is not the match */ }
+          finally { render.collectors.pop(); }
+        }
+      }
+      return null;
+    }));
+  } catch { return 'null'; }
+  finally { render.candidate = saved; }
+}
+
 export function discard(keepUpdates = false) {
   render.candidate = null;
   if (!keepUpdates) page.updates.clear();

@@ -244,3 +244,42 @@ impl ViewSession {
         })
     }
 }
+
+impl ViewSession {
+    /// Automation: the off-screen list row that would hold `test_id`, as its list's scroll
+    /// id and the offset that brings it to the top. Off-screen rows are rendered only here.
+    pub fn probe_list_row(&mut self, test_id: &str) -> Result<Option<(String, f32)>, String> {
+        let encoded = serde_json::to_string(test_id).map_err(|e| e.to_string())?;
+        let found: String = self.execute(|| {
+            self.context
+                .eval(Source::from_bytes(
+                    format!("typeof __lingxiaProbeListRow === 'function' ? __lingxiaProbeListRow({encoded}) : 'null'").as_bytes(),
+                ))
+                .map_err(|e| e.to_string())
+        })?;
+        #[derive(serde::Deserialize)]
+        struct Found {
+            list: String,
+            index: usize,
+        }
+        let Some(found) =
+            serde_json::from_str::<Option<Found>>(&found).map_err(|e| e.to_string())?
+        else {
+            return Ok(None);
+        };
+        let viewport = self
+            .retained
+            .as_ref()
+            .and_then(|retained| {
+                retained
+                    .nodes
+                    .iter()
+                    .find(|node| node.scroll.as_ref().is_some_and(|s| s.id == found.list))
+            })
+            .map(|node| node.bounds[3]);
+        Ok(viewport.and_then(|viewport| {
+            crate::layout::list_layout::row_offset(&self.lists, &found.list, found.index, viewport)
+                .map(|offset| (found.list, offset))
+        }))
+    }
+}

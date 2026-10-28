@@ -126,6 +126,10 @@ To keep a chat at its newest message, anchor the last index with `seq` set to th
 first example: each new message changes `seq` and moves the list once. Jumping far away does not render
 the rows in between.
 
+Automation reaches rows that are not drawn: a `testId` query finds an off-screen row of a `<List>` (the
+first 2000 rows) as attached but not visible, and acting on it scrolls the list there from the rows'
+estimated heights. Its text and attributes are readable once it draws.
+
 ## Pull to refresh
 
 Pull to refresh belongs to the host. Enable it in the page config and handle it in Logic:

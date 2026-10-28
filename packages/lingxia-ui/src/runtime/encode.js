@@ -122,7 +122,7 @@ function writeRows(node, window, index, depth, write) {
   for (const state of node.list.states.values()) retainCells(state.locals);
 }
 
-function renderRow(node, i, cells, depth) {
+export function renderRow(node, i, cells, depth) {
   const { props, identity } = node;
   const suppliedKey = props.itemKeys?.[i];
   const previous = render.scope;

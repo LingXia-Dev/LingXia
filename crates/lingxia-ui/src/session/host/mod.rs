@@ -29,6 +29,7 @@ mod pump;
 mod reveal;
 mod telemetry;
 mod text_menu;
+mod virtual_rows;
 mod worker;
 
 /// Largest input-method request [`ViewHost::input`] accepts, in bytes.
@@ -242,6 +243,7 @@ struct Main<F> {
     /// Automation `action`/`data` calls by id; `Some` once answered.
     automation_calls: std::collections::BTreeMap<u64, Option<Result<serde_json::Value, String>>>,
     next_automation_call: u64,
+    virtual_rows: virtual_rows::VirtualRows,
     /// User activations reported dropped, and clicks that ran a callback, for frame metrics.
     dropped_activations: u64,
     activations: u64,
@@ -375,6 +377,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     activating: 0,
                     automation_calls: Default::default(),
                     next_automation_call: 0,
+                    virtual_rows: Default::default(),
                     dropped_activations: 0,
                     activations: 0,
                     chrome: None,
@@ -809,8 +812,24 @@ impl<A: PlatformAdapter> ViewHost<A> {
         all: bool,
         max_text: Option<usize>,
     ) -> Result<serde_json::Value, String> {
-        let main = self.inner.main();
-        main.interaction.automation_query(css, index, all, max_text)
+        let found = self
+            .inner
+            .main()
+            .interaction
+            .automation_query(css, index, all, max_text)?;
+        // An off-screen List row is attached but not drawn: its content waits until it is.
+        if !all
+            && found["exists"] == false
+            && found["count"] == 0
+            && index.unwrap_or(0) == 0
+            && self.inner.virtual_row(css).is_some()
+        {
+            return Ok(serde_json::json!({
+                "exists": true, "virtual": true, "renderer": "gpu", "index": 0, "count": 1,
+                "visible": false, "inViewport": false, "enabled": false, "editable": false,
+            }));
+        }
+        Ok(found)
     }
 
     /// One automation request from the page driver:
@@ -948,11 +967,35 @@ impl<A: PlatformAdapter> ViewHost<A> {
         force: bool,
     ) -> Result<(), String> {
         let page = self.inner.lifecycle.page();
-        let effects = self
+        let scroll = act == crate::interaction::view::AutomationAct::ScrollIntoView;
+        // Bound first: the guard must drop before the miss path locks again.
+        let result = self
             .inner
             .main()
             .interaction
-            .automate(css, index, act, force, page)?;
+            .automate(css, index, act, force, page);
+        let effects = match result {
+            Ok(effects) => effects,
+            Err(error) if error.starts_with("Element not found") && index.unwrap_or(0) == 0 => {
+                // An off-screen List row: scroll its list there; the action retries once it draws.
+                let Some((list, offset)) = self.inner.virtual_row(css) else {
+                    return Err(error);
+                };
+                self.inner.main().interaction.scroll_list_to(&list, offset);
+                self.inner.deliver(vec![
+                    crate::interaction::view::Effect::StopFling,
+                    crate::interaction::view::Effect::Redraw,
+                ]);
+                return if scroll {
+                    Ok(())
+                } else {
+                    Err(format!(
+                        "Element not interactable: {css} is outside the viewport"
+                    ))
+                };
+            }
+            Err(error) => return Err(error),
+        };
         self.inner.deliver(effects);
         if self.inner.take_edit_failure() {
             return Err(format!("Element not editable: {css} refused the edit"));

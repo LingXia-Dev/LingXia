@@ -3920,3 +3920,73 @@ fn declared_font_faces_load_by_lxapp_path_and_reshape_their_text() {
         "{warnings:?}"
     );
 }
+
+#[test]
+fn an_off_screen_list_row_is_found_revealed_and_clicked_by_test_id() {
+    let worker = ViewWorker::spawn("test-virtual-rows").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){const query=useLocal('query',''),picked=useLocal('picked','');const rows=Array.from({length:40},(_,i)=>({id:`row-${i}`,label:`Row ${i}`})).filter(r=>r.label.includes(query.value));return h('column',{},h('search',{testId:'filter',bind:query,accessibilityLabel:'Filter'}),h(List,{testId:'list',style:{height:120},items:rows,getKey:r=>r.id,renderItem:r=>h('button',{testId:r.id,onClick:()=>picked.set(r.label),style:{height:40}},r.label)}),h('text',{testId:'picked'},`picked=${picked.value}`))}",
+        ),
+        false,
+    );
+    // The fake clock stands still between settles; reduced motion lands motion at once.
+    host.adapter()
+        .environment
+        .lock()
+        .unwrap()
+        .as_mut()
+        .unwrap()
+        .value["reducedMotion"] = serde_json::json!(true);
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let act = |css: &str, action: serde_json::Value| {
+        let result =
+            host.automation_request(&serde_json::json!({"op":"act","css":css,"action":action}));
+        platform.settle(&[&host]);
+        result
+    };
+    let query = |css: &str| {
+        host.automation_request(&serde_json::json!({"op":"query","css":css}))
+            .unwrap()
+    };
+    act(
+        "[data-testid=\"filter\"]",
+        serde_json::json!({"kind":"fill","text":"Row"}),
+    )
+    .unwrap();
+    host.request_frame();
+    platform.settle(&[&host]);
+    let row = "[data-testid=\"row-31\"]";
+    // The first miss probes the lists; the next query names the row without drawing it.
+    assert_eq!(query(row)["exists"], false);
+    platform.settle(&[&host]);
+    let virtual_row = query(row);
+    assert_eq!(
+        (
+            virtual_row["exists"].clone(),
+            virtual_row["virtual"].clone()
+        ),
+        (serde_json::json!(true), serde_json::json!(true))
+    );
+    assert_eq!(query("[data-testid=\"row-99\"]")["exists"], false);
+    // A locator's click: scroll into view, then act once the row draws.
+    let mut clicked = false;
+    for _ in 0..6 {
+        let found = query(row);
+        if found["inViewport"] == true && found["virtual"].is_null() {
+            act(row, serde_json::json!({"kind":"click"})).unwrap();
+            clicked = true;
+            break;
+        }
+        let _ = act(row, serde_json::json!({"kind":"scroll"}));
+        host.request_frame();
+        platform.settle(&[&host]);
+    }
+    assert!(clicked, "row 31 never drew: {}", query(row));
+    host.request_frame();
+    platform.settle(&[&host]);
+    assert_eq!(query("[data-testid=\"picked\"]")["text"], "picked=Row 31");
+}

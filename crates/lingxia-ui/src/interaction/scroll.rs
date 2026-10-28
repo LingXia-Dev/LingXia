@@ -90,6 +90,20 @@ impl ScrollModel {
         self.offsets.retain(|id, _| regions.contains_key(id));
     }
 
+    /// Put one region at `offset`, clamped; nothing hands over to ancestors.
+    pub fn scroll_to(&mut self, id: &str, offset: f32) -> bool {
+        let Some(region) = self.regions.get(id) else {
+            return false;
+        };
+        let offset = offset.clamp(0.0, region.max_offset.max(0.0));
+        if !offset.is_finite() || self.offset(id) == offset {
+            return false;
+        }
+        self.offsets.insert(id.to_owned(), offset);
+        self.revision += 1;
+        true
+    }
+
     /// Move a region, handing remaining distance to ancestors on the same axis.
     pub fn scroll_by(&mut self, id: &str, delta: f32) -> bool {
         self.move_by(id, delta, false)

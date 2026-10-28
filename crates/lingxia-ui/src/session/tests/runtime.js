@@ -2955,6 +2955,43 @@
     candidate.resources = definitions;
     page.resources = next;
   }
+  var probeRows = 2e3;
+  function probeListRow(testId) {
+    const base = page.committed;
+    if (!base || render.active || typeof testId !== "string") return "null";
+    const lists = [];
+    const walk = (node, depth) => {
+      if (!node || depth > 256) return;
+      if (node.list && typeof node.props?.row === "function") lists.push([node, depth]);
+      for (const child of node.children ?? []) walk(child, depth + 1);
+    };
+    walk(base.tree, 0);
+    const holds2 = (node) => node?.props?.testId === testId || (node?.children ?? []).some(holds2);
+    const saved = render.candidate;
+    try {
+      return JSON.stringify(runCandidate(base.view, base.locals, () => {
+        for (const [node, depth] of lists) {
+          const { window } = node.list;
+          for (let i = 0; i < Math.min(node.props.count, probeRows); i++) {
+            if (window && i >= window.start && i < window.end) continue;
+            const cells = /* @__PURE__ */ new Map();
+            render.collectors.push(cells);
+            try {
+              if (holds2(renderRow(node, i, cells, depth).row)) return { list: node.identity, index: i };
+            } catch {
+            } finally {
+              render.collectors.pop();
+            }
+          }
+        }
+        return null;
+      }));
+    } catch {
+      return "null";
+    } finally {
+      render.candidate = saved;
+    }
+  }
   function discard(keepUpdates = false) {
     render.candidate = null;
     if (!keepUpdates) page.updates.clear();
@@ -3039,6 +3076,7 @@
       __lingxiaTakeOverlayTimers: takeOverlayTimers,
       __lingxiaEscape: escapeOverlay,
       __lingxiaFonts: takeFonts,
+      __lingxiaProbeListRow: probeListRow,
       // Cleared when a render completes, so it names only a render that never returned.
       __lingxiaSite: () => render.site || ""
     });

@@ -44,6 +44,23 @@ pub(crate) fn invalidate_measurements(lists: &mut Lists) {
     }
 }
 
+/// The scroll offset that puts row `index` of list `id` at its top, from measured and
+/// estimated row heights.
+pub(crate) fn row_offset(lists: &Lists, id: &str, index: usize, viewport: f32) -> Option<f32> {
+    let state = lists.get(id)?;
+    let offset = state
+        .metrics
+        .anchor_offset(
+            Anchor::Row {
+                index,
+                align: Align::Start,
+            },
+            viewport as f64,
+        )
+        .ok()?;
+    Some(offset as f32 + state.padding)
+}
+
 pub(crate) fn current(lists: &Lists) -> Windows {
     lists
         .iter()

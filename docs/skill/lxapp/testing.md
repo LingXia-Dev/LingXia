@@ -527,6 +527,8 @@ lxdev test args --preset ci                 # show the effective arguments
 - **A locked screen stops the run** on macOS: pages are hidden, so the rest
   are reported as not run. Unlock it and run again.
 - **`fill` updates framework state**; assert the state, not only the DOM.
+- **GPU `<List>` rows off screen** answer `testId` locators as attached; actions scroll them in, and
+  text assertions wait until the row draws.
 - **Nav waits for `onReady`** and rejects if the app replaces the page first;
   pass `waitUntil: 'commit'`, then assert the landing page.
 - **Specs share app state.** Nothing resets storage or backend between specs;

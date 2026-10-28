@@ -1,5 +1,5 @@
 import { render as rendering } from './runtime/state.js';
-import { describe, prepare, prepareWindows, commit, discard, reset, dispatch } from './runtime/tree.js';
+import { describe, prepare, prepareWindows, commit, discard, reset, dispatch, probeListRow } from './runtime/tree.js';
 import { createView, hasLocalUpdates, readsHostContext } from './runtime/hooks.js';
 import { configureActions, takeActionRequests, receiveActionResponse, takeActionErrors, requestLeave, automationAction, takeAutomationResults } from './runtime/actions.js';
 import { viewRequest, overlayTimer, takeOverlayTimers, escapeOverlay } from './runtime/overlay.js';
@@ -17,7 +17,7 @@ export function publishHost(render, catalog) {
     __lingxiaReadsHostContext: readsHostContext,
     __lingxiaAutomationAction: automationAction, __lingxiaTakeAutomationResults: takeAutomationResults,
     __lingxiaViewRequest: viewRequest, __lingxiaOverlayTimer: overlayTimer, __lingxiaTakeOverlayTimers: takeOverlayTimers,
-    __lingxiaEscape: escapeOverlay, __lingxiaFonts: takeFonts,
+    __lingxiaEscape: escapeOverlay, __lingxiaFonts: takeFonts, __lingxiaProbeListRow: probeListRow,
     // Cleared when a render completes, so it names only a render that never returned.
     __lingxiaSite: () => rendering.site || '',
   });

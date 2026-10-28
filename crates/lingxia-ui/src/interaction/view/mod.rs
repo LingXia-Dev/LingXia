@@ -119,6 +119,11 @@ impl ViewInteraction {
         snapshot.focus_style.then(|| snapshot.identity.clone())
     }
 
+    /// Automation: scroll a list to an off-screen row's offset.
+    pub fn scroll_list_to(&mut self, id: &str, offset: f32) -> bool {
+        self.scroll.scroll_to(id, offset)
+    }
+
     pub fn frame(&self) -> Option<&Arc<PresentedFrame>> {
         self.frame.as_ref()
     }
