@@ -4,7 +4,7 @@ use crate::protocol::{Record, field, tag};
 use crate::text::style::TextStyle;
 use parley::Layout;
 use parley::StyleProperty;
-use parley::style::{FontStyle, FontWeight, GenericFamily, LineHeight};
+use parley::style::{FontStyle, FontWeight, LineHeight};
 use vello_cpu::Glyph;
 
 pub(crate) fn text_extent(
@@ -95,6 +95,27 @@ pub(crate) fn glyph_ink(
 }
 
 impl Renderer {
+    /// A declared face (once loaded) before its generic fallback.
+    pub(crate) fn font_stack(
+        faces: &std::collections::HashMap<String, Vec<String>>,
+        family: &crate::text::style::Family,
+    ) -> parley::style::FontFamily<'static> {
+        use parley::style::{FontFamily, FontFamilyName};
+        match family {
+            crate::text::style::Family::Named(name, fallback) => match faces.get(name.as_ref()) {
+                Some(registered) => FontFamily::List(std::borrow::Cow::Owned(
+                    registered
+                        .iter()
+                        .map(|face| FontFamilyName::Named(std::borrow::Cow::Owned(face.clone())))
+                        .chain([FontFamilyName::Generic(fallback.generic())])
+                        .collect(),
+                )),
+                None => FontFamily::Single(FontFamilyName::Generic(fallback.generic())),
+            },
+            generic => FontFamily::Single(FontFamilyName::Generic(generic.generic())),
+        }
+    }
+
     /// Shape one record's text at the system text scale; the cache keys every shaping input.
     pub(crate) fn shape(
         &mut self,
@@ -145,7 +166,7 @@ impl Renderer {
                 (font_size, letter_spacing),
                 weight,
                 line_height,
-                (style.mono, italic),
+                (style.family.clone(), italic),
                 (word_break, overflow_wrap, style.nowrap, &style.features),
                 style.rtl,
             )
@@ -189,11 +210,7 @@ impl Renderer {
                 builder.push_default(StyleProperty::FontFeatures(style.features.as_str().into()));
             }
             builder.push_default(StyleProperty::Locale(self.locale));
-            builder.push_default(if style.mono {
-                GenericFamily::Monospace
-            } else {
-                GenericFamily::SansSerif
-            });
+            builder.push_default(Self::font_stack(&self.font_faces, &style.family));
             if let Some(height) = line_height {
                 builder.push_default(StyleProperty::LineHeight(LineHeight::Absolute(height)));
             }
@@ -216,11 +233,7 @@ impl Renderer {
                     range.clone(),
                 );
                 builder.push(
-                    if run.mono {
-                        GenericFamily::Monospace
-                    } else {
-                        GenericFamily::SansSerif
-                    },
+                    Self::font_stack(&self.font_faces, &run.family),
                     range.clone(),
                 );
                 if run.features != style.features {
@@ -249,11 +262,7 @@ impl Renderer {
         builder.push_default(StyleProperty::FontSize(self.text_scale.map(style.size)));
         builder.push_default(StyleProperty::FontWeight(FontWeight::new(style.weight)));
         builder.push_default(StyleProperty::Locale(self.locale));
-        builder.push_default(if style.mono {
-            GenericFamily::Monospace
-        } else {
-            GenericFamily::SansSerif
-        });
+        builder.push_default(Self::font_stack(&self.font_faces, &style.family));
         let mut layout = builder.build("0");
         layout.break_all_lines(None);
         layout.full_width()

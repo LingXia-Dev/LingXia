@@ -1,3 +1,4 @@
+import { declaredFamily } from '../runtime/fonts.js';
 import { elements, style as table } from '../generated/contract.js';
 import { fieldOptions } from '../generated/wire.js';
 import { limits, options } from '../generated/contract.js';
@@ -98,6 +99,18 @@ const justification = { 'flex-start': 'start', 'flex-end': 'end', 'space-between
 function option(name, key, value) {
   if (!fieldOptions[key]?.includes(value)) invalid(name);
   return value;
+}
+
+// A generic, or a face the theme declared with `@font-face` before its generic fallback.
+const generics = { 'sans-serif': 'sans', monospace: 'mono', serif: 'serif' };
+function family(name, value) {
+  if (typeof value !== 'string') invalid(name);
+  const parts = value.split(',').map(part => part.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
+  if (parts.length === 1 && generics[parts[0]]) return generics[parts[0]];
+  const [face, fallback = 'sans-serif'] = parts;
+  if (parts.length > 2 || !generics[fallback] || Object.values(generics).includes(face)) invalid(name);
+  if (!declaredFamily(face)) throw Error(`UI_FONT: ${face} is not declared with @font-face in the page's theme`);
+  return `${face},${generics[fallback]}`;
 }
 
 function backdrop(name, value) {
@@ -307,7 +320,7 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
         out[key] = option(name, key, value); break;
       case 'alignment': out[key] = option(name, key, alignment[value] ?? value); break;
       case 'justification': out[key] = option(name, key, justification[value] ?? value); break;
-      case 'family': out[key] = option(name, key, { 'sans-serif': 'sans', monospace: 'mono' }[value]); break;
+      case 'family': out[key] = family(name, value); break;
       case 'line-height':
         if (typeof value === 'string' && /^\d+(?:\.\d+)?px$/.test(value)) lineHeight = length(name, Number(value.slice(0, -2)));
         else if (finite(value) && value > 0 && value <= 64) lineHeight = { multiplier: value };

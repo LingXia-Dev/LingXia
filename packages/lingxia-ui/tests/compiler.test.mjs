@@ -274,6 +274,29 @@ test('bundled TSX classes lower roles, conditional strings and explicit style ov
   });
 });
 
+test('@font-face declares bundled faces the page names by family, with a generic fallback', async () => {
+  await project({
+    'brand.ttf': 'face bytes',
+    'theme.css': '@font-face { font-family: "Brand Serif"; src: url("./brand.ttf") format("truetype"); font-weight: 400; }\n@theme { --font-brand: "Brand Serif", serif; }',
+    'page.tsx': `
+      import './theme.css';
+      export function render() { return <column><text className="font-brand">A</text><text style={{ fontFamily: 'Brand Serif, monospace' }}>B</text><text className="font-serif">C</text></column>; }
+    `,
+  }, async (root, build) => {
+    await build();
+    const source = await load(root);
+    assert.match(source, /configureFonts\(\[\{"family":"Brand Serif","src":"brand.ttf","weight":"400"\}\]\)/);
+    assert.deepEqual(JSON.parse(globalThis.__lingxiaFonts()), [{ family: 'Brand Serif', src: 'brand.ttf', weight: '400' }]);
+    assert.deepEqual(tree(describePage()).children.map(child => child.props.fontFamily), ['Brand Serif,serif', 'Brand Serif,mono', 'serif']);
+    await writeFile(join(root, 'theme.css'), '@font-face { font-family: Brand; src: url("./gone.ttf"); }');
+    await assert.rejects(build(), /theme\.css:1: UI_FONT: gone\.ttf is declared by @font-face but missing/);
+    await writeFile(join(root, 'theme.css'), '@font-face { font-family: Brand; src: url("../outside.ttf"); }');
+    await assert.rejects(build(), /UI_FONT: \.\.\/outside\.ttf is outside the lxapp/);
+    await writeFile(join(root, 'theme.css'), '@font-face { font-family: Brand; src: url("./brand.woff2"); }');
+    await assert.rejects(build(), /UI_FONT: @font-face src is one url\(…\) of a bundled \.ttf, \.otf or \.ttc file/);
+  });
+});
+
 // The exact colour diagnostics the docs reference quotes.
 test('page colours are roles: palette classes, dark: colours and hex literals fail naming the role to use', async () => {
   await project({ 'page.tsx': '' }, async (root, build) => {

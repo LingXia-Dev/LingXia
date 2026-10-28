@@ -270,7 +270,7 @@ export interface Style {
   color?: string;
   fontSize?: number;
   fontWeight?: number;
-  fontFamily?: "sans-serif" | "monospace";
+  fontFamily?: "sans-serif" | "monospace" | "serif" | (string & {});
   fontStyle?: "normal" | "italic";
   lineHeight?: number | `${number}px`;
   letterSpacing?: number | `${number}em`;

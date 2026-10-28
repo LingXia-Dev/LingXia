@@ -127,7 +127,7 @@ is still refused on an element that does not render its style ([styles.md](style
 | `break` | `break-all`, `break-keep`, `break-normal` | break-after (8); break-before (8); break-inside (4) |
 | `capitalize` | `capitalize` |  |
 | `diagonal` | `diagonal-fractions` |  |
-| `font` | `font-black`, `font-bold`, `font-extrabold`, `font-extralight`, `font-light`, … (11) | unsupported font-family (1) |
+| `font` | `font-black`, `font-bold`, `font-extrabold`, `font-extralight`, `font-light`, … (12) |  |
 | `italic` | `italic` |  |
 | `leading` | `leading-0`, `leading-0.5`, `leading-1`, `leading-1.5`, `leading-2`, … (41) |  |
 | `line` | `line-through` |  |

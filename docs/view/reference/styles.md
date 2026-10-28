@@ -97,7 +97,7 @@ Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:`
 | `color` | `string` | `color` | yes | all but `<spacer>` `<image>` `<plot>` |
 | `fontSize` | `number` | `font-size` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` |
 | `fontWeight` | `number` | `font-weight` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` |
-| `fontFamily` | `"sans-serif" \| "monospace"` | `font-family` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` |
+| `fontFamily` | `"sans-serif" \| "monospace" \| "serif" \| (string & {})` | `font-family` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` |
 | `fontStyle` | `"normal" \| "italic"` | `font-style` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` |
 | `lineHeight` | `` number \| `${number}px` `` | `line-height` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` |
 | `letterSpacing` | `` number \| `${number}em` `` | `letter-spacing` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` |

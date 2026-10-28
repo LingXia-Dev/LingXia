@@ -356,7 +356,7 @@ const untestable = {
 
 const errorNotes = {
   UI_SELECT: 'Invalid `<select>` options, value or selection reply.',
-  UI_FONT: 'A named system font in the platform fallback chain could not be read or found; text falls back to the next font.',
+  UI_FONT: 'A family is not declared with `@font-face`, a declared face file is missing, outside the lxapp or too large, or a face or system font could not be read; text falls back to the next font.',
   UI_FRAME: 'The platform presenter kept refusing frames prepared ahead; the page falls back to one frame at a time.',
   UI_BUDGET: 'A warning, once per page and limit: a frame used at least three quarters of a page limit.',
   UI_ACTION: 'An action call was malformed or its reply invalid.',

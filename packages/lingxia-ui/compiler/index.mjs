@@ -6,12 +6,13 @@ import { sourceChecker, moduleChecker, parseSource } from './source.mjs';
 import { moduleBanner } from './compatibility.mjs';
 import { compileUtilities, tailwindWarm } from './tailwind.mjs';
 import { nearestSupported } from './suggest.mjs';
-import { loadStylesheet, validateTokens } from './stylesheets.mjs';
+import { loadStylesheet, validateTokens, fontFaces } from './stylesheets.mjs';
+import { existsSync, statSync } from 'node:fs';
 import { colorProblem, seriesProblem } from '../src/style/color.js';
 import { readFile, mkdir, writeFile, copyFile, realpath } from 'node:fs/promises';
 import { resolve, dirname, join, relative, isAbsolute, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { elements, style as styleTable, commonProps } from '../src/generated/contract.js';
+import { elements, style as styleTable, commonProps, limits } from '../src/generated/contract.js';
 
 const runtime = fileURLToPath(new URL('../src/internal.js', import.meta.url));
 const publicEntry = fileURLToPath(new URL('../src/index.js', import.meta.url));
@@ -295,11 +296,11 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     const catalog = catalogs[page] ?? { __names: [], __modes: {} };
     if (!Array.isArray(catalog.__names) || catalog.__names.some(name => typeof name !== 'string' || !['call', 'stream'].includes(catalog.__modes?.[name])))
       throw Error(`${page}: invalid GPU action metadata`);
-    const candidates = new Set(), themes = new Map(), sourceFiles = [], problems = [];
+    const candidates = new Set(), themes = new Map(), sourceFiles = [], problems = [], fonts = [];
     let bundled;
     try {
       bundled = await build({
-        stdin: { contents: `import { render } from ${JSON.stringify(source)}; import { publishHost } from ${JSON.stringify(host)}; export { configureClasses, configureSourceMap, enableHotSwap } from ${JSON.stringify(runtime)}; publishHost(render, ${JSON.stringify(catalog)});`, resolveDir: root },
+        stdin: { contents: `import { render } from ${JSON.stringify(source)}; import { publishHost } from ${JSON.stringify(host)}; export { configureClasses, configureFonts, configureSourceMap, enableHotSwap } from ${JSON.stringify(runtime)}; publishHost(render, ${JSON.stringify(catalog)});`, resolveDir: root },
         bundle: true, write: false, format: 'esm', target: 'es2020', jsxFactory: 'h', jsxFragment: 'Fragment', inject: [jsx], logLevel: 'silent',
         // Dev builds keep a source map so runtime errors name the author's line.
         ...(dev ? { sourcemap: 'external', absWorkingDir: root, outfile: join(root, 'page.js'), metafile: true } : {}),
@@ -309,6 +310,16 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
             const stylesheet = await loadStylesheet(path);
             validateTokens(stylesheet);
             themes.set(path, stylesheet.toString());
+            // Declared faces ship in the lxapp and load by their lxapp path.
+            for (const face of fontFaces(stylesheet)) {
+              const file = isAbsolute(face.url) ? face.url : resolve(dirname(path), face.url);
+              const inside = relative(root, file).split('\\').join('/');
+              if (inside.startsWith('..') || isAbsolute(inside)) problems.push(`${path}:${face.line}: UI_FONT: ${inside} is outside the lxapp; bundle the face file with it`);
+              else if (!existsSync(file)) problems.push(`${path}:${face.line}: UI_FONT: ${inside} is declared by @font-face but missing`);
+              // Faces load through the image transport and share its per-file cap.
+              else if (statSync(file).size > limits.imageBytes) problems.push(`${path}:${face.line}: UI_FONT: ${inside} is over ${limits.imageBytes >> 20} MiB; subset the face`);
+              else fonts.push({ family: face.family, src: inside, ...(face.weight ? { weight: face.weight } : {}), ...(face.style ? { style: face.style } : {}) });
+            }
             return { contents: '', loader: 'js' };
           });
           builder.onLoad({ filter: /\.[jt]sx?$/ }, async ({ path }) => {
@@ -356,7 +367,8 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     await mkdir(dirname(dest), { recursive: true });
     const code = bundled.outputFiles.find(file => !file.path.endsWith('.map'));
     const map = bundled.outputFiles.find(file => file.path.endsWith('.map'));
-    let module = code.text.replace(/\n\/\/# sourceMappingURL=.*\n?$/, '\n') + `\nconfigureClasses(${JSON.stringify(classes)});\n`;
+    let module = code.text.replace(/\n\/\/# sourceMappingURL=.*\n?$/, '\n') + `\nconfigureClasses(${JSON.stringify(classes)});\n` +
+      (fonts.length ? `configureFonts(${JSON.stringify(fonts)});\n` : '');
     if (map) {
       const { sources, mappings } = JSON.parse(map.text);
       // Only the author's files are named; the runtime and packages stay anonymous.

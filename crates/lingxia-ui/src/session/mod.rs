@@ -15,6 +15,7 @@ mod bridge;
 mod editing;
 mod environment;
 mod events;
+mod fonts;
 mod frame_animation;
 #[cfg(feature = "hot-swap")]
 mod hot_swap;

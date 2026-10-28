@@ -31,6 +31,8 @@ pub struct Renderer {
     /// The environment's appearance; colours come from `palette`.
     pub(crate) dark: bool,
     pub(crate) palette: crate::theme::Palette,
+    /// `@font-face` names this page declared, to the families their loaded files registered.
+    pub(crate) font_faces: std::collections::HashMap<String, Vec<String>>,
 }
 
 #[cfg(test)]
@@ -52,6 +54,7 @@ impl Default for Renderer {
             rtl: false,
             dark: false,
             palette: crate::theme::Palette::builtin(false),
+            font_faces: Default::default(),
         }
     }
 }

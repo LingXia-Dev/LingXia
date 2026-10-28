@@ -47,6 +47,9 @@ impl<A: PlatformAdapter> Inner<A> {
     }
 
     pub(super) fn image_loaded(self: &Arc<Self>, token: u64, bytes: Result<Vec<u8>, String>) {
+        if token & super::fonts::FONT_TOKEN != 0 {
+            return self.font_loaded(token, bytes);
+        }
         let request = {
             let mut main = self.main();
             match main.images.request(token) {

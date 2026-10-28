@@ -2,10 +2,45 @@
 use crate::protocol::{Record, field, tag};
 use parley::Alignment;
 
+/// A family as the wire names it: a generic, or a declared face with a generic fallback.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum Family {
+    Sans,
+    Mono,
+    Serif,
+    /// A face the page declared with `@font-face`; drawn in the generic until it loads.
+    Named(std::sync::Arc<str>, Box<Family>),
+}
+
+impl Family {
+    /// `sans`, `mono`, `serif`, or `Name,generic` for a declared face.
+    pub(crate) fn parse(source: &str) -> Self {
+        match source {
+            "mono" => Self::Mono,
+            "serif" => Self::Serif,
+            "sans" => Self::Sans,
+            named => match named.rsplit_once(',') {
+                Some((name, generic)) => Self::Named(name.into(), Box::new(Self::parse(generic))),
+                None => Self::Named(named.into(), Box::new(Self::Sans)),
+            },
+        }
+    }
+
+    pub(crate) fn generic(&self) -> parley::style::GenericFamily {
+        use parley::style::GenericFamily;
+        match self {
+            Self::Sans => GenericFamily::SansSerif,
+            Self::Mono => GenericFamily::Monospace,
+            Self::Serif => GenericFamily::Serif,
+            Self::Named(_, fallback) => fallback.generic(),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct TextStyle {
     pub(crate) size: f32,
-    pub(crate) mono: bool,
+    pub(crate) family: Family,
     pub(crate) italic: bool,
     pub(crate) weight: f32,
     pub(crate) line_height: Option<f32>,
@@ -227,10 +262,15 @@ pub(crate) fn computed(records: &[Record], directions: &[bool]) -> Vec<TextStyle
             Some("normal") => 0,
             _ => parent.as_ref().map(|p| p.overflow_wrap).unwrap_or(0),
         };
-        let mono = record
+        let family = record
             .string(field::FONT_FAMILY)
-            .map(|family| family == "mono")
-            .unwrap_or_else(|| parent.as_ref().is_some_and(|p| p.mono));
+            .map(Family::parse)
+            .unwrap_or_else(|| {
+                parent
+                    .as_ref()
+                    .map(|p| p.family.clone())
+                    .unwrap_or(Family::Sans)
+            });
         let italic = record
             .string(field::FONT_STYLE)
             .map(|style| style == "italic")
@@ -261,7 +301,7 @@ pub(crate) fn computed(records: &[Record], directions: &[bool]) -> Vec<TextStyle
             });
         styles.push(TextStyle {
             size: font_size,
-            mono,
+            family,
             italic,
             weight,
             line_height,

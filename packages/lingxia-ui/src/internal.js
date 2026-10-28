@@ -5,5 +5,6 @@ export { List, prepare, prepareWindows, commit, discard, reset, dispatch, descri
 export { useLocal, useView, useRequest, useStream, useChannel, useLeaveGuard, hasLocalUpdates, createView, readsHostContext } from './runtime/hooks.js';
 export { configureActions, takeActionRequests, receiveActionResponse, takeActionErrors, requestLeave } from './runtime/actions.js';
 export { configureClasses } from './style/classes.js';
+export { configureFonts } from './runtime/fonts.js';
 export { configureSourceMap } from './runtime/errors.js';
 export { enableHotSwap } from './runtime/hot-swap.js';

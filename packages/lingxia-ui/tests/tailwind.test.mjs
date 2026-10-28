@@ -311,7 +311,8 @@ test('text utilities: transform, decoration, nowrap, alignment and families', as
   assert.deepEqual(classStyle('[font-family:monospace]'), { fontFamily: 'monospace' });
   assert.equal(node('text', { className: 'font-mono' }).fontFamily, 'mono');
   assert.deepEqual([classStyle('italic'), classStyle('not-italic')], [{ fontStyle: 'italic' }, { fontStyle: 'normal' }]);
-  for (const name of ['font-serif', '[font-family:Custom,sans-serif]']) assert.throws(() => classStyle(name), /UI_CLASS/);
+  assert.deepEqual(classStyle('font-serif'), { fontFamily: 'serif' });
+  assert.throws(() => classStyle('[font-family:Custom,sans-serif]'), /declare a bundled face with @font-face/);
 });
 
 test('outer shadows preserve layers, color overrides, variants and CSS order', async () => {

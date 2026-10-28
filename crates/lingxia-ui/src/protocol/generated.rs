@@ -269,7 +269,7 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("alignSelf", "alignment"),
     ("fontWeight", "number"),
     ("lineHeight", "number"),
-    ("fontFamily", "font-family"),
+    ("fontFamily", "string"),
     ("checked", "check-flag"),
     ("onChange", "check-handle"),
     ("accessibilityLabel", "radio-label"),
@@ -428,7 +428,7 @@ pub const FIELDS: &[(&str, &str)] = &[
 /// Enumerated values accepted for an option-valued field kind.
 pub fn options(kind: &str) -> Option<&'static [&'static str]> {
     match kind {
-        "font-family" => Some(&["sans", "mono"]),
+        "font-family" => Some(&["sans", "mono", "serif"]),
         "font-style" => Some(&["normal", "italic"]),
         "flex-wrap" => Some(&["nowrap", "wrap", "wrap-reverse"]),
         "flex-direction" => Some(&["row", "column", "row-reverse", "column-reverse"]),

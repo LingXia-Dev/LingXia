@@ -3,6 +3,7 @@ import { describe, prepare, prepareWindows, commit, discard, reset, dispatch } f
 import { createView, hasLocalUpdates, readsHostContext } from './runtime/hooks.js';
 import { configureActions, takeActionRequests, receiveActionResponse, takeActionErrors, requestLeave, automationAction, takeAutomationResults } from './runtime/actions.js';
 import { viewRequest, overlayTimer, takeOverlayTimers, escapeOverlay } from './runtime/overlay.js';
+import { takeFonts } from './runtime/fonts.js';
 
 // The native session calls only these globals; module code stays unreachable from the host.
 export function publishHost(render, catalog) {
@@ -16,7 +17,7 @@ export function publishHost(render, catalog) {
     __lingxiaReadsHostContext: readsHostContext,
     __lingxiaAutomationAction: automationAction, __lingxiaTakeAutomationResults: takeAutomationResults,
     __lingxiaViewRequest: viewRequest, __lingxiaOverlayTimer: overlayTimer, __lingxiaTakeOverlayTimers: takeOverlayTimers,
-    __lingxiaEscape: escapeOverlay,
+    __lingxiaEscape: escapeOverlay, __lingxiaFonts: takeFonts,
     // Cleared when a render completes, so it names only a render that never returned.
     __lingxiaSite: () => rendering.site || '',
   });

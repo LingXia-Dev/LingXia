@@ -34,7 +34,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_FIELD` | native | A wire field on a tag that does not accept it. |
 | `UI_FIELDS` | native | A malformed field list reached the native decoder. |
 | `UI_FILTER` | native | A backdrop filter outside its bounds. |
-| `UI_FONT` | native | A named system font in the platform fallback chain could not be read or found; text falls back to the next font. |
+| `UI_FONT` | build, runtime, native | A family is not declared with `@font-face`, a declared face file is missing, outside the lxapp or too large, or a face or system font could not be read; text falls back to the next font. |
 | `UI_FRAGMENT` | build, runtime | A page that returns a fragment; the page root is one element. |
 | `UI_FRAME` | native | The platform presenter kept refusing frames prepared ahead; the page falls back to one frame at a time. |
 | `UI_GRADIENT` | runtime, native | A gradient with geometry its kind does not take, or invalid stops. |

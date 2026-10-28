@@ -21,6 +21,7 @@ pub(crate) mod decode;
 mod dispatch;
 mod edits;
 mod environment;
+mod fonts;
 #[cfg(feature = "hot-swap")]
 mod hot_swap;
 mod images;
@@ -215,6 +216,9 @@ struct Main<F> {
     source: String,
     interaction: ViewInteraction,
     images: ImageRequests,
+    /// `@font-face` fetches in flight, by token.
+    fonts: std::collections::HashMap<u64, super::fonts::FontFace>,
+    next_font: u64,
     environment: Option<FrameEnvironment>,
     /// The environment of the last frame the target accepted; cleared when the target changes.
     presented_environment: Option<FrameEnvironment>,
@@ -355,6 +359,8 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     source: String::new(),
                     interaction: ViewInteraction::default(),
                     images: ImageRequests::default(),
+                    fonts: Default::default(),
+                    next_font: 0,
                     environment: None,
                     presented_environment: None,
                     host_environment,
@@ -1159,7 +1165,8 @@ impl<A: PlatformAdapter> Inner<A> {
             main.styled_focus = None;
             let effects = main.interaction.reset();
             main.interaction.set_inert(false);
-            let cancelled = main.images.inflight_tokens();
+            let mut cancelled = main.images.inflight_tokens();
+            cancelled.extend(main.fonts.drain().map(|(token, _)| token));
             main.images.clear();
             (page, main.source.clone(), effects, cancelled)
         };
@@ -1191,6 +1198,7 @@ impl<A: PlatformAdapter> Inner<A> {
                     host.adapter.loaded();
                     host.main().dirty = true;
                     host.schedule();
+                    host.load_fonts(page);
                 }
                 Ok(_) => {}
                 Err(error) if host.lifecycle.is_current_page(page) => host.fail(error),
@@ -1267,7 +1275,7 @@ impl<A: PlatformAdapter> Inner<A> {
         };
         self.deliver(effects);
         self.lifecycle.dispose();
-        for token in cancelled {
+        for token in cancelled.into_iter().chain(self.take_font_fetches()) {
             self.adapter.cancel(token);
         }
         let inner = self.clone();

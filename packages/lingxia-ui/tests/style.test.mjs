@@ -106,7 +106,9 @@ test('typography: CSS line-height multipliers inherit and recompute per font siz
   assert.equal(style({ fontSize: 20, letterSpacing: '0.1em' }, 'text').letterSpacing, 2);
   assert.equal(style({ fontFamily: 'monospace', fontWeight: 650 }, 'text').fontFamily, 'mono');
   for (const value of [{ fontWeight: 0 }, { fontWeight: 1001 }, { fontWeight: 'bold' }, { lineHeight: 0 }, { lineHeight: Infinity }, { lineHeight: '24' },
-    { fontFamily: 'Arial' }, { fontFamily: 'mono' }]) rejects(value, /UI_STYLE_VALUE/, 'text');
+    { fontFamily: 'mono' }, { fontFamily: 'Brand, cursive' }]) rejects(value, /UI_STYLE_VALUE/, 'text');
+  rejects({ fontFamily: 'Arial' }, /UI_FONT: Arial is not declared with @font-face/, 'text');
+  assert.equal(style({ fontFamily: 'serif' }, 'text').fontFamily, 'serif');
   const text = style({ textTransform: 'uppercase', whiteSpace: 'nowrap', textOverflow: 'ellipsis', textDecorationLine: 'underline' }, 'text');
   assert.deepEqual([text.textTransform, text.whiteSpace, text.textOverflow, text.textDecorationLine], ['uppercase', 'nowrap', 'ellipsis', 'underline']);
 });

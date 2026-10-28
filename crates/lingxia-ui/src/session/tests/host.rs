@@ -3829,3 +3829,49 @@ fn host_chrome_takes_the_page_palette_before_its_first_frame_and_follows_the_loo
     assert_eq!(pushes()[1].canvas, dark.role(lingxia_theme::Role::Canvas));
     assert!(pushes()[1].dark);
 }
+
+#[test]
+fn declared_font_faces_load_by_lxapp_path_and_reshape_their_text() {
+    let worker = ViewWorker::spawn("test-view-fonts").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let page = source(
+        "function render(){return h('column',{style:{alignItems:'flex-start'}},h('text',{testId:'t',style:{fontFamily:'Wide, serif',fontSize:10}},'abc'))}",
+    )
+    .replace(
+        "__lingxiaPublish(render);",
+        "configureFonts([{family:'Wide',src:'public/fonts/wide.ttf'},{family:'Wide',src:'public/fonts/broken.ttf'}]);__lingxiaPublish(render);",
+    );
+    let host = platform.host(&worker, &page, false);
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let width = |host: &ViewHost<Fake>| {
+        host.snapshot()
+            .unwrap()
+            .frame
+            .nodes
+            .iter()
+            .find(|n| n.test_id == "t")
+            .unwrap()
+            .bounds[2]
+    };
+    let fallback = width(&host);
+    assert_ne!(fallback, 30.0);
+    let fetched = host.adapter().log.lock().unwrap().fetched.clone();
+    let sources = fetched.iter().map(|(_, s)| s.as_str()).collect::<Vec<_>>();
+    assert_eq!(
+        sources,
+        ["public/fonts/wide.ttf", "public/fonts/broken.ttf"]
+    );
+    host.image_loaded(fetched[1].0, Ok(b"not a font".to_vec()));
+    host.image_loaded(fetched[0].0, Ok(include_bytes!("wide.ttf").to_vec()));
+    platform.settle(&[&host]);
+    // Every glyph of the face advances one em.
+    assert_eq!(width(&host), 30.0, "fallback was {fallback}");
+    let warnings = host.adapter().log.lock().unwrap().warnings.clone();
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.starts_with("UI_FONT: public/fonts/broken.ttf")),
+        "{warnings:?}"
+    );
+}

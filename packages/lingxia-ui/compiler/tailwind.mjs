@@ -2,7 +2,7 @@ import { compile } from 'tailwindcss';
 import postcss from 'postcss';
 import { parse, formatHex8 } from 'culori';
 import { readFile } from 'node:fs/promises';
-import { tokenSelectorTheme, validateTokens } from './stylesheets.mjs';
+import { tokenSelectorTheme, validateTokens, fontFaces } from './stylesheets.mjs';
 import { lowerAnimation, easing as lowerEasing } from './animation.mjs';
 import { css as cssStyle, keywords, style as styleTable, limits, roles } from '../src/generated/contract.js';
 
@@ -151,16 +151,26 @@ function variables(value, vars, depth = 0) {
   return value;
 }
 
+// Families the theme declared with `@font-face`, by name, for the compile in progress.
+let declaredFaces = new Set();
+
 function fontFamily(value) {
-  const families = value.split(',').map(family => family.trim().replace(/^['"]|['"]$/g, '').toLowerCase());
+  const named = value.split(',').map(family => family.trim().replace(/^['"]|['"]$/g, ''));
+  // A declared face first, the generic after it as the fallback.
+  if (declaredFaces.has(named[0])) {
+    const generic = [...named].reverse().map(family => family.toLowerCase()).find(family => ['serif', 'sans-serif', 'monospace'].includes(family)) ?? 'sans-serif';
+    return `${named[0]}, ${generic}`;
+  }
+  const families = named.map(family => family.toLowerCase());
   const stacks = [
+    ['serif', ['ui-serif', 'georgia', 'cambria', 'times new roman', 'times', 'serif']],
     ['monospace', ['ui-monospace', 'sfmono-regular', 'menlo', 'monaco', 'consolas', 'liberation mono', 'courier new', 'monospace']],
     ['sans-serif', ['ui-sans-serif', 'system-ui', 'sans-serif', 'apple color emoji', 'segoe ui emoji', 'segoe ui symbol', 'noto color emoji']],
     ['sans-serif', ['-apple-system', 'blinkmacsystemfont', 'segoe ui', 'roboto', 'helvetica neue', 'noto sans', 'arial', 'sans-serif', 'apple color emoji', 'segoe ui emoji', 'segoe ui symbol', 'noto color emoji']],
   ];
   for (const [native, stack] of stacks)
     if (families.join(',') === stack.join(',') || (families.length === 1 && families[0] === native)) return native;
-  return unsupported(`unsupported font-family: ${value}`);
+  return unsupported(`unsupported font-family: ${value} (declare a bundled face with @font-face in the theme, or use font-sans, font-serif or font-mono)`);
 }
 
 function degrees(text) {
@@ -836,6 +846,7 @@ function compilerFor(theme) {
 export async function compileUtilities(candidates, theme = '', { literalColors: literal = false } = {}) {
   const tokens = postcss.parse(theme);
   validateTokens(tokens);
+  declaredFaces = new Set(fontFaces(tokens).map(face => face.family));
   const compiler = await compilerFor(theme);
   const root = postcss.parse(compiler.build([...candidates]));
   const palettes = { light: Object.create(null), dark: Object.create(null) }, rules = [];

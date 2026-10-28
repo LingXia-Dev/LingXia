@@ -29,7 +29,7 @@
     "select": {"children": "text"}
   },
   "options": {
-    "font-family": ["sans", "mono"],
+    "font-family": ["sans", "mono", "serif"],
     "font-style": ["normal", "italic"],
     "flex-wrap": ["nowrap", "wrap", "wrap-reverse"],
     "flex-direction": ["row", "column", "row-reverse", "column-reverse"],
@@ -101,7 +101,7 @@
     {"id": 35, "key": "alignSelf", "wire": "alignSelf", "kind": "alignment"},
     {"id": 36, "key": "fontWeight", "wire": "fontWeight", "kind": "number"},
     {"id": 37, "key": "lineHeight", "wire": "lineHeight", "kind": "number"},
-    {"id": 38, "key": "fontFamily", "wire": "fontFamily", "kind": "font-family"},
+    {"id": 38, "key": "fontFamily", "wire": "fontFamily", "kind": "string"},
     {"id": 39, "key": "checked", "wire": "checked", "kind": "check-flag", "tags": ["checkbox", "switch", "radio-option"]},
     {"id": 40, "key": "onCheckedChange", "wire": "onChange", "kind": "check-handle", "tags": ["checkbox", "switch", "radio-option"]},
     {"id": 41, "key": "accessibilityLabel", "wire": "accessibilityLabel", "kind": "radio-label", "tags": ["button", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "link", "column", "row", "page", "text", "select"]},
@@ -470,7 +470,7 @@
     "color": {"type": "string", "group": "text", "lower": "color", "wire": "color", "paint": true, "css": "color"},
     "fontSize": {"type": "number", "group": "text", "lower": "font-size", "wire": "fontSize", "css": "font-size"},
     "fontWeight": {"type": "number", "group": "text", "lower": "font-weight", "wire": "fontWeight", "css": "font-weight"},
-    "fontFamily": {"type": "\"sans-serif\" | \"monospace\"", "group": "text", "lower": "family", "wire": "fontFamily", "css": "font-family"},
+    "fontFamily": {"type": "\"sans-serif\" | \"monospace\" | \"serif\" | (string & {})", "group": "text", "lower": "family", "wire": "fontFamily", "css": "font-family"},
     "fontStyle": {"type": "\"normal\" | \"italic\"", "group": "text", "lower": "option", "wire": "fontStyle", "css": "font-style"},
     "lineHeight": {"type": "number | `${number}px`", "group": "text", "lower": "line-height", "wire": "lineHeight", "css": "line-height"},
     "letterSpacing": {"type": "number | `${number}em`", "group": "text", "lower": "letter-spacing", "wire": "letterSpacing", "css": "letter-spacing"},

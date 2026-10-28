@@ -70,9 +70,20 @@ Fixed heights do not, so give text boxes `min-h-*`, not `h-*`.
 
 ## Fonts
 
-`font-sans` (the default) and `font-mono` are the platform's sans and monospace families. Serif and
-custom font families are refused. `font-thin` … `font-black` and `font-[550]` set any weight the font
-supports; `italic`/`not-italic` set the style. The display language is the shaping locale, so Han
+`font-sans` (the default), `font-serif` and `font-mono` are the platform's families. A custom family
+is a face file bundled with the lxapp and declared in the page's theme stylesheet:
+
+```css
+@font-face { font-family: "Brand Serif"; src: url("../public/fonts/brand.ttf"); }
+@theme { --font-brand: "Brand Serif", serif; }
+```
+
+`font-brand` (or `fontFamily: 'Brand Serif, serif'`) then sets it, with the generic after it as the
+fallback. Keep face files in a static directory such as `public/`; `src` is one `.ttf`, `.otf` or `.ttc`
+of at most 8 MiB, so subset large CJK faces. Faces load after the first frame: text shows in the
+fallback until its face arrives. An undeclared family is a `UI_FONT` build error, and a file that fails
+to load is a `UI_FONT` warning. Each file's own metadata picks it by weight and style. `font-thin` …
+`font-black` and `font-[550]` set any weight the font supports; `italic`/`not-italic` set the style. The display language is the shaping locale, so Han
 characters pick the Simplified, Traditional, Japanese or Korean face that language expects.
 
 ## Numerals

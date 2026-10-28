@@ -204,6 +204,19 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
         )
         .map(drop),
         field::FOCUS_STYLE | field::FOCUS_WITHIN_STYLE => focus_style(value).map(drop),
+        field::FONT_FAMILY => ensure(
+            value.as_str().is_some_and(|family| {
+                matches!(family, "sans" | "mono" | "serif")
+                    || family.rsplit_once(',').is_some_and(|(name, generic)| {
+                        matches!(generic, "sans" | "mono" | "serif")
+                            && (1..=64).contains(&name.len())
+                            && name.bytes().all(|b| {
+                                b.is_ascii_alphanumeric() || matches!(b, b' ' | b'_' | b'-')
+                            })
+                    })
+            }),
+            "UI_STYLE: invalid font family",
+        ),
         field::MASK_IMAGE => {
             crate::scene::mask::parse(value.as_str().ok_or("UI_STYLE_VALUE: maskImage")?).map(drop)
         }
