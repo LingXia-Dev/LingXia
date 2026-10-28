@@ -2365,6 +2365,30 @@ mod tests {
         Ok(())
     }
 
+    /// `route` is the configured path whatever file the renderer built.
+    #[test]
+    fn route_drops_the_view_file_extension() -> JSResult<()> {
+        use rong::{JSEngine, RongJS};
+        let runtime = RongJS::runtime();
+        let ctx = runtime.context();
+        rong_modules::init(&ctx, ["event", "exception", "abort", "console"])
+            .expect("Logic modules");
+        ctx.eval::<()>(Source::from_bytes(
+            "globalThis.PageSvc = class { constructor() {} _setData() {} };",
+        ))?;
+        ctx.eval::<()>(Source::from_bytes(include_str!("scripts/Page.js")))?;
+        let routes: String = ctx.eval(Source::from_bytes(
+            r#"
+            ["pages/ui/index.tsx", "pages/ui/index.js", "pages/ui/index"].map((path, i) => {
+              __registerPage(path, { data: {} });
+              return __LX_CREATE_PAGE__(path, null, `p${i}`).route;
+            }).join(",")
+            "#,
+        ))?;
+        assert_eq!(routes, "pages/ui/index,pages/ui/index,pages/ui/index");
+        Ok(())
+    }
+
     #[test]
     fn pump_still_delivers_the_unload_queued_before_retirement() {
         use PageLifecycleEvent::*;

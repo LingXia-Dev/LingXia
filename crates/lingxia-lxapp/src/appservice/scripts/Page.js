@@ -244,7 +244,8 @@
     if (!definition) {
       throw new Error(`PageInstance not found: ${resolvedDefinitionPath}`);
     }
-    definition.config.route = pagePath;
+    // The route is the configured page path, not the renderer's file.
+    definition.config.route = pagePath.replace(/\.[^./]+$/, "");
     return createPageInstance(definition, pagePath, pageInstanceId);
   };
 })();
