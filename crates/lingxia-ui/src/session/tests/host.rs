@@ -4073,3 +4073,46 @@ fn an_act_settles_when_its_page_leaves_or_hides_before_the_next_frame() {
         assert_eq!(result["done"], true, "{leave}: {result}");
     }
 }
+
+/// Turning on increased contrast re-resolves an lxapp pack's palette: the page presents again in
+/// the pack's high-contrast look and the chrome follows it.
+#[test]
+fn a_pushed_pack_follows_increased_contrast_when_it_changes() {
+    let worker = ViewWorker::spawn("test-contrast").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){return h('page',{},h('text',{style:{color:'text-muted'}},'Muted'))}",
+        ),
+        false,
+    );
+    host.update_environment(
+        &serde_json::json!({"kind": "theme", "revision": 1,
+            "pack": {"name": "brand", "version": 1, "accent": {"seed": "#0f9d58", "derive": true}}})
+        .to_string(),
+    )
+    .unwrap();
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let presented = |host: &ViewHost<Fake>| host.adapter().log.lock().unwrap().presented.len();
+    let chrome =
+        |host: &ViewHost<Fake>| host.adapter().log.lock().unwrap().chrome.last().unwrap().1;
+    let (before, muted) = (presented(&host), chrome(&host).content_muted);
+    host.adapter()
+        .environment
+        .lock()
+        .unwrap()
+        .as_mut()
+        .unwrap()
+        .value["highContrast"] = serde_json::json!(true);
+    // What the Apple adapter does for a changed fact that is not a resize.
+    host.request_frame();
+    platform.settle(&[&host]);
+    assert!(presented(&host) > before, "the page presents again");
+    assert_ne!(
+        chrome(&host).content_muted,
+        muted,
+        "in the high-contrast look"
+    );
+}
