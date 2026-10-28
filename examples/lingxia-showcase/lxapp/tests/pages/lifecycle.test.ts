@@ -369,7 +369,7 @@ spec("fire onLoad once per tab instance, not on preload or later switchTab", {
 
   const apiLoadCount = async (): Promise<number | null> => app.logic.eval(({ getCurrentPages }) => {
     const page = getCurrentPages<LogicPage<{ loadCount?: number }>>()
-      .find((candidate) => candidate.route.includes('/API/'));
+      .find((candidate) => /\/api\//i.test(candidate.route));
     return page ? page.data.loadCount ?? -1 : null;
   });
 

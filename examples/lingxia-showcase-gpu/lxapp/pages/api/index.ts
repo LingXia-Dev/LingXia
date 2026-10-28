@@ -3,8 +3,10 @@ import { errorMessage } from '../../shared/lib/errors';
 import { openFeedback } from '../../shared/lib/feedback';
 
 Page({
-  data: { cloudAvailable: false },
-  onLoad() { this.setData({ cloudAvailable: cloudProviderAvailable() }); },
+  data: { cloudAvailable: false, loadCount: 0 },
+  onLoad() {
+    this.setData({ cloudAvailable: cloudProviderAvailable(), loadCount: (this.data.loadCount || 0) + 1 });
+  },
   async openOtherApp() {
     try { await lx.navigateToApp({ appId: 'lingxia-chat', page: 'chat' }); }
     catch (error) { await lx.showToast({ title: errorMessage(error, 'Unable to open the app. Please try again.'), icon: 'none' }); }
