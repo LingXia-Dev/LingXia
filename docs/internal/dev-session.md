@@ -44,8 +44,9 @@ actionable error.
 
 ## Bundle sync
 
-A dev host pulls lxapp bundles from the dev server file by file (the server
-closes every connection). Never on a UI thread: Android runs
+A dev host pulls a changed lxapp bundle as one archive,
+`lxapp/<id>/bundle/<distHash>.tar`; a delta of up to 4 files (a hot swap) and an
+older server (404) go file by file, one connection each. Never on a UI thread: Android runs
 `prepare_dev_bundles` on a background thread before `lingxiaInit`, and init
 adopts that outcome without fetching again (a fetch there held the main thread
 past Android's 5 s input timeout, and the ANR dialog then took focus from

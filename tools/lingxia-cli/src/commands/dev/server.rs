@@ -1704,6 +1704,17 @@ fn handle_dev_lxapp_http_request(
         return Ok(Some(("application/json; charset=utf-8", body)));
     }
 
+    if let Some((app_id, archive)) = rest.split_once("/bundle/") {
+        let app_id = decode_url_path_component(app_id)?;
+        let Some(hash) = decode_url_path_component(archive)?
+            .strip_suffix(".tar")
+            .map(str::to_owned)
+        else {
+            return Ok(None);
+        };
+        return dev_lxapp_bundle_archive(state, &app_id, &hash);
+    }
+
     let Some((app_id, relative_path)) = rest.split_once("/files/") else {
         return Ok(None);
     };
@@ -1730,6 +1741,50 @@ fn handle_dev_lxapp_http_request(
     let body = std::fs::read(&file_path)
         .with_context(|| format!("Failed to read {}", file_path.display()))?;
     Ok(Some((content_type_for_path(&relative_path), body)))
+}
+
+/// Every file of `app_id`'s published bundle as one tar, for a client syncing a
+/// whole bundle in one request. `None` (a 404) when the bundle is not
+/// published or `hash` is no longer its current hash.
+fn dev_lxapp_bundle_archive(
+    state: &DevServerState,
+    app_id: &str,
+    hash: &str,
+) -> Result<Option<(&'static str, Vec<u8>)>> {
+    if !super::lxapp_manifest::is_published(&state.project_root, app_id) {
+        return Ok(None);
+    }
+    let manifest = super::lxapp_manifest::load_manifest(&state.project_root, app_id)?;
+    if manifest.dist_hash != hash {
+        return Ok(None);
+    }
+    let dist = state.attached_dist(app_id);
+    let mut archive = tar::Builder::new(Vec::new());
+    for file in &manifest.files {
+        let file_path = match &dist {
+            Some(dist) => super::lxapp_manifest::resolve_published_file(
+                &state.project_root,
+                app_id,
+                &file.path,
+                dist,
+            )?,
+            None => {
+                super::lxapp_manifest::resolve_dist_file(&state.project_root, app_id, &file.path)?
+            }
+        };
+        let body = std::fs::read(&file_path)
+            .with_context(|| format!("Failed to read {}", file_path.display()))?;
+        let mut header = tar::Header::new_gnu();
+        header.set_size(body.len() as u64);
+        header.set_mode(0o644);
+        archive
+            .append_data(&mut header, &file.path, body.as_slice())
+            .with_context(|| format!("Failed to archive {}", file.path))?;
+    }
+    let body = archive
+        .into_inner()
+        .context("Failed to finish dev bundle archive")?;
+    Ok(Some(("application/x-tar", body)))
 }
 
 fn decode_url_path_component(value: &str) -> Result<String> {
@@ -2882,6 +2937,77 @@ mod tests {
             serde_json::from_slice(&std::fs::read(&manifest_path).unwrap()).unwrap();
 
         assert_ne!(first["distHash"], second["distHash"]);
+    }
+
+    #[test]
+    fn a_published_bundle_comes_as_one_archive_of_its_current_hash() {
+        let temp = tempfile::tempdir().unwrap();
+        let project = temp.path();
+        let dist = project.join("lxapp/dist");
+        std::fs::create_dir_all(dist.join("pages")).unwrap();
+        std::fs::write(
+            project.join("lingxia.yaml"),
+            "app:\n  projectName: demo-host\n  packageId: app.example.demohost\n  productName: Demo Host\n  productVersion: 1.0.0\n  platforms: [windows]\n  homeAppId: demo\nresources:\n  bundles:\n    - type: lxapp\n      appId: demo\n      path: lxapp\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dist.join("lxapp.json"),
+            r#"{"appId":"demo","version":"1.0.0","pages":{}}"#,
+        )
+        .unwrap();
+        std::fs::write(dist.join("pages/index.js"), "Page({})").unwrap();
+        refresh_lxapp_manifests(project).unwrap();
+        let state = DevServerState::new(
+            project.to_path_buf(),
+            Arc::new(AtomicBool::new(false)),
+            None,
+            false,
+        );
+        let manifest = super::super::lxapp_manifest::load_manifest(project, "demo").unwrap();
+        let target = format!(
+            "/__lingxia/dev/lxapp/demo/bundle/{}.tar",
+            manifest.dist_hash
+        );
+        let (content_type, body) = super::handle_dev_lxapp_http_request(&state, &target)
+            .unwrap()
+            .expect("archive");
+        assert_eq!(content_type, "application/x-tar");
+        let mut archive = tar::Archive::new(body.as_slice());
+        let mut entries: Vec<(String, Vec<u8>)> = archive
+            .entries()
+            .unwrap()
+            .map(|entry| {
+                let mut entry = entry.unwrap();
+                let path = entry.path().unwrap().to_string_lossy().into_owned();
+                let mut bytes = Vec::new();
+                std::io::Read::read_to_end(&mut entry, &mut bytes).unwrap();
+                (path, bytes)
+            })
+            .collect();
+        entries.sort();
+        let mut expected: Vec<String> = manifest
+            .files
+            .iter()
+            .map(|file| file.path.clone())
+            .collect();
+        expected.sort();
+        assert_eq!(
+            entries
+                .iter()
+                .map(|(path, _)| path.clone())
+                .collect::<Vec<_>>(),
+            expected
+        );
+        assert!(entries.contains(&("pages/index.js".to_string(), b"Page({})".to_vec())));
+        // A stale hash is a 404: the client then reads the manifest again or falls back per file.
+        assert!(
+            super::handle_dev_lxapp_http_request(
+                &state,
+                "/__lingxia/dev/lxapp/demo/bundle/stale.tar"
+            )
+            .unwrap()
+            .is_none()
+        );
     }
 
     #[test]

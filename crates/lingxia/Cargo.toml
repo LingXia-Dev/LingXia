@@ -82,6 +82,8 @@ futures-core = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+# Dev bundles arrive as one archive.
+tar = "0.4.46"
 thiserror = { workspace = true }
 tokio = { workspace = true }
 

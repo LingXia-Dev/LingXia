@@ -3654,6 +3654,7 @@ dependencies = [
  "serde_json",
  "swift-bridge",
  "swift-bridge-build",
+ "tar",
  "tempfile",
  "thiserror 2.0.20",
  "tokio",

@@ -11,6 +11,8 @@ const LINGXIA_DIR: &str = "lingxia";
 const DEV_LXAPPS_DIR: &str = "dev-lxapps";
 const LOCAL_MANIFEST_FILE: &str = ".lingxia-dev-manifest.json";
 const HTTP_TIMEOUT: Duration = Duration::from_secs(3);
+/// More changed files than this come as one archive instead of one request each.
+const PER_FILE_MAX: usize = 4;
 
 #[derive(Debug, Clone, Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -126,6 +128,7 @@ pub(crate) fn sync_from(
         .as_ref()
         .map(files_by_path)
         .unwrap_or_default();
+    let mut missing = Vec::new();
     for file in &manifest.files {
         let target = staging_dir.join(&file.path);
         if let Some(parent) = target.parent() {
@@ -138,9 +141,34 @@ pub(crate) fn sync_from(
             && copy_existing_file(&current_dir, &file.path, &target)?;
         if copied {
             verify_file_size(&target, file)?;
-            continue;
+        } else {
+            missing.push(file);
         }
+    }
 
+    // A whole bundle is one request; a hot-swap delta stays per file.
+    if missing.len() > PER_FILE_MAX {
+        let url = dev_bundle_url(
+            base_url,
+            &format!(
+                "lxapp/{}/bundle/{}.tar",
+                encode_path_component(app_id),
+                encode_path_component(&manifest.dist_hash)
+            ),
+        );
+        match http_get(&url, deadline)? {
+            (200, body) => {
+                unpack_bundle(&body, &missing, &staging_dir)?;
+                missing.clear();
+            }
+            // An older dev server has no archive endpoint.
+            (404, _) => {}
+            (status, _) => return Err(format!("GET {url} returned HTTP {status}")),
+        }
+    }
+
+    for file in missing {
+        let target = staging_dir.join(&file.path);
         let url = dev_bundle_url(
             base_url,
             &format!(
@@ -197,6 +225,52 @@ pub(crate) fn sync_from(
         manifest.dist_hash
     );
     Ok(DevBundleSync::Ready { root: current_dir })
+}
+
+/// Write the archive's copies of `wanted` into `staging_dir`. Every wanted file
+/// must be in it at its manifest size; anything else is ignored.
+fn unpack_bundle(
+    archive: &[u8],
+    wanted: &[&DevManifestFile],
+    staging_dir: &Path,
+) -> Result<(), String> {
+    let mut wanted: BTreeMap<&str, &DevManifestFile> = wanted
+        .iter()
+        .map(|file| (file.path.as_str(), *file))
+        .collect();
+    let mut entries = tar::Archive::new(archive);
+    for entry in entries
+        .entries()
+        .map_err(|err| format!("invalid dev bundle archive: {err}"))?
+    {
+        let mut entry = entry.map_err(|err| format!("invalid dev bundle archive: {err}"))?;
+        let path = entry
+            .path()
+            .map_err(|err| format!("invalid dev bundle entry: {err}"))?
+            .to_string_lossy()
+            .into_owned();
+        let Some(file) = wanted.remove(path.as_str()) else {
+            continue;
+        };
+        let mut bytes = Vec::with_capacity(file.size as usize);
+        entry
+            .read_to_end(&mut bytes)
+            .map_err(|err| format!("failed to read {path} from the dev bundle: {err}"))?;
+        if bytes.len() as u64 != file.size {
+            return Err(format!(
+                "dev file size mismatch for {path}: expected {}, got {}",
+                file.size,
+                bytes.len()
+            ));
+        }
+        let target = staging_dir.join(&file.path);
+        fs::write(&target, bytes)
+            .map_err(|err| format!("failed to write {}: {}", target.display(), err))?;
+    }
+    match wanted.keys().next() {
+        Some(path) => Err(format!("dev bundle archive is missing {path}")),
+        None => Ok(()),
+    }
 }
 
 fn validate_manifest(manifest: &DevManifest) -> Result<(), String> {
@@ -404,9 +478,59 @@ fn sanitize_component(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        Duration, HTTP_TIMEOUT, Instant, ParsedHttpUrl, dev_bundle_url, parse_http_response,
-        request_timeout,
+        DevManifestFile, Duration, HTTP_TIMEOUT, Instant, ParsedHttpUrl, dev_bundle_url,
+        parse_http_response, request_timeout, unpack_bundle,
     };
+
+    fn archive(files: &[(&str, &[u8])]) -> Vec<u8> {
+        let mut builder = tar::Builder::new(Vec::new());
+        for (path, body) in files {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(body.len() as u64);
+            header.set_mode(0o644);
+            builder.append_data(&mut header, path, *body).unwrap();
+        }
+        builder.into_inner().unwrap()
+    }
+
+    fn file(path: &str, size: u64) -> DevManifestFile {
+        DevManifestFile {
+            path: path.into(),
+            hash: "h".into(),
+            size,
+        }
+    }
+
+    #[test]
+    fn a_bundle_archive_fills_only_the_wanted_files_at_their_sizes() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("pages")).unwrap();
+        let bytes = archive(&[
+            ("lxapp.json", b"{}"),
+            ("pages/a.js", b"abc"),
+            ("extra.js", b"x"),
+        ]);
+        let (json, page) = (file("lxapp.json", 2), file("pages/a.js", 3));
+        unpack_bundle(&bytes, &[&json, &page], dir.path()).unwrap();
+        assert_eq!(
+            std::fs::read(dir.path().join("pages/a.js")).unwrap(),
+            b"abc"
+        );
+        assert!(!dir.path().join("extra.js").exists());
+
+        let short = file("pages/a.js", 4);
+        assert!(
+            unpack_bundle(&bytes, &[&short], dir.path())
+                .unwrap_err()
+                .contains("size mismatch")
+        );
+        let absent = file("pages/b.js", 1);
+        assert!(
+            unpack_bundle(&bytes, &[&absent], dir.path())
+                .unwrap_err()
+                .contains("missing pages/b.js")
+        );
+    }
 
     #[test]
     fn a_request_never_outlives_the_sync_deadline() {
