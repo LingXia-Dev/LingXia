@@ -1252,14 +1252,14 @@ public class LingXiaWebView extends WebView {
         android.view.MotionEvent down = android.view.MotionEvent.obtain(
             downTime, downTime, android.view.MotionEvent.ACTION_DOWN, x, y, 0);
         try {
-            LingXiaWebView.super.dispatchTouchEvent(down);
+            dispatchAsFinger(down);
         } finally {
             down.recycle();
         }
         android.view.MotionEvent up = android.view.MotionEvent.obtain(
             downTime, downTime + 50, android.view.MotionEvent.ACTION_UP, x, y, 0);
         try {
-            LingXiaWebView.super.dispatchTouchEvent(up);
+            dispatchAsFinger(up);
         } finally {
             up.recycle();
         }
@@ -1341,6 +1341,24 @@ public class LingXiaWebView extends WebView {
         }
     }
 
+    /**
+     * Deliver a synthesized event the way a finger's arrives: from the window root, so
+     * every parent (pull-to-refresh, the native scroll parent, page chrome) sees and may
+     * intercept it. `event` is in this view's coordinates.
+     */
+    private void dispatchAsFinger(android.view.MotionEvent event) {
+        View root = getRootView();
+        if (root == null || root == this || !isAttachedToWindow()) {
+            dispatchTouchEvent(event);
+            return;
+        }
+        int[] here = new int[2], top = new int[2];
+        getLocationInWindow(here);
+        root.getLocationInWindow(top);
+        event.offsetLocation(here[0] - top[0], here[1] - top[1]);
+        root.dispatchTouchEvent(event);
+    }
+
     private void postMotion(final int action, final float x, final float y, final long downTime) {
         final long eventTime = android.os.SystemClock.uptimeMillis();
         new Handler(Looper.getMainLooper()).post(new Runnable() {
@@ -1349,7 +1367,7 @@ public class LingXiaWebView extends WebView {
                 android.view.MotionEvent ev =
                     android.view.MotionEvent.obtain(downTime, eventTime, action, x, y, 0);
                 try {
-                    LingXiaWebView.super.dispatchTouchEvent(ev);
+                    dispatchAsFinger(ev);
                 } finally {
                     ev.recycle();
                 }
