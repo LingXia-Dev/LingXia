@@ -196,6 +196,48 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_lingxiaInit<'a>(
     .resolve::<LogErrorAndDefault>()
 }
 
+/// Dev sessions: pull the home lxapp's dev bundle before `lingxiaInit`. Called
+/// on a background thread; init must not wait on the network on the UI thread.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_prepareDevBundles<'a>(
+    mut env: EnvUnowned<'a>,
+    _class: JClass<'a>,
+    data_dir: JString<'a>,
+    cache_dir: JString<'a>,
+    asset_manager: JObject<'a>,
+    application_context: JObject<'a>,
+    locale: JString<'a>,
+) {
+    env.with_env(|env| -> Result<(), jni::errors::Error> {
+        #[cfg(feature = "devtool")]
+        {
+            let platform = unsafe {
+                lingxia_platform::Platform::from_java(
+                    env,
+                    asset_manager.as_raw(),
+                    application_context.as_raw(),
+                    data_dir.try_to_string(env)?,
+                    cache_dir.try_to_string(env)?,
+                    locale.try_to_string(env)?,
+                )
+            }
+            .map_err(|_| jni::errors::Error::JniCall(jni::errors::JniError::Unknown))?;
+            crate::devtool::prepare_dev_bundles(platform);
+        }
+        #[cfg(not(feature = "devtool"))]
+        let _ = (
+            env,
+            data_dir,
+            cache_dir,
+            asset_manager,
+            application_context,
+            locale,
+        );
+        Ok(())
+    })
+    .resolve::<LogErrorAndDefault>()
+}
+
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_app_NativeApi_getDisplayLanguage<'a>(
     mut env: EnvUnowned<'a>,

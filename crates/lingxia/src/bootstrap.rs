@@ -29,7 +29,7 @@ fn install_global_executor() {
     }
 }
 
-fn load_bundled_app_config(
+pub(crate) fn load_bundled_app_config(
     runtime: &std::sync::Arc<lingxia_platform::Platform>,
 ) -> Option<lingxia_app_context::AppConfig> {
     use lingxia_platform::traits::app_runtime::AppRuntime;

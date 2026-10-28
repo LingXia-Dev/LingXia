@@ -79,6 +79,19 @@ internal object NativeApi {
      * @param locale System locale (e.g., "en-US", "zh-CN")
      * @return Home app ID if successful, null otherwise
      */
+    /**
+     * Dev sessions: pull the home lxapp's dev bundle before [lingxiaInit]. Network I/O;
+     * call it off the main thread. A no-op in builds without devtools.
+     */
+    @JvmStatic
+    external fun prepareDevBundles(
+        dataDir: String,
+        cacheDir: String,
+        assetManager: AssetManager,
+        applicationContext: android.content.Context,
+        locale: String
+    )
+
     @JvmStatic
     external fun lingxiaInit(
         dataDir: String,

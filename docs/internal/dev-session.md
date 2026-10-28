@@ -42,6 +42,18 @@ temporary interactive-token task so its window opens on the signed-in desktop;
 without a signed-in session of the same account, startup fails with an
 actionable error.
 
+## Bundle sync
+
+A dev host pulls lxapp bundles from the dev server file by file (the server
+closes every connection). Never on a UI thread: Android runs
+`prepare_dev_bundles` on a background thread before `lingxiaInit`, and init
+adopts that outcome without fetching again (a fetch there held the main thread
+past Android's 5 s input timeout, and the ANR dialog then took focus from
+every spec). A host without that call still syncs inside init, bounded to 10 s.
+An open waits at most 2 s for its app's sync; a slower one finishes in the
+background for later opens. Every sync has an overall deadline, not only a
+per-request timeout.
+
 ## Targets and versions
 
 `dev` picks native targets from what it launches: the device's reported

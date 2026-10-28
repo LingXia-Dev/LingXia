@@ -179,6 +179,7 @@ pub mod splash;
 #[cfg(feature = "devtool")]
 pub mod dev {
     pub use crate::applink::inject as inject_applink;
+    pub use crate::devtool::prepare_dev_bundles;
     pub use crate::devtool::{
         Appearance, DeviceController, DeviceEntry, DeviceState, LxAppDevConfig, LxAppDevIdentity,
         connect_dev_server, dev_session_connected, device_get, device_list, device_set,

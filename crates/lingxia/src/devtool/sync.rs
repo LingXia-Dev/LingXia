@@ -5,7 +5,7 @@ use std::fs;
 use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const LINGXIA_DIR: &str = "lingxia";
 const DEV_LXAPPS_DIR: &str = "dev-lxapps";
@@ -30,6 +30,7 @@ struct DevManifestFile {
 }
 
 /// Result of pulling one app id from the dev bundle server.
+#[derive(Debug, Clone)]
 pub(crate) enum DevBundleSync {
     /// No dev bundle server is configured, or the app id is empty.
     Idle,
@@ -39,21 +40,34 @@ pub(crate) enum DevBundleSync {
     Ready { root: std::path::PathBuf },
 }
 
-/// Pull `app_id` when this process has a dev bundle server. A missing manifest
-/// is [`DevBundleSync::NotPublished`]: downloaded guests are not published here.
+/// Pull `app_id` when this process has a dev bundle server, giving up at
+/// `deadline`. A missing manifest is [`DevBundleSync::NotPublished`]:
+/// downloaded guests are not published here.
 pub(crate) fn sync_dev_bundle(
     runtime: Arc<lingxia_platform::Platform>,
     app_id: &str,
+    deadline: Instant,
 ) -> Result<DevBundleSync, String> {
     let Some(config) = lingxia_app_context::app_config() else {
         return Ok(DevBundleSync::Idle);
     };
-    let Some(base_url) = config
-        .dev_bundle_base_url
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    else {
+    sync_from(
+        runtime,
+        config.dev_bundle_base_url.as_deref(),
+        app_id,
+        deadline,
+    )
+}
+
+/// [`sync_dev_bundle`] against an explicit server, for callers that run before
+/// the app config is installed.
+pub(crate) fn sync_from(
+    runtime: Arc<lingxia_platform::Platform>,
+    base_url: Option<&str>,
+    app_id: &str,
+    deadline: Instant,
+) -> Result<DevBundleSync, String> {
+    let Some(base_url) = base_url.map(str::trim).filter(|value| !value.is_empty()) else {
         return Ok(DevBundleSync::Idle);
     };
 
@@ -66,7 +80,7 @@ pub(crate) fn sync_dev_bundle(
         base_url,
         &format!("lxapp/{}/manifest.json", encode_path_component(app_id)),
     );
-    let manifest_bytes = match http_get(&manifest_url)? {
+    let manifest_bytes = match http_get(&manifest_url, deadline)? {
         (200, body) => body,
         (404, _) => return Ok(DevBundleSync::NotPublished),
         (status, _) => return Err(format!("GET {manifest_url} returned HTTP {status}")),
@@ -135,7 +149,7 @@ pub(crate) fn sync_dev_bundle(
                 encode_path_component(&file.path)
             ),
         );
-        let bytes = match http_get(&url)? {
+        let bytes = match http_get(&url, deadline)? {
             (200, body) => body,
             (status, _) => return Err(format!("GET {url} returned HTTP {status}")),
         };
@@ -257,12 +271,16 @@ fn verify_file_size(path: &Path, file: &DevManifestFile) -> Result<(), String> {
     Ok(())
 }
 
-/// Status and body of a GET. Only a transport or framing failure is an `Err`.
-fn http_get(url: &str) -> Result<(u16, Vec<u8>), String> {
+/// Status and body of a GET, within `deadline`. Only a transport or framing
+/// failure is an `Err`. The dev server closes every connection, so each file
+/// is its own request.
+fn http_get(url: &str, deadline: Instant) -> Result<(u16, Vec<u8>), String> {
     let parsed = ParsedHttpUrl::parse(url)?;
-    let mut stream = super::net::connect_dev_server(url, HTTP_TIMEOUT)
+    let timeout = request_timeout(deadline)
+        .ok_or_else(|| format!("dev bundle sync ran out of time before {url}"))?;
+    let mut stream = super::net::connect_dev_server(url, timeout)
         .map_err(|err| format!("failed to connect {}: {}", url, err))?;
-    let _ = stream.set_read_timeout(Some(HTTP_TIMEOUT));
+    let _ = stream.set_read_timeout(Some(timeout));
     let request = format!(
         "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
         parsed.path, parsed.host_header
@@ -275,6 +293,12 @@ fn http_get(url: &str) -> Result<(u16, Vec<u8>), String> {
         .read_to_end(&mut response)
         .map_err(|err| format!("failed to read response {}: {}", url, err))?;
     parse_http_response(url, &response)
+}
+
+/// One request's timeout: the per-request bound, cut to what the deadline leaves.
+fn request_timeout(deadline: Instant) -> Option<Duration> {
+    let left = deadline.checked_duration_since(Instant::now())?;
+    (!left.is_zero()).then(|| left.min(HTTP_TIMEOUT))
 }
 
 fn parse_http_response(url: &str, response: &[u8]) -> Result<(u16, Vec<u8>), String> {
@@ -379,7 +403,23 @@ fn sanitize_component(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{ParsedHttpUrl, dev_bundle_url, parse_http_response};
+    use super::{
+        Duration, HTTP_TIMEOUT, Instant, ParsedHttpUrl, dev_bundle_url, parse_http_response,
+        request_timeout,
+    };
+
+    #[test]
+    fn a_request_never_outlives_the_sync_deadline() {
+        let now = Instant::now();
+        assert_eq!(
+            request_timeout(now + Duration::from_secs(60)),
+            Some(HTTP_TIMEOUT)
+        );
+        let short = request_timeout(now + Duration::from_millis(500)).unwrap();
+        assert!(short <= Duration::from_millis(500) && !short.is_zero());
+        assert_eq!(request_timeout(now), None);
+        assert_eq!(request_timeout(now - Duration::from_secs(1)), None);
+    }
 
     #[test]
     fn http_404_means_the_bundle_is_not_published() {

@@ -277,27 +277,78 @@ pub(crate) fn prepare_host_app_config(
     Some(app_config)
 }
 
+/// Pull the home lxapp's dev bundle before the runtime starts. Dev sessions
+/// only; a no-op without a dev bundle server.
+///
+/// The dev server is a network hop (adb reverse, Wi-Fi), so the platform
+/// shell calls this on a background thread before init: init then adopts the
+/// outcome without fetching on its own (UI) thread.
+pub fn prepare_dev_bundles(platform: lingxia_platform::Platform) {
+    let runtime = std::sync::Arc::new(platform);
+    let Some(config) = prepare_host_app_config(&runtime, crate::bootstrap::load_bundled_app_config)
+    else {
+        return;
+    };
+    let home_id = config.home_app_id.trim().to_string();
+    if home_id.is_empty() {
+        return;
+    }
+    let outcome = sync::sync_from(
+        runtime,
+        config.dev_bundle_base_url.as_deref(),
+        &home_id,
+        std::time::Instant::now() + PREPARE_DEADLINE,
+    );
+    *lock(&PREPARED_HOME) = Some((home_id, outcome));
+}
+
+/// Home's pre-init sync outcome, taken by init.
+type Prepared = (String, Result<sync::DevBundleSync, String>);
+static PREPARED_HOME: std::sync::Mutex<Option<Prepared>> = std::sync::Mutex::new(None);
+/// Pre-init, off the UI thread: a whole bundle over a slow link.
+const PREPARE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(60);
+/// A sync on the thread that needs it (init without a pre-init pull, a dev restart).
+const SYNC_DEADLINE: std::time::Duration = std::time::Duration::from_secs(10);
+/// How long an open waits for its app's sync before using the installed bundle.
+const OPEN_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
+
 pub(crate) fn prepare_bundle_sources(runtime: &std::sync::Arc<lingxia_platform::Platform>) {
     lxapp::set_dev_bundle_preparer(prepare_dev_bundle_for_open);
     let home_id = lingxia_app_context::app_config()
         .map(|config| config.home_app_id.trim().to_string())
         .unwrap_or_default();
     if !home_id.is_empty() {
+        let prepared = lock(&PREPARED_HOME)
+            .take()
+            .filter(|(id, _)| *id == home_id)
+            .map(|(_, outcome)| outcome);
+        let outcome = prepared.unwrap_or_else(|| {
+            sync::sync_dev_bundle(
+                runtime.clone(),
+                &home_id,
+                std::time::Instant::now() + SYNC_DEADLINE,
+            )
+        });
         // Home's own instance asks next, so record the answer: a `listen`
         // session publishes only its lxapp, and an unreachable server must
         // not cost home a second timeout.
-        match sync::sync_dev_bundle(runtime.clone(), &home_id) {
-            Ok(sync::DevBundleSync::NotPublished) => {
-                lock(&UNPUBLISHED).insert(home_id);
-            }
-            Ok(_) => {}
-            Err(err) => {
-                *lock(&UNREACHABLE_UNTIL) = Some(std::time::Instant::now() + UNREACHABLE_BACKOFF);
-                log::warn!("Failed to sync dev home lxapp bundle: {}", err);
-            }
-        }
+        record_sync(&home_id, outcome, "home lxapp");
     }
     register_bundle_source_override();
+}
+
+/// Remember what a sync of `app_id` told about the server.
+fn record_sync(app_id: &str, outcome: Result<sync::DevBundleSync, String>, what: &str) {
+    match outcome {
+        Ok(sync::DevBundleSync::NotPublished) => {
+            lock(&UNPUBLISHED).insert(app_id.to_string());
+        }
+        Ok(_) => {}
+        Err(err) => {
+            *lock(&UNREACHABLE_UNTIL) = Some(std::time::Instant::now() + UNREACHABLE_BACKOFF);
+            log::warn!("Failed to sync dev {what} bundle for {app_id}: {err}");
+        }
+    }
 }
 
 /// App ids the dev server had no manifest for, since the dev session last
@@ -310,6 +361,9 @@ static UNREACHABLE_UNTIL: std::sync::Mutex<Option<std::time::Instant>> =
     std::sync::Mutex::new(None);
 const UNREACHABLE_BACKOFF: std::time::Duration = std::time::Duration::from_secs(30);
 
+/// Opens can run on a UI thread, so the sync runs on its own thread and the open
+/// waits at most [`OPEN_WAIT`]; a sync still running then finishes for later
+/// opens while this one uses the installed bundle.
 fn prepare_dev_bundle_for_open(app_id: &str) {
     if lxapp::is_dev_bundle_appid(app_id) || lock(&UNPUBLISHED).contains(app_id) {
         return;
@@ -320,17 +374,32 @@ fn prepare_dev_bundle_for_open(app_id: &str) {
     let Ok(runtime) = crate::runtime::platform() else {
         return;
     };
-    match sync::sync_dev_bundle(runtime, app_id) {
-        Ok(sync::DevBundleSync::NotPublished) => {
-            lock(&UNPUBLISHED).insert(app_id.to_string());
-        }
-        Ok(_) => {}
-        Err(err) => {
-            *lock(&UNREACHABLE_UNTIL) = Some(std::time::Instant::now() + UNREACHABLE_BACKOFF);
-            log::warn!("Failed to sync dev lxapp bundle for {app_id}: {err}");
-        }
+    if !lock(&SYNCING).insert(app_id.to_string()) {
+        return;
+    }
+    let (done, wait) = std::sync::mpsc::channel();
+    let id = app_id.to_string();
+    let spawned = std::thread::Builder::new()
+        .name("lingxia-dev-sync".into())
+        .spawn(move || {
+            let deadline = std::time::Instant::now() + SYNC_DEADLINE;
+            record_sync(&id, sync::sync_dev_bundle(runtime, &id, deadline), "lxapp");
+            lock(&SYNCING).remove(&id);
+            let _ = done.send(());
+        });
+    if let Err(err) = spawned {
+        lock(&SYNCING).remove(app_id);
+        log::warn!("Failed to start the dev bundle sync for {app_id}: {err}");
+        return;
+    }
+    if wait.recv_timeout(OPEN_WAIT).is_err() {
+        log::warn!("Dev bundle for {app_id} is still syncing; this open uses the installed bundle");
     }
 }
+
+/// App ids with a sync in flight.
+static SYNCING: std::sync::Mutex<std::collections::BTreeSet<String>> =
+    std::sync::Mutex::new(std::collections::BTreeSet::new());
 
 /// The dev session (re)connected: what it publishes, and whether it is
 /// reachable, may have changed.
@@ -355,7 +424,7 @@ pub fn sync_dev_bundle(appid: &str) -> Result<(), String> {
     let home_id = lingxia_app_context::app_config()
         .map(|config| config.home_app_id.trim().to_string())
         .unwrap_or_default();
-    match sync::sync_dev_bundle(runtime, appid)? {
+    match sync::sync_dev_bundle(runtime, appid, std::time::Instant::now() + SYNC_DEADLINE)? {
         sync::DevBundleSync::Ready { root } => {
             lock(&UNPUBLISHED).remove(appid);
             if let Some(app) = lxapp::try_get(appid) {

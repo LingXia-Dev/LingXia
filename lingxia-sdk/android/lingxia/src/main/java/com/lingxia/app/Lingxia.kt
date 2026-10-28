@@ -128,8 +128,20 @@ object Lingxia {
                 }
             }
             SplashOverlay.markLaunchFace(activity)
-            initializeRuntime(activity)
-            openHomeFrom(activity)
+            // A dev session's bundle comes over the network; fetch it off the main
+            // thread so the cover keeps drawing and input is never held.
+            val ctx = activity.applicationContext
+            Thread({
+                try {
+                    NativeApi.prepareDevBundles(ctx.filesDir.absolutePath, ctx.cacheDir.absolutePath, ctx.assets, ctx, getSystemLocale())
+                } catch (error: Throwable) {
+                    Log.w(TAG, "Dev bundle prefetch failed; init pulls it", error)
+                }
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    initializeRuntime(activity)
+                    openHomeFrom(activity)
+                }
+            }, "lingxia-dev-bundles").start()
         }, 32L)
     }
 
