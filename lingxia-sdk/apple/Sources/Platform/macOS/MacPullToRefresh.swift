@@ -652,9 +652,10 @@ final class MacPullToRefreshController {
 }
 
 /// Test automation reads the indicator by symbol lookup, so builds without
-/// this SDK still link. Main thread only; false when the page has no indicator.
+/// this SDK still link. Public, so a release build keeps it exported with nothing
+/// calling it. Main thread only; false when the page has no indicator.
 @_cdecl("lx_mac_pull_refresh_state")
-func lxMacPullRefreshState(
+public func lxMacPullRefreshState(
     _ appId: UnsafePointer<CChar>, _ webtag: UnsafePointer<CChar>,
     _ phase: UnsafeMutablePointer<CChar>, _ phaseCapacity: Int,
     _ offset: UnsafeMutablePointer<Double>
