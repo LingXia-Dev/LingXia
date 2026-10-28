@@ -41,7 +41,9 @@ esac
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 short=$(git -C "$repo" rev-parse --short "$rev")
 out="$evidence/$short"
-export_dir="$evidence/export-$short-$platform"
+# Exports live beside other agents' as build-src/<rev>-<owner>; each round
+# removes only its own.
+export_dir="${LINGXIA_EXPORT_ROOT:-$HOME/.cache/lingxia-gpu-evidence/build-src}/$short-${LINGXIA_EXPORT_OWNER:-readiness}"
 mkdir -p "$out"
 export LINGXIA_RUNNER_INSTANCE="${LINGXIA_RUNNER_INSTANCE:-readiness}"
 
@@ -53,7 +55,7 @@ git -C "$repo" archive "$short" | tar -x -C "$export_dir"
 for sibling in "$(dirname "$repo")"/*; do
   name=$(basename "$sibling")
   if grep -q "\.\./$name\"" "$repo/Cargo.toml" "$repo"/examples/*/native/Cargo.toml 2>/dev/null; then
-    ln -sfn "$sibling" "$evidence/$name"
+    ln -sfn "$sibling" "$(dirname "$export_dir")/$name"
   fi
 done
 
