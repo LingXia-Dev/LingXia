@@ -1,3 +1,4 @@
+import { tabIndex, tabLabel } from '../helpers/tabs.js';
 import type { TestApp, TestView } from '@lingxia/test';
 import { expect, spec } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
@@ -127,9 +128,8 @@ spec('tab labels and titles declared per language follow the display language', 
   // lxapp.json declares every tab's text and every page's navigationBar.title
   // as a language map ({ "en-US": …, "zh-CN": … }); no Logic rewrites them,
   // so what the host shows here is the declaration resolved for the language.
-  // Found by its label, not a fixed index: the GPU mirror has no Components tab.
-  const todoIndex = (await app.info()).tabBar?.items.find((item) => item.text === 'ToDo' || item.text === '待办')?.index;
-  const todoLabel = async () => (await app.info()).tabBar?.items.find((item) => item.index === todoIndex)?.text ?? null;
+  const todoIndex = await tabIndex(app, ['ToDo', '待办']);
+  const todoLabel = () => tabLabel(app, todoIndex);
   const title = async () => (await app.info()).navigationBar?.title ?? null;
 
   await openLeaveGuard(app);
