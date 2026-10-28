@@ -1,3 +1,4 @@
+import { keyedElement } from '../helpers/keyed.js';
 import { expect, spec } from '@lingxia/test';
 import type { PageContract } from '@lingxia/types/page';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
@@ -30,7 +31,8 @@ for (const mode of ['auth', 'mqtt', 'functions'] as const) {
       await expect(page.view.testId('cloud-unsubscribe')).toHaveText('Unsubscribe');
     } else {
       for (const name of ['echo', 'whoami', 'fail']) {
-        await expect(page.view.css(`[data-testid="cloud-function"][data-function="${name}"]`)).toHaveText(`Call ${name}`);
+        await expect(keyedElement(page.view, 'cloud-function', name,
+          page.view.css(`[data-testid="cloud-function"][data-function="${name}"]`))).toHaveText(`Call ${name}`);
       }
     }
   });

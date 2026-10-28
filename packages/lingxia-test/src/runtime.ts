@@ -130,6 +130,24 @@ function trackPublicSurface(): void {
   trackSurface = true;
 }
 
+/** File skips a suite declares for this run, by source name: `{ file: reason }`. */
+const fileSkips = new Map<string, string>();
+
+/**
+ * Skip every spec of the named files, with the reason, in this run: for a
+ * suite shared by several apps, the files one of them cannot run. Names are
+ * source names as reports print them (`../other/lxapp/tests/pages/x.test.ts`).
+ * A name that registers no spec fails the run, so the list cannot go stale.
+ */
+function skipSpecFiles(skips: Record<string, string>): void {
+  for (const [file, reason] of Object.entries(skips)) {
+    if (typeof reason !== "string" || reason.trim().length === 0) {
+      throw new TypeError(`skipSpecFiles: ${file} needs a reason`);
+    }
+    fileSkips.set(file.split("\\").join("/"), reason.trim());
+  }
+}
+
 function parseArgs(
   optionsOrBody: SpecOptions | SpecBody,
   maybeBody?: SpecBody,
@@ -241,9 +259,8 @@ function unmetRequirements(
     needs.push(missing.map((key) => `--arg ${key}=<value>`).join(", ") + " (or --secret-arg)");
   }
   if (item.requires.openapi && !openapi) needs.push("--openapi <document>");
-  const absent = item.requires.input.filter((kind) => !inputs.includes(kind));
-  if (absent.length > 0) {
-    needs.push(`${absent.join(" and ")} input (this host has ${inputs.length > 0 ? inputs.join(", ") : "no gesture input"})`);
+  if (item.requires.input.length > 0 && !item.requires.input.some((kind) => inputs.includes(kind))) {
+    needs.push(`${item.requires.input.join(" or ")} input (this host has ${inputs.length > 0 ? inputs.join(", ") : "no gesture input"})`);
   }
   return needs.length === 0 ? undefined : `Not run: requires ${needs.join(" and ")}.`;
 }
@@ -669,6 +686,15 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     fileOptions.set(file, mergeFileOptions(fileOptions.get(file), config.options));
   }
   for (const item of specs) settle(item, fileOptions.get(sourceOf(item).file));
+  for (const [file, reason] of fileSkips) {
+    if (!specFiles.has(file)) throw new Error(`skipSpecFiles names ${file}, which registered no spec`);
+    for (const item of specs) {
+      if (sourceOf(item).file === file && item.skip === undefined) {
+        item.skip = reason;
+        item.reason = reason;
+      }
+    }
+  }
   const tagsOf = (item: RegisteredSpec) => item.tags;
 
   const retries = Number(control.retries ?? 0);
@@ -1310,6 +1336,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
       };
     }
     if (fixture.observed.size > 0) record.observed = [...fixture.observed].sort();
+    if (fixture.renderers.size > 0) record.renderers = [...fixture.renderers].sort();
     if (fixture.gestures.length > 0) {
       record.gestures = fixture.gestures.map(({ api, input, delivered, events, durationMs }) =>
         ({ api, input, delivered, events, duration_ms: Math.round(durationMs) }));
@@ -1822,6 +1849,7 @@ function reset(): void {
   afterHooks.length = 0;
   resetHooks.length = 0;
   trackSurface = false;
+  fileSkips.clear();
   forceRelaunchNext = false;
   uninstallPendingTracker();
   unfenceGlobalAutomation();
@@ -1847,7 +1875,7 @@ if (!globalThis.__LINGXIA_TEST__) {
   });
 }
 
-export { spec, expect, run, list, reset, resolvedId, trackPublicSurface };
+export { spec, expect, run, list, reset, resolvedId, trackPublicSurface, skipSpecFiles };
 export type { SpecOptions, SpecBody, Fixture };
 
 /** Bound on the capture driver calls a contract check makes. */

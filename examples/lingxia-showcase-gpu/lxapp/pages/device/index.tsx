@@ -41,7 +41,7 @@ export function render({ data, actions }: View) {
           }
         >
           {!!data.deviceInfo && (
-            <InfoList testId="device-info">
+            <InfoList testId="device-info-result">
               <InfoRow label="Brand" value={info.brand} />
               <InfoRow label="Market name" value={info.marketName || info.model} />
               <InfoRow label="Model" value={info.model} testId="device-info-model" />
@@ -62,7 +62,7 @@ export function render({ data, actions }: View) {
           }
         >
           {!!data.screenInfo && (
-            <InfoList testId="device-screen">
+            <InfoList testId="device-screen-result">
               <InfoRow label="Width" value={number(screen.width, 'px')} testId="device-screen-width" />
               <InfoRow label="Height" value={number(screen.height, 'px')} />
               <InfoRow label="Scale" value={number(screen.scale)} testId="device-screen-scale" />
@@ -80,7 +80,7 @@ export function render({ data, actions }: View) {
             </Button>
           }
         >
-          <InfoList testId="device-network">
+          <InfoList testId="device-network-result">
             <InfoRow label="Connected" value={yesNo(network.isConnected)} />
             <InfoRow label="Network type" value={network.networkType} testId="device-network-type" />
           </InfoList>
@@ -96,7 +96,7 @@ export function render({ data, actions }: View) {
             </Button>
           }
         >
-          <InfoList testId="device-network">
+          <InfoList testId="device-network-result">
             <InfoRow label="IPv4" value={network.ipv4} testId="device-ipv4" />
             <InfoRow label="IPv6" value={network.ipv6} testId="device-ipv6" />
           </InfoList>

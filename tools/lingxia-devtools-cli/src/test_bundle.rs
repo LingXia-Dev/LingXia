@@ -1333,15 +1333,54 @@ pub(crate) fn source_name(path: &Path, root: &Path) -> String {
     }
 }
 
+/// A file outside the root (a spec another project shares) is named with
+/// `../` from the root, so reports stay the same on every machine.
 fn relative_display(path: &Path, root: &Path) -> String {
-    path.strip_prefix(root)
-        .map(|relative| relative.display().to_string())
-        .unwrap_or_else(|_| path.display().to_string())
+    if let Ok(relative) = path.strip_prefix(root) {
+        return relative.display().to_string();
+    }
+    if !(path.is_absolute() && root.is_absolute()) {
+        return path.display().to_string();
+    }
+    let path: Vec<_> = path.components().collect();
+    let root: Vec<_> = root.components().collect();
+    let common = path.iter().zip(&root).take_while(|(a, b)| a == b).count();
+    // Only the filesystem root in common: not one tree, keep it absolute.
+    if common <= 1 {
+        return path.iter().collect::<PathBuf>().display().to_string();
+    }
+    let mut relative = PathBuf::new();
+    for _ in common..root.len() {
+        relative.push("..");
+    }
+    relative.extend(&path[common..]);
+    relative.display().to_string()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn a_file_outside_the_root_is_named_from_the_root() {
+        let root = Path::new("/w/examples/gpu/lxapp");
+        assert_eq!(
+            source_name(Path::new("/w/examples/gpu/lxapp/tests/a.test.ts"), root),
+            "tests/a.test.ts"
+        );
+        assert_eq!(
+            source_name(
+                Path::new("/w/examples/react/lxapp/tests/pages/b.test.ts"),
+                root
+            ),
+            "../../react/lxapp/tests/pages/b.test.ts"
+        );
+        assert_eq!(
+            source_name(Path::new("/other/c.test.ts"), root),
+            "/other/c.test.ts"
+        );
+    }
 
     fn bundle_dir(dir: &Path) -> Result<TestBundle> {
         bundle_test_files(

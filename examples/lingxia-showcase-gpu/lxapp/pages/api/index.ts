@@ -43,8 +43,8 @@ Page({
     await lx.navigateTo({ page: 'file', query: { section } });
   },
   async openStream() { await lx.navigateTo({ page: 'stream' }); },
-  async openRefresh() { await lx.navigateTo({ page: 'pulltorefresh' }); },
-  async openLeaveGuard() { await lx.navigateTo({ page: 'leaveguard' }); },
+  async openRefresh() { await lx.navigateTo({ page: 'pullToRefresh' }); },
+  async openLeaveGuard() { await lx.navigateTo({ page: 'leaveGuard' }); },
   async openFeedback() { await openFeedback(); },
   async openCloud({ type = 'auth' }: { type?: string } = {}) {
     await lx.navigateTo({ page: 'cloud', query: { type } });

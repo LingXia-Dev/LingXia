@@ -195,6 +195,8 @@ export interface CaseRecord {
   network_calls?: FailureNetworkCall[];
   /** The action trace hit its bounded record limit. */
   trace_truncated?: boolean;
+  /** Page renderers the spec's locators read (`gpu`, `webview`); absent when it read no page. */
+  renderers?: string[];
   /** Gestures injected, with the path each was delivered through. */
   gestures?: { api: string; input: string; delivered: "window" | "view"; events: number; duration_ms: number }[];
   steps: StepRecord[];

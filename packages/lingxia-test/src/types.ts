@@ -131,7 +131,7 @@ export interface SpecRequirements {
   args?: readonly string[];
   /** The run must check an OpenAPI contract (`lxdev test --openapi`). */
   openapi?: boolean;
-  /** Gesture devices the host must imitate; skipped (with the reason) where it cannot. */
+  /** Gesture devices of which the host must imitate at least one; skipped (with the reason) where it has none. */
   input?: readonly GestureInput[];
 }
 

@@ -108,6 +108,16 @@ test("requires.input skips with the reason where the host cannot imitate the dev
   assert.equal(report.cases[0].reason, "Not run: requires touch input (this host has mouse, trackpad).");
 });
 
+test("requires.input runs where the host has any of the devices", async () => {
+  const world = createWorld();
+  world.gestureHost.inputs = ["mouse", "trackpad"];
+  let ran = false;
+  spec("touch or trackpad", { requires: { input: ["touch", "trackpad"] } }, async () => { ran = true; });
+  installFakeHost(world);
+  await run();
+  assert.equal(ran, true);
+});
+
 test("requires.input rejects an unknown device", () => {
   assert.throws(() => spec("bad", { requires: { input: ["pen"] } }, async () => {}), /requires.input/);
 });

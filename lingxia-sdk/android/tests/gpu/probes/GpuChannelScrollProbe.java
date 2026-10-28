@@ -35,7 +35,7 @@ public class GpuChannelScrollProbe {
     swipe(strip.right-(int)(15*density),strip.top+(int)(15*density),strip.left+(int)(15*density),strip.top+(int)(15*density));
     check(GpuThemeProbe.bounds("channel-symbol-GOOGL").left<middle.left-10*density,"horizontal drag reveals trailing tabs");
     check(Math.abs(GpuThemeProbe.bounds("channel-price").top-price.top)<2,"horizontal gesture does not move page");
-    GpuTodoProbe.touch("channel-symbol-TSLA");GpuChannelProbe.waitText("channel-active-symbol","TSLA");GpuChannelProbe.price();
+    GpuTodoProbe.touch("channel-symbol-TSLA");GpuChannelProbe.waitText("channel-active","TSLA");GpuChannelProbe.price();
     GpuRadioProbe.screenshot(dark?"gpu-channel-scroll-dark":"gpu-channel-scroll-light");
     scroll("channel-symbols",AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD);
     check(Math.abs(GpuThemeProbe.bounds("channel-symbol-AAPL").left-strip.left)<2,"accessible backward restores horizontal origin");

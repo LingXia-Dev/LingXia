@@ -23,7 +23,7 @@ function TodoRow({ todo, blocked, onToggle, onDelete }: { todo: Todo; blocked: b
       >
         <row className="items-center gap-3.5">
           <Icon name={todo.completed ? 'success' : 'note'} className={todo.completed ? 'w-6 h-6 text-accent' : 'w-6 h-6 text-faint'} />
-          <text className={todo.completed ? 'grow basis-0 min-w-0 text-base line-through text-muted' : 'grow basis-0 min-w-0 text-base'}>
+          <text testId={`todo-label-${todo.id}`} className={todo.completed ? 'grow basis-0 min-w-0 text-base line-through text-muted' : 'grow basis-0 min-w-0 text-base'}>
             {todo.text}
           </text>
         </row>

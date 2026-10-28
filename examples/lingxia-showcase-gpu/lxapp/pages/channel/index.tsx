@@ -68,7 +68,7 @@ export function render({ actions }: View<Actions>) {
         </row>
       </scroll>
       <Card className="p-6 gap-1">
-        <text testId="channel-active-symbol" className="text-xs font-medium tracking-wider text-muted">
+        <text testId="channel-active" className="text-xs font-medium tracking-wider text-muted">
           {symbol.value || '---'}
         </text>
         <row className="items-baseline gap-3">

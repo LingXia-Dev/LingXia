@@ -70,6 +70,7 @@ Iterate with `--changed` or a file path; run everything at handoff and in CI.
   return of the app to its own data) keeps each case's verdict but exits 1
   and is listed as a run error in every report.
 - A failed spec prints a `Rerun:` line.
+- Each case is tagged with the page renderers its locators read (`[gpu]`, `[webview]`; `renderers` in `report.json`), and the run prints a `renderers:` count.
 - `--changed` picks specs that import a changed file or name its page
   (`'home'`); it prints why. A page reached only by tapping is missed: name it.
 - `lxdev test list` with a session loads the spec modules in the app (their
@@ -114,6 +115,7 @@ Iterate with `--changed` or a file path; run everything at handoff and in CI.
 | Cleanup | `t.defer(fn)` (LIFO, always runs); `spec.afterEach` |
 | Restore state before each attempt | `spec.reset(async (t) => { ... })` (required by `--retries`) |
 | Skip | `spec.skip`, `spec.fixme`; on a condition `{ skip: cond ? 'why' : undefined }` (whole file: `spec.configure({ skip })`); found mid-spec `t.skip(reason)`; without an input `{ requires: { args: ['PASSWORD'], openapi: true } }` |
+| Run another lxapp's specs | import its spec files from your entry; skip the ones this app cannot run with `skipSpecFiles({ '../other/lxapp/tests/x.test.ts': 'why' })` from `@lingxia/test/runner` (names as reports print them) |
 | Expect a failure | `spec.fail(title, { expected: { code, message } }, body)` |
 | Group trace, add evidence | `t.step(name, fn)` (await one at a time; nest through the callback's `step`), `t.attach(name, data)` |
 | Another running lxapp | `t.automation.lxapp(appId)` |
@@ -163,8 +165,8 @@ spec('pulling the list refreshes it once', { start: { page: 'feed' } }, async (t
   `{ input, delivered, events, durationMs }`; `delivered: 'view'` means the
   host fell back past its input dispatcher, and `report.json` lists every
   gesture's `delivered`.
-- `requires: { input: ['touch'] }` (or `'mouse'`, `'trackpad'`) skips the
-  spec, with the reason, on a host without that device.
+- `requires: { input: ['touch', 'trackpad'] }` skips the spec, with the
+  reason, on a host that has none of those devices.
 
 ## Pages
 

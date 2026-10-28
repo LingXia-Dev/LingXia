@@ -23,8 +23,8 @@ public final class GpuCloudProbe {
    expect("cloud-current-tenant","No active tenant");expect("cloud-identities-empty","No saved identities");
    GpuRadioProbe.screenshot("gpu-independent-cloud-auth");GpuChromeProbe.back();
    click("api-cloud-mqtt");expect("cloud-mqtt-status",MISSING);expect("cloud-mqtt-active","Inactive");
-   click("cloud-mqtt-start");expect("cloud-mqtt-status",MISSING);
-   click("cloud-mqtt-stop");expect("cloud-mqtt-status","Demo subscription is inactive");
+   click("cloud-subscribe");expect("cloud-mqtt-status",MISSING);
+   click("cloud-unsubscribe");expect("cloud-mqtt-status","Demo subscription is inactive");
    expect("cloud-mqtt-count","0");GpuChromeProbe.back();
    click("api-cloud-functions");expect("cloud-auth-status",MISSING);
    for(String name:new String[]{"echo","whoami","fail"}){

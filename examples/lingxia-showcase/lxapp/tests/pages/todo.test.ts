@@ -1,3 +1,4 @@
+import { keyedElement } from '../helpers/keyed.js';
 import { spec, type TestApp, expect } from '@lingxia/test';
 import type { Todo } from '../../shared/lib/todo-utils.js';
 import type { TodoPage } from '../../pages/todo/contract.js';
@@ -51,11 +52,10 @@ spec("persist todo edits made through the rendered page", { id: "TODO-001", cove
     await expect(input).toHaveAttribute('data-controlled-value', text);
     await input.press('Enter');
 
-    const label = view.testId('todo-label').filter({ hasText: text });
+    const added = await t.waitFor(async () => (await todo.data()).todos.find((item) => item.text === text));
+    const label = keyedElement(view, 'todo-label', added!.id, view.testId('todo-label').filter({ hasText: text }));
     await expect(label).toBeVisible();
     await expect.poll(() => storedTodo(app, text), { timeout: 30_000 }).toEqual({ completed: false });
-    const { todos } = await todo.data();
-    expect(todos.some((item) => item.text === text)).toBe(true);
 
     await label.click();
     await expect.poll(() => storedTodo(app, text), { timeout: 30_000 }).toEqual({ completed: true });
@@ -75,11 +75,9 @@ spec("persist todo edits made through the rendered page", { id: "TODO-001", cove
       base64: screenshot.base64,
     });
 
-    // The delete button sits beside the label: find the row by its text.
-    const row = await view.eval(({ document }, wanted) =>
-      Array.from(document.querySelectorAll('[data-testid="todo-label"]'))
-        .findIndex((element) => element.textContent?.trim() === wanted), text);
-    await view.testId('todo-delete').nth(row).click();
+    // Rows render in data order; the delete button sits beside the label.
+    const row = (await todo.data()).todos.findIndex((item) => item.id === added!.id);
+    await keyedElement(view, 'todo-delete', added!.id, view.testId('todo-delete').nth(row)).click();
     await expect(label).toHaveCount(0);
     await expect.poll(() => storedTodo(app, text), { timeout: 30_000 }).toBe(null);
   } catch (error) {
@@ -109,12 +107,11 @@ spec("add and delete a todo through the page's Logic methods", { id: "TODO-002",
   });
 
   await todo.actions.addTodo({ text });
-  const label = todo.view.testId('todo-label').filter({ hasText: text });
-  await expect(label).toBeVisible();
-
   // The action resolved after Logic settled it, so `data()` already holds the todo.
   const { todos } = await todo.data();
   const id = todos.find((item) => item.text === text)!.id;
+  const label = keyedElement(todo.view, 'todo-label', id, todo.view.testId('todo-label').filter({ hasText: text }));
+  await expect(label).toBeVisible();
   await todo.actions.deleteTodo({ id });
   await expect(label).toHaveCount(0);
   await expect.poll(() => storedTodo(app, text), { timeout: 30_000 }).toBe(null);

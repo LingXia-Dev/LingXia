@@ -29,7 +29,7 @@
       "path": "pages/feedback/index"
     },
     {
-      "name": "leaveguard",
+      "name": "leaveGuard",
       "path": "pages/leaveguard/index"
     },
     {
@@ -81,7 +81,7 @@
       "path": "pages/ui/index"
     },
     {
-      "name": "pulltorefresh",
+      "name": "pullToRefresh",
       "path": "pages/pulltorefresh/index"
     },
     {

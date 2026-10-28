@@ -24,9 +24,9 @@ public final class GpuCloudMqttProbe {
    GpuChromeProbe.tab("API");GpuApiProbe.click("api-cloud-mqtt");GpuUiProbe.waitText("cloud-mqtt-active","Active");
    GpuUiProbe.check(subscriptionCount()==1,"broker subscription present");
    publish(3);GpuUiProbe.waitText("cloud-mqtt-count","3");GpuUiProbe.waitText("cloud-mqtt-last-topic","lingxia/tenant/tenant-a/demo/mqtt");GpuUiProbe.contains("cloud-mqtt-payload","GPU verified message");
-   GpuApiProbe.click("cloud-mqtt-stop");GpuUiProbe.waitText("cloud-mqtt-active","Inactive");publish(1);Thread.sleep(500);GpuUiProbe.waitText("cloud-mqtt-count","3");
+   GpuApiProbe.click("cloud-unsubscribe");GpuUiProbe.waitText("cloud-mqtt-active","Inactive");publish(1);Thread.sleep(500);GpuUiProbe.waitText("cloud-mqtt-count","3");
    GpuUiProbe.check(subscriptionCount()==0,"broker unsubscribe");
-   GpuApiProbe.click("cloud-mqtt-start");GpuUiProbe.waitText("cloud-mqtt-active","Active");publish(1);GpuUiProbe.waitText("cloud-mqtt-count","4");GpuRadioProbe.screenshot("gpu-cloud-provider-mqtt");
+   GpuApiProbe.click("cloud-subscribe");GpuUiProbe.waitText("cloud-mqtt-active","Active");publish(1);GpuUiProbe.waitText("cloud-mqtt-count","4");GpuRadioProbe.screenshot("gpu-cloud-provider-mqtt");
    GpuChromeProbe.back();Thread.sleep(500);GpuUiProbe.check(subscriptionCount()==0,"leave cleanup");GpuChromeProbe.back();
    System.out.println("PASS real MQTT subscribe/messages, unsubscribe silence, restart and broker-side leave cleanup");
   }finally{UiAutomation.class.getMethod("disconnect").invoke(a);t.quitSafely();}

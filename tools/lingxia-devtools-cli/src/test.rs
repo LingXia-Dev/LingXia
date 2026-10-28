@@ -17,7 +17,7 @@ use owo_colors::OwoColorize;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::json;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -2486,14 +2486,11 @@ fn poll_until_terminal(
                                 .as_ref()
                                 .and_then(|r| r["reason"].as_str())
                                 .filter(|_| *status == TestCaseStatus::Skipped);
-                            print_case_finished(
-                                name,
-                                full_name,
-                                *status,
-                                *duration_ms,
-                                None,
-                                reason,
+                            let tagged = format!(
+                                "{full_name}{}",
+                                renderer_tag(record.as_ref().unwrap_or(&serde_json::Value::Null))
                             );
+                            print_case_finished(name, &tagged, *status, *duration_ms, None, reason);
                         }
                     }
                 }
@@ -2727,6 +2724,14 @@ fn report(
             framework_report.total,
             framework_report.duration_ms as f64 / 1000.0
         );
+        if let Some(line) = renderer_summary(framework_report.cases.iter().map(|c| {
+            (
+                c.status == TestCaseStatus::Skipped,
+                c.detail.get("renderers"),
+            )
+        })) {
+            eprintln!("{line}");
+        }
         let flaky = framework_report
             .cases
             .iter()
@@ -3232,6 +3237,53 @@ fn print_error_causes(causes: &[TestRunError], bundle: &TestBundle, depth: usize
         }
         print_error_causes(&cause.causes, bundle, depth + 1);
     }
+}
+
+/// ` [gpu]` / ` [webview]`: the page renderers a case's locators read.
+fn renderer_tag(record: &serde_json::Value) -> String {
+    match record["renderers"].as_array() {
+        Some(renderers) if !renderers.is_empty() => {
+            let names: Vec<&str> = renderers
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .collect();
+            format!(" [{}]", names.join("+"))
+        }
+        _ => String::new(),
+    }
+}
+
+/// `renderers: gpu 18 · webview 2 · no page 3` over the cases that ran, or
+/// `None` when no case read a page.
+fn renderer_summary<'a>(
+    cases: impl Iterator<Item = (bool, Option<&'a serde_json::Value>)>,
+) -> Option<String> {
+    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+    let mut none = 0;
+    for (skipped, renderers) in cases {
+        if skipped {
+            continue;
+        }
+        match renderers.and_then(serde_json::Value::as_array) {
+            Some(renderers) if !renderers.is_empty() => {
+                for name in renderers.iter().filter_map(serde_json::Value::as_str) {
+                    *counts.entry(name.to_string()).or_default() += 1;
+                }
+            }
+            _ => none += 1,
+        }
+    }
+    if counts.is_empty() {
+        return None;
+    }
+    let mut parts: Vec<String> = counts
+        .iter()
+        .map(|(name, n)| format!("{name} {n}"))
+        .collect();
+    if none > 0 {
+        parts.push(format!("no page {none}"));
+    }
+    Some(format!("renderers: {}", parts.join(" · ")))
 }
 
 fn print_case_finished(
@@ -5335,5 +5387,33 @@ mod legacy_report_tests {
             Some("mock: a: none (mocks/config.json) · b: none (default)")
         );
         assert_eq!(super::run_mock_text(&json!({ "apps": [] })), None);
+    }
+}
+
+#[cfg(test)]
+mod renderer_tests {
+    use super::{renderer_summary, renderer_tag};
+    use serde_json::json;
+
+    #[test]
+    fn cases_name_the_renderers_they_read() {
+        assert_eq!(renderer_tag(&json!({ "renderers": ["gpu"] })), " [gpu]");
+        assert_eq!(renderer_tag(&json!({})), "");
+        let gpu = json!(["gpu"]);
+        let both = json!(["gpu", "webview"]);
+        let summary = renderer_summary(
+            [
+                (false, Some(&gpu)),
+                (false, Some(&both)),
+                (false, None),
+                (true, Some(&gpu)),
+            ]
+            .into_iter(),
+        );
+        assert_eq!(
+            summary.as_deref(),
+            Some("renderers: gpu 2 · webview 1 · no page 1")
+        );
+        assert_eq!(renderer_summary([(false, None)].into_iter()), None);
     }
 }

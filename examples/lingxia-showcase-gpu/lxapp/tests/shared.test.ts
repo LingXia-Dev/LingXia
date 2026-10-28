@@ -1,0 +1,27 @@
+// The React showcase's page and flow specs on GPU pages; skips are in shared-specs.json.
+import './shared-setup.js';
+import '../../../lingxia-showcase/lxapp/tests/flows/browser-control-navigation.test.js';
+import '../../../lingxia-showcase/lxapp/tests/pages/bridge-repro.test.js';
+import '../../../lingxia-showcase/lxapp/tests/pages/bridge.test.js';
+import '../../../lingxia-showcase/lxapp/tests/pages/channel.test.js';
+import '../../../lingxia-showcase/lxapp/tests/pages/chrome.test.js';
+import '../../../lingxia-showcase/lxapp/tests/pages/clipboard.test.js';
+import '../../../lingxia-showcase/lxapp/tests/pages/cloud.test.js';
+import '../../../lingxia-showcase/lxapp/tests/pages/components.test.js';
+import '../../../lingxia-showcase/lxapp/tests/pages/device.test.js';
+import '../../../lingxia-showcase/lxapp/tests/pages/home.test.js';
+import '../../../lingxia-showcase/lxapp/tests/pages/leave-guard.test.js';
+import '../../../lingxia-showcase/lxapp/tests/pages/lifecycle.test.js';
+import '../../../lingxia-showcase/lxapp/tests/pages/media-info.test.js';
+import '../../../lingxia-showcase/lxapp/tests/pages/native-components.test.js';
+import '../../../lingxia-showcase/lxapp/tests/pages/navigator.test.js';
+import '../../../lingxia-showcase/lxapp/tests/pages/page-globals.test.js';
+import '../../../lingxia-showcase/lxapp/tests/pages/preview-https.test.js';
+import '../../../lingxia-showcase/lxapp/tests/pages/pull-to-refresh.test.js';
+import '../../../lingxia-showcase/lxapp/tests/pages/render.test.js';
+import '../../../lingxia-showcase/lxapp/tests/pages/stream.test.js';
+import '../../../lingxia-showcase/lxapp/tests/pages/surface-port.test.js';
+import '../../../lingxia-showcase/lxapp/tests/pages/system.test.js';
+import '../../../lingxia-showcase/lxapp/tests/pages/todo.test.js';
+import '../../../lingxia-showcase/lxapp/tests/pages/ui.test.js';
+import '../../../lingxia-showcase/lxapp/tests/pages/video-playback.test.js';

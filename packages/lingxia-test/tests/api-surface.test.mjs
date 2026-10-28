@@ -290,7 +290,7 @@ test("each entry exports only its own job", async () => {
   const runner = await import("@lingxia/test/runner");
   assert.deepEqual(Object.keys(runner).sort(), [
     "DEFAULT_ACTION_TIMEOUT_MS", "DEFAULT_SPEC_TIMEOUT_MS", "PACKAGE_NAME", "PUBLIC_CAPABILITIES", "VERSION",
-    "list", "rawAutomation", "renderJUnit", "reset", "run", "trackPublicSurface",
+    "list", "rawAutomation", "renderJUnit", "reset", "run", "skipSpecFiles", "trackPublicSurface",
   ]);
   assert.deepEqual(Object.keys(await import("@lingxia/test/report")), []);
 });

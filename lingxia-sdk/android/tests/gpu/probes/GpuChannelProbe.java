@@ -45,19 +45,19 @@ public class GpuChannelProbe {
   UiAutomation a=(UiAutomation)UiAutomation.class.getConstructor(Looper.class,Class.forName("android.app.IUiAutomationConnection")).newInstance(t.getLooper(),c);GpuRadioProbe.automation=a;GpuApiProbe.a=a;
   try{UiAutomation.class.getMethod("connect").invoke(a);android.accessibilityservice.AccessibilityServiceInfo i=a.getServiceInfo();i.flags|=android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;a.setServiceInfo(i);Thread.sleep(800);
    for(boolean dark:new boolean[]{false,true}) {
-   GpuChromeProbe.tab("Home");click(dark?"home-appearance-dark":"home-appearance-light");waitText("home-appearance-resolved",dark?"Dark":"Light");GpuChromeProbe.tab("API");click("api-channel");waitText("channel-status","Connected");waitText("channel-active-symbol","AAPL");price();
-   click("channel-symbol-MSFT");waitText("channel-active-symbol","MSFT");waitText("channel-active-symbol","MSFT");price();tabs();GpuRadioProbe.screenshot(dark?"gpu-channel-layout-dark":"gpu-channel-layout-light");
+   GpuChromeProbe.tab("Home");click(dark?"home-appearance-dark":"home-appearance-light");waitText("home-appearance-resolved",dark?"Dark":"Light");GpuChromeProbe.tab("API");click("api-channel");waitText("channel-status","Connected");waitText("channel-active","AAPL");price();
+   click("channel-symbol-MSFT");waitText("channel-active","MSFT");waitText("channel-active","MSFT");price();tabs();GpuRadioProbe.screenshot(dark?"gpu-channel-layout-dark":"gpu-channel-layout-light");
    GpuGridProbe.settings("put","system","accelerometer_rotation","0");GpuGridProbe.settings("put","system","user_rotation","1");Thread.sleep(1200);
    android.graphics.Bitmap landscape=a.takeScreenshot();check(landscape.getWidth()>landscape.getHeight(),"actual channel landscape");landscape.recycle();
-   waitText("channel-status","Connected");waitText("channel-active-symbol","MSFT");price();GpuRadioProbe.screenshot("gpu-independent-channel-landscape");
+   waitText("channel-status","Connected");waitText("channel-active","MSFT");price();GpuRadioProbe.screenshot("gpu-independent-channel-landscape");
    GpuGridProbe.settings("put","system","user_rotation",rotation);GpuGridProbe.settings("put","system","accelerometer_rotation",auto);Thread.sleep(1000);
-   waitText("channel-active-symbol","MSFT");
+   waitText("channel-active","MSFT");
    historyFilled();GpuTodoProbe.touch("channel-disconnect");waitText("channel-status","Disconnected");waitText("channel-status","Disconnected");
    String last=text("channel-price");Thread.sleep(400);int idleFrames=frames();Thread.sleep(1900);check(last.equals(text("channel-price")),"closed channel stops delivery");
    check(frames()==idleFrames,"disconnected channel does not create an idle frame loop");
    AccessibilityNodeInfo n=GpuApiProbe.node("channel-symbol-TSLA");check(!n.isEnabled(),"disconnected subscription disabled");n.recycle();
-   click("channel-reconnect");waitText("channel-status","Connected");waitText("channel-active-symbol","AAPL");click("channel-symbol-TSLA");waitText("channel-active-symbol","TSLA");price();
-   GpuChromeProbe.back();click("api-channel");waitText("channel-status","Connected");waitText("channel-active-symbol","AAPL");price();click("channel-disconnect");waitText("channel-status","Disconnected");GpuChromeProbe.back();
+   click("channel-reconnect");waitText("channel-status","Connected");waitText("channel-active","AAPL");click("channel-symbol-TSLA");waitText("channel-active","TSLA");price();
+   GpuChromeProbe.back();click("api-channel");waitText("channel-status","Connected");waitText("channel-active","AAPL");price();click("channel-disconnect");waitText("channel-status","Disconnected");GpuChromeProbe.back();
    }
    GpuChromeProbe.tab("Home");click("home-appearance-light");waitText("home-appearance-resolved","Light");
    System.out.println("PASS automatic channel connection, ack/init/ticks, subscription across rotation, close delivery and idle-frame stop, reconnect and page teardown");

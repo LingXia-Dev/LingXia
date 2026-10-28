@@ -4,7 +4,7 @@
  * tests import it. A suite rarely needs it: `rawAutomation()` for setup a
  * run needs before any spec, `trackPublicSurface` for a conformance suite.
  */
-export { run, list, reset, rawAutomation, trackPublicSurface } from "./runtime.js";
+export { run, list, reset, rawAutomation, trackPublicSurface, skipSpecFiles } from "./runtime.js";
 export { renderJUnit } from "./junit.js";
 export { PUBLIC_CAPABILITIES } from "./inventory.js";
 export type { Capability, CapabilityLayer } from "./inventory.js";

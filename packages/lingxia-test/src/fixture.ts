@@ -110,6 +110,8 @@ export class LiveFixture implements Fixture {
   readonly observed = new Set<string>();
   readonly assertions: AssertionRecord[] = [];
   readonly attachments: AttachmentRef[] = [];
+  /** Page renderers this spec's locators read. */
+  readonly renderers = new Set<string>();
   /** Gestures this spec injected, with the delivery path of each. */
   readonly gestures: GestureRecord[] = [];
   readonly defers: Array<() => void | Promise<void>> = [];
@@ -1296,7 +1298,7 @@ export class LiveFixture implements Fixture {
     };
     // Resolved on each call, like the rest of a fixture app.
     const lazyPage: PageLike = {
-      query: (options) => page().query(options) as Promise<QueryMatch>,
+      query: async (options) => this.noteRenderer(await page().query(options) as QueryMatch),
       click: (options) => page().click(options),
       fill: (options) => page().fill(options),
       press: (options) => page().press(options),
@@ -1350,6 +1352,12 @@ export class LiveFixture implements Fixture {
       touch: (at, options) => gestures.touch(at, options),
       refreshIndicator: () => gestures.refreshIndicator(),
     };
+  }
+
+  private noteRenderer(match: QueryMatch): QueryMatch {
+    const items = Array.isArray(match.items) ? match.items : match.exists ? [match] : [];
+    for (const item of items) this.renderers.add(item.renderer === "gpu" ? "gpu" : "webview");
+    return match;
   }
 
   private gestureScope(page: () => PageDriver, bound: string | undefined): GestureScope {

@@ -1,3 +1,4 @@
+import { keyedElement } from '../helpers/keyed.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { expect, spec } from '@lingxia/test';
 import { waitForElementText } from '../helpers/page.js';
@@ -16,7 +17,8 @@ spec('receives channel ticks, switches symbols, and reconnects', { app: SHOWCASE
   expect(await waitForText('[data-testid="channel-price"]', (text) => text.startsWith('$')))
     .toContain('$');
 
-  await channel.css('[data-testid="channel-symbol"][data-symbol="MSFT"]').click();
+  await keyedElement(channel, 'channel-symbol', 'MSFT',
+    channel.css('[data-testid="channel-symbol"][data-symbol="MSFT"]')).click();
   expect(await waitForText('[data-testid="channel-active"]', (text) => text === 'MSFT'))
     .toBe('MSFT');
   expect(await waitForText('[data-testid="channel-price"]', (text) => text.startsWith('$')))

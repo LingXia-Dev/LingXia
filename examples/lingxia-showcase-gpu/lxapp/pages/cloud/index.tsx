@@ -196,10 +196,10 @@ function Mqtt({ data, actions }: Pane) {
           {String(data.mqttStatus || 'Idle')}
         </text>
         <grid className="gap-3 grid-cols-2">
-          <Button testId="cloud-mqtt-start" disabled={active} onClick={() => actions.startMqttDemo()}>
+          <Button testId="cloud-subscribe" disabled={active} onClick={() => actions.startMqttDemo()}>
             Subscribe
           </Button>
-          <Button variant="destructive" testId="cloud-mqtt-stop" disabled={!active} onClick={() => actions.stopMqttDemo()}>
+          <Button variant="destructive" testId="cloud-unsubscribe" disabled={!active} onClick={() => actions.stopMqttDemo()}>
             Unsubscribe
           </Button>
         </grid>

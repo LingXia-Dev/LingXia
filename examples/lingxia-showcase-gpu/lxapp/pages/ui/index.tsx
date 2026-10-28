@@ -74,7 +74,7 @@ function Dialogs({ data, actions }: Pane) {
       confirmText: confirmText.value,
     });
   return (
-    <Page>
+    <Page testId="ui-page">
       <ChromeError data={data} />
       {type === 'toast' && (
         <Section title="Toast Parameters">
@@ -153,7 +153,7 @@ function Appearance({ data, actions }: Pane) {
   const appearance = data.appearance as { preference: string; resolved: string } | undefined;
   const preference = appearance?.preference || 'auto';
   return (
-    <Page>
+    <Page testId="ui-page">
       <ChromeError data={data} />
       <Section
         title="Light / Dark"
@@ -200,7 +200,7 @@ function Navbar({ data, actions }: Pane) {
     </Button>
   );
   return (
-    <Page>
+    <Page testId="ui-page">
       <ChromeError data={data} />
       <Section title="NavigationBar APIs">
         <Field testId="navbar-title-input" label="Title" bind={title} placeholder="Enter title" />
@@ -264,7 +264,7 @@ function Tabbar({ data, actions }: Pane) {
     </grid>
   );
   return (
-    <Page>
+    <Page testId="ui-page">
       <ChromeError data={data} />
       <Section title="Visibility Controls" description="Show or hide the TabBar and update item text">
         {pair(

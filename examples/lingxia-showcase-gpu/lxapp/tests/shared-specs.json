@@ -1,0 +1,18 @@
+{
+  "$comment": "The React showcase's page and flow specs, run here on GPU pages. Every file runs unless skipped with a reason; `node tests/shared-specs.check.mjs` keeps this, tests/shared.test.ts and the source in step.",
+  "source": "../../../lingxia-showcase/lxapp/tests",
+  "skip": {
+    "pages/bridge.test.ts": "drives the WebView page bridge (window.LingXiaBridge); a GPU page has none",
+    "pages/components.test.ts": "the GPU showcase has no components page",
+    "pages/native-components.test.ts": "WebView native components (video, map, input overlays) have no GPU page",
+    "pages/navigator.test.ts": "the GPU showcase has no navigator page",
+    "pages/video-playback.test.ts": "the GPU showcase has no video page"
+  },
+  "keyed": {
+    "channel-symbol": "one button per symbol: channel-symbol-<symbol>",
+    "cloud-function": "one button per function: cloud-function-<name>",
+    "stream-message": "one bubble per message: stream-message-<message id>",
+    "todo-delete": "one button per todo: todo-delete-<todo id>",
+    "todo-label": "one label per todo: todo-label-<todo id>"
+  }
+}

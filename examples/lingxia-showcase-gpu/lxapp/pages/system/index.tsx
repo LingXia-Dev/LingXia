@@ -41,10 +41,11 @@ export function render({ data, actions, env }: View) {
       </text>
       {type === 'appBaseInfo' && (
         <Section
+          testId="system-base-result"
           title="Fetch App Base Info"
           description="App identity (OS, product, versions) plus the language it renders in"
           action={
-            <Button testId="system-get-base" onClick={() => actions.getBaseInfo()}>
+            <Button testId="system-base-info" onClick={() => actions.getBaseInfo()}>
               Get Info
             </Button>
           }
@@ -62,10 +63,11 @@ export function render({ data, actions, env }: View) {
       )}
       {type === 'systemSetting' && (
         <Section
+          testId="system-setting-result"
           title="Fetch System Setting"
           description="WiFi, location, and Bluetooth toggles"
           action={
-            <Button testId="system-get-settings" onClick={() => actions.getSystemSetting()}>
+            <Button testId="system-setting-info" onClick={() => actions.getSystemSetting()}>
               Get Info
             </Button>
           }
@@ -106,6 +108,7 @@ export function render({ data, actions, env }: View) {
       )}
       {type === 'cache' && (
         <Section
+          testId="system-cache-panel"
           title="Product Cache"
           description="Reclaimable product cache - home lxapp only"
           action={
@@ -165,6 +168,7 @@ export function render({ data, actions, env }: View) {
       )}
       {type === 'banner' && desktop && (
         <Section
+          testId="system-banner-panel"
           title="Desktop Banner"
           description={data.bannerSupported ? 'Toast and Prompt show a native card at the window top-right' : 'Not available on this host'}
         >

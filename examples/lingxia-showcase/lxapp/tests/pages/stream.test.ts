@@ -1,3 +1,4 @@
+import { keyedElement } from '../helpers/keyed.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { expect, spec } from '@lingxia/test';
 import type { PageContract } from '@lingxia/types/page';
@@ -6,14 +7,20 @@ import { bindFixture } from '../helpers/poll.js';
 import {
   waitForElementAttribute,
   waitForElementEnabled,
-  waitForElementText,
 } from '../helpers/page.js';
 
 spec('streams a complete response from real page input', { app: SHOWCASE_APP_ID }, async (t) => {
   const app = t.app;
   await app.nav.relaunch({ page: 'stream' });
-  const stream = (await app.page({ name: 'stream' }, { timeout: 30_000 })).view;
+  const page = await app.page<PageContract<{ messages: Message[] }>>({ name: 'stream' }, { timeout: 30_000 });
+  const stream = page.view;
   await stream.testId('stream-page').waitFor({ timeout: 30_000 });
+  const message = async (role: Message['role'], until: (message: Message) => boolean) => {
+    const found = await t.waitFor(async () => (await page.data()).messages.find((m) => m.role === role && until(m)),
+      { timeout: 15_000 });
+    return keyedElement(stream, 'stream-message', found!.id,
+      stream.css(`[data-testid="stream-message"][data-role="${role}"]`).first());
+  };
 
   const prompt = `gate stream ${Date.now()}`;
   await stream.testId("stream-input").fill(prompt);
@@ -26,23 +33,12 @@ spec('streams a complete response from real page input', { app: SHOWCASE_APP_ID 
   await waitForElementEnabled(stream, '[data-testid="stream-send"]');
   await stream.testId("stream-send").click();
 
-  expect(await waitForElementText(
-    t,
-    stream,
-    '[data-testid="stream-message"][data-role="user"]',
-    (text) => text.includes(prompt),
-    15_000,
-  )).toContain(prompt);
+  await expect(await message('user', (m) => m.content.includes(prompt))).toContainText(prompt, { timeout: 15_000 });
   await stream.testId('stream-live').waitFor({ timeout: 30_000 });
   await stream.testId('stream-live').waitFor({ state: 'detached', timeout: 20_000 });
 
-  const response = await waitForElementText(
-    t,
-    stream,
-    '[data-testid="stream-message"][data-role="assistant"]',
-    (text) => text.trim().length > 10,
-    15_000,
-  );
+  const reply = await message('assistant', (m) => m.content.trim().length > 10);
+  const response = await t.waitFor(() => reply.textContent(), { until: (text) => text.trim().length > 10, timeout: 15_000 });
   expect(response.trim().length).toBeGreaterThan(10);
 });
 
