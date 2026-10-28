@@ -488,6 +488,59 @@ pub async fn page_query(
     page_eval(app, page_name, &script).await
 }
 
+/// Run page action `name` on a GPU page within `timeout`, polling its result once per
+/// frame; `Ok(None)` for a WebView page. Failures read `CODE: message`.
+pub async fn page_gpu_action(
+    app: &Arc<LxApp>,
+    page_name: Option<&str>,
+    name: &str,
+    args: Option<Value>,
+    timeout: Duration,
+) -> Result<Option<Value>, String> {
+    let started = std::time::Instant::now();
+    let page = loop {
+        match gpu::backend(app, page_name) {
+            Ok(None) => return Ok(None),
+            Ok(Some(page)) => break page,
+            // Not presented yet: readiness is part of the budget, as for a WebView page.
+            Err(error) if started.elapsed() < timeout => {
+                debug!("page action '{name}' waits for the GPU page: {error}");
+                tokio::time::sleep(ACTION_POLL).await;
+            }
+            Err(error) => return Err(error),
+        }
+    };
+    gpu_action(page.as_ref(), name, args, started + timeout)
+        .await
+        .map(Some)
+}
+
+/// Start `name` and poll its result about once per frame until `deadline`.
+async fn gpu_action(
+    page: &dyn gpu::GpuPageAutomation,
+    name: &str,
+    args: Option<Value>,
+    deadline: std::time::Instant,
+) -> Result<Value, String> {
+    let started = std::time::Instant::now();
+    let call = page.action(name, args).await?;
+    loop {
+        if let Some(value) = page.result(call).await? {
+            return Ok(value);
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(format!(
+                "E_TIMEOUT: page action '{name}' did not settle within {}ms",
+                started.elapsed().as_millis()
+            ));
+        }
+        tokio::time::sleep(ACTION_POLL).await;
+    }
+}
+
+/// How often a GPU page action is polled: about once per frame.
+const ACTION_POLL: Duration = Duration::from_millis(16);
+
 /// Click the matching DOM node.
 pub async fn page_click(
     app: &Arc<LxApp>,
@@ -1005,6 +1058,87 @@ mod tests {
             let frames = self.frames.fetch_add(1, Ordering::SeqCst);
             Box::pin(async move { Ok(serde_json::json!({ "frames": frames })) })
         }
+    }
+
+    /// A page whose action settles after `pending` polls, or fails.
+    struct Acting {
+        pending: AtomicUsize,
+        fails: bool,
+        started: std::sync::Mutex<Vec<(String, Option<Value>)>>,
+    }
+
+    impl gpu::GpuPageAutomation for Acting {
+        fn query(
+            &self,
+            _: &str,
+            _: Option<usize>,
+            _: bool,
+            _: Option<usize>,
+        ) -> gpu::GpuFuture<Value> {
+            Box::pin(async { Err("unused".to_owned()) })
+        }
+        fn act(&self, _: &str, _: Option<usize>, _: gpu::GpuAction) -> gpu::GpuFuture<()> {
+            Box::pin(async { Err("unused".to_owned()) })
+        }
+        fn screenshot(&self) -> gpu::GpuFuture<Vec<u8>> {
+            Box::pin(async { Err("unused".to_owned()) })
+        }
+        fn action(&self, name: &str, args: Option<Value>) -> gpu::GpuFuture<u64> {
+            self.started.lock().unwrap().push((name.to_owned(), args));
+            Box::pin(async { Ok(7) })
+        }
+        fn result(&self, call: u64) -> gpu::GpuFuture<Option<Value>> {
+            assert_eq!(call, 7);
+            let pending = self
+                .pending
+                .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
+                .is_ok();
+            let fails = self.fails;
+            Box::pin(async move {
+                match (pending, fails) {
+                    (true, _) => Ok(None),
+                    (false, true) => Err("E_QUOTA: over quota".to_owned()),
+                    (false, false) => Ok(Some(serde_json::json!({ "count": 2 }))),
+                }
+            })
+        }
+    }
+
+    fn acting(pending: usize, fails: bool) -> Acting {
+        Acting {
+            pending: AtomicUsize::new(pending),
+            fails,
+            started: Default::default(),
+        }
+    }
+
+    fn deadline(ms: u64) -> std::time::Instant {
+        std::time::Instant::now() + Duration::from_millis(ms)
+    }
+
+    #[tokio::test]
+    async fn a_gpu_action_starts_once_and_answers_its_settled_value() {
+        let page = acting(3, false);
+        let args = Some(serde_json::json!({ "title": "milk" }));
+        let value = gpu_action(&page, "addTodo", args.clone(), deadline(5_000)).await;
+        assert_eq!(value, Ok(serde_json::json!({ "count": 2 })));
+        assert_eq!(
+            *page.started.lock().unwrap(),
+            vec![("addTodo".to_owned(), args)]
+        );
+        assert_eq!(page.pending.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn a_gpu_action_keeps_its_failure_and_times_out_while_pending() {
+        let failed = gpu_action(&acting(0, true), "save", None, deadline(5_000)).await;
+        assert_eq!(failed, Err("E_QUOTA: over quota".to_owned()));
+        let pending = gpu_action(&acting(usize::MAX, false), "save", None, deadline(40)).await;
+        assert!(
+            pending
+                .unwrap_err()
+                .starts_with("E_TIMEOUT: page action 'save'")
+        );
     }
 
     fn page(misses: usize) -> Revealing {

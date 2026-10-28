@@ -215,6 +215,44 @@ fn action_script(
     )
 }
 
+/// A GPU page action's `CODE: message` failure, coded like the WebView path's.
+fn gpu_action_error(app: &Arc<LxApp>, page: Option<&str>, name: &str, error: &str) -> RongJSError {
+    let (code, message) = split_action_error(error);
+    match code {
+        "E_TIMEOUT" => page_error(app, page, E_AUTOMATION_TIMEOUT, message.to_owned()),
+        "E_PAGE_NOT_READY" => page_error(
+            app,
+            page,
+            E_PAGE_NOT_READY,
+            format!("page action '{name}' could not start: {message}"),
+        ),
+        _ => {
+            let mut extra = serde_json::Map::new();
+            extra.insert("action".into(), name.into());
+            extra.insert(
+                "cause".into(),
+                serde_json::json!({ "code": code, "message": message, "data": null }),
+            );
+            page_error_with(app, page, page_action_code(code), message.to_owned(), extra)
+        }
+    }
+}
+
+/// `("CODE", "message")` from `CODE: message`; no code when the prefix is not one.
+fn split_action_error(error: &str) -> (&str, &str) {
+    match error.split_once(": ") {
+        Some((code, message))
+            if !code.is_empty()
+                && code
+                    .chars()
+                    .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_') =>
+        {
+            (code, message)
+        }
+        _ => ("", error),
+    }
+}
+
 fn next_action_token() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT: AtomicU64 = AtomicU64::new(1);
@@ -527,6 +565,11 @@ impl JSPageDriver {
             return Err(auto_err("action: name must be a non-empty string"));
         }
         let timeout = Duration::from_millis(options.timeout_ms.unwrap_or(EVAL_DEFAULT_MS));
+        match auto::page_gpu_action(&app, page, name, options.payload.clone(), timeout).await {
+            Ok(None) => {}
+            Ok(Some(value)) => return json_to_js(&ctx, &value),
+            Err(error) => return Err(gpu_action_error(&app, page, name, &error)),
+        }
         let started = Instant::now();
         let remaining = || timeout.saturating_sub(started.elapsed());
         let poll_ms = || (remaining().as_millis() as u64).clamp(1, ACTION_POLL_MS);
@@ -836,6 +879,20 @@ mod action_script_tests {
             json!({ "state": "lost" }),
             "a read outcome is released"
         );
+    }
+
+    #[test]
+    fn gpu_action_errors_split_their_code() {
+        assert_eq!(
+            split_action_error("E_QUOTA: over quota"),
+            ("E_QUOTA", "over quota")
+        );
+        assert_eq!(
+            split_action_error("UI_ACTION: unknown action 'x': try y"),
+            ("UI_ACTION", "unknown action 'x': try y")
+        );
+        assert_eq!(split_action_error("boom: it broke"), ("", "boom: it broke"));
+        assert_eq!(split_action_error("no code"), ("", "no code"));
     }
 
     #[test]

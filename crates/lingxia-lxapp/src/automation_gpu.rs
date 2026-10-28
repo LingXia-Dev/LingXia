@@ -55,6 +55,14 @@ pub trait GpuPageAutomation: Send + Sync {
     fn tree(&self) -> GpuFuture<Value> {
         Box::pin(async { Err("E_UNSUPPORTED: this GPU page binding has no tree".to_owned()) })
     }
+    /// Start page action `name` as `view.actions[name](args)` would; answers its call id.
+    fn action(&self, _name: &str, _args: Option<Value>) -> GpuFuture<u64> {
+        Box::pin(async { Err("E_UNSUPPORTED: this GPU page binding has no actions".to_owned()) })
+    }
+    /// A started call's value once it settled and its frame is committed; `None` while pending.
+    fn result(&self, _call: u64) -> GpuFuture<Option<Value>> {
+        Box::pin(async { Err("E_UNSUPPORTED: this GPU page binding has no actions".to_owned()) })
+    }
     /// Presentation counters: `ui.frame` and `ui.reveal` (see `page_frame`).
     fn frame(&self) -> GpuFuture<Value> {
         Box::pin(async {

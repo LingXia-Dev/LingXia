@@ -61,6 +61,23 @@ impl GpuPageAutomation for GpuAutomation {
         Box::pin(async move { reply.await.map(|_| ()) })
     }
 
+    fn action(&self, name: &str, args: Option<Value>) -> GpuFuture<u64> {
+        let reply = self.request(json!({"op": "action", "name": name, "args": args}));
+        Box::pin(async move {
+            reply.await?["call"]
+                .as_u64()
+                .ok_or_else(|| "E_UNSUPPORTED: page action answered no call".to_owned())
+        })
+    }
+
+    fn result(&self, call: u64) -> GpuFuture<Option<Value>> {
+        let reply = self.request(json!({"op": "result", "call": call}));
+        Box::pin(async move {
+            let mut reply = reply.await?;
+            Ok((reply["done"] == true).then(|| reply["value"].take()))
+        })
+    }
+
     fn tree(&self) -> GpuFuture<Value> {
         self.request(json!({"op": "tree"}))
     }
