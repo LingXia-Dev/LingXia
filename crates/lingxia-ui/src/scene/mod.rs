@@ -2,15 +2,15 @@
 pub(crate) mod backdrop_region;
 pub(crate) mod border;
 pub(crate) mod build;
-pub mod cost;
 pub mod color_filter;
 pub mod composite;
+pub mod cost;
 pub(crate) mod display;
 pub(crate) mod gradient;
-pub(crate) mod mask;
 pub mod image;
 #[cfg(test)]
 mod image_semantics_tests;
+pub(crate) mod mask;
 pub(crate) mod node;
 pub(crate) mod paint;
 pub(crate) mod plot;

@@ -76,6 +76,13 @@ where
                 context.push_opacity_layer(*alpha)
             }
             Layer::Mask(_) => context.push_layer(None, None, None, None, None),
+            Layer::Blur(radius) => context.push_layer(
+                None,
+                None,
+                None,
+                None,
+                Some(crate::renderer::cpu_paint::blur_filter(*radius)),
+            ),
         }
         image(&mut context, source);
         if let Layer::Mask(mask) = layer {

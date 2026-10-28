@@ -39,6 +39,10 @@ function Gradients() {
       <column testId="lab-gradient-mask" className="h-16 rounded-xl bg-accent mask-b-from-20% mask-r-to-90% p-3">
         <text className="text-sm text-on-accent">Fades out downward and to the right</text>
       </column>
+      <column testId="lab-gradient-halo" className="h-20 items-center justify-center">
+        <view className="absolute w-16 h-16 rounded-full bg-accent/40 blur-xl" />
+        <view className="w-10 h-10 rounded-full bg-accent" />
+      </column>
       <text testId="lab-gradient-text" className="text-3xl font-bold bg-clip-text text-transparent bg-linear-to-r from-accent to-danger">Gradient text</text>
     </Section>
   );

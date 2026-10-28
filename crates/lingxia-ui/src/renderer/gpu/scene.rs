@@ -87,10 +87,11 @@ fn segments(display: &DisplayList) -> Option<Vec<Segment>> {
     for (index, paint) in commands.iter().enumerate() {
         outer_group[index] = groups.first().copied();
         match paint {
-            Paint::Opacity { .. } | Paint::Backdrop { .. } | Paint::Mask { .. } => {
-                groups.push(index)
-            }
-            Paint::PopOpacity | Paint::PopBackdrop | Paint::PopMask(_) => {
+            Paint::Opacity { .. }
+            | Paint::Backdrop { .. }
+            | Paint::Mask { .. }
+            | Paint::Blur { .. } => groups.push(index),
+            Paint::PopOpacity | Paint::PopBackdrop | Paint::PopMask(_) | Paint::PopBlur => {
                 group_end.insert(groups.pop()?, index);
             }
             _ => {}

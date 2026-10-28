@@ -493,11 +493,23 @@ impl DisplayList {
                         ),
                     ))))
                 }
-                Paint::PopClip | Paint::PopOpacity | Paint::PopBackdrop | Paint::PopMask(_) => {
+                Paint::Blur { radius, .. } => {
+                    let [sx, _, _, sy, _, _] = transform.as_coeffs();
+                    groups.push(4);
+                    Some(Step::Push(Layer::Blur(
+                        radius * self.scale * ((sx * sy).abs().sqrt() as f32),
+                    )))
+                }
+                Paint::PopClip
+                | Paint::PopOpacity
+                | Paint::PopBackdrop
+                | Paint::PopMask(_)
+                | Paint::PopBlur => {
                     let kind = match paint {
                         Paint::PopClip => 0,
                         Paint::PopOpacity => 1,
                         Paint::PopMask(_) => 3,
+                        Paint::PopBlur => 4,
                         _ => 2,
                     };
                     if groups.pop() != Some(kind) {

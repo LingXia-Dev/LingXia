@@ -216,6 +216,13 @@ pub(crate) enum Paint {
         mask: Arc<crate::scene::mask::Mask>,
     },
     PopMask(Arc<crate::scene::mask::Mask>),
+    /// `blur-*`: the subtree draws into a layer blurred by `radius` (a standard deviation) in
+    /// logical pixels.
+    Blur {
+        node: usize,
+        radius: f32,
+    },
+    PopBlur,
     Rect {
         color: [u8; 4],
         bounds: [f32; 4],

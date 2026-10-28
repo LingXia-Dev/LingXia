@@ -531,7 +531,6 @@ function longhand(prop, value) {
 // Properties with no native counterpart, each naming what to write instead.
 const undrawn = [
   [/^animation-[a-z-]+$/, 'animation longhands (use an animate-* utility)'],
-  [/^filter$/, 'filters (use opacity-*, or backdrop-blur-* behind a translucent background)'],
   [/^cursor$/, 'cursor (touch input has no pointer cursor; remove it)'],
   [/^pointer-events$/, 'pointer-events (hit testing follows handlers; omit onClick, or set disabled)'],
   [/^outline/, 'outline (use ring-* for a focus ring)'],
@@ -640,6 +639,14 @@ function declarations(nodes, vars, root) {
     }
     if (/^transition(?:-property|-duration|-delay|-timing-function)?$/.test(prop) || ['--tw-duration', '--tw-ease', '--lx-transition-layout'].includes(prop)) {
       transitionDeclaration(prop, node.value, local, motion); continue;
+    }
+    // Of the filter functions only blur is drawn; the others leave the rule with nothing to draw.
+    if (prop === '--tw-blur') { const value = variables(node.value, local).trim(); style.filter = value || 'none'; continue; }
+    if (prop === 'filter') {
+      if (/^var\(--tw-blur,\)/.test(node.value.replace(/\s/g, ''))) continue;
+      const value = variables(node.value, local).trim();
+      if (!/^blur\([^()]*\)$|^none$/.test(value)) unsupported(`filter: ${value} (only blur(…) is drawn)`);
+      style.filter = value; continue;
     }
     if (prop.startsWith('--tw-mask-') || /^(?:-webkit-)?mask-(?:image|composite)$/.test(prop)) { maskDeclaration(prop, node.value, local, mask); continue; }
     if (prop.startsWith('--tw-backdrop-') || prop === 'backdrop-filter' || prop === '-webkit-backdrop-filter') { backdropDeclaration(prop, node.value, local, backdrop); continue; }

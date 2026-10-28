@@ -208,6 +208,14 @@ impl DisplayList {
                 Paint::PopClip => context.pop_clip(),
                 Paint::PopOpacity => context.pop_layer(),
                 Paint::Mask { .. } => context.push_layer(None, None, None, None, None),
+                Paint::Blur { radius, .. } => context.push_layer(
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(crate::renderer::cpu_paint::blur_filter(*radius)),
+                ),
+                Paint::PopBlur => context.pop_layer(),
                 Paint::PopMask(mask) => {
                     transform =
                         Affine::scale(self.scale as f64) * checked_paint_transform(mask.transform)?;

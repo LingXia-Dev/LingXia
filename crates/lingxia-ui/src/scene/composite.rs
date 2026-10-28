@@ -16,6 +16,8 @@ pub enum Layer {
     },
     /// `mask-image` fades, in device coordinates: the group is drawn through them.
     Mask(std::sync::Arc<DeviceMask>),
+    /// `blur-*`: the group is blurred by this standard deviation in device pixels.
+    Blur(f32),
 }
 
 /// A mask's fades and the box they cover, placed in device pixels.
@@ -39,7 +41,7 @@ impl DeviceMask {
 
 impl Layer {
     fn is_root(&self) -> bool {
-        matches!(self, Self::Backdrop { .. } | Self::Mask(_))
+        matches!(self, Self::Backdrop { .. } | Self::Mask(_) | Self::Blur(_))
             || matches!(self, Self::Opacity(alpha) if *alpha < 1.0)
     }
 
@@ -47,6 +49,12 @@ impl Layer {
         let (clip, alpha) = match self {
             Self::Clip(clip) => (Some(clip), 1.0),
             Self::Mask(_) => (None, 1.0),
+            Self::Blur(radius) => {
+                if !radius.is_finite() || !(0.0..=256.0).contains(radius) {
+                    return Err("UI_COMPOSITE: blur outside 0..256 device pixels".into());
+                }
+                (None, 1.0)
+            }
             Self::Opacity(alpha) => (None, *alpha),
             Self::Backdrop {
                 clip,

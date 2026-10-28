@@ -331,7 +331,7 @@ export function render() {
     <button bogus={1}>Go</button>
   </column>;
 }`,
-    'card.tsx': 'export function Card() { return <column className="blur-sm"><image src="a.png"/></column>; }',
+    'card.tsx': 'export function Card() { return <column className="skew-x-3"><image src="a.png"/></column>; }',
   }, async (root, build) => {
     const lines = (await build().catch(error => error)).message.split('\n');
     assert.match(lines[0], /page.tsx: 5 authoring problems/);
@@ -340,7 +340,7 @@ export function render() {
       ['page.tsx', '4:21, 6:21', 'UI_CLASS_UNSUPPORTED'],
       ['page.tsx', '7:13', 'UI_PROP'],
       ['card.tsx', '1:51', 'UI_CLASS_UNSUPPORTED'],
-      ['card.tsx', '1:61', 'UI_A11Y'],
+      ['card.tsx', '1:62', 'UI_A11Y'],
     ]);
   });
 });

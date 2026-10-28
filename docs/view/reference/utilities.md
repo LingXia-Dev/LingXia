@@ -268,6 +268,12 @@ is still refused on an element that does not render its style ([styles.md](style
 | --- | --- | --- |
 | `object` | `object-bottom`, `object-bottom-left`, `object-bottom-right`, `object-center`, `object-contain`, … (12) | object-fit (2) |
 
+## Other
+
+| Family | Supported | Refused |
+| --- | --- | --- |
+| `blur` | `blur-2xl`, `blur-3xl`, `blur-lg`, `blur-md`, `blur-none`, … (8) |  |
+
 ## Not supported
 
 | Family | Utilities | Reason |
@@ -285,12 +291,11 @@ is still refused on an element that does not render its style ([styles.md](style
 | `backdrop-opacity` | 21 | unsupported backdrop property (21) |
 | `backdrop-sepia` | 4 | unsupported backdrop property (4) |
 | `backface` | 2 | backface-visibility (2) |
-| `blur` | 8 | filters (8) |
 | `border-spacing` | 35 | border-spacing (35) |
 | `border-spacing-x` | 35 | border-spacing (35) |
 | `border-spacing-y` | 35 | border-spacing (35) |
 | `box` | 4 | -webkit-box-decoration-break (2); box-sizing (2) |
-| `brightness` | 11 | filters (11) |
+| `brightness` | 11 | brightness-0 (1); brightness-100 (1); brightness-105 (1) |
 | `caption` | 2 | caption-side (2) |
 | `caret` | 322 | caret-color (322) |
 | `clear` | 6 | clear (6) |
@@ -299,25 +304,25 @@ is still refused on an element that does not render its style ([styles.md](style
 | `contain` | 8 | contain (8) |
 | `container` | 1 | nested rule @media (1) |
 | `contents` | 1 | display (1) |
-| `contrast` | 7 | filters (7) |
+| `contrast` | 7 | contrast-0 (1); contrast-100 (1); contrast-125 (1) |
 | `cursor` | 36 | cursor (36) |
 | `decoration` | 332 | text-decoration-color (322); text-decoration-style (5); text-decoration-thickness (5) |
-| `drop-shadow` | 329 | drop-shadow colors (322); filters (7) |
+| `drop-shadow` | 329 | drop-shadow colors (329) |
 | `field` | 2 | field-sizing (2) |
 | `fill` | 323 | fill (323) |
 | `float` | 5 | float (5) |
 | `flow` | 1 | display (1) |
 | `font-stretch` | 19 | font-stretch (19) |
 | `forced` | 2 | forced-color-adjust (2) |
-| `grayscale` | 6 | filters (6) |
-| `hue-rotate` | 6 | filters (6) |
+| `grayscale` | 6 | grayscale (1); grayscale-0 (1); grayscale-100 (1) |
+| `hue-rotate` | 6 | hue-rotate-0 (1); hue-rotate-15 (1); hue-rotate-180 (1) |
 | `hyphens` | 3 | -webkit-hyphens (3) |
 | `indent` | 70 | text-indent (70) |
 | `inset-be` | 125 | inset-block-end (125) |
 | `inset-bs` | 125 | inset-block-start (125) |
 | `inset-ring` | 328 | unsupported shadow property (328) |
 | `inset-shadow` | 327 | unsupported shadow property (327) |
-| `invert` | 6 | filters (6) |
+| `invert` | 6 | invert (1); invert-0 (1); invert-100 (1) |
 | `invisible` | 1 | visibility (1) |
 | `isolate` | 1 | isolation (1) |
 | `isolation` | 1 | isolation (1) |
@@ -349,7 +354,7 @@ is still refused on an element that does not render its style ([styles.md](style
 | `rotate-x` | 18 | transform (18) |
 | `rotate-y` | 18 | transform (18) |
 | `rotate-z` | 18 | transform (18) |
-| `saturate` | 5 | filters (5) |
+| `saturate` | 5 | saturate-0 (1); saturate-100 (1); saturate-150 (1) |
 | `scale-z` | 22 | scale-z (22) |
 | `scheme` | 6 | color-scheme (6) |
 | `scroll` | 2 | scroll-behavior (2) |
@@ -378,7 +383,7 @@ is still refused on an element that does not render its style ([styles.md](style
 | `scrollbar` | 6 | scrollbar-gutter (3); scrollbar-width (3) |
 | `scrollbar-thumb` | 322 | scrollbar-color (322) |
 | `scrollbar-track` | 322 | scrollbar-color (322) |
-| `sepia` | 4 | filters (4) |
+| `sepia` | 4 | sepia (1); sepia-0 (1); sepia-100 (1) |
 | `skew` | 12 | transform (12) |
 | `skew-x` | 12 | transform (12) |
 | `skew-y` | 12 | transform (12) |

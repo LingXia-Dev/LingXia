@@ -322,6 +322,13 @@ where
                 scene.push_opacity_layer(*alpha)
             }
             Layer::Mask(_) => scene.push_layer(None, None, None, None, None),
+            Layer::Blur(radius) => scene.push_layer(
+                None,
+                None,
+                None,
+                None,
+                Some(crate::renderer::cpu_paint::blur_filter(*radius)),
+            ),
         }
         let bindings = image(&mut scene, source);
         if let Layer::Mask(mask) = layer {

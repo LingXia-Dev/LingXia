@@ -65,6 +65,7 @@ pub(crate) struct RetainedLayout {
     pub(crate) stickies: Vec<Option<crate::scene::sticky::Sticky>>,
     pub(crate) backdrops: Vec<Option<(f32, f32)>>,
     pub(crate) masks: Vec<Option<Arc<Vec<crate::scene::mask::MaskLayer>>>>,
+    pub(crate) blurs: Vec<f32>,
     pub(crate) width: u16,
     pub(crate) height: u16,
     pub(crate) scale: f32,
@@ -256,6 +257,7 @@ impl RetainedLayout {
                 next.stickies.push(None);
                 next.backdrops.push(old.backdrops[index]);
                 next.masks.push(old.masks[index].clone());
+                next.blurs.push(old.blurs[index]);
                 next.inputs.push(None);
                 next.selectables.push(None);
             }
@@ -378,6 +380,7 @@ impl RetainedLayout {
             Vec::new()
         };
         let mut active_layers: Vec<Paint> = Vec::new();
+        let mut blurred = 0;
         let mut child_layers: Vec<Vec<Paint>> = vec![Vec::new(); count];
         let mut painted = Vec::new();
         let mut input_paints = Vec::new();
@@ -610,6 +613,14 @@ impl RetainedLayout {
                 desired.push(Paint::Mask {
                     node: index,
                     mask: crate::scene::mask::Mask::new(layers, node.bounds, matrix),
+                });
+            }
+            // Past the budget an element draws sharp rather than failing the frame.
+            if self.blurs[index] > 0.0 && blurred < crate::protocol::limits::BLUR_LAYERS {
+                blurred += 1;
+                desired.push(Paint::Blur {
+                    node: index,
+                    radius: self.blurs[index],
                 });
             }
             let mut descendants = desired.clone();
@@ -1063,6 +1074,7 @@ impl RetainedLayout {
                 Paint::Opacity { .. } => Paint::PopOpacity,
                 Paint::Backdrop { .. } => Paint::PopBackdrop,
                 Paint::Mask { mask, .. } => Paint::PopMask(mask.clone()),
+                Paint::Blur { .. } => Paint::PopBlur,
                 _ => Paint::PopClip,
             });
         }
@@ -1139,6 +1151,7 @@ fn sync_layers(commands: &mut Vec<Paint>, active_layers: &mut Vec<Paint>, desire
             Paint::Opacity { .. } => Paint::PopOpacity,
             Paint::Backdrop { .. } => Paint::PopBackdrop,
             Paint::Mask { mask, .. } => Paint::PopMask(mask.clone()),
+            Paint::Blur { .. } => Paint::PopBlur,
             _ => Paint::PopClip,
         });
     }

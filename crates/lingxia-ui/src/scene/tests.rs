@@ -911,3 +911,45 @@ fn a_mask_fades_its_subtree_and_composites_the_same() {
         );
     }
 }
+
+#[test]
+fn a_blurred_subtree_spreads_past_its_box_and_composites_the_same() {
+    let page = |backdrop: bool| {
+        crate::session::tests::source(&format!(
+            "function render(){{return h('stack',{{style:{{width:60,height:60,backgroundColor:'#ffffff'}}}},h('spacer',{{style:{{left:20,top:20,width:20,height:20,backgroundColor:'#ff0000',filter:'blur(4px)'}}}}){})}}",
+            if backdrop {
+                ",h('spacer',{style:{left:0,top:0,width:10,height:10,backdropFilter:'blur(2px)'}})"
+            } else {
+                ""
+            }
+        ))
+    };
+    let raster = |backdrop: bool| {
+        let mut session = crate::ViewSession::new(&page(backdrop)).unwrap();
+        let display = session.layout(60, 60, 1.0).unwrap();
+        assert_eq!(display.requires_composition(), backdrop);
+        display.rasterize().unwrap()
+    };
+    let frame = raster(false);
+    let pixel = |frame: &crate::Frame, x: usize, y: usize| {
+        let at = (y * 60 + x) * 4;
+        frame.pixels.data_as_u8_slice()[at..at + 4].to_vec()
+    };
+    let halo = pixel(&frame, 17, 30);
+    assert!(
+        halo[0] > 240 && halo[1] < 240,
+        "a halo outside the box: {halo:?}"
+    );
+    let edge = pixel(&frame, 20, 30);
+    assert!(edge[1] > 60, "the edge is soft: {edge:?}");
+    assert!(pixel(&frame, 30, 30)[1] < 40, "the middle stays red");
+    assert!(pixel(&frame, 2, 30)[1] > 250, "far away is untouched");
+    let other = raster(true);
+    for (x, y) in [(17, 30), (20, 30), (30, 30)] {
+        let (a, b) = (pixel(&frame, x, y), pixel(&other, x, y));
+        assert!(
+            a.iter().zip(&b).all(|(a, b)| a.abs_diff(*b) <= 3),
+            "({x},{y}): {a:?} vs {b:?}"
+        );
+    }
+}

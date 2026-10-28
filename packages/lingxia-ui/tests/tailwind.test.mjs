@@ -285,6 +285,17 @@ test('mask edge fades and linear mask-image lower to intersected alpha fades', a
   assert.throws(() => classStyle('mask-[radial-gradient(#000,transparent)]'), /only linear-gradient fades/);
 });
 
+test('blur utilities and filter: blur() lower to a subtree blur; other filters are refused', async () => {
+  await use(['blur-md', 'blur-[10px]', 'blur-none', '[filter:blur(4px)]', 'brightness-50', '[filter:grayscale(1)]', 'blur-[100px]']);
+  assert.deepEqual(classStyle('blur-md'), { filter: 'blur(12px)' });
+  assert.equal(rendered(() => h('column', { className: 'blur-[10px]' })).props.filterBlur, 10);
+  assert.equal(rendered(() => h('column', { className: 'blur-none' })).props.filterBlur, 0);
+  assert.equal(rendered(() => h('column', { className: '[filter:blur(4px)]' })).props.filterBlur, 4);
+  assert.throws(() => classStyle('brightness-50'), /sets nothing/);
+  assert.throws(() => classStyle('[filter:grayscale(1)]'), /only blur/);
+  assert.throws(() => describe(() => h('column', { className: 'blur-[100px]' }), {}), /UI_STYLE_VALUE: filter/);
+});
+
 test('text utilities: transform, decoration, nowrap, alignment and families', async () => {
   const aligns = ['left', 'center', 'right', 'start', 'end', 'justify'];
   await use(['uppercase', 'capitalize', 'underline', 'line-through', 'no-underline', 'whitespace-nowrap', 'font-mono', 'font-sans', 'font-serif',
@@ -599,15 +610,15 @@ test('every Tailwind breakpoint matches, including the escaped 2xl', async () =>
 
 test('relative variants, undrawn properties and no-op utilities fail with what to write instead', async () => {
   const rules = new Map((await compileUtilities(new Set(['*:p-2', '**:p-2', 'in-focus:p-2', 'group-hover:p-2', 'peer-checked:p-2',
-    'cursor-pointer', 'pointer-events-none', 'outline-2', 'blur-sm', 'translate-z-4', 'scale-z-50', 'transform', 'transform-cpu',
+    'cursor-pointer', 'pointer-events-none', 'outline-2', 'sepia', 'translate-z-4', 'scale-z-50', 'transform', 'transform-cpu',
     'drop-shadow-red-500', 'text-shadow-red-500', 'mask-radial-at-center', 'space-x-reverse', 'divide-y-reverse', 'select-auto'])))
     .map(rule => [rule.name, rule.error?.message]));
   const expect = {
     '*:p-2': /child variants .*each child/, '**:p-2': /descendant variants/, 'in-focus:p-2': /ancestor-state variants .*onFocus/,
     'group-hover:p-2': /group-\*\/peer-\*/, 'peer-checked:p-2': /group-\*\/peer-\*/, 'cursor-pointer': /no pointer cursor/,
-    'pointer-events-none': /hit testing follows handlers/, 'outline-2': /ring-\*/, 'blur-sm': /filters .*backdrop-blur/,
+    'pointer-events-none': /hit testing follows handlers/, 'outline-2': /ring-\*/, sepia: /sets nothing/,
     'translate-z-4': /3D transforms/, 'scale-z-50': /3D transforms/, transform: /apply without it/, 'transform-cpu': /apply without it/,
-    'drop-shadow-red-500': /shadow-<color>/, 'text-shadow-red-500': /text shadows/, 'mask-radial-at-center': /masks/,
+    'drop-shadow-red-500': /shadow-<color>/, 'text-shadow-red-500': /text shadows/, 'mask-radial-at-center': /radial and conic masks/,
     'space-x-reverse': /gap-\*/, 'divide-y-reverse': /gap-\*/, 'select-auto': /select-text or select-none/,
   };
   for (const [name, pattern] of Object.entries(expect)) {

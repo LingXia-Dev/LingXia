@@ -1237,6 +1237,10 @@ impl Renderer {
                 .iter()
                 .map(|record| record.number(field::OPACITY).unwrap_or(1.0))
                 .collect(),
+            blurs: records
+                .iter()
+                .map(|record| record.number(field::FILTER_BLUR).unwrap_or(0.0))
+                .collect(),
             masks: records
                 .iter()
                 .map(|record| {

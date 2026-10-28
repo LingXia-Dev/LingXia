@@ -444,7 +444,7 @@ fn number(id: usize, value: &Value) -> Result<(), String> {
     if matches!(id, field::FONT_SIZE | field::LINE_HEIGHT) && value == 0.0 {
         return Err("UI_STYLE: font size and line height must be positive".into());
     }
-    if (id == field::BACKDROP_BLUR && value > 64.0)
+    if (matches!(id, field::BACKDROP_BLUR | field::FILTER_BLUR) && value > 64.0)
         || (id == field::BACKDROP_SATURATION && value > 16.0)
     {
         return Err("UI_STYLE: invalid backdrop filter".into());

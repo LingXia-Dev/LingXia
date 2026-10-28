@@ -173,6 +173,10 @@ impl DisplayList {
                 Paint::Clip(shape) => context.push_clip_layer(&shape.path()),
                 Paint::PopClip | Paint::PopOpacity => context.pop_layer(),
                 Paint::Mask { .. } => context.push_layer(None, None, None, None, None),
+                Paint::Blur { radius, .. } => {
+                    context.push_layer(None, None, None, None, Some(blur_filter(radius)))
+                }
+                Paint::PopBlur => context.pop_layer(),
                 Paint::PopMask(mask) => {
                     context.set_transform(
                         Affine::scale(self.scale as f64) * checked_paint_transform(mask.transform)?,
@@ -359,5 +363,12 @@ pub(crate) fn text_clip_blend() -> vello_cpu::peniko::BlendMode {
     vello_cpu::peniko::BlendMode::new(
         vello_cpu::peniko::Mix::Normal,
         vello_cpu::peniko::Compose::SrcIn,
+    )
+}
+
+/// A Gaussian blur whose standard deviation is `radius` in the layer's own units.
+pub(crate) fn blur_filter(radius: f32) -> vello_common::filter_effects::Filter {
+    vello_common::filter_effects::Filter::from_function(
+        vello_common::filter_effects::FilterFunction::Blur { radius },
     )
 }

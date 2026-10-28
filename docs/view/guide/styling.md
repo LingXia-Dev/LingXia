@@ -73,6 +73,11 @@ edge, as does a `mask-[linear-gradient(to_bottom,transparent_0,#000_1rem)]` to a
 intersect. Radial and conic masks are refused. A masked element draws in its own layer, plus one per
 edge.
 
+`blur-*` and `[filter:blur(…)]` blur an element and its subtree, up to 64px, so a soft halo can sit
+behind a control: `absolute inset-0 rounded-full bg-accent/30 blur-xl`. The blur spreads past the box.
+Other filter functions (`brightness-*`, `grayscale` …) are refused. A frame draws at most 8 blurred
+elements (`blurLayers`); past that they draw sharp.
+
 The system's increased-contrast setting (`env.highContrast`) resolves the pack's high-contrast palette.
 `shadow-*` elevation layers take the `shadow` role at their alpha, so a pack can tint shadows.
 
@@ -211,7 +216,7 @@ Each of these fails the build with `UI_CLASS_UNSUPPORTED` rather than rendering 
 
 ```tsx error UI_CLASS_UNSUPPORTED
 export function render() {
-  return <page><view className="h-10 blur-sm bg-line" /></page>;
+  return <page><view className="h-10 sepia bg-line" /></page>;
 }
 ```
 

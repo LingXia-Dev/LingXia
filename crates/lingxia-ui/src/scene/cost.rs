@@ -53,6 +53,7 @@ impl crate::DisplayList {
                 Paint::Opacity { .. } | Paint::Clip(_) => cost.layers += 1,
                 // The group, plus one blend layer per fade.
                 Paint::Mask { mask, .. } => cost.layers += 1 + mask.layers.len(),
+                Paint::Blur { .. } => cost.layers += 1,
                 Paint::Backdrop { .. } => {
                     cost.layers += 1;
                     cost.backdrops += 1;

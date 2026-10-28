@@ -41,5 +41,6 @@ Page-wide bounds the runtime and the native decoder both enforce. Exceeding one 
 | `ghosts` | 64 | Removed elements still drawing their exit at once; past it further removals vanish at once. |
 | `layoutMotions` | 256 | Elements moving to a new layout position under `transition-layout` at once; past it further moves land at once. |
 | `dataAttributeBytes` | 65536 (64 KiB) | `data-*` props of a page, as UTF-8 JSON; automation reads them, nothing draws them. |
+| `blurLayers` | 8 | Elements a frame draws with `blur-*`; past it further ones draw sharp. |
 
-Wire ABI: 1. Highest field id: 190.
+Wire ABI: 1. Highest field id: 191.

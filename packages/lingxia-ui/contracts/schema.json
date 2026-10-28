@@ -1,6 +1,6 @@
 {
   "uiAbi": 1,
-  "limits": {"nodes": 4096, "depth": 128, "animationBytes": 262144, "itemKeyBytes": 262144, "imageBytes": 8388608, "sourceBytes": 8192, "visibleImageBytes": 67108864, "decodedImageBytes": 100663296, "runs": 256, "transitionMs": 10000, "evalBudgetMs": 100, "evalBudgetDebugMultiplier": 8, "editorTextBytes": 65536, "inputRequestBytes": 524288, "inputBatchEdits": 64, "clipboardItems": 128, "wireValues": 100000, "textBytes": 65536, "identifierBytes": 256, "listRows": 100000, "gridTracks": 64, "vectorSourceBytes": 32768, "vectorPathBytes": 16384, "vectorPathWork": 16384, "vectorWork": 32768, "plotWork": 16384, "shadowMaskBytes": 16777216, "compositeFrames": 6, "leaseFrames": 6, "compositeBytes": 268435456, "outlineGlyphs": 4096, "ghosts": 64, "layoutMotions": 256, "dataAttributeBytes": 65536},
+  "limits": {"nodes": 4096, "depth": 128, "animationBytes": 262144, "itemKeyBytes": 262144, "imageBytes": 8388608, "sourceBytes": 8192, "visibleImageBytes": 67108864, "decodedImageBytes": 100663296, "runs": 256, "transitionMs": 10000, "evalBudgetMs": 100, "evalBudgetDebugMultiplier": 8, "editorTextBytes": 65536, "inputRequestBytes": 524288, "inputBatchEdits": 64, "clipboardItems": 128, "wireValues": 100000, "textBytes": 65536, "identifierBytes": 256, "listRows": 100000, "gridTracks": 64, "vectorSourceBytes": 32768, "vectorPathBytes": 16384, "vectorPathWork": 16384, "vectorWork": 32768, "plotWork": 16384, "shadowMaskBytes": 16777216, "compositeFrames": 6, "leaseFrames": 6, "compositeBytes": 268435456, "outlineGlyphs": 4096, "ghosts": 64, "layoutMotions": 256, "dataAttributeBytes": 65536, "blurLayers": 8},
   "tags": ["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page", "span", "link", "select"],
   "admission": {
     "column": {"children": "any", "content": true},
@@ -253,7 +253,8 @@
     {"id": 187, "key": "focusWithinStyle", "wire": "focusWithinStyle", "kind": "state-style"},
     {"id": 188, "key": "dataAttributes", "wire": "dataAttributes", "kind": "string"},
     {"id": 189, "key": "backgroundClip", "wire": "backgroundClip", "kind": "background-clip"},
-    {"id": 190, "key": "maskImage", "wire": "maskImage", "kind": "string"}
+    {"id": 190, "key": "maskImage", "wire": "maskImage", "kind": "string"},
+    {"id": 191, "key": "filterBlur", "wire": "filterBlur", "kind": "number"}
   ],
   "input": {
     "autofill": {"username": "username", "current-password": "password", "new-password": "newPassword", "one-time-code": "smsOTPCode", "email": "emailAddress", "tel": "phone", "name": "personName", "given-name": "personGivenName", "family-name": "personFamilyName", "street-address": "postalAddress", "postal-code": "postalCode", "country": "addressCountry", "cc-number": "creditCardNumber", "cc-exp": "creditCardExpirationDate", "cc-csc": "creditCardSecurityCode", "bday": "birthDateFull"},
@@ -443,6 +444,7 @@
     "animation": {"type": "unknown", "group": "box", "lower": "animation", "wire": "animation", "internal": true},
     "transition": {"type": "unknown", "group": "box", "lower": "transition", "wire": "transition", "internal": true},
     "maskImage": {"type": "unknown", "group": "box", "lower": "mask", "wire": "maskImage", "internal": true},
+    "filter": {"type": "string", "group": "box", "lower": "filter", "wire": "filterBlur"},
     "padding": {"type": "number", "group": "padding", "lower": "length", "wire": ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft"]},
     "paddingTop": {"type": "number", "group": "padding", "lower": "length", "wire": "paddingTop", "css": ["padding-top", "padding-block-start"]},
     "paddingRight": {"type": "number", "group": "padding", "lower": "length", "wire": "paddingRight", "css": "padding-right"},

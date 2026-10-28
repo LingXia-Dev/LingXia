@@ -287,6 +287,13 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
       case 'transform': transformPart(name, value, transform); break;
       case 'transition': { const lowered = transitionValue(value); if (lowered !== undefined) out[key] = lowered; break; }
       case 'mask': { const lowered = maskValue(value); if (lowered !== undefined) out[key] = lowered; break; }
+      case 'filter': {
+        if (value === 'none') { out[key] = 0; break; }
+        const blur = typeof value === 'string' && value.trim().match(/^blur\((\d+(?:\.\d+)?)px\)$/);
+        if (!blur || Number(blur[1]) > 64) invalid(name);
+        out[key] = Number(blur[1]);
+        break;
+      }
       case 'aspect-ratio':
         if (value === 'auto') break;
         if (!finite(value) || value <= 0 || value > 10000) invalid(name);
