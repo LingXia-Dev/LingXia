@@ -102,6 +102,12 @@ wake() {
   adb -s "$device" shell input keyevent KEYCODE_WAKEUP
   adb -s "$device" shell wm dismiss-keyguard
   adb -s "$device" shell svc power stayon true
+  # A permission prompt left by an earlier session sits above any app we
+  # launch, so the app never reaches its dev session.
+  if adb -s "$device" shell dumpsys activity activities | grep mResumedActivity | grep -q permissioncontroller; then
+    echo "dismissing a leftover permission prompt" >&2
+    adb -s "$device" shell input keyevent KEYCODE_BACK
+  fi
 }
 
 # The keyguard can come back mid-run even with stayon set. While a suite
@@ -189,10 +195,11 @@ for entry in "${runs[@]}"; do
   echo "Starting $app on $platform"
   started=0
   (cd "$project" && "$lingxia" "${dev[@]}") >"$result/dev.log" 2>&1 && started=1
-  # The round's cold first build can outlast the dev start timeout; the second
-  # start finds the target warm.
+  # A cold first build can outlast the dev start timeout; the second start
+  # finds the target warm.
   if [[ $started == 0 ]] && grep -q "was not ready within" "$result/dev.log"; then
-    echo "$app timed out starting on a cold build; starting once more"
+    wake
+    echo "$app was not ready in time; starting once more"
     (cd "$project" && "$lingxia" "${dev[@]}") >>"$result/dev.log" 2>&1 && started=1
   fi
   if [[ $started == 0 ]]; then
