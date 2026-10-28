@@ -382,10 +382,12 @@ pub mod methods {
     pub mod runner {
         /// List the device presets the runner can simulate.
         pub const PRESETS: &str = "runner.presets";
-        /// Report the simulated environment (device, orientation, appearance).
+        /// Report the simulated environment (device, orientation, appearance,
+        /// effective display language).
         pub const GET: &str = "runner.get";
         /// Update the simulated environment; only provided fields change.
-        /// Args: `{id?, landscape?, appearance?}`.
+        /// Args: `{id?, landscape?, appearance?, language?}`; `language` is a
+        /// BCP-47 tag or `auto` and lasts for this dev session.
         pub const SET: &str = "runner.set";
     }
 

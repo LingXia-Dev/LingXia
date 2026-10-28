@@ -1,5 +1,5 @@
 //! `lxdev runner`: the simulated environment owned by the runner host —
-//! device preset, orientation and appearance.
+//! device preset, orientation, appearance and display language.
 //! Runner sessions only.
 
 use crate::client;
@@ -23,7 +23,7 @@ pub enum RunnerCommand {
         #[arg(long)]
         json: bool,
     },
-    /// Print the simulated environment (device, orientation, appearance)
+    /// Print the simulated environment (device, orientation, appearance, language)
     Get {
         /// Print JSON output
         #[arg(long)]
@@ -43,6 +43,11 @@ pub enum RunnerCommand {
         /// Simulated appearance for the device screen
         #[arg(long, value_enum)]
         appearance: Option<AppearanceArg>,
+        /// Display language for this dev session: a BCP-47 tag (`zh-CN`,
+        /// `sr-Latn-RS`) or `auto` for the system. Shadows
+        /// `lx.host.displayLanguage` and is not saved.
+        #[arg(long, value_name = "TAG")]
+        language: Option<String>,
         /// Print JSON output
         #[arg(long)]
         json: bool,
@@ -95,11 +100,13 @@ pub fn execute(info: &SessionInfo, options: RunnerOptions) -> Result<()> {
             landscape,
             portrait,
             appearance,
+            language,
             json,
         } => {
-            if id.is_none() && !landscape && !portrait && appearance.is_none() {
+            if id.is_none() && !landscape && !portrait && appearance.is_none() && language.is_none()
+            {
                 anyhow::bail!(
-                    "nothing to change: pass --id, --landscape/--portrait, or --appearance"
+                    "nothing to change: pass --id, --landscape/--portrait, --appearance, or --language"
                 );
             }
             // Leave orientation to the runner's normal selector behavior
@@ -118,6 +125,7 @@ pub fn execute(info: &SessionInfo, options: RunnerOptions) -> Result<()> {
                     "id": id,
                     "landscape": orientation,
                     "appearance": appearance.map(AppearanceArg::as_str),
+                    "language": language,
                 })),
             )?
             .unwrap_or(Value::Null);
@@ -187,9 +195,12 @@ fn describe_state(data: &Value) -> Result<String> {
         .get("appearance")
         .and_then(Value::as_str)
         .unwrap_or("system");
-    Ok(format!(
-        "{name} ({id})  {width}x{height}  {orientation}  appearance: {appearance}"
-    ))
+    let mut line =
+        format!("{name} ({id})  {width}x{height}  {orientation}  appearance: {appearance}");
+    if let Some(language) = data.get("language").and_then(Value::as_str) {
+        line.push_str(&format!("  language: {language}"));
+    }
+    Ok(line)
 }
 
 fn print_json(value: &Value, pretty: bool) -> Result<()> {
@@ -215,6 +226,14 @@ mod tests {
         assert_eq!(
             describe_state(&state).unwrap(),
             "iPhone 15 Pro (iphone-15-pro)  393x852  portrait  appearance: dark"
+        );
+        let state = json!({
+            "name": "iPad", "id": "ipad", "width": 820, "height": 1180,
+            "landscape": true, "appearance": "system", "language": "zh-CN",
+        });
+        assert_eq!(
+            describe_state(&state).unwrap(),
+            "iPad (ipad)  820x1180  landscape  appearance: system  language: zh-CN"
         );
     }
 }
