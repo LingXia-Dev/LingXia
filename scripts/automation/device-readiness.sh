@@ -128,7 +128,9 @@ keyguard_watch() {
   done
 }
 
-for app in $apps; do
+# Both install even for one showcase: the GPU showcase runs React's specs,
+# which resolve their packages from React's lxapp.
+for app in lingxia-showcase lingxia-showcase-gpu; do
   (cd "$export_dir/examples/$app/lxapp" && npm install --no-audit --no-fund >/dev/null)
 done
 check_purity
