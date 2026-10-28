@@ -329,7 +329,18 @@ mod mac {
                 },
             );
             let ns = NSEvent::eventWithCGEvent(&event).ok_or("failed to convert scroll event")?;
-            super::super::mouse::send_event_to_window(window, ns.as_ref());
+            if let Scroll::Momentum(_) = phase {
+                // NSWindow.sendEvent drops synthesized momentum-phase scrolls, so they
+                // go to the view under the point, as the window routed the gesture.
+                let frame: *mut AnyObject = msg_send![content, superview];
+                let host = if frame.is_null() { content } else { frame };
+                let hit: *mut AnyObject = msg_send![host, hitTest: point];
+                let view = if hit.is_null() { content } else { hit };
+                let ptr = ns.as_ref() as *const NSEvent as *mut AnyObject;
+                let _: () = msg_send![view, scrollWheel: ptr];
+            } else {
+                super::super::mouse::send_event_to_window(window, ns.as_ref());
+            }
         }
         Ok(())
     }
