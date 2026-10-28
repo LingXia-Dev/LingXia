@@ -810,6 +810,9 @@ async fn gpu_reveal(
         {
             Err(error) if error.contains("no scroll brings") && attempt < REVEAL_FRAMES => {
                 attempt += 1;
+                log::debug!(
+                    "page reveal retry {attempt}/{REVEAL_FRAMES} on the next frame: {error}"
+                );
                 next_presented_frame(page).await;
             }
             done => return done,
