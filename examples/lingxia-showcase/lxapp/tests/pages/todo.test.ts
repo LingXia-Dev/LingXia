@@ -5,10 +5,15 @@ import type { TodoPage } from '../../pages/todo/contract.js';
 import { attachShot, bindFixture } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
-/** The persisted todo with `text`, or `null`. */
+/**
+ * The persisted todo with `text`, or `null`. The React page keeps tasks under
+ * `todo:todos`; the GPU mirror writes tasks and filter at once as `todo:state`.
+ */
 function storedTodo(app: TestApp, text: string): Promise<{ completed: boolean } | null> {
   return app.logic.eval(async ({ lx }, wanted) => {
-    const todos = (await lx.getStorage().get('todo:todos')) as Todo[] | undefined;
+    const storage = lx.getStorage();
+    const state = (await storage.get('todo:state')) as { todos?: Todo[] } | undefined;
+    const todos = state?.todos ?? ((await storage.get('todo:todos')) as Todo[] | undefined);
     const todo = Array.isArray(todos) ? todos.find((item) => item.text === wanted) : undefined;
     return todo ? { completed: todo.completed } : null;
   }, text);
@@ -17,6 +22,10 @@ function storedTodo(app: TestApp, text: string): Promise<{ completed: boolean } 
 async function cleanupStoredTodo(app: TestApp, text: string): Promise<void> {
   await app.logic.eval(async ({ lx }, wanted) => {
     const storage = lx.getStorage();
+    const state = (await storage.get('todo:state')) as { todos?: Todo[] } | undefined;
+    if (state && Array.isArray(state.todos)) {
+      await storage.set('todo:state', { ...state, todos: state.todos.filter((todo) => todo.text !== wanted) });
+    }
     const todos = (await storage.get('todo:todos')) as Todo[] | undefined;
     if (Array.isArray(todos)) {
       await storage.set('todo:todos', todos.filter((todo) => todo.text !== wanted));
