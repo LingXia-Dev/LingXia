@@ -31,7 +31,7 @@ spec.reset(async t => {
   await t.app.nav.relaunch({ page: 'todo' });
 });
 
-spec("persist todo edits made through the rendered page", { id: "TODO-001", covers: ['lx.getStorage', 'Storage.get', 'Storage.set'], app: SHOWCASE_APP_ID }, async (t) => {
+spec("persist todo edits made through the rendered page", { id: "TODO-001", covers: ['lx.getStorage', 'Storage.get', 'Storage.set', 'view:checkbox'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "TODO-001");
   const todo = await app.page<TodoPage>({ name: 'todo' });
   const view = todo.view;

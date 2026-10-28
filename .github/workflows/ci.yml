@@ -1837,6 +1837,22 @@ jobs:
           path: crates/lingxia-ui/fuzz/artifacts
           if-no-files-found: ignore
 
+  # Every page feature and interactive View element kind the showcases use has a spec that
+  # drives it the way a user does, and the GPU showcase's shared specs stay in step with React.
+  showcase-feature-coverage:
+    needs: changes
+    name: Showcase feature coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check page and View feature coverage
+        run: node examples/lingxia-showcase/lxapp/tests/feature-coverage.mjs
+
+      - name: Check the shared spec manifest and testIds
+        run: node examples/lingxia-showcase-gpu/lxapp/tests/shared-specs.check.mjs
+
   release-tooling:
     needs: changes
     if: ${{ needs.changes.outputs.release_tooling == 'true' }}
@@ -1889,6 +1905,7 @@ jobs:
       - npm-packages
       - view-corpus
       - ui-fuzz
+      - showcase-feature-coverage
       - harmony-native
       - harmony-har
       - showcase-automation-types

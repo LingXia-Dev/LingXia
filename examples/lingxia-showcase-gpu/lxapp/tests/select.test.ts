@@ -1,6 +1,6 @@
 import { expect, spec } from '@lingxia/test';
 
-spec('select below the fold picks options and refuses a disabled one', { start: { page: 'view-lab' } }, async (t) => {
+spec('select below the fold picks options and refuses a disabled one', { covers: ['view:select'], start: { page: 'view-lab' } }, async (t) => {
   const view = t.app.view;
   await view.testId('lab-tab-input').click();
   const plan = view.testId('lab-input-plan');
