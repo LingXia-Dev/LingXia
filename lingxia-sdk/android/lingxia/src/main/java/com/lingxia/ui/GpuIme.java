@@ -58,10 +58,6 @@ final class GpuIme {
         GpuFrame.Input input=node == null ? null : new GpuFrame.Node(node).input();
         return input != null && input.enabled();
     }
-    private static JSONObject request(String op,String identity,long value) {
-        try { return new JSONObject().put("op",op).put("identity",identity).put(op.equals("focus") ? "generation" : "token",value); }
-        catch (org.json.JSONException impossible) { throw new IllegalArgumentException(impossible); }
-    }
     Ticket capture() { return new Ticket(epoch,connection); }
     boolean hasFocus() { return connection != null; }
     void setCaretActive(boolean active) { caretActive=active; if (!active) { touchSerial++; } updateCaret(); }
@@ -89,10 +85,7 @@ final class GpuIme {
         if (!caretActive || !editable(node) || pendingFocus || Float.isNaN(x) || Float.isInfinite(x) || Float.isNaN(y) || Float.isInfinite(y)) return;
         if (connection != null && !connection.settled()) return;
         Ticket ticket=capture(); final long serial=++touchSerial;
-        JSONObject message;
-        try { message=new JSONObject().put("op","hit_test").put("identity",identity(node))
-            .put("generation",generation).put("point",new JSONArray().put(x).put(y)).put("word",word); }
-        catch (org.json.JSONException impossible) { throw new IllegalArgumentException(impossible); }
+        JSONObject message=GpuFrame.InputRequest.hitTest(identity(node),generation,new float[]{x,y},word);
         host.request(message,reply -> {
             if (serial != touchSerial || ticket.epoch != epoch || ticket.connection != connection
                 || (connection != null && (ticket.revision != connection.revision() || !connection.settled()))) return;
@@ -110,11 +103,8 @@ final class GpuIme {
         if (!menuActive() || pendingFocus || !connection.settled() || !editable(node)
             || !connection.identity.equals(identity(node))) return false;
         Ticket ticket=capture(); final long serial=++touchSerial;
-        JSONObject message;
-        try { message=new JSONObject().put("op","drag_hit_test").put("identity",connection.identity)
-            .put("generation",generation).put("token",connection.token).put("point",new JSONArray().put(x).put(y))
-            .put("edge",new JSONArray().put(edgeX).put(edgeY)); }
-        catch (org.json.JSONException impossible) { throw new IllegalArgumentException(impossible); }
+        JSONObject message=GpuFrame.InputRequest.dragHitTest(connection.identity,generation,connection.token,
+            new float[]{x,y},new long[]{edgeX,edgeY});
         host.request(message,reply -> {
             if (!caretActive || serial != touchSerial || ticket.epoch != epoch
                 || ticket.connection != connection || ticket.revision != connection.revision() || !connection.settled()) {
@@ -174,11 +164,11 @@ final class GpuIme {
         }
         drop(false); pendingFocus=true;
         final long requested=epoch;
-        host.request(request("focus",identity,generation),reply -> {
+        host.request(GpuFrame.InputRequest.focus(identity,generation),reply -> {
             if (requested != epoch) {
                 if (!pendingFocus && connection == null && reply != null) {
                     blurred=token(reply);
-                    host.request(request("blur",identity,blurred),ignored -> host.render(false));
+                    host.request(GpuFrame.InputRequest.blur(identity,blurred),ignored -> host.render(false));
                 }
                 return;
             }
@@ -248,9 +238,9 @@ final class GpuIme {
         connection=new GpuInputConnection(view,identity(node),token,state,new GpuInputConnection.Sink() {
             @Override public void send(long revision,JSONArray edits,boolean submit) {
                 final GpuInputConnection current=connection;
-                JSONObject message=request("edit",current.identity,current.token);
-                try { message.put("edits",edits).put("submit",submit); }
-                catch (org.json.JSONException impossible) { throw new IllegalArgumentException(impossible); }
+                JSONObject[] batch=new JSONObject[edits.length()];
+                for (int i=0; i<batch.length; i++) batch[i]=edits.optJSONObject(i);
+                JSONObject message=GpuFrame.InputRequest.edit(current.identity,current.token,batch,submit);
                 host.request(message,reply -> {
                     if (created != epoch || current != connection) return;
                     String moved=reply == null ? null : new GpuFrame.InputReply(reply).movedTo();
@@ -309,7 +299,7 @@ final class GpuIme {
         drop(true);
         if (blur && previous != null) {
             blurred=previous.token;
-            host.request(request("blur",previous.identity,previous.token),ignored -> host.render(false));
+            host.request(GpuFrame.InputRequest.blur(previous.identity,previous.token),ignored -> host.render(false));
         }
     }
     void reset() { clear(false); blurred=-1; }
@@ -414,9 +404,8 @@ final class GpuIme {
     /** Send a choice (or a dismissal, null) to the core; submit the value it answers. */
     private void pick(GpuInputConnection editor,int[] parts) {
         if (connection != editor) return;
-        JSONObject message=request("pick",editor.identity,editor.token);
-        try { message.put("parts",parts == null ? JSONObject.NULL : new JSONArray(parts)); }
-        catch (org.json.JSONException impossible) { throw new IllegalArgumentException(impossible); }
+        JSONObject message=GpuFrame.InputRequest.pick(editor.identity,editor.token,
+            parts == null ? null : new long[]{parts[0],parts[1],parts[2]});
         host.request(message,reply -> {
             if (connection != editor || reply == null) return;
             String value=new GpuFrame.InputReply(reply).value();

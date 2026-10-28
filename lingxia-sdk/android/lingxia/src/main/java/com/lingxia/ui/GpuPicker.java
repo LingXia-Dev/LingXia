@@ -61,9 +61,7 @@ final class GpuPicker {
         Consumer<Integer> choose = index -> {
             dismiss();
             if (index < 0 || index >= labels.length || !enabled[index]) return;
-            JSONObject request;
-            try { request = new JSONObject().put("op", "select").put("identity", identity).put("generation", generation).put("index", index); }
-            catch (org.json.JSONException impossible) { throw new IllegalArgumentException(impossible); }
+            JSONObject request = GpuFrame.InputRequest.select(identity, generation, index);
             host.request(request, reply -> host.render(reply != null && Boolean.TRUE.equals(new GpuFrame.InputReply(reply).needsViewRender())));
         };
         host.open(identity);

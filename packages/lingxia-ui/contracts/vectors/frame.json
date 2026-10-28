@@ -471,6 +471,108 @@
       "needs_view_render": true
     }
   ],
+  "inputRequests": [
+    {
+      "generation": 2,
+      "identity": "/i:0:5/i:1:8",
+      "op": "focus"
+    },
+    {
+      "identity": "/i:0:5/i:1:8",
+      "op": "query",
+      "token": 1
+    },
+    {
+      "generation": 2,
+      "identity": "/i:0:5/i:3:9",
+      "op": "hit_test",
+      "point": [
+        12.5,
+        20.0
+      ],
+      "word": true
+    },
+    {
+      "edge": [
+        -1,
+        1
+      ],
+      "generation": 2,
+      "identity": "/i:0:5/i:1:8",
+      "op": "drag_hit_test",
+      "point": [
+        3.0,
+        4.5
+      ],
+      "token": 1
+    },
+    {
+      "generation": 2,
+      "identity": "/i:0:5/i:4:23",
+      "index": 0,
+      "op": "select"
+    },
+    {
+      "identity": "/i:0:5/i:1:8",
+      "op": "blur",
+      "token": 1
+    },
+    {
+      "identity": "/i:0:5/i:1:8",
+      "op": "pick",
+      "parts": [
+        2026,
+        10,
+        28
+      ],
+      "token": 1
+    },
+    {
+      "identity": "/i:0:5/i:1:8",
+      "op": "pick",
+      "parts": null,
+      "token": 1
+    },
+    {
+      "edits": [
+        {
+          "composing": true,
+          "cursor": -1,
+          "op": "replace",
+          "text": "Ada"
+        },
+        {
+          "anchor": 0,
+          "focus": 3,
+          "op": "selection"
+        },
+        {
+          "end": 2,
+          "op": "composition",
+          "start": 1
+        },
+        {
+          "op": "finish_composition"
+        },
+        {
+          "after": 0,
+          "before": 1,
+          "code_points": true,
+          "op": "delete_surrounding"
+        },
+        {
+          "op": "undo"
+        },
+        {
+          "op": "redo"
+        }
+      ],
+      "identity": "/i:0:5/i:1:8",
+      "op": "edit",
+      "submit": true,
+      "token": 1
+    }
+  ],
   "semanticNodes": [
     {
       "actions": [

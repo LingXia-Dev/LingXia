@@ -6,7 +6,7 @@ import org.json.JSONObject;
 
 /**
  * Typed readers over the frame contract (schema.json `frame`): Every message the core hands a platform adapter.
- * Messages: snapshot = FrameSnapshot, semanticNode = SemanticNode, automationRequest = AutomationRequest, automationElement = AutomationElement, automationQueryAll = AutomationQueryAll, automationTree = AutomationTree, automationFrame = AutomationFrame, automationCall = AutomationCall, automationResult = AutomationResult, inputReply = InputReply, copySelection = CopyReply, semanticRoots = SemanticRoots, textMenu = TextMenu.
+ * Messages: snapshot = FrameSnapshot, semanticNode = SemanticNode, automationRequest = AutomationRequest, automationElement = AutomationElement, automationQueryAll = AutomationQueryAll, automationTree = AutomationTree, automationFrame = AutomationFrame, automationCall = AutomationCall, automationResult = AutomationResult, inputRequest = InputRequest, inputReply = InputReply, copySelection = CopyReply, semanticRoots = SemanticRoots, textMenu = TextMenu.
  */
 public final class GpuFrame {
     private GpuFrame() {}
@@ -50,6 +50,21 @@ public final class GpuFrame {
     public static final String AUTOMATION_REQUEST_ACTION = "action";
     public static final String AUTOMATION_REQUEST_DATA = "data";
     public static final String AUTOMATION_REQUEST_RESULT = "result";
+    public static final String INPUT_REQUEST_DRAG_HIT_TEST = "drag_hit_test";
+    public static final String INPUT_REQUEST_HIT_TEST = "hit_test";
+    public static final String INPUT_REQUEST_FOCUS = "focus";
+    public static final String INPUT_REQUEST_QUERY = "query";
+    public static final String INPUT_REQUEST_SELECT = "select";
+    public static final String INPUT_REQUEST_BLUR = "blur";
+    public static final String INPUT_REQUEST_PICK = "pick";
+    public static final String INPUT_REQUEST_EDIT = "edit";
+    public static final String INPUT_EDIT_SELECTION = "selection";
+    public static final String INPUT_EDIT_COMPOSITION = "composition";
+    public static final String INPUT_EDIT_REPLACE = "replace";
+    public static final String INPUT_EDIT_FINISH_COMPOSITION = "finish_composition";
+    public static final String INPUT_EDIT_UNDO = "undo";
+    public static final String INPUT_EDIT_REDO = "redo";
+    public static final String INPUT_EDIT_DELETE_SURROUNDING = "delete_surrounding";
     public static final String AUTOMATION_ACTION_CLICK = "click";
     public static final String AUTOMATION_ACTION_FILL = "fill";
     public static final String AUTOMATION_ACTION_TYPE = "type";
@@ -626,6 +641,90 @@ public final class GpuFrame {
         public Long call() { if (json.isNull("call")) return null; return json.optLong("call"); }
     }
 
+    public static final class InputRequest {
+        public final JSONObject json;
+        public InputRequest(JSONObject json) { this.json = json; }
+        /** `op`: string */
+        public String op() { return json.isNull("op") ? null : json.optString("op", null); }
+        /** `identity`: string? */
+        public String identity() { return json.isNull("identity") ? null : json.optString("identity", null); }
+        /** `generation`: u64? */
+        public Long generation() { if (json.isNull("generation")) return null; return json.optLong("generation"); }
+        /** `token`: u64? */
+        public Long token() { if (json.isNull("token")) return null; return json.optLong("token"); }
+        /** `point`: f32[2]? */
+        public float[] point() { return (float[]) GpuFrame.array(json.optJSONArray("point"), 1, "float"); }
+        /** `edge`: i64[2]? */
+        public long[] edge() { return (long[]) GpuFrame.array(json.optJSONArray("edge"), 1, "long"); }
+        /** `word`: bool? */
+        public Boolean word() { if (json.isNull("word")) return null; return json.optBoolean("word"); }
+        /** `index`: usize? */
+        public Long index() { if (json.isNull("index")) return null; return json.optLong("index"); }
+        /** `parts`: u32[3]? */
+        public long[] parts() { return (long[]) GpuFrame.array(json.optJSONArray("parts"), 1, "long"); }
+        /** `edits`: InputEdit[]? */
+        public InputEdit[] edits() { return (InputEdit[]) GpuFrame.array(json.optJSONArray("edits"), 1, "InputEdit"); }
+        /** `submit`: bool? */
+        public Boolean submit() { if (json.isNull("submit")) return null; return json.optBoolean("submit"); }
+        /** A `drag_hit_test` InputRequest. */
+        public static JSONObject dragHitTest(String identity, long generation, long token, float[] point, long[] edge) { return GpuFrame.message("op", "drag_hit_test", "identity", identity, "generation", generation, "token", token, "point", point, "edge", edge); }
+        /** A `hit_test` InputRequest. */
+        public static JSONObject hitTest(String identity, long generation, float[] point, boolean word) { return GpuFrame.message("op", "hit_test", "identity", identity, "generation", generation, "point", point, "word", word); }
+        /** A `focus` InputRequest. */
+        public static JSONObject focus(String identity, long generation) { return GpuFrame.message("op", "focus", "identity", identity, "generation", generation); }
+        /** A `query` InputRequest. */
+        public static JSONObject query(String identity, long token) { return GpuFrame.message("op", "query", "identity", identity, "token", token); }
+        /** A `select` InputRequest. */
+        public static JSONObject select(String identity, long generation, long index) { return GpuFrame.message("op", "select", "identity", identity, "generation", generation, "index", index); }
+        /** A `blur` InputRequest. */
+        public static JSONObject blur(String identity, long token) { return GpuFrame.message("op", "blur", "identity", identity, "token", token); }
+        /** A `pick` InputRequest. */
+        public static JSONObject pick(String identity, long token, long[] parts) { return GpuFrame.message("op", "pick", "identity", identity, "token", token, "parts", parts); }
+        /** A `edit` InputRequest. */
+        public static JSONObject edit(String identity, long token, JSONObject[] edits, boolean submit) { return GpuFrame.message("op", "edit", "identity", identity, "token", token, "edits", edits, "submit", submit); }
+    }
+
+    public static final class InputEdit {
+        public final JSONObject json;
+        public InputEdit(JSONObject json) { this.json = json; }
+        /** `op`: string */
+        public String op() { return json.isNull("op") ? null : json.optString("op", null); }
+        /** `anchor`: u32? */
+        public Long anchor() { if (json.isNull("anchor")) return null; return json.optLong("anchor"); }
+        /** `focus`: u32? */
+        public Long focus() { if (json.isNull("focus")) return null; return json.optLong("focus"); }
+        /** `start`: u32? */
+        public Long start() { if (json.isNull("start")) return null; return json.optLong("start"); }
+        /** `end`: u32? */
+        public Long end() { if (json.isNull("end")) return null; return json.optLong("end"); }
+        /** `text`: string? */
+        public String text() { return json.isNull("text") ? null : json.optString("text", null); }
+        /** `cursor`: i64? */
+        public Long cursor() { if (json.isNull("cursor")) return null; return json.optLong("cursor"); }
+        /** `composing`: bool? */
+        public Boolean composing() { if (json.isNull("composing")) return null; return json.optBoolean("composing"); }
+        /** `before`: u32? */
+        public Long before() { if (json.isNull("before")) return null; return json.optLong("before"); }
+        /** `after`: u32? */
+        public Long after() { if (json.isNull("after")) return null; return json.optLong("after"); }
+        /** `code_points`: bool? */
+        public Boolean codePoints() { if (json.isNull("code_points")) return null; return json.optBoolean("code_points"); }
+        /** A `selection` InputEdit. */
+        public static JSONObject selection(long anchor, long focus) { return GpuFrame.message("op", "selection", "anchor", anchor, "focus", focus); }
+        /** A `composition` InputEdit. */
+        public static JSONObject composition(long start, long end) { return GpuFrame.message("op", "composition", "start", start, "end", end); }
+        /** A `replace` InputEdit. */
+        public static JSONObject replace(String text, long cursor, boolean composing) { return GpuFrame.message("op", "replace", "text", text, "cursor", cursor, "composing", composing); }
+        /** A `finish_composition` InputEdit. */
+        public static JSONObject finishComposition() { return GpuFrame.message("op", "finish_composition"); }
+        /** A `undo` InputEdit. */
+        public static JSONObject undo() { return GpuFrame.message("op", "undo"); }
+        /** A `redo` InputEdit. */
+        public static JSONObject redo() { return GpuFrame.message("op", "redo"); }
+        /** A `delete_surrounding` InputEdit. */
+        public static JSONObject deleteSurrounding(long before, long after, boolean codePoints) { return GpuFrame.message("op", "delete_surrounding", "before", before, "after", after, "code_points", codePoints); }
+    }
+
     public static final class AutomationCall {
         public final JSONObject json;
         public AutomationCall(JSONObject json) { this.json = json; }
@@ -911,6 +1010,26 @@ public final class GpuFrame {
         public String identity() { return json.isNull("identity") ? null : json.optString("identity", null); }
     }
 
+    /** A request object: the tag, then key/value pairs; arrays become JSON lists, null stays null. */
+    static JSONObject message(String tag, String variant, Object... pairs) {
+        JSONObject out = new JSONObject();
+        try {
+            out.put(tag, variant);
+            for (int i = 0; i < pairs.length; i += 2) out.put((String) pairs[i], json(pairs[i + 1]));
+        } catch (org.json.JSONException impossible) { throw new IllegalArgumentException(impossible); }
+        return out;
+    }
+
+    private static Object json(Object value) {
+        if (value == null) return JSONObject.NULL;
+        if (value instanceof float[]) { JSONArray out = new JSONArray(); for (float v : (float[]) value) { try { out.put((double) v); } catch (org.json.JSONException e) { throw new IllegalArgumentException(e); } } return out; }
+        if (value instanceof double[]) { JSONArray out = new JSONArray(); for (double v : (double[]) value) { try { out.put(v); } catch (org.json.JSONException e) { throw new IllegalArgumentException(e); } } return out; }
+        if (value instanceof long[]) { JSONArray out = new JSONArray(); for (long v : (long[]) value) out.put(v); return out; }
+        if (value instanceof boolean[]) { JSONArray out = new JSONArray(); for (boolean v : (boolean[]) value) out.put(v); return out; }
+        if (value instanceof Object[]) { JSONArray out = new JSONArray(); for (Object v : (Object[]) value) out.put(json(v)); return out; }
+        return value;
+    }
+
     /** A JSON list as a Java array of `element` (nested `depth` deep); null when absent. */
     static Object array(JSONArray list, int depth, String element) {
         if (list == null) return null;
@@ -976,6 +1095,8 @@ public final class GpuFrame {
             case "ScrollPosition": return ScrollPosition.class;
             case "SemanticAction": return SemanticAction.class;
             case "AutomationRequest": return AutomationRequest.class;
+            case "InputRequest": return InputRequest.class;
+            case "InputEdit": return InputEdit.class;
             case "AutomationCall": return AutomationCall.class;
             case "AutomationResult": return AutomationResult.class;
             case "AutomationAction": return AutomationAction.class;
@@ -1024,6 +1145,8 @@ public final class GpuFrame {
             case "ScrollPosition": return new ScrollPosition(json);
             case "SemanticAction": return new SemanticAction(json);
             case "AutomationRequest": return new AutomationRequest(json);
+            case "InputRequest": return new InputRequest(json);
+            case "InputEdit": return new InputEdit(json);
             case "AutomationCall": return new AutomationCall(json);
             case "AutomationResult": return new AutomationResult(json);
             case "AutomationAction": return new AutomationAction(json);

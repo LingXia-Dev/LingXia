@@ -2597,8 +2597,40 @@ fn every_message_adapters_receive_matches_the_frame_schema() {
     ] {
         assert_eq!(conform(message, value), Vec::<String>::new(), "{message}");
     }
+    // Every input request form and edit op, as the platforms' generated builders must produce them.
+    let requests = vec![
+        serde_json::json!({"op": "focus", "identity": identity, "generation": generation}),
+        serde_json::json!({"op": "query", "identity": identity, "token": token}),
+        serde_json::json!({"op": "hit_test", "identity": note["identity"], "generation": generation, "point": [12.5, 20.0], "word": true}),
+        serde_json::json!({"op": "drag_hit_test", "identity": identity, "generation": generation, "token": token, "point": [3.0, 4.5], "edge": [-1, 1]}),
+        serde_json::json!({"op": "select", "identity": plan["identity"], "generation": generation, "index": 0}),
+        serde_json::json!({"op": "blur", "identity": identity, "token": token}),
+        serde_json::json!({"op": "pick", "identity": identity, "token": token, "parts": [2026, 10, 28]}),
+        serde_json::json!({"op": "pick", "identity": identity, "token": token, "parts": null}),
+        serde_json::json!({"op": "edit", "identity": identity, "token": token, "submit": true, "edits": [
+            {"op": "replace", "text": "Ada", "cursor": -1, "composing": true},
+            {"op": "selection", "anchor": 0, "focus": 3},
+            {"op": "composition", "start": 1, "end": 2},
+            {"op": "finish_composition"},
+            {"op": "delete_surrounding", "before": 1, "after": 0, "code_points": true},
+            {"op": "undo"},
+            {"op": "redo"},
+        ]}),
+    ];
+    for request in &requests {
+        assert_eq!(
+            conform("inputRequest", request),
+            Vec::<String>::new(),
+            "{request}"
+        );
+        assert!(
+            crate::session::input_protocol::parses(&request.to_string()),
+            "dispatch parses {request}"
+        );
+    }
     // Golden vectors the platform decoders replay; re-record with LINGXIA_UPDATE_VECTORS=1.
     let recorded = serde_json::json!({
+        "inputRequests": requests,
         "snapshot": scrub(snapshot),
         "semanticNodes": nodes,
         "automation": exchanges.into_iter().map(scrub).collect::<Vec<_>>(),
@@ -2647,6 +2679,10 @@ fn every_message_adapters_receive_matches_the_frame_schema() {
     }
     for reply in vectors["inputReplies"].as_array().unwrap() {
         assert_eq!(conform("inputReply", reply), Vec::<String>::new());
+    }
+    for request in vectors["inputRequests"].as_array().unwrap() {
+        assert_eq!(conform("inputRequest", request), Vec::<String>::new());
+        assert!(crate::session::input_protocol::parses(&request.to_string()));
     }
     for message in ["copySelection", "semanticRoots", "textMenu"] {
         assert_eq!(

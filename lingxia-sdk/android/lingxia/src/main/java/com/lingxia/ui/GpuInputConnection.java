@@ -111,14 +111,6 @@ final class GpuInputConnection extends BaseInputConnection {
         if (--depth == 0) flush();
         return depth > 0;
     }
-    private static JSONObject command(String op, Object... pairs) {
-        JSONObject result = new JSONObject();
-        try {
-            result.put("op", op);
-            for (int i=0; i<pairs.length; i+=2) result.put((String)pairs[i], pairs[i+1]);
-        } catch (org.json.JSONException impossible) { throw new IllegalArgumentException(impossible); }
-        return result;
-    }
     private boolean reserve(JSONObject... edits) {
         if (closed || historyPending || submitting || queued.length() + edits.length > MAX_EDITS || pending.size() >= MAX_EDITS) return false;
         int bytes = 0;
@@ -168,8 +160,8 @@ final class GpuInputConnection extends BaseInputConnection {
         String next = text.substring(0,start) + insert + text.substring(end);
         long position = cursor > 0 ? (long)start + insert.length() + cursor - 1 : (long)start + cursor;
         int selection = (int)Math.max(0, Math.min(next.length(), position));
-        JSONObject replacement=command("replace", "text",insert,"cursor",cursor,"composing",composing);
-        JSONObject[] edits=key && composeStart >= 0 ? new JSONObject[]{command("finish_composition"),replacement} : new JSONObject[]{replacement};
+        JSONObject replacement=GpuFrame.InputEdit.replace(insert,cursor,composing);
+        JSONObject[] edits=key && composeStart >= 0 ? new JSONObject[]{GpuFrame.InputEdit.finishComposition(),replacement} : new JSONObject[]{replacement};
         int previousCount=queued.length(), previousBytes=queuedBytes;
         if (!validText(next) || !boundary(next, selection) || !reserve(edits)) return false;
         if (beforeChange != null && !beforeChange.getAsBoolean()) {
@@ -194,32 +186,32 @@ final class GpuInputConnection extends BaseInputConnection {
     @Override public boolean commitText(CharSequence text, int cursor) { return replace(text,cursor,false); }
     boolean replaceAll(String value) {
         value = fit(value, 0, text.length());
-        if (!validText(value) || !reserve(command("finish_composition"),
-            command("selection","anchor",0,"focus",text.length()),
-            command("replace","text",value,"cursor",1,"composing",false))) return false;
+        if (!validText(value) || !reserve(GpuFrame.InputEdit.finishComposition(),
+            GpuFrame.InputEdit.selection(0,text.length()),
+            GpuFrame.InputEdit.replace(value,1,false))) return false;
         text=value; anchor=focus=value.length(); composeStart=composeEnd=-1;
         changed(); return true;
     }
     @Override public boolean setComposingText(CharSequence text, int cursor) { return replace(text,cursor,true); }
     @Override public boolean setSelection(int start, int end) {
-        if (!boundary(text,start) || !boundary(text,end) || !reserve(command("selection","anchor",start,"focus",end))) return false;
+        if (!boundary(text,start) || !boundary(text,end) || !reserve(GpuFrame.InputEdit.selection(start,end))) return false;
         anchor=start; focus=end; changed(); return true;
     }
     boolean selectFromTouch(int start, int end) {
         if (!boundary(text,start) || !boundary(text,end)) return false;
-        JSONObject selection=command("selection","anchor",start,"focus",end);
-        JSONObject[] edits=composeStart >= 0 ? new JSONObject[]{command("finish_composition"),selection} : new JSONObject[]{selection};
+        JSONObject selection=GpuFrame.InputEdit.selection(start,end);
+        JSONObject[] edits=composeStart >= 0 ? new JSONObject[]{GpuFrame.InputEdit.finishComposition(),selection} : new JSONObject[]{selection};
         if (!reserve(edits)) return false;
         composeStart=composeEnd=-1; anchor=start; focus=end; changed(); return true;
     }
     @Override public boolean setComposingRegion(int start, int end) {
-        if (!boundary(text,start) || !boundary(text,end) || !reserve(command("composition","start",start,"end",end))) return false;
+        if (!boundary(text,start) || !boundary(text,end) || !reserve(GpuFrame.InputEdit.composition(start,end))) return false;
         composeStart = start == end ? -1 : Math.min(start,end);
         composeEnd = start == end ? -1 : Math.max(start,end);
         changed(); return true;
     }
     @Override public boolean finishComposingText() {
-        if (!reserve(command("finish_composition"))) return false;
+        if (!reserve(GpuFrame.InputEdit.finishComposition())) return false;
         composeStart=composeEnd=-1; changed(); return true;
     }
     private int remap(int offset, int start, int end) {
@@ -238,7 +230,7 @@ final class GpuInputConnection extends BaseInputConnection {
         int start=Math.min(anchor,focus), end=Math.max(anchor,focus);
         int left = codePoints ? text.offsetByCodePoints(start,-Math.min(before,text.codePointCount(0,start))) : Math.max(0,start-before);
         int right = codePoints ? text.offsetByCodePoints(end,Math.min(after,text.codePointCount(end,text.length()))) : (int)Math.min(text.length(),(long)end+after);
-        if (!boundary(text,left) || !boundary(text,right) || !reserve(command("delete_surrounding","before",before,"after",after,"code_points",codePoints))) return false;
+        if (!boundary(text,left) || !boundary(text,right) || !reserve(GpuFrame.InputEdit.deleteSurrounding(before,after,codePoints))) return false;
         remove(end,right); remove(left,start); changed(); return true;
     }
     @Override public boolean deleteSurroundingText(int before,int after) { return delete(before,after,false); }
@@ -254,9 +246,9 @@ final class GpuInputConnection extends BaseInputConnection {
         int start=android.text.Selection.getSelectionEnd(candidate), end=start+text.length()-candidate.length();
         if (!boundary(text,start) || !boundary(text,end) || end < start
             || !candidate.toString().equals(text.substring(0,start)+text.substring(end))) return false;
-        JSONObject selection=command("selection","anchor",start,"focus",end);
-        JSONObject replacement=command("replace","text","","cursor",1,"composing",false);
-        if (!(composeStart >= 0 ? reserve(command("finish_composition"),selection,replacement) : reserve(selection,replacement))) return false;
+        JSONObject selection=GpuFrame.InputEdit.selection(start,end);
+        JSONObject replacement=GpuFrame.InputEdit.replace("",1,false);
+        if (!(composeStart >= 0 ? reserve(GpuFrame.InputEdit.finishComposition(),selection,replacement) : reserve(selection,replacement))) return false;
         text=candidate.toString(); anchor=focus=start; composeStart=composeEnd=-1;
         changed(); return true;
     }
@@ -301,13 +293,13 @@ final class GpuInputConnection extends BaseInputConnection {
         if (closed || historyPending) return false;
         if (action == android.R.id.undo || action == android.R.id.redo) {
             boolean undo=action == android.R.id.undo;
-            if (!(undo ? canUndo() : canRedo()) || !reserve(command(undo ? "undo" : "redo"))) return false;
+            if (!(undo ? canUndo() : canRedo()) || !reserve((undo ? GpuFrame.InputEdit.undo() : GpuFrame.InputEdit.redo()))) return false;
             // The mirror has no history. Do not calculate edits against its old selection.
             historyPending=true; changed(); return true;
         }
         if (action == android.R.id.selectAll) {
-            JSONObject selection=command("selection","anchor",0,"focus",text.length());
-            JSONObject[] edits=composeStart >= 0 ? new JSONObject[]{command("finish_composition"),selection} : new JSONObject[]{selection};
+            JSONObject selection=GpuFrame.InputEdit.selection(0,text.length());
+            JSONObject[] edits=composeStart >= 0 ? new JSONObject[]{GpuFrame.InputEdit.finishComposition(),selection} : new JSONObject[]{selection};
             if (!reserve(edits)) return false;
             composeStart=composeEnd=-1; anchor=0; focus=text.length(); changed(); return true;
         }

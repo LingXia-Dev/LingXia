@@ -129,6 +129,68 @@ public class GpuFrameVectorsTest {
         assertAllRead();
     }
 
+    /** JSON as plain values, so 20 and 20.0 compare equal. */
+    static Object canon(Object value) throws Exception {
+        if (value == null || value == JSONObject.NULL) return null;
+        if (value instanceof JSONObject) {
+            java.util.TreeMap<String, Object> out = new java.util.TreeMap<>();
+            JSONObject o = (JSONObject) value;
+            for (Iterator<String> keys = o.keys(); keys.hasNext(); ) { String key = keys.next(); out.put(key, canon(o.get(key))); }
+            return out;
+        }
+        if (value instanceof JSONArray) {
+            List<Object> out = new ArrayList<>();
+            JSONArray a = (JSONArray) value;
+            for (int i = 0; i < a.length(); i++) out.add(canon(a.get(i)));
+            return out;
+        }
+        if (value instanceof Number) return ((Number) value).doubleValue();
+        return value;
+    }
+
+    static JSONObject rebuild(GpuFrame.InputEdit e) {
+        switch (e.op()) {
+            case GpuFrame.INPUT_EDIT_SELECTION: return GpuFrame.InputEdit.selection(e.anchor(), e.focus());
+            case GpuFrame.INPUT_EDIT_COMPOSITION: return GpuFrame.InputEdit.composition(e.start(), e.end());
+            case GpuFrame.INPUT_EDIT_REPLACE: return GpuFrame.InputEdit.replace(e.text(), e.cursor(), e.composing());
+            case GpuFrame.INPUT_EDIT_FINISH_COMPOSITION: return GpuFrame.InputEdit.finishComposition();
+            case GpuFrame.INPUT_EDIT_UNDO: return GpuFrame.InputEdit.undo();
+            case GpuFrame.INPUT_EDIT_REDO: return GpuFrame.InputEdit.redo();
+            case GpuFrame.INPUT_EDIT_DELETE_SURROUNDING: return GpuFrame.InputEdit.deleteSurrounding(e.before(), e.after(), e.codePoints());
+            default: throw new AssertionError("unknown edit " + e.op());
+        }
+    }
+
+    static JSONObject rebuild(GpuFrame.InputRequest r) {
+        switch (r.op()) {
+            case GpuFrame.INPUT_REQUEST_DRAG_HIT_TEST: return GpuFrame.InputRequest.dragHitTest(r.identity(), r.generation(), r.token(), r.point(), r.edge());
+            case GpuFrame.INPUT_REQUEST_HIT_TEST: return GpuFrame.InputRequest.hitTest(r.identity(), r.generation(), r.point(), r.word());
+            case GpuFrame.INPUT_REQUEST_FOCUS: return GpuFrame.InputRequest.focus(r.identity(), r.generation());
+            case GpuFrame.INPUT_REQUEST_QUERY: return GpuFrame.InputRequest.query(r.identity(), r.token());
+            case GpuFrame.INPUT_REQUEST_SELECT: return GpuFrame.InputRequest.select(r.identity(), r.generation(), r.index());
+            case GpuFrame.INPUT_REQUEST_BLUR: return GpuFrame.InputRequest.blur(r.identity(), r.token());
+            case GpuFrame.INPUT_REQUEST_PICK: return GpuFrame.InputRequest.pick(r.identity(), r.token(), r.parts());
+            case GpuFrame.INPUT_REQUEST_EDIT: {
+                GpuFrame.InputEdit[] edits = r.edits();
+                JSONObject[] built = new JSONObject[edits.length];
+                for (int i = 0; i < edits.length; i++) built[i] = rebuild(edits[i]);
+                return GpuFrame.InputRequest.edit(r.identity(), r.token(), built, r.submit());
+            }
+            default: throw new AssertionError("unknown request " + r.op());
+        }
+    }
+
+    @Test public void inputRequestBuildersReproduceEveryRequestTheCoreParses() throws Exception {
+        JSONArray requests = vectors().getJSONArray("inputRequests");
+        Set<String> ops = new LinkedHashSet<>();
+        for (int i = 0; i < requests.length(); i++) {
+            JSONObject vector = requests.getJSONObject(i);
+            ops.add(vector.getString("op"));
+            assertEquals(vector.toString(), canon(vector), canon(rebuild(new GpuFrame.InputRequest(vector))));
+        }
+        assertEquals(8, ops.size());
+    }
+
     @Test public void inputRepliesCopyRootsAndTextMenuDecodeEveryField() throws Exception {
         JSONObject vectors = vectors();
         JSONArray replies = vectors.getJSONArray("inputReplies");

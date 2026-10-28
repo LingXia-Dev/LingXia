@@ -1,5 +1,5 @@
 // Generated from packages/lingxia-ui/contracts/schema.json; do not edit.
-// The frame contract every Apple platform decodes: snapshot = FrameSnapshot, semanticNode = SemanticNode, automationRequest = AutomationRequest, automationElement = AutomationElement, automationQueryAll = AutomationQueryAll, automationTree = AutomationTree, automationFrame = AutomationFrame, automationCall = AutomationCall, automationResult = AutomationResult, inputReply = InputReply, copySelection = CopyReply, semanticRoots = SemanticRoots, textMenu = TextMenu.
+// The frame contract every Apple platform decodes: snapshot = FrameSnapshot, semanticNode = SemanticNode, automationRequest = AutomationRequest, automationElement = AutomationElement, automationQueryAll = AutomationQueryAll, automationTree = AutomationTree, automationFrame = AutomationFrame, automationCall = AutomationCall, automationResult = AutomationResult, inputRequest = InputRequest, inputReply = InputReply, copySelection = CopyReply, semanticRoots = SemanticRoots, textMenu = TextMenu.
 import Foundation
 
 /// Any JSON value, for contract fields typed `any`.
@@ -680,6 +680,64 @@ public struct GpuFrameAutomationRequest: Decodable, Sendable {
     }
 }
 
+/// `InputRequest` in the frame contract.
+public struct GpuFrameInputRequest: Decodable, Sendable {
+    public let op: String
+    public let identity: String?
+    public let generation: UInt64?
+    public let token: UInt64?
+    public let point: [Float]?
+    public let edge: [Int64]?
+    public let word: Bool?
+    public let index: UInt64?
+    public let parts: [UInt32]?
+    public let edits: [GpuFrameInputEdit]?
+    public let submit: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case op = "op"
+        case identity = "identity"
+        case generation = "generation"
+        case token = "token"
+        case point = "point"
+        case edge = "edge"
+        case word = "word"
+        case index = "index"
+        case parts = "parts"
+        case edits = "edits"
+        case submit = "submit"
+    }
+}
+
+/// `InputEdit` in the frame contract.
+public struct GpuFrameInputEdit: Decodable, Sendable {
+    public let op: String
+    public let anchor: UInt32?
+    public let focus: UInt32?
+    public let start: UInt32?
+    public let end: UInt32?
+    public let text: String?
+    public let cursor: Int64?
+    public let composing: Bool?
+    public let before: UInt32?
+    public let after: UInt32?
+    public let codePoints: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case op = "op"
+        case anchor = "anchor"
+        case focus = "focus"
+        case start = "start"
+        case end = "end"
+        case text = "text"
+        case cursor = "cursor"
+        case composing = "composing"
+        case before = "before"
+        case after = "after"
+        case codePoints = "code_points"
+    }
+}
+
 /// `AutomationCall` in the frame contract.
 public struct GpuFrameAutomationCall: Decodable, Sendable {
     public let call: UInt64
@@ -996,5 +1054,114 @@ public struct GpuFrameTextMenuTarget: Decodable, Sendable {
     enum CodingKeys: String, CodingKey {
         case kind = "kind"
         case identity = "identity"
+    }
+}
+
+/// A JSON key named at run time, for request encoders.
+public struct GpuFrameKey: CodingKey {
+    public let stringValue: String
+    public var intValue: Int? { nil }
+    public init(_ string: String) { stringValue = string }
+    public init?(stringValue: String) { self.stringValue = stringValue }
+    public init?(intValue: Int) { nil }
+}
+
+/// A `InputRequest` the platform sends to the core.
+public enum GpuFrameInputRequestMessage: Encodable, Sendable {
+    case dragHitTest(identity: String, generation: UInt64, token: UInt64, point: [Float], edge: [Int64])
+    case hitTest(identity: String, generation: UInt64, point: [Float], word: Bool)
+    case focus(identity: String, generation: UInt64)
+    case query(identity: String, token: UInt64)
+    case select(identity: String, generation: UInt64, index: UInt64)
+    case blur(identity: String, token: UInt64)
+    case pick(identity: String, token: UInt64, parts: [UInt32]?)
+    case edit(identity: String, token: UInt64, edits: [GpuFrameInputEditMessage], submit: Bool)
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: GpuFrameKey.self)
+        switch self {
+        case .dragHitTest(let identity, let generation, let token, let point, let edge):
+            try container.encode("drag_hit_test", forKey: GpuFrameKey("op"))
+            try container.encode(identity, forKey: GpuFrameKey("identity"))
+            try container.encode(generation, forKey: GpuFrameKey("generation"))
+            try container.encode(token, forKey: GpuFrameKey("token"))
+            try container.encode(point, forKey: GpuFrameKey("point"))
+            try container.encode(edge, forKey: GpuFrameKey("edge"))
+        case .hitTest(let identity, let generation, let point, let word):
+            try container.encode("hit_test", forKey: GpuFrameKey("op"))
+            try container.encode(identity, forKey: GpuFrameKey("identity"))
+            try container.encode(generation, forKey: GpuFrameKey("generation"))
+            try container.encode(point, forKey: GpuFrameKey("point"))
+            try container.encode(word, forKey: GpuFrameKey("word"))
+        case .focus(let identity, let generation):
+            try container.encode("focus", forKey: GpuFrameKey("op"))
+            try container.encode(identity, forKey: GpuFrameKey("identity"))
+            try container.encode(generation, forKey: GpuFrameKey("generation"))
+        case .query(let identity, let token):
+            try container.encode("query", forKey: GpuFrameKey("op"))
+            try container.encode(identity, forKey: GpuFrameKey("identity"))
+            try container.encode(token, forKey: GpuFrameKey("token"))
+        case .select(let identity, let generation, let index):
+            try container.encode("select", forKey: GpuFrameKey("op"))
+            try container.encode(identity, forKey: GpuFrameKey("identity"))
+            try container.encode(generation, forKey: GpuFrameKey("generation"))
+            try container.encode(index, forKey: GpuFrameKey("index"))
+        case .blur(let identity, let token):
+            try container.encode("blur", forKey: GpuFrameKey("op"))
+            try container.encode(identity, forKey: GpuFrameKey("identity"))
+            try container.encode(token, forKey: GpuFrameKey("token"))
+        case .pick(let identity, let token, let parts):
+            try container.encode("pick", forKey: GpuFrameKey("op"))
+            try container.encode(identity, forKey: GpuFrameKey("identity"))
+            try container.encode(token, forKey: GpuFrameKey("token"))
+            try container.encode(parts, forKey: GpuFrameKey("parts"))
+        case .edit(let identity, let token, let edits, let submit):
+            try container.encode("edit", forKey: GpuFrameKey("op"))
+            try container.encode(identity, forKey: GpuFrameKey("identity"))
+            try container.encode(token, forKey: GpuFrameKey("token"))
+            try container.encode(edits, forKey: GpuFrameKey("edits"))
+            try container.encode(submit, forKey: GpuFrameKey("submit"))
+        }
+    }
+}
+
+/// A `InputEdit` the platform sends to the core.
+public enum GpuFrameInputEditMessage: Encodable, Sendable {
+    case selection(anchor: UInt32, focus: UInt32)
+    case composition(start: UInt32, end: UInt32)
+    case replace(text: String, cursor: Int64, composing: Bool)
+    case finishComposition
+    case undo
+    case redo
+    case deleteSurrounding(before: UInt32, after: UInt32, codePoints: Bool)
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: GpuFrameKey.self)
+        switch self {
+        case .selection(let anchor, let focus):
+            try container.encode("selection", forKey: GpuFrameKey("op"))
+            try container.encode(anchor, forKey: GpuFrameKey("anchor"))
+            try container.encode(focus, forKey: GpuFrameKey("focus"))
+        case .composition(let start, let end):
+            try container.encode("composition", forKey: GpuFrameKey("op"))
+            try container.encode(start, forKey: GpuFrameKey("start"))
+            try container.encode(end, forKey: GpuFrameKey("end"))
+        case .replace(let text, let cursor, let composing):
+            try container.encode("replace", forKey: GpuFrameKey("op"))
+            try container.encode(text, forKey: GpuFrameKey("text"))
+            try container.encode(cursor, forKey: GpuFrameKey("cursor"))
+            try container.encode(composing, forKey: GpuFrameKey("composing"))
+        case .finishComposition:
+            try container.encode("finish_composition", forKey: GpuFrameKey("op"))
+        case .undo:
+            try container.encode("undo", forKey: GpuFrameKey("op"))
+        case .redo:
+            try container.encode("redo", forKey: GpuFrameKey("op"))
+        case .deleteSurrounding(let before, let after, let codePoints):
+            try container.encode("delete_surrounding", forKey: GpuFrameKey("op"))
+            try container.encode(before, forKey: GpuFrameKey("before"))
+            try container.encode(after, forKey: GpuFrameKey("after"))
+            try container.encode(codePoints, forKey: GpuFrameKey("code_points"))
+        }
     }
 }

@@ -487,6 +487,19 @@ function frameJava(schema) {
   const fieldsOf = def => def.tagged
     ? Object.fromEntries([[def.tagged, 'string'], ...Object.values(def.variants).flatMap(fields => Object.entries(fields).map(([k, v]) => [k, v.endsWith('?') ? v : `${v}?`]))])
     : def;
+  const requests = new Set(schema.frame.requests ?? []);
+  // Builders take what the reader returns, except nested request objects, which their own builders make.
+  const paramType = ty => {
+    const t = frameType(ty);
+    const element = kindOf(t.base) === 'prim' ? prim[t.base] : kindOf(t.base) === 'enum' ? 'String' : 'JSONObject';
+    if (t.dims.length) return element + '[]'.repeat(t.dims.length);
+    return t.optional && boxed[element] ? boxed[element] : element;
+  };
+  const builders = (name, def) => Object.entries(def.variants).map(([variant, fields]) => {
+    const params = Object.entries(fields).map(([key, ty]) => `${paramType(ty)} ${camel(key)}`);
+    const pairs = Object.keys(fields).map(key => `, ${JSON.stringify(key)}, ${camel(key)}`).join('');
+    return `        /** A \`${variant}\` ${name}. */\n        public static JSONObject ${camel(variant)}(${params.join(', ')}) { return GpuFrame.message(${JSON.stringify(def.tagged)}, ${JSON.stringify(variant)}${pairs}); }`;
+  });
   const classes = [], constants = [];
   for (const [name, def] of Object.entries(types)) {
     if (def.enum) { constants.push(...def.enum.map(value => `    public static final String ${constant(name)}_${constant(value)} = ${JSON.stringify(value)};`)); continue; }
@@ -495,6 +508,7 @@ function frameJava(schema) {
       const t = frameType(ty);
       return `        /** \`${key}\`: ${ty} */\n        public ${javaType(t)} ${camel(key) === 'class' ? 'klass' : camel(key)}() { ${reader(key, t)} }`;
     });
+    if (requests.has(name)) methods.push(...builders(name, def));
     classes.push(`    public static final class ${name} {
         public final JSONObject json;
         public ${name}(JSONObject json) { this.json = json; }
@@ -516,6 +530,26 @@ public final class GpuFrame {
 ${constants.join('\n')}
 
 ${classes.join('\n\n')}
+
+    /** A request object: the tag, then key/value pairs; arrays become JSON lists, null stays null. */
+    static JSONObject message(String tag, String variant, Object... pairs) {
+        JSONObject out = new JSONObject();
+        try {
+            out.put(tag, variant);
+            for (int i = 0; i < pairs.length; i += 2) out.put((String) pairs[i], json(pairs[i + 1]));
+        } catch (org.json.JSONException impossible) { throw new IllegalArgumentException(impossible); }
+        return out;
+    }
+
+    private static Object json(Object value) {
+        if (value == null) return JSONObject.NULL;
+        if (value instanceof float[]) { JSONArray out = new JSONArray(); for (float v : (float[]) value) { try { out.put((double) v); } catch (org.json.JSONException e) { throw new IllegalArgumentException(e); } } return out; }
+        if (value instanceof double[]) { JSONArray out = new JSONArray(); for (double v : (double[]) value) { try { out.put(v); } catch (org.json.JSONException e) { throw new IllegalArgumentException(e); } } return out; }
+        if (value instanceof long[]) { JSONArray out = new JSONArray(); for (long v : (long[]) value) out.put(v); return out; }
+        if (value instanceof boolean[]) { JSONArray out = new JSONArray(); for (boolean v : (boolean[]) value) out.put(v); return out; }
+        if (value instanceof Object[]) { JSONArray out = new JSONArray(); for (Object v : (Object[]) value) out.put(json(v)); return out; }
+        return value;
+    }
 
     /** A JSON list as a Java array of \`element\` (nested \`depth\` deep); null when absent. */
     static Object array(JSONArray list, int depth, String element) {
@@ -599,6 +633,37 @@ ${keys.join('\n')}
     }
 }`;
   });
+  const requests = new Set(schema.frame.requests ?? []);
+  const messageType = ty => {
+    const t = frameType(ty);
+    let element = prim[t.base] ?? (types[t.base]?.enum ? 'String' : requests.has(t.base) ? `GpuFrame${t.base}Message` : `GpuFrame${t.base}`);
+    for (const _ of t.dims) element = `[${element}]`;
+    return t.optional ? `${element}?` : element;
+  };
+  const messages_ = [...requests].map(name => {
+    const def = types[name];
+    const cases = Object.entries(def.variants).map(([variant, fields]) => {
+      const params = Object.entries(fields).map(([key, ty]) => `${camel(key)}: ${messageType(ty)}`);
+      return `    case ${camel(variant)}${params.length ? `(${params.join(', ')})` : ''}`;
+    });
+    const encodes = Object.entries(def.variants).map(([variant, fields]) => {
+      const keys = Object.keys(fields);
+      const bind = keys.length ? `(${keys.map(key => `let ${camel(key)}`).join(', ')})` : '';
+      const lines = keys.map(key => `            try container.encode(${camel(key)}, forKey: GpuFrameKey(${JSON.stringify(key)}))`);
+      return `        case .${camel(variant)}${bind}:\n            try container.encode(${JSON.stringify(variant)}, forKey: GpuFrameKey(${JSON.stringify(def.tagged)}))${lines.length ? '\n' + lines.join('\n') : ''}`;
+    });
+    return `/// A \`${name}\` the platform sends to the core.
+public enum GpuFrame${name}Message: Encodable, Sendable {
+${cases.join('\n')}
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: GpuFrameKey.self)
+        switch self {
+${encodes.join('\n')}
+        }
+    }
+}`;
+  });
   const enums = Object.entries(types).filter(([, def]) => def.enum).map(([name, def]) =>
     `/// \`${name}\` values.\npublic enum GpuFrame${name}: String, Sendable {\n${def.enum.map(value => `    case ${camel(value)} = ${JSON.stringify(value)}`).join('\n')}\n}`);
   return `// Generated from packages/lingxia-ui/contracts/schema.json; do not edit.
@@ -628,6 +693,17 @@ public enum GpuJSON: Decodable, Sendable, Equatable {
 ${enums.join('\n\n')}
 
 ${structs.join('\n\n')}
+
+/// A JSON key named at run time, for request encoders.
+public struct GpuFrameKey: CodingKey {
+    public let stringValue: String
+    public var intValue: Int? { nil }
+    public init(_ string: String) { stringValue = string }
+    public init?(stringValue: String) { self.stringValue = stringValue }
+    public init?(intValue: Int) { nil }
+}
+
+${messages_.join('\n\n')}
 `;
 }
 

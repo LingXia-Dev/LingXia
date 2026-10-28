@@ -116,6 +116,12 @@ impl From<HostEdit> for Edit {
     }
 }
 
+/// Whether `request` is a well-formed host input request (the platforms' builders are tested against it).
+#[cfg(test)]
+pub(crate) fn parses(request: &str) -> bool {
+    serde_json::from_str::<Request>(request).is_ok()
+}
+
 impl ViewSession {
     /// Returns JSON null for an expired connection or stale focus request.
     pub fn input_request(&mut self, request: &str) -> Result<String, String> {
