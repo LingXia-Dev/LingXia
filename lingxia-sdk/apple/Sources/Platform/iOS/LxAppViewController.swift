@@ -42,6 +42,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
     private var webViewContainer: UIView!
     /// The GPU page on screen, when the current page renders natively.
     private weak var activeGpuView: UIView?
+    nonisolated(unsafe) private var gpuChromeObserver: NSObjectProtocol?
     private var globalCapsuleButton: UIView?
     var globalNavigationBar: LingXiaNavigationBar?
     var currentTabBar: LingXiaTabBar?
@@ -204,6 +205,8 @@ final class LxAppViewController: UIViewController, ObservableObject {
     /// the real document colour once a page has painted, and `systemBackground`
     /// last, which is right only for a host that never says otherwise.
     private func resolvedCanvasColor() -> UIColor {
+        // A GPU page names its own floor.
+        if let chrome = (activeGpuView as? GpuPageView)?.hostChrome { return chrome.canvas }
         let dark =
             LxAppCore.currentAppId
             .flatMap { LxAppAppearanceRegistry.resolvedDark(appId: $0) } ?? false
@@ -1143,6 +1146,16 @@ final class LxAppViewController: UIViewController, ObservableObject {
     }
 
     private func setupNotificationObservers() {
+        gpuChromeObserver = NotificationCenter.default.addObserver(
+            forName: GpuHostChrome.changed, object: nil, queue: .main
+        ) { [weak self] notification in
+            let page = notification.object as? UIView
+            MainActor.assumeIsolated {
+                guard let self, page != nil, page === self.activeGpuView else { return }
+                self.setOpaqueBackgrounds()
+                self.setNeedsStatusBarAppearanceUpdate()
+            }
+        }
         closeAppObserver = NotificationCenter.default.addObserver(
             forName: NSNotification.Name(ACTION_CLOSE_LXAPP),
             object: nil,
@@ -1192,6 +1205,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
         if let closeAppObserver = closeAppObserver {
             NotificationCenter.default.removeObserver(closeAppObserver)
         }
+        gpuChromeObserver.map(NotificationCenter.default.removeObserver)
 
         if let tabBarObserver = tabBarObserver {
             NotificationCenter.default.removeObserver(tabBarObserver)
@@ -1199,6 +1213,9 @@ final class LxAppViewController: UIViewController, ObservableObject {
     }
 
     public override var preferredStatusBarStyle: UIStatusBarStyle {
+        if let chrome = (activeGpuView as? GpuPageView)?.hostChrome {
+            return chrome.dark ? .lightContent : .darkContent
+        }
         let currentPath = LxAppCore.getCurrentPath()
         let transparent = shouldUseTransparentMode(for: LxAppCore.currentAppId ?? "", path: currentPath)
         let navState = NavigationBarStateManager.shared.currentState

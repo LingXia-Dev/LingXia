@@ -14,6 +14,21 @@ final class GpuPageView: UIView {
     /// Paused between requested frames.
     private var vsyncLink: CADisplayLink?
     private lazy var semantics = GpuAccessibility(view: self)
+    lazy var ime = GpuIme(host: self)
+    var inputReplies: [UInt64: (GpuFrameInputReply?) -> Void] = [:]
+    var nextInputReply: UInt64 = 0
+    /// UIKit's text input plumbing, kept for the connected editor.
+    weak var inputDelegate: UITextInputDelegate?
+    var textTokenizer: UITextInputTokenizer?
+    /// The open date or time picker of the connected editor.
+    var valuePicker: GpuValuePickerController?
+    /// The colours the page asks its host to paint around it; nil before its first frame.
+    var hostChrome: GpuHostChrome? {
+        didSet {
+            layer.backgroundColor = hostChrome?.canvas.cgColor
+            NotificationCenter.default.post(name: GpuHostChrome.changed, object: self)
+        }
+    }
 
     override var isAccessibilityElement: Bool {
         get { false }
@@ -59,6 +74,7 @@ final class GpuPageView: UIView {
         let active = note.name == UIApplication.didBecomeActiveNotification
         if !active { tracked = nil }
         gpuPageWindowFocus(token, active)
+        ime.updateCaret()
     }
 
     @objc private func resume() {
@@ -363,6 +379,19 @@ final class GpuPageView: UIView {
     }
 }
 
+/// Colours for the host chrome around a GPU page, chosen by the core from its palette.
+struct GpuHostChrome {
+    /// Posted on the main thread with the page view as object.
+    static let changed = Notification.Name("LingXiaGpuHostChromeChanged")
+    let canvas: UIColor
+    let bar: UIColor
+    let barLine: UIColor
+    let content: UIColor
+    let contentMuted: UIColor
+    let accent: UIColor
+    let dark: Bool
+}
+
 /// A fling's display link target that does not retain the view.
 @MainActor
 private final class GpuFlingTarget: NSObject {
@@ -434,16 +463,67 @@ public enum GpuPages {
         MainActor.assumeIsolated { UIPasteboard.general.string = text }
     }
 
-    // UIKit text input is not wired yet: no editor connects, assistive edits fail.
-    static func imePresented(token: Int64, generation: UInt64, node: RustStr) {}
-    static func imeFocus(token: Int64, generation: UInt64, node: RustStr, touch: Bool, x: Float, y: Float, word: Bool) {}
-    static func imeActivation(token: Int64) {}
+    static func imePresented(token: Int64, generation: UInt64, node: RustStr) {
+        let node = node.toString()
+        MainActor.assumeIsolated {
+            guard let view = views[token] else { return }
+            view.ime.presented(GpuPageView.decodeNode(node), ticket: view.ime.capture())
+        }
+    }
+
+    static func imeFocus(token: Int64, generation: UInt64, node: RustStr, touch: Bool, x: Float, y: Float, word: Bool) {
+        let node = node.toString()
+        MainActor.assumeIsolated {
+            guard let view = views[token], let node = GpuPageView.decodeNode(node) else { return }
+            if touch {
+                view.ime.touch(node, generation: generation, x: x, y: y, word: word)
+            } else {
+                view.ime.focus(node, generation: generation)
+            }
+        }
+    }
+
+    static func imeActivation(token: Int64) {
+        MainActor.assumeIsolated {
+            if let ime = views[token]?.ime, ime.isActive { ime.clear(blur: true) }
+        }
+    }
     static func textMenu(token: Int64, menu: RustStr) {}
-    static func hostChrome(token: Int64, canvas: UInt32, bar: UInt32, bar_line barLine: UInt32, content: UInt32, content_muted contentMuted: UInt32, accent: UInt32, dark: Bool) {}
-    static func openPicker(token: Int64, generation: UInt64, node: RustStr) {}
-    static func imeReset(token: Int64) {}
-    static func imeEdit(token: Int64, generation: UInt64, node: RustStr, replace: Bool, text: RustStr, start: Int32, end: Int32) -> UInt8 { 2 }
-    static func inputReply(token: Int64, reply: UInt64, present: Bool, value: RustStr) {}
+    static func hostChrome(token: Int64, canvas: UInt32, bar: UInt32, bar_line barLine: UInt32, content: UInt32, content_muted contentMuted: UInt32, accent: UInt32, dark: Bool) {
+        MainActor.assumeIsolated {
+            guard let view = views[token] else { return }
+            let color = { (argb: UInt32) in
+                UIColor(red: CGFloat((argb >> 16) & 0xff) / 255, green: CGFloat((argb >> 8) & 0xff) / 255,
+                        blue: CGFloat(argb & 0xff) / 255, alpha: CGFloat(argb >> 24) / 255)
+            }
+            view.hostChrome = GpuHostChrome(
+                canvas: color(canvas), bar: color(bar), barLine: color(barLine), content: color(content),
+                contentMuted: color(contentMuted), accent: color(accent), dark: dark)
+        }
+    }
+    static func openPicker(token: Int64, generation: UInt64, node: RustStr) {
+        let node = node.toString()
+        MainActor.assumeIsolated {
+            guard let view = views[token], let node = GpuPageView.decodeNode(node) else { return }
+            view.openPicker(generation: generation, node: node)
+        }
+    }
+    static func imeReset(token: Int64) {
+        MainActor.assumeIsolated { views[token]?.ime.reset() }
+    }
+
+    static func imeEdit(token: Int64, generation: UInt64, node: RustStr, replace: Bool, text: RustStr, start: Int32, end: Int32) -> UInt8 {
+        let (node, text) = (node.toString(), text.toString())
+        return MainActor.assumeIsolated {
+            guard let view = views[token], let node = GpuPageView.decodeNode(node) else { return GpuIme.failed }
+            return view.ime.edit(node, generation: generation, text: replace ? text : nil, start: Int(start), end: Int(end))
+        }
+    }
+
+    static func inputReply(token: Int64, reply: UInt64, present: Bool, value: RustStr) {
+        let value = value.toString()
+        MainActor.assumeIsolated { views[token]?.inputReply(reply, value: present ? value : nil) }
+    }
 
     static func stopFling(token: Int64) {
         MainActor.assumeIsolated { views[token]?.stopFlingNow() }
