@@ -144,6 +144,23 @@ mod bridge {
         #[swift_bridge(swift_name = "gpuPageCopySelection")]
         fn gpu_page_copy_selection(token: i64);
 
+        // Static-text selection handles, logical pixels: `[which, x, bottom, middle]` per
+        // visible end; empty without a selection.
+        #[swift_bridge(swift_name = "gpuPageSelectionHandles")]
+        fn gpu_page_selection_handles(token: i64) -> Vec<f32>;
+
+        // The selection handles' ARGB colour from the page's feedback style.
+        #[swift_bridge(swift_name = "gpuPageSelectionHandleColor")]
+        fn gpu_page_selection_handle_color(token: i64) -> u32;
+
+        // A touch at a logical point on a handle: `[which, dx, dy]` grab offset, or empty.
+        #[swift_bridge(swift_name = "gpuPageHandleHit")]
+        fn gpu_page_handle_hit(token: i64, x: f32, y: f32) -> Vec<f32>;
+
+        // A grabbed handle `which` moved to a logical point; `which` -1 lets it go.
+        #[swift_bridge(swift_name = "gpuPageHandleDrag")]
+        fn gpu_page_handle_drag(token: i64, which: i32, x: f32, y: f32);
+
         // Present again for an input reply: `rebuild` reruns the View, otherwise redraws.
         #[swift_bridge(swift_name = "gpuPageRender")]
         fn gpu_page_render(token: i64, rebuild: bool);
@@ -662,6 +679,59 @@ fn gpu_page_copy_selection(token: i64) {
     });
     #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
     let _ = token;
+}
+
+fn gpu_page_selection_handles(token: i64) -> Vec<f32> {
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    {
+        let mut handles = Vec::new();
+        with_page(token, |page| handles = page.selection_handles().1);
+        handles
+    }
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    {
+        let _ = token;
+        Vec::new()
+    }
+}
+
+fn gpu_page_selection_handle_color(token: i64) -> u32 {
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    {
+        let mut color = 0;
+        with_page(token, |page| color = page.selection_handles().0);
+        color
+    }
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    {
+        let _ = token;
+        0
+    }
+}
+
+fn gpu_page_handle_hit(token: i64, x: f32, y: f32) -> Vec<f32> {
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    {
+        let mut hit = Vec::new();
+        with_page(token, |page| {
+            hit = page.handle_hit(x, y).map(Vec::from).unwrap_or_default()
+        });
+        hit
+    }
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    {
+        let _ = (token, x, y);
+        Vec::new()
+    }
+}
+
+fn gpu_page_handle_drag(token: i64, which: i32, x: f32, y: f32) {
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    with_page(token, |page| {
+        page.handle_drag(u8::try_from(which).ok(), x, y)
+    });
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    let _ = (token, which, x, y);
 }
 
 fn gpu_page_render(token: i64, rebuild: bool) {

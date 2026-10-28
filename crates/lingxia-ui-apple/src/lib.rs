@@ -234,6 +234,72 @@ impl Page {
     }
 }
 
+/// Selection handles of static text, as touch hosts draw and drag them.
+impl Page {
+    /// The presented node holding a static-text selection, with its chrome geometry.
+    fn static_selection(&self) -> Option<(String, lingxia_ui::interaction::chrome::ChromeNode)> {
+        let frame = self.host.snapshot()?;
+        let node = frame
+            .frame
+            .nodes
+            .iter()
+            .find(|n| n.input.is_none() && n.text_selection.is_some())?;
+        let json = serde_json::to_string(node).ok()?;
+        let chrome = lingxia_ui::interaction::chrome::ChromeNode::parse(&json).ok()?;
+        Some((node.identity.clone(), chrome))
+    }
+
+    /// The handles' ARGB colour, then the visible ends in logical pixels:
+    /// `[which, center x, line bottom, line middle]` per end, anchor (0) then caret (1).
+    pub fn selection_handles(&self) -> (u32, Vec<f32>) {
+        let Some((_, node)) = self.static_selection() else {
+            return (0, Vec::new());
+        };
+        let color = self
+            .host
+            .snapshot()
+            .map_or(0, |frame| frame.feedback.selection_handle);
+        let ends = (0..2)
+            .filter_map(|which| {
+                let [x, bottom, middle] = lingxia_ui::interaction::chrome::endpoint(&node, which)?;
+                Some([which as f32, x as f32, bottom as f32, middle as f32])
+            })
+            .flatten()
+            .collect();
+        (color, ends)
+    }
+
+    /// A touch at a logical point grabs a handle: `[which, dx, dy]`, the offset from the
+    /// line it moves, or `None`.
+    pub fn handle_hit(&self, x: f32, y: f32) -> Option<[f32; 3]> {
+        let (_, node) = self.static_selection()?;
+        let (which, [cx, _, middle]) =
+            lingxia_ui::interaction::chrome::handle_hit(&node, x.into(), y.into(), false)?;
+        self.host.text_handle_drag(true);
+        Some([which as f32, x - cx as f32, y - middle as f32])
+    }
+
+    /// A grabbed handle moved to a logical point (its grab offset removed); `None` ends
+    /// the drag.
+    pub fn handle_drag(&self, which: Option<u8>, x: f32, y: f32) {
+        let Some(which) = which else {
+            return self.host.text_handle_drag(false);
+        };
+        let Some((identity, node)) = self.static_selection() else {
+            return self.host.text_handle_drag(false);
+        };
+        if let Some(point) = lingxia_ui::interaction::chrome::drag_point(&node, x.into(), y.into())
+            && point.visible
+        {
+            self.host.move_text_selection(
+                identity,
+                which,
+                [point.point[0] as f32, point.point[1] as f32],
+            );
+        }
+    }
+}
+
 impl Drop for Page {
     fn drop(&mut self) {
         self.host.dispose();

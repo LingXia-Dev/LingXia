@@ -26,6 +26,9 @@ final class GpuPageView: UIView {
     var editMenu: UIEditMenuInteraction?
     var textMenu: GpuFrameTextMenu?
     var menuChosen = false
+    /// Static-text selection handles and the one a finger holds (end, grab offset).
+    var handleLayer: CAShapeLayer?
+    var handleGrab: (which: Int32, dx: CGFloat, dy: CGFloat)?
     /// The colours the page asks its host to paint around it; nil before its first frame.
     var hostChrome: GpuHostChrome? {
         didSet {
@@ -270,6 +273,10 @@ final class GpuPageView: UIView {
             return
         }
         if gpuPageInputBlocked(token) { return }
+        if handleTouch(0, at: touch.location(in: self)) {
+            tracked = touch
+            return
+        }
         stopFlingNow()
         tracked = touch
         samples = []
@@ -279,21 +286,24 @@ final class GpuPageView: UIView {
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let tracked, touches.contains(tracked) else { return }
+        if handleTouch(1, at: tracked.location(in: self)) { return }
         record(tracked)
         send(1, tracked)
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let tracked, touches.contains(tracked) else { return }
+        self.tracked = nil
+        if handleTouch(2, at: tracked.location(in: self)) { return }
         record(tracked)
         send(2, tracked, velocity: releaseVelocity())
-        self.tracked = nil
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let tracked, touches.contains(tracked) else { return }
-        send(3, tracked)
         self.tracked = nil
+        if handleTouch(3, at: tracked.location(in: self)) { return }
+        send(3, tracked)
     }
 
     func armLongPress() {
@@ -472,6 +482,7 @@ public enum GpuPages {
         MainActor.assumeIsolated {
             guard let view = views[token] else { return }
             view.ime.presented(GpuPageView.decodeNode(node), ticket: view.ime.capture())
+            view.updateSelectionHandles()
         }
     }
 
