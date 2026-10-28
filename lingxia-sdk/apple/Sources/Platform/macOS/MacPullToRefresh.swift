@@ -239,6 +239,16 @@ final class MacPullToRefreshController {
         enabled && isMounted
     }
 
+    /// Read-only state for test automation: idle, pulling, armed, refreshing or ending.
+    var indicatorPhase: String {
+        if isRefreshing { return "refreshing" }
+        if isPulling { return Self.rubberBand(pull) >= Self.triggerDistance ? "armed" : "pulling" }
+        return pendingFinish != nil ? "ending" : "idle"
+    }
+
+    /// The pull's travel in points, after the rubber band.
+    var indicatorOffset: CGFloat { isPulling ? Self.rubberBand(pull) : 0 }
+
     /// Mirrored from the page by the native bridge's scroll tracker.
     func setAtTop(_ value: Bool) {
         atTop = value
@@ -621,6 +631,30 @@ final class MacPullToRefreshController {
             DispatchQueue.main.async(execute: cleanup)
         }
     }
+}
+
+/// Test automation reads the indicator by symbol lookup, so builds without
+/// this SDK still link. Main thread only; false when the page has no indicator.
+@_cdecl("lx_mac_pull_refresh_state")
+func lxMacPullRefreshState(
+    _ appId: UnsafePointer<CChar>, _ webtag: UnsafePointer<CChar>,
+    _ phase: UnsafeMutablePointer<CChar>, _ phaseCapacity: Int,
+    _ offset: UnsafeMutablePointer<Double>
+) -> Bool {
+    let appId = String(cString: appId)
+    let webtag = String(cString: webtag)
+    let state: (String, Double)? = MainActor.assumeIsolated {
+        guard let controller = MacPullToRefreshController.controller(appId: appId, webtag: webtag),
+            controller.canRefresh
+        else { return nil }
+        return (controller.indicatorPhase, Double(controller.indicatorOffset))
+    }
+    guard let state else { return false }
+    let bytes = Array(state.0.utf8.prefix(phaseCapacity - 1))
+    for (index, byte) in bytes.enumerated() { phase[index] = CChar(bitPattern: byte) }
+    phase[bytes.count] = 0
+    offset.pointee = state.1
+    return true
 }
 
 extension WKWebView {
