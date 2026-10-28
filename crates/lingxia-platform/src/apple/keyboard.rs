@@ -120,11 +120,28 @@ fn dispatch_action(
     use objc2_app_kit::NSEventModifierFlags;
 
     match action {
-        // A keyDown carrying `characters` drives `insertText:` on the focused
-        // control; keyCode 0 is fine since ASCII (URLs) route by characters.
-        AppKeyboardAction::Type { text } => {
+        AppKeyboardAction::Type { text, raw: true } => {
             post_key(window, 0, text, NSEventModifierFlags::empty(), true)?;
             post_key(window, 0, text, NSEventModifierFlags::empty(), false)
+        }
+        AppKeyboardAction::Type { text, raw: false } => {
+            let layout = layout::keys();
+            let mut buffer = [0u8; 4];
+            for ch in text.chars() {
+                match layout.get(&ch) {
+                    Some(&(code, shift)) => {
+                        post_layout_key(window, code, ch, shift, true)?;
+                        post_layout_key(window, code, ch, shift, false)?;
+                    }
+                    // Not on the keyboard (CJK, emoji): delivered as its text.
+                    None => {
+                        let text = ch.encode_utf8(&mut buffer);
+                        post_key(window, 0, text, NSEventModifierFlags::empty(), true)?;
+                        post_key(window, 0, text, NSEventModifierFlags::empty(), false)?;
+                    }
+                }
+            }
+            Ok(())
         }
         AppKeyboardAction::Press { key, modifiers } => {
             let (key_code, characters) = resolve_key(key)?;
@@ -208,4 +225,130 @@ fn post_key(
     }
 
     Ok(())
+}
+
+/// A real key: its virtual key code and, as a keyboard would, its characters,
+/// so the focused view's input context (an IME) handles it.
+#[cfg(target_os = "macos")]
+fn post_layout_key(
+    window: *mut objc2::runtime::AnyObject,
+    code: u16,
+    ch: char,
+    shift: bool,
+    is_down: bool,
+) -> Result<(), String> {
+    use objc2_app_kit::NSEvent;
+    use objc2_core_graphics::{CGEvent, CGEventFlags};
+
+    let event =
+        CGEvent::new_keyboard_event(None, code, is_down).ok_or("failed to create key event")?;
+    let flags = if shift {
+        CGEventFlags::MaskShift
+    } else {
+        CGEventFlags::empty()
+    };
+    CGEvent::set_flags(Some(&event), flags);
+    let mut units = [0u16; 2];
+    let units = ch.encode_utf16(&mut units);
+    unsafe {
+        CGEvent::keyboard_set_unicode_string(Some(&event), units.len() as _, units.as_ptr());
+        let ns = NSEvent::eventWithCGEvent(&event).ok_or("failed to convert key event")?;
+        super::mouse::send_event_to_window(window, ns.as_ref());
+    }
+    Ok(())
+}
+
+/// The current keyboard layout, reversed: which key (and shift) types a character.
+/// An input method's layout is its ASCII-capable one (ABC under Pinyin).
+#[cfg(target_os = "macos")]
+mod layout {
+    use std::collections::HashMap;
+    use std::ffi::c_void;
+
+    #[link(name = "Carbon", kind = "framework")]
+    unsafe extern "C" {
+        static kTISPropertyUnicodeKeyLayoutData: *const c_void;
+        fn TISCopyCurrentKeyboardLayoutInputSource() -> *mut c_void;
+        fn TISGetInputSourceProperty(source: *mut c_void, key: *const c_void) -> *const c_void;
+        fn LMGetKbdType() -> u8;
+        fn UCKeyTranslate(
+            layout: *const c_void,
+            code: u16,
+            action: u16,
+            modifiers: u32,
+            keyboard: u32,
+            options: u32,
+            dead: *mut u32,
+            max: usize,
+            len: *mut usize,
+            out: *mut u16,
+        ) -> i32;
+    }
+    #[link(name = "CoreFoundation", kind = "framework")]
+    unsafe extern "C" {
+        fn CFDataGetBytePtr(data: *const c_void) -> *const u8;
+        fn CFRelease(object: *const c_void);
+    }
+
+    const KEY_DOWN: u16 = 0;
+    const NO_DEAD_KEYS: u32 = 1;
+    /// `shiftKey >> 8`, as UCKeyTranslate takes modifier state.
+    const SHIFT: u32 = 0x02;
+
+    pub(super) fn keys() -> HashMap<char, (u16, bool)> {
+        let mut keys = HashMap::new();
+        unsafe {
+            let source = TISCopyCurrentKeyboardLayoutInputSource();
+            if source.is_null() {
+                return keys;
+            }
+            let data = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData);
+            if !data.is_null() {
+                let layout = CFDataGetBytePtr(data) as *const c_void;
+                let keyboard = u32::from(LMGetKbdType());
+                for shift in [false, true] {
+                    for code in 0u16..128 {
+                        let mut dead = 0u32;
+                        let mut len = 0usize;
+                        let mut out = [0u16; 4];
+                        let status = UCKeyTranslate(
+                            layout,
+                            code,
+                            KEY_DOWN,
+                            if shift { SHIFT } else { 0 },
+                            keyboard,
+                            NO_DEAD_KEYS,
+                            &mut dead,
+                            out.len(),
+                            &mut len,
+                            out.as_mut_ptr(),
+                        );
+                        if status != 0 || len != 1 {
+                            continue;
+                        }
+                        if let Some(Ok(ch)) = char::decode_utf16([out[0]]).next()
+                            && !ch.is_control()
+                        {
+                            keys.entry(ch).or_insert((code, shift));
+                        }
+                    }
+                }
+            }
+            CFRelease(source);
+        }
+        keys
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    #[test]
+    fn the_current_layout_types_letters_and_their_capitals() {
+        let keys = super::layout::keys();
+        for ch in 'a'..='z' {
+            let (code, shift) = keys[&ch];
+            assert!(!shift, "{ch}");
+            assert_eq!(keys[&ch.to_ascii_uppercase()], (code, true), "{ch}");
+        }
+    }
 }

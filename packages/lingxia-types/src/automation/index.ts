@@ -2259,6 +2259,8 @@ export type KeyModifier = 'ctrl' | 'shift' | 'alt' | 'meta';
 
 export interface KeyTypeOptions extends WindowRef {
   text: string;
+  /** One key event carrying the whole text, instead of a key per character. */
+  raw?: boolean;
 }
 
 export interface KeyPressOptions extends WindowRef {

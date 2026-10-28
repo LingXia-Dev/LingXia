@@ -20,8 +20,13 @@ pub enum AppKeyboardModifier {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AppKeyboardAction {
-    /// Type literal text; drives `insertText:` on the focused control.
-    Type { text: String },
+    /// Type literal text as one key per character, so input methods see keys.
+    /// `raw` sends the whole text as one key event instead.
+    Type {
+        text: String,
+        #[serde(default)]
+        raw: bool,
+    },
     /// Press a named key (e.g. `return`, `tab`, `escape`) with modifiers.
     Press {
         key: String,

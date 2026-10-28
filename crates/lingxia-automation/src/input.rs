@@ -300,6 +300,7 @@ mod tests {
 #[derive(FromJSObject)]
 struct KeyType {
     text: String,
+    raw: Option<bool>,
     window: Option<String>,
 }
 
@@ -322,7 +323,10 @@ impl JSPageKey {
         app_keyboard(
             &ctx,
             o.window,
-            keyboard::AppKeyboardAction::Type { text: o.text },
+            keyboard::AppKeyboardAction::Type {
+                text: o.text,
+                raw: o.raw.unwrap_or(false),
+            },
         )
         .await
     }

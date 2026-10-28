@@ -382,6 +382,9 @@ pub struct KeyTypeOptions {
     /// Text to type
     #[arg(allow_hyphen_values = true)]
     text: String,
+    /// Send the text as one key event instead of a key per character
+    #[arg(long)]
+    raw: bool,
     #[command(flatten)]
     target: KeyTargetOptions,
 }
@@ -832,7 +835,7 @@ fn execute_key(context: &AppContext, command: KeyCommand) -> Result<()> {
     let (target, action) = match command {
         KeyCommand::Type(options) => (
             options.target,
-            json!({ "kind": "type", "text": options.text }),
+            json!({ "kind": "type", "text": options.text, "raw": options.raw }),
         ),
         KeyCommand::Press(options) => {
             let modifiers: Vec<&str> = options

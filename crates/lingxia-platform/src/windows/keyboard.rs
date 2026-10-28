@@ -57,7 +57,7 @@ impl AppKeyboard for Platform {
 fn dispatch_key(window: isize, action: &AppKeyboardAction) -> Result<(), PlatformError> {
     let target = focus_target(window);
     match action {
-        AppKeyboardAction::Type { text } => {
+        AppKeyboardAction::Type { text, .. } => {
             for unit in text.encode_utf16() {
                 post(target, WindowsAndMessaging::WM_CHAR, unit as usize, 1)?;
             }
