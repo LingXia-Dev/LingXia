@@ -282,7 +282,7 @@ const limitNotes = {
   decodedImageBytes: 'Decoded-image cache shared by every page; it evicts, never fails.',
   runs: 'Runs in one `<text>`: each `<span>`, `<link>` and the text between them.',
   transitionMs: 'Longest transition duration or delay, in milliseconds.',
-  evalBudgetMs: 'Wall-clock budget for one View render or callback; past it the page fails with UI_TIMEOUT.',
+  evalBudgetMs: 'CPU-time budget for one View render or callback (a page\'s first render gets twice it); past it, or past ten times it in wall time, the page fails with UI_TIMEOUT.',
   evalBudgetDebugMultiplier: 'Multiplier on that budget in unoptimized (debug) builds.',
   editorTextBytes: 'Text one editor holds, as UTF-8.',
   inputRequestBytes: 'One input-method request from the platform, as UTF-8 JSON.',

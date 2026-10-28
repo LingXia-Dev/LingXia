@@ -1,5 +1,6 @@
 //! JavaScript engine adapters for View isolates.
 pub(crate) mod budget;
+pub(crate) mod thread_clock;
 pub(crate) mod compatibility;
 mod quickjs;
 

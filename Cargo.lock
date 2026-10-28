@@ -4329,6 +4329,7 @@ dependencies = [
  "fontique",
  "glifo",
  "image",
+ "libc",
  "lingxia-theme",
  "log",
  "memmap2",

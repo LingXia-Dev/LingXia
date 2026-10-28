@@ -17,7 +17,7 @@ Page-wide bounds the runtime and the native decoder both enforce. Exceeding one 
 | `decodedImageBytes` | 100663296 (96 MiB) | Decoded-image cache shared by every page; it evicts, never fails. |
 | `runs` | 256 | Runs in one `<text>`: each `<span>`, `<link>` and the text between them. |
 | `transitionMs` | 10000 | Longest transition duration or delay, in milliseconds. |
-| `evalBudgetMs` | 100 | Wall-clock budget for one View render or callback; past it the page fails with UI_TIMEOUT. |
+| `evalBudgetMs` | 100 | CPU-time budget for one View render or callback (a page's first render gets twice it); past it, or past ten times it in wall time, the page fails with UI_TIMEOUT. |
 | `evalBudgetDebugMultiplier` | 8 | Multiplier on that budget in unoptimized (debug) builds. |
 | `editorTextBytes` | 65536 (64 KiB) | Text one editor holds, as UTF-8. |
 | `inputRequestBytes` | 524288 (512 KiB) | One input-method request from the platform, as UTF-8 JSON. |

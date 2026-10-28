@@ -102,7 +102,8 @@ platform's) pass through unchanged.
 The host validates every frame again before laying it out. A frame it refuses (`UI_STYLE` for a sticky
 box outside a scroll, `UI_LIMIT`, `UI_GRID`, …) is dropped and the previous frame stays on screen, with
 the message in the log. View code that runs too long is stopped with `UI_TIMEOUT`; the page then needs a
-reload, which resets its local state.
+reload, which resets its local state. The budget is CPU time on the View's thread, so a busy machine does
+not stop a page; the message gives the CPU and wall time it used.
 
 ## `UI_COMPAT`
 
