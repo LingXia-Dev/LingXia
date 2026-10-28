@@ -113,16 +113,20 @@ standard system sans and mono stacks.
 | `disabled:` | an element with `disabled` set; it replaces the whole class cascade |
 | `placeholder:` | an editor's placeholder; `text-*` color only |
 | `motion-reduce:`, `motion-safe:` | `env.reducedMotion` |
+| `data-active:`, `data-[state=open]:` | the element's own `data-active` / `data-state="open"` prop (a string, number or `true`) |
+| `has-checked:`, `has-disabled:` | a checked checkbox, switch or answered radio, or a disabled element, anywhere below it |
+| `focus-within:`, `has-focus:` | it or an element below it has focus |
 
-`active:`, `focus:` and `hover:` may change paint only: color, background color and image, opacity,
+`data-*` resolves at render, so it may set any utility. `active:`, `focus:`, `hover:`, `has-*` and
+`focus-within:` may change paint only: color, background color and image, opacity,
 border color, box shadow, placeholder color and the static transforms (`active:scale-95`). They cannot
 change size or spacing (`UI_CLASS_ELEMENT`). The change is immediate unless a `transition-*` utility
 animates it ([motion](motion.md)).
 `2xl:` is not recognized and fails as an unknown utility; write `min-[96rem]:`.
 
 Variants that test DOM state are refused with the alternative named in the message: `group-*`, `peer-*`,
-`has-[…]`, `data-[…]`, `aria-*`, `checked:`, `focus-within:`, `focus-visible:`, `nth-*`, `before:`,
-`after:` and container queries (`@md:`). Compute the condition in TypeScript and pick the class.
+other `has-[…]` selectors and `has-*` combined with another state, `aria-*`, `checked:`, `focus-visible:`,
+`nth-*`, `before:`, `after:` and container queries (`@md:`). Compute the condition in TypeScript and pick the class.
 The full list is in [variants](../reference/variants.md).
 
 ## Transforms

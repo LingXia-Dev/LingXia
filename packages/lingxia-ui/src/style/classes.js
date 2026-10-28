@@ -3,7 +3,7 @@
 // children a `space-*`/`divide-*` rule targets.
 let byName = new Map();
 const cache = new Map();
-const states = ['focus', 'active', 'hover', 'disabled', 'starting', 'exit'];
+const states = ['focus', 'active', 'hover', 'disabled', 'starting', 'exit', 'hasChecked', 'hasDisabled', 'focusWithin'];
 const geometryKeys = { linear: ['direction', 'angle'], radial: ['shape', 'size', 'at'], conic: ['from', 'at'] };
 
 function copy(value) {
@@ -26,6 +26,10 @@ function applies(rule, env) {
   if (theme && (env.theme ?? 'light') !== theme) return false;
   if (direction && (env.direction ?? 'ltr') !== direction) return false;
   if (rule.when?.structure && !(env.structure ?? []).includes(rule.when.structure)) return false;
+  if (rule.when?.data) {
+    const [name, value] = rule.when.data, own = env.data?.[name];
+    if (own === undefined || (value !== undefined && own !== value)) return false;
+  }
   if (rule.when?.reducedMotion !== undefined && (env.reducedMotion === true) !== rule.when.reducedMotion) return false;
   if (minWidth !== undefined && !(env.viewport?.width >= minWidth)) return false;
   if (maxWidth !== undefined && !(env.viewport?.width < maxWidth)) return false;
@@ -112,7 +116,7 @@ export function resolveClasses(className, env = {}) {
   if (className === undefined) return undefined;
   if (typeof className !== 'string') throw Error('UI_CLASS: className must be a string');
   if (className.length > 16384) throw Error('UI_CLASS: className exceeds 16384 characters');
-  const environment = `${env.theme ?? 'light'}|${env.viewport?.width}|${env.viewport?.height}|${env.pointer}|${env.direction ?? 'ltr'}|${(env.structure ?? []).join(',')}|${env.reducedMotion === true}`;
+  const environment = `${env.theme ?? 'light'}|${env.viewport?.width}|${env.viewport?.height}|${env.pointer}|${env.direction ?? 'ltr'}|${(env.structure ?? []).join(',')}|${env.reducedMotion === true}|${env.data ? JSON.stringify(env.data) : ''}`;
   // Keyed by environment too: sibling structure changes it node to node, so clearing on change thrashed.
   const key = `${environment}\u0000${className}`;
   if (cache.has(key)) return copy(cache.get(key));

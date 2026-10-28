@@ -197,7 +197,10 @@ impl Inputs {
 
     pub fn apply_styles(&self, records: &mut [Record]) -> Result<(), String> {
         match self.focused.as_deref() {
-            Some(identity) => apply_state_style(records, identity, field::FOCUS_STYLE),
+            Some(identity) => {
+                apply_state_style(records, identity, field::FOCUS_STYLE)?;
+                apply_focus_within(records, identity)
+            }
             None => Ok(()),
         }
     }
@@ -474,6 +477,36 @@ impl Inputs {
 }
 
 /// Merge a node's paint-only state delta (focus, pressed or hover) into its record.
+/// `focus-within:`/`has-focus:`: the focused node and each of its ancestors take their style.
+pub(crate) fn apply_focus_within(records: &mut [Record], identity: &str) -> Result<(), String> {
+    if !records
+        .iter()
+        .any(|record| record.string(field::FOCUS_WITHIN_STYLE).is_some())
+    {
+        return Ok(());
+    }
+    let ids = identities(records);
+    let mut at = ids.iter().position(|id| id == identity);
+    while let Some(index) = at {
+        let record = &mut records[index];
+        if let Some((_, value)) = record
+            .fields
+            .iter()
+            .find(|(field, _)| *field == field::FOCUS_WITHIN_STYLE)
+        {
+            for (field, value) in crate::protocol::focus_style(value)? {
+                if let Some((_, old)) = record.fields.iter_mut().find(|(id, _)| *id == field) {
+                    *old = value;
+                } else {
+                    record.fields.push((field, value));
+                }
+            }
+        }
+        at = record.parent;
+    }
+    Ok(())
+}
+
 pub(crate) fn apply_state_style(
     records: &mut [Record],
     identity: &str,

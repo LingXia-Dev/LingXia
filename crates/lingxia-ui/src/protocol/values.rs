@@ -203,7 +203,7 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
                 .ok_or("UI_TRANSFORM: expected encoded transform")?,
         )
         .map(drop),
-        field::FOCUS_STYLE => focus_style(value).map(drop),
+        field::FOCUS_STYLE | field::FOCUS_WITHIN_STYLE => focus_style(value).map(drop),
         field::VECTOR_SOURCE => ensure(value.is_string(), "UI_VECTOR: source requires vector node"),
         field::SUBMIT_ON_ENTER => ensure(flag(value), "UI_INPUT: invalid submitOnEnter"),
         field::HEIGHT_AUTO => ensure(

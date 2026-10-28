@@ -16,10 +16,13 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 | `odd:` | any element |
 | `even:` | any element |
 | `empty:` | any element |
+| `focus-within:` | any element; while it or a descendant has focus; paint only |
 | `hover:` | any element, only when `env.pointer` is `fine`; paint only |
 | `focus:` | `<input>` `<textarea>` `<search>` `<select>`; paint only |
 | `active:` | `<button>` `<checkbox>` `<switch>` `<radio>` `<link>`; paint only |
 | `disabled:` | `<button>` `<input>` `<textarea>` `<search>` `<checkbox>` `<switch>` `<radio>` `<slider>` `<link>` `<select>`; replaces the whole class cascade |
+| `has:` | any element, alone; `has-checked:`, `has-disabled:` (a descendant checkbox, switch, answered radio or disabled element) and `has-focus:`; paint only |
+| `data:` | any element; matches its own `data-*` prop (`data-active:`, `data-[state=open]:`), layout included |
 | `motion-safe:` | any element |
 | `motion-reduce:` | any element |
 | `max:` | any element |
@@ -75,14 +78,11 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 | `in-range:` | `in-range:` | selector :in-range |
 | `out-of-range:` | `out-of-range:` | selector :out-of-range |
 | `read-only:` | `read-only:` | selector :read-only |
-| `focus-within:` | `focus-within:` | selector :focus-within |
 | `focus-visible:` | `focus-visible:` | selector :focus-visible |
 | `enabled:` | `enabled:` | selector :enabled |
 | `inert:` | `inert:` | selector :is([inert], [inert] *) |
 | `in:` | `in-focus:` | ancestor-state variants (in-*; track the ancestor state in TS, e.g. onFocus/onBlur, and choose the classes from it) |
-| `has:` | `has-checked:` | selector :has(:checked) (has-[…]: compute the condition in TS and choose the class, e.g. hasError ? "border-error" : "border-input") |
 | `aria:` | `aria-checked:` | selector [aria-checked="true"] (aria-*: choose classes from the state in TS and set accessibility props such as role separately) |
-| `data:` | `data-[open]:` | selector [data-open] (data-[…]: there are no data attributes; choose classes from the state in TS) |
 | `nth:` | `nth-3:` | selector :nth-child(3) |
 | `nth-last:` | `nth-last-3:` | selector :nth-last-child(3) |
 | `nth-of-type:` | `nth-of-type-3:` | selector :nth-of-type(3) |

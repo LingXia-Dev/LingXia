@@ -96,10 +96,11 @@ A render that throws keeps the previous frame on screen ([Diagnostics](diagnosti
 - There is no block or inline flow: every box is flexbox or grid, and `display: inline` is not supported.
   Flex items do not shrink by default ([Layout](layout.md)).
 - There is no stylesheet cascade. Text styles inherit through containers; nothing else inherits.
-- `has-[…]`, `data-[…]`, `aria-*`, `group-*`, `peer-*` and container queries are refused: compute the
+- `data-*` variants match `data-*` props on the element itself; `has-*` covers checked, disabled and
+  focused descendants. `aria-*`, `group-*`, `peer-*` and container queries are refused: compute the
   condition in TypeScript and choose the class.
-- Transitions and animations are utilities ([Motion](motion.md)); layout transitions, exit animations and
-  3D transforms are not supported.
+- Transitions and animations are utilities ([Motion](motion.md)), including `starting:`/`exit:` and
+  `transition-layout`; size transitions and 3D transforms are not supported.
 
 ## The DOM and the browser
 

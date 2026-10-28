@@ -37,9 +37,28 @@ function componentId(tag) {
 const handle = () => nextHandle++;
 const callbackOf = (callback, kind = 'void', isolated = false) => ({ callback, kind, isolated });
 
+const dataProp = /^data-[a-z][a-z0-9-]*$/;
+
+/** The element's data-* props as `data-*` variants read them: present unless false or nullish. */
+function dataOf(props) {
+  let data;
+  for (const [key, value] of Object.entries(props)) {
+    if (!dataProp.test(key) || value === false || value == null) continue;
+    (data ??= {})[key.slice(5)] = value === true ? '' : String(value);
+  }
+  return data;
+}
+
 function admit(tag, element, props) {
-  for (const key of Object.keys(props)) {
+  let data = 0;
+  for (const [key, value] of Object.entries(props)) {
     if (common.has(key) || has(element.props, key)) continue;
+    if (dataProp.test(key)) {
+      if (!['string', 'number', 'boolean'].includes(typeof value) && value != null) throw Error(`UI_PROP: ${key} must be a string, number or boolean`);
+      if (typeof value === 'string' && value.length > 256) throw Error(`UI_PROP: ${key} exceeds 256 characters`);
+      if (++data > 16) throw Error('UI_PROP: more than 16 data-* props');
+      continue;
+    }
     if (element.binding && (key === 'bind' || key === 'value' || key === element.binding.event)) continue;
     throw Error(`UI_PROP: ${key} is not a property of <${tag}>`);
   }
@@ -73,7 +92,8 @@ function nodeStyle(tag, props, extra, inherited, direction, structure) {
   if (props.style !== undefined || extra !== undefined || props.className === undefined) return lowerNodeStyle(tag, props, extra, inherited, direction, structure);
   const environment = envKey(envOf(render.view));
   if (environment !== loweredEnv) { lowered.clear(); loweredEnv = environment; }
-  const key = `${tag}\u0000${props.className}\u0000${props.disabled === true}\u0000${direction}\u0000${(structure ?? []).join(",")}\u0000${inherited.fontSize}\u0000${inherited.lineHeight}`;
+  const data = dataOf(props);
+  const key = `${tag}\u0000${props.className}\u0000${data ? JSON.stringify(data) : ''}\u0000${props.disabled === true}\u0000${direction}\u0000${(structure ?? []).join(",")}\u0000${inherited.fontSize}\u0000${inherited.lineHeight}`;
   let style = lowered.get(key);
   if (!style) {
     style = lowerNodeStyle(tag, props, extra, inherited, direction, structure);
@@ -90,7 +110,7 @@ const disabledField = { color: 'text-muted', backgroundColor: 'surface-sunken', 
 
 // Classes, then the parent's child rule, then inline style; `disabled:` replaces the class cascade.
 function lowerNodeStyle(tag, props, extra, inherited, direction, structure) {
-  const env = { ...envOf(render.view), direction, structure };
+  const env = { ...envOf(render.view), direction, structure, data: dataOf(props) };
   const classes = resolveClasses(props.className, env);
   // A run takes the size of `text-sm` but not the line height paired with it.
   if (classes?.pairedLeading && runTags.has(tag)) delete classes.base.lineHeight;
@@ -115,7 +135,16 @@ function lowerNodeStyle(tag, props, extra, inherited, direction, structure) {
   // Presence: the paint an element enters from and leaves toward, with its own transition.
   state('starting', 'startingStyle', true);
   state('exit', 'exitStyle', true);
-  return { fields, states, typography, author, children: classes?.children };
+  state('focusWithin', 'focusWithinStyle', true);
+  // `has-checked:`/`has-disabled:` depend on descendants, known once the children resolve.
+  const descendants = {};
+  for (const [name, kind] of [['hasChecked', 'checked'], ['hasDisabled', 'disabled']]) {
+    const delta = classes?.[name];
+    if (!delta || !Object.keys(delta).length) continue;
+    paintOnly(name.replace(/^has/, 'has-').toLowerCase(), tag, delta);
+    descendants[kind] = lowerStyle(tag, delta, env, { fontSize: typography.fontSize }).fields;
+  }
+  return { fields, states, typography, author, children: classes?.children, descendants };
 }
 
 export function resolveNode(node, identity, depth = 0, parent = {}) {
@@ -338,7 +367,16 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       return at === String(ordinal) ? rest : { ...rest, slot: at };
     });
   }
+  for (const [kind, fields] of Object.entries(style.descendants))
+    if (result.children.some(child => holds(child, kind))) Object.assign(result.fields, fields);
   return result;
+}
+
+// Whether a resolved node or one below it is checked (a checkbox, switch or answered radio) or disabled.
+function holds(node, kind) {
+  const own = kind === 'disabled' ? node.props?.disabled === true
+    : (['checkbox', 'switch'].includes(node.element) && node.props.value === true) || (node.element === 'radio' && node.props.value != null);
+  return own || (node.children ?? []).some(child => holds(child, kind));
 }
 
 // The structural pseudo-classes a node matches: position among its siblings, or no content.

@@ -27,7 +27,8 @@ const interactiveTags = new Set(['button', 'link', 'checkbox', 'switch', 'radio'
 
 export function acceptsProp(tag, key) {
   const element = elements[tag];
-  return common.has(key) || has(element.props, key) ||
+  // data-* props carry nothing but what `data-*` variants match.
+  return common.has(key) || has(element.props, key) || /^data-[a-z][a-z0-9-]*$/.test(key) ||
     Boolean(element.binding && (key === 'bind' || key === 'value' || key === element.binding.event));
 }
 

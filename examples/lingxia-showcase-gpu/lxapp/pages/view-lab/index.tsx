@@ -8,7 +8,7 @@ const groups = {
   paint: { label: 'Paint', sections: [Grid, Gradients, Vectors, Borders, Transforms] },
   layout: { label: 'Layout', sections: [Display, Sizing, Direction, Structure, StickyHeaders, Fragments] },
   text: { label: 'Text', sections: [TextLayout, RichText, Selection] },
-  input: { label: 'Input', sections: [Accessibility, Inputs, Focus, NestedControls] },
+  input: { label: 'Input', sections: [Accessibility, Inputs, Focus, NestedControls, StateVariants] },
 };
 type Group = keyof typeof groups;
 
@@ -340,6 +340,29 @@ function Fragments() {
       <column testId="lab-fragments-list" className="gap-1">
         {note.value && <text testId="lab-fragments-hint" className="text-xs">Each term is two texts in one fragment.</text>}
         {words.value.map(([word, meaning]) => <Fragment key={word}><Term word={word} meaning={meaning} /></Fragment>)}
+      </column>
+    </Section>
+  );
+}
+
+// `data-*` reads the element's own props; `has-*` and `focus-within:` follow what is below it.
+function StateVariants() {
+  const agreed = useLocal('variants-agreed', false);
+  const open = useLocal('variants-open', false);
+  const note = useLocal('variants-note', '');
+  return (
+    <Section title="Data and has variants" testId="lab-variants">
+      <row testId="lab-variants-agree" className="items-center gap-3 rounded-xl px-4 py-3 bg-surface-sunken has-checked:bg-accent has-checked:text-on-accent">
+        <checkbox testId="lab-variants-checkbox" bind={agreed} accessibilityLabel="Agree" />
+        <text className="text-sm">{agreed.value ? 'Agreed' : 'Tap to agree'}</text>
+      </row>
+      <button testId="lab-variants-toggle" data-state={open.value ? 'open' : 'closed'} onClick={() => open.set(!open.value)}
+        className="rounded-xl px-4 py-3 bg-surface-sunken data-[state=open]:bg-accent data-[state=open]:text-on-accent data-[state=open]:py-5">
+        {open.value ? 'Open (taller)' : 'Closed'}
+      </button>
+      <column testId="lab-variants-field" className="rounded-xl p-3 gap-1 border border-line focus-within:border-accent focus-within:bg-surface-sunken">
+        <text className="text-xs text-muted">Note</text>
+        <input testId="lab-variants-input" bind={note} placeholder="Focus me" accessibilityLabel="Note" />
       </column>
     </Section>
   );

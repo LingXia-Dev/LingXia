@@ -142,6 +142,31 @@ test('active and hover variants become paint deltas; hover only for fine pointer
   assert.throws(() => describe(() => h('button', { className: 'active:p-2' }, 'x'), {}), /active: supports paint properties only, not paddingTop/);
 });
 
+test('data-* variants match the element own data-* props, layout included', () => {
+  rules([['p-1', { paddingTop: 4 }], ['data-[state=open]:p-4', { paddingTop: 16 }, { data: ['state', 'open'] }],
+    ['data-active:bg-accent', { backgroundColor: 'accent' }, { data: ['active'] }]]);
+  const node = props => rendered(() => h('column', { className: 'p-1 data-[state=open]:p-4 data-active:bg-accent', ...props })).props;
+  assert.deepEqual([node({}).paddingTop, node({}).background], [4, undefined]);
+  assert.equal(node({ 'data-state': 'open' }).paddingTop, 16);
+  assert.equal(node({ 'data-state': 'closed' }).paddingTop, 4);
+  assert.equal(node({ 'data-active': true }).background, 'accent');
+  assert.equal(node({ 'data-active': false }).background, undefined);
+  assert.throws(() => describe(() => h('column', { 'data-x': {} }), {}), /UI_PROP: data-x must be a string, number or boolean/);
+  assert.throws(() => describe(() => h('column', { 'dataX': 1 }), {}), /UI_PROP: dataX is not a property/);
+});
+
+test('has-checked and has-disabled follow descendants; focus-within reaches native', () => {
+  rules([['has-checked:bg-accent', { backgroundColor: 'accent' }, { state: 'hasChecked' }],
+    ['has-disabled:opacity-50', { opacity: 0.5 }, { state: 'hasDisabled' }],
+    ['focus-within:bg-danger', { backgroundColor: 'danger' }, { state: 'focusWithin' }], ['has-checked:p-2', { paddingTop: 8 }, { state: 'hasChecked' }]]);
+  const card = (checked, disabled) => rendered(() => h('row', { className: 'has-checked:bg-accent has-disabled:opacity-50' },
+    h('column', {}, h('checkbox', { value: checked, onChange() {}, accessibilityLabel: 'x' }), h('input', { value: '', disabled })))).props;
+  assert.deepEqual([card(false, false).background, card(true, false).background], [undefined, 'accent']);
+  assert.equal(card(false, true).opacity, 0.5);
+  assert.ok(rendered(() => h('column', { className: 'focus-within:bg-danger' }, h('input', { value: '' }))).props.focusWithinStyle);
+  assert.throws(() => describe(() => h('column', { className: 'has-checked:p-2' }), {}), /has-checked: supports paint properties only, not paddingTop/);
+});
+
 test('disabled variants replace the cascade only while disabled', () => {
   rules([['opacity-100', { opacity: 1 }], ['disabled:opacity-50', { opacity: 0.5 }, { state: 'disabled' }]]);
   const render = disabled => () => h('button', { className: 'opacity-100 disabled:opacity-50', disabled }, 'Save');

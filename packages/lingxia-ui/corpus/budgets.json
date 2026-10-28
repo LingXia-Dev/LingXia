@@ -364,12 +364,12 @@
   "layers": 0,
   "nodes": 21,
   "outlineGlyphs": 0,
-  "paints": 34,
+  "paints": 35,
   "shadows": 4,
   "vectorElements": 3,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 380
+  "wireValues": 400
  },
  "corpus/sheet@phone-light": {
   "backdrops": 0,
@@ -379,12 +379,12 @@
   "layers": 0,
   "nodes": 21,
   "outlineGlyphs": 0,
-  "paints": 34,
+  "paints": 35,
   "shadows": 4,
   "vectorElements": 3,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 380
+  "wireValues": 400
  },
  "corpus/sheet@tablet-dark": {
   "backdrops": 0,
@@ -394,12 +394,12 @@
   "layers": 0,
   "nodes": 21,
   "outlineGlyphs": 0,
-  "paints": 34,
+  "paints": 35,
   "shadows": 4,
   "vectorElements": 3,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 380
+  "wireValues": 400
  },
  "corpus/sheet@tablet-light": {
   "backdrops": 0,
@@ -409,12 +409,12 @@
   "layers": 0,
   "nodes": 21,
   "outlineGlyphs": 0,
-  "paints": 34,
+  "paints": 35,
   "shadows": 4,
   "vectorElements": 3,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 380
+  "wireValues": 400
  },
  "corpus/telemetry@phone-dark": {
   "backdrops": 0,

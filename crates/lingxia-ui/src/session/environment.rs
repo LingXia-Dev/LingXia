@@ -119,6 +119,7 @@ impl ViewSession {
                 identity,
                 crate::protocol::field::FOCUS_STYLE,
             )?;
+            crate::interaction::input_state::apply_focus_within(records, identity)?;
         }
         if let Some(identity) = &self.hovered {
             crate::interaction::input_state::apply_state_style(

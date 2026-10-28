@@ -15,13 +15,13 @@ export function render({ data }: View<object, { options: string[] }>) {
         <spacer className="self-center w-10 h-1 rounded-full bg-line-strong" />
         <row className="p-1 gap-1 rounded-xl bg-surface-sunken">
           {['day', 'week', 'month'].map(option => (
-            <button key={option} onClick={() => mode.set(option)} className={mode.value === option ? 'grow basis-0 py-2 rounded-lg bg-surface shadow-sm' : 'grow basis-0 py-2 rounded-lg bg-transparent'}>
+            <button key={option} data-state={mode.value === option ? 'on' : 'off'} onClick={() => mode.set(option)} className="grow basis-0 py-2 rounded-lg bg-transparent data-[state=on]:bg-surface data-[state=on]:shadow-sm">
               <text className="text-sm capitalize">{option}</text>
             </button>
           ))}
         </row>
         <switch bind={notify} className="text-sm">Notify me</switch>
-        <column className="gap-2">
+        <column className="gap-2 p-2 rounded-xl has-checked:bg-surface-sunken">
           {data.options.map(option => (
             <checkbox key={option} value={picked.value.includes(option)} onChange={on => picked.set(on ? [...picked.value, option] : picked.value.filter(p => p !== option))} className="text-sm">{option}</checkbox>
           ))}

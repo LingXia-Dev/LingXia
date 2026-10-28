@@ -387,9 +387,10 @@ impl ViewSession {
                 inputs.decorate(&mut display, &mut self.renderer)?;
                 let changed_style = old_focus.as_deref() != inputs.focused()
                     && self.input_records.as_ref().is_some_and(|records| {
-                        records
-                            .iter()
-                            .any(|r| r.string(field::FOCUS_STYLE).is_some())
+                        records.iter().any(|r| {
+                            r.string(field::FOCUS_STYLE).is_some()
+                                || r.string(field::FOCUS_WITHIN_STYLE).is_some()
+                        })
                     });
                 if !changed_style {
                     let input_dirty = inputs.needs_layout(&display);
@@ -517,9 +518,10 @@ impl ViewSession {
                 let old_focus = inputs.focused().map(str::to_owned);
                 inputs.decorate(&mut display, &mut self.renderer)?;
                 if old_focus.as_deref() != inputs.focused()
-                    && records
-                        .iter()
-                        .any(|r| r.string(field::FOCUS_STYLE).is_some())
+                    && records.iter().any(|r| {
+                        r.string(field::FOCUS_STYLE).is_some()
+                            || r.string(field::FOCUS_WITHIN_STYLE).is_some()
+                    })
                 {
                     continue;
                 }

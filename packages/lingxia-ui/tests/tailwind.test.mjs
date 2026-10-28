@@ -140,8 +140,9 @@ test('structural variants match sibling position, list rows and emptiness; DOM-s
   const texts = decode(prepare(page, {}, { root: { start: 0, end: 3, leading: 0, trailing: 0 } })).filter(node => node.tag === 'text').map(node => node.props);
   discard();
   assert.deepEqual([texts[0].paddingTop, texts[2].paddingBottom, texts[1].paddingTop], [4, 8, undefined]);
-  for (const [name, hint] of [['has-[input]:p-2', /compute the condition in TS/], ['data-[state=open]:p-2', /no data attributes/], ['aria-checked:p-2', /set accessibility props/]])
+  for (const [name, hint] of [['has-[input]:p-2', /has-\* supports :checked, :disabled and :focus of a descendant/], ['aria-checked:p-2', /set accessibility props/]])
     assert.throws(() => classStyle(name), hint);
+  assert.deepEqual(classStyle('data-[state=open]:p-2'), {}, 'no data-state prop: the rule does not apply');
 });
 
 test('horizontal overflow lowers only onto scroll containers', async () => {

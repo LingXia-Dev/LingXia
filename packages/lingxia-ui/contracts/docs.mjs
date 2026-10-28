@@ -248,7 +248,10 @@ function variants(schema, system, rules) {
     hover: 'any element, only when `env.pointer` is `fine`; paint only', disabled: `${disableable}; replaces the whole class cascade`,
     placeholder: `editors; \`text-*\` color only`,
     dark: 'any element; not on colours, which follow appearance',
-    starting: 'any element; paint only, the values it enters from', exit: 'any element; paint only, the values a removed element leaves toward',
+    starting: 'any element; paint only, the values it enters from',
+    has: 'any element, alone; `has-checked:`, `has-disabled:` (a descendant checkbox, switch, answered radio or disabled element) and `has-focus:`; paint only',
+    'focus-within': 'any element; while it or a descendant has focus; paint only',
+    data: 'any element; matches its own `data-*` prop (`data-active:`, `data-[state=open]:`), layout included', exit: 'any element; paint only, the values a removed element leaves toward',
   };
   const supported = [], refused = [];
   for (const [name, candidate] of candidates) {

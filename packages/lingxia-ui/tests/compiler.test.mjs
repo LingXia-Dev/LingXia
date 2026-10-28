@@ -60,6 +60,8 @@ test('component member expressions are not intrinsic tags; fragments and DOM glo
   for (const source of ['window.location;', 'const metadata = {window};', 'function read(document) { return document; } document.title;']) flags(source, /UI_DOM/);
   flags('export function render(){return <><text>Hello</text></>}', /UI_FRAGMENT/);
   flags('export const render = () => (<><text>Hello</text></>);', /UI_FRAGMENT/);
+  clean('export function render(){return <page data-state="open" className="data-[state=open]:p-4"><text>x</text></page>}');
+  flags('export function render(){return <page dataState="open"><text>x</text></page>}', /UI_PROP/);
   clean('function Rows(){return <><text>a</text><text>b</text></>} export function render(){return <page><Rows/><>{[1].map(n => <text key={String(n)}>x</text>)}</></page>}');
 });
 

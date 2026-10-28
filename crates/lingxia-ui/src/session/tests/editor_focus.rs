@@ -88,3 +88,43 @@ fn after_the_user_ends_editing_a_focus_the_page_makes_raises_no_keyboard() {
         "a focus the user asks for raises it again"
     );
 }
+
+#[test]
+fn focus_within_styles_the_ancestors_of_the_focused_editor() {
+    let module = super::source(
+        "function render(){const a=useLocal('a',''),b=useLocal('b','');return h('column',{style:{backgroundColor:'#ffffff'}},h('column',{className:'ring',style:{padding:10,height:60}},h('input',{key:'a',bind:a})),h('input',{key:'b',bind:b}))}",
+    )
+    .replace(
+        "__lingxiaPublish(render);",
+        "configureClasses([{name:'ring',when:{state:'focusWithin'},style:{backgroundColor:'#ff0000'}}]);__lingxiaPublish(render);",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    let red = |frame: crate::DisplayList| {
+        let raster = frame.rasterize().unwrap();
+        let width = raster.pixels.width() as usize;
+        let at = (2 * width + 2) * 4;
+        raster.pixels.data_as_u8_slice()[at..at + 3] == [255, 0, 0]
+    };
+    let frame = page.layout(300, 400, 1.0).unwrap();
+    let id = |name: &str| {
+        frame
+            .nodes
+            .iter()
+            .find(|n| n.input.is_some() && n.identity.contains(name))
+            .unwrap()
+            .identity
+            .clone()
+    };
+    let (a, b) = (id("k:1:a"), id("k:1:b"));
+    assert!(!red(frame));
+    page.focus_input(page.generation(), &a).unwrap().unwrap();
+    assert!(
+        red(page.layout(300, 400, 1.0).unwrap()),
+        "an editor inside it has focus"
+    );
+    page.focus_input(page.generation(), &b).unwrap().unwrap();
+    assert!(
+        !red(page.layout(300, 400, 1.0).unwrap()),
+        "focus moved outside it"
+    );
+}

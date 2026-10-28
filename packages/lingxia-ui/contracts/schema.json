@@ -248,7 +248,8 @@
     {"id": 183, "key": "imagePosition", "wire": "objectPosition", "kind": "image-position", "tags": ["image"]},
     {"id": 184, "key": "childSlot", "wire": "slot", "kind": "child-slot"},
     {"id": 185, "key": "startingStyle", "wire": "startingStyle", "kind": "state-style"},
-    {"id": 186, "key": "exitStyle", "wire": "exitStyle", "kind": "state-style"}
+    {"id": 186, "key": "exitStyle", "wire": "exitStyle", "kind": "state-style"},
+    {"id": 187, "key": "focusWithinStyle", "wire": "focusWithinStyle", "kind": "state-style"}
   ],
   "input": {
     "autofill": {"username": "username", "current-password": "password", "new-password": "newPassword", "one-time-code": "smsOTPCode", "email": "emailAddress", "tel": "phone", "name": "personName", "given-name": "personGivenName", "family-name": "personFamilyName", "street-address": "postalAddress", "postal-code": "postalCode", "country": "addressCountry", "cc-number": "creditCardNumber", "cc-exp": "creditCardExpirationDate", "cc-csc": "creditCardSecurityCode", "bday": "birthDateFull"},

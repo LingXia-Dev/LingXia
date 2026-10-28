@@ -689,8 +689,8 @@ function selectorTarget(source) {
 
 // Variants that test DOM state the View does not have; name the TS-side way to say the same.
 function alternative(rest) {
-  if (rest.startsWith(':has(')) return ' (has-[…]: compute the condition in TS and choose the class, e.g. hasError ? "border-error" : "border-input")';
-  if (rest.startsWith('[data-')) return ' (data-[…]: there are no data attributes; choose classes from the state in TS)';
+  if (rest.includes(':has(')) return ' (has-* supports :checked, :disabled and :focus of a descendant, alone: has-checked:, has-[:disabled]:, has-focus:; compute anything else in TS)';
+  if (rest.startsWith('[data-')) return ' (data-* matches a data-* prop of the element itself, then optionally first:/last:/odd:/even:/only:/empty: and one state)';
   if (rest.startsWith('[aria-')) return ' (aria-*: choose classes from the state in TS and set accessibility props such as role separately)';
   return '';
 }
@@ -707,15 +707,24 @@ function selectorParts(selector) {
   const name = unescape(match[1]), rest = match[2];
   if (!rest) return { name };
   if (rest === '::placeholder') return { name, placeholder: true };
+  let remaining = rest, structure, data, has;
+  // `data-*` matches the element's own data-* props, resolved at render like a media query.
+  const attribute = remaining.match(/^\[data-([a-z][a-z0-9-]*)(?:="([^"\\]*)")?\]/);
+  if (attribute) { data = attribute[2] === undefined ? [attribute[1]] : [attribute[1], attribute[2]]; remaining = remaining.slice(attribute[0].length); }
+  // `has-*` of a descendant's checked, disabled or focused state; `focus-within:` is `has-focus:` including itself.
+  const descendant = remaining.match(/^:has\((?::is\()?:(checked|disabled|focus)\)?\)/) ?? remaining.match(/^:(focus)-within/);
+  if (descendant) { has = { checked: 'hasChecked', disabled: 'hasDisabled', focus: 'focusWithin' }[descendant[1]]; remaining = remaining.slice(descendant[0].length); }
   // Structural pseudo-classes resolve against the node's position among its siblings.
   const structures = { ':first-child': 'first', ':last-child': 'last', ':only-child': 'only', ':nth-child(odd)': 'odd', ':nth-child(even)': 'even', ':empty': 'empty' };
-  let remaining = rest, structure;
   for (const [pseudo, kind] of Object.entries(structures))
     if (remaining.startsWith(pseudo) && !structure) { structure = kind; remaining = remaining.slice(pseudo.length); }
+  const extra = { ...(structure ? { structure } : {}), ...(data ? { data } : {}) };
+  if (has && remaining) return { name, error: `selector ${rest} (has-* and focus-within: stand alone, without another state variant)` };
+  if (has) return { name, state: has, ...extra };
   // `exit:` is LingXia's presence variant: the values a removed element leaves toward.
-  if (remaining === ':where(.lx-exit)') return { name, state: 'exit', ...(structure ? { structure } : {}) };
+  if (remaining === ':where(.lx-exit)') return { name, state: 'exit', ...extra };
   const state = remaining.match(/^:(focus|active|hover|disabled)$/)?.[1];
-  if (!remaining || state) return { name, ...(state ? { state } : {}), ...(structure ? { structure } : {}) };
+  if (!remaining || state) return { name, ...(state ? { state } : {}), ...extra };
   return { name, error: relatives(selector) ?? `selector ${rest}${alternative(rest)}` };
 }
 
@@ -781,7 +790,7 @@ export async function compileUtilities(candidates, theme = '', { literalColors: 
       if (starting) target.state = 'starting';
       if (hoverMedia && target.state !== 'hover') unsupported('(hover: hover) outside a hover variant');
       const when = { ...media, ...(target.state ? { state: target.state } : {}), ...(target.children ? { children: true } : {}),
-        ...(target.direction ? { direction: target.direction } : {}), ...(target.structure ? { structure: target.structure } : {}) };
+        ...(target.direction ? { direction: target.direction } : {}), ...(target.structure ? { structure: target.structure } : {}), ...(target.data ? { data: target.data } : {}) };
       const lower = vars => {
         const result = declarations(rule.nodes, vars, root);
         if (!Object.keys(result.style).length && Object.keys(result).length === 1) unsupported(inert(name));

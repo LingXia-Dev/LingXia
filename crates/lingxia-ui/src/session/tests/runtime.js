@@ -115,7 +115,7 @@
   // src/style/classes.js
   var byName = /* @__PURE__ */ new Map();
   var cache = /* @__PURE__ */ new Map();
-  var states = ["focus", "active", "hover", "disabled", "starting", "exit"];
+  var states = ["focus", "active", "hover", "disabled", "starting", "exit", "hasChecked", "hasDisabled", "focusWithin"];
   var geometryKeys = { linear: ["direction", "angle"], radial: ["shape", "size", "at"], conic: ["from", "at"] };
   function copy(value) {
     if (Array.isArray(value)) return value.map(copy);
@@ -135,6 +135,10 @@
     if (theme && (env.theme ?? "light") !== theme) return false;
     if (direction && (env.direction ?? "ltr") !== direction) return false;
     if (rule.when?.structure && !(env.structure ?? []).includes(rule.when.structure)) return false;
+    if (rule.when?.data) {
+      const [name, value] = rule.when.data, own2 = env.data?.[name];
+      if (own2 === void 0 || value !== void 0 && own2 !== value) return false;
+    }
     if (rule.when?.reducedMotion !== void 0 && env.reducedMotion === true !== rule.when.reducedMotion) return false;
     if (minWidth !== void 0 && !(env.viewport?.width >= minWidth)) return false;
     if (maxWidth !== void 0 && !(env.viewport?.width < maxWidth)) return false;
@@ -210,7 +214,7 @@
     if (className === void 0) return void 0;
     if (typeof className !== "string") throw Error("UI_CLASS: className must be a string");
     if (className.length > 16384) throw Error("UI_CLASS: className exceeds 16384 characters");
-    const environment = `${env.theme ?? "light"}|${env.viewport?.width}|${env.viewport?.height}|${env.pointer}|${env.direction ?? "ltr"}|${(env.structure ?? []).join(",")}|${env.reducedMotion === true}`;
+    const environment = `${env.theme ?? "light"}|${env.viewport?.width}|${env.viewport?.height}|${env.pointer}|${env.direction ?? "ltr"}|${(env.structure ?? []).join(",")}|${env.reducedMotion === true}|${env.data ? JSON.stringify(env.data) : ""}`;
     const key = `${environment}\0${className}`;
     if (cache.has(key)) return copy(cache.get(key));
     const matched = [];
@@ -243,7 +247,7 @@
 
   // src/generated/wire.js
   var tags = { "column": 0, "row": 1, "text": 2, "button": 3, "spacer": 4, "scroll": 5, "list": 6, "image": 7, "input": 8, "textarea": 9, "checkbox": 10, "switch": 11, "radio": 12, "radio-option": 13, "search": 14, "slider": 15, "grid": 16, "stack": 17, "plot": 18, "vector": 19, "page": 20, "span": 21, "link": 22, "select": 23 };
-  var field = { "width": 0, "height": 1, "gap": 2, "padding": 3, "fontSize": 4, "color": 5, "background": 6, "grow": 7, "onClick": 8, "enabled": 9, "radius": 10, "listId": 11, "listCount": 12, "listLeading": 13, "listTrailing": 14, "listRowIndex": 15, "listAnchor": 16, "onReachStart": 17, "onReachEnd": 18, "imageSrc": 19, "imageFit": 20, "inputValue": 21, "placeholder": 22, "secure": 23, "keyboard": 24, "autoFocus": 25, "onInput": 26, "onSubmit": 27, "minWidth": 28, "minHeight": 29, "maxWidth": 30, "maxHeight": 31, "shrink": 32, "align": 33, "justify": 34, "alignSelf": 35, "fontWeight": 36, "lineHeight": 37, "fontFamily": 38, "checked": 39, "onCheckedChange": 40, "accessibilityLabel": 41, "sliderValue": 42, "sliderMin": 43, "sliderMax": 44, "sliderStep": 45, "onSliderChange": 46, "gridColumns": 47, "offsetX": 48, "offsetY": 49, "textLines": 50, "plotValues": 51, "plotKind": 52, "plotColors": 53, "plotSmooth": 54, "plotArea": 55, "onPlotSelect": 56, "plotSelectedIndex": 57, "opacity": 58, "paddingTop": 59, "paddingRight": 60, "paddingBottom": 61, "paddingLeft": 62, "wordBreak": 63, "overflowWrap": 64, "borderWidth": 65, "borderColor": 66, "borderTopWidth": 67, "borderRightWidth": 68, "borderBottomWidth": 69, "borderLeftWidth": 70, "textAlign": 71, "backgroundGradient": 72, "boxShadow": 73, "widthPercent": 74, "heightPercent": 75, "minWidthPercent": 76, "minHeightPercent": 77, "maxWidthPercent": 78, "maxHeightPercent": 79, "vectorSource": 80, "textDecorationLine": 81, "heightAuto": 82, "submitOnEnter": 83, "fontStyle": 84, "plotDomainMin": 85, "plotDomainMax": 86, "flexWrap": 87, "plotPieLayout": 88, "letterSpacing": 89, "radiusTopLeft": 90, "radiusTopRight": 91, "radiusBottomRight": 92, "radiusBottomLeft": 93, "plotMarkerEmphasisScale": 94, "backdropBlur": 95, "backdropSaturation": 96, "placeholderColor": 97, "focusStyle": 98, "flexBasis": 99, "scrollAxis": 100, "animation": 101, "listItemKeys": 102, "flexDirection": 103, "display": 104, "imageAlt": 105, "imageRetryKey": 106, "onImageLoad": 107, "onImageError": 108, "marginTop": 109, "marginRight": 110, "marginBottom": 111, "marginLeft": 112, "position": 113, "insetTop": 114, "insetRight": 115, "insetBottom": 116, "insetLeft": 117, "zIndex": 118, "overflow": 119, "rowGap": 120, "columnGap": 121, "textTransform": 122, "whiteSpace": 123, "textOverflow": 124, "pressedStyle": 125, "hoverStyle": 126, "widthKeyword": 127, "heightKeyword": 128, "borderStyle": 129, "transform": 130, "fontVariantNumeric": 131, "overscroll": 132, "aspectRatio": 133, "maxWidthCh": 134, "gridTemplateColumns": 135, "gridTemplateRows": 136, "gridAutoColumns": 137, "gridAutoRows": 138, "gridAutoFlow": 139, "gridColumn": 140, "gridRow": 141, "justifyItems": 142, "justifySelf": 143, "alignContent": 144, "order": 145, "direction": 146, "marginInlineStart": 147, "marginInlineEnd": 148, "paddingInlineStart": 149, "paddingInlineEnd": 150, "insetInlineStart": 151, "insetInlineEnd": 152, "borderInlineStartWidth": 153, "borderInlineEndWidth": 154, "radiusStartStart": 155, "radiusStartEnd": 156, "radiusEndStart": 157, "radiusEndEnd": 158, "role": 159, "headingLevel": 160, "accessibilityHidden": 161, "accessibilityLiveRegion": 162, "maxLength": 163, "autoComplete": 164, "enterKeyHint": 165, "autoCapitalize": 166, "spellCheck": 167, "inputMin": 168, "inputMax": 169, "inputStep": 170, "transition": 171, "userSelect": 172, "focusRequest": 173, "statePressed": 174, "stateSelected": 175, "stateExpanded": 176, "stateBusy": 177, "selectOptions": 178, "onSelect": 179, "rows": 180, "maxRows": 181, "imagePlaceholder": 182, "imagePosition": 183, "childSlot": 184, "startingStyle": 185, "exitStyle": 186 };
+  var field = { "width": 0, "height": 1, "gap": 2, "padding": 3, "fontSize": 4, "color": 5, "background": 6, "grow": 7, "onClick": 8, "enabled": 9, "radius": 10, "listId": 11, "listCount": 12, "listLeading": 13, "listTrailing": 14, "listRowIndex": 15, "listAnchor": 16, "onReachStart": 17, "onReachEnd": 18, "imageSrc": 19, "imageFit": 20, "inputValue": 21, "placeholder": 22, "secure": 23, "keyboard": 24, "autoFocus": 25, "onInput": 26, "onSubmit": 27, "minWidth": 28, "minHeight": 29, "maxWidth": 30, "maxHeight": 31, "shrink": 32, "align": 33, "justify": 34, "alignSelf": 35, "fontWeight": 36, "lineHeight": 37, "fontFamily": 38, "checked": 39, "onCheckedChange": 40, "accessibilityLabel": 41, "sliderValue": 42, "sliderMin": 43, "sliderMax": 44, "sliderStep": 45, "onSliderChange": 46, "gridColumns": 47, "offsetX": 48, "offsetY": 49, "textLines": 50, "plotValues": 51, "plotKind": 52, "plotColors": 53, "plotSmooth": 54, "plotArea": 55, "onPlotSelect": 56, "plotSelectedIndex": 57, "opacity": 58, "paddingTop": 59, "paddingRight": 60, "paddingBottom": 61, "paddingLeft": 62, "wordBreak": 63, "overflowWrap": 64, "borderWidth": 65, "borderColor": 66, "borderTopWidth": 67, "borderRightWidth": 68, "borderBottomWidth": 69, "borderLeftWidth": 70, "textAlign": 71, "backgroundGradient": 72, "boxShadow": 73, "widthPercent": 74, "heightPercent": 75, "minWidthPercent": 76, "minHeightPercent": 77, "maxWidthPercent": 78, "maxHeightPercent": 79, "vectorSource": 80, "textDecorationLine": 81, "heightAuto": 82, "submitOnEnter": 83, "fontStyle": 84, "plotDomainMin": 85, "plotDomainMax": 86, "flexWrap": 87, "plotPieLayout": 88, "letterSpacing": 89, "radiusTopLeft": 90, "radiusTopRight": 91, "radiusBottomRight": 92, "radiusBottomLeft": 93, "plotMarkerEmphasisScale": 94, "backdropBlur": 95, "backdropSaturation": 96, "placeholderColor": 97, "focusStyle": 98, "flexBasis": 99, "scrollAxis": 100, "animation": 101, "listItemKeys": 102, "flexDirection": 103, "display": 104, "imageAlt": 105, "imageRetryKey": 106, "onImageLoad": 107, "onImageError": 108, "marginTop": 109, "marginRight": 110, "marginBottom": 111, "marginLeft": 112, "position": 113, "insetTop": 114, "insetRight": 115, "insetBottom": 116, "insetLeft": 117, "zIndex": 118, "overflow": 119, "rowGap": 120, "columnGap": 121, "textTransform": 122, "whiteSpace": 123, "textOverflow": 124, "pressedStyle": 125, "hoverStyle": 126, "widthKeyword": 127, "heightKeyword": 128, "borderStyle": 129, "transform": 130, "fontVariantNumeric": 131, "overscroll": 132, "aspectRatio": 133, "maxWidthCh": 134, "gridTemplateColumns": 135, "gridTemplateRows": 136, "gridAutoColumns": 137, "gridAutoRows": 138, "gridAutoFlow": 139, "gridColumn": 140, "gridRow": 141, "justifyItems": 142, "justifySelf": 143, "alignContent": 144, "order": 145, "direction": 146, "marginInlineStart": 147, "marginInlineEnd": 148, "paddingInlineStart": 149, "paddingInlineEnd": 150, "insetInlineStart": 151, "insetInlineEnd": 152, "borderInlineStartWidth": 153, "borderInlineEndWidth": 154, "radiusStartStart": 155, "radiusStartEnd": 156, "radiusEndStart": 157, "radiusEndEnd": 158, "role": 159, "headingLevel": 160, "accessibilityHidden": 161, "accessibilityLiveRegion": 162, "maxLength": 163, "autoComplete": 164, "enterKeyHint": 165, "autoCapitalize": 166, "spellCheck": 167, "inputMin": 168, "inputMax": 169, "inputStep": 170, "transition": 171, "userSelect": 172, "focusRequest": 173, "statePressed": 174, "stateSelected": 175, "stateExpanded": 176, "stateBusy": 177, "selectOptions": 178, "onSelect": 179, "rows": 180, "maxRows": 181, "imagePlaceholder": 182, "imagePosition": 183, "childSlot": 184, "startingStyle": 185, "exitStyle": 186, "focusWithinStyle": 187 };
   var fieldOptions = { "keyboard": ["text", "number", "email", "phone", "search", "date", "time"], "align": ["start", "center", "end", "stretch", "baseline"], "justify": ["start", "center", "end", "between", "around", "evenly"], "alignSelf": ["start", "center", "end", "stretch", "baseline"], "fontFamily": ["sans", "mono"], "wordBreak": ["normal", "break-all", "keep-all"], "overflowWrap": ["normal", "break-word", "anywhere"], "textAlign": ["start", "end", "left", "center", "right", "justify"], "textDecorationLine": ["none", "line-through", "underline"], "fontStyle": ["normal", "italic"], "flexWrap": ["nowrap", "wrap", "wrap-reverse"], "scrollAxis": ["horizontal", "vertical"], "flexDirection": ["row", "column", "row-reverse", "column-reverse"], "display": ["flex", "grid", "none", "block", "inline-flex", "inline-block"], "position": ["relative", "absolute", "fixed", "sticky"], "overflow": ["visible", "hidden"], "textTransform": ["none", "uppercase", "lowercase", "capitalize"], "whiteSpace": ["normal", "nowrap", "pre", "pre-wrap", "pre-line"], "textOverflow": ["clip", "ellipsis"], "widthKeyword": ["fit-content", "max-content", "min-content"], "heightKeyword": ["fit-content", "max-content", "min-content"], "borderStyle": ["solid", "dashed", "dotted"], "overscroll": ["auto", "contain", "none"], "gridAutoFlow": ["row", "column", "row-dense", "column-dense"], "justifyItems": ["start", "center", "end", "stretch", "baseline"], "justifySelf": ["start", "center", "end", "stretch", "baseline"], "alignContent": ["start", "center", "end", "between", "around", "evenly", "stretch"], "direction": ["ltr", "rtl", "auto"], "role": ["heading", "list", "listitem", "dialog", "alert", "status"], "accessibilityLiveRegion": ["off", "polite", "assertive"], "autoComplete": ["off", "on", "username", "current-password", "new-password", "one-time-code", "email", "tel", "name", "given-name", "family-name", "street-address", "postal-code", "country", "cc-number", "cc-exp", "cc-csc", "bday"], "enterKeyHint": ["enter", "done", "go", "next", "previous", "search", "send"], "autoCapitalize": ["none", "sentences", "words", "characters"], "userSelect": ["none", "text", "all"] };
 
   // src/style/color.js
@@ -1867,9 +1871,25 @@
   }
   var handle = () => nextHandle++;
   var callbackOf = (callback, kind = "void", isolated = false) => ({ callback, kind, isolated });
+  var dataProp = /^data-[a-z][a-z0-9-]*$/;
+  function dataOf(props) {
+    let data;
+    for (const [key, value] of Object.entries(props)) {
+      if (!dataProp.test(key) || value === false || value == null) continue;
+      (data ?? (data = {}))[key.slice(5)] = value === true ? "" : String(value);
+    }
+    return data;
+  }
   function admit2(tag, element, props) {
-    for (const key of Object.keys(props)) {
+    let data = 0;
+    for (const [key, value] of Object.entries(props)) {
       if (common.has(key) || has(element.props, key)) continue;
+      if (dataProp.test(key)) {
+        if (!["string", "number", "boolean"].includes(typeof value) && value != null) throw Error(`UI_PROP: ${key} must be a string, number or boolean`);
+        if (typeof value === "string" && value.length > 256) throw Error(`UI_PROP: ${key} exceeds 256 characters`);
+        if (++data > 16) throw Error("UI_PROP: more than 16 data-* props");
+        continue;
+      }
       if (element.binding && (key === "bind" || key === "value" || key === element.binding.event)) continue;
       throw Error(`UI_PROP: ${key} is not a property of <${tag}>`);
     }
@@ -1902,7 +1922,8 @@
       lowered.clear();
       loweredEnv = environment;
     }
-    const key = `${tag}\0${props.className}\0${props.disabled === true}\0${direction}\0${(structure2 ?? []).join(",")}\0${inherited.fontSize}\0${inherited.lineHeight}`;
+    const data = dataOf(props);
+    const key = `${tag}\0${props.className}\0${data ? JSON.stringify(data) : ""}\0${props.disabled === true}\0${direction}\0${(structure2 ?? []).join(",")}\0${inherited.fontSize}\0${inherited.lineHeight}`;
     let style2 = lowered.get(key);
     if (!style2) {
       style2 = lowerNodeStyle(tag, props, extra, inherited, direction, structure2);
@@ -1915,7 +1936,7 @@
   var runTags = /* @__PURE__ */ new Set(["span", "link"]);
   var disabledField = { color: "text-muted", backgroundColor: "surface-sunken", borderColor: "line" };
   function lowerNodeStyle(tag, props, extra, inherited, direction, structure2) {
-    const env = { ...envOf(render.view), direction, structure: structure2 };
+    const env = { ...envOf(render.view), direction, structure: structure2, data: dataOf(props) };
     const classes = resolveClasses(props.className, env);
     if (classes?.pairedLeading && runTags.has(tag)) delete classes.base.lineHeight;
     const disabled = props.disabled === true;
@@ -1937,7 +1958,15 @@
     }
     state("starting", "startingStyle", true);
     state("exit", "exitStyle", true);
-    return { fields, states: states2, typography, author, children: classes?.children };
+    state("focusWithin", "focusWithinStyle", true);
+    const descendants = {};
+    for (const [name, kind] of [["hasChecked", "checked"], ["hasDisabled", "disabled"]]) {
+      const delta = classes?.[name];
+      if (!delta || !Object.keys(delta).length) continue;
+      paintOnly(name.replace(/^has/, "has-").toLowerCase(), tag, delta);
+      descendants[kind] = lowerStyle(tag, delta, env, { fontSize: typography.fontSize }).fields;
+    }
+    return { fields, states: states2, typography, author, children: classes?.children, descendants };
   }
   function resolveNode(node, identity, depth = 0, parent = {}) {
     if (depth > limits.depth) throw Error("UI_LIMIT: children too deep");
@@ -2191,7 +2220,13 @@
         return at === String(ordinal) ? rest : { ...rest, slot: at };
       });
     }
+    for (const [kind, fields] of Object.entries(style2.descendants))
+      if (result.children.some((child) => holds(child, kind))) Object.assign(result.fields, fields);
     return result;
+  }
+  function holds(node, kind) {
+    const own2 = kind === "disabled" ? node.props?.disabled === true : ["checkbox", "switch"].includes(node.element) && node.props.value === true || node.element === "radio" && node.props.value != null;
+    return own2 || (node.children ?? []).some((child) => holds(child, kind));
   }
   function structure(sibling, flat) {
     const out = flat.length ? [] : ["empty"];
