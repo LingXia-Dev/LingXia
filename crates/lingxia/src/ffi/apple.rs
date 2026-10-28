@@ -200,6 +200,11 @@ mod bridge {
         #[swift_bridge(swift_name = "lingxiaInit")]
         fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> LingxiaInitResult;
 
+        // Dev sessions: pull the home lxapp's dev bundle before `lingxiaInit`, on a
+        // background thread; init adopts the outcome. A no-op outside a dev session.
+        #[swift_bridge(swift_name = "lingxiaPrepareDevBundles")]
+        fn lingxia_prepare_dev_bundles(data_dir: &str, cache_dir: &str, locale: &str);
+
         #[swift_bridge(swift_name = "launchHomeControlLogic")]
         fn launch_home_control_logic() -> bool;
 
@@ -938,6 +943,24 @@ fn product_run_cli_if_invoked(data_dir: &str) -> i32 {
     #[cfg(not(feature = "product-cli"))]
     let _ = data_dir;
     -1
+}
+
+/// Pull the home lxapp's dev bundle ahead of [`lingxia_init`], off the main thread.
+pub fn lingxia_prepare_dev_bundles(data_dir: &str, cache_dir: &str, locale: &str) {
+    #[cfg(feature = "devtool")]
+    {
+        crate::logging::init();
+        match lingxia_platform::Platform::new(
+            data_dir.to_string(),
+            cache_dir.to_string(),
+            locale.to_string(),
+        ) {
+            Ok(platform) => crate::devtool::prepare_dev_bundles(platform),
+            Err(e) => log::warn!("Dev bundle pull skipped: {e}"),
+        }
+    }
+    #[cfg(not(feature = "devtool"))]
+    let _ = (data_dir, cache_dir, locale);
 }
 
 /// Initialize the Lingxia SDK for iOS/macOS

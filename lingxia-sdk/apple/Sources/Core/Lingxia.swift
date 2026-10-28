@@ -83,6 +83,7 @@ public enum Lingxia {
     public static func initializeRuntime() throws -> LxAppRuntimeInfo {
         CrashBacktrace.install()
         installNotificationDelegate()
+        if LxAppRuntime.shared.info == nil { LxAppDevBundles.waitPumpingRunLoop() }
         do {
             let info = try LxAppRuntime.shared.initialize()
             DevServiceMarkWindow.attachIfNeeded()
@@ -143,6 +144,8 @@ public enum Lingxia {
         if code >= 0 {
             exit(code)
         }
+        // Becoming the app: start a dev session's bundle pull while AppKit launches.
+        LxAppDevBundles.start()
     }
 
     #if os(macOS)
@@ -206,11 +209,15 @@ public enum Lingxia {
     @MainActor
     public static func quickStart() throws {
         LingXiaSplashOverlay.attachIfNeeded()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.032) {
-            do {
-                _ = try quickStart(configuration: LxAppShellConfiguration())
-            } catch {
-                NSLog("Lingxia.quickStart failed: \(error)")
+        let coverShown = DispatchTime.now() + 0.032
+        // A dev session's bundle pull runs off the main thread under the cover.
+        LxAppDevBundles.whenFinished {
+            DispatchQueue.main.asyncAfter(deadline: max(coverShown, .now())) {
+                do {
+                    _ = try quickStart(configuration: LxAppShellConfiguration())
+                } catch {
+                    NSLog("Lingxia.quickStart failed: \(error)")
+                }
             }
         }
     }

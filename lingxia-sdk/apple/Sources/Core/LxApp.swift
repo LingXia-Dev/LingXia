@@ -264,6 +264,7 @@ final class LxAppCore {
         // Get system locale
         let locale = Locale.current.identifier
 
+        LxAppDevBundles.waitPumpingRunLoop()
         let initResult = lingxiaInit(directoryConfig.dataPath, directoryConfig.cachesPath, locale)
 
         if initResult.ok {
