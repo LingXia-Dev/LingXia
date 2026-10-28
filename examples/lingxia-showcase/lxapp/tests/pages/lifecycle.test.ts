@@ -3,7 +3,6 @@ import { currentPageOrNull, waitForCurrentPage, waitForElementText } from '../he
 import { expect, spec } from '@lingxia/test';
 import { bindFixture, eventually, specNamespace } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
-import type { ProbeElement } from '../helpers/view.js';
 
 interface SurfaceLifecycleState {
   showCount: number;
@@ -185,10 +184,6 @@ spec("reset logic data and the rendered document when a page is re-entered", { i
   // must NOT reset.
   const moduleBase = first.moduleCounter;
   await first.view.testId('lifecycle-open-popup').waitFor({ state: 'attached', timeout: 30_000 });
-  await first.view.eval(({ document }) => {
-    (document.querySelector('[data-testid="lifecycle-open-popup"]') as ProbeElement | null)
-      ?.scrollIntoView({ block: 'center' });
-  });
   await first.view.testId('lifecycle-bump-logic').click();
   await first.view.testId('lifecycle-bump-view').click();
   await first.view.testId('lifecycle-bump-module').click();

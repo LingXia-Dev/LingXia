@@ -191,12 +191,7 @@ spec("round-trip appearance preference through the ui controls", {
         ),
         { describe: `appearance preference ${preference}` },
       );
-      await eventually(
-        () => ui.view.eval(({ document }) =>
-          document.querySelector('[data-testid="ui-appearance-preference"]')?.textContent ?? ''),
-        (text) => text === state.preference,
-        { describe: `ui appearance label ${preference}`, timeoutMs: 5_000 },
-      );
+      await expect(ui.view.testId('ui-appearance-preference')).toContainText(state.preference, { timeout: 5_000 });
     });
   }
 

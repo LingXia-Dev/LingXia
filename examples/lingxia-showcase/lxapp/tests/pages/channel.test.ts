@@ -1,5 +1,5 @@
 import { keyedElement } from '../helpers/keyed.js';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { GPU_MIRROR, SHOWCASE_APP_ID } from '../helpers/app.js';
 import { expect, spec } from '@lingxia/test';
 import { waitForElementText } from '../helpers/page.js';
 import type { LingXiaBridgeInterface } from '@lingxia/bridge';
@@ -36,6 +36,7 @@ spec('closing a real channel ends reads and rejects subsequent sends', {
   id: 'CHANNEL-ERROR-001',
   covers: ['LxChannel.close', 'LxChannel.send', 'BRIDGE_STREAM_CLOSED', 'BRIDGE_TOPIC_NOT_FOUND'],
   app: SHOWCASE_APP_ID,
+  skip: GPU_MIRROR ? "drives the WebView page bridge's raw channel API (window.LingXiaBridge), which a GPU page does not have" : undefined,
 }, async (t) => {
   await t.app.nav.relaunch({ page: 'channel' });
   const view = (await t.app.page({ name: 'channel' })).view;

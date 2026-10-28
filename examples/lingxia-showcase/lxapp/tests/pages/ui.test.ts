@@ -193,7 +193,7 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
     'automatic visibility after entering a tab route',
   );
 
-  const readHomeViewportHeight = () => home.view.eval(({ window }) => window.innerHeight);
+  const readHomeViewportHeight = async () => (await home.view.viewport()).height;
   const viewportBeforeChromeRefresh = await eventually(
     readHomeViewportHeight,
     (height) => height > 0,

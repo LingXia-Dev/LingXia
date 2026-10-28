@@ -118,20 +118,18 @@ spec('publishes every device mode in the rendered API menu', {
   await api.testId("api-device-section").click();
   await api.testId('api-device-section').waitFor({ state: 'visible', timeout: 30_000 });
 
-  const text = await eventually(
-    () => api.eval(({ document }) => document.body.innerText ?? ''),
-    (body) => [
-      'Device Info',
-      'Screen Info',
-      'Vibration',
-      'Phone Call',
-      'Device Orientation',
-      'Network Type',
-      'Local IP Address',
-      'Network Status Listener',
-      'WiFi',
-    ].every((label) => body.includes(label)),
-    { describe: 'API page device-mode labels', timeoutMs: 15_000 },
-  );
-  expect(text.includes('Device Info')).toBeTruthy();
+  const labels = [
+    'Device Info',
+    'Screen Info',
+    'Vibration',
+    'Phone Call',
+    'Device Orientation',
+    'Network Type',
+    'Local IP Address',
+    'Network Status Listener',
+    'WiFi',
+  ];
+  for (const label of labels) {
+    await expect(api.css('div, span, button').filter({ hasText: label }).first()).toBeAttached({ timeout: 15_000 });
+  }
 });

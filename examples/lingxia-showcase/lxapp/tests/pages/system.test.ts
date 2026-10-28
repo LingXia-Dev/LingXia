@@ -2,7 +2,7 @@ import type { TestApp } from '@lingxia/test';
 import { expect, spec } from '@lingxia/test';
 import { bindFixture, eventually, specNamespace } from '../helpers/poll.js';
 import { waitForElementEnabled } from '../helpers/page.js';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { GPU_MIRROR, SHOWCASE_APP_ID } from '../helpers/app.js';
 import type { ProbeElement } from '../helpers/view.js';
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args
@@ -160,7 +160,8 @@ spec('drive banner re-read, prompt, and dismiss from the system page', {
   // After Prompt the native card is WS_EX_TOPMOST over the WebView. Windows
   // CDP clicks then miss the page button; fire the same control from the DOM.
   await waitForElementEnabled(system, '[data-testid="system-banner-dismiss"]');
-  await system.eval(({ document }) => {
+  if (GPU_MIRROR) await system.testId('system-banner-dismiss').click();
+  else await system.eval(({ document }) => {
     const button = document.querySelector('[data-testid="system-banner-dismiss"]') as ProbeElement | null;
     if (!button || button.tagName !== 'BUTTON' || button.disabled) {
       throw new Error('dismiss is not clickable');
