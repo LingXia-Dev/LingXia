@@ -694,6 +694,11 @@ ${enums.join('\n\n')}
 
 ${structs.join('\n\n')}
 
+/// The core's editor limits; an input mirror holds itself to them, since a rejected edit fails the session.
+public enum GpuFrameInputLimits {
+${['editorTextBytes', 'inputRequestBytes', 'inputBatchEdits', 'clipboardItems'].map(name => `    public static let ${name} = ${schema.limits[name]}`).join('\n')}
+}
+
 /// A JSON key named at run time, for request encoders.
 public struct GpuFrameKey: CodingKey {
     public let stringValue: String

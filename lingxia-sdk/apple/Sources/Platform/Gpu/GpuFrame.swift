@@ -1057,6 +1057,14 @@ public struct GpuFrameTextMenuTarget: Decodable, Sendable {
     }
 }
 
+/// The core's editor limits; an input mirror holds itself to them, since a rejected edit fails the session.
+public enum GpuFrameInputLimits {
+    public static let editorTextBytes = 65536
+    public static let inputRequestBytes = 524288
+    public static let inputBatchEdits = 64
+    public static let clipboardItems = 128
+}
+
 /// A JSON key named at run time, for request encoders.
 public struct GpuFrameKey: CodingKey {
     public let stringValue: String
