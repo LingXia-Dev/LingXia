@@ -35,13 +35,17 @@ pub fn initialize_jni(vm: JavaVM) {
     let _ = JAVA_VM.set(vm);
 }
 
-/// Register the host application's `android.content.Context` exactly once,
-/// at platform initialization. The platform crate uses this to fulfill any
+/// Register the host application's `android.content.Context` at platform
+/// initialization; later calls keep the first. The platform crate uses this to fulfill any
 /// API that internally needs a Context (display metrics, Settings.Secure,
 /// resources). Hosts that integrate this crate directly — not just lingxia
 /// SDK apps — provide their own Context here without dragging in the SDK's
 /// LxApp class.
 pub fn set_application_context(env: &mut Env, ctx: &JObject) -> Result<(), String> {
+    // A pre-init dev bundle pull builds a Platform before init does; same context.
+    if APPLICATION_CONTEXT.get().is_some() {
+        return Ok(());
+    }
     let global = env
         .new_global_ref(ctx)
         .map_err(|e| format!("Failed to create global ref for application context: {}", e))?;
