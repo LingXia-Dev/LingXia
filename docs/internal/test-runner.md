@@ -1407,8 +1407,8 @@ the same cases the Rust parsers reject.
 
 - The GPU showcase runs the React showcase's page and flow specs
   (`tests/shared.test.ts`). `shared-specs.json` skips files with a reason
-  (`skipSpecFiles`, by source name; a name that registers no spec fails the
-  run) and lists ids the GPU mirror keys per row; `shared-specs.check.mjs`
+  (`skipSpecFiles`, by source name; a bundled file that registers no spec
+  is a warning listed as `skipUnused`, a name the run does not carry fails it) and lists ids the GPU mirror keys per row; `shared-specs.check.mjs`
   fails when the entry, the manifest or a named testId drifts from either
   lxapp. Files outside the project root are named `../…` from it.
 - `tests/feature-coverage.mjs` (React showcase): every page/app config

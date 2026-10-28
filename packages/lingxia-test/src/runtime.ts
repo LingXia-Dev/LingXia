@@ -2,7 +2,7 @@ import { matchesErrorCode } from "./deadline.js";
 import { expect, setExpectScope, setStrayAssertionSink, type LoggedAssertion } from "./expect.js";
 import { LiveFixture, SkipSignal, TimeoutError, toReportError } from "./fixture.js";
 import { formatValue } from "./format.js";
-import { attachText, resolveHost, warnVersionSkew, type ResolvedHost } from "./host.js";
+import { attachText, bundledSources, resolveHost, warnVersionSkew, type ResolvedHost } from "./host.js";
 import { captureFrames, fileStem, isUnattributed, resolveOrigin, resolveOwner, slugTitle, type StackFrame } from "./ids.js";
 import { renderJUnit } from "./junit.js";
 import { resetMocks } from "./mock.js";
@@ -132,12 +132,15 @@ function trackPublicSurface(): void {
 
 /** File skips a suite declares for this run, by source name: `{ file: reason }`. */
 const fileSkips = new Map<string, string>();
+/** Skipped files the bundle carries that registered no spec this run. */
+let skipUnused: string[] = [];
 
 /**
  * Skip every spec of the named files, with the reason, in this run: for a
  * suite shared by several apps, the files one of them cannot run. Names are
  * source names as reports print them (`../other/lxapp/tests/pages/x.test.ts`).
- * A name that registers no spec fails the run, so the list cannot go stale.
+ * A bundled file that registers no spec is a warning (`skipUnused` in the
+ * report); a name the bundle does not carry fails the run.
  */
 function skipSpecFiles(skips: Record<string, string>): void {
   for (const [file, reason] of Object.entries(skips)) {
@@ -686,8 +689,15 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     fileOptions.set(file, mergeFileOptions(fileOptions.get(file), config.options));
   }
   for (const item of specs) settle(item, fileOptions.get(sourceOf(item).file));
+  skipUnused = [];
   for (const [file, reason] of fileSkips) {
-    if (!specFiles.has(file)) throw new Error(`skipSpecFiles names ${file}, which registered no spec`);
+    if (!specFiles.has(file)) {
+      if (!bundledSources()?.includes(file)) throw new Error(`skipSpecFiles names ${file}, which is not part of this run`);
+      skipUnused.push(file);
+      await host.emit({ type: "diagnostic", phase: "collect", level: "warn",
+        message: `skipSpecFiles names ${file}, which registered no spec` });
+      continue;
+    }
     for (const item of specs) {
       if (sourceOf(item).file === file && item.skip === undefined) {
         item.skip = reason;
@@ -1476,6 +1486,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
       specs.map((item) => ({ id: resolvedId(item), title: item.title, covers: item.covers })));
   }
   if (ledger) json.openapi = redact.deep(ledger.summary);
+  if (skipUnused.length > 0) json.skipUnused = [...skipUnused];
 
   await attachText(host, "report.json", JSON.stringify(json, null, 2), "application/json");
   await attachText(host, "report.html", renderHtml(json), "text/html; charset=utf-8");
@@ -1850,6 +1861,7 @@ function reset(): void {
   resetHooks.length = 0;
   trackSurface = false;
   fileSkips.clear();
+  skipUnused = [];
   forceRelaunchNext = false;
   uninstallPendingTracker();
   unfenceGlobalAutomation();

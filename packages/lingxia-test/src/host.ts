@@ -178,6 +178,11 @@ export function remapPosition(
   }
 }
 
+/** The source files the bundle carries, or undefined without a bundle map. */
+export function bundledSources(): string[] | undefined {
+  return bundleMap()?.sources;
+}
+
 /** Whether lxdev installed a bundle map, so every frame should map to a file. */
 export function hasBundleMap(): boolean {
   return bundleMap() !== undefined;

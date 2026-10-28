@@ -24,11 +24,26 @@ test("skipSpecFiles skips a file's specs with the reason", async () => {
   assert.equal(report.cases[0].reason, "reads the WebView DOM");
 });
 
-test("a skip that names no spec file fails the run, so the list cannot go stale", async () => {
+test("a skip naming a file the run does not carry fails the run", async () => {
   spec("one", async () => {});
   skipSpecFiles({ "tests/gone.test.ts": "removed" });
   installFakeHost(createWorld());
-  await assert.rejects(run(), /registered no spec/);
+  await assert.rejects(run(), /not part of this run/);
+});
+
+test("a skip naming a bundled file that registers no spec warns and is listed as skipUnused", async () => {
+  spec("one", async () => {});
+  skipSpecFiles({ "tests/empty.test.ts": "renderer reason" });
+  globalThis.__LINGXIA_TEST_SOURCE_MAP__ = { sources: ["tests/empty.test.ts", here], mappings: "" };
+  const host = installFakeHost(createWorld());
+  try {
+    const report = await run();
+    assert.equal(report.cases[0].status, "passed");
+    assert.deepEqual(report.skipUnused, ["tests/empty.test.ts"]);
+    assert.ok(host.events.some((e) => e.type === "diagnostic" && /registered no spec/.test(e.message)));
+  } finally {
+    delete globalThis.__LINGXIA_TEST_SOURCE_MAP__;
+  }
 });
 
 test("a skip needs a reason", () => {

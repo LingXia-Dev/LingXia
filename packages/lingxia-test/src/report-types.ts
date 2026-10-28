@@ -350,6 +350,8 @@ export interface FailureRecord {
 
 export interface JsonReport {
   schema_version?: number;
+  /** `skipSpecFiles` names of bundled files that registered no spec this run. */
+  skipUnused?: string[];
   /** Added by lxdev when the host run is finalized. */
   run_id?: string;
   state?: string;
