@@ -613,6 +613,13 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             // so measure from the view or the layout would take that offset as an inset.
             getLocationOnScreen(origin); getRootView().getLocationOnScreen(rootOrigin);
             int x = origin[0] - rootOrigin[0], y = origin[1] - rootOrigin[1];
+            // The shown page measures where it is laid out: a pull-to-refresh hold or a slide
+            // moves it, not its insets. A kept page keeps its translation, which frames it as
+            // it will be shown.
+            if (active) for (android.view.ViewParent p = getParent(); p instanceof View; p = p.getParent()) {
+                x -= Math.round(((View) p).getTranslationX());
+                y -= Math.round(((View) p).getTranslationY());
+            }
             int trailingX = getRootView().getWidth() - x - surface.getWidth();
             int trailingY = getRootView().getHeight() - y - surface.getHeight();
             android.content.res.Configuration configuration = hostConfiguration;

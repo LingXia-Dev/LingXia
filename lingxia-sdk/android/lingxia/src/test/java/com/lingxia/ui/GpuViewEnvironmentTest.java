@@ -91,6 +91,27 @@ public class GpuViewEnvironmentTest {
         view.dispose();
     }
 
+    @Test @Config(sdk = 31) public void aPullOrSlideMovesTheShownPageNotItsInsets() throws Exception {
+        android.app.Activity activity = org.robolectric.Robolectric.buildActivity(android.app.Activity.class).setup().get();
+        android.widget.FrameLayout root = new android.widget.FrameLayout(activity);
+        android.widget.FrameLayout wrapper = new android.widget.FrameLayout(activity);
+        GpuView view = new GpuView(activity, "", "test:environment", null);
+        wrapper.addView(view); root.addView(wrapper); activity.setContentView(root);
+        int w = android.view.View.MeasureSpec.makeMeasureSpec(1080, android.view.View.MeasureSpec.EXACTLY);
+        int h = android.view.View.MeasureSpec.makeMeasureSpec(1830, android.view.View.MeasureSpec.EXACTLY);
+        root.measure(w, h); root.layout(0, 0, 1080, 1830);
+        view.resume();
+        JSONObject laidOut = sample(view);
+        wrapper.setTranslationY(420); wrapper.setTranslationX(-300);
+        JSONObject moved = sample(view);
+        assertEquals("system insets", laidOut.get("system_insets").toString(), moved.get("system_insets").toString());
+        assertEquals("keyboard", laidOut.getInt("keyboard"), moved.getInt("keyboard"));
+        view.pause();
+        assertNotEquals("a kept page is framed by its translation",
+            laidOut.get("system_insets").toString(), sample(view).get("system_insets").toString());
+        view.dispose();
+    }
+
     @Test @Config(sdk = 31) public void aKeptPageHidesItsSurfaceLayerAndTheCurrentPageShowsIt() throws Exception {
         android.app.Activity activity = org.robolectric.Robolectric.buildActivity(android.app.Activity.class).setup().get();
         android.widget.FrameLayout parent = new android.widget.FrameLayout(activity);
