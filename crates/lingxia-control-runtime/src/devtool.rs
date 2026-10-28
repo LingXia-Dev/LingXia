@@ -486,6 +486,89 @@ pub(crate) async fn perform_app_mouse(
         .map_err(|err| err.to_string())
 }
 
+#[derive(serde::Deserialize)]
+pub(crate) struct AppGestureArgs {
+    #[serde(default)]
+    op: Option<String>,
+    #[serde(default)]
+    appid: Option<String>,
+    #[serde(default)]
+    page: Option<String>,
+    /// A window id, or `true` for the default window; absent targets the page.
+    #[serde(default)]
+    window: Option<serde_json::Value>,
+    #[serde(default)]
+    shape: Option<lingxia_platform::traits::gesture::GestureShape>,
+    #[serde(default)]
+    end: lingxia_platform::traits::gesture::GestureEnd,
+    #[serde(default)]
+    input: Option<lingxia_platform::traits::gesture::GestureInput>,
+    #[serde(default)]
+    finger: Option<u64>,
+    #[serde(default)]
+    edge: Option<lingxia_platform::traits::gesture::FlingDirection>,
+}
+
+/// Real pointer gestures, the devtool half of `page.gesture`.
+pub(crate) async fn perform_app_gesture(args: AppGestureArgs) -> Result<serde_json::Value, String> {
+    use lingxia_platform::traits::gesture::{
+        AppGesture, AppGestureRequest, FlingDirection, GestureTarget,
+    };
+    let platform =
+        lxapp::get_platform().ok_or_else(|| "platform is not initialized".to_string())?;
+    let page_target = || {
+        let app = resolve_dev_lxapp(args.appid.as_deref().unwrap_or("current"))?;
+        auto::gesture_target(&app, args.page.as_deref())
+    };
+    match args.op.as_deref().unwrap_or("perform") {
+        "perform" => {
+            let target = match &args.window {
+                Some(serde_json::Value::String(id)) => GestureTarget::Window {
+                    window_id: Some(id.clone()),
+                },
+                Some(serde_json::Value::Bool(true)) => GestureTarget::Window { window_id: None },
+                _ => page_target()?,
+            };
+            let shape = args.shape.ok_or("shape is required")?;
+            let result = platform
+                .perform_app_gesture(AppGestureRequest {
+                    target,
+                    input: args.input,
+                    finger: args.finger,
+                    shape,
+                    end: args.end,
+                })
+                .await
+                .map_err(|err| err.to_string())?;
+            serde_json::to_value(result).map_err(|err| err.to_string())
+        }
+        "indicator" => {
+            let GestureTarget::Page { app_id, webtag, .. } = page_target()? else {
+                return Err("indicator needs a page".into());
+            };
+            let state = platform
+                .pull_refresh_indicator(&app_id, &webtag)
+                .await
+                .map_err(|err| err.to_string())?;
+            serde_json::to_value(state).map_err(|err| err.to_string())
+        }
+        "edge_back" => {
+            let window = match args.window {
+                Some(serde_json::Value::String(id)) => Some(id),
+                _ => None,
+            };
+            let result = platform
+                .perform_edge_back(window, args.edge.unwrap_or(FlingDirection::Left))
+                .await
+                .map_err(|err| err.to_string())?;
+            serde_json::to_value(result).map_err(|err| err.to_string())
+        }
+        other => Err(format!(
+            "unknown gesture op '{other}' (perform | indicator | edge_back)"
+        )),
+    }
+}
+
 /// Dispatch keyboard input to the host app's focused window control.
 pub(crate) async fn perform_app_keyboard(
     request: lingxia_platform::traits::keyboard::AppKeyboardRequest,

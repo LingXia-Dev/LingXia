@@ -79,7 +79,7 @@ interface RegisteredSpec {
   /** The `skip` option: skipped with this reason. */
   skip?: string;
   /** Run inputs the spec needs; unmet, it is skipped. */
-  requires: { args: string[]; openapi: boolean };
+  requires: Requirements;
   /**
    * The options the spec was registered with. The fields above are settled
    * from them and its file's `spec.configure()` defaults when the run starts
@@ -153,15 +153,20 @@ function restoreProfileKeep(option: SpecOptions["restoreProfile"]): string[] | u
   return [...keep];
 }
 
-function validateRequires(requires: unknown, where: string): { args: string[]; openapi: boolean } {
-  if (requires === undefined) return { args: [], openapi: false };
+const GESTURE_INPUTS = ["touch", "mouse", "trackpad"];
+
+function validateRequires(requires: unknown, where: string): Requirements {
+  if (requires === undefined) return { args: [], openapi: false, input: [] };
   if (!requires || typeof requires !== "object") throw new TypeError(`${where} requires must be an object`);
-  const { args, openapi } = requires as SpecRequirements;
+  const { args, openapi, input } = requires as SpecRequirements;
   if (args !== undefined && (!Array.isArray(args) || args.some((key) => typeof key !== "string" || key.length === 0))) {
     throw new TypeError(`${where} requires.args must be an array of non-empty --arg keys`);
   }
   if (openapi !== undefined && typeof openapi !== "boolean") throw new TypeError(`${where} requires.openapi must be a boolean`);
-  return { args: [...new Set(args ?? [])], openapi: openapi === true };
+  if (input !== undefined && (!Array.isArray(input) || input.some((kind) => !GESTURE_INPUTS.includes(kind)))) {
+    throw new TypeError(`${where} requires.input must be an array of ${GESTURE_INPUTS.join(" | ")}`);
+  }
+  return { args: [...new Set(args ?? [])], openapi: openapi === true, input: [...new Set(input ?? [])] };
 }
 
 /** Checks what `spec()` and `spec.configure()` accept alike; throws on the first problem. */
@@ -214,6 +219,7 @@ function settle(item: RegisteredSpec, file: FileOptions | undefined): void {
   item.requires = {
     args: [...new Set([...fileRequires.args, ...ownRequires.args])],
     openapi: fileRequires.openapi || ownRequires.openapi,
+    input: [...new Set([...fileRequires.input, ...ownRequires.input])],
   };
 }
 
@@ -227,6 +233,7 @@ function unmetRequirements(
   item: RegisteredSpec,
   args: Readonly<Record<string, string | undefined>>,
   openapi: boolean,
+  inputs: readonly string[],
 ): string | undefined {
   const missing = item.requires.args.filter((key) => args[key] === undefined);
   const needs: string[] = [];
@@ -234,6 +241,10 @@ function unmetRequirements(
     needs.push(missing.map((key) => `--arg ${key}=<value>`).join(", ") + " (or --secret-arg)");
   }
   if (item.requires.openapi && !openapi) needs.push("--openapi <document>");
+  const absent = item.requires.input.filter((kind) => !inputs.includes(kind));
+  if (absent.length > 0) {
+    needs.push(`${absent.join(" and ")} input (this host has ${inputs.length > 0 ? inputs.join(", ") : "no gesture input"})`);
+  }
   return needs.length === 0 ? undefined : `Not run: requires ${needs.join(" and ")}.`;
 }
 
@@ -264,7 +275,7 @@ function register(annotation: Annotation, title: string, optionsOrBody: SpecOpti
     timeout: DEFAULT_SPEC_TIMEOUT_MS,
     restoreProfile: false,
     forensics: true,
-    requires: { args: [], openapi: false },
+    requires: { args: [], openapi: false, input: [] },
     own: { ...options },
     expected,
     annotation,
@@ -327,6 +338,7 @@ function mergeFileOptions(previous: FileOptions | undefined, next: FileOptions):
   merged.requires = {
     args: [...new Set([...(previous.requires?.args ?? []), ...(next.requires?.args ?? [])])],
     openapi: previous.requires?.openapi === true || next.requires?.openapi === true,
+    input: [...new Set([...(previous.requires?.input ?? []), ...(next.requires?.input ?? [])])],
   };
   return merged;
 }
@@ -418,6 +430,17 @@ function unfenceGlobalAutomation(): void {
   if (!hostAutomation) return;
   try { hostAutomation.lx.automation = hostAutomation.automation; } catch { /* the context is going away */ }
   hostAutomation = undefined;
+}
+
+interface Requirements { args: string[]; openapi: boolean; input: string[] }
+
+/** What this host's gestures can imitate. */
+function gestureInputs(): string[] {
+  try {
+    return pinApp().page.gesture.inputs();
+  } catch {
+    return [];
+  }
 }
 
 function automationRoot(): HostRunAutomation {
@@ -679,6 +702,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
   const repeated: Planned[] = selected.flatMap((item) =>
     Array.from({ length: repeatEach }, (_, index) => ({ item, repeat: index + 1 })));
   const plan = shuffleSeed === undefined ? repeated : shuffleWithSeed(repeated, shuffleSeed);
+  let inputs: string[] | undefined;
   const budget = runBudget(control, plan.length);
   const fullName = (item: RegisteredSpec, repeat: number) =>
     (item.id ? `${item.id} | ${item.title}` : item.title) + (repeatEach > 1 ? ` [repeat ${repeat}/${repeatEach}]` : "");
@@ -791,7 +815,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     });
 
     const caseStarted = Date.now();
-    const unmet = notRun(item) ? undefined : unmetRequirements(item, args, openapi !== undefined);
+    const unmet = notRun(item) ? undefined : unmetRequirements(item, args, openapi !== undefined, item.requires.input.length > 0 ? (inputs ??= gestureInputs()) : []);
     if (budgetExhausted || contaminated || screenLocked || unmet !== undefined || notRun(item)) {
       if (contaminated) record.reason = contaminationReason ?? `Not run: an earlier spec left the run unable to continue. Recover: ${RECOVER_COMMAND}`;
       else if (budgetExhausted && budget) record.reason = `Not run: the run budget of ${Math.round(budget.ms / 1000)}s was exhausted after ${budgetExhausted.after}/${plan.length} specs.`;
@@ -1286,6 +1310,10 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
       };
     }
     if (fixture.observed.size > 0) record.observed = [...fixture.observed].sort();
+    if (fixture.gestures.length > 0) {
+      record.gestures = fixture.gestures.map(({ api, input, delivered, events, durationMs }) =>
+        ({ api, input, delivered, events, duration_ms: Math.round(durationMs) }));
+    }
     record.attachments = [...fixture.attachments];
     setExpectScope();
     if (error) record.error = toReportError(error, fixture.currentStepPath());

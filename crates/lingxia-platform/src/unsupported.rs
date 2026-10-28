@@ -25,6 +25,7 @@ use crate::traits::media_runtime::{
     CompressImageRequest, CompressVideoRequest, CompressedVideo, ExtractVideoThumbnailRequest,
     ImageInfo, MediaRuntime, VideoInfo, VideoThumbnail,
 };
+use crate::traits::gesture::AppGesture;
 use crate::traits::mouse::AppMouse;
 use crate::traits::network::Network;
 use crate::traits::pull_to_refresh::PullToRefresh;
@@ -114,6 +115,7 @@ impl UpdateService for Platform {}
 impl Wifi for Platform {}
 impl AppScreenshot for Platform {}
 impl AppMouse for Platform {}
+impl AppGesture for Platform {}
 impl AppKeyboard for Platform {}
 
 impl FileService for Platform {

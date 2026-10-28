@@ -25,6 +25,7 @@ import type {
   PageDriver,
   ProfileDriver,
   PageKey,
+  PageGesture,
   PagePointer,
   ShellDriver,
   TerminalDriver,
@@ -284,6 +285,7 @@ const PAGE_DRIVER_API = [
   'dblclick',
   'eval',
   'fill',
+  'gesture',
   'key',
   'pointer',
   'press',
@@ -299,6 +301,7 @@ const PAGE_DRIVER_API = [
 ] as const;
 const PAGE_POINTER_API = ['click', 'down', 'drag', 'move', 'scroll', 'up'] as const;
 const PAGE_KEY_API = ['press', 'type'] as const;
+const PAGE_GESTURE_API = ['edgeBack', 'inputs', 'perform', 'refreshIndicator', 'viewport'] as const;
 const NAV_DRIVER_API = [
   'back',
   'current',
@@ -593,8 +596,9 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'automation',
     expression: 'lx.automation().lxapp().page',
     members: PAGE_DRIVER_API,
-    properties: ['key', 'pointer'],
+    properties: ['gesture', 'key', 'pointer'],
   },
+  { name: 'PageGesture', layer: 'automation', expression: 'lx.automation().lxapp().page.gesture', members: PAGE_GESTURE_API },
   { name: 'PagePointer', layer: 'automation', expression: 'lx.automation().lxapp().page.pointer', members: PAGE_POINTER_API },
   { name: 'PageKey', layer: 'automation', expression: 'lx.automation().lxapp().page.key', members: PAGE_KEY_API },
   { name: 'NavDriver', layer: 'automation', expression: 'lx.automation().lxapp().nav', members: NAV_DRIVER_API },
@@ -876,6 +880,7 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<LxAppManager, typeof LXAPP_MANAGER_API>>,
   AssertTrue<Exact<PageDriver, typeof PAGE_DRIVER_API>>,
   AssertTrue<Exact<PagePointer, typeof PAGE_POINTER_API>>,
+  AssertTrue<Exact<PageGesture, typeof PAGE_GESTURE_API>>,
   AssertTrue<Exact<PageKey, typeof PAGE_KEY_API>>,
   AssertTrue<Exact<NavDriver, typeof NAV_DRIVER_API>>,
   AssertTrue<Exact<NetworkDriver, typeof NETWORK_DRIVER_API>>,

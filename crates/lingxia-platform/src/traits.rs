@@ -12,6 +12,7 @@ pub mod app_runtime;
 pub mod clipboard;
 pub mod device;
 pub mod file;
+pub mod gesture;
 pub mod keyboard;
 pub mod location;
 pub mod media_interaction;
@@ -33,6 +34,7 @@ pub mod prelude {
     pub use super::clipboard::ClipboardService;
     pub use super::device::{Device, DeviceHardware};
     pub use super::file::FileService;
+    pub use super::gesture::AppGesture;
     pub use super::keyboard::{
         AppKeyboard, AppKeyboardAction, AppKeyboardModifier, AppKeyboardRequest,
     };

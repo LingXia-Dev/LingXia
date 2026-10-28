@@ -24,6 +24,7 @@
 -keep class com.lingxia.lxapp.APIs.LxAppClipboard { public static !synthetic <methods>; }
 -keep class com.lingxia.lxapp.APIs.LxAppDevice { public static !synthetic <methods>; }
 -keep class com.lingxia.lxapp.APIs.LxAppFile { public static !synthetic <methods>; }
+-keep class com.lingxia.lxapp.APIs.LxAppGesture { public static !synthetic <methods>; }
 -keep class com.lingxia.lxapp.APIs.LxAppLocation { public static !synthetic <methods>; }
 -keep class com.lingxia.lxapp.APIs.LxAppMedia { public static !synthetic <methods>; }
 -keep class com.lingxia.lxapp.APIs.LxAppModal { public static !synthetic <methods>; }

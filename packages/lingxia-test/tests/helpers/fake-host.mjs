@@ -212,7 +212,29 @@ export function createWorld(options = {}) {
     return { route: entry.path, data: pageData.get(entry.instanceId) ?? pageData.get(entry.name) ?? {} };
   }
 
+  /** Gestures as sent; `gestureHost` shapes the fake host's answers. */
+  const gestureCalls = [];
+  const gestureHost = { inputs: ["touch"], delivered: "window", indicator: undefined, nextFinger: 1 };
+  const gesture = {
+    inputs() { return [...gestureHost.inputs]; },
+    async perform(options) {
+      if (gestureHost.inputs.length === 0) throw Object.assign(new Error("E_UNSUPPORTED: no gestures"), { code: "E_UNSUPPORTED" });
+      gestureCalls.push(structuredClone(options));
+      gestureHost.onPerform?.(options);
+      const finger = options.end === "hold" ? (options.finger ?? gestureHost.nextFinger++) : undefined;
+      return { input: options.input ?? gestureHost.inputs[0], delivered: gestureHost.delivered, events: 3, durationMs: 10,
+        ...(finger !== undefined ? { finger } : {}) };
+    },
+    async viewport() { return { left: 0, top: 0, width: 400, height: 800 }; },
+    async refreshIndicator() {
+      if (!gestureHost.indicator) throw Object.assign(new Error("E_UNSUPPORTED: no indicator"), { code: "E_UNSUPPORTED" });
+      return gestureHost.indicator();
+    },
+    async edgeBack() { throw Object.assign(new Error("E_UNSUPPORTED: edge back is a system gesture"), { code: "E_UNSUPPORTED" }); },
+  };
+
   const page = {
+    gesture,
     async query({ css, all, index = 0, page: pageName }) {
       const found = queryAll(css, pageEntry("query", pageName));
       if (all) {
@@ -428,7 +450,7 @@ export function createWorld(options = {}) {
       textTruncated: false,
       value: element.value ?? null,
       valueTruncated: false,
-      rect: { left: 0, top: 0, width: 10, height: 10, right: 10, bottom: 10, centerX: 5, centerY: 5, viewportWidth: 100, viewportHeight: 100 },
+      rect: element.rect ?? { left: 0, top: 0, width: 10, height: 10, right: 10, bottom: 10, centerX: 5, centerY: 5, viewportWidth: 100, viewportHeight: 100 },
       ...(element.renderer ? { renderer: element.renderer } : {}),
     };
   }
@@ -463,6 +485,8 @@ export function createWorld(options = {}) {
     },
     pageTargets,
     actionCalls,
+    gestureCalls,
+    gestureHost,
     setEval(script, value) {
       evalResults.set(script, value);
     },

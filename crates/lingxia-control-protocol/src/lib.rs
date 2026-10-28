@@ -372,6 +372,12 @@ pub mod methods {
         /// such as `{kind:"type", text}` or `{kind:"press", key, modifiers?}`.
         pub const KEYBOARD: &str = "app.keyboard";
 
+        /// Inject a real pointer gesture. Args: `{op?, appid?, page?,
+        /// window?, shape, end?, input?, finger?, edge?}`; `op` is `perform`
+        /// (default), `indicator` (the page's pull-to-refresh state) or
+        /// `edge_back`. Page points are page CSS pixels.
+        pub const GESTURE: &str = "app.gesture";
+
         /// Inject an App Link. Args: `{url}`.
         pub const APPLINK: &str = "app.applink";
 

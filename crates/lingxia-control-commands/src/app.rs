@@ -83,6 +83,13 @@ pub enum DevAppCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Inject a real pointer gesture (touch on Android, trackpad or mouse on
+    /// macOS) at page CSS pixels of the current page, or window points with
+    /// `--window`
+    Gesture {
+        #[command(subcommand)]
+        command: GestureCommand,
+    },
     /// Inject an App Link (warm path)
     Applink {
         /// `https://` AppLink URL
@@ -92,6 +99,217 @@ pub enum DevAppCommand {
         #[arg(long)]
         json: bool,
     },
+}
+
+#[derive(Subcommand, Clone)]
+pub enum GestureCommand {
+    /// Move from one point to another at real speed, then lift
+    Swipe {
+        /// Start point `x,y`
+        #[arg(long, value_parser = parse_point, allow_hyphen_values = true)]
+        from: [f64; 2],
+        /// End point `x,y`
+        #[arg(long, value_parser = parse_point, allow_hyphen_values = true)]
+        to: [f64; 2],
+        #[arg(long, default_value_t = 300.0)]
+        duration_ms: f64,
+        /// Moves along the way (default one per 16 ms)
+        #[arg(long)]
+        steps: Option<u32>,
+        /// Rest at the end before lifting, so the release has no velocity
+        #[arg(long, default_value_t = 100.0)]
+        hold_ms: f64,
+        #[arg(long, value_enum)]
+        input: Option<GestureInputArg>,
+        #[command(flatten)]
+        target: GestureTargetOptions,
+    },
+    /// Release while moving, so the content keeps scrolling
+    Fling {
+        /// Start point `x,y`
+        #[arg(long, value_parser = parse_point, allow_hyphen_values = true)]
+        from: [f64; 2],
+        /// Direction the finger moves
+        #[arg(long, value_enum)]
+        direction: GestureDirectionArg,
+        /// Release velocity in px/s
+        #[arg(long, default_value_t = 3000.0)]
+        velocity: f64,
+        #[arg(long, value_enum)]
+        input: Option<GestureInputArg>,
+        #[command(flatten)]
+        target: GestureTargetOptions,
+    },
+    /// Pull the page down from `--at`, hold, release, and print the
+    /// pull-to-refresh indicator
+    Pull {
+        /// Start point `x,y`
+        #[arg(long, value_parser = parse_point, allow_hyphen_values = true)]
+        at: [f64; 2],
+        #[arg(long, default_value_t = 160.0)]
+        distance: f64,
+        #[arg(long, default_value_t = 300.0)]
+        hold_ms: f64,
+        #[command(flatten)]
+        target: GestureTargetOptions,
+    },
+    /// Read the current page's pull-to-refresh indicator
+    Indicator {
+        #[command(flatten)]
+        target: GestureTargetOptions,
+    },
+    /// The system back swipe from a window edge
+    EdgeBack {
+        #[arg(long, value_enum, default_value = "left")]
+        edge: GestureDirectionArg,
+        #[command(flatten)]
+        target: GestureTargetOptions,
+    },
+}
+
+#[derive(Args, Clone)]
+pub struct GestureTargetOptions {
+    /// Page name or instance id (default: the current page)
+    #[arg(long)]
+    page: Option<String>,
+    /// Target the host window in window points instead of a page
+    #[arg(long)]
+    window: bool,
+    /// Print JSON output
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+pub enum GestureInputArg {
+    Touch,
+    Mouse,
+    Trackpad,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+pub enum GestureDirectionArg {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
+fn parse_point(raw: &str) -> Result<[f64; 2], String> {
+    let (x, y) = raw.split_once(',').ok_or("expected x,y")?;
+    let parse = |v: &str| v.trim().parse::<f64>().map_err(|e| format!("{v}: {e}"));
+    Ok([parse(x)?, parse(y)?])
+}
+
+fn snake<T: ValueEnum>(value: T) -> String {
+    value
+        .to_possible_value()
+        .map(|v| v.get_name().replace('-', "_"))
+        .unwrap_or_default()
+}
+
+fn execute_gesture(context: &AppContext, command: GestureCommand) -> Result<()> {
+    let base = |target: &GestureTargetOptions| {
+        let mut args = Map::new();
+        if let Some(page) = &target.page {
+            args.insert("page".into(), json!(page));
+        }
+        if target.window {
+            args.insert("window".into(), json!(true));
+        }
+        args
+    };
+    let send = |args: Map<String, Value>| {
+        context
+            .transport
+            .request(methods::app::GESTURE, Some(Value::Object(args)))
+            .map(|data| data.unwrap_or(Value::Null))
+    };
+    let (target, data) = match command {
+        GestureCommand::Swipe {
+            from,
+            to,
+            duration_ms,
+            steps,
+            hold_ms,
+            input,
+            target,
+        } => {
+            let mut args = base(&target);
+            args.insert(
+                "shape".into(),
+                json!({
+                    "kind": "line", "from": from, "to": to, "duration_ms": duration_ms,
+                    "steps": steps, "hold_ms": hold_ms,
+                }),
+            );
+            if let Some(input) = input {
+                args.insert("input".into(), json!(snake(input)));
+            }
+            let data = send(args)?;
+            (target, data)
+        }
+        GestureCommand::Fling {
+            from,
+            direction,
+            velocity,
+            input,
+            target,
+        } => {
+            let mut args = base(&target);
+            args.insert("shape".into(), json!({
+                "kind": "fling", "from": from, "direction": snake(direction), "velocity": velocity,
+            }));
+            if let Some(input) = input {
+                args.insert("input".into(), json!(snake(input)));
+            }
+            let data = send(args)?;
+            (target, data)
+        }
+        GestureCommand::Pull {
+            at,
+            distance,
+            hold_ms,
+            target,
+        } => {
+            let mut args = base(&target);
+            let duration_ms = (distance * 2.5).max(200.0);
+            args.insert(
+                "shape".into(),
+                json!({
+                    "kind": "line", "from": at, "to": [at[0], at[1] + distance],
+                    "duration_ms": duration_ms, "hold_ms": hold_ms,
+                }),
+            );
+            let gesture = send(args)?;
+            let mut read = base(&target);
+            read.insert("op".into(), json!("indicator"));
+            let indicator = send(read)?;
+            (
+                target,
+                json!({ "gesture": gesture, "indicator": indicator }),
+            )
+        }
+        GestureCommand::Indicator { target } => {
+            let mut args = base(&target);
+            args.insert("op".into(), json!("indicator"));
+            let data = send(args)?;
+            (target, data)
+        }
+        GestureCommand::EdgeBack { edge, target } => {
+            let mut args = base(&target);
+            args.insert("op".into(), json!("edge_back"));
+            args.insert("edge".into(), json!(snake(edge)));
+            let data = send(args)?;
+            (target, data)
+        }
+    };
+    if target.json {
+        println!("{}", encode_machine_json(&data)?);
+    } else {
+        println!("{}", serde_json::to_string_pretty(&data)?);
+    }
+    Ok(())
 }
 
 #[derive(Subcommand, Clone)]
@@ -284,6 +502,7 @@ pub fn execute(context: &AppContext, options: AppOptions) -> Result<()> {
     match options.command {
         DevAppCommand::Own(command) => execute_own(context, command),
         DevAppCommand::Focus { window, json } => execute_focus(context, window, json),
+        DevAppCommand::Gesture { command } => execute_gesture(context, command),
         DevAppCommand::Applink { url, json } => execute_applink(context, url, json),
     }
 }

@@ -98,6 +98,7 @@ Iterate with `--changed` or a file path; run everything at handoff and in CI.
 | Act | `locator.click()` / `.fill(text)` / `.type(text)` / `.press(key)` |
 | Read an element once | `locator.textContent()` / `.inputValue()` / `.getAttribute(name)` / `.count()` / `.isVisible()`; no retry, so assert with `expect(locator)` |
 | Native window input | `t.app.window.pointer` / `.key`; independent of pages |
+| Swipe, drag, fling, pull to refresh, edge back | `t.app.view.swipe` / `.drag` / `.fling` / `.pullToRefresh` / `.touch`, `t.app.gesture.*`; [Gestures](#gestures) |
 | Assert UI | `expect(locator).toBeVisible()` / `.toBeInViewport()` / `.toBeAttached()` / `.toHaveText()` / `.toContainText()` / `.toHaveAttribute(name, value?)` / `.toHaveCount()` / `.toHaveValue()` / `.toBeEnabled()`; `.not` |
 | Wait for an element state | `locator.waitFor({ state: 'visible' \| 'inViewport' \| 'attached' \| 'hidden' \| 'detached' })` |
 | Page data, page actions, Logic eval | [Pages](#pages), [Logic eval](#logic-eval) |
@@ -129,6 +130,41 @@ Read runtime info and element snapshots with camelCase fields (`appId`,
 Restore shell pins or device settings a spec changes. Routes, `t.scenario.use`
 scenarios, test clocks and dialog answers a spec installs are removed when it
 ends; its leftover timers are cancelled.
+
+## Gestures
+
+Gestures are real pointer input: a timed finger (Android), mouse or
+trackpad (macOS) sequence injected into the host window, so page chrome —
+pull to refresh, scroll edges, flings — handles it as it would a user's.
+Points are `[x, y]` in page CSS pixels or a locator (its center).
+
+```ts
+spec('pulling the list refreshes it once', { start: { page: 'feed' } }, async (t) => {
+  const pull = await t.app.view.pullToRefresh();            // distance 160, hold 300 ms, release
+  expect(pull.refreshed).toBe(true);
+  await expect(t.app.view.testId('feed-status')).toHaveText('Refreshing…');
+  await t.app.view.fling('up', 4000);                       // finger direction, px/s
+  await t.app.view.swipe({ from: [200, 600], to: [200, 200], durationMs: 400 });
+  await t.app.view.drag(t.app.view.testId('card'), { dx: 0, dy: 120, durationMs: 500 });
+});
+```
+
+- `pullToRefresh({ distance?, hold?, release?, at? })` returns `{ refreshed,
+  maxOffset, phases }`, sampled from the page's refresh indicator as the
+  finger moves; it rejects with `E_UNSUPPORTED` on a page without one.
+- `t.app.view.touch(at)` holds a pointer for checks mid-gesture:
+  `.moveTo(at, { durationMs })`, `.hold(ms)`, `.up()`, `.cancel()`.
+- `t.app.view.refreshIndicator()` reads `{ phase, offset }` (`idle`,
+  `pulling`, `armed`, `refreshing`, `ending`).
+- `t.app.gesture.swipe(...)` / `.edgeBack({ edge? })` act on the host window
+  in window points. Edge back is a system gesture; hosts that cannot inject
+  into it reject with `E_UNSUPPORTED`.
+- Moves are spaced in real time (default one per 16 ms). Each gesture returns
+  `{ input, delivered, events, durationMs }`; `delivered: 'view'` means the
+  host fell back past its input dispatcher, and `report.json` lists every
+  gesture's `delivered`.
+- `requires: { input: ['touch'] }` (or `'mouse'`, `'trackpad'`) skips the
+  spec, with the reason, on a host without that device.
 
 ## Pages
 

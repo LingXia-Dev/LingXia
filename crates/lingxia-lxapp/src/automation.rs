@@ -96,6 +96,26 @@ pub fn resolve_page(
     }
 }
 
+/// Where a page-coordinate gesture lands: the page instance and, where the
+/// platform cannot find its view by webtag, the native view itself.
+pub fn gesture_target(
+    app: &Arc<LxApp>,
+    page_name: Option<&str>,
+) -> Result<lingxia_platform::traits::gesture::GestureTarget, String> {
+    let (page, _) = resolve_page(app, page_name)?;
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    let view = page
+        .webview()
+        .map(|webview| webview.get_swift_webview_ptr());
+    #[cfg(not(any(target_os = "ios", target_os = "macos")))]
+    let view = None;
+    Ok(lingxia_platform::traits::gesture::GestureTarget::Page {
+        app_id: app.appid.clone(),
+        webtag: page.webtag().key().to_owned(),
+        view,
+    })
+}
+
 fn resolve_current_page(app: &Arc<LxApp>) -> Result<PageInstance, String> {
     if let Some(page) = app
         .page_instance_runtime_info()

@@ -14,6 +14,7 @@ import { rememberInline } from "./report.js";
 import { NetworkScope, wrapNetwork } from "./network.js";
 import { ScenarioScope, installScenario } from "./mock.js";
 import { ClockScope, wrapClock } from "./clock.js";
+import { Gestures, type GestureScope } from "./gesture.js";
 import { watchDialogs, wrapDialogs, type DialogWatch } from "./dialogs.js";
 import { activeOpenApi } from "./openapi.js";
 import { ActionDeadline, TimeoutError, asFixtureTimeout } from "./deadline.js";
@@ -49,6 +50,7 @@ import type {
   PageBindOptions,
   TestPage,
   EvalOptions,
+  GestureRecord,
   LogicScope,
   ProfileCheckpoint,
   ProfileFixture,
@@ -108,6 +110,8 @@ export class LiveFixture implements Fixture {
   readonly observed = new Set<string>();
   readonly assertions: AssertionRecord[] = [];
   readonly attachments: AttachmentRef[] = [];
+  /** Gestures this spec injected, with the delivery path of each. */
+  readonly gestures: GestureRecord[] = [];
   readonly defers: Array<() => void | Promise<void>> = [];
   private closed = false;
   aborted = false;
@@ -1009,6 +1013,13 @@ export class LiveFixture implements Fixture {
         get pointer() { return input.pointer; },
         get key() { return input.key; },
       },
+      gesture: (() => {
+        const gestures = new Gestures(this.gestureScope(() => driver().page, undefined), true);
+        return {
+          swipe: (options) => gestures.swipe(options),
+          edgeBack: (options) => gestures.edgeBack(options),
+        };
+      })(),
       logic: this.wrapLogic(driver),
       nav: this.wrapNav(() => driver().nav),
       // Lazy: the driver is read inside each traced call.
@@ -1297,6 +1308,7 @@ export class LiveFixture implements Fixture {
     };
     const input = lazyDriver(() => ({ owner: page() as object, value: page() }), this, "page.") as PageDriver;
     const target = bound === undefined ? {} : { page: bound };
+    const gestures = new Gestures(this.gestureScope(page, bound), false);
     const noOptions = (api: string, options: unknown) => {
       if (options !== undefined) {
         throw new TypeError(`${api}() takes no options: bind another page with t.app.page({ name }) and use its view`);
@@ -1331,6 +1343,21 @@ export class LiveFixture implements Fixture {
         }
         return input.scroll({ ...options, ...target });
       },
+      swipe: (options) => gestures.swipe(options),
+      drag: (locator, options) => gestures.drag(locator, options),
+      fling: (direction, velocity, options) => gestures.fling(direction, velocity, options),
+      pullToRefresh: (options) => gestures.pullToRefresh(options),
+      touch: (at, options) => gestures.touch(at, options),
+      refreshIndicator: () => gestures.refreshIndicator(),
+    };
+  }
+
+  private gestureScope(page: () => PageDriver, bound: string | undefined): GestureScope {
+    return {
+      driver: () => page().gesture,
+      act: (verb, detail, op) => this.act(verb, detail, op),
+      record: (entry) => { this.gestures.push(entry); },
+      target: bound === undefined ? {} : { page: bound },
     };
   }
 

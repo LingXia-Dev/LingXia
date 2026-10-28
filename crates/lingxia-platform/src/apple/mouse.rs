@@ -323,7 +323,7 @@ fn click_count(phase: MousePhase) -> isize {
 }
 
 #[cfg(target_os = "macos")]
-fn content_point_to_window_point(
+pub(super) fn content_point_to_window_point(
     content_view: *mut objc2::runtime::AnyObject,
     x: f64,
     y: f64,

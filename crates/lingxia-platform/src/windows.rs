@@ -9,6 +9,7 @@ mod clipboard;
 mod control_session_indicator;
 mod device;
 mod file;
+mod gesture;
 mod keyboard;
 mod location;
 mod media;

@@ -428,6 +428,13 @@ impl JSPageDriver {
             .instance(crate::input::JSPagePointer::new(self.appid.clone())))
     }
 
+    /// Real pointer gestures on this lxapp's pages or the host window.
+    #[js_method(getter, enumerable)]
+    fn gesture(&self, ctx: JSContext) -> JSResult<JSObject> {
+        Ok(Class::lookup::<crate::gesture::JSPageGesture>(&ctx)?
+            .instance(crate::gesture::JSPageGesture::new(self.lxapp.clone())))
+    }
+
     /// App-window keyboard input (`lxdev lxapp page key`).
     #[js_method(getter, enumerable)]
     fn key(&self, ctx: JSContext) -> JSResult<JSObject> {

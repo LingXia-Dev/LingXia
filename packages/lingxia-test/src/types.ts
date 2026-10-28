@@ -14,6 +14,8 @@ import type {
   ClockState,
   ClockTime,
   DesktopDriver,
+  GestureDirection,
+  GestureInput,
   HostRunAutomation,
   LxAppDriver,
   ModalAnswer,
@@ -24,6 +26,8 @@ import type {
   PageKey,
   PagePointer,
   PageScrollOptions,
+  RefreshIndicator,
+  RefreshPhase,
   PageTarget,
   ProfileRestoreResult,
   ScenarioCallFilter,
@@ -127,6 +131,8 @@ export interface SpecRequirements {
   args?: readonly string[];
   /** The run must check an OpenAPI contract (`lxdev test --openapi`). */
   openapi?: boolean;
+  /** Gesture devices the host must imitate; skipped (with the reason) where it cannot. */
+  input?: readonly GestureInput[];
 }
 
 /** `restoreProfile: { keep }`. */
@@ -424,6 +430,105 @@ export interface TestView {
   screenshot(): Promise<Screenshot>;
   /** Scroll the page DOM by a pixel delta (nearest scrollable container). */
   scroll(options?: Omit<PageScrollOptions, "page">): Promise<void>;
+  /** A real swipe at page CSS pixels; see [Gestures]. */
+  swipe(options: SwipeOptions): Promise<GestureTrace>;
+  /** Press on the locator's center and move it by `dx`, `dy`. */
+  drag(locator: Locator, options: DragOptions): Promise<GestureTrace>;
+  /** Release while moving at `velocity` px/s; `direction` is the finger's. */
+  fling(direction: GestureDirection, velocity?: number, options?: FlingOptions): Promise<GestureTrace>;
+  /** Pull down from near the top, hold, release; samples the refresh indicator throughout. */
+  pullToRefresh(options?: PullToRefreshOptions): Promise<PullToRefreshResult>;
+  /** Hold one pointer down for checks in the middle of a gesture. */
+  touch(at: GestureTarget, options?: TouchOptions): Promise<TestFinger>;
+  /** The page's pull-to-refresh indicator; `E_UNSUPPORTED` without one. */
+  refreshIndicator(): Promise<RefreshIndicator>;
+}
+
+/** A gesture point: `[x, y]` in page CSS pixels, or a locator's center. */
+export type GestureTarget = readonly [number, number] | Locator;
+
+/** What a gesture delivered. `delivered: 'view'` names a fallback past the platform's input dispatch. */
+export interface GestureTrace {
+  input: GestureInput;
+  delivered: "window" | "view";
+  events: number;
+  durationMs: number;
+}
+
+/** One gesture of a spec, as its JSON result records it. */
+export interface GestureRecord extends GestureTrace {
+  api: string;
+}
+
+export interface SwipeOptions {
+  from: GestureTarget;
+  to: GestureTarget;
+  /** Travel time (default 300 ms). */
+  durationMs?: number;
+  /** Moves along the way (default one per 16 ms). */
+  steps?: number;
+  /** Rest before lifting so the release carries no velocity (default 100 ms). */
+  hold?: number;
+  input?: GestureInput;
+}
+
+export interface DragOptions {
+  dx: number;
+  dy: number;
+  /** Default 500 ms. */
+  durationMs?: number;
+  /** Default 100 ms. */
+  hold?: number;
+  input?: GestureInput;
+}
+
+export interface FlingOptions {
+  /** Start point (default: across the viewport from `direction`). */
+  at?: GestureTarget;
+  input?: GestureInput;
+}
+
+export interface TouchOptions {
+  input?: GestureInput;
+}
+
+export interface PullToRefreshOptions {
+  /** Finger travel in page CSS pixels (default 160). */
+  distance?: number;
+  /** Rest before releasing, in ms (default 300). */
+  hold?: number;
+  /** `false` keeps the finger down: finish with the result's `finger`. */
+  release?: boolean;
+  /** Start point (default: near the top of the viewport). */
+  at?: GestureTarget;
+  input?: GestureInput;
+}
+
+export interface PullToRefreshResult extends GestureTrace {
+  /** The indicator reached `refreshing`. */
+  refreshed: boolean;
+  /** Largest indicator offset seen, in page CSS pixels. */
+  maxOffset: number;
+  /** Indicator phases in the order they were seen. */
+  phases: RefreshPhase[];
+  /** With `release: false`, the finger still down. */
+  finger?: TestFinger;
+}
+
+/** One pointer held down by `touch`. */
+export interface TestFinger {
+  readonly at: [number, number];
+  moveTo(at: GestureTarget, options?: { durationMs?: number; steps?: number }): Promise<GestureTrace>;
+  hold(ms: number): Promise<GestureTrace>;
+  up(): Promise<GestureTrace>;
+  cancel(): Promise<GestureTrace>;
+}
+
+/** Host-window gestures (`t.app.gesture`), in window points. */
+export interface TestGesture {
+  swipe(options: Omit<SwipeOptions, "from" | "to"> & { from: readonly [number, number]; to: readonly [number, number] }): Promise<GestureTrace>;
+  /** The system back swipe; `E_UNSUPPORTED` where the system does not take injected input. */
+  edgeBack(options?: { edge?: "left" | "right" }): Promise<GestureTrace>;
 }
 
 /** Native app-window input, independent of a page selector or DOM focus. */
@@ -779,6 +884,8 @@ export interface TestApp {
   readonly view: TestView;
   /** Native app-window input, independent of pages and DOM focus. */
   readonly window: TestWindow;
+  /** Real gestures on the host window: edge back, tab bar. */
+  readonly gesture: TestGesture;
   /** The app's Logic runtime: `eval(fn)`. */
   readonly logic: TestLogic;
   /** The page stack; actions wait for the landed page's `onReady` unless you pass `waitUntil`. */

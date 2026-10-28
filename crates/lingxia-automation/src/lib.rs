@@ -22,6 +22,7 @@ mod dialogs;
 #[path = "dialogs/unavailable.rs"]
 mod dialogs;
 mod error;
+mod gesture;
 pub mod gpu;
 mod host;
 mod info;
@@ -318,6 +319,7 @@ pub fn init_automation_context(ctx: &JSContext) -> JSResult<()> {
     ctx.register_hidden_class::<page::JSPageDriver>()?;
     ctx.register_hidden_class::<input::JSPagePointer>()?;
     ctx.register_hidden_class::<input::JSPageKey>()?;
+    ctx.register_hidden_class::<gesture::JSPageGesture>()?;
     ctx.register_hidden_class::<nav::JSNavDriver>()?;
     ctx.register_hidden_class::<network::JSNetworkDriver>()?;
     ctx.register_hidden_class::<network::JSMockDriver>()?;

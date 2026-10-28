@@ -68,6 +68,14 @@ fn handle_app_command_impl(handler: &str, args: Option<Value>) -> Result<Option<
                 .map(Some)
                 .map_err(|err| err.to_string())
         }
+        methods::app::GESTURE => {
+            let request: crate::devtool::AppGestureArgs = match args {
+                Some(value) => serde_json::from_value(value)
+                    .map_err(|e| format!("invalid args for {}: {}", handler, e))?,
+                None => return Err(format!("missing args for {}", handler)),
+            };
+            run_async(crate::devtool::perform_app_gesture(request)).map(Some)
+        }
         methods::app::KEYBOARD => {
             let request: lingxia_platform::traits::keyboard::AppKeyboardRequest = match args {
                 Some(value) => serde_json::from_value(value)

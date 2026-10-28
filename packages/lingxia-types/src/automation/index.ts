@@ -573,6 +573,8 @@ export interface PageDriver {
   readonly pointer: PagePointer;
   /** App-window keyboard input (`lxdev lxapp page key`). */
   readonly key: PageKey;
+  /** Real pointer gestures through the host input path (`lxdev host gesture`). */
+  readonly gesture: PageGesture;
 }
 
 // ============================ nav tier ============================
@@ -2179,6 +2181,59 @@ export interface PagePointer {
   click(options: PointerClickOptions): Promise<InputResult>;
   drag(options: PointerDragOptions): Promise<InputResult>;
   scroll(options: PointerScrollOptions): Promise<InputResult>;
+}
+
+/** The device a gesture imitates; the platform picks its own when omitted. */
+export type GestureInput = 'touch' | 'mouse' | 'trackpad';
+/** Direction the finger moves. */
+export type GestureDirection = 'up' | 'down' | 'left' | 'right';
+
+/** A gesture path: page CSS pixels, or window points with `window`. */
+export type GestureShape =
+  | { kind: 'line'; from: Point; to: Point; durationMs: number; steps?: number; holdMs?: number }
+  | { kind: 'fling'; from: Point; direction: GestureDirection; velocity: number }
+  | { kind: 'hold'; at: Point; durationMs: number };
+
+export interface GestureOptions {
+  shape: GestureShape;
+  /** `hold` keeps the pointer down; pass the result's `finger` to continue it. */
+  end?: 'up' | 'cancel' | 'hold';
+  finger?: number;
+  input?: GestureInput;
+  /** Page name or instance id (default: the current page). */
+  page?: string;
+  /** Window points on the host window instead of a page. */
+  window?: string | true;
+}
+
+export interface GestureResult {
+  input: GestureInput;
+  /** `window`: through the platform's input dispatch; `view`: straight into the target view. */
+  delivered: 'window' | 'view';
+  events: number;
+  durationMs: number;
+  finger?: number;
+}
+
+export type RefreshPhase = 'idle' | 'pulling' | 'armed' | 'refreshing' | 'ending';
+
+/** A page's pull-to-refresh indicator; `offset` in page CSS pixels. */
+export interface RefreshIndicator {
+  phase: RefreshPhase;
+  offset: number;
+}
+
+/** Real pointer gestures; `E_UNSUPPORTED` where the host cannot inject them. */
+export interface PageGesture {
+  perform(options: GestureOptions): Promise<GestureResult>;
+  /** The devices this host can imitate; empty where it cannot inject. */
+  inputs(): GestureInput[];
+  /** The on-screen part of the page (or `window`), in its own points. */
+  viewport(options?: { page?: string; window?: string | true }): Promise<{ left: number; top: number; width: number; height: number }>;
+  /** `E_UNSUPPORTED` when the page has no pull-to-refresh indicator. */
+  refreshIndicator(options?: { page?: string }): Promise<RefreshIndicator>;
+  /** The system back swipe; `E_UNSUPPORTED` where the system does not take injected input. */
+  edgeBack(options?: { edge?: 'left' | 'right'; window?: string }): Promise<Omit<GestureResult, 'finger'>>;
 }
 
 /** Canonical cross-platform modifier vocabulary; `meta` maps to the platform

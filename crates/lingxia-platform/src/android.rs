@@ -9,6 +9,7 @@ mod app;
 mod clipboard;
 mod device;
 mod file;
+mod gesture;
 mod keyboard;
 mod location;
 mod media;

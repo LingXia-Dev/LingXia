@@ -19,6 +19,7 @@ pub(crate) fn autostart_probe_supported() -> bool {
     ffi::autostart_is_supported()
 }
 mod file;
+mod gesture;
 mod keyboard;
 mod location;
 mod media;
