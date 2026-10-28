@@ -157,7 +157,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     private float frameScale;
     // Bumped when the surface is replaced; a capture only completes against its own surface.
     private long surfaceEpoch;
-    private java.util.function.Consumer<Boolean> nextPresentation;
+    /** Everyone waiting for the next presented frame; one waiter never replaces another. */
+    private final java.util.ArrayList<java.util.function.Consumer<Boolean>> nextPresentation = new java.util.ArrayList<>();
     private final java.util.ArrayList<Runnable> surfaceRedraws = new java.util.ArrayList<>();
     private int unoccludedWidth, unoccludedHeight;
     private final android.graphics.Rect chromeInsets = new android.graphics.Rect();
@@ -420,11 +421,19 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     /** Sample the environment and present; the core rebuilds the View only when it changed. */
     private void requestFrame() { if (!destroyed) nativeRedraw(host); }
     public long getConnectionGeneration() { return destroyed ? 0 : nativeConnection(host); }
-    public void afterNextPresentation(java.util.function.Consumer<Boolean> callback) { nextPresentation = callback; }
+    public void afterNextPresentation(java.util.function.Consumer<Boolean> callback) {
+        if (destroyed) { callback.accept(false); return; }
+        nextPresentation.add(callback);
+    }
     private void finishPresentation(boolean success) {
         finishSurfaceRedraws();
-        java.util.function.Consumer<Boolean> callback = nextPresentation; nextPresentation = null;
-        if (callback != null) callback.accept(success);
+        answerPresentationWaiters(success);
+    }
+    private void answerPresentationWaiters(boolean success) {
+        if (nextPresentation.isEmpty()) return;
+        java.util.ArrayList<java.util.function.Consumer<Boolean>> waiters = new java.util.ArrayList<>(nextPresentation);
+        nextPresentation.clear();
+        for (java.util.function.Consumer<Boolean> waiter : waiters) waiter.accept(success);
     }
     public void captureFrame(java.util.function.Consumer<Bitmap> callback) {
         if (android.os.Build.VERSION.SDK_INT < 24 || destroyed || snapshot == null || !hasSurfaceFrame
@@ -669,7 +678,6 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     }
     public void dispose() {
         if (destroyed) return;
-        nextPresentation = null;
         finishSurfaceRedraws();
         showBootstrapMessage(false);
         recovery.clear();
@@ -681,6 +689,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         long released = host;
         host = 0;
         nativeHostRelease(released);
+        // A disposed page presents nothing more; its waiters must not wait forever.
+        answerPresentationWaiters(false);
     }
     @Override public void surfaceCreated(SurfaceHolder holder) { updateCaretActivity(); updateSurfaceVisibility(); }
     @Override public void surfaceDestroyed(SurfaceHolder holder) {
