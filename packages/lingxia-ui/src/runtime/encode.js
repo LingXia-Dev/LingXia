@@ -33,7 +33,7 @@ const initialWindow = count => ({ start: 0, end: Math.min(1, count), leading: 0,
 /** The flat wire buffer of a resolved tree; list rows render for the requested windows. */
 export function encodeTree(tree, windows) {
   const { candidate } = render;
-  const output = []; let count = 0, plotWork = 0, animationBytes = 0, itemKeyBytes = 0;
+  const output = []; let count = 0, plotWork = 0, animationBytes = 0, itemKeyBytes = 0, dataBytes = 0;
   const write = (node, parent, depth) => {
     if (depth > limits.depth || ++count > limits.nodes) throw Error('UI_LIMIT: candidate too large');
     const { tag, props, identity } = node, encoded = [];
@@ -48,7 +48,13 @@ export function encodeTree(tree, windows) {
       const pairs = Object.entries(style).flatMap(([name, value]) => [field[name], encodeValue(name, value)]);
       if (pairs.length) encoded.push(field[key], JSON.stringify(pairs));
     }
-    for (const [key, value] of node.wire) encoded.push(field[key], value);
+    for (const [key, value] of node.wire) {
+      if (key === 'dataAttributes') {
+        dataBytes += utf8Bytes(value, limits.dataAttributeBytes);
+        if (dataBytes > limits.dataAttributeBytes) throw Error('UI_PROP: data-* page budget exceeded');
+      }
+      encoded.push(field[key], value);
+    }
     for (const [key, id, entry] of node.handlers) { candidate.callbacks.set(id, entry); encoded.push(field[key], id); }
     if (node.plotWork) {
       plotWork += node.plotWork;

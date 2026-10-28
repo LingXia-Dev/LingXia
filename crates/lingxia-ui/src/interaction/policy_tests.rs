@@ -53,6 +53,7 @@ pub(crate) fn node(identity: &str, tag: &'static str, bounds: [f32; 4]) -> NodeS
         focus_style: false,
         order: 0,
         plot_local: None,
+        data: None,
     }
 }
 
@@ -650,7 +651,11 @@ fn hover_finds_the_topmost_node_with_a_hover_delta() {
     let plain = node("plain", "text", [60.0, 60.0, 20.0, 20.0]);
     let frame = frame(vec![card, button, plain]);
     assert_eq!(frame.hover_hit([20.0, 20.0]), Some(1));
-    assert_eq!(frame.hover_hit([70.0, 70.0]), Some(0), "plain text has no delta");
+    assert_eq!(
+        frame.hover_hit([70.0, 70.0]),
+        Some(0),
+        "plain text has no delta"
+    );
     assert_eq!(frame.hover_hit([200.0, 200.0]), None);
 }
 
@@ -681,7 +686,11 @@ fn a_wheel_gesture_stays_on_its_region_through_momentum() {
     assert!(interaction.wheel(off).0);
     assert_eq!(interaction.scroll().offset("list"), 15.0);
     // A notch without a pixel distance scrolls three 16 px lines.
-    assert!(interaction.wheel(wheel(WheelPhase::Discrete, -1.0, false)).0);
+    assert!(
+        interaction
+            .wheel(wheel(WheelPhase::Discrete, -1.0, false))
+            .0
+    );
     assert_eq!(interaction.scroll().offset("list"), 63.0);
     // Nothing scrollable under a fresh gesture: nothing moves.
     let mut outside = wheel(WheelPhase::Began, -10.0, true);

@@ -156,6 +156,10 @@ export function render() {
 }
 ```
 
+A page that leaves the stack is parked: its local state is released and it renders afresh if it is
+shown again. Until then automation still reads its last frame, and refuses to act on it
+([testId](pages-and-components.md#testid)).
+
 ## Errors and stale data
 
 Every resource reports failures as `{ code, message }` (`error`), never by throwing into render. Show

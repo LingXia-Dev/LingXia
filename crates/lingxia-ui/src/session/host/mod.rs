@@ -1099,7 +1099,8 @@ impl<A: PlatformAdapter> Inner<A> {
             main.styled_press = None;
             main.styled_hover = None;
             main.styled_focus = None;
-            let effects = main.interaction.reset();
+            // Automation keeps reading the last frame of a parked page; input stops.
+            let effects = main.interaction.park();
             let cancelled = main.images.inflight_tokens();
             main.images.clear();
             (page, effects, cancelled)

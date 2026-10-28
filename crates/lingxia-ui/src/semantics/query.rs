@@ -6,7 +6,7 @@ use crate::scene::node::NodeSnapshot;
 use serde_json::{Value, json};
 
 /// Selector forms GPU pages answer; anything else is rejected by name.
-pub const SUPPORTED: &str = "tag names (button, a, input, textarea, img, h1-h6, ul, li, dialog, div, span), [data-testid=\"…\"], [role=\"…\"], [aria-label=\"…\"], [type=\"…\"], [href], comma lists of these";
+pub const SUPPORTED: &str = "tag names (button, a, input, textarea, img, h1-h6, ul, li, dialog, div, span), [data-testid=\"…\"], [data-*] and [data-*=\"…\"] (authored data-* props), [role=\"…\"], [aria-label=\"…\"], [type=\"…\"], [href], comma lists of these";
 
 #[derive(Debug, PartialEq)]
 struct Simple {
@@ -47,10 +47,7 @@ fn simple(source: &str) -> Result<Simple, String> {
             }
             None => (body, None),
         };
-        if !matches!(
-            name,
-            "data-testid" | "role" | "aria-label" | "type" | "href"
-        ) {
+        if !matches!(name, "role" | "aria-label" | "type" | "href") && !data_name(name) {
             return Err(unsupported(source));
         }
         attributes.push((name.to_owned(), value));
@@ -59,6 +56,16 @@ fn simple(source: &str) -> Result<Simple, String> {
     Ok(Simple {
         tag: (!tag.is_empty()).then(|| tag.to_ascii_lowercase()),
         attributes,
+    })
+}
+
+/// `data-testid` and the authored `data-*` props.
+fn data_name(name: &str) -> bool {
+    name.strip_prefix("data-").is_some_and(|rest| {
+        rest.bytes().next().is_some_and(|b| b.is_ascii_lowercase())
+            && rest
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
     })
 }
 
@@ -165,7 +172,12 @@ fn matches(simple: &Simple, element: &Virtual, node: &NodeSnapshot, name: &str) 
                 "role" => element.role,
                 "aria-label" => (!name.is_empty()).then_some(name),
                 "type" => element.kind,
-                _ => element.link.then_some(""),
+                "href" => element.link.then_some(""),
+                data => node
+                    .data
+                    .as_ref()
+                    .and_then(|map| map.get(&data[5..]))
+                    .map(String::as_str),
             };
             match (actual, value) {
                 (Some(actual), Some(value)) => actual == value,
@@ -203,6 +215,51 @@ pub fn select(projection: &Projection, selector: &str) -> Result<Vec<usize>, Str
         })
         .map(|(index, _)| index)
         .collect())
+}
+
+/// What a DOM element's rendered text reads: its own text, else its rendered descendants'
+/// text in order, one space apart. Editor values are values, not text.
+fn text_content(nodes: &[NodeSnapshot], index: usize) -> String {
+    let node = &nodes[index];
+    if node.input.is_none() && !node.text.is_empty() {
+        return node.text.clone();
+    }
+    let prefix = format!("{}/", node.identity);
+    let mut parts: Vec<&str> = Vec::new();
+    let mut covered: Option<String> = None;
+    for child in nodes[index + 1..]
+        .iter()
+        .take_while(|child| child.identity.starts_with(&prefix))
+    {
+        // A text node's runs are its text already.
+        if covered
+            .as_ref()
+            .is_some_and(|text| child.identity.starts_with(text.as_str()))
+        {
+            continue;
+        }
+        if child.input.is_none()
+            && !child.text.is_empty()
+            && child.bounds[2] > 0.0
+            && child.bounds[3] > 0.0
+        {
+            parts.push(child.text.as_str());
+            covered = Some(format!("{}/", child.identity));
+        }
+    }
+    parts.join(" ")
+}
+
+/// The node's `data-testid` and authored `data-*` props, as DOM attributes.
+fn attributes(node: &NodeSnapshot) -> Value {
+    let mut out = serde_json::Map::new();
+    if !node.test_id.is_empty() {
+        out.insert("data-testid".into(), json!(node.test_id));
+    }
+    for (name, value) in node.data.iter().flat_map(|map| map.iter()) {
+        out.insert(format!("data-{name}"), json!(value));
+    }
+    Value::Object(out)
 }
 
 /// One match in the WebView query payload shape.
@@ -247,13 +304,7 @@ pub fn describe(
                 .unwrap_or_else(|| input.value.clone())
         })
     });
-    let (text, text_truncated) = truncate(
-        &semantic
-            .as_ref()
-            .map(|s| s.text.clone())
-            .unwrap_or_else(|| node.text.clone()),
-        max_text,
-    );
+    let (text, text_truncated) = truncate(&text_content(&projection.frame.nodes, index), max_text);
     let value = value.map(|value| truncate(&value, max_text));
     let [left, top, width, height] = node.bounds;
     json!({
@@ -277,6 +328,7 @@ pub fn describe(
         "text_truncated": text_truncated,
         "value": value.as_ref().map(|(v, _)| v.clone()),
         "value_truncated": value.is_some_and(|(_, t)| t),
+        "attributes": attributes(node),
         "rect": {
             "left": left, "top": top, "width": width, "height": height,
             "right": left + width, "bottom": top + height,
@@ -414,7 +466,8 @@ mod tests {
             ".card",
             "#main",
             "li:first-child",
-            "[data-state=open]",
+            "[aria-checked=true]",
+            "[data-State]",
             "*",
         ] {
             assert!(

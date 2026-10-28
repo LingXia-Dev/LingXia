@@ -1,4 +1,4 @@
-import { Fragment, useLocal, useView, type VectorPath } from '@lingxia/ui';
+import { Fragment, List, useLocal, useView, type VectorPath } from '@lingxia/ui';
 import '../../theme/index.css';
 import { Button, Icon, Page, Section } from '../../shared/ui';
 
@@ -8,7 +8,7 @@ const groups = {
   paint: { label: 'Paint', sections: [Grid, Gradients, Vectors, Borders, Transforms] },
   layout: { label: 'Layout', sections: [Display, Sizing, Direction, Structure, StickyHeaders, Fragments] },
   text: { label: 'Text', sections: [TextLayout, RichText, Selection] },
-  input: { label: 'Input', sections: [Accessibility, Inputs, Focus, NestedControls, StateVariants] },
+  input: { label: 'Input', sections: [Accessibility, Inputs, Controls, Focus, NestedControls, StateVariants] },
 };
 type Group = keyof typeof groups;
 
@@ -364,6 +364,34 @@ function StateVariants() {
         <text className="text-xs text-muted">Note</text>
         <input testId="lab-variants-input" bind={note} placeholder="Focus me" accessibilityLabel="Note" />
       </column>
+    </Section>
+  );
+}
+
+const rows = Array.from({ length: 40 }, (_, index) => ({ id: `row-${index + 1}`, label: `Row ${index + 1}` }));
+
+// Every control kind a spec drives: radio group, slider, multi-line editor, search field and a keyed list.
+function Controls() {
+  const size = useLocal('controls-size', 'm');
+  const volume = useLocal('controls-volume', 40);
+  const notes = useLocal('controls-notes', '');
+  const query = useLocal('controls-query', '');
+  const picked = useLocal('controls-picked', '');
+  const field = 'px-3 py-2 rounded-lg border border-line-strong bg-surface text-sm';
+  return (
+    <Section title="Controls" testId="lab-controls">
+      <radio testId="lab-controls-size" bind={size} accessibilityLabel="Size" className="gap-1 text-sm"
+        options={[{ value: 's', label: 'Small', testId: 'lab-controls-size-s' }, { value: 'm', label: 'Medium', testId: 'lab-controls-size-m' },
+          { value: 'l', label: 'Large', testId: 'lab-controls-size-l' }, { value: 'xl', label: 'Extra large', disabled: true, testId: 'lab-controls-size-xl' }]} />
+      <slider testId="lab-controls-volume" bind={volume} min={0} max={100} step={10} accessibilityLabel="Volume" className="text-accent" />
+      <textarea testId="lab-controls-notes" bind={notes} rows={3} maxRows={6} accessibilityLabel="Notes" placeholder="Several lines" className={field} />
+      <search testId="lab-controls-search" bind={query} accessibilityLabel="Filter rows" placeholder="Filter rows" className={field} />
+      <List testId="lab-controls-list" className="h-48 rounded-lg border border-line"
+        items={rows.filter(row => row.label.toLowerCase().includes(query.value.toLowerCase()))} getKey={row => row.id}
+        renderItem={row => (
+          <button testId={`lab-controls-${row.id}`} onClick={() => picked.set(row.label)} className="px-3 py-2 border-b border-line text-sm">{row.label}</button>
+        )} />
+      <text testId="lab-controls-values" className="text-xs text-muted tabular-nums">{`size=${size.value} volume=${volume.value} notes=${notes.value.length} query=${query.value} picked=${picked.value}`}</text>
     </Section>
   );
 }

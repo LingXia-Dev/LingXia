@@ -221,6 +221,7 @@ pub mod field {
     pub const STARTING_STYLE: usize = 185;
     pub const EXIT_STYLE: usize = 186;
     pub const FOCUS_WITHIN_STYLE: usize = 187;
+    pub const DATA_ATTRIBUTES: usize = 188;
 }
 
 pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page", "span", "link", "select"];
@@ -415,6 +416,7 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("startingStyle", "state-style"),
     ("exitStyle", "state-style"),
     ("focusWithinStyle", "state-style"),
+    ("dataAttributes", "string"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -490,6 +492,7 @@ pub mod limits {
     pub const OUTLINE_GLYPHS: usize = 4096;
     pub const GHOSTS: usize = 64;
     pub const LAYOUT_MOTIONS: usize = 256;
+    pub const DATA_ATTRIBUTE_BYTES: usize = 65536;
 }
 
 /// Environment keys and where each comes from: `device` facts, a host `push`, or the `session`.
@@ -784,6 +787,7 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::TEXTAREA]), parent: None },
     FieldAdmission { tags: Some(&[tag::IMAGE]), parent: None },
     FieldAdmission { tags: Some(&[tag::IMAGE]), parent: None },
+    FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },

@@ -162,3 +162,14 @@ keying by `Component.name` fails the build (`UI_KEY`).
 
 Every element takes `testId`, the name automation (`lxdev`, the test runner) uses to find it. It has
 no visual or accessibility effect.
+
+Locators read a native page like a DOM page:
+
+- An element's text is its rendered text, or its descendants' text in order when it has none, as
+  `textContent`/`toContainText` read it in a WebView. Editor values stay values.
+- `data-*` props are its only attributes: `[data-mode="dark"]` and `[data-selected]` select by them,
+  and `getAttribute`/`toHaveAttribute` read them (`true` reads as `""`). They never reach accessibility
+  and draw nothing; at most 16 per element and 64 KiB per page (`dataAttributeBytes`).
+- A page that left the stack keeps its last frame for reading: queries, the tree, text and
+  attributes answer from it. Clicks, fills, scrolls and gestures fail with `E_PAGE_NOT_READY`
+  (parked) until it is shown again.

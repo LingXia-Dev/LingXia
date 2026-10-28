@@ -1554,6 +1554,40 @@ fn automation_requests_query_and_act_through_the_core_driver() {
 }
 
 #[test]
+fn a_parked_page_reads_its_last_frame_and_refuses_actions() {
+    let worker = ViewWorker::spawn("test-automation-parked").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){const n=useLocal('n',0);return h('column',{testId:'card','data-mode':'live'},h('text',{},'Total'),h('button',{testId:'add',onClick:()=>n.set(n.value+1)},`Count ${n.value}`))}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    // Navigating away: the page leaves the stack and is parked.
+    host.set_visible(false);
+    host.park();
+    platform.settle(&[&host]);
+    let card = host
+        .automation_request(&serde_json::json!({"op": "query", "css": "[data-mode=\"live\"]"}))
+        .unwrap();
+    assert_eq!(card["text"], "Total Count 0");
+    assert_eq!(card["attributes"]["data-mode"], "live");
+    assert!(
+        host.automation_request(&serde_json::json!({"op": "tree"}))
+            .is_ok()
+    );
+    let click = serde_json::json!({"op": "act", "css": "[data-testid=\"add\"]", "action": {"kind": "click"}});
+    let error = host.automation_request(&click).unwrap_err();
+    assert!(
+        error.starts_with("E_PAGE_NOT_READY") && error.contains("parked"),
+        "{error}"
+    );
+}
+
+#[test]
 fn accessibility_selects_and_copies_static_text_through_the_session_selection() {
     use crate::interaction::view::AccessibilityAction;
     let worker = ViewWorker::spawn("test-static-copy").unwrap();

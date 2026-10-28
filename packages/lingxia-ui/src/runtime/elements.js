@@ -199,6 +199,9 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   const wire = (key, value) => result.wire.push([key, value]);
   const on = (key, callback, kind, isolated) => result.handlers.push([key, handle(), callbackOf(callback, kind, isolated)]);
   if (disabled) wire('enabled', 0);
+  // Authored data-* props reach automation (getAttribute, [data-x] selectors), never semantics.
+  const data = dataOf(props);
+  if (data) wire('dataAttributes', JSON.stringify(data));
   if (props.dir !== undefined) wire('direction', props.dir);
   semantics(tag, props, wire);
   switch (tag) {

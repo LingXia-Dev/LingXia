@@ -76,6 +76,9 @@ impl ViewInteraction {
         force: bool,
         page: PageTicket,
     ) -> Result<Vec<Effect>, String> {
+        if self.parked {
+            return Err("E_PAGE_NOT_READY: the page is parked (it left the stack); queries read its last frame".into());
+        }
         if let AutomationAct::Press(name) = &act {
             return self.press(selector, index, name, page);
         }

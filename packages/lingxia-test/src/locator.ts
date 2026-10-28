@@ -44,6 +44,8 @@ export interface QueryMatch {
   value?: string | null;
   enabled?: boolean;
   editable?: boolean;
+  /** On a GPU page: `data-testid` and the authored `data-*` props, the only attributes it has. */
+  attributes?: Record<string, string>;
   rect?: {
     left: number;
     top: number;
@@ -395,7 +397,11 @@ export class PageLocator implements Locator {
       };
     }
     if (attributes.length > 0 && count === 1) {
-      resolved.attributes = await this.readAttributes(resolved.index, attributes, deadline, verb);
+      const item = visibleItems[0] ?? items[0];
+      // A GPU page answers attributes in its query; a WebView reads them from the DOM.
+      resolved.attributes = item?.renderer === "gpu"
+        ? Object.fromEntries(attributes.map((name) => [name, item.attributes?.[name] ?? null]))
+        : await this.readAttributes(resolved.index, attributes, deadline, verb);
     }
     return resolved;
   }

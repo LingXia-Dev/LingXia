@@ -40,5 +40,6 @@ Page-wide bounds the runtime and the native decoder both enforce. Exceeding one 
 | `outlineGlyphs` | 4096 | Glyphs the platform outlines (Apple's PingFang UI faces) in one frame, each filled as a path; past it frames slow down. |
 | `ghosts` | 64 | Removed elements still drawing their exit at once; past it further removals vanish at once. |
 | `layoutMotions` | 256 | Elements moving to a new layout position under `transition-layout` at once; past it further moves land at once. |
+| `dataAttributeBytes` | 65536 (64 KiB) | `data-*` props of a page, as UTF-8 JSON; automation reads them, nothing draws them. |
 
-Wire ABI: 1. Highest field id: 187.
+Wire ABI: 1. Highest field id: 188.

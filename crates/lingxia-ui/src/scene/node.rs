@@ -99,6 +99,9 @@ pub struct NodeSnapshot {
     pub order: u32,
     #[serde(skip)]
     pub(crate) plot_local: Option<([f32; 4], Affine)>,
+    /// Authored `data-*` props, for automation only: no semantics, no adapter payload.
+    #[serde(skip)]
+    pub(crate) data: Option<std::sync::Arc<std::collections::BTreeMap<String, String>>>,
 }
 
 impl NodeSnapshot {

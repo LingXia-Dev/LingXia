@@ -677,6 +677,8 @@ public final class GpuFrame {
         public Boolean valueTruncated() { if (json.isNull("value_truncated")) return null; return json.optBoolean("value_truncated"); }
         /** `rect`: AutomationRect? */
         public AutomationRect rect() { JSONObject o = json.optJSONObject("rect"); return o == null ? null : new AutomationRect(o); }
+        /** `attributes`: any? */
+        public Object attributes() { return json.isNull("attributes") ? null : json.opt("attributes"); }
     }
 
     public static final class AutomationQueryAll {

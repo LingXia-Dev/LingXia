@@ -964,6 +964,10 @@ impl Renderer {
             ranges.push(paint_start..commands.len());
             nodes.push(NodeSnapshot {
                 plot_local: None,
+                data: record
+                    .string(field::DATA_ATTRIBUTES)
+                    .and_then(|source| serde_json::from_str(source).ok())
+                    .map(std::sync::Arc::new),
                 clips_children: record.string(field::OVERFLOW) == Some("hidden"),
                 pressed_style: record
                     .fields

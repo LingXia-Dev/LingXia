@@ -204,6 +204,25 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
         )
         .map(drop),
         field::FOCUS_STYLE | field::FOCUS_WITHIN_STYLE => focus_style(value).map(drop),
+        field::DATA_ATTRIBUTES => ensure(
+            value
+                .as_str()
+                .and_then(|source| {
+                    serde_json::from_str::<std::collections::BTreeMap<String, String>>(source).ok()
+                })
+                .is_some_and(|map| {
+                    map.len() <= 16
+                        && map.iter().all(|(name, value)| {
+                            name.len() <= 64
+                                && value.len() <= 1024
+                                && name.bytes().next().is_some_and(|b| b.is_ascii_lowercase())
+                                && name.bytes().all(|b| {
+                                    b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-'
+                                })
+                        })
+                }),
+            "UI_PROP: invalid data-* attributes",
+        ),
         field::VECTOR_SOURCE => ensure(value.is_string(), "UI_VECTOR: source requires vector node"),
         field::SUBMIT_ON_ENTER => ensure(flag(value), "UI_INPUT: invalid submitOnEnter"),
         field::HEIGHT_AUTO => ensure(

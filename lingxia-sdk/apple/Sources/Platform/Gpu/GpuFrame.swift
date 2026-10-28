@@ -714,6 +714,7 @@ public struct GpuFrameAutomationElement: Decodable, Sendable {
     public let value: String?
     public let valueTruncated: Bool?
     public let rect: GpuFrameAutomationRect?
+    public let attributes: GpuJSON?
 
     enum CodingKeys: String, CodingKey {
         case exists = "exists"
@@ -737,6 +738,7 @@ public struct GpuFrameAutomationElement: Decodable, Sendable {
         case value = "value"
         case valueTruncated = "value_truncated"
         case rect = "rect"
+        case attributes = "attributes"
     }
 }
 

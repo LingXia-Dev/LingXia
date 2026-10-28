@@ -735,6 +735,7 @@ fn contract_drift(schema: &Value) -> Vec<String> {
             ("outlineGlyphs", limits::OUTLINE_GLYPHS),
             ("ghosts", limits::GHOSTS),
             ("layoutMotions", limits::LAYOUT_MOTIONS),
+            ("dataAttributeBytes", limits::DATA_ATTRIBUTE_BYTES),
         ];
         let names: Vec<&str> = native.iter().map(|(name, _)| *name).collect();
         for (name, value) in table {

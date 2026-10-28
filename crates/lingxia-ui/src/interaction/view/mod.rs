@@ -87,6 +87,8 @@ pub struct ViewInteraction {
     activation: Option<Activation>,
     dispatches: Vec<Dispatch>,
     inert: bool,
+    /// Left the stack: the last frame stays readable for automation until the next one replaces it.
+    parked: bool,
     /// Open dialogs, innermost last, each with what had keyboard focus before it opened.
     dialogs: Vec<(String, Option<String>)>,
     /// The last input was a key, not a pointer: focus moves (and its ring) follow it.
@@ -145,9 +147,26 @@ impl ViewInteraction {
         self.inert = inert;
     }
 
+    /// A parked page keeps its last frame and ids so read-only automation still answers
+    /// from them; input stops, and the next presented frame starts afresh.
+    pub fn park(&mut self) -> Vec<Effect> {
+        let mut effects = self.cancel_all();
+        self.keyboard_focus = None;
+        self.accessibility_focus = None;
+        self.dispatches.clear();
+        self.parked = true;
+        effects.push(Effect::ClearFocusRing);
+        effects
+    }
+
+    pub fn parked(&self) -> bool {
+        self.parked
+    }
+
     /// Forget page-scoped state after reload or park; ids are never reused.
     pub fn reset(&mut self) -> Vec<Effect> {
         let mut effects = self.cancel_all();
+        self.parked = false;
         self.frame = None;
         self.scroll.clear();
         self.reach.clear();
@@ -204,7 +223,11 @@ impl ViewInteraction {
         requested_offsets: &HashMap<String, f32>,
         page: PageTicket,
     ) -> Presented {
-        let mut effects = Vec::new();
+        let mut effects = if self.parked {
+            self.reset()
+        } else {
+            Vec::new()
+        };
         let previous = self.frame.take();
         let scale_changed = previous
             .as_ref()

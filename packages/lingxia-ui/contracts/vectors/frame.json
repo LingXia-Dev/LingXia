@@ -9,6 +9,9 @@
       },
       "value": {
         "aria_label": "Name",
+        "attributes": {
+          "data-testid": "name"
+        },
         "checked": null,
         "count": 1,
         "editable": true,
@@ -34,7 +37,7 @@
         "renderer": "gpu",
         "role": "textbox",
         "tag": "input",
-        "text": "Ada",
+        "text": "",
         "text_truncated": false,
         "type": "text",
         "value": "Ada",
@@ -71,6 +74,9 @@
         "items": [
           {
             "aria_label": "Name",
+            "attributes": {
+              "data-testid": "name"
+            },
             "checked": null,
             "count": 5,
             "editable": true,
@@ -96,7 +102,7 @@
             "renderer": "gpu",
             "role": "textbox",
             "tag": "input",
-            "text": "Ada",
+            "text": "",
             "text_truncated": false,
             "type": "text",
             "value": "Ada",
@@ -105,6 +111,9 @@
           },
           {
             "aria_label": "Day",
+            "attributes": {
+              "data-testid": "day"
+            },
             "checked": null,
             "count": 5,
             "editable": true,
@@ -139,6 +148,9 @@
           },
           {
             "aria_label": "Level",
+            "attributes": {
+              "data-testid": "level"
+            },
             "checked": null,
             "count": 5,
             "editable": false,
@@ -173,6 +185,9 @@
           },
           {
             "aria_label": "On",
+            "attributes": {
+              "data-testid": "on"
+            },
             "checked": true,
             "count": 5,
             "editable": false,
@@ -207,6 +222,9 @@
           },
           {
             "aria_label": "Remember",
+            "attributes": {
+              "data-testid": "remember"
+            },
             "checked": true,
             "count": 5,
             "editable": false,

@@ -216,6 +216,7 @@ impl RetainedLayout {
             for &index in &members {
                 let mut node = old.nodes[index].clone();
                 node.test_id.clear();
+                node.data = None;
                 node.on_click = None;
                 node.accessibility_hidden = Some(true);
                 node.selectable = None;

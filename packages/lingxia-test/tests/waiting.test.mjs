@@ -259,6 +259,24 @@ test("click({ force }) skips the viewport and hit-test waits but not enabled", a
   assert.match(message, /element is disabled/);
 });
 
+test("a GPU page answers getAttribute and toHaveAttribute from its query, without a DOM eval", async () => {
+  const world = createWorld();
+  world.add({ testId: "mode", renderer: "gpu", text: "Dark", attributes: { "data-testid": "mode", "data-mode": "dark" } });
+  const { events, evaluated } = installFakeHost(world);
+
+  spec("gpu attributes", async (t) => {
+    const mode = t.app.view.testId("mode");
+    await expect(mode).toHaveAttribute("data-mode", "dark");
+    await expect(mode).not.toHaveAttribute("data-selected");
+    assert.equal(await mode.getAttribute("data-mode"), "dark");
+    assert.equal(await mode.getAttribute("aria-label"), null);
+  });
+
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(protocol.failed, 0, JSON.stringify(events.filter((event) => event.type === "case_finished").map((event) => event.error)));
+  assert.equal((evaluated ?? []).filter((script) => script.includes("getAttribute")).length, 0);
+});
+
 test("filter, first and last narrow the matches and act on the right DOM node", async () => {
   const world = createWorld();
   const items = ["Apple", "Banana split", "Cherry", "banana bread"].map((text) =>

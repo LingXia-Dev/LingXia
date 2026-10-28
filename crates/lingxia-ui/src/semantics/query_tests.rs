@@ -385,3 +385,77 @@ fn a_double_click_selects_the_word_in_text_and_editors() {
         .unwrap();
     assert!(button.contains(&Effect::Dispatch));
 }
+
+#[test]
+fn a_container_reads_its_descendants_text_like_dom_text_content() {
+    let i = interaction(
+        "h('column',{testId:'result'},h('row',{},h('text',{},'Model'),h('text',{},'Pixel')),h('column',{},h('text',{},'OS ',h('span',{},'Android'))),h('input',{value:'not text',accessibilityLabel:'x'}))",
+    );
+    let result = i
+        .automation_query("[data-testid=\"result\"]", None, false, None)
+        .unwrap();
+    assert_eq!(result["text"], "Model Pixel OS Android");
+    // The semantic name of a leaf stays its own.
+    let leaf = i.automation_query("span", None, true, None).unwrap();
+    assert_eq!(leaf["items"][0]["text"], "Model");
+}
+
+#[test]
+fn data_props_answer_attribute_selectors_and_reads_but_not_semantics() {
+    let i = interaction(
+        "h('column',{},h('button',{testId:'mode','data-mode':'dark','data-selected':true,onClick(){}},'Dark'),h('button',{testId:'light','data-mode':'light',onClick(){}},'Light'))",
+    );
+    let dark = i
+        .automation_query("[data-mode=\"dark\"]", None, false, None)
+        .unwrap();
+    assert_eq!(dark["text"], "Dark");
+    assert_eq!(
+        dark["attributes"],
+        serde_json::json!({"data-testid": "mode", "data-mode": "dark", "data-selected": ""})
+    );
+    assert_eq!(
+        i.automation_query("[data-mode]", None, true, None).unwrap()["count"],
+        2
+    );
+    assert_eq!(
+        i.automation_query("[data-selected]", None, true, None)
+            .unwrap()["count"],
+        1
+    );
+    assert!(
+        i.automation_query("[data-Mode]", None, false, None)
+            .is_err()
+    );
+    let tree = i.automation_tree().unwrap().to_string();
+    assert!(
+        !tree.contains("data-mode") && !tree.contains("dark\""),
+        "{tree}"
+    );
+}
+
+#[test]
+fn a_parked_page_answers_queries_from_its_last_frame_and_refuses_actions() {
+    let mut i = interaction(PAGE);
+    i.park();
+    let pay = i
+        .automation_query("[data-testid=\"pay\"]", None, false, None)
+        .unwrap();
+    assert_eq!(
+        (pay["exists"].as_bool(), pay["text"].as_str()),
+        (Some(true), Some("Pay now"))
+    );
+    assert!(i.automation_tree().is_ok());
+    let error = i
+        .automate(
+            "[data-testid=\"pay\"]",
+            None,
+            AutomationAct::Click,
+            false,
+            PageTicket::new(1),
+        )
+        .unwrap_err();
+    assert!(
+        error.starts_with("E_PAGE_NOT_READY") && error.contains("parked"),
+        "{error}"
+    );
+}
