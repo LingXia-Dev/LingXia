@@ -5383,10 +5383,13 @@ mod manifest_reload_tests {
         assert!(page.webview_ready_now());
         let mut loaded = page.subscribe_loaded();
         let other: Arc<dyn crate::GpuPageView> = Arc::new(FactoryEndpoint::default());
-        page.gpu_frame_presented(&other);
+        assert!(
+            !page.gpu_frame_presented(&other),
+            "another view's frame asks for the current view's"
+        );
         assert!(!loaded.has_changed().unwrap());
         let receipt: Arc<dyn crate::GpuPageView> = endpoint.clone();
-        page.gpu_frame_presented(&receipt);
+        assert!(page.gpu_frame_presented(&receipt));
         assert!(loaded.has_changed().unwrap());
         assert!(page.automation_state().ready);
         loaded.borrow_and_update();

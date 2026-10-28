@@ -385,22 +385,24 @@ pub(crate) fn message(token: Token, generation: u64, body: &str) {
     }
 }
 
-/// The first frame for `generation` reached the screen; generation 0 is a standalone page.
-pub(crate) fn presented(token: Token, generation: u64) {
+/// A frame for `generation` reached the screen; generation 0 is a standalone page. True once
+/// the page took it as its first frame, or can never take one (it left); false while the frame
+/// is not its current view's, so the platform keeps reporting the frames that follow.
+pub(crate) fn presented(token: Token, generation: u64) -> bool {
     let Some(endpoint) = live(token) else {
-        return;
+        return true;
     };
     let current = *endpoint.generation();
     if !current.map_or(generation == 0, |current| current.get() == generation) {
         log::debug!(
-            "GPU page {} presented generation {generation}, not its current {current:?}; not ready from it",
+            "GPU page {} presented generation {generation}, not its current {current:?}; waiting for its next frame",
             endpoint.lease.page
         );
-        return;
+        return false;
     }
     match lxapp::find_page_by_instance_id(&endpoint.lease.page) {
         Some(page) => page.gpu_frame_presented(&(endpoint as Arc<dyn GpuPageView>)),
-        None => log::debug!("GPU page {} presented after it left", endpoint.lease.page),
+        None => true,
     }
 }
 

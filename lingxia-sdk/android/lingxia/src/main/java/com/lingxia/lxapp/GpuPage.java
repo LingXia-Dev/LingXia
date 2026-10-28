@@ -13,7 +13,8 @@ public final class GpuPage extends FrameLayout {
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final HashMap<Long, GpuPage> PAGES = new HashMap<>();
     private static native void created(long token, GpuPage page, String error);
-    private static native void presented(long token, long generation);
+    /** A presented frame; true once the page took it as its first, so reports stop until the next connection. */
+    private static native boolean presented(long token, long generation);
     private static native boolean restart(long token, long generation);
     private static native void message(long token, long generation, String frame);
     private static native void automationReply(long replyId, String reply);
@@ -21,7 +22,7 @@ public final class GpuPage extends FrameLayout {
     private final String appId, path, webTag;
     private final GpuView content;
     private boolean reported;
-    private boolean frameReported;
+    private boolean frameReported, frameWaitLogged;
 
     private GpuPage(Context context, long token, String appId, String worker, String path, String webTag, String source, boolean logic) {
         super(context);
@@ -33,7 +34,12 @@ public final class GpuPage extends FrameLayout {
                     if (!reported) { reported = true; created(token, GpuPage.this, null); }
                 }
                 public void onFrame(String metadata) {
-                    if (!frameReported) { frameReported = true; presented(token, content.getConnectionGeneration()); }
+                    if (frameReported) return;
+                    frameReported = presented(token, content.getConnectionGeneration());
+                    if (!frameReported && !frameWaitLogged) {
+                        frameWaitLogged = true;
+                        com.lingxia.app.LxLog.d("LingXia.Nav", "first frame of " + webTag + " not its current view's; reporting the next");
+                    }
                 }
                 public void onMessage(long generation, String frame) { message(token, generation, frame); }
                 public boolean onRestart(long generation) { return restart(token, generation); }
@@ -90,7 +96,7 @@ public final class GpuPage extends FrameLayout {
     }
 
     public static void connect(long token, long generation, String nonce) {
-        MAIN.post(() -> { GpuPage page = PAGES.get(token); if (page != null) { page.frameReported = false; page.content.connect(generation, nonce); } });
+        MAIN.post(() -> { GpuPage page = PAGES.get(token); if (page != null) { page.frameReported = false; page.frameWaitLogged = false; page.content.connect(generation, nonce); } });
     }
     public static void requestLeave(long token, long generation, String reason) {
         MAIN.post(() -> { GpuPage page = PAGES.get(token); if (page != null) page.content.requestLeave(generation, reason); });
@@ -134,7 +140,7 @@ public final class GpuPage extends FrameLayout {
     public static void reload(long token, String source) {
         MAIN.post(() -> {
             GpuPage page = PAGES.get(token);
-            if (page != null) { page.frameReported = false; page.content.reload(source); }
+            if (page != null) { page.frameReported = false; page.frameWaitLogged = false; page.content.reload(source); }
         });
     }
 

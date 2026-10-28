@@ -38,7 +38,7 @@ pub(super) fn initialize(env: &mut Env) -> Result<(), jni::errors::Error> {
                     "(JLcom/lingxia/lxapp/GpuPage;Ljava/lang/String;)V",
                     created
                 ),
-                method!("presented", "(JJ)V", presented),
+                method!("presented", "(JJ)Z", presented),
                 method!("restart", "(JJ)Z", restart),
                 method!(
                     "automationReply",
@@ -319,8 +319,13 @@ extern "system" fn restart(
     gpu_page::restart(token, generation as u64)
 }
 
-extern "system" fn presented(_: EnvUnowned<'_>, _: JClass<'_>, token: i64, generation: i64) {
-    gpu_page::presented(token, generation as u64);
+extern "system" fn presented(
+    _: EnvUnowned<'_>,
+    _: JClass<'_>,
+    token: i64,
+    generation: i64,
+) -> jni::sys::jboolean {
+    gpu_page::presented(token, generation as u64)
 }
 
 /// Loads for GPU pages; the image owner is the page's token.

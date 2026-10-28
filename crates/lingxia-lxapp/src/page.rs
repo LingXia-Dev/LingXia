@@ -1605,18 +1605,18 @@ impl PageInstance {
     }
 
     /// Native presentation receipt; only the endpoint currently attached may complete a load.
-    pub fn gpu_frame_presented(&self, endpoint: &Arc<dyn GpuPageView>) {
+    /// The page's first frame: false when `endpoint` is not the view this page holds, so the
+    /// platform reports again from the current view's next frame.
+    pub fn gpu_frame_presented(&self, endpoint: &Arc<dyn GpuPageView>) -> bool {
         let mut events = Vec::new();
         {
             let view = self.inner.view.lock().unwrap();
             if !matches!(view.as_ref(), Some(PageView::Gpu(current)) if Arc::ptr_eq(current, endpoint))
             {
-                debug!(
-                    "GPU frame presented by a view this page no longer holds; not ready from it"
-                )
-                .with_appid(self.appid())
-                .with_path(self.path());
-                return;
+                debug!("GPU frame presented by a view this page no longer holds; waiting for the current view's")
+                    .with_appid(self.appid())
+                    .with_path(self.path());
+                return false;
             }
             let mut state = self.inner.state.lock().unwrap();
             state.render_status = PageRenderStatus::Finished;
@@ -1626,6 +1626,7 @@ impl PageInstance {
         self.inner
             .loaded_tx
             .send_modify(|value| *value = value.wrapping_add(1));
+        true
     }
 
     pub(crate) fn dispatch_lifecycle_event(&self, event: PageLifecycleEvent) {
