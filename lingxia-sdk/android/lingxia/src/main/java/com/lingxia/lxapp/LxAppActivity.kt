@@ -1338,8 +1338,9 @@ class LxAppActivity : AppCompatActivity() {
         applyPageOrientation(currentPath)
 
         // Trigger onPageShow for initial WebView (this is the single place for initial page show)
-        if (webView.getAppId() != null && webView.getCurrentPath() != null) {
-            NativeApi.onPageShow(webView.getAppId()!!, webView.getCurrentPath()!!)
+        val shown = webView.pageIdentity()
+        if (webView.getAppId() != null && shown != null) {
+            NativeApi.onPageShow(webView.getAppId()!!, shown)
         }
     }
 
@@ -2229,7 +2230,7 @@ class LxAppActivity : AppCompatActivity() {
                 if (webView?.getAppId() != null && webView.getCurrentPath() != null) {
                     val pagePath = webView.getCurrentPath()!!
                     LxLog.d(NAV_TAG, "onPageShow ${webView.getWebTag()}")
-                    NativeApi.onPageShow(webView.getAppId()!!, pagePath)
+                    NativeApi.onPageShow(webView.getAppId()!!, webView.pageIdentity() ?: pagePath)
                     applyPageOrientation(pagePath)
                 }
             } catch (e: Exception) {

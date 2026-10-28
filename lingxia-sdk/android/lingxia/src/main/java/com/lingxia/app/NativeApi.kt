@@ -402,7 +402,7 @@ internal object NativeApi {
     /**
      * Notify native layer that a page is being shown
      * @param appId The ID of the app
-     * @param path The path of the page being shown
+     * @param path The page shown: `path#instance#session` names the instance, a bare route path the current one
      */
     @JvmStatic
     external fun onPageShow(appId: String, path: String)
