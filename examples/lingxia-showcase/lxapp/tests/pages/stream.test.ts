@@ -63,10 +63,15 @@ spec('cancel an active response, finish Logic cleanup, and send again', {
     // to satisfy the cancellation assertions while we wait for bridge traffic.
     // The live bubble follows the View's stream state, a frame after Logic's flag.
     await page.view.testId('stream-live').waitFor({ state: 'attached', timeout: 5_000 });
+    // A chunk reaches the bubble a bridge hop and a frame after its tick (on GPU
+    // pages via the View's own stream), so each tick waits for it briefly; the
+    // installed clock keeps the response from advancing meanwhile.
+    const live = () => page.view.testId('stream-live').textContent();
     let partial = '';
     for (let tick = 0; tick < 20 && !/[a-z]/i.test(partial); tick++) {
       await app.clock.tick(50);
-      partial = await page.view.testId('stream-live').textContent();
+      partial = await t.waitFor(live, { until: (text) => /[a-z]/i.test(text), timeout: 200 })
+        .catch(live);
     }
     expect(/[a-z]/i.test(partial)).toBe(true);
     await page.view.testId('stream-stop').click();

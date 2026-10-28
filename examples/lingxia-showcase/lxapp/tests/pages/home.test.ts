@@ -70,6 +70,12 @@ spec('greets through real page input and the Logic bridge', async (t) => {
   )).toContain(name);
 });
 
+// Labels both showcases' tab sets share; their order and other tabs differ.
+function hasTabLabels(state: { items: { text?: string | null }[] }, labels: string[]): boolean {
+  const shown = state.items.map((item) => item.text);
+  return labels.every((label) => shown.includes(label));
+}
+
 spec('switches display language from the home control', {
   id: 'UI-LANGUAGE-001',
   covers: [
@@ -125,11 +131,7 @@ spec('switches display language from the home control', {
     );
     await waitForTabBar(
       app,
-      (state) =>
-        state.items[0]?.text === '首页' &&
-        state.items[1]?.text === '接口' &&
-        state.items[2]?.text === '组件' &&
-        state.items[3]?.text === '待办',
+      (state) => hasTabLabels(state, ['首页', '接口', '待办']),
       'tab bar labels after zh-CN',
     );
 
@@ -159,11 +161,7 @@ spec('switches display language from the home control', {
     );
     await waitForTabBar(
       app,
-      (state) =>
-        state.items[0]?.text === 'Home' &&
-        state.items[1]?.text === 'API' &&
-        state.items[2]?.text === 'Components' &&
-        state.items[3]?.text === 'ToDo',
+      (state) => hasTabLabels(state, ['Home', 'API', 'ToDo']),
       'tab bar labels after en-US',
     );
   } finally {
