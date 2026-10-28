@@ -32,6 +32,9 @@ Both the View runtime and the host enforce fixed bounds on every frame; the curr
 - **Item keys.** All `itemKeys` of a page share one byte budget; keep keys short ids, not content.
 - **Images.** One resource has an encoded-size cap; a page has a budget of decoded image bytes painted at
   once, past which images get `onError` instead of failing the frame.
+- **JavaScript time.** One render or callback may use a fixed amount of CPU time on the View's thread
+  (a page's first render twice that); past it the page stops with `UI_TIMEOUT`. A busy machine does not
+  count against it, a render that computes too much does.
 
 Exceeding a limit fails the frame with `UI_LIMIT`, `UI_LIST` or `UI_TEXT`, and the previous frame stays.
 Per-element bounds (options, plot values, vector paths, gradient stops, grid tracks, shadow layers) are

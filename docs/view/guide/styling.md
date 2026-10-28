@@ -216,14 +216,13 @@ export function render() {
 
 Each of these fails the build with `UI_CLASS_UNSUPPORTED` rather than rendering differently from CSS:
 
-- Filters (`blur-*`, `brightness-*`, `drop-shadow-*`), except `backdrop-blur-*` and `backdrop-saturate-*`.
-- Inset shadows, `ring-offset-*`, outlines, `text-shadow-*`, masks, blend modes.
+- Filters other than `blur-*` (`brightness-*`, `drop-shadow-*`, …); `backdrop-blur-*` and `backdrop-saturate-*` work.
+- Inset shadows, `ring-offset-*`, outlines, `text-shadow-*`, radial and conic masks, blend modes.
 - Skew and 3D transforms (`skew-*`, `rotate-x-*`, `perspective-*`).
 - Per-edge border colors and styles (`border-t-red-500`); borders share one color and style.
 - `cursor-*` and `pointer-events-*`: there is no cursor, and hit testing follows the rules in [Interaction](interaction.md).
 - Floats, columns, tables, `visibility`, `static`, scroll snapping and scroll margins.
-- Serif and custom font families.
-- Layout transitions and exit animations ([Motion](motion.md)).
+- Size transitions ([Motion](motion.md)); position changes animate with `transition-layout`.
 
 ```tsx error UI_CLASS_UNSUPPORTED
 export function render() {

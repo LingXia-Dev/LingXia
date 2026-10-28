@@ -105,6 +105,17 @@ the message in the log. View code that runs too long is stopped with `UI_TIMEOUT
 reload, which resets its local state. The budget is CPU time on the View's thread, so a busy machine does
 not stop a page; the message gives the CPU and wall time it used.
 
+## Automation
+
+Locators read GPU pages through the same semantics assistive technology uses, with WebView selectors
+(`[data-testid="…"]`, `role`, `aria-label`, tags). What differs from a DOM:
+
+- A click on content inside a control (a checkbox's label) clicks the control, as a finger does.
+- Rows of a `<List>` that are not drawn still answer a `data-testid` query, as attached but not
+  visible; an action scrolls the list to them, and text assertions wait until they draw.
+- An action resolves once the page applied it. If its control or option disappeared first, it fails
+  with `E_ACT_DROPPED` and the locator retries within its timeout.
+
 ## `UI_COMPAT`
 
 ```text
