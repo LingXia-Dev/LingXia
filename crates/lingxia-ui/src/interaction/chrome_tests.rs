@@ -134,3 +134,31 @@ fn drags_clamp_into_visible_content_and_report_the_edge() {
     );
     assert_eq!(drag_point(&gone, 50.0, 20.0), None);
 }
+
+#[test]
+fn feedback_shape_is_the_own_shape_inside_visible_bounds_and_clips() {
+    let n = node(
+        r#"{"bounds":[10,20,100,40],"visible_bounds":[10,20,100,30],"radius":50,"clips":[{"bounds":[0,0,200,50],"radius":8}]}"#,
+    );
+    let shapes = feedback_shape(&n).unwrap();
+    assert_eq!(shapes.len(), 3);
+    assert_eq!(&shapes[0][..6], &[10.0, 20.0, 100.0, 40.0, 20.0, 20.0]);
+    assert_eq!(&shapes[1][..5], &[10.0, 20.0, 100.0, 30.0, 0.0]);
+    assert_eq!(&shapes[2][4..6], &[8.0, 8.0]);
+}
+
+#[test]
+fn feedback_shape_is_none_when_clipped_away_or_malformed() {
+    assert!(
+        feedback_shape(&node(
+            r#"{"bounds":[0,0,10,10],"visible_bounds":[0,0,0,0]}"#
+        ))
+        .is_none()
+    );
+    assert!(
+        feedback_shape(&node(
+            r#"{"bounds":[0,0,10,10],"clips":[{"bounds":[0,0,10,10],"radii":[[1,1]]}]}"#
+        ))
+        .is_none()
+    );
+}

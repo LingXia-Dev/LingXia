@@ -28,6 +28,17 @@ pub struct Wheel {
 const NOTCH: f32 = 3.0 * 16.0;
 
 impl ViewInteraction {
+    /// Whether the regions under a device-pixel point can scroll vertically toward
+    /// `direction`: a platform pull-to-refresh over wheel input arms only when not.
+    pub fn can_scroll_vertically_at(&self, x: f32, y: f32, direction: i32) -> bool {
+        let Some(frame) = self.frame.as_ref() else {
+            return false;
+        };
+        let hit = frame.scroll_hit(self.logical(x, y));
+        self.scroll
+            .can_scroll(hit.as_deref(), direction, ScrollAxis::Vertical)
+    }
+
     /// Scrolls the region under the gesture's start; the whole gesture, momentum included,
     /// stays on that region. Returns whether a region moved.
     pub fn wheel(&mut self, event: Wheel) -> (bool, Vec<Effect>) {

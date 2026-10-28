@@ -86,6 +86,50 @@ mod bridge {
             phase: u8,
         ) -> bool;
 
+        // A hardware key while no editor has focus: 0 tab, 1 up, 2 down, 3 left, 4 right,
+        // 5 home, 6 end, 7 activate. False leaves it to the platform (Tab leaves the page).
+        #[swift_bridge(swift_name = "gpuPageKey")]
+        fn gpu_page_key(token: i64, key: u8, shift: bool, repeating: bool) -> bool;
+
+        // Keyboard focus moved into the page (`entered`, `backward` when by Shift-Tab) or out.
+        #[swift_bridge(swift_name = "gpuPageFocus")]
+        fn gpu_page_focus(token: i64, entered: bool, backward: bool);
+
+        // The window gained or lost input focus.
+        #[swift_bridge(swift_name = "gpuPageWindowFocus")]
+        fn gpu_page_window_focus(token: i64, focused: bool);
+
+        // After a session failure the page takes no input, platform gestures included.
+        #[swift_bridge(swift_name = "gpuPageInputBlocked")]
+        fn gpu_page_input_blocked(token: i64) -> bool;
+
+        // An input-method protocol request (a generated `GpuFrameInputRequestMessage`); its
+        // reply arrives through `GpuPages.inputReply` with `reply`, unless it went stale.
+        #[swift_bridge(swift_name = "gpuPageInput")]
+        fn gpu_page_input(token: i64, request: &str, reply: u64);
+
+        // The connected editor's text, UTF-16 selection and composition (-1 when none), for
+        // the caret blink; `connected` false when no editor is focused.
+        #[swift_bridge(swift_name = "gpuPageCaret")]
+        fn gpu_page_caret(
+            token: i64,
+            eligible: bool,
+            connected: bool,
+            text: &str,
+            anchor: i32,
+            focus: i32,
+            composition_start: i32,
+            composition_end: i32,
+        );
+
+        // Present again for an input reply: `rebuild` reruns the View, otherwise redraws.
+        #[swift_bridge(swift_name = "gpuPageRender")]
+        fn gpu_page_render(token: i64, rebuild: bool);
+
+        // The presented frame's node `identity` as frame-contract `Node` JSON; empty when gone.
+        #[swift_bridge(swift_name = "gpuPageNode")]
+        fn gpu_page_node(token: i64, identity: &str) -> String;
+
         // A fine pointer moved over the page (device pixels), or left it (`inside` false).
         #[swift_bridge(swift_name = "gpuPageHover")]
         fn gpu_page_hover(token: i64, inside: bool, x: f32, y: f32);
@@ -94,9 +138,10 @@ mod bridge {
         #[swift_bridge(swift_name = "gpuPageInfo")]
         fn gpu_page_info(token: i64) -> GpuPageInfo;
 
-        // Whether the page's root region can scroll up (`direction` -1) or down (1).
+        // Whether the regions under a point (device pixels) can scroll up (`direction` -1)
+        // or down (1).
         #[swift_bridge(swift_name = "gpuPageCanScrollVertically")]
-        fn gpu_page_can_scroll_vertically(token: i64, direction: i32) -> bool;
+        fn gpu_page_can_scroll_vertically(token: i64, x: f32, y: f32, direction: i32) -> bool;
 
         // The semantic roots of the presented frame, in order; empty without a frame.
         #[swift_bridge(swift_name = "gpuPageSemanticRoots")]
@@ -154,6 +199,57 @@ mod bridge {
         fn gpu_pages_fling(token: i64, region: &str, horizontal: bool, velocity: f32);
         #[swift_bridge(swift_name = "GpuPages.stopFling")]
         fn gpu_pages_stop_fling(token: i64);
+        // Press (`ring` false) or focus-ring feedback: `count` floats at `shape`, valid only
+        // for this call, 12 per rounded rect (x, y, w, h, then rx, ry per corner from the
+        // top left, clockwise) in points; the first is drawn, the rest clip it. None clears.
+        #[swift_bridge(swift_name = "GpuPages.feedback")]
+        fn gpu_pages_feedback(
+            token: i64,
+            ring: bool,
+            shape: usize,
+            count: usize,
+            color: u32,
+            width: f32,
+        );
+        // The input method: a presented frame's focused editor node (empty for none), a
+        // focus request, an activation elsewhere, a page reset, and an assistive edit
+        // (`GpuPlatform.editText` codes: 0 applied, 1 not ready, 2 failed).
+        #[swift_bridge(swift_name = "GpuPages.imePresented")]
+        fn gpu_pages_ime_presented(token: i64, generation: u64, node: &str);
+        #[swift_bridge(swift_name = "GpuPages.imeFocus")]
+        fn gpu_pages_ime_focus(
+            token: i64,
+            generation: u64,
+            node: &str,
+            touch: bool,
+            x: f32,
+            y: f32,
+            word: bool,
+        );
+        #[swift_bridge(swift_name = "GpuPages.imeActivation")]
+        fn gpu_pages_ime_activation(token: i64);
+        #[swift_bridge(swift_name = "GpuPages.imeReset")]
+        fn gpu_pages_ime_reset(token: i64);
+        #[swift_bridge(swift_name = "GpuPages.imeEdit")]
+        fn gpu_pages_ime_edit(
+            token: i64,
+            generation: u64,
+            node: &str,
+            replace: bool,
+            text: &str,
+            start: i32,
+            end: i32,
+        ) -> u8;
+        // The reply to `gpuPageInput` request `reply`: `value` is its JSON when `present`.
+        #[swift_bridge(swift_name = "GpuPages.inputReply")]
+        fn gpu_pages_input_reply(token: i64, reply: u64, present: bool, value: &str);
+        // The single-choice picker for a `<select>` node (frame-contract `Node` JSON).
+        #[swift_bridge(swift_name = "GpuPages.openPicker")]
+        fn gpu_pages_open_picker(token: i64, generation: u64, node: &str);
+        #[swift_bridge(swift_name = "GpuPages.haptic")]
+        fn gpu_pages_haptic(token: i64);
+        #[swift_bridge(swift_name = "GpuPages.copyText")]
+        fn gpu_pages_copy_text(text: &str);
         #[swift_bridge(swift_name = "GpuPages.accessibilityEvent")]
         fn gpu_pages_accessibility_event(token: i64, kind: u8, id: u32, text: &str);
 
@@ -314,15 +410,7 @@ fn gpu_page_pointer(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn gpu_page_wheel(
-    token: i64,
-    x: f32,
-    y: f32,
-    dx: f32,
-    dy: f32,
-    precise: bool,
-    phase: u8,
-) -> bool {
+fn gpu_page_wheel(token: i64, x: f32, y: f32, dx: f32, dy: f32, precise: bool, phase: u8) -> bool {
     #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     {
         use lingxia_ui_apple::lingxia_ui::interaction::view::{Wheel, WheelPhase};
@@ -360,6 +448,154 @@ fn gpu_page_hover(token: i64, inside: bool, x: f32, y: f32) {
     let _ = (token, inside, x, y);
 }
 
+fn gpu_page_key(token: i64, key: u8, shift: bool, repeating: bool) -> bool {
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    {
+        use lingxia_ui_apple::lingxia_ui::interaction::view::Key;
+        let key = match key {
+            0 => Key::Tab,
+            1 => Key::Up,
+            2 => Key::Down,
+            3 => Key::Left,
+            4 => Key::Right,
+            5 => Key::Home,
+            6 => Key::End,
+            7 => Key::Activate,
+            _ => return false,
+        };
+        let mut handled = false;
+        with_page(token, |page| {
+            handled = page.host().key(key, shift, repeating)
+        });
+        handled
+    }
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    {
+        let _ = (token, key, shift, repeating);
+        false
+    }
+}
+
+fn gpu_page_focus(token: i64, entered: bool, backward: bool) {
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    with_page(token, |page| {
+        if entered {
+            page.host().focus_entered(backward)
+        } else {
+            page.host().focus_left()
+        }
+    });
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    let _ = (token, entered, backward);
+}
+
+fn gpu_page_window_focus(token: i64, focused: bool) {
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    with_page(token, |page| page.host().window_focus(focused));
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    let _ = (token, focused);
+}
+
+fn gpu_page_input_blocked(token: i64) -> bool {
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    {
+        let mut blocked = false;
+        with_page(token, |page| blocked = page.host().input_blocked());
+        blocked
+    }
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    {
+        let _ = token;
+        false
+    }
+}
+
+fn gpu_page_input(token: i64, request: &str, reply: u64) {
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    with_page(token, |page| {
+        page.host().input(request.to_owned(), move |value| {
+            bridge::gpu_pages_input_reply(
+                token,
+                reply,
+                value.is_some(),
+                value.as_deref().unwrap_or_default(),
+            )
+        })
+    });
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    let _ = (token, request, reply);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn gpu_page_caret(
+    token: i64,
+    eligible: bool,
+    connected: bool,
+    text: &str,
+    anchor: i32,
+    focus: i32,
+    composition_start: i32,
+    composition_end: i32,
+) {
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    with_page(token, |page| {
+        use lingxia_ui_apple::lingxia_ui::session::host::CaretState;
+        page.host().caret(
+            eligible,
+            connected.then(|| CaretState {
+                text: text.to_owned(),
+                anchor,
+                focus,
+                composition: (composition_start, composition_end),
+            }),
+        )
+    });
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    let _ = (
+        token,
+        eligible,
+        connected,
+        text,
+        [anchor, focus, composition_start, composition_end],
+    );
+}
+
+fn gpu_page_render(token: i64, rebuild: bool) {
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    with_page(token, |page| {
+        if rebuild {
+            page.host().request_frame()
+        } else {
+            page.host().redraw()
+        }
+    });
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    let _ = (token, rebuild);
+}
+
+fn gpu_page_node(token: i64, identity: &str) -> String {
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    {
+        let mut node = String::new();
+        with_page(token, |page| {
+            node = page
+                .host()
+                .snapshot()
+                .and_then(|frame| {
+                    let found = frame.frame.nodes.iter().find(|n| n.identity == identity)?;
+                    serde_json::to_string(found).ok()
+                })
+                .unwrap_or_default()
+        });
+        node
+    }
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    {
+        let _ = (token, identity);
+        String::new()
+    }
+}
+
 fn gpu_page_info(token: i64) -> bridge::GpuPageInfo {
     #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     let page = crate::gpu_page::page_of(token);
@@ -378,16 +614,18 @@ fn gpu_page_info(token: i64) -> bridge::GpuPageInfo {
     }
 }
 
-fn gpu_page_can_scroll_vertically(token: i64, direction: i32) -> bool {
+fn gpu_page_can_scroll_vertically(token: i64, x: f32, y: f32, direction: i32) -> bool {
     #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     {
         let mut can = false;
-        with_page(token, |page| can = page.host().can_scroll_vertically(direction));
+        with_page(token, |page| {
+            can = page.host().can_scroll_vertically_at([x, y], direction)
+        });
         can
     }
     #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
     {
-        let _ = (token, direction);
+        let _ = (token, x, y, direction);
         false
     }
 }
@@ -453,7 +691,9 @@ fn gpu_page_accessibility(token: i64, id: u32, action: u8, number: f64, argument
             _ => return false,
         };
         let mut handled = false;
-        with_page(token, |page| handled = page.host().accessibility(id, action));
+        with_page(token, |page| {
+            handled = page.host().accessibility(id, action)
+        });
         handled
     }
     #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
@@ -562,6 +802,77 @@ mod live {
         }
         fn stop_fling(&self, token: i64) {
             super::bridge::gpu_pages_stop_fling(token);
+        }
+        fn feedback(&self, token: i64, ring: bool, shape: &[f32], color: u32, width: f32) {
+            super::bridge::gpu_pages_feedback(
+                token,
+                ring,
+                shape.as_ptr() as usize,
+                shape.len(),
+                color,
+                width,
+            );
+        }
+        fn ime_presented(&self, token: i64, generation: u64, node: &str) {
+            super::bridge::gpu_pages_ime_presented(token, generation, node);
+        }
+        fn ime_focus(
+            &self,
+            token: i64,
+            generation: u64,
+            node: &str,
+            point: Option<[f32; 2]>,
+            word: bool,
+        ) {
+            let [x, y] = point.unwrap_or([f32::NAN; 2]);
+            super::bridge::gpu_pages_ime_focus(
+                token,
+                generation,
+                node,
+                point.is_some(),
+                x,
+                y,
+                word,
+            );
+        }
+        fn ime_activation(&self, token: i64) {
+            super::bridge::gpu_pages_ime_activation(token);
+        }
+        fn ime_reset(&self, token: i64) {
+            super::bridge::gpu_pages_ime_reset(token);
+        }
+        fn ime_edit(
+            &self,
+            token: i64,
+            generation: u64,
+            node: &str,
+            text: Option<&str>,
+            start: i32,
+            end: i32,
+        ) -> lingxia_ui_apple::lingxia_ui::platform::EditOutcome {
+            use lingxia_ui_apple::lingxia_ui::platform::EditOutcome;
+            match super::bridge::gpu_pages_ime_edit(
+                token,
+                generation,
+                node,
+                text.is_some(),
+                text.unwrap_or_default(),
+                start,
+                end,
+            ) {
+                0 => EditOutcome::Applied,
+                1 => EditOutcome::NotReady,
+                _ => EditOutcome::Failed,
+            }
+        }
+        fn open_picker(&self, token: i64, generation: u64, node: &str) {
+            super::bridge::gpu_pages_open_picker(token, generation, node);
+        }
+        fn haptic(&self, token: i64) {
+            super::bridge::gpu_pages_haptic(token);
+        }
+        fn copy_text(&self, text: &str) {
+            super::bridge::gpu_pages_copy_text(text);
         }
         fn accessibility_event(&self, token: i64, kind: u8, id: u32, text: &str) {
             super::bridge::gpu_pages_accessibility_event(token, kind, id, text);

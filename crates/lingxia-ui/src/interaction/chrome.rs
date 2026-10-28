@@ -195,6 +195,44 @@ pub fn contains(node: &ChromeNode, x: f64, y: f64, own_radius: bool) -> bool {
         && within_clips(node, x, y)
 }
 
+/// A rounded rectangle in logical pixels: left, top, width, height, then the
+/// (rx, ry) radii of the top-left, top-right, bottom-right and bottom-left corners.
+pub type RoundedRect = [f32; 12];
+
+fn rounded(bounds: [f64; 4], radii: [[f64; 2]; 4]) -> RoundedRect {
+    let mut out = [0.0; 12];
+    for (slot, value) in out
+        .iter_mut()
+        .zip(bounds.iter().chain(radii.iter().flatten()))
+    {
+        *slot = *value as f32;
+    }
+    out
+}
+
+/// Press and focus feedback for a node: its own shape first, then the masks it is
+/// drawn inside (the visible bounds, then each ancestor clip), the way GPU paint
+/// clips it. `None` when nothing of it would show.
+pub fn feedback_shape(node: &ChromeNode) -> Option<Vec<RoundedRect>> {
+    let own = node.bounds?;
+    let own_radii = radii(node.radii.as_ref(), node.radius, own[2], own[3])?;
+    let mut shapes = vec![
+        rounded(own, own_radii),
+        rounded(node.visible_bounds.unwrap_or(own), [[0.0; 2]; 4]),
+    ];
+    for clip in &node.clips {
+        let bounds = clip.bounds?;
+        shapes.push(rounded(
+            bounds,
+            radii(clip.radii.as_ref(), clip.radius, bounds[2], bounds[3])?,
+        ));
+    }
+    shapes
+        .iter()
+        .all(|s| s.iter().all(|v| v.is_finite()) && s[2] > 0.0 && s[3] > 0.0)
+        .then_some(shapes)
+}
+
 /// A handle's line: center x, line bottom, line middle.
 pub type Endpoint = [f64; 3];
 

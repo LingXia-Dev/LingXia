@@ -53,6 +53,7 @@ pub struct FrameSnapshot {
     /// Each source's decode size in this frame.
     pub image_buckets: std::collections::HashMap<String, crate::scene::image::Bucket>,
     pub metrics: crate::session::metrics::FrameMetrics,
+    pub feedback: crate::interaction::chrome::FeedbackStyle,
     /// `{generation, nodes, images, metrics, feedback}` for adapters that marshal the
     /// frame; `feedback` is the [`crate::interaction::chrome::FeedbackStyle`] to draw.
     pub json: String,
@@ -988,6 +989,15 @@ impl<A: PlatformAdapter> ViewHost<A> {
             .main()
             .interaction
             .can_scroll_vertically(direction)
+    }
+
+    /// [`Self::can_scroll_vertically`] for the regions under a device-pixel point, when
+    /// no touch is down (wheel and trackpad input).
+    pub fn can_scroll_vertically_at(&self, point: [f32; 2], direction: i32) -> bool {
+        self.inner
+            .main()
+            .interaction
+            .can_scroll_vertically_at(point[0], point[1], direction)
     }
 
     pub fn keyboard_focus(&self) -> Option<usize> {

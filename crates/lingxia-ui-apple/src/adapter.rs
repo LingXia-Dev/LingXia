@@ -27,6 +27,8 @@ pub struct AppleAdapter {
     pub(crate) target: Mutex<lingxia_ui::renderer::surfaces::Target>,
     /// In-flight loads; dropping a handle cancels its transport.
     images: Mutex<HashMap<u64, Box<dyn Send>>>,
+    /// The pressed and keyboard-focused nodes with feedback drawn, redrawn per frame.
+    highlights: Mutex<[Option<usize>; 2]>,
 }
 
 impl AppleAdapter {
@@ -44,7 +46,35 @@ impl AppleAdapter {
             // CPU frames until the view attaches a Metal presenter.
             target: Mutex::new(lingxia_ui::renderer::surfaces::Target::Unavailable),
             images: Mutex::new(HashMap::new()),
+            highlights: Mutex::new([None; 2]),
         }
+    }
+
+    /// Draw (or clear) press (`which` 0) or focus-ring (1) feedback for `node` of `frame`.
+    fn highlight(&self, which: usize, node: Option<usize>, frame: Option<&FrameSnapshot>) {
+        self.highlights.lock().unwrap_or_else(|p| p.into_inner())[which] = node;
+        let shape = node
+            .zip(frame)
+            .and_then(|(index, frame)| {
+                let node = serde_json::to_string(frame.frame.nodes.get(index)?).ok()?;
+                lingxia_ui::interaction::chrome::feedback_shape(
+                    &lingxia_ui::interaction::chrome::ChromeNode::parse(&node).ok()?,
+                )
+            })
+            .unwrap_or_default();
+        let style = frame.map(|f| f.feedback);
+        let (color, width) = match (which, style) {
+            (0, Some(style)) => (style.press_overlay, 0.0),
+            (_, Some(style)) => (style.focus_ring, style.focus_ring_width),
+            (_, None) => (0, 0.0),
+        };
+        let flat: Vec<f32> = shape.into_iter().flatten().collect();
+        self.shell
+            .feedback(self.token, which == 1, &flat, color, width);
+    }
+
+    fn snapshot(&self) -> Option<Arc<FrameSnapshot>> {
+        self.host.get()?.upgrade()?.snapshot()
     }
 
     fn images(&self) -> std::sync::MutexGuard<'_, HashMap<u64, Box<dyn Send>>> {
@@ -266,13 +296,53 @@ impl AccessibilitySink for AppleAdapter {
     fn clicked(&self) {}
 }
 
+fn node_json(frame: &FrameSnapshot, index: usize) -> Option<String> {
+    serde_json::to_string(frame.frame.nodes.get(index)?).ok()
+}
+
 impl InputMethod for AppleAdapter {
-    fn reconcile(&self, _: &FrameSnapshot) {}
-    fn focus(&self, _: &Dispatch, _: &FrameSnapshot) {}
-    fn activation(&self) {}
-    fn reset(&self) {}
-    fn edit_text(&self, _: usize, _: Option<&str>, _: i32, _: i32) -> EditOutcome {
-        EditOutcome::Failed
+    fn reconcile(&self, frame: &FrameSnapshot) {
+        let focused = frame.frame.nodes.iter().position(|node| {
+            node.input
+                .as_ref()
+                .is_some_and(|input| input.enabled && input.edit_token.is_some_and(|t| t > 0))
+        });
+        let node = focused
+            .and_then(|index| node_json(frame, index))
+            .unwrap_or_default();
+        self.shell
+            .ime_presented(self.token, frame.generation.get(), &node);
+    }
+    fn focus(&self, editor: &Dispatch, frame: &FrameSnapshot) {
+        let Dispatch::Editor {
+            node,
+            commit,
+            point,
+            word,
+        } = editor
+        else {
+            return;
+        };
+        if let Some(json) = node_json(frame, *node) {
+            self.shell
+                .ime_focus(self.token, commit.get(), &json, *point, *word);
+        }
+    }
+    fn activation(&self) {
+        self.shell.ime_activation(self.token);
+    }
+    fn reset(&self) {
+        self.shell.ime_reset(self.token);
+    }
+    fn edit_text(&self, node: usize, text: Option<&str>, start: i32, end: i32) -> EditOutcome {
+        let Some((frame, json)) = self
+            .snapshot()
+            .and_then(|frame| node_json(&frame, node).map(|json| (frame, json)))
+        else {
+            return EditOutcome::Failed;
+        };
+        self.shell
+            .ime_edit(self.token, frame.generation.get(), &json, text, start, end)
     }
 }
 
@@ -280,15 +350,33 @@ impl Feedback for AppleAdapter {
     fn apply(&self, effects: &[Effect]) {
         for effect in effects {
             match effect {
+                // A node with a pressed style repaints itself.
+                Effect::Press {
+                    node,
+                    styled: false,
+                    ..
+                } => self.highlight(0, Some(*node), self.snapshot().as_deref()),
+                Effect::Press { .. } | Effect::ClearPress => self.highlight(0, None, None),
+                Effect::FocusRing { node } => {
+                    self.highlight(1, Some(*node), self.snapshot().as_deref())
+                }
+                Effect::ClearFocusRing => self.highlight(1, None, None),
+                Effect::Haptic => self.shell.haptic(self.token),
+                Effect::OpenPicker { node } => {
+                    if let Some(frame) = self.snapshot()
+                        && let Some(json) = node_json(&frame, *node)
+                    {
+                        self.shell
+                            .open_picker(self.token, frame.generation.get(), &json);
+                    }
+                }
                 Effect::ArmLongPress => self.shell.arm_long_press(self.token),
                 Effect::CancelLongPress => self.shell.cancel_long_press(self.token),
                 Effect::Fling {
                     region,
                     horizontal,
                     velocity,
-                } => self
-                    .shell
-                    .fling(self.token, region, *horizontal, *velocity),
+                } => self.shell.fling(self.token, region, *horizontal, *velocity),
                 Effect::StopFling => self.shell.stop_fling(self.token),
                 // Nothing on the page's Apple host can take a gesture from it.
                 Effect::Claim { .. } => {}
@@ -303,6 +391,13 @@ impl HostEvents for AppleAdapter {
         self.shell.loaded(self.token);
     }
     fn presented(&self, frame: &FrameSnapshot, timing: &FrameTiming) {
+        // Feedback follows its node as the page scrolls and changes.
+        let highlights = *self.highlights.lock().unwrap_or_else(|p| p.into_inner());
+        for (which, node) in highlights.into_iter().enumerate() {
+            if node.is_some() {
+                self.highlight(which, node, Some(frame));
+            }
+        }
         log(&format!(
             "present token={} generation={} size={}x{} workerMs={} nodes={}",
             self.token,
@@ -333,6 +428,9 @@ impl HostEvents for AppleAdapter {
     }
     fn bootstrap_overdue(&self, overdue: bool) {
         self.shell.bootstrap_overdue(self.token, overdue);
+    }
+    fn copy_text(&self, text: &str) {
+        self.shell.copy_text(text);
     }
     fn warn(&self, message: &str) {
         log::warn!(target: "lingxia_ui", "{message}");

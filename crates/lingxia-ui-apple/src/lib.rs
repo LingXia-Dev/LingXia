@@ -33,6 +33,46 @@ pub trait Shell: Send + Sync + 'static {
     /// [`ViewHost::scroll_by`] for `region` until it stops or the region does not move.
     fn fling(&self, token: i64, region: &str, horizontal: bool, velocity: f32);
     fn stop_fling(&self, token: i64);
+    /// Draw press (`ring` false) or focus-ring feedback, or clear it when `shape` is empty.
+    /// `shape` is [`chrome::feedback_shape`] flattened: the node's rounded rect, then the
+    /// masks to clip it to, in logical pixels. `color` is ARGB; a ring strokes `width`.
+    ///
+    /// [`chrome::feedback_shape`]: lingxia_ui::interaction::chrome::feedback_shape
+    fn feedback(&self, token: i64, ring: bool, shape: &[f32], color: u32, width: f32);
+    fn haptic(&self, token: i64);
+    /// Show the single-choice picker for the `<select>` `node` of frame `generation`; the
+    /// choice goes back as an input `select` request.
+    fn open_picker(&self, token: i64, generation: u64, node: &str);
+    /// Put `text` on the system pasteboard.
+    fn copy_text(&self, text: &str);
+    /// A frame presented; `node` is the focused editor's frame node JSON, or empty.
+    fn ime_presented(&self, token: i64, generation: u64, node: &str);
+    /// Focus the editor `node` of frame `generation`, placing the caret at a logical
+    /// `point` (selecting the word there when `word`) when one is given.
+    fn ime_focus(
+        &self,
+        token: i64,
+        generation: u64,
+        node: &str,
+        point: Option<[f32; 2]>,
+        word: bool,
+    );
+    /// A non-editor activation: end text input.
+    fn ime_activation(&self, token: i64);
+    /// The page instance ended: drop the editor without blurring.
+    fn ime_reset(&self, token: i64);
+    /// [`InputMethod::edit_text`] on editor `node` of frame `generation`.
+    ///
+    /// [`InputMethod::edit_text`]: lingxia_ui::platform::InputMethod::edit_text
+    fn ime_edit(
+        &self,
+        token: i64,
+        generation: u64,
+        node: &str,
+        text: Option<&str>,
+        start: i32,
+        end: i32,
+    ) -> lingxia_ui::platform::EditOutcome;
     /// An accessibility event for the OS: `kind` 0 focused, 1 focus cleared, 2 input focused,
     /// 5 value changed, 6 content changed, 7 announce `text` politely, 8 assertively.
     fn accessibility_event(&self, token: i64, kind: u8, id: u32, text: &str);

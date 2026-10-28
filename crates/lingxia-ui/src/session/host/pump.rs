@@ -412,6 +412,7 @@ impl<A: PlatformAdapter> Inner<A> {
             ),
             images,
             image_buckets,
+            feedback,
             json,
         });
         Ok((Some((frame, snapshot)), update))

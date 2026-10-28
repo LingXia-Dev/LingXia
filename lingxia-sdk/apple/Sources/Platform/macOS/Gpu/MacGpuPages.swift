@@ -12,6 +12,11 @@ final class GpuPageView: NSView {
     /// The Metal presenter is bound to this view's layer for the current window.
     private var attached = false
     private lazy var semantics = MacGpuAccessibility(view: self)
+    lazy var ime = GpuIme(host: self)
+    var inputReplies: [UInt64: (GpuFrameInputReply?) -> Void] = [:]
+    var nextInputReply: UInt64 = 0
+    /// The open date or time picker of the connected editor.
+    var valuePicker: GpuValuePickerDelegate?
 
     override func isAccessibilityElement() -> Bool { false }
 
@@ -79,6 +84,9 @@ final class GpuPageView: NSView {
             center.addObserver(self, selector: update, name: NSWindow.didDeminiaturizeNotification, object: window)
             center.addObserver(self, selector: update, name: NSApplication.didHideNotification, object: nil)
             center.addObserver(self, selector: update, name: NSApplication.didUnhideNotification, object: nil)
+            let focus = #selector(windowFocusChanged)
+            center.addObserver(self, selector: focus, name: NSWindow.didBecomeKeyNotification, object: window)
+            center.addObserver(self, selector: focus, name: NSWindow.didResignKeyNotification, object: window)
         }
         report()
         gpuPageSetVisible(token, window != nil && !isHiddenOrHasHiddenAncestor)
@@ -103,6 +111,11 @@ final class GpuPageView: NSView {
         } else if shown, !attached {
             report()
         }
+    }
+
+    @objc private func windowFocusChanged() {
+        gpuPageWindowFocus(token, window?.isKeyWindow ?? false)
+        ime.updateCaret()
     }
 
     override func viewDidChangeBackingProperties() {
@@ -233,8 +246,10 @@ final class GpuPageView: NSView {
     }
 
     override func scrollWheel(with event: NSEvent) {
+        if gpuPageInputBlocked(token) { return super.scrollWheel(with: event) }
         if let refresh = lxPullToRefreshController {
-            refresh.setAtTop(!gpuPageCanScrollVertically(token, -1))
+            let (x, y) = pixels(event)
+            refresh.setAtTop(!gpuPageCanScrollVertically(token, x, y, -1))
             refresh.refreshEnabledFlag()
             if refresh.handleScrollWheel(event) { return }
         }
@@ -263,7 +278,48 @@ final class GpuPageView: NSView {
     }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    override func mouseDown(with event: NSEvent) { send(0, event) }
+    override func mouseDown(with event: NSEvent) {
+        if gpuPageInputBlocked(token) { return super.mouseDown(with: event) }
+        send(0, event)
+    }
+
+    // MARK: Keyboard
+
+    override var acceptsFirstResponder: Bool { true }
+
+    /// Focus that arrives by Tab walks into the page; a click only takes it.
+    override func becomeFirstResponder() -> Bool {
+        if let event = NSApp.currentEvent, event.type == .keyDown, event.keyCode == 48 {
+            gpuPageFocus(token, true, event.modifierFlags.contains(.shift))
+        }
+        return true
+    }
+
+    override func resignFirstResponder() -> Bool {
+        gpuPageFocus(token, false, false)
+        if ime.isActive { ime.clear(blur: true) }
+        return true
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if gpuPageInputBlocked(token) { return super.keyDown(with: event) }
+        if editorKeyDown(event) { return }
+        let key: UInt8? = switch event.keyCode {
+        case 48: 0
+        case 126: 1
+        case 125: 2
+        case 123: 3
+        case 124: 4
+        case 115: 5
+        case 119: 6
+        case 36, 76, 49: 7
+        default: nil
+        }
+        let plain = event.modifierFlags.isDisjoint(with: [.command, .control, .option])
+        guard let key, plain, !gpuPageInputBlocked(token),
+              gpuPageKey(token, key, event.modifierFlags.contains(.shift), event.isARepeat)
+        else { return super.keyDown(with: event) }
+    }
     override func mouseDragged(with event: NSEvent) { send(1, event) }
     override func mouseUp(with event: NSEvent) { send(2, event) }
 
@@ -281,6 +337,27 @@ final class GpuPageView: NSView {
     func cancelLongPress() {
         longPress?.invalidate()
         longPress = nil
+    }
+
+    // MARK: Feedback
+
+    /// Press and focus-ring layers over the frame, made on first use.
+    private var highlights: [GpuHighlightLayer] = []
+
+    func feedback(ring: Bool, rects: UnsafeBufferPointer<Float>, argb: UInt32, width: Float) {
+        if highlights.isEmpty {
+            if rects.isEmpty { return }
+            highlights = [GpuHighlightLayer(), GpuHighlightLayer()]
+            highlights.forEach { layer!.addSublayer($0) }
+        }
+        let highlight = highlights[ring ? 1 : 0]
+        highlight.frame = bounds
+        highlight.contentsScale = window?.backingScaleFactor ?? 2
+        highlight.update(rects: rects, argb: argb, ringWidth: width)
+    }
+
+    func drawFeedback(in context: CGContext) {
+        for highlight in highlights where !highlight.isHidden { highlight.draw(in: context) }
     }
 
     func show(pixels: UnsafeRawPointer, length: Int, width: Int, height: Int) -> Bool {
@@ -366,7 +443,77 @@ public enum GpuPages {
     /// A mouse release carries no velocity, so the page never asks a desktop view to fling.
     static func fling(token: Int64, region: RustStr, horizontal: Bool, velocity: Float) {}
 
+    static func feedback(token: Int64, ring: Bool, shape: UInt, count: UInt, color: UInt32, width: Float) {
+        MainActor.assumeIsolated {
+            let rects = UnsafeBufferPointer(start: UnsafePointer<Float>(bitPattern: shape), count: Int(count))
+            views[token]?.feedback(ring: ring, rects: rects, argb: color, width: width)
+        }
+    }
+
+    static func haptic(token: Int64) {
+        MainActor.assumeIsolated { NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now) }
+    }
+
+    static func copyText(text: RustStr) {
+        let text = text.toString()
+        MainActor.assumeIsolated {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+        }
+    }
+
     static func stopFling(token: Int64) {}
+
+    static func imePresented(token: Int64, generation: UInt64, node: RustStr) {
+        let node = node.toString()
+        MainActor.assumeIsolated {
+            guard let view = views[token] else { return }
+            view.ime.presented(GpuPageView.decodeNode(node), ticket: view.ime.capture())
+        }
+    }
+
+    static func imeFocus(token: Int64, generation: UInt64, node: RustStr, touch: Bool, x: Float, y: Float, word: Bool) {
+        let node = node.toString()
+        MainActor.assumeIsolated {
+            guard let view = views[token], let node = GpuPageView.decodeNode(node) else { return }
+            if touch {
+                view.ime.touch(node, generation: generation, x: x, y: y, word: word)
+            } else {
+                view.ime.focus(node, generation: generation)
+            }
+        }
+    }
+
+    static func openPicker(token: Int64, generation: UInt64, node: RustStr) {
+        let node = node.toString()
+        MainActor.assumeIsolated {
+            guard let view = views[token], let node = GpuPageView.decodeNode(node) else { return }
+            view.openPicker(generation: generation, node: node)
+        }
+    }
+
+    static func imeActivation(token: Int64) {
+        MainActor.assumeIsolated {
+            if let ime = views[token]?.ime, ime.isActive { ime.clear(blur: true) }
+        }
+    }
+
+    static func imeReset(token: Int64) {
+        MainActor.assumeIsolated { views[token]?.ime.reset() }
+    }
+
+    static func imeEdit(token: Int64, generation: UInt64, node: RustStr, replace: Bool, text: RustStr, start: Int32, end: Int32) -> UInt8 {
+        let (node, text) = (node.toString(), text.toString())
+        return MainActor.assumeIsolated {
+            guard let view = views[token], let node = GpuPageView.decodeNode(node) else { return GpuIme.failed }
+            return view.ime.edit(node, generation: generation, text: replace ? text : nil, start: Int(start), end: Int(end))
+        }
+    }
+
+    static func inputReply(token: Int64, reply: UInt64, present: Bool, value: RustStr) {
+        let value = value.toString()
+        MainActor.assumeIsolated { views[token]?.inputReply(reply, value: present ? value : nil) }
+    }
 
     static func accessibilityEvent(token: Int64, kind: UInt8, id: UInt32, text: RustStr) {
         let text = text.toString()
@@ -397,6 +544,13 @@ public enum GpuPages {
                 ? CGRect(x: frame.minX, y: contentView.bounds.height - frame.maxY, width: frame.width, height: frame.height)
                 : frame
             context.cgContext.draw(image, in: rect)
+            // Press and focus feedback sit over the frame on screen, so in the capture too.
+            let cg = context.cgContext
+            cg.saveGState()
+            cg.translateBy(x: rect.minX, y: rect.maxY)
+            cg.scaleBy(x: 1, y: -1)
+            view.drawFeedback(in: cg)
+            cg.restoreGState()
         }
         context.flushGraphics()
     }

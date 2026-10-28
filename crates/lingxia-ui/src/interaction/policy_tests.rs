@@ -699,6 +699,28 @@ fn a_wheel_gesture_stays_on_its_region_through_momentum() {
 }
 
 #[test]
+fn a_wheel_pull_below_the_top_of_a_nested_list_can_still_scroll_up() {
+    use crate::interaction::view::{Wheel, WheelPhase};
+    let mut list = node("list", "scroll", [0.0, 0.0, 100.0, 100.0]);
+    list.scroll = Some(region("list", None, 0.0, 300.0));
+    let mut interaction = ViewInteraction::default();
+    presented(&mut interaction, vec![list], 1);
+    // No touch is down, so the point decides, not a gesture target.
+    assert!(!interaction.can_scroll_vertically_at(100.0, 100.0, -1));
+    assert!(interaction.can_scroll_vertically_at(100.0, 100.0, 1));
+    interaction.wheel(Wheel {
+        x: 100.0,
+        y: 100.0,
+        dx: 0.0,
+        dy: -40.0,
+        precise: true,
+        phase: WheelPhase::Discrete,
+    });
+    assert!(interaction.can_scroll_vertically_at(100.0, 100.0, -1));
+    assert!(!interaction.can_scroll_vertically_at(100.0, 500.0, -1));
+}
+
+#[test]
 fn keyboard_tab_reveals_and_focuses_then_activates_on_enter() {
     let mut list = node("list", "scroll", [0.0, 0.0, 100.0, 100.0]);
     list.scroll = Some(region("list", None, 0.0, 300.0));

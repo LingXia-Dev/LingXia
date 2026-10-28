@@ -44,12 +44,21 @@ final class GpuPageView: UIView {
         center.addObserver(self, selector: #selector(resume), name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
         center.addObserver(self, selector: #selector(resume), name: UIContentSizeCategory.didChangeNotification, object: nil)
         center.addObserver(self, selector: #selector(keyboardChanged(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+        center.addObserver(self, selector: #selector(windowFocusChanged(_:)), name: UIApplication.didBecomeActiveNotification, object: nil)
+        center.addObserver(self, selector: #selector(windowFocusChanged(_:)), name: UIApplication.willResignActiveNotification, object: nil)
     }
 
     @objc private func suspend() {
         guard attached else { return }
         attached = false
         gpuPageSuspend(token)
+    }
+
+    /// An inactive app (Control Center, an incoming call) ends the gesture in flight.
+    @objc private func windowFocusChanged(_ note: Notification) {
+        let active = note.name == UIApplication.didBecomeActiveNotification
+        if !active { tracked = nil }
+        gpuPageWindowFocus(token, active)
     }
 
     @objc private func resume() {
@@ -240,6 +249,7 @@ final class GpuPageView: UIView {
             }
             return
         }
+        if gpuPageInputBlocked(token) { return }
         stopFlingNow()
         tracked = touch
         samples = []
@@ -321,6 +331,23 @@ final class GpuPageView: UIView {
         gpuPageVsync(token)
     }
 
+    // MARK: Feedback
+
+    /// Press and focus-ring layers over the frame, made on first use.
+    private var highlights: [GpuHighlightLayer] = []
+
+    func feedback(ring: Bool, rects: UnsafeBufferPointer<Float>, argb: UInt32, width: Float) {
+        if highlights.isEmpty {
+            if rects.isEmpty { return }
+            highlights = [GpuHighlightLayer(), GpuHighlightLayer()]
+            highlights.forEach { layer.addSublayer($0) }
+        }
+        let highlight = highlights[ring ? 1 : 0]
+        highlight.frame = bounds
+        highlight.contentsScale = window?.screen.scale ?? UIScreen.main.scale
+        highlight.update(rects: rects, argb: argb, ringWidth: width)
+    }
+
     func show(pixels: UnsafeRawPointer, length: Int, width: Int, height: Int) -> Bool {
         guard width > 0, height > 0, length == width * height * 4,
               let provider = CGDataProvider(data: Data(bytes: pixels, count: length) as CFData),
@@ -390,6 +417,31 @@ public enum GpuPages {
         let text = text.toString()
         MainActor.assumeIsolated { views[token]?.accessibilityEvent(kind: kind, id: id, text: text) }
     }
+
+    static func feedback(token: Int64, ring: Bool, shape: UInt, count: UInt, color: UInt32, width: Float) {
+        MainActor.assumeIsolated {
+            let rects = UnsafeBufferPointer(start: UnsafePointer<Float>(bitPattern: shape), count: Int(count))
+            views[token]?.feedback(ring: ring, rects: rects, argb: color, width: width)
+        }
+    }
+
+    static func haptic(token: Int64) {
+        MainActor.assumeIsolated { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
+    }
+
+    static func copyText(text: RustStr) {
+        let text = text.toString()
+        MainActor.assumeIsolated { UIPasteboard.general.string = text }
+    }
+
+    // UIKit text input is not wired yet: no editor connects, assistive edits fail.
+    static func imePresented(token: Int64, generation: UInt64, node: RustStr) {}
+    static func imeFocus(token: Int64, generation: UInt64, node: RustStr, touch: Bool, x: Float, y: Float, word: Bool) {}
+    static func imeActivation(token: Int64) {}
+    static func openPicker(token: Int64, generation: UInt64, node: RustStr) {}
+    static func imeReset(token: Int64) {}
+    static func imeEdit(token: Int64, generation: UInt64, node: RustStr, replace: Bool, text: RustStr, start: Int32, end: Int32) -> UInt8 { 2 }
+    static func inputReply(token: Int64, reply: UInt64, present: Bool, value: RustStr) {}
 
     static func stopFling(token: Int64) {
         MainActor.assumeIsolated { views[token]?.stopFlingNow() }
