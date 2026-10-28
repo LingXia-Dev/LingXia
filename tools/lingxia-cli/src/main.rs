@@ -1,26 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand, error::ErrorKind};
 
-fn parse_display_language(value: &str) -> std::result::Result<String, String> {
-    let value = value.trim();
-    if value.eq_ignore_ascii_case("auto") {
-        return Ok("auto".to_string());
-    }
-    let parsed = language_tags::LanguageTag::parse(value)
-        .map_err(|error| format!("invalid BCP-47 language tag '{value}': {error}"))?;
-    parsed
-        .validate()
-        .map_err(|error| format!("invalid BCP-47 language tag '{value}': {error}"))?;
-    let canonical = parsed
-        .canonicalize()
-        .map_err(|error| format!("invalid BCP-47 language tag '{value}': {error}"))?
-        .into_string();
-    if canonical.eq_ignore_ascii_case("auto") {
-        return Err("'auto' is reserved for the automatic display-language preference".into());
-    }
-    Ok(canonical)
-}
-
 mod appicon;
 mod binding;
 mod build_prepare;
@@ -149,22 +129,6 @@ struct DevOptions {
     /// Reinstall app by uninstalling existing one first (best effort)
     #[arg(long)]
     reinstall: bool,
-
-    /// Simulator frame for this Runner session: `iphone-15-pro`, `ipad`,
-    /// `desktop-1440`. Pass `--runner` alone to list frames. Ignored for a
-    /// native host app.
-    #[arg(
-        long,
-        help_heading = "Runner",
-        num_args = 0..=1,
-        default_missing_value = ""
-    )]
-    runner: Option<String>,
-
-    /// This Runner session's UI language. `auto` follows the system. Shadows
-    /// `lx.host.displayLanguage` for this process and is not saved.
-    #[arg(long, help_heading = "Runner", value_parser = parse_display_language)]
-    display_language: Option<String>,
 
     /// Hide the desktop Runner window; only for an http(s) URL TARGET
     #[arg(long)]
@@ -1131,8 +1095,6 @@ fn run() -> Result<()> {
                 extra_native_features: dev_options.build_options.native_features,
                 with_provider: dev_options.build_options.with_provider,
                 provider_path: dev_options.build_options.provider_path,
-                runner_device: dev_options.runner,
-                display_language: dev_options.display_language,
                 headless: dev_options.headless,
                 background: dev_options.background,
                 json: dev_options.json,
@@ -1401,15 +1363,6 @@ mod cli_tests {
     use clap::CommandFactory;
 
     #[test]
-    fn display_language_accepts_and_canonicalizes_arbitrary_bcp47_tags() {
-        assert_eq!(parse_display_language("sr-latn-rs").unwrap(), "sr-Latn-RS");
-        assert_eq!(parse_display_language("auto").unwrap(), "auto");
-        assert_eq!(parse_display_language("AUTO").unwrap(), "auto");
-        assert!(parse_display_language("en--US").is_err());
-        assert!(parse_display_language("zzz-Latn-RS").is_err());
-    }
-
-    #[test]
     fn lingxia_credentials_are_named_for_the_provider_not_the_publish_action() {
         let cli = Cli::try_parse_from([
             "lingxia",
@@ -1510,21 +1463,10 @@ mod cli_tests {
     }
 
     #[test]
-    fn dev_runner_accepts_missing_value_for_device_list() {
-        let cli = Cli::try_parse_from(["lingxia", "dev", "--runner"]).unwrap();
-        let Commands::Dev { dev_options } = cli.command else {
-            panic!("expected dev command");
-        };
-        assert_eq!(dev_options.runner.as_deref(), Some(""));
-    }
-
-    #[test]
-    fn dev_runner_accepts_explicit_device_id() {
-        let cli = Cli::try_parse_from(["lingxia", "dev", "--runner", "desktop-1440"]).unwrap();
-        let Commands::Dev { dev_options } = cli.command else {
-            panic!("expected dev command");
-        };
-        assert_eq!(dev_options.runner.as_deref(), Some("desktop-1440"));
+    fn dev_runner_environment_flags_are_removed() {
+        assert!(Cli::try_parse_from(["lingxia", "dev", "--runner"]).is_err());
+        assert!(Cli::try_parse_from(["lingxia", "dev", "--runner", "desktop-1440"]).is_err());
+        assert!(Cli::try_parse_from(["lingxia", "dev", "--display-language", "zh-CN"]).is_err());
     }
 
     #[test]

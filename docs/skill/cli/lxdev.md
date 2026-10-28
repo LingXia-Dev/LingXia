@@ -54,13 +54,16 @@ The lxapps and pages in the session. Commands target the current lxapp
 
 ## `lxdev runner`
 
-The simulated device (Runner sessions only).
+The simulated device and display language (Runner sessions only).
 
 - `presets` — the device presets
-- `get` — current preset, orientation, appearance
-- `set` — partial update of preset, orientation and `--appearance
-  system|light|dark`. The capsule follows the host: none on its home lxapp,
-  always on every other.
+- `get` — current preset, orientation, appearance, effective language
+- `set` — partial update of preset, orientation, `--appearance
+  system|light|dark`, and `--language TAG|auto`. The capsule follows the host:
+  none on its home lxapp, always on every other.
+
+`--language` shadows `lx.host.displayLanguage` until the session ends and is
+not saved.
 
 Switching between desktop and handheld presets restarts Logic, so app state
 resets.

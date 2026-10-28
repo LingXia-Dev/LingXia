@@ -155,9 +155,8 @@ pub(crate) fn default_device_index() -> usize {
         .unwrap_or(0)
 }
 
-/// Startup device: `LINGXIA_RUNNER_DEVICE` (the CLI `--runner` contract,
-/// shared with the macOS runner) when it names a known device id, else the
-/// manifest default.
+/// Startup device: `LINGXIA_RUNNER_DEVICE` (shared with the macOS runner)
+/// when it names a known device id, else the manifest default.
 pub(crate) fn initial_device_index() -> usize {
     std::env::var("LINGXIA_RUNNER_DEVICE")
         .ok()

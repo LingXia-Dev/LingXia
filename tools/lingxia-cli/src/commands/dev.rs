@@ -78,10 +78,6 @@ pub struct DevExecuteOptions {
     pub extra_native_features: Vec<String>,
     pub with_provider: Vec<String>,
     pub provider_path: Option<String>,
-    /// Runner simulator device (macOS lxapp runner only), e.g. `desktop-1440`.
-    pub runner_device: Option<String>,
-    /// Session-only effective display language for an lxapp Runner.
-    pub display_language: Option<String>,
     /// Keep a Windows web-target Runner window hidden while it remains automatable.
     pub headless: bool,
     pub background: bool,
@@ -139,9 +135,7 @@ fn host_only_flag(options: &DevExecuteOptions, runner_requested: bool) -> Option
     [
         (options.target.is_some(), "a TARGET"),
         (runner_requested, "`-p runner`"),
-        (options.runner_device.is_some(), "`--runner`"),
         (options.headless, "`--headless`"),
-        (options.display_language.is_some(), "`--display-language`"),
         (options.reinstall, "`--reinstall`"),
         (options.env_version.is_some(), "`--env`"),
         (options.provider_path.is_some(), "`--provider-path`"),
@@ -358,15 +352,6 @@ pub fn execute(mut options: DevExecuteOptions) -> Result<()> {
     mocks::set_baseline(options.mock);
     crate::pin::ensure_js_matches_cli(&project_root)?;
 
-    if options
-        .runner_device
-        .as_deref()
-        .is_some_and(|value| value.trim().is_empty())
-    {
-        runner::print_runner_devices()?;
-        return Ok(());
-    }
-
     if let Some(name) = &options.name {
         lingxia_control_protocol::dev_session::select::validate_name(name)
             .map_err(|err| anyhow!(err))?;
@@ -458,12 +443,6 @@ pub fn execute(mut options: DevExecuteOptions) -> Result<()> {
     if options.headless {
         return Err(anyhow!(
             "`--headless` is only supported with an explicit http:// or https:// Runner target."
-        ));
-    }
-
-    if options.display_language.is_some() {
-        return Err(anyhow!(
-            "`--display-language` is only supported by the lxapp Runner."
         ));
     }
 

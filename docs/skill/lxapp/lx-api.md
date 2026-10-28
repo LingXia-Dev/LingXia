@@ -86,9 +86,9 @@ lx.host.control?.appearance.setPreference('dark');
   for you. The View's `subscribe(cb)` fires only on change; read `get()` first.
 - Narrowing to the catalogs you ship is yours: `ja-JP` with only `en`/`zh`
   renders `en` while the product stays `ja-JP`.
-- `lingxia dev --display-language` shadows the effective language; there
+- `lxdev runner set --language` shadows the effective language; there
   `get()` and `getPreference()` disagree and `setPreference` shows no effect.
-  Test a Settings screen without the flag.
+  Test a Settings screen without it.
 - The starting scheme is the host's `theme.defaultAppearance`; a one-scheme
   lxapp declares `"appearance"` in `lxapp.json`
   ([Appearance](./guide.md#appearance)).
