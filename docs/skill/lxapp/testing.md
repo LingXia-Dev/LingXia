@@ -167,6 +167,9 @@ spec('pulling the list refreshes it once', { start: { page: 'feed' } }, async (t
   gesture's `delivered`.
 - `requires: { input: ['touch', 'trackpad'] }` skips the spec, with the
   reason, on a host that has none of those devices.
+- A locator `click()` or scroll on an Android WebView page goes to the WebView
+  itself, even for a target below the fold, so page chrome never sees it; drive
+  chrome (pull to refresh, edge back) with the gestures above.
 
 ## Pages
 
