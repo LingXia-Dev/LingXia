@@ -2331,20 +2331,19 @@ class LxAppActivity : AppCompatActivity() {
         if (newWebView is GpuPage && gpuTransitionCover != null) {
             var copyRetries = 0
             fun revealPresentedFrame() {
-                newWebView.capturePreview { frame ->
+                fun reveal(frame: android.graphics.Bitmap?) {
                     if (version != gpuTransitionVersion || isFinishing || isDestroyed) {
                         frame?.recycle()
-                        return@capturePreview
+                        return
                     }
                     if (frame == null) {
-                        if (++copyRetries > 1) { failedGpuPresentation(); return@capturePreview }
-                        newWebView.afterNextPresentation { success ->
-                            if (version == gpuTransitionVersion) {
-                                if (success) revealPresentedFrame() else failedGpuPresentation()
-                            }
-                        }
+                        LxLog.d(NAV_TAG, "reveal ${newWebView.getWebTag()} copy missed v$version retry=$copyRetries")
+                        if (++copyRetries > 1) { failedGpuPresentation(); return }
                         newWebView.resume()
-                        return@capturePreview
+                        // A page with nothing new to draw presents nothing by itself; waiting for
+                        // its next frame stalled the push. This asks for one, then copies it.
+                        newWebView.captureReadyPreview { retried -> reveal(retried) }
+                        return
                     }
                     // PixelCopy waits for the submitted GPU buffer, unlike the
                     // presentation callback. Commit those pixels before uncovering.
@@ -2352,7 +2351,7 @@ class LxAppActivity : AppCompatActivity() {
                     if (gpuTransitionCover != null) showGpuTransitionFrame(frame, newWebView)
                     if (animateGpu && outgoing != null) {
                         animateGpuTransition(outgoing, isBackNavigation, version, newWebView)
-                        return@capturePreview
+                        return
                     }
                     val committed = Runnable {
                         webViewContainer.postOnAnimation {
@@ -2364,6 +2363,7 @@ class LxAppActivity : AppCompatActivity() {
                         webViewContainer.invalidate()
                     } else webViewContainer.postOnAnimation(committed)
                 }
+                newWebView.capturePreview { frame -> reveal(frame) }
             }
             newWebView.afterNextPresentation { success ->
                 LxLog.d(NAV_TAG, "presented ${newWebView.getWebTag()} ok=$success v$version now v$gpuTransitionVersion")
