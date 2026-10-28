@@ -78,7 +78,8 @@ lxdev="$export_dir/.bin/lxdev"
   --android-out lingxia-sdk/android/lingxia/src/main/res/drawable >/dev/null)
 (cd "$export_dir" && "$lingxia" gen icons --input design/icons/svg \
   --ios-out lingxia-sdk/apple/Sources/Resources/icons >/dev/null)
-(cd "$export_dir/packages/lingxia-test" && npm run build >/dev/null)
+# Packages an lxapp imports by their dist (page-runtime, react, test, …).
+(cd "$export_dir/packages" && npm run build --workspaces --if-present >/dev/null)
 
 # Every package an lxapp or the workspace resolves must be the export's own:
 # a link back into a checkout would bundle its uncommitted code.
@@ -238,7 +239,8 @@ for entry in "${runs[@]}"; do
     const locks = lines(process.argv[2]);
     const anrEvents = lines(process.argv[3]);
     const tainted = [...new Set([...locks, ...anrEvents].map((event) => event.case).filter(Boolean))];
-    process.stdout.write(JSON.stringify({ passed: r.passed, failed: r.failed, skipped: r.skipped, timeout: r.timeout, total: (r.cases ?? []).length, renderers, keyguardEvents: locks.length, anrEvents, lockTainted: tainted }));
+    const actDropped = (r.cases ?? []).reduce((sum, c) => sum + (c.act_dropped ?? 0), 0);
+    process.stdout.write(JSON.stringify({ passed: r.passed, failed: r.failed, skipped: r.skipped, timeout: r.timeout, total: (r.cases ?? []).length, renderers, actDropped, keyguardEvents: locks.length, anrEvents, lockTainted: tainted }));
   ' "$report" "$result/keyguard.jsonl" "$result/anr.jsonl" 2>/dev/null || echo '{}')
   summary+="{\"app\":\"$app\",\"profile\":\"$profile\",\"started\":true,\"exit\":$code,\"featureCoverage\":$covered,\"result\":$counts},"
   echo "$app: exit $code, $counts"
