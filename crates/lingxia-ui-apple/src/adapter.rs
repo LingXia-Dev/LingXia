@@ -398,7 +398,8 @@ impl HostEvents for AppleAdapter {
                 self.highlight(which, node, Some(frame));
             }
         }
-        log(&format!(
+        log::debug!(
+            target: "lingxia_ui",
             "present token={} generation={} size={}x{} workerMs={} nodes={}",
             self.token,
             frame.generation.get(),
@@ -406,7 +407,7 @@ impl HostEvents for AppleAdapter {
             frame.height,
             timing.worker_us / 1000,
             frame.frame.nodes.len(),
-        ));
+        );
         let connection = self
             .host
             .get()
