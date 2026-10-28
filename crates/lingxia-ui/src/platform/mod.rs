@@ -11,7 +11,9 @@ use crate::session::host::{Failure, FrameSnapshot, FrameTiming};
 use crate::session::lifecycle::{CommitTicket, ConnectionTicket, SurfaceTicket};
 use std::time::Duration;
 
+mod chrome;
 mod environment;
+pub use chrome::HostChrome;
 pub use environment::{DeviceFacts, TABLET_SMALLEST_WIDTH};
 
 pub type Task = Box<dyn FnOnce() + Send>;
@@ -151,6 +153,9 @@ pub trait HostEvents {
     fn warn(&self, message: &str);
     /// Diagnostic detail (one line per executed click, say); adapters log it at debug level.
     fn debug(&self, _message: &str) {}
+    /// Main thread: the host chrome this page's palette asks for, on change and before the
+    /// frame that first uses it.
+    fn host_chrome(&self, _chrome: &HostChrome) {}
 }
 
 /// Monotonic time for animation and presentation scheduling. Any thread.

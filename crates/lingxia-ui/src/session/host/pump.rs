@@ -100,7 +100,21 @@ impl<A: PlatformAdapter> Inner<A> {
     }
 
     fn schedule_frame(self: &Arc<Self>, ahead: bool) {
-        let environment = self.adapter.environment();
+        let environment = self.adapter.environment().map(|mut environment| {
+            self.main().host_environment.apply(&mut environment.value);
+            environment
+        });
+        // Chrome takes the palette this page renders with, before the frame that shows it.
+        if let Some(environment) = &environment {
+            let chrome = crate::platform::HostChrome::from_environment(&environment.value);
+            let changed = {
+                let mut main = self.main();
+                !main.disposed && main.chrome.replace(chrome) != Some(chrome)
+            };
+            if changed {
+                self.adapter.host_chrome(&chrome);
+            }
+        }
         let (request, background) = {
             let mut main = self.main();
             main.animation_timer += 1;
@@ -108,10 +122,9 @@ impl<A: PlatformAdapter> Inner<A> {
             if main.disposed {
                 return;
             }
-            let Some(mut environment) = environment else {
+            let Some(environment) = environment else {
                 return;
             };
-            main.host_environment.apply(&mut environment.value);
             let same = main
                 .environment
                 .as_ref()

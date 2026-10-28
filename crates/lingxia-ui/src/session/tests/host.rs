@@ -40,6 +40,8 @@ struct Log {
     /// `hold_surface` of each reveal.
     revealed: Vec<bool>,
     copied: Vec<String>,
+    /// Host chrome pushes, in order, with the frames presented before each.
+    chrome: Vec<(usize, crate::platform::HostChrome)>,
     /// Edits offered to the input method and what it answered.
     edits: Vec<(Effect, EditOutcome)>,
     menus: Vec<Option<crate::session::host::TextMenu>>,
@@ -306,6 +308,11 @@ impl HostEvents for Fake {
     }
     fn copy_text(&self, text: &str) {
         self.main().copied.push(text.into());
+    }
+    fn host_chrome(&self, chrome: &crate::platform::HostChrome) {
+        let mut log = self.main();
+        let presented = log.presented.len();
+        log.chrome.push((presented, *chrome));
     }
     fn text_menu(&self, menu: Option<&crate::session::host::TextMenu>) {
         self.main().menus.push(menu.cloned());
@@ -3158,4 +3165,48 @@ fn a_pressable_row_holds_its_own_controls() {
         named("delete").map(|n| (n.1, n.2)),
         Some((Role::Button, "Del".to_string()))
     );
+}
+
+#[test]
+fn host_chrome_takes_the_page_palette_before_its_first_frame_and_follows_the_look() {
+    let worker = ViewWorker::spawn("test-chrome").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source("function render(){return h('text',{},'page')}"),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let pushes = || {
+        host.adapter()
+            .log
+            .lock()
+            .unwrap()
+            .chrome
+            .iter()
+            .map(|(_, c)| *c)
+            .collect::<Vec<_>>()
+    };
+    let light = crate::theme::Palette::builtin_for(false, false);
+    assert_eq!(pushes().len(), 1, "one push, not one per frame");
+    assert_eq!(pushes()[0].canvas, light.role(lingxia_theme::Role::Canvas));
+    assert_eq!(
+        host.adapter().log.lock().unwrap().chrome[0].0,
+        0,
+        "before the first frame"
+    );
+    assert!(!host.adapter().log.lock().unwrap().presented.is_empty());
+    host.redraw();
+    platform.settle(&[&host]);
+    assert_eq!(pushes().len(), 1, "an unchanged look pushes nothing");
+    if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
+        environment.value["theme"] = "dark".into();
+    }
+    host.redraw();
+    platform.settle(&[&host]);
+    let dark = crate::theme::Palette::builtin_for(true, false);
+    assert_eq!(pushes().len(), 2);
+    assert_eq!(pushes()[1].canvas, dark.role(lingxia_theme::Role::Canvas));
+    assert!(pushes()[1].dark);
 }

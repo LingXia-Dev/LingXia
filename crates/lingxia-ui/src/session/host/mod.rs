@@ -237,6 +237,8 @@ struct Main<F> {
     /// User activations reported dropped, and clicks that ran a callback, for frame metrics.
     dropped_activations: u64,
     activations: u64,
+    /// The host chrome last pushed to the adapter.
+    chrome: Option<crate::platform::HostChrome>,
     /// A frame was declined while others still held the presenter's targets; presenting
     /// one frees a target, so the next vsync retries.
     declined: bool,
@@ -363,6 +365,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     activating: 0,
                     dropped_activations: 0,
                     activations: 0,
+                    chrome: None,
                     declined: false,
                     stale_declines: 0,
                     single_target: false,
