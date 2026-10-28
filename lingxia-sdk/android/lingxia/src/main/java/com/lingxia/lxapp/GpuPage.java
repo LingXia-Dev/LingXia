@@ -38,7 +38,7 @@ public final class GpuPage extends FrameLayout {
                     frameReported = presented(token, content.getConnectionGeneration());
                     if (!frameReported && !frameWaitLogged) {
                         frameWaitLogged = true;
-                        com.lingxia.app.LxLog.d("LingXia.Nav", "first frame of " + webTag + " not its current view's; reporting the next");
+                        android.util.Log.d("LingXia.Nav", "first frame of " + webTag + " not its current view's; reporting the next");
                     }
                 }
                 public void onMessage(long generation, String frame) { message(token, generation, frame); }
