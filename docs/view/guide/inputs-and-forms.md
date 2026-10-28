@@ -62,8 +62,10 @@ or pass `value` and the change callback, and store the value yourself:
 `bind` with `value` or the callback is refused. A `bind` cell must be mounted in the current render and
 hold the control's type (`UI_INPUT`, `UI_CHECK`, `UI_RADIO`, `UI_SLIDER`).
 
-`onInput` receives committed text only. While an input method is composing (pinyin, kana, a
-swipe-typed word), the editor shows the composition but `onInput` waits until it is committed.
+`onInput` receives every value change, as DOM `input` events do, including while an input method
+is composing (pinyin, kana, a swipe-typed word, or any word on keyboards that compose as you type):
+the value holds the composed text and the composition stays open for the input method. Leaving the
+editor finishes the composition, so the last composed text is the value.
 
 ## Editors
 

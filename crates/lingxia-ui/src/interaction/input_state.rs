@@ -351,7 +351,11 @@ impl Inputs {
                 self.commit(&id, renderer)?;
             }
             if let Some(entry) = self.entries.get_mut(&id) {
-                renderer.edit_text(&mut entry.editor, &[Edit::Blur])?;
+                // A composition still open is finished and reaches Logic before the value settles.
+                let change = renderer.edit_text(&mut entry.editor, &[Edit::Blur])?;
+                if let (Some(value), Some(handle)) = (change.input, entry.on_input) {
+                    self.committed.push((handle, value));
+                }
             }
             self.advance()?;
         }

@@ -733,10 +733,11 @@ fn composing_uses_native_layout_and_commits_back_to_local_state() {
             )
             .unwrap()
             .unwrap();
-        assert!(!reply.needs_view_render);
+        // A composition update is input, as on the Web: the View renders with it.
+        assert!(reply.needs_view_render);
         let preedit = page.prepare_native(300, 300, 1.0, false, None, Ok).unwrap();
         assert_eq!(preedit.nodes[1].text, "ni");
-        assert_eq!(preedit.nodes[2].text, "||1");
+        assert_eq!(preedit.nodes[2].text, "ni||2");
         assert_eq!(
             preedit.nodes[1]
                 .input
@@ -763,7 +764,7 @@ fn composing_uses_native_layout_and_commits_back_to_local_state() {
             .unwrap();
         assert!(reply.needs_view_render);
         let committed = page.prepare_native(300, 300, 1.0, false, None, Ok).unwrap();
-        assert_eq!(committed.nodes[2].text, "你|你|2");
+        assert_eq!(committed.nodes[2].text, "你|你|3");
         assert_eq!(
             committed.nodes[1].input.as_ref().unwrap().edit_token,
             Some(token)
@@ -1265,11 +1266,12 @@ fn host_input_messages_preserve_composition_and_reject_stale_connections() {
         serde_json::from_str(&page.input_request(&request.to_string()).unwrap()).unwrap();
     assert_eq!(reply["state"]["selection"], json!([3, 3]));
     assert_eq!(reply["state"]["composition"], json!([0, 3]));
-    assert_eq!(reply["needs_view_render"], false);
+    assert_eq!(
+        reply["needs_view_render"], true,
+        "the composed value is input"
+    );
     request["edits"] = json!([{"op":"finish_composition"}]);
-    let reply: Value =
-        serde_json::from_str(&page.input_request(&request.to_string()).unwrap()).unwrap();
-    assert_eq!(reply["needs_view_render"], true);
+    page.input_request(&request.to_string()).unwrap();
     page.prepare_native(200, 100, 1.0, false, None, Ok).unwrap();
     let query = json!({"op":"query","identity":id,"token":token});
     assert_eq!(
@@ -1764,4 +1766,69 @@ fn a_declined_frame_keeps_a_tap_and_a_rejected_one_reverts_it() {
     let rejected = page.layout(100, 50, 1.0).err().unwrap();
     assert!(rejected.starts_with("UI_"), "{rejected}");
     assert_eq!(page.layout(100, 50, 1.0).unwrap().nodes[0].text, "n 1");
+}
+
+/// Gboard composes every Latin word: the value must reach the page while composing, and a
+/// blur must keep a composition the IME reopened.
+#[test]
+fn composed_text_reaches_the_page_and_survives_blur_through_input_requests() {
+    let module = source(
+        "function render(){const name=useLocal('name','');return h('column',{},h('input',{key:'name',bind:name}),h('button',{key:'go',disabled:!name.value,onClick(){}},'Say '+name.value))}",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    let frame = page.layout(300, 200, 1.0).unwrap();
+    let id = frame.nodes[1].identity.clone();
+    let ask = |page: &mut ViewSession, request: serde_json::Value| -> serde_json::Value {
+        serde_json::from_str(&page.input_request(&request.to_string()).unwrap()).unwrap()
+    };
+    let generation = page.generation();
+    let token = ask(
+        &mut page,
+        serde_json::json!({"op":"focus","identity":id,"generation":generation}),
+    )["token"]
+        .clone();
+    let edit = |edits: serde_json::Value| serde_json::json!({"op":"edit","identity":id,"token":token,"submit":false,"edits":edits});
+    for word in ["y", "ye", "yey"] {
+        let reply = ask(
+            &mut page,
+            edit(serde_json::json!([{"op":"replace","text":word,"cursor":1,"composing":true}])),
+        );
+        assert_eq!(reply["needs_view_render"], true, "{word}");
+    }
+    let shown = page.prepare_native(300, 200, 1.0, false, None, Ok).unwrap();
+    let button = shown.nodes.iter().find(|n| n.tag == "button").unwrap();
+    assert_eq!(
+        button.text, "Say yey",
+        "the composing value reached the page"
+    );
+    assert!(button.on_click.is_some(), "and enabled its button");
+    // Commit "hellos", then backspaces reopen the word as a composition "hell"; blur keeps it.
+    ask(
+        &mut page,
+        edit(
+            serde_json::json!([{"op":"finish_composition"},{"op":"selection","anchor":0,"focus":3},
+        {"op":"replace","text":"hellos","cursor":1,"composing":false}]),
+        ),
+    );
+    page.prepare_native(300, 200, 1.0, false, None, Ok).unwrap();
+    ask(
+        &mut page,
+        edit(serde_json::json!([{"op":"composition","start":0,"end":6},
+        {"op":"replace","text":"hell","cursor":1,"composing":true}])),
+    );
+    ask(
+        &mut page,
+        serde_json::json!({"op":"blur","identity":id,"token":token}),
+    );
+    let blurred = page.prepare_native(300, 200, 1.0, false, None, Ok).unwrap();
+    assert_eq!(blurred.nodes[1].text, "hell");
+    assert_eq!(
+        blurred
+            .nodes
+            .iter()
+            .find(|n| n.tag == "button")
+            .unwrap()
+            .text,
+        "Say hell"
+    );
 }

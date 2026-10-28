@@ -71,7 +71,7 @@ async function elements(schema) {
     out.push(facts.join(' '), '');
     if (element.binding) {
       const { type, event } = element.binding;
-      out.push(`Binding: \`bind={local}\` with a \`useLocal<${type}>\` cell, or \`value\` plus \`${event}(value: ${type})\`; not both.`, '');
+      out.push(`Binding: \`bind={local}\` with a \`useLocal<${type}>\` cell, or \`value\` plus \`${event}(value: ${type})\`; not both.${event === 'onInput' ? ' `onInput` runs on every value change, a composition included.' : ''}`, '');
     }
     const props = Object.entries(element.props);
     if (props.length) out.push(table(['Prop', 'Type', 'Required'], props.map(([prop, entry]) => [code(prop), code(entry.type), entry.required ? 'yes' : ''])), '');

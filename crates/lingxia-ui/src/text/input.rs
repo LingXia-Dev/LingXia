@@ -153,12 +153,22 @@ impl Editor {
         let mut next = self.clone();
         let mut input = None;
         for edit in edits {
+            // Leaving finishes the composition: Logic hears the composed text before blur
+            // shows the controlled value, which Logic then answers with.
+            if matches!(edit, Edit::Blur) && next.composition.take().is_some() {
+                let text = next.visual.raw_text().to_owned();
+                if text != next.published {
+                    next.published = text.clone();
+                    input = Some(text);
+                }
+            }
             let before = next.history_point();
             let composing = next.composition.is_some();
-            let publish = next.edit(edit.clone())?;
+            next.edit(edit.clone())?;
             next.record_edit(edit, before, composing, Instant::now());
+            // Every value change is input, composing or not, as DOM `input` events are.
             let text = next.visual.raw_text();
-            if publish && next.composition.is_none() && text != next.published {
+            if next.focused && text != next.published {
                 next.published = text.into();
                 input = Some(next.published.clone());
             }
@@ -493,7 +503,8 @@ mod tests {
         let cancelled = c.edit(Edit::Undo).unwrap();
         assert_eq!(cancelled.snapshot.text, "a");
         assert_eq!(cancelled.snapshot.composition, None);
-        assert_eq!(cancelled.input, None);
+        // The preedit reached input as it changed, so dropping it is input too.
+        assert_eq!(cancelled.input.as_deref(), Some("a"));
         assert_eq!(c.edit(Edit::Undo).unwrap().snapshot.text, "");
         c.edit(Edit::Redo).unwrap();
         c.replace("ni", true);
@@ -589,9 +600,10 @@ mod tests {
     }
 
     #[test]
-    fn chinese_preedit_is_private_until_commit_and_echo_cannot_interrupt_it() {
+    fn chinese_preedit_reaches_input_as_it_changes_and_echo_cannot_interrupt_it() {
         let mut client = Client::new("你好");
-        assert_eq!(client.replace("sh", true).input, None);
+        // As DOM `input` events do, each composition update is input.
+        assert_eq!(client.replace("sh", true).input.as_deref(), Some("你好sh"));
         assert_eq!(
             client.replace("shi", true).snapshot.composition,
             Some([2, 5])
@@ -668,15 +680,10 @@ mod tests {
         assert_eq!(client.editor.snapshot().selection, [2, 3]);
         assert_eq!(client.replace("\u{300}", false).snapshot.text, "ae\u{300}z");
         client.edit(Edit::Composition { start: 3, end: 2 }).unwrap();
-        assert_eq!(client.replace("\u{302}", true).snapshot.text, "ae\u{302}z");
-        assert_eq!(
-            client
-                .edit(Edit::FinishComposition)
-                .unwrap()
-                .input
-                .as_deref(),
-            Some("ae\u{302}z")
-        );
+        let composed = client.replace("\u{302}", true);
+        assert_eq!(composed.snapshot.text, "ae\u{302}z");
+        assert_eq!(composed.input.as_deref(), Some("ae\u{302}z"));
+        assert_eq!(client.edit(Edit::FinishComposition).unwrap().input, None);
     }
 
     #[test]
@@ -755,14 +762,14 @@ mod tests {
             .unwrap();
         assert_eq!(deleted.snapshot.text, "中文");
         assert_eq!(deleted.snapshot.composition, Some([0, 2]));
-        assert_eq!(deleted.input, None);
+        assert_eq!(deleted.input.as_deref(), Some("中文"));
         assert_eq!(
             client
                 .edit(Edit::FinishComposition)
                 .unwrap()
                 .input
                 .as_deref(),
-            Some("中文")
+            None
         );
     }
 
@@ -828,7 +835,11 @@ mod tests {
             .editor
             .apply_batch(&edits, &mut client.fonts, &mut client.layouts)
             .unwrap();
-        assert_eq!(change.input.as_deref(), Some("你"));
+        assert_eq!(
+            change.input.as_deref(),
+            Some("你hao"),
+            "the batch's last value"
+        );
         assert_eq!(change.snapshot.text, "你hao");
         assert_eq!(change.snapshot.composition, Some([1, 4]));
         let before = client.editor.snapshot();
@@ -848,14 +859,7 @@ mod tests {
             Error::InvalidOffset
         );
         assert_eq!(client.editor.snapshot(), before);
-        assert_eq!(
-            client
-                .edit(Edit::FinishComposition)
-                .unwrap()
-                .input
-                .as_deref(),
-            Some("你hao")
-        );
+        assert_eq!(client.edit(Edit::FinishComposition).unwrap().input, None);
         assert_eq!(
             client
                 .editor
@@ -872,18 +876,36 @@ mod tests {
     }
 
     #[test]
-    fn clearing_a_composing_region_publishes_the_pending_text_once() {
+    fn a_composition_publishes_each_value_once() {
         let mut client = Client::new("a");
-        assert_eq!(client.replace("中", true).input, None);
+        assert_eq!(client.replace("中", true).input.as_deref(), Some("a中"));
         assert_eq!(
             client
                 .edit(Edit::Composition { start: 1, end: 1 })
                 .unwrap()
-                .input
-                .as_deref(),
-            Some("a中")
+                .input,
+            None
         );
         assert_eq!(client.edit(Edit::FinishComposition).unwrap().input, None);
+    }
+
+    #[test]
+    fn blur_finishes_a_reopened_composition_and_keeps_what_logic_was_told() {
+        // "hellos" committed, then backspaces reopen the word: the IME composes "hell".
+        let mut client = Client::new("");
+        assert_eq!(
+            client.replace("hellos", false).input.as_deref(),
+            Some("hellos")
+        );
+        client.edit(Edit::Value("hellos".into())).unwrap();
+        client.edit(Edit::Composition { start: 0, end: 6 }).unwrap();
+        assert_eq!(client.replace("hell", true).input.as_deref(), Some("hell"));
+        // Logic answers with the composed value before or after the blur; either way it stays.
+        client.edit(Edit::Value("hell".into())).unwrap();
+        let blurred = client.edit(Edit::Blur).unwrap();
+        assert_eq!(blurred.snapshot.composition, None);
+        assert_eq!(blurred.snapshot.text, "hell");
+        assert_eq!(blurred.input, None, "already published while composing");
     }
 
     #[test]

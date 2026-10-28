@@ -117,7 +117,7 @@ Children: none. May sit inside a composed `<button>` or `<checkbox>`.
 
 Children: none. Not allowed inside a composed `<button>` or `<checkbox>`.
 
-Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput(value: string)`; not both.
+Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput(value: string)`; not both. `onInput` runs on every value change, a composition included.
 
 | Prop | Type | Required |
 | --- | --- | --- |
@@ -141,7 +141,7 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput
 
 Children: none. Not allowed inside a composed `<button>` or `<checkbox>`.
 
-Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput(value: string)`; not both.
+Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput(value: string)`; not both. `onInput` runs on every value change, a composition included.
 
 | Prop | Type | Required |
 | --- | --- | --- |
@@ -165,7 +165,7 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput
 
 Children: none. Not allowed inside a composed `<button>` or `<checkbox>`.
 
-Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput(value: string)`; not both.
+Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput(value: string)`; not both. `onInput` runs on every value change, a composition included.
 
 | Prop | Type | Required |
 | --- | --- | --- |
