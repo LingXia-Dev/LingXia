@@ -61,6 +61,8 @@ spec('cancel an active response, finish Logic cleanup, and send again', {
     await expect.poll(async () => (await page.data()).isStreaming).toBe(true);
     // Freeze after the first real chunk. Natural completion must not be able
     // to satisfy the cancellation assertions while we wait for bridge traffic.
+    // The live bubble follows the View's stream state, a frame after Logic's flag.
+    await page.view.testId('stream-live').waitFor({ state: 'attached', timeout: 5_000 });
     let partial = '';
     for (let tick = 0; tick < 20 && !/[a-z]/i.test(partial); tick++) {
       await app.clock.tick(50);
