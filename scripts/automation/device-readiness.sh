@@ -187,7 +187,15 @@ for entry in "${runs[@]}"; do
   [[ -n "$device" ]] && dev+=(--device "$device")
   wake
   echo "Starting $app on $platform"
-  if ! (cd "$project" && "$lingxia" "${dev[@]}") >"$result/dev.log" 2>&1; then
+  started=0
+  (cd "$project" && "$lingxia" "${dev[@]}") >"$result/dev.log" 2>&1 && started=1
+  # The round's cold first build can outlast the dev start timeout; the second
+  # start finds the target warm.
+  if [[ $started == 0 ]] && grep -q "was not ready within" "$result/dev.log"; then
+    echo "$app timed out starting on a cold build; starting once more"
+    (cd "$project" && "$lingxia" "${dev[@]}") >>"$result/dev.log" 2>&1 && started=1
+  fi
+  if [[ $started == 0 ]]; then
     echo "$app did not start; see $result/dev.log" >&2
     status=1
     summary+="{\"app\":\"$app\",\"started\":false},"
