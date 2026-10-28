@@ -137,7 +137,11 @@ impl<A: PlatformAdapter> Inner<A> {
                 self.lifecycle.invalidate_surface();
                 main.dirty = true;
                 // A kept hidden frame no longer matches; catch up so a return can show at once.
-                if !main.visible && main.presented_environment.is_some() {
+                // A parked page left: its last frame stays as it was, for automation to read.
+                if !main.visible
+                    && main.presented_environment.is_some()
+                    && !main.interaction.parked()
+                {
                     main.catch_up = true;
                 }
             }
@@ -147,7 +151,7 @@ impl<A: PlatformAdapter> Inner<A> {
             let background = !main.visible;
             let surface = if main.visible {
                 self.lifecycle.frame()
-            } else if main.catch_up {
+            } else if main.catch_up && !main.interaction.parked() {
                 self.lifecycle.frame_hidden()
             } else {
                 None

@@ -961,6 +961,45 @@ fn a_hidden_page_catches_up_when_its_environment_changes_without_a_new_target() 
 }
 
 #[test]
+fn a_parked_page_renders_nothing_after_it_left() {
+    let worker = ViewWorker::spawn("test-park-renders").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source("function render({env}){return h('text',{testId:'t'},`page ${env.theme}`)}"),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let presents = || host.adapter().log.lock().unwrap().presented.len();
+    let before = presents();
+    // Leaving: hidden, then parked; the host keeps pushing context (appearance, surface).
+    host.set_visible(false);
+    host.park();
+    platform.settle(&[&host]);
+    host.adapter()
+        .environment
+        .lock()
+        .unwrap()
+        .as_mut()
+        .unwrap()
+        .value["theme"] = serde_json::json!("dark");
+    host.surface_changed();
+    host.request_frame();
+    platform.settle(&[&host]);
+    platform.advance(Duration::from_secs(2));
+    platform.settle(&[&host]);
+    assert_eq!(presents(), before, "parking renders nothing");
+    let text = host
+        .automation_request(&serde_json::json!({"op": "query", "css": "[data-testid=\"t\"]"}))
+        .unwrap();
+    assert_eq!(
+        text["text"], "page light",
+        "automation reads the frame it left with"
+    );
+}
+
+#[test]
 fn a_click_that_changes_the_look_logs_one_input_line() {
     let worker = ViewWorker::spawn("test-click-look").unwrap();
     let platform = Platform::new(&[&worker]);
@@ -1688,6 +1727,117 @@ fn automation_calls_page_actions_and_reads_data_once_the_frame_commits() {
         serde_json::json!({"v":2,"kind":"res","id":id,"ok":false,"error":{"code":"E_LIMIT","message":"too many"}}).to_string(),
     );
     assert_eq!(poll(&failing["call"]).unwrap_err(), "E_LIMIT: too many");
+}
+
+#[test]
+fn platform_edits_and_picks_reach_the_bound_locals() {
+    let worker = ViewWorker::spawn("test-fill-select").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){const name=useLocal('name',''),plan=useLocal('plan','');return h('column',{},h('input',{testId:'name',bind:name,accessibilityLabel:'Name'}),h('select',{testId:'plan',bind:plan,accessibilityLabel:'Plan',options:[{value:'a',label:'A'},{value:'b',label:'B'}]}),h('text',{testId:'out'},`name=${name.value} plan=${plan.value}`))}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    // What a platform editor does for an automation fill: focus, replace, and on a pick, select.
+    let ask = |request: serde_json::Value| -> serde_json::Value {
+        let (tx, rx) = channel();
+        host.input(request.to_string(), move |reply| {
+            let _ = tx.send(reply);
+        });
+        platform.settle(&[&host]);
+        serde_json::from_str(&rx.recv_timeout(Duration::from_secs(5)).unwrap().unwrap()).unwrap()
+    };
+    let snapshot: serde_json::Value = serde_json::from_str(&host.snapshot().unwrap().json).unwrap();
+    let node = |test_id: &str| {
+        snapshot["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|n| n["test_id"] == test_id)
+            .unwrap()
+            .clone()
+    };
+    let (name, plan) = (node("name"), node("plan"));
+    let generation = snapshot["generation"].clone();
+    let token =
+        ask(serde_json::json!({"op":"focus","identity":name["identity"],"generation":generation}))
+            ["token"]
+            .clone();
+    ask(
+        serde_json::json!({"op":"edit","identity":name["identity"],"token":token,"submit":false,
+        "edits":[{"op":"replace","text":"Ada","cursor":1,"composing":false}]}),
+    );
+    host.request_frame();
+    platform.settle(&[&host]);
+    let generation: serde_json::Value = serde_json::from_str::<serde_json::Value>(
+        &host.snapshot().unwrap().json,
+    )
+    .unwrap()["generation"]
+        .clone();
+    ask(
+        serde_json::json!({"op":"select","identity":plan["identity"],"generation":generation,"index":1}),
+    );
+    host.request_frame();
+    platform.settle(&[&host]);
+    let out = host
+        .automation_request(&serde_json::json!({"op": "query", "css": "[data-testid=\"out\"]"}))
+        .unwrap();
+    assert_eq!(out["text"], "name=Ada plan=b");
+}
+
+#[test]
+fn abandoned_automation_calls_expire_instead_of_exhausting_the_slots() {
+    if !bounded_jobs() {
+        return;
+    }
+    let worker = ViewWorker::spawn("test-automation-expiry").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &(source("function render({data}){return h('text',{},`n ${data.n}`)}")
+            + "\nglobalThis.__lingxiaActionCatalog={__names:['slow'],__modes:{slow:'call'}};"),
+        true,
+    );
+    host.set_visible(true);
+    let connection = ConnectionTicket::new(1);
+    host.connect(connection, "nonce".into());
+    for frame in [
+        serde_json::json!({"v":2,"kind":"helloAck","nonce":"nonce","protocol":2,"sessionId":"s"}),
+        serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"n":0}}),
+        serde_json::json!({"v":2,"kind":"ready","sessionId":"s"}),
+    ] {
+        host.receive(connection, frame.to_string());
+    }
+    platform.settle(&[&host]);
+    // Logic never answers and no caller polls: 100 timed-out calls in a row.
+    let mut first = None;
+    for _ in 0..100 {
+        let started = host
+            .automation_request(&serde_json::json!({"op": "action", "name": "slow"}))
+            .unwrap();
+        first.get_or_insert(started["call"].clone());
+    }
+    let expired = host
+        .automation_request(&serde_json::json!({"op": "result", "call": first}))
+        .unwrap_err();
+    assert!(
+        expired.starts_with("E_UNSUPPORTED") && expired.contains("expired"),
+        "{expired}"
+    );
+    let data = host
+        .automation_request(&serde_json::json!({"op": "data"}))
+        .unwrap();
+    platform.settle(&[&host]);
+    assert_eq!(
+        host.automation_request(&serde_json::json!({"op": "result", "call": data["call"]}))
+            .unwrap()["value"],
+        serde_json::json!({"n": 0}),
+        "a new call still gets a slot"
+    );
 }
 
 #[test]

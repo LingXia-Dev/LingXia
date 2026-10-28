@@ -236,7 +236,7 @@ struct Main<F> {
     /// frame prepared meanwhile would run before the View they change.
     activating: u32,
     /// Automation `action`/`data` calls by id; `Some` once answered.
-    automation_calls: std::collections::HashMap<u64, Option<Result<serde_json::Value, String>>>,
+    automation_calls: std::collections::BTreeMap<u64, Option<Result<serde_json::Value, String>>>,
     next_automation_call: u64,
     /// User activations reported dropped, and clicks that ran a callback, for frame metrics.
     dropped_activations: u64,
@@ -456,7 +456,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
         let hidden = {
             let mut main = self.inner.main();
             main.presented_environment = None;
-            main.catch_up = !main.visible;
+            main.catch_up = !main.visible && !main.interaction.parked();
             main.catch_up
         };
         // A hidden page's catch-up frame runs as background work, behind the shown page's frame.
@@ -842,10 +842,9 @@ impl<A: PlatformAdapter> ViewHost<A> {
         if main.interaction.parked() {
             return Err("E_PAGE_NOT_READY: the page is parked (it left the stack)".into());
         }
-        if main.automation_calls.len() >= 64 {
-            return Err(
-                "E_UNSUPPORTED: more than 64 automation calls awaiting their result".into(),
-            );
+        // A caller that gave up never polls again: past the cap the oldest call expires.
+        while main.automation_calls.len() >= 64 {
+            main.automation_calls.pop_first();
         }
         main.next_automation_call += 1;
         let call = main.next_automation_call;
@@ -895,7 +894,9 @@ impl<A: PlatformAdapter> ViewHost<A> {
         let mut main = self.inner.main();
         let settled = !main.dirty && !main.busy && main.activating == 0;
         match main.automation_calls.get(&call) {
-            None => Err(format!("E_UNSUPPORTED: no automation call {call}")),
+            None => Err(format!(
+                "E_UNSUPPORTED: automation call {call} expired or was never made"
+            )),
             Some(Some(Err(_))) => Err(main
                 .automation_calls
                 .remove(&call)
