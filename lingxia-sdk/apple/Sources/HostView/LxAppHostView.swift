@@ -92,6 +92,8 @@ public final class LxAppHostView: LxAppPlatformView {
 
     /// The session currently mounted in this host view.
     public private(set) var mountedSession: LxAppSession?
+    /// The hosted GPU page's view, in place of a WebView.
+    private var gpuView: LxAppPlatformView?
 
     /// The app ID currently loaded in this host view.
     public private(set) var appId: String?
@@ -197,6 +199,8 @@ public final class LxAppHostView: LxAppPlatformView {
     ) {
         clearEventObservers()
         self.webView?.removeFromSuperview()
+        gpuView?.removeFromSuperview()
+        gpuView = nil
         WebViewManager.configureWebViewTransparency(wv, transparent: false)
         WebViewManager.hideLxAppScrollIndicators(wv)
         let resolvedAppId = appId ?? wv.appId
@@ -224,6 +228,45 @@ public final class LxAppHostView: LxAppPlatformView {
         }
     }
 
+    /// A GPU page renders natively: host its view where a WebView would go.
+    private func attachGpu(token: Int64, appId: String, path: String, reportsPageShow: Bool) {
+        clearEventObservers()
+        webView?.removeFromSuperview()
+        webView = nil
+        gpuView?.removeFromSuperview()
+        let view = GpuPages.view(for: token)
+        view.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(view)
+        NSLayoutConstraint.activate([
+            view.leadingAnchor.constraint(equalTo: leadingAnchor),
+            view.trailingAnchor.constraint(equalTo: trailingAnchor),
+            view.topAnchor.constraint(equalTo: topAnchor),
+            view.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+        gpuView = view
+        self.appId = appId
+        currentPath = path
+        canGoBack = false
+        if reportsPageShow { lingxia.onPageShow(appId, path) }
+    }
+
+    /// Host the page instance's WebView or GPU view; false while neither exists yet.
+    private func attachPage(
+        _ pageInstanceId: String,
+        session: LxAppSession,
+        reportsPageShow: Bool
+    ) -> Bool {
+        if let webView = WebViewManager.findWebView(pageInstanceId: pageInstanceId) {
+            attach(webView, appId: session.appId, path: session.path, reportsPageShow: reportsPageShow)
+        } else {
+            let token = GpuPages.token(appId: session.appId, sessionId: session.id.rawValue, pageInstanceId: pageInstanceId)
+            guard token != 0 else { return false }
+            attachGpu(token: token, appId: session.appId, path: session.path, reportsPageShow: reportsPageShow)
+        }
+        mountedSession = session
+        return true
+    }
+
     /// Mount an existing controller session into this host view.
     public func mount(
         sessionId: LxAppSessionID,
@@ -245,18 +288,11 @@ public final class LxAppHostView: LxAppPlatformView {
     ) async throws {
         if case .string(let pageInstanceId)? = session.userInfo["pageInstanceId"] {
             for _ in 0..<Self.mountRetryCount {
-                if let webView = WebViewManager.findWebView(pageInstanceId: pageInstanceId) {
-                    mountedSession = session
-                    // The caller named the instance, so its lifecycle travels
-                    // the instance channel below. Reporting the bare route on
-                    // top of that is unaddressable for a surface-isolated
-                    // instance, which never resolves by path.
-                    attach(
-                        webView,
-                        appId: session.appId,
-                        path: session.path,
-                        reportsPageShow: false
-                    )
+                // The caller named the instance, so its lifecycle travels the
+                // instance channel below. Reporting the bare route on top of that
+                // is unaddressable for a surface-isolated instance, which never
+                // resolves by path.
+                if attachPage(pageInstanceId, session: session, reportsPageShow: false) {
                     _ = notifyPageInstanceMounted(pageInstanceId)
                     if notifyVisibleOnMount {
                         _ = notifyPageInstanceVisible(pageInstanceId)
@@ -285,10 +321,7 @@ public final class LxAppHostView: LxAppPlatformView {
                 sessionId: session.id.rawValue
             )
 
-            if let pageInstanceId,
-               let webView = WebViewManager.findWebView(pageInstanceId: pageInstanceId) {
-                mountedSession = session
-                attach(webView, appId: session.appId, path: session.path)
+            if let pageInstanceId, attachPage(pageInstanceId, session: session, reportsPageShow: true) {
                 _ = notifyPageInstanceMounted(pageInstanceId)
                 if notifyVisibleOnMount {
                     _ = notifyPageInstanceVisible(pageInstanceId)
