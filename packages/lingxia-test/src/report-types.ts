@@ -195,6 +195,8 @@ export interface CaseRecord {
   network_calls?: FailureNetworkCall[];
   /** The action trace hit its bounded record limit. */
   trace_truncated?: boolean;
+  /** Acts a GPU page dropped (its control or option went away) and the locator resent. */
+  act_dropped?: number;
   /** Page renderers the spec's locators read (`gpu`, `webview`); absent when it read no page. */
   renderers?: string[];
   /** Gestures injected, with the path each was delivered through. */

@@ -110,6 +110,8 @@ export class LiveFixture implements Fixture {
   readonly observed = new Set<string>();
   readonly assertions: AssertionRecord[] = [];
   readonly attachments: AttachmentRef[] = [];
+  /** Acts a GPU page dropped and the locator resent. */
+  actDropped = 0;
   /** Page renderers this spec's locators read. */
   readonly renderers = new Set<string>();
   /** Gestures this spec injected, with the delivery path of each. */
@@ -1309,16 +1311,17 @@ export class LiveFixture implements Fixture {
       return { source: frame.file, line: frame.line, column: frame.column };
     };
     // Resolved on each call, like the rest of a fixture app.
+    const counted = <T,>(act: () => Promise<T>) => this.countDropped(act);
     const lazyPage: PageLike = {
       query: async (options) => this.noteRenderer(await page().query(options) as QueryMatch),
-      click: (options) => page().click(options),
-      fill: (options) => page().fill(options),
-      press: (options) => page().press(options),
-      type: (options) => page().type(options),
+      click: (options) => counted(() => page().click(options)),
+      fill: (options) => counted(() => page().fill(options)),
+      press: (options) => counted(() => page().press(options)),
+      type: (options) => counted(() => page().type(options)),
       eval: (options) => page().eval(options),
-      scrollTo: (options) => page().scrollTo(options),
-      selectOption: (options) => page().selectOption(options),
-      dblclick: (options) => page().dblclick(options),
+      scrollTo: (options) => counted(() => page().scrollTo(options)),
+      selectOption: (options) => counted(() => page().selectOption(options)),
+      dblclick: (options) => counted(() => page().dblclick(options)),
     };
     const input = lazyDriver(() => ({ owner: page() as object, value: page() }), this, "page.") as PageDriver;
     const target = bound === undefined ? {} : { page: bound };
@@ -1365,6 +1368,16 @@ export class LiveFixture implements Fixture {
       refreshIndicator: () => gestures.refreshIndicator(),
       viewport: () => gestures.pageViewport(),
     };
+  }
+
+  /** Count acts a GPU page dropped (the locator resends them). */
+  private async countDropped<T>(act: () => Promise<T>): Promise<T> {
+    try {
+      return await act();
+    } catch (error) {
+      if (matchesErrorCode(error, "E_ACT_DROPPED")) this.actDropped += 1;
+      throw error;
+    }
   }
 
   private noteRenderer(match: QueryMatch): QueryMatch {

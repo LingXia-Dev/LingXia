@@ -181,7 +181,9 @@ test("an act a GPU page dropped is resolved and sent again within the locator's 
   };
   installFakeHost(world);
   spec("dropped once", (t) => t.app.view.testId("plan").click({ timeout: 500 }));
-  assert.equal((await globalThis.__LINGXIA_TEST__.run()).passed, 1);
+  const report = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(report.passed, 1);
   assert.equal(calls, 2);
   assert.equal(element.clicked, 1);
+  assert.equal(report.cases[0].act_dropped, 1);
 });

@@ -1348,6 +1348,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     }
     if (fixture.observed.size > 0) record.observed = [...fixture.observed].sort();
     if (fixture.renderers.size > 0) record.renderers = [...fixture.renderers].sort();
+    if (fixture.actDropped > 0) record.act_dropped = fixture.actDropped;
     if (fixture.gestures.length > 0) {
       record.gestures = fixture.gestures.map(({ api, input, delivered, events, durationMs }) =>
         ({ api, input, delivered, events, duration_ms: Math.round(durationMs) }));
