@@ -19,8 +19,8 @@ const APPS = {
   react: { lxapp: join(examples, 'lingxia-showcase/lxapp') },
   gpu: { lxapp: join(examples, 'lingxia-showcase-gpu/lxapp') },
 };
-const USER_PATH = /\.(click|dblclick|fill|type|press|selectOption|swipe|drag|fling|pullToRefresh|touch)\(/;
-const ACTION_STEPS = /^(page\.(click|dblclick|fill|type|press|selectOption)|gesture\.|finger\.)/;
+const USER_PATH = /\.(click|dblclick|fill|type|press|selectOption|swipe|drag|fling|pullToRefresh|touch|tap)\(/;
+const ACTION_STEPS = /^(page\.(click|dblclick|fill|type|press|selectOption)|gesture\.|finger\.|chrome\.tap)/;
 
 const json = (path) => JSON.parse(readFileSync(path, 'utf8'));
 

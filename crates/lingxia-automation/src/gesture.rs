@@ -108,6 +108,12 @@ struct PageOptions {
 }
 
 #[derive(Deserialize, Default)]
+struct ChromeOptions {
+    #[serde(default)]
+    scope: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
 struct ViewportOptions {
     #[serde(default)]
     page: Option<String>,
@@ -222,6 +228,19 @@ impl JSPageGesture {
             &ctx,
             &serde_json::json!({ "left": left, "top": top, "width": width, "height": height }),
         )
+    }
+
+    /// Pressable host chrome `[{label, role, scope, selected, bounds}]`, from
+    /// the host's own view tree; `bounds` are window points.
+    #[js_method]
+    async fn chrome(&self, ctx: JSContext, options: Optional<JSObject>) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
+        let options: ChromeOptions = parse(options.0, "gesture.chrome")?;
+        let elements = platform()?
+            .chrome_elements(options.scope)
+            .await
+            .map_err(platform_err)?;
+        json_to_js(&ctx, &serde_json::json!(elements))
     }
 
     /// The devices this host can imitate (`touch`, `mouse`, `trackpad`).

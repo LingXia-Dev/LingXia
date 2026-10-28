@@ -13,6 +13,7 @@ import type {
   ClockRunAllOptions,
   ClockState,
   ClockTime,
+  ChromeElement,
   DesktopDriver,
   GestureDirection,
   GestureInput,
@@ -524,6 +525,24 @@ export interface TestFinger {
   cancel(): Promise<GestureTrace>;
 }
 
+/** What `t.app.chrome.tap` presses: a label, or a label in one area. */
+export type ChromeTarget = string | { label: string; scope?: string };
+
+/**
+ * Host chrome (`t.app.chrome`): found through the host's own view or
+ * accessibility tree and pressed with a real tap at its bounds.
+ */
+export interface TestChrome {
+  elements(options?: { scope?: string }): Promise<ChromeElement[]>;
+  /** Waits (5 s) for exactly one element with the label, then taps it. */
+  tap(target: ChromeTarget, options?: { timeout?: number }): Promise<GestureTrace>;
+}
+
+/** The tab bar (`t.app.tabBar`); on a desktop shell, the app's sidebar rows. */
+export interface TestTabBar {
+  tap(label: string, options?: { timeout?: number }): Promise<GestureTrace>;
+}
+
 /** Host-window gestures (`t.app.gesture`), in window points. */
 export interface TestGesture {
   swipe(options: Omit<SwipeOptions, "from" | "to"> & { from: readonly [number, number]; to: readonly [number, number] }): Promise<GestureTrace>;
@@ -886,6 +905,10 @@ export interface TestApp {
   readonly window: TestWindow;
   /** Real gestures on the host window: edge back, tab bar. */
   readonly gesture: TestGesture;
+  /** Host chrome by label: navigation bar buttons, capsule, sidebar rows. */
+  readonly chrome: TestChrome;
+  /** Tab bar items by label. */
+  readonly tabBar: TestTabBar;
   /** The app's Logic runtime: `eval(fn)`. */
   readonly logic: TestLogic;
   /** The page stack; actions wait for the landed page's `onReady` unless you pass `waitUntil`. */

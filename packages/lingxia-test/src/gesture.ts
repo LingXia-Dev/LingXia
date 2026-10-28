@@ -1,4 +1,5 @@
 import type {
+  ChromeElement,
   GestureDirection,
   GestureInput,
   GestureOptions,
@@ -233,6 +234,36 @@ export class Gestures {
       result.maxOffset = maxOffset;
       result.refreshed = phases.includes("refreshing");
       return result;
+    });
+  }
+
+  chromeElements(scope?: string): Promise<ChromeElement[]> {
+    return this.scope.act("chrome.elements", scope ?? "", () => this.scope.driver().chrome(scope ? { scope } : {}));
+  }
+
+  /** Wait for exactly one chrome element with the label in `scopes`, then tap its center. */
+  chromeTap(label: string, scopes: readonly string[] | undefined, timeout = 5_000): Promise<GestureTrace> {
+    return this.scope.act("chrome.tap", label, async () => {
+      const until = Date.now() + timeout;
+      let seen: ChromeElement[] = [];
+      for (;;) {
+        const all = await this.scope.driver().chrome({});
+        seen = all.filter((e) => e.label === label && (!scopes || scopes.includes(e.scope)));
+        if (seen.length === 1) break;
+        if (Date.now() >= until) {
+          const near = all.filter((e) => !scopes || scopes.includes(e.scope)).map((e) => `${e.scope}:${JSON.stringify(e.label)}`);
+          throw new Error(`${seen.length} chrome elements are labelled ${JSON.stringify(label)}${scopes ? ` in ${scopes.join("/")}` : ""}; present: ${near.slice(0, 20).join(", ") || "none"}`);
+        }
+        await sleep(150);
+      }
+      const [x, y, w, h] = seen[0]!.bounds;
+      const at: Point = [x + w / 2, y + h / 2];
+      const input = this.scope.driver().inputs().includes("touch") ? "touch" : "mouse";
+      const result = await this.scope.driver().perform({
+        shape: { kind: "line", from: at, to: at, durationMs: 50, holdMs: 0 }, input, window: true,
+      });
+      this.scope.record({ api: "chrome.tap", ...trace(result) });
+      return trace(result);
     });
   }
 

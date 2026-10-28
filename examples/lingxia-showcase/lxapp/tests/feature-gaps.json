@@ -2,21 +2,13 @@
   "$comment": "Features no spec drives yet, each with why; feature-coverage.mjs fails on any other uncovered one and on a gap that is covered now.",
   "gaps": {
     "react": {
-      "app:tabBar": "tapping a tab needs the host to expose tab item geometry to automation",
-      "app:tabBar.presentation=immersive": "tapping a tab needs the host to expose tab item geometry to automation",
-      "app:tabBar.style": "tapping a tab needs the host to expose tab item geometry to automation",
-      "page:navigationBar.style": "no spec yet reaches a page with this config by a tap and checks the chrome it shows; ANDROID-PAGE-CONFIG-001 checks it through Logic and the Android view tree",
-      "page:navigationStyle=custom": "no spec yet reaches a page with this config by a tap and checks the chrome it shows; ANDROID-PAGE-CONFIG-001 checks it through Logic and the Android view tree",
-      "page:navigationStyle=default": "no spec yet reaches a page with this config by a tap and checks the chrome it shows; ANDROID-PAGE-CONFIG-001 checks it through Logic and the Android view tree",
+      "app:tabBar.style": "its colours are not observable to automation: runtime info reports only runtime style overrides",
+      "page:navigationBar.style": "its colours are not observable to automation: runtime info reports only runtime style overrides",
       "page:pageOrientation=landscape": "rotating to a landscape-only page needs a device orientation driver in specs"
     },
     "gpu": {
-      "app:tabBar": "tapping a tab needs the host to expose tab item geometry to automation",
-      "app:tabBar.presentation=immersive": "tapping a tab needs the host to expose tab item geometry to automation",
-      "app:tabBar.style": "tapping a tab needs the host to expose tab item geometry to automation",
-      "page:navigationBar.style": "no spec yet reaches a page with this config by a tap and checks the chrome it shows; ANDROID-PAGE-CONFIG-001 checks it through Logic and the Android view tree",
-      "page:navigationStyle=custom": "no spec yet reaches a page with this config by a tap and checks the chrome it shows; ANDROID-PAGE-CONFIG-001 checks it through Logic and the Android view tree",
-      "page:navigationStyle=default": "no spec yet reaches a page with this config by a tap and checks the chrome it shows; ANDROID-PAGE-CONFIG-001 checks it through Logic and the Android view tree",
+      "app:tabBar.style": "its colours are not observable to automation: runtime info reports only runtime style overrides",
+      "page:navigationBar.style": "its colours are not observable to automation: runtime info reports only runtime style overrides",
       "page:pageOrientation=auto": "rotating a page needs a device orientation driver in specs"
     }
   }

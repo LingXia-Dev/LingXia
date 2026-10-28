@@ -2223,8 +2223,21 @@ export interface RefreshIndicator {
   offset: number;
 }
 
+/** Host chrome a user can press, from the host's own view or accessibility tree. */
+export interface ChromeElement {
+  label: string;
+  role: 'tab' | 'button';
+  /** `tabBar`, `navigationBar`, `capsule`, `sidebar` or `window`. */
+  scope: string;
+  selected: boolean;
+  /** `[x, y, width, height]` in window points. */
+  bounds: [number, number, number, number];
+}
+
 /** Real pointer gestures; `E_UNSUPPORTED` where the host cannot inject them. */
 export interface PageGesture {
+  /** Pressable host chrome, optionally in one `scope`. */
+  chrome(options?: { scope?: string }): Promise<ChromeElement[]>;
   perform(options: GestureOptions): Promise<GestureResult>;
   /** The devices this host can imitate; empty where it cannot inject. */
   inputs(): GestureInput[];

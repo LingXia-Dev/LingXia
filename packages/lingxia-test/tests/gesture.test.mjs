@@ -131,3 +131,23 @@ test("edge back reports E_UNSUPPORTED with the host's reason", async () => {
   const report = await run();
   assert.equal(report.cases[0].status, "passed", JSON.stringify(report.cases[0].error));
 });
+
+test("chrome.tap finds one labelled host control and taps its center in window points", async () => {
+  const world = createWorld();
+  world.gestureHost.chrome = [
+    { label: "API", role: "tab", scope: "tabBar", selected: false, bounds: [100, 700, 80, 56] },
+    { label: "API", role: "button", scope: "navigationBar", selected: false, bounds: [0, 0, 10, 10] },
+    { label: "Back", role: "button", scope: "navigationBar", selected: false, bounds: [0, 24, 48, 48] },
+  ];
+  spec("chrome", async (t) => {
+    await t.app.tabBar.tap("API");
+    await t.app.chrome.tap("Back");
+    await t.reject(() => t.app.chrome.tap("API", { timeout: 200 }), { message: /2 chrome elements are labelled "API"/ });
+    await t.reject(() => t.app.tabBar.tap("Missing", { timeout: 200 }), { message: /present: tabBar:"API"/ });
+  });
+  installFakeHost(world);
+  const report = await run();
+  assert.equal(report.cases[0].status, "passed", JSON.stringify(report.cases[0].error));
+  assert.deepEqual(world.gestureCalls.map((c) => [c.window, c.shape.from]), [[true, [140, 728]], [true, [24, 48]]]);
+  assert.deepEqual(report.cases[0].gestures.map((g) => g.api), ["chrome.tap", "chrome.tap"]);
+});

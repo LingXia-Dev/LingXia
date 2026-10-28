@@ -507,6 +507,9 @@ pub(crate) struct AppGestureArgs {
     finger: Option<u64>,
     #[serde(default)]
     edge: Option<lingxia_platform::traits::gesture::FlingDirection>,
+    /// `chrome`: limit to one area (`tabBar`, `navigationBar`, `sidebar`, …).
+    #[serde(default)]
+    scope: Option<String>,
 }
 
 /// Real pointer gestures, the devtool half of `page.gesture`.
@@ -552,6 +555,14 @@ pub(crate) async fn perform_app_gesture(args: AppGestureArgs) -> Result<serde_js
                 .map_err(|err| err.to_string())?;
             serde_json::to_value(state).map_err(|err| err.to_string())
         }
+        "chrome" => {
+            let scope = args.scope.clone();
+            let elements = platform
+                .chrome_elements(scope)
+                .await
+                .map_err(|err| err.to_string())?;
+            serde_json::to_value(elements).map_err(|err| err.to_string())
+        }
         "edge_back" => {
             let window = match args.window {
                 Some(serde_json::Value::String(id)) => Some(id),
@@ -564,7 +575,7 @@ pub(crate) async fn perform_app_gesture(args: AppGestureArgs) -> Result<serde_js
             serde_json::to_value(result).map_err(|err| err.to_string())
         }
         other => Err(format!(
-            "unknown gesture op '{other}' (perform | indicator | edge_back)"
+            "unknown gesture op '{other}' (perform | indicator | chrome | edge_back)"
         )),
     }
 }

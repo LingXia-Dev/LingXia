@@ -8,8 +8,8 @@ use serde_json::{Value, json};
 use super::{Platform, with_env};
 use crate::error::PlatformError;
 use crate::traits::gesture::{
-    AppGesture, AppGestureRequest, AppGestureResult, FlingDirection, GestureDelivery, GestureEnd,
-    GestureInput, GestureTarget, PullRefreshIndicator,
+    AppGesture, AppGestureRequest, AppGestureResult, ChromeElement, FlingDirection,
+    GestureDelivery, GestureEnd, GestureInput, GestureTarget, PullRefreshIndicator,
 };
 
 const CLASS: &str = "com.lingxia.lxapp.APIs.LxAppGesture";
@@ -160,6 +160,16 @@ impl AppGesture for Platform {
         let reply = blocking(move || call("viewport", [&app_id, &webtag, ""], false)).await?;
         let field = |name: &str| reply[name].as_f64().unwrap_or(0.0);
         Ok([field("left"), field("top"), field("width"), field("height")])
+    }
+
+    async fn chrome_elements(
+        &self,
+        scope: Option<String>,
+    ) -> Result<Vec<ChromeElement>, PlatformError> {
+        let scope = scope.unwrap_or_default();
+        let reply = blocking(move || call("chrome", ["", &scope, ""], false)).await?;
+        serde_json::from_value(reply["elements"].clone())
+            .map_err(|e| PlatformError::Platform(format!("chrome elements: {e}")))
     }
 
     async fn pull_refresh_indicator(

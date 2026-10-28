@@ -226,6 +226,9 @@ export function createWorld(options = {}) {
         ...(finger !== undefined ? { finger } : {}) };
     },
     async viewport() { return { left: 0, top: 0, width: 400, height: 800 }; },
+    async chrome({ scope } = {}) {
+      return (gestureHost.chrome ?? []).filter((e) => !scope || e.scope === scope);
+    },
     async refreshIndicator() {
       if (!gestureHost.indicator) throw Object.assign(new Error("E_UNSUPPORTED: no indicator"), { code: "E_UNSUPPORTED" });
       return gestureHost.indicator();

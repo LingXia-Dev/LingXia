@@ -10,6 +10,7 @@ import '../../../lingxia-showcase/lxapp/tests/pages/cloud.test.js';
 import '../../../lingxia-showcase/lxapp/tests/pages/components.test.js';
 import '../../../lingxia-showcase/lxapp/tests/pages/device.test.js';
 import '../../../lingxia-showcase/lxapp/tests/pages/home.test.js';
+import '../../../lingxia-showcase/lxapp/tests/pages/host-chrome.test.js';
 import '../../../lingxia-showcase/lxapp/tests/pages/leave-guard.test.js';
 import '../../../lingxia-showcase/lxapp/tests/pages/lifecycle.test.js';
 import '../../../lingxia-showcase/lxapp/tests/pages/media-info.test.js';

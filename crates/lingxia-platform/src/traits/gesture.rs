@@ -119,6 +119,18 @@ pub struct PullRefreshIndicator {
     pub offset: f64,
 }
 
+/// Host chrome a user can press, found through the host's own view or
+/// accessibility tree; `bounds` is `[x, y, width, height]` in window points.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ChromeElement {
+    pub label: String,
+    pub role: String,
+    /// `tabBar`, `navigationBar`, `capsule`, `sidebar`, `toolbar` or `window`.
+    pub scope: String,
+    pub selected: bool,
+    pub bounds: [f64; 4],
+}
+
 /// One timed point; `at_ms` counts from the gesture's first point.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GesturePoint {
@@ -271,6 +283,17 @@ pub trait AppGesture: Send + Sync {
         let _ = target;
         Err(PlatformError::NotSupported(
             "gestures are not implemented for this platform".to_string(),
+        ))
+    }
+
+    /// Pressable host chrome, optionally limited to one `scope`.
+    async fn chrome_elements(
+        &self,
+        scope: Option<String>,
+    ) -> Result<Vec<ChromeElement>, PlatformError> {
+        let _ = scope;
+        Err(PlatformError::NotSupported(
+            "host chrome is not readable on this platform".to_string(),
         ))
     }
 

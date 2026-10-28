@@ -74,6 +74,62 @@ internal object LxAppGesture {
         JSONObject().put("error", e.message ?: e.toString()).toString()
     }
 
+    /**
+     * Host chrome a user can press (tab items, navigation bar buttons, the
+     * capsule), found in the activity's own view tree by its label: the
+     * accessible description, else its text. Pages are not searched. Each is
+     * `{label, role, scope, selected, bounds: [x, y, w, h]}` in window points.
+     */
+    @JvmStatic
+    fun chrome(appId: String, scope: String): String = try {
+        onMain {
+            val activity = presenting(appId)
+            val decor = activity.window.decorView
+            val origin = IntArray(2).also { decor.getLocationOnScreen(it) }
+            val density = activity.resources.displayMetrics.density
+            val out = JSONArray()
+            fun visit(view: View, area: String) {
+                if (!view.isShown || view is com.lingxia.lxapp.WebView || view is com.lingxia.lxapp.GpuPage) return
+                val here = when (view.javaClass.simpleName) {
+                    "TabBar" -> "tabBar"
+                    "NavigationBar" -> "navigationBar"
+                    "CapsuleButton" -> "capsule"
+                    else -> area
+                }
+                if (view.isClickable && here != "page" && (scope.isEmpty() || scope == here)) {
+                    val label = view.contentDescription?.toString()?.takeIf { it.isNotBlank() } ?: texts(view)
+                    if (label.isNotBlank()) {
+                        val at = IntArray(2).also { view.getLocationOnScreen(it) }
+                        out.put(JSONObject()
+                            .put("label", label)
+                            .put("role", if (here == "tabBar") "tab" else "button")
+                            .put("scope", here)
+                            .put("selected", view.isSelected)
+                            .put("bounds", JSONArray()
+                                .put(((at[0] - origin[0]) / density).toDouble())
+                                .put(((at[1] - origin[1]) / density).toDouble())
+                                .put((view.width / density).toDouble())
+                                .put((view.height / density).toDouble())))
+                        return
+                    }
+                }
+                if (view is ViewGroup) for (i in 0 until view.childCount) visit(view.getChildAt(i), here)
+            }
+            visit(decor, "window")
+            JSONObject().put("elements", out)
+        }.toString()
+    } catch (e: Throwable) {
+        JSONObject().put("error", e.message ?: e.toString()).toString()
+    }
+
+    /** The visible text of a view's subtree, in order. */
+    private fun texts(view: View): String = when (view) {
+        is android.widget.TextView -> view.text?.toString().orEmpty()
+        is ViewGroup -> (0 until view.childCount).map { view.getChildAt(it) }
+            .filter { it.isShown }.map { texts(it) }.filter { it.isNotBlank() }.joinToString(" ")
+        else -> ""
+    }
+
     /** `{phase, offset}` (offset in page CSS pixels), `{}` without an indicator, or `{error}`. */
     @JvmStatic
     fun pullRefreshState(appId: String, webtag: String): String = try {

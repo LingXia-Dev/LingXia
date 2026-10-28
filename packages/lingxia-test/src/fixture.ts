@@ -1015,12 +1015,22 @@ export class LiveFixture implements Fixture {
         get pointer() { return input.pointer; },
         get key() { return input.key; },
       },
-      gesture: (() => {
+      ...(() => {
         const gestures = new Gestures(this.gestureScope(() => driver().page, undefined), true);
         return {
-          swipe: (options) => gestures.swipe(options),
-          edgeBack: (options) => gestures.edgeBack(options),
-        };
+          gesture: {
+            swipe: (options) => gestures.swipe(options),
+            edgeBack: (options) => gestures.edgeBack(options),
+          },
+          chrome: {
+            elements: (options) => gestures.chromeElements(options?.scope),
+            tap: (target, options) => typeof target === "string"
+              ? gestures.chromeTap(target, undefined, options?.timeout)
+              : gestures.chromeTap(target.label, target.scope ? [target.scope] : undefined, options?.timeout),
+          },
+          // A desktop shell shows the app's tabs as sidebar rows.
+          tabBar: { tap: (label, options) => gestures.chromeTap(label, ["tabBar", "sidebar"], options?.timeout) },
+        } satisfies Pick<TestApp, "gesture" | "chrome" | "tabBar">;
       })(),
       logic: this.wrapLogic(driver),
       nav: this.wrapNav(() => driver().nav),

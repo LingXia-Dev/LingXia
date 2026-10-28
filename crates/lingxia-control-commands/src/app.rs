@@ -158,6 +158,19 @@ pub enum GestureCommand {
         #[command(flatten)]
         target: GestureTargetOptions,
     },
+    /// List the host chrome a user can press (tab items, navigation bar
+    /// buttons, sidebar rows) with their window-point bounds, or tap one
+    Chrome {
+        /// Only this area: tabBar, navigationBar, capsule, sidebar
+        #[arg(long)]
+        scope: Option<String>,
+        /// Tap the one element with this label
+        #[arg(long)]
+        tap: Option<String>,
+        /// Print JSON output
+        #[arg(long)]
+        json: bool,
+    },
     /// The system back swipe from a window edge
     EdgeBack {
         #[arg(long, value_enum, default_value = "left")]
@@ -294,6 +307,50 @@ fn execute_gesture(context: &AppContext, command: GestureCommand) -> Result<()> 
             let mut args = base(&target);
             args.insert("op".into(), json!("indicator"));
             let data = send(args)?;
+            (target, data)
+        }
+        GestureCommand::Chrome { scope, tap, json } => {
+            let mut args = Map::new();
+            args.insert("op".into(), json!("chrome"));
+            if let Some(scope) = &scope {
+                args.insert("scope".into(), json!(scope));
+            }
+            let elements = send(args)?;
+            let data = match tap {
+                None => elements,
+                Some(label) => {
+                    let matches: Vec<&Value> = elements
+                        .as_array()
+                        .map(|all| {
+                            all.iter()
+                                .filter(|e| e["label"] == label.as_str())
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    let [element] = matches.as_slice() else {
+                        bail!("{} chrome elements are labelled {label:?}", matches.len());
+                    };
+                    let b = &element["bounds"];
+                    let at = [
+                        b[0].as_f64().unwrap_or(0.0) + b[2].as_f64().unwrap_or(0.0) / 2.0,
+                        b[1].as_f64().unwrap_or(0.0) + b[3].as_f64().unwrap_or(0.0) / 2.0,
+                    ];
+                    let mut tap = Map::new();
+                    tap.insert("window".into(), json!(true));
+                    tap.insert("shape".into(), json!({
+                        "kind": "line", "from": at, "to": at, "duration_ms": 50.0, "hold_ms": 0.0,
+                    }));
+                    if context.target == "macos" {
+                        tap.insert("input".into(), json!("mouse"));
+                    }
+                    send(tap)?
+                }
+            };
+            let target = GestureTargetOptions {
+                page: None,
+                window: true,
+                json,
+            };
             (target, data)
         }
         GestureCommand::EdgeBack { edge, target } => {

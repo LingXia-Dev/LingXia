@@ -40,6 +40,14 @@ impl AppGesture for Platform {
     }
 
     #[cfg(target_os = "macos")]
+    async fn chrome_elements(
+        &self,
+        scope: Option<String>,
+    ) -> Result<Vec<crate::traits::gesture::ChromeElement>, PlatformError> {
+        mac::chrome_elements(scope).await
+    }
+
+    #[cfg(target_os = "macos")]
     async fn pull_refresh_indicator(
         &self,
         app_id: &str,
@@ -476,6 +484,136 @@ mod mac {
         }
         on_main(move || post_scroll(window, at.0, at.1, 0.0, 0.0, Scroll::Momentum(3))).await?;
         Ok(events + 1)
+    }
+
+    /// Pressable shell chrome of the key window: controls and sidebar rows,
+    /// labelled by their accessibility label, else their title or text.
+    /// Page views (WebKit, GPU) are not searched.
+    pub(super) async fn chrome_elements(
+        scope: Option<String>,
+    ) -> Result<Vec<crate::traits::gesture::ChromeElement>, PlatformError> {
+        use crate::traits::gesture::ChromeElement;
+        use objc2_foundation::NSRect;
+
+        unsafe fn class_name(view: *mut AnyObject) -> String {
+            unsafe {
+                let class: *const AnyObject = msg_send![view, className];
+                <objc2_foundation::NSString as FromRaw>::from_raw(class)
+            }
+        }
+        unsafe fn string(value: *const AnyObject) -> String {
+            unsafe { <objc2_foundation::NSString as FromRaw>::from_raw(value) }
+        }
+        unsafe fn texts(view: *mut AnyObject) -> String {
+            unsafe {
+                let hidden: bool = msg_send![view, isHiddenOrHasHiddenAncestor];
+                if hidden {
+                    return String::new();
+                }
+                if class_name(view) == "NSTextField" {
+                    let value: *const AnyObject = msg_send![view, stringValue];
+                    return string(value);
+                }
+                let subviews: *mut AnyObject = msg_send![view, subviews];
+                let count: usize = msg_send![subviews, count];
+                (0..count)
+                    .map(|i| texts(msg_send![subviews, objectAtIndex: i]))
+                    .filter(|t| !t.trim().is_empty())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            }
+        }
+        #[allow(clippy::too_many_arguments)]
+        unsafe fn visit(
+            view: *mut AnyObject,
+            content: *mut AnyObject,
+            content_height: f64,
+            flipped: bool,
+            area: &str,
+            scope: &Option<String>,
+            out: &mut Vec<ChromeElement>,
+        ) {
+            unsafe {
+                let hidden: bool = msg_send![view, isHiddenOrHasHiddenAncestor];
+                let name = class_name(view);
+                if hidden || name.contains("WKWebView") || name.ends_with("GpuPageView") {
+                    return;
+                }
+                let here = if name.contains("Sidebar") {
+                    "sidebar"
+                } else if name.contains("Toolbar")
+                    || name.contains("NavigationBar")
+                    || name.contains("TitleBar")
+                {
+                    "navigationBar"
+                } else {
+                    area
+                };
+                let control: bool = msg_send![view, isKindOfClass: objc2::class!(NSControl)];
+                let row = name.ends_with("ItemView");
+                if (control || row) && scope.as_deref().is_none_or(|s| s == here) {
+                    let ax: *const AnyObject = msg_send![view, accessibilityLabel];
+                    let mut label = string(ax);
+                    if label.trim().is_empty() {
+                        let button: bool = msg_send![view, isKindOfClass: objc2::class!(NSButton)];
+                        if button {
+                            let title: *const AnyObject = msg_send![view, title];
+                            label = string(title);
+                        }
+                    }
+                    if label.trim().is_empty() {
+                        label = texts(view);
+                    }
+                    if !label.trim().is_empty() && name != "NSTextField" {
+                        let bounds: NSRect = msg_send![view, bounds];
+                        let rect: NSRect = msg_send![view, convertRect: bounds, toView: content];
+                        let top = if flipped {
+                            rect.origin.y
+                        } else {
+                            content_height - (rect.origin.y + rect.size.height)
+                        };
+                        let selected: bool = msg_send![view, isAccessibilitySelected];
+                        out.push(ChromeElement {
+                            label: label.trim().to_owned(),
+                            role: if row { "tab".into() } else { "button".into() },
+                            scope: here.into(),
+                            selected,
+                            bounds: [rect.origin.x, top, rect.size.width, rect.size.height],
+                        });
+                        return;
+                    }
+                }
+                let subviews: *mut AnyObject = msg_send![view, subviews];
+                let count: usize = msg_send![subviews, count];
+                for i in 0..count {
+                    let child: *mut AnyObject = msg_send![subviews, objectAtIndex: i];
+                    visit(child, content, content_height, flipped, here, scope, out);
+                }
+            }
+        }
+
+        on_main(move || unsafe {
+            let app: *mut AnyObject = msg_send![objc2::class!(NSApplication), sharedApplication];
+            let window = resolve_window(app, None).ok_or("no NSWindow available")?;
+            let content: *mut AnyObject = msg_send![window, contentView];
+            if content.is_null() {
+                return Err("NSWindow has no contentView".to_string());
+            }
+            let bounds: NSRect = msg_send![content, bounds];
+            let flipped: bool = msg_send![content, isFlipped];
+            let mut out = Vec::new();
+            visit(
+                content,
+                content,
+                bounds.size.height,
+                flipped,
+                "window",
+                &scope,
+                &mut out,
+            );
+            Ok(out)
+        })
+        .await
     }
 
     pub(super) async fn pull_refresh_indicator(
