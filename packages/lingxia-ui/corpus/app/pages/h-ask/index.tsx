@@ -1,8 +1,7 @@
 // h-app pages/ask (views/view.tsx, components/messages.tsx, composer.tsx), ported construct for
 // construct: the header with its router pill, the transcript (welcome line, user bubbles, the
 // assistant's text, a notice, a question with option buttons, the thinking line) and the
-// composer. `ask-shimmer` moves a background-position, which the View cannot animate: the
-// thinking line keeps its gradient text without the sweep.
+// composer, with the thinking line's `ask-shimmer` sweep.
 import { useLocal, type View } from '@lingxia/ui';
 import '../../theme/heights.css';
 import { Button, Icon, cn } from '../../shared/ui';
@@ -123,7 +122,7 @@ export function render({ data }: View<object, Data>) {
                 {data.thinking ? (
                   <row className={`ask-enter items-center gap-2.5 ${last?.role !== 'assistant' ? '' : '-mt-1.5'}`} role="status" testId="thinking">
                     <Avatar show={last?.role !== 'assistant'} busy />
-                    <text className="bg-linear-to-r from-muted-foreground via-foreground to-muted-foreground bg-clip-text text-transparent text-supporting font-medium">{t.thinking}</text>
+                    <text className="ask-shimmer text-supporting font-medium">{t.thinking}</text>
                   </row>
                 ) : null}
               </column>

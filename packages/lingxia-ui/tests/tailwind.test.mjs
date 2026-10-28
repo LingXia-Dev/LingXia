@@ -703,3 +703,13 @@ test('a caller class overrides a component class of the same property; variants 
   assert.equal(classStyle('p-2 p-[3px]').paddingTop, 3, 'arbitrary values take part');
   assert.equal(classStyle('p-[3px] p-2').paddingTop, 8);
 });
+
+test('a gradient sweep: a sized background layer and a background-position keyframe', async () => {
+  const theme = `@theme inline { @keyframes sweep { from { background-position: 100% 0; } to { background-position: -150% 0; } } }
+@utility sweep { background: linear-gradient(90deg, var(--color-muted) 40%, var(--color-text) 50%, var(--color-muted) 60%) 0 0 / 250% 100%; animation: sweep 1.8s linear infinite; }`;
+  const [rule] = await compileUtilities(new Set(['sweep']), theme);
+  assert.deepEqual([rule.gradient.fixed.layerSize, rule.gradient.fixed.layerPosition], [[2.5, 1], [0, 0]]);
+  assert.deepEqual(rule.style.animation.backgroundPosition, { x: [{ offset: 0, value: 1 }, { offset: 1, value: -1.5 }], y: [{ offset: 0, value: 0 }, { offset: 1, value: 0 }] });
+  await assert.rejects(async () => { const [bad] = await compileUtilities(new Set(['half']), `@theme inline { @keyframes half { 50% { background-position: 0 0; } } }
+@utility half { animation: half 1s; }`); if (bad.error) throw Error(bad.error.message); }, /from and to/);
+});

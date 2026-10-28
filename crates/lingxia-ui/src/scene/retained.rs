@@ -47,6 +47,8 @@ pub(crate) struct PaintStyle {
     pub(crate) transform: Option<crate::scene::transform::StaticTransform>,
     pub(crate) corners: Option<[[f32; 2]; 4]>,
     pub(crate) radius: f32,
+    /// A `bg-clip-text` gradient and the box it was laid out in, for an animated position.
+    pub(crate) text_gradient: Option<(Arc<crate::scene::gradient::BackgroundGradient>, [f32; 4])>,
 }
 
 /// Unscrolled geometry and shaped glyphs from one committed View render.
@@ -851,9 +853,14 @@ impl RetainedLayout {
                             && visible[3] > 0.0
                             && node.clips.iter().all(|shape| shape.intersects(visible))
                         {
+                            // A `background-position` keyframe moves the image inside the box.
+                            let gradient = match visual.and_then(|v| v.background_position) {
+                                Some(position) => Arc::new(gradient.at_position(position)),
+                                None => gradient.clone(),
+                            };
                             painted.push(Paint::Gradient {
                                 corners: *corners,
-                                gradient: gradient.clone(),
+                                gradient,
                                 bounds,
                                 radius: *radius,
                             });
@@ -936,11 +943,20 @@ impl RetainedLayout {
                             .binary_search_by_key(&command, |(command, _)| *command)
                             .ok()
                             .and_then(|at| foregrounds[paint_style.texts[at].1]);
+                        let [sx, sy] = match (
+                            visual.and_then(|v| v.background_position),
+                            &paint_style.text_gradient,
+                        ) {
+                            (Some(position), Some((source, bounds))) => {
+                                source.position_shift(*bounds, position)
+                            }
+                            _ => [0.0, 0.0],
+                        };
                         painted.push(Paint::Text {
                             gradient: gradient.as_ref().map(|brush| {
                                 Arc::new(brush.then(Affine::translate((
-                                    -f64::from(translation[0]),
-                                    -f64::from(translation[1]),
+                                    sx - f64::from(translation[0]),
+                                    sy - f64::from(translation[1]),
                                 ))))
                             }),
                             color: inherited.unwrap_or(*color),

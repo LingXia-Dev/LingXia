@@ -87,6 +87,7 @@
   @keyframes speedtest-rise { from { transform: translateY(12px); } to { transform: translateY(0); } }
   @keyframes ask-enter { from { transform: translateY(6px); } to { transform: translateY(0); } }
   @keyframes ask-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(0.9); } }
+  @keyframes ask-shimmer { from { background-position: 100% 0; } to { background-position: -150% 0; } }
 }
 
 :root {
@@ -160,6 +161,13 @@
 
 @utility ask-enter {
   animation: ask-enter 260ms var(--ease-fusheng) both;
+}
+
+@utility ask-shimmer {
+  background: linear-gradient(90deg, var(--color-muted) 0%, var(--color-muted) 40%, var(--color-text) 50%, var(--color-muted) 60%, var(--color-muted) 100%) 0 0 / 250% 100%;
+  background-clip: text;
+  color: transparent;
+  animation: ask-shimmer 1.8s linear infinite;
 }
 
 @utility ask-avatar-busy {

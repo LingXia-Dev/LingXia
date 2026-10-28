@@ -21,6 +21,15 @@ struct Wire {
     when_reduced: WhenReduced,
     #[serde(default)]
     fill: FillMode,
+    #[serde(default)]
+    background_position: Option<Axes>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Axes {
+    x: Vec<Key>,
+    y: Vec<Key>,
 }
 
 #[derive(Default, Deserialize)]
@@ -149,7 +158,11 @@ pub fn decode_definition(source: &str) -> Result<Definition, String> {
         forwards: matches!(wire.fill, FillMode::Forwards | FillMode::Both),
     });
     let easing = easing(wire.easing)?;
-    if wire.transforms.len() > 8 || (wire.opacity.is_none() && wire.transforms.is_empty()) {
+    if wire.transforms.len() > 8
+        || (wire.opacity.is_none()
+            && wire.transforms.is_empty()
+            && wire.background_position.is_none())
+    {
         return Err("UI_ANIMATION: invalid effect tracks".into());
     }
     let opacity = wire.opacity.map(|keys| track(keys, easing)).transpose()?;
@@ -182,7 +195,10 @@ pub fn decode_definition(source: &str) -> Result<Definition, String> {
             },
         });
     }
-    let effect = Effect::new(opacity, transforms)?;
+    let mut effect = Effect::new(opacity, transforms)?;
+    if let Some(Axes { x, y }) = wire.background_position {
+        effect = effect.with_background_position([track(x, easing)?, track(y, easing)?])?;
+    }
     if effect.storage_bytes() > 32768 {
         return Err("UI_ANIMATION: effect budget exceeded".into());
     }
@@ -235,6 +251,23 @@ mod tests {
             chart.timing.sample(Duration::from_millis(350)).phase,
             super::super::Phase::Finished
         );
+    }
+
+    #[test]
+    fn a_background_position_sweep_samples_between_its_keyframes() {
+        let definition = decode_definition(
+            &json!({"name":"shimmer","durationMs":1800,"delayMs":0,"iterations":null,"easing":"linear","whenReduced":"base",
+                "opacity":null,"transforms":[],"backgroundPosition":{"x":[{"offset":0,"value":1},{"offset":1,"value":-1.5}],"y":[{"offset":0,"value":0},{"offset":1,"value":0}]}})
+            .to_string(),
+        )
+        .unwrap();
+        assert_eq!(
+            definition.effect.sample(0.5).unwrap().background_position,
+            Some([-0.25, 0.0])
+        );
+        let out_of_bounds = json!({"name":"far","durationMs":100,"delayMs":0,"iterations":1,"easing":"linear","whenReduced":"base",
+            "opacity":null,"transforms":[],"backgroundPosition":{"x":[{"offset":0,"value":0},{"offset":1,"value":40}],"y":[{"offset":0,"value":0},{"offset":1,"value":0}]}});
+        assert!(decode_definition(&out_of_bounds.to_string()).is_err());
     }
 
     /// The compiler's lowering of Tailwind's default `animate-*` keyframes.

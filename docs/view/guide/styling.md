@@ -113,7 +113,8 @@ A page imports at most one stylesheet (it may `@import` relative token files). I
   colour tokens never override a role.
 - `:root { … }` and `[data-theme='light' | 'dark'] { … }` define custom properties, such as shadow tints.
 - `@utility name { … }` defines a theme-owned class from plain declarations, where CSS would write
-  `.brand-gradient { … }`. `background: <gradient>, <colour>` and `border: 1px solid <colour>` work there.
+  `.brand-gradient { … }`. `background: <gradient> [<position> / <size>], <colour>` and
+  `border: 1px solid <colour>` work there; the position and size of the gradient layer are percentages.
   An empty `@utility name {}` declares a class that sets nothing here (such as a web density scope).
 - `@font-face` declares a bundled face ([text](text.md#fonts)).
 

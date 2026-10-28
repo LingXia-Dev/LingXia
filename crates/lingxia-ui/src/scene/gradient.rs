@@ -74,6 +74,13 @@ pub(crate) struct BackgroundGradient {
     #[serde(default)]
     color_space: Space,
     stops: Vec<Stop>,
+    /// `background-size`: the image as fractions of the box, larger than it for a sweep.
+    #[serde(default, deserialize_with = "present")]
+    layer_size: Option<[f64; 2]>,
+    /// `background-position` percentages: 0 aligns the image's start edge with the box's,
+    /// 1 its end edge.
+    #[serde(default, deserialize_with = "present")]
+    layer_position: Option<[f64; 2]>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
@@ -169,7 +176,14 @@ impl BackgroundGradient {
         } else {
             0.0..=1.0
         };
+        let layer_bad = value
+            .layer_size
+            .is_some_and(|s| s.iter().any(|v| !v.is_finite() || *v <= 0.0 || *v > 16.0))
+            || value
+                .layer_position
+                .is_some_and(|p| p.iter().any(|v| !v.is_finite() || v.abs() > 16.0));
         if foreign
+            || layer_bad
             || angle(value.angle)
             || angle(value.from)
             || value
@@ -261,7 +275,36 @@ impl BackgroundGradient {
             .collect()
     }
 
+    /// This gradient with its image at `position` (an animated `background-position`).
+    pub(crate) fn at_position(&self, position: [f64; 2]) -> Self {
+        Self {
+            layer_position: Some(position),
+            ..self.clone()
+        }
+    }
+
+    /// How far the image moves inside `bounds` when its position becomes `position`.
+    pub(crate) fn position_shift(&self, bounds: [f32; 4], position: [f64; 2]) -> [f64; 2] {
+        let [_, _, w, h] = bounds.map(f64::from);
+        let [sx, sy] = self.layer_size.unwrap_or([1.0, 1.0]);
+        let [px, py] = self.layer_position.unwrap_or([0.0, 0.0]);
+        [
+            (w - sx * w) * (position[0] - px),
+            (h - sy * h) * (position[1] - py),
+        ]
+    }
+
     pub fn brush(&self, bounds: [f32; 4]) -> GradientBrush {
+        // A sized or positioned image lays its geometry out in its own rect inside the box.
+        let bounds = if self.layer_size.is_some() || self.layer_position.is_some() {
+            let [x, y, w, h] = bounds;
+            let [sx, sy] = self.layer_size.unwrap_or([1.0, 1.0]).map(|v| v as f32);
+            let [px, py] = self.layer_position.unwrap_or([0.0, 0.0]).map(|v| v as f32);
+            let (lw, lh) = (sx * w, sy * h);
+            [x + (w - lw) * px, y + (h - lh) * py, lw, lh]
+        } else {
+            bounds
+        };
         let [x, y, w, h] = bounds.map(f64::from);
         let space = match self.color_space {
             Space::Srgb => ColorSpaceTag::Srgb,
@@ -318,6 +361,25 @@ mod tests {
     fn gradient(direction: &str) -> BackgroundGradient {
         BackgroundGradient::parse(&format!(r##"{{{direction},"stops":[{{"offset":0,"color":"#ff0000"}},{{"offset":1,"color":"#0000ff"}}]}}"##)).unwrap().unwrap()
     }
+    #[test]
+    fn a_sized_layer_lays_the_gradient_out_in_its_own_rect_and_moves_with_its_position() {
+        // A 250%-wide black-to-white layer at 0%: the box shows its first 40%, all dark.
+        let source = "{angle:90,colorSpace:'srgb',stops:[{offset:0,color:'#000000'},{offset:1,color:'#ffffff'}],layerSize:[2.5,1],layerPosition:[0,0]}";
+        assert!(pixel(source, 100, [95, 50])[0] < 110);
+        // At 100% the box shows its last 40%, all light.
+        let shifted = source.replace("layerPosition:[0,0]", "layerPosition:[1,0]");
+        assert!(pixel(&shifted, 100, [5, 50])[0] > 145);
+        let g = BackgroundGradient::parse(r##"{"layerSize":[2.5,1],"layerPosition":[0,0],"stops":[{"offset":0,"color":"#000000"},{"offset":1,"color":"#ffffff"}]}"##)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            g.position_shift([0.0, 0.0, 100.0, 20.0], [1.0, 0.0]),
+            [-150.0, 0.0]
+        );
+        assert_eq!(g.at_position([1.0, 0.0]).layer_position, Some([1.0, 0.0]));
+        assert!(BackgroundGradient::parse(r##"{"layerSize":[0,1],"stops":[{"offset":0,"color":"#000000"},{"offset":1,"color":"#ffffff"}]}"##).is_err());
+    }
+
     #[test]
     fn explicit_radial_radii_are_fractions_of_the_box_and_exclude_extents() {
         let parse = |geometry: &str| {

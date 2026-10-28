@@ -26,12 +26,15 @@ pub enum TransformTracks {
 pub struct Effect {
     opacity: Option<Track>,
     transforms: Vec<TransformTracks>,
+    /// `background-position` percentages, for a gradient sweep.
+    background_position: Option<[Track; 2]>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Visual {
     pub opacity: Option<f64>,
     pub transforms: Vec<Transform>,
+    pub background_position: Option<[f64; 2]>,
     /// Running transitions; keyframe values win where both set a property.
     pub transition: super::transition::Overrides,
 }
@@ -70,20 +73,34 @@ impl Effect {
         Ok(Self {
             opacity,
             transforms,
+            background_position: None,
         })
     }
 
+    /// Adds a `background-position` sweep (fractions, within ±16).
+    pub fn with_background_position(mut self, tracks: [Track; 2]) -> Result<Self, String> {
+        if tracks.iter().any(|track| !track.values_within(-16.0, 16.0)) {
+            return Err("UI_ANIMATION: background-position track outside bounds".into());
+        }
+        self.background_position = Some(tracks);
+        Ok(self)
+    }
+
     fn tracks(&self) -> impl Iterator<Item = &Track> {
-        self.opacity.iter().chain(
-            self.transforms
-                .iter()
-                .flat_map(|transform| match transform {
-                    TransformTracks::Scale { x, y }
-                    | TransformTracks::Translate { x, y }
-                    | TransformTracks::Relative { x, y } => vec![x, y],
-                    TransformTracks::Rotate { angle } => vec![angle],
-                }),
-        )
+        self.background_position
+            .iter()
+            .flatten()
+            .chain(self.opacity.iter())
+            .chain(
+                self.transforms
+                    .iter()
+                    .flat_map(|transform| match transform {
+                        TransformTracks::Scale { x, y }
+                        | TransformTracks::Translate { x, y }
+                        | TransformTracks::Relative { x, y } => vec![x, y],
+                        TransformTracks::Rotate { angle } => vec![angle],
+                    }),
+            )
     }
 
     pub(crate) fn storage_bytes(&self) -> usize {
@@ -120,6 +137,11 @@ impl Effect {
                 .map(|track| track.sample(progress).map(|value| value.clamp(0.0, 1.0)))
                 .transpose()?,
             transforms,
+            background_position: self
+                .background_position
+                .as_ref()
+                .map(|[x, y]| Ok::<_, String>([x.sample(progress)?, y.sample(progress)?]))
+                .transpose()?,
             transition: Default::default(),
         })
     }

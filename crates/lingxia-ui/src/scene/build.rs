@@ -383,12 +383,9 @@ impl Renderer {
             {
                 paint_style.gradient = true;
                 if clip_text {
-                    text_gradient = Some(Arc::new(gradient.brush([
-                        x,
-                        y,
-                        layout.size.width,
-                        layout.size.height,
-                    ])));
+                    let bounds = [x, y, layout.size.width, layout.size.height];
+                    text_gradient = Some(Arc::new(gradient.brush(bounds)));
+                    paint_style.text_gradient = Some((Arc::new(gradient.clone()), bounds));
                 } else {
                     commands.push(Paint::Gradient {
                         corners,

@@ -104,8 +104,9 @@ subtree holds an editor, a `<scroll>` or a `<slider>` moves at once, as do more 
 ## Animations
 
 `animate-spin`, `animate-ping`, `animate-pulse`, `animate-bounce` and your own `--animate-*` tokens with
-`@keyframes` in the stylesheet run keyframe animations of opacity and transforms (translate, including
-`%`, rotate, scale). Keyframes may omit their endpoints, and each keyframe may set its own easing.
+`@keyframes` in the stylesheet run keyframe animations of opacity, transforms (translate, including
+`%`, rotate, scale) and `background-position` (percentages, with `from` and `to`), which sweeps a sized
+gradient across its box: `background: linear-gradient(…) 0 0 / 250% 100%` with `bg-clip-text` makes a shimmer. Keyframes may omit their endpoints, and each keyframe may set its own easing.
 `animate-none` removes an animation. Fill modes work as in CSS: `forwards` keeps the last keyframe after
 the run, `backwards` shows the first during the delay, `both` does both. An element runs one animation; several comma-separated
 animations and `alternate`/`reverse` directions are refused, as are keyframes of any other

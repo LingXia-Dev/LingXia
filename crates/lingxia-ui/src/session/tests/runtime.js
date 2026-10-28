@@ -210,7 +210,8 @@
     if (!value || typeof value !== "object" || Array.isArray(value)) invalid2();
     const kind = value.kind ?? "linear";
     const keys = geometry[kind] ?? invalid2();
-    if (Object.keys(value).some((key) => !["kind", "colorSpace", "stops", ...keys].includes(key)) || value.direction !== void 0 && !directions.includes(value.direction) || value.angle !== void 0 && !angle(value.angle) || value.direction !== void 0 && value.angle !== void 0 || value.from !== void 0 && !angle(value.from) || value.shape !== void 0 && !["circle", "ellipse"].includes(value.shape) || value.size !== void 0 && !sizes.includes(value.size) || value.radii !== void 0 && (value.size !== void 0 || value.shape !== void 0 || !Array.isArray(value.radii) || value.radii.length !== 2 || value.radii.some((v) => typeof v !== "number" || !Number.isFinite(v) || v <= 0 || v > 16)) || value.at !== void 0 && (!Array.isArray(value.at) || value.at.length !== 2 || value.at.some((v) => typeof v !== "number" || !Number.isFinite(v) || Math.abs(v) > 16)) || value.colorSpace !== void 0 && !["srgb", "oklab"].includes(value.colorSpace) || !Array.isArray(value.stops) || value.stops.length < 2 || value.stops.length > 16) invalid2();
+    const pair = (v, low2, high2) => Array.isArray(v) && v.length === 2 && v.every((n) => typeof n === "number" && Number.isFinite(n) && n > low2 && n <= high2);
+    if (Object.keys(value).some((key) => !["kind", "colorSpace", "stops", "layerSize", "layerPosition", ...keys].includes(key)) || value.layerSize !== void 0 && !pair(value.layerSize, 0, 16) || value.layerPosition !== void 0 && !pair(value.layerPosition, -16.0001, 16) || value.direction !== void 0 && !directions.includes(value.direction) || value.angle !== void 0 && !angle(value.angle) || value.direction !== void 0 && value.angle !== void 0 || value.from !== void 0 && !angle(value.from) || value.shape !== void 0 && !["circle", "ellipse"].includes(value.shape) || value.size !== void 0 && !sizes.includes(value.size) || value.radii !== void 0 && (value.size !== void 0 || value.shape !== void 0 || !Array.isArray(value.radii) || value.radii.length !== 2 || value.radii.some((v) => typeof v !== "number" || !Number.isFinite(v) || v <= 0 || v > 16)) || value.at !== void 0 && (!Array.isArray(value.at) || value.at.length !== 2 || value.at.some((v) => typeof v !== "number" || !Number.isFinite(v) || Math.abs(v) > 16)) || value.colorSpace !== void 0 && !["srgb", "oklab"].includes(value.colorSpace) || !Array.isArray(value.stops) || value.stops.length < 2 || value.stops.length > 16) invalid2();
     const [low, high] = kind === "linear" ? [-16, 16] : kind === "radial" ? [0, 16] : [0, 1];
     let previous = -Infinity;
     const stops = value.stops.map((stop) => {
@@ -219,7 +220,7 @@
       return { offset: stop.offset, color: stop.color };
     });
     const result = kind === "linear" ? {} : { kind };
-    for (const key of keys) if (value[key] !== void 0) result[key] = Array.isArray(value[key]) ? [...value[key]] : value[key];
+    for (const key of [...keys, "layerSize", "layerPosition"]) if (value[key] !== void 0) result[key] = Array.isArray(value[key]) ? [...value[key]] : value[key];
     return { ...result, colorSpace: value.colorSpace ?? "srgb", stops };
   }
 

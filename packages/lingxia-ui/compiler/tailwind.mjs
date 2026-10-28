@@ -245,6 +245,8 @@ function gradientPosition(text) {
 }
 
 const geometryKeys = { linear: ['direction', 'angle'], radial: ['shape', 'size', 'radii', 'at'], conic: ['from', 'at'] };
+// Any gradient may be laid out as a sized, positioned layer.
+for (const keys of Object.values(geometryKeys)) keys.push('layerSize', 'layerPosition');
 
 /** The wire gradient for a kind, rejecting geometry CSS would drop the declaration for. */
 function gradientValue(kind, position, stops) {
@@ -292,6 +294,22 @@ function cssGradient(value) {
     stops[i].offset = Math.max(stops[i - 1].offset, stops[i].offset);
   }
   return gradientValue(kind, position, stops.map(({ offset, color }) => ({ offset, color })));
+}
+
+// `<position> [/ <size>]` of a background layer: percentages (or 0 and keywords) as fractions.
+function backgroundLayer(text) {
+  const [position, size] = text.split('/').map(part => part.trim());
+  const keyword = { left: 0, top: 0, center: .5, right: 1, bottom: 1 };
+  const fraction = token => token in keyword ? keyword[token] : token === '0' ? 0
+    : /^-?(?:\d*\.)?\d+%$/.test(token) ? number(token) : unsupported(`background position and size take percentages: ${token}`);
+  const pair = part => { const tokens = part.split(/\s+/).filter(Boolean); return [fraction(tokens[0]), fraction(tokens[1] ?? (tokens[0] in keyword ? 'center' : tokens[0]))]; };
+  const layer = {};
+  if (position) layer.layerPosition = pair(position);
+  if (size) {
+    layer.layerSize = pair(size);
+    if (layer.layerSize.some(v => v <= 0 || v > 16)) unsupported(`background size out of range: ${size}`);
+  }
+  return layer;
 }
 
 function gradientDeclaration(prop, raw, local, gradient) {
@@ -688,7 +706,15 @@ function declarations(nodes, vars, root) {
       const layers = postcss.list.comma(variables(node.value, local).trim());
       const base = /gradient\(/.test(layers.at(-1)) ? undefined : layers.pop();
       if (layers.length > 1) unsupported('background with more than one image layer');
-      if (layers.length) gradientDeclaration('background-image', layers[0], local, gradient);
+      if (layers.length) {
+        // `<gradient> <position> / <size>`: the image laid out in its own rect, for a sweep.
+        const layer = layers[0].trim();
+        let end = layer.indexOf('(') + 1, depth = 1;
+        if (!/^(?:linear|radial|conic)-gradient\(/.test(layer)) unsupported(`background: ${layer}`);
+        for (; end < layer.length && depth; end++) depth += layer[end] === '(' ? 1 : layer[end] === ')' ? -1 : 0;
+        gradientDeclaration('background-image', layer.slice(0, end), local, gradient);
+        if (layer.slice(end).trim()) Object.assign(gradient.fixed, backgroundLayer(layer.slice(end)));
+      }
       if (base !== undefined) style.backgroundColor = longhand('background-color', base);
       continue;
     }

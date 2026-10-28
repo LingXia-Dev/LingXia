@@ -12,7 +12,10 @@ export function normalizeGradient(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) invalid();
   const kind = value.kind ?? 'linear';
   const keys = geometry[kind] ?? invalid();
-  if (Object.keys(value).some(key => !['kind', 'colorSpace', 'stops', ...keys].includes(key)) ||
+  const pair = (v, low, high) => Array.isArray(v) && v.length === 2 && v.every(n => typeof n === 'number' && Number.isFinite(n) && n > low && n <= high);
+  if (Object.keys(value).some(key => !['kind', 'colorSpace', 'stops', 'layerSize', 'layerPosition', ...keys].includes(key)) ||
+      (value.layerSize !== undefined && !pair(value.layerSize, 0, 16)) ||
+      (value.layerPosition !== undefined && !pair(value.layerPosition, -16.0001, 16)) ||
       (value.direction !== undefined && !directions.includes(value.direction)) ||
       (value.angle !== undefined && !angle(value.angle)) ||
       (value.direction !== undefined && value.angle !== undefined) ||
@@ -37,6 +40,6 @@ export function normalizeGradient(value) {
     return { offset: stop.offset, color: stop.color };
   });
   const result = kind === 'linear' ? {} : { kind };
-  for (const key of keys) if (value[key] !== undefined) result[key] = Array.isArray(value[key]) ? [...value[key]] : value[key];
+  for (const key of [...keys, 'layerSize', 'layerPosition']) if (value[key] !== undefined) result[key] = Array.isArray(value[key]) ? [...value[key]] : value[key];
   return { ...result, colorSpace: value.colorSpace ?? 'srgb', stops };
 }
