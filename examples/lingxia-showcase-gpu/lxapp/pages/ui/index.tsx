@@ -559,8 +559,8 @@ function Surface({ data, actions }: Pane) {
         )}
         {kind.value === 'window' && <Options label="Chrome" testId="surface-chrome" bind={chrome} options={titled(['system', 'full'])} />}
         <grid className="gap-2 grid-cols-2">
-          <Field testId="surface-width" label="Width (px or %)" bind={width} placeholder="optional" />
-          <Field testId="surface-height" label="Height (px or %)" bind={height} placeholder="optional" />
+          <Field testId="surface-width" label="Width (px or %)" bind={width} placeholder="width (px or %)" />
+          <Field testId="surface-height" label="Height (px or %)" bind={height} placeholder="height (px or %)" />
         </grid>
         {attempted.value && !!sizeError && (
           <text testId="size-error" className="text-xs text-danger">
