@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+# Run both showcases' full suites on one attached device from a clean export
+# of a commit, and keep every result under an evidence directory, so a
+# readiness round always carries the whole suite rather than chosen rows.
+#
+#   scripts/automation/device-readiness.sh --platform android --device SERIAL
+#   scripts/automation/device-readiness.sh --platform macos [--rev REV] [--keep-export]
+#
+# Writes <evidence>/<rev>/<app>-<platform>/ (report.json, junit.xml, logs) and
+# <evidence>/<rev>/summary.json. Exits non-zero when a suite fails or its
+# feature-coverage check does.
+set -euo pipefail
+
+platform="" device="" rev="HEAD" keep=0
+evidence="${LINGXIA_EVIDENCE_DIR:-$HOME/.cache/lingxia-gpu-evidence/quality/readiness}"
+while (( $# )); do
+  case "$1" in
+    --platform) platform=$2; shift 2 ;;
+    --device) device=$2; shift 2 ;;
+    --rev) rev=$2; shift 2 ;;
+    --evidence) evidence=$2; shift 2 ;;
+    --keep-export) keep=1; shift ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
+  esac
+done
+case "$platform" in
+  android|macos) ;;
+  *) echo "--platform android|macos is required" >&2; exit 2 ;;
+esac
+[[ "$platform" == android && -z "$device" ]] && { echo "--device SERIAL is required for android" >&2; exit 2; }
+
+repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+short=$(git -C "$repo" rev-parse --short "$rev")
+out="$evidence/$short"
+export_dir="$evidence/export-$short-$platform"
+mkdir -p "$out"
+export LINGXIA_RUNNER_INSTANCE="${LINGXIA_RUNNER_INSTANCE:-readiness}"
+
+echo "Exporting $short to $export_dir"
+rm -rf "$export_dir"; mkdir -p "$export_dir"
+git -C "$repo" archive "$short" | tar -x -C "$export_dir"
+# Path dependencies outside the checkout (../fontique, ../../../../rong) resolve
+# beside the export as they do beside the checkout.
+for sibling in "$(dirname "$repo")"/*; do
+  name=$(basename "$sibling")
+  if grep -q "\.\./$name\"" "$repo/Cargo.toml" "$repo"/examples/*/native/Cargo.toml 2>/dev/null; then
+    ln -sfn "$sibling" "$evidence/$name"
+  fi
+done
+
+# shellcheck source=../lib/cargo-target-dir.sh
+source "$repo/scripts/lib/cargo-target-dir.sh"
+target=$(resolve_cargo_target_dir "$export_dir")
+lingxia="$target/debug/lingxia"
+lxdev="$target/debug/lxdev"
+# The CLI embeds the bridge and polyfills from packages/, so those install first.
+(cd "$export_dir/packages" && npm install --no-audit --no-fund >/dev/null)
+(cd "$export_dir" && cargo build -p lingxia-cli -p lingxia-devtools-cli)
+(cd "$export_dir" && "$lingxia" gen i18n >/dev/null)
+# Generated SDK resources are not committed.
+(cd "$export_dir" && "$lingxia" gen icons --input design/icons/svg \
+  --android-out lingxia-sdk/android/lingxia/src/main/res/drawable >/dev/null)
+(cd "$export_dir" && "$lingxia" gen icons --input design/icons/svg \
+  --ios-out lingxia-sdk/apple/Sources/Resources/icons >/dev/null)
+(cd "$export_dir/packages/lingxia-test" && npm run build >/dev/null)
+
+wake() {
+  [[ "$platform" == android ]] || return 0
+  adb -s "$device" shell input keyevent KEYCODE_WAKEUP
+  adb -s "$device" shell wm dismiss-keyguard
+  adb -s "$device" shell svc power stayon true
+}
+
+# The keyguard can come back mid-run even with stayon set. While a suite
+# runs, a watchdog wakes and unlocks the phone within 3 s and records which
+# case was running, so no failure is mistaken for a product defect.
+keyguard_watch() {
+  local runner=$1 events=$2 log=$3
+  while kill -0 "$runner" 2>/dev/null; do
+    local window power
+    window=$(adb -s "$device" shell dumpsys window 2>/dev/null | grep -c 'isKeyguardShowing=true' || true)
+    power=$(adb -s "$device" shell dumpsys power 2>/dev/null | grep -c 'mWakefulness=Asleep' || true)
+    if (( window > 0 || power > 0 )); then
+      local current
+      current=$(grep '"case_started"' "$events" 2>/dev/null | tail -1 | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+      printf '{"at":"%s","case":"%s"}\n' "$(date -u +%FT%TZ)" "$current" >>"$log"
+      wake
+    fi
+    sleep 3
+  done
+}
+
+status=0
+summary="["
+for app in lingxia-showcase lingxia-showcase-gpu; do
+  project="$export_dir/examples/$app"
+  (cd "$project/lxapp" && npm install --no-audit --no-fund >/dev/null)
+  result="$out/$app-$platform"
+  mkdir -p "$result"
+  session="readiness-$app"
+  dev=(dev --background --platform "$platform" --name "$session")
+  [[ -n "$device" ]] && dev+=(--device "$device")
+  wake
+  echo "Starting $app on $platform"
+  if ! (cd "$project" && "$lingxia" "${dev[@]}") >"$result/dev.log" 2>&1; then
+    echo "$app did not start; see $result/dev.log" >&2
+    status=1
+    summary+="{\"app\":\"$app\",\"started\":false},"
+    continue
+  fi
+  test=(--session "$session" test --output-dir "$result/run")
+  # The React showcase picks its platform entry by preset; the GPU one runs tests/.
+  [[ "$app" == lingxia-showcase ]] && test+=(--preset "$platform")
+  wake
+  : >"$result/keyguard.jsonl"
+  set +e
+  (cd "$project/lxapp" && "$lxdev" "${test[@]}") >"$result/test.log" 2>&1 &
+  runner=$!
+  [[ "$platform" == android ]] && keyguard_watch "$runner" "$result/run/events.jsonl" "$result/keyguard.jsonl" &
+  wait "$runner"
+  code=$?
+  wait
+  set -e
+  (cd "$project" && "$lxdev" --session "$session" logs --jsonl --limit 5000) >"$result/session.jsonl" 2>/dev/null || true
+  (cd "$project" && "$lingxia" dev stop "$platform") >/dev/null 2>&1 || true
+  report="$result/run/report.json"
+  coverage=1 covered=false
+  if [[ -f "$report" ]]; then
+    kind=react; [[ "$app" == lingxia-showcase-gpu ]] && kind=gpu
+    node "$export_dir/examples/lingxia-showcase/lxapp/tests/feature-coverage.mjs" \
+      --report "$report" --app "$kind" >"$result/feature-coverage.txt" 2>&1 && coverage=0 covered=true
+  fi
+  (( code != 0 || coverage != 0 )) && status=1
+  counts=$(node -e '
+    const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+    const renderers = {};
+    for (const c of r.cases ?? []) for (const name of c.renderers ?? []) renderers[name] = (renderers[name] ?? 0) + 1;
+    const locks = require("fs").readFileSync(process.argv[2], "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    const tainted = [...new Set(locks.map((lock) => lock.case).filter(Boolean))];
+    process.stdout.write(JSON.stringify({ passed: r.passed, failed: r.failed, skipped: r.skipped, timeout: r.timeout, total: (r.cases ?? []).length, renderers, keyguardEvents: locks.length, lockTainted: tainted }));
+  ' "$report" "$result/keyguard.jsonl" 2>/dev/null || echo '{}')
+  summary+="{\"app\":\"$app\",\"started\":true,\"exit\":$code,\"featureCoverage\":$covered,\"result\":$counts},"
+  echo "$app: exit $code, $counts"
+done
+summary="${summary%,}]"
+printf '{"rev":"%s","platform":"%s","device":"%s","apps":%s}\n' "$short" "$platform" "$device" "$summary" >"$out/summary.json"
+echo "Summary: $out/summary.json"
+(( keep )) || rm -rf "$export_dir"
+exit $status

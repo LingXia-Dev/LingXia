@@ -1383,6 +1383,48 @@ the same cases the Rust parsers reject.
   schema, not JSON, empty, truncated) are only counted. A host that cannot
   capture responses fails every case: there is no contract run without them.
 
+## Gestures
+
+- Gestures go through `AppGesture` (`lingxia-platform`): a timed path
+  (`GestureShape` → points) injected into the host window, never into the DOM
+  or the View core, so page chrome (pull to refresh, scroll edges) sees what a
+  finger produces. `page.gesture` (specs) and `app.gesture` (`lxdev host
+  gesture`) share the shapes.
+- Android injects with `Instrumentation.sendPointerSync` into the app's own
+  window (`delivered: window`); only if that is refused does it dispatch
+  through the activity (`view`). A held finger keeps the screen origin of its
+  down: re-reading it per segment made a pull chase the page it moves.
+  Edge back is `E_UNSUPPORTED`: injected input never reaches the System UI
+  gesture monitor.
+- macOS posts queued mouse events stamped with `systemUptime` (AppKit and
+  WebKit derive velocity from timestamps) and continuous scroll events with
+  phases and momentum for the trackpad.
+- Every case records its gestures with `delivered` and the page renderers
+  its locators read (`gestures`, `renderers` in report.json). A `view`
+  delivery is a fallback, never silent.
+
+## Shared suites and readiness
+
+- The GPU showcase runs the React showcase's page and flow specs
+  (`tests/shared.test.ts`). `shared-specs.json` skips files with a reason
+  (`skipSpecFiles`, by source name; a name that registers no spec fails the
+  run) and lists ids the GPU mirror keys per row; `shared-specs.check.mjs`
+  fails when the entry, the manifest or a named testId drifts from either
+  lxapp. Files outside the project root are named `../…` from it.
+- `tests/feature-coverage.mjs` (React showcase): every page/app config
+  feature and interactive View element kind needs a `covers` claim by a spec
+  that drives the UI as a user does; `feature-gaps.json` lists known gaps
+  with reasons. CI runs it on the sources; `--report` grades a device run
+  (passed cases that recorded an action or gesture only).
+- `scripts/automation/device-readiness.sh --platform android|macos` builds
+  a `git archive` export of one commit, runs both showcases' full suites on
+  one device, writes `report.json`, logs and feature coverage per app plus
+  `summary.json` under the evidence directory, and deletes the export.
+  Readiness rounds use it instead of hand-picked specs. On Android a
+  watchdog unlocks the phone whenever the keyguard returns mid-run and
+  records the running case (`keyguard.jsonl`, `lockTainted` in the summary):
+  a failure under a lock is not a product result.
+
 ## Review boundary changes
 
 - Product scenarios belong to `t.scenario`, one per spec/run across apps. Its
