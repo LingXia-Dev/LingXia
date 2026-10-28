@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CLI_CARGO_TOML="$ROOT_DIR/tools/lingxia-cli/Cargo.toml"
 GH_REPO="${LINGXIA_RELEASE_REPO:-LingXia-Dev/LingXia}"
-ALL_TARGETS=(darwin-x64 darwin-arm64 windows-x64 windows-arm64)
+ALL_TARGETS=(darwin-x64 darwin-arm64 windows-x64)
 # Binaries shipped in the CLI release: the CLI (`lingxia`) and the devtools
 # client (`lxdev`). Both build from one cargo invocation per target.
 CLI_BINS=(lingxia lxdev)
@@ -20,7 +20,7 @@ Usage:
 
 Options:
   --target <platform>  Build specific target(s): darwin-x64, darwin-arm64,
-                       windows-x64, windows-arm64, all
+                       windows-x64, all
   --publish            Upload built assets to the GitHub release tag
   --tag <tag>          Release tag to upload to (default: lingxia-cli-v<version>)
   --out <dir>          Output directory (default: dist/cli-release)
@@ -84,6 +84,8 @@ current_cli_target() {
       ;;
   esac
 
+  # Windows releases use x64 on both Intel/AMD and Windows 11 Arm emulation.
+  [[ "$os" != "windows" ]] || arch="x64"
   printf '%s-%s\n' "$os" "$arch"
 }
 
@@ -94,7 +96,6 @@ cli_target_info() {
     darwin-x64)    echo "x86_64-apple-darwin darwin-x86_64" ;;
     darwin-arm64)  echo "aarch64-apple-darwin darwin-aarch64" ;;
     windows-x64)   echo "x86_64-pc-windows-msvc windows-x86_64 .exe" ;;
-    windows-arm64) echo "aarch64-pc-windows-msvc windows-aarch64 .exe" ;;
     *) return 1 ;;
   esac
 }

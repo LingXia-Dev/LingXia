@@ -709,10 +709,11 @@ fn platform_suffix() -> Result<String> {
             ));
         }
     };
-    // Release assets use raw Rust target_arch names (e.g. x86_64, aarch64).
-    let arch = match env::consts::ARCH {
-        "x86_64" | "aarch64" => env::consts::ARCH,
-        other => {
+    // Windows ships x64 only, including updates from a native Arm CLI.
+    let arch = match (os, env::consts::ARCH) {
+        ("windows", "x86_64" | "aarch64") => "x86_64",
+        (_, arch @ ("x86_64" | "aarch64")) => arch,
+        (_, other) => {
             return Err(anyhow!(
                 "Automatic CLI update is not supported on this architecture yet: {}",
                 other
