@@ -64,6 +64,19 @@ public class GpuPickerTest {
         assertEquals(java.util.Collections.singletonList(true), host.renders);
     }
 
+    @Test public void aDropdownOpensBelowTheBoxOrAboveItWhenOnlyAboveHasRoom() {
+        // A full-screen page (anchor at 0, 2000 tall) in a 0..2000 visible frame; 3 options need 400.
+        assertArrayEquals("room below", new int[]{600 - 2000, 400}, GpuPicker.place(500, 600, 2000, 0, 0, 2000, 400));
+        assertArrayEquals("near the bottom edge: above the box, its own height",
+            new int[]{1800 - 400 - 2000, 400}, GpuPicker.place(1800, 1900, 2000, 0, 0, 2000, 400));
+        assertArrayEquals("the page starts lower on screen", new int[]{1500 - 400 - 1800, 400},
+            GpuPicker.place(1500, 1600, 1800, 200, 0, 2000, 400));
+        assertArrayEquals("fits nowhere: the larger side, clipped", new int[]{300 - 250, 250},
+            GpuPicker.place(200, 300, 250, 0, 0, 550, 400));
+        assertArrayEquals("fits nowhere and above is larger", new int[]{350 - 350 - 550, 350},
+            GpuPicker.place(350, 450, 550, 50, 50, 550, 400));
+    }
+
     @Test public void aLongListOpensADialogAndDismissingSendsNothing() throws Exception {
         Host host = new Host();
         GpuPicker picker = new GpuPicker(anchor(), host);

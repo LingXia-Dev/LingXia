@@ -70,8 +70,14 @@ final class GpuPicker {
             list.setAdapter(adapter);
             list.setAnchorView(anchor);
             list.setHorizontalOffset(bounds.left);
-            list.setVerticalOffset(bounds.bottom - anchor.getHeight());
-            list.setWidth(Math.max(bounds.width(), 1));
+            int width = Math.max(bounds.width(), 1);
+            Rect visible = new Rect(); int[] at = new int[2];
+            anchor.getWindowVisibleDisplayFrame(visible); anchor.getLocationOnScreen(at);
+            int[] place = place(bounds.top, bounds.bottom, anchor.getHeight(), at[1], visible.top, visible.bottom,
+                contentHeight(list, adapter, width, context));
+            list.setVerticalOffset(place[0]);
+            list.setHeight(place[1]);
+            list.setWidth(width);
             list.setModal(true);
             list.setOnItemClickListener((parent, view, position, id) -> choose.accept(position));
             list.setOnDismissListener(() -> { if (popup == list) { popup = null; host.open(null); } });
@@ -89,6 +95,35 @@ final class GpuPicker {
             dialog = shown;
             shown.show();
         }
+    }
+
+    /**
+     * `{verticalOffset, height}` for a dropdown under the anchor's bottom edge: below the box when
+     * the options fit there or it has the most room, else above it; clipped to that room.
+     */
+    static int[] place(int boxTop, int boxBottom, int anchorHeight, int anchorScreenTop,
+                       int visibleTop, int visibleBottom, int content) {
+        int below = Math.max(0, visibleBottom - (anchorScreenTop + boxBottom));
+        int above = Math.max(0, anchorScreenTop + boxTop - visibleTop);
+        if (content <= below || below >= above) return new int[]{boxBottom - anchorHeight, Math.min(content, below)};
+        int height = Math.min(content, above);
+        return new int[]{boxTop - height - anchorHeight, height};
+    }
+
+    /** Every option row plus the popup background's padding. */
+    private static int contentHeight(ListPopupWindow list, ArrayAdapter<String> adapter, int width, Context context) {
+        Rect padding = new Rect();
+        if (list.getBackground() != null) list.getBackground().getPadding(padding);
+        int height = padding.top + padding.bottom;
+        android.widget.FrameLayout parent = new android.widget.FrameLayout(context);
+        int widthSpec = View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY);
+        int heightSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED);
+        for (int i = 0; i < adapter.getCount(); i++) {
+            View row = adapter.getView(i, null, parent);
+            row.measure(widthSpec, heightSpec);
+            height += row.getMeasuredHeight();
+        }
+        return height;
     }
 
     boolean showing() { return popup != null || dialog != null; }
