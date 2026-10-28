@@ -115,6 +115,7 @@ export function showToast(params: unknown): Promise<void> {
   if (mask) {
     maskEl = document.createElement('div');
     maskEl.className = 'lx-toast-mask';
+    maskEl.dataset.testid = 'lx-toast-mask';
     document.body.appendChild(maskEl);
   }
 
@@ -128,6 +129,7 @@ export function showToast(params: unknown): Promise<void> {
   // Toast box
   const box = document.createElement('div');
   box.className = 'lx-toast-box';
+  box.dataset.testid = 'lx-toast';
   const hasIcon = icon !== 'none';
   if (!hasIcon) box.classList.add('lx-toast-no-icon');
 
@@ -135,6 +137,7 @@ export function showToast(params: unknown): Promise<void> {
   if (hasIcon) {
     const iconEl = document.createElement('div');
     iconEl.className = 'lx-toast-icon';
+    iconEl.dataset.testid = 'lx-toast-icon';
     if (icon === 'success') iconEl.innerHTML = SVG_SUCCESS;
     else if (icon === 'error') iconEl.innerHTML = SVG_ERROR;
     else if (icon === 'loading') iconEl.innerHTML = SVG_LOADING;

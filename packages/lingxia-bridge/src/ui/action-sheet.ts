@@ -112,9 +112,11 @@ function renderSheet(
     // --- DOM ---
     const backdrop = document.createElement('div');
     backdrop.className = 'lx-as-backdrop';
+    backdrop.dataset.testid = 'lx-action-sheet-backdrop';
 
     const sheet = document.createElement('div');
     sheet.className = 'lx-as-sheet';
+    sheet.dataset.testid = 'lx-action-sheet';
     if (desktopMode) {
       sheet.classList.add('lx-as-desktop');
     }
@@ -128,6 +130,7 @@ function renderSheet(
     items.forEach((text, index) => {
       const btn = document.createElement('button');
       btn.className = 'lx-as-item';
+      btn.dataset.testid = `lx-action-sheet-item-${index}`;
       btn.textContent = text;
       btn.style.color = itemColor;
       btn.addEventListener('click', () => dismiss(index));
@@ -140,6 +143,7 @@ function renderSheet(
 
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'lx-as-item lx-as-cancel-btn';
+    cancelBtn.dataset.testid = 'lx-action-sheet-cancel';
     cancelBtn.textContent = cancelText;
     cancelBtn.addEventListener('click', () => dismiss(-1));
     container.appendChild(cancelBtn);

@@ -150,6 +150,7 @@ function renderModal(
 
     const dialog = document.createElement('div');
     dialog.className = 'lx-modal-dialog';
+    dialog.dataset.testid = 'lx-modal';
 
     // Body
     const body = document.createElement('div');
@@ -176,6 +177,7 @@ function renderModal(
     if (showCancel) {
       const cancelBtn = document.createElement('button');
       cancelBtn.className = 'lx-modal-btn lx-modal-btn-cancel';
+      cancelBtn.dataset.testid = 'lx-modal-cancel';
       cancelBtn.textContent = cancelText;
       if (cancelColor) cancelBtn.style.color = cancelColor;
       cancelBtn.addEventListener('click', () => dismiss(false));
@@ -184,6 +186,7 @@ function renderModal(
 
     const confirmBtn = document.createElement('button');
     confirmBtn.className = 'lx-modal-btn lx-modal-btn-confirm';
+    confirmBtn.dataset.testid = 'lx-modal-confirm';
     confirmBtn.textContent = confirmText;
     confirmBtn.style.color = confirmColor;
     confirmBtn.addEventListener('click', () => dismiss(true));

@@ -65,6 +65,9 @@ for (const spec of specs.filter((file) => !(file in manifest.skip))) {
     ...[...text.matchAll(/data-testid=\\?["']([^"'\\]+)\\?["']/g)].map((m) => m[1]),
   ]);
   for (const id of named) {
+    // `lx-*` ids belong to the runtime's own overlays (toast, modal, action
+    // sheet), which carry them on both renderers.
+    if (id.startsWith('lx-')) continue;
     for (const app of ['react', 'gpu']) {
       if (app === 'gpu' && id in manifest.keyed) continue;
       if (!has[app](id)) problems.push(`${spec} names testId ${id}, which the ${app} showcase does not render`);
