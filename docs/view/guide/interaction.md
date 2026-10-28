@@ -128,3 +128,12 @@ geometry or content changed, the tap is dropped rather than delivered to the wro
 
 A hardware keyboard moves focus between controls in tree order and draws a focus ring. A radio group
 is one stop: its selected option, or its first enabled one.
+
+## Feedback from Logic
+
+On desktop, `lx.showToast`, `lx.hideToast`, `lx.showModal` and `lx.showActionSheet` draw above the page
+in the View itself, in the theme's roles: the toast is a polite live region, the modal and the action
+sheet are dialogs that hold keyboard focus, and each answers Logic as a WebView page would (the modal
+with `confirm`/`cancel`, the sheet with `tapIndex`, `-1` for cancel). Button colours follow the roles
+(`accent`, `text-muted`), not `confirmColor`/`cancelColor`. Any other call Logic makes into the View is
+refused at once with `E_UNSUPPORTED`. On phones these APIs stay native.

@@ -1,4 +1,5 @@
 import { immutable, has } from './data.js';
+import { takeOverlayReplies } from './overlay.js';
 import { bridgeError } from './errors.js';
 import { outsideRender } from './state.js';
 import { createStream } from './stream.js';
@@ -147,7 +148,7 @@ export function requestLeave(reason) {
   leaveGuards.request(reason);
 }
 
-export function takeActionRequests() { const result = requests; requests = []; return result; }
+export function takeActionRequests() { const result = requests.concat(takeOverlayReplies()); requests = []; return result; }
 
 // Test automation calls a page action exactly as `view.actions[name](payload)` would.
 let automationResults = [];

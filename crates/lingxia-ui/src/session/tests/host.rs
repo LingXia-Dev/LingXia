@@ -1790,6 +1790,140 @@ fn platform_edits_and_picks_reach_the_bound_locals() {
 }
 
 #[test]
+fn logic_feedback_calls_draw_in_the_view_and_answer_like_the_webview() {
+    if !bounded_jobs() {
+        return;
+    }
+    let worker = ViewWorker::spawn("test-view-calls").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &(source(
+            "function render({data}){return h('page',{},h('text',{testId:'body'},`n ${data.n}`))}",
+        ) + "\nglobalThis.__lingxiaActionCatalog={__names:[],__modes:{}};"),
+        true,
+    );
+    // The fake clock stands still between settles; reduced motion lands presence at once.
+    host.adapter()
+        .environment
+        .lock()
+        .unwrap()
+        .as_mut()
+        .unwrap()
+        .value["reducedMotion"] = serde_json::json!(true);
+    host.set_visible(true);
+    let connection = ConnectionTicket::new(1);
+    host.connect(connection, "nonce".into());
+    for frame in [
+        serde_json::json!({"v":2,"kind":"helloAck","nonce":"nonce","protocol":2,"sessionId":"s"}),
+        serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"n":0}}),
+        serde_json::json!({"v":2,"kind":"ready","sessionId":"s"}),
+    ] {
+        host.receive(connection, frame.to_string());
+    }
+    platform.settle(&[&host]);
+    let replies = || -> Vec<serde_json::Value> {
+        host.adapter()
+            .log
+            .lock()
+            .unwrap()
+            .messages
+            .iter()
+            .filter_map(|(_, m)| serde_json::from_str::<serde_json::Value>(m).ok())
+            .filter(|m| m["kind"] == "res")
+            .collect()
+    };
+    let call = |id: &str, method: &str, params: serde_json::Value| {
+        host.receive(connection, serde_json::json!({"v":2,"kind":"req","id":id,"method":method,"params":params,"cap":"page"}).to_string());
+        platform.settle(&[&host]);
+    };
+    let query = |css: &str| {
+        host.automation_request(&serde_json::json!({"op":"query","css":css}))
+            .unwrap()
+    };
+    // A method the GPU View does not serve is refused at once.
+    call("lv_1", "ui.unknown", serde_json::json!({}));
+    let refused = replies()
+        .into_iter()
+        .find(|r| r["id"] == "lv_1")
+        .expect("answered");
+    assert_eq!(
+        (refused["ok"].as_bool(), refused["error"]["code"].as_str()),
+        (Some(false), Some("E_UNSUPPORTED"))
+    );
+    // A toast answers on presentation and leaves after its duration.
+    call(
+        "lv_2",
+        "ui.showToast",
+        serde_json::json!({"title":"Saved","icon":"success","duration":1500}),
+    );
+    assert_eq!(
+        replies().into_iter().find(|r| r["id"] == "lv_2").unwrap()["ok"],
+        true
+    );
+    let toast = query("[data-testid=\"lx-toast\"]");
+    assert_eq!(
+        (toast["exists"].as_bool(), toast["text"].as_str()),
+        (Some(true), Some("Saved"))
+    );
+    assert_eq!(toast["role"], "status");
+    platform.advance(Duration::from_millis(1600));
+    platform.settle(&[&host]);
+    assert_eq!(query("[data-testid=\"lx-toast\"]")["exists"], false);
+    // A modal answers when a button is chosen.
+    call(
+        "lv_3",
+        "ui.showModal",
+        serde_json::json!({"title":"Delete?","content":"This cannot be undone","confirmText":"Delete"}),
+    );
+    assert!(
+        replies().iter().all(|r| r["id"] != "lv_3"),
+        "waits for a choice"
+    );
+    let dialog = query("[role=\"dialog\"]");
+    assert_eq!(dialog["aria_label"], "Delete?");
+    host.automation_request(&serde_json::json!({"op":"act","css":"[data-testid=\"lx-modal-confirm\"]","action":{"kind":"click"}})).unwrap();
+    platform.settle(&[&host]);
+    let chosen = replies()
+        .into_iter()
+        .find(|r| r["id"] == "lv_3")
+        .expect("answered after the tap");
+    assert_eq!(
+        chosen["result"],
+        serde_json::json!({"confirm": true, "cancel": false})
+    );
+    assert_eq!(query("[data-testid=\"lx-modal\"]")["exists"], false);
+    // An action sheet answers with the tapped index, or -1 for cancel.
+    call(
+        "lv_4",
+        "ui.showActionSheet",
+        serde_json::json!({"itemList":["Copy","Share"]}),
+    );
+    host.automation_request(&serde_json::json!({"op":"act","css":"[data-testid=\"lx-action-sheet-item-1\"]","action":{"kind":"click"}})).unwrap();
+    platform.settle(&[&host]);
+    assert_eq!(
+        replies().into_iter().find(|r| r["id"] == "lv_4").unwrap()["result"],
+        serde_json::json!({"tapIndex": 1})
+    );
+    call(
+        "lv_5",
+        "ui.showActionSheet",
+        serde_json::json!({"itemList":["Copy"]}),
+    );
+    host.automation_request(&serde_json::json!({"op":"act","css":"[data-testid=\"lx-action-sheet-cancel\"]","action":{"kind":"click"}})).unwrap();
+    platform.settle(&[&host]);
+    assert_eq!(
+        replies().into_iter().find(|r| r["id"] == "lv_5").unwrap()["result"],
+        serde_json::json!({"tapIndex": -1})
+    );
+    assert_eq!(
+        query("[data-testid=\"body\"]")["text"],
+        "n 0",
+        "the page underneath is untouched"
+    );
+}
+
+#[test]
 fn abandoned_automation_calls_expire_instead_of_exhausting_the_slots() {
     if !bounded_jobs() {
         return;

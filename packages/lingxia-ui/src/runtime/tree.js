@@ -5,6 +5,8 @@ import { encodeTree, copyTree, retainCells } from './encode.js';
 import { validInputText } from './data.js';
 import { report, resetActions, actionEpochNow, hasActionEpoch } from './actions.js';
 import { sited } from './errors.js';
+import { overlayNode, decorateOverlay, resetOverlays } from './overlay.js';
+import { envOf } from './hooks.js';
 
 // Candidate transactions: prepare renders and encodes without touching the
 // committed page; commit adopts the candidate, discard drops it.
@@ -32,6 +34,10 @@ export function prepare(renderPage, view, windows = {}) {
     candidate.tree = resolveNode(renderPage(view), 'root');
     render.site = null;
     if (!candidate.tree || candidate.tree.fragment) throw Error('UI_ROOT: page must return one layout node');
+    // Logic-requested feedback (toast, modal, action sheet) draws above the page's own children.
+    const env = envOf(view), overlay = overlayNode(env);
+    if (overlay) candidate.tree.children.push(decorateOverlay(resolveNode(overlay, `root/${candidate.tree.element}/key:"lx-overlay"`, 1,
+      { tag: candidate.tree.element, typography: candidate.tree.typography }), env));
     candidate.baseLocals = new Map(candidate.locals);
     return encodeTree(candidate.tree, windows);
   });
@@ -84,6 +90,7 @@ export function reset() {
   for (const resource of page.resources.values()) resource.dispose();
   page.resources.clear();
   resetActions();
+  resetOverlays();
 }
 
 const accepts = (kind, value) => kind === 'number' ? typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1e9

@@ -18,6 +18,8 @@ pub struct BridgeUpdate {
     pub errors: Vec<String>,
     /// Settled automation action calls.
     pub automation: Vec<crate::session::bridge::AutomationOutcome>,
+    /// Toast deadlines to schedule: `(token, milliseconds)`.
+    pub overlay_timers: Vec<(u64, u64)>,
 }
 
 /// Collect queued Logic actions after a View step.
@@ -34,6 +36,7 @@ pub(super) fn update(
         outbound,
         errors: session.take_action_errors()?,
         automation: session.take_automation_results()?,
+        overlay_timers: session.take_overlay_timers()?,
     })
 }
 
@@ -74,6 +77,9 @@ impl<A: PlatformAdapter> Inner<A> {
         for message in &update.outbound {
             self.adapter.message(connection, message);
         }
+        for (token, ms) in update.overlay_timers {
+            self.overlay_deadline(token, ms);
+        }
         self.lifecycle.set_bridge_ready(connection, update.ready);
         if update.ready {
             self.main().bootstrap_timer += 1;
@@ -83,6 +89,29 @@ impl<A: PlatformAdapter> Inner<A> {
             self.main().dirty = true;
             self.schedule();
         }
+    }
+
+    /// Hide the toast `token` once its duration passes, unless another replaced it.
+    fn overlay_deadline(self: &Arc<Self>, token: u64, ms: u64) {
+        let (inner, page) = (self.clone(), self.lifecycle.page());
+        self.adapter.post_after(
+            std::time::Duration::from_millis(ms),
+            Box::new(move || {
+                if !inner.lifecycle.is_current_page(page) {
+                    return;
+                }
+                inner.work(
+                    Guard::Page(page),
+                    move |_, session| session.overlay_timer(token),
+                    move |inner, result| {
+                        if matches!(result, Some(Ok(true))) && !inner.main().disposed {
+                            inner.main().dirty = true;
+                            inner.schedule();
+                        }
+                    },
+                );
+            }),
+        );
     }
 
     pub(super) fn connect(self: &Arc<Self>, connection: ConnectionTicket, nonce: String) {

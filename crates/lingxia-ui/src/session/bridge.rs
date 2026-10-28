@@ -102,8 +102,55 @@ impl ViewSession {
                     outbound,
                 })
             }
+            // A Logic call into the View (`call_view`): the overlays answer `ui.*`; any other
+            // method is refused at once, so Logic never waits on a GPU page.
+            "req" => {
+                let json = serde_json::to_string(&frame.to_string()).map_err(|e| e.to_string())?;
+                let answer: String = self.execute(|| {
+                    self.context
+                        .eval(Source::from_bytes(
+                            format!("__lingxiaViewRequest(JSON.parse({json}))").as_bytes(),
+                        ))
+                        .map_err(|e| e.to_string())
+                })?;
+                let answer: serde_json::Value =
+                    serde_json::from_str(&answer).map_err(|e| e.to_string())?;
+                let outbound = answer["replies"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|reply| serde_json::from_str(reply.as_str()?).ok())
+                    .collect();
+                Ok(crate::session::state::StateUpdate {
+                    changed: answer["changed"] == true && self.ready_to_render(),
+                    outbound,
+                })
+            }
             _ => Err("UI_BRIDGE: unsupported frame".into()),
         }
+    }
+
+    /// Toast deadlines the overlays asked for since the last call: `(token, milliseconds)`.
+    pub fn take_overlay_timers(&self) -> Result<Vec<(u64, u64)>, String> {
+        let json: String = self.execute(|| {
+            self.context
+                .eval(Source::from_bytes(
+                    "typeof __lingxiaTakeOverlayTimers === 'function' ? __lingxiaTakeOverlayTimers() : '[]'",
+                ))
+                .map_err(|e| e.to_string())
+        })?;
+        serde_json::from_str(&json).map_err(|e| e.to_string())
+    }
+
+    /// A toast deadline passed; true when it hid the toast still showing.
+    pub fn overlay_timer(&self, token: u64) -> Result<bool, String> {
+        self.execute(|| {
+            self.context
+                .eval(Source::from_bytes(
+                    format!("__lingxiaOverlayTimer({token})").as_bytes(),
+                ))
+                .map_err(|e| e.to_string())
+        })
     }
 
     pub fn configure_actions(&self, metadata: &serde_json::Value) -> Result<(), String> {
@@ -170,9 +217,7 @@ impl ViewSession {
     }
 
     /// Settled automation action calls: `(call, value or "CODE: message")`.
-    pub fn take_automation_results(
-        &self,
-    ) -> Result<Vec<AutomationOutcome>, String> {
+    pub fn take_automation_results(&self) -> Result<Vec<AutomationOutcome>, String> {
         let json: String = self.execute(|| {
             self.context
                 .eval(Source::from_bytes(
