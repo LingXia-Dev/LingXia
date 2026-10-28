@@ -780,9 +780,7 @@ pub async fn page_scroll_to_index(
     index: Option<usize>,
 ) -> Result<(), String> {
     if let Some(page) = gpu::backend(app, page_name)? {
-        return page
-            .act(selector, index, gpu::GpuAction::ScrollIntoView)
-            .await;
+        return gpu_reveal(page.as_ref(), selector, index).await;
     }
     if index.is_some_and(|index| index > 0) {
         return Err("page scrollTo: a WebView page reveals only the first match".into());
@@ -791,6 +789,45 @@ pub async fn page_scroll_to_index(
         .scroll_to(selector, lingxia_webview::ScrollOptions)
         .await
         .map_err(|err| err.to_string())
+}
+
+/// Frames a GPU reveal waits through before it fails.
+const REVEAL_FRAMES: usize = 4;
+
+/// Reveal on a GPU page. A match the newest View just added (an expanded section) can still
+/// lie beyond the presented frame's scroll extent; the frames that follow carry it, so a
+/// failed reveal waits for the next presented frame and tries again before giving up.
+async fn gpu_reveal(
+    page: &dyn gpu::GpuPageAutomation,
+    selector: &str,
+    index: Option<usize>,
+) -> Result<(), String> {
+    let mut attempt = 0;
+    loop {
+        match page
+            .act(selector, index, gpu::GpuAction::ScrollIntoView)
+            .await
+        {
+            Err(error) if error.contains("no scroll brings") && attempt < REVEAL_FRAMES => {
+                attempt += 1;
+                next_presented_frame(page).await;
+            }
+            done => return done,
+        }
+    }
+}
+
+/// Wait until the page presents another frame, at most ~100 ms.
+async fn next_presented_frame(page: &dyn gpu::GpuPageAutomation) {
+    let frames = |value: Value| value["frames"].as_u64();
+    let before = page.frame().await.ok().and_then(frames);
+    for _ in 0..12 {
+        tokio::time::sleep(std::time::Duration::from_millis(8)).await;
+        let now = page.frame().await.ok().and_then(frames);
+        if before.is_none() || now != before {
+            return;
+        }
+    }
 }
 
 // ===================== DOM query script =====================
@@ -923,6 +960,75 @@ pub fn build_query_script(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+
+    /// A page whose first reveals miss and whose frame counter moves on every read.
+    struct Revealing {
+        misses: AtomicUsize,
+        attempts: AtomicUsize,
+        frames: AtomicU64,
+    }
+
+    impl gpu::GpuPageAutomation for Revealing {
+        fn query(
+            &self,
+            _: &str,
+            _: Option<usize>,
+            _: bool,
+            _: Option<usize>,
+        ) -> gpu::GpuFuture<Value> {
+            Box::pin(async { Err("unused".to_owned()) })
+        }
+        fn act(&self, css: &str, _: Option<usize>, _: gpu::GpuAction) -> gpu::GpuFuture<()> {
+            self.attempts.fetch_add(1, Ordering::SeqCst);
+            let missed = self
+                .misses
+                .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
+                .is_ok();
+            let css = css.to_owned();
+            Box::pin(async move {
+                if missed {
+                    Err(format!(
+                        "Element not interactable: no scroll brings {css} on screen"
+                    ))
+                } else {
+                    Ok(())
+                }
+            })
+        }
+        fn screenshot(&self) -> gpu::GpuFuture<Vec<u8>> {
+            Box::pin(async { Err("unused".to_owned()) })
+        }
+        fn frame(&self) -> gpu::GpuFuture<Value> {
+            let frames = self.frames.fetch_add(1, Ordering::SeqCst);
+            Box::pin(async move { Ok(serde_json::json!({ "frames": frames })) })
+        }
+    }
+
+    fn page(misses: usize) -> Revealing {
+        Revealing {
+            misses: AtomicUsize::new(misses),
+            attempts: AtomicUsize::new(0),
+            frames: AtomicU64::new(0),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_reveal_missed_right_after_an_expansion_succeeds_on_a_following_frame() {
+        let page = page(2);
+        assert_eq!(gpu_reveal(&page, "[data-testid=row]", None).await, Ok(()));
+        assert_eq!(page.attempts.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn a_reveal_that_never_lands_fails_after_a_few_frames() {
+        let page = page(usize::MAX);
+        let error = gpu_reveal(&page, "[data-testid=row]", None)
+            .await
+            .unwrap_err();
+        assert!(error.contains("no scroll brings"));
+        assert_eq!(page.attempts.load(Ordering::SeqCst), REVEAL_FRAMES + 1);
+    }
 
     #[test]
     fn current_falls_back_to_the_home_app_while_no_app_is_in_front() {
