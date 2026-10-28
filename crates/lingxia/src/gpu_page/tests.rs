@@ -217,6 +217,85 @@ fn automation_requests_reach_the_shell_until_the_page_goes() {
     assert!(gone.starts_with("page is not active:"), "{gone}");
 }
 
+/// Acts with call 1, then answers its result polls as `results` says.
+#[cfg(feature = "automation")]
+struct Acting {
+    results: fn(AutomationReply),
+}
+
+#[cfg(feature = "automation")]
+impl NativePage for Acting {
+    fn connect(&self, _: GpuViewGeneration, _: &str) -> Result<(), LxAppError> {
+        Ok(())
+    }
+    fn receive(&self, _: GpuViewGeneration, _: &str) -> Result<(), LxAppError> {
+        Ok(())
+    }
+    fn request_leave(&self, _: GpuViewGeneration, _: &str) -> Result<(), LxAppError> {
+        Ok(())
+    }
+    fn update_environment(&self, _: &serde_json::Value) -> Result<(), LxAppError> {
+        Ok(())
+    }
+    fn reload(&self, _: &str) -> Result<(), LxAppError> {
+        Ok(())
+    }
+    fn park(&self) -> Result<(), LxAppError> {
+        Ok(())
+    }
+    fn retain_surface(&self, _: bool) -> Result<(), LxAppError> {
+        Ok(())
+    }
+    fn automation(&self, request: serde_json::Value, reply: AutomationReply) {
+        if request["op"] == "act" {
+            reply(Ok(serde_json::json!({"call": 1})));
+        } else {
+            (self.results)(reply);
+        }
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+#[cfg(feature = "automation")]
+fn act_on(results: fn(AutomationReply)) -> Result<(), String> {
+    use lingxia_automation::gpu::{GpuAction, GpuPageAutomation};
+    let native: Arc<dyn NativePage> = Arc::new(Acting { results });
+    let automation = automation::GpuAutomation {
+        native: Arc::downgrade(&native),
+    };
+    tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .build()
+        .unwrap()
+        .block_on(automation.act("button", None, GpuAction::Click { force: false }))
+}
+
+#[cfg(feature = "automation")]
+#[test]
+fn an_act_whose_page_leaves_counts_done() {
+    // Parked behind the page the click opened: the poll goes unanswered.
+    let started = std::time::Instant::now();
+    act_on(std::mem::forget).unwrap();
+    assert!(started.elapsed() < std::time::Duration::from_secs(2));
+    // Disposed by the navigation.
+    act_on(|reply| reply(Err("page is not active".into()))).unwrap();
+    act_on(|reply| reply(Ok(serde_json::json!({"done": true})))).unwrap();
+}
+
+#[cfg(feature = "automation")]
+#[test]
+fn an_act_the_page_drops_still_fails() {
+    let error = act_on(|reply| reply(Err("E_ACT_DROPPED: the press was not delivered".into())))
+        .unwrap_err();
+    assert!(error.starts_with("E_ACT_DROPPED"), "{error}");
+    assert_eq!(
+        automation::act_progress(Ok(Ok(serde_json::json!({"done": false})))),
+        automation::ActProgress::Pending
+    );
+}
+
 #[test]
 fn a_hot_swap_reaches_only_the_selected_live_pages() {
     let factory = Arc::new(Factory::default());
