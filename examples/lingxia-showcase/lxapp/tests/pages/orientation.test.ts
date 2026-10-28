@@ -19,7 +19,8 @@ spec('a page that follows the device turns with it', {
   const view = app.view;
   await view.testId('home-page').waitFor({ timeout: 30_000 });
   const start = await wide(view);
-  t.defer(async () => { await turn(t, 'auto'); if (!start) await turn(t, 'portrait'); });
+  // Leave the device or window as the spec found it.
+  t.defer(async () => { await turn(t, start ? 'landscape' : 'portrait'); await turn(t, 'auto'); });
 
   await turn(t, 'landscape');
   await expect.poll(() => wide(view), { timeout: 10_000 }).toBe(true);
