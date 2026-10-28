@@ -62,6 +62,7 @@ impl GpuPageAutomation for GpuAutomation {
         let reply =
             self.request(json!({"op": "act", "css": css, "index": index, "action": action}));
         let native = self.native.clone();
+        let css = css.to_owned();
         Box::pin(async move {
             // The act names a call; it has happened once the worker applied it and the frame
             // settled. A drop (`E_ACT_DROPPED`) is an error the locator retries on.
