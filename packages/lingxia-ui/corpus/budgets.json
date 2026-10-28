@@ -1629,7 +1629,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1444
+  "wireValues": 1446
  },
  "showcase-gpu/ui@phone-light": {
   "backdrops": 0,
@@ -1644,7 +1644,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1444
+  "wireValues": 1446
  },
  "showcase-gpu/ui@tablet-dark": {
   "backdrops": 0,
@@ -1659,7 +1659,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1444
+  "wireValues": 1446
  },
  "showcase-gpu/ui@tablet-light": {
   "backdrops": 0,
@@ -1674,7 +1674,7 @@
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1444
+  "wireValues": 1446
  },
  "showcase-gpu/view-lab@phone-dark": {
   "backdrops": 0,
