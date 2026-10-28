@@ -23,6 +23,19 @@ impl ViewSession {
         Ok(ran)
     }
 
+    /// A non-input event callback (image load, scroll edge): runs like a click but is not one,
+    /// so it never reaches the host's per-activation input log.
+    pub(crate) fn event(
+        &mut self,
+        generation: lifecycle::CommitTicket,
+        handle: u64,
+    ) -> Result<bool, String> {
+        if handle == 0 || !self.presented_commit(generation) {
+            return Ok(false);
+        }
+        self.dispatch_handle(handle)
+    }
+
     /// A tap on `identity` in the presented frame. If a newer View superseded that frame,
     /// the same control's current callback runs: a stale frame never costs a tap. Only a
     /// control that is gone or no longer clickable drops it.

@@ -961,6 +961,51 @@ fn a_hidden_page_catches_up_when_its_environment_changes_without_a_new_target() 
 }
 
 #[test]
+fn a_click_that_changes_the_look_logs_one_input_line() {
+    let worker = ViewWorker::spawn("test-click-look").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render({env}){const n=useLocal('n',0),l=useLocal('l','-');return h('column',{},h('button',{testId:'look',onClick:()=>n.set(n.value+1),style:{width:100,height:40}},`${env.theme} ${n.value} ${l.value}`),h('image',{src:'lx://look.png',alt:'',onLoad:()=>l.set('L'),style:{width:10,height:10}}))}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    tap(&host, 20.0, 20.0);
+    // The click's handler switches the appearance, as the Home look segment does: the
+    // environment changes while that click's frame is still in flight.
+    host.adapter()
+        .environment
+        .lock()
+        .unwrap()
+        .as_mut()
+        .unwrap()
+        .value["theme"] = serde_json::json!("dark");
+    host.surface_changed();
+    platform.settle(&[&host]);
+    // An image load lands afterwards: its callback is not an input and logs nothing.
+    let (token, _) = host.adapter().log.lock().unwrap().fetched[0].clone();
+    host.image_loaded(token, Ok(png_of(3)));
+    platform.settle(&[&host]);
+    tap(&host, 20.0, 20.0);
+    platform.settle(&[&host]);
+    assert_eq!(last(&host)[0], "dark 2 L");
+    let lines: Vec<String> = host
+        .adapter()
+        .log
+        .lock()
+        .unwrap()
+        .debug
+        .iter()
+        .filter(|line| line.starts_with("UI_INPUT: click"))
+        .cloned()
+        .collect();
+    assert_eq!(lines.len(), 2, "one line per tap: {lines:?}");
+}
+
+#[test]
 fn hiding_a_page_drops_its_text_selection_from_the_kept_frame() {
     let worker = ViewWorker::shared("test:hide-selection").unwrap();
     let platform = Platform::new(&[&worker]);

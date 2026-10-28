@@ -381,10 +381,9 @@ impl<A: PlatformAdapter> Inner<A> {
             move |inner, session| {
                 let mut changed = false;
                 for handle in handles {
-                    changed |= session.click(commit, handle)?;
+                    // Edges a superseded frame reached are reached again by the current one.
+                    changed |= session.event(commit, handle)?;
                 }
-                // Edges a superseded frame reached are reached again by the current one.
-                session.take_clicks();
                 let update = if changed {
                     inner.drained(session)?
                 } else {

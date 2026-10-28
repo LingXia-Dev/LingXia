@@ -108,7 +108,7 @@ impl ViewSession {
         let mut changed = false;
         for (identity, resource, handle) in handles {
             self.image_notified.insert((identity, resource));
-            changed |= self.click(generation, handle)?;
+            changed |= self.event(generation, handle)?;
         }
         Ok(changed)
     }
