@@ -1916,6 +1916,47 @@ fn logic_feedback_calls_draw_in_the_view_and_answer_like_the_webview() {
         replies().into_iter().find(|r| r["id"] == "lv_5").unwrap()["result"],
         serde_json::json!({"tapIndex": -1})
     );
+    // Escape dismisses the innermost overlay as its cancel would.
+    call(
+        "lv_6",
+        "ui.showActionSheet",
+        serde_json::json!({"itemList":["Copy"]}),
+    );
+    assert!(
+        host.key(crate::interaction::view::Key::Escape, false, false),
+        "a dialog takes Escape"
+    );
+    platform.settle(&[&host]);
+    assert_eq!(
+        replies().into_iter().find(|r| r["id"] == "lv_6").unwrap()["result"],
+        serde_json::json!({"tapIndex": -1})
+    );
+    call(
+        "lv_7",
+        "ui.showModal",
+        serde_json::json!({"title":"Leave?"}),
+    );
+    host.key(crate::interaction::view::Key::Escape, false, false);
+    platform.settle(&[&host]);
+    assert_eq!(
+        replies().into_iter().find(|r| r["id"] == "lv_7").unwrap()["result"],
+        serde_json::json!({"confirm": false, "cancel": true})
+    );
+    call(
+        "lv_8",
+        "ui.showToast",
+        serde_json::json!({"title":"Busy","duration":0}),
+    );
+    assert!(
+        !host.key(crate::interaction::view::Key::Escape, false, false),
+        "a toast is no dialog"
+    );
+    platform.settle(&[&host]);
+    assert_eq!(
+        query("[data-testid=\"lx-toast\"]")["exists"],
+        false,
+        "but Escape still hides it"
+    );
     assert_eq!(
         query("[data-testid=\"body\"]")["text"],
         "n 0",

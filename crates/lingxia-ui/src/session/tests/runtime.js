@@ -793,6 +793,21 @@
     toast = null;
     return true;
   }
+  function escapeOverlay() {
+    if (sheets.length) {
+      settleSheet(-1);
+      return true;
+    }
+    if (modals.length) {
+      settleModal(false);
+      return true;
+    }
+    if (toast) {
+      toast = null;
+      return true;
+    }
+    return false;
+  }
   function takeOverlayTimers() {
     const result = timers;
     timers = [];
@@ -2948,6 +2963,7 @@
       __lingxiaViewRequest: viewRequest,
       __lingxiaOverlayTimer: overlayTimer,
       __lingxiaTakeOverlayTimers: takeOverlayTimers,
+      __lingxiaEscape: escapeOverlay,
       // Cleared when a render completes, so it names only a render that never returned.
       __lingxiaSite: () => render.site || ""
     });

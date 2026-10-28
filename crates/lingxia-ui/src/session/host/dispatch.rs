@@ -242,6 +242,9 @@ impl<A: PlatformAdapter> Inner<A> {
                     true,
                     Box::new(move |session| session.submit_editor(commit, &identity)),
                 ),
+                Dispatch::Escape => {
+                    self.activate(page, false, Box::new(|session| session.escape()))
+                }
                 Dispatch::ClearTextSelection => self.activate(
                     page,
                     false,

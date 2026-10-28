@@ -39,6 +39,7 @@ fn key(name: &str) -> Result<(super::Key, bool), String> {
         "Home" => Key::Home,
         "End" => Key::End,
         "Enter" | " " | "Space" => Key::Activate,
+        "Escape" => Key::Escape,
         other => return Err(format!("E_UNSUPPORTED: key {other:?} on a GPU page")),
     };
     Ok((key, shift))

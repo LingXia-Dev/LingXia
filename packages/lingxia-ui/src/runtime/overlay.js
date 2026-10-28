@@ -60,6 +60,14 @@ export function overlayTimer(token) {
   return true;
 }
 
+/** Escape: the innermost overlay goes, as its cancel would. True when one did. */
+export function escapeOverlay() {
+  if (sheets.length) { settleSheet(-1); return true; }
+  if (modals.length) { settleModal(false); return true; }
+  if (toast) { toast = null; return true; }
+  return false;
+}
+
 export function takeOverlayTimers() { const result = timers; timers = []; return JSON.stringify(result); }
 
 let outbound = [];

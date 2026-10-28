@@ -11,6 +11,8 @@ pub enum Key {
     Home,
     End,
     Activate,
+    /// Dismisses what the View raised over the page (Logic's modal, action sheet or toast).
+    Escape,
 }
 
 impl ViewInteraction {
@@ -154,6 +156,11 @@ impl ViewInteraction {
             return (false, Vec::new());
         };
         self.keyboard_used = true;
+        if key == Key::Escape {
+            // Consumed only while a dialog is open; otherwise the platform may use it too.
+            self.dispatches.push(super::Dispatch::Escape);
+            return (!self.dialogs.is_empty(), vec![Effect::Dispatch]);
+        }
         let origin = self.keyboard_origin();
         if let Some(index) = origin
             && let Some(node) = frame.node(index).filter(|node| frame::slider_enabled(node))
@@ -177,13 +184,24 @@ impl ViewInteraction {
         // Arrows change a select's choice without opening its picker, as on the Web.
         if matches!(key, Key::Left | Key::Right | Key::Up | Key::Down)
             && let Some(index) = origin
-            && let Some(select) = frame.nodes[index].select.as_ref().filter(|s| s.on_select.is_some())
+            && let Some(select) = frame.nodes[index]
+                .select
+                .as_ref()
+                .filter(|s| s.on_select.is_some())
         {
             let forward = matches!(key, Key::Right | Key::Down);
             let count = select.options.len();
-            let start = select.selected.unwrap_or(if forward { count - 1 } else { 0 });
+            let start = select
+                .selected
+                .unwrap_or(if forward { count - 1 } else { 0 });
             let next = (1..count)
-                .map(|step| if forward { (start + step) % count } else { (start + count - step) % count })
+                .map(|step| {
+                    if forward {
+                        (start + step) % count
+                    } else {
+                        (start + count - step) % count
+                    }
+                })
                 .find(|candidate| select.options[*candidate].enabled);
             if let Some(next) = next {
                 self.dispatches.push(Dispatch::Select {

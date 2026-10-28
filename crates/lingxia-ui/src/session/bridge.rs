@@ -142,6 +142,17 @@ impl ViewSession {
         serde_json::from_str(&json).map_err(|e| e.to_string())
     }
 
+    /// Escape: the innermost overlay goes (a sheet cancels, a modal cancels, a toast hides).
+    pub fn escape(&self) -> Result<bool, String> {
+        self.execute(|| {
+            self.context
+                .eval(Source::from_bytes(
+                    "typeof __lingxiaEscape === 'function' && __lingxiaEscape()",
+                ))
+                .map_err(|e| e.to_string())
+        })
+    }
+
     /// A toast deadline passed; true when it hid the toast still showing.
     pub fn overlay_timer(&self, token: u64) -> Result<bool, String> {
         self.execute(|| {

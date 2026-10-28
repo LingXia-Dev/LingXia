@@ -111,6 +111,8 @@ pub enum Dispatch {
         identity: String,
         index: usize,
     },
+    /// Escape: the View dismisses its innermost overlay.
+    Escape,
     /// Enter on an editor: the session submits it as the input method's action would.
     SubmitEditor {
         commit: CommitTicket,
