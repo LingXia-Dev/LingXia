@@ -369,7 +369,7 @@
   "vectorElements": 3,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 400
+  "wireValues": 406
  },
  "corpus/sheet@phone-light": {
   "backdrops": 0,
@@ -384,7 +384,7 @@
   "vectorElements": 3,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 400
+  "wireValues": 406
  },
  "corpus/sheet@tablet-dark": {
   "backdrops": 0,
@@ -399,7 +399,7 @@
   "vectorElements": 3,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 400
+  "wireValues": 406
  },
  "corpus/sheet@tablet-light": {
   "backdrops": 0,
@@ -414,7 +414,7 @@
   "vectorElements": 3,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 400
+  "wireValues": 406
  },
  "corpus/telemetry@phone-dark": {
   "backdrops": 0,
