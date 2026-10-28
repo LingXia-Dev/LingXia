@@ -169,3 +169,19 @@ test("an action the spec expected to reject is not blamed for a later failure", 
   assert.equal(report.cases[0].error.failedAction, undefined);
   assert.equal(failedAt(report.cases[0].error), undefined);
 });
+
+test("an act a GPU page dropped is resolved and sent again within the locator's budget", async () => {
+  const world = createWorld();
+  const element = world.add({ testId: "plan" });
+  const click = world.app.page.click;
+  let calls = 0;
+  world.app.page.click = async (options) => {
+    if (++calls === 1) throw coded("E_ACT_DROPPED", 'E_ACT_DROPPED: [data-testid="plan"] the control is gone');
+    return click(options);
+  };
+  installFakeHost(world);
+  spec("dropped once", (t) => t.app.view.testId("plan").click({ timeout: 500 }));
+  assert.equal((await globalThis.__LINGXIA_TEST__.run()).passed, 1);
+  assert.equal(calls, 2);
+  assert.equal(element.clicked, 1);
+});

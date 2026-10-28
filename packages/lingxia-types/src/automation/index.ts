@@ -52,6 +52,8 @@ export const AUTOMATION_ERROR_CODES = [
   'E_UNSUPPORTED',
   /** The element matched but cannot take the input (disabled, not editable, …). */
   'E_ELEMENT_NOT_INTERACTABLE',
+  /** A GPU page dropped a queued act: its control or option went away before it ran, so nothing happened. */
+  'E_ACT_DROPPED',
   /** A driver wait (`waitFor`, `waitUntil: 'ready'`, …) ran out of time. */
   'E_AUTOMATION_TIMEOUT',
   /** The evaluated script threw. */

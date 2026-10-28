@@ -153,7 +153,8 @@ export function isPreDispatchPageError(error: unknown): boolean {
  */
 export function isElementRefusal(error: unknown): boolean {
   const code = errorCode(error);
-  return code === "E_ELEMENT_NOT_FOUND" || code === "E_ELEMENT_NOT_INTERACTABLE";
+  // A dropped act never ran, so resolving again and resending is safe.
+  return code === "E_ELEMENT_NOT_FOUND" || code === "E_ELEMENT_NOT_INTERACTABLE" || code === "E_ACT_DROPPED";
 }
 
 /**

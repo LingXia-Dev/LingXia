@@ -27,6 +27,9 @@ pub(crate) const E_UNSUPPORTED: &str = "E_UNSUPPORTED";
 pub(crate) const E_ELEMENT_NOT_FOUND: &str = "E_ELEMENT_NOT_FOUND";
 /// The element matched but cannot take the input (disabled, not editable, ...).
 pub(crate) const E_ELEMENT_NOT_INTERACTABLE: &str = "E_ELEMENT_NOT_INTERACTABLE";
+/// A GPU page dropped a queued act because its control or option went away
+/// before it ran; nothing happened, so it can be resolved and sent again.
+pub(crate) const E_ACT_DROPPED: &str = "E_ACT_DROPPED";
 /// A driver wait ran out of time.
 pub(crate) const E_AUTOMATION_TIMEOUT: &str = "E_AUTOMATION_TIMEOUT";
 /// The evaluated script threw.
@@ -96,6 +99,8 @@ pub(crate) fn code_for(message: &str) -> &'static str {
         E_ELEMENT_NOT_FOUND
     } else if message.starts_with("Element not interactable:") {
         E_ELEMENT_NOT_INTERACTABLE
+    } else if message.starts_with("E_ACT_DROPPED:") {
+        E_ACT_DROPPED
     } else if message.starts_with("E_TIMEOUT:")
         || (message.starts_with("timed out after ") && message.contains(" waiting for "))
     {
@@ -303,6 +308,10 @@ mod tests {
             (
                 "Element not interactable: not enabled",
                 E_ELEMENT_NOT_INTERACTABLE,
+            ),
+            (
+                "E_ACT_DROPPED: [data-testid=\"plan\"] option \"yearly\" is gone",
+                E_ACT_DROPPED,
             ),
             ("E_TIMEOUT: waitFor '#save' (visible)", E_AUTOMATION_TIMEOUT),
             (
