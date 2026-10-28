@@ -273,6 +273,8 @@ final class GpuPageView: UIView {
             return
         }
         if gpuPageInputBlocked(token) { return }
+        // A hardware keyboard's keys reach the page once it is touched.
+        if Self.hardwareKeyboard, !isFirstResponder { becomeFirstResponder() }
         if handleTouch(0, at: touch.location(in: self)) {
             tracked = touch
             return

@@ -86,7 +86,13 @@ extension GpuPageView: GpuImeHost, UITextInput {
 
     // MARK: Responder
 
-    override var canBecomeFirstResponder: Bool { ime.editor != nil }
+    /// An editor takes the keyboard; with a hardware keyboard the page takes key presses too.
+    override var canBecomeFirstResponder: Bool { ime.editor != nil || Self.hardwareKeyboard }
+
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        let rest = pressesToPage(presses)
+        if !rest.isEmpty { super.pressesBegan(rest, with: event) }
+    }
 
     @discardableResult
     override func resignFirstResponder() -> Bool {
