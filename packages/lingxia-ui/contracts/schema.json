@@ -252,7 +252,8 @@
     {"id": 186, "key": "exitStyle", "wire": "exitStyle", "kind": "state-style"},
     {"id": 187, "key": "focusWithinStyle", "wire": "focusWithinStyle", "kind": "state-style"},
     {"id": 188, "key": "dataAttributes", "wire": "dataAttributes", "kind": "string"},
-    {"id": 189, "key": "backgroundClip", "wire": "backgroundClip", "kind": "background-clip"}
+    {"id": 189, "key": "backgroundClip", "wire": "backgroundClip", "kind": "background-clip"},
+    {"id": 190, "key": "maskImage", "wire": "maskImage", "kind": "string"}
   ],
   "input": {
     "autofill": {"username": "username", "current-password": "password", "new-password": "newPassword", "one-time-code": "smsOTPCode", "email": "emailAddress", "tel": "phone", "name": "personName", "given-name": "personGivenName", "family-name": "personFamilyName", "street-address": "postalAddress", "postal-code": "postalCode", "country": "addressCountry", "cc-number": "creditCardNumber", "cc-exp": "creditCardExpirationDate", "cc-csc": "creditCardSecurityCode", "bday": "birthDateFull"},
@@ -441,6 +442,7 @@
     "transformOrigin": {"type": "readonly [number, number]", "group": "box", "lower": "transform", "wire": "transform", "paint": true},
     "animation": {"type": "unknown", "group": "box", "lower": "animation", "wire": "animation", "internal": true},
     "transition": {"type": "unknown", "group": "box", "lower": "transition", "wire": "transition", "internal": true},
+    "maskImage": {"type": "unknown", "group": "box", "lower": "mask", "wire": "maskImage", "internal": true},
     "padding": {"type": "number", "group": "padding", "lower": "length", "wire": ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft"]},
     "paddingTop": {"type": "number", "group": "padding", "lower": "length", "wire": "paddingTop", "css": ["padding-top", "padding-block-start"]},
     "paddingRight": {"type": "number", "group": "padding", "lower": "length", "wire": "paddingRight", "css": "padding-right"},

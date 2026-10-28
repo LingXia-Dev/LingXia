@@ -484,10 +484,20 @@ impl DisplayList {
                         opacity: *opacity,
                     }))
                 }
-                Paint::PopClip | Paint::PopOpacity | Paint::PopBackdrop => {
+                Paint::Mask { mask, .. } => {
+                    groups.push(3);
+                    Some(Step::Push(Layer::Mask(std::sync::Arc::new(
+                        crate::scene::composite::DeviceMask::new(
+                            mask,
+                            Affine::scale(f64::from(self.scale)),
+                        ),
+                    ))))
+                }
+                Paint::PopClip | Paint::PopOpacity | Paint::PopBackdrop | Paint::PopMask(_) => {
                     let kind = match paint {
                         Paint::PopClip => 0,
                         Paint::PopOpacity => 1,
+                        Paint::PopMask(_) => 3,
                         _ => 2,
                     };
                     if groups.pop() != Some(kind) {

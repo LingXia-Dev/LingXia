@@ -207,6 +207,28 @@ impl DisplayList {
                 Paint::Clip(shape) => push_clip(context, shape),
                 Paint::PopClip => context.pop_clip(),
                 Paint::PopOpacity => context.pop_layer(),
+                Paint::Mask { .. } => context.push_layer(None, None, None, None, None),
+                Paint::PopMask(mask) => {
+                    transform =
+                        Affine::scale(self.scale as f64) * checked_paint_transform(mask.transform)?;
+                    context.set_transform(transform);
+                    let [x, y, w, h] = mask.bounds.map(f64::from);
+                    for layer in &mask.layers {
+                        context.push_layer(
+                            None,
+                            Some(crate::scene::mask::blend()),
+                            None,
+                            None,
+                            None,
+                        );
+                        context.set_paint(layer.gradient.clone());
+                        context.set_paint_transform(layer.transform);
+                        context.fill_rect(&PaintRect::new(x, y, x + w, y + h));
+                        context.reset_paint_transform();
+                        context.pop_layer();
+                    }
+                    context.pop_layer();
+                }
                 Paint::Opacity { alpha, .. } => context.push_opacity_layer(*alpha),
                 Paint::Backdrop { .. } | Paint::PopBackdrop => {
                     return Err("UI_COMPOSITE: backdrop requires composition".into());

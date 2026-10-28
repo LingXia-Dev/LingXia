@@ -204,6 +204,9 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
         )
         .map(drop),
         field::FOCUS_STYLE | field::FOCUS_WITHIN_STYLE => focus_style(value).map(drop),
+        field::MASK_IMAGE => {
+            crate::scene::mask::parse(value.as_str().ok_or("UI_STYLE_VALUE: maskImage")?).map(drop)
+        }
         field::DATA_ATTRIBUTES => ensure(
             value
                 .as_str()

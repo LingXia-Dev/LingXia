@@ -64,6 +64,7 @@ pub(crate) struct RetainedLayout {
     pub(crate) transforms: Vec<Option<crate::scene::transform::StaticTransform>>,
     pub(crate) stickies: Vec<Option<crate::scene::sticky::Sticky>>,
     pub(crate) backdrops: Vec<Option<(f32, f32)>>,
+    pub(crate) masks: Vec<Option<Arc<Vec<crate::scene::mask::MaskLayer>>>>,
     pub(crate) width: u16,
     pub(crate) height: u16,
     pub(crate) scale: f32,
@@ -254,6 +255,7 @@ impl RetainedLayout {
                 next.transforms.push(old.transforms[index]);
                 next.stickies.push(None);
                 next.backdrops.push(old.backdrops[index]);
+                next.masks.push(old.masks[index].clone());
                 next.inputs.push(None);
                 next.selectables.push(None);
             }
@@ -602,6 +604,12 @@ impl RetainedLayout {
                 desired.push(Paint::Opacity {
                     node: index,
                     alpha: alpha as f32,
+                });
+            }
+            if let Some(layers) = &self.masks[index] {
+                desired.push(Paint::Mask {
+                    node: index,
+                    mask: crate::scene::mask::Mask::new(layers, node.bounds, matrix),
                 });
             }
             let mut descendants = desired.clone();
@@ -1054,6 +1062,7 @@ impl RetainedLayout {
             commands.push(match layer {
                 Paint::Opacity { .. } => Paint::PopOpacity,
                 Paint::Backdrop { .. } => Paint::PopBackdrop,
+                Paint::Mask { mask, .. } => Paint::PopMask(mask.clone()),
                 _ => Paint::PopClip,
             });
         }
@@ -1129,6 +1138,7 @@ fn sync_layers(commands: &mut Vec<Paint>, active_layers: &mut Vec<Paint>, desire
         commands.push(match layer {
             Paint::Opacity { .. } => Paint::PopOpacity,
             Paint::Backdrop { .. } => Paint::PopBackdrop,
+            Paint::Mask { mask, .. } => Paint::PopMask(mask.clone()),
             _ => Paint::PopClip,
         });
     }

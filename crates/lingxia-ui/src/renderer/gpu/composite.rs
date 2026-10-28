@@ -321,8 +321,19 @@ where
             Layer::Opacity(alpha) | Layer::Backdrop { opacity: alpha, .. } => {
                 scene.push_opacity_layer(*alpha)
             }
+            Layer::Mask(_) => scene.push_layer(None, None, None, None, None),
         }
         let bindings = image(&mut scene, source);
+        if let Layer::Mask(mask) = layer {
+            for fade in &mask.layers {
+                scene.push_layer(None, Some(crate::scene::mask::blend()), None, None, None);
+                scene.set_paint(fade.gradient.clone());
+                scene.set_paint_transform(fade.transform);
+                scene.fill_path(&mask.path);
+                scene.reset_paint_transform();
+                scene.pop_layer();
+            }
+        }
         scene.pop_layer();
         self.render(&scene, &bindings, target, TargetInit::SrcOver)
     }

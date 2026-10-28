@@ -67,7 +67,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_STATE` | native | Invalid page state from Logic. |
 | `UI_STREAM` | runtime | Invalid `useStream` call or stream failure. |
 | `UI_STYLE` | build, runtime, native | A style key the element does not render, or an invalid combination (sticky, state paint). |
-| `UI_STYLE_VALUE` | runtime | A style value out of range or of the wrong kind. |
+| `UI_STYLE_VALUE` | runtime, native | A style value out of range or of the wrong kind. |
 | `UI_SURFACE` | native | The platform surface was lost or resized mid-frame; the host recovers. |
 | `UI_TAG` | build, runtime, native | Not an element of the View language. |
 | `UI_TEST_ID` | native | An invalid `testId` reached the native decoder. |

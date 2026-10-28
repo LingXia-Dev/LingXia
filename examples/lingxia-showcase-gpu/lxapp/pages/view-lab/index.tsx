@@ -36,6 +36,9 @@ function Gradients() {
         <view testId="lab-gradient-conic" className="h-16 grow basis-0 rounded-xl bg-conic-90 from-accent via-danger to-accent" />
         <view testId="lab-gradient-arbitrary" className="h-16 grow basis-0 rounded-xl bg-radial-[at_top] from-surface to-accent to-70%" />
       </row>
+      <column testId="lab-gradient-mask" className="h-16 rounded-xl bg-accent mask-b-from-20% mask-r-to-90% p-3">
+        <text className="text-sm text-on-accent">Fades out downward and to the right</text>
+      </column>
       <text testId="lab-gradient-text" className="text-3xl font-bold bg-clip-text text-transparent bg-linear-to-r from-accent to-danger">Gradient text</text>
     </Section>
   );

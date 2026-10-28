@@ -7,6 +7,7 @@ pub mod color_filter;
 pub mod composite;
 pub(crate) mod display;
 pub(crate) mod gradient;
+pub(crate) mod mask;
 pub mod image;
 #[cfg(test)]
 mod image_semantics_tests;

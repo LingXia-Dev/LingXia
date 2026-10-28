@@ -163,6 +163,18 @@ function numericVariant(name, value) {
   return picked.flat().join(' ');
 }
 
+// Up to four alpha fades to a side, intersected; `none` means no field.
+function maskValue(value) {
+  if (value === 'none') return undefined;
+  const invalid = () => { throw Error('UI_STYLE_VALUE: maskImage'); };
+  const position = stop => (stop.offset !== undefined) !== (stop.px !== undefined) &&
+    (stop.offset === undefined || (finite(stop.offset) && Math.abs(stop.offset) <= 16)) && (stop.px === undefined || (finite(stop.px) && Math.abs(stop.px) <= 16384));
+  if (!Array.isArray(value) || !value.length || value.length > 4 || value.some(layer => !layer || !['top', 'bottom', 'left', 'right'].includes(layer.to) ||
+      Object.keys(layer).some(key => !['to', 'stops'].includes(key)) || !Array.isArray(layer.stops) || layer.stops.length < 2 || layer.stops.length > 16 ||
+      layer.stops.some(stop => !stop || Object.keys(stop).some(key => !['alpha', 'offset', 'px'].includes(key)) || !finite(stop.alpha) || stop.alpha < 0 || stop.alpha > 1 || !position(stop)))) invalid();
+  return JSON.stringify(value.map(({ to, stops }) => ({ to, stops: stops.map(({ alpha, offset, px }) => offset === undefined ? { px, alpha } : { offset, alpha }) })));
+}
+
 // One transition for the node's painted properties; `none` and an empty list mean no field.
 function transitionValue(value) {
   if (value === 'none') return undefined;
@@ -274,6 +286,7 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
       case 'animation': { const lowered = animation(value); if (lowered !== undefined) out[key] = lowered; break; }
       case 'transform': transformPart(name, value, transform); break;
       case 'transition': { const lowered = transitionValue(value); if (lowered !== undefined) out[key] = lowered; break; }
+      case 'mask': { const lowered = maskValue(value); if (lowered !== undefined) out[key] = lowered; break; }
       case 'aspect-ratio':
         if (value === 'auto') break;
         if (!finite(value) || value <= 0 || value > 10000) invalid(name);

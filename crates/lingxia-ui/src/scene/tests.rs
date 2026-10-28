@@ -852,3 +852,62 @@ fn clipped_text_shows_its_gradient_only_through_its_glyphs() {
         .unwrap();
     assert_eq!(data, recomposed.pixels.data_as_u8_slice());
 }
+
+/// A 100px red box faded by `fade`, with a 20px blue child inside it, over white.
+fn masked(fade: &str, backdrop: bool) -> crate::ViewSession {
+    let module = crate::session::tests::source(&format!(
+        "function render(){{return h('stack',{{style:{{width:100,height:100,backgroundColor:'#ffffff'}}}},h('stack',{{className:'fade',style:{{width:100,height:100,backgroundColor:'#ff0000'}}}},h('spacer',{{style:{{width:20,height:100,backgroundColor:'#0000ff'}}}})){})}}",
+        if backdrop {
+            ",h('spacer',{style:{left:80,top:0,width:20,height:20,backdropFilter:'blur(2px)'}})"
+        } else {
+            ""
+        }
+    ))
+    .replace(
+        "__lingxiaPublish(render);",
+        &format!("configureClasses([{{name:'fade',when:{{}},style:{{maskImage:{fade}}}}}]);__lingxiaPublish(render);"),
+    );
+    crate::ViewSession::new(&module).unwrap()
+}
+
+#[test]
+fn a_mask_fades_its_subtree_and_composites_the_same() {
+    let fade = "[{to:'bottom',stops:[{offset:0,alpha:1},{px:100,alpha:0}]}]";
+    let mut page = masked(fade, false);
+    let display = page.layout(100, 100, 1.0).unwrap();
+    assert!(display.cost().layers >= 2, "the group and one fade");
+    let frame = display.rasterize().unwrap();
+    let pixel = |frame: &crate::Frame, x: usize, y: usize| {
+        let at = (y * 100 + x) * 4;
+        frame.pixels.data_as_u8_slice()[at..at + 4].to_vec()
+    };
+    let top = pixel(&frame, 50, 0);
+    assert!(top[0] == 255 && top[1] <= 4, "opaque at the start: {top:?}");
+    assert!(
+        pixel(&frame, 50, 99)[1] > 240,
+        "faded to the white page at the end"
+    );
+    let mid = pixel(&frame, 50, 50);
+    assert!(
+        mid[0] > 240 && (100..160).contains(&mid[1]),
+        "half way: {mid:?}"
+    );
+    // The child fades with it.
+    let child = pixel(&frame, 10, 50);
+    assert!(
+        (100..160).contains(&child[0]) && child[2] > 240,
+        "{child:?}"
+    );
+    // A backdrop in the frame takes the composited path; the mask draws the same.
+    let mut composited = masked(fade, true);
+    let display = composited.layout(100, 100, 1.0).unwrap();
+    assert!(display.requires_composition());
+    let other = display.rasterize().unwrap();
+    for (x, y) in [(50, 0), (50, 50), (50, 99), (10, 50)] {
+        let (a, b) = (pixel(&frame, x, y), pixel(&other, x, y));
+        assert!(
+            a.iter().zip(&b).all(|(a, b)| a.abs_diff(*b) <= 2),
+            "({x},{y}): {a:?} vs {b:?}"
+        );
+    }
+}

@@ -1237,6 +1237,15 @@ impl Renderer {
                 .iter()
                 .map(|record| record.number(field::OPACITY).unwrap_or(1.0))
                 .collect(),
+            masks: records
+                .iter()
+                .map(|record| {
+                    record
+                        .string(field::MASK_IMAGE)
+                        .map(|source| crate::scene::mask::parse(source).map(Arc::new))
+                        .transpose()
+                })
+                .collect::<Result<_, _>>()?,
             width,
             height,
             scale,

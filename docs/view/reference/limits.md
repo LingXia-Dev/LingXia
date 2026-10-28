@@ -42,4 +42,4 @@ Page-wide bounds the runtime and the native decoder both enforce. Exceeding one 
 | `layoutMotions` | 256 | Elements moving to a new layout position under `transition-layout` at once; past it further moves land at once. |
 | `dataAttributeBytes` | 65536 (64 KiB) | `data-*` props of a page, as UTF-8 JSON; automation reads them, nothing draws them. |
 
-Wire ABI: 1. Highest field id: 189.
+Wire ABI: 1. Highest field id: 190.

@@ -210,6 +210,12 @@ pub(crate) enum Paint {
         opacity: f32,
     },
     PopBackdrop,
+    /// `mask-image`: the subtree draws into its own layer, faded on the way out.
+    Mask {
+        node: usize,
+        mask: Arc<crate::scene::mask::Mask>,
+    },
+    PopMask(Arc<crate::scene::mask::Mask>),
     Rect {
         color: [u8; 4],
         bounds: [f32; 4],

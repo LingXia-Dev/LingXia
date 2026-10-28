@@ -51,6 +51,8 @@ impl crate::DisplayList {
                     cost.vector_elements += points.len()
                 }
                 Paint::Opacity { .. } | Paint::Clip(_) => cost.layers += 1,
+                // The group, plus one blend layer per fade.
+                Paint::Mask { mask, .. } => cost.layers += 1 + mask.layers.len(),
                 Paint::Backdrop { .. } => {
                     cost.layers += 1;
                     cost.backdrops += 1;

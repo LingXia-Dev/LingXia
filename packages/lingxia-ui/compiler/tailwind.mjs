@@ -367,6 +367,69 @@ function backdropValue(name, raw, vars) {
   return n;
 }
 
+// `mask-image` fades: Tailwind's edge masks (`mask-t-from-*` …) and arbitrary linear gradients
+// to a side, as alpha stops the renderer intersects. Radial and conic masks are refused.
+const maskSides = { top: 'top', bottom: 'bottom', left: 'left', right: 'right' };
+function maskPosition(text) {
+  const { value, unit } = evaluate(text);
+  if (unit === '%') return { offset: value / 100 };
+  if (unit === 'px' || (unit === '' && value === 0)) return { px: value };
+  return unsupported(`unsupported mask position: ${text}`);
+}
+function maskAlpha(text) {
+  const hex = color(text.trim());
+  return parseInt(hex.slice(7, 9) || 'ff', 16) / 255;
+}
+function maskLayer(source) {
+  const match = source.trim().match(/^linear-gradient\(([\s\S]*)\)$/);
+  if (!match) unsupported(`mask-image: ${source} (only linear-gradient fades to a side are drawn)`);
+  const args = postcss.list.comma(match[1]);
+  const side = args[0].match(/^to\s+(top|bottom|left|right)$/)?.[1];
+  if (!side) {
+    // Tailwind's neutral layer: an opaque gradient masks nothing.
+    if (args.every(arg => maskAlpha(arg) === 1)) return null;
+    unsupported(`mask-image: ${source} (a fade needs a side: to top, to bottom, to left or to right)`);
+  }
+  const stops = args.slice(1).map(arg => {
+    const [tint, position, ...rest] = postcss.list.space(arg);
+    if (rest.length) unsupported(`unsupported mask stop: ${arg}`);
+    return { alpha: maskAlpha(tint), ...(position === undefined ? {} : maskPosition(position)) };
+  });
+  if (stops.length < 2 || stops.length > 16) unsupported('mask fades need 2..16 stops');
+  if (stops[0].offset === undefined && stops[0].px === undefined) stops[0].offset = 0;
+  const last = stops[stops.length - 1];
+  if (last.offset === undefined && last.px === undefined) last.offset = 1;
+  if (stops.some(stop => stop.offset === undefined && stop.px === undefined)) unsupported('mask stops between ends need positions');
+  return { to: side, stops };
+}
+function maskDeclaration(prop, raw, local, mask) {
+  const value = variables(raw, local).trim();
+  if (prop === 'mask-composite' || prop === '-webkit-mask-composite') {
+    if (!['intersect', 'source-in'].includes(value)) unsupported(`mask-composite: ${value} (masks intersect)`);
+    return;
+  }
+  if (prop === 'mask-image' || prop === '-webkit-mask-image') {
+    if (raw.replace(/\s/g, '') === 'var(--tw-mask-linear),var(--tw-mask-radial),var(--tw-mask-conic)') Object.assign(mask, { edges: true, fixed: null, none: false });
+    else if (value === 'none') Object.assign(mask, { none: true, edges: false, fixed: null });
+    else {
+      const layers = postcss.list.comma(value).map(maskLayer).filter(Boolean);
+      if (layers.length > 4) unsupported('at most 4 mask layers');
+      Object.assign(mask, { fixed: layers, edges: false, none: false });
+    }
+    return;
+  }
+  if (prop === '--tw-mask-linear') {
+    if (raw.replace(/\s/g, '') !== 'var(--tw-mask-left),var(--tw-mask-right),var(--tw-mask-bottom),var(--tw-mask-top)') unsupported(`mask-linear: ${raw} (use the mask-t/b/l/r edge fades)`);
+    return;
+  }
+  if (prop.startsWith('--tw-mask-radial') || prop.startsWith('--tw-mask-conic')) unsupported('radial and conic masks (use the mask-t/b/l/r edge fades)');
+  const edge = prop.match(/^--tw-mask-(top|bottom|left|right)$/);
+  if (edge) { mask[edge[1]] = true; return; }
+  const part = prop.match(/^--tw-mask-(top|bottom|left|right)-(from|to)-(position|color)$/);
+  if (!part) unsupported(`mask property ${prop}`);
+  mask[`${part[1]}-${part[2]}-${part[3]}`] = part[3] === 'position' ? maskPosition(value) : maskAlpha(value);
+}
+
 function backdropDeclaration(prop, raw, vars, backdrop) {
   if (prop.startsWith('--tw-backdrop-')) {
     const name = {'--tw-backdrop-blur':'blur', '--tw-backdrop-saturate':'saturation'}[prop];
@@ -562,7 +625,7 @@ function transitionDeclaration(prop, raw, local, motion) {
 
 function declarations(nodes, vars, root) {
   nodes = nodes.flatMap(node => node.type === 'atrule' && node.name === 'supports' && supportedConditions.includes(node.params) ? node.nodes : [node]);
-  const style = {}, gradient = {}, shadow = {}, backdrop = {}, transform = {}, variant = {}, motion = {}, local = { ...vars };
+  const style = {}, gradient = {}, shadow = {}, backdrop = {}, transform = {}, variant = {}, motion = {}, mask = {}, local = { ...vars };
   let pairedLeading = false;
   for (const node of nodes) if (node.type === 'decl' && node.prop.startsWith('--')) local[node.prop] = node.value;
   const clamp = nodes.some(node => node.type === 'decl' && node.prop === '-webkit-line-clamp');
@@ -578,6 +641,7 @@ function declarations(nodes, vars, root) {
     if (/^transition(?:-property|-duration|-delay|-timing-function)?$/.test(prop) || ['--tw-duration', '--tw-ease', '--lx-transition-layout'].includes(prop)) {
       transitionDeclaration(prop, node.value, local, motion); continue;
     }
+    if (prop.startsWith('--tw-mask-') || /^(?:-webkit-)?mask-(?:image|composite)$/.test(prop)) { maskDeclaration(prop, node.value, local, mask); continue; }
     if (prop.startsWith('--tw-backdrop-') || prop === 'backdrop-filter' || prop === '-webkit-backdrop-filter') { backdropDeclaration(prop, node.value, local, backdrop); continue; }
     if (prop.startsWith('--tw-shadow') || prop.startsWith('--tw-ring-') || prop.startsWith('--tw-inset-') || prop === 'box-shadow') { shadowDeclaration(prop, node.value, local, shadow); continue; }
     if (prop.startsWith('--tw-gradient-') || prop === 'background-image') { gradientDeclaration(prop, node.value, local, gradient); continue; }
@@ -639,7 +703,7 @@ function declarations(nodes, vars, root) {
     }
     else unsupported(`${prop}: ${value}`);
   }
-  return { style, ...(pairedLeading ? { pairedLeading } : {}), ...(Object.keys(motion).length ? { motion } : {}), ...(Object.keys(transform).length ? { transform } : {}), ...(Object.keys(variant).length ? { numeric: variant } : {}), ...(Object.keys(backdrop).length ? { backdrop } : {}), ...(Object.keys(gradient).length ? { gradient } : {}), ...(Object.keys(shadow).length ? { shadow } : {}) };
+  return { style, ...(pairedLeading ? { pairedLeading } : {}), ...(Object.keys(motion).length ? { motion } : {}), ...(Object.keys(transform).length ? { transform } : {}), ...(Object.keys(variant).length ? { numeric: variant } : {}), ...(Object.keys(backdrop).length ? { backdrop } : {}), ...(Object.keys(gradient).length ? { gradient } : {}), ...(Object.keys(shadow).length ? { shadow } : {}), ...(Object.keys(mask).length ? { mask } : {}) };
 }
 
 function conditions(rule) {

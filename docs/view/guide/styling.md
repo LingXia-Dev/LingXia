@@ -68,6 +68,11 @@ On `<text>`, `bg-clip-text` draws its background (colour or gradient) through th
 behind the box: `bg-clip-text text-transparent bg-linear-to-r from-accent to-danger`. Each such text costs
 two layers.
 
+`mask-t-from-*`, `mask-b-to-*` (and `-l-`, `-r-`) fade an element and everything inside it toward an
+edge, as does a `mask-[linear-gradient(to_bottom,transparent_0,#000_1rem)]` to a side; several edges
+intersect. Radial and conic masks are refused. A masked element draws in its own layer, plus one per
+edge.
+
 The system's increased-contrast setting (`env.highContrast`) resolves the pack's high-contrast palette.
 `shadow-*` elevation layers take the `shadow` role at their alpha, so a pack can tint shadows.
 

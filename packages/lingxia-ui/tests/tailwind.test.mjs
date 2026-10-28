@@ -271,6 +271,20 @@ test('bg-clip-text paints a text background through its glyphs, on <text> only',
   assert.throws(() => describe(() => h('column', { className: 'bg-clip-text' }), {}), /backgroundClip is not supported on <column>/);
 });
 
+test('mask edge fades and linear mask-image lower to intersected alpha fades', async () => {
+  await use(['mask-t-from-80%', 'mask-b-to-4', 'mask-[linear-gradient(to_bottom,transparent_0,#000_1rem)]', 'mask-none', 'mask-radial-from-50%', 'mask-[radial-gradient(#000,transparent)]']);
+  assert.deepEqual(classStyle('mask-t-from-80% mask-b-to-4').maskImage, [
+    { to: 'top', stops: [{ alpha: 1, offset: 0.8 }, { alpha: 0, offset: 1 }] },
+    { to: 'bottom', stops: [{ alpha: 1, offset: 0 }, { alpha: 0, px: 16 }] },
+  ]);
+  assert.deepEqual(classStyle('mask-[linear-gradient(to_bottom,transparent_0,#000_1rem)]').maskImage, [{ to: 'bottom', stops: [{ alpha: 0, px: 0 }, { alpha: 1, px: 16 }] }]);
+  assert.equal(classStyle('mask-t-from-80% mask-none').maskImage, 'none');
+  const wire = rendered(() => h('column', { className: 'mask-b-to-4' })).props.maskImage;
+  assert.deepEqual(JSON.parse(wire), [{ to: 'bottom', stops: [{ offset: 0, alpha: 1 }, { px: 16, alpha: 0 }] }]);
+  assert.throws(() => classStyle('mask-radial-from-50%'), /radial and conic masks/);
+  assert.throws(() => classStyle('mask-[radial-gradient(#000,transparent)]'), /only linear-gradient fades/);
+});
+
 test('text utilities: transform, decoration, nowrap, alignment and families', async () => {
   const aligns = ['left', 'center', 'right', 'start', 'end', 'justify'];
   await use(['uppercase', 'capitalize', 'underline', 'line-through', 'no-underline', 'whitespace-nowrap', 'font-mono', 'font-sans', 'font-serif',

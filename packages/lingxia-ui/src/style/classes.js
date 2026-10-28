@@ -41,7 +41,7 @@ const pixels = value => `${value}px`;
 // Tailwind composes gradients, shadows and filters from independently cascading
 // variables; the cascade resolves them before they become one style value.
 function cascade(rules, meta) {
-  const style = {}, gradient = {}, shadow = {}, backdrop = {}, transform = {}, motion = {};
+  const style = {}, gradient = {}, shadow = {}, backdrop = {}, transform = {}, motion = {}, mask = {};
   let numeric = {};
   for (const rule of rules) {
     Object.assign(style, copy(rule.style));
@@ -54,6 +54,7 @@ function cascade(rules, meta) {
     Object.assign(gradient, rule.gradient);
     Object.assign(shadow, rule.shadow);
     Object.assign(backdrop, rule.backdrop);
+    Object.assign(mask, rule.mask);
   }
   const filter = backdrop.mode === 'fixed' ? backdrop.fixed : backdrop.mode === 'variables' ? backdrop : undefined;
   if (filter && (filter.blur != null || filter.saturation != null))
@@ -65,6 +66,16 @@ function cascade(rules, meta) {
     easing: copy(motion.easing ?? motion.easingDefault ?? [0.4, 0, 0.2, 1]),
   };
   else if (motion.properties) style.transition = 'none';
+  // Edge masks fade from their `from` stop (opaque at the start by default) to their `to` stop.
+  if (mask.none) style.maskImage = 'none';
+  else if (mask.fixed) style.maskImage = copy(mask.fixed);
+  else if (mask.edges) {
+    const layers = ['top', 'bottom', 'left', 'right'].filter(side => mask[side]).map(side => ({ to: side, stops: [
+      { alpha: mask[`${side}-from-color`] ?? 1, ...(mask[`${side}-from-position`] ?? { offset: 0 }) },
+      { alpha: mask[`${side}-to-color`] ?? 0, ...(mask[`${side}-to-position`] ?? { offset: 1 }) },
+    ] }));
+    if (layers.length) style.maskImage = layers;
+  }
   if (numeric.normal) style.fontVariantNumeric = 'normal';
   else if (numeric.fixed) style.fontVariantNumeric = numeric.fixed;
   else if (numeric.enabled) {

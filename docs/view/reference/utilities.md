@@ -210,6 +210,19 @@ is still refused on an element that does not render its style ([styles.md](style
 | --- | --- | --- |
 | `backdrop-blur` | `backdrop-blur-2xl`, `backdrop-blur-3xl`, `backdrop-blur-lg`, `backdrop-blur-md`, `backdrop-blur-none`, … (8) |  |
 | `backdrop-saturate` | `backdrop-saturate-0`, `backdrop-saturate-50`, `backdrop-saturate-100`, `backdrop-saturate-150`, `backdrop-saturate-200` |  |
+| `mask` | `mask-none` | mask-position (9); mask-clip (7); mask-origin (6) |
+| `mask-b-from` | `mask-b-from-0`, `mask-b-from-0%`, `mask-b-from-0.5`, `mask-b-from-1`, `mask-b-from-1.5`, … (375) | unsupported color (2) |
+| `mask-b-to` | `mask-b-to-0`, `mask-b-to-0%`, `mask-b-to-0.5`, `mask-b-to-1`, `mask-b-to-1.5`, … (375) | unsupported color (2) |
+| `mask-l-from` | `mask-l-from-0`, `mask-l-from-0%`, `mask-l-from-0.5`, `mask-l-from-1`, `mask-l-from-1.5`, … (375) | unsupported color (2) |
+| `mask-l-to` | `mask-l-to-0`, `mask-l-to-0%`, `mask-l-to-0.5`, `mask-l-to-1`, `mask-l-to-1.5`, … (375) | unsupported color (2) |
+| `mask-r-from` | `mask-r-from-0`, `mask-r-from-0%`, `mask-r-from-0.5`, `mask-r-from-1`, `mask-r-from-1.5`, … (375) | unsupported color (2) |
+| `mask-r-to` | `mask-r-to-0`, `mask-r-to-0%`, `mask-r-to-0.5`, `mask-r-to-1`, `mask-r-to-1.5`, … (375) | unsupported color (2) |
+| `mask-t-from` | `mask-t-from-0`, `mask-t-from-0%`, `mask-t-from-0.5`, `mask-t-from-1`, `mask-t-from-1.5`, … (375) | unsupported color (2) |
+| `mask-t-to` | `mask-t-to-0`, `mask-t-to-0%`, `mask-t-to-0.5`, `mask-t-to-1`, `mask-t-to-1.5`, … (375) | unsupported color (2) |
+| `mask-x-from` | `mask-x-from-0`, `mask-x-from-0%`, `mask-x-from-0.5`, `mask-x-from-1`, `mask-x-from-1.5`, … (375) | unsupported color (2) |
+| `mask-x-to` | `mask-x-to-0`, `mask-x-to-0%`, `mask-x-to-0.5`, `mask-x-to-1`, `mask-x-to-1.5`, … (375) | unsupported color (2) |
+| `mask-y-from` | `mask-y-from-0`, `mask-y-from-0%`, `mask-y-from-0.5`, `mask-y-from-1`, `mask-y-from-1.5`, … (375) | unsupported color (2) |
+| `mask-y-to` | `mask-y-to-0`, `mask-y-to-0%`, `mask-y-to-0.5`, `mask-y-to-1`, `mask-y-to-1.5`, … (375) | unsupported color (2) |
 | `opacity` | `opacity-0`, `opacity-5`, `opacity-10`, `opacity-15`, `opacity-20`, … (21) |  |
 | `ring` | `ring`, `ring-0`, `ring-1`, `ring-2`, `ring-4`, … (38) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (2); unsupported shadow property (1) |
 | `shadow` | `shadow`, `shadow-2xl`, `shadow-2xs`, `shadow-accent`, `shadow-accent-soft`, … (41) | not a role; use a role class such as bg-surface, text-muted, border-line or bg-accent text-on-accent (288); unsupported color (3); inset shadows are not supported yet (1) |
@@ -310,29 +323,16 @@ is still refused on an element that does not render its style ([styles.md](style
 | `isolation` | 1 | isolation (1) |
 | `list` | 6 | list-style-type (3); list-style-position (2); display (1) |
 | `list-image` | 1 | list-style-image (1) |
-| `mask` | 43 | mask-position (9); mask-clip (7); mask-origin (6) |
-| `mask-b-from` | 377 | mask-image (377) |
-| `mask-b-to` | 377 | mask-image (377) |
-| `mask-conic` | 18 | mask-image (18) |
-| `mask-conic-from` | 377 | mask-image (377) |
-| `mask-conic-to` | 377 | mask-image (377) |
-| `mask-l-from` | 377 | mask-image (377) |
-| `mask-l-to` | 377 | mask-image (377) |
-| `mask-linear` | 18 | mask-image (18) |
-| `mask-linear-from` | 377 | mask-image (377) |
-| `mask-linear-to` | 377 | mask-image (377) |
-| `mask-r-from` | 377 | mask-image (377) |
-| `mask-r-to` | 377 | mask-image (377) |
-| `mask-radial` | 4 | masks (4) |
-| `mask-radial-at` | 9 | masks (9) |
-| `mask-radial-from` | 377 | mask-image (377) |
-| `mask-radial-to` | 377 | mask-image (377) |
-| `mask-t-from` | 377 | mask-image (377) |
-| `mask-t-to` | 377 | mask-image (377) |
-| `mask-x-from` | 377 | mask-image (377) |
-| `mask-x-to` | 377 | mask-image (377) |
-| `mask-y-from` | 377 | mask-image (377) |
-| `mask-y-to` | 377 | mask-image (377) |
+| `mask-conic` | 18 | radial and conic masks (18) |
+| `mask-conic-from` | 377 | radial and conic masks (377) |
+| `mask-conic-to` | 377 | radial and conic masks (377) |
+| `mask-linear` | 18 | mask-linear (18) |
+| `mask-linear-from` | 377 | mask property --tw-mask-linear-stops (377) |
+| `mask-linear-to` | 377 | mask property --tw-mask-linear-stops (377) |
+| `mask-radial` | 4 | radial and conic masks (4) |
+| `mask-radial-at` | 9 | radial and conic masks (9) |
+| `mask-radial-from` | 377 | radial and conic masks (377) |
+| `mask-radial-to` | 377 | radial and conic masks (377) |
 | `max-block` | 71 | max-block-size (71) |
 | `max-inline` | 83 | max-inline-size (83) |
 | `min-block` | 71 | min-block-size (71) |

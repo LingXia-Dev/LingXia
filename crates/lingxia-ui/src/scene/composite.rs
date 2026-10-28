@@ -14,17 +14,39 @@ pub enum Layer {
         saturation: Saturation,
         opacity: f32,
     },
+    /// `mask-image` fades, in device coordinates: the group is drawn through them.
+    Mask(std::sync::Arc<DeviceMask>),
+}
+
+/// A mask's fades and the box they cover, placed in device pixels.
+#[derive(Clone, Debug)]
+pub struct DeviceMask {
+    pub(crate) layers: Vec<crate::scene::gradient::GradientBrush>,
+    pub(crate) path: vello_cpu::kurbo::BezPath,
+}
+
+impl DeviceMask {
+    pub(crate) fn new(mask: &crate::scene::mask::Mask, device: vello_cpu::kurbo::Affine) -> Self {
+        use vello_cpu::kurbo::Shape;
+        let [x, y, w, h] = mask.bounds.map(f64::from);
+        let placed = device * mask.transform;
+        Self {
+            layers: mask.layers.iter().map(|layer| layer.then(placed)).collect(),
+            path: placed * vello_cpu::kurbo::Rect::new(x, y, x + w, y + h).to_path(0.1),
+        }
+    }
 }
 
 impl Layer {
     fn is_root(&self) -> bool {
-        matches!(self, Self::Backdrop { .. })
+        matches!(self, Self::Backdrop { .. } | Self::Mask(_))
             || matches!(self, Self::Opacity(alpha) if *alpha < 1.0)
     }
 
     fn validate(&self) -> Result<(), String> {
         let (clip, alpha) = match self {
             Self::Clip(clip) => (Some(clip), 1.0),
+            Self::Mask(_) => (None, 1.0),
             Self::Opacity(alpha) => (None, *alpha),
             Self::Backdrop {
                 clip,

@@ -157,7 +157,7 @@ const reason = message => message
 // The style keys a rule sets; empty when the utility lowers to nothing the renderer draws.
 const effects = rule => [...Object.keys(rule.style ?? {}), ...(rule.gradient ? ['backgroundImage'] : []), ...(rule.shadow ? ['boxShadow'] : []),
   ...(rule.backdrop ? ['backdropFilter'] : []), ...(rule.transform ? ['translate'] : []), ...(rule.numeric ? ['fontVariantNumeric'] : []),
-  ...(rule.motion ? ['transition'] : [])];
+  ...(rule.motion ? ['transition'] : []), ...(rule.mask ? ['maskImage'] : [])];
 
 const sections = [
   ['Layout', /^(display|overflow|order)$/],
@@ -168,7 +168,7 @@ const sections = [
   ['Margin', /^margin/], ['Padding', /^padding/],
   ['Typography', /^(color|font.*|lineHeight|letterSpacing|text.*|whiteSpace|wordBreak|overflowWrap|lineClamp|userSelect)$/],
   ['Backgrounds', /^background/], ['Radius', /Radius$/], ['Borders', /^border/],
-  ['Effects', /^(opacity|boxShadow|backdropFilter)$/], ['Transforms', /^(translate|rotate|scale|transformOrigin)$/],
+  ['Effects', /^(opacity|boxShadow|backdropFilter|maskImage)$/], ['Transforms', /^(translate|rotate|scale|transformOrigin)$/],
   ['Motion', /^(transition|animation)$/], ['Scrolling', /^(overflowX|overflowY|overscrollBehavior)$/], ['Editors', /^placeholderColor$/], ['Images and vectors', /^object(Fit|Position)$/],
 ];
 // The last key decides: `truncate` ends in whiteSpace, `space-x-*` in a margin.
