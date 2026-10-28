@@ -265,29 +265,34 @@ mod layout {
     use std::collections::HashMap;
     use std::ffi::c_void;
 
-    #[link(name = "Carbon", kind = "framework")]
+    type CopySource = unsafe extern "C" fn() -> *mut c_void;
+    type GetProperty = unsafe extern "C" fn(*mut c_void, *const c_void) -> *const c_void;
+    type KbdType = unsafe extern "C" fn() -> u8;
+    type Translate = unsafe extern "C" fn(
+        *const c_void,
+        u16,
+        u16,
+        u32,
+        u32,
+        u32,
+        *mut u32,
+        usize,
+        *mut usize,
+        *mut u16,
+    ) -> i32;
+
+    // Text Input Sources live in Carbon, which the host app's link does not name;
+    // AppKit has already loaded it, so the symbols resolve at run time.
     unsafe extern "C" {
-        static kTISPropertyUnicodeKeyLayoutData: *const c_void;
-        fn TISCopyCurrentKeyboardLayoutInputSource() -> *mut c_void;
-        fn TISGetInputSourceProperty(source: *mut c_void, key: *const c_void) -> *const c_void;
-        fn LMGetKbdType() -> u8;
-        fn UCKeyTranslate(
-            layout: *const c_void,
-            code: u16,
-            action: u16,
-            modifiers: u32,
-            keyboard: u32,
-            options: u32,
-            dead: *mut u32,
-            max: usize,
-            len: *mut usize,
-            out: *mut u16,
-        ) -> i32;
-    }
-    #[link(name = "CoreFoundation", kind = "framework")]
-    unsafe extern "C" {
+        fn dlsym(handle: *mut c_void, symbol: *const std::ffi::c_char) -> *mut c_void;
         fn CFDataGetBytePtr(data: *const c_void) -> *const u8;
         fn CFRelease(object: *const c_void);
+    }
+    const RTLD_DEFAULT: *mut c_void = -2isize as *mut c_void;
+
+    unsafe fn symbol(name: &std::ffi::CStr) -> Option<*mut c_void> {
+        let found = unsafe { dlsym(RTLD_DEFAULT, name.as_ptr()) };
+        (!found.is_null()).then_some(found)
     }
 
     const KEY_DOWN: u16 = 0;
@@ -298,20 +303,34 @@ mod layout {
     pub(super) fn keys() -> HashMap<char, (u16, bool)> {
         let mut keys = HashMap::new();
         unsafe {
-            let source = TISCopyCurrentKeyboardLayoutInputSource();
+            let (Some(copy), Some(get), Some(kbd), Some(translate), Some(property)) = (
+                symbol(c"TISCopyCurrentKeyboardLayoutInputSource"),
+                symbol(c"TISGetInputSourceProperty"),
+                symbol(c"LMGetKbdType"),
+                symbol(c"UCKeyTranslate"),
+                symbol(c"kTISPropertyUnicodeKeyLayoutData"),
+            ) else {
+                return keys;
+            };
+            let copy: CopySource = std::mem::transmute(copy);
+            let get: GetProperty = std::mem::transmute(get);
+            let kbd: KbdType = std::mem::transmute(kbd);
+            let translate: Translate = std::mem::transmute(translate);
+            let property = *(property as *const *const c_void);
+            let source = copy();
             if source.is_null() {
                 return keys;
             }
-            let data = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData);
+            let data = get(source, property);
             if !data.is_null() {
                 let layout = CFDataGetBytePtr(data) as *const c_void;
-                let keyboard = u32::from(LMGetKbdType());
+                let keyboard = u32::from(kbd());
                 for shift in [false, true] {
                     for code in 0u16..128 {
                         let mut dead = 0u32;
                         let mut len = 0usize;
                         let mut out = [0u16; 4];
-                        let status = UCKeyTranslate(
+                        let status = translate(
                             layout,
                             code,
                             KEY_DOWN,
@@ -342,6 +361,10 @@ mod layout {
 
 #[cfg(all(test, target_os = "macos"))]
 mod tests {
+    // The app gets Carbon through AppKit; a test binary has to ask for it.
+    #[link(name = "Carbon", kind = "framework")]
+    unsafe extern "C" {}
+
     #[test]
     fn the_current_layout_types_letters_and_their_capitals() {
         let keys = super::layout::keys();
