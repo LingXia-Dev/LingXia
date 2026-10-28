@@ -117,6 +117,8 @@ pub enum Dispatch {
         commit: CommitTicket,
         identity: String,
         index: usize,
+        /// The chosen option's value, to find it again in a View rendered since.
+        value: String,
     },
     /// Escape: the View dismisses its innermost overlay.
     Escape,

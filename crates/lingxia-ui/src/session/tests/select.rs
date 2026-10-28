@@ -148,3 +148,36 @@ fn automation_chooses_an_option_by_value_or_label() {
             .contains("has no option")
     );
 }
+
+/// Automation picks on the presented frame; a re-render (a tab switch) may commit before the
+/// worker runs the choice. It finds its option again by value instead of being dropped.
+#[test]
+fn a_view_side_choice_on_a_superseded_frame_finds_its_option_by_value() {
+    let page_source = "function render(){const plan=useLocal('plan','m'),tab=useLocal('tab',0);return h('column',{},h('button',{testId:'tab',onClick:()=>tab.set(tab.value+1)},`tab ${tab.value}`),tab.value>0?h('text',{},'shifted'):null,h('select',{testId:'s',bind:plan,accessibilityLabel:'Plan',options:[{value:'m',label:'Monthly'},{value:'y',label:'Yearly'}]}),h('text',{testId:'t'},plan.value))}";
+    let mut page = ViewSession::new(&super::source(page_source)).unwrap();
+    let display = page.layout(300, 300, 1.0).unwrap();
+    let seen = page.generation();
+    let find = |display: &crate::DisplayList, id: &str| {
+        display
+            .nodes
+            .iter()
+            .find(|n| n.test_id == id)
+            .unwrap()
+            .clone()
+    };
+    let select = find(&display, "s").identity;
+    assert!(
+        page.click(seen, find(&display, "tab").on_click.unwrap())
+            .unwrap()
+    );
+    page.layout(300, 300, 1.0).unwrap();
+    assert!(
+        !page.presented_commit(seen),
+        "the tab switch relaid the View out"
+    );
+    // The input protocol's strict path still refuses a stale commit.
+    assert!(!page.select_option(seen, &select, 1).unwrap());
+    assert!(page.choose_option(seen, &select, 1, "y").unwrap());
+    assert_eq!(shown(&mut page), "y");
+    assert!(!page.choose_option(seen, &select, 1, "gone").unwrap());
+}

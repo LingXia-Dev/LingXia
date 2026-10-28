@@ -125,6 +125,38 @@ impl ViewSession {
         self.text_event(generation, handle, &option.value)
     }
 
+    /// A View-side choice (automation, arrow keys) made on a frame the View has since
+    /// re-rendered finds its option again by value, as a click finds its control by identity.
+    pub fn choose_option(
+        &mut self,
+        generation: lifecycle::CommitTicket,
+        identity: &str,
+        index: usize,
+        value: &str,
+    ) -> Result<bool, String> {
+        if self.presented_commit(generation) {
+            return self.select_option(generation, identity, index);
+        }
+        let current = self.retained.as_ref().and_then(|retained| {
+            let node = retained
+                .nodes
+                .iter()
+                .find(|node| node.identity == identity)?;
+            node.select
+                .as_ref()?
+                .options
+                .iter()
+                .position(|option| option.value == value)
+        });
+        match current {
+            Some(index) => self.select_option(self.generation, identity, index),
+            None => {
+                log::debug!(target: "lingxia_ui", "UI_INPUT: select {identity} dropped: option {value:?} is gone");
+                Ok(false)
+            }
+        }
+    }
+
     pub fn text_event(
         &mut self,
         generation: lifecycle::CommitTicket,

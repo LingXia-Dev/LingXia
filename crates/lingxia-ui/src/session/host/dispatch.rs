@@ -247,10 +247,13 @@ impl<A: PlatformAdapter> Inner<A> {
                     commit,
                     identity,
                     index,
+                    value,
                 } => self.activate(
                     page,
                     false,
-                    Box::new(move |session| session.select_option(commit, &identity, index)),
+                    Box::new(move |session| {
+                        session.choose_option(commit, &identity, index, &value)
+                    }),
                 ),
                 Dispatch::SubmitEditor { commit, identity } => self.activate(
                     page,

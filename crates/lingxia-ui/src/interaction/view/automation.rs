@@ -290,6 +290,7 @@ impl ViewInteraction {
             commit: frame.commit,
             identity: target.identity.clone(),
             index: option,
+            value: select.options[option].value.clone(),
         });
         Ok(vec![Effect::Dispatch])
     }
