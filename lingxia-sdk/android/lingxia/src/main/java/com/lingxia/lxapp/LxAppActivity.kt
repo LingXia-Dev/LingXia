@@ -327,6 +327,32 @@ class LxAppActivity : AppCompatActivity() {
 
     // Tracks the currently visible WebView instance
     private var currentWebView: View? = null
+        set(value) {
+            field = value
+            (value as? GpuPage)?.setChromeListener(gpuChromeListener)
+            applyGpuChrome((value as? GpuPage)?.chrome)
+        }
+
+    /** The host chrome of the GPU page on screen; null on WebView pages, which keep their config. */
+    private var gpuChrome: com.lingxia.ui.GpuView.Chrome? = null
+    private val gpuChromeListener = java.util.function.BiConsumer<GpuPage, com.lingxia.ui.GpuView.Chrome> { page, chrome ->
+        if (page === currentWebView) applyGpuChrome(chrome)
+    }
+
+    /** Chrome around a GPU page takes the colours its palette resolves to; only the page on screen paints it. */
+    private fun applyGpuChrome(chrome: com.lingxia.ui.GpuView.Chrome?) {
+        if (chrome === gpuChrome) return
+        gpuChrome = chrome
+        tabBar?.setTheme(chrome?.let { TabBar.Theme(it.bar, it.contentMuted, it.accent, it.barLine) })
+        navigationBar?.setTheme(chrome?.let { it.bar to it.content })
+        if (::rootContainer.isInitialized) applyCanvasBackground()
+        if (chrome != null) {
+            syncNavigationBarToTabBar(tabBar?.visibility == View.VISIBLE)
+            val controller = WindowCompat.getInsetsController(window, window.decorView)
+            if (controller.isAppearanceLightStatusBars != !chrome.dark) controller.isAppearanceLightStatusBars = !chrome.dark
+            if (controller.isAppearanceLightNavigationBars != !chrome.dark) controller.isAppearanceLightNavigationBars = !chrome.dark
+        }
+    }
     private var gpuTransitionVersion = 0L
     private var gpuTransitionCover: android.widget.ImageView? = null
     private var gpuOutgoingCover: android.widget.ImageView? = null
@@ -932,6 +958,7 @@ class LxAppActivity : AppCompatActivity() {
 
         if (tabBar == null) {
             tabBar = TabBar(this).apply {
+                gpuChrome?.let { setTheme(TabBar.Theme(it.bar, it.contentMuted, it.accent, it.barLine)) }
                 setConfig(config)
                 setOnTabSelectedListener { index, path ->
                     // Use new UI event API
@@ -2410,7 +2437,7 @@ class LxAppActivity : AppCompatActivity() {
 
     /** Keep status bar glyphs legible against native chrome or custom content. */
     private fun applyStatusBarGlyphs(navbarState: NavigationBarState?) {
-        val lightGlyphs = if (navbarState?.showNavbar == true) {
+        val lightGlyphs = gpuChrome?.dark ?: if (navbarState?.showNavbar == true) {
             !NavigationBar.ColorUtils.isColorDark(navbarState.navigationBarForegroundColor)
         } else {
             (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
@@ -2527,6 +2554,7 @@ class LxAppActivity : AppCompatActivity() {
      * rather than painting it a colour we do not believe in.
      */
     private fun resolveCanvasColor(): Int? {
+        gpuChrome?.let { return it.canvas }
         val dark = (resources.configuration.uiMode and
             Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
         runCatching { NativeApi.pageBackgroundColor(dark) }
@@ -2550,6 +2578,7 @@ class LxAppActivity : AppCompatActivity() {
         try {
             val statusBarHeight = getStatusBarHeight(this)
             navigationBar = NavigationBar(this).apply {
+                gpuChrome?.let { setTheme(it.bar to it.content) }
                 val navBarContentHeight = getCalculatedContentHeightPx()
                 layoutParams = FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,

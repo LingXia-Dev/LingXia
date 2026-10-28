@@ -26,6 +26,24 @@ public class GpuThemeProbe {
   }finally{bitmap.recycle();}
   GpuRadioProbe.screenshot(dark?"gpu-theme-dark":"gpu-theme-light");
  }
+ static android.view.accessibility.AccessibilityNodeInfo described(android.view.accessibility.AccessibilityNodeInfo n,String description){
+  if(n==null)return null;
+  if(description.contentEquals(String.valueOf(n.getContentDescription())))return n;
+  for(int i=0;i<n.getChildCount();i++){android.view.accessibility.AccessibilityNodeInfo found=described(n.getChild(i),description);if(found!=null)return found;}
+  return null;
+ }
+ /** Host chrome follows the page palette: a pushed page's title bar is the surface role. */
+ static void titleBar(boolean dark)throws Exception {
+  GpuChromeProbe.tab("API");GpuApiProbe.click("api-clipboard");Thread.sleep(1500);
+  android.view.accessibility.AccessibilityNodeInfo back=described(GpuApiProbe.a.getRootInActiveWindow(),"Back");
+  GpuApiProbe.check(back!=null,"title bar back button");
+  Rect box=new Rect();back.getBoundsInScreen(box);float scale=GpuPaddingProbe.density();
+  Bitmap shot=GpuApiProbe.a.takeScreenshot(),bitmap=shot.copy(Bitmap.Config.ARGB_8888,false);shot.recycle();
+  try { pixel(bitmap,box.right+Math.round(8*scale),box.centerY(),dark?SURFACE_DARK:SURFACE_LIGHT,"title bar surface"); }
+  finally{bitmap.recycle();}
+  GpuRadioProbe.screenshot(dark?"gpu-chrome-dark":"gpu-chrome-light");
+  GpuApiProbe.a.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK);Thread.sleep(1200);
+ }
  public static void main(String[] args)throws Exception {
   HandlerThread thread=new HandlerThread("theme-probe");thread.start();
   Object connection=Class.forName("android.app.UiAutomationConnection").getConstructor().newInstance();
@@ -36,7 +54,7 @@ public class GpuThemeProbe {
    UiAutomation.class.getMethod("connect").invoke(a);
    android.accessibilityservice.AccessibilityServiceInfo info=a.getServiceInfo();info.flags|=android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;a.setServiceInfo(info);Thread.sleep(800);
    GpuGridProbe.settings("put","system","accelerometer_rotation","0");GpuGridProbe.settings("put","system","user_rotation","0");Thread.sleep(800);
-   palette(false);palette(true);
+   palette(false);titleBar(false);palette(true);titleBar(true);
    GpuGridProbe.settings("put","system","user_rotation","1");Thread.sleep(1100);palette(true);
    GpuGridProbe.settings("put","system","user_rotation","0");Thread.sleep(900);palette(true);palette(false);
    System.out.println("PASS page and surface theme pixels, repeated appearance changes and rotation");

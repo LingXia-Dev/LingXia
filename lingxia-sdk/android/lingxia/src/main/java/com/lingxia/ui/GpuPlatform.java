@@ -55,6 +55,8 @@ interface GpuPlatform {
     void bootstrapOverdue(boolean overdue);
     /** Show the page from {@code GpuView.nativeReveal}; a held surface stays hidden until a later {@code revealed(false)}. */
     void revealed(boolean holdSurface);
+    /** Colours for the host chrome around this page (ARGB), from the palette it renders with. */
+    void hostChrome(int canvas, int bar, int barLine, int content, int contentMuted, int accent, boolean dark);
     /** Show or update the floating text menu ({@code {target, anchor, actions}} JSON), or close it for null. */
     void textMenu(String menu);
     /** Open the single-choice picker of the `<select>` at {@code node}; the choice answers through {@code {op:"select"}}. */

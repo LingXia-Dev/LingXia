@@ -267,9 +267,21 @@ internal class NavigationBar @JvmOverloads constructor(
      * @param backgroundColor The background color (e.g., Color.parseColor("#ffffff")).
      * @param frontColor The color for text and icons (e.g., Color.parseColor("#000000")).
      */
+    /** Background and content colours a GPU page's theme gives the bar, over the page config's. */
+    private var theme: Pair<Int, Int>? = null
+    private var rawColors: Pair<Int, Int>? = null
+
+    fun setTheme(colors: Pair<Int, Int>?) {
+        if (theme == colors) return
+        theme = colors
+        val raw = rawColors ?: (currentBackgroundColor to currentFrontColor)
+        setColor(raw.first, raw.second)
+    }
+
     fun setColor(backgroundColor: Int, frontColor: Int) {
-        currentBackgroundColor = backgroundColor
-        currentFrontColor = frontColor
+        rawColors = backgroundColor to frontColor
+        currentBackgroundColor = theme?.first ?: backgroundColor
+        currentFrontColor = theme?.second ?: frontColor
 
         setBackgroundColor(currentBackgroundColor)
         titleTextView.setTextColor(currentFrontColor)

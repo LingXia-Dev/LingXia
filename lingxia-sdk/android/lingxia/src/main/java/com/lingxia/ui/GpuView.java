@@ -106,7 +106,23 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         void onError(Throwable error);
         default void onMessage(long generation, String frame) { }
         default boolean onRestart(long generation) { return false; }
+        /** The host chrome this page asks for changed; it arrives before the frame it colours. */
+        default void onChrome(Chrome chrome) { }
     }
+
+    /** Host chrome colours (ARGB) the core resolves from this page's palette. */
+    public static final class Chrome {
+        public final int canvas, bar, barLine, content, contentMuted, accent;
+        /** The colours behind the system bars are dark, so their glyphs go light. */
+        public final boolean dark;
+        Chrome(int canvas, int bar, int barLine, int content, int contentMuted, int accent, boolean dark) {
+            this.canvas = canvas; this.bar = bar; this.barLine = barLine; this.content = content;
+            this.contentMuted = contentMuted; this.accent = accent; this.dark = dark;
+        }
+    }
+    private Chrome chrome;
+    /** The chrome this page last asked for, or null before its first frame. */
+    public Chrome getChrome() { return chrome; }
 
     private final android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
     private final GpuRecovery recovery = new GpuRecovery(this);
@@ -851,6 +867,11 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         @Override public void revealed(boolean hold) {
             holdSurface = hold;
             if (revealed) updateSurfaceVisibility(); else reveal();
+        }
+        @Override public void hostChrome(int canvas, int bar, int barLine, int content, int contentMuted, int accent, boolean dark) {
+            if (destroyed) return;
+            chrome = new Chrome(canvas, bar, barLine, content, contentMuted, accent, dark);
+            if (listener != null) listener.onChrome(chrome);
         }
     }
 

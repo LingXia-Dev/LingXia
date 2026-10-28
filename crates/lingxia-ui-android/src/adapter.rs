@@ -783,6 +783,26 @@ impl HostEvents for AndroidAdapter {
     fn revealed(&self, hold_surface: bool) {
         self.flag(jni_str!("revealed"), hold_surface);
     }
+    fn host_chrome(&self, chrome: &lingxia_ui::platform::HostChrome) {
+        let argb = |[r, g, b, a]: [u8; 4]| JValue::Int(i32::from_be_bytes([a, r, g, b]));
+        self.java(|env, platform| {
+            env.call_method(
+                platform,
+                jni_str!("hostChrome"),
+                jni_sig!("(IIIIIIZ)V"),
+                &[
+                    argb(chrome.canvas),
+                    argb(chrome.bar),
+                    argb(chrome.bar_line),
+                    argb(chrome.content),
+                    argb(chrome.content_muted),
+                    argb(chrome.accent),
+                    JValue::Bool(chrome.dark),
+                ],
+            )?;
+            Ok(())
+        })
+    }
     fn copy_text(&self, text: &str) {
         self.java(|env, platform| {
             let text = env.new_string(text)?;

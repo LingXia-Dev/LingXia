@@ -66,6 +66,11 @@ public class GpuNativeLoadTest {
         final ArrayList<String> copied = new ArrayList<>();
         public void copyText(String text) { copied.add(text); }
         public void revealed(boolean hold) { }
+        /** Host chrome pushes: frames presented before each, then its canvas. */
+        final ArrayList<int[]> chromes = new ArrayList<>();
+        public void hostChrome(int canvas, int bar, int barLine, int content, int contentMuted, int accent, boolean dark) {
+            chromes.add(new int[] {presented, canvas});
+        }
         final ArrayList<String> menus = new ArrayList<>();
         public void textMenu(String menu) { menus.add(menu); }
         final ArrayList<Integer> pickers = new ArrayList<>();
@@ -115,6 +120,19 @@ public class GpuNativeLoadTest {
             GpuView.nativeUpdateEnvironment(host, "{\"kind\":\"language\",\"revision\":3,\"language\":\"zh-Hans-CN\"}");
             GpuView.nativeUpdateEnvironment(host, "{\"kind\":\"surface\",\"revision\":1,\"context\":{\"sizeClass\":\"compact\",\"canDock\":false,\"width\":1,\"height\":1}}");
             fake.pump(host, () -> { try { return "true regular zh-Hans-CN".equals(text(last(fake), "env")); } catch (Exception e) { throw new AssertionError(e); } });
+        } finally { GpuView.nativeHostRelease(host); }
+    }
+
+    @Test public void hostChromeArrivesBeforeTheFirstFrameItColours() throws Exception {
+        Fake fake = new Fake();
+        long host = GpuView.nativeHostCreate(fake, "test:jvm-chrome", false, 0);
+        try {
+            GpuView.nativeLoad(host, GpuNative.module("function render(){return h('text',{},'page')}"));
+            GpuView.nativeSetVisible(host, true);
+            fake.pump(host, () -> fake.presented >= 1);
+            assertEquals("one push", 1, fake.chromes.size());
+            assertEquals("before the first frame", 0, fake.chromes.get(0)[0]);
+            assertEquals("an opaque canvas", 0xff, fake.chromes.get(0)[1] >>> 24);
         } finally { GpuView.nativeHostRelease(host); }
     }
 

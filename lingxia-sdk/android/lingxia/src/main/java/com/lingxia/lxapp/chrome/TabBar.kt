@@ -287,13 +287,32 @@ internal class TabBar(context: Context) : LinearLayout(context) {
         super.onDetachedFromWindow()
     }
 
+    /** Colours a GPU page's theme gives the bar; layout, items and transparency stay the config's. */
+    internal data class Theme(val background: Int, val color: Int, val selected: Int, val border: Int)
+    private var theme: Theme? = null
+    private var rawConfig: TabBarState? = null
+
+    fun setTheme(newTheme: Theme?) {
+        if (theme == newTheme) return
+        theme = newTheme
+        rawConfig?.let { setConfig(it.copy(selectedIndex = config.selectedIndex)) }
+    }
+
     fun setConfig(newConfig: TabBarState) {
         if (!isValidConfig(newConfig)) {
             Log.w(TAG, "Invalid TabBar config provided")
             return
         }
 
-        config = newConfig
+        rawConfig = newConfig
+        config = theme?.let { t ->
+            newConfig.copy(
+                backgroundColor = if (newConfig.isBackgroundTransparent()) newConfig.backgroundColor else t.background,
+                color = t.color,
+                selectedColor = t.selected,
+                borderStyle = t.border,
+            )
+        } ?: newConfig
 
         val isBackgroundTransparent = config.isBackgroundTransparent()
 
@@ -308,11 +327,11 @@ internal class TabBar(context: Context) : LinearLayout(context) {
 
         updateItemsContainerLayout(this.config)
         performLayoutForPosition()
-        setItems(newConfig.list)
+        setItems(config.list)
 
         // Set visibility based on Rust config
-        visibility = if (newConfig.visible) View.VISIBLE else View.GONE
-        TabBarOverflowSheet.refresh(this, newConfig, overflowItemIndices())
+        visibility = if (config.visible) View.VISIBLE else View.GONE
+        TabBarOverflowSheet.refresh(this, config, overflowItemIndices())
     }
 
     fun setItems(newItems: List<TabBarItem>) {

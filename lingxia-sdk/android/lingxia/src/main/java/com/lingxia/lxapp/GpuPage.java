@@ -37,6 +37,9 @@ public final class GpuPage extends FrameLayout {
                 }
                 public void onMessage(long generation, String frame) { message(token, generation, frame); }
                 public boolean onRestart(long generation) { return restart(token, generation); }
+                public void onChrome(GpuView.Chrome chrome) {
+                    if (chromeListener != null) chromeListener.accept(GpuPage.this, chrome);
+                }
                 public void onError(Throwable error) {
                     if (!reported) { reported = true; created(token, null, error.toString()); }
                     android.util.Log.e("LingXia.UI", "GPU page " + webTag, error);
@@ -50,6 +53,12 @@ public final class GpuPage extends FrameLayout {
             throw error;
         }
     }
+
+    private java.util.function.BiConsumer<GpuPage, GpuView.Chrome> chromeListener;
+    /** Whoever shows this page applies its chrome; it may arrive before the page is current. */
+    public void setChromeListener(java.util.function.BiConsumer<GpuPage, GpuView.Chrome> listener) { chromeListener = listener; }
+    /** The chrome this page last asked for, or null before its first frame. */
+    public GpuView.Chrome getChrome() { return content.getChrome(); }
 
     public String getAppId() { return appId; }
     public String getCurrentPath() { return path; }
