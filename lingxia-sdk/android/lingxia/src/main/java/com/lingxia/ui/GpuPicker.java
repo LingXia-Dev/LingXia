@@ -78,14 +78,33 @@ final class GpuPicker {
             list.setVerticalOffset(place[0]);
             list.setHeight(place[1]);
             list.setWidth(width);
+            int anchorHeight = anchor.getHeight();
             list.setModal(true);
             list.setOnItemClickListener((parent, view, position, id) -> choose.accept(position));
             list.setOnDismissListener(() -> { if (popup == list) { popup = null; host.open(null); } });
             popup = list;
             list.show();
-            if (list.getListView() != null) {
-                list.getListView().setChoiceMode(android.widget.ListView.CHOICE_MODE_SINGLE);
-                if (selected >= 0) list.getListView().setItemChecked(selected, true);
+            android.widget.ListView rows = list.getListView();
+            if (rows != null) {
+                rows.setChoiceMode(android.widget.ListView.CHOICE_MODE_SINGLE);
+                if (selected >= 0) rows.setItemChecked(selected, true);
+                // Rows measured off-list can miss their themed minimum height; re-place from the laid-out rows before the first draw.
+                rows.getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener() {
+                    @Override public boolean onPreDraw() {
+                        rows.getViewTreeObserver().removeOnPreDrawListener(this);
+                        if (popup != list || rows.getChildCount() == 0) return true;
+                        Rect padding = new Rect();
+                        if (list.getBackground() != null) list.getBackground().getPadding(padding);
+                        int content = rows.getChildAt(0).getHeight() * adapter.getCount()
+                            + rows.getPaddingTop() + rows.getPaddingBottom() + padding.top + padding.bottom;
+                        int[] laid = place(bounds.top, bounds.bottom, anchorHeight, at[1], visible.top, visible.bottom, content);
+                        if (laid[0] == place[0] && laid[1] == place[1]) return true;
+                        list.setVerticalOffset(laid[0]);
+                        list.setHeight(laid[1]);
+                        list.show();
+                        return false;
+                    }
+                });
             }
         } else {
             AlertDialog shown = new AlertDialog.Builder(context)
