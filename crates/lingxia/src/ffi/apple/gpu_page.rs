@@ -7,6 +7,14 @@ use lxapp::{GpuViewGeneration, LxAppError, PageInstance};
 
 #[swift_bridge::bridge]
 mod bridge {
+    // The page behind a GPU view, for host chrome that acts on it (pull to refresh).
+    #[swift_bridge(swift_repr = "struct")]
+    struct GpuPageInfo {
+        app_id: String,
+        path: String,
+        webtag: String,
+    }
+
     extern "Rust" {
         // The view's size, scale and surroundings after layout; device pixels.
         #[swift_bridge(swift_name = "gpuPageMeasured")]
@@ -81,6 +89,14 @@ mod bridge {
         // A fine pointer moved over the page (device pixels), or left it (`inside` false).
         #[swift_bridge(swift_name = "gpuPageHover")]
         fn gpu_page_hover(token: i64, inside: bool, x: f32, y: f32);
+
+        // Empty strings when the token names no live page.
+        #[swift_bridge(swift_name = "gpuPageInfo")]
+        fn gpu_page_info(token: i64) -> GpuPageInfo;
+
+        // Whether the page's root region can scroll up (`direction` -1) or down (1).
+        #[swift_bridge(swift_name = "gpuPageCanScrollVertically")]
+        fn gpu_page_can_scroll_vertically(token: i64, direction: i32) -> bool;
 
         // The long-press delay armed by the page elapsed.
         #[swift_bridge(swift_name = "gpuPageLongPress")]
@@ -319,6 +335,38 @@ fn gpu_page_hover(token: i64, inside: bool, x: f32, y: f32) {
     with_page(token, |page| page.host().hover(inside.then_some([x, y])));
     #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
     let _ = (token, inside, x, y);
+}
+
+fn gpu_page_info(token: i64) -> bridge::GpuPageInfo {
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    let page = crate::gpu_page::page_of(token);
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    let page: Option<lxapp::PageInstance> = {
+        let _ = token;
+        None
+    };
+    bridge::GpuPageInfo {
+        app_id: page.as_ref().map(|p| p.appid()).unwrap_or_default(),
+        path: page.as_ref().map(|p| p.path()).unwrap_or_default(),
+        webtag: page
+            .as_ref()
+            .map(|p| p.webtag().as_str().to_owned())
+            .unwrap_or_default(),
+    }
+}
+
+fn gpu_page_can_scroll_vertically(token: i64, direction: i32) -> bool {
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
+    {
+        let mut can = false;
+        with_page(token, |page| can = page.host().can_scroll_vertically(direction));
+        can
+    }
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
+    {
+        let _ = (token, direction);
+        false
+    }
 }
 
 fn gpu_page_long_press(token: i64) {

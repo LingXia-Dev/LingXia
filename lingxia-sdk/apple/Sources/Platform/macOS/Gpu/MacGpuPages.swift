@@ -81,7 +81,13 @@ final class GpuPageView: NSView {
     @objc private func visibilityChanged() {
         guard let window else { return }
         let shown = !window.isMiniaturized && !NSApp.isHidden
-        gpuPageWindowVisible(token, shown && window.occlusionState.contains(.visible))
+        let visible = shown && window.occlusionState.contains(.visible)
+        // A frame asked of a display link that has just stopped comes now instead.
+        if !visible, #available(macOS 14.0, *), let link = vsyncLink as? CADisplayLink, !link.isPaused {
+            link.isPaused = true
+            gpuPageVsync(token)
+        }
+        gpuPageWindowVisible(token, visible)
         if !shown, attached {
             attached = false
             gpuPageSuspend(token)
@@ -140,7 +146,9 @@ final class GpuPageView: NSView {
 
     /// Calls `gpuPageVsync` on the next refresh of this view's display.
     func requestVsync() -> Bool {
-        guard #available(macOS 14.0, *), window != nil else { return false }
+        // An occluded window's display link stops; its frames still complete on the posted path.
+        guard #available(macOS 14.0, *), let window, window.occlusionState.contains(.visible)
+        else { return false }
         let link: CADisplayLink
         if let existing = vsyncLink as? CADisplayLink {
             link = existing
@@ -216,6 +224,11 @@ final class GpuPageView: NSView {
     }
 
     override func scrollWheel(with event: NSEvent) {
+        if let refresh = lxPullToRefreshController {
+            refresh.setAtTop(!gpuPageCanScrollVertically(token, -1))
+            refresh.refreshEnabledFlag()
+            if refresh.handleScrollWheel(event) { return }
+        }
         let (x, y) = pixels(event)
         let scale = Float(window?.backingScaleFactor ?? 2)
         let precise = event.hasPreciseScrollingDeltas
@@ -295,6 +308,18 @@ private final class GpuVsyncTarget: NSObject {
     @objc func tick() { view?.vsync() }
 }
 
+extension GpuPageView: PullRefreshPage {
+    private var info: GpuPageInfo { gpuPageInfo(token) }
+    var refreshAppId: String? { info.app_id.toString().nilIfEmpty }
+    var refreshPath: String? { info.path.toString().nilIfEmpty }
+    var refreshWebTag: String? { info.webtag.toString().nilIfEmpty }
+    var refreshBackground: NSColor? { nil }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+
 /// GPU page views by token; Rust calls these on the main thread.
 public enum GpuPages {
     @MainActor private static var views: [Int64: GpuPageView] = [:]
@@ -314,6 +339,11 @@ public enum GpuPages {
             }
             return view.show(pixels: pointer, length: Int(length), width: Int(width), height: Int(height))
         }
+    }
+
+    /// The GPU view showing the page `webtag` of `appId`.
+    @MainActor static func view(appId: String, webtag: String) -> GpuPageView? {
+        views.values.first { $0.refreshAppId == appId && $0.refreshWebTag == webtag }
     }
 
     static func armLongPress(token: Int64) {

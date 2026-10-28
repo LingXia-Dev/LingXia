@@ -234,6 +234,7 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         if let old = activeWebView, old !== webView {
             WebViewManager.detachLxAppWebView(old)
         }
+        activeGpuView?.lxPullToRefreshController?.unmount()
         activeGpuView?.removeFromSuperview()
         activeGpuView = nil
 
@@ -263,15 +264,14 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
             WebViewManager.detachLxAppWebView(old)
             activeWebView = nil
         }
+        activeGpuView?.lxPullToRefreshController?.unmount()
         activeGpuView?.removeFromSuperview()
         view.translatesAutoresizingMaskIntoConstraints = false
         webViewContainer.addSubview(view)
-        NSLayoutConstraint.activate([
-            view.leadingAnchor.constraint(equalTo: webViewContainer.leadingAnchor),
-            view.trailingAnchor.constraint(equalTo: webViewContainer.trailingAnchor),
-            view.topAnchor.constraint(equalTo: webViewContainer.topAnchor),
-            view.bottomAnchor.constraint(equalTo: webViewContainer.bottomAnchor),
-        ])
+        // Hosted like a WebView page, so a declared pull to refresh moves and refreshes it.
+        let pullToRefresh = MacPullToRefreshController.attachIfNeeded(to: view, in: webViewContainer)
+        NSLayoutConstraint.activate(pullToRefresh.pageConstraints(in: webViewContainer))
+        pullToRefresh.didAttachPage()
         activeGpuView = view
         // As attaching a page's WebView does: the page's onShow, then onReady after its frame.
         lingxia.onPageShow(appId, currentPath)

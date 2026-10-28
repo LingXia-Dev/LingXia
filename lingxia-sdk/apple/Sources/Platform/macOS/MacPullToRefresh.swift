@@ -27,6 +27,23 @@ import WebKit
 /// does instead: the pull slides the page down over a spoke spinner below the
 /// simulated status bar, and a refresh holds the page open with the spinner
 /// turning until it ends. Trigger, rubber band and entry points are shared.
+/// A page a pull to refresh can move and refresh: a WebView page or a GPU page.
+@MainActor
+protocol PullRefreshPage: NSView {
+    var refreshAppId: String? { get }
+    var refreshPath: String? { get }
+    var refreshWebTag: String? { get }
+    /// What shows behind the page while a mobile pull moves it down.
+    var refreshBackground: NSColor? { get }
+}
+
+extension WKWebView: PullRefreshPage {
+    var refreshAppId: String? { appId }
+    var refreshPath: String? { currentPath }
+    var refreshWebTag: String? { pageWebTag }
+    var refreshBackground: NSColor? { underPageBackgroundColor }
+}
+
 @MainActor
 final class MacPullToRefreshController {
     /// Pull needed to arm a refresh, measured after the rubber band so the
@@ -50,7 +67,7 @@ final class MacPullToRefreshController {
     /// status bar), so the mobile spinner and hold clear it as on a device.
     static var mobileTopInsetProvider: ((NSView) -> CGFloat)?
 
-    private weak var webView: WKWebView?
+    private weak var webView: (NSView & PullRefreshPage)?
     private weak var container: NSView?
     /// Desktop: fills as the page is pulled, and runs along its top while it
     /// refreshes.
@@ -88,7 +105,7 @@ final class MacPullToRefreshController {
     // MARK: - Attachment
 
     @discardableResult
-    static func attachIfNeeded(to webView: WKWebView, in container: NSView)
+    static func attachIfNeeded(to webView: NSView & PullRefreshPage, in container: NSView)
         -> MacPullToRefreshController
     {
         if let existing = webView.lxPullToRefreshController {
@@ -109,12 +126,13 @@ final class MacPullToRefreshController {
     /// The controller for a page, addressed the way the runtime addresses one.
     static func controller(appId: String, webtag: String) -> MacPullToRefreshController? {
         if let known = refreshed.object(forKey: webtag as NSString) { return known }
+        if let gpu = GpuPages.view(appId: appId, webtag: webtag) { return gpu.lxPullToRefreshController }
         guard let page = WebViewManager.page(appId: appId, webtag: webtag) else { return nil }
         return WebViewManager.pageWebView(appId: appId, pageInstanceId: page.pageInstanceId)?
             .lxPullToRefreshController
     }
 
-    private init(webView: WKWebView) {
+    private init(webView: NSView & PullRefreshPage) {
         self.webView = webView
     }
 
@@ -205,8 +223,8 @@ final class MacPullToRefreshController {
     /// changes, so the gesture follows navigation without asking per event.
     func refreshEnabledFlag() {
         guard let webView,
-              let appId = webView.appId, !appId.isEmpty,
-              let path = webView.currentPath
+              let appId = webView.refreshAppId, !appId.isEmpty,
+              let path = webView.refreshPath
         else {
             enabled = false
             return
@@ -388,7 +406,7 @@ final class MacPullToRefreshController {
             setPageOffset(travel, animated: false)
             return
         }
-        let dark = WebViewManager.resolvedDarkAppearance(appId: webView?.appId)
+        let dark = WebViewManager.resolvedDarkAppearance(appId: webView?.refreshAppId)
         bar.showPull(
             travel / Self.triggerDistance, in: container,
             color: WebViewManager.declaredRefreshIndicatorColor(dark: dark))
@@ -428,11 +446,11 @@ final class MacPullToRefreshController {
     /// `underPageBackgroundColor` is WebKit's overscroll colour and tracks the
     /// document background.
     private func paintIndicator() {
-        let background = webView?.underPageBackgroundColor ?? .windowBackgroundColor
+        let background = webView?.refreshBackground ?? .windowBackgroundColor
         indicator.wantsLayer = true
         indicator.layer?.backgroundColor = background.cgColor
         indicator.topInset = mobileTopInset
-        let dark = WebViewManager.resolvedDarkAppearance(appId: webView?.appId)
+        let dark = WebViewManager.resolvedDarkAppearance(appId: webView?.refreshAppId)
         indicator.setColor(
             WebViewManager.declaredRefreshIndicatorColor(dark: dark)
                 ?? Self.contrastingColor(for: background))
@@ -511,7 +529,7 @@ final class MacPullToRefreshController {
                 reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
             setPageOffset(mobileTopInset + Self.triggerDistance * 0.8, animated: true)
         } else if let container {
-            let dark = WebViewManager.resolvedDarkAppearance(appId: webView?.appId)
+            let dark = WebViewManager.resolvedDarkAppearance(appId: webView?.refreshAppId)
             bar.start(
                 in: container, color: WebViewManager.declaredRefreshIndicatorColor(dark: dark))
         }
@@ -521,7 +539,7 @@ final class MacPullToRefreshController {
 
     /// Fire `onPullDownRefresh` for this page, or end a refresh it cannot get.
     private func reportRefresh() {
-        guard let webView, let appId = webView.appId, let webtag = webView.pageWebTag else {
+        guard let webView, let appId = webView.refreshAppId, let webtag = webView.refreshWebTag else {
             finishRefreshing()
             return
         }
@@ -657,7 +675,7 @@ func lxMacPullRefreshState(
     return true
 }
 
-extension WKWebView {
+extension NSView {
     private static var pullToRefreshKey: UInt8 = 0
 
     var lxPullToRefreshController: MacPullToRefreshController? {

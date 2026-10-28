@@ -428,7 +428,7 @@ pub(crate) fn native_view(page: &PageInstance) -> Option<Arc<dyn NativePage>> {
 }
 
 /// The page a live token belongs to.
-fn page_of(token: Token) -> Option<PageInstance> {
+pub(crate) fn page_of(token: Token) -> Option<PageInstance> {
     live(token).and_then(|endpoint| lxapp::find_page_by_instance_id(&endpoint.lease.page))
 }
 
