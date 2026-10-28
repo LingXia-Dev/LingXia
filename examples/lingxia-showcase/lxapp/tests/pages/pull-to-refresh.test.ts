@@ -160,7 +160,7 @@ spec("a pull follows the finger, refreshes once past the threshold, and leaves t
   });
 });
 
-spec("a swipe scrolls the page, a fling carries it on, and a pull below the top scrolls back instead of refreshing", { id: "PULL-003", covers: ['view:scroll'], app: SHOWCASE_APP_ID, requires: { input: ['touch', 'trackpad'] } }, async (t) => {
+spec("a swipe scrolls the page and a pull below the top scrolls back instead of refreshing", { id: "PULL-003", covers: ['view:scroll'], app: SHOWCASE_APP_ID, requires: { input: ['touch', 'trackpad'] } }, async (t) => {
   const { app } = bindFixture(t, "PULL-003");
   await app.nav.relaunch({ page: 'pullToRefresh' });
   const view = (await app.page({ name: 'pullToRefresh' }, { timeout: 30_000 })).view;
@@ -185,9 +185,20 @@ spec("a swipe scrolls the page, a fling carries it on, and a pull below the top 
     await new Promise<void>((resolve) => setTimeout(resolve, 500));
     expect((await refreshState(app)).count).toBe(before.count);
   });
+});
 
-  await t.step('a fling carries the page past where the finger stopped', async () => {
-    await view.fling('up', 4000);
-    await expect(lastRow).toBeInViewport({ timeout: 3_000 });
-  });
+// Touch only: synthesized trackpad momentum does not carry a macOS WebView,
+// so a desktop fling would measure the injector, not the page.
+spec("a fling carries the page past where the finger stopped", { id: "PULL-004", covers: ['view:scroll'], app: SHOWCASE_APP_ID, requires: { input: ['touch'] } }, async (t) => {
+  const { app } = bindFixture(t, "PULL-004");
+  await app.nav.relaunch({ page: 'pullToRefresh' });
+  const view = (await app.page({ name: 'pullToRefresh' }, { timeout: 30_000 })).view;
+  await view.testId('pull-refresh-page').waitFor({ timeout: 30_000 });
+  const lastRow = view.testId('pull-refresh-row').last();
+  await expect(lastRow).not.toBeInViewport();
+  // A slow swipe of the same finger travel stops well short of the end.
+  await view.swipe({ from: [180, 520], to: [180, 200], durationMs: 400 });
+  await expect(lastRow).not.toBeInViewport();
+  await view.fling('up', 4000);
+  await expect(lastRow).toBeInViewport({ timeout: 3_000 });
 });
