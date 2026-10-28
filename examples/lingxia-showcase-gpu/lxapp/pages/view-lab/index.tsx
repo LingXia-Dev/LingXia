@@ -1,4 +1,4 @@
-import { useLocal, useView, type VectorPath } from '@lingxia/ui';
+import { Fragment, useLocal, useView, type VectorPath } from '@lingxia/ui';
 import '../../theme/index.css';
 import { Button, Icon, Page, Section } from '../../shared/ui';
 
@@ -6,7 +6,7 @@ import { Button, Icon, Page, Section } from '../../shared/ui';
 // One group renders at a time: a whole-lab render exceeds the per-render budget on slower phones.
 const groups = {
   paint: { label: 'Paint', sections: [Grid, Gradients, Vectors, Borders, Transforms] },
-  layout: { label: 'Layout', sections: [Display, Sizing, Direction, Structure, StickyHeaders] },
+  layout: { label: 'Layout', sections: [Display, Sizing, Direction, Structure, StickyHeaders, Fragments] },
   text: { label: 'Text', sections: [TextLayout, RichText, Selection] },
   input: { label: 'Input', sections: [Accessibility, Inputs, Focus, NestedControls] },
 };
@@ -319,6 +319,28 @@ function NestedControls() {
         </row>
       </button>
       <text testId="lab-nested-state" className="text-xs text-muted tabular-nums">{`opened=${opened.value} wifi=${wifi.value} removed=${removed.value}`}</text>
+    </Section>
+  );
+}
+
+function Term({ word, meaning }: { word: string; meaning: string }) {
+  return <><text className="text-sm font-semibold">{word}</text><text className="text-xs text-muted">{meaning}</text></>;
+}
+
+// Fragments add no box: the terms sit directly in the column, and a keyed group moves as one.
+function Fragments() {
+  const words = useLocal('fragment-words', [['GPU', 'draws the page'], ['View', 'describes it'], ['Logic', 'owns the data']]);
+  const note = useLocal('fragment-note', false);
+  return (
+    <Section title="Fragments" testId="lab-fragments">
+      <row className="gap-2">
+        <Button testId="lab-fragments-rotate" size="sm" onClick={() => words.set([...words.value.slice(1), words.value[0]])}>Rotate</Button>
+        <Button testId="lab-fragments-note" size="sm" onClick={() => note.set(!note.value)}>{note.value ? 'Hide note' : 'Show note'}</Button>
+      </row>
+      <column testId="lab-fragments-list" className="gap-1">
+        {note.value && <text testId="lab-fragments-hint" className="text-xs">Each term is two texts in one fragment.</text>}
+        {words.value.map(([word, meaning]) => <Fragment key={word}><Term word={word} meaning={meaning} /></Fragment>)}
+      </column>
     </Section>
   );
 }

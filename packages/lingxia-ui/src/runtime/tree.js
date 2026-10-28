@@ -31,7 +31,7 @@ export function prepare(renderPage, view, windows = {}) {
   return runCandidate(view, null, candidate => {
     candidate.tree = resolveNode(renderPage(view), 'root');
     render.site = null;
-    if (!candidate.tree) throw Error('UI_ROOT: page must return one layout node');
+    if (!candidate.tree || candidate.tree.fragment) throw Error('UI_ROOT: page must return one layout node');
     candidate.baseLocals = new Map(candidate.locals);
     return encodeTree(candidate.tree, windows);
   });

@@ -1,7 +1,7 @@
 import { elements, admission, limits, commonProps } from '../generated/contract.js';
 import { resolveClasses } from '../style/classes.js';
 import { lowerStyle, paintOnly, mergeStyle } from '../style/lower.js';
-import { h, readNode, isNode, nodeKey, flatten, slots } from './nodes.js';
+import { h, readNode, isNode, isFragment, entries } from './nodes.js';
 import { render, page } from './state.js';
 import { cellOf, envOf } from './hooks.js';
 import { located } from './errors.js';
@@ -122,6 +122,9 @@ export function resolveNode(node, identity, depth = 0, parent = {}) {
   if (depth > limits.depth) throw Error('UI_LIMIT: children too deep');
   if (node == null || typeof node === 'boolean' || node === '') return null;
   if (typeof node === 'string' || typeof node === 'number') node = h('text', {}, node);
+  // A component's fragment (or array): its parent lays the children out in its place.
+  if (Array.isArray(node)) return { fragment: entries(node) };
+  if (isFragment(node)) return { fragment: entries([node]).map(entry => entry.slot ? { ...entry, slot: entry.slot.slice(2) } : entry) };
   if (!isNode(node)) throw Error('UI_ROOT: expected one node');
   const [tag, original, children, location] = readNode(node);
   // Where a render that never returns was, for UI_TIMEOUT.
@@ -151,7 +154,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
     throw Error(`UI_PROP: dir must be "ltr" or "rtl"${editor ? ' or "auto"' : ''}`);
   // `dir` overrides the direction inherited from the environment for its subtree; `auto` keeps the box's.
   const direction = (props.dir === 'auto' ? undefined : props.dir) ?? parent.direction ?? (envOf(render.view)?.direction === 'rtl' ? 'rtl' : 'ltr');
-  const flat = flatten(children), slot = slots(children);
+  const authored = entries(children), flat = authored.map(entry => entry.child), slot = authored.map(entry => entry.slot);
   const style = nodeStyle(tag, props, parent.extra, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat));
   const inline = child => typeof child === 'string' || typeof child === 'number';
   if ((tag === 'span' || tag === 'link') && !parent.inText) throw Error(`UI_TEXT: <${tag}> belongs inside <text>`);
@@ -286,10 +289,12 @@ function resolveElement(tag, original, children, identity, depth, parent) {
     // Nested spans flatten into one run list; inner runs layer over the outer span's style.
     const extra = tag === 'span' || tag === 'link' ? style.author : undefined;
     result.children = flat.flatMap((child, position) => {
-      const run = resolveNode(inline(child) ? h('span', {}, child) : child, `${identity}/${tag}/position:${slot[position]}`, depth + 1, {
+      const at = authored[position], part = at.slot === undefined ? `key:${JSON.stringify(at.key)}` : `position:${at.slot}`;
+      const run = resolveNode(inline(child) ? h('span', {}, child) : child, `${identity}/${tag}/${part}`, depth + 1, {
         tag, typography: style.typography, direction, extra, inText: true, inControl: parent.inControl, inLink: parent.inLink || tag === 'link',
       });
       if (run === null) return [];
+      if (run.fragment) throw Error(`UI_TEXT: a component inside <${tag}> returns a fragment; return one <span>`);
       return (run.element === 'span' || run.element === 'link') && run.children.length ? run.children : [run];
     });
     // A styled link becomes consecutive link pieces sharing one handle, label and pressed style.
@@ -302,19 +307,27 @@ function resolveElement(tag, original, children, identity, depth, parent) {
     if (tag === 'text' && result.children.length > limits.runs) throw Error(`UI_TEXT: more than ${limits.runs} runs`);
   } else if (!leaf && tag !== 'radio') {
     const keys = new Set(), last = flat.length - 1;
-    result.children = flat.map((child, position) => {
-      const key = nodeKey(child);
+    const place = ({ child, slot: at, key }, position, nesting) => {
+      if (nesting > 128) throw Error('UI_LIMIT: children too deep');
       if (key !== undefined && typeof key !== 'string') throw Error('UI_KEY: expected string');
       if (key !== undefined && keys.has(key)) throw Error('UI_KEY: duplicate sibling');
       if (key !== undefined) keys.add(key);
-      const part = key === undefined ? `position:${slot[position]}` : `key:${JSON.stringify(key)}`;
+      const part = key === undefined ? `position:${at}` : `key:${JSON.stringify(key)}`;
       const node = resolveNode(child, `${identity}/${tag}/${part}`, depth + 1, {
         tag, typography: style.typography, direction, extra: position < last ? style.children : undefined,
         sibling: { index: position, count: flat.length },
         inControl: parent.inControl || admission.tags[element.wire].children === 'content',
       });
-      return node && key === undefined ? { ...node, slot: slot[position] } : node;
-    }).filter(child => child !== null);
+      // A component's fragment opens in its place, named under the component's slot or key.
+      if (node?.fragment) return node.fragment.flatMap(inner => place(key === undefined
+        ? { ...inner, slot: inner.slot === undefined ? undefined : `${at}.${inner.slot}`, key: inner.key }
+        : { child: inner.child, key: JSON.stringify([key, inner.key ?? `#${inner.slot}`]) }, position, nesting + 1));
+      if (node === null) return [];
+      if (key === undefined) return [{ ...node, slot: at }];
+      // Inside a keyed fragment the wire key is the composed one native names the node by.
+      return [node.props.key === key ? node : { ...node, props: { ...node.props, key } }];
+    };
+    result.children = authored.flatMap((entry, position) => place(entry, position, 0));
     // A pressable control around nothing but another control adds a second target for one action.
     if ((tag === 'button' || tag === 'checkbox') && result.children.length === 1 && interactiveTags.has(result.children[0].tag))
       throw Error(`UI_BUTTON: <${tag}> holds only a <${result.children[0].tag}>; put the action on that control`);

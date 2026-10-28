@@ -72,13 +72,23 @@ function spoken(element) {
   });
 }
 
+// Whether a fragment is what the exported `render` returns: the page root must be one box.
+function pageRoot(node) {
+  let at = node;
+  while (ts.isParenthesizedExpression(at.parent) || ts.isConditionalExpression(at.parent) || ts.isBinaryExpression(at.parent)) at = at.parent;
+  const owner = ts.isReturnStatement(at.parent) ? ts.findAncestor(at.parent, ts.isFunctionLike) : ts.isArrowFunction(at.parent) && at.parent.body === at ? at.parent : undefined;
+  if (!owner) return false;
+  const name = owner.name?.getText() ?? (ts.isVariableDeclaration(owner.parent) ? owner.parent.name.getText() : undefined);
+  return name === 'render';
+}
+
 export function audit(source, filename, { literalColors = false } = {}) {
   const file = parseSource(filename, source);
   const checker = sourceChecker(file);
   const problems = [];
   const report = (node, message) => problems.push(`${filename}:${position(file, node)}: ${message}`);
   const visit = node => {
-    if (ts.isJsxFragment(node)) report(node, 'UI_FRAGMENT: return one layout node; fragments are not supported');
+    if (ts.isJsxFragment(node) && pageRoot(node)) report(node, 'UI_FRAGMENT: a page returns one layout node; put the fragment inside <page>');
     if (ts.isJsxElement(node) && ['button', 'checkbox'].includes(node.openingElement.tagName.getText(file))) {
       const content = node.children.filter(child => !(ts.isJsxText(child) && !child.text.trim()));
       const only = content.length === 1 && (ts.isJsxElement(content[0]) || ts.isJsxSelfClosingElement(content[0])) ? content[0] : undefined;
@@ -289,7 +299,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     try {
       bundled = await build({
         stdin: { contents: `import { render } from ${JSON.stringify(source)}; import { publishHost } from ${JSON.stringify(host)}; export { configureClasses, configureSourceMap, enableHotSwap } from ${JSON.stringify(runtime)}; publishHost(render, ${JSON.stringify(catalog)});`, resolveDir: root },
-        bundle: true, write: false, format: 'esm', target: 'es2020', jsxFactory: 'h', inject: [jsx], logLevel: 'silent',
+        bundle: true, write: false, format: 'esm', target: 'es2020', jsxFactory: 'h', jsxFragment: 'Fragment', inject: [jsx], logLevel: 'silent',
         // Dev builds keep a source map so runtime errors name the author's line.
         ...(dev ? { sourcemap: 'external', absWorkingDir: root, outfile: join(root, 'page.js'), metafile: true } : {}),
         alias: { '@lingxia/ui': publicEntry },

@@ -57,7 +57,7 @@ pages/profile/index.tsx:6:25: UI_CLASS_ELEMENT: active:p-2: active styles change
 | `UI_CLASS_UNSUPPORTED` | real Tailwind the renderer cannot draw; the message says what and often what to use instead |
 | `UI_CLASS_ELEMENT` | a utility on an element that ignores it, a state variant the element never enters, or a state style that changes layout |
 | `UI_DOM` | `window`, `document`, `localStorage` or `HTMLElement` in View code |
-| `UI_FRAGMENT` | return one element |
+| `UI_FRAGMENT` | the page returns a fragment; put it inside `<page>` |
 | `UI_CSS` | the stylesheet holds more than tokens, or a page imports two |
 | `UI_ANIMATION` | an inline `style.animation` or invalid `@keyframes` ([Motion](motion.md)) |
 

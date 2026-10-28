@@ -1,5 +1,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { Fragment } from '../src/runtime/nodes.js';
+import { rendered } from './support/wire.mjs';
 import { h, List, childrenToArray, describe, prepare, discard, reset, useLocal, useRequest, configureActions, createView, takeActionRequests } from '../src/internal.js';
 
 beforeEach(() => reset());
@@ -93,4 +95,32 @@ test('local JSON domain omits optional object fields without admitting invalid a
   assert.deepEqual(local.value, {title:'two'}); assert.ok(Object.isFrozen(local.value));
   for (const initial of [undefined, [undefined], new Date(), {callback() {}}, Infinity])
     assert.throws(() => describe(() => { useLocal('invalid', initial); return h('text'); }, {}), /UI_LOCAL/);
+});
+
+test('fragments lay their children out in their place, keeping each child slot', () => {
+  const text = (value, props = {}) => h('text', props, value);
+  const inline = rendered(() => h('column', {}, text('a'), h(Fragment, null, false, text('b'), text('c')), text('d')));
+  assert.deepEqual(inline.children.map(child => [child.text, child.props.childSlot]), [['a', undefined], ['b', '1.1'], ['c', '1.2'], ['d', '2']]);
+  function Pair() { return h(Fragment, null, text('x'), text('y')); }
+  const component = rendered(() => h('column', {}, false, h(Pair)));
+  assert.deepEqual(component.children.map(child => [child.text, child.props.childSlot]), [['x', '1.0'], ['y', '1.1']]);
+  // A keyed group moves together: its children are named by the group key.
+  const groups = order => rendered(() => h('column', {}, order.map(id => h(Fragment, { key: id }, text(`${id}1`), text(`${id}2`, { key: 'tail' })))));
+  const keys = groups(['a', 'b']).children.map(child => [child.text, child.key]);
+  assert.deepEqual(keys, [['a1', '["a","#0"]'], ['a2', '["a","tail"]'], ['b1', '["b","#0"]'], ['b2', '["b","tail"]']]);
+  assert.deepEqual(groups(['b', 'a']).children.map(child => child.key), [keys[2][1], keys[3][1], keys[0][1], keys[1][1]]);
+  function Keyed() { return h(Fragment, null, text('k', { key: 'same' })); }
+  assert.throws(() => describe(() => h('column', {}, h(Keyed), h(Keyed)), {}), /UI_KEY: duplicate sibling/);
+  assert.throws(() => describe(() => h(Fragment, null, text('a'), text('b')), {}), /UI_ROOT/);
+  assert.throws(() => describe(() => h('text', {}, h(Pair)), {}), /UI_TEXT: a component inside <text> returns a fragment/);
+});
+
+test('local state inside a fragment child survives a sibling appearing before the group', () => {
+  let cell;
+  function Counter() { cell = useLocal('n', 0); return h('text', {}, String(cell.value)); }
+  let extra = false;
+  const render = () => h('column', {}, extra && h('text', {}, 'new'), h(Fragment, null, h(Counter)));
+  describe(render, {}); cell.set(5); describe(render, {});
+  extra = true;
+  assert.ok(rendered(render).children.some(child => child.text === '5'));
 });

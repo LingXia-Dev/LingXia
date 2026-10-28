@@ -63,7 +63,7 @@ page's data, deeply read-only. `view.actions` holds Logic's methods: each return
 
 Return `<page>` as the root. It absorbs the safe-area insets and the keyboard into its padding, and
 a `<scroll>` or `<list>` directly inside it fills the remaining height. `<page>` is valid only as the
-root. The page must return exactly one element (`UI_ROOT`); fragments are refused (`UI_FRAGMENT`).
+root. The page must return exactly one element (`UI_ROOT`), so a fragment cannot be the root (`UI_FRAGMENT`).
 
 ```tsx error UI_FRAGMENT
 export function render() {
@@ -72,6 +72,29 @@ export function render() {
 ```
 
 Wrap siblings in a `<column>`, `<row>` or `<page>` instead. `<view>` is a `<column>`.
+
+Anywhere else, a fragment groups children without a box: `<>…</>` or a component that returns one lays
+its children out in its place, and each keeps its own identity and local state while siblings come and
+go. `<Fragment key>` (from `@lingxia/ui`) names a group in a keyed map, so it moves as one:
+
+```tsx
+import { Fragment, useLocal } from '@lingxia/ui';
+
+function Term({ word, meaning }: { word: string; meaning: string }) {
+  return <><text className="font-semibold">{word}</text><text className="text-muted">{meaning}</text></>;
+}
+
+export function render() {
+  const words = useLocal('words', [['GPU', 'draws the page'], ['View', 'describes it']]);
+  return (
+    <page className="p-4 gap-1">
+      {words.value.map(([word, meaning]) => <Fragment key={word}><Term word={word} meaning={meaning} /></Fragment>)}
+    </page>
+  );
+}
+```
+
+A `<list>` row and a component inside `<text>` still return one element.
 
 ## Components
 

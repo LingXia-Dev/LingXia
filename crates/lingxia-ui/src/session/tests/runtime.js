@@ -71,25 +71,36 @@
     arena.push([tag, attributes, children.length ? children : supplied === void 0 ? [] : [supplied], location]);
     return handle2;
   }
-  function flatten(children, depth = 0, result = []) {
+  function Fragment() {
+    throw Error("UI_FRAGMENT: a fragment is not a component");
+  }
+  var isFragment = (value) => isNode(value) && readNode(value)[0] === Fragment;
+  var kept = (child) => child !== null && child !== void 0 && typeof child !== "boolean" && child !== "";
+  function entries(children, prefix = "", scope, depth = 0, result = []) {
     if (depth > 128) throw Error("UI_LIMIT: children too deep");
-    for (const child of children) {
+    children.forEach((child, index) => {
       if (result.length >= 16384) throw Error("UI_LIMIT: too many children");
-      if (Array.isArray(child)) flatten(child, depth + 1, result);
-      else if (child !== null && child !== void 0 && typeof child !== "boolean" && child !== "") result.push(child);
-    }
+      const slot = prefix ? `${prefix}.${index}` : String(index);
+      if (Array.isArray(child)) return entries(child, slot, scope, depth + 1, result);
+      if (isFragment(child)) {
+        const [, props, inner] = readNode(child);
+        if (props.key !== void 0 && typeof props.key !== "string") throw Error("UI_KEY: expected string");
+        const named = props.key === void 0 ? scope : grouped(scope, slot, props.key);
+        return entries(inner, props.key === void 0 ? slot : "", named, depth + 1, result);
+      }
+      if (!kept(child)) return;
+      const key = nodeKey(child);
+      if (!scope) result.push({ child, slot, key });
+      else result.push({ child, key: JSON.stringify([scope, key ?? `#${slot}`]) });
+    });
     return result;
+  }
+  var grouped = (scope, slot, key) => scope === void 0 ? key : JSON.stringify([scope, key ?? `#${slot}`]);
+  function flatten(children) {
+    return entries(children).map((entry) => entry.child);
   }
   function childrenToArray(children) {
     return flatten([children]);
-  }
-  function slots(children, prefix = "", result = []) {
-    children.forEach((child, index) => {
-      const slot = prefix ? `${prefix}.${index}` : String(index);
-      if (Array.isArray(child)) slots(child, slot, result);
-      else if (child !== null && child !== void 0 && typeof child !== "boolean" && child !== "") result.push(slot);
-    });
-    return result;
   }
 
   // src/generated/contract.js
@@ -1932,6 +1943,8 @@
     if (depth > limits.depth) throw Error("UI_LIMIT: children too deep");
     if (node == null || typeof node === "boolean" || node === "") return null;
     if (typeof node === "string" || typeof node === "number") node = h("text", {}, node);
+    if (Array.isArray(node)) return { fragment: entries(node) };
+    if (isFragment(node)) return { fragment: entries([node]).map((entry) => entry.slot ? { ...entry, slot: entry.slot.slice(2) } : entry) };
     if (!isNode(node)) throw Error("UI_ROOT: expected one node");
     const [tag, original, children, location] = readNode(node);
     if (location) render.site = `${typeof tag === "function" ? tag.name || "<anonymous>" : `<${tag}>`} (${location})`;
@@ -1964,7 +1977,7 @@
     if (props.dir !== void 0 && !(["ltr", "rtl"].includes(props.dir) || editor2 && props.dir === "auto"))
       throw Error(`UI_PROP: dir must be "ltr" or "rtl"${editor2 ? ' or "auto"' : ""}`);
     const direction = (props.dir === "auto" ? void 0 : props.dir) ?? parent.direction ?? (envOf(render.view)?.direction === "rtl" ? "rtl" : "ltr");
-    const flat = flatten(children), slot = slots(children);
+    const authored = entries(children), flat = authored.map((entry) => entry.child), slot = authored.map((entry) => entry.slot);
     const style2 = nodeStyle(tag, props, parent.extra, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat));
     const inline = (child) => typeof child === "string" || typeof child === "number";
     if ((tag === "span" || tag === "link") && !parent.inText) throw Error(`UI_TEXT: <${tag}> belongs inside <text>`);
@@ -2123,7 +2136,8 @@
     } else if (runs) {
       const extra = tag === "span" || tag === "link" ? style2.author : void 0;
       result.children = flat.flatMap((child, position) => {
-        const run = resolveNode(inline(child) ? h("span", {}, child) : child, `${identity}/${tag}/position:${slot[position]}`, depth + 1, {
+        const at = authored[position], part = at.slot === void 0 ? `key:${JSON.stringify(at.key)}` : `position:${at.slot}`;
+        const run = resolveNode(inline(child) ? h("span", {}, child) : child, `${identity}/${tag}/${part}`, depth + 1, {
           tag,
           typography: style2.typography,
           direction,
@@ -2133,6 +2147,7 @@
           inLink: parent.inLink || tag === "link"
         });
         if (run === null) return [];
+        if (run.fragment) throw Error(`UI_TEXT: a component inside <${tag}> returns a fragment; return one <span>`);
         return (run.element === "span" || run.element === "link") && run.children.length ? run.children : [run];
       });
       if (tag === "link") result.children = result.children.map((piece, i) => ({
@@ -2148,12 +2163,12 @@
       if (tag === "text" && result.children.length > limits.runs) throw Error(`UI_TEXT: more than ${limits.runs} runs`);
     } else if (!leaf && tag !== "radio") {
       const keys = /* @__PURE__ */ new Set(), last = flat.length - 1;
-      result.children = flat.map((child, position) => {
-        const key = nodeKey(child);
+      const place = ({ child, slot: at, key }, position, nesting) => {
+        if (nesting > 128) throw Error("UI_LIMIT: children too deep");
         if (key !== void 0 && typeof key !== "string") throw Error("UI_KEY: expected string");
         if (key !== void 0 && keys.has(key)) throw Error("UI_KEY: duplicate sibling");
         if (key !== void 0) keys.add(key);
-        const part = key === void 0 ? `position:${slot[position]}` : `key:${JSON.stringify(key)}`;
+        const part = key === void 0 ? `position:${at}` : `key:${JSON.stringify(key)}`;
         const node = resolveNode(child, `${identity}/${tag}/${part}`, depth + 1, {
           tag,
           typography: style2.typography,
@@ -2162,8 +2177,12 @@
           sibling: { index: position, count: flat.length },
           inControl: parent.inControl || admission.tags[element.wire].children === "content"
         });
-        return node && key === void 0 ? { ...node, slot: slot[position] } : node;
-      }).filter((child) => child !== null);
+        if (node?.fragment) return node.fragment.flatMap((inner) => place(key === void 0 ? { ...inner, slot: inner.slot === void 0 ? void 0 : `${at}.${inner.slot}`, key: inner.key } : { child: inner.child, key: JSON.stringify([key, inner.key ?? `#${inner.slot}`]) }, position, nesting + 1));
+        if (node === null) return [];
+        if (key === void 0) return [{ ...node, slot: at }];
+        return [node.props.key === key ? node : { ...node, props: { ...node.props, key } }];
+      };
+      result.children = authored.flatMap((entry, position) => place(entry, position, 0));
       if ((tag === "button" || tag === "checkbox") && result.children.length === 1 && interactiveTags.has(result.children[0].tag))
         throw Error(`UI_BUTTON: <${tag}> holds only a <${result.children[0].tag}>; put the action on that control`);
       result.children = result.children.map((child, ordinal) => {
@@ -2403,6 +2422,7 @@
         fields.height = height;
       }
       const content = resolveNode(value, render.scope, depth + 2, { typography: node.typography, sibling: { index: i, count: props.count } });
+      if (content?.fragment) throw Error("UI_LIST: a row returns one node; wrap its fragment in <column>");
       const row = {
         tag: "column",
         element: "column",
@@ -2453,7 +2473,7 @@
     return runCandidate(view, null, (candidate) => {
       candidate.tree = resolveNode(renderPage(view), "root");
       render.site = null;
-      if (!candidate.tree) throw Error("UI_ROOT: page must return one layout node");
+      if (!candidate.tree || candidate.tree.fragment) throw Error("UI_ROOT: page must return one layout node");
       candidate.baseLocals = new Map(candidate.locals);
       return encodeTree(candidate.tree, windows);
     });
@@ -2523,7 +2543,7 @@
       const error = sited(thrown);
       page.updates.clear();
       if (!entry.isolated) throw error;
-      for (const [cell, kept] of previous) page.updates.set(cell, kept);
+      for (const [cell, kept2] of previous) page.updates.set(cell, kept2);
       report(error);
       return true;
     }

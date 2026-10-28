@@ -379,7 +379,7 @@ const errorNotes = {
   UI_FIELD: 'A wire field on a tag that does not accept it.',
   UI_FIELDS: 'A malformed field list reached the native decoder.',
   UI_FILTER: 'A backdrop filter outside its bounds.',
-  UI_FRAGMENT: 'A JSX fragment; return one element.',
+  UI_FRAGMENT: 'A page that returns a fragment; the page root is one element.',
   UI_GRADIENT: 'A gradient with geometry its kind does not take, or invalid stops.',
   UI_GRID: 'An invalid grid track list or line.',
   UI_IMAGE: 'Invalid image source, alt, retry key or callback, or a failed load.',
