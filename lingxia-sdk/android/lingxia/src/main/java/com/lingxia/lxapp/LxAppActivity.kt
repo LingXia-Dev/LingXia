@@ -1757,6 +1757,7 @@ class LxAppActivity : AppCompatActivity() {
             return
         }
         val version = ++gpuTransitionVersion
+        LxLog.d(NAV_TAG, "tab click $index v$version")
         val dispatch = Runnable {
             if (version != gpuTransitionVersion || isFinishing || isDestroyed) return@Runnable
             val handled = NativeApi.onLxappEvent(appId, NativeApi.UI_EVENT_TABBAR_CLICK, index.toString())
@@ -2227,6 +2228,7 @@ class LxAppActivity : AppCompatActivity() {
         container.post {
             try {
                 val webView = container.getChildAt(0) as? View
+                if (webView == null) LxLog.d(NAV_TAG, "onPageShow skipped: empty container")
                 if (webView?.getAppId() != null && webView.getCurrentPath() != null) {
                     val pagePath = webView.getCurrentPath()!!
                     LxLog.d(NAV_TAG, "onPageShow ${webView.getWebTag()}")
@@ -2324,7 +2326,7 @@ class LxAppActivity : AppCompatActivity() {
         val version = gpuTransitionVersion
         val animateGpu = newWebView is GpuPage && gpuTransitionCover != null && !isReplace
         fun failedGpuPresentation() {
-            LxLog.d(NAV_TAG, "reveal ${newWebView.getWebTag()} failed v$version")
+            LxLog.d(NAV_TAG, "reveal ${newWebView.getWebTag()} failed v$version parent=${newWebView.parent != null}")
             clearGpuTransitionCover()
             if (animateGpu) (newWebView.parent as? FrameLayout)?.let { triggerOnPageShow(it) }
         }
@@ -2333,6 +2335,7 @@ class LxAppActivity : AppCompatActivity() {
             fun revealPresentedFrame() {
                 fun reveal(frame: android.graphics.Bitmap?) {
                     if (version != gpuTransitionVersion || isFinishing || isDestroyed) {
+                        LxLog.d(NAV_TAG, "reveal ${newWebView.getWebTag()} stale v$version now v$gpuTransitionVersion")
                         frame?.recycle()
                         return
                     }

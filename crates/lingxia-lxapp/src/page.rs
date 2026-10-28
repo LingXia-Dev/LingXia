@@ -1611,6 +1611,11 @@ impl PageInstance {
             let view = self.inner.view.lock().unwrap();
             if !matches!(view.as_ref(), Some(PageView::Gpu(current)) if Arc::ptr_eq(current, endpoint))
             {
+                debug!(
+                    "GPU frame presented by a view this page no longer holds; not ready from it"
+                )
+                .with_appid(self.appid())
+                .with_path(self.path());
                 return;
             }
             let mut state = self.inner.state.lock().unwrap();

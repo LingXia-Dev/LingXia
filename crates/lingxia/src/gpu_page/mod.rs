@@ -392,10 +392,15 @@ pub(crate) fn presented(token: Token, generation: u64) {
     };
     let current = *endpoint.generation();
     if !current.map_or(generation == 0, |current| current.get() == generation) {
+        log::debug!(
+            "GPU page {} presented generation {generation}, not its current {current:?}; not ready from it",
+            endpoint.lease.page
+        );
         return;
     }
-    if let Some(page) = lxapp::find_page_by_instance_id(&endpoint.lease.page) {
-        page.gpu_frame_presented(&(endpoint as Arc<dyn GpuPageView>));
+    match lxapp::find_page_by_instance_id(&endpoint.lease.page) {
+        Some(page) => page.gpu_frame_presented(&(endpoint as Arc<dyn GpuPageView>)),
+        None => log::debug!("GPU page {} presented after it left", endpoint.lease.page),
     }
 }
 
