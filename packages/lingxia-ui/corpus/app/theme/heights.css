@@ -1,0 +1,186 @@
+/* The h-app (Fusheng + Heights skin) token layer, ported to View tokens: its colour names alias
+ * roles, the compact density's type and spacing are the tokens, and its theme-owned classes are
+ * `@utility` rules. `accent` and `muted` are roles here, so h-app's soft `bg-accent` and grey
+ * `bg-muted` are written `bg-accent-soft` and `bg-surface-sunken` at their call sites. */
+@theme inline {
+  --color-background: var(--color-canvas);
+  --color-foreground: var(--color-text);
+  --color-card: var(--color-surface);
+  --color-card-foreground: var(--color-text);
+  --color-field: var(--color-surface);
+  --color-popover: var(--color-surface-raised);
+  --color-primary: var(--color-accent);
+  --color-primary-hover: var(--color-accent);
+  --color-primary-foreground: var(--color-on-accent);
+  --color-secondary: var(--color-surface-sunken);
+  --color-secondary-foreground: var(--color-text);
+  --color-muted-foreground: var(--color-muted);
+  --color-accent-foreground: var(--color-on-accent-soft);
+  --color-border: var(--color-line);
+  --color-separator: var(--color-line-strong);
+  --color-input: var(--color-line-strong);
+  --color-ring: var(--color-focus);
+  --color-destructive: var(--color-danger);
+  --color-destructive-foreground: var(--color-on-danger);
+  --color-destructive-subtle: var(--color-danger-soft);
+  --color-destructive-subtle-foreground: var(--color-danger);
+  --color-success-subtle: var(--color-success-soft);
+  --color-success-subtle-foreground: var(--color-success);
+  --color-warning-subtle: var(--color-warning-soft);
+  --color-warning-subtle-foreground: var(--color-warning);
+  --color-brand-1: var(--color-accent);
+  --color-brand-2: var(--color-chart-1);
+  --color-brand-foreground: var(--color-on-accent);
+  --color-upload: var(--color-chart-4);
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-brand: 'Songti SC', 'STSong', 'Hiragino Mincho ProN', ui-serif, serif;
+
+  --text-page-title: 1.75rem;
+  --text-page-title--line-height: 2.125rem;
+  --text-page-title--font-weight: 700;
+  --text-page-title--letter-spacing: -0.02em;
+  --text-section-title: 1.375rem;
+  --text-section-title--line-height: 1.75rem;
+  --text-section-title--font-weight: 600;
+  --text-section-title--letter-spacing: -0.014em;
+  --text-item-title: 1.0625rem;
+  --text-item-title--line-height: 1.375rem;
+  --text-item-title--font-weight: 600;
+  --text-item-title--letter-spacing: -0.008em;
+  --text-body: 1.0625rem;
+  --text-body--line-height: 1.375rem;
+  --text-body--font-weight: 400;
+  --text-body--letter-spacing: -0.004em;
+  --text-supporting: 0.875rem;
+  --text-supporting--line-height: 1.25rem;
+  --text-supporting--font-weight: 400;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1rem;
+  --text-caption--font-weight: 400;
+  --text-caption--letter-spacing: 0.006em;
+  --text-control: 1rem;
+  --text-control--line-height: 1.25rem;
+  --text-control--font-weight: 600;
+  --text-control-small: 0.875rem;
+  --text-control-small--line-height: 1.125rem;
+  --text-control-small--font-weight: 600;
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 0.875rem;
+  --radius-xl: 1.125rem;
+  --spacing-control: 2.75rem;
+  --spacing-control-small: 2.75rem;
+  --spacing-control-large: 3rem;
+  --spacing-gutter: 1rem;
+  --spacing-section: 1.5rem;
+  --ease-fusheng: cubic-bezier(0.16, 1, 0.3, 1);
+  --default-transition-duration: 150ms;
+  --default-transition-timing-function: var(--ease-fusheng);
+
+  @keyframes speedtest-spin { to { transform: rotate(1turn); } }
+  @keyframes speedtest-ping { 0% { transform: scale(0.94); opacity: 0.65; } 70%, 100% { transform: scale(1.04); opacity: 0; } }
+  @keyframes speedtest-breathe { 0%, 100% { opacity: 0.35; } 50% { opacity: 0.9; } }
+  @keyframes speedtest-pop { from { transform: scale(0.85); } to { transform: scale(1); } }
+  @keyframes speedtest-dot { 0%, 100% { opacity: 0.35; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-2px); } }
+  @keyframes speedtest-rise { from { transform: translateY(12px); } to { transform: translateY(0); } }
+  @keyframes ask-enter { from { transform: translateY(6px); } to { transform: translateY(0); } }
+  @keyframes ask-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(0.9); } }
+}
+
+:root {
+  --card-shadow: 0 1px 2px rgb(10 20 32 / 6%), 0 6px 16px rgb(10 20 32 / 5%);
+  --overlay-shadow: 0 2px 6px rgb(10 20 32 / 8%), 0 16px 40px rgb(10 20 32 / 14%);
+  --duration-fast: 150ms;
+  --duration-base: 250ms;
+}
+
+[data-theme='dark'] {
+  --card-shadow: none;
+  --overlay-shadow: 0 24px 48px rgb(0 0 0 / 55%);
+}
+
+@utility brand-gradient {
+  background-image: linear-gradient(135deg, var(--color-accent) 0%, var(--color-chart-1) 45%, var(--color-chart-1) 80%, var(--color-accent) 100%);
+}
+
+@utility numeric {
+  font-variant-numeric: tabular-nums;
+}
+
+@utility selectable {
+  user-select: text;
+}
+
+@utility speedtest-hero {
+  background: radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--color-accent) 10%, transparent) 0%, transparent 58%), var(--color-surface);
+}
+
+@utility speedtest-halo {
+  background: radial-gradient(circle, color-mix(in srgb, var(--color-accent) 20%, transparent) 0%, transparent 70%);
+  filter: blur(10px);
+}
+
+@utility speedtest-segment-current {
+  animation: speedtest-breathe 1.6s ease-in-out infinite;
+}
+
+@utility speedtest-live-dot {
+  animation: speedtest-breathe 1.2s ease-in-out infinite;
+}
+
+@utility speedtest-pop {
+  animation: speedtest-pop 320ms var(--ease-fusheng) both;
+}
+
+@utility speedtest-dock {
+  background: linear-gradient(to top, var(--color-canvas) 70%, transparent);
+}
+
+@utility speedtest-start-button {
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--color-chart-1) 32%, transparent), 0 2px 6px color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+@utility speedtest-start-ring {
+  border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
+  animation: speedtest-ping 2.8s var(--ease-fusheng) infinite;
+}
+
+@utility speedtest-rise {
+  animation: speedtest-rise 420ms var(--ease-fusheng) both;
+}
+
+@utility speedtest-figure {
+  font-size: 3rem;
+  line-height: 1;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+@utility ask-enter {
+  animation: ask-enter 260ms var(--ease-fusheng) both;
+}
+
+@utility ask-avatar-busy {
+  animation: ask-breathe 1.6s ease-in-out infinite;
+}
+
+@utility ask-orb {
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--color-chart-1) 30%, transparent), 0 2px 6px color-mix(in srgb, var(--color-accent) 20%, transparent);
+}
+
+@utility ask-fade-top {
+  mask-image: linear-gradient(to bottom, transparent 0, #000 1rem);
+}
+
+@utility ask-dock {
+  background: linear-gradient(to top, var(--color-canvas) 75%, transparent);
+}
+
+/* Classes h-app keeps for its web build: the compact density is the tokens above, and the View
+ * draws its own keyboard focus ring. */
+@utility density-compact {}
+@utility focus-ring {}
+@utility focus-ring-within {}
+@utility speedtest-start {}
