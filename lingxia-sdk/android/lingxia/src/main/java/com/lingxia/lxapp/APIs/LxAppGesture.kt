@@ -96,7 +96,8 @@ internal object LxAppGesture {
                     "CapsuleButton" -> "capsule"
                     else -> area
                 }
-                if (view.isClickable && here != "page" && (scope.isEmpty() || scope == here)) {
+                // A pressable container (a dialog, its backdrop) lists the controls inside it.
+                if (view.isClickable && !hasClickableChild(view) && here != "page" && (scope.isEmpty() || scope == here)) {
                     val label = view.contentDescription?.toString()?.takeIf { it.isNotBlank() } ?: texts(view)
                     if (label.isNotBlank()) {
                         val at = IntArray(2).also { view.getLocationOnScreen(it) }
@@ -139,6 +140,9 @@ internal object LxAppGesture {
     } catch (e: Throwable) {
         JSONObject().put("error", e.message ?: e.toString()).toString()
     }
+
+    private fun hasClickableChild(view: View): Boolean = view is ViewGroup &&
+        (0 until view.childCount).map { view.getChildAt(it) }.any { it.isShown && (it.isClickable || hasClickableChild(it)) }
 
     /** The visible text of a view's subtree, in order. */
     private fun texts(view: View): String = when (view) {
