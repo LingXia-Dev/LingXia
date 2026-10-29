@@ -387,6 +387,15 @@ impl Inputs {
         .map(|(other, _)| other.clone())
     }
 
+    /// The picker request for editor `id`, with its current value, when it is a date or time editor.
+    pub fn picker_request(&self, id: &str) -> Option<serde_json::Value> {
+        let entry = self.entries.get(id)?;
+        let mut spec = entry.rules.picker_spec()?;
+        spec["identity"] = id.into();
+        spec["value"] = entry.editor.snapshot().text.into();
+        Some(spec)
+    }
+
     pub fn valid(&self, id: &str, token: u64) -> bool {
         token != 0 && token == self.token && self.focused.as_deref() == Some(id)
     }

@@ -70,6 +70,7 @@ fn region(id: &str, parent: Option<&str>, offset: f32, max: f32) -> ScrollSnapsh
         parent: parent.map(str::to_owned),
         offset,
         max_offset: max,
+        snap: Vec::new(),
     }
 }
 

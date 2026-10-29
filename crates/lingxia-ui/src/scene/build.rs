@@ -87,6 +87,7 @@ impl Renderer {
         let mut selectables = Vec::with_capacity(records.len());
         let mut selectable_count = 0;
         let mut stickies = Vec::with_capacity(records.len());
+        let mut anchors = Vec::with_capacity(records.len());
         let mut run_rects: std::collections::HashMap<usize, Vec<[f32; 4]>> =
             std::collections::HashMap::new();
         let transforms = records
@@ -233,6 +234,7 @@ impl Renderer {
                     parent: scroll_parent.clone(),
                     offset: 0.0,
                     max_offset,
+                    snap: Vec::new(),
                     id: record
                         .string(field::LIST_ID)
                         .map(str::to_owned)
@@ -252,6 +254,7 @@ impl Renderer {
                 (layout.size.width - layout.padding.left - layout.padding.right).max(0.0),
                 (layout.size.height - layout.padding.top - layout.padding.bottom).max(0.0),
             ]);
+            anchors.push(record.string(field::ANCHOR_TO).map(str::to_owned));
             stickies.push((record.string(field::POSITION) == Some("sticky")).then(|| {
                 let rtl = directions[index];
                 let side = |physical, left| {
@@ -1196,6 +1199,7 @@ impl Renderer {
                 },
             });
         }
+        snap_points(records, &mut nodes);
         Ok(RetainedLayout {
             selection_fill: palette.role(Role::Selection),
             paint_styles,
@@ -1218,6 +1222,7 @@ impl Renderer {
             ),
             parents,
             stickies,
+            anchors,
             transforms: transforms
                 .iter()
                 .zip(&collapsed)
@@ -1259,5 +1264,56 @@ impl Renderer {
             inputs: input_layouts,
             selectables,
         })
+    }
+}
+
+/// The offsets each `scroll-snap-type` region settles on: one per child with a `scroll-snap-align`
+/// on the region's axis, measured as laid out (unscrolled) and kept inside the scroll range.
+fn snap_points(records: &[crate::protocol::Record], nodes: &mut [NodeSnapshot]) {
+    for (index, record) in records.iter().enumerate() {
+        let Some(kind) = record
+            .string(field::SCROLL_SNAP)
+            .filter(|kind| *kind != "none")
+        else {
+            continue;
+        };
+        let Some(scroll) = nodes[index].scroll.as_ref() else {
+            continue;
+        };
+        let horizontal = scroll.axis == ScrollAxis::Horizontal;
+        if (kind == "x") != horizontal {
+            continue;
+        }
+        let axis = usize::from(!horizontal);
+        let [top, right, bottom, left] = scroll.content_insets;
+        let (lead, trail) = if horizontal {
+            (left, right)
+        } else {
+            (top, bottom)
+        };
+        let origin = nodes[index].bounds[axis];
+        let extent = nodes[index].bounds[axis + 2];
+        let max = scroll.max_offset.max(0.0);
+        let mut points: Vec<f32> = records
+            .iter()
+            .enumerate()
+            .filter(|(_, child)| child.parent == Some(index))
+            .filter_map(|(child, record)| {
+                let start = nodes[child].bounds[axis] - origin;
+                let size = nodes[child].bounds[axis + 2];
+                let point = match record.string(field::SNAP_ALIGN)? {
+                    "start" => start - lead,
+                    "center" => start + size / 2.0 - extent / 2.0,
+                    "end" => start + size - (extent - trail),
+                    _ => return None,
+                };
+                Some(point.clamp(0.0, max))
+            })
+            .collect();
+        points.sort_by(f32::total_cmp);
+        points.dedup_by(|a, b| (*a - *b).abs() < 0.5);
+        if let Some(scroll) = nodes[index].scroll.as_mut() {
+            scroll.snap = points;
+        }
     }
 }

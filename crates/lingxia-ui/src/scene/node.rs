@@ -330,6 +330,9 @@ pub struct ScrollSnapshot {
     pub parent: Option<String>,
     pub offset: f32,
     pub max_offset: f32,
+    /// Offsets a `scroll-snap-type` region settles on, ascending.
+    #[serde(skip)]
+    pub(crate) snap: Vec<f32>,
 }
 
 pub struct Frame {

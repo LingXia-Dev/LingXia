@@ -6,6 +6,7 @@ import { validInputText } from './data.js';
 import { report, resetActions, actionEpochNow, hasActionEpoch } from './actions.js';
 import { sited } from './errors.js';
 import { overlayNode, decorateOverlay, resetOverlays } from './overlay.js';
+import { pickerNode, pickerAnchor, resetPicker } from './picker.js';
 import { envOf } from './hooks.js';
 
 // Candidate transactions: prepare renders and encodes without touching the
@@ -38,6 +39,17 @@ export function prepare(renderPage, view, windows = {}) {
     const env = envOf(view), overlay = overlayNode(env);
     if (overlay) candidate.tree.children.push(decorateOverlay(resolveNode(overlay, `root/${candidate.tree.element}/key:"lx-overlay"`, 1,
       { tag: candidate.tree.element, typography: candidate.tree.typography }), env));
+    // A date or time editor's picker draws above everything else on the page.
+    const picker = pickerNode(env);
+    if (picker) {
+      const layer = resolveNode(picker, `root/${candidate.tree.element}/key:"lx-picker-layer"`, 1,
+        { tag: candidate.tree.element, typography: candidate.tree.typography });
+      // A popover sits against its editor: native places it from the editor's laid-out box.
+      const anchor = pickerAnchor(env);
+      const panel = layer.children.find(child => child.props?.testId === 'lx-picker');
+      if (anchor && panel) panel.wire.push(['anchorTo', anchor]);
+      candidate.tree.children.push(layer);
+    }
     candidate.baseLocals = new Map(candidate.locals);
     return encodeTree(candidate.tree, windows);
   });
@@ -123,7 +135,7 @@ export function reset() {
   for (const resource of page.resources.values()) resource.dispose();
   page.resources.clear();
   resetActions();
-  resetOverlays();
+  resetOverlays(); resetPicker();
 }
 
 const accepts = (kind, value) => kind === 'number' ? typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1e9

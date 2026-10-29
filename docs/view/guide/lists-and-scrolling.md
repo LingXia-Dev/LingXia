@@ -68,6 +68,13 @@ export function render() {
 
 There is no scroll-to API for `<scroll>`. Use a list `anchor` when you must move the position.
 
+### Snapping
+
+`snap-y` (or `snap-x`) on a `<scroll>` or `<List>` and `snap-start`, `snap-center` or `snap-end` on its
+children make it settle on a child: when a finger, wheel or fling stops, the region eases to the nearest
+point (at once under reduced motion). Every snap is mandatory; `snap-mandatory` is accepted and
+`snap-proximity` is refused.
+
 ## Virtual lists
 
 `<List>` renders only the rows near the viewport, so it handles long and growing data. Rows are

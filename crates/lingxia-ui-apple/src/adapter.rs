@@ -362,14 +362,6 @@ impl Feedback for AppleAdapter {
                 }
                 Effect::ClearFocusRing => self.highlight(1, None, None),
                 Effect::Haptic => self.shell.haptic(self.token),
-                Effect::OpenPicker { node } => {
-                    if let Some(frame) = self.snapshot()
-                        && let Some(json) = node_json(&frame, *node)
-                    {
-                        self.shell
-                            .open_picker(self.token, frame.generation.get(), &json);
-                    }
-                }
                 Effect::ArmLongPress => self.shell.arm_long_press(self.token),
                 Effect::CancelLongPress => self.shell.cancel_long_press(self.token),
                 Effect::Fling {

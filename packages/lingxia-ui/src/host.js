@@ -3,6 +3,7 @@ import { describe, prepare, prepareWindows, commit, discard, reset, dispatch, pr
 import { createView, hasLocalUpdates, readsHostContext } from './runtime/hooks.js';
 import { configureActions, takeActionRequests, receiveActionResponse, takeActionErrors, requestLeave, automationAction, takeAutomationResults } from './runtime/actions.js';
 import { viewRequest, overlayTimer, takeOverlayTimers, escapeOverlay } from './runtime/overlay.js';
+import { openPicker, pickerKey, closePicker, takePickerResults, pickerIdentity } from './runtime/picker.js';
 import { takeFonts } from './runtime/fonts.js';
 
 // The native session calls only these globals; module code stays unreachable from the host.
@@ -18,6 +19,8 @@ export function publishHost(render, catalog) {
     __lingxiaAutomationAction: automationAction, __lingxiaTakeAutomationResults: takeAutomationResults,
     __lingxiaViewRequest: viewRequest, __lingxiaOverlayTimer: overlayTimer, __lingxiaTakeOverlayTimers: takeOverlayTimers,
     __lingxiaEscape: escapeOverlay, __lingxiaFonts: takeFonts, __lingxiaProbeListRow: probeListRow,
+    __lingxiaOpenPicker: openPicker, __lingxiaPickerKey: pickerKey, __lingxiaClosePicker: closePicker,
+    __lingxiaTakePickerResults: takePickerResults, __lingxiaPickerIdentity: pickerIdentity,
     // Cleared when a render completes, so it names only a render that never returned.
     __lingxiaSite: () => rendering.site || '',
   });

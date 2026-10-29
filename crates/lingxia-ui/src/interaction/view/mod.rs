@@ -119,6 +119,21 @@ impl ViewInteraction {
         snapshot.focus_style.then(|| snapshot.identity.clone())
     }
 
+    /// Snapping regions input moved since the last call.
+    pub fn take_moved_snaps(&mut self) -> Vec<String> {
+        self.scroll.take_moved_snaps()
+    }
+
+    /// Place region `id` at `offset` without counting as input (a snap settling).
+    pub fn set_scroll_offset(&mut self, id: &str, offset: f32) -> bool {
+        self.scroll.scroll_to(id, offset)
+    }
+
+    /// A finger is dragging a scroll region.
+    pub fn holding_scroll(&self) -> bool {
+        self.gesture.dragging
+    }
+
     /// Automation: scroll a list to an off-screen row's offset, and the list itself on screen;
     /// a list below the fold mounts no rows.
     pub fn scroll_list_to(&mut self, id: &str, offset: f32) -> bool {
@@ -430,13 +445,17 @@ impl ViewInteraction {
         };
         self.pending_focus = None;
         self.slider.cancel();
-        // A select opens its platform picker; the choice returns through the input protocol.
+        // A select opens the View's picker; the choice returns as the select's own choice.
         if node
             .select
             .as_ref()
             .is_some_and(|select| select.on_select.is_some())
         {
-            return vec![Effect::OpenPicker { node: index }];
+            self.dispatches.push(Dispatch::OpenSelect {
+                commit: frame.commit,
+                identity: node.identity.clone(),
+            });
+            return vec![Effect::Dispatch];
         }
         let mut effects = Vec::new();
         if let Some(point) = point {

@@ -153,6 +153,45 @@ impl ViewSession {
         })
     }
 
+    /// Open the View's own picker for a date or time editor: `{identity, kind, value, min, max, step}`.
+    pub fn open_view_picker(&self, request: &serde_json::Value) -> Result<bool, String> {
+        let request = serde_json::to_string(&request.to_string()).map_err(|e| e.to_string())?;
+        self.execute(|| {
+            self.context
+                .eval(Source::from_bytes(
+                    format!("typeof __lingxiaOpenPicker === 'function' && __lingxiaOpenPicker(JSON.parse({request}))").as_bytes(),
+                ))
+                .map_err(|e| e.to_string())
+        })
+    }
+
+    /// A key for the open picker (`ArrowUp`, `PageDown`, `Enter`, `Escape`, a digit); true when used.
+    pub fn view_picker_key(&self, key: &str) -> Result<bool, String> {
+        let key = serde_json::to_string(key).map_err(|e| e.to_string())?;
+        self.execute(|| {
+            self.context
+                .eval(Source::from_bytes(
+                    format!(
+                        "typeof __lingxiaPickerKey === 'function' && __lingxiaPickerKey({key})"
+                    )
+                    .as_bytes(),
+                ))
+                .map_err(|e| e.to_string())
+        })
+    }
+
+    /// Choices the picker made since the last call.
+    pub(crate) fn take_view_picker_results(&self) -> Result<Vec<PickerChoice>, String> {
+        let json: String = self.execute(|| {
+            self.context
+                .eval(Source::from_bytes(
+                    "typeof __lingxiaTakePickerResults === 'function' ? __lingxiaTakePickerResults() : '[]'",
+                ))
+                .map_err(|e| e.to_string())
+        })?;
+        serde_json::from_str(&json).map_err(|e| e.to_string())
+    }
+
     /// A toast deadline passed; true when it hid the toast still showing.
     pub fn overlay_timer(&self, token: u64) -> Result<bool, String> {
         self.execute(|| {
@@ -287,4 +326,13 @@ fn require_bounded_jobs() -> Result<(), String> {
     } else {
         Err("UI_ACTION: this engine cannot bound View microtasks".into())
     }
+}
+
+/// One choice of the View's picker: the control's native identity and its value, `None` for a
+/// cancel; a select's choice carries its option index.
+#[derive(serde::Deserialize)]
+pub(crate) struct PickerChoice {
+    pub identity: String,
+    pub value: Option<String>,
+    pub index: Option<usize>,
 }

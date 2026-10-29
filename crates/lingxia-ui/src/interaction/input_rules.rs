@@ -12,6 +12,17 @@ pub(crate) struct Rules {
     step: Option<f64>,
 }
 
+impl Rules {
+    /// What the View's picker needs for a `date` or `time` editor: kind, min, max and step.
+    pub fn picker_spec(&self) -> Option<serde_json::Value> {
+        self.picker().then(|| {
+            serde_json::json!({
+                "kind": self.keyboard, "min": self.min, "max": self.max, "step": self.step,
+            })
+        })
+    }
+}
+
 /// Whether `text` is an ISO 8601 `date` (YYYY-MM-DD) or `time` (HH:MM[:SS]).
 pub(crate) fn iso(text: &str, kind: &str) -> bool {
     let digits = |part: &str, width: usize, max: u32| {

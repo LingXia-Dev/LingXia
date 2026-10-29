@@ -1,6 +1,7 @@
 //! The View `env` from what an adapter measured. Adapters report OS facts;
 //! insets, form factor, pointer and motion policy are decided here.
 use super::FrameEnvironment;
+use crate::platform::calendar;
 use serde_json::json;
 
 /// Shorter window side, in logical pixels, from which a device is a tablet.
@@ -36,6 +37,10 @@ pub struct DeviceFacts {
     pub high_contrast: bool,
     /// `[authored, shown]` font sizes in logical pixels, from `[0, 0]` to `[16384, _]`.
     pub text_scale: Option<Vec<[f32; 2]>>,
+    /// The user's clock setting (`h12` or `h23`); `None` follows the display language.
+    pub hour_cycle: Option<String>,
+    /// The user's first day of the week, 1 = Sunday to 7 = Saturday; `None` follows the display language.
+    pub first_weekday: Option<u8>,
 }
 
 impl DeviceFacts {
@@ -72,6 +77,10 @@ impl DeviceFacts {
             "animatorDurationScale": animation_scale,
             "reducedMotion": self.reduce_motion || animation_scale == 0.0,
             "highContrast": self.high_contrast,
+            "hourCycle": self.hour_cycle.as_deref().filter(|cycle| matches!(*cycle, "h12" | "h23"))
+                .unwrap_or(calendar::hour_cycle(&self.locale)),
+            "firstWeekday": self.first_weekday.filter(|day| (1..=7).contains(day))
+                .unwrap_or(calendar::first_weekday(&self.locale)),
             "renderer": {
                 "fallback": crate::renderer::sentinel::fallback().map(|_| "driver"),
             },

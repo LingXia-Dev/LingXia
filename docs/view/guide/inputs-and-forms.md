@@ -96,8 +96,15 @@ is disabled or removed. `userSelect` (`select-*`) is refused on editors: they al
 With `type="number"`, `min`, `max` and `step` clamp and snap the text when the editor blurs or
 submits, and the corrected text is reported through `onInput`. The value stays a string; parse it yourself.
 
-With `type="date"` or `type="time"`, tapping the input opens the platform picker instead of a
-keyboard. The value is ISO: `YYYY-MM-DD`, or `HH:MM` / `HH:MM:SS`. `min` and `max` take the same form.
+With `type="date"` or `type="time"`, tapping the input opens the View's own picker instead of a
+keyboard, drawn in the theme's roles and the same on every platform: a popover under the field with a
+mouse or trackpad, a bottom sheet with Cancel and Done on touch. The date picker shows a month (weeks
+start on `env.firstWeekday`), marks today and the value, and greys days outside `min`/`max`; arrows move
+by day and week, Page Up/Down by month, Return picks, Escape cancels. The time picker has hour and minute
+columns (and AM/PM when `env.hourCycle` is `h12`) that snap as they scroll; `step` (seconds) sets the
+minutes offered, and typed digits fill `HH:MM`. Month and day names follow `env.displayLanguage`.
+Choosing runs `onInput` then `onSubmit`, as typing and Return would. The value is ISO: `YYYY-MM-DD`, or
+`HH:MM` / `HH:MM:SS`. `min` and `max` take the same form; automation can `fill` the field directly.
 
 ```tsx
 import { useLocal } from '@lingxia/ui';

@@ -403,6 +403,10 @@ impl EnvironmentSource for AndroidAdapter {
             reduce_motion: facts["reduce_motion"].as_bool().unwrap_or(false),
             high_contrast: facts["high_contrast"].as_bool().unwrap_or(false),
             text_scale,
+            hour_cycle: facts["hour_cycle"].as_str().map(str::to_owned),
+            first_weekday: facts["first_weekday"]
+                .as_u64()
+                .and_then(|day| u8::try_from(day).ok()),
         }
         .environment()
     }
@@ -624,10 +628,6 @@ impl Feedback for AndroidAdapter {
                 Effect::Press { node: index, .. } => self.int(jni_str!("press"), node(*index)),
                 Effect::ClearPress => self.void(jni_str!("clearPress")),
                 Effect::FocusRing { node: index } => self.int(jni_str!("focusRing"), node(*index)),
-                // Shows the platform single-choice picker; GpuPlatform.openPicker answers through `{op:"select"}`.
-                Effect::OpenPicker { node: index } => {
-                    self.int(jni_str!("openPicker"), node(*index))
-                }
                 Effect::ClearFocusRing => self.void(jni_str!("clearFocusRing")),
                 Effect::Claim { exclusive } => self.flag(jni_str!("claim"), *exclusive),
                 Effect::ArmLongPress => self.void(jni_str!("armLongPress")),

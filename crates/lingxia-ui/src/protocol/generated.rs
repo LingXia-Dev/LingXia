@@ -226,6 +226,9 @@ pub mod field {
     pub const MASK_IMAGE: usize = 190;
     pub const FILTER_BLUR: usize = 191;
     pub const GROUP_PRESSED_STYLE: usize = 192;
+    pub const ANCHOR_TO: usize = 193;
+    pub const SCROLL_SNAP: usize = 194;
+    pub const SNAP_ALIGN: usize = 195;
 }
 
 pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page", "span", "link", "select"];
@@ -425,6 +428,9 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("maskImage", "string"),
     ("filterBlur", "number"),
     ("groupPressedStyle", "state-style"),
+    ("anchorTo", "anchor"),
+    ("scrollSnap", "scroll-snap"),
+    ("snapAlign", "snap-align"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -451,10 +457,12 @@ pub fn options(kind: &str) -> Option<&'static [&'static str]> {
         "sizing-keyword" => Some(&["fit-content", "max-content", "min-content"]),
         "border-style" => Some(&["solid", "dashed", "dotted"]),
         "overscroll" => Some(&["auto", "contain", "none"]),
+        "scroll-snap" => Some(&["none", "x", "y"]),
+        "snap-align" => Some(&["none", "start", "center", "end"]),
         "grid-auto-flow" => Some(&["row", "column", "row-dense", "column-dense"]),
         "align-content" => Some(&["start", "center", "end", "between", "around", "evenly", "stretch"]),
         "direction" => Some(&["ltr", "rtl", "auto"]),
-        "role" => Some(&["heading", "list", "listitem", "dialog", "alert", "status"]),
+        "role" => Some(&["heading", "list", "listitem", "dialog", "alert", "status", "grid", "gridcell", "listbox", "option"]),
         "live-region" => Some(&["off", "polite", "assertive"]),
         "input-keyboard" => Some(&["text", "number", "email", "phone", "search", "date", "time"]),
         "auto-complete" => Some(&["off", "on", "username", "current-password", "new-password", "one-time-code", "email", "tel", "name", "given-name", "family-name", "street-address", "postal-code", "country", "cc-number", "cc-exp", "cc-csc", "bday"]),
@@ -519,6 +527,8 @@ pub const ENVIRONMENT_KEYS: &[(&str, &str)] = &[
     ("reducedMotion", "device"),
     ("highContrast", "device"),
     ("animatorDurationScale", "device"),
+    ("hourCycle", "device"),
+    ("firstWeekday", "device"),
     ("direction", "session"),
     ("canDock", "push"),
     ("renderer", "device"),
@@ -540,6 +550,8 @@ pub fn check_environment(value: &serde_json::Value) -> bool {
         && (value.get("reducedMotion").is_none() || value["reducedMotion"].is_boolean())
         && (value.get("highContrast").is_none() || value["highContrast"].is_boolean())
         && (value.get("animatorDurationScale").is_none() || value["animatorDurationScale"].as_f64().is_some_and(|n| n.is_finite() && (0.0..=10.0).contains(&n)))
+        && (value.get("hourCycle").is_none() || matches!(value["hourCycle"].as_str(), Some("h12") | Some("h23")))
+        && (value.get("firstWeekday").is_none() || value["firstWeekday"].as_f64().is_some_and(|n| n.is_finite() && (1.0..=7.0).contains(&n)))
         && value["canDock"].is_boolean()
         && (value.get("renderer").is_none() || (matches!(value["renderer"]["fallback"].as_str(), None | Some("driver")) && value["renderer"].as_object().is_some_and(|r| r.len() == 1)))
 }
@@ -803,5 +815,8 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: Some(&[tag::COLUMN]), parent: None },
+    FieldAdmission { tags: Some(&[tag::SCROLL, tag::LIST]), parent: None },
     FieldAdmission { tags: None, parent: None },
 ];

@@ -156,6 +156,20 @@ impl<A: PlatformAdapter> Inner<A> {
         }
         for dispatch in dispatches {
             match dispatch {
+                Dispatch::Editor { node, commit, .. }
+                    if let Some(identity) = snapshot.as_ref().and_then(|snapshot| {
+                        let node = snapshot.frame.nodes.get(node)?;
+                        node.input.as_ref()?.attributes.picker.as_ref()?;
+                        Some(node.identity.clone())
+                    }) =>
+                {
+                    // A date or time editor opens the View's own picker; no input method connects.
+                    self.activate(
+                        page,
+                        false,
+                        Box::new(move |session| session.open_picker(commit, &identity)),
+                    );
+                }
                 Dispatch::Editor { node, word, .. } => {
                     if let Some(snapshot) = &snapshot {
                         self.adapter.focus(&dispatch, snapshot);
@@ -263,6 +277,16 @@ impl<A: PlatformAdapter> Inner<A> {
                 Dispatch::Escape => {
                     self.activate(page, false, Box::new(|session| session.escape()))
                 }
+                Dispatch::PickerKey { key } => self.activate(
+                    page,
+                    false,
+                    Box::new(move |session| session.picker_key(&key)),
+                ),
+                Dispatch::OpenSelect { commit, identity } => self.activate(
+                    page,
+                    false,
+                    Box::new(move |session| session.open_select(commit, &identity)),
+                ),
                 Dispatch::ClearTextSelection => self.activate(
                     page,
                     false,
@@ -299,7 +323,8 @@ impl<A: PlatformAdapter> Inner<A> {
         self.work(
             Guard::Page(page),
             move |inner, session| {
-                let changed = activation(session);
+                let changed = activation(session)
+                    .and_then(|changed| Ok(session.apply_picker_results()? || changed));
                 let clicks = session.take_clicks();
                 if !changed? {
                     return Ok((clicks, None));

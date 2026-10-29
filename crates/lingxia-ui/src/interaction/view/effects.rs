@@ -40,10 +40,6 @@ pub enum Effect {
     Clicked,
     Haptic,
     /// Edit text on behalf of accessibility; the adapter forwards it to its input method.
-    /// Show the platform's single-choice picker for this `<select>` (options and choice on the node).
-    OpenPicker {
-        node: usize,
-    },
     EditText {
         node: usize,
         text: Option<String>,
@@ -122,6 +118,15 @@ pub enum Dispatch {
     },
     /// Escape: the View dismisses its innermost overlay.
     Escape,
+    /// A key for the View's open picker (`ArrowUp`, `Enter`, `Escape`, a character, ...).
+    PickerKey {
+        key: String,
+    },
+    /// A tap or activation of a `<select>`: the View opens its picker.
+    OpenSelect {
+        commit: CommitTicket,
+        identity: String,
+    },
     /// Enter on an editor: the session submits it as the input method's action would.
     SubmitEditor {
         commit: CommitTicket,

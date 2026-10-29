@@ -131,6 +131,8 @@ fn session(job: &Job, source: &str) -> Result<lingxia_ui::ViewSession, String> {
         smallest_width: f32::from(job.width.min(job.height)),
         locale: job.locale.clone().unwrap_or_else(|| "en".into()),
         animation_scale: 1.0,
+        // `__pointer: "fine"` renders the desktop look (popovers, hover).
+        fine_pointer: job.state.as_ref().and_then(|s| s["__pointer"].as_str()) == Some("fine"),
         ..Default::default()
     };
     let mut env = facts.environment().ok_or("environment")?.value;
@@ -169,7 +171,20 @@ fn run(job: &Job) -> Result<Value, String> {
         (f32::from(job.height) * job.scale) as u16,
     );
     let mut page = session(job, &source)?;
-    let display = layout(&mut page, width, height, job.scale)?;
+    let mut display = layout(&mut page, width, height, job.scale)?;
+    // `__picker: "<data-testid>"` opens the View's picker on that editor, as a tap would.
+    if let Some(test_id) = job.state.as_ref().and_then(|s| s["__picker"].as_str()) {
+        let identity = display
+            .nodes
+            .iter()
+            .find(|node| node.test_id == test_id)
+            .map(|node| node.identity.clone())
+            .ok_or_else(|| format!("__picker: no node {test_id}"))?;
+        if !page.open_picker_now(&identity, Some("2026-10-29"))? {
+            return Err(format!("__picker: {test_id} is no date or time editor"));
+        }
+        display = layout(&mut page, width, height, job.scale)?;
+    }
     let cost = display.cost();
     let metrics = page.metrics().clone();
     if let Some(path) = &job.nodes {

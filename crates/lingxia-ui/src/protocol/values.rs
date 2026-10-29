@@ -439,6 +439,13 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             ),
             "state-style" => focus_style(value).map(drop),
             "number" => number(id, value),
+            // The native identity of the node a popover sits against.
+            "anchor" => ensure(
+                value
+                    .as_str()
+                    .is_some_and(|s| s.starts_with('/') && s.len() <= 4096),
+                "UI_FIELD: invalid anchor",
+            ),
             _ => {
                 let value = value.as_str().ok_or("UI_STYLE: expected color")?;
                 if !matches!(id, field::BORDER_COLOR | field::BACKGROUND) || value != "currentColor"

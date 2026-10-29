@@ -4189,3 +4189,153 @@ fn a_list_row_below_the_fold_is_revealed_through_the_page_scroll_and_clicked() {
     platform.settle(&[&host]);
     assert_eq!(query("[data-testid=\"picked\"]")["text"], "picked=Row 31");
 }
+
+#[test]
+fn a_date_editor_opens_the_views_picker_and_commits_through_the_editor() {
+    use crate::interaction::view::Key;
+    let worker = ViewWorker::spawn("test-view-picker").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){const day=useLocal('2026-10-29'),submits=useLocal(0);return h('column',{},h('input',{'data-testid':'day',type:'date',bind:day,'aria-label':'Day',min:'2026-10-01',onSubmit:()=>submits.set(submits.value+1)}),h('text',{'data-testid':'out'},`${day.value} ${submits.value}`))}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let query = |css: &str| {
+        host.automation_request(&serde_json::json!({"op":"query","css":css}))
+            .unwrap()
+    };
+    host.automation_request(
+        &serde_json::json!({"op":"act","css":"[data-testid=\"day\"]","action":{"kind":"click"}}),
+    )
+    .unwrap();
+    platform.settle(&[&host]);
+    assert_eq!(
+        query("[data-testid=\"lx-picker\"]")["exists"],
+        true,
+        "the picker opened"
+    );
+    assert_eq!(
+        query("[data-testid=\"lx-picker-title\"]")["text"],
+        "October 2026"
+    );
+    // A week down, then Return: the editor takes the date and submits it.
+    assert!(host.key(Key::Down, false, false));
+    platform.settle(&[&host]);
+    assert!(host.key(Key::Activate, false, false));
+    platform.settle(&[&host]);
+    assert_eq!(
+        query("[data-testid=\"lx-picker\"]")["exists"],
+        false,
+        "the picker closed"
+    );
+    assert_eq!(query("[data-testid=\"out\"]")["text"], "2026-11-05 1");
+    // Escape cancels and leaves the value.
+    host.automation_request(
+        &serde_json::json!({"op":"act","css":"[data-testid=\"day\"]","action":{"kind":"click"}}),
+    )
+    .unwrap();
+    platform.settle(&[&host]);
+    assert!(host.key(Key::Escape, false, false));
+    platform.settle(&[&host]);
+    assert_eq!(query("[data-testid=\"lx-picker\"]")["exists"], false);
+    assert_eq!(query("[data-testid=\"out\"]")["text"], "2026-11-05 1");
+}
+
+#[test]
+fn the_views_pickers_announce_grid_cells_and_options_and_take_a_tapped_time() {
+    let worker = ViewWorker::spawn("test-view-picker-roles").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){const day=useLocal('2026-10-21'),at=useLocal('18:30');return h('column',{},h('input',{'data-testid':'day',type:'date',bind:day,'aria-label':'Day'}),h('input',{'data-testid':'at',type:'time',bind:at,step:900,'aria-label':'At'}),h('text',{'data-testid':'out'},`${day.value} ${at.value}`))}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let request = |request: serde_json::Value| {
+        let reply = host.automation_request(&request);
+        platform.settle(&[&host]);
+        reply
+    };
+    let query = |css: &str| request(serde_json::json!({"op":"query","css":css})).unwrap();
+    request(
+        serde_json::json!({"op":"act","css":"[data-testid=\"day\"]","action":{"kind":"click"}}),
+    )
+    .unwrap();
+    let cell = query("[data-testid=\"lx-picker-day-2026-10-21\"]");
+    assert_eq!(cell["role"], "gridcell", "{cell}");
+    assert_eq!(cell["aria_label"], "Wednesday, October 21, 2026");
+    assert_eq!(query("[role=\"grid\"]")["exists"], true);
+    assert!(host.key(crate::interaction::view::Key::Escape, false, false));
+    platform.settle(&[&host]);
+    assert_eq!(
+        query("[data-testid=\"lx-picker\"]")["exists"],
+        false,
+        "Escape cancels"
+    );
+    request(serde_json::json!({"op":"act","css":"[data-testid=\"at\"]","action":{"kind":"click"}}))
+        .unwrap();
+    assert_eq!(
+        query("[data-testid=\"lx-picker-minute-45\"]")["role"],
+        "option"
+    );
+    request(serde_json::json!({"op":"act","css":"[data-testid=\"lx-picker-minute-45\"]","action":{"kind":"click"}})).unwrap();
+    assert!(host.key(crate::interaction::view::Key::Activate, false, false));
+    platform.settle(&[&host]);
+    assert_eq!(query("[data-testid=\"out\"]")["text"], "2026-10-21 18:45");
+}
+
+#[test]
+fn a_snapping_scroll_settles_on_the_nearest_point_once_input_stops() {
+    use crate::interaction::view::{Wheel, WheelPhase};
+    let worker = ViewWorker::spawn("test-scroll-snap").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){return h('scroll',{'data-testid':'s',style:{height:100,scrollSnapType:'y'}},...Array.from({length:10},(_,i)=>h('column',{key:String(i),'data-testid':'r'+i,style:{height:40,scrollSnapAlign:'start'}})))}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let top = |id: &str| {
+        host.automation_request(
+            &serde_json::json!({"op":"query","css":format!("[data-testid=\"{id}\"]")}),
+        )
+        .unwrap()["rect"]["top"]
+            .as_f64()
+            .unwrap()
+    };
+    let wheel = |dy: f32| {
+        host.wheel(Wheel {
+            x: 50.0,
+            y: 50.0,
+            dx: 0.0,
+            dy,
+            precise: true,
+            phase: WheelPhase::Changed,
+        });
+        platform.settle(&[&host]);
+    };
+    // 52 logical px down (device pixels at scale 2): closer to row 1 (40) than row 2 (80).
+    wheel(-104.0);
+    assert_eq!(top("r1"), -12.0, "the wheel moves freely");
+    // More movement inside the quiet time restarts it.
+    platform.advance(std::time::Duration::from_millis(60));
+    wheel(-8.0);
+    platform.advance(std::time::Duration::from_millis(100));
+    platform.settle(&[&host]);
+    assert_eq!(top("r1"), -16.0, "no settle while input continues");
+    for _ in 0..30 {
+        platform.advance(std::time::Duration::from_millis(16));
+        platform.settle(&[&host]);
+    }
+    assert_eq!(top("r1"), 0.0, "settled on row 1, the nearest point");
+}

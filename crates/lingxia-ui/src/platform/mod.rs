@@ -11,6 +11,7 @@ use crate::session::host::{Failure, FrameSnapshot, FrameTiming};
 use crate::session::lifecycle::{CommitTicket, ConnectionTicket, SurfaceTicket};
 use std::time::Duration;
 
+pub(crate) mod calendar;
 mod chrome;
 mod environment;
 pub use chrome::HostChrome;

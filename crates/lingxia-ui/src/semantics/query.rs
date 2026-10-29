@@ -122,6 +122,10 @@ fn aria(role: Role) -> Option<&'static str> {
         Role::Dialog => "dialog",
         Role::Alert => "alert",
         Role::Status => "status",
+        Role::Grid => "grid",
+        Role::GridCell => "gridcell",
+        Role::ListBox => "listbox",
+        Role::Option => "option",
         Role::Text | Role::ScrollView | Role::HorizontalScrollView => return None,
     })
 }

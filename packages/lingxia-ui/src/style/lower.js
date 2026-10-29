@@ -322,6 +322,11 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
       case 'basis':
         if (value !== 'auto') length(name, percent(value) ?? value);
         out[key] = value; break;
+      case 'snap-type': {
+        // `scroll-snap-type: y mandatory`: the axis snaps; every snap here is mandatory.
+        const axis = String(value).trim().split(/\s+/)[0];
+        out[key] = option(name, key, axis); break;
+      }
       case 'option':
         if (name === 'userSelect' && ['input', 'textarea'].includes(tag)) throw Error('UI_STYLE: editors select their text already; userSelect is for static text');
         out[key] = option(name, key, value); break;

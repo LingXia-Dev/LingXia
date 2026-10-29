@@ -274,6 +274,13 @@ is still refused on an element that does not render its style ([styles.md](style
 | Family | Supported | Refused |
 | --- | --- | --- |
 | `blur` | `blur-2xl`, `blur-3xl`, `blur-lg`, `blur-md`, `blur-none`, … (8) |  |
+| `snap` | `snap-align-none`, `snap-center`, `snap-end`, `snap-none`, `snap-start`, … (7) | scroll-snap-stop (2); proximity snapping (1); scroll-snap-type (1) |
+
+## Accepted without effect
+
+These compile but set nothing the renderer draws:
+
+`snap-mandatory`
 
 ## Not supported
 
@@ -388,7 +395,6 @@ is still refused on an element that does not render its style ([styles.md](style
 | `skew` | 12 | transform (12) |
 | `skew-x` | 12 | transform (12) |
 | `skew-y` | 12 | transform (12) |
-| `snap` | 12 | scroll-snap-align (4); scroll-snap-type (4); scroll-snap-stop (2) |
 | `static` | 1 | position (1) |
 | `stroke` | 327 | stroke (323); stroke-width (4) |
 | `subpixel` | 1 | -webkit-font-smoothing (1) |

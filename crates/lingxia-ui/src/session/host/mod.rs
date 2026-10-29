@@ -27,6 +27,7 @@ mod hot_swap;
 mod images;
 mod pump;
 mod reveal;
+mod snap;
 mod telemetry;
 mod text_menu;
 mod virtual_rows;
@@ -246,6 +247,7 @@ struct Main<F> {
     /// The automation act being delivered; the first activation it starts reports to it.
     act_call: Option<(u64, String)>,
     virtual_rows: virtual_rows::VirtualRows,
+    snaps: snap::Snaps,
     /// User activations reported dropped, and clicks that ran a callback, for frame metrics.
     dropped_activations: u64,
     activations: u64,
@@ -381,6 +383,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     next_automation_call: 0,
                     act_call: None,
                     virtual_rows: Default::default(),
+                    snaps: Default::default(),
                     dropped_activations: 0,
                     activations: 0,
                     chrome: None,
@@ -575,6 +578,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
         let page = self.inner.lifecycle.page();
         let (handled, effects) = self.inner.main().interaction.pointer(event, page);
         self.inner.deliver(effects);
+        self.inner.snap_later();
         handled
     }
 
@@ -603,6 +607,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
         }
         let (moved, effects) = self.inner.main().interaction.wheel(event);
         self.inner.deliver(effects);
+        self.inner.snap_later();
         moved
     }
 
@@ -1087,6 +1092,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
         let changed = self.inner.main().interaction.scroll_by(region, delta_px);
         if changed {
             self.inner.schedule();
+            self.inner.snap_later();
         }
         changed
     }

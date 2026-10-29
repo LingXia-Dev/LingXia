@@ -29,6 +29,14 @@ pub enum Role {
     Dialog,
     Alert,
     Status,
+    /// A two-dimensional set of cells (a date picker's month).
+    Grid,
+    /// One cell of a grid; actionable when it is a button.
+    GridCell,
+    /// A set of options to choose one from (a picker column).
+    ListBox,
+    /// One choice of a list box.
+    Option,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -283,13 +291,21 @@ impl Projection<'_> {
             }
         } else if node.tag == "link" {
             Role::Link
-        } else if let Some(role) = node.role.as_deref().filter(|_| !button) {
+        } else if let Some(role) = node
+            .role
+            .as_deref()
+            .filter(|role| !button || matches!(*role, "gridcell" | "option"))
+        {
             match role {
                 "heading" => Role::Heading,
                 "list" => Role::List,
                 "listitem" => Role::ListItem,
                 "dialog" => Role::Dialog,
                 "alert" => Role::Alert,
+                "grid" => Role::Grid,
+                "gridcell" => Role::GridCell,
+                "listbox" => Role::ListBox,
+                "option" => Role::Option,
                 _ => Role::Status,
             }
         } else if button {
@@ -308,9 +324,16 @@ impl Projection<'_> {
                 | Role::List
                 | Role::Dialog
                 | Role::ComboBox
+                | Role::Grid
+                | Role::ListBox
         ) || (matches!(
             role,
-            Role::Heading | Role::ListItem | Role::Alert | Role::Status
+            Role::Heading
+                | Role::ListItem
+                | Role::Alert
+                | Role::Status
+                | Role::GridCell
+                | Role::Option
         ) && !label.is_empty())
             || (input.is_some() && !label.is_empty())
         {

@@ -55,6 +55,10 @@ impl ViewSession {
         if !self.presented_layout_commit(generation) {
             return Ok(None);
         }
+        self.focus_now(identity)
+    }
+
+    fn focus_now(&mut self, identity: &str) -> Result<Option<crate::InputReply>, String> {
         let mut inputs = self.inputs.clone();
         if !inputs.focus(identity, &mut self.renderer)? {
             return Ok(None);
@@ -71,6 +75,119 @@ impl ViewSession {
         self.inputs = inputs;
         self.input_dirty = true;
         Ok(Some(reply))
+    }
+
+    /// A tap or activation of a date or time editor opens the View's picker instead of an input method.
+    pub fn open_picker(
+        &mut self,
+        generation: lifecycle::CommitTicket,
+        identity: &str,
+    ) -> Result<bool, String> {
+        self.check_input_active()?;
+        if !self.presented_layout_commit(generation) {
+            return Ok(false);
+        }
+        self.open_picker_now(identity, None)
+    }
+
+    /// Open the View's picker on editor `identity` of the last layout, as a tap would; `today`
+    /// (ISO) replaces the clock's date, for renders that must not change from day to day.
+    pub fn open_picker_now(&mut self, identity: &str, today: Option<&str>) -> Result<bool, String> {
+        self.check_input_active()?;
+        match self.inputs.picker_request(identity) {
+            Some(mut request) => {
+                if let Some(today) = today {
+                    request["today"] = today.into();
+                }
+                self.open_view_picker(&request)
+            }
+            None => Ok(false),
+        }
+    }
+
+    /// A tap or activation of a `<select>` opens the View's picker with its options.
+    pub fn open_select(
+        &mut self,
+        generation: lifecycle::CommitTicket,
+        identity: &str,
+    ) -> Result<bool, String> {
+        self.check_input_active()?;
+        if !self.presented_layout_commit(generation) {
+            return Ok(false);
+        }
+        let Some(request) = self.retained.as_ref().and_then(|retained| {
+            let node = retained
+                .nodes
+                .iter()
+                .find(|node| node.identity == identity)?;
+            let select = node.select.as_ref().filter(|s| s.on_select.is_some())?;
+            Some(serde_json::json!({
+                "identity": identity, "kind": "select", "options": select.options,
+                "selected": select.selected, "label": node.accessibility_label,
+            }))
+        }) else {
+            return Ok(false);
+        };
+        self.open_view_picker(&request)
+    }
+
+    /// A key while the picker is open; a choice it made applies at once.
+    pub fn picker_key(&mut self, key: &str) -> Result<bool, String> {
+        self.check_input_active()?;
+        let used = self.view_picker_key(key)?;
+        Ok(self.apply_picker_results()? || used)
+    }
+
+    /// Choices of the View's picker go through the editor as a platform picker's would: focus,
+    /// the chosen value replacing its text with input and submit callbacks, then blur.
+    pub fn apply_picker_results(&mut self) -> Result<bool, String> {
+        use crate::text::input::Edit;
+        let mut changed = false;
+        for crate::session::bridge::PickerChoice {
+            identity,
+            value,
+            index,
+        } in self.take_view_picker_results()?
+        {
+            changed = true;
+            let Some(value) = value else { continue };
+            if index.is_some() {
+                // A select's choice, found again by value in the View rendered since it opened.
+                let current = self.retained.as_ref().and_then(|retained| {
+                    let node = retained
+                        .nodes
+                        .iter()
+                        .find(|node| node.identity == identity)?;
+                    node.select
+                        .as_ref()?
+                        .options
+                        .iter()
+                        .position(|o| o.value == value)
+                });
+                if let Some(current) = current {
+                    self.select_option(self.generation, &identity, current)?;
+                }
+                continue;
+            }
+            let Some(focused) = self.focus_now(&identity)? else {
+                continue;
+            };
+            let all = focused.state.text.encode_utf16().count() as u32;
+            let edits = [
+                Edit::Selection {
+                    anchor: 0,
+                    focus: all,
+                },
+                Edit::Replace {
+                    text: value,
+                    cursor: 1,
+                    composing: false,
+                },
+            ];
+            self.edit_input(focused.token, &identity, &edits, true)?;
+            self.blur_input(focused.token, &identity)?;
+        }
+        Ok(changed)
     }
 
     /// Submit an editor as its input method action would, focusing it first.

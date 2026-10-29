@@ -145,18 +145,18 @@
   var takeFonts = () => JSON.stringify(declared);
 
   // src/generated/contract.js
-  var elements = { "view": { "wire": "column", "children": "any", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "flexWrap", "alignItems", "justifyContent", "alignContent", "flexDirection", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "gridTemplateColumns", "gridTemplateRows", "gridAutoColumns", "gridAutoRows", "gridAutoFlow", "justifyItems"], "props": { "aria-label": false } }, "column": { "wire": "column", "children": "any", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "flexWrap", "alignItems", "justifyContent", "alignContent", "flexDirection", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "gridTemplateColumns", "gridTemplateRows", "gridAutoColumns", "gridAutoRows", "gridAutoFlow", "justifyItems"], "props": { "aria-label": false } }, "row": { "wire": "row", "children": "any", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "flexWrap", "alignItems", "justifyContent", "alignContent", "flexDirection", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "gridTemplateColumns", "gridTemplateRows", "gridAutoColumns", "gridAutoRows", "gridAutoFlow", "justifyItems"], "props": { "aria-label": false } }, "page": { "wire": "page", "children": "any", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "flexWrap", "alignItems", "justifyContent", "alignContent", "flexDirection", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "gridTemplateColumns", "gridTemplateRows", "gridAutoColumns", "gridAutoRows", "gridAutoFlow", "justifyItems"], "props": { "aria-label": false } }, "text": { "wire": "text", "children": "runs", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "backgroundClip", "lineClamp", "textOverflow"], "props": { "aria-label": false } }, "button": { "wire": "button", "children": "content", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "flexWrap", "alignItems", "justifyContent", "alignContent", "flexDirection", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "gridTemplateColumns", "gridTemplateRows", "gridAutoColumns", "gridAutoRows", "gridAutoFlow", "justifyItems"], "props": { "onClick": false, "disabled": false, "aria-label": false } }, "spacer": { "wire": "spacer", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display"], "props": {} }, "scroll": { "wire": "scroll", "children": "any", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "flexWrap", "alignItems", "justifyContent", "alignContent", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "overflowX", "overflowY", "overscrollBehavior"], "props": { "onReachStart": false, "onReachEnd": false } }, "list": { "wire": "list", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "overscrollBehavior"], "props": { "count": true, "row": true, "height": false, "anchor": false, "itemKeys": false, "onReachStart": false, "onReachEnd": false }, "component": "List" }, "image": { "wire": "image", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "objectFit", "objectPosition"], "props": { "src": true, "placeholder": false, "alt": false, "retryKey": false, "onLoad": false, "onError": false } }, "input": { "wire": "input", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "placeholderColor"], "props": { "aria-label": false, "placeholder": false, "type": false, "inputMode": false, "autoFocus": false, "disabled": false, "onSubmit": false, "maxLength": false, "autoComplete": false, "enterKeyHint": false, "autoCapitalize": false, "spellCheck": false, "min": false, "max": false, "step": false }, "binding": { "type": "string", "event": "onInput" } }, "textarea": { "wire": "textarea", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "placeholderColor"], "props": { "rows": false, "maxRows": false, "aria-label": false, "placeholder": false, "inputMode": false, "autoFocus": false, "disabled": false, "onSubmit": false, "maxLength": false, "autoComplete": false, "enterKeyHint": false, "autoCapitalize": false, "spellCheck": false }, "binding": { "type": "string", "event": "onInput" } }, "checkbox": { "wire": "checkbox", "children": "content", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "flexWrap", "alignItems", "justifyContent", "alignContent", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap"], "props": { "aria-label": false, "disabled": false }, "binding": { "type": "boolean", "event": "onChange" } }, "switch": { "wire": "switch", "children": "text", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap"], "props": { "aria-label": false, "disabled": false }, "binding": { "type": "boolean", "event": "onChange" } }, "radio": { "wire": "radio", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap"], "props": { "options": true, "aria-label": false, "disabled": false }, "binding": { "type": "string", "event": "onChange" } }, "slider": { "wire": "slider", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color"], "props": { "min": false, "max": false, "step": false, "aria-label": true, "disabled": false }, "binding": { "type": "number", "event": "onChange" } }, "grid": { "wire": "grid", "children": "any", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "gridTemplateColumns", "gridTemplateRows", "gridAutoColumns", "gridAutoRows", "gridAutoFlow", "justifyItems", "alignItems", "justifyContent", "alignContent", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap"], "props": {} }, "stack": { "wire": "stack", "children": "any", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap"], "props": {} }, "plot": { "wire": "plot", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display"], "props": { "kind": true, "values": true, "colors": true, "aria-label": true, "smooth": false, "area": false, "selectedIndex": false, "domainMin": false, "domainMax": false, "onSelect": false, "pieLayout": false, "markerEmphasisScale": false } }, "vector": { "wire": "vector", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color", "objectFit"], "props": { "paths": true, "gradients": false, "viewBox": false } }, "span": { "wire": "span", "children": "runs", "style": ["color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "letterSpacing", "textDecorationLine", "fontVariantNumeric", "backgroundColor"], "props": {} }, "link": { "wire": "link", "children": "runs", "style": ["color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "letterSpacing", "textDecorationLine", "fontVariantNumeric", "backgroundColor"], "props": { "onClick": false, "aria-label": false, "disabled": false } }, "select": { "wire": "select", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap"], "props": { "options": true, "placeholder": false, "aria-label": false, "disabled": false }, "binding": { "type": "string", "event": "onChange" } } };
-  var style = { "width": { "lower": "dimension", "wire": "width" }, "height": { "lower": "dimension", "wire": "height" }, "minWidth": { "lower": "dimension", "wire": "minWidth" }, "minHeight": { "lower": "dimension", "wire": "minHeight" }, "maxWidth": { "lower": "dimension", "wire": "maxWidth" }, "aspectRatio": { "lower": "aspect-ratio", "wire": "aspectRatio" }, "maxHeight": { "lower": "dimension", "wire": "maxHeight" }, "margin": { "lower": "margin", "wire": ["marginTop", "marginRight", "marginBottom", "marginLeft"] }, "marginTop": { "lower": "margin", "wire": "marginTop" }, "marginRight": { "lower": "margin", "wire": "marginRight" }, "marginBottom": { "lower": "margin", "wire": "marginBottom" }, "marginLeft": { "lower": "margin", "wire": "marginLeft" }, "marginInlineStart": { "lower": "margin", "wire": "marginInlineStart" }, "marginInlineEnd": { "lower": "margin", "wire": "marginInlineEnd" }, "position": { "lower": "option", "wire": "position" }, "inset": { "lower": "inset", "wire": ["insetTop", "insetRight", "insetBottom", "insetLeft"] }, "top": { "lower": "inset", "wire": "insetTop" }, "right": { "lower": "inset", "wire": "insetRight" }, "bottom": { "lower": "inset", "wire": "insetBottom" }, "left": { "lower": "inset", "wire": "insetLeft" }, "insetInlineStart": { "lower": "inset", "wire": "insetInlineStart" }, "insetInlineEnd": { "lower": "inset", "wire": "insetInlineEnd" }, "zIndex": { "lower": "z-index", "wire": "zIndex" }, "flexGrow": { "lower": "number", "wire": "grow" }, "flexShrink": { "lower": "number", "wire": "shrink" }, "flexBasis": { "lower": "basis", "wire": "flexBasis" }, "alignSelf": { "lower": "alignment", "wire": "alignSelf" }, "gridColumn": { "lower": "grid-line", "wire": "gridColumn" }, "gridColumnStart": { "lower": "grid-line", "wire": "gridColumn" }, "gridColumnEnd": { "lower": "grid-line", "wire": "gridColumn" }, "gridRow": { "lower": "grid-line", "wire": "gridRow" }, "gridRowStart": { "lower": "grid-line", "wire": "gridRow" }, "gridRowEnd": { "lower": "grid-line", "wire": "gridRow" }, "justifySelf": { "lower": "alignment", "wire": "justifySelf" }, "order": { "lower": "order", "wire": "order" }, "opacity": { "lower": "opacity", "wire": "opacity", "paint": true }, "overflow": { "lower": "option", "wire": "overflow" }, "backgroundColor": { "lower": "color", "wire": "background", "paint": true }, "backgroundImage": { "lower": "gradient", "wire": "backgroundGradient", "paint": true }, "borderRadius": { "lower": "length", "wire": ["radius", "radiusTopLeft", "radiusTopRight", "radiusBottomRight", "radiusBottomLeft"] }, "borderTopLeftRadius": { "lower": "length", "wire": "radiusTopLeft" }, "borderTopRightRadius": { "lower": "length", "wire": "radiusTopRight" }, "borderBottomRightRadius": { "lower": "length", "wire": "radiusBottomRight" }, "borderBottomLeftRadius": { "lower": "length", "wire": "radiusBottomLeft" }, "borderStartStartRadius": { "lower": "length", "wire": "radiusStartStart" }, "borderStartEndRadius": { "lower": "length", "wire": "radiusStartEnd" }, "borderEndStartRadius": { "lower": "length", "wire": "radiusEndStart" }, "borderEndEndRadius": { "lower": "length", "wire": "radiusEndEnd" }, "borderWidth": { "lower": "length", "wire": ["borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth"] }, "borderTopWidth": { "lower": "length", "wire": "borderTopWidth" }, "borderRightWidth": { "lower": "length", "wire": "borderRightWidth" }, "borderBottomWidth": { "lower": "length", "wire": "borderBottomWidth" }, "borderLeftWidth": { "lower": "length", "wire": "borderLeftWidth" }, "borderInlineStartWidth": { "lower": "length", "wire": "borderInlineStartWidth" }, "borderInlineEndWidth": { "lower": "length", "wire": "borderInlineEndWidth" }, "borderStyle": { "lower": "option", "wire": "borderStyle" }, "borderColor": { "lower": "color", "wire": "borderColor", "paint": true }, "boxShadow": { "lower": "shadow", "wire": "boxShadow", "paint": true }, "backdropFilter": { "lower": "backdrop", "wire": ["backdropBlur", "backdropSaturation"] }, "translate": { "lower": "transform", "wire": "transform", "paint": true }, "rotate": { "lower": "transform", "wire": "transform", "paint": true }, "scale": { "lower": "transform", "wire": "transform", "paint": true }, "transformOrigin": { "lower": "transform", "wire": "transform", "paint": true }, "animation": { "lower": "animation", "wire": "animation", "internal": true }, "transition": { "lower": "transition", "wire": "transition", "internal": true }, "maskImage": { "lower": "mask", "wire": "maskImage", "internal": true }, "filter": { "lower": "filter", "wire": "filterBlur" }, "padding": { "lower": "length", "wire": ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft"] }, "paddingTop": { "lower": "length", "wire": "paddingTop" }, "paddingRight": { "lower": "length", "wire": "paddingRight" }, "paddingBottom": { "lower": "length", "wire": "paddingBottom" }, "paddingLeft": { "lower": "length", "wire": "paddingLeft" }, "paddingInlineStart": { "lower": "length", "wire": "paddingInlineStart" }, "paddingInlineEnd": { "lower": "length", "wire": "paddingInlineEnd" }, "display": { "lower": "option", "wire": "display" }, "flexDirection": { "lower": "option", "wire": "flexDirection" }, "alignItems": { "lower": "alignment", "wire": "align" }, "justifyContent": { "lower": "justification", "wire": "justify" }, "alignContent": { "lower": "align-content", "wire": "alignContent" }, "flexWrap": { "lower": "option", "wire": "flexWrap" }, "gap": { "lower": "length", "wire": "gap" }, "rowGap": { "lower": "length", "wire": "rowGap" }, "columnGap": { "lower": "length", "wire": "columnGap" }, "gridTemplateColumns": { "lower": "grid-template", "wire": "gridTemplateColumns" }, "gridTemplateRows": { "lower": "grid-template", "wire": "gridTemplateRows" }, "gridAutoColumns": { "lower": "grid-auto", "wire": "gridAutoColumns" }, "gridAutoRows": { "lower": "grid-auto", "wire": "gridAutoRows" }, "gridAutoFlow": { "lower": "grid-flow", "wire": "gridAutoFlow" }, "justifyItems": { "lower": "alignment", "wire": "justifyItems" }, "color": { "lower": "color", "wire": "color", "paint": true }, "fontSize": { "lower": "font-size", "wire": "fontSize" }, "fontWeight": { "lower": "font-weight", "wire": "fontWeight" }, "fontFamily": { "lower": "family", "wire": "fontFamily" }, "fontStyle": { "lower": "option", "wire": "fontStyle" }, "lineHeight": { "lower": "line-height", "wire": "lineHeight" }, "letterSpacing": { "lower": "letter-spacing", "wire": "letterSpacing" }, "fontVariantNumeric": { "lower": "font-variant-numeric", "wire": "fontVariantNumeric" }, "userSelect": { "lower": "option", "wire": "userSelect" }, "textAlign": { "lower": "option", "wire": "textAlign" }, "textDecorationLine": { "lower": "option", "wire": "textDecorationLine" }, "textTransform": { "lower": "option", "wire": "textTransform" }, "backgroundClip": { "lower": "option", "wire": "backgroundClip" }, "whiteSpace": { "lower": "option", "wire": "whiteSpace" }, "wordBreak": { "lower": "option", "wire": "wordBreak" }, "overflowWrap": { "lower": "option", "wire": "overflowWrap" }, "lineClamp": { "lower": "line-clamp", "wire": "textLines" }, "textOverflow": { "lower": "option", "wire": "textOverflow" }, "overflowX": { "lower": "scroll-axis", "wire": "scrollAxis" }, "overflowY": { "lower": "scroll-axis", "wire": "scrollAxis" }, "overscrollBehavior": { "lower": "option", "wire": "overscroll" }, "placeholderColor": { "lower": "color", "wire": "placeholderColor", "paint": true }, "objectFit": { "lower": "fit", "wire": "imageFit" }, "objectPosition": { "lower": "object-position", "wire": "imagePosition" } };
+  var elements = { "view": { "wire": "column", "children": "any", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "flexWrap", "alignItems", "justifyContent", "alignContent", "flexDirection", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "gridTemplateColumns", "gridTemplateRows", "gridAutoColumns", "gridAutoRows", "gridAutoFlow", "justifyItems"], "props": { "aria-label": false } }, "column": { "wire": "column", "children": "any", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "flexWrap", "alignItems", "justifyContent", "alignContent", "flexDirection", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "gridTemplateColumns", "gridTemplateRows", "gridAutoColumns", "gridAutoRows", "gridAutoFlow", "justifyItems"], "props": { "aria-label": false } }, "row": { "wire": "row", "children": "any", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "flexWrap", "alignItems", "justifyContent", "alignContent", "flexDirection", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "gridTemplateColumns", "gridTemplateRows", "gridAutoColumns", "gridAutoRows", "gridAutoFlow", "justifyItems"], "props": { "aria-label": false } }, "page": { "wire": "page", "children": "any", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "flexWrap", "alignItems", "justifyContent", "alignContent", "flexDirection", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "gridTemplateColumns", "gridTemplateRows", "gridAutoColumns", "gridAutoRows", "gridAutoFlow", "justifyItems"], "props": { "aria-label": false } }, "text": { "wire": "text", "children": "runs", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "backgroundClip", "lineClamp", "textOverflow"], "props": { "aria-label": false } }, "button": { "wire": "button", "children": "content", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "flexWrap", "alignItems", "justifyContent", "alignContent", "flexDirection", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "gridTemplateColumns", "gridTemplateRows", "gridAutoColumns", "gridAutoRows", "gridAutoFlow", "justifyItems"], "props": { "onClick": false, "disabled": false, "aria-label": false } }, "spacer": { "wire": "spacer", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "scrollSnapAlign"], "props": {} }, "scroll": { "wire": "scroll", "children": "any", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "flexWrap", "alignItems", "justifyContent", "alignContent", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "overflowX", "overflowY", "overscrollBehavior", "scrollSnapType"], "props": { "onReachStart": false, "onReachEnd": false } }, "list": { "wire": "list", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "overscrollBehavior", "scrollSnapType"], "props": { "count": true, "row": true, "height": false, "anchor": false, "itemKeys": false, "onReachStart": false, "onReachEnd": false }, "component": "List" }, "image": { "wire": "image", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "scrollSnapAlign", "objectFit", "objectPosition"], "props": { "src": true, "placeholder": false, "alt": false, "retryKey": false, "onLoad": false, "onError": false } }, "input": { "wire": "input", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "placeholderColor"], "props": { "aria-label": false, "placeholder": false, "type": false, "inputMode": false, "autoFocus": false, "disabled": false, "onSubmit": false, "maxLength": false, "autoComplete": false, "enterKeyHint": false, "autoCapitalize": false, "spellCheck": false, "min": false, "max": false, "step": false }, "binding": { "type": "string", "event": "onInput" } }, "textarea": { "wire": "textarea", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap", "placeholderColor"], "props": { "rows": false, "maxRows": false, "aria-label": false, "placeholder": false, "inputMode": false, "autoFocus": false, "disabled": false, "onSubmit": false, "maxLength": false, "autoComplete": false, "enterKeyHint": false, "autoCapitalize": false, "spellCheck": false }, "binding": { "type": "string", "event": "onInput" } }, "checkbox": { "wire": "checkbox", "children": "content", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "flexWrap", "alignItems", "justifyContent", "alignContent", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap"], "props": { "aria-label": false, "disabled": false }, "binding": { "type": "boolean", "event": "onChange" } }, "switch": { "wire": "switch", "children": "text", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap"], "props": { "aria-label": false, "disabled": false }, "binding": { "type": "boolean", "event": "onChange" } }, "radio": { "wire": "radio", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap"], "props": { "options": true, "aria-label": false, "disabled": false }, "binding": { "type": "string", "event": "onChange" } }, "slider": { "wire": "slider", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color"], "props": { "min": false, "max": false, "step": false, "aria-label": true, "disabled": false }, "binding": { "type": "number", "event": "onChange" } }, "grid": { "wire": "grid", "children": "any", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "gridTemplateColumns", "gridTemplateRows", "gridAutoColumns", "gridAutoRows", "gridAutoFlow", "justifyItems", "alignItems", "justifyContent", "alignContent", "gap", "rowGap", "columnGap", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap"], "props": {} }, "stack": { "wire": "stack", "children": "any", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap"], "props": {} }, "plot": { "wire": "plot", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "scrollSnapAlign"], "props": { "kind": true, "values": true, "colors": true, "aria-label": true, "smooth": false, "area": false, "selectedIndex": false, "domainMin": false, "domainMax": false, "onSelect": false, "pieLayout": false, "markerEmphasisScale": false } }, "vector": { "wire": "vector", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color", "objectFit"], "props": { "paths": true, "gradients": false, "viewBox": false } }, "span": { "wire": "span", "children": "runs", "style": ["color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "letterSpacing", "textDecorationLine", "fontVariantNumeric", "backgroundColor"], "props": {} }, "link": { "wire": "link", "children": "runs", "style": ["color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "letterSpacing", "textDecorationLine", "fontVariantNumeric", "backgroundColor"], "props": { "onClick": false, "aria-label": false, "disabled": false } }, "select": { "wire": "select", "children": "none", "style": ["width", "height", "minWidth", "minHeight", "maxWidth", "aspectRatio", "maxHeight", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "marginInlineStart", "marginInlineEnd", "position", "inset", "top", "right", "bottom", "left", "insetInlineStart", "insetInlineEnd", "zIndex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "gridColumn", "gridColumnStart", "gridColumnEnd", "gridRow", "gridRowStart", "gridRowEnd", "justifySelf", "order", "opacity", "overflow", "backgroundColor", "backgroundImage", "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "borderStartStartRadius", "borderStartEndRadius", "borderEndStartRadius", "borderEndEndRadius", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderInlineStartWidth", "borderInlineEndWidth", "borderStyle", "borderColor", "boxShadow", "backdropFilter", "translate", "rotate", "scale", "transformOrigin", "animation", "transition", "maskImage", "filter", "display", "scrollSnapAlign", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "paddingInlineStart", "paddingInlineEnd", "color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "lineHeight", "letterSpacing", "fontVariantNumeric", "userSelect", "textAlign", "textDecorationLine", "textTransform", "whiteSpace", "wordBreak", "overflowWrap"], "props": { "options": true, "placeholder": false, "aria-label": false, "disabled": false }, "binding": { "type": "string", "event": "onChange" } } };
+  var style = { "width": { "lower": "dimension", "wire": "width" }, "height": { "lower": "dimension", "wire": "height" }, "minWidth": { "lower": "dimension", "wire": "minWidth" }, "minHeight": { "lower": "dimension", "wire": "minHeight" }, "maxWidth": { "lower": "dimension", "wire": "maxWidth" }, "aspectRatio": { "lower": "aspect-ratio", "wire": "aspectRatio" }, "maxHeight": { "lower": "dimension", "wire": "maxHeight" }, "margin": { "lower": "margin", "wire": ["marginTop", "marginRight", "marginBottom", "marginLeft"] }, "marginTop": { "lower": "margin", "wire": "marginTop" }, "marginRight": { "lower": "margin", "wire": "marginRight" }, "marginBottom": { "lower": "margin", "wire": "marginBottom" }, "marginLeft": { "lower": "margin", "wire": "marginLeft" }, "marginInlineStart": { "lower": "margin", "wire": "marginInlineStart" }, "marginInlineEnd": { "lower": "margin", "wire": "marginInlineEnd" }, "position": { "lower": "option", "wire": "position" }, "inset": { "lower": "inset", "wire": ["insetTop", "insetRight", "insetBottom", "insetLeft"] }, "top": { "lower": "inset", "wire": "insetTop" }, "right": { "lower": "inset", "wire": "insetRight" }, "bottom": { "lower": "inset", "wire": "insetBottom" }, "left": { "lower": "inset", "wire": "insetLeft" }, "insetInlineStart": { "lower": "inset", "wire": "insetInlineStart" }, "insetInlineEnd": { "lower": "inset", "wire": "insetInlineEnd" }, "zIndex": { "lower": "z-index", "wire": "zIndex" }, "flexGrow": { "lower": "number", "wire": "grow" }, "flexShrink": { "lower": "number", "wire": "shrink" }, "flexBasis": { "lower": "basis", "wire": "flexBasis" }, "alignSelf": { "lower": "alignment", "wire": "alignSelf" }, "gridColumn": { "lower": "grid-line", "wire": "gridColumn" }, "gridColumnStart": { "lower": "grid-line", "wire": "gridColumn" }, "gridColumnEnd": { "lower": "grid-line", "wire": "gridColumn" }, "gridRow": { "lower": "grid-line", "wire": "gridRow" }, "gridRowStart": { "lower": "grid-line", "wire": "gridRow" }, "gridRowEnd": { "lower": "grid-line", "wire": "gridRow" }, "justifySelf": { "lower": "alignment", "wire": "justifySelf" }, "order": { "lower": "order", "wire": "order" }, "opacity": { "lower": "opacity", "wire": "opacity", "paint": true }, "overflow": { "lower": "option", "wire": "overflow" }, "backgroundColor": { "lower": "color", "wire": "background", "paint": true }, "backgroundImage": { "lower": "gradient", "wire": "backgroundGradient", "paint": true }, "borderRadius": { "lower": "length", "wire": ["radius", "radiusTopLeft", "radiusTopRight", "radiusBottomRight", "radiusBottomLeft"] }, "borderTopLeftRadius": { "lower": "length", "wire": "radiusTopLeft" }, "borderTopRightRadius": { "lower": "length", "wire": "radiusTopRight" }, "borderBottomRightRadius": { "lower": "length", "wire": "radiusBottomRight" }, "borderBottomLeftRadius": { "lower": "length", "wire": "radiusBottomLeft" }, "borderStartStartRadius": { "lower": "length", "wire": "radiusStartStart" }, "borderStartEndRadius": { "lower": "length", "wire": "radiusStartEnd" }, "borderEndStartRadius": { "lower": "length", "wire": "radiusEndStart" }, "borderEndEndRadius": { "lower": "length", "wire": "radiusEndEnd" }, "borderWidth": { "lower": "length", "wire": ["borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth"] }, "borderTopWidth": { "lower": "length", "wire": "borderTopWidth" }, "borderRightWidth": { "lower": "length", "wire": "borderRightWidth" }, "borderBottomWidth": { "lower": "length", "wire": "borderBottomWidth" }, "borderLeftWidth": { "lower": "length", "wire": "borderLeftWidth" }, "borderInlineStartWidth": { "lower": "length", "wire": "borderInlineStartWidth" }, "borderInlineEndWidth": { "lower": "length", "wire": "borderInlineEndWidth" }, "borderStyle": { "lower": "option", "wire": "borderStyle" }, "borderColor": { "lower": "color", "wire": "borderColor", "paint": true }, "boxShadow": { "lower": "shadow", "wire": "boxShadow", "paint": true }, "backdropFilter": { "lower": "backdrop", "wire": ["backdropBlur", "backdropSaturation"] }, "translate": { "lower": "transform", "wire": "transform", "paint": true }, "rotate": { "lower": "transform", "wire": "transform", "paint": true }, "scale": { "lower": "transform", "wire": "transform", "paint": true }, "transformOrigin": { "lower": "transform", "wire": "transform", "paint": true }, "animation": { "lower": "animation", "wire": "animation", "internal": true }, "transition": { "lower": "transition", "wire": "transition", "internal": true }, "maskImage": { "lower": "mask", "wire": "maskImage", "internal": true }, "filter": { "lower": "filter", "wire": "filterBlur" }, "padding": { "lower": "length", "wire": ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft"] }, "paddingTop": { "lower": "length", "wire": "paddingTop" }, "paddingRight": { "lower": "length", "wire": "paddingRight" }, "paddingBottom": { "lower": "length", "wire": "paddingBottom" }, "paddingLeft": { "lower": "length", "wire": "paddingLeft" }, "paddingInlineStart": { "lower": "length", "wire": "paddingInlineStart" }, "paddingInlineEnd": { "lower": "length", "wire": "paddingInlineEnd" }, "display": { "lower": "option", "wire": "display" }, "flexDirection": { "lower": "option", "wire": "flexDirection" }, "alignItems": { "lower": "alignment", "wire": "align" }, "justifyContent": { "lower": "justification", "wire": "justify" }, "alignContent": { "lower": "align-content", "wire": "alignContent" }, "flexWrap": { "lower": "option", "wire": "flexWrap" }, "gap": { "lower": "length", "wire": "gap" }, "rowGap": { "lower": "length", "wire": "rowGap" }, "columnGap": { "lower": "length", "wire": "columnGap" }, "gridTemplateColumns": { "lower": "grid-template", "wire": "gridTemplateColumns" }, "gridTemplateRows": { "lower": "grid-template", "wire": "gridTemplateRows" }, "gridAutoColumns": { "lower": "grid-auto", "wire": "gridAutoColumns" }, "gridAutoRows": { "lower": "grid-auto", "wire": "gridAutoRows" }, "gridAutoFlow": { "lower": "grid-flow", "wire": "gridAutoFlow" }, "justifyItems": { "lower": "alignment", "wire": "justifyItems" }, "color": { "lower": "color", "wire": "color", "paint": true }, "fontSize": { "lower": "font-size", "wire": "fontSize" }, "fontWeight": { "lower": "font-weight", "wire": "fontWeight" }, "fontFamily": { "lower": "family", "wire": "fontFamily" }, "fontStyle": { "lower": "option", "wire": "fontStyle" }, "lineHeight": { "lower": "line-height", "wire": "lineHeight" }, "letterSpacing": { "lower": "letter-spacing", "wire": "letterSpacing" }, "fontVariantNumeric": { "lower": "font-variant-numeric", "wire": "fontVariantNumeric" }, "userSelect": { "lower": "option", "wire": "userSelect" }, "textAlign": { "lower": "option", "wire": "textAlign" }, "textDecorationLine": { "lower": "option", "wire": "textDecorationLine" }, "textTransform": { "lower": "option", "wire": "textTransform" }, "backgroundClip": { "lower": "option", "wire": "backgroundClip" }, "whiteSpace": { "lower": "option", "wire": "whiteSpace" }, "wordBreak": { "lower": "option", "wire": "wordBreak" }, "overflowWrap": { "lower": "option", "wire": "overflowWrap" }, "lineClamp": { "lower": "line-clamp", "wire": "textLines" }, "textOverflow": { "lower": "option", "wire": "textOverflow" }, "overflowX": { "lower": "scroll-axis", "wire": "scrollAxis" }, "overflowY": { "lower": "scroll-axis", "wire": "scrollAxis" }, "overscrollBehavior": { "lower": "option", "wire": "overscroll" }, "scrollSnapType": { "lower": "snap-type", "wire": "scrollSnap" }, "scrollSnapAlign": { "lower": "option", "wire": "snapAlign" }, "placeholderColor": { "lower": "color", "wire": "placeholderColor", "paint": true }, "objectFit": { "lower": "fit", "wire": "imageFit" }, "objectPosition": { "lower": "object-position", "wire": "imagePosition" } };
   var limits = { "nodes": 4096, "depth": 128, "animationBytes": 262144, "itemKeyBytes": 262144, "imageBytes": 8388608, "sourceBytes": 8192, "visibleImageBytes": 67108864, "decodedImageBytes": 100663296, "runs": 256, "transitionMs": 1e4, "evalBudgetMs": 100, "evalBudgetDebugMultiplier": 8, "editorTextBytes": 65536, "inputRequestBytes": 524288, "inputBatchEdits": 64, "clipboardItems": 128, "wireValues": 1e5, "textBytes": 65536, "identifierBytes": 256, "listRows": 1e5, "gridTracks": 64, "vectorSourceBytes": 32768, "vectorPathBytes": 16384, "vectorPathWork": 16384, "vectorWork": 32768, "plotWork": 16384, "shadowMaskBytes": 16777216, "compositeFrames": 6, "leaseFrames": 6, "compositeBytes": 268435456, "outlineGlyphs": 4096, "ghosts": 64, "layoutMotions": 256, "dataAttributeBytes": 65536, "blurLayers": 8 };
-  var admission = { "tags": { "column": { "children": "any", "content": true }, "row": { "children": "any", "content": true }, "text": { "children": "runs", "content": true }, "button": { "children": "content" }, "spacer": { "children": "none", "content": true }, "scroll": { "children": "any" }, "list": { "children": "rows", "requires": ["listId", "listCount", "listLeading", "listTrailing"] }, "image": { "children": "none", "content": true, "requires": ["imageSrc"] }, "input": { "children": "none" }, "textarea": { "children": "none" }, "checkbox": { "children": "content" }, "switch": { "children": "text" }, "radio": { "children": "options" }, "radio-option": { "children": "text", "parent": "radio", "keyed": true, "requires": ["checked"] }, "search": { "children": "none" }, "slider": { "children": "none" }, "grid": { "children": "any", "content": true }, "stack": { "children": "any", "content": true }, "plot": { "children": "none" }, "vector": { "children": "none", "content": true }, "page": { "children": "any", "root": true }, "span": { "children": "text", "content": true, "parent": "text" }, "link": { "children": "text", "parent": "text" }, "select": { "children": "text" } }, "fields": { "onClick": ["button", "link"], "enabled": ["button", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "select"], "listId": ["list"], "listCount": ["list"], "listLeading": ["list"], "listTrailing": ["list"], "listRowIndex": ["column"], "listAnchor": ["list"], "onReachStart": ["scroll", "list"], "onReachEnd": ["scroll", "list"], "imageSrc": ["image"], "imageFit": ["image"], "inputValue": ["input", "textarea", "search", "select"], "placeholder": ["input", "textarea", "search", "select"], "secure": ["input", "textarea"], "keyboard": ["input", "textarea", "search"], "autoFocus": ["input", "textarea", "search"], "onInput": ["input", "textarea", "search"], "onSubmit": ["input", "textarea", "search"], "checked": ["checkbox", "switch", "radio-option"], "onCheckedChange": ["checkbox", "switch", "radio-option"], "accessibilityLabel": ["button", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "link", "column", "row", "page", "text", "select"], "sliderValue": ["slider"], "sliderMin": ["slider"], "sliderMax": ["slider"], "sliderStep": ["slider"], "onSliderChange": ["slider"], "gridColumns": ["grid"], "textLines": ["text"], "plotValues": ["plot"], "plotKind": ["plot"], "plotColors": ["plot"], "plotSmooth": ["plot"], "plotArea": ["plot"], "onPlotSelect": ["plot"], "plotSelectedIndex": ["plot"], "vectorSource": ["vector"], "submitOnEnter": ["textarea"], "plotDomainMin": ["plot"], "plotDomainMax": ["plot"], "plotPieLayout": ["plot"], "plotMarkerEmphasisScale": ["plot"], "focusStyle": ["input", "textarea", "search", "select"], "scrollAxis": ["scroll"], "listItemKeys": ["list"], "flexDirection": ["column", "row", "page", "button"], "imageAlt": ["image"], "imageRetryKey": ["image"], "onImageLoad": ["image"], "onImageError": ["image"], "pressedStyle": ["button", "checkbox", "switch", "radio", "link"], "overscroll": ["scroll", "list"], "maxLength": ["input", "textarea", "search"], "autoComplete": ["input", "textarea", "search"], "enterKeyHint": ["input", "textarea", "search"], "autoCapitalize": ["input", "textarea", "search"], "spellCheck": ["input", "textarea", "search"], "inputMin": ["input"], "inputMax": ["input"], "inputStep": ["input"], "focusRequest": ["input", "textarea", "search"], "selectOptions": ["select"], "onSelect": ["select"], "rows": ["textarea"], "maxRows": ["textarea"], "imagePlaceholder": ["image"], "imagePosition": ["image"] } };
-  var options = { "font-family": ["sans", "mono", "serif"], "font-style": ["normal", "italic"], "flex-wrap": ["nowrap", "wrap", "wrap-reverse"], "flex-direction": ["row", "column", "row-reverse", "column-reverse"], "display": ["flex", "grid", "none", "block", "inline-flex", "inline-block"], "scroll-axis": ["horizontal", "vertical"], "word-break": ["normal", "break-all", "keep-all"], "overflow-wrap": ["normal", "break-word", "anywhere"], "text-decoration-line": ["none", "line-through", "underline"], "text-alignment": ["start", "end", "left", "center", "right", "justify"], "alignment": ["start", "center", "end", "stretch", "baseline"], "justification": ["start", "center", "end", "between", "around", "evenly"], "position": ["relative", "absolute", "fixed", "sticky"], "overflow": ["visible", "hidden"], "text-transform": ["none", "uppercase", "lowercase", "capitalize"], "background-clip": ["border-box", "text"], "white-space": ["normal", "nowrap", "pre", "pre-wrap", "pre-line"], "text-overflow": ["clip", "ellipsis"], "sizing-keyword": ["fit-content", "max-content", "min-content"], "border-style": ["solid", "dashed", "dotted"], "overscroll": ["auto", "contain", "none"], "grid-auto-flow": ["row", "column", "row-dense", "column-dense"], "align-content": ["start", "center", "end", "between", "around", "evenly", "stretch"], "direction": ["ltr", "rtl", "auto"], "role": ["heading", "list", "listitem", "dialog", "alert", "status"], "live-region": ["off", "polite", "assertive"], "input-keyboard": ["text", "number", "email", "phone", "search", "date", "time"], "auto-complete": ["off", "on", "username", "current-password", "new-password", "one-time-code", "email", "tel", "name", "given-name", "family-name", "street-address", "postal-code", "country", "cc-number", "cc-exp", "cc-csc", "bday"], "enter-key-hint": ["enter", "done", "go", "next", "previous", "search", "send"], "auto-capitalize": ["none", "sentences", "words", "characters"], "transition-property": ["opacity", "transform", "bg", "fg", "border", "shadow", "layout"], "user-select": ["none", "text", "all"] };
+  var admission = { "tags": { "column": { "children": "any", "content": true }, "row": { "children": "any", "content": true }, "text": { "children": "runs", "content": true }, "button": { "children": "content" }, "spacer": { "children": "none", "content": true }, "scroll": { "children": "any" }, "list": { "children": "rows", "requires": ["listId", "listCount", "listLeading", "listTrailing"] }, "image": { "children": "none", "content": true, "requires": ["imageSrc"] }, "input": { "children": "none" }, "textarea": { "children": "none" }, "checkbox": { "children": "content" }, "switch": { "children": "text" }, "radio": { "children": "options" }, "radio-option": { "children": "text", "parent": "radio", "keyed": true, "requires": ["checked"] }, "search": { "children": "none" }, "slider": { "children": "none" }, "grid": { "children": "any", "content": true }, "stack": { "children": "any", "content": true }, "plot": { "children": "none" }, "vector": { "children": "none", "content": true }, "page": { "children": "any", "root": true }, "span": { "children": "text", "content": true, "parent": "text" }, "link": { "children": "text", "parent": "text" }, "select": { "children": "text" } }, "fields": { "onClick": ["button", "link"], "enabled": ["button", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "select"], "listId": ["list"], "listCount": ["list"], "listLeading": ["list"], "listTrailing": ["list"], "listRowIndex": ["column"], "listAnchor": ["list"], "onReachStart": ["scroll", "list"], "onReachEnd": ["scroll", "list"], "imageSrc": ["image"], "imageFit": ["image"], "inputValue": ["input", "textarea", "search", "select"], "placeholder": ["input", "textarea", "search", "select"], "secure": ["input", "textarea"], "keyboard": ["input", "textarea", "search"], "autoFocus": ["input", "textarea", "search"], "onInput": ["input", "textarea", "search"], "onSubmit": ["input", "textarea", "search"], "checked": ["checkbox", "switch", "radio-option"], "onCheckedChange": ["checkbox", "switch", "radio-option"], "accessibilityLabel": ["button", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "link", "column", "row", "page", "text", "select"], "sliderValue": ["slider"], "sliderMin": ["slider"], "sliderMax": ["slider"], "sliderStep": ["slider"], "onSliderChange": ["slider"], "gridColumns": ["grid"], "textLines": ["text"], "plotValues": ["plot"], "plotKind": ["plot"], "plotColors": ["plot"], "plotSmooth": ["plot"], "plotArea": ["plot"], "onPlotSelect": ["plot"], "plotSelectedIndex": ["plot"], "vectorSource": ["vector"], "submitOnEnter": ["textarea"], "plotDomainMin": ["plot"], "plotDomainMax": ["plot"], "plotPieLayout": ["plot"], "plotMarkerEmphasisScale": ["plot"], "focusStyle": ["input", "textarea", "search", "select"], "scrollAxis": ["scroll"], "listItemKeys": ["list"], "flexDirection": ["column", "row", "page", "button"], "imageAlt": ["image"], "imageRetryKey": ["image"], "onImageLoad": ["image"], "onImageError": ["image"], "pressedStyle": ["button", "checkbox", "switch", "radio", "link"], "overscroll": ["scroll", "list"], "maxLength": ["input", "textarea", "search"], "autoComplete": ["input", "textarea", "search"], "enterKeyHint": ["input", "textarea", "search"], "autoCapitalize": ["input", "textarea", "search"], "spellCheck": ["input", "textarea", "search"], "inputMin": ["input"], "inputMax": ["input"], "inputStep": ["input"], "focusRequest": ["input", "textarea", "search"], "selectOptions": ["select"], "onSelect": ["select"], "rows": ["textarea"], "maxRows": ["textarea"], "imagePlaceholder": ["image"], "imagePosition": ["image"], "anchorTo": ["column"], "scrollSnap": ["scroll", "list"] } };
+  var options = { "font-family": ["sans", "mono", "serif"], "font-style": ["normal", "italic"], "flex-wrap": ["nowrap", "wrap", "wrap-reverse"], "flex-direction": ["row", "column", "row-reverse", "column-reverse"], "display": ["flex", "grid", "none", "block", "inline-flex", "inline-block"], "scroll-axis": ["horizontal", "vertical"], "word-break": ["normal", "break-all", "keep-all"], "overflow-wrap": ["normal", "break-word", "anywhere"], "text-decoration-line": ["none", "line-through", "underline"], "text-alignment": ["start", "end", "left", "center", "right", "justify"], "alignment": ["start", "center", "end", "stretch", "baseline"], "justification": ["start", "center", "end", "between", "around", "evenly"], "position": ["relative", "absolute", "fixed", "sticky"], "overflow": ["visible", "hidden"], "text-transform": ["none", "uppercase", "lowercase", "capitalize"], "background-clip": ["border-box", "text"], "white-space": ["normal", "nowrap", "pre", "pre-wrap", "pre-line"], "text-overflow": ["clip", "ellipsis"], "sizing-keyword": ["fit-content", "max-content", "min-content"], "border-style": ["solid", "dashed", "dotted"], "overscroll": ["auto", "contain", "none"], "scroll-snap": ["none", "x", "y"], "snap-align": ["none", "start", "center", "end"], "grid-auto-flow": ["row", "column", "row-dense", "column-dense"], "align-content": ["start", "center", "end", "between", "around", "evenly", "stretch"], "direction": ["ltr", "rtl", "auto"], "role": ["heading", "list", "listitem", "dialog", "alert", "status", "grid", "gridcell", "listbox", "option"], "live-region": ["off", "polite", "assertive"], "input-keyboard": ["text", "number", "email", "phone", "search", "date", "time"], "auto-complete": ["off", "on", "username", "current-password", "new-password", "one-time-code", "email", "tel", "name", "given-name", "family-name", "street-address", "postal-code", "country", "cc-number", "cc-exp", "cc-csc", "bday"], "enter-key-hint": ["enter", "done", "go", "next", "previous", "search", "send"], "auto-capitalize": ["none", "sentences", "words", "characters"], "transition-property": ["opacity", "transform", "bg", "fg", "border", "shadow", "layout"], "user-select": ["none", "text", "all"] };
   var commonProps = ["style", "className", "key", "data-testid", "dir", "children", "role", "headingLevel", "aria-hidden", "aria-live", "aria-pressed", "aria-selected", "aria-expanded", "aria-busy"];
   var roles = ["canvas", "surface", "surface-raised", "surface-sunken", "line", "text", "text-muted", "text-faint", "accent", "on-accent", "accent-soft", "on-accent-soft", "danger", "on-danger", "danger-soft", "success", "on-success", "success-soft", "warning", "on-warning", "warning-soft", "focus", "scrim", "chart-1", "chart-2", "chart-3", "chart-4", "chart-5", "line-strong", "selection", "shadow"];
 
   // src/generated/wire.js
   var tags = { "column": 0, "row": 1, "text": 2, "button": 3, "spacer": 4, "scroll": 5, "list": 6, "image": 7, "input": 8, "textarea": 9, "checkbox": 10, "switch": 11, "radio": 12, "radio-option": 13, "search": 14, "slider": 15, "grid": 16, "stack": 17, "plot": 18, "vector": 19, "page": 20, "span": 21, "link": 22, "select": 23 };
-  var field = { "width": 0, "height": 1, "gap": 2, "padding": 3, "fontSize": 4, "color": 5, "background": 6, "grow": 7, "onClick": 8, "enabled": 9, "radius": 10, "listId": 11, "listCount": 12, "listLeading": 13, "listTrailing": 14, "listRowIndex": 15, "listAnchor": 16, "onReachStart": 17, "onReachEnd": 18, "imageSrc": 19, "imageFit": 20, "inputValue": 21, "placeholder": 22, "secure": 23, "keyboard": 24, "autoFocus": 25, "onInput": 26, "onSubmit": 27, "minWidth": 28, "minHeight": 29, "maxWidth": 30, "maxHeight": 31, "shrink": 32, "align": 33, "justify": 34, "alignSelf": 35, "fontWeight": 36, "lineHeight": 37, "fontFamily": 38, "checked": 39, "onCheckedChange": 40, "accessibilityLabel": 41, "sliderValue": 42, "sliderMin": 43, "sliderMax": 44, "sliderStep": 45, "onSliderChange": 46, "gridColumns": 47, "offsetX": 48, "offsetY": 49, "textLines": 50, "plotValues": 51, "plotKind": 52, "plotColors": 53, "plotSmooth": 54, "plotArea": 55, "onPlotSelect": 56, "plotSelectedIndex": 57, "opacity": 58, "paddingTop": 59, "paddingRight": 60, "paddingBottom": 61, "paddingLeft": 62, "wordBreak": 63, "overflowWrap": 64, "borderWidth": 65, "borderColor": 66, "borderTopWidth": 67, "borderRightWidth": 68, "borderBottomWidth": 69, "borderLeftWidth": 70, "textAlign": 71, "backgroundGradient": 72, "boxShadow": 73, "widthPercent": 74, "heightPercent": 75, "minWidthPercent": 76, "minHeightPercent": 77, "maxWidthPercent": 78, "maxHeightPercent": 79, "vectorSource": 80, "textDecorationLine": 81, "heightAuto": 82, "submitOnEnter": 83, "fontStyle": 84, "plotDomainMin": 85, "plotDomainMax": 86, "flexWrap": 87, "plotPieLayout": 88, "letterSpacing": 89, "radiusTopLeft": 90, "radiusTopRight": 91, "radiusBottomRight": 92, "radiusBottomLeft": 93, "plotMarkerEmphasisScale": 94, "backdropBlur": 95, "backdropSaturation": 96, "placeholderColor": 97, "focusStyle": 98, "flexBasis": 99, "scrollAxis": 100, "animation": 101, "listItemKeys": 102, "flexDirection": 103, "display": 104, "imageAlt": 105, "imageRetryKey": 106, "onImageLoad": 107, "onImageError": 108, "marginTop": 109, "marginRight": 110, "marginBottom": 111, "marginLeft": 112, "position": 113, "insetTop": 114, "insetRight": 115, "insetBottom": 116, "insetLeft": 117, "zIndex": 118, "overflow": 119, "rowGap": 120, "columnGap": 121, "textTransform": 122, "whiteSpace": 123, "textOverflow": 124, "pressedStyle": 125, "hoverStyle": 126, "widthKeyword": 127, "heightKeyword": 128, "borderStyle": 129, "transform": 130, "fontVariantNumeric": 131, "overscroll": 132, "aspectRatio": 133, "maxWidthCh": 134, "gridTemplateColumns": 135, "gridTemplateRows": 136, "gridAutoColumns": 137, "gridAutoRows": 138, "gridAutoFlow": 139, "gridColumn": 140, "gridRow": 141, "justifyItems": 142, "justifySelf": 143, "alignContent": 144, "order": 145, "direction": 146, "marginInlineStart": 147, "marginInlineEnd": 148, "paddingInlineStart": 149, "paddingInlineEnd": 150, "insetInlineStart": 151, "insetInlineEnd": 152, "borderInlineStartWidth": 153, "borderInlineEndWidth": 154, "radiusStartStart": 155, "radiusStartEnd": 156, "radiusEndStart": 157, "radiusEndEnd": 158, "role": 159, "headingLevel": 160, "accessibilityHidden": 161, "accessibilityLiveRegion": 162, "maxLength": 163, "autoComplete": 164, "enterKeyHint": 165, "autoCapitalize": 166, "spellCheck": 167, "inputMin": 168, "inputMax": 169, "inputStep": 170, "transition": 171, "userSelect": 172, "focusRequest": 173, "statePressed": 174, "stateSelected": 175, "stateExpanded": 176, "stateBusy": 177, "selectOptions": 178, "onSelect": 179, "rows": 180, "maxRows": 181, "imagePlaceholder": 182, "imagePosition": 183, "childSlot": 184, "startingStyle": 185, "exitStyle": 186, "focusWithinStyle": 187, "dataAttributes": 188, "backgroundClip": 189, "maskImage": 190, "filterBlur": 191, "groupPressedStyle": 192 };
-  var fieldOptions = { "keyboard": ["text", "number", "email", "phone", "search", "date", "time"], "align": ["start", "center", "end", "stretch", "baseline"], "justify": ["start", "center", "end", "between", "around", "evenly"], "alignSelf": ["start", "center", "end", "stretch", "baseline"], "wordBreak": ["normal", "break-all", "keep-all"], "overflowWrap": ["normal", "break-word", "anywhere"], "textAlign": ["start", "end", "left", "center", "right", "justify"], "textDecorationLine": ["none", "line-through", "underline"], "fontStyle": ["normal", "italic"], "flexWrap": ["nowrap", "wrap", "wrap-reverse"], "scrollAxis": ["horizontal", "vertical"], "flexDirection": ["row", "column", "row-reverse", "column-reverse"], "display": ["flex", "grid", "none", "block", "inline-flex", "inline-block"], "position": ["relative", "absolute", "fixed", "sticky"], "overflow": ["visible", "hidden"], "textTransform": ["none", "uppercase", "lowercase", "capitalize"], "whiteSpace": ["normal", "nowrap", "pre", "pre-wrap", "pre-line"], "textOverflow": ["clip", "ellipsis"], "widthKeyword": ["fit-content", "max-content", "min-content"], "heightKeyword": ["fit-content", "max-content", "min-content"], "borderStyle": ["solid", "dashed", "dotted"], "overscroll": ["auto", "contain", "none"], "gridAutoFlow": ["row", "column", "row-dense", "column-dense"], "justifyItems": ["start", "center", "end", "stretch", "baseline"], "justifySelf": ["start", "center", "end", "stretch", "baseline"], "alignContent": ["start", "center", "end", "between", "around", "evenly", "stretch"], "direction": ["ltr", "rtl", "auto"], "role": ["heading", "list", "listitem", "dialog", "alert", "status"], "accessibilityLiveRegion": ["off", "polite", "assertive"], "autoComplete": ["off", "on", "username", "current-password", "new-password", "one-time-code", "email", "tel", "name", "given-name", "family-name", "street-address", "postal-code", "country", "cc-number", "cc-exp", "cc-csc", "bday"], "enterKeyHint": ["enter", "done", "go", "next", "previous", "search", "send"], "autoCapitalize": ["none", "sentences", "words", "characters"], "userSelect": ["none", "text", "all"], "backgroundClip": ["border-box", "text"] };
+  var field = { "width": 0, "height": 1, "gap": 2, "padding": 3, "fontSize": 4, "color": 5, "background": 6, "grow": 7, "onClick": 8, "enabled": 9, "radius": 10, "listId": 11, "listCount": 12, "listLeading": 13, "listTrailing": 14, "listRowIndex": 15, "listAnchor": 16, "onReachStart": 17, "onReachEnd": 18, "imageSrc": 19, "imageFit": 20, "inputValue": 21, "placeholder": 22, "secure": 23, "keyboard": 24, "autoFocus": 25, "onInput": 26, "onSubmit": 27, "minWidth": 28, "minHeight": 29, "maxWidth": 30, "maxHeight": 31, "shrink": 32, "align": 33, "justify": 34, "alignSelf": 35, "fontWeight": 36, "lineHeight": 37, "fontFamily": 38, "checked": 39, "onCheckedChange": 40, "accessibilityLabel": 41, "sliderValue": 42, "sliderMin": 43, "sliderMax": 44, "sliderStep": 45, "onSliderChange": 46, "gridColumns": 47, "offsetX": 48, "offsetY": 49, "textLines": 50, "plotValues": 51, "plotKind": 52, "plotColors": 53, "plotSmooth": 54, "plotArea": 55, "onPlotSelect": 56, "plotSelectedIndex": 57, "opacity": 58, "paddingTop": 59, "paddingRight": 60, "paddingBottom": 61, "paddingLeft": 62, "wordBreak": 63, "overflowWrap": 64, "borderWidth": 65, "borderColor": 66, "borderTopWidth": 67, "borderRightWidth": 68, "borderBottomWidth": 69, "borderLeftWidth": 70, "textAlign": 71, "backgroundGradient": 72, "boxShadow": 73, "widthPercent": 74, "heightPercent": 75, "minWidthPercent": 76, "minHeightPercent": 77, "maxWidthPercent": 78, "maxHeightPercent": 79, "vectorSource": 80, "textDecorationLine": 81, "heightAuto": 82, "submitOnEnter": 83, "fontStyle": 84, "plotDomainMin": 85, "plotDomainMax": 86, "flexWrap": 87, "plotPieLayout": 88, "letterSpacing": 89, "radiusTopLeft": 90, "radiusTopRight": 91, "radiusBottomRight": 92, "radiusBottomLeft": 93, "plotMarkerEmphasisScale": 94, "backdropBlur": 95, "backdropSaturation": 96, "placeholderColor": 97, "focusStyle": 98, "flexBasis": 99, "scrollAxis": 100, "animation": 101, "listItemKeys": 102, "flexDirection": 103, "display": 104, "imageAlt": 105, "imageRetryKey": 106, "onImageLoad": 107, "onImageError": 108, "marginTop": 109, "marginRight": 110, "marginBottom": 111, "marginLeft": 112, "position": 113, "insetTop": 114, "insetRight": 115, "insetBottom": 116, "insetLeft": 117, "zIndex": 118, "overflow": 119, "rowGap": 120, "columnGap": 121, "textTransform": 122, "whiteSpace": 123, "textOverflow": 124, "pressedStyle": 125, "hoverStyle": 126, "widthKeyword": 127, "heightKeyword": 128, "borderStyle": 129, "transform": 130, "fontVariantNumeric": 131, "overscroll": 132, "aspectRatio": 133, "maxWidthCh": 134, "gridTemplateColumns": 135, "gridTemplateRows": 136, "gridAutoColumns": 137, "gridAutoRows": 138, "gridAutoFlow": 139, "gridColumn": 140, "gridRow": 141, "justifyItems": 142, "justifySelf": 143, "alignContent": 144, "order": 145, "direction": 146, "marginInlineStart": 147, "marginInlineEnd": 148, "paddingInlineStart": 149, "paddingInlineEnd": 150, "insetInlineStart": 151, "insetInlineEnd": 152, "borderInlineStartWidth": 153, "borderInlineEndWidth": 154, "radiusStartStart": 155, "radiusStartEnd": 156, "radiusEndStart": 157, "radiusEndEnd": 158, "role": 159, "headingLevel": 160, "accessibilityHidden": 161, "accessibilityLiveRegion": 162, "maxLength": 163, "autoComplete": 164, "enterKeyHint": 165, "autoCapitalize": 166, "spellCheck": 167, "inputMin": 168, "inputMax": 169, "inputStep": 170, "transition": 171, "userSelect": 172, "focusRequest": 173, "statePressed": 174, "stateSelected": 175, "stateExpanded": 176, "stateBusy": 177, "selectOptions": 178, "onSelect": 179, "rows": 180, "maxRows": 181, "imagePlaceholder": 182, "imagePosition": 183, "childSlot": 184, "startingStyle": 185, "exitStyle": 186, "focusWithinStyle": 187, "dataAttributes": 188, "backgroundClip": 189, "maskImage": 190, "filterBlur": 191, "groupPressedStyle": 192, "anchorTo": 193, "scrollSnap": 194, "snapAlign": 195 };
+  var fieldOptions = { "keyboard": ["text", "number", "email", "phone", "search", "date", "time"], "align": ["start", "center", "end", "stretch", "baseline"], "justify": ["start", "center", "end", "between", "around", "evenly"], "alignSelf": ["start", "center", "end", "stretch", "baseline"], "wordBreak": ["normal", "break-all", "keep-all"], "overflowWrap": ["normal", "break-word", "anywhere"], "textAlign": ["start", "end", "left", "center", "right", "justify"], "textDecorationLine": ["none", "line-through", "underline"], "fontStyle": ["normal", "italic"], "flexWrap": ["nowrap", "wrap", "wrap-reverse"], "scrollAxis": ["horizontal", "vertical"], "flexDirection": ["row", "column", "row-reverse", "column-reverse"], "display": ["flex", "grid", "none", "block", "inline-flex", "inline-block"], "position": ["relative", "absolute", "fixed", "sticky"], "overflow": ["visible", "hidden"], "textTransform": ["none", "uppercase", "lowercase", "capitalize"], "whiteSpace": ["normal", "nowrap", "pre", "pre-wrap", "pre-line"], "textOverflow": ["clip", "ellipsis"], "widthKeyword": ["fit-content", "max-content", "min-content"], "heightKeyword": ["fit-content", "max-content", "min-content"], "borderStyle": ["solid", "dashed", "dotted"], "overscroll": ["auto", "contain", "none"], "gridAutoFlow": ["row", "column", "row-dense", "column-dense"], "justifyItems": ["start", "center", "end", "stretch", "baseline"], "justifySelf": ["start", "center", "end", "stretch", "baseline"], "alignContent": ["start", "center", "end", "between", "around", "evenly", "stretch"], "direction": ["ltr", "rtl", "auto"], "role": ["heading", "list", "listitem", "dialog", "alert", "status", "grid", "gridcell", "listbox", "option"], "accessibilityLiveRegion": ["off", "polite", "assertive"], "autoComplete": ["off", "on", "username", "current-password", "new-password", "one-time-code", "email", "tel", "name", "given-name", "family-name", "street-address", "postal-code", "country", "cc-number", "cc-exp", "cc-csc", "bday"], "enterKeyHint": ["enter", "done", "go", "next", "previous", "search", "send"], "autoCapitalize": ["none", "sentences", "words", "characters"], "userSelect": ["none", "text", "all"], "backgroundClip": ["border-box", "text"], "scrollSnap": ["none", "x", "y"], "snapAlign": ["none", "start", "center", "end"] };
 
   // src/style/color.js
   var names = new Set(roles);
@@ -296,20 +296,20 @@
     return map;
   };
   var aliasesByDirection = { ltr: aliases("ltr"), rtl: aliases("rtl") };
-  function resetLonghands(result, layer2) {
-    for (const name of Object.keys(layer2))
-      for (const longhand of longhands[name] ?? []) if (!(longhand in layer2)) delete result[longhand];
+  function resetLonghands(result, layer3) {
+    for (const name of Object.keys(layer3))
+      for (const longhand of longhands[name] ?? []) if (!(longhand in layer3)) delete result[longhand];
   }
   function mergeStyle(direction, ...layers) {
     const result = {};
     const alias = aliasesByDirection[direction] ?? aliasesByDirection.ltr;
-    for (const layer2 of layers) {
-      if (!layer2) continue;
-      for (const name of Object.keys(layer2)) {
-        for (const longhand of longhands[name] ?? []) if (!(longhand in layer2)) delete result[longhand];
-        for (const other of alias[name] ?? []) if (!(other in layer2)) delete result[other];
+    for (const layer3 of layers) {
+      if (!layer3) continue;
+      for (const name of Object.keys(layer3)) {
+        for (const longhand of longhands[name] ?? []) if (!(longhand in layer3)) delete result[longhand];
+        for (const other of alias[name] ?? []) if (!(other in layer3)) delete result[other];
       }
-      Object.assign(result, layer2);
+      Object.assign(result, layer3);
     }
     return result;
   }
@@ -422,7 +422,7 @@
       throw Error("UI_STYLE_VALUE: maskImage");
     };
     const position = (stop) => stop.offset !== void 0 !== (stop.px !== void 0) && (stop.offset === void 0 || finite(stop.offset) && Math.abs(stop.offset) <= 16) && (stop.px === void 0 || finite(stop.px) && Math.abs(stop.px) <= 16384);
-    if (!Array.isArray(value) || !value.length || value.length > 4 || value.some((layer2) => !layer2 || !["top", "bottom", "left", "right"].includes(layer2.to) || Object.keys(layer2).some((key) => !["to", "stops"].includes(key)) || !Array.isArray(layer2.stops) || layer2.stops.length < 2 || layer2.stops.length > 16 || layer2.stops.some((stop) => !stop || Object.keys(stop).some((key) => !["alpha", "offset", "px"].includes(key)) || !finite(stop.alpha) || stop.alpha < 0 || stop.alpha > 1 || !position(stop)))) invalid2();
+    if (!Array.isArray(value) || !value.length || value.length > 4 || value.some((layer3) => !layer3 || !["top", "bottom", "left", "right"].includes(layer3.to) || Object.keys(layer3).some((key) => !["to", "stops"].includes(key)) || !Array.isArray(layer3.stops) || layer3.stops.length < 2 || layer3.stops.length > 16 || layer3.stops.some((stop) => !stop || Object.keys(stop).some((key) => !["alpha", "offset", "px"].includes(key)) || !finite(stop.alpha) || stop.alpha < 0 || stop.alpha > 1 || !position(stop)))) invalid2();
     return JSON.stringify(value.map(({ to, stops }) => ({ to, stops: stops.map(({ alpha, offset, px }) => offset === void 0 ? { px, alpha } : { offset, alpha }) })));
   }
   function transitionValue(value) {
@@ -472,8 +472,8 @@
     if (style2.fontSize !== void 0 && style2.fontSize <= 0) invalid("fontSize");
     let lineHeight = inherited.lineHeight;
     const transform = {}, lines = {};
-    const names2 = Object.keys(style2).sort((a, b) => Number(shorthand(b)) - Number(shorthand(a)));
-    for (const name of names2) {
+    const names3 = Object.keys(style2).sort((a, b) => Number(shorthand(b)) - Number(shorthand(a)));
+    for (const name of names3) {
       const value = style2[name], entry = style[name], key = entry.wire;
       switch (entry.lower) {
         case "dimension":
@@ -591,6 +591,11 @@
           if (value !== "auto") length(name, percent(value) ?? value);
           out[key] = value;
           break;
+        case "snap-type": {
+          const axis = String(value).trim().split(/\s+/)[0];
+          out[key] = option(name, key, axis);
+          break;
+        }
         case "option":
           if (name === "userSelect" && ["input", "textarea"].includes(tag)) throw Error("UI_STYLE: editors select their text already; userSelect is for static text");
           out[key] = option(name, key, value);
@@ -1368,14 +1373,14 @@
   }
   function configureActions(metadata) {
     outsideRender("configure actions");
-    const names2 = metadata?.__names, modes = metadata?.__modes;
-    if (!Array.isArray(names2) || names2.length > 256 || !modes || typeof modes !== "object" || names2.some((name) => typeof name !== "string" || !name || name.length > 256 || !has(modes, name) || !["call", "stream"].includes(modes[name])) || new Set(names2).size !== names2.length) throw Error("UI_ACTION: invalid action catalog");
+    const names3 = metadata?.__names, modes = metadata?.__modes;
+    if (!Array.isArray(names3) || names3.length > 256 || !modes || typeof modes !== "object" || names3.some((name) => typeof name !== "string" || !name || name.length > 256 || !has(modes, name) || !["call", "stream"].includes(modes[name])) || new Set(names3).size !== names3.length) throw Error("UI_ACTION: invalid action catalog");
     cancelActions();
     const epoch2 = actionEpoch, built = /* @__PURE__ */ Object.create(null);
     const reportLive = (cause) => {
       if (epoch2 === actionEpoch) report(cause);
     };
-    for (const name of names2) built[name] = (...args) => {
+    for (const name of names3) built[name] = (...args) => {
       outsideRender("action");
       if (epoch2 !== actionEpoch) throw bridgeError("BRIDGE_CANCELED", "Stale page action");
       if (args.length > 1) throw Error("UI_ACTION: expected at most one JSON payload");
@@ -1401,7 +1406,7 @@
       requests.push(encoded);
       return promise;
     };
-    for (const name of names2) {
+    for (const name of names3) {
       actionModes.set(built[name], modes[name]);
       actionNames.set(built[name], name);
     }
@@ -2086,9 +2091,9 @@
       }
     }
     if (shadow.enabled) {
-      style2.boxShadow = (shadow.composite === false ? shadow.fixedLayers ?? [] : shadow.layers ?? []).map(({ useColor, ...layer2 }) => ({
-        ...layer2,
-        color: useColor && shadow.color !== void 0 ? shadow.color : layer2.color
+      style2.boxShadow = (shadow.composite === false ? shadow.fixedLayers ?? [] : shadow.layers ?? []).map(({ useColor, ...layer3 }) => ({
+        ...layer3,
+        color: useColor && shadow.color !== void 0 ? shadow.color : layer3.color
       }));
       if (shadow.composite !== false && shadow.ringWidth > 0)
         style2.boxShadow.unshift({ offsetX: 0, offsetY: 0, blur: 0, spread: shadow.ringWidth, color: shadow.ringColor ?? "currentColor" });
@@ -2309,8 +2314,8 @@
       const valid = (value) => keyboard === "number" ? typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= 1e15 : typeof value === "string" && iso[keyboard].test(value);
       for (const name of ["min", "max"]) if (props[name] !== void 0 && !valid(props[name])) throw Error(`UI_INPUT: ${name} must be a ${keyboard === "number" ? "number" : `${keyboard} in ISO form`}`);
       if (props.min !== void 0 && props.max !== void 0 && props.min > props.max) throw Error("UI_INPUT: min exceeds max");
-      if (props.step !== void 0 && (keyboard !== "number" || typeof props.step !== "number" || !(props.step > 0) || props.step > 1e15))
-        throw Error('UI_INPUT: step is a positive number on type="number"');
+      if (props.step !== void 0 && (keyboard === "date" || typeof props.step !== "number" || !(props.step > 0) || props.step > 1e15 || keyboard === "time" && (!Number.isInteger(props.step) || props.step > 86400)))
+        throw Error('UI_INPUT: step is a positive number on type="number", or whole seconds up to a day on type="time"');
       for (const [name, key] of [["min", "inputMin"], ["max", "inputMax"], ["step", "inputStep"]]) if (props[name] !== void 0) out.push([key, props[name]]);
     }
     return out;
@@ -3005,6 +3010,632 @@
     }
   }
 
+  // src/runtime/calendar.js
+  var names2 = {
+    en: {
+      months: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+      days: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+      longDays: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+      title: (month, year) => `${month} ${year}`,
+      full: (day, month, year, weekday2) => `${weekday2}, ${month} ${day}, ${year}`,
+      am: "AM",
+      pm: "PM",
+      cancel: "Cancel",
+      done: "Done",
+      previous: "Previous month",
+      next: "Next month",
+      hour: "Hour",
+      minute: "Minute",
+      period: "AM/PM"
+    },
+    zh: {
+      months: ["1\u6708", "2\u6708", "3\u6708", "4\u6708", "5\u6708", "6\u6708", "7\u6708", "8\u6708", "9\u6708", "10\u6708", "11\u6708", "12\u6708"],
+      days: ["\u65E5", "\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D"],
+      longDays: ["\u661F\u671F\u65E5", "\u661F\u671F\u4E00", "\u661F\u671F\u4E8C", "\u661F\u671F\u4E09", "\u661F\u671F\u56DB", "\u661F\u671F\u4E94", "\u661F\u671F\u516D"],
+      title: (month, year) => `${year}\u5E74${month}`,
+      full: (day, month, year, weekday2) => `${year}\u5E74${month}${day}\u65E5${weekday2}`,
+      am: "\u4E0A\u5348",
+      pm: "\u4E0B\u5348",
+      cancel: "\u53D6\u6D88",
+      done: "\u5B8C\u6210",
+      previous: "\u4E0A\u4E2A\u6708",
+      next: "\u4E0B\u4E2A\u6708",
+      hour: "\u65F6",
+      minute: "\u5206",
+      period: "\u4E0A\u5348/\u4E0B\u5348"
+    },
+    ja: {
+      months: ["1\u6708", "2\u6708", "3\u6708", "4\u6708", "5\u6708", "6\u6708", "7\u6708", "8\u6708", "9\u6708", "10\u6708", "11\u6708", "12\u6708"],
+      days: ["\u65E5", "\u6708", "\u706B", "\u6C34", "\u6728", "\u91D1", "\u571F"],
+      longDays: ["\u65E5\u66DC\u65E5", "\u6708\u66DC\u65E5", "\u706B\u66DC\u65E5", "\u6C34\u66DC\u65E5", "\u6728\u66DC\u65E5", "\u91D1\u66DC\u65E5", "\u571F\u66DC\u65E5"],
+      title: (month, year) => `${year}\u5E74${month}`,
+      full: (day, month, year, weekday2) => `${year}\u5E74${month}${day}\u65E5 ${weekday2}`,
+      am: "\u5348\u524D",
+      pm: "\u5348\u5F8C",
+      cancel: "\u30AD\u30E3\u30F3\u30BB\u30EB",
+      done: "\u5B8C\u4E86",
+      previous: "\u524D\u306E\u6708",
+      next: "\u6B21\u306E\u6708",
+      hour: "\u6642",
+      minute: "\u5206",
+      period: "\u5348\u524D/\u5348\u5F8C"
+    },
+    ko: {
+      months: ["1\uC6D4", "2\uC6D4", "3\uC6D4", "4\uC6D4", "5\uC6D4", "6\uC6D4", "7\uC6D4", "8\uC6D4", "9\uC6D4", "10\uC6D4", "11\uC6D4", "12\uC6D4"],
+      days: ["\uC77C", "\uC6D4", "\uD654", "\uC218", "\uBAA9", "\uAE08", "\uD1A0"],
+      longDays: ["\uC77C\uC694\uC77C", "\uC6D4\uC694\uC77C", "\uD654\uC694\uC77C", "\uC218\uC694\uC77C", "\uBAA9\uC694\uC77C", "\uAE08\uC694\uC77C", "\uD1A0\uC694\uC77C"],
+      title: (month, year) => `${year}\uB144 ${month}`,
+      full: (day, month, year, weekday2) => `${year}\uB144 ${month} ${day}\uC77C ${weekday2}`,
+      am: "\uC624\uC804",
+      pm: "\uC624\uD6C4",
+      cancel: "\uCDE8\uC18C",
+      done: "\uC644\uB8CC",
+      previous: "\uC774\uC804 \uB2EC",
+      next: "\uB2E4\uC74C \uB2EC",
+      hour: "\uC2DC",
+      minute: "\uBD84",
+      period: "\uC624\uC804/\uC624\uD6C4"
+    },
+    de: {
+      months: ["Januar", "Februar", "M\xE4rz", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"],
+      days: ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"],
+      longDays: ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"],
+      title: (month, year) => `${month} ${year}`,
+      full: (day, month, year, weekday2) => `${weekday2}, ${day}. ${month} ${year}`,
+      am: "AM",
+      pm: "PM",
+      cancel: "Abbrechen",
+      done: "Fertig",
+      previous: "Vorheriger Monat",
+      next: "N\xE4chster Monat",
+      hour: "Stunde",
+      minute: "Minute",
+      period: "AM/PM"
+    },
+    fr: {
+      months: ["janvier", "f\xE9vrier", "mars", "avril", "mai", "juin", "juillet", "ao\xFBt", "septembre", "octobre", "novembre", "d\xE9cembre"],
+      days: ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."],
+      longDays: ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"],
+      title: (month, year) => `${month} ${year}`,
+      full: (day, month, year, weekday2) => `${weekday2} ${day} ${month} ${year}`,
+      am: "AM",
+      pm: "PM",
+      cancel: "Annuler",
+      done: "OK",
+      previous: "Mois pr\xE9c\xE9dent",
+      next: "Mois suivant",
+      hour: "Heure",
+      minute: "Minute",
+      period: "AM/PM"
+    },
+    es: {
+      months: ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"],
+      days: ["dom", "lun", "mar", "mi\xE9", "jue", "vie", "s\xE1b"],
+      longDays: ["domingo", "lunes", "martes", "mi\xE9rcoles", "jueves", "viernes", "s\xE1bado"],
+      title: (month, year) => `${month} de ${year}`,
+      full: (day, month, year, weekday2) => `${weekday2}, ${day} de ${month} de ${year}`,
+      am: "a. m.",
+      pm: "p. m.",
+      cancel: "Cancelar",
+      done: "Listo",
+      previous: "Mes anterior",
+      next: "Mes siguiente",
+      hour: "Hora",
+      minute: "Minuto",
+      period: "a. m./p. m."
+    },
+    pt: {
+      months: ["janeiro", "fevereiro", "mar\xE7o", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"],
+      days: ["dom.", "seg.", "ter.", "qua.", "qui.", "sex.", "s\xE1b."],
+      longDays: ["domingo", "segunda-feira", "ter\xE7a-feira", "quarta-feira", "quinta-feira", "sexta-feira", "s\xE1bado"],
+      title: (month, year) => `${month} de ${year}`,
+      full: (day, month, year, weekday2) => `${weekday2}, ${day} de ${month} de ${year}`,
+      am: "AM",
+      pm: "PM",
+      cancel: "Cancelar",
+      done: "OK",
+      previous: "M\xEAs anterior",
+      next: "Pr\xF3ximo m\xEAs",
+      hour: "Hora",
+      minute: "Minuto",
+      period: "AM/PM"
+    },
+    ru: {
+      months: ["\u044F\u043D\u0432\u0430\u0440\u044C", "\u0444\u0435\u0432\u0440\u0430\u043B\u044C", "\u043C\u0430\u0440\u0442", "\u0430\u043F\u0440\u0435\u043B\u044C", "\u043C\u0430\u0439", "\u0438\u044E\u043D\u044C", "\u0438\u044E\u043B\u044C", "\u0430\u0432\u0433\u0443\u0441\u0442", "\u0441\u0435\u043D\u0442\u044F\u0431\u0440\u044C", "\u043E\u043A\u0442\u044F\u0431\u0440\u044C", "\u043D\u043E\u044F\u0431\u0440\u044C", "\u0434\u0435\u043A\u0430\u0431\u0440\u044C"],
+      days: ["\u0432\u0441", "\u043F\u043D", "\u0432\u0442", "\u0441\u0440", "\u0447\u0442", "\u043F\u0442", "\u0441\u0431"],
+      longDays: ["\u0432\u043E\u0441\u043A\u0440\u0435\u0441\u0435\u043D\u044C\u0435", "\u043F\u043E\u043D\u0435\u0434\u0435\u043B\u044C\u043D\u0438\u043A", "\u0432\u0442\u043E\u0440\u043D\u0438\u043A", "\u0441\u0440\u0435\u0434\u0430", "\u0447\u0435\u0442\u0432\u0435\u0440\u0433", "\u043F\u044F\u0442\u043D\u0438\u0446\u0430", "\u0441\u0443\u0431\u0431\u043E\u0442\u0430"],
+      title: (month, year) => `${month} ${year}`,
+      full: (day, month, year, weekday2) => `${weekday2}, ${day} ${month} ${year}`,
+      am: "AM",
+      pm: "PM",
+      cancel: "\u041E\u0442\u043C\u0435\u043D\u0430",
+      done: "\u0413\u043E\u0442\u043E\u0432\u043E",
+      previous: "\u041F\u0440\u0435\u0434\u044B\u0434\u0443\u0449\u0438\u0439 \u043C\u0435\u0441\u044F\u0446",
+      next: "\u0421\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u0439 \u043C\u0435\u0441\u044F\u0446",
+      hour: "\u0427\u0430\u0441",
+      minute: "\u041C\u0438\u043D\u0443\u0442\u0430",
+      period: "AM/PM"
+    },
+    ar: {
+      months: ["\u064A\u0646\u0627\u064A\u0631", "\u0641\u0628\u0631\u0627\u064A\u0631", "\u0645\u0627\u0631\u0633", "\u0623\u0628\u0631\u064A\u0644", "\u0645\u0627\u064A\u0648", "\u064A\u0648\u0646\u064A\u0648", "\u064A\u0648\u0644\u064A\u0648", "\u0623\u063A\u0633\u0637\u0633", "\u0633\u0628\u062A\u0645\u0628\u0631", "\u0623\u0643\u062A\u0648\u0628\u0631", "\u0646\u0648\u0641\u0645\u0628\u0631", "\u062F\u064A\u0633\u0645\u0628\u0631"],
+      days: ["\u0623\u062D\u062F", "\u0625\u062B\u0646\u064A\u0646", "\u062B\u0644\u0627\u062B\u0627\u0621", "\u0623\u0631\u0628\u0639\u0627\u0621", "\u062E\u0645\u064A\u0633", "\u062C\u0645\u0639\u0629", "\u0633\u0628\u062A"],
+      longDays: ["\u0627\u0644\u0623\u062D\u062F", "\u0627\u0644\u0625\u062B\u0646\u064A\u0646", "\u0627\u0644\u062B\u0644\u0627\u062B\u0627\u0621", "\u0627\u0644\u0623\u0631\u0628\u0639\u0627\u0621", "\u0627\u0644\u062E\u0645\u064A\u0633", "\u0627\u0644\u062C\u0645\u0639\u0629", "\u0627\u0644\u0633\u0628\u062A"],
+      title: (month, year) => `${month} ${year}`,
+      full: (day, month, year, weekday2) => `${weekday2}\u060C ${day} ${month} ${year}`,
+      am: "\u0635",
+      pm: "\u0645",
+      cancel: "\u0625\u0644\u063A\u0627\u0621",
+      done: "\u062A\u0645",
+      previous: "\u0627\u0644\u0634\u0647\u0631 \u0627\u0644\u0633\u0627\u0628\u0642",
+      next: "\u0627\u0644\u0634\u0647\u0631 \u0627\u0644\u062A\u0627\u0644\u064A",
+      hour: "\u0627\u0644\u0633\u0627\u0639\u0629",
+      minute: "\u0627\u0644\u062F\u0642\u064A\u0642\u0629",
+      period: "\u0635/\u0645"
+    }
+  };
+  function wordsFor(language) {
+    return names2[String(language ?? "").split(/[-_]/)[0].toLowerCase()] ?? names2.en;
+  }
+  var pad = (value, width = 2) => String(value).padStart(width, "0");
+  var isLeap = (year) => year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  var daysIn = (year, month) => [31, isLeap(year) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+  function weekday(year, month, day) {
+    const t = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
+    const y = month < 3 ? year - 1 : year;
+    return (y + Math.floor(y / 4) - Math.floor(y / 100) + Math.floor(y / 400) + t[month - 1] + day) % 7;
+  }
+  var iso2 = ({ year, month, day }) => `${pad(year, 4)}-${pad(month)}-${pad(day)}`;
+  function parseDate(value) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value ?? "");
+    if (!match) return null;
+    const [year, month, day] = match.slice(1).map(Number);
+    return month >= 1 && month <= 12 && day >= 1 && day <= daysIn(year, month) ? { year, month, day } : null;
+  }
+  function parseTime(value) {
+    const match = /^(\d{2}):(\d{2})(?::\d{2})?$/.exec(value ?? "");
+    if (!match) return null;
+    const [hour, minute] = match.slice(1).map(Number);
+    return hour < 24 && minute < 60 ? { hour, minute } : null;
+  }
+  function addDays({ year, month, day }, days) {
+    let ordinal = toOrdinal(year, month, day) + days;
+    return fromOrdinal(ordinal);
+  }
+  function addMonths({ year, month, day }, months) {
+    const index = year * 12 + (month - 1) + months;
+    const y = Math.floor(index / 12), m = index - y * 12 + 1;
+    return { year: y, month: m, day: Math.min(day, daysIn(y, m)) };
+  }
+  function toOrdinal(year, month, day) {
+    const y = month <= 2 ? year - 1 : year, m = month <= 2 ? month + 9 : month - 3;
+    return 365 * y + Math.floor(y / 4) - Math.floor(y / 100) + Math.floor(y / 400) + Math.floor((153 * m + 2) / 5) + day - 1;
+  }
+  function fromOrdinal(ordinal) {
+    let y = Math.floor((1e4 * ordinal + 14780) / 3652425);
+    let rest = ordinal - (365 * y + Math.floor(y / 4) - Math.floor(y / 100) + Math.floor(y / 400));
+    if (rest < 0) {
+      y -= 1;
+      rest = ordinal - (365 * y + Math.floor(y / 4) - Math.floor(y / 100) + Math.floor(y / 400));
+    }
+    const mi = Math.floor((100 * rest + 52) / 3060);
+    const month = (mi + 2) % 12 + 1, year = y + Math.floor((mi + 2) / 12), day = rest - Math.floor((mi * 306 + 5) / 10) + 1;
+    return { year, month, day };
+  }
+  var compare = (a, b) => a.year - b.year || a.month - b.month || a.day - b.day;
+  function monthGrid({ year, month }, firstWeekday = 1) {
+    const lead = (weekday(year, month, 1) - (firstWeekday - 1) + 7) % 7;
+    const start = addDays({ year, month, day: 1 }, -lead);
+    return Array.from({ length: 42 }, (_, index) => {
+      const date = addDays(start, index);
+      return { date, inMonth: date.month === month && date.year === year };
+    });
+  }
+  var weekdayOrder = (firstWeekday) => Array.from({ length: 7 }, (_, index) => (firstWeekday - 1 + index) % 7);
+  function moveDate(date, key, rtl = false) {
+    switch (key) {
+      case "ArrowLeft":
+        return addDays(date, rtl ? 1 : -1);
+      case "ArrowRight":
+        return addDays(date, rtl ? -1 : 1);
+      case "ArrowUp":
+        return addDays(date, -7);
+      case "ArrowDown":
+        return addDays(date, 7);
+      case "PageUp":
+        return addMonths(date, -1);
+      case "PageDown":
+        return addMonths(date, 1);
+      default:
+        return null;
+    }
+  }
+  var within = (date, min, max) => (!min || compare(date, min) >= 0) && (!max || compare(date, max) <= 0);
+  var clampDate = (date, min, max) => min && compare(date, min) < 0 ? min : max && compare(date, max) > 0 ? max : date;
+  function hourValues(cycle) {
+    return cycle === "h12" ? [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] : Array.from({ length: 24 }, (_, hour) => hour);
+  }
+  function minuteValues(step) {
+    const every = Number.isFinite(step) && step >= 60 ? Math.max(1, Math.round(step / 60)) : 1;
+    return Array.from({ length: Math.ceil(60 / every) }, (_, index) => index * every).filter((minute) => minute < 60);
+  }
+  var timeIso = ({ hour, minute }) => `${pad(hour)}:${pad(minute)}`;
+
+  // src/runtime/picker.js
+  var picker = null;
+  var results = [];
+  var nextKey = 1;
+  var fixedToday = null;
+  var today = () => {
+    if (fixedToday) return fixedToday;
+    const now = /* @__PURE__ */ new Date();
+    return { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() };
+  };
+  function openPicker({ identity, kind, value, min, max, step, today: day, options: options2, selected, label: label2 } = {}) {
+    if (typeof identity !== "string" || !["date", "time", "select"].includes(kind)) return false;
+    fixedToday = parseDate(day);
+    const key = nextKey++;
+    if (kind === "select") {
+      const list = Array.isArray(options2) ? options2.slice(0, 1024).map((option2) => ({
+        value: String(option2.value),
+        label: String(option2.label),
+        enabled: option2.enabled !== false
+      })) : [];
+      if (!list.length) return false;
+      const chosen = Number.isInteger(selected) && list[selected] ? selected : -1;
+      picker = {
+        kind,
+        key,
+        identity,
+        options: list,
+        selected: chosen,
+        focus: chosen >= 0 ? chosen : list.findIndex((o) => o.enabled),
+        label: typeof label2 === "string" ? label2 : "",
+        typed: "",
+        typedAt: 0
+      };
+      return true;
+    }
+    if (kind === "date") {
+      const low = parseDate(min), high = parseDate(max);
+      picker = { kind, key, identity, min: low, max: high, value: parseDate(value), focus: clampDate(parseDate(value) ?? today(), low, high) };
+    } else {
+      picker = { kind, key, identity, step: Number(step), value: parseTime(value) ?? { hour: 9, minute: 0 }, min: parseTime(min), max: parseTime(max) };
+    }
+    return true;
+  }
+  var pickerIdentity = () => picker?.identity ?? null;
+  function settle(value) {
+    if (!picker) return;
+    results.push({ identity: picker.identity, value });
+    picker = null;
+  }
+  function closePicker() {
+    picker = null;
+  }
+  function takePickerResults() {
+    const out = results;
+    results = [];
+    return JSON.stringify(out);
+  }
+  function settleSelect(index) {
+    const option2 = picker.options[index];
+    if (!option2?.enabled) return;
+    results.push({ identity: picker.identity, value: option2.value, index });
+    picker = null;
+  }
+  function selectKey(key) {
+    const { options: options2 } = picker;
+    const step = { ArrowDown: 1, ArrowUp: -1, PageDown: 8, PageUp: -8 }[key];
+    if (step !== void 0) {
+      let next = picker.focus;
+      for (let moved = 0; moved < Math.abs(step); moved++) {
+        let probe = next;
+        do
+          probe += Math.sign(step);
+        while (probe >= 0 && probe < options2.length && !options2[probe].enabled);
+        if (probe < 0 || probe >= options2.length) break;
+        next = probe;
+      }
+      picker.focus = next;
+      return true;
+    }
+    if (key === "Enter") {
+      settleSelect(picker.focus);
+      return true;
+    }
+    if (key.length === 1) {
+      const now = Date.now();
+      picker.typed = (now - picker.typedAt < 1e3 ? picker.typed : "") + key.toLowerCase();
+      picker.typedAt = now;
+      const found = options2.findIndex((o) => o.enabled && o.label.toLowerCase().startsWith(picker.typed));
+      if (found >= 0) picker.focus = found;
+      return true;
+    }
+    return false;
+  }
+  function pickerKey(key, rtl = false) {
+    if (!picker) return false;
+    if (key === "Escape") {
+      settle(null);
+      return true;
+    }
+    if (picker.kind === "select") return selectKey(key);
+    if (picker.kind === "date") {
+      if (key === "Enter") {
+        if (within(picker.focus, picker.min, picker.max)) settle(iso2(picker.focus));
+        return true;
+      }
+      const moved = moveDate(picker.focus, key, rtl);
+      if (!moved) return false;
+      picker.focus = clampDate(moved, picker.min, picker.max);
+      return true;
+    }
+    if (key === "Enter") {
+      settle(timeIso(picker.value));
+      return true;
+    }
+    if (/^[0-9]$/.test(key)) {
+      picker.typed = ((picker.typed ?? "") + key).slice(-4);
+      const digits = picker.typed.padStart(4, "0");
+      const hour = Number(digits.slice(0, 2)), minute = Number(digits.slice(2));
+      if (hour < 24 && minute < 60) picker.value = { hour, minute };
+      return true;
+    }
+    const delta = { ArrowUp: -1, ArrowDown: 1 }[key];
+    if (delta === void 0) return false;
+    const minutes = minuteValues(picker.step);
+    const at = Math.max(0, minutes.indexOf(picker.value.minute));
+    const index = at + delta;
+    if (index < 0) picker.value = { hour: (picker.value.hour + 23) % 24, minute: minutes.at(-1) };
+    else if (index >= minutes.length) picker.value = { hour: (picker.value.hour + 1) % 24, minute: minutes[0] };
+    else picker.value = { ...picker.value, minute: minutes[index] };
+    return true;
+  }
+  var layer2 = { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 };
+  function dateBody(words, env) {
+    const { focus, value, min, max } = picker;
+    const first = env?.firstWeekday ?? 1, now = today();
+    const shift = (months) => {
+      picker.focus = clampDate(addMonths(picker.focus, months), min, max);
+    };
+    const iconButton = (testId, label2, d, months) => h(
+      "button",
+      {
+        "data-testid": testId,
+        "aria-label": label2,
+        onClick: () => shift(months),
+        style: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", color: "text" }
+      },
+      h("vector", {
+        "aria-hidden": true,
+        paths: [{ d, fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }],
+        style: { width: 20, height: 20 }
+      })
+    );
+    const title = words.title(words.months[focus.month - 1], focus.year);
+    const cells = monthGrid(focus, first);
+    const rows = Array.from({ length: 6 }, (_, week) => cells.slice(week * 7, week * 7 + 7));
+    const cell = ({ date, inMonth }) => {
+      const id = iso2(date), enabled = within(date, min, max);
+      const selected = value && compare(date, value) === 0, focused = compare(date, focus) === 0, isToday = compare(date, now) === 0;
+      const name = words.full(date.day, words.months[date.month - 1], date.year, words.longDays[weekday(date.year, date.month, date.day)]);
+      return h(
+        "button",
+        {
+          key: id,
+          "data-testid": `lx-picker-day-${id}`,
+          role: "gridcell",
+          "aria-label": name,
+          "aria-selected": Boolean(selected),
+          disabled: !enabled,
+          onClick: () => settle(id),
+          style: {
+            width: 36,
+            height: 36,
+            borderRadius: 18,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: selected ? "accent" : focused ? "surface-sunken" : "transparent",
+            borderWidth: isToday && !selected ? 1 : 0,
+            borderColor: "accent",
+            color: selected ? "on-accent" : !inMonth || !enabled ? "text-faint" : "text",
+            fontSize: 14,
+            fontWeight: selected || isToday ? 600 : 400
+          }
+        },
+        String(date.day)
+      );
+    };
+    return h(
+      "column",
+      { style: { gap: 8, alignSelf: "center" } },
+      h(
+        "row",
+        { style: { alignItems: "center", gap: 4 } },
+        h("text", { "data-testid": "lx-picker-title", "aria-live": "polite", style: { flexGrow: 1, fontSize: 16, fontWeight: 600, color: "text", paddingLeft: 8 } }, title),
+        iconButton("lx-picker-previous", words.previous, "M12.5 4l-6 6 6 6", -1),
+        iconButton("lx-picker-next", words.next, "M7.5 4l6 6-6 6", 1)
+      ),
+      h(
+        "column",
+        { role: "grid", "aria-label": title, style: { gap: 2 } },
+        h("row", { "aria-hidden": true, style: { gap: 2 } }, ...weekdayOrder(first).map((day) => h("text", {
+          key: `w${day}`,
+          style: { width: 36, textAlign: "center", fontSize: 12, color: "text-muted" }
+        }, words.days[day]))),
+        ...rows.map((week, index) => h("row", { key: `r${index}`, style: { gap: 2 } }, ...week.map(cell)))
+      )
+    );
+  }
+  var ROW = 40;
+  var VISIBLE = 5;
+  function timeColumn(testId, label2, values, selected, format, choose) {
+    const index = Math.max(0, values.indexOf(selected));
+    const pad2 = ROW * Math.floor(VISIBLE / 2);
+    return h(
+      "column",
+      { "data-testid": testId, role: "listbox", "aria-label": label2, style: { width: 64 } },
+      h(listTag, {
+        count: values.length,
+        itemKeys: values.map(String),
+        height: () => ROW,
+        anchor: { index, align: "start", seq: index },
+        style: { height: ROW * VISIBLE, paddingTop: pad2, paddingBottom: pad2, scrollSnapType: "y" },
+        row: (i) => {
+          const value = values[i], on = value === selected;
+          return h("button", {
+            key: String(value),
+            "data-testid": `${testId}-${value}`,
+            role: "option",
+            "aria-selected": on,
+            onClick: () => choose(value),
+            style: {
+              height: ROW,
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: 8,
+              scrollSnapAlign: "center",
+              backgroundColor: on ? "accent/12" : "transparent",
+              color: on ? "accent" : "text",
+              fontSize: 17,
+              fontWeight: on ? 600 : 400,
+              fontVariantNumeric: "tabular-nums"
+            }
+          }, format(value));
+        }
+      })
+    );
+  }
+  function timeBody(words, env) {
+    const cycle = env?.hourCycle === "h12" ? "h12" : "h23";
+    const { hour, minute } = picker.value;
+    const two = (value) => String(value).padStart(2, "0");
+    const set = (next) => {
+      picker.value = { ...picker.value, ...next };
+      picker.typed = "";
+    };
+    const columns = [
+      timeColumn(
+        "lx-picker-hour",
+        words.hour,
+        hourValues(cycle),
+        cycle === "h12" ? hour % 12 || 12 : hour,
+        cycle === "h12" ? String : two,
+        (value) => set({ hour: cycle === "h12" ? value % 12 + (hour >= 12 ? 12 : 0) : value })
+      ),
+      timeColumn("lx-picker-minute", words.minute, minuteValues(picker.step), minute, two, (value) => set({ minute: value }))
+    ];
+    if (cycle === "h12") columns.push(timeColumn(
+      "lx-picker-period",
+      words.period,
+      ["am", "pm"],
+      hour >= 12 ? "pm" : "am",
+      (period) => words[period],
+      (period) => set({ hour: hour % 12 + (period === "pm" ? 12 : 0) })
+    ));
+    return h("row", { style: { gap: 8, justifyContent: "center" } }, ...columns);
+  }
+  function selectBody() {
+    const { options: options2, selected, focus } = picker;
+    const check = "M4 10.5l4 4 8-9";
+    return h(
+      "column",
+      { role: "listbox", "aria-label": picker.label || "Options", style: { gap: 2, minWidth: 200 } },
+      ...options2.map((option2, index) => h(
+        "button",
+        {
+          key: `o${index}`,
+          "data-testid": `lx-picker-option-${index}`,
+          role: "option",
+          "aria-selected": index === selected,
+          disabled: !option2.enabled,
+          onClick: () => settleSelect(index),
+          style: {
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 8,
+            minHeight: 36,
+            paddingLeft: 10,
+            paddingRight: 12,
+            borderRadius: 8,
+            backgroundColor: index === focus ? "surface-sunken" : "transparent",
+            color: option2.enabled ? "text" : "text-faint",
+            fontSize: 15
+          }
+        },
+        index === selected ? h("vector", { "aria-hidden": true, paths: [{
+          d: check,
+          fill: "none",
+          stroke: "currentColor",
+          strokeWidth: 2,
+          strokeLinecap: "round",
+          strokeLinejoin: "round"
+        }], style: { width: 18, height: 18, color: "accent" } }) : h("spacer", { style: { width: 18, height: 18 } }),
+        h("text", { style: { flexGrow: 1, textAlign: "start" } }, option2.label)
+      ))
+    );
+  }
+  var pickerAnchor = (env) => picker && (env?.pointer ?? "coarse") !== "coarse" ? picker.identity : null;
+  function pickerNode(env) {
+    if (!picker) return null;
+    const words = wordsFor(env?.displayLanguage);
+    const touch = (env?.pointer ?? "coarse") === "coarse";
+    const body = picker.kind === "date" ? dateBody(words, env) : picker.kind === "time" ? timeBody(words, env) : selectBody();
+    const done = picker.kind === "time" || touch && picker.kind === "date";
+    const footer = done && h(
+      "row",
+      { style: { gap: 8, justifyContent: "end" } },
+      h("button", {
+        "data-testid": "lx-picker-cancel",
+        onClick: () => settle(null),
+        style: { paddingTop: 8, paddingBottom: 8, paddingLeft: 14, paddingRight: 14, borderRadius: 8, color: "text", fontSize: 15 }
+      }, words.cancel),
+      h("button", {
+        "data-testid": "lx-picker-done",
+        onClick: () => settle(picker.kind === "date" ? iso2(picker.focus) : timeIso(picker.value)),
+        style: { paddingTop: 8, paddingBottom: 8, paddingLeft: 14, paddingRight: 14, borderRadius: 8, backgroundColor: "accent", color: "on-accent", fontSize: 15, fontWeight: 600 }
+      }, words.done)
+    );
+    const name = picker.kind === "date" ? words.title(words.months[picker.focus.month - 1], picker.focus.year) : picker.kind === "time" ? words.hour : picker.label || "Options";
+    const panel = h(
+      "column",
+      {
+        "data-testid": "lx-picker",
+        key: `picker-${picker.key}`,
+        role: "dialog",
+        "aria-label": name,
+        style: {
+          padding: 12,
+          gap: 12,
+          borderRadius: 14,
+          backgroundColor: "surface-raised",
+          borderWidth: touch ? 0 : 1,
+          borderColor: "line",
+          boxShadow: [{ offsetX: 0, offsetY: 8, blur: 24, spread: 0, color: "shadow/20" }],
+          // A popover is its content's size; native moves it against its editor.
+          ...touch ? { width: "100%" } : { position: "absolute", top: 0, left: 0 }
+        }
+      },
+      body,
+      footer
+    );
+    return h(
+      "stack",
+      { key: "lx-picker-layer", style: { ...layer2, zIndex: 1e4 } },
+      h("button", {
+        "data-testid": "lx-picker-backdrop",
+        "aria-hidden": true,
+        onClick: () => settle(null),
+        style: { ...layer2, backgroundColor: touch ? "scrim" : "transparent" }
+      }),
+      touch ? h("column", { style: { ...layer2, justifyContent: "end", padding: 8 } }, panel) : panel
+    );
+  }
+  function resetPicker() {
+    picker = null;
+    results = [];
+  }
+
   // src/runtime/tree.js
   function List({ items, getKey, renderItem, getItemHeight, ...props }) {
     return h(listTag, {
@@ -3044,6 +3675,19 @@
         1,
         { tag: candidate.tree.element, typography: candidate.tree.typography }
       ), env));
+      const picker2 = pickerNode(env);
+      if (picker2) {
+        const layer3 = resolveNode(
+          picker2,
+          `root/${candidate.tree.element}/key:"lx-picker-layer"`,
+          1,
+          { tag: candidate.tree.element, typography: candidate.tree.typography }
+        );
+        const anchor = pickerAnchor(env);
+        const panel = layer3.children.find((child) => child.props?.testId === "lx-picker");
+        if (anchor && panel) panel.wire.push(["anchorTo", anchor]);
+        candidate.tree.children.push(layer3);
+      }
       candidate.baseLocals = new Map(candidate.locals);
       return encodeTree(candidate.tree, windows);
     });
@@ -3133,6 +3777,7 @@
     page.resources.clear();
     resetActions();
     resetOverlays();
+    resetPicker();
   }
   var accepts2 = (kind, value) => kind === "number" ? typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= 1e9 : kind === "text" ? validInputText(value) : value === void 0;
   function dispatch(handle2, value) {
@@ -3203,6 +3848,11 @@
       __lingxiaEscape: escapeOverlay,
       __lingxiaFonts: takeFonts,
       __lingxiaProbeListRow: probeListRow,
+      __lingxiaOpenPicker: openPicker,
+      __lingxiaPickerKey: pickerKey,
+      __lingxiaClosePicker: closePicker,
+      __lingxiaTakePickerResults: takePickerResults,
+      __lingxiaPickerIdentity: pickerIdentity,
       // Cleared when a render completes, so it names only a render that never returned.
       __lingxiaSite: () => render.site || ""
     });

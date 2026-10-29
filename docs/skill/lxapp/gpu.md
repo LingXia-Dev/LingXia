@@ -67,7 +67,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   and returns it on close; the focus ring shows only after keyboard input.
 - Inputs take `type` (`password`, `email`, `number`, `tel`, `search`, `date`, `time`), `inputMode`, `maxLength`, `autoComplete`, `enterKeyHint` (on a textarea, `send`/`go`/`done`/`search` makes Return submit), `autoCapitalize`, `spellCheck`;
   `type="number"` with `min`/`max`/`step` clamps on blur/submit; `type="date|time"` opens the
-  platform picker and reports ISO strings.
+  View's own themed picker (popover with a mouse, sheet on touch) and reports ISO strings.
 - While an image loads its background colour shows; `placeholder="tiny.jpg"` paints a small stand-in scaled smooth.
 - `object-top`, `object-left-bottom` or `object-[25%_75%]` (`objectPosition`) align a covered or contained image; pixel offsets fail.
 - `<textarea rows={2} maxRows={6}/>` grows with its lines in that range, then scrolls.

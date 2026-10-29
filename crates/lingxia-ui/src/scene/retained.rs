@@ -65,6 +65,8 @@ pub(crate) struct RetainedLayout {
     /// Static rotation and scale; translation is already in the geometry.
     pub(crate) transforms: Vec<Option<crate::scene::transform::StaticTransform>>,
     pub(crate) stickies: Vec<Option<crate::scene::sticky::Sticky>>,
+    /// The node a popover sits against, by identity; composition places it below or above.
+    pub(crate) anchors: Vec<Option<String>>,
     pub(crate) backdrops: Vec<Option<(f32, f32)>>,
     pub(crate) masks: Vec<Option<Arc<Vec<crate::scene::mask::MaskLayer>>>>,
     pub(crate) blurs: Vec<f32>,
@@ -257,6 +259,7 @@ impl RetainedLayout {
                 next.opacities.push(old.opacities[index]);
                 next.transforms.push(old.transforms[index]);
                 next.stickies.push(None);
+                next.anchors.push(None);
                 next.backdrops.push(old.backdrops[index]);
                 next.masks.push(old.masks[index].clone());
                 next.blurs.push(old.blurs[index]);
@@ -483,6 +486,16 @@ impl RetainedLayout {
                     c
                 });
                 let [dx, dy] = sticky.shift(natural, viewport, container);
+                translation = [translation[0] - dx, translation[1] - dy];
+            }
+            if let Some(anchor) = &self.anchors[index]
+                && let Some(target) = self.nodes.iter().position(|node| &node.identity == anchor)
+            {
+                // The target is composed already: it precedes the popover in paint order.
+                let mut natural = self.nodes[index].bounds;
+                natural[0] -= translation[0];
+                natural[1] -= translation[1];
+                let [dx, dy] = crate::scene::anchor::place(natural, nodes[target].bounds, viewport);
                 translation = [translation[0] - dx, translation[1] - dy];
             }
             let node = &mut nodes[index];

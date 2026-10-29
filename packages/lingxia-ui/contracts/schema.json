@@ -50,10 +50,12 @@
     "sizing-keyword": ["fit-content", "max-content", "min-content"],
     "border-style": ["solid", "dashed", "dotted"],
     "overscroll": ["auto", "contain", "none"],
+    "scroll-snap": ["none", "x", "y"],
+    "snap-align": ["none", "start", "center", "end"],
     "grid-auto-flow": ["row", "column", "row-dense", "column-dense"],
     "align-content": ["start", "center", "end", "between", "around", "evenly", "stretch"],
     "direction": ["ltr", "rtl", "auto"],
-    "role": ["heading", "list", "listitem", "dialog", "alert", "status"],
+    "role": ["heading", "list", "listitem", "dialog", "alert", "status", "grid", "gridcell", "listbox", "option"],
     "live-region": ["off", "polite", "assertive"],
     "input-keyboard": ["text", "number", "email", "phone", "search", "date", "time"],
     "auto-complete": ["off", "on", "username", "current-password", "new-password", "one-time-code", "email", "tel", "name", "given-name", "family-name", "street-address", "postal-code", "country", "cc-number", "cc-exp", "cc-csc", "bday"],
@@ -255,14 +257,17 @@
     {"id": 189, "key": "backgroundClip", "wire": "backgroundClip", "kind": "background-clip"},
     {"id": 190, "key": "maskImage", "wire": "maskImage", "kind": "string"},
     {"id": 191, "key": "filterBlur", "wire": "filterBlur", "kind": "number"},
-    {"id": 192, "key": "groupPressedStyle", "wire": "groupPressedStyle", "kind": "state-style"}
+    {"id": 192, "key": "groupPressedStyle", "wire": "groupPressedStyle", "kind": "state-style"},
+    {"id": 193, "key": "anchorTo", "wire": "anchorTo", "kind": "anchor", "tags": ["column"]},
+    {"id": 194, "key": "scrollSnap", "wire": "scrollSnap", "kind": "scroll-snap", "tags": ["scroll", "list"]},
+    {"id": 195, "key": "snapAlign", "wire": "snapAlign", "kind": "snap-align"}
   ],
   "input": {
     "autofill": {"username": "username", "current-password": "password", "new-password": "newPassword", "one-time-code": "smsOTPCode", "email": "emailAddress", "tel": "phone", "name": "personName", "given-name": "personGivenName", "family-name": "personFamilyName", "street-address": "postalAddress", "postal-code": "postalCode", "country": "addressCountry", "cc-number": "creditCardNumber", "cc-exp": "creditCardExpirationDate", "cc-csc": "creditCardSecurityCode", "bday": "birthDateFull"},
     "keys": {"maxLength": "max_length", "autoComplete": "auto_complete", "enterKeyHint": "enter_key_hint", "autoCapitalize": "auto_capitalize", "spellCheck": "spell_check", "min": "min", "max": "max", "step": "step", "picker": "picker"}
   },
   "semantics": {
-    "roles": ["button", "check-box", "switch", "radio-group", "radio-button", "combo-box", "text-field", "scroll-view", "horizontal-scroll-view", "image", "slider", "text", "link", "heading", "list", "list-item", "dialog", "alert", "status"],
+    "roles": ["button", "check-box", "switch", "radio-group", "radio-button", "combo-box", "text-field", "scroll-view", "horizontal-scroll-view", "image", "slider", "text", "link", "heading", "list", "list-item", "dialog", "alert", "status", "grid", "grid-cell", "list-box", "option"],
     "liveRegions": ["polite", "assertive"],
     "events": ["announce"],
     "actions": ["copy", "cut", "paste", "set-selection"],
@@ -370,6 +375,8 @@
     "reducedMotion": {"type": "boolean", "check": "bool", "origin": "device", "optional": true, "doc": "The system asks for reduced motion; `motion-reduce:`/`motion-safe:` follow it."},
     "highContrast": {"type": "boolean", "check": "bool", "origin": "device", "optional": true, "doc": "The system asks for increased contrast; the palette resolves its high-contrast variant."},
     "animatorDurationScale": {"type": "number", "check": "range", "range": [0, 10], "origin": "device", "optional": true, "doc": "The platform's animation duration multiplier (0..10, default 1); 0 also sets `reducedMotion`."},
+    "hourCycle": {"type": "\"h12\" | \"h23\"", "check": "enum", "values": ["h12", "h23"], "origin": "device", "optional": true, "doc": "12- or 24-hour clock: the user's system setting, else the custom of `displayLanguage`."},
+    "firstWeekday": {"type": "number", "check": "range", "range": [1, 7], "origin": "device", "optional": true, "doc": "The first day of the week, 1 = Sunday to 7 = Saturday: the user's system setting, else the custom of `displayLanguage`."},
     "direction": {"type": "\"ltr\" | \"rtl\"", "check": "none", "origin": "session", "doc": "Inline direction derived from `displayLanguage`."},
     "canDock": {"type": "boolean", "check": "bool", "origin": "push", "doc": "Whether the window can dock an `as: 'aside'` beside the main; false until the host reports it."},
     "renderer": {"type": "Readonly<{ fallback: \"driver\" | null }>", "check": "renderer", "origin": "device", "optional": true, "absent": true, "doc": "`fallback: \"driver\"` when this device's GPU driver failed and pages render on the CPU."},
@@ -488,6 +495,8 @@
     "overflowX": {"type": "\"auto\"", "group": "scroll", "lower": "scroll-axis", "wire": "scrollAxis", "css": "overflow-x"},
     "overflowY": {"type": "\"auto\"", "group": "scroll", "lower": "scroll-axis", "wire": "scrollAxis", "css": "overflow-y"},
     "overscrollBehavior": {"type": "\"auto\" | \"contain\" | \"none\"", "group": "overscroll", "lower": "option", "wire": "overscroll", "css": ["overscroll-behavior", "overscroll-behavior-x", "overscroll-behavior-y"]},
+    "scrollSnapType": {"type": "\"none\" | \"x\" | \"y\"", "group": "overscroll", "lower": "snap-type", "wire": "scrollSnap", "css": "scroll-snap-type"},
+    "scrollSnapAlign": {"type": "\"none\" | \"start\" | \"center\" | \"end\"", "group": "box", "lower": "option", "wire": "snapAlign", "css": "scroll-snap-align"},
     "placeholderColor": {"type": "string", "group": "editor", "lower": "color", "wire": "placeholderColor", "paint": true},
     "objectFit": {"type": "\"cover\" | \"contain\" | \"fill\"", "group": "media", "lower": "fit", "wire": "imageFit", "css": "object-fit"},
     "objectPosition": {"type": "string", "group": "imagePlacement", "lower": "object-position", "wire": "imagePosition", "css": "object-position"}

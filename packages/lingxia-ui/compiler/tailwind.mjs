@@ -557,6 +557,12 @@ function longhand(prop, value) {
       if (!/^-?\d+$/.test(value)) unsupported(`order: ${value}`);
       return Number(value);
     }
+    case 'snap-type': {
+      // Every snap is mandatory natively: the strictness Tailwind appends is dropped.
+      const axis = value.trim().split(/\s+/)[0];
+      if (!keywords[key]?.includes(axis)) unsupported(`${prop}: ${value}`);
+      return axis;
+    }
     case 'line-clamp':
       if (!/^\d+$/.test(value)) unsupported(`line clamp: ${value}`);
       return Number(value);
@@ -894,6 +900,7 @@ function inert(name) {
     [/^text-shadow/, 'text shadows (not drawn; use a contrasting text-* color)'],
     [/^mask/, 'masks (not drawn; use rounded-* with overflow-hidden, or a bg-linear-* overlay)'],
     [/^transform/, 'transform (translate-*, rotate-* and scale-* apply without it; remove it)'],
+    [/^snap-proximity$/, 'proximity snapping (snap points here are always mandatory; drop snap-proximity)'],
   ];
   return families.find(([test]) => test.test(base))?.[1] ?? `${base} (it sets nothing the native renderer draws)`;
 }
@@ -927,9 +934,10 @@ export async function compileUtilities(candidates, theme = '', { literalColors: 
   // An empty `@utility` names a class the theme keeps for its web build (a density scope, a
   // focus marker); it lowers to nothing instead of an unknown class.
   // Tailwind's `group`/`peer` markers carry no style either.
-  const markers = new Set(['group', 'peer']);
+  // `snap-mandatory` names what every snap already is.
+  const markers = new Set(['group', 'peer', 'snap-mandatory']);
   tokens.walkAtRules('utility', rule => { if (!rule.nodes?.some(node => node.type === 'decl')) { markers.add(rule.params); rule.remove(); } });
-  const compiler = await compilerFor(markers.size > 2 || converted ? tokens.toString() : theme);
+  const compiler = await compilerFor(markers.size > 3 || converted ? tokens.toString() : theme);
   const root = postcss.parse(compiler.build([...candidates]));
   const palettes = { light: Object.create(null), dark: Object.create(null) }, rules = [];
   root.walkAtRules('property', rule => {
@@ -945,7 +953,7 @@ export async function compileUtilities(candidates, theme = '', { literalColors: 
   literalColors = literal;
   try { root.walkRules(rule => {
     const target = selectorTarget(rule.selector);
-    if (!target || !candidates.has(target.name)) return;
+    if (!target || !candidates.has(target.name) || markers.has(target.name)) return;
     const { name } = target;
     try {
       if (target.error) unsupported(target.error);

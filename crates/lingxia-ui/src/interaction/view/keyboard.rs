@@ -13,6 +13,10 @@ pub enum Key {
     Activate,
     /// Dismisses what the View raised over the page (Logic's modal, action sheet or toast).
     Escape,
+    PageUp,
+    PageDown,
+    /// A printable character: digits into the time picker, letters to a select's type-ahead.
+    Char(char),
 }
 
 impl ViewInteraction {
@@ -156,6 +160,25 @@ impl ViewInteraction {
             return (false, Vec::new());
         };
         self.keyboard_used = true;
+        // The View's picker takes the keys while it is open: arrows, pages, Return, Escape, digits.
+        if frame.nodes.iter().any(|node| node.test_id == "lx-picker") {
+            let name = match key {
+                Key::Up => Some("ArrowUp".to_owned()),
+                Key::Down => Some("ArrowDown".to_owned()),
+                Key::Left => Some("ArrowLeft".to_owned()),
+                Key::Right => Some("ArrowRight".to_owned()),
+                Key::PageUp => Some("PageUp".to_owned()),
+                Key::PageDown => Some("PageDown".to_owned()),
+                Key::Activate => Some("Enter".to_owned()),
+                Key::Escape => Some("Escape".to_owned()),
+                Key::Char(character) if !character.is_control() => Some(character.to_string()),
+                _ => None,
+            };
+            if let Some(key) = name {
+                self.dispatches.push(super::Dispatch::PickerKey { key });
+                return (true, vec![Effect::Dispatch]);
+            }
+        }
         if key == Key::Escape {
             // Consumed only while a dialog is open; otherwise the platform may use it too.
             self.dispatches.push(super::Dispatch::Escape);

@@ -184,6 +184,10 @@ fn projected_roles_match_the_schema_vocabulary() {
         Role::Dialog,
         Role::Alert,
         Role::Status,
+        Role::Grid,
+        Role::GridCell,
+        Role::ListBox,
+        Role::Option,
     ]
     .iter()
     .map(|role| {

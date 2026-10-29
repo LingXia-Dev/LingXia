@@ -12,6 +12,8 @@ pub struct ScrollModel {
     offsets: HashMap<String, f32>,
     regions: HashMap<String, ScrollSnapshot>,
     revision: u64,
+    /// Snapping regions a finger, wheel or fling moved since the last settle.
+    moved_snaps: std::collections::BTreeSet<String>,
 }
 
 impl ScrollModel {
@@ -104,6 +106,23 @@ impl ScrollModel {
         true
     }
 
+    /// Snapping regions moved by input since the last call.
+    pub fn take_moved_snaps(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.moved_snaps).into_iter().collect()
+    }
+
+    /// The snap point nearest region `id`'s offset, when it snaps and is not on one.
+    pub fn snap_target(&self, id: &str) -> Option<f32> {
+        let region = self.regions.get(id)?;
+        let offset = self.offset(id);
+        let nearest = region
+            .snap
+            .iter()
+            .copied()
+            .min_by(|a, b| (a - offset).abs().total_cmp(&(b - offset).abs()))?;
+        ((nearest - offset).abs() > 0.25).then_some(nearest)
+    }
+
     /// Move a region, handing remaining distance to ancestors on the same axis.
     pub fn scroll_by(&mut self, id: &str, delta: f32) -> bool {
         self.move_by(id, delta, false)
@@ -136,6 +155,9 @@ impl ScrollModel {
                 let before = self.offset(&current);
                 let after = (before + sign * delta).clamp(0.0, region.max_offset.max(0.0));
                 if after != before {
+                    if !region.snap.is_empty() {
+                        self.moved_snaps.insert(current.clone());
+                    }
                     self.offsets.insert(current, after);
                     changed = true;
                 }

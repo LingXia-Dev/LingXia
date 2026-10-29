@@ -41,7 +41,7 @@ fn a_select_opens_its_picker_and_takes_choices_from_the_picker_and_arrows() {
     let index = display.nodes.iter().position(|n| n.test_id == "s").unwrap();
     let node = &display.nodes[index];
     assert_eq!(node.text, "Monthly");
-    // Activation opens the platform picker instead of dispatching a click.
+    // Activation opens the View's picker instead of dispatching a click.
     let mut interaction = present(&display);
     let id = interaction.semantics().unwrap().ids.id(index).unwrap();
     let (handled, effects) = interaction.accessibility(
@@ -49,7 +49,11 @@ fn a_select_opens_its_picker_and_takes_choices_from_the_picker_and_arrows() {
         crate::interaction::view::AccessibilityAction::Click,
         PageTicket::new(1),
     );
-    assert!(handled && effects.contains(&Effect::OpenPicker { node: index }));
+    assert!(handled && effects.contains(&Effect::Dispatch));
+    assert!(matches!(
+        interaction.take_dispatch().as_slice(),
+        [crate::interaction::view::Dispatch::OpenSelect { .. }]
+    ));
     let projected = interaction.semantics().unwrap().node(id).unwrap();
     assert_eq!(
         (
