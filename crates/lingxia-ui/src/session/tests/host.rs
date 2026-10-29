@@ -2922,7 +2922,7 @@ fn every_message_adapters_receive_matches_the_frame_schema() {
         h('plot',{'data-testid':'chart',kind:'pie',values:[1,2,3],'aria-label':'Share',onSelect(){},style:{height:80}}),
         h('vector',{'data-testid':'icon','aria-hidden':true,paths:[{d:'M0 0H10V10Z'}],style:{width:10,height:10}}),
         h('image',{'data-testid':'photo',src:'a.png',alt:'Photo',style:{width:20,height:20,borderRadius:4}}),
-        h('text',{},'Read the ',h('link',{onPress(){}},'terms')),
+        h('text',{},'Read the ',h('link',{onClick(){}},'terms')),
         h('button',{'data-testid':'go',onClick(){}},h('row',{},h('text',{},'Go'),h('checkbox',{'data-testid':'remember',bind:on,'aria-label':'Remember'}))),
         h('scroll',{'data-testid':'inner',style:{height:20,overflowX:'auto'}},h('row',{style:{width:900,height:20}})))
     }";

@@ -138,9 +138,9 @@ mod tests {
                 })
                 .unwrap()
         };
-        let alone = decoration("h('text',{},h('link',{onPress(){}},'terms'))");
+        let alone = decoration("h('text',{},h('link',{onClick(){}},'terms'))");
         assert_eq!(
-            decoration("h('text',{},'Read the ',h('link',{onPress(){}},'terms'))"),
+            decoration("h('text',{},'Read the ',h('link',{onClick(){}},'terms'))"),
             alone
         );
         let strike =

@@ -120,7 +120,7 @@ export function audit(source, filename, { literalColors = false } = {}) {
         }
         const key = prop.name.getText(file);
         if (!acceptsProp(tag, key))
-          report(prop, `UI_PROP: ${key} is not a property of <${tag}>${key === 'onClick' && acceptsProp(tag, 'onPress') ? '; use onPress' : ''}`);
+          report(prop, `UI_PROP: ${key} is not a property of <${tag}>`);
         const series = tag === 'plot' && key === 'colors' && prop.initializer && ts.isJsxExpression(prop.initializer) && prop.initializer.expression;
         if (!literalColors && series && ts.isArrayLiteralExpression(series)) for (const item of series.elements) {
           const problem = ts.isStringLiteralLike(item) && seriesProblem(item.text);

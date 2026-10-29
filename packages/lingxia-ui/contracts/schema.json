@@ -516,7 +516,7 @@
     "plot": {"wire": "plot", "children": "none", "style": ["box"], "props": {"kind": {"type": "\"bar\" | \"line\" | \"pie\"", "required": true}, "values": {"type": "readonly number[]", "required": true}, "colors": {"type": "readonly string[]", "required": true}, "aria-label": {"type": "string", "required": true}, "smooth": {"type": "boolean"}, "area": {"type": "boolean"}, "selectedIndex": {"type": "number"}, "domainMin": {"type": "number"}, "domainMax": {"type": "number"}, "onSelect": {"type": "(index: number) => void"}, "pieLayout": {"type": "PieLayout"}, "markerEmphasisScale": {"type": "number"}}},
     "vector": {"wire": "vector", "children": "none", "style": ["box", "padding", "accent", "media"], "props": {"paths": {"type": "ReadonlyArray<VectorPath>", "required": true}, "gradients": {"type": "Readonly<Record<string, VectorGradient>>"}, "viewBox": {"type": "readonly [number, number, number, number]"}}},
     "span": {"wire": "span", "children": "runs", "style": ["run"], "props": {}},
-    "link": {"wire": "link", "children": "runs", "style": ["run"], "props": {"onPress": {"type": "() => void"}, "aria-label": {"type": "string"}, "disabled": {"type": "boolean"}}},
+    "link": {"wire": "link", "children": "runs", "style": ["run"], "props": {"onClick": {"type": "() => void"}, "aria-label": {"type": "string"}, "disabled": {"type": "boolean"}}},
     "select": {"wire": "select", "children": "none", "style": ["box", "padding", "text"], "binding": {"type": "string", "event": "onChange"}, "props": {"options": {"type": "readonly RadioOption[]", "required": true}, "placeholder": {"type": "string"}, "aria-label": {"type": "string"}, "disabled": {"type": "boolean"}}}
   }
 }

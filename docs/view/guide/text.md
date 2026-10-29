@@ -11,7 +11,7 @@ export function render() {
       <text className="text-sm leading-relaxed">
         Plans renew <span className="font-semibold">monthly</span> unless you{' '}
         <span className="font-mono bg-surface-sunken">cancel</span> first. Read the{' '}
-        <link onPress={() => opened.set(opened.value + 1)} className="active:text-accent">terms</link>
+        <link onClick={() => opened.set(opened.value + 1)} className="active:text-accent">terms</link>
         {' '}before you continue.
       </text>
       <row className="justify-between">
@@ -111,12 +111,12 @@ export function render() {
 
 ## Links
 
-`<link onPress>` is a pressable run: blue (`#365cdd`) and underlined unless you style it, restyled by
+`<link onClick>` is a pressable run: blue (`#365cdd`) and underlined unless you style it, restyled by
 `active:` while pressed, and exposed to accessibility as a link named by its text (or
 `aria-label`). Only the link's own line pieces respond to taps. `disabled` removes its handler.
 A link may contain `<span>` runs (`<link>Read the <span className="font-semibold">terms</span></link>`); the
 whole link is one target and one accessible name. Links do not nest. There is no `href`; navigate in
-`onPress` through a Logic action.
+`onClick` through a Logic action.
 
 ## Selection
 

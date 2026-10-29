@@ -284,7 +284,7 @@ Children: text and `<span>` runs; links do not nest. Only inside `<text>`. Not a
 
 | Prop | Type | Required |
 | --- | --- | --- |
-| `onPress` | `() => void` |  |
+| `onClick` | `() => void` |  |
 | `aria-label` | `string` |  |
 | `disabled` | `boolean` |  |
 

@@ -306,7 +306,7 @@ test('text flattens nested spans and links into styled runs under one paragraph'
   let pressed = 0;
   const tree = rendered(() => h('text', { style: { fontSize: 16 } }, 'Hello ',
     h('span', { style: { fontWeight: 700, color: 'danger' } }, 'bold ', h('span', { style: { fontStyle: 'italic' } }, 'both'), ' tail'),
-    ' and ', h('link', { onPress: () => pressed++, 'aria-label': 'Terms' }, 'terms')));
+    ' and ', h('link', { onClick: () => pressed++, 'aria-label': 'Terms' }, 'terms')));
   assert.equal(tree.text, '');
   assert.deepEqual(tree.children.map(child => [child.tag, child.text]),
     [['span', 'Hello '], ['span', 'bold '], ['span', 'both'], ['span', ' tail'], ['span', ' and '], ['link', 'terms']]);
@@ -315,9 +315,9 @@ test('text flattens nested spans and links into styled runs under one paragraph'
   assert.equal(typeof tree.children[5].props.onClick, 'number');
   assert.equal(rendered(() => h('text', {}, 'plain ', 'text')).text, 'plain text');
   throwsOn(() => h('column', {}, h('span', {}, 'loose')), /UI_TEXT: <span> belongs inside <text>/);
-  assert.equal(rendered(() => h('button', {}, h('text', {}, 'Read ', h('link', { onPress() {} }, 'terms')))).tag, 'button');
+  assert.equal(rendered(() => h('button', {}, h('text', {}, 'Read ', h('link', { onClick() {} }, 'terms')))).tag, 'button');
   throwsOn(() => h('text', {}, h('link', {}, h('link', {}, 'x'))), /UI_TEXT: links do not nest/);
-  const pieces = rendered(() => h('text', {}, h('link', { onPress() {}, 'aria-label': 'Terms' }, 'the ', h('span', { style: { fontWeight: 700 } }, 'terms')))).children;
+  const pieces = rendered(() => h('text', {}, h('link', { onClick() {}, 'aria-label': 'Terms' }, 'the ', h('span', { style: { fontWeight: 700 } }, 'terms')))).children;
   assert.deepEqual(pieces.map(piece => [piece.tag, piece.text, piece.props.fontWeight, piece.props.accessibilityLabel]), [['link', 'the ', undefined, 'Terms'], ['link', 'terms', 700, undefined]]);
   assert.equal(pieces[0].props.onClick, pieces[1].props.onClick);
   throwsOn(() => h('text', {}, h('span', { style: { padding: 4 } }, 'x')), /UI_STYLE: padding is not supported on <span>/);

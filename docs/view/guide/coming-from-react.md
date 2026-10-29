@@ -41,7 +41,7 @@ no React and no DOM. This page lists what changes.
 | `div` | `<view>` / `<column>`, `<row>`, `<grid>`, `<stack>` |
 | `p`, `h1`–`h6`, `span` with text | `<text>` (headings add `role="heading" headingLevel`) |
 | inline `span`, `strong`, `em`, `code` | `<span>` inside `<text>` |
-| `a` | `<link onPress>` inside `<text>`, or a `<button>` |
+| `a` | `<link onClick>` inside `<text>`, or a `<button>` |
 | `img` | `<image>` |
 | `svg`, icon components | `<vector paths>` |
 | `ul`/`ol`/`li` | `<column role="list">` / `role="listitem"` |
@@ -81,7 +81,7 @@ A render that throws keeps the previous frame on screen ([Diagnostics](diagnosti
 
 ## Events
 
-- Only controls have handlers: `onClick` on `<button>`, `onPress` on `<link>`, `onChange`/`onInput` on
+- Only controls have handlers: `onClick` on `<button>` and `<link>`, `onChange`/`onInput` on
   controls. There are no `onClick` handlers on containers; wrap the content in a `<button>`.
 - Handlers receive values (`onInput(text)`, `onChange(checked)`), not event objects. There is no bubbling,
   `preventDefault` or `stopPropagation`.

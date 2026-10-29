@@ -246,9 +246,9 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   switch (tag) {
     case 'link':
       check.label(props.accessibilityLabel, 'UI_TEXT');
-      if (props.onPress !== undefined && typeof props.onPress !== 'function') throw Error('UI_PROP: onPress');
+      if (props.onClick !== undefined && typeof props.onClick !== 'function') throw Error('UI_PROP: onClick');
       if (props.accessibilityLabel !== undefined) wire('accessibilityLabel', props.accessibilityLabel);
-      if (props.onPress && !disabled) on('onClick', props.onPress);
+      if (props.onClick && !disabled) on('onClick', props.onClick);
       break;
     case 'button':
       check.label(props.accessibilityLabel, 'UI_BUTTON');

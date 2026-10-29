@@ -32,7 +32,7 @@ export function render() {
 
 ## What responds to touch
 
-Only controls receive input: `<button onClick>`, `<link onPress>`, `<checkbox>`, `<switch>`, `<radio>`,
+Only controls receive input: `<button onClick>`, `<link onClick>`, `<checkbox>`, `<switch>`, `<radio>`,
 the editors, `<slider>`, and `<plot onSelect>`. Containers, text and images have no `onClick`
 (`UI_PROP`). To make a row, card or image tappable, make it the content of a `<button>`.
 
@@ -105,7 +105,7 @@ The host recognizes the gestures; the View receives their outcome:
 
 | Gesture | Outcome |
 | --- | --- |
-| tap | the control's handler (`onClick`, `onPress`, `onChange`, focus for editors) |
+| tap | the control's handler (`onClick`, `onChange`, focus for editors) |
 | drag, fling | scrolls the innermost `<scroll>`/`<list>` on that axis; drags a `<slider>` |
 | long press | selects text where `select-text` is set; editors show their text menu |
 | tap on a `<plot>` | `onSelect(index)`, or `-1` when it clears the selection |

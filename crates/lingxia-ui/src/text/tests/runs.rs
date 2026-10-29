@@ -22,7 +22,7 @@ fn node<'a>(display: &'a crate::DisplayList, id: &str) -> &'a crate::scene::node
         .unwrap_or_else(|| panic!("{id}"))
 }
 
-const RICH: &str = "h('text',{'data-testid':'p',style:{fontSize:16,color:'#000000'}},'Plain ',h('span',{style:{color:'#ff0000',fontWeight:700,backgroundColor:'#ffff00'}},'red bold'),' and ',h('link',{'data-testid':'l',onPress(){}},'a link'))";
+const RICH: &str = "h('text',{'data-testid':'p',style:{fontSize:16,color:'#000000'}},'Plain ',h('span',{style:{color:'#ff0000',fontWeight:700,backgroundColor:'#ffff00'}},'red bold'),' and ',h('link',{'data-testid':'l',onClick(){}},'a link'))";
 
 #[test]
 fn runs_share_one_paragraph_with_their_own_paint() {
@@ -77,7 +77,7 @@ fn runs_share_one_paragraph_with_their_own_paint() {
 #[test]
 fn wrapped_links_hit_only_their_line_pieces_and_project_as_links() {
     let display = layout(
-        "h('text',{style:{width:120,fontSize:16}},'Read the ',h('link',{'data-testid':'l',onPress(){}},'terms of service and privacy policy'),' now')",
+        "h('text',{style:{width:120,fontSize:16}},'Read the ',h('link',{'data-testid':'l',onClick(){}},'terms of service and privacy policy'),' now')",
         120,
     );
     let link = node(&display, "l");
@@ -182,7 +182,7 @@ fn run_admission_and_budgets_are_native() {
 #[test]
 fn pressed_links_repaint_their_run_through_the_pressed_delta() {
     let source = crate::session::tests::source(
-        "function render(){return h('text',{},'See ',h('link',{'data-testid':'l',onPress(){},className:'active:text-red-500',style:{color:'#0000ff'}},'more'))}",
+        "function render(){return h('text',{},'See ',h('link',{'data-testid':'l',onClick(){},className:'active:text-red-500',style:{color:'#0000ff'}},'more'))}",
     )
     .replace(
         "__lingxiaPublish(render);",
@@ -213,7 +213,7 @@ fn pressed_links_repaint_their_run_through_the_pressed_delta() {
 #[test]
 fn styled_links_are_one_target_and_one_semantic_link() {
     let display = layout(
-        "h('text',{style:{fontSize:16}},'Read ',h('link',{'data-testid':'l',onPress(){}},'the ',h('span',{style:{fontWeight:700}},'terms'),' now'))",
+        "h('text',{style:{fontSize:16}},'Read ',h('link',{'data-testid':'l',onClick(){}},'the ',h('span',{style:{fontWeight:700}},'terms'),' now'))",
         400,
     );
     let links: Vec<_> = display.nodes.iter().filter(|n| n.tag == "link").collect();

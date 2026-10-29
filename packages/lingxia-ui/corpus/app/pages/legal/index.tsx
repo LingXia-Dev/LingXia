@@ -19,7 +19,7 @@ export function render({ data }: View<object, { updated: string; blocks: Block[]
               <text role="heading" headingLevel={2} className="text-base font-semibold">{index + 1}. {block.heading}</text>
               <text className="text-sm leading-relaxed select-text">
                 {block.body} <span className="font-semibold">{block.term}</span> means the service as described in{' '}
-                <link onPress={() => {}} className="text-accent underline">section {index + 2}</link>, including{' '}
+                <link onClick={() => {}} className="text-accent underline">section {index + 2}</link>, including{' '}
                 <span className="font-mono text-xs bg-surface-sunken">api.example.com</span> and its <span className="italic">successors</span>.
               </text>
               <text className="text-xs text-faint line-clamp-2">{block.body.repeat(3)}</text>

@@ -22,7 +22,7 @@ fn interaction(render: &str) -> ViewInteraction {
     interaction
 }
 
-const PAGE: &str = "h('column',{},h('text',{'data-testid':'title',role:'heading',headingLevel:1},'Bills'),h('button',{'data-testid':'pay',onClick(){}},'Pay now'),h('button',{'data-testid':'off',disabled:true},'Later'),h('input',{'data-testid':'amount','aria-label':'Amount',value:'12'}),h('column',{'data-testid':'gone','aria-hidden':true},h('text',{},'x')),h('text',{},'Read ',h('link',{onPress(){}},'terms')))";
+const PAGE: &str = "h('column',{},h('text',{'data-testid':'title',role:'heading',headingLevel:1},'Bills'),h('button',{'data-testid':'pay',onClick(){}},'Pay now'),h('button',{'data-testid':'off',disabled:true},'Later'),h('input',{'data-testid':'amount','aria-label':'Amount',value:'12'}),h('column',{'data-testid':'gone','aria-hidden':true},h('text',{},'x')),h('text',{},'Read ',h('link',{onClick(){}},'terms')))";
 
 #[test]
 fn locators_match_test_ids_roles_names_and_tags_in_reading_order() {
@@ -140,7 +140,7 @@ fn actions_take_the_assistive_input_paths_and_refuse_disabled_targets() {
 #[test]
 fn test_ids_reach_the_projection_for_spans_and_link_pieces() {
     let i = interaction(
-        "h('text',{'data-testid':'para'},'Read ',h('span',{'data-testid':'em'},'bold'),' and ',h('link',{'data-testid':'terms',onPress(){}},'the ',h('span',{'data-testid':'inner'},'terms')))",
+        "h('text',{'data-testid':'para'},'Read ',h('span',{'data-testid':'em'},'bold'),' and ',h('link',{'data-testid':'terms',onClick(){}},'the ',h('span',{'data-testid':'inner'},'terms')))",
     );
     for id in ["para", "em", "terms", "inner"] {
         let found = i

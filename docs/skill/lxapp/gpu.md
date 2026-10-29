@@ -54,7 +54,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - Lists: `<List items getKey renderItem />`; hooks inside rows need stable keys.
 - `<vector paths gradients>`: paths take SVG `transform`, caps, joins, dash offset and
   `fill`/`stroke: 'url(#id)'` naming a `gradients` entry (linear, radial or conic, ≤8).
-- Rich text: `<text>Read <span className="font-bold">this</span> or <link onPress={go}>that</link></text>`;
+- Rich text: `<text>Read <span className="font-bold">this</span> or <link onClick={go}>that</link></text>`;
   runs take text paint only; links are accent + underline by default. `select-text` lets users
   long-press to select the nearest word and copy; there a long-press on a link selects, elsewhere it presses.
 - Semantics: `role="heading" headingLevel={2}`, `list`/`listitem`, `dialog`, `alert`/`status`
