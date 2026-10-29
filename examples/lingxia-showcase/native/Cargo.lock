@@ -1285,7 +1285,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1888,7 +1888,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.5.10",
+ "socket2 0.6.5",
  "tokio",
  "tower-service",
  "tracing",
@@ -3242,7 +3242,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4067,7 +4067,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.5.10",
+ "socket2 0.6.5",
  "thiserror 2.0.20",
  "tokio",
  "tracing",
@@ -4105,9 +4105,9 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.5",
  "tracing",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4481,9 +4481,9 @@ dependencies = [
 
 [[package]]
 name = "rong"
-version = "0.6.3"
+version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e166f75145f323c31648357eecf7a0ac4d7797c41e2d61f1e0d849036aa52d0"
+checksum = "ae52467b2c071fcbda89100e785ce91ebe8a54fa395ad2c2fab5046a71f3d3e6"
 dependencies = [
  "futures",
  "rong_arkjs",
@@ -4585,9 +4585,9 @@ dependencies = [
 
 [[package]]
 name = "rong_core"
-version = "0.6.4"
+version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a7c07dc68b95aa3b53954c42731f0366d757299e9826494aed0563b929c4842c"
+checksum = "6be414b5bdeae0ab3858ee13c3c151cf7164b0f34f021a10bc0f3ef63d96517b"
 dependencies = [
  "bytes",
  "futures",
@@ -4769,9 +4769,9 @@ dependencies = [
 
 [[package]]
 name = "rong_quickjs"
-version = "0.6.2"
+version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07f53911067ceb871a69c662688d1a9932b146269f2a7b99378edae1f1d73db3"
+checksum = "9c45e991c05ae3933a4069d8964f9f07cb8e0cadab059dd8ef42c0923d28b109"
 dependencies = [
  "libc",
  "rong_core",
@@ -4804,9 +4804,9 @@ dependencies = [
 
 [[package]]
 name = "rong_rt"
-version = "0.6.3"
+version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8841f978944b057e977d125d41ae010262ece8e0de822fbf6424ba06c792453"
+checksum = "187545723cc0308b8c84b082f8c92a1a08688060415d8db3866393d7a43f88f8"
 dependencies = [
  "bytes",
  "futures",
@@ -5023,7 +5023,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5658,10 +5658,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6384,7 +6384,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
