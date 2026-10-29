@@ -119,9 +119,18 @@ impl ViewInteraction {
         snapshot.focus_style.then(|| snapshot.identity.clone())
     }
 
-    /// Automation: scroll a list to an off-screen row's offset.
+    /// Automation: scroll a list to an off-screen row's offset, and the list itself on screen;
+    /// a list below the fold mounts no rows.
     pub fn scroll_list_to(&mut self, id: &str, offset: f32) -> bool {
-        self.scroll.scroll_to(id, offset)
+        let moved = self.scroll.scroll_to(id, offset);
+        let Some(frame) = self.frame.clone() else {
+            return moved;
+        };
+        let list = frame
+            .nodes
+            .iter()
+            .find(|node| node.scroll.as_ref().is_some_and(|scroll| scroll.id == id));
+        list.is_some_and(|list| self.scroll.reveal(&frame, list)) || moved
     }
 
     pub fn frame(&self) -> Option<&Arc<PresentedFrame>> {

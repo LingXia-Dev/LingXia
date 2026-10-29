@@ -4116,3 +4116,62 @@ fn a_pushed_pack_follows_increased_contrast_when_it_changes() {
         "in the high-contrast look"
     );
 }
+
+#[test]
+fn a_list_row_below_the_fold_is_revealed_through_the_page_scroll_and_clicked() {
+    let worker = ViewWorker::spawn("test-fold-rows").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){const query=useLocal('query',''),picked=useLocal('picked','');const rows=Array.from({length:40},(_,i)=>({id:`row-${i}`,label:`Row ${i}`})).filter(r=>r.label.includes(query.value));return h('scroll',{},h('search',{'data-testid':'filter',bind:query,'aria-label':'Filter'}),h('view',{style:{height:3000}}),h(List,{'data-testid':'list',style:{height:192},items:rows,getKey:r=>r.id,renderItem:r=>h('button',{'data-testid':r.id,onClick:()=>picked.set(r.label),style:{height:37}},r.label)}),h('text',{'data-testid':'picked'},`picked=${picked.value}`))}",
+        ),
+        false,
+    );
+    host.adapter()
+        .environment
+        .lock()
+        .unwrap()
+        .as_mut()
+        .unwrap()
+        .value["reducedMotion"] = serde_json::json!(true);
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let act = |css: &str, action: serde_json::Value| {
+        let result =
+            host.automation_request(&serde_json::json!({"op":"act","css":css,"action":action}));
+        platform.settle(&[&host]);
+        result
+    };
+    let query = |css: &str| {
+        host.automation_request(&serde_json::json!({"op":"query","css":css}))
+            .unwrap()
+    };
+    act(
+        "[data-testid=\"filter\"]",
+        serde_json::json!({"kind":"fill","text":"Row 3"}),
+    )
+    .unwrap();
+    host.request_frame();
+    platform.settle(&[&host]);
+    let row = "[data-testid=\"row-31\"]";
+    // A locator's click as the test client drives it: reveal until the row draws on screen.
+    let mut trace = Vec::new();
+    let mut clicked = false;
+    for _ in 0..8 {
+        let found = query(row);
+        trace.push(found.to_string());
+        if found["exists"] == true && found["inViewport"] == true && found["virtual"].is_null() {
+            act(row, serde_json::json!({"kind":"click"})).unwrap();
+            clicked = true;
+            break;
+        }
+        let scrolled = act(row, serde_json::json!({"kind":"scroll"}));
+        trace.push(format!("scroll: {scrolled:?}"));
+        platform.settle(&[&host]);
+    }
+    assert!(clicked, "row 31 never drew: {trace:#?}");
+    host.request_frame();
+    platform.settle(&[&host]);
+    assert_eq!(query("[data-testid=\"picked\"]")["text"], "picked=Row 31");
+}
