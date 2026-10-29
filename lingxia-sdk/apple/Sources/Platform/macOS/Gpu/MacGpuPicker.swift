@@ -43,13 +43,11 @@ extension GpuPageView {
         }
     }
 
-    /// A connected editor whose value comes from a picker shows it in place of typing.
+    /// A connected editor whose value comes from a picker shows it in place of typing: a
+    /// popover anchored to the field, on the side with room inside the window.
     func showValuePicker() {
         guard let editor = ime.editor, let spec = ime.ime?.picker, let node = ime.node else { return }
-        let picker = NSDatePicker()
-        picker.datePickerStyle = .clockAndCalendar
         let time = spec.kind == GpuFramePickerKind.time.rawValue
-        picker.datePickerElements = time ? .hourMinute : .yearMonthDay
         let calendar = Calendar(identifier: .gregorian)
         func date(_ parts: [UInt32]?) -> Date? {
             guard let parts, parts.count == 3 else { return nil }
@@ -62,22 +60,33 @@ extension GpuPageView {
             }
             return calendar.date(from: components)
         }
+        let picker = GpuDatePicker()
+        picker.datePickerStyle = time ? .textFieldAndStepper : .clockAndCalendar
+        picker.datePickerElements = time ? .hourMinute : .yearMonthDay
+        picker.isBezeled = false
+        picker.drawsBackground = false
         picker.calendar = calendar
         picker.dateValue = date(spec.seed) ?? Date()
         picker.minDate = date(spec.minParts)
         picker.maxDate = date(spec.maxParts)
         picker.sizeToFit()
 
+        let inset: CGFloat = 10
+        let size = picker.fittingSize
+        let content = GpuValuePickerView(frame: NSRect(x: 0, y: 0, width: size.width + 2 * inset, height: size.height + 2 * inset))
+        picker.frame = NSRect(origin: NSPoint(x: inset, y: inset), size: size)
+        content.addSubview(picker)
         let controller = NSViewController()
-        let done = NSButton(title: NSLocalizedString("Done", comment: ""), target: nil, action: nil)
-        done.keyEquivalent = "\r"
-        let stack = NSStackView(views: [picker, done])
-        stack.orientation = .vertical
-        stack.edgeInsets = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
-        controller.view = stack
+        controller.view = content
+
         let popover = NSPopover()
         popover.contentViewController = controller
+        popover.contentSize = content.frame.size
         popover.behavior = .transient
+        popover.animates = false
+        if let dark = chrome?.dark {
+            popover.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        }
         let delegate = GpuValuePickerDelegate(popover: popover) { [weak self, weak editor] chosen in
             guard let self else { return }
             self.valuePicker = nil
@@ -88,15 +97,53 @@ extension GpuPageView {
                 ? [UInt32(parts.hour ?? 0), UInt32(parts.minute ?? 0), 0]
                 : [UInt32(parts.year ?? 0), UInt32(parts.month ?? 1), UInt32(parts.day ?? 1)])
         }
-        done.target = delegate
-        done.action = #selector(GpuValuePickerDelegate.confirm)
+        content.commit = { [weak delegate] in delegate?.close(choosing: true) }
+        picker.commit = content.commit
+        content.cancel = { [weak delegate] in delegate?.close(choosing: false) }
         popover.delegate = delegate
         valuePicker = delegate
+
+        let field = rect(node)
+        let below = bounds.maxY - field.maxY
+        // This view is flipped: maxY is the field's lower edge.
+        let edge: NSRectEdge = below >= content.frame.height + 12 || below >= field.minY ? .maxY : .minY
         DispatchQueue.main.async { [weak self] in
-            guard let self, self.window != nil else { return }
-            popover.show(relativeTo: self.rect(node), of: self, preferredEdge: .maxY)
+            guard let self, self.window != nil, self.valuePicker === delegate else { return }
+            popover.show(relativeTo: field, of: self, preferredEdge: edge)
+            // Keys go to the calendar: arrows move the day, Return and Escape reach the content.
+            picker.window?.makeFirstResponder(picker)
         }
     }
+}
+
+/// The date picker keeps Return for itself; here it commits the shown value.
+private final class GpuDatePicker: NSDatePicker {
+    var commit: (() -> Void)?
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 36 || event.keyCode == 76, let commit {
+            return commit()
+        }
+        super.keyDown(with: event)
+    }
+}
+
+/// The picker popover's content: Return commits, Escape cancels.
+private final class GpuValuePickerView: NSView {
+    var commit: (() -> Void)?
+    var cancel: (() -> Void)?
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.keyCode == 36 || event.keyCode == 76 {
+            commit?()
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
+    override func insertNewline(_ sender: Any?) { commit?() }
+
+    override func cancelOperation(_ sender: Any?) { cancel?() }
 }
 
 /// Menu items' target, alive while the menu is.
@@ -107,27 +154,33 @@ private final class GpuPickerTarget: NSObject {
     @objc func choose(_ item: NSMenuItem) { chosen(item.tag) }
 }
 
-/// Reports a value picker's outcome once: confirmed, or closed without a choice.
+/// Reports a value picker's outcome once. Closing it any way but Escape keeps the shown
+/// value, as clicking away from a field keeps what was picked.
 @MainActor
 final class GpuValuePickerDelegate: NSObject, NSPopoverDelegate {
-    private weak var popover: NSPopover?
+    /// Held so editing that ends elsewhere can still close it.
+    private let popover: NSPopover
     private var outcome: ((Bool) -> Void)?
+    private var choosing = true
     init(popover: NSPopover, outcome: @escaping (Bool) -> Void) {
         self.popover = popover
         self.outcome = outcome
     }
-    @objc func confirm() {
-        finish(true)
-        popover?.close()
+    func close(choosing: Bool) {
+        self.choosing = choosing
+        popover.close()
     }
-    func dismiss() { popover?.close() }
+    /// Editing ended elsewhere: the core already knows, nothing is sent.
+    func dismiss() {
+        outcome = nil
+        popover.close()
+    }
     nonisolated func popoverDidClose(_ notification: Notification) {
-        MainActor.assumeIsolated { finish(false) }
-    }
-    private func finish(_ chosen: Bool) {
-        let outcome = self.outcome
-        self.outcome = nil
-        outcome?(chosen)
+        MainActor.assumeIsolated {
+            let outcome = self.outcome
+            self.outcome = nil
+            outcome?(choosing)
+        }
     }
 }
 #endif

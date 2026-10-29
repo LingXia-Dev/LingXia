@@ -123,7 +123,9 @@ final class GpuPageView: NSView {
     }
 
     @objc private func windowFocusChanged() {
-        gpuPageWindowFocus(token, window?.isKeyWindow ?? false)
+        // The value picker's own popover taking the keys is not the window losing focus.
+        let focused = (window?.isKeyWindow ?? false) || valuePicker != nil
+        gpuPageWindowFocus(token, focused)
         ime.updateCaret()
     }
 
@@ -310,6 +312,8 @@ final class GpuPageView: NSView {
     }
 
     override func resignFirstResponder() -> Bool {
+        // The editor's own value picker takes the keys while it stays focused.
+        guard valuePicker == nil else { return true }
         gpuPageFocus(token, false, false)
         if ime.isActive { ime.clear(blur: true) }
         return true
