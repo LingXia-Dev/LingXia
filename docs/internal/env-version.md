@@ -24,15 +24,15 @@ No compatibility aliases: `developer`/`preview`/`release` are not env names,
 spellings.
 
 YAML only overrides server and app-link hosts. Switching env must not
-rewrite any git-tracked file. A build requires a server URL for its env;
-omitting App Links for an env leaves that build without App Links.
+rewrite any git-tracked file. A server URL is optional: an env without one
+builds an app with no service server. Omitting App Links for an env leaves that build without App Links.
 
 | `lingxia.yaml` | `--env dev` | `--env prod` |
 | --- | --- | --- |
-| no server | build error | build error |
+| no server | `.dev`, no server | none, no server |
 | `lingxiaServer: "X"` | `.dev`, server=X | none, server=X |
 | `lingxiaServer: {dev:A, prod:B}` | `.dev`, server=A | none, server=B |
-| `lingxiaServer: {dev:A}` | `.dev`, server=A | build error |
+| `lingxiaServer: {dev:A}` | `.dev`, server=A | none, no server |
 | `appLinks.hosts: [H]` | hosts=`[H]` | hosts=`[H]` |
 | `appLinks.hosts: {dev:[D], prod:[R]}` | hosts=`[D]` | hosts=`[R]` |
 
