@@ -97,11 +97,11 @@ pub(crate) fn capsule_reserve_width() -> i32 {
 /// measurement, so a custom-navigation page can lay out around the pill the
 /// same way it does on iOS.
 ///
-/// Coordinate mapping mirrors `report_surface_viewport`: a fit-scaled device
-/// frame renders `fit` physical px per CSS px regardless of monitor DPI;
-/// including at 1.0 and when enlarged on a high-DPI display. Win32 window
-/// queries used here are safe from any thread, which matters because the
-/// runtime asks from the Logic executor, not the UI thread.
+/// Coordinate mapping mirrors `report_surface_viewport`: a device frame
+/// renders `fit` physical px per CSS px, and `fit` already includes the
+/// monitor DPI. Win32 window queries used here are safe from any thread,
+/// which matters because the runtime asks from the Logic executor, not the
+/// UI thread.
 pub(super) fn capsule_page_rect(content: HWND) -> Option<String> {
     let handle = hwnd_handle(content);
     let (capsule, fit) = frame_state(handle, |state| {
@@ -484,17 +484,24 @@ pub(super) fn destroy_capsule(capsule: isize) {
     }
 }
 
+/// The capsule's owning content window and the pill geometry at its current
+/// display scale. Only pointer messages need it, so other messages skip the
+/// frame-registry lock.
+fn capsule_owner_geometry(capsule: HWND) -> (HWND, CapsuleGeometry) {
+    let owner = unsafe { WindowsAndMessaging::GetWindow(capsule, WindowsAndMessaging::GW_OWNER) }
+        .unwrap_or_default();
+    let scale = content_fit_scale(hwnd_handle(owner)).unwrap_or(1.0);
+    (owner, capsule_geometry(scale))
+}
+
 unsafe extern "system" fn capsule_proc(
     hwnd: HWND,
     msg: u32,
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
-    let owner = unsafe { WindowsAndMessaging::GetWindow(hwnd, WindowsAndMessaging::GW_OWNER) }
-        .unwrap_or_default();
-    let scale = content_fit_scale(hwnd_handle(owner)).unwrap_or(1.0);
     if msg == WindowsAndMessaging::WM_NCHITTEST {
-        let geometry = capsule_geometry(scale);
+        let (_, geometry) = capsule_owner_geometry(hwnd);
         let screen_x = (lparam.0 & 0xffff) as i16 as i32;
         let screen_y = ((lparam.0 >> 16) & 0xffff) as i16 as i32;
         let mut rect = RECT::default();
@@ -517,7 +524,7 @@ unsafe extern "system" fn capsule_proc(
         return LRESULT(WindowsAndMessaging::MA_NOACTIVATE as isize);
     } else if msg == WindowsAndMessaging::WM_LBUTTONDOWN {
         let x = (lparam.0 & 0xffff) as i16 as i32;
-        let geometry = capsule_geometry(scale);
+        let (owner, geometry) = capsule_owner_geometry(hwnd);
         // The left "…" half opens the lxapp info sheet; the right circle is the
         // close button, which the caller (dev runner) maps to "quit emulator".
         if x < geometry.divider_x {
