@@ -358,7 +358,7 @@ fn gpu_page_measured(
             high_contrast,
             text_scale: (!text_scale.is_empty())
                 .then(|| text_scale.chunks_exact(2).map(|p| [p[0], p[1]]).collect()),
-            runner: false,
+            ..Default::default()
         };
         with_page(token, |page| page.measured(facts));
     }
