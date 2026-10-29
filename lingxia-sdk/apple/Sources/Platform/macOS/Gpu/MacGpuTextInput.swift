@@ -149,7 +149,11 @@ extension GpuPageView: GpuImeHost, @preconcurrency NSTextInputClient {
         return NSAttributedString(string: editor.substring(clamped))
     }
 
-    func validAttributesForMarkedText() -> [NSAttributedString.Key] { [] }
+    /// Clause segments and underlines tell input methods the page shows marked text
+    /// inline; without them some compose in a window of their own.
+    func validAttributesForMarkedText() -> [NSAttributedString.Key] {
+        [.underlineStyle, .underlineColor, .markedClauseSegment]
+    }
 
     /// The candidate window sits under the caret the core drew.
     func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
