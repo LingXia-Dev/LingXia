@@ -3209,6 +3209,8 @@ fn sync_window_layout(hwnd: HWND) {
         }
         return;
     }
+    // A frame can have been created/re-scaled during this same window message.
+    let _scale = crate::dpi::enter_window_message(hwnd);
     let Some(webtag_key) = active_webtag_key_for_window(hwnd) else {
         #[cfg(feature = "shell-chrome")]
         sync_chrome_overlays(hwnd, None);

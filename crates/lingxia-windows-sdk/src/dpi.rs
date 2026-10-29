@@ -1,9 +1,7 @@
 //! Shell chrome geometry is authored at 96 DPI; [`px`] maps it to the host
 //! window's physical pixels. The process is PerMonitorV2-aware, so every
-//! HWND coordinate is physical, and GDI text already takes its height from
-//! the DC's DPI — only the layout side needs this factor. (Text painted
-//! through a screen-compatible DC, as the layered popups do, sizes at the
-//! system DPI, which only differs on mixed-DPI setups.)
+//! HWND coordinate is physical. Text and layout must use the same factor;
+//! a screen-compatible GDI DC's DPI need not match the simulated device.
 //!
 //! WebView2 keeps raw-pixel bounds but rasterizes at the monitor scale, so a
 //! page's CSS px are logical px: any page-requested size (window content,
@@ -54,17 +52,16 @@ impl Drop for MessageScale {
 }
 
 /// Makes `root`'s DPI the chrome scale while one of its messages is handled.
-/// A simulated device keeps 1.0 — its bezel geometry is authored in physical
-/// pixels by design — and never becomes the fallback shell scale, so a
+/// A simulated device uses its display scale and never becomes the fallback shell scale, so a
 /// floating window beside it still lays out at its own monitor DPI.
 pub(crate) fn enter_window_message(root: HWND) -> MessageScale {
     let previous = MESSAGE_SCALE_MILLI.with(Cell::get);
     #[cfg(feature = "device-frame")]
-    let framed = crate::device_frame::window_has_device_frame(root.0 as isize);
+    let frame_scale = crate::device_frame::device_frame_fit_scale(root.0 as isize);
     #[cfg(not(feature = "device-frame"))]
-    let framed = false;
-    let milli = if framed {
-        1000
+    let frame_scale: Option<f64> = None;
+    let milli = if let Some(scale) = frame_scale {
+        (scale * 1000.0).round().max(1.0) as u32
     } else {
         let milli = (window_scale(root) * 1000.0).round().max(1000.0) as u32;
         SHELL_SCALE_MILLI.store(milli, Ordering::Relaxed);

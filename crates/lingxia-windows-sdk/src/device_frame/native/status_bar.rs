@@ -78,7 +78,7 @@ unsafe extern "system" fn status_bar_proc(
 /// Creates the status bar overlay.
 /// Returns `0` when the device has no status bar. Created hidden;
 /// [`reposition_status_bar`] places and shows it.
-pub(super) fn create_status_bar(content: HWND, spec: &WindowsDeviceFrame) -> isize {
+pub(super) fn create_status_bar(content: HWND, spec: &WindowsDeviceFrame, scale: f64) -> isize {
     let Some(bar) = spec
         .status_bar
         .as_ref()
@@ -116,6 +116,7 @@ pub(super) fn create_status_bar(content: HWND, spec: &WindowsDeviceFrame) -> isi
                 spec_cutout_width(spec),
                 spec.screen_corner_radius,
                 &bar,
+                scale,
             );
             hwnd_handle(window)
         }
@@ -129,7 +130,7 @@ pub(super) fn create_status_bar(content: HWND, spec: &WindowsDeviceFrame) -> isi
 /// Repaints the status bar from the (possibly updated) spec — used when the
 /// shell changes the bar's colors for a new page.
 pub(super) fn repaint_status_bar(content: HWND) {
-    let Some((handle, bar, width, cutout_width, corner_radius)) =
+    let Some((handle, bar, width, cutout_width, corner_radius, scale)) =
         frame_state(hwnd_handle(content), |state| {
             (
                 state.status_bar,
@@ -137,6 +138,7 @@ pub(super) fn repaint_status_bar(content: HWND) {
                 state.spec.screen_width,
                 spec_cutout_width(&state.spec),
                 state.spec.screen_corner_radius,
+                state.fit_scale,
             )
         })
     else {
@@ -154,6 +156,7 @@ pub(super) fn repaint_status_bar(content: HWND) {
         cutout_width,
         corner_radius,
         &bar,
+        scale,
     );
 }
 
@@ -230,6 +233,7 @@ fn paint_status_bar(
     cutout_width: i32,
     corner_radius: i32,
     bar: &WindowsDeviceFrameStatusBar,
+    scale: f64,
 ) {
     let width = width.max(1);
     let height = bar.height.max(1);
@@ -240,9 +244,9 @@ fn paint_status_bar(
     // Opaque strip fill (or fully transparent for an immersive page) + analytic
     // signal/battery glyphs on the trailing edge.
     let pixels = if bar.transparent {
-        status_bar_pixels_transparent(width, height, bar.foreground)
+        status_bar_pixels_transparent(width, height, bar.foreground, scale)
     } else {
-        status_bar_pixels(width, height, bar.foreground, bar.background)
+        status_bar_pixels(width, height, bar.foreground, bar.background, scale)
     };
     unsafe {
         let screen_dc = GetDC(None);
@@ -274,7 +278,11 @@ fn paint_status_bar(
                 if bar.transparent {
                     let has_cutout = cutout_width > 0;
                     let clock_rect = RECT {
-                        left: if has_cutout { 0 } else { SIDE_MARGIN },
+                        left: if has_cutout {
+                            0
+                        } else {
+                            (SIDE_MARGIN as f64 * scale).round() as i32
+                        },
                         top: 0,
                         right: clock_slot_right,
                         bottom: height,
@@ -287,7 +295,7 @@ fn paint_status_bar(
                         &current_time_string(),
                         clock_rect,
                         bar.foreground,
-                        (height * 5 / 16).clamp(13, 22),
+                        clock_font_height(height, scale),
                         FW_MEDIUM.0 as i32,
                         has_cutout,
                     );
@@ -298,6 +306,7 @@ fn paint_status_bar(
                         bar.foreground,
                         clock_slot_right,
                         cutout_width > 0,
+                        scale,
                     );
                     // GDI text zeroes the alpha byte of every pixel it touches;
                     // the strip is opaque, so restore full alpha across it (the
@@ -341,9 +350,14 @@ fn paint_status_bar(
     }
 }
 
-fn draw_time(dc: HDC, height: i32, color: u32, slot_right: i32, has_cutout: bool) {
+fn clock_font_height(height: i32, scale: f64) -> i32 {
+    ((height as f64 / scale * 5.0 / 16.0).clamp(13.0, 22.0) * scale).round() as i32
+}
+
+fn draw_time(dc: HDC, height: i32, color: u32, slot_right: i32, has_cutout: bool, scale: f64) {
     let time = current_time_string();
-    let font_height = -(height * 5 / 16).clamp(13, 22);
+    let side_margin = (SIDE_MARGIN as f64 * scale).round() as i32;
+    let font_height = -clock_font_height(height, scale);
     let font = unsafe {
         CreateFontW(
             font_height,
@@ -378,9 +392,9 @@ fn draw_time(dc: HDC, height: i32, color: u32, slot_right: i32, has_cutout: bool
         // a flat pre-notch status bar, so left-align the clock at the side margin
         // (matching iOS on an iPhone SE) instead of floating it mid-left.
         let x = if has_cutout {
-            ((slot_right - extent.cx) / 2).max(SIDE_MARGIN)
+            ((slot_right - extent.cx) / 2).max(side_margin)
         } else {
-            SIDE_MARGIN
+            side_margin
         };
         let _ = TextOutW(dc, x, y, chars);
         if !old_font.is_invalid() {
@@ -439,26 +453,27 @@ fn force_opaque(dib: &mut [u32]) {
 
 /// Opaque ARGB strip: `bg` fill plus the trailing signal bars + battery (in
 /// `fg`), vertically centered and inset by `SIDE_MARGIN` from the right edge.
-fn status_bar_pixels(width: i32, height: i32, fg: u32, bg: u32) -> Vec<u32> {
+fn status_bar_pixels(width: i32, height: i32, fg: u32, bg: u32, scale: f64) -> Vec<u32> {
     let bg_opaque = 0xff00_0000 | (bg & 0x00ff_ffff);
     let mut pixels = vec![bg_opaque; (width * height).max(0) as usize];
-    draw_indicators(&mut pixels, width, height, fg);
+    draw_indicators(&mut pixels, width, height, fg, scale);
     pixels
 }
 
 /// Transparent ARGB strip: no fill, just the trailing signal bars + battery in
 /// (premultiplied-opaque) `fg`. The clock is added later through a supersampled
 /// grayscale mask. Used for immersive pages so WebView content shows through.
-fn status_bar_pixels_transparent(width: i32, height: i32, fg: u32) -> Vec<u32> {
+fn status_bar_pixels_transparent(width: i32, height: i32, fg: u32, scale: f64) -> Vec<u32> {
     let mut pixels = vec![0u32; (width * height).max(0) as usize];
-    draw_indicators(&mut pixels, width, height, fg);
+    draw_indicators(&mut pixels, width, height, fg, scale);
     pixels
 }
 
 /// Fills the trailing signal bars + battery into `pixels` as premultiplied
 /// opaque `fg`, vertically centered and inset by `SIDE_MARGIN` from the right
 /// edge. Shared by the opaque and transparent strip builders.
-fn draw_indicators(pixels: &mut [u32], width: i32, height: i32, fg: u32) {
+fn draw_indicators(pixels: &mut [u32], width: i32, height: i32, fg: u32, scale: f64) {
+    let px = |value: i32| (value as f64 * scale).round() as i32;
     let fg_opaque = 0xff00_0000 | (fg & 0x00ff_ffff);
     let center_y = height / 2;
 
@@ -471,26 +486,38 @@ fn draw_indicators(pixels: &mut [u32], width: i32, height: i32, fg: u32) {
     };
 
     // Battery: rounded-ish body outline + fill + tip at the far right.
-    let body_w = 24;
-    let body_h = 12;
-    let tip_w = 2;
-    let tip_h = 5;
-    let body_right = width - SIDE_MARGIN - tip_w - 1;
+    let body_w = px(24);
+    let body_h = px(12);
+    let tip_w = px(2);
+    let tip_h = px(5);
+    let body_right = width - px(SIDE_MARGIN) - tip_w - px(1);
     let body_left = body_right - body_w;
     let body_top = center_y - body_h / 2;
     let body_bottom = body_top + body_h;
     // Outline (1px border).
-    fill(pixels, body_left, body_top, body_right, body_top + 1);
-    fill(pixels, body_left, body_bottom - 1, body_right, body_bottom);
-    fill(pixels, body_left, body_top, body_left + 1, body_bottom);
-    fill(pixels, body_right - 1, body_top, body_right, body_bottom);
+    fill(pixels, body_left, body_top, body_right, body_top + px(1));
+    fill(
+        pixels,
+        body_left,
+        body_bottom - px(1),
+        body_right,
+        body_bottom,
+    );
+    fill(pixels, body_left, body_top, body_left + px(1), body_bottom);
+    fill(
+        pixels,
+        body_right - px(1),
+        body_top,
+        body_right,
+        body_bottom,
+    );
     // Inner fill (full battery), inset 2px.
     fill(
         pixels,
-        body_left + 2,
-        body_top + 2,
-        body_right - 2,
-        body_bottom - 2,
+        body_left + px(2),
+        body_top + px(2),
+        body_right - px(2),
+        body_bottom - px(2),
     );
     // Tip.
     fill(
@@ -503,14 +530,14 @@ fn draw_indicators(pixels: &mut [u32], width: i32, height: i32, fg: u32) {
 
     // Signal: four bars of increasing height, bottom-aligned, left of battery.
     let bars = 4;
-    let bar_w = 3;
-    let bar_gap = 2;
-    let bar_max_h = 10;
-    let signal_right = body_left - 8;
+    let bar_w = px(3);
+    let bar_gap = px(2);
+    let bar_max_h = px(10);
+    let signal_right = body_left - px(8);
     let signal_left = signal_right - (bars * bar_w + (bars - 1) * bar_gap);
     let baseline = center_y + bar_max_h / 2;
     for index in 0..bars {
-        let bar_h = 3 + index * (bar_max_h - 3) / (bars - 1);
+        let bar_h = px(3) + index * (bar_max_h - px(3)) / (bars - 1);
         let x0 = signal_left + index * (bar_w + bar_gap);
         fill(pixels, x0, baseline - bar_h, x0 + bar_w, baseline);
     }

@@ -139,7 +139,8 @@ pub struct WindowsDeviceFrameInfoSheet {
     pub actions: Vec<WindowsDeviceFrameSheetAction>,
 }
 
-/// Visual description of one simulated device, in physical pixels.
+/// Visual description of one simulated device, in logical pixels.
+/// The Windows host applies monitor DPI and work-area fitting uniformly.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WindowsDeviceFrame {
     /// Screen content width.
