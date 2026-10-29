@@ -111,33 +111,3 @@ fn the_frame_carries_the_keyboard_configuration_core_decided() {
     assert_eq!(json["ime"]["hide_on_submit"], true);
     assert_eq!(json["ime"]["auto_complete"], "current-password");
 }
-
-#[test]
-fn a_picker_choice_comes_back_formatted_and_bounded_for_the_editor() {
-    let (mut page, id, token) = page("type:'date',min:'2026-01-01',max:'2026-12-31'");
-    let pick = |page: &mut ViewSession, parts: [u32; 3]| -> serde_json::Value {
-        let request =
-            serde_json::json!({"op": "pick", "identity": id, "token": token, "parts": parts});
-        serde_json::from_str(&page.input_request(&request.to_string()).unwrap()).unwrap()
-    };
-    assert_eq!(pick(&mut page, [2026, 3, 9])["value"], "2026-03-09");
-    assert_eq!(pick(&mut page, [2027, 1, 2])["value"], "2026-12-31");
-    assert!(pick(&mut page, [2026, 13, 1])["value"].is_null());
-    let stale = serde_json::json!({"op": "pick", "identity": id, "token": token + 1, "parts": [2026, 3, 9]});
-    let stale: serde_json::Value =
-        serde_json::from_str(&page.input_request(&stale.to_string()).unwrap()).unwrap();
-    assert!(
-        stale["value"].is_null(),
-        "a stale editor token picks nothing"
-    );
-    let dismissed =
-        serde_json::json!({"op": "pick", "identity": id, "token": token, "parts": null});
-    let dismissed: serde_json::Value =
-        serde_json::from_str(&page.input_request(&dismissed.to_string()).unwrap()).unwrap();
-    assert_eq!(
-        dismissed["needs_view_render"], true,
-        "dismissing the picker ends editing"
-    );
-    let display = page.layout(300, 300, 1.0).unwrap();
-    assert_eq!(display.nodes[1].input.as_ref().unwrap().edit_token, None);
-}

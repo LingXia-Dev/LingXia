@@ -1,6 +1,7 @@
 package com.lingxia.ui;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import android.view.View;
@@ -121,5 +122,16 @@ public class GpuAccessibilityRolesTest {
         JSONObject region = new JSONObject().put("role", "scroll-view").put(GpuSemantics.KEY_SCROLL,
             new JSONObject().put("offset", 0).put("max_offset", 300).put("horizontal", false));
         assertTrue(info(region).isScrollable());
+    }
+
+    /** Every role the core projects has an Android class; a new one without a mapping fails here. */
+    @Test public void everyProjectedRoleHasAnAndroidClass() throws Exception {
+        for (java.lang.reflect.Field field : GpuSemantics.class.getFields()) {
+            if (!field.getName().startsWith("ROLE_")) continue;
+            String role = (String) field.get(null);
+            assertNotNull(role, GpuAccessibility.className(role));
+        }
+        assertEquals("android.widget.CheckedTextView", GpuAccessibility.className(GpuSemantics.ROLE_OPTION));
+        assertEquals("android.widget.GridView", GpuAccessibility.className(GpuSemantics.ROLE_GRID));
     }
 }

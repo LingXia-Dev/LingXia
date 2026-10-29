@@ -54,9 +54,7 @@ public final class GpuFrame {
     public static final String INPUT_REQUEST_HIT_TEST = "hit_test";
     public static final String INPUT_REQUEST_FOCUS = "focus";
     public static final String INPUT_REQUEST_QUERY = "query";
-    public static final String INPUT_REQUEST_SELECT = "select";
     public static final String INPUT_REQUEST_BLUR = "blur";
-    public static final String INPUT_REQUEST_PICK = "pick";
     public static final String INPUT_REQUEST_EDIT = "edit";
     public static final String INPUT_EDIT_SELECTION = "selection";
     public static final String INPUT_EDIT_COMPOSITION = "composition";
@@ -482,29 +480,12 @@ public final class GpuFrame {
         public boolean returnInsertsNewline() { return json.optBoolean("return_inserts_newline"); }
         /** `hide_on_submit`: bool */
         public boolean hideOnSubmit() { return json.optBoolean("hide_on_submit"); }
-        /** `picker`: Picker? */
-        public Picker picker() { JSONObject o = json.optJSONObject("picker"); return o == null ? null : new Picker(o); }
+        /** `picker`: PickerKind? */
+        public String picker() { return json.isNull("picker") ? null : json.optString("picker", null); }
         /** `auto_complete`: string? */
         public String autoComplete() { return json.isNull("auto_complete") ? null : json.optString("auto_complete", null); }
         /** `max_length`: u32? */
         public Long maxLength() { if (json.isNull("max_length")) return null; return json.optLong("max_length"); }
-    }
-
-    public static final class Picker {
-        public final JSONObject json;
-        public Picker(JSONObject json) { this.json = json; }
-        /** `kind`: PickerKind */
-        public String kind() { return json.isNull("kind") ? null : json.optString("kind", null); }
-        /** `min`: string? */
-        public String min() { return json.isNull("min") ? null : json.optString("min", null); }
-        /** `max`: string? */
-        public String max() { return json.isNull("max") ? null : json.optString("max", null); }
-        /** `seed`: u32[3]? */
-        public long[] seed() { return (long[]) GpuFrame.array(json.optJSONArray("seed"), 1, "long"); }
-        /** `min_parts`: u32[3]? */
-        public long[] minParts() { return (long[]) GpuFrame.array(json.optJSONArray("min_parts"), 1, "long"); }
-        /** `max_parts`: u32[3]? */
-        public long[] maxParts() { return (long[]) GpuFrame.array(json.optJSONArray("max_parts"), 1, "long"); }
     }
 
     public static final class SemanticNode {
@@ -658,10 +639,6 @@ public final class GpuFrame {
         public long[] edge() { return (long[]) GpuFrame.array(json.optJSONArray("edge"), 1, "long"); }
         /** `word`: bool? */
         public Boolean word() { if (json.isNull("word")) return null; return json.optBoolean("word"); }
-        /** `index`: usize? */
-        public Long index() { if (json.isNull("index")) return null; return json.optLong("index"); }
-        /** `parts`: u32[3]? */
-        public long[] parts() { return (long[]) GpuFrame.array(json.optJSONArray("parts"), 1, "long"); }
         /** `edits`: InputEdit[]? */
         public InputEdit[] edits() { return (InputEdit[]) GpuFrame.array(json.optJSONArray("edits"), 1, "InputEdit"); }
         /** `submit`: bool? */
@@ -674,12 +651,8 @@ public final class GpuFrame {
         public static JSONObject focus(String identity, long generation) { return GpuFrame.message("op", "focus", "identity", identity, "generation", generation); }
         /** A `query` InputRequest. */
         public static JSONObject query(String identity, long token) { return GpuFrame.message("op", "query", "identity", identity, "token", token); }
-        /** A `select` InputRequest. */
-        public static JSONObject select(String identity, long generation, long index) { return GpuFrame.message("op", "select", "identity", identity, "generation", generation, "index", index); }
         /** A `blur` InputRequest. */
         public static JSONObject blur(String identity, long token) { return GpuFrame.message("op", "blur", "identity", identity, "token", token); }
-        /** A `pick` InputRequest. */
-        public static JSONObject pick(String identity, long token, long[] parts) { return GpuFrame.message("op", "pick", "identity", identity, "token", token, "parts", parts); }
         /** A `edit` InputRequest. */
         public static JSONObject edit(String identity, long token, JSONObject[] edits, boolean submit) { return GpuFrame.message("op", "edit", "identity", identity, "token", token, "edits", edits, "submit", submit); }
     }
@@ -951,8 +924,6 @@ public final class GpuFrame {
         public String movedTo() { return json.isNull("moved_to") ? null : json.optString("moved_to", null); }
         /** `selection`: u32[2]? */
         public long[] selection() { return (long[]) GpuFrame.array(json.optJSONArray("selection"), 1, "long"); }
-        /** `value`: string? */
-        public String value() { return json.isNull("value") ? null : json.optString("value", null); }
     }
 
     public static final class EditorState {
@@ -1088,7 +1059,6 @@ public final class GpuFrame {
             case "Input": return Input.class;
             case "Edit": return Edit.class;
             case "Ime": return Ime.class;
-            case "Picker": return Picker.class;
             case "SemanticNode": return SemanticNode.class;
             case "SemanticRange": return SemanticRange.class;
             case "TextField": return TextField.class;
@@ -1138,7 +1108,6 @@ public final class GpuFrame {
             case "Input": return new Input(json);
             case "Edit": return new Edit(json);
             case "Ime": return new Ime(json);
-            case "Picker": return new Picker(json);
             case "SemanticNode": return new SemanticNode(json);
             case "SemanticRange": return new SemanticRange(json);
             case "TextField": return new TextField(json);

@@ -252,13 +252,6 @@ final class GpuInputConnection extends BaseInputConnection {
         text=candidate.toString(); anchor=focus=start; composeStart=composeEnd=-1;
         changed(); return true;
     }
-    /** Replace the whole value and submit in one message, e.g. a picker's confirmed value. */
-    boolean submitValue(String value) {
-        if (!beginBatchEdit()) return false;
-        boolean sent = replaceAll(value) && performEditorAction(0);
-        endBatchEdit();
-        return sent;
-    }
     @Override public boolean performEditorAction(int action) {
         if (closed || historyPending || submitting || queued.length() >= MAX_EDITS || pending.size() >= MAX_EDITS) return false;
         submitting=true; composeStart=composeEnd=-1; changed(); return true;

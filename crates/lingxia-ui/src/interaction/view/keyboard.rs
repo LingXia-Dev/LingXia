@@ -19,6 +19,33 @@ pub enum Key {
     Char(char),
 }
 
+/// Codes 0..=10 name the keys in declaration order, Tab to PageDown; a printable character
+/// travels as `CHAR_BASE + its code point`.
+pub const CHAR_BASE: i64 = 0x1_0000;
+
+impl Key {
+    /// The key a platform adapter sends as `code`, or `None` for one the View does not use.
+    pub fn from_code(code: i64) -> Option<Key> {
+        Some(match code {
+            0 => Key::Tab,
+            1 => Key::Up,
+            2 => Key::Down,
+            3 => Key::Left,
+            4 => Key::Right,
+            5 => Key::Home,
+            6 => Key::End,
+            7 => Key::Activate,
+            8 => Key::Escape,
+            9 => Key::PageUp,
+            10 => Key::PageDown,
+            _ => Key::Char(
+                char::from_u32(u32::try_from(code.checked_sub(CHAR_BASE)?).ok()?)
+                    .filter(|c| !c.is_control())?,
+            ),
+        })
+    }
+}
+
 impl ViewInteraction {
     pub(super) fn revealable<'a>(
         &'a self,

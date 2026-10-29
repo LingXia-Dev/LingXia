@@ -59,8 +59,6 @@ interface GpuPlatform {
     void hostChrome(int canvas, int bar, int barLine, int content, int contentMuted, int accent, boolean dark);
     /** Show or update the floating text menu ({@code {target, anchor, actions}} JSON), or close it for null. */
     void textMenu(String menu);
-    /** Open the single-choice picker of the `<select>` at {@code node}; the choice answers through {@code {op:"select"}}. */
-    void openPicker(int node);
     /** Put text on the clipboard: an accessibility Copy of a static selection. */
     void copyText(String text);
 }

@@ -163,9 +163,6 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     private int unoccludedWidth, unoccludedHeight;
     private final android.graphics.Rect chromeInsets = new android.graphics.Rect();
     private GpuTextMenu textMenu;
-    private GpuPicker picker;
-    /** The `<select>` whose picker is open, for its expanded state. */
-    private String pickerOpen;
     private GpuSelectionHandles selectionHandles;
     private GpuStaticSelection staticSelection;
     private android.content.res.Configuration hostConfiguration;
@@ -231,16 +228,6 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             @Override public void caret(boolean eligible, String text, int anchor, int focus, int start, int end) {
                 if (!destroyed) nativeCaret(host, eligible, text != null, text == null ? "" : text, anchor, focus, start, end);
             }
-        });
-        picker = new GpuPicker(surface, new GpuPicker.Host() {
-            public void request(JSONObject request, java.util.function.Consumer<JSONObject> reply) {
-                if (destroyed) return;
-                long callback = ++nextInputReply;
-                inputReplies.put(callback, reply);
-                nativeInput(host, request.toString(), callback);
-            }
-            public void render(boolean rebuild) { if (!destroyed) { if (rebuild) nativeRequestFrame(host); else nativeRedraw(host); } }
-            public void open(String identity) { pickerOpen = identity; }
         });
         textMenu = new GpuTextMenu(surface, new GpuTextMenu.Host() {
             public boolean coreAction(int code) { return !destroyed && nativeTextMenuAction(host, code); }
@@ -470,7 +457,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     public void pause() {
         nativeGpuActive(false);
         surface.cancelRefreshGesture(); finishSurfaceRedraws();
-        active = false; frozen = false; updateSurfaceVisibility(); ime.clear(true); picker.dismiss();
+        active = false; frozen = false; updateSurfaceVisibility(); ime.clear(true);
         cancel();
     }
     public void park() {
@@ -673,7 +660,9 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 .put("reduce_motion", false)
                 .put("high_contrast", android.provider.Settings.Secure.getInt(getContext().getContentResolver(), HIGH_TEXT_CONTRAST, 0) == 1)
                 .put("text_scale", textScale)
-                .put("runner", false).toString();
+                // The user's clock and week settings, which the language alone gets wrong.
+                .put("hour_cycle", android.text.format.DateFormat.is24HourFormat(getContext()) ? "h23" : "h12")
+                .put("first_weekday", java.util.Calendar.getInstance(locale).getFirstDayOfWeek()).toString();
         } catch (org.json.JSONException error) { throw new IllegalStateException("Invalid native environment", error); }
     }
     public void dispose() {
@@ -684,7 +673,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         cancel();
         destroyed = true;
         inputReplies.clear();
-        ime.clear(false); picker.dismiss(); surface.stopFling();
+        ime.clear(false); surface.stopFling();
         if (vsyncRequested) Choreographer.getInstance().removeFrameCallback(vsync);
         long released = host;
         host = 0;
@@ -862,11 +851,6 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         }
         @Override public void bootstrapOverdue(boolean overdue) { showBootstrapMessage(overdue); }
         @Override public void copyText(String text) { if (!destroyed) writeClipboard(text); }
-        @Override public void openPicker(int index) {
-            JSONObject node = surface.node(index);
-            if (destroyed || node == null || snapshot == null) return;
-            picker.show(node, GpuView.this.frame().generation(), surface.bounds(node));
-        }
         @Override public void textMenu(String menu) {
             if (destroyed) return;
             try { textMenu.show(menu == null ? null : new JSONObject(menu), frameScale); }
@@ -887,11 +871,16 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
 
     private static final int[] KEYS = {KeyEvent.KEYCODE_TAB, KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
         KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MOVE_HOME, KeyEvent.KEYCODE_MOVE_END};
-    static int key(int code) {
+    /** A printable character travels as this plus its code point (time digits, a select's type-ahead). */
+    static final int CHAR_BASE = 0x10000;
+    static int key(int code, int unicode) {
         for (int i = 0; i < KEYS.length; i++) if (KEYS[i] == code) return i;
         if (code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_SPACE || code == KeyEvent.KEYCODE_DPAD_CENTER) return 7;
         // Dismisses the View's own overlays; Back keeps its navigation meaning.
-        return code == KeyEvent.KEYCODE_ESCAPE ? 8 : -1;
+        if (code == KeyEvent.KEYCODE_ESCAPE) return 8;
+        if (code == KeyEvent.KEYCODE_PAGE_UP) return 9;
+        if (code == KeyEvent.KEYCODE_PAGE_DOWN) return 10;
+        return unicode > 0 && !Character.isISOControl(unicode) ? CHAR_BASE + unicode : -1;
     }
 
     private static JSONObject json(String encoded) {
@@ -1101,7 +1090,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             if (destroyed || nativeInputBlocked(host)) return super.onKeyDown(keyCode, event);
             if (ime.hasFocus() && keyCode != KeyEvent.KEYCODE_TAB) return ime.key(event) || super.onKeyDown(keyCode, event);
             if (ime.hasFocus()) ime.clear(true);
-            int key = key(keyCode);
+            int key = key(keyCode, event.getUnicodeChar(0));
             if (key >= 0 && nativeKey(host, key, event.isShiftPressed(), event.getRepeatCount() > 0)) return true;
             return super.onKeyDown(keyCode, event);
         }
@@ -1183,17 +1172,11 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                     AccessibilityNodeInfo info = AccessibilityNodeInfo.obtain();
                     info.setSource(UiSurface.this, id);
                     GpuAccessibility.populate(info, UiSurface.this, node, parent, frameScale, focused, getContext().getPackageName());
-                    if (GpuSemantics.ROLE_COMBO_BOX.equals(semanticNode.role())) {
-                        JSONObject box = node((int) semanticNode.index());
-                        boolean open = box != null && pickerOpen != null && pickerOpen.equals(new GpuFrame.Node(box).identity());
-                        info.addAction(open ? AccessibilityNodeInfo.ACTION_COLLAPSE : AccessibilityNodeInfo.ACTION_EXPAND);
-                    }
                     if (!active) info.setVisibleToUser(false);
                     return info;
                 }
                 @Override public boolean performAction(int id, int action, Bundle args) {
                     if (!active || destroyed) return false;
-                    if (action == AccessibilityNodeInfo.ACTION_COLLAPSE && picker.showing()) { picker.dismiss(); return true; }
                     int shared = GpuAccessibility.action(action);
                     if (shared < 0) return false;
                     double number = 0; String argument = "";

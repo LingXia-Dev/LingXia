@@ -309,15 +309,6 @@ final class GpuEditorMirror {
         return utf16.rangeOfComposedCharacterSequence(at: focus - 1)
     }
 
-    /// Replace the whole value and submit in one message, as a picker's confirmed value.
-    @discardableResult
-    func submitValue(_ value: String) -> Bool {
-        guard beginBatch() else { return false }
-        let sent = replaceAll(value) && submit()
-        endBatch()
-        return sent
-    }
-
     @discardableResult
     func submit() -> Bool {
         if closed || historyPending || submitting || queued.count >= Self.maxEdits
@@ -568,16 +559,5 @@ final class GpuIme {
     func reset() {
         clear(blur: false)
         blurred = nil
-    }
-
-    /// A date or time picker's choice, or its dismissal (`nil`), which ends editing.
-    func pick(_ parts: [UInt32]?) {
-        guard let editor else { return }
-        host?.imeRequest(.pick(identity: editor.identity, token: editor.token, parts: parts)) { [weak self] reply in
-            guard let self, self.editor === editor, let reply else { return }
-            if let value = reply.value { editor.submitValue(value) } else {
-                self.host?.imeRender(rebuild: reply.needsViewRender == true)
-            }
-        }
     }
 }

@@ -236,13 +236,13 @@
             "name": null,
             "placeholder": null,
             "rect": {
-              "bottom": 480.0,
-              "center_x": 63.0,
-              "center_y": 456.0,
+              "bottom": 468.0,
+              "center_x": 51.0,
+              "center_y": 444.0,
               "height": 48.0,
-              "left": 31.0,
-              "right": 95.0,
-              "top": 432.0,
+              "left": 19.0,
+              "right": 83.0,
+              "top": 420.0,
               "viewport_height": 400.0,
               "viewport_width": 100.0,
               "width": 64.0
@@ -341,7 +341,7 @@
             "role": "scroll-view",
             "scroll": [
               0.0,
-              112.0
+              88.0
             ],
             "testId": "page"
           }
@@ -397,13 +397,13 @@
         "op": "data"
       },
       "value": {
-        "call": 1
+        "call": 2
       }
     },
     {
       "reply": "automationResult",
       "request": {
-        "call": 1,
+        "call": 2,
         "op": "result"
       },
       "value": {
@@ -466,9 +466,6 @@
         0,
         4
       ]
-    },
-    {
-      "needs_view_render": true
     }
   ],
   "inputRequests": [
@@ -507,30 +504,8 @@
       "token": 1
     },
     {
-      "generation": 2,
-      "identity": "/i:0:5/i:4:23",
-      "index": 0,
-      "op": "select"
-    },
-    {
       "identity": "/i:0:5/i:1:8",
       "op": "blur",
-      "token": 1
-    },
-    {
-      "identity": "/i:0:5/i:1:8",
-      "op": "pick",
-      "parts": [
-        2026,
-        10,
-        28
-      ],
-      "token": 1
-    },
-    {
-      "identity": "/i:0:5/i:1:8",
-      "op": "pick",
-      "parts": null,
       "token": 1
     },
     {
@@ -612,7 +587,7 @@
       "role": "scroll-view",
       "scroll": {
         "horizontal": false,
-        "max_offset": 112.0,
+        "max_offset": 88.0,
         "offset": 0.0
       },
       "scrollable": true,
@@ -1144,8 +1119,8 @@
         }
       ],
       "bounds": [
-        31.0,
-        432.0,
+        19.0,
+        420.0,
         64.0,
         0.0
       ],
@@ -1182,7 +1157,7 @@
       ],
       "bounds": [
         0.0,
-        492.0,
+        468.0,
         100.0,
         0.0
       ],
@@ -1217,7 +1192,7 @@
       "actions": [],
       "bounds": [
         0.0,
-        492.0,
+        468.0,
         100.0,
         0.0
       ],
@@ -1310,7 +1285,7 @@
         "scroll": {
           "axis": "vertical",
           "id": "/i:0:5",
-          "max_offset": 112.0,
+          "max_offset": 88.0,
           "offset": 0.0,
           "parent": null
         },
@@ -1469,18 +1444,7 @@
             "keyboard": "text",
             "max_length": null,
             "multiline": false,
-            "picker": {
-              "kind": "date",
-              "max": null,
-              "max_parts": null,
-              "min": "2024-01-01",
-              "min_parts": [
-                2024,
-                1,
-                1
-              ],
-              "seed": null
-            },
+            "picker": "date",
             "return_inserts_newline": false,
             "return_key": "done",
             "secure": false,
@@ -1881,13 +1845,13 @@
           0.0,
           420.0,
           100.0,
-          72.0
+          48.0
         ],
         "button_content": "9d21f5c68805211f",
         "identity": "/i:0:5/i:11:3",
         "on_click": 7,
         "order": 14,
-        "radius": 12.0,
+        "radius": 0.0,
         "scroll_parent": "/i:0:5",
         "tag": "button",
         "test_id": "go",
@@ -1902,9 +1866,9 @@
       {
         "accessibility_hidden": true,
         "bounds": [
-          12.0,
-          432.0,
-          76.0,
+          0.0,
+          420.0,
+          100.0,
           48.0
         ],
         "identity": "/i:0:5/i:11:3/i:0:1",
@@ -1916,17 +1880,17 @@
         "test_id": "",
         "text": "",
         "visible_bounds": [
-          12.0,
-          432.0,
-          76.0,
+          0.0,
+          420.0,
+          100.0,
           0.0
         ]
       },
       {
         "accessibility_hidden": true,
         "bounds": [
-          12.0,
-          432.0,
+          0.0,
+          420.0,
           19.0,
           48.0
         ],
@@ -1939,8 +1903,8 @@
         "test_id": "",
         "text": "Go",
         "visible_bounds": [
-          12.0,
-          432.0,
+          0.0,
+          420.0,
           19.0,
           0.0
         ]
@@ -1948,8 +1912,8 @@
       {
         "accessibility_label": "Remember",
         "bounds": [
-          31.0,
-          432.0,
+          19.0,
+          420.0,
           64.0,
           48.0
         ],
@@ -1963,8 +1927,8 @@
         "test_id": "remember",
         "text": "Remember",
         "visible_bounds": [
-          31.0,
-          432.0,
+          19.0,
+          420.0,
           64.0,
           0.0
         ]
@@ -1972,7 +1936,7 @@
       {
         "bounds": [
           0.0,
-          492.0,
+          468.0,
           100.0,
           20.0
         ],
@@ -1993,7 +1957,7 @@
         "text": "",
         "visible_bounds": [
           0.0,
-          492.0,
+          468.0,
           100.0,
           0.0
         ]
@@ -2001,7 +1965,7 @@
       {
         "bounds": [
           0.0,
-          492.0,
+          468.0,
           900.0,
           20.0
         ],
@@ -2015,7 +1979,7 @@
         "text": "",
         "visible_bounds": [
           0.0,
-          492.0,
+          468.0,
           100.0,
           0.0
         ]

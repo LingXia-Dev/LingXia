@@ -73,8 +73,6 @@ public class GpuNativeLoadTest {
         }
         final ArrayList<String> menus = new ArrayList<>();
         public void textMenu(String menu) { menus.add(menu); }
-        final ArrayList<Integer> pickers = new ArrayList<>();
-        public void openPicker(int node) { pickers.add(node); }
 
         /** Run posted work and vsyncs until {@code done} holds. */
         void pump(long host, java.util.function.BooleanSupplier done) throws InterruptedException {
@@ -184,27 +182,19 @@ public class GpuNativeLoadTest {
         } finally { GpuView.nativeHostRelease(host); fake.release(); }
     }
 
-    /** A tapped `<select>` asks Java for its picker; the choice answers through the input protocol. */
-    @Test public void aSelectOpensThePlatformPickerAndTakesTheChoice() throws Exception {
+    /** A tapped `<select>` opens the View's own picker; no platform picker is asked for. */
+    @Test public void aSelectOpensTheViewsPicker() throws Exception {
         Fake fake = new Fake();
         long host = GpuView.nativeHostCreate(fake, "test:jvm", false, 0);
         try {
             GpuView.nativeLoad(host, GpuNative.module(
-                "function render(){const plan=useLocal('plan','m');return h('column',{},h('select',{testId:'s',bind:plan,accessibilityLabel:'Plan',options:[{value:'m',label:'Monthly'},{value:'y',label:'Yearly'}]}),h('text',{testId:'t'},plan.value))}"));
+                "function render(){const plan=useLocal('plan','m');return h('column',{},h('select',{'data-testid':'s',bind:plan,'aria-label':'Plan',options:[{value:'m',label:'Monthly'},{value:'y',label:'Yearly'}]}),h('text',{'data-testid':'t'},plan.value))}"));
             GpuView.nativeSetVisible(host, true);
             fake.pump(host, () -> fake.presented >= 1);
             int box = new JSONObject(GpuView.nativeSemanticRoots(host)).getJSONArray("roots").getInt(0);
             assertEquals("combo-box", new JSONObject(GpuView.nativeSemanticNode(host, box)).getString("role"));
             assertTrue(GpuView.nativeAccessibility(host, box, GpuAccessibility.CLICK, 0, ""));
-            fake.pump(host, () -> !fake.pickers.isEmpty());
-            JSONObject frame = last(fake);
-            JSONObject node = frame.getJSONArray("nodes").getJSONObject(fake.pickers.get(0));
-            String request = new JSONObject().put("op", "select").put("identity", node.getString("identity"))
-                .put("generation", frame.getLong("generation")).put("index", 1).toString();
-            GpuView.nativeInput(host, request, 9);
-            fake.pump(host, () -> fake.events.stream().anyMatch(e -> e.startsWith("reply:")));
-            GpuView.nativeRequestFrame(host);
-            fake.pump(host, () -> { try { return "y".equals(text(last(fake), "t")); } catch (Exception e) { throw new AssertionError(e); } });
+            fake.pump(host, () -> { try { return text(last(fake), "lx-picker-option-1") != null; } catch (Exception e) { throw new AssertionError(e); } });
         } finally { GpuView.nativeHostRelease(host); fake.release(); }
     }
 }

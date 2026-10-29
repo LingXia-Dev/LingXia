@@ -563,17 +563,8 @@ extern "system" fn key<'a>(
     repeat: jboolean,
 ) -> jboolean {
     run(&mut env, |_| {
-        let key = match key {
-            0 => Key::Tab,
-            1 => Key::Up,
-            2 => Key::Down,
-            3 => Key::Left,
-            4 => Key::Right,
-            5 => Key::Home,
-            6 => Key::End,
-            7 => Key::Activate,
-            8 => Key::Escape,
-            _ => return Ok(false),
+        let Some(key) = Key::from_code(i64::from(key)) else {
+            return Ok(false);
         };
         Ok(host(handle)?.key(key, shift, repeat))
     })

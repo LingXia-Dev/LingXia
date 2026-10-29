@@ -31,14 +31,10 @@ extension GpuPageView: GpuImeHost, @preconcurrency NSTextInputClient {
     func imeConnected(_ editor: GpuEditorMirror) {
         inputContext?.discardMarkedText()
         if window?.firstResponder !== self { window?.makeFirstResponder(self) }
-        if ime.ime?.picker != nil, valuePicker == nil { showValuePicker() }
     }
 
     func imeDisconnected(hide: Bool) {
         inputContext?.discardMarkedText()
-        let picker = valuePicker
-        valuePicker = nil
-        picker?.dismiss()
     }
 
     func imeInvalidated() { inputContext?.discardMarkedText() }

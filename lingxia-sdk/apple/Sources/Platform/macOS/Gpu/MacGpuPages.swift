@@ -24,8 +24,6 @@ final class GpuPageView: NSView {
     }
     /// The text menu on screen, closed when the core takes it away.
     var textMenu: NSMenu?
-    /// The open date or time picker of the connected editor.
-    var valuePicker: GpuValuePickerDelegate?
 
     override func isAccessibilityElement() -> Bool { false }
 
@@ -123,8 +121,7 @@ final class GpuPageView: NSView {
     }
 
     @objc private func windowFocusChanged() {
-        // The value picker's own popover taking the keys is not the window losing focus.
-        let focused = (window?.isKeyWindow ?? false) || valuePicker != nil
+        let focused = window?.isKeyWindow ?? false
         gpuPageWindowFocus(token, focused)
         ime.updateCaret()
     }
@@ -168,7 +165,9 @@ final class GpuPageView: NSView {
             Locale.preferredLanguages.first ?? "en",
             NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
             NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast,
-            RustVec<Float>()
+            RustVec<Float>(),
+            GpuPageView.hourCycle(),
+            UInt8(Calendar.current.firstWeekday)
         )
         layer?.contentsScale = scale
         if !attached, presentable {
@@ -312,8 +311,6 @@ final class GpuPageView: NSView {
     }
 
     override func resignFirstResponder() -> Bool {
-        // The editor's own value picker takes the keys while it stays focused.
-        guard valuePicker == nil else { return true }
         gpuPageFocus(token, false, false)
         if ime.isActive { ime.clear(blur: true) }
         return true
@@ -322,7 +319,7 @@ final class GpuPageView: NSView {
     override func keyDown(with event: NSEvent) {
         if gpuPageInputBlocked(token) { return super.keyDown(with: event) }
         if editorKeyDown(event) { return }
-        let key: UInt8? = switch event.keyCode {
+        let key: Int64? = switch event.keyCode {
         case 48: 0
         case 126: 1
         case 125: 2
@@ -332,7 +329,10 @@ final class GpuPageView: NSView {
         case 119: 6
         case 36, 76, 49: 7
         case 53: 8
-        default: nil
+        case 116: 9
+        case 121: 10
+        // A printable character reaches the View's pickers (time digits, a select's type-ahead).
+        default: event.charactersIgnoringModifiers?.unicodeScalars.first.map { 0x1_0000 + Int64($0.value) }
         }
         let plain = event.modifierFlags.isDisjoint(with: [.command, .control, .option])
         guard let key, plain, !gpuPageInputBlocked(token),
@@ -543,14 +543,6 @@ public enum GpuPages {
     static func textMenu(token: Int64, menu: RustStr) {
         let menu = menu.toString()
         MainActor.assumeIsolated { views[token]?.showTextMenu(menu) }
-    }
-
-    static func openPicker(token: Int64, generation: UInt64, node: RustStr) {
-        let node = node.toString()
-        MainActor.assumeIsolated {
-            guard let view = views[token], let node = GpuPageView.decodeNode(node) else { return }
-            view.openPicker(generation: generation, node: node)
-        }
     }
 
     static func imeActivation(token: Int64) {

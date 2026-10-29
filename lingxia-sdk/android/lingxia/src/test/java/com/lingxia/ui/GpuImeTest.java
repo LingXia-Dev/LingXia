@@ -319,37 +319,17 @@ public class GpuImeTest {
         assertEquals(9,edit.getLong("token"));
     }
 
-    /** The core seeds and bounds a date picker and formats its choice; Java parses nothing. */
-    @Test public void datePickerAsksTheCoreForTheValueAndADismissalEndsEditing() throws Exception {
+    /** A date or time editor takes the View's own picker: no keyboard and no platform dialog. */
+    @Test public void aDateEditorRaisesNoKeyboardAndOpensNoDialog() throws Exception {
         Host host=new Host();
         android.app.Activity activity=org.robolectric.Robolectric.buildActivity(android.app.Activity.class).setup().get();
         View view=new View(activity); activity.setContentView(view);
         GpuIme ime=new GpuIme(view,host); ime.setCaretActive(true);
         JSONObject node=node(7,"");
-        node.getJSONObject("input").getJSONObject("ime").put("keyboard","text").put("picker",new JSONObject().put("kind","date")
-            .put("seed",new JSONArray(new int[]{2026,3,9})).put("min_parts",new JSONArray(new int[]{2026,1,1})).put("max_parts",JSONObject.NULL));
+        node.getJSONObject("input").getJSONObject("ime").put("keyboard","text").put("picker","date");
         ime.presented(new JSONObject().put("nodes",new JSONArray().put(node)),ime.capture());
-        android.app.DatePickerDialog dialog=(android.app.DatePickerDialog)org.robolectric.shadows.ShadowDialog.getLatestDialog();
-        assertNotNull("a date editor opens the picker",dialog);
-        android.widget.DatePicker picker=dialog.getDatePicker();
-        assertEquals(2026,picker.getYear()); assertEquals(2,picker.getMonth()); assertEquals(9,picker.getDayOfMonth());
-        dialog.updateDate(2026,3,10);
-        dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick();
-        org.robolectric.shadows.ShadowLooper.idleMainLooper();
-        JSONObject pick=host.requests.get(host.requests.size()-1);
-        assertEquals("pick",pick.getString("op"));
-        assertEquals("[2026,4,10]",pick.getJSONArray("parts").toString());
-        host.replies.get(host.replies.size()-1).accept(new JSONObject().put("value","2026-04-10"));
-        assertEquals("2026-04-10",ime.menuText());
-        // Dismissed without a choice: the core is told, and ends editing.
-        Host other=new Host(); GpuIme second=new GpuIme(view,other); second.setCaretActive(true);
-        second.presented(new JSONObject().put("nodes",new JSONArray().put(node)),second.capture());
-        android.app.Dialog fresh=org.robolectric.shadows.ShadowDialog.getLatestDialog();
-        assertNotSame(dialog,fresh);
-        fresh.dismiss();
-        org.robolectric.shadows.ShadowLooper.idleMainLooper();
-        JSONObject dismissed=other.requests.get(other.requests.size()-1);
-        assertEquals("pick",dismissed.getString("op")); assertTrue(dismissed.isNull("parts"));
+        assertNull("no platform dialog",org.robolectric.shadows.ShadowDialog.getLatestDialog());
+        assertNull("no input connection",ime.create(new android.view.inputmethod.EditorInfo()));
     }
     /** Whether a focused editor raises the keyboard is the core's call, per frame. */
     @Test public void aFocusedEditorConnectsOnlyWhenTheFrameRaisesTheKeyboard() throws Exception {

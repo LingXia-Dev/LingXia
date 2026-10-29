@@ -31,22 +31,9 @@ enum Request {
         identity: String,
         token: u64,
     },
-    /// The platform picker of a `<select>` chose option `index`.
-    Select {
-        identity: String,
-        generation: crate::session::lifecycle::CommitTicket,
-        index: usize,
-    },
     Blur {
         identity: String,
         token: u64,
-    },
-    /// A platform picker's choice, whose reply is the editor value to submit, or
-    /// its dismissal (`parts: null`), which ends editing.
-    Pick {
-        identity: String,
-        token: u64,
-        parts: Option<[u32; 3]>,
     },
     Edit {
         identity: String,
@@ -162,35 +149,8 @@ impl ViewSession {
                 generation,
             } => self.focus_input(generation, &identity)?,
             Request::Query { identity, token } => self.input_state(token, &identity),
-            Request::Select {
-                identity,
-                generation,
-                index,
-            } => {
-                let changed = self.select_option(generation, &identity, index)?;
-                return Ok(serde_json::json!({ "needs_view_render": changed }).to_string());
-            }
             Request::Blur { identity, token } => {
                 return Ok(self.blur_input(token, &identity)?.to_string());
-            }
-            Request::Pick {
-                identity,
-                token,
-                parts: Some(parts),
-            } => {
-                let value = self.inputs.picked(&identity, token, parts);
-                return Ok(serde_json::json!({ "value": value }).to_string());
-            }
-            // Cancel, back or an outside touch: the picker was the editor's only input.
-            Request::Pick {
-                identity,
-                token,
-                parts: None,
-            } => {
-                let blurred = self.blur_input(token, &identity)?;
-                return Ok(
-                    serde_json::json!({ "value": null, "needs_view_render": blurred }).to_string(),
-                );
             }
             Request::Edit {
                 identity,

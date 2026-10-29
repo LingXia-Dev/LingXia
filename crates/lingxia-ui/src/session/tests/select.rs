@@ -67,20 +67,11 @@ fn a_select_opens_its_picker_and_takes_choices_from_the_picker_and_arrows() {
             "Monthly"
         )
     );
-    // The picker answers through the input protocol; a disabled option is refused.
+    // The View's picker opens with the options and makes the choice; a disabled one is skipped.
     let (identity, generation) = (node.identity.clone(), page.generation());
-    let request = |index: usize| {
-        serde_json::json!({"op":"select","identity":identity,"generation":generation,"index":index})
-            .to_string()
-    };
-    assert_eq!(
-        page.input_request(&request(1)).unwrap(),
-        r#"{"needs_view_render":false}"#
-    );
-    assert_eq!(
-        page.input_request(&request(2)).unwrap(),
-        r#"{"needs_view_render":true}"#
-    );
+    assert!(page.open_select(generation, &identity).unwrap());
+    assert!(page.picker_key("ArrowDown").unwrap());
+    assert!(page.picker_key("Enter").unwrap());
     assert_eq!(shown(&mut page), "y");
     // Arrows step over the disabled option without opening the picker.
     let display = page.layout(300, 300, 1.0).unwrap();

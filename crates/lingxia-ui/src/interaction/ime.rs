@@ -49,20 +49,6 @@ pub enum PickerKind {
     Time,
 }
 
-/// A date or time editor takes its value from a platform picker, never a keyboard.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-pub struct Picker {
-    pub kind: PickerKind,
-    /// Inclusive bounds in the kind's format.
-    pub min: Option<String>,
-    pub max: Option<String>,
-    /// The dialog's initial `[year, month, day]` or `[hour, minute, 0]`: the
-    /// editor's value when it parses, else `None` (the platform's today or now).
-    pub seed: Option<[u32; 3]>,
-    pub min_parts: Option<[u32; 3]>,
-    pub max_parts: Option<[u32; 3]>,
-}
-
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct ImeConfig {
     pub keyboard: Keyboard,
@@ -77,7 +63,8 @@ pub struct ImeConfig {
     pub return_inserts_newline: bool,
     /// Dismiss the keyboard after a submit.
     pub hide_on_submit: bool,
-    pub picker: Option<Picker>,
+    /// A date or time editor takes its value from the View's own picker: no keyboard, no IME.
+    pub picker: Option<PickerKind>,
     /// HTML autocomplete token; adapters map it to their autofill hint.
     pub auto_complete: Option<String>,
     /// UTF-16 units; core cuts insertions, a mirror may cut early to avoid flicker.
@@ -125,26 +112,11 @@ impl ImeConfig {
             _ if keyboard == Keyboard::Search => ReturnKey::Search,
             _ => ReturnKey::Done,
         };
-        let bound = |value: &Option<serde_json::Value>| value.as_ref()?.as_str().map(str::to_owned);
-        let picker = attributes.picker.as_deref().and_then(|kind| {
-            let kind = match kind {
-                "date" => PickerKind::Date,
-                "time" => PickerKind::Time,
-                _ => return None,
-            };
-            let valid = |value: Option<String>| value.filter(|value| parse(kind, value).is_some());
-            let (min, max) = (valid(bound(&attributes.min)), valid(bound(&attributes.max)));
-            let parts =
-                |value: &Option<String>| value.as_deref().and_then(|value| parse(kind, value));
-            Some(Picker {
-                kind,
-                min_parts: parts(&min),
-                max_parts: parts(&max),
-                min,
-                max,
-                seed: parse(kind, &input.value),
-            })
-        });
+        let picker = match attributes.picker.as_deref() {
+            Some("date") => Some(PickerKind::Date),
+            Some("time") => Some(PickerKind::Time),
+            _ => None,
+        };
         Self {
             keyboard,
             secure,
@@ -157,36 +129,6 @@ impl ImeConfig {
             picker,
             auto_complete,
             max_length: attributes.max_length,
-        }
-    }
-}
-
-/// `[year, month, day]` or `[hour, minute, 0]`; time accepts trailing `:SS`.
-fn parse(kind: PickerKind, value: &str) -> Option<[u32; 3]> {
-    let digits = |range: std::ops::Range<usize>| -> Option<u32> {
-        let part = value.get(range)?;
-        part.bytes()
-            .all(|b| b.is_ascii_digit())
-            .then(|| part.parse().ok())?
-    };
-    let bytes = value.as_bytes();
-    match kind {
-        PickerKind::Date => {
-            if bytes.len() != 10 || bytes[4] != b'-' || bytes[7] != b'-' {
-                return None;
-            }
-            let date = [digits(0..4)?, digits(5..7)?, digits(8..10)?];
-            ((1..=12).contains(&date[1]) && (1..=31).contains(&date[2])).then_some(date)
-        }
-        PickerKind::Time => {
-            if !(bytes.len() == 5 || bytes.len() == 8) || bytes[2] != b':' {
-                return None;
-            }
-            if bytes.len() == 8 && (bytes[5] != b':' || digits(6..8)? > 59) {
-                return None;
-            }
-            let time = [digits(0..2)?, digits(3..5)?, 0];
-            (time[0] < 24 && time[1] < 60).then_some(time)
         }
     }
 }
@@ -295,40 +237,15 @@ mod tests {
     }
 
     #[test]
-    fn pickers_seed_from_valid_values_and_carry_their_bounds_as_parts() {
-        let mut time = input(
+    fn date_and_time_editors_are_marked_for_the_views_picker() {
+        let time = input(
             "time",
             EditorAttributes {
                 picker: Some("time".into()),
-                min: Some("09:30".into()),
-                max: Some("18:00:00".into()),
                 ..Default::default()
             },
         );
-        time.value = "12:05:59".into();
-        let picker = ImeConfig::new(&time, false).picker.unwrap();
-        assert_eq!(picker.kind, PickerKind::Time);
-        assert_eq!(picker.seed, Some([12, 5, 0]));
-        assert_eq!(
-            (picker.min_parts, picker.max_parts),
-            (Some([9, 30, 0]), Some([18, 0, 0]))
-        );
-        time.value = "7:00".into();
-        assert_eq!(ImeConfig::new(&time, false).picker.unwrap().seed, None);
-        let mut date = input(
-            "date",
-            EditorAttributes {
-                picker: Some("date".into()),
-                min: Some(serde_json::json!(5)),
-                max: Some("2026-12-31".into()),
-                ..Default::default()
-            },
-        );
-        date.value = "2026-13-01".into();
-        let picker = ImeConfig::new(&date, false).picker.unwrap();
-        assert_eq!(picker.min, None, "a non-date bound is ignored");
-        assert_eq!(picker.max_parts, Some([2026, 12, 31]));
-        assert_eq!(picker.seed, None, "an invalid value seeds nothing");
+        assert_eq!(ImeConfig::new(&time, false).picker, Some(PickerKind::Time));
         assert!(
             ImeConfig::new(&input("text", Default::default()), false)
                 .picker

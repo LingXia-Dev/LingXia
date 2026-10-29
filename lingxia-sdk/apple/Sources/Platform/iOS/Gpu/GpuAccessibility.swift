@@ -126,7 +126,13 @@ final class GpuAccessibilityElement: UIAccessibilityElement {
         case "image": traits.insert(.image)
         case "slider": traits.insert(.adjustable)
         case "text": traits.insert(.staticText)
-        default: break
+        // A day of a month or a choice of a picker column: pressable, and selected when chosen.
+        case "grid-cell", "option": traits.insert(.button)
+        case "grid", "list-box", "list", "list-item", "dialog", "alert", "status", "text-field",
+             "scroll-view", "horizontal-scroll-view", "radio-group": break
+        default:
+            // A role the core added without a mapping here is a bug, never silently traitless.
+            assertionFailure("unmapped semantic role \(node.role)")
         }
         if node.clickable, traits.isEmpty { traits.insert(.button) }
         if !node.enabled { traits.insert(.notEnabled) }

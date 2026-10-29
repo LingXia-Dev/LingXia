@@ -37,6 +37,9 @@ mod bridge {
             high_contrast: bool,
             // `[authored, shown]` font sizes flattened; empty when the system has no text size.
             text_scale: Vec<f32>,
+            // The user's clock (`h12`/`h23`) and first weekday (1 = Sunday), from the system settings.
+            hour_cycle: &str,
+            first_weekday: u8,
         );
 
         #[swift_bridge(swift_name = "gpuPageSetVisible")]
@@ -90,7 +93,7 @@ mod bridge {
         // 5 home, 6 end, 7 activate, 8 escape. False leaves it to the platform (Tab leaves the
         // page).
         #[swift_bridge(swift_name = "gpuPageKey")]
-        fn gpu_page_key(token: i64, key: u8, shift: bool, repeating: bool) -> bool;
+        fn gpu_page_key(token: i64, key: i64, shift: bool, repeating: bool) -> bool;
 
         // Keyboard focus moved into the page (`entered`, `backward` when by Shift-Tab) or out.
         #[swift_bridge(swift_name = "gpuPageFocus")]
@@ -282,9 +285,6 @@ mod bridge {
         // The reply to `gpuPageInput` request `reply`: `value` is its JSON when `present`.
         #[swift_bridge(swift_name = "GpuPages.inputReply")]
         fn gpu_pages_input_reply(token: i64, reply: u64, present: bool, value: &str);
-        // The single-choice picker for a `<select>` node (frame-contract `Node` JSON).
-        #[swift_bridge(swift_name = "GpuPages.openPicker")]
-        fn gpu_pages_open_picker(token: i64, generation: u64, node: &str);
         // The host chrome around the page, as ARGB: canvas, bars, their line, their content,
         // muted content and accent; `dark` when system glyphs over them go light.
         #[swift_bridge(swift_name = "GpuPages.hostChrome")]
@@ -333,6 +333,8 @@ fn gpu_page_measured(
     reduce_motion: bool,
     high_contrast: bool,
     text_scale: Vec<f32>,
+    hour_cycle: &str,
+    first_weekday: u8,
 ) {
     #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     {
@@ -358,6 +360,8 @@ fn gpu_page_measured(
             high_contrast,
             text_scale: (!text_scale.is_empty())
                 .then(|| text_scale.chunks_exact(2).map(|p| [p[0], p[1]]).collect()),
+            hour_cycle: Some(hour_cycle.to_owned()),
+            first_weekday: Some(first_weekday),
             ..Default::default()
         };
         with_page(token, |page| page.measured(facts));
@@ -375,6 +379,8 @@ fn gpu_page_measured(
         reduce_motion,
         high_contrast,
         text_scale,
+        hour_cycle,
+        first_weekday,
     );
 }
 
@@ -503,21 +509,12 @@ fn gpu_page_hover(token: i64, inside: bool, x: f32, y: f32) {
     let _ = (token, inside, x, y);
 }
 
-fn gpu_page_key(token: i64, key: u8, shift: bool, repeating: bool) -> bool {
+fn gpu_page_key(token: i64, key: i64, shift: bool, repeating: bool) -> bool {
     #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     {
         use lingxia_ui_apple::lingxia_ui::interaction::view::Key;
-        let key = match key {
-            0 => Key::Tab,
-            1 => Key::Up,
-            2 => Key::Down,
-            3 => Key::Left,
-            4 => Key::Right,
-            5 => Key::Home,
-            6 => Key::End,
-            7 => Key::Activate,
-            8 => Key::Escape,
-            _ => return false,
+        let Some(key) = Key::from_code(key) else {
+            return false;
         };
         let mut handled = false;
         with_page(token, |page| {
@@ -1038,9 +1035,6 @@ mod live {
                 1 => EditOutcome::NotReady,
                 _ => EditOutcome::Failed,
             }
-        }
-        fn open_picker(&self, token: i64, generation: u64, node: &str) {
-            super::bridge::gpu_pages_open_picker(token, generation, node);
         }
         fn host_chrome(
             &self,

@@ -43,7 +43,6 @@ final class GpuIme {
     private GpuFrame.Ime ime() { GpuFrame.Ime ime=config == null ? null : new GpuFrame.Input(config).ime(); return ime == null ? new GpuFrame.Ime(new JSONObject()) : ime; }
     /** The last presented frame, to find the editor a NEXT/PREVIOUS action moved to. */
     private JSONObject frame;
-    private android.app.Dialog picker;
     private boolean pendingFocus;
     /** The edit token this side last blurred: a frame drawn before the core saw the blur still shows it focused. */
     private long blurred=-1;
@@ -157,9 +156,8 @@ final class GpuIme {
         if (connection != null && connection.identity.equals(identity)) {
             if (selection != null) connection.selectFromTouch(selection[0],selection[1]);
             view.requestFocus();
-            String kind=pickerKind();
-            if (kind.isEmpty()) manager.showSoftInput(view,InputMethodManager.SHOW_IMPLICIT);
-            else if (picker == null) showPicker(kind);
+            // A date or time editor takes its value from the View's own picker, never a keyboard.
+            if (pickerKind().isEmpty()) manager.showSoftInput(view,InputMethodManager.SHOW_IMPLICIT);
             return;
         }
         drop(false); pendingFocus=true;
@@ -217,8 +215,8 @@ final class GpuIme {
         editor.maxLength=maxLength == null ? -1 : maxLength.intValue();
     }
     private String pickerKind() {
-        GpuFrame.Picker picker=ime().picker();
-        return picker == null || picker.kind() == null ? "" : picker.kind();
+        String kind=ime().picker();
+        return kind == null ? "" : kind;
     }
     private JSONObject node(String identity) {
         GpuFrame.Node[] nodes=frame == null ? null : new GpuFrame.FrameSnapshot(frame).nodes();
@@ -268,9 +266,8 @@ final class GpuIme {
         // Publish external text/selection before the keyboard can read its initial state.
         if (initialize != null) initialize.accept(connection);
         view.requestFocus(); manager.restartInput(view);
-        String kind=pickerKind();
-        if (kind.isEmpty()) manager.showSoftInput(view,InputMethodManager.SHOW_IMPLICIT);
-        else { manager.hideSoftInputFromWindow(view.getWindowToken(),0); showPicker(kind); }
+        if (pickerKind().isEmpty()) manager.showSoftInput(view,InputMethodManager.SHOW_IMPLICIT);
+        else manager.hideSoftInputFromWindow(view.getWindowToken(),0);
         host.editorChanged(connection.identity);
         selectionChanged();
     }
@@ -283,7 +280,6 @@ final class GpuIme {
     }
     private void drop(boolean hide) {
         epoch++; pendingFocus=false;
-        if (picker != null) { android.app.Dialog open=picker; picker=null; open.setOnDismissListener(null); open.dismiss(); }
         invalidateWrapper();
         boolean editing = connection != null;
         if (editing) connection.closeConnection();
@@ -350,7 +346,7 @@ final class GpuIme {
         return type;
     }
     InputConnection create(EditorInfo info) {
-        // A picker editor takes its value from a dialog, never a keyboard.
+        // A date or time editor takes its value from the View's own picker, never a keyboard.
         if (connection == null || !pickerKind().isEmpty()) return null;
         GpuFrame.Ime ime=ime();
         info.inputType=inputType(ime);
@@ -366,65 +362,10 @@ final class GpuIme {
         };
         return wrapper;
     }
-    /** Date or time from a platform dialog, seeded from the value and bounded by min/max. */
-    private void showPicker(String kind) {
-        final GpuInputConnection editor=connection;
-        // Pages are built on the application context; dialogs need the window's.
-        Context context=view.isAttachedToWindow() ? view.getRootView().getContext() : view.getContext();
-        // The core seeds the dialog and bounds it, as [year, month, day] or [hour, minute, 0].
-        GpuFrame.Picker spec=ime().picker();
-        int[] seed=parts(spec == null ? null : spec.seed()), low=parts(spec == null ? null : spec.minParts()),
-            high=parts(spec == null ? null : spec.maxParts());
-        java.util.Calendar now=java.util.Calendar.getInstance();
-        boolean[] chosen={false};
-        android.app.Dialog dialog;
-        if (GpuInput.KEYBOARD_DATE.equals(kind)) {
-            android.app.DatePickerDialog picked=new android.app.DatePickerDialog(context,(widget,year,month,day) -> {
-                chosen[0]=true; pick(editor,new int[]{year,month+1,day});
-            }, seed != null ? seed[0] : now.get(java.util.Calendar.YEAR), seed != null ? seed[1]-1 : now.get(java.util.Calendar.MONTH),
-                seed != null ? seed[2] : now.get(java.util.Calendar.DAY_OF_MONTH));
-            if (low != null) picked.getDatePicker().setMinDate(millis(low));
-            if (high != null) picked.getDatePicker().setMaxDate(millis(high));
-            dialog=picked;
-        } else {
-            dialog=new android.app.TimePickerDialog(context,(widget,hour,minute) -> {
-                chosen[0]=true; pick(editor,new int[]{hour,minute,0});
-            }, seed != null ? seed[0] : now.get(java.util.Calendar.HOUR_OF_DAY), seed != null ? seed[1] : now.get(java.util.Calendar.MINUTE),
-                android.text.format.DateFormat.is24HourFormat(context));
-        }
-        // A dismissal without a choice tells the core, which ends editing.
-        dialog.setOnDismissListener(ignored -> {
-            if (picker != dialog) return;
-            picker=null;
-            if (!chosen[0] && connection == editor) pick(editor,null);
-        });
-        picker=dialog;
-        dialog.show();
-    }
-    /** Send a choice (or a dismissal, null) to the core; submit the value it answers. */
-    private void pick(GpuInputConnection editor,int[] parts) {
-        if (connection != editor) return;
-        JSONObject message=GpuFrame.InputRequest.pick(editor.identity,editor.token,
-            parts == null ? null : new long[]{parts[0],parts[1],parts[2]});
-        host.request(message,reply -> {
-            if (connection != editor || reply == null) return;
-            String value=new GpuFrame.InputReply(reply).value();
-            if (value != null) editor.submitValue(value);
-            else host.render(needsViewRender(reply));
-        });
-    }
-    private static int[] parts(long[] value) {
-        return value == null || value.length != 3 ? null : new int[]{(int)value[0],(int)value[1],(int)value[2]};
-    }
     /** An editor offers suggestions unless the core turns them off; a missing config keeps them. */
     private static boolean suggestions(GpuFrame.Ime ime) { return ime.json.length() == 0 || ime.suggestions(); }
     private static long token(JSONObject reply) { Long token=new GpuFrame.InputReply(reply).token(); return token == null ? 0 : token; }
     private static JSONObject state(JSONObject reply) { GpuFrame.EditorState state=new GpuFrame.InputReply(reply).state(); return state == null ? null : state.json; }
     private static boolean needsViewRender(JSONObject reply) { return Boolean.TRUE.equals(new GpuFrame.InputReply(reply).needsViewRender()); }
     private static String identity(JSONObject node) { return String.valueOf(new GpuFrame.Node(node).identity()); }
-    private static long millis(int[] date) {
-        java.util.Calendar day=java.util.Calendar.getInstance();
-        day.clear(); day.set(date[0],date[1]-1,date[2]);
-        return day.getTimeInMillis();
-    }
 }

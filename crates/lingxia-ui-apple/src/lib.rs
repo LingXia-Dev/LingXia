@@ -40,9 +40,6 @@ pub trait Shell: Send + Sync + 'static {
     /// [`chrome::feedback_shape`]: lingxia_ui::interaction::chrome::feedback_shape
     fn feedback(&self, token: i64, ring: bool, shape: &[f32], color: u32, width: f32);
     fn haptic(&self, token: i64);
-    /// Show the single-choice picker for the `<select>` `node` of frame `generation`; the
-    /// choice goes back as an input `select` request.
-    fn open_picker(&self, token: i64, generation: u64, node: &str);
     /// Put `text` on the system pasteboard.
     fn copy_text(&self, text: &str);
     /// Show or move the text menu (frame-contract `TextMenu` JSON), or close it (empty).

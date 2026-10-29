@@ -496,7 +496,7 @@ public struct GpuFrameIme: Decodable, Sendable {
     public let returnKey: String
     public let returnInsertsNewline: Bool
     public let hideOnSubmit: Bool
-    public let picker: GpuFramePicker?
+    public let picker: String?
     public let autoComplete: String?
     public let maxLength: UInt32?
 
@@ -512,25 +512,6 @@ public struct GpuFrameIme: Decodable, Sendable {
         case picker = "picker"
         case autoComplete = "auto_complete"
         case maxLength = "max_length"
-    }
-}
-
-/// `Picker` in the frame contract.
-public struct GpuFramePicker: Decodable, Sendable {
-    public let kind: String
-    public let min: String?
-    public let max: String?
-    public let seed: [UInt32]?
-    public let minParts: [UInt32]?
-    public let maxParts: [UInt32]?
-
-    enum CodingKeys: String, CodingKey {
-        case kind = "kind"
-        case min = "min"
-        case max = "max"
-        case seed = "seed"
-        case minParts = "min_parts"
-        case maxParts = "max_parts"
     }
 }
 
@@ -689,8 +670,6 @@ public struct GpuFrameInputRequest: Decodable, Sendable {
     public let point: [Float]?
     public let edge: [Int64]?
     public let word: Bool?
-    public let index: UInt64?
-    public let parts: [UInt32]?
     public let edits: [GpuFrameInputEdit]?
     public let submit: Bool?
 
@@ -702,8 +681,6 @@ public struct GpuFrameInputRequest: Decodable, Sendable {
         case point = "point"
         case edge = "edge"
         case word = "word"
-        case index = "index"
-        case parts = "parts"
         case edits = "edits"
         case submit = "submit"
     }
@@ -980,7 +957,6 @@ public struct GpuFrameInputReply: Decodable, Sendable {
     public let needsViewRender: Bool?
     public let movedTo: String?
     public let selection: [UInt32]?
-    public let value: String?
 
     enum CodingKeys: String, CodingKey {
         case token = "token"
@@ -988,7 +964,6 @@ public struct GpuFrameInputReply: Decodable, Sendable {
         case needsViewRender = "needs_view_render"
         case movedTo = "moved_to"
         case selection = "selection"
-        case value = "value"
     }
 }
 
@@ -1080,9 +1055,7 @@ public enum GpuFrameInputRequestMessage: Encodable, Sendable {
     case hitTest(identity: String, generation: UInt64, point: [Float], word: Bool)
     case focus(identity: String, generation: UInt64)
     case query(identity: String, token: UInt64)
-    case select(identity: String, generation: UInt64, index: UInt64)
     case blur(identity: String, token: UInt64)
-    case pick(identity: String, token: UInt64, parts: [UInt32]?)
     case edit(identity: String, token: UInt64, edits: [GpuFrameInputEditMessage], submit: Bool)
 
     public func encode(to encoder: Encoder) throws {
@@ -1109,20 +1082,10 @@ public enum GpuFrameInputRequestMessage: Encodable, Sendable {
             try container.encode("query", forKey: GpuFrameKey("op"))
             try container.encode(identity, forKey: GpuFrameKey("identity"))
             try container.encode(token, forKey: GpuFrameKey("token"))
-        case .select(let identity, let generation, let index):
-            try container.encode("select", forKey: GpuFrameKey("op"))
-            try container.encode(identity, forKey: GpuFrameKey("identity"))
-            try container.encode(generation, forKey: GpuFrameKey("generation"))
-            try container.encode(index, forKey: GpuFrameKey("index"))
         case .blur(let identity, let token):
             try container.encode("blur", forKey: GpuFrameKey("op"))
             try container.encode(identity, forKey: GpuFrameKey("identity"))
             try container.encode(token, forKey: GpuFrameKey("token"))
-        case .pick(let identity, let token, let parts):
-            try container.encode("pick", forKey: GpuFrameKey("op"))
-            try container.encode(identity, forKey: GpuFrameKey("identity"))
-            try container.encode(token, forKey: GpuFrameKey("token"))
-            try container.encode(parts, forKey: GpuFrameKey("parts"))
         case .edit(let identity, let token, let edits, let submit):
             try container.encode("edit", forKey: GpuFrameKey("op"))
             try container.encode(identity, forKey: GpuFrameKey("identity"))

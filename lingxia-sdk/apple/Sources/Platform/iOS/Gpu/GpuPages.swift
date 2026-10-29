@@ -20,8 +20,6 @@ final class GpuPageView: UIView {
     /// UIKit's text input plumbing, kept for the connected editor.
     weak var inputDelegate: UITextInputDelegate?
     var textTokenizer: UITextInputTokenizer?
-    /// The open date or time picker of the connected editor.
-    var valuePicker: GpuValuePickerController?
     /// The edit menu the core's text menu shows through, and the menu it shows.
     var editMenu: UIEditMenuInteraction?
     var textMenu: GpuFrameTextMenu?
@@ -196,7 +194,9 @@ final class GpuPageView: UIView {
             Locale.preferredLanguages.first ?? "en",
             UIAccessibility.isReduceMotionEnabled,
             UIAccessibility.isDarkerSystemColorsEnabled,
-            Self.textScale()
+            Self.textScale(),
+            GpuPageView.hourCycle(),
+            UInt8(Calendar.current.firstWeekday)
         )
         layer.contentsScale = scale
         if !attached, UIApplication.shared.applicationState != .background {
@@ -519,13 +519,6 @@ public enum GpuPages {
             view.hostChrome = GpuHostChrome(
                 canvas: color(canvas), bar: color(bar), barLine: color(barLine), content: color(content),
                 contentMuted: color(contentMuted), accent: color(accent), dark: dark)
-        }
-    }
-    static func openPicker(token: Int64, generation: UInt64, node: RustStr) {
-        let node = node.toString()
-        MainActor.assumeIsolated {
-            guard let view = views[token], let node = GpuPageView.decodeNode(node) else { return }
-            view.openPicker(generation: generation, node: node)
         }
     }
     static func imeReset(token: Int64) {

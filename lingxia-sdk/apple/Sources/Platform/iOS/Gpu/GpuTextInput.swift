@@ -45,10 +45,9 @@ extension GpuPageView: GpuImeHost, UITextInput {
     func imeConnected(_ editor: GpuEditorMirror) {
         inputDelegate?.textWillChange(self)
         inputDelegate?.textDidChange(self)
-        // A picked value takes no keyboard.
+        // A date or time editor takes its value from the View's own picker, never a keyboard.
         if ime.ime?.picker != nil {
             if isFirstResponder { super.resignFirstResponder() }
-            if valuePicker == nil { showValuePicker() }
             return
         }
         if isFirstResponder {
@@ -61,9 +60,6 @@ extension GpuPageView: GpuImeHost, UITextInput {
     func imeDisconnected(hide: Bool) {
         inputDelegate?.textWillChange(self)
         inputDelegate?.textDidChange(self)
-        let picker = valuePicker
-        valuePicker = nil
-        picker?.close()
         if hide, isFirstResponder { resignFirstResponder() }
     }
 

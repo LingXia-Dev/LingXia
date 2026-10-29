@@ -34,8 +34,16 @@ final class GpuAccessibility {
             case GpuSemantics.ROLE_SLIDER: return "android.widget.SeekBar";
             case GpuSemantics.ROLE_LIST: return "android.widget.ListView";
             case GpuSemantics.ROLE_COMBO_BOX: return "android.widget.Spinner";
+            case GpuSemantics.ROLE_GRID: return "android.widget.GridView";
+            case GpuSemantics.ROLE_GRID_CELL: return "android.widget.Button";
+            case GpuSemantics.ROLE_LIST_BOX: return "android.widget.ListView";
+            case GpuSemantics.ROLE_OPTION: return "android.widget.CheckedTextView";
             // Links (with a role description), headings, list items, alerts, status and dialogs read as text plus their traits.
-            default: return "android.widget.TextView";
+            case GpuSemantics.ROLE_TEXT: case GpuSemantics.ROLE_LINK: case GpuSemantics.ROLE_HEADING:
+            case GpuSemantics.ROLE_LIST_ITEM: case GpuSemantics.ROLE_DIALOG: case GpuSemantics.ROLE_ALERT:
+            case GpuSemantics.ROLE_STATUS: return "android.widget.TextView";
+            // A role the core added without a mapping here fails loudly, never reads as plain text.
+            default: throw new IllegalArgumentException("unmapped semantic role " + role);
         }
     }
 

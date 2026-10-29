@@ -118,9 +118,14 @@ final class MacGpuAccessibilityElement: NSAccessibilityElement {
         case "slider": return .slider
         case "text-field": return .textField
         case "scroll-view", "horizontal-scroll-view": return .scrollArea
-        case "list": return .list
-        case "dialog", "alert": return .group
-        default: return node.clickable ? .button : .group
+        case "list", "list-box": return .list
+        case "grid": return .grid
+        case "grid-cell", "option": return .cell
+        case "dialog", "alert", "list-item", "status": return .group
+        default:
+            // A role the core added without a mapping here is a bug, never a silent group.
+            assertionFailure("unmapped semantic role \(node.role)")
+            return node.clickable ? .button : .group
         }
     }
 

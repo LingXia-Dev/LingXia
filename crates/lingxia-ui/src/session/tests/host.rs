@@ -1786,7 +1786,7 @@ fn fill_and_pick(dev: bool, swap: bool, logic: bool) {
         platform.settle(&[&host]);
     }
     let _ = swap;
-    // What a platform editor does for an automation fill: focus, replace, and on a pick, select.
+    // What a platform editor does for an automation fill: focus and replace; the select is the View's.
     let ask = |request: serde_json::Value| -> serde_json::Value {
         let (tx, rx) = channel();
         host.input(request.to_string(), move |reply| {
@@ -1805,7 +1805,7 @@ fn fill_and_pick(dev: bool, swap: bool, logic: bool) {
             .unwrap()
             .clone()
     };
-    let (name, plan) = (node("name"), node("plan"));
+    let name = node("name");
     let generation = snapshot["generation"].clone();
     let token =
         ask(serde_json::json!({"op":"focus","identity":name["identity"],"generation":generation}))
@@ -1822,9 +1822,11 @@ fn fill_and_pick(dev: bool, swap: bool, logic: bool) {
     )
     .unwrap()["generation"]
         .clone();
-    ask(
-        serde_json::json!({"op":"select","identity":plan["identity"],"generation":generation,"index":1}),
-    );
+    let _ = generation;
+    // A select's choice comes from the View's own picker, as automation drives it.
+    host.automation_request(&serde_json::json!({"op":"act","css":"[data-testid=\"plan\"]","action":{"kind":"select","value":"b"}}))
+        .unwrap();
+    platform.settle(&[&host]);
     host.request_frame();
     platform.settle(&[&host]);
     let out = host
@@ -3019,7 +3021,7 @@ fn every_message_adapters_receive_matches_the_frame_schema() {
             .unwrap()
             .clone()
     };
-    let (name, plan, note) = (node("name"), node("plan"), node("note"));
+    let (name, note) = (node("name"), node("note"));
     let (identity, generation) = (name["identity"].clone(), current["generation"].clone());
     let ask = |request: serde_json::Value| -> serde_json::Value {
         let (tx, rx) = channel();
@@ -3056,7 +3058,6 @@ fn every_message_adapters_receive_matches_the_frame_schema() {
         serde_json::json!({"op": "hit_test", "identity": note["identity"], "generation": generation,
         "point": center, "word": true}),
     ));
-    input.push(ask(serde_json::json!({"op": "select", "identity": plan["identity"], "generation": generation, "index": 0})));
     for reply in &input {
         assert_eq!(
             conform("inputReply", reply),
@@ -3098,10 +3099,7 @@ fn every_message_adapters_receive_matches_the_frame_schema() {
         serde_json::json!({"op": "query", "identity": identity, "token": token}),
         serde_json::json!({"op": "hit_test", "identity": note["identity"], "generation": generation, "point": [12.5, 20.0], "word": true}),
         serde_json::json!({"op": "drag_hit_test", "identity": identity, "generation": generation, "token": token, "point": [3.0, 4.5], "edge": [-1, 1]}),
-        serde_json::json!({"op": "select", "identity": plan["identity"], "generation": generation, "index": 0}),
         serde_json::json!({"op": "blur", "identity": identity, "token": token}),
-        serde_json::json!({"op": "pick", "identity": identity, "token": token, "parts": [2026, 10, 28]}),
-        serde_json::json!({"op": "pick", "identity": identity, "token": token, "parts": null}),
         serde_json::json!({"op": "edit", "identity": identity, "token": token, "submit": true, "edits": [
             {"op": "replace", "text": "Ada", "cursor": -1, "composing": true},
             {"op": "selection", "anchor": 0, "focus": 3},
