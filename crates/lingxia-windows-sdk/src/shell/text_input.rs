@@ -34,9 +34,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
 #[cfg(feature = "terminal-runtime")]
 use windows::Win32::Graphics::Gdi::{BeginPaint, DT_CENTER, EndPaint, PAINTSTRUCT};
-use windows::Win32::Graphics::Gdi::{
-    ExcludeClipRect, GetDC, HDC, HFONT, InvalidateRect, ReleaseDC,
-};
+use windows::Win32::Graphics::Gdi::{ExcludeClipRect, HDC, InvalidateRect};
 #[cfg(feature = "terminal-runtime")]
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{SetFocus, VK_ESCAPE, VK_RETURN};
@@ -203,7 +201,9 @@ fn begin_inline_edit_impl(
         return false;
     };
 
-    let font = create_inline_edit_font(edit);
+    // Same font `chrome::draw_text` uses; a shared cache entry, not owned by
+    // the control.
+    let font = super::chrome::chrome_text_font();
     if !font.is_invalid() {
         unsafe {
             let _ = WindowsAndMessaging::SendMessageW(
@@ -691,19 +691,6 @@ fn blend_rgb(foreground: u32, background: u32, foreground_percent: u32) -> u32 {
         ((foreground * foreground_percent + background * (100 - foreground_percent)) / 100) << shift
     };
     blend(16) | blend(8) | blend(0)
-}
-
-/// Chrome text font for the editor (same font `chrome::draw_text` uses).
-/// Shared cache entry - not owned by the control.
-fn create_inline_edit_font(edit: HWND) -> HFONT {
-    unsafe {
-        let hdc = GetDC(Some(edit));
-        let font = super::chrome::chrome_text_font(hdc);
-        if !hdc.is_invalid() {
-            let _ = ReleaseDC(Some(edit), hdc);
-        }
-        font
-    }
 }
 
 fn inline_edit_state(hwnd: HWND) -> *mut InlineEditState {

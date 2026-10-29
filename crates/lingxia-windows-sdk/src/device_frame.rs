@@ -267,9 +267,10 @@ pub(crate) fn device_frame_screen_clip_style(window: isize) -> Option<(i32, u32)
     native::content_screen_clip_style(window)
 }
 
-/// Work-area fit factor of a framed content window (`None` when unframed),
-/// mirrored into the webview's rasterization scale and the native-overlay
-/// coordinate mapping.
+/// Display scale of a framed content window (`None` when unframed): the
+/// monitor DPI limited by the work area. Mirrored into the webview's
+/// rasterization scale, the chrome scale, and the native-overlay coordinate
+/// mapping.
 pub(crate) fn device_frame_fit_scale(window: isize) -> Option<f64> {
     native::content_fit_scale(window)
 }

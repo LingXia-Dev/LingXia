@@ -70,3 +70,11 @@ pub(crate) fn enter_window_message(root: HWND) -> MessageScale {
     MESSAGE_SCALE_MILLI.with(|scale| scale.set(Some(milli)));
     MessageScale(previous)
 }
+
+/// Pins the current thread's chrome scale until the guard drops.
+#[cfg(all(test, feature = "shell-chrome"))]
+pub(crate) fn enter_test_scale(scale: f64) -> MessageScale {
+    let previous = MESSAGE_SCALE_MILLI.with(Cell::get);
+    MESSAGE_SCALE_MILLI.with(|cell| cell.set(Some((scale * 1000.0).round() as u32)));
+    MessageScale(previous)
+}

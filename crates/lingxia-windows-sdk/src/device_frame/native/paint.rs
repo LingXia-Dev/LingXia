@@ -52,9 +52,9 @@ pub(super) fn paint_frame_window(frame: HWND, spec: &WindowsDeviceFrame, layout:
                     // Trailing icons stack right-to-left from the gear:
                     // gear, rotate, appearance.
                     let mut right_anchor = if layout.action_rect.right > layout.action_rect.left {
-                        layout.action_rect.left - 4
+                        layout.action_rect.left - layout.px(4)
                     } else {
-                        layout.toolbar.right - TOOLBAR_SIDE_MARGIN
+                        layout.toolbar.right - layout.px(TOOLBAR_SIDE_MARGIN)
                     };
                     if toolbar.rotate_command.is_some() {
                         layout.rotate_rect = composite_toolbar_icon(
@@ -125,7 +125,7 @@ fn draw_toolbar_text(dc: HDC, toolbar: &WindowsDeviceFrameToolbar, layout: &mut 
     let label_chars = &label_wide[..label_wide.len().saturating_sub(1)];
     let font = unsafe {
         CreateFontW(
-            -15,
+            -layout.px(15),
             0,
             0,
             0,
@@ -149,10 +149,11 @@ fn draw_toolbar_text(dc: HDC, toolbar: &WindowsDeviceFrameToolbar, layout: &mut 
         let x = (toolbar_rect.left + toolbar_rect.right - extent.cx) / 2;
         let y = center_y - extent.cy / 2;
         let _ = TextOutW(dc, x, y, label_chars);
+        let padding = layout.px(8);
         layout.selector_rect = RECT {
-            left: x - 8,
+            left: x - padding,
             top: toolbar_rect.top,
-            right: x + extent.cx + 8,
+            right: x + extent.cx + padding,
             bottom: toolbar_rect.bottom,
         };
         if !old_font.is_invalid() {
@@ -167,7 +168,7 @@ fn draw_toolbar_text(dc: HDC, toolbar: &WindowsDeviceFrameToolbar, layout: &mut 
         let glyph_chars = &glyph[..glyph.len().saturating_sub(1)];
         let icon_font = unsafe {
             CreateFontW(
-                -16,
+                -layout.px(16),
                 0,
                 0,
                 0,
@@ -188,11 +189,11 @@ fn draw_toolbar_text(dc: HDC, toolbar: &WindowsDeviceFrameToolbar, layout: &mut 
             SetTextColor(dc, COLORREF(0x00B4B4B4));
             let mut extent = SIZE::default();
             let _ = GetTextExtentPoint32W(dc, glyph_chars, &mut extent);
-            let x = toolbar_rect.right - TOOLBAR_SIDE_MARGIN - extent.cx;
+            let x = toolbar_rect.right - layout.px(TOOLBAR_SIDE_MARGIN) - extent.cx;
             let y = center_y - extent.cy / 2;
             let _ = TextOutW(dc, x, y, glyph_chars);
             layout.action_rect = RECT {
-                left: x - 6,
+                left: x - layout.px(6),
                 top: toolbar_rect.top,
                 right: toolbar_rect.right,
                 bottom: toolbar_rect.bottom,
@@ -225,24 +226,25 @@ fn composite_toolbar_icon(
 ) -> RECT {
     let toolbar = layout.toolbar;
     let center_y = (toolbar.top + toolbar.bottom) / 2;
-    let x = right_anchor - TOOLBAR_ICON_SIZE;
-    let y = center_y - TOOLBAR_ICON_SIZE / 2;
+    let size = layout.px(TOOLBAR_ICON_SIZE);
+    let x = right_anchor - size;
+    let y = center_y - size / 2;
     let rect = RECT {
-        left: x - 6,
+        left: x - layout.px(6),
         top: toolbar.top,
         right: right_anchor,
         bottom: toolbar.bottom,
     };
     let Some(icon) = crate::design_icons::design_icon_argb_premultiplied(
         design_icon,
-        TOOLBAR_ICON_SIZE as u32,
+        size as u32,
         Some(0x00B4B4B4),
     ) else {
         return rect;
     };
-    for iy in 0..TOOLBAR_ICON_SIZE {
-        for ix in 0..TOOLBAR_ICON_SIZE {
-            let src = icon[(iy * TOOLBAR_ICON_SIZE + ix) as usize];
+    for iy in 0..size {
+        for ix in 0..size {
+            let src = icon[(iy * size + ix) as usize];
             let sa = src >> 24;
             if sa == 0 {
                 continue;
@@ -323,19 +325,23 @@ fn frame_pixels(spec: &WindowsDeviceFrame, layout: &FrameLayout) -> Vec<u32> {
         )
     };
 
+    // Toolbar and shadow are host chrome at the layout's chrome scale; the
+    // bezel geometry above is already fit-scaled.
+    let chrome_scale = layout.chrome_scale as f32;
     let has_toolbar = spec.toolbar.is_some();
     let toolbar = layout.toolbar;
+    let toolbar_radius = TOOLBAR_RADIUS as f32 * chrome_scale;
     let toolbar_center_x = (toolbar.left + toolbar.right) as f32 / 2.0;
     let toolbar_center_y = (toolbar.top + toolbar.bottom) as f32 / 2.0;
-    let toolbar_half_x = (toolbar.right - toolbar.left) as f32 / 2.0 - TOOLBAR_RADIUS as f32;
-    let toolbar_half_y = (toolbar.bottom - toolbar.top) as f32 / 2.0 - TOOLBAR_RADIUS as f32;
+    let toolbar_half_x = (toolbar.right - toolbar.left) as f32 / 2.0 - toolbar_radius;
+    let toolbar_half_y = (toolbar.bottom - toolbar.top) as f32 / 2.0 - toolbar_radius;
     let toolbar_distance = move |x: f32, y: f32| {
         rounded_distance(
             x - toolbar_center_x,
             y - toolbar_center_y,
             toolbar_half_x,
             toolbar_half_y,
-            TOOLBAR_RADIUS as f32,
+            toolbar_radius,
         )
     };
 
@@ -362,7 +368,10 @@ fn frame_pixels(spec: &WindowsDeviceFrame, layout: &FrameLayout) -> Vec<u32> {
     let outline_green = ((FRAMELESS_OUTLINE_COLOR >> 8) & 0xff) as f32;
     let outline_blue = (FRAMELESS_OUTLINE_COLOR & 0xff) as f32;
 
-    let shadow_reach = FRAME_SHADOW_MARGIN as f32;
+    let shadow_reach = layout.px(FRAME_SHADOW_MARGIN) as f32;
+    let shadow_offset = FRAME_SHADOW_OFFSET_Y * chrome_scale;
+    let toolbar_shadow_offset = 2.0 * chrome_scale;
+    let toolbar_shadow_reach = 8.0 * chrome_scale;
     let mut pixels = Vec::with_capacity((layout.width * layout.height) as usize);
     for y in 0..layout.height {
         for x in 0..layout.width {
@@ -379,12 +388,13 @@ fn frame_pixels(spec: &WindowsDeviceFrame, layout: &FrameLayout) -> Vec<u32> {
 
             // Quadratic shadow falloff around the bezel, sampled against a
             // downward-shifted silhouette; the toolbar gets a tighter ring.
-            let shadow_d = bezel_distance(px, py - FRAME_SHADOW_OFFSET_Y).max(0.0);
+            let shadow_d = bezel_distance(px, py - shadow_offset).max(0.0);
             let falloff = (1.0 - shadow_d / shadow_reach).clamp(0.0, 1.0);
             let mut shadow = FRAME_SHADOW_ALPHA * falloff * falloff;
             if has_toolbar {
-                let toolbar_shadow_d = toolbar_distance(px, py - 2.0).max(0.0);
-                let toolbar_falloff = (1.0 - toolbar_shadow_d / 8.0).clamp(0.0, 1.0);
+                let toolbar_shadow_d = toolbar_distance(px, py - toolbar_shadow_offset).max(0.0);
+                let toolbar_falloff =
+                    (1.0 - toolbar_shadow_d / toolbar_shadow_reach).clamp(0.0, 1.0);
                 shadow = shadow.max(0.3 * toolbar_falloff * toolbar_falloff);
             }
 
@@ -428,7 +438,8 @@ fn frame_pixels(spec: &WindowsDeviceFrame, layout: &FrameLayout) -> Vec<u32> {
                 let cx = (rect.left + rect.right) as f32 / 2.0;
                 let cy = (rect.top + rect.bottom) as f32 / 2.0;
                 let distance = ((px - cx).powi(2) + (py - cy).powi(2)).sqrt();
-                let coverage = (TOOLBAR_DOT_RADIUS + 0.5 - distance).clamp(0.0, 1.0);
+                let radius = (rect.right - rect.left) as f32 / 2.0;
+                let coverage = (radius + 0.5 - distance).clamp(0.0, 1.0);
                 if coverage > 0.0 {
                     let dot_red = ((color >> 16) & 0xff) as f32;
                     let dot_green = ((color >> 8) & 0xff) as f32;

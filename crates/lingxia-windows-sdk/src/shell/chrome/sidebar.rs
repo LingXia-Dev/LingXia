@@ -196,7 +196,7 @@ fn draw_tab_bar_inner(
                     rect: label_rect,
                     color,
                     text: label.clone(),
-                    font_height: logical_font_height(hdc, SHELL_TEXT_POINT_SIZE),
+                    font_height: logical_font_height(SHELL_TEXT_POINT_SIZE),
                     font_weight: SHELL_TEXT_WEIGHT,
                 });
             } else {

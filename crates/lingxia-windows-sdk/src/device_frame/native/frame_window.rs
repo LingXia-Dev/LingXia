@@ -146,7 +146,7 @@ fn show_selector_menu(
     }
     let mut anchor = POINT {
         x: layout.selector_rect.left,
-        y: layout.toolbar.bottom + 2,
+        y: layout.toolbar.bottom + layout.px(2),
     };
     unsafe {
         let _ = ClientToScreen(frame, &mut anchor);

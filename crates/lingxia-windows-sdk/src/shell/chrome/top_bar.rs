@@ -808,14 +808,14 @@ fn draw_frame_button_glyph_with_font(
 /// private-use glyphs are trusted. The probe runs once per DPI height;
 /// the resolved font is a shared cache entry - do not delete.
 pub(super) fn caption_icon_font(hdc: HDC) -> HFONT {
-    let height = logical_font_height(hdc, WINDOW_BUTTON_GLYPH_POINT_SIZE);
+    let height = logical_font_height(WINDOW_BUTTON_GLYPH_POINT_SIZE);
     cached_font_with("caption-icon", height, 400, CLEARTYPE_QUALITY, || {
         create_caption_icon_font(hdc, -height, CLEARTYPE_QUALITY)
     })
 }
 
 fn caption_icon_font_grayscale(hdc: HDC) -> HFONT {
-    let height = logical_font_height(hdc, WINDOW_BUTTON_GLYPH_POINT_SIZE);
+    let height = logical_font_height(WINDOW_BUTTON_GLYPH_POINT_SIZE);
     cached_font_with("caption-icon-aa", height, 400, ANTIALIASED_QUALITY, || {
         create_caption_icon_font(hdc, -height, ANTIALIASED_QUALITY)
     })

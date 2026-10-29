@@ -219,7 +219,7 @@ pub(crate) fn paint_tabbar_overflow(
     };
     fill_round_rect_aa_corners(hdc, sheet, [overflow_panel_radius(); 4], surface);
 
-    let font_height = logical_font_height(hdc, OVERFLOW_LABEL_POINT_SIZE);
+    let font_height = logical_font_height(OVERFLOW_LABEL_POINT_SIZE);
     let mut text_runs = Vec::with_capacity(layout.cells.len());
     for cell in &layout.cells {
         let Some(item) = layout.tabbar.items.get(cell.index) else {
