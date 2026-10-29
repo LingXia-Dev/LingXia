@@ -42,7 +42,7 @@ fn transition_records_are_bounded_on_decode() {
 #[test]
 fn pressed_states_may_scale_through_the_paint_delta() {
     let module = super::source(
-        "function render(){return h('page',{style:{backgroundColor:'#ffffff'}},h('button',{testId:'b',onClick(){},className:'active:scale-95',style:{position:'absolute',left:0,top:0,width:100,height:40,padding:0,borderRadius:0,backgroundColor:'#000000'}},''))}",
+        "function render(){return h('page',{style:{backgroundColor:'#ffffff'}},h('button',{'data-testid':'b',onClick(){},className:'active:scale-95',style:{position:'absolute',left:0,top:0,width:100,height:40,padding:0,borderRadius:0,backgroundColor:'#000000'}},''))}",
     )
     .replace(
         "__lingxiaPublish(render);",
@@ -67,7 +67,7 @@ fn pressed_states_may_scale_through_the_paint_delta() {
 #[test]
 fn group_pressed_paint_applies_to_the_pressed_controls_descendants() {
     let module = super::source(
-        "function render(){return h('page',{},h('button',{testId:'b',onClick(){},className:'group',style:{width:100,height:40,padding:0}},h('view',{testId:'disc',className:'group-active:opacity-50',style:{width:20,height:20}})),h('view',{testId:'outside',className:'group-active:opacity-50',style:{width:20,height:20}}))}",
+        "function render(){return h('page',{},h('button',{'data-testid':'b',onClick(){},className:'group',style:{width:100,height:40,padding:0}},h('view',{'data-testid':'disc',className:'group-active:opacity-50',style:{width:20,height:20}})),h('view',{'data-testid':'outside',className:'group-active:opacity-50',style:{width:20,height:20}}))}",
     )
     .replace(
         "__lingxiaPublish(render);",

@@ -34,24 +34,24 @@ function Avatar({ show, busy = false }: { show: boolean; busy?: boolean }) {
 
 function AssistantTurn({ message, first }: { message: Extract<Message, { role: 'assistant' }>; first: boolean }) {
   return (
-    <row className={`ask-enter items-start gap-2.5 ${first ? '' : '-mt-1.5'}`} testId="assistant-message">
+    <row className={`ask-enter items-start gap-2.5 ${first ? '' : '-mt-1.5'}`} data-testid="assistant-message">
       <Avatar show={first} />
       <column className="min-w-0 flex-1 items-start gap-2">
         {message.notice ? (
-          <row className={`max-w-full items-start gap-2 rounded-lg px-3 py-2 ${NOTICE[message.notice].tone}`} testId={`assistant-notice-${message.notice}`}>
+          <row className={`max-w-full items-start gap-2 rounded-lg px-3 py-2 ${NOTICE[message.notice].tone}`} data-testid={`assistant-notice-${message.notice}`}>
             <Icon name={NOTICE[message.notice].icon} size={15} className="mt-0.5" />
             <text dir="auto" className="min-w-0 shrink text-supporting">{t[message.notice]}</text>
           </row>
         ) : message.text ? (
-          <text dir="auto" className="selectable max-w-full whitespace-pre-wrap break-words pt-0.5 text-body leading-relaxed text-foreground" testId="assistant-text">{message.text}</text>
+          <text dir="auto" className="selectable max-w-full whitespace-pre-wrap break-words pt-0.5 text-body leading-relaxed text-foreground" data-testid="assistant-text">{message.text}</text>
         ) : null}
         {message.question?.state === 'answered' ? (
-          <row className="items-center gap-1.5" testId="question-answered">
+          <row className="items-center gap-1.5" data-testid="question-answered">
             <Icon name="Check" size={14} className="text-muted-foreground" />
             <text dir="auto" className="text-supporting text-muted-foreground">{t.answered.replace('{label}', message.question.options.find(o => o.id === message.question!.chosen)?.label ?? '')}</text>
           </row>
         ) : message.question ? (
-          <row className="flex-wrap gap-2" testId="question-options">
+          <row className="flex-wrap gap-2" data-testid="question-options">
             {message.question.options.map(option => (
               <Button key={option.id} size="sm" variant="outline" className="rounded-full" onClick={() => {}} testId={`question-option-${option.id}`}>
                 <text dir="auto" className="text-control-small">{option.label}</text>
@@ -69,7 +69,7 @@ function Composer() {
   const ready = draft.value.trim().length > 0;
   return (
     <row className="focus-ring-within items-end gap-1.5 rounded-[1.5rem] border border-border bg-field py-1.5 pe-1.5 ps-4 shadow-[var(--card-shadow)]">
-      <textarea bind={draft} rows={1} maxRows={5} enterKeyHint="send" placeholder={t.composerPlaceholder} accessibilityLabel={t.composerPlaceholder} testId="composer"
+      <textarea bind={draft} rows={1} maxRows={5} enterKeyHint="send" placeholder={t.composerPlaceholder} accessibilityLabel={t.composerPlaceholder} data-testid="composer"
         className="min-w-0 flex-1 self-center border-0 bg-transparent py-1.5 text-body text-foreground placeholder:text-muted-foreground" />
       <Button size="icon" disabled={!ready} onClick={() => draft.set('')} accessibilityLabel={t.sendLabel} className="size-9 rounded-full" testId="send">
         <Icon name="ArrowUp" size={18} strokeWidth={2.4} />
@@ -89,7 +89,7 @@ export function render({ data }: View<object, Data>) {
           </Button>
           <row className="min-w-0 flex-1 justify-center">
             {data.title ? (
-              <text role="heading" headingLevel={2} dir="auto" className="truncate text-supporting font-medium text-foreground" testId="conversation-current-title">{data.title}</text>
+              <text role="heading" headingLevel={2} dir="auto" className="truncate text-supporting font-medium text-foreground" data-testid="conversation-current-title">{data.title}</text>
             ) : (
               <row className="items-center gap-1.5 rounded-full bg-secondary px-2.5 py-1">
                 <Icon name="Router" size={12} strokeWidth={2.4} className="text-muted-foreground" />
@@ -113,14 +113,14 @@ export function render({ data }: View<object, Data>) {
               </row>
               <column className="flex flex-col gap-5">
                 {data.messages.map((message, index) => message.role === 'user' ? (
-                  <row key={message.id} className="ask-enter justify-end" testId="user-message">
+                  <row key={message.id} className="ask-enter justify-end" data-testid="user-message">
                     <text dir="auto" className="selectable max-w-[82%] whitespace-pre-wrap break-words rounded-[1.25rem] rounded-ee-md bg-primary px-4 py-2.5 text-primary-foreground">{message.text}</text>
                   </row>
                 ) : (
                   <AssistantTurn key={message.id} message={message} first={data.messages[index - 1]?.role !== 'assistant'} />
                 ))}
                 {data.thinking ? (
-                  <row className={`ask-enter items-center gap-2.5 ${last?.role !== 'assistant' ? '' : '-mt-1.5'}`} role="status" testId="thinking">
+                  <row className={`ask-enter items-center gap-2.5 ${last?.role !== 'assistant' ? '' : '-mt-1.5'}`} role="status" data-testid="thinking">
                     <Avatar show={last?.role !== 'assistant'} busy />
                     <text className="ask-shimmer text-supporting font-medium">{t.thinking}</text>
                   </row>

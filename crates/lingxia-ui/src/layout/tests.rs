@@ -10,7 +10,7 @@ fn flex_basis_is_independent_of_growth_in_both_axes() {
             (",flexBasis:'25%'", [150.0, 150.0]),
         ] {
             let source = crate::session::tests::source(&format!(
-                "function render(){{return h('{axis}',{{style:{{width:300,height:300}}}},h('column',{{testId:'a',style:{{{size}:50,flexGrow:1{basis}}}}}),h('column',{{testId:'b',style:{{{size}:100,flexGrow:1{basis}}}}}))}}"
+                "function render(){{return h('{axis}',{{style:{{width:300,height:300}}}},h('column',{{'data-testid':'a',style:{{{size}:50,flexGrow:1{basis}}}}}),h('column',{{'data-testid':'b',style:{{{size}:100,flexGrow:1{basis}}}}}))}}"
             ));
             let mut page = crate::ViewSession::new(&source).unwrap();
             for scale in [1.0, 2.0] {
@@ -35,7 +35,7 @@ fn flex_basis_is_independent_of_growth_in_both_axes() {
 #[test]
 fn percentage_basis_recomputes_after_parent_resize() {
     let source = crate::session::tests::source(
-        "function render(){const wide=useLocal('wide',false);return h('column',{},h('row',{style:{width:wide.value?240:160}},h('column',{testId:'half',style:{flexBasis:'50%',height:20,flexShrink:0}})),h('button',{testId:'resize',onClick:()=>wide.set(!wide.value)},'Resize'))}",
+        "function render(){const wide=useLocal('wide',false);return h('column',{},h('row',{style:{width:wide.value?240:160}},h('column',{'data-testid':'half',style:{flexBasis:'50%',height:20,flexShrink:0}})),h('button',{'data-testid':'resize',onClick:()=>wide.set(!wide.value)},'Resize'))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let display = page.layout(300, 300, 1.0).unwrap();
@@ -70,7 +70,7 @@ fn percentage_basis_recomputes_after_parent_resize() {
 fn flex_wrap_reflows_items_with_gaps_and_reverse_order() {
     for mode in ["nowrap", "wrap", "wrap-reverse"] {
         let source = crate::session::tests::source(&format!(
-            "function render(){{return h('column',{{}},h('row',{{testId:'wrap',style:{{flexWrap:'{mode}',gap:10}}}},[0,1,2].map(i=>h('column',{{key:String(i),testId:'item'+i,style:{{width:70,height:20}}}}))))}}"
+            "function render(){{return h('column',{{}},h('row',{{'data-testid':'wrap',style:{{flexWrap:'{mode}',gap:10}}}},[0,1,2].map(i=>h('column',{{key:String(i),'data-testid':'item'+i,style:{{width:70,height:20}}}}))))}}"
         ));
         let mut page = crate::ViewSession::new(&source).unwrap();
         let display = page.layout(150, 200, 1.0).unwrap();
@@ -113,7 +113,7 @@ fn flex_wrap_reflows_items_with_gaps_and_reverse_order() {
 #[test]
 fn unlabeled_composed_controls_are_named_by_their_descendant_text() {
     let module = crate::session::tests::source(
-        "function render(){return h('column',{},h('button',{testId:'open',onClick(){}},h('image',{src:'icon',alt:'Mail',style:{width:16,height:16}}),h('column',{},h('text',{},'Inbox'),' 3 unread ')),h('button',{testId:'labeled',accessibilityLabel:'Compose'},h('text',{},'New')),h('switch',{testId:'sync',accessibilityLabel:'Sync mail',value:true},'Sync'))}",
+        "function render(){return h('column',{},h('button',{'data-testid':'open',onClick(){}},h('image',{src:'icon',alt:'Mail',style:{width:16,height:16}}),h('column',{},h('text',{},'Inbox'),' 3 unread ')),h('button',{'data-testid':'labeled',accessibilityLabel:'Compose'},h('text',{},'New')),h('switch',{'data-testid':'sync',accessibilityLabel:'Sync mail',value:true},'Sync'))}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let layout = page.layout(300, 200, 1.0).unwrap();
@@ -134,7 +134,7 @@ fn unlabeled_composed_controls_are_named_by_their_descendant_text() {
 fn composed_button_lays_out_content_and_groups_semantics_at_each_scale() {
     for scale in [1.0, 2.0] {
         let module = crate::session::tests::source(
-            "function render(){const n=useLocal('n',0);return h('column',{},h('button',{testId:'action',accessibilityLabel:'Open inbox',style:{padding:16,width:240,backgroundColor:'#ffffff'},onClick:()=>n.set(n.value+1)},h('column',{style:{gap:4}},h('text',{testId:'title',style:{fontSize:18}},'Inbox'),h('text',{testId:'description',style:{fontSize:12}},'Unread '+n.value))))}",
+            "function render(){const n=useLocal('n',0);return h('column',{},h('button',{'data-testid':'action',accessibilityLabel:'Open inbox',style:{padding:16,width:240,backgroundColor:'#ffffff'},onClick:()=>n.set(n.value+1)},h('column',{style:{gap:4}},h('text',{'data-testid':'title',style:{fontSize:18}},'Inbox'),h('text',{'data-testid':'description',style:{fontSize:12}},'Unread '+n.value))))}",
         );
         let mut page = crate::ViewSession::new(&module).unwrap();
         let first = page.layout(300, 200, scale).unwrap();
@@ -187,7 +187,7 @@ fn composed_button_lays_out_content_and_groups_semantics_at_each_scale() {
 fn composed_checkbox_lays_out_content_and_groups_semantics_at_each_scale() {
     for scale in [1.0, 2.0] {
         let module = crate::session::tests::source(
-            "function render(){const n=useLocal('n',0);return h('column',{},h('checkbox',{value:n.value%2===1,testId:'action',accessibilityLabel:'Open inbox',style:{padding:16,width:240,backgroundColor:'#ffffff'},onChange:()=>n.set(n.value+1)},h('column',{style:{gap:4}},h('text',{testId:'title',style:{fontSize:18}},'Inbox'),h('text',{testId:'description',style:{fontSize:12}},'Unread '+n.value))))}",
+            "function render(){const n=useLocal('n',0);return h('column',{},h('checkbox',{value:n.value%2===1,'data-testid':'action',accessibilityLabel:'Open inbox',style:{padding:16,width:240,backgroundColor:'#ffffff'},onChange:()=>n.set(n.value+1)},h('column',{style:{gap:4}},h('text',{'data-testid':'title',style:{fontSize:18}},'Inbox'),h('text',{'data-testid':'description',style:{fontSize:12}},'Unread '+n.value))))}",
         );
         let mut page = crate::ViewSession::new(&module).unwrap();
         let first = page.layout(300, 200, scale).unwrap();
@@ -255,7 +255,7 @@ fn percentage_growth_cannot_publish_unbounded_geometry() {
 #[test]
 fn percentage_dimensions_follow_parent_content_boxes_and_scale() {
     let source = crate::session::tests::source(
-        "function render(){return h('column',{style:{width:'100%',height:'100%',padding:20,borderWidth:5}},h('column',{testId:'half',style:{width:'50%',height:'50%',backgroundColor:'#ff0000'}}))}",
+        "function render(){return h('column',{style:{width:'100%',height:'100%',padding:20,borderWidth:5}},h('column',{'data-testid':'half',style:{width:'50%',height:'50%',backgroundColor:'#ff0000'}}))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     for (width, height, scale) in [(300, 200, 1.0), (600, 400, 2.0), (500, 300, 1.0)] {
@@ -276,7 +276,7 @@ fn percentage_dimensions_follow_parent_content_boxes_and_scale() {
 #[test]
 fn percentage_max_width_wraps_text_and_min_width_overrides_a_smaller_width() {
     let source = crate::session::tests::source(
-        "function render(){return h('column',{style:{width:'100%',padding:20,alignItems:'end'}},h('text',{testId:'address',style:{maxWidth:'72%',wordBreak:'break-all',fontSize:16}},'2001:db8:1234:5678:90ab:cdef:1234:5678'),h('column',{testId:'limited',style:{width:'10%',minWidth:'50%',maxWidth:'80%',height:10}}))}",
+        "function render(){return h('column',{style:{width:'100%',padding:20,alignItems:'end'}},h('text',{'data-testid':'address',style:{maxWidth:'72%',wordBreak:'break-all',fontSize:16}},'2001:db8:1234:5678:90ab:cdef:1234:5678'),h('column',{'data-testid':'limited',style:{width:'10%',minWidth:'50%',maxWidth:'80%',height:10}}))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let mut heights = Vec::new();
@@ -315,7 +315,7 @@ fn automatic_textarea_height_tracks_wrapping_and_respects_limits() {
         &"More words to wrap. ".repeat(30),
     ] {
         let module = crate::session::tests::source(&format!(
-            "function render(){{return h('column',{{style:{{width:180}}}},h('textarea',{{testId:'editor',value:{},style:{{height:'auto',minHeight:42,maxHeight:120,fontSize:14,lineHeight:'21px',padding:10}}}}))}}",
+            "function render(){{return h('column',{{style:{{width:180}}}},h('textarea',{{'data-testid':'editor',value:{},style:{{height:'auto',minHeight:42,maxHeight:120,fontSize:14,lineHeight:'21px',padding:10}}}}))}}",
             serde_json::to_string(value).unwrap()
         ));
         let mut page = crate::ViewSession::new(&module).unwrap();
@@ -904,7 +904,7 @@ mod sticky;
 #[test]
 fn an_aspect_ratio_box_capped_by_max_width_sizes_its_auto_height_parent() {
     let source = crate::session::tests::source(
-        "function render(){return h('column',{style:{width:327}},h('column',{testId:'wrap'},h('view',{testId:'dial',style:{width:'100%',maxWidth:240,aspectRatio:1,marginLeft:'auto',marginRight:'auto'}})),h('text',{testId:'after'},'Below'))}",
+        "function render(){return h('column',{style:{width:327}},h('column',{'data-testid':'wrap'},h('view',{'data-testid':'dial',style:{width:'100%',maxWidth:240,aspectRatio:1,marginLeft:'auto',marginRight:'auto'}})),h('text',{'data-testid':'after'},'Below'))}",
     );
     let display = crate::ViewSession::new(&source)
         .unwrap()
@@ -933,7 +933,7 @@ fn an_aspect_ratio_box_capped_by_max_width_sizes_its_auto_height_parent() {
 fn long_text_in_a_centered_row_wraps_when_it_may_shrink() {
     for text_style in ["flexShrink:1", "minWidth:0,flexShrink:1,textAlign:'center'"] {
         let source = crate::session::tests::source(&format!(
-            "function render(){{return h('column',{{style:{{width:300}}}},h('row',{{style:{{justifyContent:'center',alignItems:'flex-start',gap:6,paddingLeft:12,paddingRight:12}}}},h('view',{{style:{{width:13,height:13}}}}),h('text',{{testId:'t',style:{{fontSize:12,{text_style}}}}},'Keep this screen open while we measure. You can cancel at any time.')))}}"
+            "function render(){{return h('column',{{style:{{width:300}}}},h('row',{{style:{{justifyContent:'center',alignItems:'flex-start',gap:6,paddingLeft:12,paddingRight:12}}}},h('view',{{style:{{width:13,height:13}}}}),h('text',{{'data-testid':'t',style:{{fontSize:12,{text_style}}}}},'Keep this screen open while we measure. You can cancel at any time.')))}}"
         ));
         let display = crate::ViewSession::new(&source)
             .unwrap()

@@ -92,7 +92,7 @@ test('property admission stays local to each element and rejects prototype names
 });
 
 test('children flatten; booleans, nullish values and empty strings render nothing', () => {
-  const root = rendered(() => h('column', {}, false, null, '', [h('text', { testId: 'hello' }, 'Hello ', 42)], '' && h('text', {}, 'never')));
+  const root = rendered(() => h('column', {}, false, null, '', [h('text', { 'data-testid': 'hello' }, 'Hello ', 42)], '' && h('text', {}, 'never')));
   assert.equal(root.children.length, 1);
   assert.deepEqual([root.children[0].testId, root.children[0].text], ['hello', 'Hello 42']);
 });
@@ -118,7 +118,7 @@ test('unsupported tags, callbacks and child shapes fail with their JSX site', ()
 });
 
 test('scroll retains child button callbacks and rejects unsupported scroll props', () => {
-  const scroll = rendered(() => h('scroll', { testId: 'feed', style: { height: 100 } }, h('button', { key: 'item', onClick() {} }, 'Item')));
+  const scroll = rendered(() => h('scroll', { 'data-testid': 'feed', style: { height: 100 } }, h('button', { key: 'item', onClick() {} }, 'Item')));
   assert.deepEqual([scroll.tag, scroll.testId, scroll.children[0].tag], ['scroll', 'feed', 'button']);
   assert.equal(typeof scroll.children[0].props.onClick, 'number');
   throwsOn(() => h('scroll', { onClick() {} }), /UI_PROP/);
@@ -394,4 +394,11 @@ test('a View reading env.sizeClass or env.canDock is marked as reading the host 
   prepare(quiet, createView({}, env));
   assert.equal(readsHostContext(), false, 'each view starts unread');
   discard();
+});
+
+test('data-testid names a node for automation; the old testId prop is refused', () => {
+  const root = rendered(() => h('column', { 'data-testid': 'box' }, h('text', { 'data-testid': 'label' }, 'Hi')));
+  assert.deepEqual([root.testId, root.children[0].testId], ['box', 'label']);
+  assert.equal(root.props.data, undefined, 'it is not one of the data-* variant attributes');
+  assert.throws(() => rendered(() => h('column', { testId: 'box' })), /UI_PROP: testId is not a property of <column>/);
 });

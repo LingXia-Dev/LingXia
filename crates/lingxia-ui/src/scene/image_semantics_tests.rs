@@ -43,7 +43,7 @@ fn image_descriptions_and_decoration_share_layout_and_pixels() {
         (",alt:''", None, Some(true)),
     ] {
         let module = source(&format!(
-            "function render(){{return h('image',{{src:'photo.png',testId:'photo',style:{{width:64,height:48,backgroundColor:'#4488cc'}}{props}}})}}"
+            "function render(){{return h('image',{{src:'photo.png','data-testid':'photo',style:{{width:64,height:48,backgroundColor:'#4488cc'}}{props}}})}}"
         ));
         let mut page = ViewSession::new(&module).unwrap();
         let frame = page.render(160, 120, 1.0).unwrap();

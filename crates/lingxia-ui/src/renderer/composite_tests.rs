@@ -4,7 +4,7 @@ use vello_cpu::Pixmap;
 
 fn display(scale: f32, offset: f32) -> DisplayList {
     let module = crate::session::tests::source(
-        "function render(){return h('column',{style:{padding:4,backgroundColor:'#ffffff'}},h('scroll',{testId:'scroll',style:{height:64,borderRadius:10,borderWidth:1,borderColor:'#555555'}},h('column',{style:{opacity:0.55,gap:2}},h('text',{style:{fontSize:12,fontFamily:'monospace'}},'UI'),h('image',{src:'photo',style:{width:24,height:16,borderRadius:3}}),h('vector',{paths:[{d:'M0 0L24 0L12 24Z'}],style:{width:20,height:12,color:'#0000ff'}}),h('column',{style:{height:80,backgroundColor:'#00aaff'}})),h('column',{style:{opacity:0.55,height:24,backgroundColor:'#ff0000'}})))}",
+        "function render(){return h('column',{style:{padding:4,backgroundColor:'#ffffff'}},h('scroll',{'data-testid':'scroll',style:{height:64,borderRadius:10,borderWidth:1,borderColor:'#555555'}},h('column',{style:{opacity:0.55,gap:2}},h('text',{style:{fontSize:12,fontFamily:'monospace'}},'UI'),h('image',{src:'photo',style:{width:24,height:16,borderRadius:3}}),h('vector',{paths:[{d:'M0 0L24 0L12 24Z'}],style:{width:20,height:12,color:'#0000ff'}}),h('column',{style:{height:80,backgroundColor:'#00aaff'}})),h('column',{style:{opacity:0.55,height:24,backgroundColor:'#ff0000'}})))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     let layout = page.layout(96, 96, scale).unwrap();
@@ -178,7 +178,7 @@ fn display_plan_preserves_gpu_text_images_clipping_opacity_and_retained_scroll()
 
 fn backdrop_display(scale: f32, offset: f32) -> DisplayList {
     let module = crate::session::tests::source(
-        "function render(){return h('scroll',{style:{height:72,backgroundColor:'#ffffff',borderRadius:6}},h('stack',{style:{height:160}},h('column',{style:{width:80,height:160,backgroundColor:'#0000ff'}}),h('column',{style:{width:32,height:160,backgroundColor:'#ff0000'}}),h('column',{testId:'glass',style:{left:8,top:12,width:48,height:40,borderRadius:4,backdropFilter:'blur(4px) saturate(0)'}},h('column',{style:{width:8,height:8,backgroundColor:'#00ff00'}}))))}",
+        "function render(){return h('scroll',{style:{height:72,backgroundColor:'#ffffff',borderRadius:6}},h('stack',{style:{height:160}},h('column',{style:{width:80,height:160,backgroundColor:'#0000ff'}}),h('column',{style:{width:32,height:160,backgroundColor:'#ff0000'}}),h('column',{'data-testid':'glass',style:{left:8,top:12,width:48,height:40,borderRadius:4,backdropFilter:'blur(4px) saturate(0)'}},h('column',{style:{width:8,height:8,backgroundColor:'#00ff00'}}))))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     let display = page.layout(96, 96, scale).unwrap();

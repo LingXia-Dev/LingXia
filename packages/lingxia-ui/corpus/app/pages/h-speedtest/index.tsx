@@ -98,7 +98,7 @@ function Gauge270({ children }: { children: JSX.Element[] }) {
 
 function StartDial({ onStart }: { onStart: () => void }) {
   return (
-    <button onClick={onStart} accessibilityLabel={t('start')} testId="speedtest-start"
+    <button onClick={onStart} accessibilityLabel={t('start')} data-testid="speedtest-start"
       className="speedtest-start focus-ring group relative mx-auto grid aspect-square w-full max-w-[15rem] place-items-center rounded-full bg-transparent p-0">
       <view className="speedtest-halo absolute inset-8 rounded-full" accessibilityHidden />
       <Gauge270>
@@ -117,7 +117,7 @@ function StartDial({ onStart }: { onStart: () => void }) {
 function LastTestRow({ previous }: { previous: Data['previous'] }) {
   if (!previous) return null;
   return (
-    <row className="mt-4 items-center justify-between gap-3 border-t border-separator/60 pt-3" testId="speedtest-last">
+    <row className="mt-4 items-center justify-between gap-3 border-t border-separator/60 pt-3" data-testid="speedtest-last">
       <column className="min-w-0">
         <text className="block text-supporting text-foreground">{t('lastTest')}</text>
         <text className="block text-caption text-muted-foreground">{previous.ago}</text>
@@ -216,7 +216,7 @@ function StepRing({ phase, elapsed }: { phase?: Phase; elapsed: number }) {
     return [{ ...common, stroke: 'surface-sunken' }, ...(state === 'past' ? [{ ...common, stroke: 'url(#ring)' }] : []), ...(state === 'current' ? [{ ...common, stroke: 'accent' }] : [])];
   });
   return (
-    <view className="relative mx-auto aspect-square w-full max-w-[15rem]" testId="speedtest-dial">
+    <view className="relative mx-auto aspect-square w-full max-w-[15rem]" data-testid="speedtest-dial">
       <vector accessibilityHidden className="size-full rtl:-scale-x-100" viewBox={[0, 0, RING_SIZE, RING_SIZE]} paths={paths}
         gradients={{ ring: { type: 'linear', x1: RING_SIZE, y1: RING_SIZE, x2: 0, y2: 0, units: 'userSpaceOnUse', stops: [{ offset: 0, color: 'chart-1' }, { offset: 1, color: 'accent' }] } }} />
       <view className="absolute inset-0 grid place-items-center">
@@ -228,7 +228,7 @@ function StepRing({ phase, elapsed }: { phase?: Phase; elapsed: number }) {
             <view key={phase ?? 'none'} className="speedtest-pop brand-gradient grid size-11 place-items-center rounded-full text-brand-foreground">
               <Icon name={phase ? PHASE_ICON[phase] : 'Gauge'} size={20} />
             </view>
-            <text className="text-center text-item-title font-semibold leading-snug" accessibilityLiveRegion="polite" testId="speedtest-phase-label">
+            <text className="text-center text-item-title font-semibold leading-snug" accessibilityLiveRegion="polite" data-testid="speedtest-phase-label">
               {phase ? t(PHASE_LABEL[phase]) : t('testing')}
             </text>
             <row className="items-center gap-1.5">
@@ -259,8 +259,8 @@ function StepReadings({ reading, phase }: { reading: Reading | null; phase?: Pha
     return value == null ? null : { value: String(value), unit: key === 'ping' ? 'ms' : 'Mbps' };
   };
   return (
-    <view className="-mt-4 border-t border-separator/60 pt-3" testId="speedtest-phases">
-      <grid className="grid grid-cols-3 gap-1.5" testId="speedtest-live-readings">
+    <view className="-mt-4 border-t border-separator/60 pt-3" data-testid="speedtest-phases">
+      <grid className="grid grid-cols-3 gap-1.5" data-testid="speedtest-live-readings">
         {STEPS.map((key, index) => {
           const state = stepState(phase, index);
           const shown = figure(key);
@@ -280,7 +280,7 @@ function StepReadings({ reading, phase }: { reading: Reading | null; phase?: Pha
                     ))}
                   </row>
                 ) : state === 'past' ? (
-                  <text className="text-supporting font-medium text-muted-foreground" testId="speedtest-step-done">{t('stepDone')}</text>
+                  <text className="text-supporting font-medium text-muted-foreground" data-testid="speedtest-step-done">{t('stepDone')}</text>
                 ) : (
                   <text className="text-section-title text-muted-foreground">—</text>
                 )}
@@ -332,7 +332,7 @@ function Figure({ label, icon, tone, mbps }: { label: string; icon: IconName; to
       {mbps === null ? (
         <view className="grid justify-items-center">
           <text className="speedtest-figure text-muted-foreground">—</text>
-          <text className="text-caption font-normal text-muted-foreground" testId="speedtest-not-measured">{t('notMeasured')}</text>
+          <text className="text-caption font-normal text-muted-foreground" data-testid="speedtest-not-measured">{t('notMeasured')}</text>
         </view>
       ) : (
         <row className="items-baseline justify-center gap-1" dir="ltr">
@@ -361,7 +361,7 @@ function UsageGrid({ result }: { result: Result }) {
   return (
     <column>
       <text role="heading" headingLevel={2} className={`px-1 ${EYEBROW}`}>{t('handlesTitle')}</text>
-      <grid className="mt-2 grid grid-cols-2 gap-2" role="list" testId="speedtest-uses">
+      <grid className="mt-2 grid grid-cols-2 gap-2" role="list" data-testid="speedtest-uses">
         {uses.map(({ key, rating }) => (
           <view key={key} role="listitem" data-rating={rating} className={`grid min-w-0 content-start gap-1 px-3 py-2.5 ${CARD}`}>
             <text className="min-w-0 text-supporting font-medium text-foreground">{t(key)}</text>
@@ -385,7 +385,7 @@ function ResultScreen({ data, actions }: { data: Data; actions: Actions }) {
         <HeroCard aside={<view className="mx-auto"><Badge variant={VERDICT_BADGE[kind]} className="shrink-0 gap-1.5">
           <Icon name={kind === 'healthy' ? 'CircleCheck' : 'Info'} size={13} /><text className="text-caption font-semibold">{t(kind)}</text>
         </Badge></view>}>
-          <grid className="mt-4 grid grid-cols-2" testId="speedtest-result">
+          <grid className="mt-4 grid grid-cols-2" data-testid="speedtest-result">
             <Figure label={t('download')} icon="ArrowDown" tone="text-primary" mbps={result.downMbps} />
             <Figure label={t('upload')} icon="ArrowUp" tone="text-upload" mbps={result.upMbps} />
           </grid>

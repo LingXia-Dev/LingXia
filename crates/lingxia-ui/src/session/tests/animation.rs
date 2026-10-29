@@ -19,7 +19,7 @@ fn authored_transform_can_bring_an_offscreen_node_into_the_animation_visible_set
       "transforms":[{"kind":"translate","x":[{"offset":0,"value":0},{"offset":1,"value":0}],
         "y":[{"offset":0,"value":-40},{"offset":1,"value":0}]}]});
     let source = tests::source(&format!(
-        "function render(){{return h('column',{{}},h('spacer',{{style:{{height:130,flexShrink:0}}}}),h('column',{{testId:'incoming',style:{{height:20,flexShrink:0,backgroundColor:'#ff0000',animation:{effect}}}}}));}}"
+        "function render(){{return h('column',{{}},h('spacer',{{style:{{height:130,flexShrink:0}}}}),h('column',{{'data-testid':'incoming',style:{{height:20,flexShrink:0,backgroundColor:'#ff0000',animation:{effect}}}}}));}}"
     ));
     let mut page = ViewSession::new(&source).unwrap();
     page.set_animation_surface(Some(SurfaceTicket::new(1)), ms(0))
@@ -126,7 +126,7 @@ fn authored_collection_uses_records_and_rolls_back_failed_pixel_builds() {
 #[test]
 fn authored_virtual_animation_retains_eviction_but_restarts_after_semantic_removal() {
     let source = tests::source(&format!(
-        "globalThis.items=Array.from({{length:100}},(_,i)=>'item-'+i);globalThis.effect={};function render(){{return h('list',{{style:{{height:120}},count:items.length,itemKeys:items,height:()=>40,row:i=>h('column',{{key:items[i],testId:items[i],style:{{height:40,backgroundColor:'#ff0000',...(items[i]==='item-1'?{{animation:effect}}:{{}})}}}})}});}}",
+        "globalThis.items=Array.from({{length:100}},(_,i)=>'item-'+i);globalThis.effect={};function render(){{return h('list',{{style:{{height:120}},count:items.length,itemKeys:items,height:()=>40,row:i=>h('column',{{key:items[i],'data-testid':items[i],style:{{height:40,backgroundColor:'#ff0000',...(items[i]==='item-1'?{{animation:effect}}:{{}})}}}})}});}}",
         authored_effect()
     ));
     let mut page = ViewSession::new(&source).unwrap();
@@ -194,7 +194,7 @@ fn authored_virtual_animation_retains_eviction_but_restarts_after_semantic_remov
 #[test]
 fn authored_virtual_effect_requires_inventory_and_unseen_overscan_does_not_start() {
     let source = tests::source(&format!(
-        "globalThis.keys=undefined;function render(){{return h('list',{{style:{{height:120}},count:100,itemKeys:keys,height:()=>40,row:i=>h('column',{{key:'item-'+i,testId:'item-'+i,style:{{height:40,...(i===4?{{animation:{}}}:{{}})}}}})}});}}",
+        "globalThis.keys=undefined;function render(){{return h('list',{{style:{{height:120}},count:100,itemKeys:keys,height:()=>40,row:i=>h('column',{{key:'item-'+i,'data-testid':'item-'+i,style:{{height:40,...(i===4?{{animation:{}}}:{{}})}}}})}});}}",
         authored_effect()
     ));
     let mut page = ViewSession::new(&source).unwrap();
@@ -452,7 +452,7 @@ fn keyed_virtual_row_animation_survives_reorder_and_window_eviction() {
     let source = tests::source(
         "globalThis.items=Array.from({length:100},(_,i)=>'item-'+i);
          function render(){return h('list',{style:{height:120},count:items.length,itemKeys:items,
-           height:()=>40,row:i=>h('text',{key:items[i],testId:items[i]},items[i])});}",
+           height:()=>40,row:i=>h('text',{key:items[i],'data-testid':items[i]},items[i])});}",
     );
     let mut page = ViewSession::new(&source).unwrap();
     let initial = page.layout(200, 120, 1.0).unwrap();

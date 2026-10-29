@@ -22,7 +22,7 @@ fn bounds(display: &crate::DisplayList, id: &str) -> [f32; 4] {
         .bounds
 }
 
-const ROW: &str = "h('column',{},h('row',{testId:'row',style:{width:200,paddingInlineStart:10}},h('column',{testId:'a',style:{width:40,height:10,marginInlineEnd:5}}),h('column',{testId:'b',style:{width:40,height:10}})),h('column',{testId:'abs',style:{position:'relative',height:20}},h('column',{testId:'pin',style:{position:'absolute',insetInlineStart:4,width:10,height:10}})),h('column',{testId:'push',style:{width:30,height:5,marginInlineStart:'auto'}}))";
+const ROW: &str = "h('column',{},h('row',{'data-testid':'row',style:{width:200,paddingInlineStart:10}},h('column',{'data-testid':'a',style:{width:40,height:10,marginInlineEnd:5}}),h('column',{'data-testid':'b',style:{width:40,height:10}})),h('column',{'data-testid':'abs',style:{position:'relative',height:20}},h('column',{'data-testid':'pin',style:{position:'absolute',insetInlineStart:4,width:10,height:10}})),h('column',{'data-testid':'push',style:{width:30,height:5,marginInlineStart:'auto'}}))";
 
 #[test]
 fn rows_and_flow_relative_edges_mirror_under_rtl() {
@@ -41,7 +41,7 @@ fn rows_and_flow_relative_edges_mirror_under_rtl() {
 fn switching_the_display_language_re_resolves_without_a_new_render() {
     let counted = ROW.replacen(
         "h('column',{},",
-        "h('column',{},h('text',{testId:'runs'},String(globalThis.runs=(globalThis.runs||0)+1)),",
+        "h('column',{},h('text',{'data-testid':'runs'},String(globalThis.runs=(globalThis.runs||0)+1)),",
         1,
     );
     let mut session = page(&counted, "en");
@@ -68,7 +68,7 @@ fn switching_the_display_language_re_resolves_without_a_new_render() {
 #[test]
 fn dir_overrides_the_environment_and_text_start_follows_direction() {
     let display = page(
-        "h('column',{style:{width:200}},h('row',{testId:'ltr',dir:'ltr',style:{width:200}},h('column',{testId:'c',style:{width:20,height:5}})),h('text',{testId:'t',style:{width:200}},'abc'),h('text',{testId:'l',style:{width:200,textAlign:'left'}},'abc'))",
+        "h('column',{style:{width:200}},h('row',{'data-testid':'ltr',dir:'ltr',style:{width:200}},h('column',{'data-testid':'c',style:{width:20,height:5}})),h('text',{'data-testid':'t',style:{width:200}},'abc'),h('text',{'data-testid':'l',style:{width:200,textAlign:'left'}},'abc'))",
         "fa",
     )
     .layout(200, 200, 1.0)
@@ -90,7 +90,7 @@ fn dir_overrides_the_environment_and_text_start_follows_direction() {
 
 #[test]
 fn logical_radii_and_borders_resolve_against_the_node_direction() {
-    let source = "h('column',{dir:'rtl'},h('column',{testId:'box',style:{width:40,height:40,borderInlineStartWidth:4,borderStartStartRadius:12,backgroundColor:'#ff0000',borderColor:'#000000'}}))";
+    let source = "h('column',{dir:'rtl'},h('column',{'data-testid':'box',style:{width:40,height:40,borderInlineStartWidth:4,borderStartStartRadius:12,backgroundColor:'#ff0000',borderColor:'#000000'}}))";
     let display = page(source, "en").layout(100, 100, 1.0).unwrap();
     let node = display.nodes.iter().find(|n| n.test_id == "box").unwrap();
     // Start-start is top-right in RTL; the start border is on the right.
@@ -107,7 +107,7 @@ fn logical_radii_and_borders_resolve_against_the_node_direction() {
 
 #[test]
 fn environment_reports_direction_to_the_view() {
-    let display = page("h('text',{testId:'d'},env.direction)", "ur-PK")
+    let display = page("h('text',{'data-testid':'d'},env.direction)", "ur-PK")
         .layout(100, 50, 1.0)
         .unwrap();
     assert_eq!(display.nodes[0].text, "rtl");
@@ -118,7 +118,7 @@ fn environment_reports_direction_to_the_view() {
 
 #[test]
 fn rtl_horizontal_scrolls_start_at_the_inline_start_and_move_toward_the_left() {
-    let render = "h('scroll',{testId:'s',style:{overflowX:'auto',width:100,height:20}},h('row',{},h('column',{testId:'first',style:{width:80,height:10}}),h('column',{testId:'second',style:{width:80,height:10}})))";
+    let render = "h('scroll',{'data-testid':'s',style:{overflowX:'auto',width:100,height:20}},h('row',{},h('column',{'data-testid':'first',style:{width:80,height:10}}),h('column',{'data-testid':'second',style:{width:80,height:10}})))";
     for (language, start, scrolled) in [("ar", 20.0, 80.0), ("en", 0.0, -60.0)] {
         let mut session = page(render, language);
         let display = session.layout(100, 100, 1.0).unwrap();

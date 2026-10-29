@@ -158,9 +158,9 @@ A component's identity is its module and declaration name (`pages/lab/index#Inpu
 time, so minified release builds and hot swaps agree. Declare components at the top level of a module;
 keying by `Component.name` fails the build (`UI_KEY`).
 
-## testId
+## data-testid
 
-Every element takes `testId`, the name automation (`lxdev`, the test runner) uses to find it. It has
+Every element takes `data-testid`, the name automation (`lxdev`, the test runner) uses to find it. It has
 no visual or accessibility effect.
 
 Locators read a native page like a DOM page:

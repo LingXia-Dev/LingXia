@@ -15,7 +15,7 @@ export declare function childrenToArray(children: Child): readonly Exclude<Child
 /** Props every element accepts; `style` is narrowed per element. */
 /** `dir` sets the inline direction of a subtree; otherwise it follows `env.direction`. Editors also take `"auto"` (first strong character). */
 export interface Props {
-  style?: Style; className?: string; key?: string; testId?: string; dir?: "ltr" | "rtl" | "auto"; children?: Child;
+  style?: Style; className?: string; key?: string; "data-testid"?: string; dir?: "ltr" | "rtl" | "auto"; children?: Child;
   /** Semantic role; controls keep their own. Headings take `headingLevel` 1..6. */
   role?: "heading" | "list" | "listitem" | "dialog" | "alert" | "status"; headingLevel?: 1 | 2 | 3 | 4 | 5 | 6;
   /** Removes the node and its subtree from accessibility. */
@@ -117,7 +117,7 @@ export interface DataListProps<T> extends Omit<ListProps, "count" | "itemKeys" |
 }
 export declare function List<T>(props: DataListProps<T>): JSX.Element;
 /** A disclosure, as HTML's details: a `<Summary>` toggle that announces its expanded state, and a body that exists while open. Uncontrolled with `defaultOpen`, controlled with `open` and `onToggle`. */
-export declare function Details(props: { open?: boolean; defaultOpen?: boolean; onToggle?: (open: boolean) => void; className?: string; testId?: string; children?: Child }): JSX.Element;
+export declare function Details(props: { open?: boolean; defaultOpen?: boolean; onToggle?: (open: boolean) => void; className?: string; "data-testid"?: string; children?: Child }): JSX.Element;
 /** The label row of a `<Details>`; `className` styles its toggle. */
 export declare function Summary(props: { className?: string; children?: Child }): JSX.Element;
 
@@ -145,6 +145,6 @@ export interface VectorGradient {
   units?: "objectBoundingBox" | "userSpaceOnUse"; spread?: "pad" | "reflect" | "repeat";
   stops: ReadonlyArray<{ offset: number; color: string; opacity?: number }>;
 }
-export interface RadioOption { readonly value: string; readonly label: string; readonly disabled?: boolean; readonly testId?: string }
+export interface RadioOption { readonly value: string; readonly label: string; readonly disabled?: boolean; readonly "data-testid"?: string }
 /** HTML autocomplete tokens; Android maps them to autofill hints. */
 export type AutoComplete = "off" | "on" | "username" | "current-password" | "new-password" | "one-time-code" | "email" | "tel" | "name" | "given-name" | "family-name" | "street-address" | "postal-code" | "country" | "cc-number" | "cc-exp" | "cc-csc" | "bday";

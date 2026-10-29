@@ -13,7 +13,7 @@ fn frame_time(index: u64) -> Duration {
 /// A 100x40 button at the origin whose `active:` delta is `pressed`.
 fn page(transition: serde_json::Value, base: &str, pressed: &str, child: &str) -> ViewSession {
     let module = super::source(&format!(
-        "function render(){{return h('page',{{style:{{backgroundColor:'#ffffff'}}}},h('button',{{testId:'b',onClick(){{}},className:'active:x',style:{{position:'absolute',left:0,top:0,width:100,height:40,padding:0,borderRadius:0,{base},transition:{transition}}}}},{child}))}}"
+        "function render(){{return h('page',{{style:{{backgroundColor:'#ffffff'}}}},h('button',{{'data-testid':'b',onClick(){{}},className:'active:x',style:{{position:'absolute',left:0,top:0,width:100,height:40,padding:0,borderRadius:0,{base},transition:{transition}}}}},{child}))}}"
     ))
     .replace(
         "__lingxiaPublish(render);",
@@ -174,7 +174,7 @@ fn colours_mix_in_oklab_and_reach_inheriting_text() {
         transition(&["bg", "fg"], 200),
         "backgroundColor:'#000000',color:'#ffffff'",
         "backgroundColor:'#ffffff',color:'#000000'",
-        "h('text',{testId:'t'},'Hello')",
+        "h('text',{'data-testid':'t'},'Hello')",
     );
     let (display, _) = present(&mut page, frame_time(0));
     let text_color = |display: &Shot| display.text.unwrap();
@@ -443,7 +443,7 @@ fn spans_stay_on_their_commands_through_caret_input_and_selection_splices() {
     use serde_json::Value;
     let spin = r#"{"name":"spin","durationMs":1000,"delayMs":0,"iterations":null,"whenReduced":"base","easing":"linear","opacity":null,"transforms":[{"kind":"rotate","angle":[{"offset":0,"value":0},{"offset":1,"value":360}]}]}"#;
     let module = super::source(&format!(
-        "function render(){{const draft=useLocal('draft','typed');return h('column',{{style:{{backgroundColor:'#ffffff'}}}},h('input',{{testId:'i',bind:draft,style:{{width:150}}}}),h('column',{{style:{{width:20,height:20,backgroundColor:'#00ff00',animation:{spin}}}}}),h('text',{{testId:'p',style:{{userSelect:'text',fontSize:16,width:180}}}},'hello brave new world'))}}"
+        "function render(){{const draft=useLocal('draft','typed');return h('column',{{style:{{backgroundColor:'#ffffff'}}}},h('input',{{'data-testid':'i',bind:draft,style:{{width:150}}}}),h('column',{{style:{{width:20,height:20,backgroundColor:'#00ff00',animation:{spin}}}}}),h('text',{{'data-testid':'p',style:{{userSelect:'text',fontSize:16,width:180}}}},'hello brave new world'))}}"
     ));
     let mut page = ViewSession::new(&module).unwrap();
     page.set_animation_surface(Some(SURFACE), Duration::ZERO)

@@ -155,7 +155,7 @@ fn word_break_wraps_inherited_text_and_keeps_cached_modes_distinct() {
         ("overflowWrap", "break-word"),
     ] {
         let source = crate::session::tests::source(
-        "function render(){const wrap=useLocal('wrap',false);return h('column',{style:{width:320,padding:20,wordBreak:wrap.value?'break-all':'normal'}},h('row',{style:{gap:12}},h('text',{style:{fontSize:14}},'IPv6'),h('column',{testId:'cell',style:{flexGrow:1,minWidth:0,alignItems:'end'}},h('text',{testId:'address',style:{fontSize:14,padding:12}},'2001:db8:1234:5678:90ab:cdef:1234:5678'))),h('button',{testId:'toggle',onClick:()=>wrap.set(!wrap.value)},'Toggle'))}".replace("wordBreak", property).replace("break-all", value).as_str(),
+        "function render(){const wrap=useLocal('wrap',false);return h('column',{style:{width:320,padding:20,wordBreak:wrap.value?'break-all':'normal'}},h('row',{style:{gap:12}},h('text',{style:{fontSize:14}},'IPv6'),h('column',{'data-testid':'cell',style:{flexGrow:1,minWidth:0,alignItems:'end'}},h('text',{'data-testid':'address',style:{fontSize:14,padding:12}},'2001:db8:1234:5678:90ab:cdef:1234:5678'))),h('button',{'data-testid':'toggle',onClick:()=>wrap.set(!wrap.value)},'Toggle'))}".replace("wordBreak", property).replace("break-all", value).as_str(),
     );
         for scale in [1.0, 2.0] {
             let mut page = crate::ViewSession::new(&source).unwrap();
@@ -354,7 +354,7 @@ fn padded_multiline_text_matches_equivalent_container_height() {
     for (scale, border) in [(1.0, 0), (2.0, 0), (1.0, 2), (2.0, 2)] {
         for width in 300..341 {
             let module = crate::session::tests::source(&format!(
-                "function render(){{return h('column',{{style:{{width:{width},gap:10}}}},h('text',{{testId:'padded',style:{{fontSize:12,lineHeight:'20px',borderWidth:{border},paddingLeft:12,paddingRight:12,paddingTop:8,paddingBottom:8}}}},'{value}'),h('column',{{testId:'wrapped',style:{{borderWidth:{border},paddingLeft:12,paddingRight:12,paddingTop:8,paddingBottom:8}}}},h('text',{{style:{{fontSize:12,lineHeight:'20px'}}}},'{value}')))}}"
+                "function render(){{return h('column',{{style:{{width:{width},gap:10}}}},h('text',{{'data-testid':'padded',style:{{fontSize:12,lineHeight:'20px',borderWidth:{border},paddingLeft:12,paddingRight:12,paddingTop:8,paddingBottom:8}}}},'{value}'),h('column',{{'data-testid':'wrapped',style:{{borderWidth:{border},paddingLeft:12,paddingRight:12,paddingTop:8,paddingBottom:8}}}},h('text',{{style:{{fontSize:12,lineHeight:'20px'}}}},'{value}')))}}"
             ));
             let mut page = crate::ViewSession::new(&module).unwrap();
             let frame = page
@@ -647,7 +647,7 @@ fn white_space_collapses_like_css_before_shaping() {
     assert_eq!(Collapse::None.apply(" a \n b "), " a \n b ");
     let lines = |mode: &str| {
         let source = crate::session::tests::source(&format!(
-            "function render(){{return h('column',{{style:{{whiteSpace:'{mode}'}}}},h('text',{{testId:'t',style:{{width:400}}}},'one\\n  two  three'))}}"
+            "function render(){{return h('column',{{style:{{whiteSpace:'{mode}'}}}},h('text',{{'data-testid':'t',style:{{width:400}}}},'one\\n  two  three'))}}"
         ));
         let mut page = crate::ViewSession::new(&source).unwrap();
         let display = page.layout(400, 200, 1.0).unwrap();

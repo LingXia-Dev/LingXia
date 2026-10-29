@@ -3,7 +3,7 @@ use crate::ViewSession;
 
 fn module(label: &str) -> String {
     super::source(&format!(
-        "function render(){{const n=useLocal('n',0);return h('column',{{}},h('button',{{testId:'b',onClick(){{n.set(n.value+1)}}}},'{label} '+n.value),h('scroll',{{testId:'s',style:{{height:50}}}},h('column',{{style:{{height:300}}}})))}}"
+        "function render(){{const n=useLocal('n',0);return h('column',{{}},h('button',{{'data-testid':'b',onClick(){{n.set(n.value+1)}}}},'{label} '+n.value),h('scroll',{{'data-testid':'s',style:{{height:50}}}},h('column',{{style:{{height:300}}}})))}}"
     )) + "\nenableHotSwap();"
 }
 
@@ -49,8 +49,8 @@ fn component_locals_survive_a_swap_whatever_order_components_first_rendered_in()
     let module = |label: &str| {
         super::source(&format!(
             "function Paint(){{const p=useLocal('p','paint');return h('text',{{}},p.value)}}
-             function Inputs(){{const plan=useLocal('plan','initial');return h('button',{{testId:'plan',onClick(){{plan.set('yearly')}}}},'{label} '+plan.value)}}
-             function render(){{const tab=useLocal('tab','paint');return h('column',{{}},h('button',{{testId:'tab',onClick(){{tab.set('inputs')}}}},'tab'),tab.value==='paint'?h(Paint,{{}}):h(Inputs,{{}}))}}"
+             function Inputs(){{const plan=useLocal('plan','initial');return h('button',{{'data-testid':'plan',onClick(){{plan.set('yearly')}}}},'{label} '+plan.value)}}
+             function render(){{const tab=useLocal('tab','paint');return h('column',{{}},h('button',{{'data-testid':'tab',onClick(){{tab.set('inputs')}}}},'tab'),tab.value==='paint'?h(Paint,{{}}):h(Inputs,{{}}))}}"
         )) + "\nenableHotSwap();"
     };
     let mut page = ViewSession::new(&module("Plan")).unwrap();
@@ -266,7 +266,7 @@ fn the_view_lab_keeps_a_chosen_plan_across_a_swap() {
 /// A page whose `Card` component, declared as `name`, carries the compile-time id `id`.
 fn identified(name: &str, id: &str) -> String {
     super::source(&format!(
-        "function {name}(){{const n=useLocal('n',0);return h('button',{{testId:'b',onClick(){{n.set(n.value+1)}}}},'Card '+n.value)}}\n\
+        "function {name}(){{const n=useLocal('n',0);return h('button',{{'data-testid':'b',onClick(){{n.set(n.value+1)}}}},'Card '+n.value)}}\n\
          {name}.__lxid={id:?};\n\
          function render(){{return h('column',{{}},h({name},{{}}))}}"
     )) + "\nenableHotSwap();"

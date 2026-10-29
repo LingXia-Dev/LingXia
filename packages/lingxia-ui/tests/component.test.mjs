@@ -128,7 +128,7 @@ test('local state inside a fragment child survives a sibling appearing before th
 
 test('Details discloses its body behind a Summary toggle that announces expanded', () => {
   const { Details, Summary } = details;
-  const view = () => h('column', {}, h(Details, { testId: 'lic' }, h(Summary, {}, 'Licenses'), h('text', {}, 'MIT')));
+  const view = () => h('column', {}, h(Details, { 'data-testid': 'lic' }, h(Summary, {}, 'Licenses'), h('text', {}, 'MIT')));
   let root = rendered(view);
   const summary = root.children[0].children[0];
   assert.equal(summary.testId, 'lic-summary');

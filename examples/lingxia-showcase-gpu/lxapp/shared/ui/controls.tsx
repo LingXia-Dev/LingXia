@@ -33,7 +33,7 @@ export function Button({
 }) {
   return (
     <button
-      testId={testId}
+      data-testid={testId}
       {...data}
       accessibilityLabel={label}
       disabled={disabled}
@@ -77,7 +77,7 @@ export function Field({
     <column className="gap-1.5">
       <text className="text-sm font-medium">{label}</text>
       <input
-        testId={testId}
+        data-testid={testId}
         {...data}
         accessibilityLabel={label}
         bind={bind}
@@ -107,11 +107,11 @@ export function Segmented<T extends string>({
   disabled?: boolean;
 }) {
   return (
-    <row testId={testId} className="gap-1 p-1 bg-surface-sunken rounded-xl">
+    <row data-testid={testId} className="gap-1 p-1 bg-surface-sunken rounded-xl">
       {options.map(option => (
         <button
           key={option.value}
-          testId={`${testId}-${option.value}`}
+          data-testid={`${testId}-${option.value}`}
           data-selected={String(option.value === value)}
           disabled={disabled}
           onClick={() => {

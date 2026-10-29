@@ -128,7 +128,7 @@ export function render({ data, actions, env }: View) {
         .map(group => (
           <Card key={group.id} className="">
             <button
-              testId={`api-${group.id}-section`}
+              data-testid={`api-${group.id}-section`}
               accessibilityLabel={`${group.label}, ${expanded.value[group.id] ? 'expanded' : 'collapsed'}`}
               onClick={() => toggle(group.id)}
               className="px-4 py-4 rounded-2xl bg-transparent text-text text-left active:bg-surface-sunken"
@@ -145,7 +145,7 @@ export function render({ data, actions, env }: View) {
                   .map(item => (
                     <button
                       key={item.id}
-                      testId={item.id}
+                      data-testid={item.id}
                       onClick={() => actions[item.action](item.payload)}
                       className="px-4 py-3 min-h-11 rounded-none bg-transparent text-text text-left active:bg-surface-sunken"
                     >
@@ -164,7 +164,7 @@ export function render({ data, actions, env }: View) {
         ))}
       <Card className="">
         <button
-          testId="api-location"
+          data-testid="api-location"
           onClick={() => actions.openLocation()}
           className="px-4 py-4 rounded-2xl bg-transparent text-text text-left active:bg-surface-sunken"
         >

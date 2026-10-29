@@ -46,11 +46,11 @@ export function render({ actions }: View<Actions>) {
                 : 'w-2 h-2 rounded-full bg-line'
           }
         />
-        <text testId="channel-status" className="text-xs text-muted">
+        <text data-testid="channel-status" className="text-xs text-muted">
           {status}
         </text>
       </row>
-      <scroll testId="channel-symbols" className="overflow-x-auto">
+      <scroll data-testid="channel-symbols" className="overflow-x-auto">
         <row className="gap-2">
           {symbols.value.map(value => (
             <Button
@@ -68,27 +68,27 @@ export function render({ actions }: View<Actions>) {
         </row>
       </scroll>
       <Card className="p-6 gap-1">
-        <text testId="channel-active" className="text-xs font-medium tracking-wider text-muted">
+        <text data-testid="channel-active" className="text-xs font-medium tracking-wider text-muted">
           {symbol.value || '---'}
         </text>
         <row className="items-baseline gap-3">
-          <text testId="channel-price" className="text-4xl font-bold">
+          <text data-testid="channel-price" className="text-4xl font-bold">
             {latest.value ? `$${latest.value.price.toFixed(2)}` : '---'}
           </text>
           {latest.value && (
-            <text testId="channel-change" className={`text-lg font-semibold ${changeClass(latest.value.change)}`}>
+            <text data-testid="channel-change" className={`text-lg font-semibold ${changeClass(latest.value.change)}`}>
               {formatChange(latest.value.change)}
             </text>
           )}
         </row>
         {latest.value && (
-          <text testId="channel-last-time" className="text-xs text-muted">
+          <text data-testid="channel-last-time" className="text-xs text-muted">
             {new Date(latest.value.timestamp).toLocaleTimeString()}
           </text>
         )}
       </Card>
       <Section title="Recent ticks">
-        <scroll testId="channel-history" className="max-h-64">
+        <scroll data-testid="channel-history" className="max-h-64">
           {!history.value.length ? (
             <text className="py-6 text-sm text-center text-muted">Waiting for data...</text>
           ) : (

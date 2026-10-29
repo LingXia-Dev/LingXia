@@ -11,7 +11,7 @@ Styles each element accepts are in [styles.md](styles.md).
 | --- | --- | --- |
 | `className` | `string` |  |
 | `key` | `string` |  |
-| `testId` | `string` |  |
+| `"data-testid"` | `string` |  |
 | `dir` | `"ltr" \| "rtl" \| "auto"` |  |
 | `role` | `"heading" \| "list" \| "listitem" \| "dialog" \| "alert" \| "status"` | Semantic role; controls keep their own. Headings take `headingLevel` 1..6. |
 | `headingLevel` | `1 \| 2 \| 3 \| 4 \| 5 \| 6` |  |

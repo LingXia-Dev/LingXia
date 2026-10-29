@@ -32,21 +32,21 @@ export function render({ data, actions }: View) {
         {data.isLoading ? (
           <row className="items-center gap-3 py-8">
             <Icon name="location" className="w-8 h-8 text-accent" />
-            <text testId="location-status" className="text-base text-muted">
+            <text data-testid="location-status" className="text-base text-muted">
               Getting location...
             </text>
           </row>
         ) : location ? (
-          <column testId="location-result" className="w-full gap-4 items-center">
+          <column data-testid="location-result" className="w-full gap-4 items-center">
             <text
-              testId="location-coordinate"
+              data-testid="location-coordinate"
               className="text-2xl font-light"
             >{`${coordinate(location.longitude, false)} ${coordinate(location.latitude, true)}`}</text>
             <grid className="w-full gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
               {details.map(([label, value]) => (
                 <column key={label} className="items-center gap-1">
                   <text className="text-sm text-muted">{label}</text>
-                  <text testId={`location-${label.toLowerCase()}`} className="text-sm font-medium">
+                  <text data-testid={`location-${label.toLowerCase()}`} className="text-sm font-medium">
                     {value}
                   </text>
                 </column>
@@ -54,7 +54,7 @@ export function render({ data, actions }: View) {
             </grid>
           </column>
         ) : (
-          <text testId="location-status" className={data.locationError ? 'py-8 text-base text-danger' : 'py-8 text-base text-muted'}>
+          <text data-testid="location-status" className={data.locationError ? 'py-8 text-base text-danger' : 'py-8 text-base text-muted'}>
             {String(data.locationError || 'No location data available')}
           </text>
         )}

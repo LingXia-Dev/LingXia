@@ -25,7 +25,7 @@ for (const [file, reason] of Object.entries(manifest.skip)) {
 }
 // Every literal testId a run spec names must exist in both lxapps, so the
 // GPU mirror cannot drift from the React pages.
-const sourceIds = (root, attr) => {
+const sourceIds = (root, attr, computed = false) => {
   const ids = new Set();
   const prefixes = [];
   const walk = (dir) => {
@@ -39,8 +39,8 @@ const sourceIds = (root, attr) => {
         for (const m of text.matchAll(new RegExp(`${attr}=\\{\`([^\`$]*)\\$\\{`, 'g'))) prefixes.push(m[1]);
         // Ids passed as props to shared components (`testId="x"` on a wrapper).
         for (const m of text.matchAll(/testId=(?:"([^"]+)"|\{'([^']+)'\})/g)) ids.add(m[1] ?? m[2]);
-        // Ids computed before they reach `testId` (a list's row keys).
-        if (attr === 'testId') {
+        // Ids computed before they reach `data-testid` (a list's row keys).
+        if (computed) {
           for (const m of text.matchAll(/'([a-z][a-z0-9]*(?:-[a-z0-9]+)+)'/g)) ids.add(m[1]);
           for (const m of text.matchAll(/`([a-z][a-z0-9]*(?:-[a-z0-9]+)*-)\$\{/g)) prefixes.push(m[1]);
         }
@@ -53,7 +53,7 @@ const sourceIds = (root, attr) => {
   return (id) => ids.has(id) || prefixes.some((prefix) => prefix && id.startsWith(prefix));
 };
 const lxapps = { react: join(source, '../..'), gpu: join(here, '..') };
-const has = { react: sourceIds(join(lxapps.react, 'lxapp'), 'data-testid'), gpu: sourceIds(lxapps.gpu, 'testId') };
+const has = { react: sourceIds(join(lxapps.react, 'lxapp'), 'data-testid'), gpu: sourceIds(lxapps.gpu, 'data-testid', true) };
 for (const [id, reason] of Object.entries(manifest.keyed ?? {})) {
   if (typeof reason !== 'string' || !reason.trim()) problems.push(`keyed id ${id} has no reason`);
   if (!has.gpu(`${id}-`)) problems.push(`keyed id ${id}: the gpu showcase renders no ${id}-<key>`);

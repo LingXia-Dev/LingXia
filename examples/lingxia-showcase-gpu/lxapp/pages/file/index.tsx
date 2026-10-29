@@ -23,7 +23,7 @@ function UrlField({
     <column className="gap-1.5">
       <text className="text-sm text-muted">{label}</text>
       <input
-        testId={testId}
+        data-testid={testId}
         accessibilityLabel={label}
         value={String(value || '')}
         disabled={disabled}
@@ -54,7 +54,7 @@ export function render({ data, actions: raw }: View) {
     <Page>
       <Section title="Options">
         <checkbox
-          testId="file-show-menu"
+          data-testid="file-show-menu"
           value={!!data.showMenu}
           onChange={() => actions.toggleShowMenu()}
           className="bg-transparent text-text"
@@ -107,18 +107,18 @@ export function render({ data, actions: raw }: View) {
               <column className="p-3 gap-2 rounded-xl border border-accent/20 bg-accent-soft">
                 <row className="items-center justify-between">
                   <text className="text-xs text-accent">PDF Transfer</text>
-                  <text testId="file-pdf-progress" className="text-xs text-accent">
+                  <text data-testid="file-pdf-progress" className="text-xs text-accent">
                     {data.pdfProgressKnown ? `${Math.round(progress)}%` : 'Streaming'}
                   </text>
                 </row>
                 {data.pdfProgressKnown ? (
                   <row className="h-2 rounded-full bg-accent-soft">
-                    <spacer testId="file-progress-bar" className="h-2 rounded-full bg-accent" style={{ width: `${progress}%` }} />
+                    <spacer data-testid="file-progress-bar" className="h-2 rounded-full bg-accent" style={{ width: `${progress}%` }} />
                   </row>
                 ) : (
                   <text className="text-[11px] text-accent">Waiting for precise progress from runtime...</text>
                 )}
-                <text testId="file-pdf-status" className="text-xs">
+                <text data-testid="file-pdf-status" className="text-xs">
                   {String(data.pdfProgressText || '')}
                 </text>
                 <Button size="sm" testId="file-pdf-transfer" disabled={!transferEnabled} onClick={() => actions.togglePdfTransfer()}>
@@ -156,7 +156,7 @@ export function render({ data, actions: raw }: View) {
               {data.isOfficeFetching ? 'Fetching and Opening File...' : 'Fetch and Open File'}
             </Button>
             {!!data.officeStatusText && (
-              <text testId="file-office-status" className="p-3 rounded-xl border border-accent/20 bg-accent-soft text-xs">
+              <text data-testid="file-office-status" className="p-3 rounded-xl border border-accent/20 bg-accent-soft text-xs">
                 {String(data.officeStatusText)}
               </text>
             )}

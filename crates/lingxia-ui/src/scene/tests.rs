@@ -27,7 +27,7 @@ fn bar_paths_stay_inside_short_narrow_and_zero_bounds() {
 #[test]
 fn retained_scroll_combines_axes_and_reveals_through_nested_regions() {
     let module = crate::session::tests::source(
-        "function render(){return h('scroll',{testId:'outer',style:{width:180,height:140,backgroundColor:'#ffffff'}},h('spacer',{style:{height:30}}),h('scroll',{testId:'inner',style:{overflowX:'auto',width:180,height:80,borderWidth:2,borderColor:'#000000',borderRadius:12}},h('row',{style:{width:400,height:60}},h('spacer',{style:{width:220}}),h('button',{testId:'target',onClick:()=>{},style:{width:80,height:50,backgroundColor:'#0000ff',color:'#ffffff'}},'Target'))),h('spacer',{style:{height:300}}))}",
+        "function render(){return h('scroll',{'data-testid':'outer',style:{width:180,height:140,backgroundColor:'#ffffff'}},h('spacer',{style:{height:30}}),h('scroll',{'data-testid':'inner',style:{overflowX:'auto',width:180,height:80,borderWidth:2,borderColor:'#000000',borderRadius:12}},h('row',{style:{width:400,height:60}},h('spacer',{style:{width:220}}),h('button',{'data-testid':'target',onClick:()=>{},style:{width:80,height:50,backgroundColor:'#0000ff',color:'#ffffff'}},'Target'))),h('spacer',{style:{height:300}}))}",
     );
     for scale in [1.0, 2.0] {
         let mut page = crate::ViewSession::new(&module).unwrap();
@@ -120,7 +120,7 @@ fn retained_scroll_combines_axes_and_reveals_through_nested_regions() {
 #[test]
 fn bordered_scroll_keeps_children_inside_the_inner_ellipse() {
     let module = crate::session::tests::source(
-        "function render(){return h('column',{style:{backgroundColor:'#ffffff'}},h('scroll',{testId:'scroll',style:{width:100,height:80,borderTopWidth:2,borderRightWidth:4,borderBottomWidth:6,borderLeftWidth:8,borderColor:'#ff0000',borderRadius:20,backgroundColor:'#ffffff'}},h('spacer',{testId:'child',style:{height:200,backgroundColor:'#0000ff'}})))}",
+        "function render(){return h('column',{style:{backgroundColor:'#ffffff'}},h('scroll',{'data-testid':'scroll',style:{width:100,height:80,borderTopWidth:2,borderRightWidth:4,borderBottomWidth:6,borderLeftWidth:8,borderColor:'#ff0000',borderRadius:20,backgroundColor:'#ffffff'}},h('spacer',{'data-testid':'child',style:{height:200,backgroundColor:'#0000ff'}})))}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let first = page.layout(120, 160, 1.0).unwrap();
@@ -200,7 +200,7 @@ fn subtree_opacity_composites_overlap_once_and_keeps_sibling_groups_separate() {
 #[test]
 fn vector_paths_inherit_color_fit_clip_and_move_with_retained_scroll() {
     let source = crate::session::tests::source(
-        "function render(){return h('column',{style:{backgroundColor:'#ffffff',color:'#ff0000'}},h('scroll',{style:{height:40}},h('vector',{testId:'vector',viewBox:[0,0,24,24],paths:[{d:'M-12 -12H36V36H-12z'}],style:{width:80,height:80,padding:10,flexShrink:0}}),h('spacer',{style:{height:80,flexShrink:0}})))}",
+        "function render(){return h('column',{style:{backgroundColor:'#ffffff',color:'#ff0000'}},h('scroll',{style:{height:40}},h('vector',{'data-testid':'vector',viewBox:[0,0,24,24],paths:[{d:'M-12 -12H36V36H-12z'}],style:{width:80,height:80,padding:10,flexShrink:0}}),h('spacer',{style:{height:80,flexShrink:0}})))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let display = page.layout(100, 100, 1.0).unwrap();
@@ -261,7 +261,7 @@ fn vector_transforms_cannot_expand_bounded_paths_past_coordinate_budget() {
 #[test]
 fn outer_shadows_knock_out_transparent_owners_and_preserve_layer_order() {
     let source = crate::session::tests::source(
-        "function render(){return h('stack',{style:{width:150,height:100,backgroundColor:'#ffffff'}},h('column',{testId:'owner',style:{width:80,height:40,left:20,top:20,boxShadow:[{offsetX:10,color:'#ff000080'},{offsetX:15,color:'#0000ff'}]}}))}",
+        "function render(){return h('stack',{style:{width:150,height:100,backgroundColor:'#ffffff'}},h('column',{'data-testid':'owner',style:{width:80,height:40,left:20,top:20,boxShadow:[{offsetX:10,color:'#ff000080'},{offsetX:15,color:'#0000ff'}]}}))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let display = page.layout(150, 100, 1.0).unwrap();
@@ -296,7 +296,7 @@ fn equal_corner_overrides_keep_the_image_clip_and_uniform_fast_path() {
 #[test]
 fn authored_corner_styles_render_shadow_and_reuse_mask_without_external_images() {
     let source = crate::session::tests::source(
-        "function render(){return h('column',{style:{backgroundColor:'#ffffff'}},h('column',{testId:'bubble',style:{width:100,height:60,borderRadius:24,borderBottomRightRadius:6,backgroundColor:'#0000ff',boxShadow:[{blur:8,color:'#00000080'}]}}))}",
+        "function render(){return h('column',{style:{backgroundColor:'#ffffff'}},h('column',{'data-testid':'bubble',style:{width:100,height:60,borderRadius:24,borderBottomRightRadius:6,backgroundColor:'#0000ff',boxShadow:[{blur:8,color:'#00000080'}]}}))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let mut first = page.layout(140, 100, 1.0).unwrap();
@@ -420,7 +420,7 @@ fn blurred_shadows_fade_outside_input_clips() {
 #[test]
 fn offscreen_owner_shadow_remains_visible_without_increasing_scroll_extent() {
     let source = crate::session::tests::source(
-        "function render(){return h('column',{style:{width:100,height:100,backgroundColor:'#ffffff'}},h('scroll',{testId:'scroll',style:{height:60}},h('column',{testId:'owner',style:{width:40,height:20,flexShrink:0,boxShadow:[{offsetY:40,color:'#ff0000'}]}}),h('spacer',{style:{height:100,flexShrink:0}})))}",
+        "function render(){return h('column',{style:{width:100,height:100,backgroundColor:'#ffffff'}},h('scroll',{'data-testid':'scroll',style:{height:60}},h('column',{'data-testid':'owner',style:{width:40,height:20,flexShrink:0,boxShadow:[{offsetY:40,color:'#ff0000'}]}}),h('spacer',{style:{height:100,flexShrink:0}})))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let display = page.layout(100, 100, 1.0).unwrap();
@@ -457,7 +457,7 @@ fn offscreen_owner_shadow_remains_visible_without_increasing_scroll_extent() {
 #[test]
 fn linear_gradient_preserves_alpha_radius_borders_and_scroll_coordinates() {
     let module = crate::session::tests::source(
-        "function render(){return h('column',{style:{width:100,height:100,backgroundColor:'#ffffff'}},h('scroll',{testId:'scroll',style:{width:80,height:40}},h('column',{style:{width:80,height:80,flexShrink:0,borderRadius:12,borderWidth:4,borderColor:'#00ff00',backgroundImage:{direction:'bottom',stops:[{offset:0,color:'#ff000080'},{offset:1,color:'#0000ff80'}]}}})),h('spacer',{style:{height:20}}))}",
+        "function render(){return h('column',{style:{width:100,height:100,backgroundColor:'#ffffff'}},h('scroll',{'data-testid':'scroll',style:{width:80,height:40}},h('column',{style:{width:80,height:80,flexShrink:0,borderRadius:12,borderWidth:4,borderColor:'#00ff00',backgroundImage:{direction:'bottom',stops:[{offset:0,color:'#ff000080'},{offset:1,color:'#0000ff80'}]}}})),h('spacer',{style:{height:20}}))}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let display = page.layout(100, 100, 1.0).unwrap();
@@ -508,7 +508,7 @@ fn gradient_interpolation_space_and_premultiplied_alpha_affect_pixels() {
 #[test]
 fn nested_opacity_and_scroll_clipping_preserve_group_boundaries() {
     let module = crate::session::tests::source(
-        "function render(){return h('column',{style:{width:100,height:100,backgroundColor:'#ffffff'}},h('scroll',{testId:'scroll',style:{width:80,height:40,opacity:0.5}},h('column',{style:{opacity:0.5}},h('spacer',{style:{width:80,height:80,backgroundColor:'#000000'}}))),h('spacer',{style:{width:100,height:20,backgroundColor:'#ff0000'}}))}",
+        "function render(){return h('column',{style:{width:100,height:100,backgroundColor:'#ffffff'}},h('scroll',{'data-testid':'scroll',style:{width:80,height:40,opacity:0.5}},h('column',{style:{opacity:0.5}},h('spacer',{style:{width:80,height:80,backgroundColor:'#000000'}}))),h('spacer',{style:{width:100,height:20,backgroundColor:'#ff0000'}}))}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let display = page.layout(100, 100, 1.0).unwrap();

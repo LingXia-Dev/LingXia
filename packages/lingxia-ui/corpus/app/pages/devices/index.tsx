@@ -9,7 +9,7 @@ export function render({ data }: View<object, { devices: Device[] }>) {
         <text role="heading" className="text-lg font-semibold">Devices</text>
         <text className="px-2 py-0.5 rounded-full bg-accent-soft text-xs text-on-accent-soft tabular-nums">{data.devices.filter(d => d.online).length} online</text>
       </row>
-      <List testId="devices" items={data.devices} getKey={device => device.id} className="grow"
+      <List data-testid="devices" items={data.devices} getKey={device => device.id} className="grow"
         renderItem={device => (
           <row className="px-4 py-3 gap-3 items-center bg-surface border-b border-line">
             <column className="w-10 h-10 rounded-xl bg-surface-sunken items-center justify-center">

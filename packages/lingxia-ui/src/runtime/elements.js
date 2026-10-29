@@ -62,7 +62,7 @@ function admit(tag, element, props) {
     if (element.binding && (key === 'bind' || key === 'value' || key === element.binding.event)) continue;
     throw Error(`UI_PROP: ${key} is not a property of <${tag}>`);
   }
-  for (const key of ['key', 'testId']) if (props[key] !== undefined && typeof props[key] !== 'string') throw Error(`UI_PROP: ${key}`);
+  for (const key of ['key', 'data-testid']) if (props[key] !== undefined && typeof props[key] !== 'string') throw Error(`UI_PROP: ${key} must be a string`);
   if (props.disabled !== undefined && typeof props.disabled !== 'boolean') throw Error('UI_PROP: disabled');
   if (props.style !== undefined && (!props.style || typeof props.style !== 'object' || Array.isArray(props.style))) throw Error('UI_PROP: style');
 }
@@ -195,6 +195,8 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   const element = elements[tag];
   const props = { ...original };
   admit(tag, element, props);
+  // `data-testid` names the node for automation; it is not one of the data-* variant attributes.
+  if (props['data-testid'] !== undefined) { props.testId = props['data-testid']; delete props['data-testid']; }
   // Controls nest inside a pressable control and take presses in their own bounds; scrolls do not.
   if (parent.inControl && (tag === 'scroll' || tag === 'list')) throw Error('UI_BUTTON: a scroll or list cannot sit inside a pressable control');
   if (element.binding) bind(tag, element, props);
@@ -458,7 +460,7 @@ function selectOptions(props) {
   if (!Array.isArray(props.options) || !props.options.length || props.options.length > 64) throw Error('UI_SELECT: expected 1..64 options');
   const values = new Set();
   return props.options.map(option => {
-    if (!option || typeof option !== 'object' || Object.keys(option).some(k => !['value', 'label', 'disabled', 'testId'].includes(k)) ||
+    if (!option || typeof option !== 'object' || Object.keys(option).some(k => !['value', 'label', 'disabled', 'data-testid'].includes(k)) ||
         typeof option.value !== 'string' || !option.value.length || option.value.length > 256 || values.has(option.value) ||
         typeof option.label !== 'string' || !validInputText(option.label) || (option.disabled !== undefined && typeof option.disabled !== 'boolean'))
       throw Error('UI_SELECT: invalid or duplicate option');
@@ -472,14 +474,14 @@ function radioOptions(props, identity, fields, disabled) {
   const values = new Set();
   const style = Object.fromEntries(Object.entries(fields).filter(([name]) => optionStyle.includes(name)));
   return props.options.map(option => {
-    if (!option || typeof option !== 'object' || Object.keys(option).some(k => !['value', 'label', 'disabled', 'testId'].includes(k)) ||
+    if (!option || typeof option !== 'object' || Object.keys(option).some(k => !['value', 'label', 'disabled', 'data-testid'].includes(k)) ||
         typeof option.value !== 'string' || !option.value.length || option.value.length > 256 || values.has(option.value) ||
         typeof option.label !== 'string' || (option.disabled !== undefined && typeof option.disabled !== 'boolean') ||
-        (option.testId !== undefined && typeof option.testId !== 'string')) throw Error('UI_RADIO: invalid or duplicate option');
+        (option['data-testid'] !== undefined && typeof option['data-testid'] !== 'string')) throw Error('UI_RADIO: invalid or duplicate option');
     values.add(option.value);
     const { value } = option, selected = props.value === value, enabled = !disabled && option.disabled !== true;
     const child = { tag: 'radio-option', element: 'radio-option', identity: `${identity}/radio/key:${JSON.stringify(value)}`,
-      props: { key: value, testId: option.testId }, fields: style, states: {}, text: option.label,
+      props: { key: value, testId: option['data-testid'] }, fields: style, states: {}, text: option.label,
       wire: [...(enabled ? [] : [['enabled', 0]]), ['checked', +selected]], handlers: [], children: [] };
     if (enabled && props.onChange) child.handlers.push(['onCheckedChange', handle(), callbackOf(() => { if (!selected) return props.onChange(value); })]);
     return child;

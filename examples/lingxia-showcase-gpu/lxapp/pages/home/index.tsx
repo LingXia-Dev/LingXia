@@ -27,23 +27,23 @@ export function render({ data, actions, env }: View<HomeActions, HomePageData>) 
   };
   const greeting = failed.value ? t('sendFailed') : data.greeting;
   return (
-    <page testId="home-page" className="bg-canvas">
-      {Boolean(data.imageUrl) && <image testId="home-background" src={data.imageUrl} alt="" className="absolute inset-0 object-cover" onLoad={() => photo.set(true)} onError={() => photo.set(false)} />}
-      {photo.value && <column testId="home-background-overlay" className="absolute inset-0 bg-linear-to-b from-transparent via-transparent to-scrim" />}
-      <scroll testId="home-scroll" className="grow basis-0">
+    <page data-testid="home-page" className="bg-canvas">
+      {Boolean(data.imageUrl) && <image data-testid="home-background" src={data.imageUrl} alt="" className="absolute inset-0 object-cover" onLoad={() => photo.set(true)} onError={() => photo.set(false)} />}
+      {photo.value && <column data-testid="home-background-overlay" className="absolute inset-0 bg-linear-to-b from-transparent via-transparent to-scrim" />}
+      <scroll data-testid="home-scroll" className="grow basis-0">
         <column className="min-h-full px-5 py-10 items-center justify-center gap-4">
           <Card testId="home-card" className="w-full max-w-sm p-6 gap-3 bg-surface/80 backdrop-blur-xl shadow-lg border-line/60">
-            <column testId="home-header" className="items-center gap-1 pb-3">
-              <image testId="home-logo" src="public/AppIcon.png" alt="" className="w-16 h-16 mb-2 rounded-2xl object-contain" />
-              <text testId="home-title" className="text-[17px] font-semibold">
+            <column data-testid="home-header" className="items-center gap-1 pb-3">
+              <image data-testid="home-logo" src="public/AppIcon.png" alt="" className="w-16 h-16 mb-2 rounded-2xl object-contain" />
+              <text data-testid="home-title" className="text-[17px] font-semibold">
                 LingXia
               </text>
-              <text testId="home-tagline" className="text-[13px] text-muted text-center line-clamp-2">
+              <text data-testid="home-tagline" className="text-[13px] text-muted text-center line-clamp-2">
                 {t('tagline')}
               </text>
             </column>
             <input
-              testId="home-name"
+              data-testid="home-name"
               data-controlled-value={name.value}
               accessibilityLabel={t('nameLabel')}
               bind={name}
@@ -60,10 +60,10 @@ export function render({ data, actions, env }: View<HomeActions, HomePageData>) 
                 {greeting}
               </Notice>
             )}
-            <column testId="home-appearance" className="gap-1.5 pt-2">
+            <column data-testid="home-appearance" className="gap-1.5 pt-2">
               <row className="justify-between">
                 <text className="text-[11px] font-medium text-muted">{t('appearance')}</text>
-                <text testId="home-appearance-resolved" className="text-[11px] text-muted">
+                <text data-testid="home-appearance-resolved" className="text-[11px] text-muted">
                   {data.appearance.resolved === 'dark' ? t('appearanceDark') : t('appearanceLight')}
                 </text>
               </row>
@@ -78,10 +78,10 @@ export function render({ data, actions, env }: View<HomeActions, HomePageData>) 
                 ]}
               />
             </column>
-            <column testId="home-language" className="gap-1.5 pt-1">
+            <column data-testid="home-language" className="gap-1.5 pt-1">
               <row className="justify-between">
                 <text className="text-[11px] font-medium text-muted">{t('language')}</text>
-                <text testId="home-language-resolved" className="text-[11px] text-muted">
+                <text data-testid="home-language-resolved" className="text-[11px] text-muted">
                   {language === 'zh-CN' ? t('languageZh') : t('languageEn')}
                 </text>
               </row>
@@ -97,7 +97,7 @@ export function render({ data, actions, env }: View<HomeActions, HomePageData>) 
               />
             </column>
             {Boolean(data.appVersion) && (
-              <text testId="home-version" className="text-[10px] font-medium text-muted">
+              <text data-testid="home-version" className="text-[10px] font-medium text-muted">
                 {data.appVersion}
               </text>
             )}
@@ -106,7 +106,7 @@ export function render({ data, actions, env }: View<HomeActions, HomePageData>) 
             <row className="max-w-full px-4 py-2 gap-2 items-center rounded-full bg-surface/70 backdrop-blur-md">
               <spacer className="shrink-0 w-1.5 h-1.5 rounded-full bg-success" />
               <text className="shrink-0 text-xs font-medium tracking-wide text-text">{t('myIp')}</text>
-              <text testId="home-ip" className="min-w-0 grow truncate text-xs font-mono text-muted">
+              <text data-testid="home-ip" className="min-w-0 grow truncate text-xs font-mono text-muted">
                 {data.ipAddr}
               </text>
             </row>

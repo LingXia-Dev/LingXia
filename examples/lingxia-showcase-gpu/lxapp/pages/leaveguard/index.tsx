@@ -12,10 +12,10 @@ export function render(_view: View) {
       <Section title="Draft">
         <Field testId="leave-draft" label="Draft" bind={draft} placeholder="Type something" />
         <row className="items-center justify-between gap-2">
-          <text testId="leave-status" className="text-xs text-muted">
+          <text data-testid="leave-status" className="text-xs text-muted">
             {dirty ? 'Unsaved changes' : 'Saved'}
           </text>
-          <text testId="leave-requests" className="text-xs text-muted">{`leave requests: ${guard.requests}`}</text>
+          <text data-testid="leave-requests" className="text-xs text-muted">{`leave requests: ${guard.requests}`}</text>
         </row>
         <Button testId="leave-save" disabled={!dirty} onClick={() => saved.set(draft.value)}>
           Save
@@ -23,7 +23,7 @@ export function render(_view: View) {
       </Section>
       {guard.pending && (
         <Section testId="leave-confirm" title="Discard unsaved changes?">
-          <text testId="leave-question" className="text-sm">
+          <text data-testid="leave-question" className="text-sm">
             Leaving now drops the draft.
           </text>
           <grid className="gap-2 grid-cols-2">

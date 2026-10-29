@@ -26,7 +26,7 @@ fn page(render: &str) -> crate::ViewSession {
     crate::ViewSession::new(&source).unwrap()
 }
 
-const TREE: &str = "h('column',{},h('text',{testId:'title',role:'heading'},'Bills'),h('column',{testId:'list',role:'list'},h('column',{testId:'a',role:'listitem'},h('row',{},h('text',{testId:'a-text'},'Water'))),h('column',{testId:'b',role:'listitem'},h('text',{},'Power')),h('column',{testId:'c',role:'listitem'},h('text',{},'Gas'))),h('column',{testId:'dialog',role:'dialog',accessibilityLabel:'Confirm'},h('row',{},h('text',{testId:'body'},'Pay all?'),h('button',{testId:'ok',onClick(){}},'OK'))),h('scroll',{testId:'feed',style:{height:80}},h('text',{testId:'f1'},'one'),h('text',{},'two')))";
+const TREE: &str = "h('column',{},h('text',{'data-testid':'title',role:'heading'},'Bills'),h('column',{'data-testid':'list',role:'list'},h('column',{'data-testid':'a',role:'listitem'},h('row',{},h('text',{'data-testid':'a-text'},'Water'))),h('column',{'data-testid':'b',role:'listitem'},h('text',{},'Power')),h('column',{'data-testid':'c',role:'listitem'},h('text',{},'Gas'))),h('column',{'data-testid':'dialog',role:'dialog',accessibilityLabel:'Confirm'},h('row',{},h('text',{'data-testid':'body'},'Pay all?'),h('button',{'data-testid':'ok',onClick(){}},'OK'))),h('scroll',{'data-testid':'feed',style:{height:80}},h('text',{'data-testid':'f1'},'one'),h('text',{},'two')))";
 
 #[test]
 fn containers_with_a_role_hold_their_descendants_and_wrappers_collapse() {
@@ -60,7 +60,7 @@ fn containers_with_a_role_hold_their_descendants_and_wrappers_collapse() {
 }
 
 // Fixed, sticky and transformed nodes inside clipped, scrolled cards keep painted bounds.
-const GEOMETRY: &str = "h('page',{},h('scroll',{testId:'page-scroll',style:{flexGrow:1,flexBasis:0}},h('column',{style:{padding:16,gap:16}},h('column',{style:{borderWidth:1,borderColor:'#000000',borderRadius:16,overflow:'hidden'}},h('column',{style:{position:'fixed',bottom:16,right:16,padding:4}},h('text',{},'fixed')),h('text',{style:{rotate:12}},'tilted'),h('text',{style:{translate:[0,'50%']}},'moved')),h('scroll',{style:{height:120}},h('column',{},h('text',{style:{position:'sticky',top:0}},'Today'),h('spacer',{style:{height:400}}),h('text',{},'end'))),h('spacer',{style:{height:2000}}),h('button',{onClick(){}},'Bottom'))))";
+const GEOMETRY: &str = "h('page',{},h('scroll',{'data-testid':'page-scroll',style:{flexGrow:1,flexBasis:0}},h('column',{style:{padding:16,gap:16}},h('column',{style:{borderWidth:1,borderColor:'#000000',borderRadius:16,overflow:'hidden'}},h('column',{style:{position:'fixed',bottom:16,right:16,padding:4}},h('text',{},'fixed')),h('text',{style:{rotate:12}},'tilted'),h('text',{style:{translate:[0,'50%']}},'moved')),h('scroll',{style:{height:120}},h('column',{},h('text',{style:{position:'sticky',top:0}},'Today'),h('spacer',{style:{height:400}}),h('text',{},'end'))),h('spacer',{style:{height:2000}}),h('button',{onClick(){}},'Bottom'))))";
 
 #[test]
 fn every_visible_node_has_painted_bounds_at_any_scroll_offset() {
@@ -101,7 +101,7 @@ fn every_visible_node_has_painted_bounds_at_any_scroll_offset() {
 #[test]
 fn authored_states_and_scroll_position_reach_the_projection() {
     let mut session = page(
-        "h('column',{},h('button',{testId:'b',onClick(){},accessibilityState:{pressed:true,expanded:false}},'Bold'),h('column',{testId:'l',role:'list',accessibilityState:{busy:true}},h('text',{testId:'i',role:'listitem',accessibilityState:{selected:true}},'One')),h('scroll',{testId:'s',style:{height:50}},h('column',{style:{height:200}})))",
+        "h('column',{},h('button',{'data-testid':'b',onClick(){},accessibilityState:{pressed:true,expanded:false}},'Bold'),h('column',{'data-testid':'l',role:'list',accessibilityState:{busy:true}},h('text',{'data-testid':'i',role:'listitem',accessibilityState:{selected:true}},'One')),h('scroll',{'data-testid':'s',style:{height:50}},h('column',{style:{height:200}})))",
     );
     let first = session.layout(300, 400, 1.0).unwrap();
     let scroll = first.nodes.iter().find(|n| n.test_id == "s").unwrap();

@@ -2,7 +2,7 @@ use crate::ViewSession;
 #[test]
 fn image_callback_errors_do_not_consume_other_consumers_or_their_updates() {
     let module = crate::session::tests::source(
-        "function render(){const status=useLocal('status','initial');return h('column',{},h('image',{src:'photo',onLoad:()=>{status.set('bad');throw Error('first')},style:{width:20,height:20}}),h('image',{src:'photo',onLoad:()=>status.set('ready'),style:{width:20,height:20}}),h('image',{src:'photo',onLoad:()=>{status.set('bad');throw Error('last')},style:{width:20,height:20}}),h('text',{testId:'status'},status.value))}",
+        "function render(){const status=useLocal('status','initial');return h('column',{},h('image',{src:'photo',onLoad:()=>{status.set('bad');throw Error('first')},style:{width:20,height:20}}),h('image',{src:'photo',onLoad:()=>status.set('ready'),style:{width:20,height:20}}),h('image',{src:'photo',onLoad:()=>{status.set('bad');throw Error('last')},style:{width:20,height:20}}),h('text',{'data-testid':'status'},status.value))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     page.layout(200, 200, 1.0).unwrap();
@@ -36,7 +36,7 @@ fn regenerated_image_callbacks_reuse_layout() {
 #[test]
 fn image_outcomes_follow_committed_identity_and_retry_without_idle_loops() {
     let module = crate::session::tests::source(
-        "globalThis.retry='';globalThis.extra=false;function render(){const status=useLocal('status','loading');return h('column',{},h('image',{key:'photo',src:'photo',retryKey:globalThis.retry,onLoad:()=>status.set('ready'),onError:()=>status.set('failed'),style:{width:20,height:20}}),globalThis.extra?h('image',{key:'extra',src:'photo',retryKey:globalThis.retry,onLoad:()=>status.set('cached'),style:{width:20,height:20}}):null,h('text',{testId:'status'},status.value))}",
+        "globalThis.retry='';globalThis.extra=false;function render(){const status=useLocal('status','loading');return h('column',{},h('image',{key:'photo',src:'photo',retryKey:globalThis.retry,onLoad:()=>status.set('ready'),onError:()=>status.set('failed'),style:{width:20,height:20}}),globalThis.extra?h('image',{key:'extra',src:'photo',retryKey:globalThis.retry,onLoad:()=>status.set('cached'),style:{width:20,height:20}}):null,h('text',{'data-testid':'status'},status.value))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     page.layout(200, 200, 1.0).unwrap();

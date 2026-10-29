@@ -41,31 +41,31 @@ function ExperienceCard({ experience, initiallyOpen }: { experience: Data['exper
   const open = useLocal('experienceOpen', initiallyOpen);
   const { band } = experience;
   return (
-    <column className="mt-section" testId="experience">
-      <column className={cn(CARD, 'pb-4')} testId="experience-card" data-band={band.code} data-open={open.value}>
+    <column className="mt-section" data-testid="experience">
+      <column className={cn(CARD, 'pb-4')} data-testid="experience-card" data-band={band.code} data-open={open.value}>
         <row className="mt-3 items-center gap-3 px-4">
           <view accessibilityHidden className={cn('grid size-11 shrink-0 place-items-center rounded-full', BAND_MARK[band.code])}>
             <Icon name={needsAttention(band) ? 'CircleAlert' : 'Check'} size={22} />
           </view>
           <column className="min-w-0 flex-1">
-            <row className="items-baseline gap-2" testId="home-band">
+            <row className="items-baseline gap-2" data-testid="home-band">
               <text dir="auto" className={cn('text-section-title leading-tight', BAND_INK[band.code])}>{band.label}</text>
-              {band.score != null ? <text className="text-body font-semibold tabular-nums text-muted-foreground" testId="home-score">{String(band.score)}</text> : null}
+              {band.score != null ? <text className="text-body font-semibold tabular-nums text-muted-foreground" data-testid="home-score">{String(band.score)}</text> : null}
             </row>
-            <text dir="auto" className="text-supporting text-muted-foreground" testId="experience-headline">{experience.headline}</text>
-            <text className="mt-0.5 text-caption text-muted-foreground" testId="experience-data-time">{t.expDataAsOf.replace('{time}', experience.since)}</text>
+            <text dir="auto" className="text-supporting text-muted-foreground" data-testid="experience-headline">{experience.headline}</text>
+            <text className="mt-0.5 text-caption text-muted-foreground" data-testid="experience-data-time">{t.expDataAsOf.replace('{time}', experience.since)}</text>
           </column>
         </row>
-        <button onClick={() => open.set(!open.value)} accessibilityState={{ expanded: open.value }} testId="experience-toggle"
+        <button onClick={() => open.set(!open.value)} accessibilityState={{ expanded: open.value }} data-testid="experience-toggle"
           className="focus-ring mx-4 mt-3 inline-flex flex-row items-center gap-1 self-start rounded bg-transparent p-0">
           <text className="text-supporting font-medium text-primary">{t.expExpand}</text>
           <Icon name="ChevronDown" size={16} className={cn('text-primary transition-transform', open.value && 'rotate-180')} />
         </button>
         {open.value ? (
-          <column className="mt-4 gap-4 border-t border-border px-4 pt-4" testId="experience-detail">
-            <column role="list" className="gap-2.5" testId="experience-categories">
+          <column className="mt-4 gap-4 border-t border-border px-4 pt-4" data-testid="experience-detail">
+            <column role="list" className="gap-2.5" data-testid="experience-categories">
               {experience.categories.map(category => (
-                <row key={category.name} role="listitem" className="min-w-0 items-center gap-3" testId={`experience-category-${category.name}`}>
+                <row key={category.name} role="listitem" className="min-w-0 items-center gap-3" data-testid={`experience-category-${category.name}`}>
                   <view accessibilityHidden className={cn('grid size-8 shrink-0 place-items-center rounded-full', category.band ? BAND_MARK[category.band.code] : 'border border-dashed border-border text-muted-foreground')}>
                     <Icon name={CATEGORY_ICON[category.name]} size={16} />
                   </view>
@@ -89,14 +89,14 @@ function ExperienceCard({ experience, initiallyOpen }: { experience: Data['exper
 function NetworkCard({ data }: { data: Data }) {
   const issue = data.network === 'issue';
   return (
-    <column className={`mt-3 ${CARD} p-3`} testId="health-card" data-state={data.network}>
+    <column className={`mt-3 ${CARD} p-3`} data-testid="health-card" data-state={data.network}>
       <row className="items-center gap-3">
         <view className={`grid size-9 shrink-0 place-items-center rounded-full ${issue ? 'bg-warning-subtle text-warning-subtle-foreground' : 'bg-success-subtle text-success-subtle-foreground'}`}>
           <Icon name={issue ? 'TriangleAlert' : 'Check'} size={18} />
         </view>
         <column className="min-w-0 flex-1">
-          <text className="text-supporting font-medium" testId="health-title">{issue ? t.healthBad : t.healthGood}</text>
-          <text className="text-caption text-muted-foreground" testId="health-detail">{`${data.onlineDevices} ${t.devicesOnline} · ${data.nodeCount} ${t.meshPoints}`}</text>
+          <text className="text-supporting font-medium" data-testid="health-title">{issue ? t.healthBad : t.healthGood}</text>
+          <text className="text-caption text-muted-foreground" data-testid="health-detail">{`${data.onlineDevices} ${t.devicesOnline} · ${data.nodeCount} ${t.meshPoints}`}</text>
         </column>
       </row>
       {issue ? (
@@ -116,7 +116,7 @@ function Tiles() {
   return (
     <grid className="mt-3 grid grid-cols-4 gap-2">
       {tiles.map(({ key, label, icon }) => (
-        <button key={key} onClick={() => {}} testId={`tile-${key}`}
+        <button key={key} onClick={() => {}} data-testid={`tile-${key}`}
           className="focus-ring grid justify-items-center gap-1.5 rounded-lg border border-border bg-card px-1 py-3 shadow-[var(--card-shadow)] transition-colors hover:bg-accent-soft grid-cols-1">
           <Icon name={icon} size={22} className="text-primary" />
           <text className="text-caption">{label}</text>
@@ -137,7 +137,7 @@ function LastSpeed({ lastSpeed }: { lastSpeed: Data['lastSpeed'] }) {
     </column>
   );
   return (
-    <column className={`mt-3 ${CARD} p-4`} testId="last-speed" data-state={lastSpeed ? 'result' : 'none'}>
+    <column className={`mt-3 ${CARD} p-4`} data-testid="last-speed" data-state={lastSpeed ? 'result' : 'none'}>
       <row className="items-center justify-between gap-2">
         <text className="text-caption font-medium uppercase tracking-wide text-muted-foreground">{t.lastSpeed}</text>
         {lastSpeed ? <text className="text-caption text-muted-foreground">{lastSpeed.ago}</text> : null}
@@ -152,7 +152,7 @@ function LastSpeed({ lastSpeed }: { lastSpeed: Data['lastSpeed'] }) {
 
 function NavRow({ testId, title, blurb, mark }: { testId: string; title: string; blurb: string; mark: JSX.Element }) {
   return (
-    <button onClick={() => {}} testId={testId}
+    <button onClick={() => {}} data-testid={testId}
       className="focus-ring mt-3 flex w-full flex-row items-center gap-3 rounded-lg border border-border bg-card p-4 text-start shadow-[var(--card-shadow)] transition-colors hover:bg-accent-soft">
       {mark}
       <column className="min-w-0 flex-1">
@@ -169,8 +169,8 @@ export function render({ data }: View<object, Data>) {
     <page className="density-compact bg-background text-body text-foreground">
       <scroll className="grow">
         <column className="mx-auto w-full max-w-md px-gutter pb-[calc(max(2rem,env(safe-area-inset-bottom))_+_var(--lx-page-chrome-bottom-inset,0px))]">
-          <row className="sticky top-0 z-20 -mx-gutter bg-background px-gutter pb-2 pt-[max(3.25rem,env(safe-area-inset-top))]" testId="location-bar">
-            <button onClick={() => {}} testId="location-chip"
+          <row className="sticky top-0 z-20 -mx-gutter bg-background px-gutter pb-2 pt-[max(3.25rem,env(safe-area-inset-top))]" data-testid="location-bar">
+            <button onClick={() => {}} data-testid="location-chip"
               className="focus-ring -ms-1 inline-flex flex-row items-center gap-1.5 rounded-full bg-transparent px-2 py-1">
               <StatusDot status={DOT[data.network]} size={8} />
               <text className="text-supporting text-muted-foreground">{data.locationName}</text>

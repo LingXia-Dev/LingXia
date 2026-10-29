@@ -18,7 +18,7 @@ fn bounds(display: &crate::DisplayList, id: &str) -> [f32; 4] {
 }
 
 fn cell(id: &str, extra: &str) -> String {
-    format!("h('column',{{testId:'{id}',style:{{height:20{extra}}}}})")
+    format!("h('column',{{'data-testid':'{id}',style:{{height:20{extra}}}}})")
 }
 
 #[test]
@@ -67,7 +67,7 @@ fn auto_fit_minmax_tracks_follow_the_container_width() {
 #[test]
 fn item_alignment_flow_and_order_follow_css() {
     let display = layout(
-        "h('view',{style:{display:'grid',width:200,gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gridAutoRows:'50px',justifyItems:'center',alignItems:'end'}},h('column',{testId:'a',style:{width:20,height:10,order:2}}),h('column',{testId:'b',style:{width:20,height:10,justifySelf:'start'}}),h('column',{testId:'c',style:{width:20,height:10}}))",
+        "h('view',{style:{display:'grid',width:200,gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gridAutoRows:'50px',justifyItems:'center',alignItems:'end'}},h('column',{'data-testid':'a',style:{width:20,height:10,order:2}}),h('column',{'data-testid':'b',style:{width:20,height:10,justifySelf:'start'}}),h('column',{'data-testid':'c',style:{width:20,height:10}}))",
         200,
     );
     // `a` is ordered last: b, c fill the first row and a starts the second.
@@ -75,13 +75,13 @@ fn item_alignment_flow_and_order_follow_css() {
     assert_eq!(bounds(&display, "c"), [140.0, 40.0, 20.0, 10.0]);
     assert_eq!(bounds(&display, "a"), [40.0, 90.0, 20.0, 10.0]);
     let column = layout(
-        "h('view',{style:{display:'grid',gridTemplateRows:'repeat(2, 20px)',gridAutoFlow:'column',gridAutoColumns:'30px'}},h('column',{testId:'a'}),h('column',{testId:'b'}),h('column',{testId:'c'}))",
+        "h('view',{style:{display:'grid',gridTemplateRows:'repeat(2, 20px)',gridAutoFlow:'column',gridAutoColumns:'30px'}},h('column',{'data-testid':'a'}),h('column',{'data-testid':'b'}),h('column',{'data-testid':'c'}))",
         200,
     );
     assert_eq!(bounds(&column, "c")[0..2], [30.0, 0.0]);
     // Reading order keeps the source even when `order` moves an item.
     let ordered = layout(
-        "h('row',{},h('text',{testId:'x',style:{order:1}},'x'),h('text',{testId:'y'},'y'))",
+        "h('row',{},h('text',{'data-testid':'x',style:{order:1}},'x'),h('text',{'data-testid':'y'},'y'))",
         200,
     );
     assert!(bounds(&ordered, "y")[0] < bounds(&ordered, "x")[0]);

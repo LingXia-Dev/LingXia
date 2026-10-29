@@ -3,7 +3,7 @@ use crate::scene::test_prelude::*;
 #[test]
 fn zero_opacity_contains_input_decorations_without_removing_semantics() {
     let module = crate::session::tests::source(
-        "function render(){return h('column',{style:{backgroundColor:'#ffffff',width:100,height:100}},h('input',{testId:'editor',value:'Hello',autoFocus:true,style:{opacity:0,width:100,height:60}}))}",
+        "function render(){return h('column',{style:{backgroundColor:'#ffffff',width:100,height:100}},h('input',{'data-testid':'editor',value:'Hello',autoFocus:true,style:{opacity:0,width:100,height:60}}))}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let display = page.layout(100, 100, 1.0).unwrap();

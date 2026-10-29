@@ -158,7 +158,7 @@ mod tests {
     #[test]
     fn translation_moves_geometry_hits_and_descendants_without_moving_siblings() {
         let mut page = page(
-            "h('column',{},h('column',{testId:'b',style:{width:40,height:20,translate:[10,'50%']}},h('text',{testId:'t'},'Go')),h('column',{testId:'next',style:{height:10}}))",
+            "h('column',{},h('column',{'data-testid':'b',style:{width:40,height:20,translate:[10,'50%']}},h('text',{'data-testid':'t'},'Go')),h('column',{'data-testid':'next',style:{height:10}}))",
         );
         let display = page.layout(100, 100, 1.0).unwrap();
         assert_eq!(node(&display, "b").bounds, [10.0, 10.0, 40.0, 20.0]);
@@ -169,7 +169,7 @@ mod tests {
     #[test]
     fn rotation_paints_about_the_origin_and_hits_the_rotated_shape() {
         let mut page = page(
-            "h('page',{style:{backgroundColor:'#ffffff'}},h('button',{testId:'bar',onClick(){},style:{position:'absolute',left:10,top:45,width:80,height:10,padding:0,borderRadius:0,backgroundColor:'#000000',rotate:90}}))",
+            "h('page',{style:{backgroundColor:'#ffffff'}},h('button',{'data-testid':'bar',onClick(){},style:{position:'absolute',left:10,top:45,width:80,height:10,padding:0,borderRadius:0,backgroundColor:'#000000',rotate:90}}))",
         );
         let display = page.layout(100, 100, 1.0).unwrap();
         let bar = node(&display, "bar");
@@ -198,7 +198,7 @@ mod tests {
 
     fn page_with_rotation(degrees: f64) -> crate::ViewSession {
         page(&format!(
-            "h('page',{{}},h('button',{{testId:'bar',onClick(){{}},style:{{position:'absolute',left:10,top:45,width:80,height:10,padding:0,rotate:{degrees}}}}}))"
+            "h('page',{{}},h('button',{{'data-testid':'bar',onClick(){{}},style:{{position:'absolute',left:10,top:45,width:80,height:10,padding:0,rotate:{degrees}}}}}))"
         ))
     }
 
@@ -216,7 +216,7 @@ mod tests {
         let at = |x: usize| pixels.data_as_u8_slice()[(5 * 20 + x) * 4];
         assert_eq!((at(3), at(16)), (255, 0));
         let mut collapsed = page(
-            "h('page',{style:{backgroundColor:'#ffffff'}},h('button',{testId:'b',onClick(){},style:{width:20,height:20,backgroundColor:'#000000',scale:0}},'x'))",
+            "h('page',{style:{backgroundColor:'#ffffff'}},h('button',{'data-testid':'b',onClick(){},style:{width:20,height:20,backgroundColor:'#000000',scale:0}},'x'))",
         );
         let display = collapsed.layout(40, 40, 1.0).unwrap();
         assert_eq!(node(&display, "b").on_click, None);
@@ -235,7 +235,7 @@ mod tests {
                 .contains("UI_TRANSFORM")
         );
         let mut moved =
-            page("h('column',{style:{translate:[5,5]}},h('input',{testId:'i',value:''}))");
+            page("h('column',{style:{translate:[5,5]}},h('input',{'data-testid':'i',value:''}))");
         let display = moved.layout(200, 100, 1.0).unwrap();
         assert_eq!(node(&display, "i").bounds[0], 5.0);
     }

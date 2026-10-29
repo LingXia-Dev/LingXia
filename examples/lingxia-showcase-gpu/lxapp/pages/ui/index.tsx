@@ -19,7 +19,7 @@ export function render({ data, actions }: View) {
 
 function ChromeError({ data }: { data: Data }) {
   return data.chromeError ? (
-    <text testId="ui-chrome-error" className="px-3 py-2 rounded-lg border border-danger/40 bg-danger-soft text-sm text-danger break-all">
+    <text data-testid="ui-chrome-error" className="px-3 py-2 rounded-lg border border-danger/40 bg-danger-soft text-sm text-danger break-all">
       {String(data.chromeError)}
     </text>
   ) : null;
@@ -31,7 +31,7 @@ function Choice({ testId, label, value, onClick }: { testId: string; label: stri
     <column className="gap-1.5">
       <text className="text-sm font-medium">{label}</text>
       <button
-        testId={testId}
+        data-testid={testId}
         accessibilityLabel={`${label}: ${value}`}
         onClick={() => {
           void onClick();
@@ -87,7 +87,7 @@ function Dialogs({ data, actions }: Pane) {
             value={String(data.toastPositionLabel || 'Center')}
             onClick={() => actions.chooseToastPosition()}
           />
-          <checkbox testId="toast-mask" bind={toastMask} className="text-sm">
+          <checkbox data-testid="toast-mask" bind={toastMask} className="text-sm">
             Show mask (prevents interaction)
           </checkbox>
           <grid className="gap-3 grid-cols-2">
@@ -106,7 +106,7 @@ function Dialogs({ data, actions }: Pane) {
             Show Action Sheet
           </Button>
           {!!data.actionSheetResult && (
-            <text testId="actionsheet-result" className="text-xs font-mono break-all whitespace-pre-wrap">
+            <text data-testid="actionsheet-result" className="text-xs font-mono break-all whitespace-pre-wrap">
               {JSON.stringify(data.actionSheetResult, null, 2)}
             </text>
           )}
@@ -118,14 +118,14 @@ function Dialogs({ data, actions }: Pane) {
           <column className="gap-1.5">
             <text className="text-sm font-medium">Content</text>
             <textarea
-              testId="modal-content"
+              data-testid="modal-content"
               accessibilityLabel="Content"
               bind={modalContent}
               placeholder="Enter modal content"
               className="h-24 px-3 py-2 rounded-lg border border-line-strong bg-surface text-base"
             />
           </column>
-          <checkbox testId="modal-show-cancel" bind={modalCancel} className="text-sm">
+          <checkbox data-testid="modal-show-cancel" bind={modalCancel} className="text-sm">
             Show cancel button
           </checkbox>
           <Field testId="modal-cancel-text" label="Cancel Button Text" bind={cancelText} placeholder="Cancel button text" />
@@ -137,7 +137,7 @@ function Dialogs({ data, actions }: Pane) {
       )}
       {type === 'modal' && !!data.modalResult && (
         <Section title="Modal Result">
-          <text testId="modal-result" className="text-xs font-mono text-muted break-all whitespace-pre-wrap">
+          <text data-testid="modal-result" className="text-xs font-mono text-muted break-all whitespace-pre-wrap">
             {JSON.stringify(data.modalResult, null, 2)}
           </text>
           <Button variant="ghost" testId="modal-clear" onClick={() => actions.clearModalResult()}>
@@ -308,7 +308,7 @@ function Tabbar({ data, actions }: Pane) {
 function NavLink({ testId, label, description, onClick }: { testId: string; label: string; description?: string; onClick: () => unknown }) {
   return (
     <button
-      testId={testId}
+      data-testid={testId}
       onClick={() => {
         void onClick();
       }}
@@ -328,7 +328,7 @@ function NavLink({ testId, label, description, onClick }: { testId: string; labe
 function Counter({ id, label, value, hint, onClick }: { id: string; label: string; value: number; hint: string; onClick: () => unknown }) {
   return (
     <button
-      testId={`lifecycle-bump-${id}`}
+      data-testid={`lifecycle-bump-${id}`}
       accessibilityLabel={`${label}: ${value}`}
       onClick={() => {
         void onClick();
@@ -336,7 +336,7 @@ function Counter({ id, label, value, hint, onClick }: { id: string; label: strin
       className="px-2 py-4 rounded-xl bg-surface-sunken text-text active:bg-line"
     >
       <column className="items-center gap-1">
-        <text testId={`lifecycle-${id}-counter`} className="text-2xl font-bold">
+        <text data-testid={`lifecycle-${id}-counter`} className="text-2xl font-bold">
           {String(value)}
         </text>
         <text className="text-sm font-medium">{label}</text>
@@ -352,8 +352,8 @@ function Navigation({ data, actions }: Pane) {
   const pages = (data.pageStack || []) as { index: number; name: string; current: boolean }[];
   const events = (data.events || []) as string[];
   return (
-    <page testId="ui-page" data-instance-tag={String(data.instanceTag ?? '')} className="bg-canvas text-text">
-      <scroll testId="page-scroll" className="grow basis-0">
+    <page data-testid="ui-page" data-instance-tag={String(data.instanceTag ?? '')} className="bg-canvas text-text">
+      <scroll data-testid="page-scroll" className="grow basis-0">
         <column className="w-full max-w-3xl self-center px-4 pt-5 pb-10 gap-4">
           <ChromeError data={data} />
           <Card className="divide-y divide-line">
@@ -372,12 +372,12 @@ function Navigation({ data, actions }: Pane) {
             description="getCurrentPages(), top is where you are"
             action={
               <text
-                testId="ui-page-stack-depth"
+                data-testid="ui-page-stack-depth"
                 className="px-2.5 py-1 rounded-full bg-accent-soft text-xs font-mono text-accent"
               >{`${pages.length}/10`}</text>
             }
           >
-            <column testId="ui-page-stack-list" className="gap-1.5">
+            <column data-testid="ui-page-stack-list" className="gap-1.5">
               {[...pages].reverse().map(page => (
                 <row
                   key={String(page.index)}
@@ -428,7 +428,7 @@ function Navigation({ data, actions }: Pane) {
             </Button>
           </Section>
           <Section title="Lifecycle of this instance" description="Stored in page data, so it starts over with every entry.">
-            <column testId="lifecycle-events" className="gap-2">
+            <column data-testid="lifecycle-events" className="gap-2">
               {events.map((event, index) => (
                 <text key={String(index)} className="px-3 py-2 rounded-lg border border-line bg-surface-sunken text-xs font-mono break-all">
                   {event}
@@ -443,9 +443,9 @@ function Navigation({ data, actions }: Pane) {
         </column>
       </scroll>
       {popup.value && (
-        <column testId="lifecycle-popup" className="absolute inset-0 z-10 items-center justify-center px-8">
+        <column data-testid="lifecycle-popup" className="absolute inset-0 z-10 items-center justify-center px-8">
           <button
-            testId="lifecycle-popup-backdrop"
+            data-testid="lifecycle-popup-backdrop"
             accessibilityLabel="Close popup"
             onClick={() => popup.set(false)}
             className="absolute inset-0 rounded-none bg-scrim"
@@ -563,7 +563,7 @@ function Surface({ data, actions }: Pane) {
           <Field testId="surface-height" label="Height (px or %)" bind={height} placeholder="height (px or %)" />
         </grid>
         {attempted.value && !!sizeError && (
-          <text testId="size-error" className="text-xs text-danger">
+          <text data-testid="size-error" className="text-xs text-danger">
             {sizeError}
           </text>
         )}
@@ -584,7 +584,7 @@ function Surface({ data, actions }: Pane) {
             </Button>
           </grid>
         )}
-        <text testId="surface-status" className="px-3 py-2 rounded-lg bg-surface-sunken text-sm font-mono break-all">
+        <text data-testid="surface-status" className="px-3 py-2 rounded-lg bg-surface-sunken text-sm font-mono break-all">
           {state?.message || 'No message received yet.'}
         </text>
       </Section>

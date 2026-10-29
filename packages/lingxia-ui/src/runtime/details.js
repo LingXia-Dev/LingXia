@@ -9,7 +9,7 @@ Summary.__lxid = '@lingxia/ui#Summary';
 
 const chevron = [{ d: 'M9 6l6 6-6 6', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' }];
 
-export function Details({ open, defaultOpen = false, onToggle, className, testId, children }) {
+export function Details({ open, defaultOpen = false, onToggle, className, 'data-testid': testId, children }) {
   if (open !== undefined && typeof open !== 'boolean') throw Error('UI_PROP: open must be boolean');
   if (onToggle !== undefined && typeof onToggle !== 'function') throw Error('UI_PROP: onToggle');
   const local = useLocal('open', defaultOpen === true);
@@ -23,14 +23,14 @@ export function Details({ open, defaultOpen = false, onToggle, className, testId
     if (open === undefined) local.set(!expanded);
     onToggle?.(!expanded);
   };
-  return h('column', { className, testId },
-    h('button', { testId: testId && `${testId}-summary`, onClick: toggle, accessibilityState: { expanded },
+  return h('column', { className, 'data-testid': testId },
+    h('button', { 'data-testid': testId && `${testId}-summary`, onClick: toggle, accessibilityState: { expanded },
       className: summary?.[1].className, style: summary?.[1].className ? undefined : { backgroundColor: 'transparent', color: 'text', paddingTop: 8, paddingBottom: 8 } },
       h('row', { style: { alignItems: 'center', gap: 8 } },
         h('vector', { accessibilityHidden: true, paths: chevron,
           style: { width: 16, height: 16, rotate: expanded ? 90 : 0, transition: { properties: ['transform'], durationMs: 150, delayMs: 0, easing: [0.4, 0, 0.2, 1] } } },
         ),
         ...label.map(item => typeof item === 'string' || typeof item === 'number' ? h('text', {}, item) : item))),
-    expanded && h('column', { testId: testId && `${testId}-body` }, ...body));
+    expanded && h('column', { 'data-testid': testId && `${testId}-body` }, ...body));
 }
 Details.__lxid = '@lingxia/ui#Details';

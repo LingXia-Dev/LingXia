@@ -6,7 +6,7 @@ export function EmptyState({ icon = 'note', title, message, testId }: { icon?: I
   return (
     <column className="items-center gap-2 px-5 py-10">
       <Icon name={icon} className="w-12 h-12 text-muted" />
-      <text testId={testId} className="text-lg font-medium text-center text-text">
+      <text data-testid={testId} className="text-lg font-medium text-center text-text">
         {title}
       </text>
       {message ? <text className="text-sm text-muted text-center">{message}</text> : null}
@@ -21,7 +21,7 @@ export function ErrorState({ error, onRetry, testId }: { error: string | Resourc
   return (
     <row className="items-start gap-3 p-4 rounded-xl bg-danger-soft border border-danger/40">
       <Icon name="alert" className="w-5 h-5 text-danger" />
-      <text testId={testId} className="grow basis-0 min-w-0 text-sm text-danger break-words">
+      <text data-testid={testId} className="grow basis-0 min-w-0 text-sm text-danger break-words">
         {message}
       </text>
       {onRetry ? (
@@ -45,7 +45,7 @@ export function Notice({ tone = 'success', children, testId }: { tone?: 'success
     >
       <Icon name={success ? 'success' : 'alert'} className={success ? 'w-5 h-5 text-success' : 'w-5 h-5 text-danger'} />
       <text
-        testId={testId}
+        data-testid={testId}
         className={success ? 'grow basis-0 min-w-0 text-sm text-success leading-relaxed' : 'grow basis-0 min-w-0 text-sm text-danger leading-relaxed'}
       >
         {children}

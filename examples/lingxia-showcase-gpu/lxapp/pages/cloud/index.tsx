@@ -29,7 +29,7 @@ function Avatar({ src }: { src?: string }) {
 
 function Code({ testId, children }: { testId: string; children: string }) {
   return (
-    <text testId={testId} className="p-3 rounded-lg bg-surface-sunken text-text text-xs font-mono break-all whitespace-pre-wrap">
+    <text data-testid={testId} className="p-3 rounded-lg bg-surface-sunken text-text text-xs font-mono break-all whitespace-pre-wrap">
       {children}
     </text>
   );
@@ -64,7 +64,7 @@ function Auth({ data, actions }: Pane) {
         <InfoList>
           <row className="items-center justify-between gap-4 py-2.5">
             <text className="text-sm text-muted">Status</text>
-            <text testId="cloud-auth-status" className={`text-sm font-semibold text-right ${tone(status)}`}>
+            <text data-testid="cloud-auth-status" className={`text-sm font-semibold text-right ${tone(status)}`}>
               {status}
             </text>
           </row>
@@ -72,11 +72,11 @@ function Auth({ data, actions }: Pane) {
             <text className="grow basis-0 text-sm text-muted">Active Tenant</text>
             <Avatar src={tenant?.logoUrl} />
             <column className="items-end gap-1">
-              <text testId="cloud-current-tenant" className="text-sm font-semibold text-right">
+              <text data-testid="cloud-current-tenant" className="text-sm font-semibold text-right">
                 {tenant ? tenantName(tenant) : 'No active tenant'}
               </text>
               {!!tenant?.shortName && (
-                <text testId="cloud-tenant-short-name" className="px-2 py-0.5 rounded-full bg-accent-soft text-xs font-semibold text-accent">
+                <text data-testid="cloud-tenant-short-name" className="px-2 py-0.5 rounded-full bg-accent-soft text-xs font-semibold text-accent">
                   {tenant.shortName}
                 </text>
               )}
@@ -86,11 +86,11 @@ function Auth({ data, actions }: Pane) {
             <text className="grow basis-0 text-sm text-muted">Active User</text>
             <Avatar src={user?.avatar} />
             <column className="items-end gap-1">
-              <text testId="cloud-current-user" className="text-sm font-semibold text-right">
+              <text data-testid="cloud-current-user" className="text-sm font-semibold text-right">
                 {user?.name || 'Not signed in'}
               </text>
               {!!user?.id && (
-                <text testId="cloud-user-id" className="text-xs text-muted break-all">
+                <text data-testid="cloud-user-id" className="text-xs text-muted break-all">
                   {user.id}
                 </text>
               )}
@@ -102,7 +102,7 @@ function Auth({ data, actions }: Pane) {
         title="Tenants"
         description="Activate or remove identities returned by lx.auth.list()"
         action={
-          <text testId="cloud-tenants-count" className="text-xs text-muted">
+          <text data-testid="cloud-tenants-count" className="text-xs text-muted">
             {String(tenants.length)}
           </text>
         }
@@ -114,7 +114,7 @@ function Auth({ data, actions }: Pane) {
           return (
             <button
               key={`${item.tenantId || 'tenant'}-${index}`}
-              testId={`cloud-activate-${item.tenantId || index}`}
+              data-testid={`cloud-activate-${item.tenantId || index}`}
               disabled={!item.tenantId || active}
               onClick={() => actions.activateTenant({ tenantId: item.tenantId })}
               className={
@@ -155,7 +155,7 @@ function Mqtt({ data, actions }: Pane) {
           <text className="text-xs text-muted">Connection state</text>
           <row className="items-center gap-1.5">
             <spacer className={`w-2 h-2 rounded-full ${dot}`} />
-            <text testId="cloud-mqtt-state" className={`font-mono text-xs font-semibold ${color}`}>
+            <text data-testid="cloud-mqtt-state" className={`font-mono text-xs font-semibold ${color}`}>
               {state}
             </text>
           </row>
@@ -163,7 +163,7 @@ function Mqtt({ data, actions }: Pane) {
         <row className="items-start justify-between gap-3">
           <text className="shrink-0 text-xs text-muted">Last error</text>
           <text
-            testId="cloud-mqtt-error"
+            data-testid="cloud-mqtt-error"
             className={
               data.mqttLastError
                 ? 'grow basis-0 min-w-0 text-right font-mono text-xs break-all text-danger'
@@ -190,10 +190,10 @@ function Mqtt({ data, actions }: Pane) {
         }
       >
         <text className="text-xs text-muted uppercase">Topic</text>
-        <text testId="cloud-mqtt-topic" className="font-mono text-sm break-all">
+        <text data-testid="cloud-mqtt-topic" className="font-mono text-sm break-all">
           {String(data.mqttTopicFilter || 'demo/mqtt')}
         </text>
-        <text testId="cloud-mqtt-status" className="text-sm font-semibold">
+        <text data-testid="cloud-mqtt-status" className="text-sm font-semibold">
           {String(data.mqttStatus || 'Idle')}
         </text>
         <grid className="gap-3 grid-cols-2">

@@ -134,7 +134,7 @@ fn frame_metrics_distinguish_reuse_and_preserve_the_last_success() {
 #[test]
 fn list_windows_keep_root_render_and_offscreen_row_state() {
     let source = source(
-        "globalThis.roots=0; globalThis.rows=0; function Item({i}){const n=useLocal('n',0);return h('button',{testId:'row-'+i,onClick:()=>n.set(n.value+1)},`${i}:${n.value}`)} function render(){globalThis.roots++;return h('list',{testId:'feed',count:1000,height:()=>100,row:i=>{globalThis.rows++;return h(Item,{key:String(i),i})}})}",
+        "globalThis.roots=0; globalThis.rows=0; function Item({i}){const n=useLocal('n',0);return h('button',{'data-testid':'row-'+i,onClick:()=>n.set(n.value+1)},`${i}:${n.value}`)} function render(){globalThis.roots++;return h('list',{'data-testid':'feed',count:1000,height:()=>100,row:i=>{globalThis.rows++;return h(Item,{key:String(i),i})}})}",
     );
     let mut page = ViewSession::new(&source).unwrap();
     let first = page.layout(200, 300, 1.0).unwrap();
@@ -200,7 +200,7 @@ fn list_windows_keep_root_render_and_offscreen_row_state() {
 #[test]
 fn nested_list_end_anchor_survives_sibling_removal() {
     let module = source(
-        "globalThis.extra=true;function render(){return h('column',{style:{padding:12,gap:8}},globalThis.extra?h('text',{},'sibling'):null,h('list',{testId:'list',count:100,anchor:'end',style:{height:100,paddingTop:7,paddingBottom:19,paddingLeft:23,paddingRight:11,borderWidth:3},row:i=>h('text',{testId:'row-'+i,style:{height:40}},String(i))}))}",
+        "globalThis.extra=true;function render(){return h('column',{style:{padding:12,gap:8}},globalThis.extra?h('text',{},'sibling'):null,h('list',{'data-testid':'list',count:100,anchor:'end',style:{height:100,paddingTop:7,paddingBottom:19,paddingLeft:23,paddingRight:11,borderWidth:3},row:i=>h('text',{'data-testid':'row-'+i,style:{height:40}},String(i))}))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     for extra in [true, true, false, false] {
@@ -225,7 +225,7 @@ fn list_end_anchors_use_resolved_edges_and_borders() {
         "paddingTop:7,paddingBottom:19,paddingLeft:23,paddingRight:11,borderWidth:3",
     ] {
         let module = source(&format!(
-            "function render(){{return h('list',{{count:100,anchor:'end',style:{{{style}}},row:i=>h('text',{{testId:'row-'+i,style:{{height:40}}}},String(i))}})}}"
+            "function render(){{return h('list',{{count:100,anchor:'end',style:{{{style}}},row:i=>h('text',{{'data-testid':'row-'+i,style:{{height:40}}}},String(i))}})}}"
         ));
         let mut page = ViewSession::new(&module).unwrap();
         let frame = page.layout(200, 300, 1.0).unwrap();
@@ -248,7 +248,7 @@ fn list_end_anchors_use_resolved_edges_and_borders() {
 #[test]
 fn measured_list_anchors_padding_and_failed_windows_are_transactional() {
     let source = source(
-        "globalThis.anchor={index:500,align:'start',seq:0};function render(){return h('list',{count:1000,anchor:globalThis.anchor,style:{padding:12,gap:8},row:i=>h('button',{testId:'row-'+i,style:{height:40+(i%5)*10},onClick(){}},String(i))})}",
+        "globalThis.anchor={index:500,align:'start',seq:0};function render(){return h('list',{count:1000,anchor:globalThis.anchor,style:{padding:12,gap:8},row:i=>h('button',{'data-testid':'row-'+i,style:{height:40+(i%5)*10},onClick(){}},String(i))})}",
     );
     let mut page = ViewSession::new(&source).unwrap();
     let frame = page.layout(200, 300, 1.0).unwrap();
@@ -302,7 +302,7 @@ fn measured_list_anchors_padding_and_failed_windows_are_transactional() {
 #[test]
 fn text_scaling_discards_offscreen_list_measurements() {
     let module = source(
-        "globalThis.anchor={index:0,align:'start',seq:0};function render(){return h('list',{count:100,anchor:globalThis.anchor,row:i=>h('text',{testId:'row-'+i,style:{fontSize:16,lineHeight:'24px'}},'A row with enough words to wrap over multiple lines')})}",
+        "globalThis.anchor={index:0,align:'start',seq:0};function render(){return h('list',{count:100,anchor:globalThis.anchor,row:i=>h('text',{'data-testid':'row-'+i,style:{fontSize:16,lineHeight:'24px'}},'A row with enough words to wrap over multiple lines')})}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     page.layout(200, 300, 1.0).unwrap();
@@ -334,7 +334,7 @@ fn text_scaling_discards_offscreen_list_measurements() {
 #[test]
 fn distant_list_anchor_skips_old_rows_and_preserves_failed_frame() {
     let module = source(
-        "globalThis.anchor=undefined;globalThis.visited=[];function render(){return h('list',{count:1000,anchor:globalThis.anchor,row:i=>{globalThis.visited.push(i);return h('button',{testId:'row-'+i,onClick(){},style:{height:40+(i%3)*20}},String(i))}})}",
+        "globalThis.anchor=undefined;globalThis.visited=[];function render(){return h('list',{count:1000,anchor:globalThis.anchor,row:i=>{globalThis.visited.push(i);return h('button',{'data-testid':'row-'+i,onClick(){},style:{height:40+(i%3)*20}},String(i))}})}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     let first = page.layout(200, 300, 1.0).unwrap();
@@ -401,7 +401,7 @@ fn frame_metrics_accumulate_every_list_description_transfer() {
 #[test]
 fn list_count_shrink_refines_old_native_window_and_rolls_back_failed_frames() {
     let module = source(
-        "globalThis.count=1000;function render(){return h('list',{count:globalThis.count,anchor:'end',row:i=>h('text',{testId:'row-'+i,style:{height:50}},String(i))})}",
+        "globalThis.count=1000;function render(){return h('list',{count:globalThis.count,anchor:'end',row:i=>h('text',{'data-testid':'row-'+i,style:{height:50}},String(i))})}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     let first = page.layout(200, 200, 1.0).unwrap();
@@ -493,7 +493,7 @@ fn reach_handles_are_published_without_running_callbacks_and_reject_stale_input(
 #[test]
 fn native_scroll_reuses_committed_description_and_preserves_click_handles() {
     let source = source(
-        "let renders=0; function render(){renders++; const n=useLocal('n',0); return h('scroll',{testId:'feed'},h('button',{style:{height:300},onClick:()=>n.set(n.value+1)},`${renders}:${n.value}`))}",
+        "let renders=0; function render(){renders++; const n=useLocal('n',0); return h('scroll',{'data-testid':'feed'},h('button',{style:{height:300},onClick:()=>n.set(n.value+1)},`${renders}:${n.value}`))}",
     );
     let mut page = ViewSession::new(&source).unwrap();
     let initial = page.layout(100, 100, 1.0).unwrap();
@@ -895,7 +895,7 @@ fn failed_frames_and_callback_errors_do_not_commit_candidate_editors() {
 fn viewport_reveal_preserves_editor_and_rolls_back_failed_frames() {
     for scale in [1.0, 2.0] {
         let module = source(
-            "function render(){return h('scroll',{},h('spacer',{style:{height:300}}),h('input',{testId:'editor',autoFocus:true,value:'draft',style:{height:44}}),h('spacer',{style:{height:200}}))}",
+            "function render(){return h('scroll',{},h('spacer',{style:{height:300}}),h('input',{'data-testid':'editor',autoFocus:true,value:'draft',style:{height:44}}),h('spacer',{style:{height:200}}))}",
         );
         let mut page = ViewSession::new(&module).unwrap();
         let width = (300.0 * scale) as u16;
@@ -1550,7 +1550,7 @@ fn environment_is_atomic_immutable_and_survives_reset() {
 #[test]
 fn session_retains_state_and_rejects_stale_frame_input() {
     let source = source(
-        "function render(){const n=useLocal('count',0);return h('button',{testId:'counter',onClick:()=>n.set(n.value+1)},n.value)}",
+        "function render(){const n=useLocal('count',0);return h('button',{'data-testid':'counter',onClick:()=>n.set(n.value+1)},n.value)}",
     );
     let mut session = ViewSession::new(&source).unwrap();
     let first = session.render(300, 500, 1.0).unwrap();

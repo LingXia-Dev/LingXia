@@ -6,7 +6,7 @@ use crate::scene::paint::Paint;
 use crate::session::lifecycle::{CommitTicket, PageTicket};
 use std::sync::Arc;
 
-const PAGE: &str = "function render(){const plan=useLocal('plan','m');return h('column',{},h('select',{testId:'s',bind:plan,accessibilityLabel:'Plan',placeholder:'Choose',options:[{value:'m',label:'Monthly'},{value:'q',label:'Quarterly',disabled:true},{value:'y',label:'Yearly'}]}),h('text',{testId:'t'},plan.value))}";
+const PAGE: &str = "function render(){const plan=useLocal('plan','m');return h('column',{},h('select',{'data-testid':'s',bind:plan,accessibilityLabel:'Plan',placeholder:'Choose',options:[{value:'m',label:'Monthly'},{value:'q',label:'Quarterly',disabled:true},{value:'y',label:'Yearly'}]}),h('text',{'data-testid':'t'},plan.value))}";
 
 fn present(display: &crate::DisplayList) -> ViewInteraction {
     let mut interaction = ViewInteraction::default();
@@ -153,7 +153,7 @@ fn automation_chooses_an_option_by_value_or_label() {
 /// worker runs the choice. It finds its option again by value instead of being dropped.
 #[test]
 fn a_view_side_choice_on_a_superseded_frame_finds_its_option_by_value() {
-    let page_source = "function render(){const plan=useLocal('plan','m'),tab=useLocal('tab',0);return h('column',{},h('button',{testId:'tab',onClick:()=>tab.set(tab.value+1)},`tab ${tab.value}`),tab.value>0?h('text',{},'shifted'):null,h('select',{testId:'s',bind:plan,accessibilityLabel:'Plan',options:[{value:'m',label:'Monthly'},{value:'y',label:'Yearly'}]}),h('text',{testId:'t'},plan.value))}";
+    let page_source = "function render(){const plan=useLocal('plan','m'),tab=useLocal('tab',0);return h('column',{},h('button',{'data-testid':'tab',onClick:()=>tab.set(tab.value+1)},`tab ${tab.value}`),tab.value>0?h('text',{},'shifted'):null,h('select',{'data-testid':'s',bind:plan,accessibilityLabel:'Plan',options:[{value:'m',label:'Monthly'},{value:'y',label:'Yearly'}]}),h('text',{'data-testid':'t'},plan.value))}";
     let mut page = ViewSession::new(&super::source(page_source)).unwrap();
     let display = page.layout(300, 300, 1.0).unwrap();
     let seen = page.generation();

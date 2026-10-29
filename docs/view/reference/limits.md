@@ -25,7 +25,7 @@ Page-wide bounds the runtime and the native decoder both enforce. Exceeding one 
 | `clipboardItems` | 128 | Clipboard items one paste reads. |
 | `wireValues` | 100000 | Values in one encoded frame. |
 | `textBytes` | 65536 (64 KiB) | Text of one node, as UTF-8. |
-| `identifierBytes` | 256 | One `key` or `testId`, as UTF-8. |
+| `identifierBytes` | 256 | One `key` or `data-testid`, as UTF-8. |
 | `listRows` | 100000 | Rows one `<list>` declares. |
 | `gridTracks` | 64 | Tracks one grid template expands to. |
 | `vectorSourceBytes` | 32768 (32 KiB) | One `<vector>` source (paths, gradients, viewBox) as JSON. |

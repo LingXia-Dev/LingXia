@@ -413,7 +413,7 @@ mod tests {
     fn spin_page(faded: bool) -> (crate::ViewSession, DisplayList) {
         let opacity = if faded { ",opacity:0.8" } else { "" };
         let module = crate::session::tests::source(&format!(
-            "function render(){{return h('column',{{style:{{width:96,height:96,backgroundColor:'#ffffff'}}}},h('text',{{}},'Before'),h('column',{{style:{{width:80,height:56,borderRadius:8,overflow:'hidden',backgroundColor:'#eeeeee'{opacity}}}}},h('column',{{testId:'spin',style:{{width:30,height:30,backgroundColor:'#00ff00'}}}},h('text',{{}},'Go')),h('input',{{value:'Hi',autoFocus:true}}),h('column',{{style:{{height:10,backgroundColor:'#000000'}}}})),h('text',{{}},'After'))}}"
+            "function render(){{return h('column',{{style:{{width:96,height:96,backgroundColor:'#ffffff'}}}},h('text',{{}},'Before'),h('column',{{style:{{width:80,height:56,borderRadius:8,overflow:'hidden',backgroundColor:'#eeeeee'{opacity}}}}},h('column',{{'data-testid':'spin',style:{{width:30,height:30,backgroundColor:'#00ff00'}}}},h('text',{{}},'Go')),h('input',{{value:'Hi',autoFocus:true}}),h('column',{{style:{{height:10,backgroundColor:'#000000'}}}})),h('text',{{}},'After'))}}"
         ));
         let mut page = crate::ViewSession::new(&module).unwrap();
         let display = page.layout(96, 96, 1.0).unwrap();
@@ -497,7 +497,7 @@ mod tests {
     #[test]
     fn spans_split_by_a_few_static_paints_share_one_pass() {
         let module = crate::session::tests::source(
-            "function render(){return h('column',{style:{width:96,height:96}},h('text',{},'Before'),h('column',{testId:'a',style:{width:10,height:10,backgroundColor:'#00ff00'}}),h('column',{style:{width:10,height:10,backgroundColor:'#000000'}}),h('column',{testId:'b',style:{width:10,height:10,backgroundColor:'#0000ff'}}),h('text',{},'After'))}",
+            "function render(){return h('column',{style:{width:96,height:96}},h('text',{},'Before'),h('column',{'data-testid':'a',style:{width:10,height:10,backgroundColor:'#00ff00'}}),h('column',{style:{width:10,height:10,backgroundColor:'#000000'}}),h('column',{'data-testid':'b',style:{width:10,height:10,backgroundColor:'#0000ff'}}),h('text',{},'After'))}",
         );
         let mut page = crate::ViewSession::new(&module).unwrap();
         let display = page.layout(96, 96, 1.0).unwrap();

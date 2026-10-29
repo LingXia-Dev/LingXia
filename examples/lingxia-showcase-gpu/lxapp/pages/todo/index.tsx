@@ -11,9 +11,9 @@ const filters = [
 
 function TodoRow({ todo, blocked, onToggle, onDelete }: { todo: Todo; blocked: boolean; onToggle: () => unknown; onDelete: () => unknown }) {
   return (
-    <row testId={`todo-item-${todo.id}`} className="items-center min-h-12 px-3 gap-2 border-t border-line">
+    <row data-testid={`todo-item-${todo.id}`} className="items-center min-h-12 px-3 gap-2 border-t border-line">
       <checkbox
-        testId={`todo-toggle-${todo.id}`}
+        data-testid={`todo-toggle-${todo.id}`}
         value={todo.completed}
         disabled={blocked}
         onChange={() => {
@@ -23,13 +23,13 @@ function TodoRow({ todo, blocked, onToggle, onDelete }: { todo: Todo; blocked: b
       >
         <row className="items-center gap-3.5">
           <Icon name={todo.completed ? 'success' : 'note'} className={todo.completed ? 'w-6 h-6 text-accent' : 'w-6 h-6 text-faint'} />
-          <text testId={`todo-label-${todo.id}`} className={todo.completed ? 'grow basis-0 min-w-0 text-base line-through text-muted' : 'grow basis-0 min-w-0 text-base'}>
+          <text data-testid={`todo-label-${todo.id}`} className={todo.completed ? 'grow basis-0 min-w-0 text-base line-through text-muted' : 'grow basis-0 min-w-0 text-base'}>
             {todo.text}
           </text>
         </row>
       </checkbox>
       <button
-        testId={`todo-delete-${todo.id}`}
+        data-testid={`todo-delete-${todo.id}`}
         accessibilityLabel={`Delete ${todo.text}`}
         disabled={blocked}
         onClick={() => {
@@ -74,16 +74,16 @@ export function render({ data, actions, env }: View<TodoActions, TodoPageData>) 
       });
   };
   return (
-    <page testId="todo-page" className="bg-canvas text-text items-center px-3 py-6 gap-4">
+    <page data-testid="todo-page" className="bg-canvas text-text items-center px-3 py-6 gap-4">
       <text className="text-7xl font-thin tracking-tighter text-accent">todos</text>
       <column
-        testId="todo-panel"
+        data-testid="todo-panel"
         className="w-full max-w-xl grow basis-0 min-h-0 rounded-2xl bg-surface/90 backdrop-blur-xl shadow-lg border border-line"
       >
         <row className="items-center">
           {todos.length > 0 ? (
             <button
-              testId="todo-toggle-all"
+              data-testid="todo-toggle-all"
               accessibilityLabel={active ? 'Mark all as complete' : 'Mark all as active'}
               disabled={blocked}
               onClick={() => run(() => actions.toggleAll())}
@@ -95,7 +95,7 @@ export function render({ data, actions, env }: View<TodoActions, TodoPageData>) 
             <spacer className="w-12" />
           )}
           <input
-            testId="todo-input"
+            data-testid="todo-input"
             data-controlled-value={draft.value}
             accessibilityLabel="New task"
             bind={draft}
@@ -106,7 +106,7 @@ export function render({ data, actions, env }: View<TodoActions, TodoPageData>) 
           />
         </row>
         {data.loading && (
-          <text testId="todo-loading" className="p-4 text-sm text-muted">
+          <text data-testid="todo-loading" className="p-4 text-sm text-muted">
             Loading saved tasks...
           </text>
         )}
@@ -120,7 +120,7 @@ export function render({ data, actions, env }: View<TodoActions, TodoPageData>) 
           <EmptyState testId="todo-empty" title="No tasks yet" message="Add a task above to get started" />
         ) : (
           <List
-            testId="todo-list"
+            data-testid="todo-list"
             className="grow basis-0 min-h-0"
             items={visible}
             getKey={todo => todo.id}
@@ -142,7 +142,7 @@ export function render({ data, actions, env }: View<TodoActions, TodoPageData>) 
                 : 'items-stretch gap-2.5 px-4 py-3.5 border-t border-line'
             }
           >
-            <text testId="todo-count" className="text-sm text-muted">{`${active} ${active === 1 ? 'item' : 'items'} left`}</text>
+            <text data-testid="todo-count" className="text-sm text-muted">{`${active} ${active === 1 ? 'item' : 'items'} left`}</text>
             <Segmented
               testId="todo-filter"
               value={filter}

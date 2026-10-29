@@ -36,7 +36,7 @@ export function render({ data, actions, env }: View) {
   const desktop = env.os === 'macOS' || env.os === 'Windows';
   return (
     <Page testId="system-page" data={{ 'data-mode': type }}>
-      <text testId="system-mode-title" className="text-2xl font-light text-center">
+      <text data-testid="system-mode-title" className="text-2xl font-light text-center">
         {titles[type]}
       </text>
       {type === 'appBaseInfo' && (
@@ -88,7 +88,7 @@ export function render({ data, actions, env }: View) {
           action={
             data.autostartSupported ? (
               <switch
-                testId="system-autostart-toggle"
+                data-testid="system-autostart-toggle"
                 accessibilityLabel="Launch at startup"
                 value={!!data.autostartEnabled}
                 onChange={() => actions.toggleAutostart()}

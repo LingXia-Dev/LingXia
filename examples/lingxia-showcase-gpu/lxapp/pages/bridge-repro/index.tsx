@@ -52,39 +52,39 @@ export function render({ data, actions }: View<Actions, Data>) {
   const loaded = Number(data.logicLoadedAt);
   return (
     <Page testId="bridge-repro-page" data={{ 'data-automation-contract': 'bridge-v1' }}>
-      <text testId="bootstrap-verdict" className={verdictClass(bootstrapVerdict)}>{`Bootstrap: ${bootstrapVerdict}`}</text>
+      <text data-testid="bootstrap-verdict" className={verdictClass(bootstrapVerdict)}>{`Bootstrap: ${bootstrapVerdict}`}</text>
       <Card className="p-4 gap-1">
-        <text testId="bootstrap-ready" className="text-sm">{`bridge ready: ${probe.value ? 'yes' : 'no'}`}</text>
-        <text testId="bootstrap-snapshot" className="text-sm">{`initial snapshot: ${snapshotReady ? 'yes' : 'no'}`}</text>
-        <text testId="bootstrap-probe" className="text-sm">
+        <text data-testid="bootstrap-ready" className="text-sm">{`bridge ready: ${probe.value ? 'yes' : 'no'}`}</text>
+        <text data-testid="bootstrap-snapshot" className="text-sm">{`initial snapshot: ${snapshotReady ? 'yes' : 'no'}`}</text>
+        <text data-testid="bootstrap-probe" className="text-sm">
           {probe.value
             ? `logic call: yes (${probe.value.logicReceivedAt - probe.value.viewSentAt} ms)`
             : probe.error
               ? `logic call: FAILED: ${probe.error.message}`
               : 'logic call: waiting'}
         </text>
-        <text testId="bootstrap-logic-loaded" className="text-sm">
+        <text data-testid="bootstrap-logic-loaded" className="text-sm">
           {snapshotReady ? `logic ready: ${loaded <= started.value ? 'preloaded' : `${loaded - started.value} ms after view`}` : 'logic ready: -'}
         </text>
         <text className="text-xs text-muted">Restart the lxapp to repeat.</text>
       </Card>
-      <text testId="stream-verdict" className={verdictClass(streamVerdict)}>{`Stream: ${streamVerdict}`}</text>
+      <text data-testid="stream-verdict" className={verdictClass(streamVerdict)}>{`Stream: ${streamVerdict}`}</text>
       <Card className="p-4 gap-1">
-        <text testId="stat-received" className="text-sm">{`received: ${audit.value.received}`}</text>
-        <text testId="stat-last" className="text-sm">{`last seq: ${audit.value.last}`}</text>
-        <text testId="stat-first" className="text-sm">{`first tick after: ${audit.value.firstAtMs ?? '-'} ms`}</text>
+        <text data-testid="stat-received" className="text-sm">{`received: ${audit.value.received}`}</text>
+        <text data-testid="stat-last" className="text-sm">{`last seq: ${audit.value.last}`}</text>
+        <text data-testid="stat-first" className="text-sm">{`first tick after: ${audit.value.firstAtMs ?? '-'} ms`}</text>
         <text
-          testId="stat-gaps"
+          data-testid="stat-gaps"
           className={audit.value.gaps.length ? 'text-sm font-semibold text-danger' : 'text-sm'}
         >{`gaps: ${audit.value.gaps.join(', ') || 'none'}`}</text>
         <text
-          testId="stat-error"
+          data-testid="stat-error"
           className={ticks.error ? 'text-sm font-semibold text-danger' : 'text-sm'}
         >{`stream error: ${ticks.error?.message || 'none'}`}</text>
-        <text testId="stat-reconnects" className="text-sm">
+        <text data-testid="stat-reconnects" className="text-sm">
           reconnects: 0
         </text>
-        <text testId="stat-echo" className="text-sm">
+        <text data-testid="stat-echo" className="text-sm">
           {echoLog.value}
         </text>
       </Card>

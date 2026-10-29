@@ -26,7 +26,7 @@ export function render({ data, actions }: View) {
           </Button>
         </grid>
         {data.statusText !== 'Ready' && (
-          <text testId="wifi-status" className="text-xs text-muted">
+          <text data-testid="wifi-status" className="text-xs text-muted">
             {String(data.statusText || '')}
           </text>
         )}
@@ -68,7 +68,7 @@ export function render({ data, actions }: View) {
           }
         >
           <row className="items-center justify-between">
-            <text testId="wifi-listener-status" className="text-xs text-muted">{`Listening: ${listening ? 'On' : 'Off'}`}</text>
+            <text data-testid="wifi-listener-status" className="text-xs text-muted">{`Listening: ${listening ? 'On' : 'Off'}`}</text>
             {events.length > 0 && (
               <Button variant="ghost" size="sm" testId="wifi-clear-events" onClick={() => actions.clearWifiConnectedEvents()}>
                 Clear
@@ -76,11 +76,11 @@ export function render({ data, actions }: View) {
             )}
           </row>
           {!events.length ? (
-            <text testId="wifi-events" className="text-sm text-muted">
+            <text data-testid="wifi-events" className="text-sm text-muted">
               No events yet.
             </text>
           ) : (
-            <column testId="wifi-events" className="gap-2">
+            <column data-testid="wifi-events" className="gap-2">
               {events.map(event => (
                 <column key={event.id} className="p-3 gap-1 rounded-lg border border-line">
                   <row className="justify-between">
@@ -109,14 +109,14 @@ export function render({ data, actions }: View) {
           }
         >
           {data.wifiList !== null && (
-            <text testId="wifi-scan-count" className="text-sm font-semibold">{`Available Networks (${networks.length})`}</text>
+            <text data-testid="wifi-scan-count" className="text-sm font-semibold">{`Available Networks (${networks.length})`}</text>
           )}
           {data.wifiList !== null && !networks.length && <EmptyState icon="device" title="No networks found" />}
           <scroll className="max-h-96 gap-2">
             {networks.map((wifi, index) => (
               <button
                 key={wifi.bssid || `${wifi.ssid}-${index}`}
-                testId={`wifi-network-${index}`}
+                data-testid={`wifi-network-${index}`}
                 onClick={() => ssid.set(wifi.ssid || '')}
                 className="p-3 rounded-lg border border-line bg-surface text-text text-left active:bg-surface-sunken"
               >

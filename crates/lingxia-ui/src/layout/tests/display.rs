@@ -18,7 +18,7 @@ fn bounds(display: &crate::DisplayList, id: &str) -> [f32; 4] {
 #[test]
 fn hidden_boxes_take_no_space_paint_nothing_and_leave_semantics() {
     let shown = layout(
-        "h('row',{},h('button',{testId:'a',style:{width:40,display:'none',backgroundColor:'#ff0000'},onClick(){}},'Gone'),h('column',{testId:'b',style:{width:30,height:10}}))",
+        "h('row',{},h('button',{'data-testid':'a',style:{width:40,display:'none',backgroundColor:'#ff0000'},onClick(){}},'Gone'),h('column',{'data-testid':'b',style:{width:30,height:10}}))",
     );
     assert_eq!(bounds(&shown, "b")[0], 0.0);
     let gone = shown.nodes.iter().find(|n| n.test_id == "a").unwrap();
@@ -37,7 +37,7 @@ fn hidden_boxes_take_no_space_paint_nothing_and_leave_semantics() {
 #[test]
 fn block_stretches_a_column_and_inline_boxes_shrink_to_content() {
     let display = layout(
-        "h('row',{style:{width:200,alignItems:'center'}},h('column',{testId:'block',style:{display:'block',width:100}},h('column',{testId:'child',style:{height:10}}),h('column',{testId:'next',style:{height:10}})),h('row',{testId:'inline',style:{display:'inline-flex',height:30}},h('column',{style:{width:20,height:5}})))",
+        "h('row',{style:{width:200,alignItems:'center'}},h('column',{'data-testid':'block',style:{display:'block',width:100}},h('column',{'data-testid':'child',style:{height:10}}),h('column',{'data-testid':'next',style:{height:10}})),h('row',{'data-testid':'inline',style:{display:'inline-flex',height:30}},h('column',{style:{width:20,height:5}})))",
     );
     // A block lays children in a column at full width, even under a row tag.
     assert_eq!(bounds(&display, "child")[2], 100.0);
@@ -53,7 +53,7 @@ fn block_stretches_a_column_and_inline_boxes_shrink_to_content() {
 #[test]
 fn fixed_boxes_position_against_the_page_and_escape_scroll_and_clips() {
     let source = crate::session::tests::source(
-        "function render(){return h('page',{},h('scroll',{testId:'s',style:{height:100,marginTop:50}},h('column',{style:{height:400,overflow:'hidden',marginLeft:30}},h('column',{testId:'fab',style:{position:'fixed',bottom:10,right:10,width:20,height:20,backgroundColor:'#00ff00'}}))))}",
+        "function render(){return h('page',{},h('scroll',{'data-testid':'s',style:{height:100,marginTop:50}},h('column',{style:{height:400,overflow:'hidden',marginLeft:30}},h('column',{'data-testid':'fab',style:{position:'fixed',bottom:10,right:10,width:20,height:20,backgroundColor:'#00ff00'}}))))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let display = page.layout(200, 200, 1.0).unwrap();
@@ -75,7 +75,7 @@ fn fixed_boxes_position_against_the_page_and_escape_scroll_and_clips() {
 #[test]
 fn aspect_ratio_derives_the_free_axis_and_ch_tracks_the_font() {
     let display = layout(
-        "h('column',{style:{width:200}},h('column',{testId:'video',style:{width:160,aspectRatio:16/9}}),h('column',{testId:'square',style:{height:30,aspectRatio:1,alignSelf:'start'}}),h('text',{testId:'small',style:{maxWidth:'10ch',fontSize:10}},'0000000000000000000000'),h('text',{testId:'large',style:{maxWidth:'10ch',fontSize:20}},'0000000000000000000000'))",
+        "h('column',{style:{width:200}},h('column',{'data-testid':'video',style:{width:160,aspectRatio:16/9}}),h('column',{'data-testid':'square',style:{height:30,aspectRatio:1,alignSelf:'start'}}),h('text',{'data-testid':'small',style:{maxWidth:'10ch',fontSize:10}},'0000000000000000000000'),h('text',{'data-testid':'large',style:{maxWidth:'10ch',fontSize:20}},'0000000000000000000000'))",
     );
     assert_eq!(bounds(&display, "video")[3], 90.0);
     assert_eq!(bounds(&display, "square")[2], 30.0);
@@ -99,7 +99,7 @@ fn current_color_backgrounds_follow_the_text_color() {
 fn unstyled_defaults_follow_the_page_theme() {
     use crate::scene::paint::Paint;
     let source = crate::session::tests::source(
-        "function render(){return h('column',{},h('text',{testId:'t'},'Hi'),h('button',{testId:'b',onClick(){}},'Go'))}",
+        "function render(){return h('column',{},h('text',{'data-testid':'t'},'Hi'),h('button',{'data-testid':'b',onClick(){}},'Go'))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let paints = |page: &mut crate::ViewSession, theme: &str| {
@@ -140,7 +140,7 @@ fn unstyled_defaults_follow_the_page_theme() {
 fn a_transform_ends_with_its_node_and_never_reaches_the_next_sibling() {
     use crate::scene::paint::Paint;
     let source = crate::session::tests::source(
-        "function render(){return h('column',{},h('column',{},h('row',{},h('column',{testId:'card',style:{width:48,height:48,backgroundColor:'#ff0000',rotate:12,scale:[0.9,0.9],transformOrigin:[0,1]}}))),h('column',{},h('text',{testId:'after'},'Text')))}",
+        "function render(){return h('column',{},h('column',{},h('row',{},h('column',{'data-testid':'card',style:{width:48,height:48,backgroundColor:'#ff0000',rotate:12,scale:[0.9,0.9],transformOrigin:[0,1]}}))),h('column',{},h('text',{'data-testid':'after'},'Text')))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let display = page.layout(300, 300, 1.0).unwrap();
@@ -165,7 +165,7 @@ fn a_transform_ends_with_its_node_and_never_reaches_the_next_sibling() {
 #[test]
 fn a_growing_aspect_box_in_a_start_aligned_row_derives_its_height() {
     let source = crate::session::tests::source(
-        "function render(){return h('column',{style:{padding:16}},h('row',{style:{gap:12,alignItems:'flex-start'}},h('column',{testId:'video',style:{flexGrow:1,flexBasis:0,aspectRatio:16/9}}),h('column',{testId:'square',style:{width:64,aspectRatio:1}})))}",
+        "function render(){return h('column',{style:{padding:16}},h('row',{style:{gap:12,alignItems:'flex-start'}},h('column',{'data-testid':'video',style:{flexGrow:1,flexBasis:0,aspectRatio:16/9}}),h('column',{'data-testid':'square',style:{width:64,aspectRatio:1}})))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let display = page.layout(360, 600, 1.0).unwrap();
@@ -186,7 +186,7 @@ fn a_growing_aspect_box_in_a_start_aligned_row_derives_its_height() {
 #[test]
 fn fixed_boxes_measure_insets_from_the_safe_content_box() {
     let source = crate::session::tests::source(
-        "function render(){return h('page',{},h('scroll',{},h('column',{testId:'fab',style:{position:'fixed',bottom:16,right:16,width:40,height:20}}),h('column',{testId:'pin',style:{position:'fixed',top:8,left:8,width:10,height:10}})))}",
+        "function render(){return h('page',{},h('scroll',{},h('column',{'data-testid':'fab',style:{position:'fixed',bottom:16,right:16,width:40,height:20}}),h('column',{'data-testid':'pin',style:{position:'fixed',top:8,left:8,width:10,height:10}})))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let mut place = |size: [u16; 2], insets: [f32; 4], keyboard: f32| {
@@ -226,7 +226,7 @@ fn fixed_boxes_measure_insets_from_the_safe_content_box() {
 #[test]
 fn viewport_units_measure_the_safe_content_box() {
     let source = crate::session::tests::source(
-        "function render(){return h('page',{},h('column',{testId:'half',style:{height:'50vh',width:'50vw'}}))}",
+        "function render(){return h('page',{},h('column',{'data-testid':'half',style:{height:'50vh',width:'50vw'}}))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     for (keyboard, height) in [
@@ -255,7 +255,7 @@ fn a_textarea_with_rows_grows_with_its_lines_up_to_max_rows() {
     let height = |lines: usize| {
         let value = vec!["line"; lines].join("\\n");
         let source = crate::session::tests::source(&format!(
-            "function render(){{return h('column',{{}},h('textarea',{{testId:'t',accessibilityLabel:'Note',value:'{value}',rows:2,maxRows:4,style:{{padding:0,lineHeight:'20px'}}}}))}}"
+            "function render(){{return h('column',{{}},h('textarea',{{'data-testid':'t',accessibilityLabel:'Note',value:'{value}',rows:2,maxRows:4,style:{{padding:0,lineHeight:'20px'}}}}))}}"
         ));
         let display = crate::ViewSession::new(&source)
             .unwrap()
@@ -302,7 +302,7 @@ fn an_image_placeholder_paints_first_and_loads_alongside() {
 fn an_unstyled_buttons_text_pairs_with_its_fill() {
     use crate::scene::paint::Paint;
     let source = crate::session::tests::source(
-        "function render(){return h('column',{},h('button',{testId:'plain',onClick(){}},'A'),h('button',{testId:'card',onClick(){},style:{backgroundColor:'surface'}},'B'),h('button',{testId:'risk',onClick(){},style:{backgroundColor:'danger'}},'C'))}",
+        "function render(){return h('column',{},h('button',{'data-testid':'plain',onClick(){}},'A'),h('button',{'data-testid':'card',onClick(){},style:{backgroundColor:'surface'}},'B'),h('button',{'data-testid':'risk',onClick(){},style:{backgroundColor:'danger'}},'C'))}",
     );
     let display = crate::ViewSession::new(&source)
         .unwrap()

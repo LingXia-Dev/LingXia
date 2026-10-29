@@ -23,7 +23,7 @@ function Bubble({ id, content, user, chart }: { id: string; content: string; use
         }
       >
         <text
-          testId={id}
+          data-testid={id}
           className={content ? 'text-sm leading-relaxed break-words' : 'text-sm leading-relaxed break-words italic text-muted'}
         >
           {content || '...'}
@@ -62,16 +62,16 @@ export function render({ data, actions }: View<Actions, StreamPageData>) {
   const anchor = { index: Math.max(0, keys.length - 1), align: 'end' as const, seq: tailRevision.value + messages.length };
   const empty = !messages.length && !pending;
   return (
-    <page testId="stream-page" className="bg-canvas text-text">
+    <page data-testid="stream-page" className="bg-canvas text-text">
       {messages.length > 0 && !pending && (
         <row className="justify-end px-4 pt-3">
-          <button testId="stream-clear" onClick={() => actions.onClear()} className="px-3 py-1 rounded-full bg-surface text-xs text-accent shadow-sm">
+          <button data-testid="stream-clear" onClick={() => actions.onClear()} className="px-3 py-1 rounded-full bg-surface text-xs text-accent shadow-sm">
             Clear
           </button>
         </row>
       )}
       {empty ? (
-        <scroll testId="page-scroll" className="grow basis-0">
+        <scroll data-testid="page-scroll" className="grow basis-0">
           <column className="min-h-full px-8 py-4 items-center justify-center gap-3">
             <EmptyState
               testId="stream-empty"
@@ -81,7 +81,7 @@ export function render({ data, actions }: View<Actions, StreamPageData>) {
             />
             <column className="w-full gap-2">
               {hints.map(hint => (
-                <text key={hint} testId={`stream-hint-${hint}`} className="px-4 py-2.5 rounded-xl bg-accent-soft text-sm text-accent">
+                <text key={hint} data-testid={`stream-hint-${hint}`} className="px-4 py-2.5 rounded-xl bg-accent-soft text-sm text-accent">
                   {hint}
                 </text>
               ))}
@@ -90,7 +90,7 @@ export function render({ data, actions }: View<Actions, StreamPageData>) {
         </scroll>
       ) : (
         <list
-          testId="page-scroll"
+          data-testid="page-scroll"
           className="grow basis-0 min-h-0 pt-3 pb-4"
           count={keys.length}
           itemKeys={keys}
@@ -109,7 +109,7 @@ export function render({ data, actions }: View<Actions, StreamPageData>) {
       </column>
       <row className="items-end gap-2 px-3 py-3 border-t border-line bg-surface">
         <textarea
-          testId="stream-input"
+          data-testid="stream-input"
           data-controlled-value={draft.value}
           accessibilityLabel="Message"
           bind={draft}
@@ -121,7 +121,7 @@ export function render({ data, actions }: View<Actions, StreamPageData>) {
         />
         {busy ? (
           <button
-            testId="stream-stop"
+            data-testid="stream-stop"
             accessibilityLabel="Stop response"
             onClick={() => stream.cancel()}
             className="w-9 h-9 rounded-full bg-text/90 items-center justify-center"
@@ -130,7 +130,7 @@ export function render({ data, actions }: View<Actions, StreamPageData>) {
           </button>
         ) : (
           <button
-            testId="stream-send"
+            data-testid="stream-send"
             accessibilityLabel="Send message"
             disabled={!draft.value.trim()}
             onClick={send}

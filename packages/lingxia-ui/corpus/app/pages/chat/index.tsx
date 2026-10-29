@@ -6,7 +6,7 @@ export function render({ data }: View<object, { messages: Message[] }>) {
   const draft = useLocal('draft', '');
   return (
     <page className="bg-canvas">
-      <List testId="chat" items={data.messages} getKey={message => message.id} anchor="end" className="grow"
+      <List data-testid="chat" items={data.messages} getKey={message => message.id} anchor="end" className="grow"
         renderItem={message => (
           <row className={message.mine ? 'justify-end px-4 py-1.5' : 'justify-start px-4 py-1.5'}>
             <text className={message.mine

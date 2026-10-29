@@ -27,7 +27,7 @@ export function render({ data, actions }: View) {
   const events = (data.orientationEvents ?? []) as string[];
   return (
     <Page testId="device-page" data={{ 'data-mode': type }}>
-      <text testId="device-mode-title" className="text-2xl font-light text-center">
+      <text data-testid="device-mode-title" className="text-2xl font-light text-center">
         {titles[type]}
       </text>
       {type === 'device' && (
@@ -172,8 +172,8 @@ export function render({ data, actions }: View) {
               Clear logs
             </Button>
           </row>
-          <scroll testId="device-orientation-event-scroll" className="max-h-56 p-3 rounded-lg border border-line bg-surface-sunken">
-            <text testId="device-orientation-events" className="text-xs break-all whitespace-pre-line">
+          <scroll data-testid="device-orientation-event-scroll" className="max-h-56 p-3 rounded-lg border border-line bg-surface-sunken">
+            <text data-testid="device-orientation-events" className="text-xs break-all whitespace-pre-line">
               {events.join('\n') || '--'}
             </text>
           </scroll>

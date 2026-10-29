@@ -4,12 +4,12 @@ import {h, prepare, prepareWindows, commit, discard, dispatch, useLocal, reset} 
 import {decode} from './support/wire.mjs';
 const records=buffer=>decode(buffer).map(node=>({tag:node.tag,id:node.testId,text:node.text,fields:new Map(Object.entries(node.props))}));
 function window(start,end) { return {root:{start,end,leading:start*100,trailing:(1000-end)*100}}; }
-function row(i) { const value=useLocal('count',0);return h('button',{testId:`row-${i}`,onClick:()=>value.set(value.value+1)},`${i}:${value.value}`); }
+function row(i) { const value=useLocal('count',0);return h('button',{'data-testid':`row-${i}`,onClick:()=>value.set(value.value+1)},`${i}:${value.value}`); }
 
 test('keyed factory hooks require identity before execution and retain it across reorder',()=>{
  reset();let items=['a','b'],keyed=false;
  const page=()=>h('list',{count:items.length,itemKeys:keyed?items:undefined,row:i=>{
-  const n=useLocal('n',0);return h('button',{key:items[i],testId:items[i],onClick:()=>n.set(n.value+1)},`${items[i]}:${n.value}`);
+  const n=useLocal('n',0);return h('button',{key:items[i],'data-testid':items[i],onClick:()=>n.set(n.value+1)},`${items[i]}:${n.value}`);
  }});
  assert.throws(()=>prepare(page,{}, {root:{start:0,end:items.length,leading:0,trailing:0}}),/UI_LIST: keyed row factory hooks require itemKeys/);
  keyed=true;
@@ -56,7 +56,7 @@ test('cross-window anchors reuse old geometry until native refines the destinati
 
 test('anchor refinement reevaluates overlapping rows with the new render props',()=>{
  reset();let anchor,version='old',visited=[];
- const page=()=>h('list',{count:1000,anchor,row:i=>{visited.push(i);return h('text',{testId:`row-${i}`},`${version}:${i}`);}});
+ const page=()=>h('list',{count:1000,anchor,row:i=>{visited.push(i);return h('text',{'data-testid':`row-${i}`},`${version}:${i}`);}});
  prepare(page,{},window(0,3));commit();
  version='new';anchor={index:3,align:'start'};visited=[];
  prepare(page,{},window(0,3));
@@ -162,10 +162,10 @@ test('shrinking a list accepts the previous native window before refinement',()=
 test('nested list refinement isolates discarded windows and retains ordinary callbacks',()=>{
  reset();let calls=0,fail=false;
  const page=()=>h('column',{},
-  h('button',{testId:'ordinary',onClick:()=>calls++},'Ordinary'),
+  h('button',{'data-testid':'ordinary',onClick:()=>calls++},'Ordinary'),
   h('list',{count:1,row:()=>h('column',{},h('list',{count:10,row:i=>{
    if(fail&&i===4)throw Error('nested row failed');
-   return h('button',{testId:`nested-${i}`,onClick:()=>calls++},String(i));
+   return h('button',{'data-testid':`nested-${i}`,onClick:()=>calls++},String(i));
   }}))}));
  const first=records(prepare(page,{}));commit();
  const nestedId=first.filter(r=>r.tag==='list').at(-1).fields.get('listId');
@@ -191,7 +191,7 @@ test('complete item keys describe offscreen lifetime without constructing offscr
  reset();let keys=['alpha','beta','gamma','delta'],visited=[];
  const page=()=>h('list',{count:keys.length,itemKeys:keys,row:i=>{
   visited.push(i);const value=useLocal('count',0);
-  return h('button',{testId:keys[i],onClick:()=>value.set(value.value+1)},`${keys[i]}:${value.value}`);
+  return h('button',{'data-testid':keys[i],onClick:()=>value.set(value.value+1)},`${keys[i]}:${value.value}`);
  }});
  let output=records(prepare(page,{},window(1,2)));commit();
  assert.deepEqual(visited,[1]);
@@ -209,7 +209,7 @@ test('complete item keys describe offscreen lifetime without constructing offscr
 
 test('item key validation and failed anchor candidates preserve committed rows',()=>{
  reset();let keys=['alpha','beta'],anchor;
- const page=()=>h('list',{count:keys.length,itemKeys:keys,anchor,row:i=>h('button',{key:keys[i],testId:keys[i],onClick(){}},keys[i])});
+ const page=()=>h('list',{count:keys.length,itemKeys:keys,anchor,row:i=>h('button',{key:keys[i],'data-testid':keys[i],onClick(){}},keys[i])});
  let output=records(prepare(page,{},window(0,1)));commit();
  const original=output.find(r=>r.id==='alpha').fields.get('onClick');
  keys=['replacement','beta'];anchor={index:1,align:'end',seq:1};
@@ -236,7 +236,7 @@ test('offscreen keyed row state survives reorder but is released on semantic rem
  reset();let keys=['alpha','beta','gamma'];
  const page=()=>h('list',{count:keys.length,itemKeys:keys,row:i=>{
   const value=useLocal('count',0);
-  return h('button',{testId:keys[i],onClick:()=>value.set(value.value+1)},`${keys[i]}:${value.value}`);
+  return h('button',{'data-testid':keys[i],onClick:()=>value.set(value.value+1)},`${keys[i]}:${value.value}`);
  }});
  let output=records(prepare(page,{},window(1,2)));commit();
  dispatch(output.find(r=>r.id==='beta').fields.get('onClick'));

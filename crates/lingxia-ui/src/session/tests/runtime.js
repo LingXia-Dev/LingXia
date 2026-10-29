@@ -149,7 +149,7 @@
   var limits = { "nodes": 4096, "depth": 128, "animationBytes": 262144, "itemKeyBytes": 262144, "imageBytes": 8388608, "sourceBytes": 8192, "visibleImageBytes": 67108864, "decodedImageBytes": 100663296, "runs": 256, "transitionMs": 1e4, "evalBudgetMs": 100, "evalBudgetDebugMultiplier": 8, "editorTextBytes": 65536, "inputRequestBytes": 524288, "inputBatchEdits": 64, "clipboardItems": 128, "wireValues": 1e5, "textBytes": 65536, "identifierBytes": 256, "listRows": 1e5, "gridTracks": 64, "vectorSourceBytes": 32768, "vectorPathBytes": 16384, "vectorPathWork": 16384, "vectorWork": 32768, "plotWork": 16384, "shadowMaskBytes": 16777216, "compositeFrames": 6, "leaseFrames": 6, "compositeBytes": 268435456, "outlineGlyphs": 4096, "ghosts": 64, "layoutMotions": 256, "dataAttributeBytes": 65536, "blurLayers": 8 };
   var admission = { "tags": { "column": { "children": "any", "content": true }, "row": { "children": "any", "content": true }, "text": { "children": "runs", "content": true }, "button": { "children": "content" }, "spacer": { "children": "none", "content": true }, "scroll": { "children": "any" }, "list": { "children": "rows", "requires": ["listId", "listCount", "listLeading", "listTrailing"] }, "image": { "children": "none", "content": true, "requires": ["imageSrc"] }, "input": { "children": "none" }, "textarea": { "children": "none" }, "checkbox": { "children": "content" }, "switch": { "children": "text" }, "radio": { "children": "options" }, "radio-option": { "children": "text", "parent": "radio", "keyed": true, "requires": ["checked"] }, "search": { "children": "none" }, "slider": { "children": "none" }, "grid": { "children": "any", "content": true }, "stack": { "children": "any", "content": true }, "plot": { "children": "none" }, "vector": { "children": "none", "content": true }, "page": { "children": "any", "root": true }, "span": { "children": "text", "content": true, "parent": "text" }, "link": { "children": "text", "parent": "text" }, "select": { "children": "text" } }, "fields": { "onClick": ["button", "link"], "enabled": ["button", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "select"], "listId": ["list"], "listCount": ["list"], "listLeading": ["list"], "listTrailing": ["list"], "listRowIndex": ["column"], "listAnchor": ["list"], "onReachStart": ["scroll", "list"], "onReachEnd": ["scroll", "list"], "imageSrc": ["image"], "imageFit": ["image"], "inputValue": ["input", "textarea", "search", "select"], "placeholder": ["input", "textarea", "search", "select"], "secure": ["input", "textarea"], "keyboard": ["input", "textarea", "search"], "autoFocus": ["input", "textarea", "search"], "onInput": ["input", "textarea", "search"], "onSubmit": ["input", "textarea", "search"], "checked": ["checkbox", "switch", "radio-option"], "onCheckedChange": ["checkbox", "switch", "radio-option"], "accessibilityLabel": ["button", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "link", "column", "row", "page", "text", "select"], "sliderValue": ["slider"], "sliderMin": ["slider"], "sliderMax": ["slider"], "sliderStep": ["slider"], "onSliderChange": ["slider"], "gridColumns": ["grid"], "textLines": ["text"], "plotValues": ["plot"], "plotKind": ["plot"], "plotColors": ["plot"], "plotSmooth": ["plot"], "plotArea": ["plot"], "onPlotSelect": ["plot"], "plotSelectedIndex": ["plot"], "vectorSource": ["vector"], "submitOnEnter": ["textarea"], "plotDomainMin": ["plot"], "plotDomainMax": ["plot"], "plotPieLayout": ["plot"], "plotMarkerEmphasisScale": ["plot"], "focusStyle": ["input", "textarea", "search", "select"], "scrollAxis": ["scroll"], "listItemKeys": ["list"], "flexDirection": ["column", "row", "page", "button"], "imageAlt": ["image"], "imageRetryKey": ["image"], "onImageLoad": ["image"], "onImageError": ["image"], "pressedStyle": ["button", "checkbox", "switch", "radio", "link"], "overscroll": ["scroll", "list"], "maxLength": ["input", "textarea", "search"], "autoComplete": ["input", "textarea", "search"], "enterKeyHint": ["input", "textarea", "search"], "autoCapitalize": ["input", "textarea", "search"], "spellCheck": ["input", "textarea", "search"], "inputMin": ["input"], "inputMax": ["input"], "inputStep": ["input"], "focusRequest": ["input", "textarea", "search"], "selectOptions": ["select"], "onSelect": ["select"], "rows": ["textarea"], "maxRows": ["textarea"], "imagePlaceholder": ["image"], "imagePosition": ["image"] } };
   var options = { "font-family": ["sans", "mono", "serif"], "font-style": ["normal", "italic"], "flex-wrap": ["nowrap", "wrap", "wrap-reverse"], "flex-direction": ["row", "column", "row-reverse", "column-reverse"], "display": ["flex", "grid", "none", "block", "inline-flex", "inline-block"], "scroll-axis": ["horizontal", "vertical"], "word-break": ["normal", "break-all", "keep-all"], "overflow-wrap": ["normal", "break-word", "anywhere"], "text-decoration-line": ["none", "line-through", "underline"], "text-alignment": ["start", "end", "left", "center", "right", "justify"], "alignment": ["start", "center", "end", "stretch", "baseline"], "justification": ["start", "center", "end", "between", "around", "evenly"], "position": ["relative", "absolute", "fixed", "sticky"], "overflow": ["visible", "hidden"], "text-transform": ["none", "uppercase", "lowercase", "capitalize"], "background-clip": ["border-box", "text"], "white-space": ["normal", "nowrap", "pre", "pre-wrap", "pre-line"], "text-overflow": ["clip", "ellipsis"], "sizing-keyword": ["fit-content", "max-content", "min-content"], "border-style": ["solid", "dashed", "dotted"], "overscroll": ["auto", "contain", "none"], "grid-auto-flow": ["row", "column", "row-dense", "column-dense"], "align-content": ["start", "center", "end", "between", "around", "evenly", "stretch"], "direction": ["ltr", "rtl", "auto"], "role": ["heading", "list", "listitem", "dialog", "alert", "status"], "live-region": ["off", "polite", "assertive"], "input-keyboard": ["text", "number", "email", "phone", "search", "date", "time"], "auto-complete": ["off", "on", "username", "current-password", "new-password", "one-time-code", "email", "tel", "name", "given-name", "family-name", "street-address", "postal-code", "country", "cc-number", "cc-exp", "cc-csc", "bday"], "enter-key-hint": ["enter", "done", "go", "next", "previous", "search", "send"], "auto-capitalize": ["none", "sentences", "words", "characters"], "transition-property": ["opacity", "transform", "bg", "fg", "border", "shadow", "layout"], "user-select": ["none", "text", "all"] };
-  var commonProps = ["style", "className", "key", "testId", "dir", "children", "role", "headingLevel", "accessibilityHidden", "accessibilityLiveRegion", "accessibilityState"];
+  var commonProps = ["style", "className", "key", '"data-testid"', "dir", "children", "role", "headingLevel", "accessibilityHidden", "accessibilityLiveRegion", "accessibilityState"];
   var roles = ["canvas", "surface", "surface-raised", "surface-sunken", "line", "text", "text-muted", "text-faint", "accent", "on-accent", "accent-soft", "on-accent-soft", "danger", "on-danger", "danger-soft", "success", "on-success", "success-soft", "warning", "on-warning", "warning-soft", "focus", "scrim", "chart-1", "chart-2", "chart-3", "chart-4", "chart-5", "line-strong", "selection", "shadow"];
 
   // src/generated/wire.js
@@ -748,20 +748,20 @@
     const box = h(
       "column",
       {
-        testId: "lx-toast",
+        "data-testid": "lx-toast",
         key: `toast-${toast.key}`,
         role: "status",
         accessibilityLiveRegion: "polite",
         accessibilityLabel: title,
         style: { alignItems: "center", gap: 10, maxWidth: 280, ...spacing, borderRadius: 12, backgroundColor: "text/80", transition: fade }
       },
-      icon !== "none" && h("vector", { testId: "lx-toast-icon", accessibilityHidden: true, paths: icons[icon], style: { width: 36, height: 36, color: "canvas" } }),
+      icon !== "none" && h("vector", { "data-testid": "lx-toast-icon", accessibilityHidden: true, paths: icons[icon], style: { width: 36, height: 36, color: "canvas" } }),
       h("text", { style: { color: "canvas", fontSize: 16, fontWeight: 500, textAlign: "center" } }, title)
     );
     return h(
       "stack",
       { style: layer },
-      mask && h("button", { testId: "lx-toast-mask", accessibilityHidden: true, onClick() {
+      mask && h("button", { "data-testid": "lx-toast-mask", accessibilityHidden: true, onClick() {
       }, style: { ...layer, zIndex: 0, backgroundColor: "transparent" } }),
       h("column", { style: {
         ...layer,
@@ -775,7 +775,7 @@
   }
   function modalNode() {
     const modal = modals[0];
-    const button = (testId, label2, confirm, color) => h("button", { testId, onClick: () => settleModal(confirm), style: {
+    const button = (testId, label2, confirm, color) => h("button", { "data-testid": testId, onClick: () => settleModal(confirm), style: {
       flexGrow: 1,
       flexBasis: 0,
       paddingTop: 12,
@@ -791,7 +791,7 @@
       h(
         "column",
         {
-          testId: "lx-modal",
+          "data-testid": "lx-modal",
           key: `modal-${modal.key}`,
           role: "dialog",
           accessibilityLabel: modal.title || modal.content || "Dialog",
@@ -815,7 +815,7 @@
   function sheetNode(env) {
     const sheet = sheets[0];
     const phone = (env?.formFactor ?? "phone") === "phone";
-    const item = (testId, label2, index, color) => h("button", { testId, onClick: () => settleSheet(index), style: {
+    const item = (testId, label2, index, color) => h("button", { "data-testid": testId, onClick: () => settleSheet(index), style: {
       paddingTop: 14,
       paddingBottom: 14,
       backgroundColor: "transparent",
@@ -825,14 +825,14 @@
     return h(
       "stack",
       { style: layer },
-      h("button", { testId: "lx-action-sheet-backdrop", accessibilityHidden: true, onClick: () => settleSheet(-1), style: { ...layer, zIndex: 0, backgroundColor: "scrim" } }),
+      h("button", { "data-testid": "lx-action-sheet-backdrop", accessibilityHidden: true, onClick: () => settleSheet(-1), style: { ...layer, zIndex: 0, backgroundColor: "scrim" } }),
       h(
         "column",
         { style: { ...layer, zIndex: 1, alignItems: "center", justifyContent: phone ? "end" : "center", padding: phone ? 8 : 24 } },
         h(
           "column",
           {
-            testId: "lx-action-sheet",
+            "data-testid": "lx-action-sheet",
             key: `sheet-${sheet.key}`,
             role: "dialog",
             accessibilityLabel: "Actions",
@@ -1902,7 +1902,7 @@
   }
   Summary.__lxid = "@lingxia/ui#Summary";
   var chevron = [{ d: "M9 6l6 6-6 6", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }];
-  function Details({ open, defaultOpen = false, onToggle, className, testId, children }) {
+  function Details({ open, defaultOpen = false, onToggle, className, "data-testid": testId, children }) {
     if (open !== void 0 && typeof open !== "boolean") throw Error("UI_PROP: open must be boolean");
     if (onToggle !== void 0 && typeof onToggle !== "function") throw Error("UI_PROP: onToggle");
     const local2 = useLocal("open", defaultOpen === true);
@@ -1918,11 +1918,11 @@
     };
     return h(
       "column",
-      { className, testId },
+      { className, "data-testid": testId },
       h(
         "button",
         {
-          testId: testId && `${testId}-summary`,
+          "data-testid": testId && `${testId}-summary`,
           onClick: toggle,
           accessibilityState: { expanded },
           className: summary?.[1].className,
@@ -1942,7 +1942,7 @@
           ...label2.map((item) => typeof item === "string" || typeof item === "number" ? h("text", {}, item) : item)
         )
       ),
-      expanded && h("column", { testId: testId && `${testId}-body` }, ...body)
+      expanded && h("column", { "data-testid": testId && `${testId}-body` }, ...body)
     );
   }
   Details.__lxid = "@lingxia/ui#Details";
@@ -2308,7 +2308,7 @@
       if (element.binding && (key === "bind" || key === "value" || key === element.binding.event)) continue;
       throw Error(`UI_PROP: ${key} is not a property of <${tag}>`);
     }
-    for (const key of ["key", "testId"]) if (props[key] !== void 0 && typeof props[key] !== "string") throw Error(`UI_PROP: ${key}`);
+    for (const key of ["key", "data-testid"]) if (props[key] !== void 0 && typeof props[key] !== "string") throw Error(`UI_PROP: ${key} must be a string`);
     if (props.disabled !== void 0 && typeof props.disabled !== "boolean") throw Error("UI_PROP: disabled");
     if (props.style !== void 0 && (!props.style || typeof props.style !== "object" || Array.isArray(props.style))) throw Error("UI_PROP: style");
   }
@@ -2432,6 +2432,10 @@
     const element = elements[tag];
     const props = { ...original };
     admit2(tag, element, props);
+    if (props["data-testid"] !== void 0) {
+      props.testId = props["data-testid"];
+      delete props["data-testid"];
+    }
     if (parent.inControl && (tag === "scroll" || tag === "list")) throw Error("UI_BUTTON: a scroll or list cannot sit inside a pressable control");
     if (element.binding) bind(tag, element, props);
     const editor2 = ["input", "textarea", "search"].includes(tag);
@@ -2711,7 +2715,7 @@
     if (!Array.isArray(props.options) || !props.options.length || props.options.length > 64) throw Error("UI_SELECT: expected 1..64 options");
     const values = /* @__PURE__ */ new Set();
     return props.options.map((option2) => {
-      if (!option2 || typeof option2 !== "object" || Object.keys(option2).some((k) => !["value", "label", "disabled", "testId"].includes(k)) || typeof option2.value !== "string" || !option2.value.length || option2.value.length > 256 || values.has(option2.value) || typeof option2.label !== "string" || !validInputText(option2.label) || option2.disabled !== void 0 && typeof option2.disabled !== "boolean")
+      if (!option2 || typeof option2 !== "object" || Object.keys(option2).some((k) => !["value", "label", "disabled", "data-testid"].includes(k)) || typeof option2.value !== "string" || !option2.value.length || option2.value.length > 256 || values.has(option2.value) || typeof option2.label !== "string" || !validInputText(option2.label) || option2.disabled !== void 0 && typeof option2.disabled !== "boolean")
         throw Error("UI_SELECT: invalid or duplicate option");
       values.add(option2.value);
       return option2.disabled ? { value: option2.value, label: option2.label, disabled: true } : { value: option2.value, label: option2.label };
@@ -2722,14 +2726,14 @@
     const values = /* @__PURE__ */ new Set();
     const style2 = Object.fromEntries(Object.entries(fields).filter(([name]) => optionStyle.includes(name)));
     return props.options.map((option2) => {
-      if (!option2 || typeof option2 !== "object" || Object.keys(option2).some((k) => !["value", "label", "disabled", "testId"].includes(k)) || typeof option2.value !== "string" || !option2.value.length || option2.value.length > 256 || values.has(option2.value) || typeof option2.label !== "string" || option2.disabled !== void 0 && typeof option2.disabled !== "boolean" || option2.testId !== void 0 && typeof option2.testId !== "string") throw Error("UI_RADIO: invalid or duplicate option");
+      if (!option2 || typeof option2 !== "object" || Object.keys(option2).some((k) => !["value", "label", "disabled", "data-testid"].includes(k)) || typeof option2.value !== "string" || !option2.value.length || option2.value.length > 256 || values.has(option2.value) || typeof option2.label !== "string" || option2.disabled !== void 0 && typeof option2.disabled !== "boolean" || option2["data-testid"] !== void 0 && typeof option2["data-testid"] !== "string") throw Error("UI_RADIO: invalid or duplicate option");
       values.add(option2.value);
       const { value } = option2, selected = props.value === value, enabled = !disabled && option2.disabled !== true;
       const child = {
         tag: "radio-option",
         element: "radio-option",
         identity: `${identity}/radio/key:${JSON.stringify(value)}`,
-        props: { key: value, testId: option2.testId },
+        props: { key: value, testId: option2["data-testid"] },
         fields: style2,
         states: {},
         text: option2.label,

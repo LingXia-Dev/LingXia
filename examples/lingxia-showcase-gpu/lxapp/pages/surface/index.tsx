@@ -12,7 +12,7 @@ export function render({ data, actions }: View) {
   return (
     <Page testId="surface-page" scrollId="surface-scroll" title="Surface Page" subtitle="Inspect the query string and send a message to the opener.">
       <Section title="Query string">
-        <text testId="surface-query" className="font-mono text-sm">
+        <text data-testid="surface-query" className="font-mono text-sm">
           {String(data.queryString || '(none)')}
         </text>
       </Section>
@@ -24,7 +24,7 @@ export function render({ data, actions }: View) {
         </InfoList>
       </Section>
       <Section title="In-page counter" description="Hide preserves this counter; close resets it on re-open.">
-        <text testId="surface-counter" className="font-mono text-2xl">
+        <text data-testid="surface-counter" className="font-mono text-2xl">
           {String(count.value)}
         </text>
         <Button variant="secondary" testId="surface-increment" onClick={() => count.set(count.value + 1)}>
@@ -33,7 +33,7 @@ export function render({ data, actions }: View) {
       </Section>
       <Section title="From opener">
         <InfoRow label="Received" value={String(data.inboundCount || 0)} testId="surface-inbound-count" />
-        <text testId="surface-inbound" className="font-mono text-sm">
+        <text data-testid="surface-inbound" className="font-mono text-sm">
           {String(data.lastInbound || '(none)')}
         </text>
       </Section>

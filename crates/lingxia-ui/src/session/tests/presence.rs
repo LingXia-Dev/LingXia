@@ -11,16 +11,16 @@ fn frame_time(index: u64) -> Duration {
 
 /// A toggle button and, while `shown`, a black 50x20 panel entering from and leaving to opacity 0.
 fn page(shown: bool, scroll: bool) -> ViewSession {
-    let panel = "h('view',{testId:'panel',className:'starting:fade exit:fade',style:{width:50,height:20,backgroundColor:'#000000',transition:{properties:['opacity'],durationMs:200,delayMs:0,easing:'linear'}}})";
+    let panel = "h('view',{'data-testid':'panel',className:'starting:fade exit:fade',style:{width:50,height:20,backgroundColor:'#000000',transition:{properties:['opacity'],durationMs:200,delayMs:0,easing:'linear'}}})";
     let content = if scroll {
         format!(
-            "h('scroll',{{testId:'s',style:{{height:30,width:100}}}},h('column',{{style:{{height:300,paddingTop:20}}}},shown.value && {panel}))"
+            "h('scroll',{{'data-testid':'s',style:{{height:30,width:100}}}},h('column',{{style:{{height:300,paddingTop:20}}}},shown.value && {panel}))"
         )
     } else {
         format!("shown.value && {panel}")
     };
     let module = super::source(&format!(
-        "function render(){{const shown=useLocal('shown',{shown});return h('page',{{style:{{backgroundColor:'#ffffff'}}}},h('button',{{testId:'toggle',onClick(){{shown.set(!shown.value)}},style:{{position:'absolute',left:150,top:0,width:40,height:20}}}},'T'),{content})}}"
+        "function render(){{const shown=useLocal('shown',{shown});return h('page',{{style:{{backgroundColor:'#ffffff'}}}},h('button',{{'data-testid':'toggle',onClick(){{shown.set(!shown.value)}},style:{{position:'absolute',left:150,top:0,width:40,height:20}}}},'T'),{content})}}"
     ))
     .replace(
         "__lingxiaPublish(render);",

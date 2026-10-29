@@ -70,7 +70,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_STYLE_VALUE` | runtime, native | A style value out of range or of the wrong kind. |
 | `UI_SURFACE` | native | The platform surface was lost or resized mid-frame; the host recovers. |
 | `UI_TAG` | build, runtime, native | Not an element of the View language. |
-| `UI_TEST_ID` | native | An invalid `testId` reached the native decoder. |
+| `UI_TEST_ID` | native | An invalid `data-testid` reached the native decoder. |
 | `UI_TEXT` | runtime, native | A `<span>`/`<link>` outside `<text>`, a bad link label, or too many runs. |
 | `UI_TIMEOUT` | native | View code exceeded its time budget; the page needs a reload. |
 | `UI_TRANSFORM` | native | A transform the element cannot take (rotate/scale on editors, scrolls, sliders). |

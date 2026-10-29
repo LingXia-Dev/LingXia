@@ -32,18 +32,18 @@ function Gradients() {
   return (
     <Section title="Gradients" testId="lab-gradients">
       <row className="gap-3">
-        <view testId="lab-gradient-radial" className="h-16 grow basis-0 rounded-xl bg-radial from-accent to-transparent" />
-        <view testId="lab-gradient-conic" className="h-16 grow basis-0 rounded-xl bg-conic-90 from-accent via-danger to-accent" />
-        <view testId="lab-gradient-arbitrary" className="h-16 grow basis-0 rounded-xl bg-radial-[at_top] from-surface to-accent to-70%" />
+        <view data-testid="lab-gradient-radial" className="h-16 grow basis-0 rounded-xl bg-radial from-accent to-transparent" />
+        <view data-testid="lab-gradient-conic" className="h-16 grow basis-0 rounded-xl bg-conic-90 from-accent via-danger to-accent" />
+        <view data-testid="lab-gradient-arbitrary" className="h-16 grow basis-0 rounded-xl bg-radial-[at_top] from-surface to-accent to-70%" />
       </row>
-      <column testId="lab-gradient-mask" className="h-16 rounded-xl bg-accent mask-b-from-20% mask-r-to-90% p-3">
+      <column data-testid="lab-gradient-mask" className="h-16 rounded-xl bg-accent mask-b-from-20% mask-r-to-90% p-3">
         <text className="text-sm text-on-accent">Fades out downward and to the right</text>
       </column>
-      <column testId="lab-gradient-halo" className="h-20 items-center justify-center">
+      <column data-testid="lab-gradient-halo" className="h-20 items-center justify-center">
         <view className="absolute w-16 h-16 rounded-full bg-accent/40 blur-xl" />
         <view className="w-10 h-10 rounded-full bg-accent" />
       </column>
-      <text testId="lab-gradient-text" className="text-3xl font-bold bg-clip-text text-transparent bg-linear-to-r from-accent to-danger">Gradient text</text>
+      <text data-testid="lab-gradient-text" className="text-3xl font-bold bg-clip-text text-transparent bg-linear-to-r from-accent to-danger">Gradient text</text>
     </Section>
   );
 }
@@ -59,15 +59,15 @@ function Vectors() {
   return (
     <Section title="Vectors" testId="lab-vectors">
       <row className="gap-4 items-center">
-        <vector testId="lab-vector-gradient" className="w-16 h-16" paths={[{ d: star, fill: 'url(#gold)', stroke: 'url(#edge)', strokeWidth: 0.75 }]}
+        <vector data-testid="lab-vector-gradient" className="w-16 h-16" paths={[{ d: star, fill: 'url(#gold)', stroke: 'url(#edge)', strokeWidth: 0.75 }]}
           gradients={{
             gold: { type: 'radial', fx: 0.35, fy: 0.3, stops: [{ offset: 0, color: '#fff3b0' }, { offset: 1, color: '#f59e0b' }] },
             edge: { type: 'linear', x2: 0, y2: 1, stops: [{ offset: 0, color: '#b45309' }, { offset: 1, color: '#78350f', opacity: 0.6 }] },
           }} />
-        <vector testId="lab-vector-strokes" className="w-16 h-16 text-text" paths={strokes} />
-        <vector testId="lab-vector-conic" className="w-16 h-16" paths={[{ d: 'M12 2a10 10 0 1 0 0.01 0Z', fill: 'url(#wheel)' }]}
+        <vector data-testid="lab-vector-strokes" className="w-16 h-16 text-text" paths={strokes} />
+        <vector data-testid="lab-vector-conic" className="w-16 h-16" paths={[{ d: 'M12 2a10 10 0 1 0 0.01 0Z', fill: 'url(#wheel)' }]}
           gradients={{ wheel: { type: 'conic', stops: [{ offset: 0, color: '#ef4444' }, { offset: 0.33, color: '#22c55e' }, { offset: 0.66, color: '#3b82f6' }, { offset: 1, color: '#ef4444' }] } }} />
-        <vector testId="lab-vector-transform" className="w-16 h-16 text-accent"
+        <vector data-testid="lab-vector-transform" className="w-16 h-16 text-accent"
           paths={[0, 45, 90, 135].map(angle => ({ d: 'M12 4h1v16h-1z', transform: `rotate(${angle} 12.5 12)` }))} />
       </row>
     </Section>
@@ -78,9 +78,9 @@ function Borders() {
   return (
     <Section title="Borders" testId="lab-borders">
       <row className="gap-3">
-        <view testId="lab-border-dashed" className="h-12 grow basis-0 rounded-xl border-2 border-dashed border-accent" />
-        <view testId="lab-border-dotted" className="h-12 grow basis-0 rounded-full border-4 border-dotted border-danger" />
-        <view testId="lab-border-edges" className="h-12 grow basis-0 border-t-2 border-l-4 border-dashed border-text" />
+        <view data-testid="lab-border-dashed" className="h-12 grow basis-0 rounded-xl border-2 border-dashed border-accent" />
+        <view data-testid="lab-border-dotted" className="h-12 grow basis-0 rounded-full border-4 border-dotted border-danger" />
+        <view data-testid="lab-border-edges" className="h-12 grow basis-0 border-t-2 border-l-4 border-dashed border-text" />
       </row>
     </Section>
   );
@@ -92,17 +92,17 @@ function Display() {
     <Section title="Display" testId="lab-display">
       <row className="gap-2 items-center">
         <Button testId="lab-display-toggle" onClick={() => shown.set(!shown.value)}>{shown.value ? 'Hide' : 'Show'}</Button>
-        <text testId="lab-display-hidden" className={shown.value ? 'text-sm' : 'hidden'}>Toggled by hidden</text>
+        <text data-testid="lab-display-hidden" className={shown.value ? 'text-sm' : 'hidden'}>Toggled by hidden</text>
       </row>
       <row className="block gap-1">
         <text className="text-xs text-muted">block: a column that stretches</text>
         <view className="h-2 rounded bg-accent" />
       </row>
       <row className="h-16 items-center gap-2 bg-surface-sunken rounded-lg px-2">
-        <view testId="lab-display-inline" className="inline-flex px-2 py-1 rounded bg-surface"><text className="text-xs">inline-flex</text></view>
+        <view data-testid="lab-display-inline" className="inline-flex px-2 py-1 rounded bg-surface"><text className="text-xs">inline-flex</text></view>
         <view className="h-[8dvh] w-4 rounded bg-accent" />
       </row>
-      <view testId="lab-display-fixed" className="fixed bottom-4 right-4 px-3 py-1 rounded-full bg-accent"><text className="text-xs text-on-accent">fixed</text></view>
+      <view data-testid="lab-display-fixed" className="fixed bottom-4 right-4 px-3 py-1 rounded-full bg-accent"><text className="text-xs text-on-accent">fixed</text></view>
     </Section>
   );
 }
@@ -114,9 +114,9 @@ function Transforms() {
         <Icon name="chevron" className="w-6 h-6 text-text rotate-90" />
         <Icon name="send" className="w-6 h-6 text-accent -scale-x-100" />
         <view className="relative w-16 h-10 rounded-lg bg-surface-sunken">
-          <view testId="lab-transform-badge" className="absolute top-0 right-0 w-4 h-4 rounded-full bg-danger translate-x-1/2 -translate-y-1/2" />
+          <view data-testid="lab-transform-badge" className="absolute top-0 right-0 w-4 h-4 rounded-full bg-danger translate-x-1/2 -translate-y-1/2" />
         </view>
-        <view testId="lab-transform-card" className="w-12 h-12 rounded-lg bg-accent origin-bottom-left rotate-12 scale-90" />
+        <view data-testid="lab-transform-card" className="w-12 h-12 rounded-lg bg-accent origin-bottom-left rotate-12 scale-90" />
       </row>
     </Section>
   );
@@ -129,10 +129,10 @@ function TextLayout() {
         <column className="items-end">
           {['1,111.10', '808.08', '10.00'].map(value => <text key={value} className="text-sm tabular-nums slashed-zero">{value}</text>)}
         </column>
-        <text testId="lab-text-pre-line" className="grow basis-0 text-sm whitespace-pre-line">{'First line\n   second line keeps   one space'}</text>
+        <text data-testid="lab-text-pre-line" className="grow basis-0 text-sm whitespace-pre-line">{'First line\n   second line keeps   one space'}</text>
       </row>
-      <text testId="lab-text-pre-wrap" className="p-2 rounded bg-surface-sunken text-xs font-mono whitespace-pre-wrap">{'{\n  "indent": true\n}'}</text>
-      <text testId="lab-text-break-all" className="text-xs break-all">https://example.com/a/very/long/path/without/any/spaces/to/break/at</text>
+      <text data-testid="lab-text-pre-wrap" className="p-2 rounded bg-surface-sunken text-xs font-mono whitespace-pre-wrap">{'{\n  "indent": true\n}'}</text>
+      <text data-testid="lab-text-break-all" className="text-xs break-all">https://example.com/a/very/long/path/without/any/spaces/to/break/at</text>
     </Section>
   );
 }
@@ -141,11 +141,11 @@ function Sizing() {
   return (
     <Section title="Sizing" testId="lab-sizing">
       <row className="gap-3 items-start">
-        <view testId="lab-aspect-video" className="grow basis-0 aspect-video rounded-lg bg-accent" />
-        <view testId="lab-aspect-square" className="w-16 aspect-square rounded-lg text-danger bg-current" />
+        <view data-testid="lab-aspect-video" className="grow basis-0 aspect-video rounded-lg bg-accent" />
+        <view data-testid="lab-aspect-square" className="w-16 aspect-square rounded-lg text-danger bg-current" />
       </row>
-      <text testId="lab-max-ch" className="max-w-[24ch] text-sm select-none">This paragraph wraps at about twenty-four zeros of its own font.</text>
-      <scroll testId="lab-overscroll" className="h-24 rounded-lg border border-line overscroll-contain">
+      <text data-testid="lab-max-ch" className="max-w-[24ch] text-sm select-none">This paragraph wraps at about twenty-four zeros of its own font.</text>
+      <scroll data-testid="lab-overscroll" className="h-24 rounded-lg border border-line overscroll-contain">
         <column className="p-3 gap-2">
           {Array.from({ length: 8 }, (_, i) => <text key={String(i)} className="text-xs">Contained row {i + 1}</text>)}
         </column>
@@ -158,10 +158,10 @@ function Grid() {
   const tiles = ['Calls', 'Data', 'SMS', 'Roaming', 'Top up', 'Bills'];
   return (
     <Section title="Grid" testId="lab-grid">
-      <view testId="lab-grid-auto-fit" className="grid grid-cols-[repeat(auto-fit,minmax(6rem,1fr))] gap-2">
+      <view data-testid="lab-grid-auto-fit" className="grid grid-cols-[repeat(auto-fit,minmax(6rem,1fr))] gap-2">
         {tiles.map(tile => <view key={tile} className="h-14 rounded-lg bg-surface-sunken place-items-center grid"><text className="text-xs">{tile}</text></view>)}
       </view>
-      <view testId="lab-grid-spans" className="grid grid-cols-3 grid-rows-[auto_auto] gap-2">
+      <view data-testid="lab-grid-spans" className="grid grid-cols-3 grid-rows-[auto_auto] gap-2">
         <view className="col-span-2 h-12 rounded-lg bg-accent" />
         <view className="row-span-2 rounded-lg bg-danger" />
         <view className="h-12 rounded-lg bg-surface-sunken" />
@@ -176,7 +176,7 @@ function Direction() {
   return (
     <Section title={`Direction (env: ${env.direction})`} testId="lab-direction">
       {(['ltr', 'rtl'] as const).map(dir => (
-        <row key={dir} dir={dir} testId={`lab-direction-${dir}`} className="items-center gap-2 ps-3 pe-1 py-2 rounded-s-xl border-s-4 border-accent bg-surface-sunken">
+        <row key={dir} dir={dir} data-testid={`lab-direction-${dir}`} className="items-center gap-2 ps-3 pe-1 py-2 rounded-s-xl border-s-4 border-accent bg-surface-sunken">
           <Icon name="chevron" className="w-5 h-5 text-text rtl:-scale-x-100" />
           <text className="grow basis-0 text-sm text-start">{dir === 'rtl' ? 'مرحبا بالعالم' : 'Hello, world'}</text>
           <text className="text-xs text-muted ms-auto">{dir}</text>
@@ -190,13 +190,13 @@ function RichText() {
   const presses = useLocal('presses', 0);
   return (
     <Section title="Rich text" testId="lab-rich-text">
-      <text testId="lab-rich-paragraph" className="text-sm leading-relaxed">
+      <text data-testid="lab-rich-paragraph" className="text-sm leading-relaxed">
         Plans renew <span className="font-semibold text-text">monthly</span> unless you{' '}
         <span className="bg-surface-sunken font-mono">cancel</span> first. Read the{' '}
-        <link testId="lab-rich-link" onPress={() => presses.set(presses.value + 1)} className="active:text-text">terms of service and <span className="font-semibold">privacy policy</span></link>
+        <link data-testid="lab-rich-link" onPress={() => presses.set(presses.value + 1)} className="active:text-text">terms of service and <span className="font-semibold">privacy policy</span></link>
         {' '}before you <span className="italic line-through text-muted">sign</span> agree.
       </text>
-      <text testId="lab-rich-presses" className="text-xs text-muted tabular-nums">Link pressed {presses.value} times</text>
+      <text data-testid="lab-rich-presses" className="text-xs text-muted tabular-nums">Link pressed {presses.value} times</text>
     </Section>
   );
 }
@@ -205,8 +205,8 @@ function Accessibility() {
   const saves = useLocal('saves', 0);
   return (
     <Section title="Accessibility" testId="lab-accessibility">
-      <text testId="lab-a11y-heading" role="heading" headingLevel={3} className="text-base font-semibold">Monthly bills</text>
-      <column testId="lab-a11y-list" role="list" accessibilityLabel="Bills" className="gap-1">
+      <text data-testid="lab-a11y-heading" role="heading" headingLevel={3} className="text-base font-semibold">Monthly bills</text>
+      <column data-testid="lab-a11y-list" role="list" accessibilityLabel="Bills" className="gap-1">
         {['Water', 'Power', 'Internet'].map(bill => (
           <row key={bill} role="listitem" className="justify-between">
             <text className="text-sm">{bill}</text>
@@ -216,7 +216,7 @@ function Accessibility() {
       </column>
       <row className="items-center gap-3">
         <Button testId="lab-a11y-save" onClick={() => saves.set(saves.value + 1)}>Save</Button>
-        <text testId="lab-a11y-status" role="status" className="text-sm text-muted">{saves.value ? `Saved ${saves.value} times` : 'Not saved yet'}</text>
+        <text data-testid="lab-a11y-status" role="status" className="text-sm text-muted">{saves.value ? `Saved ${saves.value} times` : 'Not saved yet'}</text>
       </row>
     </Section>
   );
@@ -231,16 +231,16 @@ function Inputs() {
   const field = 'px-3 py-2 rounded-lg border border-line-strong bg-surface text-sm';
   return (
     <Section title="Inputs" testId="lab-inputs">
-      <input testId="lab-input-otp" bind={code} accessibilityLabel="One-time code" keyboard="number" maxLength={6} autoComplete="one-time-code" enterKeyHint="done" placeholder="6-digit code" className={field} />
-      <input testId="lab-input-amount" bind={amount} accessibilityLabel="Amount" keyboard="number" min={1} max={500} step={0.5} enterKeyHint="next" placeholder="1 to 500, steps of 0.5" className={field} />
+      <input data-testid="lab-input-otp" bind={code} accessibilityLabel="One-time code" keyboard="number" maxLength={6} autoComplete="one-time-code" enterKeyHint="done" placeholder="6-digit code" className={field} />
+      <input data-testid="lab-input-amount" bind={amount} accessibilityLabel="Amount" keyboard="number" min={1} max={500} step={0.5} enterKeyHint="next" placeholder="1 to 500, steps of 0.5" className={field} />
       <row className="gap-2">
-        <input testId="lab-input-date" bind={day} accessibilityLabel="Billing date" keyboard="date" min="2024-01-01" placeholder="Pick a date" className={`grow basis-0 ${field}`} />
-        <input testId="lab-input-time" bind={time} accessibilityLabel="Reminder time" keyboard="time" placeholder="Pick a time" className={`grow basis-0 ${field}`} />
+        <input data-testid="lab-input-date" bind={day} accessibilityLabel="Billing date" keyboard="date" min="2024-01-01" placeholder="Pick a date" className={`grow basis-0 ${field}`} />
+        <input data-testid="lab-input-time" bind={time} accessibilityLabel="Reminder time" keyboard="time" placeholder="Pick a time" className={`grow basis-0 ${field}`} />
       </row>
-      <select testId="lab-input-plan" bind={plan} accessibilityLabel="Billing plan" placeholder="Choose a plan" className={field}
+      <select data-testid="lab-input-plan" bind={plan} accessibilityLabel="Billing plan" placeholder="Choose a plan" className={field}
         options={[{ value: 'monthly', label: 'Monthly' }, { value: 'quarterly', label: 'Quarterly', disabled: true }, { value: 'yearly', label: 'Yearly' }]} />
-      <input testId="lab-input-name" accessibilityLabel="Name" autoComplete="name" autoCapitalize="words" spellCheck={false} placeholder="Full name" className={field} />
-      <text testId="lab-input-values" className="text-xs text-muted">{`code=${code.value} amount=${amount.value} date=${day.value} time=${time.value} plan=${plan.value}`}</text>
+      <input data-testid="lab-input-name" accessibilityLabel="Name" autoComplete="name" autoCapitalize="words" spellCheck={false} placeholder="Full name" className={field} />
+      <text data-testid="lab-input-values" className="text-xs text-muted">{`code=${code.value} amount=${amount.value} date=${day.value} time=${time.value} plan=${plan.value}`}</text>
     </Section>
   );
 }
@@ -249,13 +249,13 @@ function Structure() {
   const rows = ['Starter', 'Plus', 'Pro', 'Max'];
   return (
     <Section title="Structural variants" testId="lab-structure">
-      <column testId="lab-structure-rows" className="rounded-lg border border-line">
+      <column data-testid="lab-structure-rows" className="rounded-lg border border-line">
         {rows.map(row => (
           <text key={row} className="px-3 py-2 text-sm odd:bg-surface-sunken first:rounded-t-lg last:rounded-b-lg last:font-semibold">{row}</text>
         ))}
       </column>
       <row className="gap-2">
-        <view testId="lab-structure-empty" className="h-8 grow basis-0 rounded-lg bg-danger empty:bg-surface-sunken" />
+        <view data-testid="lab-structure-empty" className="h-8 grow basis-0 rounded-lg bg-danger empty:bg-surface-sunken" />
         <view className="h-8 grow basis-0 rounded-lg bg-surface-sunken"><text className="only:text-xs only:p-2">only child</text></view>
       </row>
     </Section>
@@ -266,7 +266,7 @@ function StickyHeaders() {
   const groups = { Today: ['Top up', 'Data pack'], Yesterday: ['Bill paid', 'Roaming on', 'SMS bundle'], 'Last week': ['Plan change', 'Refund'] };
   return (
     <Section title="Sticky headers" testId="lab-sticky">
-      <scroll testId="lab-sticky-scroll" className="h-48 rounded-lg border border-line">
+      <scroll data-testid="lab-sticky-scroll" className="h-48 rounded-lg border border-line">
         {Object.entries(groups).map(([day, items]) => (
           <column key={day}>
             <text className="sticky top-0 px-3 py-1.5 text-xs font-semibold bg-surface-sunken">{day}</text>
@@ -281,9 +281,9 @@ function StickyHeaders() {
 function Selection() {
   return (
     <Section title="Selectable text" testId="lab-selection">
-      <text testId="lab-select-text" className="text-sm select-text">Long-press a word to select it, then drag the handles. Order reference: LX-2024-88412.</text>
-      <text testId="lab-select-all" className="font-mono text-sm px-2 py-1 rounded bg-surface-sunken select-all">8F3A-77C2-91D0</text>
-      <view className="select-text"><text testId="lab-select-inherited" className="text-xs text-muted">Selectable by inheritance.</text></view>
+      <text data-testid="lab-select-text" className="text-sm select-text">Long-press a word to select it, then drag the handles. Order reference: LX-2024-88412.</text>
+      <text data-testid="lab-select-all" className="font-mono text-sm px-2 py-1 rounded bg-surface-sunken select-all">8F3A-77C2-91D0</text>
+      <view className="select-text"><text data-testid="lab-select-inherited" className="text-xs text-muted">Selectable by inheritance.</text></view>
     </Section>
   );
 }
@@ -297,10 +297,10 @@ function Focus() {
       <text className="text-xs text-muted">With a keyboard: Tab to Open, press Enter; focus stays in the dialog and returns to Open when it closes.</text>
       <row className="gap-2 items-center">
         <Button testId="lab-focus-open" onClick={() => open.set(true)}>Open dialog</Button>
-        <text testId="lab-focus-choice" className="text-sm">{`chosen: ${choice.value}`}</text>
+        <text data-testid="lab-focus-choice" className="text-sm">{`chosen: ${choice.value}`}</text>
       </row>
       {open.value ? (
-        <column testId="lab-focus-dialog" role="dialog" accessibilityLabel="Confirm payment" className="gap-3 p-4 rounded-xl border border-line bg-surface">
+        <column data-testid="lab-focus-dialog" role="dialog" accessibilityLabel="Confirm payment" className="gap-3 p-4 rounded-xl border border-line bg-surface">
           <text role="heading" headingLevel={3} className="text-sm font-semibold">Confirm payment</text>
           <row className="gap-2">
             <Button testId="lab-focus-confirm" onClick={() => close('confirm')}>Confirm</Button>
@@ -319,14 +319,14 @@ function NestedControls() {
   const removed = useLocal('removed', 0);
   return (
     <Section title="Nested controls" testId="lab-nested">
-      <button testId="lab-nested-row" onClick={() => opened.set(opened.value + 1)} className="rounded-xl bg-surface-sunken px-4 py-3">
+      <button data-testid="lab-nested-row" onClick={() => opened.set(opened.value + 1)} className="rounded-xl bg-surface-sunken px-4 py-3">
         <row className="items-center gap-3">
           <text className="grow text-sm">Wi-Fi</text>
-          <switch testId="lab-nested-switch" bind={wifi} accessibilityLabel="Wi-Fi" />
-          <button testId="lab-nested-remove" onClick={() => removed.set(removed.value + 1)} className="rounded-lg px-2 py-1 text-sm text-danger">Remove</button>
+          <switch data-testid="lab-nested-switch" bind={wifi} accessibilityLabel="Wi-Fi" />
+          <button data-testid="lab-nested-remove" onClick={() => removed.set(removed.value + 1)} className="rounded-lg px-2 py-1 text-sm text-danger">Remove</button>
         </row>
       </button>
-      <text testId="lab-nested-state" className="text-xs text-muted tabular-nums">{`opened=${opened.value} wifi=${wifi.value} removed=${removed.value}`}</text>
+      <text data-testid="lab-nested-state" className="text-xs text-muted tabular-nums">{`opened=${opened.value} wifi=${wifi.value} removed=${removed.value}`}</text>
     </Section>
   );
 }
@@ -345,8 +345,8 @@ function Fragments() {
         <Button testId="lab-fragments-rotate" size="sm" onClick={() => words.set([...words.value.slice(1), words.value[0]])}>Rotate</Button>
         <Button testId="lab-fragments-note" size="sm" onClick={() => note.set(!note.value)}>{note.value ? 'Hide note' : 'Show note'}</Button>
       </row>
-      <column testId="lab-fragments-list" className="gap-1">
-        {note.value && <text testId="lab-fragments-hint" className="text-xs">Each term is two texts in one fragment.</text>}
+      <column data-testid="lab-fragments-list" className="gap-1">
+        {note.value && <text data-testid="lab-fragments-hint" className="text-xs">Each term is two texts in one fragment.</text>}
         {words.value.map(([word, meaning]) => <Fragment key={word}><Term word={word} meaning={meaning} /></Fragment>)}
       </column>
     </Section>
@@ -360,17 +360,17 @@ function StateVariants() {
   const note = useLocal('variants-note', '');
   return (
     <Section title="Data and has variants" testId="lab-variants">
-      <row testId="lab-variants-agree" className="items-center gap-3 rounded-xl px-4 py-3 bg-surface-sunken has-checked:bg-accent has-checked:text-on-accent">
-        <checkbox testId="lab-variants-checkbox" bind={agreed} accessibilityLabel="Agree" />
+      <row data-testid="lab-variants-agree" className="items-center gap-3 rounded-xl px-4 py-3 bg-surface-sunken has-checked:bg-accent has-checked:text-on-accent">
+        <checkbox data-testid="lab-variants-checkbox" bind={agreed} accessibilityLabel="Agree" />
         <text className="text-sm">{agreed.value ? 'Agreed' : 'Tap to agree'}</text>
       </row>
-      <button testId="lab-variants-toggle" data-state={open.value ? 'open' : 'closed'} onClick={() => open.set(!open.value)}
+      <button data-testid="lab-variants-toggle" data-state={open.value ? 'open' : 'closed'} onClick={() => open.set(!open.value)}
         className="rounded-xl px-4 py-3 bg-surface-sunken data-[state=open]:bg-accent data-[state=open]:text-on-accent data-[state=open]:py-5">
         {open.value ? 'Open (taller)' : 'Closed'}
       </button>
-      <column testId="lab-variants-field" className="rounded-xl p-3 gap-1 border border-line focus-within:border-accent focus-within:bg-surface-sunken">
+      <column data-testid="lab-variants-field" className="rounded-xl p-3 gap-1 border border-line focus-within:border-accent focus-within:bg-surface-sunken">
         <text className="text-xs text-muted">Note</text>
-        <input testId="lab-variants-input" bind={note} placeholder="Focus me" accessibilityLabel="Note" />
+        <input data-testid="lab-variants-input" bind={note} placeholder="Focus me" accessibilityLabel="Note" />
       </column>
     </Section>
   );
@@ -388,18 +388,18 @@ function Controls() {
   const field = 'px-3 py-2 rounded-lg border border-line-strong bg-surface text-sm';
   return (
     <Section title="Controls" testId="lab-controls">
-      <radio testId="lab-controls-size" bind={size} accessibilityLabel="Size" className="gap-1 text-sm"
-        options={[{ value: 's', label: 'Small', testId: 'lab-controls-size-s' }, { value: 'm', label: 'Medium', testId: 'lab-controls-size-m' },
-          { value: 'l', label: 'Large', testId: 'lab-controls-size-l' }, { value: 'xl', label: 'Extra large', disabled: true, testId: 'lab-controls-size-xl' }]} />
-      <slider testId="lab-controls-volume" bind={volume} min={0} max={100} step={10} accessibilityLabel="Volume" className="text-accent" />
-      <textarea testId="lab-controls-notes" bind={notes} rows={3} maxRows={6} accessibilityLabel="Notes" placeholder="Several lines" className={field} />
-      <search testId="lab-controls-search" bind={query} accessibilityLabel="Filter rows" placeholder="Filter rows" className={field} />
-      <List testId="lab-controls-list" className="h-48 rounded-lg border border-line"
+      <radio data-testid="lab-controls-size" bind={size} accessibilityLabel="Size" className="gap-1 text-sm"
+        options={[{ value: 's', label: 'Small', 'data-testid': 'lab-controls-size-s' }, { value: 'm', label: 'Medium', 'data-testid': 'lab-controls-size-m' },
+          { value: 'l', label: 'Large', 'data-testid': 'lab-controls-size-l' }, { value: 'xl', label: 'Extra large', disabled: true, 'data-testid': 'lab-controls-size-xl' }]} />
+      <slider data-testid="lab-controls-volume" bind={volume} min={0} max={100} step={10} accessibilityLabel="Volume" className="text-accent" />
+      <textarea data-testid="lab-controls-notes" bind={notes} rows={3} maxRows={6} accessibilityLabel="Notes" placeholder="Several lines" className={field} />
+      <search data-testid="lab-controls-search" bind={query} accessibilityLabel="Filter rows" placeholder="Filter rows" className={field} />
+      <List data-testid="lab-controls-list" className="h-48 rounded-lg border border-line"
         items={rows.filter(row => row.label.toLowerCase().includes(query.value.toLowerCase()))} getKey={row => row.id}
         renderItem={row => (
-          <button testId={`lab-controls-${row.id}`} onClick={() => picked.set(row.label)} className="px-3 py-2 border-b border-line text-sm">{row.label}</button>
+          <button data-testid={`lab-controls-${row.id}`} onClick={() => picked.set(row.label)} className="px-3 py-2 border-b border-line text-sm">{row.label}</button>
         )} />
-      <text testId="lab-controls-values" className="text-xs text-muted tabular-nums">{`size=${size.value} volume=${volume.value} notes=${notes.value.length} query=${query.value} picked=${picked.value}`}</text>
+      <text data-testid="lab-controls-values" className="text-xs text-muted tabular-nums">{`size=${size.value} volume=${volume.value} notes=${notes.value.length} query=${query.value} picked=${picked.value}`}</text>
     </Section>
   );
 }
@@ -408,9 +408,9 @@ function Controls() {
 function Disclosure() {
   return (
     <Section title="Disclosure" testId="lab-disclosure">
-      <Details testId="lab-disclosure-licenses">
+      <Details data-testid="lab-disclosure-licenses">
         <Summary className="py-2 text-sm font-semibold">Open-source licenses</Summary>
-        <text testId="lab-disclosure-body" className="text-sm text-muted">MIT, Apache-2.0, BSD-3-Clause</text>
+        <text data-testid="lab-disclosure-body" className="text-sm text-muted">MIT, Apache-2.0, BSD-3-Clause</text>
       </Details>
     </Section>
   );

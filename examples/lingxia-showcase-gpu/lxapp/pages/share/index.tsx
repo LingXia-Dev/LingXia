@@ -22,7 +22,7 @@ export function render({ data, actions }: View) {
   );
   return (
     <Page title="Share" subtitle="lx.share opens the native system share sheet.">
-      <text testId="share-status" className={failure.value ? 'text-sm text-center text-danger' : 'text-sm text-center'}>
+      <text data-testid="share-status" className={failure.value ? 'text-sm text-center text-danger' : 'text-sm text-center'}>
         {failure.value || String(data.statusText || 'Ready')}
       </text>
       <Section title="Text" description="Some receivers reject text-only shares.">

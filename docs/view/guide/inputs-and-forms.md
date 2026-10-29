@@ -131,7 +131,7 @@ control and its accessible name. `<switch>` takes plain text as its label. Both 
 
 ## Radio
 
-`<radio options={[{ value, label, disabled?, testId? }]}>` draws a group of 1–64 options. Values are
+`<radio options={[{ value, label, disabled?, 'data-testid'? }]}>` draws a group of 1–64 options. Values are
 unique non-empty strings. Choosing the selected option again does nothing. `disabled` on the group
 disables every option.
 

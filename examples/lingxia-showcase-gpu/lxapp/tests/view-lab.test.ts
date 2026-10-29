@@ -55,6 +55,9 @@ spec('the controls take a tap, a drag, typing and a fling as a user gives them',
   await view.testId('lab-controls-search').type('Row 3');
   await expect(values).toContainText('query=Row 3');
   await expect(view.testId('lab-controls-row-2')).not.toBeAttached();
+  // The list mounts rows only while on screen; pressing the line below it
+  // scrolls the whole list into view first.
+  await values.click();
   await view.testId('lab-controls-row-31').click();
   await expect(values).toContainText('picked=Row 31');
 

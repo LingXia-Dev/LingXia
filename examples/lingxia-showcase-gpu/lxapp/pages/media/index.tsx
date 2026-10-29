@@ -38,7 +38,7 @@ function Setting({
 }) {
   return (
     <button
-      testId={testId}
+      data-testid={testId}
       accessibilityLabel={`${label}: ${value}`}
       disabled={disabled}
       onClick={() => {
@@ -68,7 +68,7 @@ function Inputs({
         <column key={key} className="gap-1.5">
           <text className="text-xs font-medium">{label}</text>
           <input
-            testId={`media-${key}`}
+            data-testid={`media-${key}`}
             accessibilityLabel={label}
             value={String(data[key] ?? '')}
             placeholder={placeholder}
@@ -83,7 +83,7 @@ function Inputs({
 
 function Path({ value, testId }: { value: string; testId?: string }) {
   return (
-    <text testId={testId} className="px-3 py-2 rounded-lg bg-surface-sunken text-[11px] text-muted break-all">
+    <text data-testid={testId} className="px-3 py-2 rounded-lg bg-surface-sunken text-[11px] text-muted break-all">
       {value}
     </text>
   );
@@ -114,7 +114,7 @@ function Capture({ data, actions }: Pane) {
           </Card>
           <Section title="Scan Result">
             <text
-              testId="media-scan-result"
+              data-testid="media-scan-result"
               className={
                 data.scanResult
                   ? 'min-h-32 px-4 py-3 rounded-xl border border-line bg-surface-sunken font-mono break-all'
@@ -294,7 +294,7 @@ function VideoTools({ data, actions }: Pane) {
           ]}
         >
           <image
-            testId="media-thumbnail-image"
+            data-testid="media-thumbnail-image"
             src={String(thumb.uri)}
             alt="Thumbnail of the selected video"
             className="w-full rounded-lg border border-line bg-text/5 object-contain"
@@ -322,7 +322,7 @@ function VideoTools({ data, actions }: Pane) {
         </Button>
         {!!data.videoCompressBusy && (
           <column className="gap-3">
-            <row testId="media-compression-progress" className="h-2 rounded-full bg-surface-sunken">
+            <row data-testid="media-compression-progress" className="h-2 rounded-full bg-surface-sunken">
               <spacer className="h-2 rounded-full bg-success" style={{ width: `${progress}%` }} />
             </row>
             <Button variant="secondary" testId="media-cancelVideoCompress" onClick={() => actions.cancelVideoCompress()}>
@@ -373,7 +373,7 @@ function Gallery({ data, actions }: Pane) {
   );
   const add = (
     <button
-      testId="media-launchMediaDemo"
+      data-testid="media-launchMediaDemo"
       accessibilityLabel={String(data.addLabel)}
       disabled={!!data.isRunning || !canAdd}
       onClick={() => actions.launchMediaDemo()}
@@ -428,7 +428,7 @@ function Gallery({ data, actions }: Pane) {
         action={
           limit > 0 ? (
             <text
-              testId="media-selection-count"
+              data-testid="media-selection-count"
               className="px-3 py-1 rounded-full bg-accent-soft text-xs font-semibold text-accent"
             >{`${items.length}/${limit}`}</text>
           ) : null
@@ -445,7 +445,7 @@ function Gallery({ data, actions }: Pane) {
           <column className="gap-1">
             <text className="text-xs font-medium text-muted">Image Duration (ms)</text>
             <input
-              testId="media-previewImageDurationMs"
+              data-testid="media-previewImageDurationMs"
               accessibilityLabel="Image Duration (ms)"
               keyboard="number"
               value={String(data.previewImageDurationMs ?? '2000')}
@@ -494,7 +494,7 @@ function Gallery({ data, actions }: Pane) {
             {items.map((item, index) => (
               <Card key={`${item.path}-${index}`} className="overflow-hidden">
                 <image
-                  testId={`media-image-${index}`}
+                  data-testid={`media-image-${index}`}
                   src={item.path}
                   alt={`Selected image ${index + 1}`}
                   className="h-32 w-full bg-surface-sunken object-cover"

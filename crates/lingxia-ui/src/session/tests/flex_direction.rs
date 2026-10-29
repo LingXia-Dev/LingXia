@@ -4,7 +4,7 @@ use serde_json::json;
 #[test]
 fn flex_container_directions_reflow_without_changing_identity() {
     let source = crate::session::tests::source(
-        "globalThis.direction='row';function render(){return h('view',{style:{flexDirection:direction,display:'flex',gap:10}},[0,1].map(i=>h('column',{key:String(i),testId:'item'+i,style:{width:40,height:20}})))}",
+        "globalThis.direction='row';function render(){return h('view',{style:{flexDirection:direction,display:'flex',gap:10}},[0,1].map(i=>h('column',{key:String(i),'data-testid':'item'+i,style:{width:40,height:20}})))}",
     );
     let mut page = ViewSession::new(&source).unwrap();
     let mut identities = None;

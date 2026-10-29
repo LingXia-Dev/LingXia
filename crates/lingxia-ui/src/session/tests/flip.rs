@@ -13,7 +13,7 @@ fn frame_time(index: u64) -> Duration {
 /// Red is wider, so the column at x = 55 shows it even where the rows cross.
 fn page() -> ViewSession {
     let module = super::source(
-        "function render(){const flipped=useLocal('flipped',false);const rows=[['a','#ff0000'],['b','#00ff00'],['c','#0000ff']];const order=flipped.value?[...rows].reverse():rows;return h('page',{style:{backgroundColor:'#ffffff'}},h('button',{testId:'toggle',onClick(){flipped.set(!flipped.value)},style:{position:'absolute',left:150,top:0,width:40,height:20}},'T'),h('column',{style:{width:70,alignItems:'flex-start'}},order.map(([key,color])=>h('view',{key,testId:key,style:{height:20,width:key==='a'?60:50,backgroundColor:color,transition:{properties:['layout'],durationMs:200,delayMs:0,easing:'linear'}}}))))}",
+        "function render(){const flipped=useLocal('flipped',false);const rows=[['a','#ff0000'],['b','#00ff00'],['c','#0000ff']];const order=flipped.value?[...rows].reverse():rows;return h('page',{style:{backgroundColor:'#ffffff'}},h('button',{'data-testid':'toggle',onClick(){flipped.set(!flipped.value)},style:{position:'absolute',left:150,top:0,width:40,height:20}},'T'),h('column',{style:{width:70,alignItems:'flex-start'}},order.map(([key,color])=>h('view',{key,'data-testid':key,style:{height:20,width:key==='a'?60:50,backgroundColor:color,transition:{properties:['layout'],durationMs:200,delayMs:0,easing:'linear'}}}))))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     page.set_animation_surface(Some(SURFACE), Duration::ZERO)
@@ -147,7 +147,7 @@ fn reduced_motion_lands_a_reorder_at_once() {
 #[test]
 fn a_keyed_list_reorder_slides_its_rows() {
     let module = super::source(
-        "function render(){const flipped=useLocal('flipped',false);const keys=flipped.value?['c','b','a']:['a','b','c'];const colors={a:'#ff0000',b:'#00ff00',c:'#0000ff'};return h('page',{style:{backgroundColor:'#ffffff'}},h('button',{testId:'toggle',onClick(){flipped.set(!flipped.value)},style:{position:'absolute',left:150,top:0,width:40,height:20}},'T'),h('list',{style:{height:80,width:70},count:3,itemKeys:keys,height:()=>20,row:i=>h('view',{key:keys[i],style:{height:20,width:keys[i]==='a'?60:50,backgroundColor:colors[keys[i]],transition:{properties:['layout'],durationMs:200,delayMs:0,easing:'linear'}}})}))}",
+        "function render(){const flipped=useLocal('flipped',false);const keys=flipped.value?['c','b','a']:['a','b','c'];const colors={a:'#ff0000',b:'#00ff00',c:'#0000ff'};return h('page',{style:{backgroundColor:'#ffffff'}},h('button',{'data-testid':'toggle',onClick(){flipped.set(!flipped.value)},style:{position:'absolute',left:150,top:0,width:40,height:20}},'T'),h('list',{style:{height:80,width:70},count:3,itemKeys:keys,height:()=>20,row:i=>h('view',{key:keys[i],style:{height:20,width:keys[i]==='a'?60:50,backgroundColor:colors[keys[i]],transition:{properties:['layout'],durationMs:200,delayMs:0,easing:'linear'}}})}))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     page.set_animation_surface(Some(SURFACE), Duration::ZERO)

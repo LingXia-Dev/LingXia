@@ -22,14 +22,14 @@ export function render({ data, actions }: View) {
   return (
     <Page title="Clipboard" subtitle="lx.clipboard reads and writes the system clipboard. Write never toasts.">
       <Section title="Status">
-        <text testId="clipboard-status" className={failure.value ? 'text-sm text-danger' : 'text-sm'}>
+        <text data-testid="clipboard-status" className={failure.value ? 'text-sm text-danger' : 'text-sm'}>
           {status}
         </text>
-        <text testId="clipboard-types-value" className="text-xs text-muted">{`types: ${String(data.typesText || 'Not peeked')}`}</text>
+        <text data-testid="clipboard-types-value" className="text-xs text-muted">{`types: ${String(data.typesText || 'Not peeked')}`}</text>
       </Section>
       <Section title="Text" description="writeText / readText. An empty string is a valid write, not clear().">
         <textarea
-          testId="clipboard-draft"
+          data-testid="clipboard-draft"
           accessibilityLabel="Text to copy"
           bind={draft}
           placeholder="Text to copy"
@@ -52,7 +52,7 @@ export function render({ data, actions }: View) {
           Write typed item
         </Button>
         {!!data.readTextValue && (
-          <text testId="clipboard-read-value" className="px-3 py-2 rounded-lg bg-surface-sunken text-xs text-muted break-all">
+          <text data-testid="clipboard-read-value" className="px-3 py-2 rounded-lg bg-surface-sunken text-xs text-muted break-all">
             {String(data.readTextValue)}
           </text>
         )}
@@ -69,7 +69,7 @@ export function render({ data, actions }: View) {
         {!!data.imagePath && (
           <column className="items-center gap-2">
             <image
-              testId="clipboard-image"
+              data-testid="clipboard-image"
               src={String(data.imagePath)}
               alt="Image from clipboard"
               className="w-40 h-40 rounded border border-line object-contain"

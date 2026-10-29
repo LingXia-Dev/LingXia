@@ -31,7 +31,7 @@ export function Button({ variant = 'default', size = 'default', className, disab
 }) {
   const inert = disabled && (variant === 'default' || variant === 'destructive') ? 'bg-surface-sunken text-muted-foreground' : disabled ? 'opacity-50' : '';
   return (
-    <button testId={testId} accessibilityLabel={accessibilityLabel} disabled={disabled} onClick={onClick}
+    <button data-testid={testId} accessibilityLabel={accessibilityLabel} disabled={disabled} onClick={onClick}
       className={cn(BUTTON, inert || VARIANT[variant], SIZE[size], className)}>
       {children}
     </button>

@@ -42,7 +42,7 @@ export function render({ actions }: View) {
       <column className="gap-1.5">
         <text className="text-sm font-medium">Your feedback</text>
         <textarea
-          testId="feedback-message"
+          data-testid="feedback-message"
           accessibilityLabel="Your feedback"
           bind={message}
           disabled={submitting.value}

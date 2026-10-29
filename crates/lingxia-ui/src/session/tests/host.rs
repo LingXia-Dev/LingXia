@@ -497,7 +497,7 @@ fn a_fake_platform_hosts_frames_input_semantics_and_images() {
     let host = platform.host(
         &worker,
         &source(
-            "function render(){const n=useLocal('n',0);return h('column',{},h('button',{testId:'add',onClick:()=>n.set(n.value+1),style:{height:60}},`Count ${n.value}`),n.value<2?h('image',{src:'lx://pic.png',alt:'Picture',style:{width:20,height:20}}):h('text',{},'done'))}",
+            "function render(){const n=useLocal('n',0);return h('column',{},h('button',{'data-testid':'add',onClick:()=>n.set(n.value+1),style:{height:60}},`Count ${n.value}`),n.value<2?h('image',{src:'lx://pic.png',alt:'Picture',style:{width:20,height:20}}):h('text',{},'done'))}",
         ),
         false,
     );
@@ -966,7 +966,7 @@ fn a_parked_page_renders_nothing_after_it_left() {
     let platform = Platform::new(&[&worker]);
     let host = platform.host(
         &worker,
-        &source("function render({env}){return h('text',{testId:'t'},`page ${env.theme}`)}"),
+        &source("function render({env}){return h('text',{'data-testid':'t'},`page ${env.theme}`)}"),
         false,
     );
     host.set_visible(true);
@@ -1006,7 +1006,7 @@ fn a_click_that_changes_the_look_logs_one_input_line() {
     let host = platform.host(
         &worker,
         &source(
-            "function render({env}){const n=useLocal('n',0),l=useLocal('l','-');return h('column',{},h('button',{testId:'look',onClick:()=>n.set(n.value+1),style:{width:100,height:40}},`${env.theme} ${n.value} ${l.value}`),h('image',{src:'lx://look.png',alt:'',onLoad:()=>l.set('L'),style:{width:10,height:10}}))}",
+            "function render({env}){const n=useLocal('n',0),l=useLocal('l','-');return h('column',{},h('button',{'data-testid':'look',onClick:()=>n.set(n.value+1),style:{width:100,height:40}},`${env.theme} ${n.value} ${l.value}`),h('image',{src:'lx://look.png',alt:'',onLoad:()=>l.set('L'),style:{width:10,height:10}}))}",
         ),
         false,
     );
@@ -1051,7 +1051,7 @@ fn hiding_a_page_drops_its_text_selection_from_the_kept_frame() {
     let host = platform.host(
         &worker,
         &source(
-            "function render(){return h('text',{testId:'p',style:{userSelect:'text',fontSize:16}},'hello brave world')}",
+            "function render(){return h('text',{'data-testid':'p',style:{userSelect:'text',fontSize:16}},'hello brave world')}",
         ),
         false,
     );
@@ -1582,7 +1582,7 @@ fn automation_requests_query_and_act_through_the_core_driver() {
     let host = platform.host(
         &worker,
         &source(
-            "function render(){const n=useLocal('n',0);return h('button',{testId:'add',onClick:()=>n.set(n.value+1)},`Count ${n.value}`)}",
+            "function render(){const n=useLocal('n',0);return h('button',{'data-testid':'add',onClick:()=>n.set(n.value+1)},`Count ${n.value}`)}",
         ),
         false,
     );
@@ -1650,7 +1650,7 @@ fn automation_calls_page_actions_and_reads_data_once_the_frame_commits() {
     let host = platform.host(
         &worker,
         &(source(
-            "function render({data}){return h('text',{testId:'count'},`count ${data.count}`)}",
+            "function render({data}){return h('text',{'data-testid':'count'},`count ${data.count}`)}",
         ) + "\nglobalThis.__lingxiaActionCatalog={__names:['bump'],__modes:{bump:'call'}};"),
         true,
     );
@@ -1755,7 +1755,7 @@ fn fill_and_pick(dev: bool, swap: bool, logic: bool) {
     let worker = ViewWorker::spawn("test-fill-select").unwrap();
     let platform = Platform::new(&[&worker]);
     let mut page = source(
-        "function render(){const name=useLocal('name',''),plan=useLocal('plan','');return h('column',{},h('input',{testId:'name',bind:name,accessibilityLabel:'Name'}),h('select',{testId:'plan',bind:plan,accessibilityLabel:'Plan',options:[{value:'a',label:'A'},{value:'b',label:'B'}]}),h('text',{testId:'out'},`name=${name.value} plan=${plan.value}`))}",
+        "function render(){const name=useLocal('name',''),plan=useLocal('plan','');return h('column',{},h('input',{'data-testid':'name',bind:name,accessibilityLabel:'Name'}),h('select',{'data-testid':'plan',bind:plan,accessibilityLabel:'Plan',options:[{value:'a',label:'A'},{value:'b',label:'B'}]}),h('text',{'data-testid':'out'},`name=${name.value} plan=${plan.value}`))}",
     );
     if dev {
         page.push_str("\nconfigureSourceMap({sources:[null],mappings:''});\nenableHotSwap();\n");
@@ -1847,7 +1847,7 @@ fn logic_feedback_calls_draw_in_the_view_and_answer_like_the_webview() {
     let host = platform.host(
         &worker,
         &(source(
-            "function render({data}){return h('page',{},h('text',{testId:'body'},`n ${data.n}`))}",
+            "function render({data}){return h('page',{},h('text',{'data-testid':'body'},`n ${data.n}`))}",
         ) + "\nglobalThis.__lingxiaActionCatalog={__names:[],__modes:{}};"),
         true,
     );
@@ -2070,7 +2070,7 @@ fn a_parked_page_reads_its_last_frame_and_refuses_actions() {
     let host = platform.host(
         &worker,
         &source(
-            "function render(){const n=useLocal('n',0);return h('column',{testId:'card','data-mode':'live'},h('text',{},'Total'),h('button',{testId:'add',onClick:()=>n.set(n.value+1)},`Count ${n.value}`))}",
+            "function render(){const n=useLocal('n',0);return h('column',{'data-testid':'card','data-mode':'live'},h('text',{},'Total'),h('button',{'data-testid':'add',onClick:()=>n.set(n.value+1)},`Count ${n.value}`))}",
         ),
         false,
     );
@@ -2104,7 +2104,7 @@ fn accessibility_selects_and_copies_static_text_through_the_session_selection() 
     let platform = Platform::new(&[&worker]);
     let host = platform.host(
         &worker,
-        &source("function render(){return h('text',{testId:'p',style:{userSelect:'text'}},'hello brave world')}"),
+        &source("function render(){return h('text',{'data-testid':'p',style:{userSelect:'text'}},'hello brave world')}"),
         false,
     );
     host.set_visible(true);
@@ -2207,7 +2207,7 @@ fn a_static_selection_shows_its_menu_which_hides_while_dragging_and_clears_on_di
     let platform = Platform::new(&[&worker]);
     let host = platform.host(
         &worker,
-        &source("function render(){return h('text',{testId:'p',style:{userSelect:'text'}},'hello brave world')}"),
+        &source("function render(){return h('text',{'data-testid':'p',style:{userSelect:'text'}},'hello brave world')}"),
         false,
     );
     host.set_visible(true);
@@ -2249,7 +2249,7 @@ fn a_static_selection_shows_its_menu_which_hides_while_dragging_and_clears_on_di
 fn fine_pointer_text_host(platform: &Platform, worker: &Arc<ViewWorker>) -> ViewHost<Fake> {
     let host = platform.host(
         worker,
-        &source("function render(){return h('text',{testId:'p',style:{userSelect:'text'}},'hello brave world')}"),
+        &source("function render(){return h('text',{'data-testid':'p',style:{userSelect:'text'}},'hello brave world')}"),
         false,
     );
     if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
@@ -2397,7 +2397,7 @@ fn edits_for_two_editors_reach_the_platform_one_at_a_time() {
     let host = platform.host(
         &worker,
         &source(
-            "function render(){const a=useLocal('a','');const b=useLocal('b','');return h('column',{},h('input',{testId:'amount',bind:a,autoFocus:true}),h('input',{testId:'code',bind:b}))}",
+            "function render(){const a=useLocal('a','');const b=useLocal('b','');return h('column',{},h('input',{'data-testid':'amount',bind:a,autoFocus:true}),h('input',{'data-testid':'code',bind:b}))}",
         ),
         false,
     );
@@ -2478,7 +2478,7 @@ fn an_edit_the_platform_cannot_apply_fails_its_caller() {
     let platform = Platform::new(&[&worker]);
     let host = platform.host(
         &worker,
-        &source("function render(){const a=useLocal('a','');return h('input',{testId:'amount',bind:a})}"),
+        &source("function render(){const a=useLocal('a','');return h('input',{'data-testid':'amount',bind:a})}"),
         false,
     );
     host.set_visible(true);
@@ -2525,7 +2525,7 @@ fn a_held_press_keeps_its_scale_transition_and_accessibility_hears_moves_at_a_qu
     let worker = ViewWorker::spawn("test-view").unwrap();
     let platform = Platform::new(&[&worker]);
     let page = source(
-        "function render(){return h('column',{},h('button',{testId:'b',onClick(){},className:'active:x',style:{width:100,height:40,padding:0,transition:{properties:['transform'],durationMs:150,delayMs:0,easing:'linear'}}},'Press'))}",
+        "function render(){return h('column',{},h('button',{'data-testid':'b',onClick(){},className:'active:x',style:{width:100,height:40,padding:0,transition:{properties:['transform'],durationMs:150,delayMs:0,easing:'linear'}}},'Press'))}",
     )
     .replace(
         "__lingxiaPublish(render);",
@@ -2911,20 +2911,20 @@ fn every_message_adapters_receive_matches_the_frame_schema() {
     let platform = Platform::new(&[&worker]);
     let page = "function render(){
       const name=useLocal('name','Ada'), on=useLocal('on',true), level=useLocal('level',3), plan=useLocal('plan','b');
-      return h('scroll',{testId:'page',style:{height:400}},
-        h('text',{testId:'title',role:'heading',headingLevel:1,style:{userSelect:'text'}},'Frame contract'),
-        h('input',{testId:'name',bind:name,accessibilityLabel:'Name',autoFocus:true,keyboard:'email',enterKeyHint:'next',maxLength:40,placeholder:'Name'}),
-        h('input',{testId:'day',accessibilityLabel:'Day',keyboard:'date',min:'2024-01-01'}),
-        h('textarea',{testId:'note',accessibilityLabel:'Note',rows:2,maxRows:4,value:'line'}),
-        h('select',{testId:'plan',bind:plan,accessibilityLabel:'Plan',options:[{value:'a',label:'A'},{value:'b',label:'B',disabled:true}]}),
-        h('slider',{testId:'level',bind:level,accessibilityLabel:'Level',min:0,max:10,step:1}),
-        h('checkbox',{testId:'on',bind:on},'On'),
-        h('plot',{testId:'chart',kind:'pie',values:[1,2,3],accessibilityLabel:'Share',onSelect(){},style:{height:80}}),
-        h('vector',{testId:'icon',accessibilityHidden:true,paths:[{d:'M0 0H10V10Z'}],style:{width:10,height:10}}),
-        h('image',{testId:'photo',src:'a.png',alt:'Photo',style:{width:20,height:20,borderRadius:4}}),
+      return h('scroll',{'data-testid':'page',style:{height:400}},
+        h('text',{'data-testid':'title',role:'heading',headingLevel:1,style:{userSelect:'text'}},'Frame contract'),
+        h('input',{'data-testid':'name',bind:name,accessibilityLabel:'Name',autoFocus:true,keyboard:'email',enterKeyHint:'next',maxLength:40,placeholder:'Name'}),
+        h('input',{'data-testid':'day',accessibilityLabel:'Day',keyboard:'date',min:'2024-01-01'}),
+        h('textarea',{'data-testid':'note',accessibilityLabel:'Note',rows:2,maxRows:4,value:'line'}),
+        h('select',{'data-testid':'plan',bind:plan,accessibilityLabel:'Plan',options:[{value:'a',label:'A'},{value:'b',label:'B',disabled:true}]}),
+        h('slider',{'data-testid':'level',bind:level,accessibilityLabel:'Level',min:0,max:10,step:1}),
+        h('checkbox',{'data-testid':'on',bind:on},'On'),
+        h('plot',{'data-testid':'chart',kind:'pie',values:[1,2,3],accessibilityLabel:'Share',onSelect(){},style:{height:80}}),
+        h('vector',{'data-testid':'icon',accessibilityHidden:true,paths:[{d:'M0 0H10V10Z'}],style:{width:10,height:10}}),
+        h('image',{'data-testid':'photo',src:'a.png',alt:'Photo',style:{width:20,height:20,borderRadius:4}}),
         h('text',{},'Read the ',h('link',{onPress(){}},'terms')),
-        h('button',{testId:'go',onClick(){}},h('row',{},h('text',{},'Go'),h('checkbox',{testId:'remember',bind:on,accessibilityLabel:'Remember'}))),
-        h('scroll',{testId:'inner',style:{height:20,overflowX:'auto'}},h('row',{style:{width:900,height:20}})))
+        h('button',{'data-testid':'go',onClick(){}},h('row',{},h('text',{},'Go'),h('checkbox',{'data-testid':'remember',bind:on,accessibilityLabel:'Remember'}))),
+        h('scroll',{'data-testid':'inner',style:{height:20,overflowX:'auto'}},h('row',{style:{width:900,height:20}})))
     }";
     let host = platform.host(&worker, &source(page), false);
     host.set_visible(true);
@@ -3418,7 +3418,7 @@ fn an_activation_whose_control_went_away_before_dispatch_is_reported_not_silent(
     let host = platform.host(
         &worker,
         &source(
-            "function render(){const n=useLocal('n',0);return h('column',{},n.value===0?h('button',{testId:'b',onClick:()=>n.set(1),style:{height:60}},'Remove me'):h('text',{},'gone'))}",
+            "function render(){const n=useLocal('n',0);return h('column',{},n.value===0?h('button',{'data-testid':'b',onClick:()=>n.set(1),style:{height:60}},'Remove me'):h('text',{},'gone'))}",
         ),
         false,
     );
@@ -3586,8 +3586,8 @@ fn an_editor_selection_offers_copy_cut_and_paste_to_assistive_tech() {
     let page = "function render(){
       const name=useLocal('name','Hello world'), pin=useLocal('pin','1234');
       return h('column',{},
-        h('input',{testId:'name',bind:name,accessibilityLabel:'Name'}),
-        h('input',{testId:'pin',bind:pin,secure:true,accessibilityLabel:'PIN'}))
+        h('input',{'data-testid':'name',bind:name,accessibilityLabel:'Name'}),
+        h('input',{'data-testid':'pin',bind:pin,secure:true,accessibilityLabel:'PIN'}))
     }";
     let host = platform.host(&worker, &source(page), false);
     host.set_visible(true);
@@ -3670,10 +3670,10 @@ fn an_editor_selection_offers_copy_cut_and_paste_to_assistive_tech() {
 fn a_sibling_after_an_appearing_conditional_keeps_its_local_and_semantic_id() {
     let worker = ViewWorker::spawn("test-conditional-slots").unwrap();
     let platform = Platform::new(&[&worker]);
-    let page = "function Counter(){const n=useLocal('n',0);return h('button',{testId:'count',onClick(){n.set(n.value+1)}},'n '+n.value)}
+    let page = "function Counter(){const n=useLocal('n',0);return h('button',{'data-testid':'count',onClick(){n.set(n.value+1)}},'n '+n.value)}
       function render(){const on=useLocal('on',false);
-        return h('column',{}, on.value && h('text',{testId:'banner'},'Hi'), h(Counter,{}),
-          h('button',{testId:'toggle',onClick(){on.set(!on.value)}},'Toggle'))}";
+        return h('column',{}, on.value && h('text',{'data-testid':'banner'},'Hi'), h(Counter,{}),
+          h('button',{'data-testid':'toggle',onClick(){on.set(!on.value)}},'Toggle'))}";
     let host = platform.host(&worker, &source(page), false);
     host.set_visible(true);
     platform.settle(&[&host]);
@@ -3715,11 +3715,11 @@ fn a_pressable_row_holds_its_own_controls() {
     let page = "function render(){
       const rows=useLocal('rows',0), on=useLocal('on',false), deletes=useLocal('deletes',0);
       return h('column',{},
-        h('button',{testId:'row',onClick(){rows.set(rows.value+1)},style:{height:60,width:190}},
-          h('row',{},h('text',{testId:'label'},'Wi'),
-            h('switch',{testId:'wifi',bind:on,accessibilityLabel:'Wi-Fi'}),
-            h('button',{testId:'delete',onClick(){deletes.set(deletes.value+1)}},'Del'))),
-        h('text',{testId:'state'},`rows=${rows.value} on=${on.value} deletes=${deletes.value}`))
+        h('button',{'data-testid':'row',onClick(){rows.set(rows.value+1)},style:{height:60,width:190}},
+          h('row',{},h('text',{'data-testid':'label'},'Wi'),
+            h('switch',{'data-testid':'wifi',bind:on,accessibilityLabel:'Wi-Fi'}),
+            h('button',{'data-testid':'delete',onClick(){deletes.set(deletes.value+1)}},'Del'))),
+        h('text',{'data-testid':'state'},`rows=${rows.value} on=${on.value} deletes=${deletes.value}`))
     }";
     let host = platform.host(&worker, &source(page), false);
     if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
@@ -3883,7 +3883,7 @@ fn declared_font_faces_load_by_lxapp_path_and_reshape_their_text() {
     let worker = ViewWorker::spawn("test-view-fonts").unwrap();
     let platform = Platform::new(&[&worker]);
     let page = source(
-        "function render(){return h('column',{style:{alignItems:'flex-start'}},h('text',{testId:'t',style:{fontFamily:'Wide, serif',fontSize:10}},'abc'))}",
+        "function render(){return h('column',{style:{alignItems:'flex-start'}},h('text',{'data-testid':'t',style:{fontFamily:'Wide, serif',fontSize:10}},'abc'))}",
     )
     .replace(
         "__lingxiaPublish(render);",
@@ -3931,7 +3931,7 @@ fn an_off_screen_list_row_is_found_revealed_and_clicked_by_test_id() {
     let host = platform.host(
         &worker,
         &source(
-            "function render(){const query=useLocal('query',''),picked=useLocal('picked','');const rows=Array.from({length:40},(_,i)=>({id:`row-${i}`,label:`Row ${i}`})).filter(r=>r.label.includes(query.value));return h('column',{},h('search',{testId:'filter',bind:query,accessibilityLabel:'Filter'}),h(List,{testId:'list',style:{height:120},items:rows,getKey:r=>r.id,renderItem:r=>h('button',{testId:r.id,onClick:()=>picked.set(r.label),style:{height:40}},r.label)}),h('text',{testId:'picked'},`picked=${picked.value}`))}",
+            "function render(){const query=useLocal('query',''),picked=useLocal('picked','');const rows=Array.from({length:40},(_,i)=>({id:`row-${i}`,label:`Row ${i}`})).filter(r=>r.label.includes(query.value));return h('column',{},h('search',{'data-testid':'filter',bind:query,accessibilityLabel:'Filter'}),h(List,{'data-testid':'list',style:{height:120},items:rows,getKey:r=>r.id,renderItem:r=>h('button',{'data-testid':r.id,onClick:()=>picked.set(r.label),style:{height:40}},r.label)}),h('text',{'data-testid':'picked'},`picked=${picked.value}`))}",
         ),
         false,
     );
@@ -4003,7 +4003,7 @@ fn act_replies_match_the_automation_vectors() {
     let platform = Platform::new(&[&worker]);
     let host = platform.host(
         &worker,
-        &source("function render(){const n=useLocal('n',0);return h('button',{testId:'add',onClick:()=>n.set(n.value+1)},`Count ${n.value}`)}"),
+        &source("function render(){const n=useLocal('n',0);return h('button',{'data-testid':'add',onClick:()=>n.set(n.value+1)},`Count ${n.value}`)}"),
         false,
     );
     host.set_visible(true);
@@ -4042,7 +4042,7 @@ fn an_act_settles_when_its_page_leaves_or_hides_before_the_next_frame() {
         let host = platform.host(
             &worker,
             &source(
-                "function render(){const n=useLocal('n',0);return h('button',{testId:'go',onClick:()=>n.set(n.value+1)},`Go ${n.value}`)}",
+                "function render(){const n=useLocal('n',0);return h('button',{'data-testid':'go',onClick:()=>n.set(n.value+1)},`Go ${n.value}`)}",
             ),
             false,
         );
