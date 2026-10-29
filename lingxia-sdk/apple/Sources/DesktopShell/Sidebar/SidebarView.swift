@@ -892,6 +892,15 @@ class SidebarView: NSView {
     /// Hovering the rail expand control (or clicking it where pinning is
     /// unavailable) asks the shell to present the peek.
     var onPeekRequested: (() -> Void)?
+
+    /// Automation that presses a tab by its label: a collapsed rail shows its
+    /// tabs the way a pointer at the edge does, then reports whether it did.
+    @objc func lxRevealTabsForAutomation() -> Bool {
+        guard isCompact else { return false }
+        onPeekRequested?()
+        layoutSubtreeIfNeeded()
+        return true
+    }
     var onPeekDismissRequested: (() -> Void)?
     /// Called when width changes via drag: (width, animated)
     var onWidthChanged: ((CGFloat, Bool) -> Void)?

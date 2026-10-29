@@ -626,6 +626,39 @@ mod mac {
             }
         }
 
+        /// A collapsed sidebar rail shows its tabs as a pointer at the edge would.
+        unsafe fn reveal_tabs(view: *mut AnyObject) -> bool {
+            unsafe {
+                let reveal = objc2::sel!(lxRevealTabsForAutomation);
+                let responds: bool = msg_send![view, respondsToSelector: reveal];
+                if responds {
+                    let revealed: bool = msg_send![view, lxRevealTabsForAutomation];
+                    return revealed;
+                }
+                let subviews: *mut AnyObject = msg_send![view, subviews];
+                let count: usize = msg_send![subviews, count];
+                (0..count).any(|i| reveal_tabs(msg_send![subviews, objectAtIndex: i]))
+            }
+        }
+
+        if scope
+            .as_deref()
+            .is_none_or(|s| s == "sidebar" || s == "tabBar")
+        {
+            let revealed = on_main(|| unsafe {
+                let app: *mut AnyObject =
+                    msg_send![objc2::class!(NSApplication), sharedApplication];
+                let window = resolve_window(app, None).ok_or("no NSWindow available")?;
+                let content: *mut AnyObject = msg_send![window, contentView];
+                Ok::<_, String>(!content.is_null() && reveal_tabs(content))
+            })
+            .await?;
+            if revealed {
+                // The rail slides open before its rows can be pressed.
+                tokio::time::sleep(Duration::from_millis(250)).await;
+            }
+        }
+
         on_main(move || unsafe {
             let app: *mut AnyObject = msg_send![objc2::class!(NSApplication), sharedApplication];
             let window = resolve_window(app, None).ok_or("no NSWindow available")?;
