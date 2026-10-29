@@ -356,6 +356,8 @@ class LxAppActivity : AppCompatActivity() {
         }
     }
     private var gpuTransitionVersion = 0L
+    /** The show a running push slide delivers at its end; null when none is running. */
+    private var slideShow: Runnable? = null
     private var gpuTransitionCover: android.widget.ImageView? = null
     private var gpuOutgoingCover: android.widget.ImageView? = null
     private val pendingGpuDisposals = mutableSetOf<Runnable>()
@@ -1814,6 +1816,12 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     private fun clearGpuTransitionCover() {
+        // Cancelling the slide skips its end action; the show it carried is still owed.
+        slideShow?.let { show ->
+            slideShow = null
+            LxLog.d(NAV_TAG, "slide cut short; showing now")
+            show.run()
+        }
         listOfNotNull(gpuTransitionCover, gpuOutgoingCover).forEach {
             it.animate().cancel()
             (it.parent as? ViewGroup)?.removeView(it)
@@ -1840,12 +1848,15 @@ class LxAppActivity : AppCompatActivity() {
         val interpolator = android.view.animation.DecelerateInterpolator()
         // Equal progress keeps the opaque edges touching throughout the slide.
         previous.animate().translationX(-distance).setDuration(300L).setInterpolator(interpolator).start()
+        val show = Runnable { (page.parent as? FrameLayout)?.let { triggerOnPageShow(it) } }
+        slideShow = show
         incoming.animate().translationX(0f).setDuration(300L).setInterpolator(interpolator)
             .withEndAction {
                 LxLog.d(NAV_TAG, "slide ${page.getWebTag()} done v$version now v$gpuTransitionVersion")
+                if (slideShow === show) slideShow = null
                 if (version == gpuTransitionVersion) {
                     clearGpuTransitionCover()
-                    (page.parent as? FrameLayout)?.let { triggerOnPageShow(it) }
+                    show.run()
                 }
             }.start()
     }
