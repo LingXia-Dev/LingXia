@@ -993,10 +993,7 @@ fn a_parked_page_renders_nothing_after_it_left() {
     let text = host
         .automation_request(&serde_json::json!({"op": "query", "css": "[data-testid=\"t\"]"}))
         .unwrap();
-    assert_eq!(
-        text["text"], "page light",
-        "automation reads the frame it left with"
-    );
+    assert_eq!(text["exists"], false, "a parked page reads as blank");
 }
 
 #[test]
@@ -2064,7 +2061,7 @@ fn abandoned_automation_calls_expire_instead_of_exhausting_the_slots() {
 }
 
 #[test]
-fn a_parked_page_reads_its_last_frame_and_refuses_actions() {
+fn a_parked_page_reads_blank_and_refuses_actions() {
     let worker = ViewWorker::spawn("test-automation-parked").unwrap();
     let platform = Platform::new(&[&worker]);
     let host = platform.host(
@@ -2083,8 +2080,16 @@ fn a_parked_page_reads_its_last_frame_and_refuses_actions() {
     let card = host
         .automation_request(&serde_json::json!({"op": "query", "css": "[data-mode=\"live\"]"}))
         .unwrap();
-    assert_eq!(card["text"], "Total Count 0");
-    assert_eq!(card["attributes"]["data-mode"], "live");
+    assert_eq!(card["exists"], false);
+    let all = host
+        .automation_request(
+            &serde_json::json!({"op": "query", "css": "[data-testid=\"add\"]", "all": true}),
+        )
+        .unwrap();
+    assert_eq!(
+        (all["count"].clone(), all["items"].clone()),
+        (serde_json::json!(0), serde_json::json!([]))
+    );
     assert!(
         host.automation_request(&serde_json::json!({"op": "tree"}))
             .is_ok()

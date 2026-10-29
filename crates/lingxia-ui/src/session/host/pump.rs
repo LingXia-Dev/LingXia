@@ -140,7 +140,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 self.lifecycle.invalidate_surface();
                 main.dirty = true;
                 // A kept hidden frame no longer matches; catch up so a return can show at once.
-                // A parked page left: its last frame stays as it was, for automation to read.
+                // A parked page left: it renders nothing until the next connection.
                 if !main.visible
                     && main.presented_environment.is_some()
                     && !main.interaction.parked()

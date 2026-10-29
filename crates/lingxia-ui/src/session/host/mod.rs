@@ -815,11 +815,22 @@ impl<A: PlatformAdapter> ViewHost<A> {
         all: bool,
         max_text: Option<usize>,
     ) -> Result<serde_json::Value, String> {
-        let found = self
-            .inner
-            .main()
-            .interaction
-            .automation_query(css, index, all, max_text)?;
+        let found = {
+            let main = self.inner.main();
+            // A page that left the stack reads as the blank document a parked WebView loads.
+            if main.interaction.parked() {
+                return Ok(if all {
+                    serde_json::json!({ "count": 0, "renderer": "gpu", "items": [] })
+                } else {
+                    serde_json::json!({
+                        "exists": false, "renderer": "gpu", "index": index.unwrap_or(0), "count": 0,
+                        "visible": false, "inViewport": false, "enabled": false, "editable": false,
+                    })
+                });
+            }
+            main.interaction
+                .automation_query(css, index, all, max_text)?
+        };
         // An off-screen List row is attached and visible outside the viewport, as in a WebView
         // DOM, so locators reveal it; its content waits until it draws.
         let missed = found["count"] == 0 && (all || index.unwrap_or(0) == 0);
@@ -1295,7 +1306,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.styled_press = None;
             main.styled_hover = None;
             main.styled_focus = None;
-            // Automation keeps reading the last frame of a parked page; input stops.
+            // Input stops; automation reads a parked page as blank.
             let effects = main.interaction.park();
             for slot in main.automation_calls.values_mut() {
                 slot.get_or_insert_with(|| Err("E_PAGE_NOT_READY: the page was parked".into()));
