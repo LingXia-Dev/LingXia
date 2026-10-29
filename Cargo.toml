@@ -123,8 +123,8 @@ napi-ohos = "1.2.0"
 napi-derive-ohos = "1.2.0"
 
 # Rong v0.6 product release
-rong = { version = "0.6.3", default-features = false }
-rong_rt = { version = "0.6.3", default-features = false }
+rong = { version = "0.6.4", default-features = false }
+rong_rt = { version = "0.6.4", default-features = false }
 rong_modules = { version = "0.6.2", default-features = false }
 rong_http = { version = "0.6.4", default-features = false }
 rong_console = "0.6.0"
