@@ -13,6 +13,7 @@ export async function loadStylesheet(path, chain = [], budget = { files: 0 }) {
   root.walkAtRules('font-face', rule => rule.walkDecls('src', decl => {
     decl.value = decl.value.replace(/url\(\s*(['"]?)(\.\.?\/[^'")]+)\1\s*\)/, (_, quote, url) => `url("${resolve(dirname(path), url)}")`);
   }));
+  classRulesAsUtilities(root);
   for (const node of [...root.nodes]) {
     if (node.type !== 'atrule' || node.name !== 'import') continue;
     const match = node.params.match(/^(['"])(\.\.?\/[^'"]+)\1$/);
@@ -21,6 +22,27 @@ export async function loadStylesheet(path, chain = [], budget = { files: 0 }) {
     node.replaceWith(imported.nodes);
   }
   return root;
+}
+
+// A plain `.name { … }` rule, top level or in `@layer components|utilities`, is that class as the
+// theme's `@utility name`, so a Tailwind theme ports as written.
+export function classRulesAsUtilities(root) {
+  let changed = false;
+  const convert = rule => {
+    const name = rule.selector.trim().match(/^\.([a-z][a-z0-9-]*)$/)?.[1];
+    if (!name) return;
+    rule.replaceWith(postcss.atRule({ name: 'utility', params: name, nodes: rule.nodes, source: rule.source }));
+    changed = true;
+  };
+  for (const node of [...root.nodes]) {
+    if (node.type === 'rule') convert(node);
+    if (node.type === 'atrule' && node.name === 'layer' && ['components', 'utilities'].includes(node.params.trim()) && node.nodes) {
+      for (const child of [...node.nodes]) if (child.type === 'rule') convert(child);
+      node.replaceWith(node.nodes);
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 export function tokenSelectorTheme(selector) {
@@ -68,7 +90,7 @@ export function validateTokens(root) {
     }
     const isTheme = node.type === 'atrule' && node.name === 'theme';
     const palette = node.type === 'rule' && tokenSelectorTheme(node.selector);
-    if (!isTheme && !palette) throw node.error('UI_CSS: expected @theme, :root or [data-theme] token declarations');
+    if (!isTheme && !palette) throw node.error('UI_CSS: expected @theme, :root or [data-theme] tokens, @utility, or a plain .class rule');
     for (const child of node.nodes ?? []) {
       if (child.type === 'comment') continue;
       if (isTheme && child.type === 'atrule' && child.name === 'keyframes') {

@@ -497,7 +497,7 @@ test('unsupported rendering and missing dynamic candidates fail visibly', async 
 });
 
 test('stylesheets cannot silently discard browser selectors or imports', async () => {
-  for (const css of [':root { color: red; }', '@import "tailwindcss";', '.card { padding: 12px; }'])
+  for (const css of [':root { color: red; }', '@import "tailwindcss";', '.card .title { padding: 12px; }'])
     await assert.rejects(compileUtilities(new Set(['p-4']), css), /UI_CSS/);
 });
 
@@ -663,6 +663,17 @@ test('theme @utility classes lower like utilities, with background and border sh
   assert.equal(rule('unknown-marker'), undefined);
   assert.deepEqual(rule('shadow-[var(--card-shadow)]', 'dark').shadow.layers, []);
   await assert.rejects(compileUtilities(new Set(['x']), '@utility x { &:hover { color: red; } }'), /UI_CSS: @utility x takes declarations only/);
+});
+
+// Tailwind themes write classes as plain rules or in `@layer components`; each is that `@utility`.
+test('plain .class rules and @layer components classes are theme utilities', async () => {
+  const theme = `@theme inline { --color-primary: var(--color-accent); }
+.brand { background-image: linear-gradient(135deg, var(--color-primary) 0%, var(--color-chart-1) 100%); }
+@layer components { .numeric { font-variant-numeric: tabular-nums; } }`;
+  const rules = await compileUtilities(new Set(['brand', 'numeric']), theme);
+  assert.deepEqual(rules.find(r => r.name === 'brand').gradient.fixed.stops.map(stop => stop.color), ['accent', 'chart-1']);
+  assert.equal(rules.find(r => r.name === 'numeric').numeric.fixed, 'tabular-nums');
+  await assert.rejects(compileUtilities(new Set(['x']), '.card > .title { color: red; }'), /UI_CSS: expected @theme, :root or \[data-theme\] tokens, @utility, or a plain \.class rule/);
 });
 
 test('safe-area env() is zero inside a page; max(), min() and system font stacks fold', async () => {

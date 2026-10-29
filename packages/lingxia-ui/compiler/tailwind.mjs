@@ -2,7 +2,7 @@ import { compile } from 'tailwindcss';
 import postcss from 'postcss';
 import { parse, formatHex8 } from 'culori';
 import { readFile } from 'node:fs/promises';
-import { tokenSelectorTheme, validateTokens, fontFaces } from './stylesheets.mjs';
+import { tokenSelectorTheme, validateTokens, fontFaces, classRulesAsUtilities } from './stylesheets.mjs';
 import { lowerAnimation, easing as lowerEasing } from './animation.mjs';
 import { css as cssStyle, keywords, style as styleTable, limits, roles } from '../src/generated/contract.js';
 
@@ -921,6 +921,7 @@ function compilerFor(theme) {
 /** Lowered rules for every candidate Tailwind generates; unsupported ones carry an error. */
 export async function compileUtilities(candidates, theme = '', { literalColors: literal = false } = {}) {
   const tokens = postcss.parse(theme);
+  const converted = classRulesAsUtilities(tokens);
   validateTokens(tokens);
   declaredFaces = new Set(fontFaces(tokens).map(face => face.family));
   // An empty `@utility` names a class the theme keeps for its web build (a density scope, a
@@ -928,7 +929,7 @@ export async function compileUtilities(candidates, theme = '', { literalColors: 
   // Tailwind's `group`/`peer` markers carry no style either.
   const markers = new Set(['group', 'peer']);
   tokens.walkAtRules('utility', rule => { if (!rule.nodes?.some(node => node.type === 'decl')) { markers.add(rule.params); rule.remove(); } });
-  const compiler = await compilerFor(markers.size > 2 ? tokens.toString() : theme);
+  const compiler = await compilerFor(markers.size > 2 || converted ? tokens.toString() : theme);
   const root = postcss.parse(compiler.build([...candidates]));
   const palettes = { light: Object.create(null), dark: Object.create(null) }, rules = [];
   root.walkAtRules('property', rule => {
