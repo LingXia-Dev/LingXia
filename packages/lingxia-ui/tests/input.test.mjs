@@ -6,10 +6,10 @@ import { compileUtilities } from '../compiler/tailwind.mjs';
 import { configureClasses } from '../src/style/classes.js';
 
 test('editor labels are distinct from values and placeholder hints', () => {
-  for (const tag of ['input', 'textarea', 'search']) {
-    const { props } = rendered(() => h(tag, { value: 'Ada', placeholder: 'Your name', 'aria-label': 'Name' }));
+  for (const [tag, kind] of [['input', {}], ['textarea', {}], ['input', { type: 'search' }]]) {
+    const { props } = rendered(() => h(tag, { ...kind, value: 'Ada', placeholder: 'Your name', 'aria-label': 'Name' }));
     assert.deepEqual([props.accessibilityLabel, props.inputValue, props.placeholder], ['Name', 'Ada', 'Your name']);
-    assert.throws(() => describe(() => h(tag, { 'aria-label': '  ' }), {}), /UI_INPUT/);
+    assert.throws(() => describe(() => h(tag, { ...kind, 'aria-label': '  ' }), {}), /UI_INPUT/);
   }
 });
 
@@ -39,7 +39,7 @@ test('input callbacks survive discarded candidates and disabled inputs register 
 
 test('input descriptions validate text, bindings, children and props', () => {
   for (const props of [{ value: null }, { value: 1 }, { value: '中'.repeat(22000) }, { value: '\uD800' }, { placeholder: false }, { type: 'url' },
-    { autoFocus: 1 }, { inputMode: 'url' }, { type: 'search' }, { type: 'number', inputMode: 'tel' }, { onInput: 1 }, { bind: { value: 'x', set() {} } }])
+    { autoFocus: 1 }, { inputMode: 'url' }, { inputMode: 'search' }, { type: 'number', inputMode: 'tel' }, { onInput: 1 }, { bind: { value: 'x', set() {} } }])
     assert.throws(() => describe(() => h('input', props), {}), /UI_INPUT/);
   assert.throws(() => describe(() => h('textarea', {}, 'child'), {}), /UI_CHILD/);
   assert.throws(() => describe(() => h('input', { onClick() {} }), {}), /UI_PROP/);
@@ -72,15 +72,16 @@ test('ASCII fast validation preserves the exact UTF-8 byte limit', () => {
 
 test('search binds committed text and submits through a search keyboard', () => {
   reset(); let submitted = '';
-  const render = () => h('search', { bind: useLocal('query', ''), onSubmit: value => submitted = value });
+  const render = () => h('input', { type: 'search', bind: useLocal('query', ''), onSubmit: value => submitted = value });
   const first = rendered(render);
   assert.equal(first.tag, 'search'); assert.equal(first.props.keyboard, 'search');
   assert.equal(dispatch(first.props.onInput, 'coffee'), true);
   const next = rendered(render); assert.equal(next.props.inputValue, 'coffee');
   assert.equal(dispatch(next.props.onSubmit, 'coffee'), true); assert.equal(submitted, 'coffee');
-  for (const props of [{ type: 'password' }, { inputMode: 'text' }]) assert.throws(() => describe(() => h('search', props), {}), /UI_PROP/);
-  assert.throws(() => describe(() => h('search', {}, 'child'), {}), /UI_CHILD/);
-  const disabled = rendered(() => h('search', { disabled: true, onInput() {}, onSubmit() {} }));
+  assert.throws(() => describe(() => h('search', {}), {}), /UI_TAG/);
+  assert.throws(() => describe(() => h('input', { type: 'search', inputMode: 'text' }), {}), /picks its own keyboard/);
+  assert.throws(() => describe(() => h('input', { type: 'search' }, 'child'), {}), /UI_CHILD/);
+  const disabled = rendered(() => h('input', { type: 'search', disabled: true, onInput() {}, onSubmit() {} }));
   assert.equal(disabled.props.onInput, undefined); assert.equal(disabled.props.onSubmit, undefined);
 });
 
@@ -136,8 +137,8 @@ test('editor attributes are validated, normalized and wired for the platform inp
     ['input', { maxLength: 0 }, /maxLength/], ['input', { autoComplete: 'password' }, /autoComplete must be one of/],
     ['input', { min: 1 }, /need type="number", "date" or "time"/], ['input', { inputMode: 'numeric', min: 1 }, /need type/],
     ['input', { type: 'number', min: 5, max: 1 }, /min exceeds max/], ['input', { type: 'date', min: '01/02/2024' }, /ISO form/],
-    ['input', { type: 'date', step: 1 }, /step is a positive number/], ['input', { type: 'search' }, /use <search>/],
-    ['search', { spellCheck: 'no' }, /spellCheck/]])
+    ['input', { type: 'date', step: 1 }, /step is a positive number/], ['input', { type: 'url' }, /type "url"/],
+    ['input', { type: 'search', spellCheck: 'no' }, /spellCheck/]])
     assert.throws(() => describe(() => h(tag, { value: '', ...props }), {}), message);
 });
 

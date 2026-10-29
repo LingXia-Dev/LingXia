@@ -21,10 +21,10 @@ const host = fileURLToPath(new URL('../src/host.js', import.meta.url));
 const runtimeRoot = dirname(runtime).toLowerCase();
 const has = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 const common = new Set(commonProps);
-const editors = new Set(['input', 'textarea', 'search']);
+const editors = new Set(['input', 'textarea']);
 const controls = new Set(['button', 'checkbox', 'switch', 'radio', 'link']);
 // Elements that take input of their own; they may sit inside a pressable control.
-const interactiveTags = new Set(['button', 'link', 'checkbox', 'switch', 'radio', 'input', 'textarea', 'search', 'select', 'slider']);
+const interactiveTags = new Set(['button', 'link', 'checkbox', 'switch', 'radio', 'input', 'textarea', 'select', 'slider']);
 
 export function acceptsProp(tag, key) {
   const element = elements[tag];
@@ -45,7 +45,7 @@ const position = (file, node) => {
 
 /** Every authoring problem in one module, as `file:line:col: CODE: message`. */
 // Controls a screen reader announces need a name; the fix is named in the message.
-const labelled = new Set(['input', 'textarea', 'search', 'slider', 'radio', 'plot', 'select']);
+const labelled = new Set(['input', 'textarea', 'slider', 'radio', 'plot', 'select']);
 const contentNamed = new Set(['button', 'link', 'checkbox', 'switch']);
 function unnamed(tag, node, file) {
   const attributes = node.attributes.properties;

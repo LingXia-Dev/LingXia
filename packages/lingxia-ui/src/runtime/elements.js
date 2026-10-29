@@ -14,8 +14,8 @@ const common = new Set(commonProps);
 const semanticStates = { pressed: 'statePressed', selected: 'stateSelected', expanded: 'stateExpanded', busy: 'stateBusy' };
 const accepts = (field, tag) => admission.fields[field].includes(elements[tag].wire);
 // Elements that take input of their own; they may sit inside a pressable control.
-const interactiveTags = new Set(['button', 'link', 'checkbox', 'switch', 'radio', 'input', 'textarea', 'search', 'select', 'slider']);
-const bindCodes = { input: 'UI_INPUT', textarea: 'UI_INPUT', search: 'UI_INPUT', checkbox: 'UI_CHECK', switch: 'UI_CHECK', slider: 'UI_SLIDER', radio: 'UI_RADIO' };
+const interactiveTags = new Set(['button', 'link', 'checkbox', 'switch', 'radio', 'input', 'textarea', 'select', 'slider']);
+const bindCodes = { input: 'UI_INPUT', textarea: 'UI_INPUT', checkbox: 'UI_CHECK', switch: 'UI_CHECK', slider: 'UI_SLIDER', radio: 'UI_RADIO' };
 const optionStyle = ['fontSize', 'fontWeight', 'fontFamily', 'lineHeight', 'color', 'background'];
 // A component's id keys its local state and nodes. The compiler stamps each top-level component
 // with `__lxid` (module path and declaration name), which survives minification and hot swaps; a
@@ -104,7 +104,7 @@ function nodeStyle(tag, props, extra, inherited, direction, structure) {
   return { ...style, fields: { ...style.fields } };
 }
 
-const fieldTags = new Set(['input', 'textarea', 'search', 'select']);
+const fieldTags = new Set(['input', 'textarea', 'select']);
 const runTags = new Set(['span', 'link']);
 const disabledField = { color: 'text-muted', backgroundColor: 'surface-sunken', borderColor: 'line' };
 
@@ -215,7 +215,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   // Controls nest inside a pressable control and take presses in their own bounds; scrolls do not.
   if (parent.inControl && (tag === 'scroll' || tag === 'list')) throw Error('UI_BUTTON: a scroll or list cannot sit inside a pressable control');
   if (element.binding) bind(tag, element, props);
-  const editor = ['input', 'textarea', 'search'].includes(tag);
+  const editor = tag === 'input' || tag === 'textarea';
   if (props.dir !== undefined && !['ltr', 'rtl', 'auto'].includes(props.dir)) throw Error('UI_PROP: dir must be "ltr", "rtl" or "auto"');
   // `dir` overrides the direction inherited from the environment for its subtree. `auto` takes the
   // direction of the content's first strong character, as in HTML; an editor follows its live text.
@@ -233,7 +233,8 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   if (leaf && flat.some(child => typeof child !== 'string' && typeof child !== 'number')) throw Error(`UI_CHILD: <${tag}> accepts only text`);
   if (element.children === 'none' && flat.length) throw Error(`UI_CHILD: <${tag}> takes no children`);
   const disabled = props.disabled === true;
-  const result = { tag: element.wire, element: tag, props, fields: style.fields, states: style.states, typography: style.typography,
+  // A search field draws its magnifier and search keyboard natively, as its own wire tag.
+  const result = { tag: tag === 'input' && props.type === 'search' ? 'search' : element.wire, element: tag, props, fields: style.fields, states: style.states, typography: style.typography,
     identity, text: leaf ? flat.join('') : '', wire: [], handlers: [], children: [] };
   const wire = (key, value) => result.wire.push([key, value]);
   const on = (key, callback, kind, isolated) => result.handlers.push([key, handle(), callbackOf(callback, kind, isolated)]);
@@ -272,7 +273,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
         if (next !== props.value) props.onChange(next);
       }, 'number');
       break;
-    case 'input': case 'textarea': case 'search':
+    case 'input': case 'textarea':
       check.label(props.accessibilityLabel, 'UI_INPUT');
       if (!validInputText(props.value === undefined ? '' : props.value) || !validInputText(props.placeholder === undefined ? '' : props.placeholder)) throw Error('UI_INPUT: invalid text');
       if (props.autoFocus !== undefined && typeof props.autoFocus !== 'boolean') throw Error('UI_INPUT: autoFocus');

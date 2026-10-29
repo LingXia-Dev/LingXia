@@ -3936,7 +3936,7 @@ fn an_off_screen_list_row_is_found_revealed_and_clicked_by_test_id() {
     let host = platform.host(
         &worker,
         &source(
-            "function render(){const query=useLocal('query',''),picked=useLocal('picked','');const rows=Array.from({length:40},(_,i)=>({id:`row-${i}`,label:`Row ${i}`})).filter(r=>r.label.includes(query.value));return h('column',{},h('search',{'data-testid':'filter',bind:query,'aria-label':'Filter'}),h(List,{'data-testid':'list',style:{height:120},items:rows,getKey:r=>r.id,renderItem:r=>h('button',{'data-testid':r.id,onClick:()=>picked.set(r.label),style:{height:40}},r.label)}),h('text',{'data-testid':'picked'},`picked=${picked.value}`))}",
+            "function render(){const query=useLocal('query',''),picked=useLocal('picked','');const rows=Array.from({length:40},(_,i)=>({id:`row-${i}`,label:`Row ${i}`})).filter(r=>r.label.includes(query.value));return h('column',{},h('input',{type:'search','data-testid':'filter',bind:query,'aria-label':'Filter'}),h(List,{'data-testid':'list',style:{height:120},items:rows,getKey:r=>r.id,renderItem:r=>h('button',{'data-testid':r.id,onClick:()=>picked.set(r.label),style:{height:40}},r.label)}),h('text',{'data-testid':'picked'},`picked=${picked.value}`))}",
         ),
         false,
     );
@@ -4129,7 +4129,7 @@ fn a_list_row_below_the_fold_is_revealed_through_the_page_scroll_and_clicked() {
     let host = platform.host(
         &worker,
         &source(
-            "function render(){const query=useLocal('query',''),picked=useLocal('picked','');const rows=Array.from({length:40},(_,i)=>({id:`row-${i}`,label:`Row ${i}`})).filter(r=>r.label.includes(query.value));return h('scroll',{},h('search',{'data-testid':'filter',bind:query,'aria-label':'Filter'}),h('view',{style:{height:3000}}),h(List,{'data-testid':'list',style:{height:192},items:rows,getKey:r=>r.id,renderItem:r=>h('button',{'data-testid':r.id,onClick:()=>picked.set(r.label),style:{height:37}},r.label)}),h('text',{'data-testid':'picked'},`picked=${picked.value}`))}",
+            "function render(){const query=useLocal('query',''),picked=useLocal('picked','');const rows=Array.from({length:40},(_,i)=>({id:`row-${i}`,label:`Row ${i}`})).filter(r=>r.label.includes(query.value));return h('scroll',{},h('input',{type:'search','data-testid':'filter',bind:query,'aria-label':'Filter'}),h('view',{style:{height:3000}}),h(List,{'data-testid':'list',style:{height:192},items:rows,getKey:r=>r.id,renderItem:r=>h('button',{'data-testid':r.id,onClick:()=>picked.set(r.label),style:{height:37}},r.label)}),h('text',{'data-testid':'picked'},`picked=${picked.value}`))}",
         ),
         false,
     );

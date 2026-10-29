@@ -67,7 +67,7 @@ test('component member expressions are not intrinsic tags; fragments and DOM glo
 
 test('spread and explicit props obey one element contract', () => {
   for (const source of ['const view = <text {...{typo:true}}>Hello</text>;', 'const props = {typo:true}; const view = <text {...props}/>;',
-    'const view = <search {...{type:"password"}}/>;']) flags(source, /UI_PROP/);
+    'const view = <input type="search" {...{secure:true}}/>;']) flags(source, /UI_PROP/);
   clean('const props = {children:"Hello",className:"text-sm"}; const view = <text {...props}/>;');
   clean('const view = <list count={keys.length} itemKeys={keys} row={renderRow}/>;');
   flags('const view = <scroll itemKeys={keys}/>;', /UI_PROP: itemKeys is not a property of <scroll>/);
@@ -76,7 +76,7 @@ test('spread and explicit props obey one element contract', () => {
   flags('const x = <textarea enabled={false}/>;', /UI_PROP: enabled/);
   clean('const x = <checkbox value={true}><row><text>Task</text></row></checkbox>;');
   clean('const x = <switch aria-label="Task" bind={on}/>;');
-  for (const prop of ['type="password"', 'inputMode="text"', 'onChange={find}']) flags(`const x=<search ${prop}/>;`, /UI_PROP/);
+  for (const prop of ['secure', 'keyboard="text"', 'onChange={find}']) flags(`const x=<input type="search" ${prop}/>;`, /UI_PROP/);
   for (const name of ['onClick', 'onInput', 'onSubmit']) flags(`const x=<slider aria-label="Range" ${name}={update}/>;`, /UI_PROP/);
   flags('const x=<radio-option/>;', /UI_TAG/);
   flags('const x=<radio onClick={change}/>;', /UI_PROP/);
@@ -230,7 +230,7 @@ test('compiler emits executable ESM UI, carries the action catalog and preserves
     'page.tsx': `export function render() { return <column>
       <stack><text>Back</text><text style={{position:"absolute",left:12,top:-4}}>Front</text></stack>
       <grid style={{gridTemplateColumns:2}}><text style={{lineClamp:2}}>Hello, world!</text><text>Second card</text></grid>
-      <search aria-label="Search" placeholder="Find a moment"/><slider aria-label="Volume" value={40}/>
+      <input type="search" aria-label="Search" placeholder="Find a moment"/><slider aria-label="Volume" value={40}/>
       <radio aria-label="Repeat" value="daily" options={[{value:"daily",label:"Daily"},{value:"weekly",label:"Weekly"}]} />
     </column>; }`,
   }, async root => {

@@ -61,10 +61,16 @@ fn borders_preserve_input_content_and_paint_after_editor_foreground() {
 #[test]
 fn aligned_single_line_editors_keep_caret_and_hit_geometry_together() {
     for tag in ["input", "search"] {
+        // A search field is an `<input type="search">`.
+        let (tag, kind) = if tag == "search" {
+            ("input", "type:'search',")
+        } else {
+            (tag, "")
+        };
         for alignment in ["left", "center", "right"] {
             for value in ["MMM", "MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM"] {
                 let source = crate::session::tests::source(&format!(
-                    "function render(){{return h('{tag}',{{autoFocus:true,value:'{value}',style:{{width:180,height:56,padding:8,borderWidth:2,textAlign:'{alignment}'}}}})}}"
+                    "function render(){{return h('{tag}',{{{kind}autoFocus:true,value:'{value}',style:{{width:180,height:56,padding:8,borderWidth:2,textAlign:'{alignment}'}}}})}}"
                 ));
                 for scale in [1.0, 2.0] {
                     let mut page = crate::ViewSession::new(&source).unwrap();
@@ -118,7 +124,7 @@ fn aligned_single_line_editors_keep_caret_and_hit_geometry_together() {
 fn search_keeps_icon_fixed_while_text_selection_and_caret_scroll() {
     use crate::text::input::Edit;
     let module = crate::session::tests::source(
-        "function render(){return h('search',{value:'A long search query that must scroll',autoFocus:true,style:{fontSize:18,backgroundColor:'#ffffff',color:'#18243a'}})}",
+        "function render(){return h('input',{type:'search',value:'A long search query that must scroll',autoFocus:true,style:{fontSize:18,backgroundColor:'#ffffff',color:'#18243a'}})}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let first = page.layout(180, 80, 1.0).unwrap();
@@ -245,8 +251,14 @@ fn styled_textarea_caret_and_hits_share_the_retained_line_spacing() {
 #[test]
 fn asymmetric_input_padding_keeps_caret_hits_and_search_reserve_consistent() {
     for (tag, reserve) in [("input", 0.0), ("textarea", 0.0), ("search", 32.0)] {
+        // A search field is an `<input type="search">`.
+        let (tag, kind) = if tag == "search" {
+            ("input", "type:'search',")
+        } else {
+            (tag, "")
+        };
         let module = crate::session::tests::source(&format!(
-            "function render(){{return h('{tag}',{{value:'abc',autoFocus:true,style:{{width:200,height:80,paddingTop:10,paddingRight:20,paddingBottom:5,paddingLeft:30}}}})}}",
+            "function render(){{return h('{tag}',{{{kind}value:'abc',autoFocus:true,style:{{width:200,height:80,paddingTop:10,paddingRight:20,paddingBottom:5,paddingLeft:30}}}})}}",
         ));
         for scale in [1.0, 2.0] {
             let mut page = crate::ViewSession::new(&module).unwrap();
@@ -558,9 +570,15 @@ fn input_hit_testing_uses_displayed_scroll_and_mask_mapping() {
 #[test]
 fn placeholder_tint_is_local_and_does_not_recolor_value_or_caret() {
     for tag in ["input", "textarea", "search"] {
+        // A search field is an `<input type="search">`.
+        let (tag, kind) = if tag == "search" {
+            ("input", "type:'search',")
+        } else {
+            (tag, "")
+        };
         for value in ["", "typed", " "] {
             let source = crate::session::tests::source(&format!(
-                "function render(){{return h('{tag}',{{value:'{value}',placeholder:'Hint',style:{{color:'#0000ff',placeholderColor:'#ff000080'}}}})}}"
+                "function render(){{return h('{tag}',{{{kind}value:'{value}',placeholder:'Hint',style:{{color:'#0000ff',placeholderColor:'#ff000080'}}}})}}"
             ));
             let mut page = crate::ViewSession::new(&source).unwrap();
             let display = page.layout(200, 80, 1.0).unwrap();

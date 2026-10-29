@@ -54,7 +54,7 @@ or pass `value` and the change callback, and store the value yourself:
 
 | Element | Value | Callback |
 | --- | --- | --- |
-| `<input>`, `<textarea>`, `<search>` | `string` | `onInput(text)` |
+| `<input>`, `<textarea>` | `string` | `onInput(text)` |
 | `<checkbox>`, `<switch>` | `boolean` | `onChange(checked)` |
 | `<radio>` | `string` (an option's `value`) | `onChange(value)` |
 | `<slider>` | `number` | `onChange(value)` |
@@ -72,8 +72,8 @@ editor finishes the composition, so the last composed text is the value.
 | Prop | Applies to | Effect |
 | --- | --- | --- |
 | `placeholder` | all | hint text; color it with `placeholder:text-*` |
-| `type` | `input` | `text`, `password` (masked, no learning), `email`, `number`, `tel`, `date`, `time` |
-| `inputMode` | `input`, `textarea` | keyboard only: `text`, `numeric`, `decimal`, `tel`, `email`, `search`; not with `type` `number`/`date`/`time` |
+| `type` | `input` | `text`, `password` (masked, no learning), `email`, `number`, `tel`, `search`, `date`, `time` |
+| `inputMode` | `input`, `textarea` | keyboard only: `text`, `numeric`, `decimal`, `tel`, `email`; not with `type` `number`/`search`/`date`/`time` |
 | `maxLength` | all | 1–65536 UTF-16 units; insertions are cut, existing text is kept |
 | `autoComplete` | all | HTML autocomplete token, mapped to platform autofill (`email`, `one-time-code`, `new-password`, …) |
 | `enterKeyHint` | all | the label of the keyboard's action key |
@@ -86,8 +86,7 @@ Every action key calls `onSubmit`: `enterKeyHint` chooses its label, and focus d
 next field on its own. On a `<textarea>`, `enterKeyHint` `send`, `go`, `done` or `search` makes Return
 submit (Shift+Return inserts a newline); otherwise Return inserts a newline. There is no `focus()` API; `autoFocus` is the only way to place focus.
 
-`<search>` is an `<input>` with the search keyboard and room for its magnifier; it takes no `type`
-or `inputMode`. `<textarea>` is 120 px tall until sized.
+`<input type="search">` has the search keyboard and room for its magnifier. `<textarea>` is 120 px tall until sized.
 
 `focus:` styles a focused editor (paint only). Focus follows the editor across reorders and ends when it
 is disabled or removed. `userSelect` (`select-*`) is refused on editors: they always select their own text.

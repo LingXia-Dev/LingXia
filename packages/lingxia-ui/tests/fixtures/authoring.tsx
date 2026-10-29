@@ -33,9 +33,7 @@ export function render(view: View<{ save(value: string): Promise<void> }, { titl
   // @ts-expect-error textarea preserves the binding union
   const textarea = <textarea bind={draft} onInput={() => {}}/>;
   // @ts-expect-error Omit must not erase the search binding union
-  const search = <search bind={draft} value="conflict"/>;
-  // @ts-expect-error search owns its keyboard
-  const keyboard = <search inputMode="email"/>;
+  const search = <input type="search" bind={draft} value="conflict"/>;
   // @ts-expect-error style properties are checked per element
   const misplaced = <text style={{alignItems: 'center'}}/>;
   // @ts-expect-error grid columns are a style, not a prop
@@ -80,7 +78,7 @@ export function render(view: View<{ save(value: string): Promise<void> }, { titl
   const wide = useView().env.sizeClass === 'wide';
   return <Card>
     <text>{view.data.title}{false}{null}{['hello', 1]}</text>
-    <input bind={draft}/><textarea bind={draft}/><search bind={draft}/>
+    <input bind={draft}/><textarea bind={draft}/><input type="search" bind={draft}/>
     <checkbox bind={checked}/><switch bind={checked}/>
     <slider bind={volume} aria-label="Volume"/>
     <radio bind={draft} options={[]}/>

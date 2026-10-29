@@ -156,20 +156,19 @@ export function listKeys(props) {
 
 const iso = { date: /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/, time: /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/ };
 
-const inputTypes = { text: 'text', password: 'text', email: 'email', number: 'number', tel: 'phone', date: 'date', time: 'time' };
-const inputModes = { text: 'text', numeric: 'number', decimal: 'number', tel: 'phone', email: 'email', search: 'search' };
+const inputTypes = { text: 'text', password: 'text', email: 'email', number: 'number', tel: 'phone', search: 'search', date: 'date', time: 'time' };
+const inputModes = { text: 'text', numeric: 'number', decimal: 'number', tel: 'phone', email: 'email' };
 
 /** The wire keyboard and secure flag an editor's `type` and `inputMode` name. */
 export function editorKind(tag, props) {
   const { type, inputMode } = props;
-  if (tag === 'search') return { keyboard: 'search', secure: false };
   if (type !== undefined && (tag !== 'input' || !Object.hasOwn(inputTypes, type))) {
-    const hint = type === 'search' ? '; use <search>' : tag === 'input' ? '' : '; set inputMode on <textarea>';
+    const hint = tag === 'input' ? '' : '; set inputMode on <textarea>';
     throw Error(`UI_INPUT: type ${JSON.stringify(type)} is not one of ${Object.keys(inputTypes).join(', ')}${hint}`);
   }
   if (inputMode !== undefined && !Object.hasOwn(inputModes, inputMode))
     throw Error(`UI_INPUT: inputMode ${JSON.stringify(inputMode)} is not one of ${Object.keys(inputModes).join(', ')}`);
-  if (inputMode !== undefined && ['number', 'date', 'time'].includes(type))
+  if (inputMode !== undefined && ['number', 'search', 'date', 'time'].includes(type))
     throw Error(`UI_INPUT: type="${type}" picks its own keyboard; drop inputMode`);
   const keyboard = inputMode !== undefined ? inputModes[inputMode] : type !== undefined ? inputTypes[type] : undefined;
   return { keyboard, secure: type === 'password' };

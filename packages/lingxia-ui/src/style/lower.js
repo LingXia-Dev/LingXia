@@ -322,7 +322,7 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
         if (value !== 'auto') length(name, percent(value) ?? value);
         out[key] = value; break;
       case 'option':
-        if (name === 'userSelect' && ['input', 'textarea', 'search'].includes(tag)) throw Error('UI_STYLE: editors select their text already; userSelect is for static text');
+        if (name === 'userSelect' && ['input', 'textarea'].includes(tag)) throw Error('UI_STYLE: editors select their text already; userSelect is for static text');
         out[key] = option(name, key, value); break;
       case 'alignment': out[key] = option(name, key, alignment[value] ?? value); break;
       case 'justification': out[key] = option(name, key, justification[value] ?? value); break;

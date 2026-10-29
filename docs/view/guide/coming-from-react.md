@@ -13,7 +13,7 @@ export function render({ data, actions }: View<Actions, { query: string }>) {
   return (
     <page>
       <column className="p-4 gap-2">
-        <search bind={query} aria-label="Search products" placeholder="Search" />
+        <input type="search" bind={query} aria-label="Search products" placeholder="Search" />
         {results.pending && <text className="text-xs text-muted">Searching…</text>}
       </column>
       <List
@@ -45,7 +45,7 @@ no React and no DOM. This page lists what changes.
 | `img` | `<image>` |
 | `svg`, icon components | `<vector paths>` |
 | `ul`/`ol`/`li` | `<column role="list">` / `role="listitem"` |
-| `input`, `textarea` | `<input>`, `<textarea>`, `<search>` |
+| `input`, `textarea` | `<input>`, `<textarea>` |
 | `input type="checkbox"`, `select`, `input type="range"` | `<checkbox>`/`<switch>`, `<radio>`, `<slider>` |
 | `form` | none: state + an action ([Inputs and forms](inputs-and-forms.md)) |
 | `canvas`, `video`, `iframe` | none; `<plot>` for charts |

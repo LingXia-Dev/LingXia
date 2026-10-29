@@ -132,7 +132,7 @@ stack lowers to its declared face, or to the generic of a system stack (`system-
 | `rtl:`, `ltr:` | the node's inline direction ([RTL and i18n](rtl-and-i18n.md)) |
 | `first:` `last:` `only:` `odd:` `even:` `empty:` | the node's position among its rendered siblings; `empty:` a node with no children |
 | `active:` | a pressed `<button>`, `<checkbox>`, `<switch>`, `<radio>` or `<link>` |
-| `focus:` | a focused `<input>`, `<textarea>` or `<search>` |
+| `focus:` | a focused `<input>` or `<textarea>` |
 | `hover:` | a hovered element, only when `env.pointer` is `fine` |
 | `disabled:` | an element with `disabled` set; it replaces the whole class cascade |
 | `placeholder:` | an editor's placeholder; `text-*` color only |

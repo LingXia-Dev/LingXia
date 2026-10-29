@@ -712,7 +712,7 @@ fn composing_uses_native_layout_and_commits_back_to_local_state() {
             "let renders=0;function render(){renders++;const draft=useLocal('draft',''),sent=useLocal('sent','');return h('column',{},h('input',{key:'draft',bind:draft,autoFocus:true,onSubmit:v=>sent.set(v)}),h('text',{},draft.value+'|'+sent.value+'|'+renders))}",
         );
         let module = if search {
-            module.replace("h('input',", "h('search',")
+            module.replace("h('input',{", "h('input',{type:'search',")
         } else {
             module
         };

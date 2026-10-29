@@ -37,7 +37,7 @@ reader. Every element has a role from what it is; you add names, structural role
 | --- | --- |
 | `<button>`, `<checkbox>` | `aria-label`, else the text and image `alt` inside it, in order |
 | `<switch>`, `<link>` | `aria-label`, else its text |
-| `<input>`, `<textarea>`, `<search>` | `aria-label`; the placeholder is a hint, the value is the text |
+| `<input>`, `<textarea>` | `aria-label`; the placeholder is a hint, the value is the text |
 | `<radio>` | `aria-label` for the group; each option by its `label` |
 | `<slider>`, `<plot>` | `aria-label`, which is required |
 | `<image>` | `alt`; `alt=""` hides a decorative image |

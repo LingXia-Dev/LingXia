@@ -18,9 +18,9 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 | `empty:` | any element |
 | `focus-within:` | any element; while it or a descendant has focus; paint only |
 | `hover:` | any element, only when `env.pointer` is `fine`; paint only |
-| `focus:` | `<input>` `<textarea>` `<search>` `<select>`; paint only |
+| `focus:` | `<input>` `<textarea>` `<select>`; paint only |
 | `active:` | `<button>` `<checkbox>` `<switch>` `<radio>` `<link>`; paint only |
-| `disabled:` | `<button>` `<input>` `<textarea>` `<search>` `<checkbox>` `<switch>` `<radio>` `<slider>` `<link>` `<select>`; replaces the whole class cascade |
+| `disabled:` | `<button>` `<input>` `<textarea>` `<checkbox>` `<switch>` `<radio>` `<slider>` `<link>` `<select>`; replaces the whole class cascade |
 | `has:` | any element, alone; `has-checked:`, `has-disabled:` (a descendant checkbox, switch, answered radio or disabled element) and `has-focus:`; paint only |
 | `data:` | any element; matches its own `data-*` prop (`data-active:`, `data-[state=open]:`), layout included |
 | `motion-safe:` | any element |

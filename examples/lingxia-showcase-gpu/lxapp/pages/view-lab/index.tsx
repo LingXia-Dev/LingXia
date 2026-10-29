@@ -393,7 +393,7 @@ function Controls() {
           { value: 'l', label: 'Large', 'data-testid': 'lab-controls-size-l' }, { value: 'xl', label: 'Extra large', disabled: true, 'data-testid': 'lab-controls-size-xl' }]} />
       <slider data-testid="lab-controls-volume" bind={volume} min={0} max={100} step={10} aria-label="Volume" className="text-accent" />
       <textarea data-testid="lab-controls-notes" bind={notes} rows={3} maxRows={6} aria-label="Notes" placeholder="Several lines" className={field} />
-      <search data-testid="lab-controls-search" bind={query} aria-label="Filter rows" placeholder="Filter rows" className={field} />
+      <input type="search" data-testid="lab-controls-search" bind={query} aria-label="Filter rows" placeholder="Filter rows" className={field} />
       <List data-testid="lab-controls-list" className="h-48 rounded-lg border border-line"
         items={rows.filter(row => row.label.toLowerCase().includes(query.value.toLowerCase()))} getKey={row => row.id}
         renderItem={row => (

@@ -82,7 +82,7 @@ test('vectors encode bounded path data, fit and dash patterns, and decorate comp
 test('property admission stays local to each element and rejects prototype names', () => {
   for (const [tag, property] of [
     ['text', 'onClick'], ['button', 'onInput'], ['column', 'disabled'], ['row', 'row'], ['scroll', 'count'], ['list', 'onClick'],
-    ['image', 'columns'], ['grid', 'src'], ['plot', 'onChange'], ['input', 'onClick'], ['textarea', 'onChange'], ['search', 'options'],
+    ['image', 'columns'], ['grid', 'src'], ['plot', 'onChange'], ['input', 'onClick'], ['textarea', 'onChange'], ['input', 'options'],
     ['checkbox', 'min'], ['switch', 'placeholder'], ['slider', 'type'], ['radio', 'step'], ['spacer', 'lines'], ['stack', 'onReachStart'],
     ['text', 'lines'], ['grid', 'columns'], ['image', 'fit'], ['button', 'enabled'],
   ]) {

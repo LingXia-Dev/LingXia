@@ -126,8 +126,8 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput
 | --- | --- | --- |
 | `aria-label` | `string` |  |
 | `placeholder` | `string` |  |
-| `type` | `"text" \| "password" \| "email" \| "number" \| "tel" \| "date" \| "time"` |  |
-| `inputMode` | `"text" \| "numeric" \| "decimal" \| "tel" \| "email" \| "search"` |  |
+| `type` | `"text" \| "password" \| "email" \| "number" \| "tel" \| "search" \| "date" \| "time"` |  |
+| `inputMode` | `"text" \| "numeric" \| "decimal" \| "tel" \| "email"` |  |
 | `autoFocus` | `boolean` |  |
 | `disabled` | `boolean` |  |
 | `onSubmit` | `(value: string) => void` |  |
@@ -152,26 +152,7 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput
 | `maxRows` | `number` |  |
 | `aria-label` | `string` |  |
 | `placeholder` | `string` |  |
-| `inputMode` | `"text" \| "numeric" \| "decimal" \| "tel" \| "email" \| "search"` |  |
-| `autoFocus` | `boolean` |  |
-| `disabled` | `boolean` |  |
-| `onSubmit` | `(value: string) => void` |  |
-| `maxLength` | `number` |  |
-| `autoComplete` | `AutoComplete` |  |
-| `enterKeyHint` | `"enter" \| "done" \| "go" \| "next" \| "previous" \| "search" \| "send"` |  |
-| `autoCapitalize` | `"none" \| "sentences" \| "words" \| "characters" \| "off" \| "on"` |  |
-| `spellCheck` | `boolean` |  |
-
-## `<search>`
-
-Children: none. Not allowed inside a composed `<button>` or `<checkbox>`.
-
-Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput(value: string)`; not both. `onInput` runs on every value change, a composition included.
-
-| Prop | Type | Required |
-| --- | --- | --- |
-| `aria-label` | `string` |  |
-| `placeholder` | `string` |  |
+| `inputMode` | `"text" \| "numeric" \| "decimal" \| "tel" \| "email"` |  |
 | `autoFocus` | `boolean` |  |
 | `disabled` | `boolean` |  |
 | `onSubmit` | `(value: string) => void` |  |

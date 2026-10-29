@@ -36,7 +36,7 @@ spec('a tap on a nested switch, a row button and a rich-text link reaches only t
   await expect(view.testId('lab-rich-presses')).toHaveText('Link pressed 1 times');
 });
 
-spec('the controls take a tap, a drag, typing and a fling as a user gives them', { covers: ['view:radio', 'view:slider', 'view:textarea', 'view:search', 'view:list'], start: { page: 'view-lab' } }, async (t) => {
+spec('the controls take a tap, a drag, typing and a fling as a user gives them', { covers: ['view:radio', 'view:slider', 'view:textarea', 'view:input', 'view:list'], start: { page: 'view-lab' } }, async (t) => {
   const view = t.app.view;
   await view.testId('lab-tab-input').click();
   const values = view.testId('lab-controls-values');
