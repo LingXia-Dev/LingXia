@@ -251,7 +251,9 @@ export class Gestures {
       const until = Date.now() + timeout;
       let seen: ChromeElement[] = [];
       for (;;) {
-        const all = await this.scope.driver().chrome({});
+        // Scoped queries, so only a tab query peeks a collapsed sidebar rail.
+        const all: ChromeElement[] = [];
+        for (const scope of scopes ?? [undefined]) all.push(...(await this.scope.driver().chrome(scope ? { scope } : {})));
         seen = all.filter((e) => e.label === label && (!scopes || scopes.includes(e.scope)));
         if (seen.length === 1) break;
         if (Date.now() >= until) {

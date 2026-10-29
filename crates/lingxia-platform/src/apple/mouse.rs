@@ -171,6 +171,25 @@ fn perform_app_mouse_on_main(
     }
 }
 
+/// The window that holds the pages, even while a popover or panel (picker,
+/// dev mark) is key: geometry and chrome queries, not input.
+#[cfg(target_os = "macos")]
+pub(super) fn resolve_page_window(
+    app: *mut objc2::runtime::AnyObject,
+) -> Option<*mut objc2::runtime::AnyObject> {
+    use objc2::msg_send;
+
+    let window = resolve_window(app, None)?;
+    unsafe {
+        let can_be_main: bool = msg_send![window, canBecomeMainWindow];
+        if can_be_main {
+            return Some(window);
+        }
+        let main: *mut objc2::runtime::AnyObject = msg_send![app, mainWindow];
+        Some(if main.is_null() { window } else { main })
+    }
+}
+
 #[cfg(target_os = "macos")]
 pub(super) fn resolve_window(
     app: *mut objc2::runtime::AnyObject,
@@ -204,10 +223,28 @@ pub(super) fn resolve_window(
             window = msg_send![app, mainWindow];
         }
         if window.is_null() {
+            // An inactive app has no key or main window; its first window may be
+            // a panel such as the dev mark, so take the largest that can be main.
             let windows: *mut objc2::runtime::AnyObject = msg_send![app, windows];
             if !windows.is_null() {
                 let count: usize = msg_send![windows, count];
-                if count > 0 {
+                let mut best = 0.0;
+                for index in 0..count {
+                    let candidate: *mut objc2::runtime::AnyObject =
+                        msg_send![windows, objectAtIndex: index];
+                    let visible: bool = msg_send![candidate, isVisible];
+                    let can_be_main: bool = msg_send![candidate, canBecomeMainWindow];
+                    if !visible || !can_be_main {
+                        continue;
+                    }
+                    let frame: objc2_foundation::NSRect = msg_send![candidate, frame];
+                    let area = frame.size.width * frame.size.height;
+                    if area > best {
+                        best = area;
+                        window = candidate;
+                    }
+                }
+                if window.is_null() && count > 0 {
                     window = msg_send![windows, objectAtIndex: 0usize];
                 }
             }

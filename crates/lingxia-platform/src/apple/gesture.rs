@@ -64,7 +64,9 @@ impl AppGesture for Platform {
 
 #[cfg(target_os = "macos")]
 mod mac {
-    use super::super::mouse::{content_point_to_window_point, parse_window_id, resolve_window};
+    use super::super::mouse::{
+        content_point_to_window_point, parse_window_id, resolve_page_window, resolve_window,
+    };
     use crate::error::PlatformError;
     use crate::traits::gesture::{
         AppGestureRequest, AppGestureResult, GestureDelivery, GestureEnd, GestureInput,
@@ -212,7 +214,7 @@ mod mac {
             }
         }
         unsafe {
-            let window = resolve_window(app, None).ok_or("no NSWindow available")?;
+            let window = resolve_page_window(app).ok_or("no NSWindow available")?;
             let content: *mut AnyObject = msg_send![window, contentView];
             let mut found = None;
             if !content.is_null() {
@@ -502,16 +504,47 @@ mod mac {
         Ok(events + 1)
     }
 
+    /// The largest visible page view (WebKit or GPU) under `view`.
+    unsafe fn largest_page_view(view: *mut AnyObject) -> Option<*mut AnyObject> {
+        use objc2_foundation::NSRect;
+        unsafe {
+            let hidden: bool = msg_send![view, isHiddenOrHasHiddenAncestor];
+            if hidden {
+                return None;
+            }
+            let class: *const AnyObject = msg_send![view, className];
+            let name = objc2_foundation::NSString::from_raw(class);
+            if name.contains("WKWebView") || name.ends_with("GpuPageView") {
+                return Some(view);
+            }
+            let area = |v: *mut AnyObject| {
+                let r: NSRect = msg_send![v, bounds];
+                r.size.width * r.size.height
+            };
+            let subviews: *mut AnyObject = msg_send![view, subviews];
+            let count: usize = msg_send![subviews, count];
+            (0..count)
+                .filter_map(|i| largest_page_view(msg_send![subviews, objectAtIndex: i]))
+                .max_by(|a, b| area(*a).total_cmp(&area(*b)))
+        }
+    }
+
     pub(super) async fn orient_window(landscape: bool) -> Result<[f64; 2], PlatformError> {
         use objc2_foundation::{NSRect, NSSize};
         on_main(move || unsafe {
             let app: *mut AnyObject = msg_send![objc2::class!(NSApplication), sharedApplication];
-            let window = resolve_window(app, None).ok_or("no NSWindow available")?;
+            let window = resolve_page_window(app).ok_or("no NSWindow available")?;
             let content: *mut AnyObject = msg_send![window, contentView];
             let bounds: NSRect = msg_send![content, bounds];
             let (w, h) = (bounds.size.width, bounds.size.height);
-            if (w > h) != landscape {
-                let size = NSSize::new(h, w);
+            // The page decides the orientation, not the window: the sidebar and
+            // navigation bar make a squarish window's page portrait.
+            let (pw, ph) = largest_page_view(content).map_or((w, h), |page| {
+                let page: NSRect = msg_send![page, bounds];
+                (page.size.width, page.size.height)
+            });
+            if (pw > ph) != landscape {
+                let size = NSSize::new(ph + (w - pw), pw + (h - ph));
                 let _: () = msg_send![window, setContentSize: size];
             }
             let bounds: NSRect = msg_send![content, bounds];
@@ -641,14 +674,12 @@ mod mac {
             }
         }
 
-        if scope
-            .as_deref()
-            .is_none_or(|s| s == "sidebar" || s == "tabBar")
-        {
+        // Only a query for tabs peeks the rail: the peek covers the page's left edge.
+        if matches!(scope.as_deref(), Some("sidebar" | "tabBar")) {
             let revealed = on_main(|| unsafe {
                 let app: *mut AnyObject =
                     msg_send![objc2::class!(NSApplication), sharedApplication];
-                let window = resolve_window(app, None).ok_or("no NSWindow available")?;
+                let window = resolve_page_window(app).ok_or("no NSWindow available")?;
                 let content: *mut AnyObject = msg_send![window, contentView];
                 Ok::<_, String>(!content.is_null() && reveal_tabs(content))
             })
@@ -661,7 +692,7 @@ mod mac {
 
         on_main(move || unsafe {
             let app: *mut AnyObject = msg_send![objc2::class!(NSApplication), sharedApplication];
-            let window = resolve_window(app, None).ok_or("no NSWindow available")?;
+            let window = resolve_page_window(app).ok_or("no NSWindow available")?;
             let content: *mut AnyObject = msg_send![window, contentView];
             if content.is_null() {
                 return Err("NSWindow has no contentView".to_string());
