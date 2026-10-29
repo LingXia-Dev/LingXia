@@ -10,9 +10,9 @@ use windows::Win32::Graphics::Gdi::{
     ANTIALIASED_QUALITY, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateFontW, CreateRoundRectRgn,
     CreateSolidBrush, DEFAULT_CHARSET, DEFAULT_PITCH, DT_CENTER, DT_END_ELLIPSIS, DT_SINGLELINE,
     DT_VCENTER, DT_WORDBREAK, DeleteObject, DrawTextW, ExtSelectClipRgn, FF_SWISS, FONT_QUALITY,
-    FillRect, GetDC, GetDeviceCaps, GetStockObject, GetTextExtentPoint32W, HDC, HFONT, HGDIOBJ,
-    IntersectClipRect, LOGPIXELSY, NULL_PEN, OUT_DEFAULT_PRECIS, RGN_AND, ReleaseDC, RestoreDC,
-    RoundRect, SaveDC, SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
+    FillRect, GetDC, GetStockObject, GetTextExtentPoint32W, HDC, HFONT, HGDIOBJ, IntersectClipRect,
+    NULL_PEN, OUT_DEFAULT_PRECIS, RGN_AND, ReleaseDC, RestoreDC, RoundRect, SaveDC, SelectObject,
+    SetBkMode, SetTextColor, TRANSPARENT,
 };
 use windows::Win32::Graphics::GdiPlus;
 use windows::Win32::UI::WindowsAndMessaging::{self, HICON};
@@ -195,10 +195,8 @@ fn draw_text_with_quality(
     }
 }
 
-pub(in crate::shell) fn logical_font_height(hdc: HDC, point_size: i32) -> i32 {
-    let dpi_y = unsafe { GetDeviceCaps(Some(hdc), LOGPIXELSY) };
-    let dpi_y = if dpi_y > 0 { dpi_y } else { 96 };
-    (point_size * dpi_y + 36) / 72
+pub(in crate::shell) fn logical_font_height(_hdc: HDC, point_size: i32) -> i32 {
+    (f64::from(point_size) * 96.0 / 72.0 * crate::dpi::chrome_scale()).round() as i32
 }
 
 pub(in crate::shell) fn draw_badge(hdc: HDC, item_rect: RECT, badge: &str) {

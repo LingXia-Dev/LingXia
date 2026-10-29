@@ -167,7 +167,8 @@ pub(super) fn reposition_cutout(content: HWND) {
         let _ = WindowsAndMessaging::GetWindowRect(content, &mut rect);
     }
     let x = rect.left + (spec.screen_width - cutout_spec.width) / 2;
-    let y = rect.top + CUTOUT_TOP_INSET;
+    let scale = content_fit_scale(hwnd_handle(content)).unwrap_or(1.0);
+    let y = rect.top + (CUTOUT_TOP_INSET as f64 * scale).round() as i32;
     unsafe {
         let _ = WindowsAndMessaging::SetWindowPos(
             hwnd_from_handle(cutout),

@@ -129,9 +129,9 @@ fn screen_corner_radius(spec: &WindowsDeviceFrame) -> i32 {
         .clamp(0, spec.screen_width.min(spec.screen_height) / 2)
 }
 
-/// Fit factor shrinking the device assembly into the monitor work area,
-/// capped at 1.0 (small devices never scale up). The toolbar and shadow
-/// margins are fixed chrome, so only the bezel block scales.
+/// Display scale honoring the monitor DPI, limited by the available work
+/// area. Device presets are logical pixels; the toolbar and shadow margins
+/// are fixed chrome, so only the bezel block scales.
 fn fit_scale_for(content: HWND, spec: &WindowsDeviceFrame) -> f64 {
     let margin = FRAME_SHADOW_MARGIN;
     let toolbar_block = if spec.toolbar.is_some() {
@@ -144,9 +144,17 @@ fn fit_scale_for(content: HWND, spec: &WindowsDeviceFrame) -> f64 {
     let avail_height = (work.bottom - work.top - toolbar_block - 2 * margin).max(1) as f64;
     let bezel_width = (spec.screen_width + 2 * spec.bezel_width).max(1) as f64;
     let bezel_height = (spec.screen_height + 2 * spec.bezel_width).max(1) as f64;
-    (avail_width / bezel_width)
-        .min(avail_height / bezel_height)
-        .min(1.0)
+    fit_scale(
+        crate::dpi::window_scale(content),
+        (bezel_width, bezel_height),
+        (avail_width, avail_height),
+    )
+}
+
+fn fit_scale(monitor_scale: f64, device: (f64, f64), available: (f64, f64)) -> f64 {
+    monitor_scale
+        .min(available.0 / device.0)
+        .min(available.1 / device.1)
 }
 
 fn monitor_work_area(hwnd: HWND) -> RECT {
@@ -174,8 +182,10 @@ fn monitor_work_area(hwnd: HWND) -> RECT {
 /// Uniformly scales every geometric spec field by `fit`.
 fn scale_spec(spec: &mut WindowsDeviceFrame, fit: f64) {
     let scaled = |value: i32| ((value as f64) * fit).round() as i32;
-    spec.screen_width = scaled(spec.screen_width).max(1);
-    spec.screen_height = scaled(spec.screen_height).max(1);
+    // WebView2 rounds its CSS viewport up. Rounding HWND bounds up as well
+    // can turn a 430px preset into 431 CSS px at a fractional fit factor.
+    spec.screen_width = (spec.screen_width as f64 * fit).floor().max(1.0) as i32;
+    spec.screen_height = (spec.screen_height as f64 * fit).floor().max(1.0) as i32;
     spec.bezel_width = scaled(spec.bezel_width);
     spec.outer_corner_radius = scaled(spec.outer_corner_radius);
     spec.screen_corner_radius = scaled(spec.screen_corner_radius);
@@ -329,6 +339,9 @@ struct DeviceFrameState {
     /// The top status-bar overlay (time + signal/battery), 0 when absent.
     status_bar: isize,
     spec: WindowsDeviceFrame,
+    /// Logical geometry, retained so monitor changes never rescale an
+    /// already-scaled frame.
+    logical_spec: WindowsDeviceFrame,
     /// Work-area fit factor applied to `spec` (1.0 = native size). The
     /// webview mirrors it as its rasterization scale so pages keep the
     /// simulated device's logical viewport.
@@ -432,7 +445,12 @@ fn sync_capsule_overlay(content: HWND, spec: &WindowsDeviceFrame, existing: isiz
         if existing != 0 && is_window_handle_valid(existing) {
             existing
         } else {
-            create_capsule_window(content, spec).unwrap_or(0)
+            create_capsule_window(
+                content,
+                spec,
+                content_fit_scale(hwnd_handle(content)).unwrap_or(1.0),
+            )
+            .unwrap_or(0)
         }
     } else {
         destroy_capsule(existing);
@@ -733,10 +751,9 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
     // overlays, and corner visuals stay proportionate. The factor is kept on
     // the frame state; the shell mirrors it into the webview's
     // rasterization scale so the page keeps the device's logical viewport.
+    let logical_spec = spec.clone();
     let fit = fit_scale_for(content, &spec);
-    if fit < 1.0 {
-        scale_spec(&mut spec, fit);
-    }
+    scale_spec(&mut spec, fit);
     install_device_frame_subclass(content);
     // The status bar's transparent/foreground/background are page-driven — the
     // shell sets them per active page (e.g. an immersive `custom` page floats a
@@ -788,6 +805,7 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
             && let Some(state) = frames.get_mut(&handle)
         {
             state.spec = spec;
+            state.logical_spec = logical_spec;
             state.layout = layout;
             state.capsule = capsule;
         }
@@ -873,8 +891,17 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
     unsafe {
         let _ = WindowsAndMessaging::GetWindowRect(content, &mut rect);
     }
-    let x = rect.left.max(layout.content_offset.0);
-    let y = rect.top.max(layout.content_offset.1);
+    let work = monitor_work_area(content);
+    let min_x = work.left + layout.content_offset.0;
+    let min_y = work.top + layout.content_offset.1;
+    let x = rect.left.clamp(
+        min_x,
+        (work.right - layout.width + layout.content_offset.0).max(min_x),
+    );
+    let y = rect.top.clamp(
+        min_y,
+        (work.bottom - layout.height + layout.content_offset.1).max(min_y),
+    );
     // A maximized desktop window ignores a smaller SetWindowPos, and
     // SW_SHOWNORMAL restores the last 1440-class rectangle — leaving the
     // toolbar on the new device while the page stays expanded.
@@ -894,14 +921,14 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
     let Some((frame, layout)) = create_frame_window(content, &spec, layout) else {
         return;
     };
-    let capsule = create_capsule_window(content, &spec).unwrap_or(0);
+    let capsule = create_capsule_window(content, &spec, fit).unwrap_or(0);
     let cutout = create_cutout_window(content, &spec).unwrap_or(0);
     let corner_mask = if composition_corners {
         0
     } else {
         create_corner_mask(content, &spec)
     };
-    let status_bar = create_status_bar(content, &spec);
+    let status_bar = create_status_bar(content, &spec, fit);
     let frames = DEVICE_FRAMES.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(mut frames) = frames.lock() {
         frames.insert(
@@ -913,6 +940,7 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
                 corner_mask,
                 status_bar,
                 spec,
+                logical_spec,
                 fit_scale: fit,
                 layout,
                 saved_style,
@@ -1180,6 +1208,13 @@ unsafe extern "system" fn device_frame_host_proc(
     lparam: LPARAM,
 ) -> LRESULT {
     let original = device_frame_window_state(hwnd).map(|state| state.original_proc);
+    if msg == WindowsAndMessaging::WM_DPICHANGED
+        && !unsafe { WindowsAndMessaging::IsIconic(hwnd) }.as_bool()
+        && let Some(spec) = frame_state(hwnd_handle(hwnd), |state| state.logical_spec.clone())
+    {
+        apply_device_frame(hwnd, spec);
+        return LRESULT(0);
+    }
     if msg == WindowsAndMessaging::WM_WINDOWPOSCHANGED {
         let pos = lparam.0 as *const WindowsAndMessaging::WINDOWPOS;
         if !pos.is_null() {
@@ -1650,5 +1685,52 @@ mod tests {
     fn unknown_window_size_rebuilds() {
         let spec = phone_frame();
         assert!(spec_and_window_require_rebuild(Some(&spec), &spec, None));
+    }
+}
+
+#[cfg(test)]
+mod scale_tests {
+    use super::{WindowsDeviceFrame, fit_scale, scale_spec};
+
+    #[test]
+    fn high_dpi_enlarges_phone() {
+        let scale = fit_scale(2.25, (440.0, 942.0), (3792.0, 2260.0));
+        assert_eq!(scale, 2.25);
+    }
+
+    #[test]
+    fn frame_geometry_uses_the_same_scale_as_the_page() {
+        for scale in [0.75, 1.0, 1.5, 2.0851063829787235, 2.25] {
+            let mut frame = WindowsDeviceFrame {
+                screen_width: 430,
+                screen_height: 932,
+                bezel_width: 4,
+                outer_corner_radius: 60,
+                screen_corner_radius: 56,
+                cutout: None,
+                status_bar: None,
+                bezel_color: 0,
+                screen_corner_color: 0,
+                toolbar: None,
+            };
+            scale_spec(&mut frame, scale);
+            assert_eq!((frame.screen_width as f64 / scale).ceil(), 430.0);
+            assert_eq!((frame.screen_height as f64 / scale).ceil(), 932.0);
+            assert_eq!(frame.bezel_width, (4.0 * scale).round() as i32);
+            assert_eq!(frame.screen_corner_radius, (56.0 * scale).round() as i32);
+        }
+    }
+
+    #[test]
+    fn small_work_area_limits_portrait_and_landscape() {
+        let portrait = fit_scale(2.25, (440.0, 942.0), (1872.0, 900.0));
+        assert_eq!(portrait, 900.0 / 942.0);
+        let landscape = fit_scale(2.25, (942.0, 440.0), (1200.0, 900.0));
+        assert_eq!(landscape, 1200.0 / 942.0);
+    }
+
+    #[test]
+    fn standard_dpi_does_not_fill_a_large_monitor() {
+        assert_eq!(fit_scale(1.0, (440.0, 942.0), (3792.0, 2260.0)), 1.0);
     }
 }
