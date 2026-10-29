@@ -203,6 +203,29 @@ pub(crate) fn radius_corners(record: &Record, rtl: bool) -> [usize; 4] {
     ]
 }
 
+/// Whether `parent` places its children along a horizontal main axis.
+fn lays_out_in_row(parent: &Record) -> bool {
+    match parent.string(field::FLEX_DIRECTION) {
+        Some("row" | "row-reverse") => true,
+        Some(_) => false,
+        None => {
+            parent.tag == tag::ROW
+                && !matches!(
+                    parent.string(field::DISPLAY),
+                    Some("block" | "inline-block")
+                )
+        }
+    }
+}
+
+/// A replaced element's fixed length on `axis`: its automatic minimum, as in CSS.
+fn replaced_size<T: taffy::style_helpers::FromLength>(record: &Record, axis: usize) -> Option<T> {
+    if !matches!(record.tag, tag::IMAGE | tag::VECTOR) {
+        return None;
+    }
+    record.number(axis).map(length)
+}
+
 /// Taffy style for one record; the root fills the viewport and a page root keeps out of the safe area.
 pub(crate) fn node_style(
     records: &[Record],
@@ -311,6 +334,7 @@ pub(crate) fn node_style(
     let display = record.string(field::DISPLAY);
     // `block` children stretch down a column; inline boxes shrink to content.
     let block = matches!(display, Some("block" | "inline-block"));
+    let in_row = record.parent.is_some_and(|p| lays_out_in_row(&records[p]));
     let inline = matches!(display, Some("inline-flex" | "inline-block"));
     let border = record.number(field::BORDER_WIDTH).unwrap_or(0.0);
     let [border_top, border_right, border_bottom, border_left] =
@@ -455,10 +479,13 @@ pub(crate) fn node_style(
             Some((value, false)) => length(value),
             None => auto(),
         },
+        // In a row an item shrinks as in CSS, down to its automatic minimum size. A column stands
+        // for block flow, where stacked boxes never shrink: only scrolls and growing boxes do.
         flex_shrink: record.number(field::SHRINK).unwrap_or(
-            if (matches!(record.tag, tag::SCROLL | tag::LIST)
-                || record.number(field::GROW).unwrap_or(0.0) > 0.0)
-                && dimension::<Dimension>(record, field::HEIGHT).is_none()
+            if in_row
+                || ((matches!(record.tag, tag::SCROLL | tag::LIST)
+                    || record.number(field::GROW).unwrap_or(0.0) > 0.0)
+                    && dimension::<Dimension>(record, field::HEIGHT).is_none())
             {
                 1.0
             } else {
@@ -516,9 +543,14 @@ pub(crate) fn node_style(
                         + border_right,
                 )
             } else if matches!(record.tag, tag::SCROLL | tag::LIST)
-                || record.number(field::GROW).unwrap_or(0.0) > 0.0
+                || (!in_row && record.number(field::GROW).unwrap_or(0.0) > 0.0)
             {
+                // A scroll container's automatic minimum is zero; an item in a row keeps its
+                // min-content width unless the author sets `min-w-0`.
                 length(0.0)
+            } else if let Some(width) = replaced_size(record, field::WIDTH) {
+                // A replaced element (image, vector) keeps its specified size, as CSS's `<img>`.
+                width
             } else {
                 auto()
             }),
@@ -537,6 +569,8 @@ pub(crate) fn node_style(
                     || record.number(field::GROW).unwrap_or(0.0) > 0.0
                 {
                     length(0.0)
+                } else if let Some(height) = replaced_size(record, field::HEIGHT) {
+                    height
                 } else {
                     auto()
                 },

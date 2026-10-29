@@ -48,10 +48,11 @@ a flex container unless it is a grid.
 
 ## Where native defaults differ from CSS
 
-- **No implicit shrinking.** `flex-shrink` defaults to `0`. Only `<scroll>`, `<list>` and boxes with `grow`
-  shrink by default. Add `shrink` (or `min-w-0` on text) where CSS would have shrunk.
-- `grow` also sets a zero minimum size, so a growing box never overflows its line. `grow` alone means
-  `flex-grow: 1` with an `auto` basis; write `grow basis-0` (or `flex-1`) for equal columns.
+- Flex items shrink as in CSS, never below their min-content width: a segmented control or a word keeps
+  its width and a line too narrow overflows. `min-w-0` lets an item shrink past its content (to truncate);
+  a fixed-size box beside long content needs `shrink-0`, as on the web. Images keep their set size.
+- `grow` also sets a zero minimum height, so a growing box in a column never pushes past its parent.
+  `grow` alone means `flex-grow: 1` with an `auto` basis; write `grow basis-0` (or `flex-1`) for equal columns.
 - A `<scroll>` or `<list>` directly in `<page>` fills the remaining height unless it has a height, `grow` or a basis.
 - Controls carry intrinsic sizes: buttons, editors and toggles have 12 px padding, editors and toggles a
   44–48 px minimum height, `<textarea>` 120 px height, `<slider>` 120 × 48, `<image>` 64 × 64 and `<vector>`

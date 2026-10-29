@@ -118,7 +118,7 @@ fn environment_reports_direction_to_the_view() {
 
 #[test]
 fn rtl_horizontal_scrolls_start_at_the_inline_start_and_move_toward_the_left() {
-    let render = "h('scroll',{'data-testid':'s',style:{overflowX:'auto',width:100,height:20}},h('row',{},h('column',{'data-testid':'first',style:{width:80,height:10}}),h('column',{'data-testid':'second',style:{width:80,height:10}})))";
+    let render = "h('scroll',{'data-testid':'s',style:{overflowX:'auto',width:100,height:20}},h('row',{},h('column',{'data-testid':'first',style:{width:80,height:10,flexShrink:0}}),h('column',{'data-testid':'second',style:{width:80,height:10,flexShrink:0}})))";
     for (language, start, scrolled) in [("ar", 20.0, 80.0), ("en", 0.0, -60.0)] {
         let mut session = page(render, language);
         let display = session.layout(100, 100, 1.0).unwrap();

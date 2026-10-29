@@ -118,7 +118,7 @@ function toastNode(env) {
 function modalNode() {
   const modal = modals[0];
   const button = (testId, label, confirm, color) => h('button', { 'data-testid': testId, onClick: () => settleModal(confirm), style: {
-    flexGrow: 1, flexBasis: 0, paddingTop: 12, paddingBottom: 12, backgroundColor: 'transparent', color, fontSize: 16, fontWeight: confirm ? 600 : 400 } }, label);
+    flexGrow: 1, flexBasis: 0, minWidth: 0, paddingTop: 12, paddingBottom: 12, backgroundColor: 'transparent', color, fontSize: 16, fontWeight: confirm ? 600 : 400 } }, label);
   return h('column', { style: { ...layer, alignItems: 'center', justifyContent: 'center', backgroundColor: 'scrim', padding: 24 } },
     h('column', { 'data-testid': 'lx-modal', key: `modal-${modal.key}`, role: 'dialog', 'aria-label': modal.title || modal.content || 'Dialog',
       style: { width: 320, maxWidth: '100%', borderRadius: 14, backgroundColor: 'surface-raised', overflow: 'hidden', transition: fade } },

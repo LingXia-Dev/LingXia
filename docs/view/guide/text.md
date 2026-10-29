@@ -55,8 +55,8 @@ line must be written `{' '}`. A string with `\n` needs `whitespace-pre-line` to 
 - `uppercase`, `lowercase`, `capitalize` change only what is painted.
 - `max-w-[24ch]` limits a line to 24 advances of "0" in the node's font.
 
-A `<text>` in a row does not shrink by default; give it `grow basis-0` or `shrink min-w-0` to let it wrap
-or truncate inside the row ([Layout](layout.md)).
+A `<text>` in a row shrinks as in CSS: it wraps down to its longest word. To truncate on one line, give
+it `min-w-0 truncate` ([Layout](layout.md)).
 
 ## Size, line height and spacing
 

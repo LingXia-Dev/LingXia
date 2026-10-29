@@ -813,6 +813,7 @@
     const button = (testId, label2, confirm, color) => h("button", { "data-testid": testId, onClick: () => settleModal(confirm), style: {
       flexGrow: 1,
       flexBasis: 0,
+      minWidth: 0,
       paddingTop: 12,
       paddingBottom: 12,
       backgroundColor: "transparent",

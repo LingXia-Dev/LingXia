@@ -12,7 +12,7 @@ export function render({ data }: View<object, { devices: Device[] }>) {
       <List data-testid="devices" items={data.devices} getKey={device => device.id} className="grow"
         renderItem={device => (
           <row className="px-4 py-3 gap-3 items-center bg-surface border-b border-line">
-            <column className="w-10 h-10 rounded-xl bg-surface-sunken items-center justify-center">
+            <column className="w-10 h-10 shrink-0 rounded-xl bg-surface-sunken items-center justify-center">
               <text className="text-xs font-semibold uppercase tracking-wide text-muted">{device.kind.slice(0, 2)}</text>
             </column>
             <column className="grow min-w-0 gap-0.5">
@@ -22,7 +22,7 @@ export function render({ data }: View<object, { devices: Device[] }>) {
                 <text className="text-xs text-muted tabular-nums">{device.usage.toFixed(1)} GB</text>
               </row>
             </column>
-            <column className="w-16 h-1.5 rounded-full bg-surface-sunken">
+            <column className="w-16 h-1.5 shrink-0 rounded-full bg-surface-sunken">
               <column className="h-full rounded-full bg-accent" style={{ width: `${Math.min(100, device.usage * 5)}%` }} />
             </column>
           </row>

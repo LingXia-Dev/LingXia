@@ -70,7 +70,7 @@ fn percentage_basis_recomputes_after_parent_resize() {
 fn flex_wrap_reflows_items_with_gaps_and_reverse_order() {
     for mode in ["nowrap", "wrap", "wrap-reverse"] {
         let source = crate::session::tests::source(&format!(
-            "function render(){{return h('column',{{}},h('row',{{'data-testid':'wrap',style:{{flexWrap:'{mode}',gap:10}}}},[0,1,2].map(i=>h('column',{{key:String(i),'data-testid':'item'+i,style:{{width:70,height:20}}}}))))}}"
+            "function render(){{return h('column',{{}},h('row',{{'data-testid':'wrap',style:{{flexWrap:'{mode}',gap:10}}}},[0,1,2].map(i=>h('column',{{key:String(i),'data-testid':'item'+i,style:{{width:70,height:20,flexShrink:0}}}}))))}}"
         ));
         let mut page = crate::ViewSession::new(&source).unwrap();
         let display = page.layout(150, 200, 1.0).unwrap();
@@ -954,4 +954,37 @@ fn long_text_in_a_centered_row_wraps_when_it_may_shrink() {
             "{text_style}: wrapped onto more lines ({height})"
         );
     }
+}
+
+#[test]
+fn row_items_never_shrink_below_their_min_content_width() {
+    // A segmented control (equal `grow basis-0` segments) beside long text in a narrow row.
+    let source = crate::session::tests::source(
+        "function render(){const seg=l=>h('button',{'data-testid':l,onClick(){},style:{flexGrow:1,flexBasis:0,paddingLeft:8,paddingRight:8}},h('text',{'data-testid':l+'-t'},l));return h('row',{style:{width:200,gap:8}},h('text',{'data-testid':'long'},'A long label that wants room'),h('row',{'data-testid':'seg'},seg('All'),seg('Active'),seg('Completed')),h('image',{src:'x.png',alt:'',style:{width:40,height:40}}))}",
+    );
+    let mut page = crate::ViewSession::new(&source).unwrap();
+    let display = page.layout(400, 200, 1.0).unwrap();
+    let bounds = |id: &str| {
+        display
+            .nodes
+            .iter()
+            .find(|node| node.test_id == id)
+            .unwrap()
+            .bounds
+    };
+    for label in ["All", "Active", "Completed"] {
+        let (segment, text) = (bounds(label), bounds(&format!("{label}-t")));
+        assert!(
+            segment[2] >= text[2] + 16.0 - 0.5,
+            "{label}: segment {segment:?} holds its label {text:?}"
+        );
+    }
+    // The long text wraps down to its longest word; the image keeps its set width.
+    assert!(bounds("long")[2] < 200.0);
+    let image = display
+        .nodes
+        .iter()
+        .find(|node| node.tag == "image")
+        .unwrap();
+    assert_eq!(image.bounds[2], 40.0);
 }

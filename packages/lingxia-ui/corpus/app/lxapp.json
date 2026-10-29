@@ -14,6 +14,7 @@
     { "name": "rtl", "path": "pages/rtl/index" },
     { "name": "h-speedtest", "path": "pages/h-speedtest/index" },
     { "name": "h-home", "path": "pages/h-home/index" },
-    { "name": "h-ask", "path": "pages/h-ask/index" }
+    { "name": "h-ask", "path": "pages/h-ask/index" },
+    { "name": "segmented", "path": "pages/segmented/index" }
   ]
 }
