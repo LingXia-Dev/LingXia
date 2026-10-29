@@ -25,6 +25,8 @@ const HOT_SWAP_TIMEOUT: Duration = Duration::from_secs(10);
 const COMMAND_TIMEOUT_BUFFER: Duration = Duration::from_secs(5);
 const RUNTIME_EVENT_QUEUE_CAPACITY: usize = 64;
 const DEV_LXAPP_HTTP_PREFIX: &str = "/__lingxia/dev/lxapp/";
+/// zstd window of the dev bundle archive (16 MiB); the client allows the same.
+const DEV_BUNDLE_WINDOW_LOG: u32 = 24;
 /// Mirrors the Runner's automation controller lease: a test run nobody has
 /// polled for this long no longer holds back file-watch reloads.
 const TEST_RUN_LEASE: Duration = Duration::from_secs(180);
@@ -1707,7 +1709,7 @@ fn handle_dev_lxapp_http_request(
     if let Some((app_id, archive)) = rest.split_once("/bundle/") {
         let app_id = decode_url_path_component(app_id)?;
         let Some(hash) = decode_url_path_component(archive)?
-            .strip_suffix(".tar")
+            .strip_suffix(".tar.zst")
             .map(str::to_owned)
         else {
             return Ok(None);
@@ -1743,8 +1745,9 @@ fn handle_dev_lxapp_http_request(
     Ok(Some((content_type_for_path(&relative_path), body)))
 }
 
-/// Every file of `app_id`'s published bundle as one tar, for a client syncing a
-/// whole bundle in one request. `None` (a 404) when the bundle is not
+/// Every file of `app_id`'s published bundle as one zstd tar, for a client syncing
+/// a whole bundle in one request; pages repeat the UI runtime, which the long
+/// window compresses away (6.5 MB of pages to about 0.3 MB). `None` (a 404) when the bundle is not
 /// published or `hash` is no longer its current hash.
 fn dev_lxapp_bundle_archive(
     state: &DevServerState,
@@ -1781,10 +1784,20 @@ fn dev_lxapp_bundle_archive(
             .append_data(&mut header, &file.path, body.as_slice())
             .with_context(|| format!("Failed to archive {}", file.path))?;
     }
-    let body = archive
+    let tar = archive
         .into_inner()
         .context("Failed to finish dev bundle archive")?;
-    Ok(Some(("application/x-tar", body)))
+    let mut encoder = zstd::stream::write::Encoder::new(Vec::new(), 3)
+        .context("Failed to start dev bundle compression")?;
+    encoder
+        .long_distance_matching(true)
+        .and_then(|()| encoder.window_log(DEV_BUNDLE_WINDOW_LOG))
+        .context("Failed to configure dev bundle compression")?;
+    std::io::Write::write_all(&mut encoder, &tar).context("Failed to compress dev bundle")?;
+    let body = encoder
+        .finish()
+        .context("Failed to finish dev bundle compression")?;
+    Ok(Some(("application/zstd", body)))
 }
 
 fn decode_url_path_component(value: &str) -> Result<String> {
@@ -2965,14 +2978,18 @@ mod tests {
         );
         let manifest = super::super::lxapp_manifest::load_manifest(project, "demo").unwrap();
         let target = format!(
-            "/__lingxia/dev/lxapp/demo/bundle/{}.tar",
+            "/__lingxia/dev/lxapp/demo/bundle/{}.tar.zst",
             manifest.dist_hash
         );
         let (content_type, body) = super::handle_dev_lxapp_http_request(&state, &target)
             .unwrap()
             .expect("archive");
-        assert_eq!(content_type, "application/x-tar");
-        let mut archive = tar::Archive::new(body.as_slice());
+        assert_eq!(content_type, "application/zstd");
+        let mut decoder = zstd::stream::read::Decoder::new(body.as_slice()).unwrap();
+        decoder
+            .window_log_max(super::DEV_BUNDLE_WINDOW_LOG)
+            .unwrap();
+        let mut archive = tar::Archive::new(decoder);
         let mut entries: Vec<(String, Vec<u8>)> = archive
             .entries()
             .unwrap()
@@ -3003,7 +3020,7 @@ mod tests {
         assert!(
             super::handle_dev_lxapp_http_request(
                 &state,
-                "/__lingxia/dev/lxapp/demo/bundle/stale.tar"
+                "/__lingxia/dev/lxapp/demo/bundle/stale.tar.zst"
             )
             .unwrap()
             .is_none()

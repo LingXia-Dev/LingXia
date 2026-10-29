@@ -44,8 +44,9 @@ actionable error.
 
 ## Bundle sync
 
-A dev host pulls a changed lxapp bundle as one archive,
-`lxapp/<id>/bundle/<distHash>.tar`; a delta of up to 4 files (a hot swap) and an
+A dev host pulls a changed lxapp bundle as one zstd archive,
+`lxapp/<id>/bundle/<distHash>.tar.zst` (pages repeat the UI runtime, so 6.5 MB
+of pages travel as about 0.3 MB); a delta of up to 4 files (a hot swap) and an
 older server (404) go file by file, one connection each. Never on a UI thread: Android runs
 `prepare_dev_bundles` on a background thread before `lingxiaInit`, and init
 adopts that outcome without fetching again (a fetch there held the main thread

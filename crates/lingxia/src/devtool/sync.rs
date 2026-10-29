@@ -13,6 +13,8 @@ const LOCAL_MANIFEST_FILE: &str = ".lingxia-dev-manifest.json";
 const HTTP_TIMEOUT: Duration = Duration::from_secs(3);
 /// More changed files than this come as one archive instead of one request each.
 const PER_FILE_MAX: usize = 4;
+/// The largest zstd window a dev bundle archive may use (the dev server's).
+const BUNDLE_WINDOW_LOG: u32 = 24;
 
 #[derive(Debug, Clone, Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -151,14 +153,21 @@ pub(crate) fn sync_from(
         let url = dev_bundle_url(
             base_url,
             &format!(
-                "lxapp/{}/bundle/{}.tar",
+                "lxapp/{}/bundle/{}.tar.zst",
                 encode_path_component(app_id),
                 encode_path_component(&manifest.dist_hash)
             ),
         );
+        let started = Instant::now();
         match http_get(&url, deadline)? {
             (200, body) => {
                 unpack_bundle(&body, &missing, &staging_dir)?;
+                log::debug!(
+                    "Dev bundle {app_id}: {} files as one archive, {} bytes in {} ms",
+                    missing.len(),
+                    body.len(),
+                    started.elapsed().as_millis()
+                );
                 missing.clear();
             }
             // An older dev server has no archive endpoint.
@@ -227,7 +236,7 @@ pub(crate) fn sync_from(
     Ok(DevBundleSync::Ready { root: current_dir })
 }
 
-/// Write the archive's copies of `wanted` into `staging_dir`. Every wanted file
+/// Write the zstd tar's copies of `wanted` into `staging_dir`. Every wanted file
 /// must be in it at its manifest size; anything else is ignored.
 fn unpack_bundle(
     archive: &[u8],
@@ -238,7 +247,12 @@ fn unpack_bundle(
         .iter()
         .map(|file| (file.path.as_str(), *file))
         .collect();
-    let mut entries = tar::Archive::new(archive);
+    let mut decoder = zstd::stream::read::Decoder::new(archive)
+        .map_err(|err| format!("invalid dev bundle archive: {err}"))?;
+    decoder
+        .window_log_max(BUNDLE_WINDOW_LOG)
+        .map_err(|err| format!("invalid dev bundle archive: {err}"))?;
+    let mut entries = tar::Archive::new(decoder);
     for entry in entries
         .entries()
         .map_err(|err| format!("invalid dev bundle archive: {err}"))?
@@ -490,7 +504,7 @@ mod tests {
             header.set_mode(0o644);
             builder.append_data(&mut header, path, *body).unwrap();
         }
-        builder.into_inner().unwrap()
+        zstd::encode_all(builder.into_inner().unwrap().as_slice(), 3).unwrap()
     }
 
     fn file(path: &str, size: u64) -> DevManifestFile {
