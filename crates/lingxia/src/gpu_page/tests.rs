@@ -332,3 +332,22 @@ fn a_bundled_pack_parses_and_a_malformed_one_is_skipped() {
     assert!(bundled_pack("{").is_none());
     assert!(bundled_pack(r#"{"name":"x","version":1,"extra":true}"#).is_none());
 }
+
+#[test]
+fn a_stale_frame_keeps_the_platform_reporting_until_the_current_view_presents() {
+    let factory = Arc::new(Factory::default());
+    let (endpoint, _, token) = endpoint(&factory, "ready-rearm");
+    endpoint.connect(generation(2), "nonce").unwrap();
+    assert!(
+        !presented(token, 1),
+        "a frame of the old connection is not the first frame"
+    );
+    assert!(
+        presented(token, 2),
+        "the current connection's frame ends the reports"
+    );
+    assert!(
+        presented(NEXT.load(Ordering::Relaxed) + 1000, 2),
+        "an unknown page needs no more"
+    );
+}
