@@ -82,7 +82,7 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 | `enabled:` | `enabled:` | selector :enabled |
 | `inert:` | `inert:` | selector :is([inert], [inert] *) |
 | `in:` | `in-focus:` | ancestor-state variants (in-*; track the ancestor state in TS, e.g. onFocus/onBlur, and choose the classes from it) |
-| `aria:` | `aria-checked:` | selector [aria-checked="true"] (aria-*: choose classes from the state in TS and set accessibility props such as role separately) |
+| `aria:` | `aria-checked:` | selector [aria-checked="true"] (aria-*: choose classes from the state in TS and set aria-* props separately) |
 | `nth:` | `nth-3:` | selector :nth-child(3) |
 | `nth-last:` | `nth-last-3:` | selector :nth-last-child(3) |
 | `nth-of-type:` | `nth-of-type-3:` | selector :nth-of-type(3) |

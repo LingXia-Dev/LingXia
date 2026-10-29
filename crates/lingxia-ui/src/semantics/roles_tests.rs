@@ -34,7 +34,7 @@ fn semantic(frame: &PresentedFrame, test_id: &str) -> Option<SemanticNode> {
 #[test]
 fn authored_roles_project_with_levels_positions_and_names() {
     let frame = frame(
-        "h('column',{},h('text',{'data-testid':'h',role:'heading',headingLevel:3},'Plans'),h('text',{'data-testid':'h2',role:'heading'},'Default'),h('column',{'data-testid':'list',role:'list',accessibilityLabel:'Bills'},h('row',{'data-testid':'a',role:'listitem'},h('text',{},'Water')),h('row',{'data-testid':'b',role:'listitem'},h('text',{},'Power'))),h('column',{'data-testid':'d',role:'dialog',accessibilityLabel:'Confirm'},h('button',{'data-testid':'ok',role:'heading',onClick(){}},'OK')))",
+        "h('column',{},h('text',{'data-testid':'h',role:'heading',headingLevel:3},'Plans'),h('text',{'data-testid':'h2',role:'heading'},'Default'),h('column',{'data-testid':'list',role:'list','aria-label':'Bills'},h('row',{'data-testid':'a',role:'listitem'},h('text',{},'Water')),h('row',{'data-testid':'b',role:'listitem'},h('text',{},'Power'))),h('column',{'data-testid':'d',role:'dialog','aria-label':'Confirm'},h('button',{'data-testid':'ok',role:'heading',onClick(){}},'OK')))",
     );
     let heading = semantic(&frame, "h").unwrap();
     assert_eq!(
@@ -61,7 +61,7 @@ fn authored_roles_project_with_levels_positions_and_names() {
 #[test]
 fn hidden_subtrees_leave_semantics_but_keep_paint() {
     let frame = frame(
-        "h('column',{'data-testid':'c',accessibilityHidden:true},h('text',{'data-testid':'t'},'Decor'),h('button',{'data-testid':'b',onClick(){}},'Ghost'))",
+        "h('column',{'data-testid':'c','aria-hidden':true},h('text',{'data-testid':'t'},'Decor'),h('button',{'data-testid':'b',onClick(){}},'Ghost'))",
     );
     for id in ["c", "t", "b"] {
         assert!(semantic(&frame, id).is_none(), "{id}");
@@ -74,7 +74,7 @@ fn hidden_subtrees_leave_semantics_but_keep_paint() {
 fn live_regions_announce_changed_text_with_their_politeness() {
     let render = |text: &str| {
         frame(&format!(
-            "h('column',{{}},h('column',{{'data-testid':'s',role:'status'}},h('text',{{}},'{text}')),h('text',{{'data-testid':'a',role:'alert'}},'Fix {text}'),h('text',{{'data-testid':'q',accessibilityLiveRegion:'off',role:'alert'}},'{text}'))"
+            "h('column',{{}},h('column',{{'data-testid':'s',role:'status'}},h('text',{{}},'{text}')),h('text',{{'data-testid':'a',role:'alert'}},'Fix {text}'),h('text',{{'data-testid':'q','aria-live':'off',role:'alert'}},'{text}'))"
         ))
     };
     let (before, after) = (render("Saved"), render("Failed"));
@@ -107,7 +107,7 @@ fn live_regions_announce_changed_text_with_their_politeness() {
 fn an_alert_speaks_when_it_appears_and_a_status_only_when_it_changes() {
     let before = frame("h('column',{},h('text',{},'Form'))");
     let after = frame(
-        "h('column',{},h('text',{},'Form'),h('text',{role:'alert'},'Card declined'),h('text',{role:'status'},'Saved'),h('text',{role:'alert',accessibilityLiveRegion:'off'},'Quiet'))",
+        "h('column',{},h('text',{},'Form'),h('text',{role:'alert'},'Card declined'),h('text',{role:'status'},'Saved'),h('text',{role:'alert','aria-live':'off'},'Quiet'))",
     );
     let mut ids = SemanticIds::default();
     ids.update(after.nodes.iter().map(|n| n.identity.as_str()));
@@ -201,7 +201,7 @@ fn projected_roles_match_the_schema_vocabulary() {
 fn a_select_speaks_its_chosen_label_else_its_placeholder() {
     let options = "options:[{value:'monthly',label:'Monthly'},{value:'yearly',label:'Yearly'}]";
     let frame = frame(&format!(
-        "h('column',{{}},h('select',{{'data-testid':'chosen',accessibilityLabel:'Billing plan',placeholder:'Choose a plan',{options},value:'yearly',onChange(){{}}}}),h('select',{{'data-testid':'empty',accessibilityLabel:'Billing plan',placeholder:'Choose a plan',{options},value:'',onChange(){{}}}}))"
+        "h('column',{{}},h('select',{{'data-testid':'chosen','aria-label':'Billing plan',placeholder:'Choose a plan',{options},value:'yearly',onChange(){{}}}}),h('select',{{'data-testid':'empty','aria-label':'Billing plan',placeholder:'Choose a plan',{options},value:'',onChange(){{}}}}))"
     ));
     let chosen = semantic(&frame, "chosen").unwrap();
     assert_eq!(

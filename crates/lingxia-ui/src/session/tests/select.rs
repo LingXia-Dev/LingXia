@@ -6,7 +6,7 @@ use crate::scene::paint::Paint;
 use crate::session::lifecycle::{CommitTicket, PageTicket};
 use std::sync::Arc;
 
-const PAGE: &str = "function render(){const plan=useLocal('plan','m');return h('column',{},h('select',{'data-testid':'s',bind:plan,accessibilityLabel:'Plan',placeholder:'Choose',options:[{value:'m',label:'Monthly'},{value:'q',label:'Quarterly',disabled:true},{value:'y',label:'Yearly'}]}),h('text',{'data-testid':'t'},plan.value))}";
+const PAGE: &str = "function render(){const plan=useLocal('plan','m');return h('column',{},h('select',{'data-testid':'s',bind:plan,'aria-label':'Plan',placeholder:'Choose',options:[{value:'m',label:'Monthly'},{value:'q',label:'Quarterly',disabled:true},{value:'y',label:'Yearly'}]}),h('text',{'data-testid':'t'},plan.value))}";
 
 fn present(display: &crate::DisplayList) -> ViewInteraction {
     let mut interaction = ViewInteraction::default();
@@ -94,7 +94,7 @@ fn a_select_opens_its_picker_and_takes_choices_from_the_picker_and_arrows() {
 fn the_chevron_sits_at_the_inline_end_and_mirrors_in_rtl() {
     let chevron_x = |dir: &str| {
         let source = super::source(&format!(
-            "function render(){{return h('column',{{dir:'{dir}'}},h('select',{{accessibilityLabel:'Plan',options:[{{value:'m',label:'Monthly'}}]}}))}}"
+            "function render(){{return h('column',{{dir:'{dir}'}},h('select',{{'aria-label':'Plan',options:[{{value:'m',label:'Monthly'}}]}}))}}"
         ));
         let display = ViewSession::new(&source)
             .unwrap()
@@ -153,7 +153,7 @@ fn automation_chooses_an_option_by_value_or_label() {
 /// worker runs the choice. It finds its option again by value instead of being dropped.
 #[test]
 fn a_view_side_choice_on_a_superseded_frame_finds_its_option_by_value() {
-    let page_source = "function render(){const plan=useLocal('plan','m'),tab=useLocal('tab',0);return h('column',{},h('button',{'data-testid':'tab',onClick:()=>tab.set(tab.value+1)},`tab ${tab.value}`),tab.value>0?h('text',{},'shifted'):null,h('select',{'data-testid':'s',bind:plan,accessibilityLabel:'Plan',options:[{value:'m',label:'Monthly'},{value:'y',label:'Yearly'}]}),h('text',{'data-testid':'t'},plan.value))}";
+    let page_source = "function render(){const plan=useLocal('plan','m'),tab=useLocal('tab',0);return h('column',{},h('button',{'data-testid':'tab',onClick:()=>tab.set(tab.value+1)},`tab ${tab.value}`),tab.value>0?h('text',{},'shifted'):null,h('select',{'data-testid':'s',bind:plan,'aria-label':'Plan',options:[{value:'m',label:'Monthly'},{value:'y',label:'Yearly'}]}),h('text',{'data-testid':'t'},plan.value))}";
     let mut page = ViewSession::new(&super::source(page_source)).unwrap();
     let display = page.layout(300, 300, 1.0).unwrap();
     let seen = page.generation();

@@ -22,7 +22,7 @@ fn interaction(render: &str) -> ViewInteraction {
     interaction
 }
 
-const PAGE: &str = "h('column',{},h('text',{'data-testid':'title',role:'heading',headingLevel:1},'Bills'),h('button',{'data-testid':'pay',onClick(){}},'Pay now'),h('button',{'data-testid':'off',disabled:true},'Later'),h('input',{'data-testid':'amount',accessibilityLabel:'Amount',value:'12'}),h('column',{'data-testid':'gone',accessibilityHidden:true},h('text',{},'x')),h('text',{},'Read ',h('link',{onPress(){}},'terms')))";
+const PAGE: &str = "h('column',{},h('text',{'data-testid':'title',role:'heading',headingLevel:1},'Bills'),h('button',{'data-testid':'pay',onClick(){}},'Pay now'),h('button',{'data-testid':'off',disabled:true},'Later'),h('input',{'data-testid':'amount','aria-label':'Amount',value:'12'}),h('column',{'data-testid':'gone','aria-hidden':true},h('text',{},'x')),h('text',{},'Read ',h('link',{onPress(){}},'terms')))";
 
 #[test]
 fn locators_match_test_ids_roles_names_and_tags_in_reading_order() {
@@ -264,7 +264,7 @@ fn press_submits_editors_and_drives_keyboard_focus() {
 #[test]
 fn the_tree_nests_named_nodes_in_reading_order_with_their_states() {
     let i = interaction(
-        "h('column',{},h('text',{role:'heading',headingLevel:1},'Bills'),h('column',{role:'list',accessibilityLabel:'Due'},h('text',{'data-testid':'w',role:'listitem',accessibilityState:{selected:true}},'Water')),h('button',{'data-testid':'pay',disabled:true},'Pay'))",
+        "h('column',{},h('text',{role:'heading',headingLevel:1},'Bills'),h('column',{role:'list','aria-label':'Due'},h('text',{'data-testid':'w',role:'listitem','aria-selected':true},'Water')),h('button',{'data-testid':'pay',disabled:true},'Pay'))",
     );
     let tree = i.automation_tree().unwrap();
     let nodes = tree["nodes"].as_array().unwrap();
@@ -293,7 +293,7 @@ fn offscreen_selects_reveal_and_a_disabled_option_fails_at_once() {
         "h('page',{},h('scroll',{style:{flexGrow:1}},h('column',{style:{padding:16,gap:12}},h('column',{style:{height:600}}),SELECT)))",
         "h('page',{},h('scroll',{style:{flexGrow:1}},h('column',{style:{padding:16,gap:12}},h('column',{style:{height:600}}),h('row',{style:{gap:8}},SELECT))))",
     ] {
-        let mut i = interaction(&layout.replace("SELECT", "h('select',{'data-testid':'plan',accessibilityLabel:'Plan',placeholder:'Choose',options:[{value:'monthly',label:'Monthly'}],value:'',onChange(){},style:{paddingLeft:12,paddingRight:12,paddingTop:8,paddingBottom:8,borderWidth:1,borderRadius:8}})"));
+        let mut i = interaction(&layout.replace("SELECT", "h('select',{'data-testid':'plan','aria-label':'Plan',placeholder:'Choose',options:[{value:'monthly',label:'Monthly'}],value:'',onChange(){},style:{paddingLeft:12,paddingRight:12,paddingTop:8,paddingBottom:8,borderWidth:1,borderRadius:8}})"));
         let page = PageTicket::new(1);
         let revealed = i.automate(
             "[data-testid=\"plan\"]",
@@ -308,7 +308,7 @@ fn offscreen_selects_reveal_and_a_disabled_option_fails_at_once() {
         );
     }
     let mut i = interaction(
-        "h('scroll',{style:{height:100}},h('column',{style:{height:400}}),h('select',{'data-testid':'plan',accessibilityLabel:'Plan',options:[{value:'monthly',label:'Monthly'},{value:'yearly',label:'Yearly',disabled:true}],value:'monthly',onChange(){}}))",
+        "h('scroll',{style:{height:100}},h('column',{style:{height:400}}),h('select',{'data-testid':'plan','aria-label':'Plan',options:[{value:'monthly',label:'Monthly'},{value:'yearly',label:'Yearly',disabled:true}],value:'monthly',onChange(){}}))",
     );
     let page = PageTicket::new(1);
     let revealed = i
@@ -389,7 +389,7 @@ fn a_double_click_selects_the_word_in_text_and_editors() {
 #[test]
 fn a_container_reads_its_descendants_text_like_dom_text_content() {
     let i = interaction(
-        "h('column',{'data-testid':'result'},h('row',{},h('text',{},'Model'),h('text',{},'Pixel')),h('column',{},h('text',{},'OS ',h('span',{},'Android'))),h('input',{value:'not text',accessibilityLabel:'x'}))",
+        "h('column',{'data-testid':'result'},h('row',{},h('text',{},'Model'),h('text',{},'Pixel')),h('column',{},h('text',{},'OS ',h('span',{},'Android'))),h('input',{value:'not text','aria-label':'x'}))",
     );
     let result = i
         .automation_query("[data-testid=\"result\"]", None, false, None)
@@ -507,7 +507,7 @@ fn a_details_summary_is_a_button_that_announces_expanded() {
 fn a_click_on_a_controls_label_lands_on_the_control() {
     let row = |disabled: bool| {
         format!(
-            "h('column',{{}},h('checkbox',{{'data-testid':'box',value:false,onChange(){{}},disabled:{disabled},accessibilityLabel:'Wi-Fi'}},h('row',{{}},h('text',{{'data-testid':'label'}},'Wi-Fi'))),h('text',{{'data-testid':'loose'}},'Not a control'))"
+            "h('column',{{}},h('checkbox',{{'data-testid':'box',value:false,onChange(){{}},disabled:{disabled},'aria-label':'Wi-Fi'}},h('row',{{}},h('text',{{'data-testid':'label'}},'Wi-Fi'))),h('text',{{'data-testid':'loose'}},'Not a control'))"
         )
     };
     let page = PageTicket::new(1);

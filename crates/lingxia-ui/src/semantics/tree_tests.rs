@@ -26,7 +26,7 @@ fn page(render: &str) -> crate::ViewSession {
     crate::ViewSession::new(&source).unwrap()
 }
 
-const TREE: &str = "h('column',{},h('text',{'data-testid':'title',role:'heading'},'Bills'),h('column',{'data-testid':'list',role:'list'},h('column',{'data-testid':'a',role:'listitem'},h('row',{},h('text',{'data-testid':'a-text'},'Water'))),h('column',{'data-testid':'b',role:'listitem'},h('text',{},'Power')),h('column',{'data-testid':'c',role:'listitem'},h('text',{},'Gas'))),h('column',{'data-testid':'dialog',role:'dialog',accessibilityLabel:'Confirm'},h('row',{},h('text',{'data-testid':'body'},'Pay all?'),h('button',{'data-testid':'ok',onClick(){}},'OK'))),h('scroll',{'data-testid':'feed',style:{height:80}},h('text',{'data-testid':'f1'},'one'),h('text',{},'two')))";
+const TREE: &str = "h('column',{},h('text',{'data-testid':'title',role:'heading'},'Bills'),h('column',{'data-testid':'list',role:'list'},h('column',{'data-testid':'a',role:'listitem'},h('row',{},h('text',{'data-testid':'a-text'},'Water'))),h('column',{'data-testid':'b',role:'listitem'},h('text',{},'Power')),h('column',{'data-testid':'c',role:'listitem'},h('text',{},'Gas'))),h('column',{'data-testid':'dialog',role:'dialog','aria-label':'Confirm'},h('row',{},h('text',{'data-testid':'body'},'Pay all?'),h('button',{'data-testid':'ok',onClick(){}},'OK'))),h('scroll',{'data-testid':'feed',style:{height:80}},h('text',{'data-testid':'f1'},'one'),h('text',{},'two')))";
 
 #[test]
 fn containers_with_a_role_hold_their_descendants_and_wrappers_collapse() {
@@ -101,7 +101,7 @@ fn every_visible_node_has_painted_bounds_at_any_scroll_offset() {
 #[test]
 fn authored_states_and_scroll_position_reach_the_projection() {
     let mut session = page(
-        "h('column',{},h('button',{'data-testid':'b',onClick(){},accessibilityState:{pressed:true,expanded:false}},'Bold'),h('column',{'data-testid':'l',role:'list',accessibilityState:{busy:true}},h('text',{'data-testid':'i',role:'listitem',accessibilityState:{selected:true}},'One')),h('scroll',{'data-testid':'s',style:{height:50}},h('column',{style:{height:200}})))",
+        "h('column',{},h('button',{'data-testid':'b',onClick(){},'aria-pressed':true,'aria-expanded':false},'Bold'),h('column',{'data-testid':'l',role:'list','aria-busy':true},h('text',{'data-testid':'i',role:'listitem','aria-selected':true},'One')),h('scroll',{'data-testid':'s',style:{height:50}},h('column',{style:{height:200}})))",
     );
     let first = session.layout(300, 400, 1.0).unwrap();
     let scroll = first.nodes.iter().find(|n| n.test_id == "s").unwrap();

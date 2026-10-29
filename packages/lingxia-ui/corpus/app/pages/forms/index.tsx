@@ -14,15 +14,15 @@ export function render({ data }: View<object, { plans: { value: string; label: s
       <scroll className="grow">
         <column className="p-4 gap-3">
           <text role="heading" className="text-xl font-semibold">Account</text>
-          <search bind={query} accessibilityLabel="Search settings" placeholder="Search settings" className={field} />
-          <input bind={email} accessibilityLabel="Email" keyboard="email" autoComplete="email" autoCapitalize="none" spellCheck={false} enterKeyHint="next" placeholder="you@example.com" className={field} />
-          <input bind={phone} accessibilityLabel="Phone" keyboard="phone" autoComplete="tel" maxLength={16} enterKeyHint="next" placeholder="+1 555 0100" className={field} />
+          <search bind={query} aria-label="Search settings" placeholder="Search settings" className={field} />
+          <input bind={email} aria-label="Email" keyboard="email" autoComplete="email" autoCapitalize="none" spellCheck={false} enterKeyHint="next" placeholder="you@example.com" className={field} />
+          <input bind={phone} aria-label="Phone" keyboard="phone" autoComplete="tel" maxLength={16} enterKeyHint="next" placeholder="+1 555 0100" className={field} />
           <row className="gap-2">
-            <input bind={time} accessibilityLabel="Quiet hours" keyboard="time" placeholder="22:00" className={`grow basis-0 ${field}`} />
-            <select bind={plan} accessibilityLabel="Plan" placeholder="Choose a plan" options={data.plans} className={`grow basis-0 ${field}`} />
+            <input bind={time} aria-label="Quiet hours" keyboard="time" placeholder="22:00" className={`grow basis-0 ${field}`} />
+            <select bind={plan} aria-label="Plan" placeholder="Choose a plan" options={data.plans} className={`grow basis-0 ${field}`} />
           </row>
-          <textarea bind={note} rows={3} maxRows={6} accessibilityLabel="Notes" placeholder="Anything we should know?" className={field} />
-          <input disabled accessibilityLabel="Account id" value="HT-0042-77" className={field} />
+          <textarea bind={note} rows={3} maxRows={6} aria-label="Notes" placeholder="Anything we should know?" className={field} />
+          <input disabled aria-label="Account id" value="HT-0042-77" className={field} />
           <text className="text-xs text-danger">Email is required.</text>
           <button onClick={() => {}} className="py-3 rounded-xl bg-accent text-on-accent active:opacity-80 disabled:opacity-40" disabled={!email.value}>Continue</button>
         </column>

@@ -30,7 +30,7 @@ function TodoRow({ todo, blocked, onToggle, onDelete }: { todo: Todo; blocked: b
       </checkbox>
       <button
         data-testid={`todo-delete-${todo.id}`}
-        accessibilityLabel={`Delete ${todo.text}`}
+        aria-label={`Delete ${todo.text}`}
         disabled={blocked}
         onClick={() => {
           void onDelete();
@@ -84,7 +84,7 @@ export function render({ data, actions, env }: View<TodoActions, TodoPageData>) 
           {todos.length > 0 ? (
             <button
               data-testid="todo-toggle-all"
-              accessibilityLabel={active ? 'Mark all as complete' : 'Mark all as active'}
+              aria-label={active ? 'Mark all as complete' : 'Mark all as active'}
               disabled={blocked}
               onClick={() => run(() => actions.toggleAll())}
               className="w-12 h-12 p-3 bg-transparent"
@@ -97,7 +97,7 @@ export function render({ data, actions, env }: View<TodoActions, TodoPageData>) 
           <input
             data-testid="todo-input"
             data-controlled-value={draft.value}
-            accessibilityLabel="New task"
+            aria-label="New task"
             bind={draft}
             disabled={blocked}
             placeholder="What needs to be done?"

@@ -65,7 +65,7 @@ test('vectors encode bounded path data, fit and dash patterns, and decorate comp
   const vector = rendered(() => h('vector', { paths }));
   assert.equal(vector.tag, 'vector');
   assert.deepEqual(JSON.parse(vector.props.vectorSource), { viewBox: [0, 0, 24, 24], paths });
-  assert.doesNotThrow(() => describe(() => h('button', { accessibilityLabel: 'Open' }, h('vector', { paths })), {}));
+  assert.doesNotThrow(() => describe(() => h('button', { 'aria-label': 'Open' }, h('vector', { paths })), {}));
   for (const props of [{ paths: [] }, { paths: [{ d: '' }] }, { paths: [{ d: 'M0 0', href: 'remote' }] }, { paths, viewBox: [0, 0, 0, 24] },
     { paths: [{ d: 'M0 0', strokeWidth: Infinity }] }, { paths: [{ d: 'M0 0', fill: 'url(remote)' }] }])
     throwsOn(() => h('vector', props), /UI_VECTOR/);
@@ -204,13 +204,13 @@ test('boolean controls dispatch the inverse controlled value and expire old hand
 });
 
 test('boolean control bindings persist and reject invalid values or children', () => {
-  const render = () => h('switch', { bind: useLocal('preference', false), accessibilityLabel: 'Sync' }, 'Preference');
+  const render = () => h('switch', { bind: useLocal('preference', false), 'aria-label': 'Sync' }, 'Preference');
   const first = rendered(render);
   assert.equal(first.props.checked, 0); assert.equal(first.props.accessibilityLabel, 'Sync');
   assert.equal(dispatch(first.props.onCheckedChange), true);
   assert.equal(rendered(render).props.checked, 1);
   for (const tag of ['checkbox', 'switch']) {
-    for (const props of [{ value: 1 }, { value: 'true' }, { onChange: 2 }, { bind: { value: false, set() {} } }, { accessibilityLabel: ' ' }])
+    for (const props of [{ value: 1 }, { value: 'true' }, { onChange: 2 }, { bind: { value: false, set() {} } }, { 'aria-label': ' ' }])
       throwsOn(() => h(tag, props), /UI_/);
     for (const value of [undefined, null, 0, 'false']) throwsOn(() => h(tag, { bind: useLocal('invalid', value) }), /UI_/);
     throwsOn(() => h(tag, { bind: useLocal('valid', false), value: false }), /UI_/);
@@ -220,7 +220,7 @@ test('boolean control bindings persist and reject invalid values or children', (
 
 test('radio shares a string binding, retains selection across reorder, and ignores selecting the selected option', () => {
   let options = [{ value: 'daily', label: 'Daily' }, { value: 'weekly', label: 'Weekly' }, { value: 'never', label: 'Never', disabled: true }];
-  const render = () => h('radio', { bind: useLocal('pace', 'daily'), options, accessibilityLabel: 'Pace' });
+  const render = () => h('radio', { bind: useLocal('pace', 'daily'), options, 'aria-label': 'Pace' });
   let radio = rendered(render);
   assert.equal(radio.tag, 'radio'); assert.equal(radio.props.accessibilityLabel, 'Pace');
   assert.deepEqual(radio.children.map(r => r.props.checked), [1, 0, 0]);
@@ -254,7 +254,7 @@ test('radio is controlled, validates options and binding, and disables the entir
 
 test('composed buttons take their accessible name from descendant text unless labeled', () => {
   let clicks = 0;
-  const render = label => () => h('button', { accessibilityLabel: label, onClick: () => clicks++ },
+  const render = label => () => h('button', { 'aria-label': label, onClick: () => clicks++ },
     h('row', {}, h('text', {}, 'Inbox'), '3 unread'));
   const button = rendered(render(undefined));
   assert.equal(button.text, ''); assert.equal(button.props.accessibilityLabel, undefined);
@@ -273,9 +273,9 @@ test('composed controls hold controls of their own, never a scroll or list, and 
     throwsOn(() => h('checkbox', {}, h(Nested, {})), /UI_BUTTON/);
   }
   const row = rendered(() => h('button', { onClick() {} }, h('row', {}, h('text', {}, 'Wi-Fi'),
-    h('switch', { value: true, onChange() {}, accessibilityLabel: 'Wi-Fi' }), h('button', { onClick() {} }, 'Delete'))));
+    h('switch', { value: true, onChange() {}, 'aria-label': 'Wi-Fi' }), h('button', { onClick() {} }, 'Delete'))));
   assert.deepEqual(row.children[0].children.map(child => child.tag), ['text', 'switch', 'button']);
-  function Only() { return h('switch', { value: true, onChange() {}, accessibilityLabel: 'x' }); }
+  function Only() { return h('switch', { value: true, onChange() {}, 'aria-label': 'x' }); }
   throwsOn(() => h('button', { onClick() {} }, h(Only, {})), /UI_BUTTON: <button> holds only a <switch>; put the action on that control/);
   let checked;
   const box = rendered(() => h('checkbox', { value: false, onChange: value => checked = value }, h('row', {}, h('text', {}, 'Task'))));
@@ -306,7 +306,7 @@ test('text flattens nested spans and links into styled runs under one paragraph'
   let pressed = 0;
   const tree = rendered(() => h('text', { style: { fontSize: 16 } }, 'Hello ',
     h('span', { style: { fontWeight: 700, color: 'danger' } }, 'bold ', h('span', { style: { fontStyle: 'italic' } }, 'both'), ' tail'),
-    ' and ', h('link', { onPress: () => pressed++, accessibilityLabel: 'Terms' }, 'terms')));
+    ' and ', h('link', { onPress: () => pressed++, 'aria-label': 'Terms' }, 'terms')));
   assert.equal(tree.text, '');
   assert.deepEqual(tree.children.map(child => [child.tag, child.text]),
     [['span', 'Hello '], ['span', 'bold '], ['span', 'both'], ['span', ' tail'], ['span', ' and '], ['link', 'terms']]);
@@ -317,7 +317,7 @@ test('text flattens nested spans and links into styled runs under one paragraph'
   throwsOn(() => h('column', {}, h('span', {}, 'loose')), /UI_TEXT: <span> belongs inside <text>/);
   assert.equal(rendered(() => h('button', {}, h('text', {}, 'Read ', h('link', { onPress() {} }, 'terms')))).tag, 'button');
   throwsOn(() => h('text', {}, h('link', {}, h('link', {}, 'x'))), /UI_TEXT: links do not nest/);
-  const pieces = rendered(() => h('text', {}, h('link', { onPress() {}, accessibilityLabel: 'Terms' }, 'the ', h('span', { style: { fontWeight: 700 } }, 'terms')))).children;
+  const pieces = rendered(() => h('text', {}, h('link', { onPress() {}, 'aria-label': 'Terms' }, 'the ', h('span', { style: { fontWeight: 700 } }, 'terms')))).children;
   assert.deepEqual(pieces.map(piece => [piece.tag, piece.text, piece.props.fontWeight, piece.props.accessibilityLabel]), [['link', 'the ', undefined, 'Terms'], ['link', 'terms', 700, undefined]]);
   assert.equal(pieces[0].props.onClick, pieces[1].props.onClick);
   throwsOn(() => h('text', {}, h('span', { style: { padding: 4 } }, 'x')), /UI_STYLE: padding is not supported on <span>/);
@@ -325,15 +325,15 @@ test('text flattens nested spans and links into styled runs under one paragraph'
 });
 
 test('accessibility roles, heading levels, hidden subtrees and live regions are bounded props', () => {
-  const tree = rendered(() => h('column', { role: 'list', accessibilityLabel: 'Bills' },
-    h('text', { role: 'heading', headingLevel: 2 }, 'Title'), h('row', { role: 'listitem', accessibilityHidden: true }),
-    h('text', { role: 'status', accessibilityLiveRegion: 'assertive' }, 'Saved')));
+  const tree = rendered(() => h('column', { role: 'list', 'aria-label': 'Bills' },
+    h('text', { role: 'heading', headingLevel: 2 }, 'Title'), h('row', { role: 'listitem', 'aria-hidden': true }),
+    h('text', { role: 'status', 'aria-live': 'assertive' }, 'Saved')));
   assert.deepEqual([tree.props.role, tree.props.accessibilityLabel], ['list', 'Bills']);
   assert.deepEqual([tree.children[0].props.role, tree.children[0].props.headingLevel], ['heading', 2]);
   assert.equal(tree.children[1].props.accessibilityHidden, 1);
   assert.equal(tree.children[2].props.accessibilityLiveRegion, 'assertive');
-  for (const props of [{ role: 'banner' }, { headingLevel: 2 }, { role: 'heading', headingLevel: 7 }, { accessibilityHidden: 'yes' },
-    { accessibilityLiveRegion: 'rude' }, { accessibilityLabel: '  ' }])
+  for (const props of [{ role: 'banner' }, { headingLevel: 2 }, { role: 'heading', headingLevel: 7 }, { 'aria-hidden': 'yes' },
+    { 'aria-live': 'rude' }, { 'aria-label': '  ' }])
     throwsOn(() => h('column', props), /UI_PROP/);
 });
 
@@ -353,33 +353,34 @@ test('line clamps are text styles and preserve the source string', () => {
 });
 
 
-test('accessibilityState wires each declared state and refuses unknown keys or non-booleans', () => {
-  const { props } = rendered(() => h('button', { onClick() {}, accessibilityState: { pressed: true, expanded: false } }, 'Bold'));
+test('aria states wire each declared state; the old names and non-booleans are refused', () => {
+  const { props } = rendered(() => h('button', { onClick() {}, 'aria-pressed': true, 'aria-expanded': false }, 'Bold'));
   assert.deepEqual([props.statePressed, props.stateExpanded, props.stateSelected], [1, 0, undefined]);
-  for (const state of [{ checked: true }, { busy: 'yes' }, []])
-    assert.throws(() => describe(() => h('column', { accessibilityState: state }), {}), /UI_PROP: accessibilityState/);
+  assert.throws(() => describe(() => h('column', { 'aria-busy': 'yes' }), {}), /UI_PROP: aria-busy must be boolean/);
+  for (const old of ['accessibilityState', 'accessibilityLabel', 'accessibilityHidden'])
+    assert.throws(() => describe(() => h('column', { [old]: true }), {}), /UI_PROP: accessibility\w+ is not a property/);
 });
 
 test('select sends its options and shows the chosen label or its placeholder', () => {
   const options = [{ value: 'm', label: 'Monthly' }, { value: 'y', label: 'Yearly', disabled: true }];
-  const chosen = rendered(() => h('select', { options, value: 'm', accessibilityLabel: 'Plan', onChange() {} }));
+  const chosen = rendered(() => h('select', { options, value: 'm', 'aria-label': 'Plan', onChange() {} }));
   assert.equal(chosen.tag, 'select');
   assert.equal(chosen.text, 'Monthly');
   assert.equal(chosen.props.inputValue, 'm');
   assert.deepEqual(JSON.parse(chosen.props.selectOptions), options);
   assert.ok(chosen.props.onSelect > 0);
-  const empty = rendered(() => h('select', { options, placeholder: 'Choose a plan', accessibilityLabel: 'Plan' }));
+  const empty = rendered(() => h('select', { options, placeholder: 'Choose a plan', 'aria-label': 'Plan' }));
   assert.equal(empty.text, 'Choose a plan');
   assert.equal(empty.props.inputValue, '');
   for (const bad of [[], [{ value: 'a', label: 'A' }, { value: 'a', label: 'B' }], [{ value: '', label: 'x' }]])
-    assert.throws(() => describe(() => h('select', { options: bad, accessibilityLabel: 'Plan' }), {}), /UI_SELECT/);
+    assert.throws(() => describe(() => h('select', { options: bad, 'aria-label': 'Plan' }), {}), /UI_SELECT/);
 });
 
 test('a textarea takes rows and maxRows as an autosizing range', () => {
-  const { props } = rendered(() => h('textarea', { accessibilityLabel: 'Note', rows: 2, maxRows: 6 }));
+  const { props } = rendered(() => h('textarea', { 'aria-label': 'Note', rows: 2, maxRows: 6 }));
   assert.deepEqual([props.rows, props.maxRows], [2, 6]);
   for (const bad of [{ rows: 0 }, { rows: 2.5 }, { maxRows: 3 }, { rows: 4, maxRows: 2 }])
-    assert.throws(() => describe(() => h('textarea', { accessibilityLabel: 'Note', ...bad }), {}), /UI_INPUT: rows/);
+    assert.throws(() => describe(() => h('textarea', { 'aria-label': 'Note', ...bad }), {}), /UI_INPUT: rows/);
 });
 
 test('a View reading env.sizeClass or env.canDock is marked as reading the host context; runtime lowering is not', () => {

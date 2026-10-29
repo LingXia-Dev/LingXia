@@ -33,8 +33,8 @@ links default to the accent color with an underline, take `active:` paint and
 hit-test only their line pieces. A link may hold spans; its pieces share one
 handle, press together and read as one link. Rich text selects as one paragraph.
 Any element may set `role` (heading with `headingLevel`, list/listitem, dialog,
-alert, status), `accessibilityHidden` (removes the subtree from semantics, not
-paint) and `accessibilityLiveRegion`; alert and status announce assertively and
+alert, status), `aria-hidden` (removes the subtree from semantics, not
+paint) and `aria-live`; alert and status announce assertively and
 politely by default; an alert also speaks when it appears, a status only when it changes. Controls keep their own role. The Android adapter reads the
 role and key names from the generated `GpuSemantics` class.
 The projection nests published nodes under their nearest published layout
@@ -44,7 +44,7 @@ node providers, so accessibility-service automation must walk the tree by test
 id; `lx.automation` queries the projection directly.
 Composed buttons and checkboxes may contain noninteractive content; inline
 text among element children becomes text nodes. Their accessible name comes
-from descendant text unless `accessibilityLabel` is given. Empty strings,
+from descendant text unless `aria-label` is given. Empty strings,
 booleans and nullish children render nothing, so `{text && <x/>}` is safe.
 
 Editors enforce `maxLength` natively (insertions are cut, existing text kept), clamp

@@ -44,7 +44,7 @@ fn unchanged_geometry_rebinds_callbacks_and_failed_candidates_preserve_old_handl
 fn unchanged_plots_rebind_selection_without_layout_or_leaking_failed_callbacks() {
     for kind in ["bar", "line", "pie"] {
         let module = source(&format!(
-            "globalThis.rev=0;globalThis.observed='';globalThis.values=[10,20];globalThis.selected=-1;function render(){{const revision=++globalThis.rev;return h('plot',{{kind:'{kind}',values:globalThis.values,colors:['#123456'],accessibilityLabel:'Series',selectedIndex:globalThis.selected,onSelect:index=>{{globalThis.observed=revision+':'+index}},style:{{width:200,height:100}}}})}}"
+            "globalThis.rev=0;globalThis.observed='';globalThis.values=[10,20];globalThis.selected=-1;function render(){{const revision=++globalThis.rev;return h('plot',{{kind:'{kind}',values:globalThis.values,colors:['#123456'],'aria-label':'Series',selectedIndex:globalThis.selected,onSelect:index=>{{globalThis.observed=revision+':'+index}},style:{{width:200,height:100}}}})}}"
         ));
         let mut page = ViewSession::new(&module).unwrap();
         let first = page.layout(240, 160, 1.0).unwrap();
@@ -1306,7 +1306,7 @@ fn host_input_messages_preserve_composition_and_reject_stale_connections() {
 #[test]
 fn slider_events_are_numeric_generation_bound_and_commit_transactionally() {
     let module = source(
-        "function render(){const value=useLocal('value',0);return h('slider',{accessibilityLabel:'Volume',bind:value,min:0,max:10,step:3})}",
+        "function render(){const value=useLocal('value',0);return h('slider',{'aria-label':'Volume',bind:value,min:0,max:10,step:3})}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     let first = page.layout(200, 100, 1.0).unwrap();
@@ -1670,7 +1670,7 @@ fn a_render_that_runs_out_of_time_names_the_element_it_was_building() {
 #[test]
 fn a_focused_select_paints_its_focus_classes_without_the_view() {
     let module = source(
-        "configureClasses([{name:'base',when:{},style:{backgroundColor:'#ffffff'}},{name:'focused',when:{state:'focus'},style:{backgroundColor:'#0000ff'}}]);function render(){return h('select',{className:'base focused',accessibilityLabel:'Plan',options:[{value:'a',label:'A'}],value:'a',onChange(){},style:{width:100,height:40,borderRadius:0}})}",
+        "configureClasses([{name:'base',when:{},style:{backgroundColor:'#ffffff'}},{name:'focused',when:{state:'focus'},style:{backgroundColor:'#0000ff'}}]);function render(){return h('select',{className:'base focused','aria-label':'Plan',options:[{value:'a',label:'A'}],value:'a',onChange(){},style:{width:100,height:40,borderRadius:0}})}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     let display = page.layout(100, 40, 1.0).unwrap();

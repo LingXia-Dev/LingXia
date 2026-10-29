@@ -7,7 +7,7 @@ export const cn = (...parts: (string | false | null | undefined)[]) => parts.fil
 
 export function Icon({ name, size = 24, strokeWidth = 2, fill = 'none', className }: { name: IconName; size?: number; strokeWidth?: number; fill?: string; className?: string }) {
   const paths: VectorPath[] = icons[name].map(d => ({ d, fill, stroke: 'currentColor', strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round' }));
-  return <vector accessibilityHidden paths={paths} className={cn('shrink-0', className)} style={{ width: size, height: size }} />;
+  return <vector aria-hidden paths={paths} className={cn('shrink-0', className)} style={{ width: size, height: size }} />;
 }
 
 const BUTTON = 'focus-ring inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md transition duration-[var(--duration-fast)] active:opacity-90 motion-reduce:transition-none';
@@ -25,13 +25,13 @@ const SIZE = {
   icon: 'size-control text-control',
 };
 
-export function Button({ variant = 'default', size = 'default', className, disabled, onClick, accessibilityLabel, testId, children }: {
+export function Button({ variant = 'default', size = 'default', className, disabled, onClick, 'aria-label': ariaLabel, 'data-testid': testId, children }: {
   variant?: keyof typeof VARIANT; size?: keyof typeof SIZE; className?: string; disabled?: boolean; onClick?: () => void;
-  accessibilityLabel?: string; testId?: string; children?: JSX.Element | string | (JSX.Element | string | null)[];
+  'aria-label'?: string; 'data-testid'?: string; children?: JSX.Element | string | (JSX.Element | string | null)[];
 }) {
   const inert = disabled && (variant === 'default' || variant === 'destructive') ? 'bg-surface-sunken text-muted-foreground' : disabled ? 'opacity-50' : '';
   return (
-    <button data-testid={testId} accessibilityLabel={accessibilityLabel} disabled={disabled} onClick={onClick}
+    <button data-testid={testId} aria-label={ariaLabel} disabled={disabled} onClick={onClick}
       className={cn(BUTTON, inert || VARIANT[variant], SIZE[size], className)}>
       {children}
     </button>
@@ -51,14 +51,14 @@ export function Badge({ variant = 'default', className, children }: { variant?: 
 }
 
 export function Skeleton({ className }: { className?: string }) {
-  return <view accessibilityHidden className={cn('animate-pulse rounded-md bg-surface-sunken', className)} />;
+  return <view aria-hidden className={cn('animate-pulse rounded-md bg-surface-sunken', className)} />;
 }
 
 export type StatusKind = 'online' | 'degraded' | 'offline' | 'unknown';
 
 export function StatusDot({ status, size = 10 }: { status: StatusKind; size?: number }) {
   return (
-    <view accessibilityLabel={status} style={{ width: size, height: size }} className={cn(
+    <view aria-label={status} style={{ width: size, height: size }} className={cn(
       'rounded-full',
       status === 'online' && 'bg-success',
       status === 'degraded' && 'bg-warning',

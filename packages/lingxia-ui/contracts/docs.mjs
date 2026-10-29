@@ -341,7 +341,7 @@ function semantics(schema) {
     '## Authored roles', '', table(['`role`', 'Exposed as'], authored.map(role => [code(role), code(projected(role))])), '',
     '`headingLevel` (1..6) applies only to `role="heading"`.', '',
     '## All exposed roles', '', list(roles), '',
-    '## Live regions', '', `\`accessibilityLiveRegion\`: ${list(schema.options['live-region'])}. Announced politeness: ${list(liveRegions)}.`, '',
+    '## Live regions', '', `\`aria-live\`: ${list(schema.options['live-region'])}. Announced politeness: ${list(liveRegions)}.`, '',
     '## Text actions', '', `Selectable text supports ${list(actions)}.`, ''].join('\n');
 }
 

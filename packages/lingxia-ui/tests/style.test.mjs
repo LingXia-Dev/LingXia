@@ -162,7 +162,7 @@ test('has-checked and has-disabled follow descendants; focus-within reaches nati
     ['has-disabled:opacity-50', { opacity: 0.5 }, { state: 'hasDisabled' }],
     ['focus-within:bg-danger', { backgroundColor: 'danger' }, { state: 'focusWithin' }], ['has-checked:p-2', { paddingTop: 8 }, { state: 'hasChecked' }]]);
   const card = (checked, disabled) => rendered(() => h('row', { className: 'has-checked:bg-accent has-disabled:opacity-50' },
-    h('column', {}, h('checkbox', { value: checked, onChange() {}, accessibilityLabel: 'x' }), h('input', { value: '', disabled })))).props;
+    h('column', {}, h('checkbox', { value: checked, onChange() {}, 'aria-label': 'x' }), h('input', { value: '', disabled })))).props;
   assert.deepEqual([card(false, false).background, card(true, false).background], [undefined, 'accent']);
   assert.equal(card(false, true).opacity, 0.5);
   assert.ok(rendered(() => h('column', { className: 'focus-within:bg-danger' }, h('input', { value: '' }))).props.focusWithinStyle);

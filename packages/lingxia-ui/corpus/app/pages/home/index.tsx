@@ -15,7 +15,7 @@ export function render({ data }: View<object, { user: string; down: number; up: 
         <column className="m-4 p-5 gap-3 rounded-2xl bg-linear-to-br from-accent to-chart-4 shadow-lg">
           <text className="text-xs uppercase tracking-widest text-on-accent/80">Network</text>
           <row className="items-center gap-4">
-            <vector accessibilityHidden className="w-24 h-24 text-on-accent" viewBox={[0, 0, 100, 100]} paths={[
+            <vector aria-hidden className="w-24 h-24 text-on-accent" viewBox={[0, 0, 100, 100]} paths={[
               { d: 'M50 8a42 42 0 1 1 0 84a42 42 0 1 1 0-84', fill: 'none', stroke: 'currentColor', strokeWidth: 8, strokeDasharray: [ring], strokeDashoffset: ring * (1 - progress), strokeLinecap: 'round', transform: 'rotate(-90 50 50)' },
             ]} />
             <column className="gap-1">
@@ -23,7 +23,7 @@ export function render({ data }: View<object, { user: string; down: number; up: 
               <text className="text-sm text-on-accent/80 tabular-nums">↑ {data.up} Mbps · {data.ping} ms</text>
             </column>
           </row>
-          <vector accessibilityHidden className="h-10 w-full text-on-accent" viewBox={[0, 0, 110, 40]} paths={[{ d: spark, fill: 'none', stroke: 'currentColor', strokeWidth: 2, vectorEffect: 'non-scaling-stroke' }]} />
+          <vector aria-hidden className="h-10 w-full text-on-accent" viewBox={[0, 0, 110, 40]} paths={[{ d: spark, fill: 'none', stroke: 'currentColor', strokeWidth: 2, vectorEffect: 'non-scaling-stroke' }]} />
         </column>
         <grid className="mx-4 grid-cols-3 gap-3">
           {tiles.map(tile => (

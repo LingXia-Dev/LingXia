@@ -37,7 +37,7 @@ fn shared_selection_handles_categories_empty_slices_and_expanded_edges() {
 #[test]
 fn shared_plot_hit_uses_rendered_content_and_ancestor_clips() {
     let source = crate::session::tests::source(
-        "function render(){return h('scroll',{style:{width:80,height:80,borderRadius:30}},h('plot',{kind:'bar',values:[1,2],colors:['#ff0000'],onSelect:()=>{},accessibilityLabel:'Series',style:{width:100,height:100}}))}",
+        "function render(){return h('scroll',{style:{width:80,height:80,borderRadius:30}},h('plot',{kind:'bar',values:[1,2],colors:['#ff0000'],onSelect:()=>{},'aria-label':'Series',style:{width:100,height:100}}))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let display = page.layout(120, 120, 1.0).unwrap();
@@ -55,7 +55,7 @@ fn shared_plot_hit_uses_rendered_content_and_ancestor_clips() {
 fn shared_selection_dispatch_rejects_stale_frames_and_wrong_nodes() {
     use crate::PlotSelection::{Index, Next, Point};
     let source = crate::session::tests::source(
-        "function render(){const selected=useLocal('selected',-1);return h('plot',{kind:'pie',values:[1,0,1],colors:['#0000ff'],accessibilityLabel:'Series',selectedIndex:selected.value,onSelect:index=>selected.set(index),style:{width:100,height:100}})}",
+        "function render(){const selected=useLocal('selected',-1);return h('plot',{kind:'pie',values:[1,0,1],colors:['#0000ff'],'aria-label':'Series',selectedIndex:selected.value,onSelect:index=>selected.set(index),style:{width:100,height:100}})}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let frame = page.layout(100, 100, 1.0).unwrap();
@@ -124,7 +124,7 @@ fn marker_emphasis_preserves_stroke_and_changes_only_selected_circle() {
 fn marker_emphasis_raster_expands_white_center_and_blue_ring() {
     for selected in [-1, 0, 1] {
         let source = crate::session::tests::source(&format!(
-            "function render(){{return h('plot',{{kind:'line',values:[10,20],colors:['#0000ff'],selectedIndex:{selected},markerEmphasisScale:2,accessibilityLabel:'Series',style:{{width:100,height:100,backgroundColor:'#ffffff'}}}})}}"
+            "function render(){{return h('plot',{{kind:'line',values:[10,20],colors:['#0000ff'],selectedIndex:{selected},markerEmphasisScale:2,'aria-label':'Series',style:{{width:100,height:100,backgroundColor:'#ffffff'}}}})}}"
         ));
         let mut page = crate::ViewSession::new(&source).unwrap();
         let frame = page.layout(100, 100, 1.0).unwrap().rasterize().unwrap();
@@ -152,7 +152,7 @@ fn marker_emphasis_raster_expands_white_center_and_blue_ring() {
 #[test]
 fn expanded_pie_is_clipped_to_its_unbordered_plot_viewport() {
     let source = crate::session::tests::source(
-        "function render(){return h('column',{style:{backgroundColor:'#ffffff',padding:20}},h('plot',{kind:'pie',values:[1,1],colors:['#ff0000','#0000ff'],selectedIndex:0,accessibilityLabel:'Series',pieLayout:{center:[0.5,0.5],innerRadius:0.1,outerRadius:0.8,emphasisScale:64},style:{width:100,height:100}}))}",
+        "function render(){return h('column',{style:{backgroundColor:'#ffffff',padding:20}},h('plot',{kind:'pie',values:[1,1],colors:['#ff0000','#0000ff'],selectedIndex:0,'aria-label':'Series',pieLayout:{center:[0.5,0.5],innerRadius:0.1,outerRadius:0.8,emphasisScale:64},style:{width:100,height:100}}))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let display = page.layout(160, 160, 1.0).unwrap();
@@ -169,7 +169,7 @@ fn pie_emphasis_expands_only_selected_outer_edge_in_logical_pixels() {
     for scale in [1.0, 2.0] {
         for selected in [-1, 0, 1] {
             let source = crate::session::tests::source(&format!(
-                "function render(){{return h('plot',{{kind:'pie',values:[1,1],colors:['#ff0000','#0000ff'],selectedIndex:{selected},accessibilityLabel:'Series',pieLayout:{{center:[0.5,0.44],innerRadius:0.4,outerRadius:0.68,emphasisScale:5}},style:{{width:300,height:210,backgroundColor:'#ffffff'}}}})}}"
+                "function render(){{return h('plot',{{kind:'pie',values:[1,1],colors:['#ff0000','#0000ff'],selectedIndex:{selected},'aria-label':'Series',pieLayout:{{center:[0.5,0.44],innerRadius:0.4,outerRadius:0.68,emphasisScale:5}},style:{{width:300,height:210,backgroundColor:'#ffffff'}}}})}}"
             ));
             let mut page = crate::ViewSession::new(&source).unwrap();
             let display = page
@@ -214,7 +214,7 @@ fn pie_emphasis_expands_only_selected_outer_edge_in_logical_pixels() {
 #[test]
 fn configured_pie_radii_and_center_match_painted_pixels() {
     let source = crate::session::tests::source(
-        "function render(){return h('plot',{kind:'pie',values:[1,1],colors:['#ff0000','#0000ff'],accessibilityLabel:'Series',pieLayout:{center:[0.5,0.44],innerRadius:0.4,outerRadius:0.68},style:{width:300,height:210,backgroundColor:'#ffffff'}})}",
+        "function render(){return h('plot',{kind:'pie',values:[1,1],colors:['#ff0000','#0000ff'],'aria-label':'Series',pieLayout:{center:[0.5,0.44],innerRadius:0.4,outerRadius:0.68},style:{width:300,height:210,backgroundColor:'#ffffff'}})}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let display = page.layout(300, 210, 1.0).unwrap();
@@ -265,7 +265,7 @@ fn pie_layout_rejects_invalid_geometry_and_non_pies() {
 #[test]
 fn signed_bars_round_only_top_corners() {
     let source = crate::session::tests::source(
-        "function render(){return h('plot',{kind:'bar',values:[10,-10],domainMin:-20,domainMax:20,colors:['#3b82f6'],accessibilityLabel:'Series',style:{width:100,height:128,backgroundColor:'#101010'}})}",
+        "function render(){return h('plot',{kind:'bar',values:[10,-10],domainMin:-20,domainMax:20,colors:['#3b82f6'],'aria-label':'Series',style:{width:100,height:128,backgroundColor:'#101010'}})}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let frame = page.layout(400, 512, 4.0).unwrap().rasterize().unwrap();
@@ -288,7 +288,7 @@ fn signed_bars_round_only_top_corners() {
 #[test]
 fn line_markers_have_white_centers_blue_rings_and_round_corners() {
     let source = crate::session::tests::source(
-        "function render(){return h('plot',{kind:'line',values:[10,10],domainMin:0,domainMax:20,colors:['#3b82f6'],accessibilityLabel:'Series',style:{width:100,height:128,backgroundColor:'#101010'}})}",
+        "function render(){return h('plot',{kind:'line',values:[10,10],domainMin:0,domainMax:20,colors:['#3b82f6'],'aria-label':'Series',style:{width:100,height:128,backgroundColor:'#101010'}})}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let frame = page.layout(400, 512, 4.0).unwrap().rasterize().unwrap();
@@ -301,7 +301,7 @@ fn line_markers_have_white_centers_blue_rings_and_round_corners() {
 #[test]
 fn selection_snapshot_and_events_follow_the_committed_generation() {
     let source = crate::session::tests::source(
-        "function render(){const selected=useLocal('selected',-1);return h('plot',{kind:'line',values:[10,20],colors:['#0000ff'],accessibilityLabel:'Series',selectedIndex:selected.value,onSelect:index=>selected.set(index)})}",
+        "function render(){const selected=useLocal('selected',-1);return h('plot',{kind:'line',values:[10,20],colors:['#0000ff'],'aria-label':'Series',selectedIndex:selected.value,onSelect:index=>selected.set(index)})}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let frame = page.layout(100, 100, 1.0).unwrap();
@@ -505,7 +505,7 @@ fn smoothing_preserves_samples_without_overshooting_each_interval() {
 #[test]
 fn area_fades_toward_zero_and_translates_with_scroll() {
     let source = crate::session::tests::source(
-        "function render(){return h('scroll',{style:{height:80}},h('plot',{kind:'line',values:[10,10],colors:['#ff0000'],smooth:true,area:true,accessibilityLabel:'Area',style:{width:100,height:200,backgroundColor:'#ffffff'}}))}",
+        "function render(){return h('scroll',{style:{height:80}},h('plot',{kind:'line',values:[10,10],colors:['#ff0000'],smooth:true,area:true,'aria-label':'Area',style:{width:100,height:200,backgroundColor:'#ffffff'}}))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let first = page.layout(100, 80, 1.0).unwrap();
@@ -596,7 +596,7 @@ fn area_flags_and_expanded_geometry_are_bounded_on_the_wire() {
 #[test]
 fn negative_area_fades_to_its_top_baseline_on_a_dark_background() {
     let source = crate::session::tests::source(
-        "function render(){return h('plot',{kind:'line',values:[-10,-10],colors:['#0000ff'],smooth:true,area:true,accessibilityLabel:'Negative area',style:{width:100,height:100,backgroundColor:'#101010'}})}",
+        "function render(){return h('plot',{kind:'line',values:[-10,-10],colors:['#0000ff'],smooth:true,area:true,'aria-label':'Negative area',style:{width:100,height:100,backgroundColor:'#101010'}})}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let frame = page.layout(100, 100, 1.0).unwrap().rasterize().unwrap();
@@ -678,7 +678,7 @@ fn negative_bars_share_zero_baseline_and_donut_work_is_bounded() {
 fn native_decode_and_reference_pixels_cover_each_plot_kind() {
     for kind in ["bar", "line", "pie"] {
         let source = crate::session::tests::source(&format!(
-            "function render(){{return h('plot',{{accessibilityLabel:'Chart',kind:'{kind}',values:[10,20],colors:['#ff0000','#0000ff'],style:{{width:100,height:100,backgroundColor:'#ffffff'}}}})}}"
+            "function render(){{return h('plot',{{'aria-label':'Chart',kind:'{kind}',values:[10,20],colors:['#ff0000','#0000ff'],style:{{width:100,height:100,backgroundColor:'#ffffff'}}}})}}"
         ));
         let mut page = crate::ViewSession::new(&source).unwrap();
         let display = page.layout(100, 100, 1.0).unwrap();

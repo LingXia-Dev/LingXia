@@ -7,7 +7,7 @@ test('slider clamps and snaps numeric proposals including a partial final interv
   reset(); let calls = 0;
   const render = () => {
     const value = useLocal('value', 0);
-    return h('slider', { accessibilityLabel: 'Volume', min: 0, max: 10, step: 3, value: value.value, onChange: next => { calls++; value.set(next); } });
+    return h('slider', { 'aria-label': 'Volume', min: 0, max: 10, step: 3, value: value.value, onChange: next => { calls++; value.set(next); } });
   };
   let slider = rendered(render);
   assert.equal(slider.props.sliderValue, 0);
@@ -27,15 +27,15 @@ test('slider clamps and snaps numeric proposals including a partial final interv
 
 test('slider validates bounds, finite numeric binding, labels and disabled callbacks', () => {
   reset();
-  const render = () => h('slider', { accessibilityLabel: 'Intensity', bind: useLocal('intensity', 0.5), min: -1, max: 1, step: 0.25 });
+  const render = () => h('slider', { 'aria-label': 'Intensity', bind: useLocal('intensity', 0.5), min: -1, max: 1, step: 0.25 });
   assert.equal(dispatch(rendered(render).props.onSliderChange, -0.6), true);
   assert.equal(rendered(render).props.sliderValue, -0.5);
   for (const props of [{ value: null }, { value: '1' }, { value: NaN }, { min: null }, { max: 0 }, { step: 0 }, { step: 101 }, { step: 0.00000001 },
-    { min: 1e9, max: 1e9 + 1 }, { accessibilityLabel: '' }, { onChange: 1 }, { bind: { value: 1, set() {} } }])
-    assert.throws(() => describe(() => h('slider', { accessibilityLabel: 'Range', ...props }), {}), /UI_SLIDER/);
-  assert.throws(() => describe(() => h('slider', { accessibilityLabel: 'Range', bind: useLocal('bad', '1') }), {}), /UI_SLIDER/);
-  assert.throws(() => describe(() => h('slider', { accessibilityLabel: 'Range' }, 'label'), {}), /UI_CHILD/);
-  const disabled = rendered(() => h('slider', { accessibilityLabel: 'Range', disabled: true, onChange() {} }));
+    { min: 1e9, max: 1e9 + 1 }, { 'aria-label': '' }, { onChange: 1 }, { bind: { value: 1, set() {} } }])
+    assert.throws(() => describe(() => h('slider', { 'aria-label': 'Range', ...props }), {}), /UI_SLIDER/);
+  assert.throws(() => describe(() => h('slider', { 'aria-label': 'Range', bind: useLocal('bad', '1') }), {}), /UI_SLIDER/);
+  assert.throws(() => describe(() => h('slider', { 'aria-label': 'Range' }, 'label'), {}), /UI_CHILD/);
+  const disabled = rendered(() => h('slider', { 'aria-label': 'Range', disabled: true, onChange() {} }));
   assert.equal(disabled.props.onSliderChange, undefined);
   assert.equal(disabled.props.enabled, 0);
 });

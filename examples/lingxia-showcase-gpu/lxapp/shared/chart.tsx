@@ -89,7 +89,7 @@ export function Chart({ data }: { data: ReadonlyData<ChartData> }) {
             markerEmphasisScale={data.kind === 'line' ? 1.1 : undefined}
             selectedIndex={visible.indexOf(selected.value)}
             onSelect={index => selected.set(visible[index] ?? -1)}
-            accessibilityLabel={`${data.title}, ${data.kind} chart. ${description}`}
+            aria-label={`${data.title}, ${data.kind} chart. ${description}`}
             className={pie ? 'absolute inset-0' : 'absolute left-0 right-0 top-2'}
             style={pie ? undefined : { height: plotHeight }}
           />
@@ -106,7 +106,7 @@ export function Chart({ data }: { data: ReadonlyData<ChartData> }) {
                 <button
                   key={`${index}-${entry.label}`}
                   data-testid={`chart-series-${index}`}
-                  accessibilityLabel={`${entry.label}: ${entry.value}, ${hidden.value.includes(index) ? 'hidden, show series' : 'visible, hide series'}`}
+                  aria-label={`${entry.label}: ${entry.value}, ${hidden.value.includes(index) ? 'hidden, show series' : 'visible, hide series'}`}
                   onClick={() => toggle(index)}
                   className="min-w-0 p-0 rounded bg-transparent text-muted"
                 >

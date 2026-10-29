@@ -24,7 +24,7 @@ export function render({ data, actions }: View<Actions, { userId: string }>) {
     <page className="p-4 gap-3">
       {profile.error && <text role="alert" className="text-sm text-danger">{profile.error.message}</text>}
       <text className={profile.stale ? 'text-lg opacity-50' : 'text-lg'}>{profile.value?.name ?? (profile.pending ? 'Loading…' : '')}</text>
-      <input bind={draft} accessibilityLabel="New name" className="px-3 py-2 rounded-lg border" />
+      <input bind={draft} aria-label="New name" className="px-3 py-2 rounded-lg border" />
       <button disabled={!draft.value} onClick={save}>Rename</button>
       <button onClick={() => { summary.set(''); stream.start({ id: data.userId }); }} disabled={stream.status === 'streaming'}>Summarize</button>
       <text className="text-sm whitespace-pre-wrap">{summary.value}</text>
@@ -140,10 +140,10 @@ export function render() {
   const guard = useLeaveGuard('draft', { enabled: draft.value !== saved.value });
   return (
     <page className="p-4 gap-3">
-      <textarea bind={draft} accessibilityLabel="Draft" />
+      <textarea bind={draft} aria-label="Draft" />
       <button onClick={() => saved.set(draft.value)}>Save</button>
       {guard.pending && (
-        <column role="dialog" accessibilityLabel="Discard changes?" className="gap-2 p-4 rounded-xl bg-surface-sunken">
+        <column role="dialog" aria-label="Discard changes?" className="gap-2 p-4 rounded-xl bg-surface-sunken">
           <text>Discard your changes?</text>
           <row className="gap-2">
             <button onClick={() => guard.answer(false)}>Keep editing</button>

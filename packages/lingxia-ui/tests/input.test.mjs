@@ -7,9 +7,9 @@ import { configureClasses } from '../src/style/classes.js';
 
 test('editor labels are distinct from values and placeholder hints', () => {
   for (const tag of ['input', 'textarea', 'search']) {
-    const { props } = rendered(() => h(tag, { value: 'Ada', placeholder: 'Your name', accessibilityLabel: 'Name' }));
+    const { props } = rendered(() => h(tag, { value: 'Ada', placeholder: 'Your name', 'aria-label': 'Name' }));
     assert.deepEqual([props.accessibilityLabel, props.inputValue, props.placeholder], ['Name', 'Ada', 'Your name']);
-    assert.throws(() => describe(() => h(tag, { accessibilityLabel: '  ' }), {}), /UI_INPUT/);
+    assert.throws(() => describe(() => h(tag, { 'aria-label': '  ' }), {}), /UI_INPUT/);
   }
 });
 
@@ -133,7 +133,7 @@ test('disabled editors and selects read as disabled without authoring', async ()
   const props = make => rendered(make).props;
   const plain = props(() => h('input', { disabled: true, className: 'bg-surface border border-line-strong' }));
   assert.deepEqual([plain.color, plain.background, plain.borderColor, plain.enabled], ['text-muted', 'surface-sunken', 'line', 0]);
-  const select = props(() => h('select', { disabled: true, accessibilityLabel: 'Plan', options: [{ value: 'a', label: 'A' }] }));
+  const select = props(() => h('select', { disabled: true, 'aria-label': 'Plan', options: [{ value: 'a', label: 'A' }] }));
   assert.equal(select.background, 'surface-sunken');
   assert.equal(props(() => h('input', { disabled: true, style: { backgroundColor: 'canvas' } })).background, 'canvas');
   assert.equal(props(() => h('input', { className: 'bg-surface' })).background, 'surface');
@@ -141,6 +141,6 @@ test('disabled editors and selects read as disabled without authoring', async ()
 
 test('a select takes focus: classes like the editors it sits beside', async () => {
   configureClasses(await compileUtilities(new Set(['border', 'border-line-strong', 'focus:border-focus'])));
-  const props = rendered(() => h('select', { accessibilityLabel: 'Plan', options: [{ value: 'a', label: 'A' }], className: 'border border-line-strong focus:border-focus' })).props;
+  const props = rendered(() => h('select', { 'aria-label': 'Plan', options: [{ value: 'a', label: 'A' }], className: 'border border-line-strong focus:border-focus' })).props;
   assert.deepEqual(props.focusStyle, { borderColor: 'focus' });
 });

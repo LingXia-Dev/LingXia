@@ -61,7 +61,7 @@ fn image_descriptions_and_decoration_share_layout_and_pixels() {
 #[test]
 fn composed_buttons_own_the_accessible_label_of_their_images() {
     let module = source(
-        "function render(){return h('button',{accessibilityLabel:'Open photo'},h('image',{src:'photo.png',alt:'A mountain lake'}))}",
+        "function render(){return h('button',{'aria-label':'Open photo'},h('image',{src:'photo.png',alt:'A mountain lake'}))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     let frame = page.layout(160, 120, 1.0).unwrap();

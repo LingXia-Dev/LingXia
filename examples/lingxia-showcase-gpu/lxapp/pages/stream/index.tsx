@@ -111,7 +111,7 @@ export function render({ data, actions }: View<Actions, StreamPageData>) {
         <textarea
           data-testid="stream-input"
           data-controlled-value={draft.value}
-          accessibilityLabel="Message"
+          aria-label="Message"
           bind={draft}
           submitOnEnter
           onSubmit={send}
@@ -122,7 +122,7 @@ export function render({ data, actions }: View<Actions, StreamPageData>) {
         {busy ? (
           <button
             data-testid="stream-stop"
-            accessibilityLabel="Stop response"
+            aria-label="Stop response"
             onClick={() => stream.cancel()}
             className="w-9 h-9 rounded-full bg-text/90 items-center justify-center"
           >
@@ -131,7 +131,7 @@ export function render({ data, actions }: View<Actions, StreamPageData>) {
         ) : (
           <button
             data-testid="stream-send"
-            accessibilityLabel="Send message"
+            aria-label="Send message"
             disabled={!draft.value.trim()}
             onClick={send}
             className="w-9 h-9 rounded-full bg-accent items-center justify-center disabled:opacity-30"

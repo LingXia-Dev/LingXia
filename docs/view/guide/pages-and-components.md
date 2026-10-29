@@ -32,7 +32,7 @@ function Row({ title, done, onToggle }: { title: string; done: boolean; onToggle
   return (
     <column className="gap-1">
       <row className="items-center gap-2">
-        <checkbox value={done} onChange={onToggle} accessibilityLabel={title} />
+        <checkbox value={done} onChange={onToggle} aria-label={title} />
         <button onClick={() => expanded.set(!expanded.value)} className="grow p-0 bg-transparent">
           <text className={done ? 'text-sm line-through text-faint' : 'text-sm'}>{title}</text>
         </button>

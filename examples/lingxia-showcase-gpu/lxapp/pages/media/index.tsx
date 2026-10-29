@@ -39,7 +39,7 @@ function Setting({
   return (
     <button
       data-testid={testId}
-      accessibilityLabel={`${label}: ${value}`}
+      aria-label={`${label}: ${value}`}
       disabled={disabled}
       onClick={() => {
         void onClick();
@@ -69,7 +69,7 @@ function Inputs({
           <text className="text-xs font-medium">{label}</text>
           <input
             data-testid={`media-${key}`}
-            accessibilityLabel={label}
+            aria-label={label}
             value={String(data[key] ?? '')}
             placeholder={placeholder}
             onInput={value => actions[action]({ detail: { value } })}
@@ -374,7 +374,7 @@ function Gallery({ data, actions }: Pane) {
   const add = (
     <button
       data-testid="media-launchMediaDemo"
-      accessibilityLabel={String(data.addLabel)}
+      aria-label={String(data.addLabel)}
       disabled={!!data.isRunning || !canAdd}
       onClick={() => actions.launchMediaDemo()}
       className={
@@ -446,7 +446,7 @@ function Gallery({ data, actions }: Pane) {
             <text className="text-xs font-medium text-muted">Image Duration (ms)</text>
             <input
               data-testid="media-previewImageDurationMs"
-              accessibilityLabel="Image Duration (ms)"
+              aria-label="Image Duration (ms)"
               keyboard="number"
               value={String(data.previewImageDurationMs ?? '2000')}
               onInput={value => actions.onPreviewImageDurationInput({ detail: { value } })}

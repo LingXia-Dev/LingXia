@@ -45,7 +45,7 @@ export function render({ data, actions, env }: View<HomeActions, HomePageData>) 
             <input
               data-testid="home-name"
               data-controlled-value={name.value}
-              accessibilityLabel={t('nameLabel')}
+              aria-label={t('nameLabel')}
               bind={name}
               disabled={sending.value}
               placeholder={t('namePlaceholder')}

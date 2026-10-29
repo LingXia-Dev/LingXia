@@ -43,7 +43,7 @@ export function render({ actions }: View) {
         <text className="text-sm font-medium">Your feedback</text>
         <textarea
           data-testid="feedback-message"
-          accessibilityLabel="Your feedback"
+          aria-label="Your feedback"
           bind={message}
           disabled={submitting.value}
           placeholder="What happened, and what would you prefer?"

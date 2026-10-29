@@ -35,7 +35,7 @@ export function Button({
     <button
       data-testid={testId}
       {...data}
-      accessibilityLabel={label}
+      aria-label={label}
       disabled={disabled}
       onClick={
         onClick
@@ -79,7 +79,7 @@ export function Field({
       <input
         data-testid={testId}
         {...data}
-        accessibilityLabel={label}
+        aria-label={label}
         bind={bind}
         placeholder={placeholder}
         keyboard={keyboard}

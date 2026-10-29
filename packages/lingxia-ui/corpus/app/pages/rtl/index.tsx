@@ -12,7 +12,7 @@ export function render({ data }: View<object, { rows: { title: string; detail: s
                 <text className="text-sm font-medium text-start">{row.title}</text>
                 <text className="text-xs text-muted text-start">{row.detail}</text>
               </column>
-              <vector accessibilityHidden className="w-4 h-4 text-faint rtl:-scale-x-100" paths={[{ d: 'M9 18l6-6-6-6', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5 }]} />
+              <vector aria-hidden className="w-4 h-4 text-faint rtl:-scale-x-100" paths={[{ d: 'M9 18l6-6-6-6', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5 }]} />
             </row>
           </button>
         ))}

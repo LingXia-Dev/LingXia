@@ -30,7 +30,7 @@ export function render({ data, actions }: View) {
       <Section title="Text" description="writeText / readText. An empty string is a valid write, not clear().">
         <textarea
           data-testid="clipboard-draft"
-          accessibilityLabel="Text to copy"
+          aria-label="Text to copy"
           bind={draft}
           placeholder="Text to copy"
           className="h-20 px-3 py-2 rounded-lg border border-line-strong bg-surface text-sm"

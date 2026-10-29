@@ -190,6 +190,20 @@ function strongDirection(children, depth = 0) {
   return undefined;
 }
 
+// DOM-named accessibility props as the runtime carries them.
+const ariaNames = { 'aria-label': 'accessibilityLabel', 'aria-hidden': 'accessibilityHidden', 'aria-live': 'accessibilityLiveRegion' };
+function ariaProps(props) {
+  for (const [authored, internal] of Object.entries(ariaNames))
+    if (authored in props) { props[internal] = props[authored]; delete props[authored]; }
+  let state;
+  for (const name of ['pressed', 'selected', 'expanded', 'busy']) {
+    if (props[`aria-${name}`] === undefined) continue;
+    (state ??= {})[name] = props[`aria-${name}`];
+    delete props[`aria-${name}`];
+  }
+  if (state) props.accessibilityState = state;
+}
+
 function resolveElement(tag, original, children, identity, depth, parent) {
   if (typeof tag !== 'string' || !has(elements, tag)) throw Error(`UI_TAG: ${String(tag)}`);
   const element = elements[tag];
@@ -197,6 +211,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   admit(tag, element, props);
   // `data-testid` names the node for automation; it is not one of the data-* variant attributes.
   if (props['data-testid'] !== undefined) { props.testId = props['data-testid']; delete props['data-testid']; }
+  ariaProps(props);
   // Controls nest inside a pressable control and take presses in their own bounds; scrolls do not.
   if (parent.inControl && (tag === 'scroll' || tag === 'list')) throw Error('UI_BUTTON: a scroll or list cannot sit inside a pressable control');
   if (element.binding) bind(tag, element, props);
@@ -431,11 +446,11 @@ function semantics(tag, props, wire) {
     wire('headingLevel', headingLevel);
   }
   if (accessibilityHidden !== undefined) {
-    if (typeof accessibilityHidden !== 'boolean') throw Error('UI_PROP: accessibilityHidden must be boolean');
+    if (typeof accessibilityHidden !== 'boolean') throw Error('UI_PROP: aria-hidden must be boolean');
     if (accessibilityHidden) wire('accessibilityHidden', 1);
   }
   if (accessibilityLiveRegion !== undefined) {
-    if (!fieldOptions.accessibilityLiveRegion.includes(accessibilityLiveRegion)) throw Error('UI_PROP: accessibilityLiveRegion must be off, polite or assertive');
+    if (!fieldOptions.accessibilityLiveRegion.includes(accessibilityLiveRegion)) throw Error('UI_PROP: aria-live must be off, polite or assertive');
     wire('accessibilityLiveRegion', accessibilityLiveRegion);
   }
   const { accessibilityState: state } = props;
@@ -444,7 +459,7 @@ function semantics(tag, props, wire) {
     for (const [name, value] of Object.entries(state)) {
       if (!has(semanticStates, name)) throw Error(`UI_PROP: accessibilityState.${name}; known: ${Object.keys(semanticStates).join(', ')}`);
       if (value === undefined) continue;
-      if (typeof value !== 'boolean') throw Error(`UI_PROP: accessibilityState.${name} must be boolean`);
+      if (typeof value !== 'boolean') throw Error(`UI_PROP: aria-${name} must be boolean`);
       wire(semanticStates[name], +value);
     }
   }

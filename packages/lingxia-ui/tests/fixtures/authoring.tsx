@@ -45,13 +45,13 @@ export function render(view: View<{ save(value: string): Promise<void> }, { titl
   // @ts-expect-error controls are disabled, not enabled
   const enabled = <button enabled={false}/>;
   const composed = <button onClick={() => {}}><vector paths={[{d: 'M0 0'}]}/><text>Inbox</text></button>;
-  const named = <switch bind={checked} accessibilityLabel="Sync"/>;
+  const named = <switch bind={checked} aria-label="Sync"/>;
   // @ts-expect-error boolean binding has one owner
   const toggle = <switch bind={checked} onChange={() => {}}/>;
   // @ts-expect-error checkbox preserves the binding union
   const checkbox = <checkbox bind={checked} value={false}/>;
   // @ts-expect-error numeric binding has one owner
-  const slider = <slider bind={volume} value={1} accessibilityLabel="Volume"/>;
+  const slider = <slider bind={volume} value={1} aria-label="Volume"/>;
   // @ts-expect-error radio binding has one owner
   const radio = <radio bind={draft} value="a" options={[]}/>;
   // @ts-expect-error objects are not renderable children
@@ -66,14 +66,14 @@ export function render(view: View<{ save(value: string): Promise<void> }, { titl
   const layout = <view className="flex flex-col md:flex-row" style={{flexDirection:'row-reverse'}}/>;
   const meaningfulImage = <image src="photo.png" alt="A mountain lake"/>;
   const recoverableImage = <image src="photo.png" retryKey="1" onLoad={()=>{}} onError={()=>{}}/>;
-  const namedInput = <input accessibilityLabel="Name" bind={draft}/>;
+  const namedInput = <input aria-label="Name" bind={draft}/>;
   const decorativeImage = <image src="texture.png" alt=""/>;
   // @ts-expect-error alternative text must be text
   const invalidAlt = <image src="photo.png" alt={3}/>;
   // @ts-expect-error roles are a closed set.
   const banner = <column role="banner"/>;
-  // @ts-expect-error accessibilityState names known states only.
-  const state = <button accessibilityState={{ checked: true }}>Go</button>;
+  // @ts-expect-error aria states are booleans.
+  const state = <button aria-pressed="yes">Go</button>;
   // @ts-expect-error unknown style keys are refused.
   const unknownStyle = <column style={{ cursor: 'pointer' }}/>;
   // @ts-expect-error sizeClass is compact or regular.
@@ -82,7 +82,7 @@ export function render(view: View<{ save(value: string): Promise<void> }, { titl
     <text>{view.data.title}{false}{null}{['hello', 1]}</text>
     <input bind={draft}/><textarea bind={draft}/><search bind={draft}/>
     <checkbox bind={checked}/><switch bind={checked}/>
-    <slider bind={volume} accessibilityLabel="Volume"/>
+    <slider bind={volume} aria-label="Volume"/>
     <radio bind={draft} options={[]}/>
     <input value={draft.value} onInput={draft.set}/>
   </Card>;

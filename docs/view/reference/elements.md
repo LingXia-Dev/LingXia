@@ -15,9 +15,12 @@ Styles each element accepts are in [styles.md](styles.md).
 | `dir` | `"ltr" \| "rtl" \| "auto"` |  |
 | `role` | `"heading" \| "list" \| "listitem" \| "dialog" \| "alert" \| "status"` | Semantic role; controls keep their own. Headings take `headingLevel` 1..6. |
 | `headingLevel` | `1 \| 2 \| 3 \| 4 \| 5 \| 6` |  |
-| `accessibilityHidden` | `boolean` | Removes the node and its subtree from accessibility. |
-| `accessibilityLiveRegion` | `"off" \| "polite" \| "assertive"` | Announce changes; `alert` is assertive and `status` polite unless set. |
-| `accessibilityState` | `{ pressed?: boolean; selected?: boolean; expanded?: boolean; busy?: boolean }` | States assistive input announces; leave a key out when the element has no such state. |
+| `"aria-hidden"` | `boolean` | Removes the node and its subtree from accessibility. |
+| `"aria-live"` | `"off" \| "polite" \| "assertive"` | Announce changes; `alert` is assertive and `status` polite unless set. |
+| `"aria-pressed"` | `boolean` | States assistive input announces; leave one out when the element has no such state. |
+| `"aria-selected"` | `boolean` |  |
+| `"aria-expanded"` | `boolean` |  |
+| `"aria-busy"` | `boolean` |  |
 
 `style` takes the element's own style subset; `className` takes complete Tailwind utilities.
 
@@ -27,7 +30,7 @@ Children: any elements and text. Renders as `column`. May sit inside a composed 
 
 | Prop | Type | Required |
 | --- | --- | --- |
-| `accessibilityLabel` | `string` |  |
+| `aria-label` | `string` |  |
 
 ## `<column>`
 
@@ -35,7 +38,7 @@ Children: any elements and text. May sit inside a composed `<button>` or `<check
 
 | Prop | Type | Required |
 | --- | --- | --- |
-| `accessibilityLabel` | `string` |  |
+| `aria-label` | `string` |  |
 
 ## `<row>`
 
@@ -43,7 +46,7 @@ Children: any elements and text. May sit inside a composed `<button>` or `<check
 
 | Prop | Type | Required |
 | --- | --- | --- |
-| `accessibilityLabel` | `string` |  |
+| `aria-label` | `string` |  |
 
 ## `<page>`
 
@@ -51,7 +54,7 @@ Children: any elements and text. The page root. Not allowed inside a composed `<
 
 | Prop | Type | Required |
 | --- | --- | --- |
-| `accessibilityLabel` | `string` |  |
+| `aria-label` | `string` |  |
 
 ## `<text>`
 
@@ -59,7 +62,7 @@ Children: text, `<span>` and `<link>` runs. May sit inside a composed `<button>`
 
 | Prop | Type | Required |
 | --- | --- | --- |
-| `accessibilityLabel` | `string` |  |
+| `aria-label` | `string` |  |
 
 ## `<button>`
 
@@ -69,7 +72,7 @@ Children: text, or noninteractive content elements (a composed control). Not all
 | --- | --- | --- |
 | `onClick` | `() => void` |  |
 | `disabled` | `boolean` |  |
-| `accessibilityLabel` | `string` |  |
+| `aria-label` | `string` |  |
 
 ## `<spacer>`
 
@@ -121,7 +124,7 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput
 
 | Prop | Type | Required |
 | --- | --- | --- |
-| `accessibilityLabel` | `string` |  |
+| `aria-label` | `string` |  |
 | `placeholder` | `string` |  |
 | `secure` | `boolean` |  |
 | `keyboard` | `"text" \| "number" \| "email" \| "phone" \| "date" \| "time"` |  |
@@ -147,7 +150,7 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput
 | --- | --- | --- |
 | `rows` | `number` |  |
 | `maxRows` | `number` |  |
-| `accessibilityLabel` | `string` |  |
+| `aria-label` | `string` |  |
 | `placeholder` | `string` |  |
 | `secure` | `boolean` |  |
 | `keyboard` | `"text" \| "number" \| "email" \| "phone"` |  |
@@ -169,7 +172,7 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput
 
 | Prop | Type | Required |
 | --- | --- | --- |
-| `accessibilityLabel` | `string` |  |
+| `aria-label` | `string` |  |
 | `placeholder` | `string` |  |
 | `autoFocus` | `boolean` |  |
 | `disabled` | `boolean` |  |
@@ -188,7 +191,7 @@ Binding: `bind={local}` with a `useLocal<boolean>` cell, or `value` plus `onChan
 
 | Prop | Type | Required |
 | --- | --- | --- |
-| `accessibilityLabel` | `string` |  |
+| `aria-label` | `string` |  |
 | `disabled` | `boolean` |  |
 
 ## `<switch>`
@@ -199,7 +202,7 @@ Binding: `bind={local}` with a `useLocal<boolean>` cell, or `value` plus `onChan
 
 | Prop | Type | Required |
 | --- | --- | --- |
-| `accessibilityLabel` | `string` |  |
+| `aria-label` | `string` |  |
 | `disabled` | `boolean` |  |
 
 ## `<radio>`
@@ -211,7 +214,7 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onChang
 | Prop | Type | Required |
 | --- | --- | --- |
 | `options` | `readonly RadioOption[]` | yes |
-| `accessibilityLabel` | `string` |  |
+| `aria-label` | `string` |  |
 | `disabled` | `boolean` |  |
 
 ## `<slider>`
@@ -225,7 +228,7 @@ Binding: `bind={local}` with a `useLocal<number>` cell, or `value` plus `onChang
 | `min` | `number` |  |
 | `max` | `number` |  |
 | `step` | `number` |  |
-| `accessibilityLabel` | `string` | yes |
+| `aria-label` | `string` | yes |
 | `disabled` | `boolean` |  |
 
 ## `<grid>`
@@ -249,7 +252,7 @@ Children: none. Not allowed inside a composed `<button>` or `<checkbox>`.
 | `kind` | `"bar" \| "line" \| "pie"` | yes |
 | `values` | `readonly number[]` | yes |
 | `colors` | `readonly string[]` | yes |
-| `accessibilityLabel` | `string` | yes |
+| `aria-label` | `string` | yes |
 | `smooth` | `boolean` |  |
 | `area` | `boolean` |  |
 | `selectedIndex` | `number` |  |
@@ -282,7 +285,7 @@ Children: text and `<span>` runs; links do not nest. Only inside `<text>`. Not a
 | Prop | Type | Required |
 | --- | --- | --- |
 | `onPress` | `() => void` |  |
-| `accessibilityLabel` | `string` |  |
+| `aria-label` | `string` |  |
 | `disabled` | `boolean` |  |
 
 ## `<select>`
@@ -295,5 +298,5 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onChang
 | --- | --- | --- |
 | `options` | `readonly RadioOption[]` | yes |
 | `placeholder` | `string` |  |
-| `accessibilityLabel` | `string` |  |
+| `aria-label` | `string` |  |
 | `disabled` | `boolean` |  |

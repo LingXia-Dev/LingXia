@@ -129,7 +129,7 @@ export function render({ data, actions, env }: View) {
           <Card key={group.id} className="">
             <button
               data-testid={`api-${group.id}-section`}
-              accessibilityLabel={`${group.label}, ${expanded.value[group.id] ? 'expanded' : 'collapsed'}`}
+              aria-label={`${group.label}, ${expanded.value[group.id] ? 'expanded' : 'collapsed'}`}
               onClick={() => toggle(group.id)}
               className="px-4 py-4 rounded-2xl bg-transparent text-text text-left active:bg-surface-sunken"
             >

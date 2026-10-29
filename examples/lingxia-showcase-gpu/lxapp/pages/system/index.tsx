@@ -89,7 +89,7 @@ export function render({ data, actions, env }: View) {
             data.autostartSupported ? (
               <switch
                 data-testid="system-autostart-toggle"
-                accessibilityLabel="Launch at startup"
+                aria-label="Launch at startup"
                 value={!!data.autostartEnabled}
                 onChange={() => actions.toggleAutostart()}
               />

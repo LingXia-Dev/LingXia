@@ -32,7 +32,7 @@ function Choice({ testId, label, value, onClick }: { testId: string; label: stri
       <text className="text-sm font-medium">{label}</text>
       <button
         data-testid={testId}
-        accessibilityLabel={`${label}: ${value}`}
+        aria-label={`${label}: ${value}`}
         onClick={() => {
           void onClick();
         }}
@@ -119,7 +119,7 @@ function Dialogs({ data, actions }: Pane) {
             <text className="text-sm font-medium">Content</text>
             <textarea
               data-testid="modal-content"
-              accessibilityLabel="Content"
+              aria-label="Content"
               bind={modalContent}
               placeholder="Enter modal content"
               className="h-24 px-3 py-2 rounded-lg border border-line-strong bg-surface text-base"
@@ -329,7 +329,7 @@ function Counter({ id, label, value, hint, onClick }: { id: string; label: strin
   return (
     <button
       data-testid={`lifecycle-bump-${id}`}
-      accessibilityLabel={`${label}: ${value}`}
+      aria-label={`${label}: ${value}`}
       onClick={() => {
         void onClick();
       }}
@@ -446,7 +446,7 @@ function Navigation({ data, actions }: Pane) {
         <column data-testid="lifecycle-popup" className="absolute inset-0 z-10 items-center justify-center px-8">
           <button
             data-testid="lifecycle-popup-backdrop"
-            accessibilityLabel="Close popup"
+            aria-label="Close popup"
             onClick={() => popup.set(false)}
             className="absolute inset-0 rounded-none bg-scrim"
           />

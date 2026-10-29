@@ -53,7 +53,7 @@ function Shell({ children }: { children: (JSX.Element | null)[] }) {
 function HeroCard({ aside, children }: { aside: JSX.Element; children: (JSX.Element | null)[] }) {
   return (
     <column className={`speedtest-hero relative overflow-hidden p-4 ${CARD}`}>
-      <view className="brand-gradient absolute inset-x-0 top-0 h-0.5" accessibilityHidden />
+      <view className="brand-gradient absolute inset-x-0 top-0 h-0.5" aria-hidden />
       <row className="min-h-6 items-center justify-between gap-2">{aside}</row>
       {children}
     </column>
@@ -87,7 +87,7 @@ function Gauge270({ children }: { children: JSX.Element[] }) {
   }));
   return (
     <view className="relative mx-auto aspect-square w-full max-w-[15rem]">
-      <vector accessibilityHidden className="size-full" viewBox={[0, 0, RING_SIZE, RING_SIZE]} paths={[...ticks, {
+      <vector aria-hidden className="size-full" viewBox={[0, 0, RING_SIZE, RING_SIZE]} paths={[...ticks, {
         d: circle(c, radius), fill: 'none', stroke: 'surface-sunken', strokeWidth: 8, strokeDasharray: [arc, circumference - arc], strokeLinecap: 'round',
         transform: `rotate(${RING_ROTATION} ${c} ${c})`,
       }]} />
@@ -98,11 +98,11 @@ function Gauge270({ children }: { children: JSX.Element[] }) {
 
 function StartDial({ onStart }: { onStart: () => void }) {
   return (
-    <button onClick={onStart} accessibilityLabel={t('start')} data-testid="speedtest-start"
+    <button onClick={onStart} aria-label={t('start')} data-testid="speedtest-start"
       className="speedtest-start focus-ring group relative mx-auto grid aspect-square w-full max-w-[15rem] place-items-center rounded-full bg-transparent p-0">
-      <view className="speedtest-halo absolute inset-8 rounded-full" accessibilityHidden />
+      <view className="speedtest-halo absolute inset-8 rounded-full" aria-hidden />
       <Gauge270>
-        <view className="speedtest-start-ring absolute inset-3 rounded-full" accessibilityHidden />
+        <view className="speedtest-start-ring absolute inset-3 rounded-full" aria-hidden />
         <view className="grid justify-items-center gap-2">
           <view className="speedtest-start-button brand-gradient grid size-20 place-items-center rounded-full text-brand-foreground transition-transform duration-[var(--duration-fast)] group-active:scale-95 motion-reduce:transition-none">
             <Icon name="Gauge" size={30} />
@@ -217,28 +217,28 @@ function StepRing({ phase, elapsed }: { phase?: Phase; elapsed: number }) {
   });
   return (
     <view className="relative mx-auto aspect-square w-full max-w-[15rem]" data-testid="speedtest-dial">
-      <vector accessibilityHidden className="size-full rtl:-scale-x-100" viewBox={[0, 0, RING_SIZE, RING_SIZE]} paths={paths}
+      <vector aria-hidden className="size-full rtl:-scale-x-100" viewBox={[0, 0, RING_SIZE, RING_SIZE]} paths={paths}
         gradients={{ ring: { type: 'linear', x1: RING_SIZE, y1: RING_SIZE, x2: 0, y2: 0, units: 'userSpaceOnUse', stops: [{ offset: 0, color: 'chart-1' }, { offset: 1, color: 'accent' }] } }} />
       <view className="absolute inset-0 grid place-items-center">
         <view className="relative grid size-44 place-items-center rounded-full">
-          <vector accessibilityHidden className="absolute inset-0 animate-[speedtest-spin_1.6s_linear_infinite]" viewBox={[0, 0, 176, 176]}
+          <vector aria-hidden className="absolute inset-0 animate-[speedtest-spin_1.6s_linear_infinite]" viewBox={[0, 0, 176, 176]}
             paths={[{ d: circle(88, 86.5), fill: 'none', stroke: 'url(#orbit)', strokeWidth: 3 }]}
             gradients={{ orbit: { type: 'conic', from: 0, stops: [{ offset: 0, color: '#00000000' }, { offset: 0.6, color: '#00000000' }, { offset: 1, color: 'chart-1' }] } }} />
           <view className="grid max-w-[9.5rem] justify-items-center gap-2 text-center">
             <view key={phase ?? 'none'} className="speedtest-pop brand-gradient grid size-11 place-items-center rounded-full text-brand-foreground">
               <Icon name={phase ? PHASE_ICON[phase] : 'Gauge'} size={20} />
             </view>
-            <text className="text-center text-item-title font-semibold leading-snug" accessibilityLiveRegion="polite" data-testid="speedtest-phase-label">
+            <text className="text-center text-item-title font-semibold leading-snug" aria-live="polite" data-testid="speedtest-phase-label">
               {phase ? t(PHASE_LABEL[phase]) : t('testing')}
             </text>
             <row className="items-center gap-1.5">
               {step >= 0 ? (
                 <>
                   <text className="text-caption text-muted-foreground">{t('stepOf', { n: step + 1 })}</text>
-                  <text accessibilityHidden className="text-caption text-muted-foreground">·</text>
+                  <text aria-hidden className="text-caption text-muted-foreground">·</text>
                 </>
               ) : null}
-              <text className="numeric text-caption text-muted-foreground" dir="ltr" accessibilityLabel={`${t('elapsed')} ${formatClock(elapsed)}`}>{formatClock(elapsed)}</text>
+              <text className="numeric text-caption text-muted-foreground" dir="ltr" aria-label={`${t('elapsed')} ${formatClock(elapsed)}`}>{formatClock(elapsed)}</text>
             </row>
           </view>
         </view>
@@ -249,8 +249,8 @@ function StepRing({ phase, elapsed }: { phase?: Phase; elapsed: number }) {
 
 function StepMark({ state }: { state: StepState }) {
   if (state === 'past') return <Icon name="CircleCheck" size={13} className="text-success-subtle-foreground" />;
-  if (state === 'current') return <view accessibilityHidden className="speedtest-live-dot size-2 shrink-0 rounded-full bg-primary" />;
-  return <view accessibilityHidden className="size-2 shrink-0 rounded-full border border-separator" />;
+  if (state === 'current') return <view aria-hidden className="speedtest-live-dot size-2 shrink-0 rounded-full bg-primary" />;
+  return <view aria-hidden className="size-2 shrink-0 rounded-full border border-separator" />;
 }
 
 function StepReadings({ reading, phase }: { reading: Reading | null; phase?: Phase }) {
@@ -274,7 +274,7 @@ function StepReadings({ reading, phase }: { reading: Reading | null; phase?: Pha
                 {shown ? (
                   <text className="speedtest-pop numeric text-section-title leading-tight">{shown.value}<span className="text-caption font-normal text-muted-foreground">{` ${shown.unit}`}</span></text>
                 ) : state === 'current' ? (
-                  <row className="items-center gap-1" accessibilityLabel={t('inProgress')}>
+                  <row className="items-center gap-1" aria-label={t('inProgress')}>
                     {['animate-[speedtest-dot_1.2s_ease-in-out_infinite]', 'animate-[speedtest-dot_1.2s_ease-in-out_0.15s_infinite]', 'animate-[speedtest-dot_1.2s_ease-in-out_0.3s_infinite]'].map(dot => (
                       <view key={dot} className={`block h-[5px] w-[5px] rounded-full bg-muted-foreground ${dot}`} />
                     ))}
@@ -302,12 +302,12 @@ function RunningScreen({ data, actions }: { data: Data; actions: Actions }) {
         <view className="mt-2"><StepRing phase={phase} elapsed={data.elapsed} /></view>
         <StepReadings reading={data.reading} phase={phase} />
       </HeroCard>
-      <row className="mt-3 items-start justify-center gap-1.5 px-3" accessibilityLiveRegion="polite">
+      <row className="mt-3 items-start justify-center gap-1.5 px-3" aria-live="polite">
         <Icon name={slow ? 'Hourglass' : 'Info'} size={13} className="mt-0.5 text-muted-foreground" />
         <text className="min-w-0 shrink text-center text-caption text-muted-foreground">{slow ? t('slowHint') : t('keepOpen')}</text>
       </row>
       <spacer className="min-h-5 flex-1" />
-      <Button size="lg" variant="secondary" className="mt-section w-full" onClick={() => actions.cancel()} testId="speedtest-cancel">
+      <Button size="lg" variant="secondary" className="mt-section w-full" onClick={() => actions.cancel()} data-testid="speedtest-cancel">
         <row className="items-center gap-2"><Icon name="X" size={16} /><text className="text-control">{t('cancel')}</text></row>
       </Button>
     </Shell>
@@ -366,7 +366,7 @@ function UsageGrid({ result }: { result: Result }) {
           <view key={key} role="listitem" data-rating={rating} className={`grid min-w-0 content-start gap-1 px-3 py-2.5 ${CARD}`}>
             <text className="min-w-0 text-supporting font-medium text-foreground">{t(key)}</text>
             <row className="items-center gap-1.5">
-              <view accessibilityHidden className={`size-1.5 shrink-0 rounded-full ${tone[rating].dot}`} />
+              <view aria-hidden className={`size-1.5 shrink-0 rounded-full ${tone[rating].dot}`} />
               <text className={`text-caption ${tone[rating].text}`}>{t(tone[rating].label)}</text>
             </row>
           </view>
@@ -394,7 +394,7 @@ function ResultScreen({ data, actions }: { data: Data; actions: Actions }) {
       <view className="speedtest-rise mt-section"><UsageGrid result={result} /></view>
       <spacer className="min-h-5 flex-1" />
       <view className="speedtest-dock sticky bottom-0 -mx-gutter -mb-[max(1.5rem,env(safe-area-inset-bottom))] mt-section px-gutter pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-4">
-        <Button size="lg" className="w-full" onClick={() => actions.start()} testId="speedtest-run-again">
+        <Button size="lg" className="w-full" onClick={() => actions.start()} data-testid="speedtest-run-again">
           <row className="items-center gap-2"><Icon name="ArrowUp" size={16} /><text className="text-control">{t('runAgain')}</text></row>
         </Button>
       </view>

@@ -113,7 +113,7 @@ fn flex_wrap_reflows_items_with_gaps_and_reverse_order() {
 #[test]
 fn unlabeled_composed_controls_are_named_by_their_descendant_text() {
     let module = crate::session::tests::source(
-        "function render(){return h('column',{},h('button',{'data-testid':'open',onClick(){}},h('image',{src:'icon',alt:'Mail',style:{width:16,height:16}}),h('column',{},h('text',{},'Inbox'),' 3 unread ')),h('button',{'data-testid':'labeled',accessibilityLabel:'Compose'},h('text',{},'New')),h('switch',{'data-testid':'sync',accessibilityLabel:'Sync mail',value:true},'Sync'))}",
+        "function render(){return h('column',{},h('button',{'data-testid':'open',onClick(){}},h('image',{src:'icon',alt:'Mail',style:{width:16,height:16}}),h('column',{},h('text',{},'Inbox'),' 3 unread ')),h('button',{'data-testid':'labeled','aria-label':'Compose'},h('text',{},'New')),h('switch',{'data-testid':'sync','aria-label':'Sync mail',value:true},'Sync'))}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let layout = page.layout(300, 200, 1.0).unwrap();
@@ -134,7 +134,7 @@ fn unlabeled_composed_controls_are_named_by_their_descendant_text() {
 fn composed_button_lays_out_content_and_groups_semantics_at_each_scale() {
     for scale in [1.0, 2.0] {
         let module = crate::session::tests::source(
-            "function render(){const n=useLocal('n',0);return h('column',{},h('button',{'data-testid':'action',accessibilityLabel:'Open inbox',style:{padding:16,width:240,backgroundColor:'#ffffff'},onClick:()=>n.set(n.value+1)},h('column',{style:{gap:4}},h('text',{'data-testid':'title',style:{fontSize:18}},'Inbox'),h('text',{'data-testid':'description',style:{fontSize:12}},'Unread '+n.value))))}",
+            "function render(){const n=useLocal('n',0);return h('column',{},h('button',{'data-testid':'action','aria-label':'Open inbox',style:{padding:16,width:240,backgroundColor:'#ffffff'},onClick:()=>n.set(n.value+1)},h('column',{style:{gap:4}},h('text',{'data-testid':'title',style:{fontSize:18}},'Inbox'),h('text',{'data-testid':'description',style:{fontSize:12}},'Unread '+n.value))))}",
         );
         let mut page = crate::ViewSession::new(&module).unwrap();
         let first = page.layout(300, 200, scale).unwrap();
@@ -187,7 +187,7 @@ fn composed_button_lays_out_content_and_groups_semantics_at_each_scale() {
 fn composed_checkbox_lays_out_content_and_groups_semantics_at_each_scale() {
     for scale in [1.0, 2.0] {
         let module = crate::session::tests::source(
-            "function render(){const n=useLocal('n',0);return h('column',{},h('checkbox',{value:n.value%2===1,'data-testid':'action',accessibilityLabel:'Open inbox',style:{padding:16,width:240,backgroundColor:'#ffffff'},onChange:()=>n.set(n.value+1)},h('column',{style:{gap:4}},h('text',{'data-testid':'title',style:{fontSize:18}},'Inbox'),h('text',{'data-testid':'description',style:{fontSize:12}},'Unread '+n.value))))}",
+            "function render(){const n=useLocal('n',0);return h('column',{},h('checkbox',{value:n.value%2===1,'data-testid':'action','aria-label':'Open inbox',style:{padding:16,width:240,backgroundColor:'#ffffff'},onChange:()=>n.set(n.value+1)},h('column',{style:{gap:4}},h('text',{'data-testid':'title',style:{fontSize:18}},'Inbox'),h('text',{'data-testid':'description',style:{fontSize:12}},'Unread '+n.value))))}",
         );
         let mut page = crate::ViewSession::new(&module).unwrap();
         let first = page.layout(300, 200, scale).unwrap();

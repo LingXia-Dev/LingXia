@@ -24,7 +24,7 @@ the `role` prop sets one of the authored roles on any non-control element.
 
 ## Live regions
 
-`accessibilityLiveRegion`: `off`, `polite`, `assertive`. Announced politeness: `polite`, `assertive`.
+`aria-live`: `off`, `polite`, `assertive`. Announced politeness: `polite`, `assertive`.
 
 ## Text actions
 

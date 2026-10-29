@@ -255,7 +255,7 @@ fn a_textarea_with_rows_grows_with_its_lines_up_to_max_rows() {
     let height = |lines: usize| {
         let value = vec!["line"; lines].join("\\n");
         let source = crate::session::tests::source(&format!(
-            "function render(){{return h('column',{{}},h('textarea',{{'data-testid':'t',accessibilityLabel:'Note',value:'{value}',rows:2,maxRows:4,style:{{padding:0,lineHeight:'20px'}}}}))}}"
+            "function render(){{return h('column',{{}},h('textarea',{{'data-testid':'t','aria-label':'Note',value:'{value}',rows:2,maxRows:4,style:{{padding:0,lineHeight:'20px'}}}}))}}"
         ));
         let display = crate::ViewSession::new(&source)
             .unwrap()

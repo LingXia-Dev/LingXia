@@ -105,12 +105,12 @@ const layer = { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zInd
 function toastNode(env) {
   const { title, icon, position, mask } = toast;
   const spacing = icon === 'none' ? { paddingTop: 12, paddingBottom: 12, paddingLeft: 20, paddingRight: 20 } : { minWidth: 120, padding: 20 };
-  const box = h('column', { 'data-testid': 'lx-toast', key: `toast-${toast.key}`, role: 'status', accessibilityLiveRegion: 'polite', accessibilityLabel: title,
+  const box = h('column', { 'data-testid': 'lx-toast', key: `toast-${toast.key}`, role: 'status', 'aria-live': 'polite', 'aria-label': title,
     style: { alignItems: 'center', gap: 10, maxWidth: 280, ...spacing, borderRadius: 12, backgroundColor: 'text/80', transition: fade } },
-    icon !== 'none' && h('vector', { 'data-testid': 'lx-toast-icon', accessibilityHidden: true, paths: icons[icon], style: { width: 36, height: 36, color: 'canvas' } }),
+    icon !== 'none' && h('vector', { 'data-testid': 'lx-toast-icon', 'aria-hidden': true, paths: icons[icon], style: { width: 36, height: 36, color: 'canvas' } }),
     h('text', { style: { color: 'canvas', fontSize: 16, fontWeight: 500, textAlign: 'center' } }, title));
   return h('stack', { style: layer },
-    mask && h('button', { 'data-testid': 'lx-toast-mask', accessibilityHidden: true, onClick() {}, style: { ...layer, zIndex: 0, backgroundColor: 'transparent' } }),
+    mask && h('button', { 'data-testid': 'lx-toast-mask', 'aria-hidden': true, onClick() {}, style: { ...layer, zIndex: 0, backgroundColor: 'transparent' } }),
     h('column', { style: { ...layer, zIndex: 1, alignItems: 'center', justifyContent: position === 'top' ? 'start' : position === 'bottom' ? 'end' : 'center',
       paddingTop: position === 'top' ? 80 : 0, paddingBottom: position === 'bottom' ? 80 : 0 } }, box));
 }
@@ -120,7 +120,7 @@ function modalNode() {
   const button = (testId, label, confirm, color) => h('button', { 'data-testid': testId, onClick: () => settleModal(confirm), style: {
     flexGrow: 1, flexBasis: 0, paddingTop: 12, paddingBottom: 12, backgroundColor: 'transparent', color, fontSize: 16, fontWeight: confirm ? 600 : 400 } }, label);
   return h('column', { style: { ...layer, alignItems: 'center', justifyContent: 'center', backgroundColor: 'scrim', padding: 24 } },
-    h('column', { 'data-testid': 'lx-modal', key: `modal-${modal.key}`, role: 'dialog', accessibilityLabel: modal.title || modal.content || 'Dialog',
+    h('column', { 'data-testid': 'lx-modal', key: `modal-${modal.key}`, role: 'dialog', 'aria-label': modal.title || modal.content || 'Dialog',
       style: { width: 320, maxWidth: '100%', borderRadius: 14, backgroundColor: 'surface-raised', overflow: 'hidden', transition: fade } },
       h('column', { style: { padding: 20, gap: 8, alignItems: 'center' } },
         modal.title && h('text', { role: 'heading', style: { fontSize: 17, fontWeight: 600, textAlign: 'center', color: 'text' } }, modal.title),
@@ -136,9 +136,9 @@ function sheetNode(env) {
   const item = (testId, label, index, color) => h('button', { 'data-testid': testId, onClick: () => settleSheet(index), style: {
     paddingTop: 14, paddingBottom: 14, backgroundColor: 'transparent', color, fontSize: 17 } }, label);
   return h('stack', { style: layer },
-    h('button', { 'data-testid': 'lx-action-sheet-backdrop', accessibilityHidden: true, onClick: () => settleSheet(-1), style: { ...layer, zIndex: 0, backgroundColor: 'scrim' } }),
+    h('button', { 'data-testid': 'lx-action-sheet-backdrop', 'aria-hidden': true, onClick: () => settleSheet(-1), style: { ...layer, zIndex: 0, backgroundColor: 'scrim' } }),
     h('column', { style: { ...layer, zIndex: 1, alignItems: 'center', justifyContent: phone ? 'end' : 'center', padding: phone ? 8 : 24 } },
-      h('column', { 'data-testid': 'lx-action-sheet', key: `sheet-${sheet.key}`, role: 'dialog', accessibilityLabel: 'Actions',
+      h('column', { 'data-testid': 'lx-action-sheet', key: `sheet-${sheet.key}`, role: 'dialog', 'aria-label': 'Actions',
         style: { width: phone ? '100%' : 320, gap: 8, transition: fade } },
         h('column', { style: { borderRadius: 14, backgroundColor: 'surface-raised', overflow: 'hidden' } },
           ...sheet.items.map((label, index) => h('column', { key: `item-${index}`, style: index ? { borderTopWidth: 1, borderColor: 'line' } : {} },

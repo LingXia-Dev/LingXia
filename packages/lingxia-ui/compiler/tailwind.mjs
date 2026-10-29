@@ -846,7 +846,7 @@ function selectorTarget(source) {
 function alternative(rest) {
   if (rest.includes(':has(')) return ' (has-* supports :checked, :disabled and :focus of a descendant, alone: has-checked:, has-[:disabled]:, has-focus:; compute anything else in TS)';
   if (rest.startsWith('[data-')) return ' (data-* matches a data-* prop of the element itself, then optionally first:/last:/odd:/even:/only:/empty: and one state)';
-  if (rest.startsWith('[aria-')) return ' (aria-*: choose classes from the state in TS and set accessibility props such as role separately)';
+  if (rest.startsWith('[aria-')) return ' (aria-*: choose classes from the state in TS and set aria-* props separately)';
   return '';
 }
 

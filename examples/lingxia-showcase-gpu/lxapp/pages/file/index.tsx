@@ -24,7 +24,7 @@ function UrlField({
       <text className="text-sm text-muted">{label}</text>
       <input
         data-testid={testId}
-        accessibilityLabel={label}
+        aria-label={label}
         value={String(value || '')}
         disabled={disabled}
         placeholder={placeholder}

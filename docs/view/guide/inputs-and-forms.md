@@ -20,13 +20,13 @@ export function render({ actions }: View<Actions>) {
   };
   return (
     <page className="p-4 gap-3">
-      <input bind={email} accessibilityLabel="Email" placeholder="you@example.com" keyboard="email"
+      <input bind={email} aria-label="Email" placeholder="you@example.com" keyboard="email"
         autoComplete="email" autoCapitalize="none" enterKeyHint="next" className={field} />
-      <input bind={code} accessibilityLabel="Invite code" placeholder="6 digits" keyboard="number"
+      <input bind={code} aria-label="Invite code" placeholder="6 digits" keyboard="number"
         maxLength={6} autoComplete="one-time-code" enterKeyHint="done" onSubmit={submit} className={field} />
-      <radio bind={plan} accessibilityLabel="Plan" className="gap-1 text-sm"
+      <radio bind={plan} aria-label="Plan" className="gap-1 text-sm"
         options={[{ value: 'basic', label: 'Basic' }, { value: 'pro', label: 'Pro' }]} />
-      <slider bind={seats} min={1} max={20} step={1} accessibilityLabel="Seats" className="text-accent" />
+      <slider bind={seats} min={1} max={20} step={1} aria-label="Seats" className="text-accent" />
       <switch bind={news} className="text-sm">Product news</switch>
       <button disabled={busy.value || !email.value} onClick={submit}
         className="rounded-lg bg-accent text-on-accent disabled:bg-line disabled:text-muted">
@@ -46,7 +46,7 @@ import { useLocal } from '@lingxia/ui';
 
 export function render() {
   const name = useLocal('name', '');
-  return <page className="p-4"><input bind={name} accessibilityLabel="Name" /></page>;
+  return <page className="p-4"><input bind={name} aria-label="Name" /></page>;
 }
 ```
 
@@ -108,8 +108,8 @@ export function render() {
   const amount = useLocal('amount', '');
   return (
     <page className="p-4 gap-2">
-      <input bind={day} keyboard="date" min="2024-01-01" accessibilityLabel="Start date" placeholder="Start date" />
-      <input bind={amount} keyboard="number" min={1} max={500} step={0.5} accessibilityLabel="Amount" placeholder="Amount" />
+      <input bind={day} keyboard="date" min="2024-01-01" aria-label="Start date" placeholder="Start date" />
+      <input bind={amount} keyboard="number" min={1} max={500} step={0.5} aria-label="Amount" placeholder="Amount" />
     </page>
   );
 }
@@ -119,7 +119,7 @@ export function render() {
 
 ```tsx error UI_INPUT
 export function render() {
-  return <page><input keyboard="text" min={1} accessibilityLabel="Count" /></page>;
+  return <page><input keyboard="text" min={1} aria-label="Count" /></page>;
 }
 ```
 
@@ -127,7 +127,7 @@ export function render() {
 
 `<checkbox>` may contain noninteractive content (text, icons, images, layout) that becomes part of the
 control and its accessible name. `<switch>` takes plain text as its label. Both accept
-`accessibilityLabel` when they have no visible text.
+`aria-label` when they have no visible text.
 
 ## Radio
 
@@ -138,7 +138,7 @@ disables every option.
 ## Slider
 
 `<slider>` takes `min` (0), `max` (100) and `step` (1); the value snaps to the step. It must have an
-`accessibilityLabel`. `text-*` sets its accent color.
+`aria-label`. `text-*` sets its accent color.
 
 ## Forms
 

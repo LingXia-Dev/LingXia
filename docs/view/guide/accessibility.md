@@ -11,12 +11,12 @@ export function render() {
   return (
     <page className="p-4 gap-3">
       <text role="heading" headingLevel={1} className="text-2xl font-semibold">Bills</text>
-      <column role="list" accessibilityLabel="Bills due" className="gap-2">
+      <column role="list" aria-label="Bills due" className="gap-2">
         {bills.map(bill => (
           <row key={bill} role="listitem" className="items-center justify-between">
             <text className="text-sm">{bill}</text>
             <button disabled={paid.value.includes(bill)} onClick={() => paid.set([...paid.value, bill])}
-              accessibilityLabel={`Pay ${bill}`} className="rounded-lg px-3 py-1 text-sm">
+              aria-label={`Pay ${bill}`} className="rounded-lg px-3 py-1 text-sm">
               Pay
             </button>
           </row>
@@ -35,15 +35,15 @@ reader. Every element has a role from what it is; you add names, structural role
 
 | Element | Named by |
 | --- | --- |
-| `<button>`, `<checkbox>` | `accessibilityLabel`, else the text and image `alt` inside it, in order |
-| `<switch>`, `<link>` | `accessibilityLabel`, else its text |
-| `<input>`, `<textarea>`, `<search>` | `accessibilityLabel`; the placeholder is a hint, the value is the text |
-| `<radio>` | `accessibilityLabel` for the group; each option by its `label` |
-| `<slider>`, `<plot>` | `accessibilityLabel`, which is required |
+| `<button>`, `<checkbox>` | `aria-label`, else the text and image `alt` inside it, in order |
+| `<switch>`, `<link>` | `aria-label`, else its text |
+| `<input>`, `<textarea>`, `<search>` | `aria-label`; the placeholder is a hint, the value is the text |
+| `<radio>` | `aria-label` for the group; each option by its `label` |
+| `<slider>`, `<plot>` | `aria-label`, which is required |
 | `<image>` | `alt`; `alt=""` hides a decorative image |
 | `<text>` | its text |
 
-Give icon-only buttons an `accessibilityLabel`. Labels are non-empty, at most 1 KiB, and do not
+Give icon-only buttons an `aria-label`. Labels are non-empty, at most 1 KiB, and do not
 change what is painted.
 
 ## Roles
@@ -55,7 +55,7 @@ take one of the structural roles with `role`; on a control, `role` is ignored.
 | --- | --- |
 | `heading` | a section title; `headingLevel` 1–6 (default 2) |
 | `list`, `listitem` | a group of items; each item reports its position among the `listitem`s of its nearest `list` |
-| `dialog` | a sheet or confirmation, named by `accessibilityLabel` |
+| `dialog` | a sheet or confirmation, named by `aria-label` |
 | `alert` | an urgent message, announced assertively when its text changes |
 | `status` | a result or progress message, announced politely when its text changes |
 
@@ -69,16 +69,16 @@ selection offers copy, cut and paste to assistive technology; a `secure` editor 
 
 ## Live regions
 
-`role="alert"`, `role="status"` or `accessibilityLiveRegion="polite" | "assertive"` make a region
+`role="alert"`, `role="status"` or `aria-live="polite" | "assertive"` make a region
 announce its text when it changes from one frame to the next. The region speaks its own text, or the
-text of its visible descendants in order. `accessibilityLiveRegion="off"` silences an alert or status.
+text of its visible descendants in order. `aria-live="off"` silences an alert or status.
 
 A region announces changes, not its first appearance: keep it mounted and change its text. A status
 element that is inserted together with its message is not announced.
 
 ## Hiding
 
-- `accessibilityHidden` removes an element and its subtree from the accessibility tree. It still paints
+- `aria-hidden` removes an element and its subtree from the accessibility tree. It still paints
   and still receives taps. Use it for decoration and for icons inside labeled controls.
 - `hidden` (`display: none`) removes an element from layout, paint, hit testing and accessibility.
 - `opacity-0` hides nothing from the screen reader.

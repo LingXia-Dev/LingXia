@@ -71,13 +71,13 @@ test('spread and explicit props obey one element contract', () => {
   clean('const props = {children:"Hello",className:"text-sm"}; const view = <text {...props}/>;');
   clean('const view = <list count={keys.length} itemKeys={keys} row={renderRow}/>;');
   flags('const view = <scroll itemKeys={keys}/>;', /UI_PROP: itemKeys is not a property of <scroll>/);
-  clean('const x = <input bind={draft} accessibilityLabel="Note" placeholder="Write" keyboard="text" autoFocus onSubmit={save} disabled/>;');
-  clean('const x = <textarea accessibilityLabel="Note" value="" onInput={change} disabled={false}/>;');
+  clean('const x = <input bind={draft} aria-label="Note" placeholder="Write" keyboard="text" autoFocus onSubmit={save} disabled/>;');
+  clean('const x = <textarea aria-label="Note" value="" onInput={change} disabled={false}/>;');
   flags('const x = <textarea enabled={false}/>;', /UI_PROP: enabled/);
   clean('const x = <checkbox value={true}><row><text>Task</text></row></checkbox>;');
-  clean('const x = <switch accessibilityLabel="Task" bind={on}/>;');
+  clean('const x = <switch aria-label="Task" bind={on}/>;');
   for (const prop of ['secure={false}', 'keyboard="text"', 'onChange={find}']) flags(`const x=<search ${prop}/>;`, /UI_PROP/);
-  for (const name of ['onClick', 'onInput', 'onSubmit']) flags(`const x=<slider accessibilityLabel="Range" ${name}={update}/>;`, /UI_PROP/);
+  for (const name of ['onClick', 'onInput', 'onSubmit']) flags(`const x=<slider aria-label="Range" ${name}={update}/>;`, /UI_PROP/);
   flags('const x=<radio-option/>;', /UI_TAG/);
   flags('const x=<radio onClick={change}/>;', /UI_PROP/);
   flags('const icon=<vector paths={paths} onClick={click}/>;', /UI_PROP/);
@@ -230,8 +230,8 @@ test('compiler emits executable ESM UI, carries the action catalog and preserves
     'page.tsx': `export function render() { return <column>
       <stack><text>Back</text><text style={{position:"absolute",left:12,top:-4}}>Front</text></stack>
       <grid style={{gridTemplateColumns:2}}><text style={{lineClamp:2}}>Hello, world!</text><text>Second card</text></grid>
-      <search accessibilityLabel="Search" placeholder="Find a moment"/><slider accessibilityLabel="Volume" value={40}/>
-      <radio accessibilityLabel="Repeat" value="daily" options={[{value:"daily",label:"Daily"},{value:"weekly",label:"Weekly"}]} />
+      <search aria-label="Search" placeholder="Find a moment"/><slider aria-label="Volume" value={40}/>
+      <radio aria-label="Repeat" value="daily" options={[{value:"daily",label:"Daily"},{value:"weekly",label:"Weekly"}]} />
     </column>; }`,
   }, async root => {
     const catalog = { __names: ['increment'], __modes: { increment: 'call' } };
@@ -326,17 +326,17 @@ test('renderer test fixtures may keep literal colours only through the build opt
 
 test('controls a screen reader announces need a name, and the message names the fix', () => {
   for (const [source, pattern] of [
-    ['<input placeholder="Date"/>', /UI_A11Y: <input> needs an accessible name; add accessibilityLabel="…" \(a placeholder is a hint, not a name\)/],
+    ['<input placeholder="Date"/>', /UI_A11Y: <input> needs an accessible name; add aria-label="…" \(a placeholder is a hint, not a name\)/],
     ['<slider value={1}/>', /UI_A11Y: <slider> needs an accessible name/],
     ['<button onClick={f}><image src="x.png" alt=""/></button>', /UI_A11Y: <button> has no text to name it/],
     ['<checkbox value={v}/>', /UI_A11Y: <checkbox> has no text to name it/],
     ['<image src="x.png"/>', /UI_A11Y: <image> needs alt/],
   ]) flags(`export function render(){ return ${source}; }`, pattern);
   for (const source of [
-    '<input accessibilityLabel="Date" placeholder="Pick a date"/>',
+    '<input aria-label="Date" placeholder="Pick a date"/>',
     '<button onClick={f}>Save</button>',
     '<button onClick={f}>{label}</button>',
-    '<button onClick={f} accessibilityLabel="Close"><image src="x.png" alt=""/></button>',
+    '<button onClick={f} aria-label="Close"><image src="x.png" alt=""/></button>',
     '<button onClick={f}><row><text>Pay</text></row></button>',
     '<input {...props}/>',
     '<image src="x.png" alt=""/>',
@@ -440,7 +440,7 @@ test('top-level components get a compile-time id from their module path and decl
 });
 
 test('a pressable control around a single control fails the build; controls beside content are fine', () => {
-  flags('export function render(){ return <button onClick={() => {}}><switch value={true} onChange={() => {}} accessibilityLabel="x" /></button>; }',
+  flags('export function render(){ return <button onClick={() => {}}><switch value={true} onChange={() => {}} aria-label="x" /></button>; }',
     /UI_BUTTON: <button> holds only a <switch>; put the action on that control/);
-  clean('export function render(){ return <button onClick={() => {}}><row><text>Wi-Fi</text><switch value={true} onChange={() => {}} accessibilityLabel="Wi-Fi" /></row></button>; }');
+  clean('export function render(){ return <button onClick={() => {}}><row><text>Wi-Fi</text><switch value={true} onChange={() => {}} aria-label="Wi-Fi" /></row></button>; }');
 });

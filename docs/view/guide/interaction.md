@@ -17,10 +17,10 @@ export function render() {
             <text className="text-sm font-semibold">Morning Mix</text>
             <text className="text-xs text-muted">32 songs</text>
           </column>
-          <vector accessibilityHidden paths={chevron} className="w-5 h-5 text-faint rtl:-scale-x-100" />
+          <vector aria-hidden paths={chevron} className="w-5 h-5 text-faint rtl:-scale-x-100" />
         </row>
       </button>
-      <button onClick={() => liked.set(!liked.value)} accessibilityLabel={liked.value ? 'Unlike' : 'Like'}
+      <button onClick={() => liked.set(!liked.value)} aria-label={liked.value ? 'Unlike' : 'Like'}
         className={liked.value ? 'self-start rounded-full bg-danger text-on-accent' : 'self-start rounded-full bg-line text-text'}>
         {liked.value ? '♥' : '♡'}
       </button>
@@ -46,7 +46,7 @@ export function render() {
 
 `<button>` and `<checkbox>` may contain layout, text, images and vectors. A button stacks its content
 in a column unless its classes say otherwise (`flex-row`, `grid`). The control
-is named by its `accessibilityLabel` or else by its descendants' text and image `alt`, in order.
+is named by its `aria-label` or else by its descendants' text and image `alt`, in order.
 
 A composed control may also hold controls of its own: a row that opens a page can carry a switch and a
 delete button. A press goes to the innermost control under the finger, and only that control shows it
@@ -63,7 +63,7 @@ export function render() {
       <button onClick={() => {}} className="rounded-xl bg-surface px-4 py-3">
         <row className="items-center gap-3">
           <text className="grow">Wi-Fi</text>
-          <switch bind={on} accessibilityLabel="Wi-Fi" />
+          <switch bind={on} aria-label="Wi-Fi" />
         </row>
       </button>
     </page>

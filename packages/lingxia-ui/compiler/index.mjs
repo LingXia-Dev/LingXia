@@ -52,12 +52,12 @@ function unnamed(tag, node, file) {
   if (attributes.some(ts.isJsxSpreadAttribute)) return undefined;
   const has = name => attributes.some(prop => prop.name?.getText(file) === name);
   if (tag === 'image' && !has('alt')) return 'UI_A11Y: <image> needs alt (describe it, or alt="" when decorative)';
-  if (labelled.has(tag) && !has('accessibilityLabel'))
-    return `UI_A11Y: <${tag}> needs an accessible name; add accessibilityLabel="…"${editors.has(tag) ? ' (a placeholder is a hint, not a name)' : ''}`;
-  if (contentNamed.has(tag) && !has('accessibilityLabel') && ts.isJsxOpeningElement(node) && !spoken(node.parent))
-    return `UI_A11Y: <${tag}> has no text to name it; add text or accessibilityLabel="…"`;
-  if (contentNamed.has(tag) && !has('accessibilityLabel') && ts.isJsxSelfClosingElement(node))
-    return `UI_A11Y: <${tag}> has no text to name it; add text or accessibilityLabel="…"`;
+  if (labelled.has(tag) && !has('aria-label'))
+    return `UI_A11Y: <${tag}> needs an accessible name; add aria-label="…"${editors.has(tag) ? ' (a placeholder is a hint, not a name)' : ''}`;
+  if (contentNamed.has(tag) && !has('aria-label') && ts.isJsxOpeningElement(node) && !spoken(node.parent))
+    return `UI_A11Y: <${tag}> has no text to name it; add text or aria-label="…"`;
+  if (contentNamed.has(tag) && !has('aria-label') && ts.isJsxSelfClosingElement(node))
+    return `UI_A11Y: <${tag}> has no text to name it; add text or aria-label="…"`;
   return undefined;
 }
 // Whether children may produce text: literal text, an expression, or a text element.

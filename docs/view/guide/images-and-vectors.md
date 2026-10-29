@@ -9,7 +9,7 @@ const icons: Record<'chevron' | 'star', VectorPath[]> = {
 };
 
 function Icon({ name, className }: { name: keyof typeof icons; className?: string }) {
-  return <vector accessibilityHidden paths={icons[name]} className={className} />;
+  return <vector aria-hidden paths={icons[name]} className={className} />;
 }
 
 export function render() {
@@ -125,7 +125,7 @@ export function render() {
   const picked = useLocal('picked', -1);
   return (
     <page className="p-4 gap-2">
-      <plot kind="bar" values={sales} colors={['chart-1']} accessibilityLabel="Weekly sales"
+      <plot kind="bar" values={sales} colors={['chart-1']} aria-label="Weekly sales"
         selectedIndex={picked.value} onSelect={index => picked.set(index)} className="h-40" />
       <text className="text-sm tabular-nums">{picked.value >= 0 ? `Day ${picked.value + 1}: ${sales[picked.value]}` : 'Tap a bar'}</text>
     </page>
@@ -143,8 +143,8 @@ state and pass it back as `selectedIndex`.
 
 Keep icons as path data in a component, as in the first example:
 
-- Decorative icons, and icons inside a button that has text or a label, take `accessibilityHidden`.
-- An icon-only button needs `accessibilityLabel` on the button.
+- Decorative icons, and icons inside a button that has text or a label, take `aria-hidden`.
+- An icon-only button needs `aria-label` on the button.
 - Icons that point along the reading direction (chevrons, arrows, send) mirror with `rtl:-scale-x-100`.
 
 ## Backgrounds

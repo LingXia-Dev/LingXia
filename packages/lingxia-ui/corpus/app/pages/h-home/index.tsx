@@ -44,7 +44,7 @@ function ExperienceCard({ experience, initiallyOpen }: { experience: Data['exper
     <column className="mt-section" data-testid="experience">
       <column className={cn(CARD, 'pb-4')} data-testid="experience-card" data-band={band.code} data-open={open.value}>
         <row className="mt-3 items-center gap-3 px-4">
-          <view accessibilityHidden className={cn('grid size-11 shrink-0 place-items-center rounded-full', BAND_MARK[band.code])}>
+          <view aria-hidden className={cn('grid size-11 shrink-0 place-items-center rounded-full', BAND_MARK[band.code])}>
             <Icon name={needsAttention(band) ? 'CircleAlert' : 'Check'} size={22} />
           </view>
           <column className="min-w-0 flex-1">
@@ -56,7 +56,7 @@ function ExperienceCard({ experience, initiallyOpen }: { experience: Data['exper
             <text className="mt-0.5 text-caption text-muted-foreground" data-testid="experience-data-time">{t.expDataAsOf.replace('{time}', experience.since)}</text>
           </column>
         </row>
-        <button onClick={() => open.set(!open.value)} accessibilityState={{ expanded: open.value }} data-testid="experience-toggle"
+        <button onClick={() => open.set(!open.value)} aria-expanded={open.value} data-testid="experience-toggle"
           className="focus-ring mx-4 mt-3 inline-flex flex-row items-center gap-1 self-start rounded bg-transparent p-0">
           <text className="text-supporting font-medium text-primary">{t.expExpand}</text>
           <Icon name="ChevronDown" size={16} className={cn('text-primary transition-transform', open.value && 'rotate-180')} />
@@ -66,7 +66,7 @@ function ExperienceCard({ experience, initiallyOpen }: { experience: Data['exper
             <column role="list" className="gap-2.5" data-testid="experience-categories">
               {experience.categories.map(category => (
                 <row key={category.name} role="listitem" className="min-w-0 items-center gap-3" data-testid={`experience-category-${category.name}`}>
-                  <view accessibilityHidden className={cn('grid size-8 shrink-0 place-items-center rounded-full', category.band ? BAND_MARK[category.band.code] : 'border border-dashed border-border text-muted-foreground')}>
+                  <view aria-hidden className={cn('grid size-8 shrink-0 place-items-center rounded-full', category.band ? BAND_MARK[category.band.code] : 'border border-dashed border-border text-muted-foreground')}>
                     <Icon name={CATEGORY_ICON[category.name]} size={16} />
                   </view>
                   <text dir="auto" className={cn('min-w-0 flex-1 text-supporting', category.affected ? 'font-semibold text-foreground' : 'text-foreground')}>{category.label}</text>
@@ -100,7 +100,7 @@ function NetworkCard({ data }: { data: Data }) {
         </column>
       </row>
       {issue ? (
-        <Button className="mt-3 w-full" onClick={() => {}} testId="ask-why">
+        <Button className="mt-3 w-full" onClick={() => {}} data-testid="ask-why">
           <row className="items-center gap-2"><Icon name="Sparkles" size={16} /><text className="text-control">{t.askWhy}</text></row>
         </Button>
       ) : null}
@@ -150,7 +150,7 @@ function LastSpeed({ lastSpeed }: { lastSpeed: Data['lastSpeed'] }) {
   );
 }
 
-function NavRow({ testId, title, blurb, mark }: { testId: string; title: string; blurb: string; mark: JSX.Element }) {
+function NavRow({ 'data-testid': testId, title, blurb, mark }: { 'data-testid': string; title: string; blurb: string; mark: JSX.Element }) {
   return (
     <button onClick={() => {}} data-testid={testId}
       className="focus-ring mt-3 flex w-full flex-row items-center gap-3 rounded-lg border border-border bg-card p-4 text-start shadow-[var(--card-shadow)] transition-colors hover:bg-accent-soft">
@@ -185,10 +185,10 @@ export function render({ data }: View<object, Data>) {
           <NetworkCard data={data} />
           <Tiles />
           <LastSpeed lastSpeed={data.lastSpeed} />
-          <NavRow testId="family-card" title={t.familyTitle} blurb={t.familyBlurb} mark={
+          <NavRow data-testid="family-card" title={t.familyTitle} blurb={t.familyBlurb} mark={
             <view className="brand-gradient grid size-11 shrink-0 place-items-center rounded-full text-brand-foreground"><Icon name="HeartHandshake" size={22} /></view>} />
           {data.channelLinked ? (
-            <NavRow testId="sharing-card" title={t.sharingTitle} blurb={t.sharingBlurb} mark={
+            <NavRow data-testid="sharing-card" title={t.sharingTitle} blurb={t.sharingBlurb} mark={
               <view className="grid size-11 shrink-0 place-items-center rounded-full bg-primary/10 text-primary"><Icon name="Users" size={22} /></view>} />
           ) : null}
         </column>

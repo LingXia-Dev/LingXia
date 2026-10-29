@@ -4,7 +4,7 @@ import { h, describe, reset, dispatch, prepare, discard, useLocal } from '../src
 import { audit } from '../compiler/index.mjs';
 import { tree, rendered } from './support/wire.mjs';
 const view = { data: {}, env: {} };
-const plot = overrides => h('plot', { accessibilityLabel: 'Revenue', kind: 'bar', values: [10, 20], colors: ['chart-1'], style: { height: 180 }, ...overrides });
+const plot = overrides => h('plot', { 'aria-label': 'Revenue', kind: 'bar', values: [10, 20], colors: ['chart-1'], style: { height: 180 }, ...overrides });
 
 test('line marker emphasis has a bounded append-only property', () => {
   for (const markerEmphasisScale of [1,1.1,4]) {
@@ -22,7 +22,7 @@ test('plot uses append-only wire fields with bounded JSON arrays', () => {
   const { tag, props } = rendered(() => plot({ kind: 'pie' }), view);
   assert.equal(tag, 'plot');
   assert.deepEqual([props.plotValues, props.plotColors, props.plotKind], ['[10,20]', '["chart-1"]', 'pie']);
-  assert.deepEqual(audit('const view = <plot kind="line" accessibilityLabel="Trend" values={[1,2]} colors={["chart-2"]} />;', 'plot.tsx'), []);
+  assert.deepEqual(audit('const view = <plot kind="line" aria-label="Trend" values={[1,2]} colors={["chart-2"]} />;', 'plot.tsx'), []);
 });
 
 test('plot series are roles: chart-1..5 by default, hex refused at build with the role to use', () => {
@@ -31,14 +31,14 @@ test('plot series are roles: chart-1..5 by default, hex refused at build with th
   // The build refuses authored hex; the runtime refuses only what the wire cannot carry.
   for (const colors of [['url(file)'], ['brand']])
     assert.throws(() => describe(() => plot({ colors }), view), /UI_COLOR: ".+" is not a role; plot series use 'chart-1' to 'chart-5'/);
-  assert.deepEqual(audit('const v = <plot kind="bar" accessibilityLabel="A" values={[1]} colors={["#123456"]} />;', 'plot.tsx'),
-    [`plot.tsx:1:73: UI_COLOR: "#123456" is not a role; plot series use 'chart-1' to 'chart-5'`]);
+  assert.deepEqual(audit('const v = <plot kind="bar" aria-label="A" values={[1]} colors={["#123456"]} />;', 'plot.tsx'),
+    [`plot.tsx:1:65: UI_COLOR: "#123456" is not a role; plot series use 'chart-1' to 'chart-5'`]);
 });
 
 test('invalid plot data, palette and children fail before commit', () => {
   for (const props of [
-    { accessibilityLabel: '' }, { accessibilityLabel: '   ' },
-    { accessibilityLabel: 'a\0b' }, { accessibilityLabel: 'a'.repeat(1025) },
+    { 'aria-label': '' }, { 'aria-label': '   ' },
+    { 'aria-label': 'a\0b' }, { 'aria-label': 'a'.repeat(1025) },
     { kind: 'scatter' }, { values: [] }, { values: Array(129).fill(1) },
     { values: [NaN] }, { values: [1e10] }, { kind: 'pie', values: [-1] },
     { colors: [] }, { colors: Array(17).fill('chart-1') },
@@ -50,7 +50,7 @@ test('invalid plot data, palette and children fail before commit', () => {
     reset(); assert.throws(() => describe(() => plot(props), view), /UI_PLOT/);
   }
   reset();
-  assert.throws(() => describe(() => h('plot', { accessibilityLabel: 'Revenue', kind: 'bar', values: [1], colors: ['chart-2'] }, 'child'), view), /UI_CHILD/);
+  assert.throws(() => describe(() => h('plot', { 'aria-label': 'Revenue', kind: 'bar', values: [1], colors: ['chart-2'] }, 'child'), view), /UI_CHILD/);
 });
 
 test('selection delivers bounded numeric indices only from committed handles', () => {
@@ -86,7 +86,7 @@ test('smooth area fields are optional and share the expanded geometry budget', (
   reset();
   const { props } = rendered(() => plot({ kind: 'line', smooth: true, area: true }), view);
   assert.equal(props.plotSmooth, 1); assert.equal(props.plotArea, 1);
-  assert.deepEqual(audit('const v = <plot kind="line" accessibilityLabel="Trend" values={[1,2]} colors={["chart-2"]} smooth area />;', 'plot.tsx'), []);
+  assert.deepEqual(audit('const v = <plot kind="line" aria-label="Trend" values={[1,2]} colors={["chart-2"]} smooth area />;', 'plot.tsx'), []);
   reset();
   assert.throws(() => describe(() => h('column', {}, Array.from({ length: 8 }, (_, i) =>
     plot({ key: String(i), kind: 'line', smooth: true, area: true, values: Array(128).fill(1) }))), view), /plot geometry budget/);

@@ -7,7 +7,7 @@ import { seriesProblem, isRole } from '../style/color.js';
 export function label(value, code, required = false) {
   if (value === undefined && !required) return;
   if (typeof value !== 'string' || !value.trim() || utf8Bytes(value, 1025) > 1024 || value.includes('\0'))
-    throw Error(`${code}: ${required ? 'accessibilityLabel is required' : 'invalid accessibility label'}`);
+    throw Error(`${code}: ${required ? 'aria-label is required' : 'invalid aria-label'}`);
 }
 
 const finiteWithin = (value, bound) => typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= bound;

@@ -24,9 +24,9 @@ const NOTICE: Record<'rateLimited' | 'sendFailed', { icon: IconName; tone: strin
 };
 
 function Avatar({ show, busy = false }: { show: boolean; busy?: boolean }) {
-  if (!show) return <view accessibilityHidden className="w-7 shrink-0" />;
+  if (!show) return <view aria-hidden className="w-7 shrink-0" />;
   return (
-    <view accessibilityHidden className={`brand-gradient mt-0.5 grid size-7 shrink-0 place-items-center rounded-full text-brand-foreground ${busy ? 'ask-avatar-busy' : ''}`}>
+    <view aria-hidden className={`brand-gradient mt-0.5 grid size-7 shrink-0 place-items-center rounded-full text-brand-foreground ${busy ? 'ask-avatar-busy' : ''}`}>
       <Icon name="Sparkles" size={13} />
     </view>
   );
@@ -53,7 +53,7 @@ function AssistantTurn({ message, first }: { message: Extract<Message, { role: '
         ) : message.question ? (
           <row className="flex-wrap gap-2" data-testid="question-options">
             {message.question.options.map(option => (
-              <Button key={option.id} size="sm" variant="outline" className="rounded-full" onClick={() => {}} testId={`question-option-${option.id}`}>
+              <Button key={option.id} size="sm" variant="outline" className="rounded-full" onClick={() => {}} data-testid={`question-option-${option.id}`}>
                 <text dir="auto" className="text-control-small">{option.label}</text>
               </Button>
             ))}
@@ -69,9 +69,9 @@ function Composer() {
   const ready = draft.value.trim().length > 0;
   return (
     <row className="focus-ring-within items-end gap-1.5 rounded-[1.5rem] border border-border bg-field py-1.5 pe-1.5 ps-4 shadow-[var(--card-shadow)]">
-      <textarea bind={draft} rows={1} maxRows={5} enterKeyHint="send" placeholder={t.composerPlaceholder} accessibilityLabel={t.composerPlaceholder} data-testid="composer"
+      <textarea bind={draft} rows={1} maxRows={5} enterKeyHint="send" placeholder={t.composerPlaceholder} aria-label={t.composerPlaceholder} data-testid="composer"
         className="min-w-0 flex-1 self-center border-0 bg-transparent py-1.5 text-body text-foreground placeholder:text-muted-foreground" />
-      <Button size="icon" disabled={!ready} onClick={() => draft.set('')} accessibilityLabel={t.sendLabel} className="size-9 rounded-full" testId="send">
+      <Button size="icon" disabled={!ready} onClick={() => draft.set('')} aria-label={t.sendLabel} className="size-9 rounded-full" data-testid="send">
         <Icon name="ArrowUp" size={18} strokeWidth={2.4} />
       </Button>
     </row>
@@ -84,7 +84,7 @@ export function render({ data }: View<object, Data>) {
     <page className="density-compact flex flex-col bg-background text-body text-foreground">
       <column className="relative mx-auto min-h-0 w-full max-w-md flex-1 flex-col">
         <row className="items-center gap-2 px-gutter pt-2">
-          <Button variant="ghost" size="icon" className="rounded-full" accessibilityLabel={t.conversations} onClick={() => {}} testId="conversations-open">
+          <Button variant="ghost" size="icon" className="rounded-full" aria-label={t.conversations} onClick={() => {}} data-testid="conversations-open">
             <Icon name="History" size={19} />
           </Button>
           <row className="min-w-0 flex-1 justify-center">
@@ -97,7 +97,7 @@ export function render({ data }: View<object, Data>) {
               </row>
             )}
           </row>
-          <Button variant="ghost" size="icon" className="rounded-full" accessibilityLabel={t.newConversation} onClick={() => {}} testId="conversation-start">
+          <Button variant="ghost" size="icon" className="rounded-full" aria-label={t.newConversation} onClick={() => {}} data-testid="conversation-start">
             <Icon name="MessageSquarePlus" size={20} />
           </Button>
         </row>

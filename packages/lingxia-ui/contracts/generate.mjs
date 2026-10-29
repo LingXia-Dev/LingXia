@@ -282,7 +282,7 @@ function authoring(schema, api) {
     const keys = elementStyle(schema, element).filter(key => !schema.style[key].internal).map(key => JSON.stringify(key)).join(' | ');
     lines.push(`export type ${type}Style = Pick<Style, ${keys}>;`);
     const children = { any: 'Child', content: 'Child', text: 'TextChild', runs: 'RunChild', none: 'never' }[element.children];
-    const props = Object.entries(element.props).map(([prop, entry]) => `${prop}${entry.required ? '' : '?'}: ${entry.type};`);
+    const props = Object.entries(element.props).map(([prop, entry]) => `${/^[A-Za-z_$][\w$]*$/.test(prop) ? prop : JSON.stringify(prop)}${entry.required ? '' : '?'}: ${entry.type};`);
     const base = `Omit<Props, "style" | "children"> & { style?: ${type}Style; children?: ${children}${props.length ? '; ' + props.join(' ') : ''} }`;
     const binding = element.binding;
     if (binding) {
@@ -326,7 +326,7 @@ function commonProps(api) {
   const names = [];
   const visit = node => {
     if (ts.isInterfaceDeclaration(node) && node.name.text === 'Props')
-      for (const member of node.members) if (ts.isPropertySignature(member)) names.push(member.name.getText(file));
+      for (const member of node.members) if (ts.isPropertySignature(member)) names.push(ts.isStringLiteral(member.name) ? member.name.text : member.name.getText(file));
     ts.forEachChild(node, visit);
   };
   visit(file);

@@ -206,11 +206,11 @@ function Accessibility() {
   return (
     <Section title="Accessibility" testId="lab-accessibility">
       <text data-testid="lab-a11y-heading" role="heading" headingLevel={3} className="text-base font-semibold">Monthly bills</text>
-      <column data-testid="lab-a11y-list" role="list" accessibilityLabel="Bills" className="gap-1">
+      <column data-testid="lab-a11y-list" role="list" aria-label="Bills" className="gap-1">
         {['Water', 'Power', 'Internet'].map(bill => (
           <row key={bill} role="listitem" className="justify-between">
             <text className="text-sm">{bill}</text>
-            <vector accessibilityHidden className="w-4 h-4 text-muted" paths={[{ d: 'M9 18l6-6-6-6', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5 }]} />
+            <vector aria-hidden className="w-4 h-4 text-muted" paths={[{ d: 'M9 18l6-6-6-6', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5 }]} />
           </row>
         ))}
       </column>
@@ -231,15 +231,15 @@ function Inputs() {
   const field = 'px-3 py-2 rounded-lg border border-line-strong bg-surface text-sm';
   return (
     <Section title="Inputs" testId="lab-inputs">
-      <input data-testid="lab-input-otp" bind={code} accessibilityLabel="One-time code" keyboard="number" maxLength={6} autoComplete="one-time-code" enterKeyHint="done" placeholder="6-digit code" className={field} />
-      <input data-testid="lab-input-amount" bind={amount} accessibilityLabel="Amount" keyboard="number" min={1} max={500} step={0.5} enterKeyHint="next" placeholder="1 to 500, steps of 0.5" className={field} />
+      <input data-testid="lab-input-otp" bind={code} aria-label="One-time code" keyboard="number" maxLength={6} autoComplete="one-time-code" enterKeyHint="done" placeholder="6-digit code" className={field} />
+      <input data-testid="lab-input-amount" bind={amount} aria-label="Amount" keyboard="number" min={1} max={500} step={0.5} enterKeyHint="next" placeholder="1 to 500, steps of 0.5" className={field} />
       <row className="gap-2">
-        <input data-testid="lab-input-date" bind={day} accessibilityLabel="Billing date" keyboard="date" min="2024-01-01" placeholder="Pick a date" className={`grow basis-0 ${field}`} />
-        <input data-testid="lab-input-time" bind={time} accessibilityLabel="Reminder time" keyboard="time" placeholder="Pick a time" className={`grow basis-0 ${field}`} />
+        <input data-testid="lab-input-date" bind={day} aria-label="Billing date" keyboard="date" min="2024-01-01" placeholder="Pick a date" className={`grow basis-0 ${field}`} />
+        <input data-testid="lab-input-time" bind={time} aria-label="Reminder time" keyboard="time" placeholder="Pick a time" className={`grow basis-0 ${field}`} />
       </row>
-      <select data-testid="lab-input-plan" bind={plan} accessibilityLabel="Billing plan" placeholder="Choose a plan" className={field}
+      <select data-testid="lab-input-plan" bind={plan} aria-label="Billing plan" placeholder="Choose a plan" className={field}
         options={[{ value: 'monthly', label: 'Monthly' }, { value: 'quarterly', label: 'Quarterly', disabled: true }, { value: 'yearly', label: 'Yearly' }]} />
-      <input data-testid="lab-input-name" accessibilityLabel="Name" autoComplete="name" autoCapitalize="words" spellCheck={false} placeholder="Full name" className={field} />
+      <input data-testid="lab-input-name" aria-label="Name" autoComplete="name" autoCapitalize="words" spellCheck={false} placeholder="Full name" className={field} />
       <text data-testid="lab-input-values" className="text-xs text-muted">{`code=${code.value} amount=${amount.value} date=${day.value} time=${time.value} plan=${plan.value}`}</text>
     </Section>
   );
@@ -300,7 +300,7 @@ function Focus() {
         <text data-testid="lab-focus-choice" className="text-sm">{`chosen: ${choice.value}`}</text>
       </row>
       {open.value ? (
-        <column data-testid="lab-focus-dialog" role="dialog" accessibilityLabel="Confirm payment" className="gap-3 p-4 rounded-xl border border-line bg-surface">
+        <column data-testid="lab-focus-dialog" role="dialog" aria-label="Confirm payment" className="gap-3 p-4 rounded-xl border border-line bg-surface">
           <text role="heading" headingLevel={3} className="text-sm font-semibold">Confirm payment</text>
           <row className="gap-2">
             <Button testId="lab-focus-confirm" onClick={() => close('confirm')}>Confirm</Button>
@@ -322,7 +322,7 @@ function NestedControls() {
       <button data-testid="lab-nested-row" onClick={() => opened.set(opened.value + 1)} className="rounded-xl bg-surface-sunken px-4 py-3">
         <row className="items-center gap-3">
           <text className="grow text-sm">Wi-Fi</text>
-          <switch data-testid="lab-nested-switch" bind={wifi} accessibilityLabel="Wi-Fi" />
+          <switch data-testid="lab-nested-switch" bind={wifi} aria-label="Wi-Fi" />
           <button data-testid="lab-nested-remove" onClick={() => removed.set(removed.value + 1)} className="rounded-lg px-2 py-1 text-sm text-danger">Remove</button>
         </row>
       </button>
@@ -361,7 +361,7 @@ function StateVariants() {
   return (
     <Section title="Data and has variants" testId="lab-variants">
       <row data-testid="lab-variants-agree" className="items-center gap-3 rounded-xl px-4 py-3 bg-surface-sunken has-checked:bg-accent has-checked:text-on-accent">
-        <checkbox data-testid="lab-variants-checkbox" bind={agreed} accessibilityLabel="Agree" />
+        <checkbox data-testid="lab-variants-checkbox" bind={agreed} aria-label="Agree" />
         <text className="text-sm">{agreed.value ? 'Agreed' : 'Tap to agree'}</text>
       </row>
       <button data-testid="lab-variants-toggle" data-state={open.value ? 'open' : 'closed'} onClick={() => open.set(!open.value)}
@@ -370,7 +370,7 @@ function StateVariants() {
       </button>
       <column data-testid="lab-variants-field" className="rounded-xl p-3 gap-1 border border-line focus-within:border-accent focus-within:bg-surface-sunken">
         <text className="text-xs text-muted">Note</text>
-        <input data-testid="lab-variants-input" bind={note} placeholder="Focus me" accessibilityLabel="Note" />
+        <input data-testid="lab-variants-input" bind={note} placeholder="Focus me" aria-label="Note" />
       </column>
     </Section>
   );
@@ -388,12 +388,12 @@ function Controls() {
   const field = 'px-3 py-2 rounded-lg border border-line-strong bg-surface text-sm';
   return (
     <Section title="Controls" testId="lab-controls">
-      <radio data-testid="lab-controls-size" bind={size} accessibilityLabel="Size" className="gap-1 text-sm"
+      <radio data-testid="lab-controls-size" bind={size} aria-label="Size" className="gap-1 text-sm"
         options={[{ value: 's', label: 'Small', 'data-testid': 'lab-controls-size-s' }, { value: 'm', label: 'Medium', 'data-testid': 'lab-controls-size-m' },
           { value: 'l', label: 'Large', 'data-testid': 'lab-controls-size-l' }, { value: 'xl', label: 'Extra large', disabled: true, 'data-testid': 'lab-controls-size-xl' }]} />
-      <slider data-testid="lab-controls-volume" bind={volume} min={0} max={100} step={10} accessibilityLabel="Volume" className="text-accent" />
-      <textarea data-testid="lab-controls-notes" bind={notes} rows={3} maxRows={6} accessibilityLabel="Notes" placeholder="Several lines" className={field} />
-      <search data-testid="lab-controls-search" bind={query} accessibilityLabel="Filter rows" placeholder="Filter rows" className={field} />
+      <slider data-testid="lab-controls-volume" bind={volume} min={0} max={100} step={10} aria-label="Volume" className="text-accent" />
+      <textarea data-testid="lab-controls-notes" bind={notes} rows={3} maxRows={6} aria-label="Notes" placeholder="Several lines" className={field} />
+      <search data-testid="lab-controls-search" bind={query} aria-label="Filter rows" placeholder="Filter rows" className={field} />
       <List data-testid="lab-controls-list" className="h-48 rounded-lg border border-line"
         items={rows.filter(row => row.label.toLowerCase().includes(query.value.toLowerCase()))} getKey={row => row.id}
         renderItem={row => (

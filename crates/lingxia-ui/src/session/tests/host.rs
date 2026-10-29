@@ -1755,7 +1755,7 @@ fn fill_and_pick(dev: bool, swap: bool, logic: bool) {
     let worker = ViewWorker::spawn("test-fill-select").unwrap();
     let platform = Platform::new(&[&worker]);
     let mut page = source(
-        "function render(){const name=useLocal('name',''),plan=useLocal('plan','');return h('column',{},h('input',{'data-testid':'name',bind:name,accessibilityLabel:'Name'}),h('select',{'data-testid':'plan',bind:plan,accessibilityLabel:'Plan',options:[{value:'a',label:'A'},{value:'b',label:'B'}]}),h('text',{'data-testid':'out'},`name=${name.value} plan=${plan.value}`))}",
+        "function render(){const name=useLocal('name',''),plan=useLocal('plan','');return h('column',{},h('input',{'data-testid':'name',bind:name,'aria-label':'Name'}),h('select',{'data-testid':'plan',bind:plan,'aria-label':'Plan',options:[{value:'a',label:'A'},{value:'b',label:'B'}]}),h('text',{'data-testid':'out'},`name=${name.value} plan=${plan.value}`))}",
     );
     if dev {
         page.push_str("\nconfigureSourceMap({sources:[null],mappings:''});\nenableHotSwap();\n");
@@ -2913,17 +2913,17 @@ fn every_message_adapters_receive_matches_the_frame_schema() {
       const name=useLocal('name','Ada'), on=useLocal('on',true), level=useLocal('level',3), plan=useLocal('plan','b');
       return h('scroll',{'data-testid':'page',style:{height:400}},
         h('text',{'data-testid':'title',role:'heading',headingLevel:1,style:{userSelect:'text'}},'Frame contract'),
-        h('input',{'data-testid':'name',bind:name,accessibilityLabel:'Name',autoFocus:true,keyboard:'email',enterKeyHint:'next',maxLength:40,placeholder:'Name'}),
-        h('input',{'data-testid':'day',accessibilityLabel:'Day',keyboard:'date',min:'2024-01-01'}),
-        h('textarea',{'data-testid':'note',accessibilityLabel:'Note',rows:2,maxRows:4,value:'line'}),
-        h('select',{'data-testid':'plan',bind:plan,accessibilityLabel:'Plan',options:[{value:'a',label:'A'},{value:'b',label:'B',disabled:true}]}),
-        h('slider',{'data-testid':'level',bind:level,accessibilityLabel:'Level',min:0,max:10,step:1}),
+        h('input',{'data-testid':'name',bind:name,'aria-label':'Name',autoFocus:true,keyboard:'email',enterKeyHint:'next',maxLength:40,placeholder:'Name'}),
+        h('input',{'data-testid':'day','aria-label':'Day',keyboard:'date',min:'2024-01-01'}),
+        h('textarea',{'data-testid':'note','aria-label':'Note',rows:2,maxRows:4,value:'line'}),
+        h('select',{'data-testid':'plan',bind:plan,'aria-label':'Plan',options:[{value:'a',label:'A'},{value:'b',label:'B',disabled:true}]}),
+        h('slider',{'data-testid':'level',bind:level,'aria-label':'Level',min:0,max:10,step:1}),
         h('checkbox',{'data-testid':'on',bind:on},'On'),
-        h('plot',{'data-testid':'chart',kind:'pie',values:[1,2,3],accessibilityLabel:'Share',onSelect(){},style:{height:80}}),
-        h('vector',{'data-testid':'icon',accessibilityHidden:true,paths:[{d:'M0 0H10V10Z'}],style:{width:10,height:10}}),
+        h('plot',{'data-testid':'chart',kind:'pie',values:[1,2,3],'aria-label':'Share',onSelect(){},style:{height:80}}),
+        h('vector',{'data-testid':'icon','aria-hidden':true,paths:[{d:'M0 0H10V10Z'}],style:{width:10,height:10}}),
         h('image',{'data-testid':'photo',src:'a.png',alt:'Photo',style:{width:20,height:20,borderRadius:4}}),
         h('text',{},'Read the ',h('link',{onPress(){}},'terms')),
-        h('button',{'data-testid':'go',onClick(){}},h('row',{},h('text',{},'Go'),h('checkbox',{'data-testid':'remember',bind:on,accessibilityLabel:'Remember'}))),
+        h('button',{'data-testid':'go',onClick(){}},h('row',{},h('text',{},'Go'),h('checkbox',{'data-testid':'remember',bind:on,'aria-label':'Remember'}))),
         h('scroll',{'data-testid':'inner',style:{height:20,overflowX:'auto'}},h('row',{style:{width:900,height:20}})))
     }";
     let host = platform.host(&worker, &source(page), false);
@@ -3586,8 +3586,8 @@ fn an_editor_selection_offers_copy_cut_and_paste_to_assistive_tech() {
     let page = "function render(){
       const name=useLocal('name','Hello world'), pin=useLocal('pin','1234');
       return h('column',{},
-        h('input',{'data-testid':'name',bind:name,accessibilityLabel:'Name'}),
-        h('input',{'data-testid':'pin',bind:pin,secure:true,accessibilityLabel:'PIN'}))
+        h('input',{'data-testid':'name',bind:name,'aria-label':'Name'}),
+        h('input',{'data-testid':'pin',bind:pin,secure:true,'aria-label':'PIN'}))
     }";
     let host = platform.host(&worker, &source(page), false);
     host.set_visible(true);
@@ -3717,7 +3717,7 @@ fn a_pressable_row_holds_its_own_controls() {
       return h('column',{},
         h('button',{'data-testid':'row',onClick(){rows.set(rows.value+1)},style:{height:60,width:190}},
           h('row',{},h('text',{'data-testid':'label'},'Wi'),
-            h('switch',{'data-testid':'wifi',bind:on,accessibilityLabel:'Wi-Fi'}),
+            h('switch',{'data-testid':'wifi',bind:on,'aria-label':'Wi-Fi'}),
             h('button',{'data-testid':'delete',onClick(){deletes.set(deletes.value+1)}},'Del'))),
         h('text',{'data-testid':'state'},`rows=${rows.value} on=${on.value} deletes=${deletes.value}`))
     }";
@@ -3931,7 +3931,7 @@ fn an_off_screen_list_row_is_found_revealed_and_clicked_by_test_id() {
     let host = platform.host(
         &worker,
         &source(
-            "function render(){const query=useLocal('query',''),picked=useLocal('picked','');const rows=Array.from({length:40},(_,i)=>({id:`row-${i}`,label:`Row ${i}`})).filter(r=>r.label.includes(query.value));return h('column',{},h('search',{'data-testid':'filter',bind:query,accessibilityLabel:'Filter'}),h(List,{'data-testid':'list',style:{height:120},items:rows,getKey:r=>r.id,renderItem:r=>h('button',{'data-testid':r.id,onClick:()=>picked.set(r.label),style:{height:40}},r.label)}),h('text',{'data-testid':'picked'},`picked=${picked.value}`))}",
+            "function render(){const query=useLocal('query',''),picked=useLocal('picked','');const rows=Array.from({length:40},(_,i)=>({id:`row-${i}`,label:`Row ${i}`})).filter(r=>r.label.includes(query.value));return h('column',{},h('search',{'data-testid':'filter',bind:query,'aria-label':'Filter'}),h(List,{'data-testid':'list',style:{height:120},items:rows,getKey:r=>r.id,renderItem:r=>h('button',{'data-testid':r.id,onClick:()=>picked.set(r.label),style:{height:40}},r.label)}),h('text',{'data-testid':'picked'},`picked=${picked.value}`))}",
         ),
         false,
     );

@@ -37,7 +37,7 @@ fn subtree_translation_recovers_offscreen_paint_without_moving_siblings() {
 fn transformed_plot_selection_uses_original_geometry_inside_static_scroll_clips() {
     for kind in ["bar", "pie"] {
         let source = format!(
-            "function render(){{return h('scroll',{{style:{{width:100,height:80,borderRadius:8}}}},h('column',{{'data-testid':'card',style:{{width:80,height:140}}}},h('plot',{{kind:'{kind}',values:[2,4,6],colors:['#123456'],accessibilityLabel:'Series',onSelect:()=>{{}},style:{{width:80,height:60}}}})));}}"
+            "function render(){{return h('scroll',{{style:{{width:100,height:80,borderRadius:8}}}},h('column',{{'data-testid':'card',style:{{width:80,height:140}}}},h('plot',{{kind:'{kind}',values:[2,4,6],colors:['#123456'],'aria-label':'Series',onSelect:()=>{{}},style:{{width:80,height:60}}}})));}}"
         );
         let mut page = crate::ViewSession::new(&crate::session::tests::source(&source)).unwrap();
         let original = page.layout(100, 100, 1.0).unwrap();
@@ -109,7 +109,7 @@ fn animated_opacity_replaces_base_alpha_and_isolates_overlapping_children() {
 fn animated_interactive_geometry_is_rejected_before_build_when_unsupported() {
     for tag in ["input", "scroll", "slider"] {
         let label = if tag == "slider" {
-            "accessibilityLabel:'Control',"
+            "'aria-label':'Control',"
         } else {
             ""
         };

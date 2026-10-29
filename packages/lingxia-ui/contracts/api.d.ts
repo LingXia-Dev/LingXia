@@ -19,11 +19,11 @@ export interface Props {
   /** Semantic role; controls keep their own. Headings take `headingLevel` 1..6. */
   role?: "heading" | "list" | "listitem" | "dialog" | "alert" | "status"; headingLevel?: 1 | 2 | 3 | 4 | 5 | 6;
   /** Removes the node and its subtree from accessibility. */
-  accessibilityHidden?: boolean;
+  "aria-hidden"?: boolean;
   /** Announce changes; `alert` is assertive and `status` polite unless set. */
-  accessibilityLiveRegion?: "off" | "polite" | "assertive";
-  /** States assistive input announces; leave a key out when the element has no such state. */
-  accessibilityState?: { pressed?: boolean; selected?: boolean; expanded?: boolean; busy?: boolean };
+  "aria-live"?: "off" | "polite" | "assertive";
+  /** States assistive input announces; leave one out when the element has no such state. */
+  "aria-pressed"?: boolean; "aria-selected"?: boolean; "aria-expanded"?: boolean; "aria-busy"?: boolean;
 }
 export type LeafProps = Omit<Props, "children"> & { children?: never };
 

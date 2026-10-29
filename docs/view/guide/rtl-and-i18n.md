@@ -20,7 +20,7 @@ export function render() {
         <button key={label} onClick={() => {}} className="rounded-xl bg-surface text-text ps-4 pe-2">
           <row className="items-center gap-3">
             <text className="grow text-start text-sm">{label}</text>
-            <vector accessibilityHidden paths={chevron} className="w-5 h-5 text-faint rtl:-scale-x-100" />
+            <vector aria-hidden paths={chevron} className="w-5 h-5 text-faint rtl:-scale-x-100" />
           </row>
         </button>
       ))}
@@ -77,8 +77,8 @@ const back: VectorPath[] = [{ d: 'M15 6l-6 6 6 6', fill: 'none', stroke: 'curren
 export function render() {
   return (
     <page dir="rtl" className="p-4">
-      <button onClick={() => {}} accessibilityLabel="Back" className="self-start bg-transparent text-text">
-        <vector accessibilityHidden paths={back} className="w-6 h-6 rtl:-scale-x-100" />
+      <button onClick={() => {}} aria-label="Back" className="self-start bg-transparent text-text">
+        <vector aria-hidden paths={back} className="w-6 h-6 rtl:-scale-x-100" />
       </button>
     </page>
   );

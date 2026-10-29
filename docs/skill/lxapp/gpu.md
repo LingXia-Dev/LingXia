@@ -14,7 +14,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   const item = useRequest('item', actions.load, { id: data.id });
   return <page className="p-4 gap-3">
     <text className="text-lg font-semibold truncate">{item.value?.title ?? 'Loading…'}</text>
-    <input bind={draft} accessibilityLabel="Note" className="px-3 py-2 rounded-lg border" />
+    <input bind={draft} aria-label="Note" className="px-3 py-2 rounded-lg border" />
     <button disabled={!draft.value} onClick={() => draft.set('')} className="active:opacity-80">Clear</button>
   </page>;
 }
@@ -58,9 +58,9 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   runs take text paint only; links are accent + underline by default. `select-text` lets users
   long-press to select the nearest word and copy; there a long-press on a link selects, elsewhere it presses.
 - Semantics: `role="heading" headingLevel={2}`, `list`/`listitem`, `dialog`, `alert`/`status`
-  (announced), `accessibilityHidden` for decoration. A layout element with a role, or a scroll,
+  (announced), `aria-hidden` for decoration. A layout element with a role, or a scroll,
   groups its content for screen readers ("item 2 of 3"); plain wrappers collapse.
-  `accessibilityState={{ pressed, selected, expanded, busy }}` announces states (e.g. `busy: req.status === 'loading'`).
+  `aria-pressed`, `aria-selected`, `aria-expanded`, `aria-busy` announce states (e.g. `aria-busy={req.status === 'loading'}`).
 - Keyboard: Tab and arrows follow reading order (no `tabIndex`); a visible `role="dialog"` keeps focus inside
   and returns it on close; the focus ring shows only after keyboard input.
 - Inputs take `maxLength`, `autoComplete` (autofill), `enterKeyHint`, `autoCapitalize`, `spellCheck`;
@@ -69,7 +69,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - While an image loads its background colour shows; `placeholder="tiny.jpg"` paints a small stand-in scaled smooth.
 - `object-top`, `object-left-bottom` or `object-[25%_75%]` (`objectPosition`) align a covered or contained image; pixel offsets fail.
 - `<textarea rows={2} maxRows={6}/>` grows with its lines in that range, then scrolls.
-- `<select options={[{value,label,disabled?}]} bind={cell} placeholder accessibilityLabel/>` opens the platform
+- `<select options={[{value,label,disabled?}]} bind={cell} placeholder aria-label/>` opens the platform
   picker; arrows change the choice; automation uses `locator.selectOption(valueOrLabel)`.
 - `locator.dblclick()` selects the word at an element's center in selectable text and editors (a long press on touch).
 - `locator.click()` on content inside a control (a checkbox's label) clicks that control, as a finger would; it fails when the control is disabled.
@@ -77,7 +77,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   (the last one submits); `cell.focus()` focuses the editor bound to that `useLocal` cell.
 - Buttons may contain text, icons and images; their text names them for
   accessibility. Images need `alt` (`""` for decoration).
-- The build fails with `UI_A11Y` when an editor, slider, radio group or plot lacks `accessibilityLabel`,
+- The build fails with `UI_A11Y` when an editor, slider, radio group or plot lacks `aria-label`,
   or a button, link, checkbox or switch has neither text nor a label; a placeholder is not a name.
 - Remote `<image>` sources follow HTTP caching: revalidated, and shown stale while offline.
 - Text follows the system font size; prefer `min-h-*` over fixed heights. Whitespace
