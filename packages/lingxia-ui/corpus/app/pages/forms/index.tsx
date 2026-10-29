@@ -24,7 +24,7 @@ export function render({ data }: View<object, { plans: { value: string; label: s
           <textarea bind={note} rows={3} maxRows={6} aria-label="Notes" placeholder="Anything we should know?" className={field} />
           <input disabled aria-label="Account id" value="HT-0042-77" className={field} />
           <text className="text-xs text-danger">Email is required.</text>
-          <button onClick={() => {}} className="py-3 rounded-xl bg-accent text-on-accent active:opacity-80 disabled:opacity-40" disabled={!email.value}>Continue</button>
+          <button onClick={() => {}} className="px-3 py-3 rounded-xl bg-accent text-on-accent active:opacity-80 disabled:opacity-40" disabled={!email.value}>Continue</button>
         </column>
       </scroll>
     </page>

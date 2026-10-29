@@ -22,7 +22,7 @@ export function render() {
       </column>
       <button
         onClick={() => selected.set(selected.value === 'neutral' ? 'accent' : 'neutral')}
-        className="rounded-full border border-accent text-accent bg-transparent active:bg-accent/10 md:self-start"
+        className="rounded-full border border-accent p-3 text-accent active:bg-accent/10 md:self-start"
       >
         Switch tone
       </button>
@@ -173,7 +173,7 @@ export function render() {
       <view className="relative w-16 h-10 rounded-lg bg-line">
         <view className="absolute top-0 right-0 w-4 h-4 rounded-full bg-danger translate-x-1/2 -translate-y-1/2" />
       </view>
-      <button onClick={() => {}} className="self-start rounded-xl bg-accent text-on-accent active:scale-95 active:opacity-90">Press</button>
+      <button onClick={() => {}} className="self-start rounded-xl bg-accent p-3 text-on-accent active:scale-95 active:opacity-90">Press</button>
     </page>
   );
 }

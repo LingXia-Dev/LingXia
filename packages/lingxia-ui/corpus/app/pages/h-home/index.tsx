@@ -57,7 +57,7 @@ function ExperienceCard({ experience, initiallyOpen }: { experience: Data['exper
           </column>
         </row>
         <button onClick={() => open.set(!open.value)} aria-expanded={open.value} data-testid="experience-toggle"
-          className="focus-ring mx-4 mt-3 inline-flex flex-row items-center gap-1 self-start rounded bg-transparent p-0">
+          className="focus-ring mx-4 mt-3 inline-flex flex-row items-center gap-1 self-start rounded">
           <text className="text-supporting font-medium text-primary">{t.expExpand}</text>
           <Icon name="ChevronDown" size={16} className={cn('text-primary transition-transform', open.value && 'rotate-180')} />
         </button>

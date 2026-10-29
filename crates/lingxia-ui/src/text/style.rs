@@ -288,8 +288,12 @@ pub(crate) fn computed(records: &[Record], directions: &[bool]) -> Vec<TextStyle
             .string(field::COLOR)
             .map(str::to_owned)
             .unwrap_or_else(|| {
-                if record.tag == tag::BUTTON {
-                    button_ink(record)
+                // A button is unstyled, as HTML's: its ink pairs with a fill it sets, else inherits.
+                if let Some(ink) = (record.tag == tag::BUTTON)
+                    .then(|| button_ink(record))
+                    .flatten()
+                {
+                    ink
                 } else if link {
                     "accent".into()
                 } else {
@@ -324,18 +328,18 @@ pub(crate) fn computed(records: &[Record], directions: &[bool]) -> Vec<TextStyle
 
 /// An unstyled button's text: the pair of its fill when the fill is a role with an `on-` pair,
 /// `text` over any other fill, and `on-accent` over the default accent fill.
-fn button_ink(record: &crate::protocol::Record) -> String {
+fn button_ink(record: &crate::protocol::Record) -> Option<String> {
     let fill = record.string(field::BACKGROUND);
     if fill.is_none() && record.string(field::BACKGROUND_GRADIENT).is_none() {
-        return "on-accent".into();
+        return None;
     }
     let role = fill
         .and_then(|fill| fill.split('/').next())
         .unwrap_or_default();
     let paired = format!("on-{role}");
-    if lingxia_theme::Role::from_name(&paired).is_some() {
+    Some(if lingxia_theme::Role::from_name(&paired).is_some() {
         paired
     } else {
         "text".into()
-    }
+    })
 }

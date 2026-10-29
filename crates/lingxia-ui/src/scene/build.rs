@@ -161,7 +161,7 @@ impl Renderer {
             let default_radius = record.number(field::RADIUS).unwrap_or(
                 if matches!(
                     record.tag,
-                    tag::BUTTON | tag::INPUT | tag::TEXTAREA | tag::SEARCH | tag::SELECT
+                    tag::INPUT | tag::TEXTAREA | tag::SEARCH | tag::SELECT
                 ) {
                     12.0
                 } else {
@@ -344,22 +344,18 @@ impl Renderer {
                 record.tag == tag::TEXT && record.string(field::BACKGROUND_CLIP) == Some("text");
             let mut text_fill: Option<[u8; 4]> = None;
             let mut text_gradient: Option<Arc<crate::scene::gradient::GradientBrush>> = None;
-            if let Some(background) =
-                record
-                    .string(field::BACKGROUND)
-                    .or(if record.tag == tag::BUTTON {
-                        Some("accent")
-                    } else if matches!(
-                        record.tag,
-                        tag::INPUT | tag::TEXTAREA | tag::SEARCH | tag::SELECT
-                    ) {
-                        Some("surface")
-                    } else if index == 0 {
-                        Some("canvas")
-                    } else {
-                        None
-                    })
-            {
+            if let Some(background) = record.string(field::BACKGROUND).or(
+                if matches!(
+                    record.tag,
+                    tag::INPUT | tag::TEXTAREA | tag::SEARCH | tag::SELECT
+                ) {
+                    Some("surface")
+                } else if index == 0 {
+                    Some("canvas")
+                } else {
+                    None
+                },
+            ) {
                 let [r, g, b, a] = color(if background == "currentColor" {
                     colors[index]
                 } else {

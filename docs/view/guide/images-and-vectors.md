@@ -27,7 +27,7 @@ export function render() {
           onError={() => failed.set(true)}
         />
         {failed.value && (
-          <button onClick={() => attempt.set(attempt.value + 1)} className="self-center justify-self-center rounded-full bg-surface text-text">
+          <button onClick={() => attempt.set(attempt.value + 1)} className="self-center justify-self-center rounded-full bg-surface p-3 text-text">
             Retry
           </button>
         )}

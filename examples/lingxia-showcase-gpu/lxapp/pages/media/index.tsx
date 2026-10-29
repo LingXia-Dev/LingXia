@@ -379,8 +379,8 @@ function Gallery({ data, actions }: Pane) {
       onClick={() => actions.launchMediaDemo()}
       className={
         video
-          ? 'h-28 rounded-2xl border-2 border-accent/40 bg-accent-soft active:opacity-80 disabled:opacity-40'
-          : 'h-24 rounded-2xl border-2 border-accent/40 bg-accent-soft active:opacity-80 disabled:opacity-40'
+          ? 'h-28 p-3 rounded-2xl border-2 border-accent/40 bg-accent-soft active:opacity-80 disabled:opacity-40'
+          : 'h-24 p-3 rounded-2xl border-2 border-accent/40 bg-accent-soft active:opacity-80 disabled:opacity-40'
       }
     >
       <column className="items-center justify-center gap-2">

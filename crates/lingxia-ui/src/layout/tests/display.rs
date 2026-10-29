@@ -123,15 +123,17 @@ fn unstyled_defaults_follow_the_page_theme() {
             })
         };
         let root = display.retained.commands[display.retained.ranges[0].clone()].to_vec();
-        (rect(&root), text(&of("t")), rect(&of("b")))
+        (rect(&root), text(&of("t")), rect(&of("b")), text(&of("b")))
     };
     let themed =
         |role: &str, dark: bool| Some(crate::theme::Palette::builtin(dark).resolve(role).unwrap());
     for dark in [false, true] {
-        let (root, text, button) = paints(&mut page, if dark { "dark" } else { "light" });
+        let (root, text, button, label) = paints(&mut page, if dark { "dark" } else { "light" });
         assert_eq!(root, themed("canvas", dark), "root, dark={dark}");
         assert_eq!(text, themed("text", dark), "text, dark={dark}");
-        assert_eq!(button, themed("accent", dark), "button, dark={dark}");
+        // A button is unstyled: no fill, and its label inherits the text color.
+        assert_eq!(button, None, "button, dark={dark}");
+        assert_eq!(label, themed("text", dark), "button label, dark={dark}");
     }
     assert_ne!(themed("canvas", false), themed("canvas", true));
 }
@@ -299,7 +301,7 @@ fn an_image_placeholder_paints_first_and_loads_alongside() {
 }
 
 #[test]
-fn an_unstyled_buttons_text_pairs_with_its_fill() {
+fn a_buttons_text_pairs_with_its_fill_and_otherwise_inherits() {
     use crate::scene::paint::Paint;
     let source = crate::session::tests::source(
         "function render(){return h('column',{},h('button',{'data-testid':'plain',onClick(){}},'A'),h('button',{'data-testid':'card',onClick(){},style:{backgroundColor:'surface'}},'B'),h('button',{'data-testid':'risk',onClick(){},style:{backgroundColor:'danger'}},'C'))}",
@@ -320,7 +322,7 @@ fn an_unstyled_buttons_text_pairs_with_its_fill() {
     };
     let palette = crate::theme::Palette::builtin(false);
     use lingxia_theme::Role;
-    assert_eq!(ink("plain"), palette.role(Role::OnAccent));
+    assert_eq!(ink("plain"), palette.role(Role::Text));
     assert_eq!(ink("card"), palette.role(Role::Text));
     assert_eq!(ink("risk"), palette.role(Role::OnDanger));
 }

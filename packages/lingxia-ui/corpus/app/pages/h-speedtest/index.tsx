@@ -2,8 +2,7 @@
 // construct: the 270° gauge with ticks, the three-step ring with a gradient past segment, live
 // readings, the verdict and figures. Classes are h-app's; DOM elements map to View elements, an
 // SVG becomes one <vector>, and `speedtest-orbit` (a conic gradient behind a radial mask) is a
-// conic-gradient stroke. A View <button> paints accent with 12 px padding by default, where Tailwind's
-// preflight resets a web button to neither, so the dial says `bg-transparent p-0`.
+// conic-gradient stroke.
 import type { View, VectorPath } from '@lingxia/ui';
 import '../../theme/heights.css';
 import { Badge, Button, Icon, cn } from '../../shared/ui';
@@ -99,7 +98,7 @@ function Gauge270({ children }: { children: JSX.Element[] }) {
 function StartDial({ onStart }: { onStart: () => void }) {
   return (
     <button onClick={onStart} aria-label={t('start')} data-testid="speedtest-start"
-      className="speedtest-start focus-ring group relative mx-auto grid aspect-square w-full max-w-[15rem] place-items-center rounded-full bg-transparent p-0">
+      className="speedtest-start focus-ring group relative mx-auto grid aspect-square w-full max-w-[15rem] place-items-center rounded-full">
       <view className="speedtest-halo absolute inset-8 rounded-full" aria-hidden />
       <Gauge270>
         <view className="speedtest-start-ring absolute inset-3 rounded-full" aria-hidden />

@@ -16,7 +16,7 @@ export function render() {
           <row key={bill} role="listitem" className="items-center justify-between">
             <text className="text-sm">{bill}</text>
             <button disabled={paid.value.includes(bill)} onClick={() => paid.set([...paid.value, bill])}
-              aria-label={`Pay ${bill}`} className="rounded-lg px-3 py-1 text-sm">
+              aria-label={`Pay ${bill}`} className="rounded-lg bg-accent px-3 py-1 text-sm text-on-accent">
               Pay
             </button>
           </row>

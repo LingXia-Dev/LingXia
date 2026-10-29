@@ -289,8 +289,7 @@ pub(crate) fn node_style(
     let padding = record.number(field::PADDING).unwrap_or(
         if matches!(
             record.tag,
-            tag::BUTTON
-                | tag::INPUT
+            tag::INPUT
                 | tag::TEXTAREA
                 | tag::CHECKBOX
                 | tag::SWITCH

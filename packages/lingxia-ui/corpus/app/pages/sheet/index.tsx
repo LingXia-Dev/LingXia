@@ -15,7 +15,7 @@ export function render({ data }: View<object, { options: string[] }>) {
         <spacer className="self-center w-10 h-1 rounded-full bg-line-strong" />
         <row className="p-1 gap-1 rounded-xl bg-surface-sunken">
           {['day', 'week', 'month'].map(option => (
-            <button key={option} data-state={mode.value === option ? 'on' : 'off'} onClick={() => mode.set(option)} className="grow basis-0 py-2 rounded-lg bg-transparent data-[state=on]:bg-surface data-[state=on]:shadow-sm">
+            <button key={option} data-state={mode.value === option ? 'on' : 'off'} onClick={() => mode.set(option)} className="grow basis-0 px-3 py-2 rounded-lg bg-transparent data-[state=on]:bg-surface data-[state=on]:shadow-sm">
               <text className="text-sm capitalize">{option}</text>
             </button>
           ))}
@@ -26,7 +26,7 @@ export function render({ data }: View<object, { options: string[] }>) {
             <checkbox key={option} value={picked.value.includes(option)} onChange={on => picked.set(on ? [...picked.value, option] : picked.value.filter(p => p !== option))} className="text-sm">{option}</checkbox>
           ))}
         </column>
-        <button onClick={() => {}} className="py-3 rounded-xl bg-accent text-on-accent active:opacity-80">Save</button>
+        <button onClick={() => {}} className="px-3 py-3 rounded-xl bg-accent text-on-accent active:opacity-80">Save</button>
       </column>
     </page>
   );

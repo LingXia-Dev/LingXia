@@ -21,7 +21,7 @@ export function render() {
         </row>
       </button>
       <button onClick={() => liked.set(!liked.value)} aria-label={liked.value ? 'Unlike' : 'Like'}
-        className={liked.value ? 'self-start rounded-full bg-danger text-on-accent' : 'self-start rounded-full bg-line text-text'}>
+        className={liked.value ? 'self-start rounded-full bg-danger p-3 text-on-accent' : 'self-start rounded-full bg-line p-3 text-text'}>
         {liked.value ? '♥' : '♡'}
       </button>
       <text className="text-xs text-muted">Opened {opened.value} times</text>

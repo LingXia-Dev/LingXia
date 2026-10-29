@@ -27,7 +27,7 @@ export function render({ data }: View<object, { user: string; down: number; up: 
         </column>
         <grid className="mx-4 grid-cols-3 gap-3">
           {tiles.map(tile => (
-            <button key={tile} onClick={() => {}} className="h-24 rounded-xl bg-surface border border-line items-center justify-center active:bg-surface-sunken">
+            <button key={tile} onClick={() => {}} className="h-24 p-3 rounded-xl bg-surface border border-line items-center justify-center active:bg-surface-sunken">
               <text className="text-sm font-medium">{tile}</text>
             </button>
           ))}

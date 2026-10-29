@@ -25,8 +25,8 @@ export function render({ data, actions }: View<Actions, { userId: string }>) {
       {profile.error && <text role="alert" className="text-sm text-danger">{profile.error.message}</text>}
       <text className={profile.stale ? 'text-lg opacity-50' : 'text-lg'}>{profile.value?.name ?? (profile.pending ? 'Loading…' : '')}</text>
       <input bind={draft} aria-label="New name" className="px-3 py-2 rounded-lg border" />
-      <button disabled={!draft.value} onClick={save}>Rename</button>
-      <button onClick={() => { summary.set(''); stream.start({ id: data.userId }); }} disabled={stream.status === 'streaming'}>Summarize</button>
+      <button disabled={!draft.value} onClick={save} className="rounded-lg bg-accent px-4 py-2 text-on-accent">Rename</button>
+      <button onClick={() => { summary.set(''); stream.start({ id: data.userId }); }} disabled={stream.status === 'streaming'} className="rounded-lg bg-accent px-4 py-2 text-on-accent">Summarize</button>
       <text className="text-sm whitespace-pre-wrap">{summary.value}</text>
     </page>
   );
@@ -121,7 +121,7 @@ export function render({ actions }: View<Actions>) {
     <page className="p-4 gap-2">
       <text className="text-3xl font-bold tabular-nums">{last.value ? last.value.price.toFixed(2) : '---'}</text>
       <text className="text-xs">{ticker.connected ? 'Live' : ticker.connecting ? 'Connecting…' : 'Offline'}</text>
-      <button onClick={() => ticker.send({ symbol: 'MSFT' })} disabled={!ticker.connected}>Watch MSFT</button>
+      <button onClick={() => ticker.send({ symbol: 'MSFT' })} disabled={!ticker.connected} className="rounded-lg bg-accent px-4 py-2 text-on-accent">Watch MSFT</button>
     </page>
   );
 }
@@ -144,13 +144,13 @@ export function render() {
   return (
     <page className="p-4 gap-3">
       <textarea bind={draft} aria-label="Draft" />
-      <button onClick={() => saved.set(draft.value)}>Save</button>
+      <button onClick={() => saved.set(draft.value)} className="rounded-lg bg-accent px-4 py-2 text-on-accent">Save</button>
       {guard.pending && (
         <column role="dialog" aria-label="Discard changes?" className="gap-2 p-4 rounded-xl bg-surface-sunken">
           <text>Discard your changes?</text>
           <row className="gap-2">
-            <button onClick={() => guard.answer(false)}>Keep editing</button>
-            <button onClick={() => guard.answer(true)}>Discard</button>
+            <button onClick={() => guard.answer(false)} className="rounded-lg bg-surface-sunken px-4 py-2 text-text">Keep editing</button>
+            <button onClick={() => guard.answer(true)} className="rounded-lg bg-accent px-4 py-2 text-on-accent">Discard</button>
           </row>
         </column>
       )}

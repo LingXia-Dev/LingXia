@@ -11,7 +11,7 @@ export function render() {
   return (
     <page className="p-4 gap-4">
       <button onClick={() => shown.set(!shown.value)}
-        className="self-start rounded-xl bg-accent text-on-accent active:scale-95 transition-transform duration-150">
+        className="self-start rounded-xl bg-accent p-3 text-on-accent active:scale-95 transition-transform duration-150">
         {shown.value ? 'Fade out' : 'Fade in'}
       </button>
       <view className={`w-12 h-12 rounded-lg bg-accent transition-opacity duration-200 ease-out ${shown.value ? 'opacity-100' : 'opacity-0'}`} />

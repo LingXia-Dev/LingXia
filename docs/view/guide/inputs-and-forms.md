@@ -29,7 +29,7 @@ export function render({ actions }: View<Actions>) {
       <slider bind={seats} min={1} max={20} step={1} aria-label="Seats" className="text-accent" />
       <switch bind={news} className="text-sm">Product news</switch>
       <button disabled={busy.value || !email.value} onClick={submit}
-        className="rounded-lg bg-accent text-on-accent disabled:bg-line disabled:text-muted">
+        className="rounded-lg bg-accent p-3 text-on-accent disabled:bg-line disabled:text-muted">
         {busy.value ? 'Signing up…' : `Sign up for ${seats.value} seats`}
       </button>
     </page>

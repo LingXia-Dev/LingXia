@@ -22,7 +22,7 @@ function Footer({ width, count }: { width: string; count: string }) {
     <row className={`${width} flex-row items-center justify-between gap-3 px-5 py-4 border border-line rounded-lg`}>
       <text className="text-sm text-muted">{count}</text>
       <Segmented selected="All" />
-      <button onClick={() => {}} className="px-3 py-2 rounded-lg text-sm font-medium text-text">Clear completed</button>
+      <button onClick={() => {}} className="px-3 py-2 rounded-lg text-sm font-medium text-accent">Clear completed</button>
     </row>
   );
 }

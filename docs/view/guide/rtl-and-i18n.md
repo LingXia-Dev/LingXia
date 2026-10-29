@@ -17,7 +17,7 @@ export function render() {
     <page className="p-4 gap-2">
       <text role="heading" className="text-xl font-semibold text-start">{t.title}</text>
       {[t.account, t.language].map(label => (
-        <button key={label} onClick={() => {}} className="rounded-xl bg-surface text-text ps-4 pe-2">
+        <button key={label} onClick={() => {}} className="rounded-xl bg-surface text-text ps-4 pe-2 py-3">
           <row className="items-center gap-3">
             <text className="grow text-start text-sm">{label}</text>
             <vector aria-hidden paths={chevron} className="w-5 h-5 text-faint rtl:-scale-x-100" />
@@ -77,7 +77,7 @@ const back: VectorPath[] = [{ d: 'M15 6l-6 6 6 6', fill: 'none', stroke: 'curren
 export function render() {
   return (
     <page dir="rtl" className="p-4">
-      <button onClick={() => {}} aria-label="Back" className="self-start bg-transparent text-text">
+      <button onClick={() => {}} aria-label="Back" className="self-start p-3 text-text">
         <vector aria-hidden paths={back} className="w-6 h-6 rtl:-scale-x-100" />
       </button>
     </page>

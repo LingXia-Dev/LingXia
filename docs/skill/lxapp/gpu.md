@@ -15,7 +15,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   return <page className="p-4 gap-3">
     <text className="text-lg font-semibold truncate">{item.value?.title ?? 'Loading…'}</text>
     <input bind={draft} aria-label="Note" className="px-3 py-2 rounded-lg border" />
-    <button disabled={!draft.value} onClick={() => draft.set('')} className="active:opacity-80">Clear</button>
+    <button disabled={!draft.value} onClick={() => draft.set('')} className="rounded-lg bg-accent px-4 py-2 text-on-accent active:opacity-80">Clear</button>
   </page>;
 }
 ```
@@ -24,6 +24,8 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   `fixed` insets and `vh`/`dvh` measure the page's safe box (inside system bars, above the keyboard);
   `hidden` removes a node entirely.
 - Layout is flex or CSS Grid (`grid grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] col-span-2`).
+  Row items shrink to min-content as in CSS (`min-w-0` to truncate, `shrink-0` to pin). `<button>` is
+  unstyled as after Tailwind's preflight: give it its fill, padding and radius.
 - Style with complete Tailwind classes or CSS-named `style` (`backgroundColor`,
   `marginTop`, `gridTemplateColumns`, `lineClamp`, `objectFit`). Unitless
   `lineHeight` is a multiplier. Each element accepts only styles it renders.

@@ -20,7 +20,7 @@ export function render() {
           <text className="text-sm font-semibold tabular-nums">12.40</text>
         </row>
       </scroll>
-      <button onClick={() => {}} className="fixed bottom-6 end-6 rounded-full bg-accent text-on-accent px-5">Top up</button>
+      <button onClick={() => {}} className="fixed bottom-6 end-6 rounded-full bg-accent text-on-accent px-5 py-3">Top up</button>
     </page>
   );
 }
@@ -54,7 +54,8 @@ a flex container unless it is a grid.
 - `grow` also sets a zero minimum height, so a growing box in a column never pushes past its parent.
   `grow` alone means `flex-grow: 1` with an `auto` basis; write `grow basis-0` (or `flex-1`) for equal columns.
 - A `<scroll>` or `<List>` directly in `<page>` fills the remaining height unless it has a height, `grow` or a basis.
-- Controls carry intrinsic sizes: buttons, editors and toggles have 12 px padding, editors and toggles a
+- A `<button>` is unstyled, as HTML's after Tailwind's preflight: no fill, padding or radius; its text
+  inherits the color around it. Editors and toggles carry intrinsic sizes: 12 px padding, a
   44–48 px minimum height, `<textarea>` 120 px height, `<slider>` 120 × 48, `<image>` 64 × 64 and `<vector>`
   24 × 24 until you size them.
 - `justify-center` and `content-center` are *safe*: content that does not fit aligns to the start instead of
