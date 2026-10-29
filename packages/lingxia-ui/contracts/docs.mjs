@@ -60,7 +60,7 @@ async function elements(schema) {
   const parents = Object.fromEntries(Object.entries(schema.admission).filter(([, entry]) => entry.parent).map(([tag, entry]) => [tag, entry.parent]));
   for (const [name, element] of Object.entries(schema.elements)) {
     const admission = schema.admission[element.wire];
-    out.push(`## \`<${name}>\``, '');
+    out.push(`## \`<${shown(schema, name)}>\``, '');
     // A run may hold runs, but a link never holds another link.
     const children = element.children === 'runs' && element.wire === 'link' ? 'text and `<span>` runs; links do not nest' : childKinds[element.children];
     const facts = [`Children: ${children}.`];
@@ -73,12 +73,17 @@ async function elements(schema) {
       const { type, event } = element.binding;
       out.push(`Binding: \`bind={local}\` with a \`useLocal<${type}>\` cell, or \`value\` plus \`${event}(value: ${type})\`; not both.${event === 'onInput' ? ' `onInput` runs on every value change, a composition included.' : ''}`, '');
     }
-    const props = Object.entries(element.props);
+    if (element.component) out.push(`A component from \`@lingxia/ui\`, rendered as the \`list\` element.`, '');
+    const own = Object.entries(element.props).filter(([prop]) => !element.component?.replaces.includes(prop));
+    const props = [...Object.entries(element.component?.props ?? {}), ...own];
     if (props.length) out.push(table(['Prop', 'Type', 'Required'], props.map(([prop, entry]) => [code(prop), code(entry.type), entry.required ? 'yes' : ''])), '');
     else out.push('No element-specific props.', '');
   }
   return out.join('\n');
 }
+
+// The name an author writes: `<List>` for the element behind that component.
+const shown = (schema, name) => schema.elements[name]?.component?.name ?? name;
 
 // ---- styles ---------------------------------------------------------------------------
 
@@ -93,11 +98,11 @@ function styles(schema) {
       const by = names.filter(name => accepted[name].includes(key));
       return [code(key), code(entry.type), [entry.css ?? []].flat().map(code).join(', '), entry.paint ? 'yes' : '',
         by.length === names.length ? 'every element' : by.length > names.length / 2
-          ? `all but ${names.filter(name => !by.includes(name)).map(name => code(`<${name}>`)).join(' ')}` : by.map(name => code(`<${name}>`)).join(' ')];
+          ? `all but ${names.filter(name => !by.includes(name)).map(name => code(`<${shown(schema, name)}>`)).join(' ')}` : by.map(name => code(`<${shown(schema, name)}>`)).join(' ')];
     })), '',
     '`transition` and `animation` are set only by the motion utilities (`transition-*`, `animate-*`).', '',
     '## By element', ''];
-  for (const name of names) out.push(`### \`<${name}>\``, '', accepted[name].filter(key => !schema.style[key].internal).map(code).join(', '), '');
+  for (const name of names) out.push(`### \`<${shown(schema, name)}>\``, '', accepted[name].filter(key => !schema.style[key].internal).map(code).join(', '), '');
   out.push('## Colour roles', '',
     'Every colour is one of these roles, optionally with an alpha percent (`accent/12`). The utility drops a `text-`',
     'prefix (`text-muted`, not `text-text-muted`). The theme pack resolves each role per appearance and proves the',
@@ -241,7 +246,7 @@ function variants(schema, system, rules) {
     return matched.length && !error ? null : error ?? 'not generated';
   };
   const wireTags = field => schema.fields.find(entry => entry.key === field).tags;
-  const on = field => Object.entries(schema.elements).filter(([, element]) => wireTags(field).includes(element.wire)).map(([name]) => code(`<${name}>`)).join(' ');
+  const on = field => Object.entries(schema.elements).filter(([, element]) => wireTags(field).includes(element.wire)).map(([name]) => code(`<${shown(schema, name)}>`)).join(' ');
   const disableable = Object.entries(schema.elements).filter(([, element]) => element.props.disabled).map(([name]) => code(`<${name}>`)).join(' ');
   const admission = {
     focus: `${on('focusStyle')}; paint only`, active: `${on('pressedStyle')}; paint only`,
@@ -291,7 +296,7 @@ const limitNotes = {
   wireValues: 'Values in one encoded frame.',
   textBytes: 'Text of one node, as UTF-8.',
   identifierBytes: 'One `key` or `data-testid`, as UTF-8.',
-  listRows: 'Rows one `<list>` declares.',
+  listRows: 'Rows one `<List>` holds.',
   gridTracks: 'Tracks one grid template expands to.',
   vectorSourceBytes: 'One `<vector>` source (paths, gradients, viewBox) as JSON.',
   vectorPathBytes: 'One path `d` string.',
@@ -312,16 +317,33 @@ const limitNotes = {
 const size = value => value >= 1 << 20 && value % (1 << 20) === 0 ? `${value / (1 << 20)} MiB`
   : value >= 1 << 10 && value % (1 << 10) === 0 ? `${value / (1 << 10)} KiB` : null;
 
+// Engine and wire bounds an author cannot act on; they are documented for work on the renderer.
+const engineLimits = new Set(['decodedImageBytes', 'evalBudgetDebugMultiplier', 'inputRequestBytes', 'inputBatchEdits',
+  'clipboardItems', 'wireValues', 'shadowMaskBytes', 'compositeFrames', 'leaseFrames', 'compositeBytes', 'outlineGlyphs',
+  'ghosts', 'layoutMotions']);
+
+function limitTable(schema, keep) {
+  return table(['Limit', 'Value', 'Meaning'], Object.entries(schema.limits).filter(([key]) => keep(key)).map(([key, value]) => {
+    const bytes = /Bytes$/.test(key) ? size(value) : null;
+    return [code(key), bytes ? `${value} (${bytes})` : value, limitNotes[key] ?? ''];
+  }));
+}
+
 function limits(schema) {
   for (const key of Object.keys(limitNotes)) if (!(key in schema.limits)) throw Error(`docs.mjs: limit note for unknown limit ${key}`);
   for (const key of Object.keys(schema.limits)) if (!limitNotes[key]) throw Error(`docs.mjs: limit ${key} needs a note`);
   return [header, '# Limits', '',
     'Page-wide bounds the runtime and the native decoder both enforce. Exceeding one fails the frame',
     '(`UI_LIMIT`, `UI_LIST`, `UI_TEXT`, `UI_ANIMATION`), except the image budgets noted below.', '',
-    table(['Limit', 'Value', 'Meaning'], Object.entries(schema.limits).map(([key, value]) => {
-      const bytes = /Bytes$/.test(key) ? size(value) : null;
-      return [code(key), bytes ? `${value} (${bytes})` : value, limitNotes[key] ?? ''];
-    })), '', `Wire ABI: ${schema.uiAbi}. Highest field id: ${schema.fields.length - 1}.`, ''].join('\n');
+    limitTable(schema, key => !engineLimits.has(key)), ''].join('\n');
+}
+
+function engineLimitsPage(schema) {
+  return [header, '# View engine limits', '',
+    'Wire and renderer bounds behind the public [limits](../view/reference/limits.md): they keep a frame',
+    'decodable and its GPU memory bounded, and page code cannot act on them.', '',
+    limitTable(schema, key => engineLimits.has(key)), '',
+    `Wire ABI: ${schema.uiAbi}. Highest field id: ${schema.fields.length - 1}.`, ''].join('\n');
 }
 
 async function environment(schema) {
@@ -505,6 +527,7 @@ export async function docs(schema, generated) {
     [`${base}/utilities.md`]: utilities(system, rules),
     [`${base}/variants.md`]: variants(schema, system, rules),
     [`${base}/limits.md`]: limits(schema),
+    'docs/internal/view-engine-limits.md': engineLimitsPage(schema),
     [`${base}/errors.md`]: await errors(),
     [`${base}/environment.md`]: await environment(schema),
     [`${base}/semantics.md`]: semantics(schema),

@@ -126,7 +126,7 @@ fn authored_collection_uses_records_and_rolls_back_failed_pixel_builds() {
 #[test]
 fn authored_virtual_animation_retains_eviction_but_restarts_after_semantic_removal() {
     let source = tests::source(&format!(
-        "globalThis.items=Array.from({{length:100}},(_,i)=>'item-'+i);globalThis.effect={};function render(){{return h('list',{{style:{{height:120}},count:items.length,itemKeys:items,height:()=>40,row:i=>h('column',{{key:items[i],'data-testid':items[i],style:{{height:40,backgroundColor:'#ff0000',...(items[i]==='item-1'?{{animation:effect}}:{{}})}}}})}});}}",
+        "globalThis.items=Array.from({{length:100}},(_,i)=>'item-'+i);globalThis.effect={};function render(){{return h(listTag,{{style:{{height:120}},count:items.length,itemKeys:items,height:()=>40,row:i=>h('column',{{key:items[i],'data-testid':items[i],style:{{height:40,backgroundColor:'#ff0000',...(items[i]==='item-1'?{{animation:effect}}:{{}})}}}})}});}}",
         authored_effect()
     ));
     let mut page = ViewSession::new(&source).unwrap();
@@ -194,7 +194,7 @@ fn authored_virtual_animation_retains_eviction_but_restarts_after_semantic_remov
 #[test]
 fn authored_virtual_effect_requires_inventory_and_unseen_overscan_does_not_start() {
     let source = tests::source(&format!(
-        "globalThis.keys=undefined;function render(){{return h('list',{{style:{{height:120}},count:100,itemKeys:keys,height:()=>40,row:i=>h('column',{{key:'item-'+i,'data-testid':'item-'+i,style:{{height:40,...(i===4?{{animation:{}}}:{{}})}}}})}});}}",
+        "globalThis.keys=undefined;function render(){{return h(listTag,{{style:{{height:120}},count:100,itemKeys:keys,height:()=>40,row:i=>h('column',{{key:'item-'+i,'data-testid':'item-'+i,style:{{height:40,...(i===4?{{animation:{}}}:{{}})}}}})}});}}",
         authored_effect()
     ));
     let mut page = ViewSession::new(&source).unwrap();
@@ -451,7 +451,7 @@ fn ordinary_frames_and_reset_cannot_acknowledge_old_animation_candidates() {
 fn keyed_virtual_row_animation_survives_reorder_and_window_eviction() {
     let source = tests::source(
         "globalThis.items=Array.from({length:100},(_,i)=>'item-'+i);
-         function render(){return h('list',{style:{height:120},count:items.length,itemKeys:items,
+         function render(){return h(listTag,{style:{height:120},count:items.length,itemKeys:items,
            height:()=>40,row:i=>h('text',{key:items[i],'data-testid':items[i]},items[i])});}",
     );
     let mut page = ViewSession::new(&source).unwrap();

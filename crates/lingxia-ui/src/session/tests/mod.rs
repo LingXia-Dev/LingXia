@@ -134,7 +134,7 @@ fn frame_metrics_distinguish_reuse_and_preserve_the_last_success() {
 #[test]
 fn list_windows_keep_root_render_and_offscreen_row_state() {
     let source = source(
-        "globalThis.roots=0; globalThis.rows=0; function Item({i}){const n=useLocal('n',0);return h('button',{'data-testid':'row-'+i,onClick:()=>n.set(n.value+1)},`${i}:${n.value}`)} function render(){globalThis.roots++;return h('list',{'data-testid':'feed',count:1000,height:()=>100,row:i=>{globalThis.rows++;return h(Item,{key:String(i),i})}})}",
+        "globalThis.roots=0; globalThis.rows=0; function Item({i}){const n=useLocal('n',0);return h('button',{'data-testid':'row-'+i,onClick:()=>n.set(n.value+1)},`${i}:${n.value}`)} function render(){globalThis.roots++;return h(listTag,{'data-testid':'feed',count:1000,height:()=>100,row:i=>{globalThis.rows++;return h(Item,{key:String(i),i})}})}",
     );
     let mut page = ViewSession::new(&source).unwrap();
     let first = page.layout(200, 300, 1.0).unwrap();
@@ -200,7 +200,7 @@ fn list_windows_keep_root_render_and_offscreen_row_state() {
 #[test]
 fn nested_list_end_anchor_survives_sibling_removal() {
     let module = source(
-        "globalThis.extra=true;function render(){return h('column',{style:{padding:12,gap:8}},globalThis.extra?h('text',{},'sibling'):null,h('list',{'data-testid':'list',count:100,anchor:'end',style:{height:100,paddingTop:7,paddingBottom:19,paddingLeft:23,paddingRight:11,borderWidth:3},row:i=>h('text',{'data-testid':'row-'+i,style:{height:40}},String(i))}))}",
+        "globalThis.extra=true;function render(){return h('column',{style:{padding:12,gap:8}},globalThis.extra?h('text',{},'sibling'):null,h(listTag,{'data-testid':'list',count:100,anchor:'end',style:{height:100,paddingTop:7,paddingBottom:19,paddingLeft:23,paddingRight:11,borderWidth:3},row:i=>h('text',{'data-testid':'row-'+i,style:{height:40}},String(i))}))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     for extra in [true, true, false, false] {
@@ -225,7 +225,7 @@ fn list_end_anchors_use_resolved_edges_and_borders() {
         "paddingTop:7,paddingBottom:19,paddingLeft:23,paddingRight:11,borderWidth:3",
     ] {
         let module = source(&format!(
-            "function render(){{return h('list',{{count:100,anchor:'end',style:{{{style}}},row:i=>h('text',{{'data-testid':'row-'+i,style:{{height:40}}}},String(i))}})}}"
+            "function render(){{return h(listTag,{{count:100,anchor:'end',style:{{{style}}},row:i=>h('text',{{'data-testid':'row-'+i,style:{{height:40}}}},String(i))}})}}"
         ));
         let mut page = ViewSession::new(&module).unwrap();
         let frame = page.layout(200, 300, 1.0).unwrap();
@@ -248,7 +248,7 @@ fn list_end_anchors_use_resolved_edges_and_borders() {
 #[test]
 fn measured_list_anchors_padding_and_failed_windows_are_transactional() {
     let source = source(
-        "globalThis.anchor={index:500,align:'start',seq:0};function render(){return h('list',{count:1000,anchor:globalThis.anchor,style:{padding:12,gap:8},row:i=>h('button',{'data-testid':'row-'+i,style:{height:40+(i%5)*10},onClick(){}},String(i))})}",
+        "globalThis.anchor={index:500,align:'start',seq:0};function render(){return h(listTag,{count:1000,anchor:globalThis.anchor,style:{padding:12,gap:8},row:i=>h('button',{'data-testid':'row-'+i,style:{height:40+(i%5)*10},onClick(){}},String(i))})}",
     );
     let mut page = ViewSession::new(&source).unwrap();
     let frame = page.layout(200, 300, 1.0).unwrap();
@@ -302,7 +302,7 @@ fn measured_list_anchors_padding_and_failed_windows_are_transactional() {
 #[test]
 fn text_scaling_discards_offscreen_list_measurements() {
     let module = source(
-        "globalThis.anchor={index:0,align:'start',seq:0};function render(){return h('list',{count:100,anchor:globalThis.anchor,row:i=>h('text',{'data-testid':'row-'+i,style:{fontSize:16,lineHeight:'24px'}},'A row with enough words to wrap over multiple lines')})}",
+        "globalThis.anchor={index:0,align:'start',seq:0};function render(){return h(listTag,{count:100,anchor:globalThis.anchor,row:i=>h('text',{'data-testid':'row-'+i,style:{fontSize:16,lineHeight:'24px'}},'A row with enough words to wrap over multiple lines')})}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     page.layout(200, 300, 1.0).unwrap();
@@ -334,7 +334,7 @@ fn text_scaling_discards_offscreen_list_measurements() {
 #[test]
 fn distant_list_anchor_skips_old_rows_and_preserves_failed_frame() {
     let module = source(
-        "globalThis.anchor=undefined;globalThis.visited=[];function render(){return h('list',{count:1000,anchor:globalThis.anchor,row:i=>{globalThis.visited.push(i);return h('button',{'data-testid':'row-'+i,onClick(){},style:{height:40+(i%3)*20}},String(i))}})}",
+        "globalThis.anchor=undefined;globalThis.visited=[];function render(){return h(listTag,{count:1000,anchor:globalThis.anchor,row:i=>{globalThis.visited.push(i);return h('button',{'data-testid':'row-'+i,onClick(){},style:{height:40+(i%3)*20}},String(i))}})}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     let first = page.layout(200, 300, 1.0).unwrap();
@@ -380,7 +380,7 @@ fn distant_list_anchor_skips_old_rows_and_preserves_failed_frame() {
 #[test]
 fn frame_metrics_accumulate_every_list_description_transfer() {
     let module = source(
-        "function render(){return h('list',{count:1000,anchor:'end',row:i=>h('text',{style:{height:50}},String(i))})}",
+        "function render(){return h(listTag,{count:1000,anchor:'end',row:i=>h('text',{style:{height:50}},String(i))})}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     page.eval("globalThis.transferred=0;globalThis.passes=0;for(const name of ['__lingxiaPrepare','__lingxiaPrepareWindows']){const original=globalThis[name];globalThis[name]=(...args)=>{const result=original(...args);transferred+=result.length;passes++;return result}} ").unwrap();
@@ -401,7 +401,7 @@ fn frame_metrics_accumulate_every_list_description_transfer() {
 #[test]
 fn list_count_shrink_refines_old_native_window_and_rolls_back_failed_frames() {
     let module = source(
-        "globalThis.count=1000;function render(){return h('list',{count:globalThis.count,anchor:'end',row:i=>h('text',{'data-testid':'row-'+i,style:{height:50}},String(i))})}",
+        "globalThis.count=1000;function render(){return h(listTag,{count:globalThis.count,anchor:'end',row:i=>h('text',{'data-testid':'row-'+i,style:{height:50}},String(i))})}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     let first = page.layout(200, 200, 1.0).unwrap();
@@ -1516,7 +1516,7 @@ fn environment_is_atomic_immutable_and_survives_reset() {
         "function render({env}){if(!Object.isFrozen(env.insets))throw Error('mutable');return h('text',{},JSON.stringify(env))}",
     );
     let mut page = ViewSession::new(&source).unwrap();
-    let environment = serde_json::json!({"theme":"dark","insets":{"top":24,"right":0,"bottom":16,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","canDock":false,"displayLanguage":"zh-CN","runner":false,"viewport":{"width":999}});
+    let environment = serde_json::json!({"theme":"dark","insets":{"top":24,"right":0,"bottom":16,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","canDock":false,"displayLanguage":"zh-CN","viewport":{"width":999}});
     page.set_environment(environment.clone()).unwrap();
     let mut invalid = environment.clone();
     invalid["insets"]["top"] = serde_json::json!(-1);

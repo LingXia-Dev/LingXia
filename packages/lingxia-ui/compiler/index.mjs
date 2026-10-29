@@ -110,9 +110,12 @@ export function audit(source, filename, { literalColors = false } = {}) {
     }
     if ((ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) && ts.isIdentifier(node.tagName) && /^[a-z]/.test(node.tagName.text)) {
       const tag = node.tagName.text;
-      const problem = has(elements, tag) && unnamed(tag, node, file);
+      // An element behind a component (`<list>` behind `<List>`) is not written as JSX.
+      const intrinsic = has(elements, tag) && !elements[tag].component;
+      const problem = intrinsic && unnamed(tag, node, file);
       if (problem) report(node, problem);
-      if (!has(elements, tag)) report(node, `UI_TAG: unsupported tag <${tag}>${tag === 'details' || tag === 'summary' ? `; use <${tag === 'details' ? 'Details' : 'Summary'}> from @lingxia/ui` : ''}`);
+      const component = { details: 'Details', summary: 'Summary', list: 'List' }[tag];
+      if (!intrinsic) report(node, `UI_TAG: unsupported tag <${tag}>${component ? `; use <${component}> from @lingxia/ui` : ''}`);
       else for (const prop of node.attributes.properties) {
         if (ts.isJsxSpreadAttribute(prop)) {
           for (const symbol of checker.getTypeAtLocation(prop.expression).getProperties())

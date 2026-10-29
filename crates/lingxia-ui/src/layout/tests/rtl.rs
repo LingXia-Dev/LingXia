@@ -2,7 +2,7 @@
 use serde_json::json;
 
 fn environment(language: &str) -> serde_json::Value {
-    json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","displayLanguage":language,"canDock":false,"runner":false})
+    json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","displayLanguage":language,"canDock":false})
 }
 
 fn page(render: &str, language: &str) -> crate::ViewSession {

@@ -85,9 +85,9 @@ Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:`
 | `justifyContent` | `"flex-start" \| "start" \| "center" \| "flex-end" \| "end" \| "space-between" \| "space-around" \| "space-evenly"` | `justify-content` |  | `<view>` `<column>` `<row>` `<page>` `<button>` `<scroll>` `<checkbox>` `<grid>` |
 | `alignContent` | `"flex-start" \| "start" \| "center" \| "flex-end" \| "end" \| "space-between" \| "space-around" \| "space-evenly" \| "stretch"` | `align-content` |  | `<view>` `<column>` `<row>` `<page>` `<button>` `<scroll>` `<checkbox>` `<grid>` |
 | `flexWrap` | `"nowrap" \| "wrap" \| "wrap-reverse"` | `flex-wrap` |  | `<view>` `<column>` `<row>` `<page>` `<button>` `<scroll>` `<checkbox>` |
-| `gap` | `number` |  |  | `<view>` `<column>` `<row>` `<page>` `<button>` `<scroll>` `<list>` `<checkbox>` `<radio>` `<grid>` |
-| `rowGap` | `number` | `row-gap` |  | `<view>` `<column>` `<row>` `<page>` `<button>` `<scroll>` `<list>` `<checkbox>` `<radio>` `<grid>` |
-| `columnGap` | `number` | `column-gap` |  | `<view>` `<column>` `<row>` `<page>` `<button>` `<scroll>` `<list>` `<checkbox>` `<radio>` `<grid>` |
+| `gap` | `number` |  |  | `<view>` `<column>` `<row>` `<page>` `<button>` `<scroll>` `<List>` `<checkbox>` `<radio>` `<grid>` |
+| `rowGap` | `number` | `row-gap` |  | `<view>` `<column>` `<row>` `<page>` `<button>` `<scroll>` `<List>` `<checkbox>` `<radio>` `<grid>` |
+| `columnGap` | `number` | `column-gap` |  | `<view>` `<column>` `<row>` `<page>` `<button>` `<scroll>` `<List>` `<checkbox>` `<radio>` `<grid>` |
 | `gridTemplateColumns` | `number \| string` | `grid-template-columns` |  | `<view>` `<column>` `<row>` `<page>` `<button>` `<grid>` |
 | `gridTemplateRows` | `number \| string` | `grid-template-rows` |  | `<view>` `<column>` `<row>` `<page>` `<button>` `<grid>` |
 | `gridAutoColumns` | `string` | `grid-auto-columns` |  | `<view>` `<column>` `<row>` `<page>` `<button>` `<grid>` |
@@ -114,7 +114,7 @@ Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:`
 | `textOverflow` | `"clip" \| "ellipsis"` | `text-overflow` |  | `<text>` |
 | `overflowX` | `"auto"` | `overflow-x` |  | `<scroll>` |
 | `overflowY` | `"auto"` | `overflow-y` |  | `<scroll>` |
-| `overscrollBehavior` | `"auto" \| "contain" \| "none"` | `overscroll-behavior`, `overscroll-behavior-x`, `overscroll-behavior-y` |  | `<scroll>` `<list>` |
+| `overscrollBehavior` | `"auto" \| "contain" \| "none"` | `overscroll-behavior`, `overscroll-behavior-x`, `overscroll-behavior-y` |  | `<scroll>` `<List>` |
 | `placeholderColor` | `string` |  | yes | `<input>` `<textarea>` |
 | `objectFit` | `"cover" \| "contain" \| "fill"` | `object-fit` |  | `<image>` `<vector>` |
 | `objectPosition` | `string` | `object-position` |  | `<image>` |
@@ -155,7 +155,7 @@ Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:`
 
 `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `aspectRatio`, `maxHeight`, `margin`, `marginTop`, `marginRight`, `marginBottom`, `marginLeft`, `marginInlineStart`, `marginInlineEnd`, `position`, `inset`, `top`, `right`, `bottom`, `left`, `insetInlineStart`, `insetInlineEnd`, `zIndex`, `flexGrow`, `flexShrink`, `flexBasis`, `alignSelf`, `gridColumn`, `gridColumnStart`, `gridColumnEnd`, `gridRow`, `gridRowStart`, `gridRowEnd`, `justifySelf`, `order`, `opacity`, `overflow`, `backgroundColor`, `backgroundImage`, `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomRightRadius`, `borderBottomLeftRadius`, `borderStartStartRadius`, `borderStartEndRadius`, `borderEndStartRadius`, `borderEndEndRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderInlineStartWidth`, `borderInlineEndWidth`, `borderStyle`, `borderColor`, `boxShadow`, `backdropFilter`, `translate`, `rotate`, `scale`, `transformOrigin`, `filter`, `display`, `padding`, `paddingTop`, `paddingRight`, `paddingBottom`, `paddingLeft`, `paddingInlineStart`, `paddingInlineEnd`, `flexWrap`, `alignItems`, `justifyContent`, `alignContent`, `gap`, `rowGap`, `columnGap`, `color`, `fontSize`, `fontWeight`, `fontFamily`, `fontStyle`, `lineHeight`, `letterSpacing`, `fontVariantNumeric`, `userSelect`, `textAlign`, `textDecorationLine`, `textTransform`, `whiteSpace`, `wordBreak`, `overflowWrap`, `overflowX`, `overflowY`, `overscrollBehavior`
 
-### `<list>`
+### `<List>`
 
 `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `aspectRatio`, `maxHeight`, `margin`, `marginTop`, `marginRight`, `marginBottom`, `marginLeft`, `marginInlineStart`, `marginInlineEnd`, `position`, `inset`, `top`, `right`, `bottom`, `left`, `insetInlineStart`, `insetInlineEnd`, `zIndex`, `flexGrow`, `flexShrink`, `flexBasis`, `alignSelf`, `gridColumn`, `gridColumnStart`, `gridColumnEnd`, `gridRow`, `gridRowStart`, `gridRowEnd`, `justifySelf`, `order`, `opacity`, `overflow`, `backgroundColor`, `backgroundImage`, `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomRightRadius`, `borderBottomLeftRadius`, `borderStartStartRadius`, `borderStartEndRadius`, `borderEndStartRadius`, `borderEndEndRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderInlineStartWidth`, `borderInlineEndWidth`, `borderStyle`, `borderColor`, `boxShadow`, `backdropFilter`, `translate`, `rotate`, `scale`, `transformOrigin`, `filter`, `display`, `padding`, `paddingTop`, `paddingRight`, `paddingBottom`, `paddingLeft`, `paddingInlineStart`, `paddingInlineEnd`, `gap`, `rowGap`, `columnGap`, `color`, `fontSize`, `fontWeight`, `fontFamily`, `fontStyle`, `lineHeight`, `letterSpacing`, `fontVariantNumeric`, `userSelect`, `textAlign`, `textDecorationLine`, `textTransform`, `whiteSpace`, `wordBreak`, `overflowWrap`, `overscrollBehavior`
 

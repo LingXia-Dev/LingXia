@@ -1,6 +1,6 @@
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { h, describe, configureClasses } from '../src/internal.js';
+import { h, listTag, describe, configureClasses } from '../src/internal.js';
 import { rendered } from './support/wire.mjs';
 import { mergeStyle } from '../src/style/lower.js';
 
@@ -36,7 +36,7 @@ test('CSS names lower to the native box: colors, radii, flex factors and alignme
   assert.deepEqual([style({ justifyContent: 'space-around' }).justify, style({ justifyContent: 'space-evenly' }).justify], ['around', 'evenly']);
   for (const value of [{ alignItems: 'space-between' }, { justifyContent: 'stretch' }, { alignSelf: 'auto' }, { alignItems: 1 }]) rejects(value, /UI_STYLE_VALUE/);
   for (const value of [{ alignItems: 'center' }, { justifyContent: 'flex-end' }])
-    assert.throws(() => describe(() => h('list', { count: 0, row: () => h('text', {}, 'row'), style: value }), {}), /is not supported on <list>/);
+    assert.throws(() => describe(() => h(listTag, { count: 0, row: () => h('text', {}, 'row'), style: value }), {}), /is not supported on <list>/);
 });
 
 test('longhands win over shorthands regardless of declaration order', () => {

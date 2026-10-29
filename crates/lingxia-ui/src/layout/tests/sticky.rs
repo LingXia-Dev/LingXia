@@ -161,7 +161,7 @@ fn a_pinned_header_and_its_scroll_edge_share_a_device_pixel_row() {
 #[test]
 fn a_header_inside_a_list_row_pins_while_its_row_is_in_view() {
     let base = display(
-        "h('list',{'data-testid':'l',count:3,height:()=>150,style:{height:200},row:(i)=>h('column',{'data-testid':'row'+i,style:{height:150}},h('text',{'data-testid':'h'+i,style:{position:'sticky',top:0,height:30}},'Group '+i),h('column',{style:{height:120}}))})",
+        "h(listTag,{'data-testid':'l',count:3,height:()=>150,style:{height:200},row:(i)=>h('column',{'data-testid':'row'+i,style:{height:150}},h('text',{'data-testid':'h'+i,style:{position:'sticky',top:0,height:30}},'Group '+i),h('column',{style:{height:120}}))})",
     );
     assert_eq!(top(&base, "h0"), 0.0);
     // Row 0 spans 0..150: scrolled 60, its header stays at the top.

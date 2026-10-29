@@ -23,5 +23,5 @@ export function classElementProblem(name, prop, tag) {
 /** `; it applies to <a>, <b>` when only a few elements render `prop`, else nothing. */
 export function appliesTo(prop) {
   const takers = Object.keys(elements).filter(name => elements[name].style.includes(prop) && name !== 'column');
-  return takers.length && takers.length <= 3 ? `; it applies to ${takers.map(name => `<${name}>`).join(', ')}` : '';
+  return takers.length && takers.length <= 3 ? `; it applies to ${takers.map(name => `<${elements[name].component ?? name}>`).join(', ')}` : '';
 }

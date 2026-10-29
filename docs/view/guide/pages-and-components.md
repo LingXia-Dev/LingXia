@@ -62,7 +62,7 @@ page's data, deeply read-only. `view.actions` holds Logic's methods: each return
 ## The root
 
 Return `<page>` as the root. It absorbs the safe-area insets and the keyboard into its padding, and
-a `<scroll>` or `<list>` directly inside it fills the remaining height. `<page>` is valid only as the
+a `<scroll>` or `<List>` directly inside it fills the remaining height. `<page>` is valid only as the
 root. The page must return exactly one element (`UI_ROOT`), so a fragment cannot be the root (`UI_FRAGMENT`).
 
 ```tsx error UI_FRAGMENT
@@ -94,7 +94,7 @@ export function render() {
 }
 ```
 
-A `<list>` row and a component inside `<text>` still return one element.
+A `<List>` row and a component inside `<text>` still return one element.
 
 ## Components
 

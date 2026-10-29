@@ -53,7 +53,7 @@ a flex container unless it is a grid.
   a fixed-size box beside long content needs `shrink-0`, as on the web. Images keep their set size.
 - `grow` also sets a zero minimum height, so a growing box in a column never pushes past its parent.
   `grow` alone means `flex-grow: 1` with an `auto` basis; write `grow basis-0` (or `flex-1`) for equal columns.
-- A `<scroll>` or `<list>` directly in `<page>` fills the remaining height unless it has a height, `grow` or a basis.
+- A `<scroll>` or `<List>` directly in `<page>` fills the remaining height unless it has a height, `grow` or a basis.
 - Controls carry intrinsic sizes: buttons, editors and toggles have 12 px padding, editors and toggles a
   44–48 px minimum height, `<textarea>` 120 px height, `<slider>` 120 × 48, `<image>` 64 × 64 and `<vector>`
   24 × 24 until you size them.

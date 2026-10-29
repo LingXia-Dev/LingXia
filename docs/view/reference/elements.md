@@ -89,17 +89,19 @@ Children: any elements and text. Not allowed inside a composed `<button>` or `<c
 | `onReachStart` | `() => void` |  |
 | `onReachEnd` | `() => void` |  |
 
-## `<list>`
+## `<List>`
 
 Children: none. Not allowed inside a composed `<button>` or `<checkbox>`.
 
+A component from `@lingxia/ui`, rendered as the `list` element.
+
 | Prop | Type | Required |
 | --- | --- | --- |
-| `count` | `number` | yes |
-| `row` | `(index: number) => JSX.Element` | yes |
-| `height` | `(index: number) => number` |  |
+| `items` | `readonly T[]` | yes |
+| `getKey` | `(item: T, index: number) => string` | yes |
+| `renderItem` | `(item: T, index: number) => JSX.Element` | yes |
+| `getItemHeight` | `(item: T, index: number) => number` |  |
 | `anchor` | `"end" \| { index: number; align: "start" \| "end"; seq?: number }` |  |
-| `itemKeys` | `readonly string[]` |  |
 | `onReachStart` | `() => void` |  |
 | `onReachEnd` | `() => void` |  |
 

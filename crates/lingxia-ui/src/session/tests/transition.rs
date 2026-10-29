@@ -297,7 +297,7 @@ fn reduced_motion_lands_on_the_final_state_in_one_frame() {
         "opacity:0",
         "''",
     );
-    let mut environment = json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","displayLanguage":"en","canDock":false,"runner":false,"reducedMotion":true});
+    let mut environment = json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","displayLanguage":"en","canDock":false,"reducedMotion":true});
     page.set_environment(environment.clone()).unwrap();
     let (display, _) = page_frame(&mut page, 0);
     press(&mut page, &display, true);
@@ -356,7 +356,7 @@ fn hidden_pages_park_running_transitions_and_jump_new_ones_to_their_end() {
 }
 
 fn environment(reduced: bool, scale: f64) -> serde_json::Value {
-    json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","displayLanguage":"en","canDock":false,"runner":false,"reducedMotion":reduced,"animatorDurationScale":scale})
+    json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","displayLanguage":"en","canDock":false,"reducedMotion":reduced,"animatorDurationScale":scale})
 }
 
 #[test]

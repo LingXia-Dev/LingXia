@@ -371,7 +371,6 @@ impl Platform {
                         "formFactor": "phone",
                         "displayLanguage": "en",
                         "canDock": false,
-                        "runner": false,
                     }),
                 })),
                 restart: false,

@@ -161,6 +161,9 @@ function lowerNodeStyle(tag, props, extra, inherited, direction, structure) {
   return { fields, states, typography, author, children: classes?.children, descendants };
 }
 
+/** The tag `List` renders; page code reaches the list element only through it. */
+export const listTag = Object.freeze({});
+
 export function resolveNode(node, identity, depth = 0, parent = {}) {
   if (depth > limits.depth) throw Error('UI_LIMIT: children too deep');
   if (node == null || typeof node === 'boolean' || node === '') return null;
@@ -169,7 +172,10 @@ export function resolveNode(node, identity, depth = 0, parent = {}) {
   if (Array.isArray(node)) return { fragment: entries(node) };
   if (isFragment(node)) return { fragment: entries([node]).map(entry => entry.slot ? { ...entry, slot: entry.slot.slice(2) } : entry) };
   if (!isNode(node)) throw Error('UI_ROOT: expected one node');
-  const [tag, original, children, location] = readNode(node);
+  const [authored, original, children, location] = readNode(node);
+  // `<List>` renders the list element, which page code cannot name.
+  if (authored === 'list') throw located(Error('UI_TAG: <list> is not an element; use <List> from @lingxia/ui'), `<list>${location ? ` (${location})` : ''}`);
+  const tag = authored === listTag ? 'list' : authored;
   // Where a render that never returns was, for UI_TIMEOUT.
   if (location) render.site = `${typeof tag === 'function' ? tag.name || '<anonymous>' : `<${tag}>`} (${location})`;
   if (typeof tag === 'function') {

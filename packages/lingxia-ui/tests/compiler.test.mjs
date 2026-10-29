@@ -69,7 +69,7 @@ test('spread and explicit props obey one element contract', () => {
   for (const source of ['const view = <text {...{typo:true}}>Hello</text>;', 'const props = {typo:true}; const view = <text {...props}/>;',
     'const view = <input type="search" {...{secure:true}}/>;']) flags(source, /UI_PROP/);
   clean('const props = {children:"Hello",className:"text-sm"}; const view = <text {...props}/>;');
-  clean('const view = <list count={keys.length} itemKeys={keys} row={renderRow}/>;');
+  flags('const view = <list count={keys.length} itemKeys={keys} row={renderRow}/>;', /UI_TAG: unsupported tag <list>; use <List> from @lingxia\/ui/);
   flags('const view = <scroll itemKeys={keys}/>;', /UI_PROP: itemKeys is not a property of <scroll>/);
   clean('const x = <input bind={draft} aria-label="Note" placeholder="Write" type="text" inputMode="numeric" autoFocus onSubmit={save} disabled/>;');
   clean('const x = <textarea aria-label="Note" value="" onInput={change} disabled={false}/>;');

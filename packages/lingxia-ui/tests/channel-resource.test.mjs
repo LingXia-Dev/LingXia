@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  h, prepare, prepareWindows, commit, discard, reset, describe, useChannel,
+  h, listTag, prepare, prepareWindows, commit, discard, reset, describe, useChannel,
   useLocal, configureActions, createView, takeActionRequests, receiveActionResponse,
   hasLocalUpdates, useView,
 } from '../src/internal.js';
@@ -101,7 +101,7 @@ test('list refinement retains resources with row state and shrinking closes remo
   const Row = ({ i }) => {
     useChannel('feed', useView().actions.ticker, { params: { i }, onData() {} }); return h('text', {}, i);
   };
-  const render = () => h('list', { count, height: () => 100, row: i => h(Row, { key: String(i), i }) });
+  const render = () => h(listTag, { count, height: () => 100, row: i => h(Row, { key: String(i), i }) });
   prepare(render, view, window(0, 1)); prepareWindows(window(0, 2)); commit();
   const first = requests(); assert.equal(first.length, 2);
   for (const open of first) ack(open.id); await flush();

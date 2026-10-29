@@ -72,7 +72,7 @@ A render that throws keeps the previous frame on screen ([Diagnostics](diagnosti
 
 ## Components and JSX
 
-- Fragments work as in React, except as the page root (`UI_FRAGMENT`) or a `<list>` row.
+- Fragments work as in React, except as the page root (`UI_FRAGMENT`) or a `<List>` row.
 - `key` must be a string.
 - `{count && <x/>}` renders `0` when `count` is `0`, as in React.
 - Children are passed through as given; there is no `React.Children`, only `childrenToArray`.

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { compileUtilities } from '../compiler/tailwind.mjs';
 import { configureClasses, resolveClasses } from '../src/style/classes.js';
-import { describe, h, prepare, discard } from '../src/internal.js';
+import { describe, h, listTag, prepare, discard } from '../src/internal.js';
 import { rendered, decode } from './support/wire.mjs';
 
 // Tailwind rules lower to CSS-named style; rendering then lowers that to the native box.
@@ -79,7 +79,7 @@ test('aspect ratios, ch widths, current-color backgrounds, overscroll and select
   assert.equal(node('column', { className: 'bg-current' }).background, 'currentColor');
   assert.equal(node('scroll', { className: 'overscroll-contain' }).overscroll, 'contain');
   assert.equal(node('scroll', { className: 'overscroll-y-none' }).overscroll, 'none');
-  assert.throws(() => describe(() => h('column', { className: 'overscroll-contain' }), {}), /UI_CLASS_ELEMENT: overscroll-contain does not apply to <column>; it applies to <scroll>, <list>/);
+  assert.throws(() => describe(() => h('column', { className: 'overscroll-contain' }), {}), /UI_CLASS_ELEMENT: overscroll-contain does not apply to <column>; it applies to <scroll>, <List>/);
   assert.deepEqual(['select-none', 'select-text', 'select-all'].map(name => classStyle(name).userSelect), ['none', 'text', 'all']);
   assert.equal(node('text', { className: 'select-text' }).userSelect, 'text');
 });
@@ -136,7 +136,7 @@ test('structural variants match sibling position, list rows and emptiness; DOM-s
     'a child at its rendered position sends no slot');
   assert.equal(rendered(() => h('column', { className: 'empty:hidden' })).props.display, 'none');
   assert.equal(rendered(() => h('column', { className: 'empty:hidden' }, h('text', {}, 'x'))).props.display, undefined);
-  const page = () => h('list', { count: 3, row: i => h('text', { className: 'first:pt-1 last:pb-2' }, String(i)) });
+  const page = () => h(listTag, { count: 3, row: i => h('text', { className: 'first:pt-1 last:pb-2' }, String(i)) });
   const texts = decode(prepare(page, {}, { root: { start: 0, end: 3, leading: 0, trailing: 0 } })).filter(node => node.tag === 'text').map(node => node.props);
   discard();
   assert.deepEqual([texts[0].paddingTop, texts[2].paddingBottom, texts[1].paddingTop], [4, 8, undefined]);
@@ -536,7 +536,7 @@ test('relative line height and tracking follow font size across components and l
   assert.equal(node('text', { className: 'leading-normal', style: { fontSize: 20 } }).lineHeight, 30);
   assert.equal(node('text', { className: 'text-sm', style: { lineHeight: '40px' } }).lineHeight, 40);
   const Label = ({ children }) => h('text', { className: 'text-[21px]' }, children);
-  const texts = decode(describe(() => h('column', { className: 'text-sm' }, h(Label, {}, 'child'), h('list', { count: 1, row: () => h(Label, {}, 'row') })), {}))
+  const texts = decode(describe(() => h('column', { className: 'text-sm' }, h(Label, {}, 'child'), h(listTag, { count: 1, row: () => h(Label, {}, 'row') })), {}))
     .filter(record => record.tag === 'text');
   assert.deepEqual(texts.map(text => text.props.lineHeight), [30, 30]);
   assert.equal(node('text', { className: 'text-[10px] tracking-widest' }).letterSpacing, 1);

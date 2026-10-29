@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { h, describe, prepare, commit, discard, dispatch, useLocal, useView, createView, readsHostContext } from '../src/internal.js';
+import { h, listTag, describe, prepare, commit, discard, dispatch, useLocal, useView, createView, readsHostContext } from '../src/internal.js';
 import { decode, rendered } from './support/wire.mjs';
 
 const throwsOn = (render, pattern) => assert.throws(() => describe(render, {}), pattern);
@@ -81,7 +81,7 @@ test('vectors encode bounded path data, fit and dash patterns, and decorate comp
 
 test('property admission stays local to each element and rejects prototype names', () => {
   for (const [tag, property] of [
-    ['text', 'onClick'], ['button', 'onInput'], ['column', 'disabled'], ['row', 'row'], ['scroll', 'count'], ['list', 'onClick'],
+    ['text', 'onClick'], ['button', 'onInput'], ['column', 'disabled'], ['row', 'row'], ['scroll', 'count'],
     ['image', 'columns'], ['grid', 'src'], ['plot', 'onChange'], ['input', 'onClick'], ['textarea', 'onChange'], ['input', 'options'],
     ['checkbox', 'min'], ['switch', 'placeholder'], ['slider', 'type'], ['radio', 'step'], ['spacer', 'lines'], ['stack', 'onReachStart'],
     ['text', 'lines'], ['grid', 'columns'], ['image', 'fit'], ['button', 'enabled'],
@@ -267,8 +267,8 @@ test('composed buttons take their accessible name from descendant text unless la
 });
 
 test('composed controls hold controls of their own, never a scroll or list, and never just one control', () => {
-  for (const tag of ['scroll', 'list']) {
-    function Nested() { return h('column', {}, h(tag, {})); }
+  for (const tag of ['scroll', listTag]) {
+    function Nested() { return h('column', {}, h(tag, tag === listTag ? { count: 0, row: () => null } : {})); }
     throwsOn(() => h('button', {}, h(Nested, {})), /UI_BUTTON: a scroll or list cannot sit inside a pressable control/);
     throwsOn(() => h('checkbox', {}, h(Nested, {})), /UI_BUTTON/);
   }
@@ -402,4 +402,8 @@ test('data-testid names a node for automation; the old testId prop is refused', 
   assert.deepEqual([root.testId, root.children[0].testId], ['box', 'label']);
   assert.equal(root.props.data, undefined, 'it is not one of the data-* variant attributes');
   assert.throws(() => rendered(() => h('column', { testId: 'box' })), /UI_PROP: testId is not a property of <column>/);
+});
+
+test('page code reaches the list element only through <List>', () => {
+  throwsOn(() => h('list', { count: 0, row: () => null }), /UI_TAG: <list> is not an element; use <List> from @lingxia\/ui/);
 });

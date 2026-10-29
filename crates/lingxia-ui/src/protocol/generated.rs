@@ -521,7 +521,6 @@ pub const ENVIRONMENT_KEYS: &[(&str, &str)] = &[
     ("animatorDurationScale", "device"),
     ("direction", "session"),
     ("canDock", "push"),
-    ("runner", "device"),
     ("renderer", "device"),
     ("textScale", "device"),
     ("palette", "push"),
@@ -542,7 +541,6 @@ pub fn check_environment(value: &serde_json::Value) -> bool {
         && (value.get("highContrast").is_none() || value["highContrast"].is_boolean())
         && (value.get("animatorDurationScale").is_none() || value["animatorDurationScale"].as_f64().is_some_and(|n| n.is_finite() && (0.0..=10.0).contains(&n)))
         && value["canDock"].is_boolean()
-        && value["runner"].is_boolean()
         && (value.get("renderer").is_none() || (matches!(value["renderer"]["fallback"].as_str(), None | Some("driver")) && value["renderer"].as_object().is_some_and(|r| r.len() == 1)))
 }
 

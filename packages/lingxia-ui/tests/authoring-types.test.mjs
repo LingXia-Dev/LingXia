@@ -26,7 +26,7 @@ test('authoring types preserve binding ownership, page contracts and children', 
   };
   visit(authoring);
   const intrinsicElements = checker.getTypeAtLocation(intrinsics).getProperties();
-  assert.deepEqual(intrinsicElements.map(symbol => symbol.name).sort(), Object.keys(elements).sort());
+  assert.deepEqual(intrinsicElements.map(symbol => symbol.name).sort(), Object.keys(elements).filter(name => !elements[name].component).sort());
   for (const element of intrinsicElements) {
     const type = checker.getTypeOfSymbolAtLocation(element, intrinsics);
     for (const prop of type.getProperties())

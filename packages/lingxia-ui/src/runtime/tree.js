@@ -1,6 +1,6 @@
 import { render, page, outsideRender } from './state.js';
 import { h, resetArena, clearArena } from './nodes.js';
-import { resolveNode } from './elements.js';
+import { resolveNode, listTag } from './elements.js';
 import { encodeTree, copyTree, retainCells, renderRow } from './encode.js';
 import { validInputText } from './data.js';
 import { report, resetActions, actionEpochNow, hasActionEpoch } from './actions.js';
@@ -11,7 +11,7 @@ import { envOf } from './hooks.js';
 // Candidate transactions: prepare renders and encodes without touching the
 // committed page; commit adopts the candidate, discard drops it.
 export function List({ items, getKey, renderItem, getItemHeight, ...props }) {
-  return h('list', { ...props, count: items.length,
+  return h(listTag, { ...props, count: items.length,
     itemKeys: items.map(getKey), row: index => renderItem(items[index], index),
     ...(getItemHeight ? { height: index => getItemHeight(items[index], index) } : {}) });
 }

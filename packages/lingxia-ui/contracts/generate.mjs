@@ -292,7 +292,8 @@ function authoring(schema, api) {
         + `{ bind?: never; value?: ${binding.type}; ${binding.event}?: (value: ${payload}) => void });`);
     } else lines.push(`export type ${type}Props = ${base};`);
   }
-  const intrinsics = Object.keys(schema.elements).map(name => `      ${JSON.stringify(name)}: ${pascal(name)}Props;`).join('\n');
+  // An element behind a component (`<List>`) is not written as JSX.
+  const intrinsics = Object.entries(schema.elements).filter(([, element]) => !element.component).map(([name]) => `      ${JSON.stringify(name)}: ${pascal(name)}Props;`).join('\n');
   return `${header}${api.replace(/^\/\/.*\n/gm, '')}
 /** The page's environment (\`view.env\`): read-only, and a change re-renders the page. */
 export interface Env {
@@ -341,6 +342,7 @@ function contract(schema, common) {
     style: elementStyle(schema, element),
     props: Object.fromEntries(Object.entries(element.props).map(([prop, entry]) => [prop, Boolean(entry.required)])),
     ...(element.binding ? { binding: element.binding } : {}),
+    ...(element.component ? { component: element.component.name } : {}),
   }]));
   const style = Object.fromEntries(Object.entries(schema.style).map(([name, entry]) => [name, {
     lower: entry.lower, wire: entry.wire, ...(entry.paint ? { paint: true } : {}), ...(entry.internal ? { internal: true } : {}),

@@ -141,7 +141,7 @@ fn an_exiting_panel_leaves_as_a_ghost_that_takes_no_input() {
 #[test]
 fn reduced_motion_lands_enters_and_exits_at_once() {
     let mut page = page(true, false);
-    page.set_environment(serde_json::json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","displayLanguage":"en","canDock":false,"runner":false,"reducedMotion":true})).unwrap();
+    page.set_environment(serde_json::json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","displayLanguage":"en","canDock":false,"reducedMotion":true})).unwrap();
     let (shot, _) = present(&mut page, frame_time(0), true);
     toggle(&mut page, &shot);
     let (shot, wakeup) = present(&mut page, frame_time(1), true);

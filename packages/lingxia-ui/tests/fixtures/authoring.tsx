@@ -59,8 +59,8 @@ export function render(view: View<{ save(value: string): Promise<void> }, { titl
   const rich = <text>Read <span className="font-bold">this</span> or <link onClick={() => {}}>that</link></text>;
   // @ts-expect-error editors are leaves
   const inputChildren = <input><text>invalid</text></input>;
-  // @ts-expect-error virtual rows belong to the row factory
-  const listChildren = <list count={0} row={() => <text/>}><text/></list>;
+  // @ts-expect-error the list element is reached only through <List>
+  const rawList = <list count={0} row={() => <text/>}/>;
   const layout = <view className="flex flex-col md:flex-row" style={{flexDirection:'row-reverse'}}/>;
   const meaningfulImage = <image src="photo.png" alt="A mountain lake"/>;
   const recoverableImage = <image src="photo.png" retryKey="1" onLoad={()=>{}} onError={()=>{}}/>;

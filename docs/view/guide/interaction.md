@@ -71,7 +71,7 @@ export function render() {
 }
 ```
 
-A `<scroll>` or `<list>` inside a composed control fails (`UI_BUTTON`): a drag in it would both scroll
+A `<scroll>` or `<List>` inside a composed control fails (`UI_BUTTON`): a drag in it would both scroll
 and press. So does a control whose only content is another control; put the action on that control:
 
 ```tsx error UI_BUTTON
@@ -106,7 +106,7 @@ The host recognizes the gestures; the View receives their outcome:
 | Gesture | Outcome |
 | --- | --- |
 | tap | the control's handler (`onClick`, `onChange`, focus for editors) |
-| drag, fling | scrolls the innermost `<scroll>`/`<list>` on that axis; drags a `<slider>` |
+| drag, fling | scrolls the innermost `<scroll>`/`<List>` on that axis; drags a `<slider>` |
 | long press | selects text where `select-text` is set; editors show their text menu |
 | tap on a `<plot>` | `onSelect(index)`, or `-1` when it clears the selection |
 

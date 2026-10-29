@@ -174,7 +174,6 @@ export interface Env {
   readonly direction: "ltr" | "rtl";
   /** Whether the window can dock an `as: 'aside'` beside the main; false until the host reports it. */
   readonly canDock: boolean;
-  readonly runner: boolean;
   /** `fallback: "driver"` when this device's GPU driver failed and pages render on the CPU. */
   readonly renderer?: Readonly<{ fallback: "driver" | null }>;
 }
@@ -355,7 +354,6 @@ declare global {
       "button": ButtonProps;
       "spacer": SpacerProps;
       "scroll": ScrollProps;
-      "list": ListProps;
       "image": ImageProps;
       "input": InputProps;
       "textarea": TextareaProps;

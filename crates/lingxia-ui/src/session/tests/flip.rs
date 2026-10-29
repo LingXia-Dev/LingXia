@@ -137,7 +137,7 @@ fn reversing_mid_flight_continues_from_the_position_on_screen() {
 #[test]
 fn reduced_motion_lands_a_reorder_at_once() {
     let mut page = page();
-    page.set_environment(serde_json::json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","displayLanguage":"en","canDock":false,"runner":false,"reducedMotion":true})).unwrap();
+    page.set_environment(serde_json::json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","displayLanguage":"en","canDock":false,"reducedMotion":true})).unwrap();
     let (shot, _) = present(&mut page, frame_time(0), true);
     toggle(&mut page, &shot);
     let (shot, wakeup) = present(&mut page, frame_time(1), true);
@@ -147,7 +147,7 @@ fn reduced_motion_lands_a_reorder_at_once() {
 #[test]
 fn a_keyed_list_reorder_slides_its_rows() {
     let module = super::source(
-        "function render(){const flipped=useLocal('flipped',false);const keys=flipped.value?['c','b','a']:['a','b','c'];const colors={a:'#ff0000',b:'#00ff00',c:'#0000ff'};return h('page',{style:{backgroundColor:'#ffffff'}},h('button',{'data-testid':'toggle',onClick(){flipped.set(!flipped.value)},style:{position:'absolute',left:150,top:0,width:40,height:20}},'T'),h('list',{style:{height:80,width:70},count:3,itemKeys:keys,height:()=>20,row:i=>h('view',{key:keys[i],style:{height:20,width:keys[i]==='a'?60:50,backgroundColor:colors[keys[i]],transition:{properties:['layout'],durationMs:200,delayMs:0,easing:'linear'}}})}))}",
+        "function render(){const flipped=useLocal('flipped',false);const keys=flipped.value?['c','b','a']:['a','b','c'];const colors={a:'#ff0000',b:'#00ff00',c:'#0000ff'};return h('page',{style:{backgroundColor:'#ffffff'}},h('button',{'data-testid':'toggle',onClick(){flipped.set(!flipped.value)},style:{position:'absolute',left:150,top:0,width:40,height:20}},'T'),h(listTag,{style:{height:80,width:70},count:3,itemKeys:keys,height:()=>20,row:i=>h('view',{key:keys[i],style:{height:20,width:keys[i]==='a'?60:50,backgroundColor:colors[keys[i]],transition:{properties:['layout'],durationMs:200,delayMs:0,easing:'linear'}}})}))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     page.set_animation_surface(Some(SURFACE), Duration::ZERO)

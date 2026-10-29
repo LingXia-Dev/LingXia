@@ -1,4 +1,4 @@
-import { useLocal, useStream, type ReadonlyData, type Stream, type View } from '@lingxia/ui';
+import { List, useLocal, useStream, type ReadonlyData, type Stream, type View } from '@lingxia/ui';
 import '../../theme/index.css';
 import { Chart } from '../../shared/chart';
 import { EmptyState, ErrorState, Icon } from '../../shared/ui';
@@ -89,13 +89,13 @@ export function render({ data, actions }: View<Actions, StreamPageData>) {
           </column>
         </scroll>
       ) : (
-        <list
+        <List
           data-testid="page-scroll"
           className="grow basis-0 min-h-0 pt-3 pb-4"
-          count={keys.length}
-          itemKeys={keys}
+          items={keys}
+          getKey={key => key}
           anchor={anchor}
-          row={index =>
+          renderItem={(_, index) =>
             index < messages.length ? (
               <Bubble id={keys[index]} content={messages[index].content} user={messages[index].role === 'user'} chart={messages[index].chart} />
             ) : (

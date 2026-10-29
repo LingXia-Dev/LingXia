@@ -20,5 +20,4 @@ _Generated from the View schema (`schema.json`) and the compiler; do not edit._
 | `animatorDurationScale` | `number` | The platform's animation duration multiplier (0..10, default 1); 0 also sets `reducedMotion`. |
 | `direction` | `"ltr" \| "rtl"` | Inline direction derived from `displayLanguage`. |
 | `canDock` | `boolean` | Whether the window can dock an `as: 'aside'` beside the main; false until the host reports it. |
-| `runner` | `boolean` |  |
 | `renderer?` | `Readonly<{ fallback: "driver" \| null }>` | `fallback: "driver"` when this device's GPU driver failed and pages render on the CPU. |

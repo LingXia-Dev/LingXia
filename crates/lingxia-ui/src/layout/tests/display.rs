@@ -103,7 +103,7 @@ fn unstyled_defaults_follow_the_page_theme() {
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let paints = |page: &mut crate::ViewSession, theme: &str| {
-        page.set_environment(serde_json::json!({"theme":theme,"insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","displayLanguage":"en","canDock":false,"runner":false}))
+        page.set_environment(serde_json::json!({"theme":theme,"insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","displayLanguage":"en","canDock":false}))
             .unwrap();
         let display = page.layout(200, 200, 1.0).unwrap();
         let of = |id: &str| {
@@ -191,7 +191,7 @@ fn fixed_boxes_measure_insets_from_the_safe_content_box() {
     let mut page = crate::ViewSession::new(&source).unwrap();
     let mut place = |size: [u16; 2], insets: [f32; 4], keyboard: f32| {
         let [top, right, bottom, left] = insets;
-        page.set_environment(serde_json::json!({"theme":"light","insets":{"top":top,"right":right,"bottom":bottom,"left":left},"keyboard":{"height":keyboard},"os":"android","formFactor":"phone","displayLanguage":"en","canDock":false,"runner":false}))
+        page.set_environment(serde_json::json!({"theme":"light","insets":{"top":top,"right":right,"bottom":bottom,"left":left},"keyboard":{"height":keyboard},"os":"android","formFactor":"phone","displayLanguage":"en","canDock":false}))
             .unwrap();
         let display = page.layout(size[0], size[1], 1.0).unwrap();
         let at = |id: &str| {
@@ -233,7 +233,7 @@ fn viewport_units_measure_the_safe_content_box() {
         (0.0, (640.0 - 24.0 - 80.0) / 2.0),
         (300.0, (640.0 - 24.0 - 300.0) / 2.0),
     ] {
-        page.set_environment(serde_json::json!({"theme":"light","insets":{"top":24,"right":20,"bottom":80,"left":20},"keyboard":{"height":keyboard},"os":"android","formFactor":"phone","displayLanguage":"en","canDock":false,"runner":false}))
+        page.set_environment(serde_json::json!({"theme":"light","insets":{"top":24,"right":20,"bottom":80,"left":20},"keyboard":{"height":keyboard},"os":"android","formFactor":"phone","displayLanguage":"en","canDock":false}))
             .unwrap();
         let display = page.layout(360, 640, 1.0).unwrap();
         let half = display

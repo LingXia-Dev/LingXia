@@ -91,28 +91,7 @@ Keys let a row keep its local state and resources through inserts, removals and 
 while it is scrolled out of view. Removing an item from `items` releases its state. Duplicate keys fail
 (`UI_LIST`). All keys of a page together may take 256 KiB.
 
-`<List>` is a wrapper over the `<list>` element, whose `row(index)` factory and `count` you can use
-directly. Hooks called directly inside a `row` factory then need `itemKeys`, so their state can follow
-the item:
-
-```tsx error UI_LIST
-import { useLocal } from '@lingxia/ui';
-
-const names = ['a', 'b', 'c'];
-
-export function render() {
-  return (
-    <page>
-      <list count={names.length} row={index => {
-        const open = useLocal('open', false);
-        return <text key={names[index]}>{open.value ? 'open' : names[index]}</text>;
-      }} />
-    </page>
-  );
-}
-```
-
-Pass `itemKeys={names}`, use `<List>`, or move the hook into a row component.
+Hooks may sit directly in `renderItem`: their state follows the item's key.
 
 ### Anchors
 
