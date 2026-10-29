@@ -36,8 +36,6 @@ pub struct DeviceFacts {
     pub high_contrast: bool,
     /// `[authored, shown]` font sizes in logical pixels, from `[0, 0]` to `[16384, _]`.
     pub text_scale: Option<Vec<[f32; 2]>>,
-    /// Hosted by the desktop runner rather than an app.
-    pub runner: bool,
 }
 
 impl DeviceFacts {

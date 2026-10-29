@@ -403,7 +403,6 @@ impl EnvironmentSource for AndroidAdapter {
             reduce_motion: facts["reduce_motion"].as_bool().unwrap_or(false),
             high_contrast: facts["high_contrast"].as_bool().unwrap_or(false),
             text_scale,
-            runner: facts["runner"].as_bool().unwrap_or(false),
         }
         .environment()
     }
