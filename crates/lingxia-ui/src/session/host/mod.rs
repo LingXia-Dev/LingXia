@@ -820,17 +820,19 @@ impl<A: PlatformAdapter> ViewHost<A> {
             .main()
             .interaction
             .automation_query(css, index, all, max_text)?;
-        // An off-screen List row is attached but not drawn: its content waits until it is.
-        if !all
-            && found["exists"] == false
-            && found["count"] == 0
-            && index.unwrap_or(0) == 0
-            && self.inner.virtual_row(css).is_some()
-        {
-            return Ok(serde_json::json!({
+        // An off-screen List row is attached and visible outside the viewport, as in a WebView
+        // DOM, so locators reveal it; its content waits until it draws.
+        let missed = found["count"] == 0 && (all || index.unwrap_or(0) == 0);
+        if missed && self.inner.virtual_row(css).is_some() {
+            let row = serde_json::json!({
                 "exists": true, "virtual": true, "renderer": "gpu", "index": 0, "count": 1,
-                "visible": false, "inViewport": false, "enabled": false, "editable": false,
-            }));
+                "visible": true, "inViewport": false, "enabled": false, "editable": false,
+            });
+            return Ok(if all {
+                serde_json::json!({ "count": 1, "renderer": "gpu", "items": [row] })
+            } else {
+                row
+            });
         }
         Ok(found)
     }

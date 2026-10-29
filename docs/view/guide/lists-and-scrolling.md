@@ -127,7 +127,7 @@ first example: each new message changes `seq` and moves the list once. Jumping f
 the rows in between.
 
 Automation reaches rows that are not drawn: a `data-testid` query finds an off-screen row of a `<List>` (the
-first 2000 rows) as attached but not visible, and acting on it scrolls the list there from the rows'
+first 2000 rows) as attached and visible outside the viewport, as a WebView DOM does, and acting on it scrolls the list there from the rows'
 estimated heights. Its text and attributes are readable once it draws.
 
 ## Pull to refresh

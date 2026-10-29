@@ -4157,17 +4157,27 @@ fn a_list_row_below_the_fold_is_revealed_through_the_page_scroll_and_clicked() {
     let row = "[data-testid=\"row-31\"]";
     // A locator's click as the test client drives it: reveal until the row draws on screen.
     let mut trace = Vec::new();
+    // Locators resolve with `all`, then reveal a match outside the viewport.
+    let resolve = |css: &str| {
+        let all = host
+            .automation_request(&serde_json::json!({"op":"query","css":css,"all":true}))
+            .unwrap();
+        all["items"].get(0).cloned().unwrap_or(all)
+    };
     let mut clicked = false;
     for _ in 0..8 {
-        let found = query(row);
+        let found = resolve(row);
         trace.push(found.to_string());
-        if found["exists"] == true && found["inViewport"] == true && found["virtual"].is_null() {
+        if found["visible"] == true && found["inViewport"] == true && found["virtual"].is_null() {
             act(row, serde_json::json!({"kind":"click"})).unwrap();
             clicked = true;
             break;
         }
-        let scrolled = act(row, serde_json::json!({"kind":"scroll"}));
-        trace.push(format!("scroll: {scrolled:?}"));
+        // Only a visible match is revealed; anything else waits for the next poll.
+        if found["visible"] == true {
+            let scrolled = act(row, serde_json::json!({"kind":"scroll"}));
+            trace.push(format!("scroll: {scrolled:?}"));
+        }
         platform.settle(&[&host]);
     }
     assert!(clicked, "row 31 never drew: {trace:#?}");
