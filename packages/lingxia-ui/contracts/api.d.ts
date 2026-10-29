@@ -70,6 +70,9 @@ export type LocalData<T> = T extends string | number | boolean | null ? T
 export interface Local<T> { readonly [localCell]: true; readonly value: ReadonlyData<T>; set(value: ReadonlyData<LocalData<T>>): void;
   /** Focus the editor this cell is bound to (`bind`), on the next frame. */
   focus(): void }
+/** Local state keyed by call order in the component, as React's `useState`. */
+export declare function useLocal<T>(initial: T, ...invalid: [T] extends [LocalData<T>] ? [] : [never]): Local<T>;
+/** Local state keyed by `name`: it survives reordered calls and hot edits. */
 export declare function useLocal<T>(name: string, initial: T, ...invalid: [T] extends [LocalData<T>] ? [] : [never]): Local<T>;
 
 export interface RequestResource<T> {

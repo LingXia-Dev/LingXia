@@ -149,3 +149,18 @@ test('Details discloses its body behind a Summary toggle that announces expanded
   dispatch(controlled.children[0].props.onClick);
   assert.equal(asked, false);
 });
+
+test('useLocal(initial) keys state by call order, independent of named locals', () => {
+  const cells = [];
+  function Counter() {
+    const a = useLocal(0), named = useLocal('label', 'x'), b = useLocal('');
+    cells.splice(0, 3, a, named, b);
+    return h('text', {}, `${a.value}|${named.value}|${b.value}`);
+  }
+  const render = () => h('column', {}, h(Counter, { key: 'one' }), h(Counter, { key: 'two' }));
+  describe(render, {});
+  cells[0].set(5); cells[2].set('typed');
+  const output = describe(render, {});
+  assert.ok(output.includes('5|x|typed'));
+  assert.throws(() => describe(() => { useLocal(); return h('text'); }, {}), /UI_LOCAL: useLocal takes \(initial\) or \(name, initial\)/);
+});

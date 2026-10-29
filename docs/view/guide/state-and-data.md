@@ -13,8 +13,8 @@ type Actions = {
 
 export function render({ data, actions }: View<Actions, { userId: string }>) {
   const profile = useRequest('profile', actions.profile, { id: data.userId });
-  const draft = useLocal('draft', '');
-  const summary = useLocal('summary', '');
+  const draft = useLocal('');
+  const summary = useLocal('');
   const stream = useStream('summary', actions.summarize, { onData: chunk => summary.set(summary.value + chunk.token) });
   const save = async () => {
     await actions.rename({ id: data.userId, name: draft.value });
@@ -63,9 +63,12 @@ Page({
 });
 ```
 
-## `useLocal(name, initial)`
+## `useLocal(initial)`
 
 A cell of JSON state that belongs to the component instance ([Pages and components](pages-and-components.md)).
+
+- `useLocal(initial)` keys the cell by its call order in the component, as React's `useState`: call it
+  unconditionally. `useLocal(name, initial)` keys it by name, so it survives reordered calls and hot edits.
 
 - `.value` is deeply read-only. `.set(next)` replaces it and re-renders; it is refused during render
   (`UI_RENDER`) and on a cell whose component has unmounted (`UI_LOCAL`).
@@ -74,7 +77,7 @@ A cell of JSON state that belongs to the component instance ([Pages and componen
 - A `set` made while a render is being prepared applies when that render commits. A frame the screen
   only declined keeps the change for the next one; a frame that fails (the render throws, or its
   description is rejected with a `UI_*` error) discards it, and the page keeps its last good state.
-- Custom hooks namespace their cells by name: ``useLocal(`${name}/draft`, '')``.
+- Named cells in custom hooks take a namespace: ``useLocal(`${name}/draft`, '')``.
 
 ## `useRequest(name, action, params?)`
 

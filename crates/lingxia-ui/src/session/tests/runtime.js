@@ -1749,10 +1749,11 @@
   function cellOf(binding) {
     return bindings.get(binding);
   }
-  function local(name, initial, resource = "") {
-    if (!render.active || render.scope === null || typeof name !== "string" || !name || name.length > 256) throw Error("UI_SCOPE: invalid local state");
+  function local(name, initial, resource = "", order) {
+    if (!render.active || render.scope === null || order === void 0 && (typeof name !== "string" || !name || name.length > 256))
+      throw Error("UI_SCOPE: invalid local state");
     const { candidate, scope } = render;
-    const key = JSON.stringify(resource ? [scope, resource, name] : [scope, name]);
+    const key = JSON.stringify(order !== void 0 ? [scope, order] : resource ? [scope, resource, name] : [scope, name]);
     if (!resource && candidate.declarations.has(key)) throw Error(`UI_LOCAL: duplicate declaration ${JSON.stringify(name)} in ${scope}`);
     candidate.declarations.add(key);
     const cell = candidate.locals.get(key) ?? render.lookupLocals?.get(key) ?? page.locals.get(key) ?? { value: immutable(initial, 0, true) };
@@ -1778,8 +1779,15 @@
     bindings.set(binding, { key, cell });
     return binding;
   }
-  function useLocal(name, initial) {
-    return local(name, initial);
+  function useLocal(...args) {
+    var _a;
+    if (args.length === 2) return local(args[0], args[1]);
+    if (args.length !== 1) throw Error("UI_LOCAL: useLocal takes (initial) or (name, initial)");
+    if (!render.active || render.scope === null) throw Error("UI_SCOPE: invalid local state");
+    const counts = (_a = render.candidate).localOrder ?? (_a.localOrder = /* @__PURE__ */ new Map());
+    const order = counts.get(render.scope) ?? 0;
+    counts.set(render.scope, order + 1);
+    return local(`#${order}`, args[0], "", order);
   }
   function hasLocalUpdates() {
     return page.updates.size > 0;

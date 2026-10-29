@@ -10,7 +10,7 @@ import { useLocal, useRequest, type View } from '@lingxia/ui';
 type Actions = { load(q: { id: string }): Promise<{ title: string }> };
 
 export function render({ data, actions }: View<Actions, { id: string }>) {
-  const draft = useLocal('draft', '');
+  const draft = useLocal('');
   const item = useRequest('item', actions.load, { id: data.id });
   return <page className="p-4 gap-3">
     <text className="text-lg font-semibold truncate">{item.value?.title ?? 'Loading…'}</text>
@@ -47,7 +47,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   and focus; Logic or config edits rebuild and reopen. Dev builds' runtime errors name `file:line:col`.
 - The build reports every problem with `file:line:col`, split into unknown
   utilities, ones the renderer cannot draw, and ones the element ignores.
-- `useLocal(name, value)` state is keyed by name and component identity.
+- `useLocal(value)` state is keyed by call order and component identity; `useLocal(name, value)` by name (survives reorders and hot edits).
 - `useRequest`, `useStream(name, action, { onData? })`,
   `useChannel(name, action, { params, onData? })` take `view.actions` references.
   Errors are `{ code, message }`; reloads keep old values (`stale`). `useLeaveGuard(name, { enabled })`.

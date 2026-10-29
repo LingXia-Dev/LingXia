@@ -9,10 +9,12 @@ const bindings = new WeakMap();
 /** The cell behind a `useLocal` binding, if it is one. */
 export function cellOf(binding) { return bindings.get(binding); }
 
-function local(name, initial, resource = '') {
-  if (!render.active || render.scope === null || typeof name !== 'string' || !name || name.length > 256) throw Error('UI_SCOPE: invalid local state');
+function local(name, initial, resource = '', order) {
+  if (!render.active || render.scope === null || (order === undefined && (typeof name !== 'string' || !name || name.length > 256)))
+    throw Error('UI_SCOPE: invalid local state');
   const { candidate, scope } = render;
-  const key = JSON.stringify(resource ? [scope, resource, name] : [scope, name]);
+  // An unnamed local is keyed by its call order in the component, as React's hooks are.
+  const key = JSON.stringify(order !== undefined ? [scope, order] : resource ? [scope, resource, name] : [scope, name]);
   if (!resource && candidate.declarations.has(key)) throw Error(`UI_LOCAL: duplicate declaration ${JSON.stringify(name)} in ${scope}`);
   candidate.declarations.add(key);
   const cell = candidate.locals.get(key) ?? render.lookupLocals?.get(key) ?? page.locals.get(key) ?? { value: immutable(initial, 0, true) };
@@ -39,7 +41,16 @@ function local(name, initial, resource = '') {
   return binding;
 }
 
-export function useLocal(name, initial) { return local(name, initial); }
+/** `useLocal(initial)` keys the cell by call order; `useLocal(name, initial)` by name, which keeps it across reorders and edits. */
+export function useLocal(...args) {
+  if (args.length === 2) return local(args[0], args[1]);
+  if (args.length !== 1) throw Error('UI_LOCAL: useLocal takes (initial) or (name, initial)');
+  if (!render.active || render.scope === null) throw Error('UI_SCOPE: invalid local state');
+  const counts = render.candidate.localOrder ??= new Map();
+  const order = counts.get(render.scope) ?? 0;
+  counts.set(render.scope, order + 1);
+  return local(`#${order}`, args[0], '', order);
+}
 export function hasLocalUpdates() { return page.updates.size > 0; }
 
 export function useView() {
