@@ -219,7 +219,8 @@ app:
 #   prod: https://api.myapp.com
 ```
 
-A map may omit an env, which then cannot be built. A prod build can switch
+`lingxiaServer` is optional, and a map may omit an env: that build has no
+service server. A prod build can switch
 service servers at runtime; package id, icon, and signed App Link entitlements
 stay with the build env. Read the build env with `lx.host.env` (JS) or
 `lingxia::app::env()` (Rust), and the running service env with

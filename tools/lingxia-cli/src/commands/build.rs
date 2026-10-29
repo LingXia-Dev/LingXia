@@ -862,7 +862,8 @@ pub(crate) fn add_zip_dir<W: std::io::Write + std::io::Seek>(
 ///
 /// `--env <name>` chooses the env; omitted defaults to `dev` (callers
 /// like `package` override the default before getting here). Env is a
-/// build-time property with built-in defaults — no yaml block is required.
+/// build-time property with built-in defaults — no yaml block is required,
+/// and an env without a `lingxiaServer` builds an app with no service server.
 pub(crate) fn resolve_build_env(
     config: &LingXiaConfig,
     requested: Option<&str>,
@@ -871,15 +872,7 @@ pub(crate) fn resolve_build_env(
         .map(crate::config::AppEnv::parse_cli)
         .transpose()?
         .unwrap_or(crate::config::AppEnv::Dev);
-    let resolved = config.resolve_env(version)?;
-    if resolved.lingxia_server.trim().is_empty() {
-        return Err(anyhow!(
-            "app.lingxiaServer must configure a {} URL to build --env {}",
-            version.as_str(),
-            version.as_str()
-        ));
-    }
-    Ok(resolved)
+    config.resolve_env(version)
 }
 
 /// The single Rust crate directly under a standalone SPM project (the native
@@ -1146,7 +1139,7 @@ mod tests {
     }
 
     #[test]
-    fn build_requires_a_server_for_the_selected_env() {
+    fn build_without_a_server_for_the_selected_env_has_none() {
         use crate::config::{LingxiaServer, PerEnvServer};
 
         let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "demo");
@@ -1154,25 +1147,24 @@ mod tests {
             dev: Some("https://dev.example.com".into()),
             prod: None,
         }));
-        assert!(resolve_build_env(&config, Some("dev")).is_ok());
-        let error = resolve_build_env(&config, Some("prod"))
-            .unwrap_err()
-            .to_string();
-        assert!(error.contains("prod URL"), "{error}");
-
-        config.app.as_mut().unwrap().lingxia_server = Some(LingxiaServer::PerEnv(PerEnvServer {
-            dev: None,
-            prod: Some("https://prod.example.com".into()),
-        }));
-        assert!(resolve_build_env(&config, Some("prod")).is_ok());
-        let error = resolve_build_env(&config, Some("dev"))
-            .unwrap_err()
-            .to_string();
-        assert!(error.contains("dev URL"), "{error}");
+        let dev = resolve_build_env(&config, Some("dev")).unwrap();
+        assert_eq!(dev.lingxia_server, "https://dev.example.com");
+        let prod = resolve_build_env(&config, Some("prod")).unwrap();
+        assert_eq!(prod.lingxia_server, "");
 
         config.app.as_mut().unwrap().lingxia_server = None;
-        assert!(resolve_build_env(&config, Some("dev")).is_err());
-        assert!(resolve_build_env(&config, Some("prod")).is_err());
+        assert_eq!(
+            resolve_build_env(&config, Some("dev"))
+                .unwrap()
+                .lingxia_server,
+            ""
+        );
+        assert_eq!(
+            resolve_build_env(&config, Some("prod"))
+                .unwrap()
+                .lingxia_server,
+            ""
+        );
     }
 
     #[test]
