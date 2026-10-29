@@ -15,10 +15,10 @@ export function render({ data }: View<object, { plans: { value: string; label: s
         <column className="p-4 gap-3">
           <text role="heading" className="text-xl font-semibold">Account</text>
           <search bind={query} aria-label="Search settings" placeholder="Search settings" className={field} />
-          <input bind={email} aria-label="Email" keyboard="email" autoComplete="email" autoCapitalize="none" spellCheck={false} enterKeyHint="next" placeholder="you@example.com" className={field} />
-          <input bind={phone} aria-label="Phone" keyboard="phone" autoComplete="tel" maxLength={16} enterKeyHint="next" placeholder="+1 555 0100" className={field} />
+          <input bind={email} aria-label="Email" type="email" autoComplete="email" autoCapitalize="none" spellCheck={false} enterKeyHint="next" placeholder="you@example.com" className={field} />
+          <input bind={phone} aria-label="Phone" type="tel" autoComplete="tel" maxLength={16} enterKeyHint="next" placeholder="+1 555 0100" className={field} />
           <row className="gap-2">
-            <input bind={time} aria-label="Quiet hours" keyboard="time" placeholder="22:00" className={`grow basis-0 ${field}`} />
+            <input bind={time} aria-label="Quiet hours" type="time" placeholder="22:00" className={`grow basis-0 ${field}`} />
             <select bind={plan} aria-label="Plan" placeholder="Choose a plan" options={data.plans} className={`grow basis-0 ${field}`} />
           </row>
           <textarea bind={note} rows={3} maxRows={6} aria-label="Notes" placeholder="Anything we should know?" className={field} />

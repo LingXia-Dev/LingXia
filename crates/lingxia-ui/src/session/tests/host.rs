@@ -2913,8 +2913,8 @@ fn every_message_adapters_receive_matches_the_frame_schema() {
       const name=useLocal('name','Ada'), on=useLocal('on',true), level=useLocal('level',3), plan=useLocal('plan','b');
       return h('scroll',{'data-testid':'page',style:{height:400}},
         h('text',{'data-testid':'title',role:'heading',headingLevel:1,style:{userSelect:'text'}},'Frame contract'),
-        h('input',{'data-testid':'name',bind:name,'aria-label':'Name',autoFocus:true,keyboard:'email',enterKeyHint:'next',maxLength:40,placeholder:'Name'}),
-        h('input',{'data-testid':'day','aria-label':'Day',keyboard:'date',min:'2024-01-01'}),
+        h('input',{'data-testid':'name',bind:name,'aria-label':'Name',autoFocus:true,type:'email',enterKeyHint:'next',maxLength:40,placeholder:'Name'}),
+        h('input',{'data-testid':'day','aria-label':'Day',type:'date',min:'2024-01-01'}),
         h('textarea',{'data-testid':'note','aria-label':'Note',rows:2,maxRows:4,value:'line'}),
         h('select',{'data-testid':'plan',bind:plan,'aria-label':'Plan',options:[{value:'a',label:'A'},{value:'b',label:'B',disabled:true}]}),
         h('slider',{'data-testid':'level',bind:level,'aria-label':'Level',min:0,max:10,step:1}),
@@ -3587,7 +3587,7 @@ fn an_editor_selection_offers_copy_cut_and_paste_to_assistive_tech() {
       const name=useLocal('name','Hello world'), pin=useLocal('pin','1234');
       return h('column',{},
         h('input',{'data-testid':'name',bind:name,'aria-label':'Name'}),
-        h('input',{'data-testid':'pin',bind:pin,secure:true,'aria-label':'PIN'}))
+        h('input',{'data-testid':'pin',bind:pin,type:'password','aria-label':'PIN'}))
     }";
     let host = platform.host(&worker, &source(page), false);
     host.set_visible(true);

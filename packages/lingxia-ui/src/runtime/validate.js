@@ -156,16 +156,28 @@ export function listKeys(props) {
 
 const iso = { date: /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/, time: /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/ };
 
-/** Editor attributes as wire pairs; native enforces length and range again. */
-export function editor(tag, props) {
-  const out = [];
-  const keyboard = props.keyboard;
-  if (keyboard !== undefined && (keyboard === 'search' || !fieldOptions.keyboard.includes(keyboard))) {
-    const allowed = fieldOptions.keyboard.filter(name => name !== 'search').join(', ');
-    const hint = keyboard === 'tel' ? '; use "phone"' : keyboard === 'search' ? '; use <search>' : '';
-    throw Error(`UI_INPUT: keyboard ${JSON.stringify(keyboard)} is not one of ${allowed}${hint}`);
+const inputTypes = { text: 'text', password: 'text', email: 'email', number: 'number', tel: 'phone', date: 'date', time: 'time' };
+const inputModes = { text: 'text', numeric: 'number', decimal: 'number', tel: 'phone', email: 'email', search: 'search' };
+
+/** The wire keyboard and secure flag an editor's `type` and `inputMode` name. */
+export function editorKind(tag, props) {
+  const { type, inputMode } = props;
+  if (tag === 'search') return { keyboard: 'search', secure: false };
+  if (type !== undefined && (tag !== 'input' || !Object.hasOwn(inputTypes, type))) {
+    const hint = type === 'search' ? '; use <search>' : tag === 'input' ? '' : '; set inputMode on <textarea>';
+    throw Error(`UI_INPUT: type ${JSON.stringify(type)} is not one of ${Object.keys(inputTypes).join(', ')}${hint}`);
   }
-  if ((keyboard === 'date' || keyboard === 'time') && tag !== 'input') throw Error(`UI_INPUT: ${keyboard} pickers need <input>`);
+  if (inputMode !== undefined && !Object.hasOwn(inputModes, inputMode))
+    throw Error(`UI_INPUT: inputMode ${JSON.stringify(inputMode)} is not one of ${Object.keys(inputModes).join(', ')}`);
+  if (inputMode !== undefined && ['number', 'date', 'time'].includes(type))
+    throw Error(`UI_INPUT: type="${type}" picks its own keyboard; drop inputMode`);
+  const keyboard = inputMode !== undefined ? inputModes[inputMode] : type !== undefined ? inputTypes[type] : undefined;
+  return { keyboard, secure: type === 'password' };
+}
+
+/** Editor attributes as wire pairs; native enforces length and range again. */
+export function editor(tag, props, keyboard) {
+  const out = [];
   if (props.maxLength !== undefined) {
     if (!Number.isInteger(props.maxLength) || props.maxLength < 1 || props.maxLength > 65536) throw Error('UI_INPUT: maxLength is an integer 1..65536');
     out.push(['maxLength', props.maxLength]);
@@ -186,13 +198,13 @@ export function editor(tag, props) {
   }
   const bounded = ['min', 'max', 'step'].filter(name => props[name] !== undefined);
   if (bounded.length) {
-    if (tag !== 'input' || !['number', 'date', 'time'].includes(keyboard)) throw Error('UI_INPUT: min, max and step need keyboard number, date or time');
+    if (tag !== 'input' || !['number', 'date', 'time'].includes(props.type)) throw Error('UI_INPUT: min, max and step need type="number", "date" or "time"');
     const valid = value => keyboard === 'number' ? typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1e15
       : typeof value === 'string' && iso[keyboard].test(value);
     for (const name of ['min', 'max']) if (props[name] !== undefined && !valid(props[name])) throw Error(`UI_INPUT: ${name} must be a ${keyboard === 'number' ? 'number' : `${keyboard} in ISO form`}`);
     if (props.min !== undefined && props.max !== undefined && props.min > props.max) throw Error('UI_INPUT: min exceeds max');
     if (props.step !== undefined && (keyboard !== 'number' || typeof props.step !== 'number' || !(props.step > 0) || props.step > 1e15))
-      throw Error('UI_INPUT: step is a positive number on keyboard="number"');
+      throw Error('UI_INPUT: step is a positive number on type="number"');
     for (const [name, key] of [['min', 'inputMin'], ['max', 'inputMax'], ['step', 'inputStep']]) if (props[name] !== undefined) out.push([key, props[name]]);
   }
   return out;

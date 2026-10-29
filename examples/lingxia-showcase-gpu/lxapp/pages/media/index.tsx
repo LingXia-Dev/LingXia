@@ -447,7 +447,7 @@ function Gallery({ data, actions }: Pane) {
             <input
               data-testid="media-previewImageDurationMs"
               aria-label="Image Duration (ms)"
-              keyboard="number"
+              type="number"
               value={String(data.previewImageDurationMs ?? '2000')}
               onInput={value => actions.onPreviewImageDurationInput({ detail: { value } })}
               className="px-3 py-2 text-sm rounded-lg border border-line-strong bg-surface"

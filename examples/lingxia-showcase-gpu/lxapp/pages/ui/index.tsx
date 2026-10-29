@@ -80,7 +80,7 @@ function Dialogs({ data, actions }: Pane) {
         <Section title="Toast Parameters">
           <Field testId="toast-title" label="Title" bind={toastTitle} placeholder="Enter toast title" />
           <Choice testId="toast-icon" label="Icon" value={String(data.toastIconLabel || 'Success')} onClick={() => actions.chooseToastIcon()} />
-          <Field testId="toast-duration" label="Duration (ms)" bind={toastDuration} keyboard="number" />
+          <Field testId="toast-duration" label="Duration (ms)" bind={toastDuration} type="number" />
           <Choice
             testId="toast-position"
             label="Position"

@@ -231,11 +231,11 @@ function Inputs() {
   const field = 'px-3 py-2 rounded-lg border border-line-strong bg-surface text-sm';
   return (
     <Section title="Inputs" testId="lab-inputs">
-      <input data-testid="lab-input-otp" bind={code} aria-label="One-time code" keyboard="number" maxLength={6} autoComplete="one-time-code" enterKeyHint="done" placeholder="6-digit code" className={field} />
-      <input data-testid="lab-input-amount" bind={amount} aria-label="Amount" keyboard="number" min={1} max={500} step={0.5} enterKeyHint="next" placeholder="1 to 500, steps of 0.5" className={field} />
+      <input data-testid="lab-input-otp" bind={code} aria-label="One-time code" type="number" maxLength={6} autoComplete="one-time-code" enterKeyHint="done" placeholder="6-digit code" className={field} />
+      <input data-testid="lab-input-amount" bind={amount} aria-label="Amount" type="number" min={1} max={500} step={0.5} enterKeyHint="next" placeholder="1 to 500, steps of 0.5" className={field} />
       <row className="gap-2">
-        <input data-testid="lab-input-date" bind={day} aria-label="Billing date" keyboard="date" min="2024-01-01" placeholder="Pick a date" className={`grow basis-0 ${field}`} />
-        <input data-testid="lab-input-time" bind={time} aria-label="Reminder time" keyboard="time" placeholder="Pick a time" className={`grow basis-0 ${field}`} />
+        <input data-testid="lab-input-date" bind={day} aria-label="Billing date" type="date" min="2024-01-01" placeholder="Pick a date" className={`grow basis-0 ${field}`} />
+        <input data-testid="lab-input-time" bind={time} aria-label="Reminder time" type="time" placeholder="Pick a time" className={`grow basis-0 ${field}`} />
       </row>
       <select data-testid="lab-input-plan" bind={plan} aria-label="Billing plan" placeholder="Choose a plan" className={field}
         options={[{ value: 'monthly', label: 'Monthly' }, { value: 'quarterly', label: 'Quarterly', disabled: true }, { value: 'yearly', label: 'Yearly' }]} />

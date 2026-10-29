@@ -135,7 +135,7 @@ export function render({ data, actions }: View) {
       )}
       {type === 'dial' && (
         <Section title="Dial a phone number" description="Open the native phone dialer">
-          <Field testId="device-phone-number" label="Phone number" bind={phone} keyboard="phone" placeholder="Enter phone number" />
+          <Field testId="device-phone-number" label="Phone number" bind={phone} type="tel" placeholder="Enter phone number" />
           <Button
             testId="device-phone-call"
             disabled={!phone.value.trim()}

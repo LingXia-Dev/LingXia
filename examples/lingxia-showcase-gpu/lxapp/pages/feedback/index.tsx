@@ -55,7 +55,7 @@ export function render({ actions }: View) {
         label="Email (optional)"
         bind={email}
         disabled={submitting.value}
-        keyboard="email"
+        type="email"
         placeholder="you@example.com"
       />
       <Button testId="feedback-submit" disabled={!canSubmit} onClick={submit}>

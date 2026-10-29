@@ -126,8 +126,8 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput
 | --- | --- | --- |
 | `aria-label` | `string` |  |
 | `placeholder` | `string` |  |
-| `secure` | `boolean` |  |
-| `keyboard` | `"text" \| "number" \| "email" \| "phone" \| "date" \| "time"` |  |
+| `type` | `"text" \| "password" \| "email" \| "number" \| "tel" \| "date" \| "time"` |  |
+| `inputMode` | `"text" \| "numeric" \| "decimal" \| "tel" \| "email" \| "search"` |  |
 | `autoFocus` | `boolean` |  |
 | `disabled` | `boolean` |  |
 | `onSubmit` | `(value: string) => void` |  |
@@ -152,11 +152,9 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput
 | `maxRows` | `number` |  |
 | `aria-label` | `string` |  |
 | `placeholder` | `string` |  |
-| `secure` | `boolean` |  |
-| `keyboard` | `"text" \| "number" \| "email" \| "phone"` |  |
+| `inputMode` | `"text" \| "numeric" \| "decimal" \| "tel" \| "email" \| "search"` |  |
 | `autoFocus` | `boolean` |  |
 | `disabled` | `boolean` |  |
-| `submitOnEnter` | `boolean` |  |
 | `onSubmit` | `(value: string) => void` |  |
 | `maxLength` | `number` |  |
 | `autoComplete` | `AutoComplete` |  |

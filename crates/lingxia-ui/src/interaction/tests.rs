@@ -297,8 +297,9 @@ fn selection_endpoints_preserve_logical_direction_across_display_mappings() {
         ("input", "abc \u{5d0}\u{5d1}\u{5d2} def", false),
     ] {
         let module = crate::session::tests::source(&format!(
-            "function render(){{return h('{tag}',{{value:{},secure:{secure},autoFocus:true,style:{{fontSize:20,padding:8}}}})}}",
-            serde_json::to_string(value).unwrap()
+            "function render(){{return h('{tag}',{{value:{},{}autoFocus:true,style:{{fontSize:20,padding:8}}}})}}",
+            serde_json::to_string(value).unwrap(),
+            if secure { "type:'password'," } else { "" }
         ));
         let mut page = crate::ViewSession::new(&module).unwrap();
         let first = page.layout(400, 160, 1.0).unwrap();
@@ -449,8 +450,9 @@ fn drag_edges_reach_both_ends_through_presented_shaped_cursors() {
         ),
     ] {
         let module = crate::session::tests::source(&format!(
-            "function render(){{return h('{tag}',{{value:{},secure:{secure},autoFocus:true,style:{{height:60,fontSize:20,padding:8}}}})}}",
-            serde_json::to_string(value).unwrap()
+            "function render(){{return h('{tag}',{{value:{},{}autoFocus:true,style:{{height:60,fontSize:20,padding:8}}}})}}",
+            serde_json::to_string(value).unwrap(),
+            if secure { "type:'password'," } else { "" }
         ));
         let mut page = crate::ViewSession::new(&module).unwrap();
         let mut display = page.prepare_native(150, 80, 1.0, true, None, Ok).unwrap();
@@ -527,8 +529,9 @@ fn input_hit_testing_uses_displayed_scroll_and_mask_mapping() {
         ("textarea", "one\ntwo\nthree\nfour\nfive\nsix", false),
     ] {
         let module = crate::session::tests::source(&format!(
-            "function render(){{return h('{tag}',{{value:{},secure:{secure},autoFocus:true,style:{{height:60,fontSize:20,padding:8}}}})}}",
-            serde_json::to_string(value).unwrap()
+            "function render(){{return h('{tag}',{{value:{},{}autoFocus:true,style:{{height:60,fontSize:20,padding:8}}}})}}",
+            serde_json::to_string(value).unwrap(),
+            if secure { "type:'password'," } else { "" }
         ));
         let mut page = crate::ViewSession::new(&module).unwrap();
         let display = page.prepare_native(150, 80, 1.0, true, None, Ok).unwrap();
@@ -891,7 +894,7 @@ fn empty_and_secure_inputs_keep_a_caret_and_multiline_selection_wraps() {
     use crate::text::input::Edit;
     for (tag, value, extra) in [
         ("input", "", "placeholder:'Type here',"),
-        ("input", "a\\u{1f600}z", "secure:true,"),
+        ("input", "a\\u{1f600}z", "type:'password',"),
         ("textarea", "first line\\nsecond line", ""),
     ] {
         let module = crate::session::tests::source(&format!(

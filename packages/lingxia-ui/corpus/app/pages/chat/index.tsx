@@ -17,7 +17,7 @@ export function render({ data }: View<object, { messages: Message[] }>) {
           </row>
         )} />
       <row className="p-3 gap-2 items-end bg-surface border-t border-line">
-        <textarea bind={draft} rows={1} maxRows={5} enterKeyHint="send" submitOnEnter aria-label="Message" placeholder="Ask anything" className="grow px-3 py-2 rounded-2xl bg-surface-sunken text-sm" />
+        <textarea bind={draft} rows={1} maxRows={5} enterKeyHint="send" aria-label="Message" placeholder="Ask anything" className="grow px-3 py-2 rounded-2xl bg-surface-sunken text-sm" />
         <button aria-label="Send" disabled={!draft.value} onClick={() => draft.set('')} className="w-10 h-10 rounded-full bg-accent text-on-accent items-center justify-center">↑</button>
       </row>
     </page>

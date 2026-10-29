@@ -63,8 +63,8 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   `aria-pressed`, `aria-selected`, `aria-expanded`, `aria-busy` announce states (e.g. `aria-busy={req.status === 'loading'}`).
 - Keyboard: Tab and arrows follow reading order (no `tabIndex`); a visible `role="dialog"` keeps focus inside
   and returns it on close; the focus ring shows only after keyboard input.
-- Inputs take `maxLength`, `autoComplete` (autofill), `enterKeyHint`, `autoCapitalize`, `spellCheck`;
-  `keyboard="number"` with `min`/`max`/`step` clamps on blur/submit; `keyboard="date|time"` opens the
+- Inputs take `type` (`password`, `email`, `number`, `tel`, `date`, `time`), `inputMode`, `maxLength`, `autoComplete`, `enterKeyHint` (on a textarea, `send`/`go`/`done`/`search` makes Return submit), `autoCapitalize`, `spellCheck`;
+  `type="number"` with `min`/`max`/`step` clamps on blur/submit; `type="date|time"` opens the
   platform picker and reports ISO strings.
 - While an image loads its background colour shows; `placeholder="tiny.jpg"` paints a small stand-in scaled smooth.
 - `object-top`, `object-left-bottom` or `object-[25%_75%]` (`objectPosition`) align a covered or contained image; pixel offsets fail.

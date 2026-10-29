@@ -50,7 +50,7 @@ fn max_length_cuts_insertions_and_reports_the_kept_text() {
 
 #[test]
 fn numbers_clamp_and_snap_when_the_editor_commits() {
-    let (mut page, id, token) = page("keyboard:'number',min:0,max:10,step:0.5");
+    let (mut page, id, token) = page("type:'number',min:0,max:10,step:0.5");
     page.edit_input(token, &id, &[replace("12.2")], false)
         .unwrap();
     // While typing the raw text stands; blur commits the bounded value as input.
@@ -61,7 +61,7 @@ fn numbers_clamp_and_snap_when_the_editor_commits() {
 
 #[test]
 fn date_pickers_take_iso_values_within_bounds() {
-    let (mut page, id, token) = page("keyboard:'date',min:'2024-01-01',max:'2024-12-31'");
+    let (mut page, id, token) = page("type:'date',min:'2024-01-01',max:'2024-12-31'");
     let display = page.layout(300, 300, 1.0).unwrap();
     assert_eq!(
         display.nodes[1]
@@ -114,7 +114,7 @@ fn the_frame_carries_the_keyboard_configuration_core_decided() {
 
 #[test]
 fn a_picker_choice_comes_back_formatted_and_bounded_for_the_editor() {
-    let (mut page, id, token) = page("keyboard:'date',min:'2026-01-01',max:'2026-12-31'");
+    let (mut page, id, token) = page("type:'date',min:'2026-01-01',max:'2026-12-31'");
     let pick = |page: &mut ViewSession, parts: [u32; 3]| -> serde_json::Value {
         let request =
             serde_json::json!({"op": "pick", "identity": id, "token": token, "parts": parts});

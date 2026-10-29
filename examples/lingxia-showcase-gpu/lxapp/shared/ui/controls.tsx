@@ -58,8 +58,7 @@ export function Field({
   data,
   bind,
   placeholder,
-  keyboard,
-  secure,
+  type,
   disabled,
   onSubmit,
 }: {
@@ -68,8 +67,7 @@ export function Field({
   data?: DataAttributes;
   bind: Local<string>;
   placeholder?: string;
-  keyboard?: 'text' | 'number' | 'email' | 'phone';
-  secure?: boolean;
+  type?: 'text' | 'password' | 'number' | 'email' | 'tel';
   disabled?: boolean;
   onSubmit?: (value: string) => void;
 }) {
@@ -82,8 +80,7 @@ export function Field({
         aria-label={label}
         bind={bind}
         placeholder={placeholder}
-        keyboard={keyboard}
-        secure={secure}
+        type={type}
         disabled={disabled}
         onSubmit={onSubmit}
         className="min-h-11 px-3 py-2 rounded-lg border border-line-strong bg-surface text-base placeholder:text-muted focus:border-focus"

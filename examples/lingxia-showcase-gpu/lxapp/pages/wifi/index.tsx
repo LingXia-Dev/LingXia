@@ -139,7 +139,7 @@ export function render({ data, actions }: View) {
           description={networks.length ? 'Select a network above or enter SSID manually' : 'Provide SSID and password'}
         >
           <Field testId="wifi-ssid" label="SSID" bind={ssid} placeholder={networks.length ? 'Enter SSID or select a network above' : 'SSID'} />
-          <Field testId="wifi-password" label="Password" bind={password} secure placeholder="Password (optional)" />
+          <Field testId="wifi-password" label="Password" bind={password} type="password" placeholder="Password (optional)" />
           <Button
             testId="wifi-connect"
             disabled={!ssid.value.trim()}

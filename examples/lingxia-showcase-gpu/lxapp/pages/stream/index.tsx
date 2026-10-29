@@ -113,7 +113,7 @@ export function render({ data, actions }: View<Actions, StreamPageData>) {
           data-controlled-value={draft.value}
           aria-label="Message"
           bind={draft}
-          submitOnEnter
+          enterKeyHint="send"
           onSubmit={send}
           disabled={busy}
           placeholder="Message..."

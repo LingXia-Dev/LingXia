@@ -49,7 +49,7 @@ booleans and nullish children render nothing, so `{text && <x/>}` is safe.
 
 Editors enforce `maxLength` natively (insertions are cut, existing text kept), clamp
 and snap `min`/`max`/`step` when they blur or submit and report it as input, and
-hold only ISO values with `keyboard="date|time"`. The Android adapter maps the
+hold only ISO values with `type="date|time"`. The Android adapter maps the
 attributes through the generated `GpuInput` class.
 
 ## Hooks and View

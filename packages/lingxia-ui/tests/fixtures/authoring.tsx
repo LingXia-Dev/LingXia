@@ -35,7 +35,7 @@ export function render(view: View<{ save(value: string): Promise<void> }, { titl
   // @ts-expect-error Omit must not erase the search binding union
   const search = <search bind={draft} value="conflict"/>;
   // @ts-expect-error search owns its keyboard
-  const keyboard = <search keyboard="email"/>;
+  const keyboard = <search inputMode="email"/>;
   // @ts-expect-error style properties are checked per element
   const misplaced = <text style={{alignItems: 'center'}}/>;
   // @ts-expect-error grid columns are a style, not a prop

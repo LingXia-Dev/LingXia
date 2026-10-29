@@ -20,9 +20,9 @@ export function render({ actions }: View<Actions>) {
   };
   return (
     <page className="p-4 gap-3">
-      <input bind={email} aria-label="Email" placeholder="you@example.com" keyboard="email"
+      <input bind={email} aria-label="Email" placeholder="you@example.com" type="email"
         autoComplete="email" autoCapitalize="none" enterKeyHint="next" className={field} />
-      <input bind={code} aria-label="Invite code" placeholder="6 digits" keyboard="number"
+      <input bind={code} aria-label="Invite code" placeholder="6 digits" inputMode="numeric"
         maxLength={6} autoComplete="one-time-code" enterKeyHint="done" onSubmit={submit} className={field} />
       <radio bind={plan} aria-label="Plan" className="gap-1 text-sm"
         options={[{ value: 'basic', label: 'Basic' }, { value: 'pro', label: 'Pro' }]} />
@@ -72,32 +72,32 @@ editor finishes the composition, so the last composed text is the value.
 | Prop | Applies to | Effect |
 | --- | --- | --- |
 | `placeholder` | all | hint text; color it with `placeholder:text-*` |
-| `secure` | `input`, `textarea` | masked text, no learning |
-| `keyboard` | `input`, `textarea` | `text`, `number`, `email`, `phone`; `date`, `time` on `<input>` only |
+| `type` | `input` | `text`, `password` (masked, no learning), `email`, `number`, `tel`, `date`, `time` |
+| `inputMode` | `input`, `textarea` | keyboard only: `text`, `numeric`, `decimal`, `tel`, `email`, `search`; not with `type` `number`/`date`/`time` |
 | `maxLength` | all | 1–65536 UTF-16 units; insertions are cut, existing text is kept |
 | `autoComplete` | all | HTML autocomplete token, mapped to platform autofill (`email`, `one-time-code`, `new-password`, …) |
 | `enterKeyHint` | all | the label of the keyboard's action key |
 | `autoCapitalize` | all | `none`, `sentences`, `words`, `characters` (`off`/`on` are `none`/`sentences`) |
 | `spellCheck` | all | spelling suggestions on or off |
 | `autoFocus` | all | focus when it first appears |
-| `submitOnEnter` | `textarea` | Enter submits; Shift+Enter inserts a newline |
 | `onSubmit(text)` | all | the keyboard's action key, or Enter on a single-line editor |
 
-Every action key calls `onSubmit`: `enterKeyHint` only chooses its label, and focus does not move to the
-next field on its own. There is no `focus()` API; `autoFocus` is the only way to place focus.
+Every action key calls `onSubmit`: `enterKeyHint` chooses its label, and focus does not move to the
+next field on its own. On a `<textarea>`, `enterKeyHint` `send`, `go`, `done` or `search` makes Return
+submit (Shift+Return inserts a newline); otherwise Return inserts a newline. There is no `focus()` API; `autoFocus` is the only way to place focus.
 
-`<search>` is an `<input>` with the search keyboard and room for its magnifier; it takes no `keyboard`
-or `secure`. `<textarea>` is 120 px tall until sized.
+`<search>` is an `<input>` with the search keyboard and room for its magnifier; it takes no `type`
+or `inputMode`. `<textarea>` is 120 px tall until sized.
 
 `focus:` styles a focused editor (paint only). Focus follows the editor across reorders and ends when it
 is disabled or removed. `userSelect` (`select-*`) is refused on editors: they always select their own text.
 
 ## Numbers, dates and times
 
-With `keyboard="number"`, `min`, `max` and `step` clamp and snap the text when the editor blurs or
+With `type="number"`, `min`, `max` and `step` clamp and snap the text when the editor blurs or
 submits, and the corrected text is reported through `onInput`. The value stays a string; parse it yourself.
 
-With `keyboard="date"` or `keyboard="time"`, tapping the input opens the platform picker instead of a
+With `type="date"` or `type="time"`, tapping the input opens the platform picker instead of a
 keyboard. The value is ISO: `YYYY-MM-DD`, or `HH:MM` / `HH:MM:SS`. `min` and `max` take the same form.
 
 ```tsx
@@ -108,18 +108,18 @@ export function render() {
   const amount = useLocal('amount', '');
   return (
     <page className="p-4 gap-2">
-      <input bind={day} keyboard="date" min="2024-01-01" aria-label="Start date" placeholder="Start date" />
-      <input bind={amount} keyboard="number" min={1} max={500} step={0.5} aria-label="Amount" placeholder="Amount" />
+      <input bind={day} type="date" min="2024-01-01" aria-label="Start date" placeholder="Start date" />
+      <input bind={amount} type="number" min={1} max={500} step={0.5} aria-label="Amount" placeholder="Amount" />
     </page>
   );
 }
 ```
 
-`min`/`max`/`step` without one of these keyboards, or `step` on a date, is refused:
+`min`/`max`/`step` without one of these types, or `step` on a date, is refused:
 
 ```tsx error UI_INPUT
 export function render() {
-  return <page><input keyboard="text" min={1} aria-label="Count" /></page>;
+  return <page><input type="text" min={1} aria-label="Count" /></page>;
 }
 ```
 

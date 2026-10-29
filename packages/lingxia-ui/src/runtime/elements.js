@@ -275,15 +275,18 @@ function resolveElement(tag, original, children, identity, depth, parent) {
     case 'input': case 'textarea': case 'search':
       check.label(props.accessibilityLabel, 'UI_INPUT');
       if (!validInputText(props.value === undefined ? '' : props.value) || !validInputText(props.placeholder === undefined ? '' : props.placeholder)) throw Error('UI_INPUT: invalid text');
-      for (const name of ['secure', 'autoFocus', 'submitOnEnter']) if (props[name] !== undefined && typeof props[name] !== 'boolean') throw Error(`UI_INPUT: ${name}`);
-      const attributes = check.editor(tag, props);
+      if (props.autoFocus !== undefined && typeof props.autoFocus !== 'boolean') throw Error('UI_INPUT: autoFocus');
+      const { keyboard, secure } = check.editorKind(tag, props);
+      const attributes = check.editor(tag, props, keyboard);
       if (props.onSubmit !== undefined && typeof props.onSubmit !== 'function') throw Error('UI_INPUT: onSubmit');
       if (props.accessibilityLabel !== undefined) wire('accessibilityLabel', props.accessibilityLabel);
       wire('inputValue', props.value ?? '');
       if (props.placeholder !== undefined) wire('placeholder', props.placeholder);
-      if (tag === 'search') wire('keyboard', 'search');
-      else if (props.keyboard !== undefined) wire('keyboard', props.keyboard);
-      for (const name of ['secure', 'autoFocus', 'submitOnEnter']) if (props[name] !== undefined) wire(name, +props[name]);
+      if (keyboard !== undefined) wire('keyboard', keyboard);
+      if (secure) wire('secure', 1);
+      if (props.autoFocus !== undefined) wire('autoFocus', +props.autoFocus);
+      // A textarea whose Return key names an action submits instead of breaking the line.
+      if (tag === 'textarea' && ['done', 'go', 'search', 'send'].includes(props.enterKeyHint)) wire('submitOnEnter', 1);
       if (props.bind !== undefined && cellOf(props.bind).cell.focus) wire('focusRequest', cellOf(props.bind).cell.focus);
       for (const [key, value] of attributes) wire(key, value);
       if (tag === 'textarea') {
