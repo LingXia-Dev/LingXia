@@ -174,6 +174,7 @@ impl ViewInteraction {
         {
             return Ok(effects);
         }
+        let click = matches!(act, AutomationAct::Click | AutomationAct::DoubleClick);
         let action = match act {
             AutomationAct::Click | AutomationAct::DoubleClick => AccessibilityAction::Click,
             AutomationAct::ScrollIntoView
@@ -189,11 +190,17 @@ impl ViewInteraction {
             AutomationAct::Fill(text) => AccessibilityAction::SetText(text),
             AutomationAct::Type(text) => AccessibilityAction::SetText(value + &text),
         };
+        let inert = self.inert;
         let (handled, effects) = self.accessibility(id, action, page);
         if !handled {
-            return Err(format!(
-                "Element not interactable: {selector} refused the action"
-            ));
+            let reason = if inert {
+                "the page is behind an open dialog; act inside the dialog or close it"
+            } else if click {
+                "it is not a control and no control holds it; click a button, link or other control"
+            } else {
+                "it did not take the input"
+            };
+            return Err(format!("Element not interactable: {selector}: {reason}"));
         }
         Ok(effects)
     }

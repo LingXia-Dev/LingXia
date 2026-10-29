@@ -1,5 +1,6 @@
 import { elements, admission, limits, commonProps } from '../generated/contract.js';
 import { resolveClasses } from '../style/classes.js';
+import { classElementProblem } from '../style/hints.js';
 import { lowerStyle, paintOnly, mergeStyle } from '../style/lower.js';
 import { h, readNode, isNode, isFragment, entries } from './nodes.js';
 import { render, page } from './state.js';
@@ -104,6 +105,15 @@ function nodeStyle(tag, props, extra, inherited, direction, structure) {
   return { ...style, fields: { ...style.fields } };
 }
 
+// The class token that set `key`, for an error that names what the author wrote.
+function authoredClass(className, key, env) {
+  for (const token of className.split(/\s+/).filter(Boolean)) {
+    const one = resolveClasses(token, env);
+    if (one?.base && key in one.base || one?.disabled && key in one.disabled) return token;
+  }
+  return className;
+}
+
 const fieldTags = new Set(['input', 'textarea', 'select']);
 const runTags = new Set(['span', 'link']);
 const disabledField = { color: 'text-muted', backgroundColor: 'surface-sunken', borderColor: 'line' };
@@ -117,7 +127,10 @@ function lowerNodeStyle(tag, props, extra, inherited, direction, structure) {
   const disabled = props.disabled === true;
   // A disabled editor without `disabled:` classes still reads as disabled: muted roles over its classes.
   const muted = disabled && !classes?.disabled && fieldTags.has(tag) ? disabledField : undefined;
-  const author = mergeStyle(direction, extra, disabled && classes?.disabled ? classes.disabled : classes?.base, muted, props.style);
+  const base = disabled && classes?.disabled ? classes.disabled : classes?.base;
+  const stray = base && Object.keys(base).find(key => !elements[tag].style.includes(key) && !(props.style && key in props.style));
+  if (stray) throw Error(classElementProblem(authoredClass(props.className, stray, env), stray, tag));
+  const author = mergeStyle(direction, extra, base, muted, props.style);
   const { fields, typography } = lowerStyle(tag, author, env, inherited);
   const states = {};
   const state = (name, wire, allowed, requirement) => {

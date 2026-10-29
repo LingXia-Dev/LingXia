@@ -104,10 +104,10 @@ test('class diagnostics separate unknown, unsupported and wrong-element utilitie
     const lines = error.message.split('\n');
     assert.match(lines[0], /page.tsx: 6 authoring problems/);
     for (const pattern of [
-      /^page.tsx:3:\d+: UI_CLASS_ELEMENT: grid-cols-2 sets gridTemplateColumns, which <text> does not support$/,
+      /^page.tsx:3:\d+: UI_CLASS_ELEMENT: grid-cols-2 does not apply to <text>; layout classes go on the element that holds it$/,
       /^page.tsx:2:\d+: UI_CLASS_UNKNOWN: not-a-utility is not a Tailwind utility$/,
       /^page.tsx:2:\d+: UI_CLASS_UNSUPPORTED: transition-\[width\]: the native renderer does not support transition of width animates layout/,
-      /^page.tsx:3:\d+: UI_CLASS_ELEMENT: items-center sets alignItems, which <text> does not support$/,
+      /^page.tsx:3:\d+: UI_CLASS_ELEMENT: items-center does not apply to <text>; layout classes go on the element that holds it$/,
       /^page.tsx:4:\d+: UI_CLASS_ELEMENT: active:bg-danger needs a control; <column> is never pressed$/,
       /^page.tsx:4:\d+: UI_CLASS_ELEMENT: hover:p-4: hover styles change paint only, not paddingTop, paddingRight, paddingBottom, paddingLeft$/,
     ]) assert.ok(lines.some(line => pattern.test(line)), `${pattern} in\n${error.message}`);
@@ -118,8 +118,8 @@ test('class diagnostics separate unknown, unsupported and wrong-element utilitie
 test('flex-only utilities on a grid name the grid equivalent', async () => {
   await project({ 'page.tsx': 'export function render(){return <grid className="flex-wrap flex-col items-center content-between justify-items-center"/>}' }, async (root, build) => {
     const message = (await build().catch(error => error)).message;
-    assert.match(message, /flex-wrap sets flexWrap, which <grid> does not support; grid items wrap into rows by themselves/);
-    assert.match(message, /flex-col sets flexDirection, which <grid> does not support; use grid-flow-col/);
+    assert.match(message, /flex-wrap does not apply to <grid>; grid items wrap into rows by themselves/);
+    assert.match(message, /flex-col does not apply to <grid>; use grid-flow-col/);
     assert.doesNotMatch(message, /items-center|content-between|justify-items-center/);
   });
 });

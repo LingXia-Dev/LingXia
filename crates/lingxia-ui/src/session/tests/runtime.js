@@ -196,6 +196,41 @@
     });
   }
 
+  // src/style/hints.js
+  var grid = {
+    flexWrap: "; grid items wrap into rows by themselves (use grid-cols-[repeat(auto-fit,minmax(\u2026,1fr))])",
+    flexDirection: "; use grid-flow-col to fill columns first"
+  };
+  var container = /* @__PURE__ */ new Set([
+    "alignItems",
+    "alignContent",
+    "justifyContent",
+    "justifyItems",
+    "flexDirection",
+    "flexWrap",
+    "gap",
+    "rowGap",
+    "columnGap",
+    "gridTemplateColumns",
+    "gridTemplateRows",
+    "gridAutoColumns",
+    "gridAutoRows",
+    "gridAutoFlow"
+  ]);
+  var layouts = /* @__PURE__ */ new Set(["view", "column", "row", "grid", "scroll", "list", "stack", "button", "checkbox", "page"]);
+  function classElementProblem(name, prop, tag) {
+    let hint = "";
+    if (tag === "grid") hint = grid[prop] ?? "";
+    else if (prop === "justifyItems" && layouts.has(tag)) hint = "; on a flex element center with items-center justify-center";
+    else if (container.has(prop) && !layouts.has(tag)) hint = "; layout classes go on the element that holds it";
+    else hint = appliesTo(prop);
+    return `UI_CLASS_ELEMENT: ${name} does not apply to <${tag}>${hint}`;
+  }
+  function appliesTo(prop) {
+    const takers = Object.keys(elements).filter((name) => elements[name].style.includes(prop) && name !== "column");
+    return takers.length && takers.length <= 3 ? `; it applies to ${takers.map((name) => `<${name}>`).join(", ")}` : "";
+  }
+
   // src/style/gradient.js
   var hex = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/;
   var directions = ["top", "right", "bottom", "left", "top-right", "bottom-right", "bottom-left", "top-left"];
@@ -281,7 +316,7 @@
     const accepted = elements[tag].style;
     for (const name of Object.keys(style2)) {
       if (!has(style, name)) throw Error(`UI_STYLE: unknown style property ${name}`);
-      if (!accepted.includes(name)) throw Error(`UI_STYLE: ${name} is not supported on <${tag}>`);
+      if (!accepted.includes(name)) throw Error(`UI_STYLE: ${name} is not supported on <${tag}>${appliesTo(name)}`);
     }
   }
   function invalid(name) {
@@ -2355,6 +2390,13 @@
     }
     return { ...style2, fields: { ...style2.fields } };
   }
+  function authoredClass(className, key, env) {
+    for (const token of className.split(/\s+/).filter(Boolean)) {
+      const one = resolveClasses(token, env);
+      if (one?.base && key in one.base || one?.disabled && key in one.disabled) return token;
+    }
+    return className;
+  }
   var fieldTags = /* @__PURE__ */ new Set(["input", "textarea", "select"]);
   var runTags = /* @__PURE__ */ new Set(["span", "link"]);
   var disabledField = { color: "text-muted", backgroundColor: "surface-sunken", borderColor: "line" };
@@ -2364,7 +2406,10 @@
     if (classes?.pairedLeading && runTags.has(tag)) delete classes.base.lineHeight;
     const disabled = props.disabled === true;
     const muted = disabled && !classes?.disabled && fieldTags.has(tag) ? disabledField : void 0;
-    const author = mergeStyle(direction, extra, disabled && classes?.disabled ? classes.disabled : classes?.base, muted, props.style);
+    const base = disabled && classes?.disabled ? classes.disabled : classes?.base;
+    const stray = base && Object.keys(base).find((key) => !elements[tag].style.includes(key) && !(props.style && key in props.style));
+    if (stray) throw Error(classElementProblem(authoredClass(props.className, stray, env), stray, tag));
+    const author = mergeStyle(direction, extra, base, muted, props.style);
     const { fields, typography } = lowerStyle(tag, author, env, inherited);
     const states2 = {};
     const state = (name, wire, allowed, requirement) => {

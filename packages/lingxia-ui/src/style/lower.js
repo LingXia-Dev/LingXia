@@ -3,6 +3,7 @@ import { elements, style as table } from '../generated/contract.js';
 import { fieldOptions } from '../generated/wire.js';
 import { limits, options } from '../generated/contract.js';
 import { normalizeShadows } from './shadow.js';
+import { appliesTo } from './hints.js';
 import { normalizeGradient } from './gradient.js';
 import { wireColorProblem } from './color.js';
 import { utf8Bytes, has } from '../runtime/data.js';
@@ -65,7 +66,7 @@ export function admitStyle(tag, style) {
   const accepted = elements[tag].style;
   for (const name of Object.keys(style)) {
     if (!has(table, name)) throw Error(`UI_STYLE: unknown style property ${name}`);
-    if (!accepted.includes(name)) throw Error(`UI_STYLE: ${name} is not supported on <${tag}>`);
+    if (!accepted.includes(name)) throw Error(`UI_STYLE: ${name} is not supported on <${tag}>${appliesTo(name)}`);
   }
 }
 

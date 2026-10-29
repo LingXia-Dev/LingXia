@@ -13,6 +13,7 @@ import { readFile, mkdir, writeFile, copyFile, realpath } from 'node:fs/promises
 import { resolve, dirname, join, relative, isAbsolute, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { elements, style as styleTable, commonProps, limits } from '../src/generated/contract.js';
+import { classElementProblem, appliesTo } from '../src/style/hints.js';
 
 const runtime = fileURLToPath(new URL('../src/internal.js', import.meta.url));
 const publicEntry = fileURLToPath(new URL('../src/index.js', import.meta.url));
@@ -35,7 +36,7 @@ export function acceptsProp(tag, key) {
 
 export function styleProblem(tag, name) {
   if (!has(styleTable, name) || styleTable[name].internal) return `UI_STYLE: unknown style property ${name}`;
-  if (!elements[tag].style.includes(name)) return `UI_STYLE: ${name} is not supported on <${tag}>`;
+  if (!elements[tag].style.includes(name)) return `UI_STYLE: ${name} is not supported on <${tag}>${appliesTo(name)}`;
 }
 
 const position = (file, node) => {
@@ -189,14 +190,6 @@ export function identify(source, filename, label) {
   return `${source}\n${names.map(name => `${name}.__lxid = ${JSON.stringify(`${module}#${name}`)};`).join('\n')}\n`;
 }
 
-// Flex-only properties on a grid name the grid property that does the same job.
-const hints = { grid: {
-  flexWrap: '; grid items wrap into rows by themselves (use grid-cols-[repeat(auto-fit,minmax(…,1fr))])',
-  flexDirection: '; use grid-flow-col to fill columns first',
-} };
-// Flex elements center with the flex pair; `place-items-*` and `justify-items-*` are grid-only.
-const flexHints = { justifyItems: '; on a flex element center with items-center justify-center' };
-
 function classProblems(rule, name, tag, suggestions) {
   if (!rule) {
     const nearest = suggestions.get(name);
@@ -211,8 +204,8 @@ function classProblems(rule, name, tag, suggestions) {
     ...(rule.numeric ? ['fontVariantNumeric'] : []),
     ...(rule.shadow ? ['boxShadow'] : []), ...(rule.backdrop ? ['backdropFilter'] : [])];
   const state = rule.when?.state;
-  const problems = props.filter(prop => !elements[tag].style.includes(prop))
-    .map(prop => `UI_CLASS_ELEMENT: ${name} sets ${prop}, which <${tag}> does not support${hints[tag]?.[prop] ?? flexHints[prop] ?? ''}`);
+  const unsupported = props.find(prop => !elements[tag].style.includes(prop));
+  const problems = unsupported ? [classElementProblem(name, unsupported, tag)] : [];
   if (state === 'focus' && !editors.has(tag) && tag !== 'select') problems.push(`UI_CLASS_ELEMENT: ${name} needs an editor or <select>; <${tag}> never takes focus`);
   if (state === 'active' && !controls.has(tag)) problems.push(`UI_CLASS_ELEMENT: ${name} needs a control; <${tag}> is never pressed`);
   const layout = state && state !== 'disabled' ? props.filter(prop => !styleTable[prop]?.paint) : [];

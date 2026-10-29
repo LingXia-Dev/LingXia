@@ -31,7 +31,7 @@ test('image sources and fits are validated; objectFit is image and vector style'
   throwsOn(() => h('image', { src: 'ok', style: { objectFit: 'stretch' } }), /UI_STYLE_VALUE: objectFit/);
   throwsOn(() => h('image', { src: 'a' }, h('text', {}, 'x')), /UI_CHILD/);
   throwsOn(() => h('column', { src: 'a' }), /UI_PROP/);
-  throwsOn(() => h('text', { style: { objectFit: 'cover' } }, 'x'), /UI_STYLE: objectFit is not supported on <text>/);
+  throwsOn(() => h('text', { style: { objectFit: 'cover' } }, 'x'), /UI_STYLE: objectFit is not supported on <text>; it applies to <image>/);
 });
 
 test('objectPosition lowers CSS keywords and percentages to box fractions on images only', () => {

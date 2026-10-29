@@ -19,7 +19,7 @@ test('flex direction follows utility cascade, responsive rules and explicit styl
   assert.equal(classStyle('flex-col-reverse').flexDirection, 'column-reverse');
   const view = rendered(() => h('view', { className: 'flex flex-col' }, h('text', {}, 'Hello')));
   assert.deepEqual([view.tag, view.props.display, view.props.flexDirection], ['column', 'flex', 'column']);
-  assert.throws(() => describe(() => h('grid', { className: 'flex-col', style: { gridTemplateColumns: 2 } }), {}), /flexDirection is not supported on <grid>/);
+  assert.throws(() => describe(() => h('grid', { className: 'flex-col', style: { gridTemplateColumns: 2 } }), {}), /UI_CLASS_ELEMENT: flex-col does not apply to <grid>; use grid-flow-col/);
 });
 
 test('display utilities, fixed positioning and dynamic viewport units lower to defined native semantics', async () => {
@@ -79,7 +79,7 @@ test('aspect ratios, ch widths, current-color backgrounds, overscroll and select
   assert.equal(node('column', { className: 'bg-current' }).background, 'currentColor');
   assert.equal(node('scroll', { className: 'overscroll-contain' }).overscroll, 'contain');
   assert.equal(node('scroll', { className: 'overscroll-y-none' }).overscroll, 'none');
-  assert.throws(() => describe(() => h('column', { className: 'overscroll-contain' }), {}), /overscrollBehavior is not supported on <column>/);
+  assert.throws(() => describe(() => h('column', { className: 'overscroll-contain' }), {}), /UI_CLASS_ELEMENT: overscroll-contain does not apply to <column>; it applies to <scroll>, <list>/);
   assert.deepEqual(['select-none', 'select-text', 'select-all'].map(name => classStyle(name).userSelect), ['none', 'text', 'all']);
   assert.equal(node('text', { className: 'select-text' }).userSelect, 'text');
 });
@@ -151,7 +151,7 @@ test('horizontal overflow lowers only onto scroll containers', async () => {
   assert.deepEqual(classStyle('md:overflow-x-auto', env('light', 320)), {});
   assert.deepEqual(classStyle('md:overflow-x-auto', env('light', 900)), { overflowX: 'auto' });
   assert.equal(node('scroll', { className: 'overflow-x-auto' }).scrollAxis, 'horizontal');
-  assert.throws(() => describe(() => h('row', { className: 'overflow-x-auto' }), {}), /overflowX is not supported on <row>/);
+  assert.throws(() => describe(() => h('row', { className: 'overflow-x-auto' }), {}), /UI_CLASS_ELEMENT: overflow-x-auto does not apply to <row>; it applies to <scroll>/);
   assert.equal(node('row', { className: 'overflow-hidden' }).overflow, 'hidden');
 });
 
@@ -221,7 +221,7 @@ test('margins, positioning, layering and line clamps are native utilities', asyn
   assert.equal(node('image', { src: 'a.png', className: 'object-top-left' }).imagePosition, '[0,0]');
   assert.equal(node('image', { src: 'a.png', className: 'object-bottom' }).imagePosition, '[0.5,1]');
   assert.equal(node('image', { src: 'a.png', className: 'object-[25%_75%]' }).imagePosition, '[0.25,0.75]');
-  assert.throws(() => describe(() => h('column', { className: 'line-clamp-3' }), {}), /lineClamp is not supported on <column>/);
+  assert.throws(() => describe(() => h('column', { className: 'line-clamp-3' }), {}), /UI_CLASS_ELEMENT: line-clamp-3 does not apply to <column>; it applies to <text>/);
 });
 
 test('space and divide utilities target non-last children', async () => {
@@ -270,7 +270,7 @@ test('bg-clip-text paints a text background through its glyphs, on <text> only',
   const text = rendered(() => h('text', { className: 'bg-clip-text text-transparent bg-linear-to-r from-accent to-danger' }, 'Thinking')).props;
   assert.equal(text.backgroundClip, 'text');
   assert.ok(text.backgroundGradient);
-  assert.throws(() => describe(() => h('column', { className: 'bg-clip-text' }), {}), /backgroundClip is not supported on <column>/);
+  assert.throws(() => describe(() => h('column', { className: 'bg-clip-text' }), {}), /UI_CLASS_ELEMENT: bg-clip-text does not apply to <column>; it applies to <text>/);
 });
 
 test('mask edge fades and linear mask-image lower to intersected alpha fades', async () => {

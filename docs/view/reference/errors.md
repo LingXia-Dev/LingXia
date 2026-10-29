@@ -20,7 +20,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_CHILD` | runtime, native | An element has children it does not accept, or lacks its required parent. |
 | `UI_CHROME` | native | Invalid host chrome geometry from the platform adapter. |
 | `UI_CLASS` | runtime | A class string is not a string, too long, or names a utility the build did not compile. |
-| `UI_CLASS_ELEMENT` | build | A supported utility on an element that does not render it, or a state variant the element never enters. |
+| `UI_CLASS_ELEMENT` | build, runtime | A supported utility on an element that does not render it, or a state variant the element never enters. |
 | `UI_CLASS_UNKNOWN` | build | Not a Tailwind utility; the message names the nearest supported one when close. |
 | `UI_CLASS_UNSUPPORTED` | build | Tailwind CSS the native renderer cannot draw. |
 | `UI_COLOR` | build, runtime, native | A colour is not a role (`surface`, `accent/12`), `currentColor` or `transparent`, or a colour class uses `dark:`; hex is legal only in vectors, complete gradients and shadow layers. |
