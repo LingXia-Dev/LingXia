@@ -74,8 +74,10 @@ spec('hop to the bundled chat lxapp and back', {
   // Dev hot reload recreates Logic without reopening the retained host view.
   // Compare visibility deltas; the real hop below must deliver hide then show.
   // Recreating pages must not relaunch or hide/show the App instance.
+  // The relaunch shows a new home page, so only App-level counts stay put.
+  const appLevel = ({ launches, shows, hides }: typeof baseline) => ({ launches, shows, hides });
   await app.nav.relaunch({ page: 'home' });
-  expect(await lifecycle()).toEqual(baseline);
+  expect(appLevel(await lifecycle())).toEqual(appLevel(baseline));
   await app.nav.to({ page: 'ui' });
 
   const stateKey = `__lingxiaNavApp_${namespace.replace(/-/g, '_')}`;

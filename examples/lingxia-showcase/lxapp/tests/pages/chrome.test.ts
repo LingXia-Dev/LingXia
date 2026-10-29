@@ -290,6 +290,9 @@ spec("show, hide, confirm, and cancel in-app feedback overlays", {
     }
   };
 
+  // A dialog without confirmText shows the host's default label (en).
+  const DEFAULT_CONFIRM = 'Confirm';
+
   await t.step('confirm and cancel a modal', async () => {
     const confirmed = app.logic.eval(({ lx }) =>
       lx.showModal({ title: 'Coverage', content: 'Confirm this', showCancel: true, confirmText: 'OK', cancelText: 'Cancel' }));
@@ -306,10 +309,10 @@ spec("show, hide, confirm, and cancel in-app feedback overlays", {
       await ui.view.testId('lx-modal-confirm').first().waitFor({ state: 'visible', timeout: 30_000 });
       await expect(ui.view.testId('lx-modal-cancel')).toHaveCount(0);
     } else {
-      await expect.poll(() => hostShows('OK'), { timeout: 30_000 }).toBe(true);
+      await expect.poll(() => hostShows(DEFAULT_CONFIRM), { timeout: 30_000 }).toBe(true);
       expect(await hostShows('Cancel')).toBe(false);
     }
-    await press('lx-modal-confirm', 'OK');
+    await press('lx-modal-confirm', DEFAULT_CONFIRM);
     expect((await noCancel).status === 'canceled').toBeFalsy();
   });
 
@@ -318,10 +321,10 @@ spec("show, hide, confirm, and cancel in-app feedback overlays", {
       await lx.alert({ title: 'Notice' });
       return 'acknowledged';
     });
-    await press('lx-modal-confirm', 'OK');
+    await press('lx-modal-confirm', DEFAULT_CONFIRM);
     expect(await alert).toBe('acknowledged');
     const confirmed = app.logic.eval(({ lx }) => lx.confirm({ title: 'Continue?' }));
-    await press('lx-modal-confirm', 'OK');
+    await press('lx-modal-confirm', DEFAULT_CONFIRM);
     expect(await confirmed).toBe(true);
     const canceled = app.logic.eval(({ lx }) => lx.confirm({ title: 'Continue?' }));
     await press('lx-modal-cancel', 'Cancel');
