@@ -10,9 +10,9 @@ use windows::Win32::Graphics::Gdi::{
     ANTIALIASED_QUALITY, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateFontW, CreateRoundRectRgn,
     CreateSolidBrush, DEFAULT_CHARSET, DEFAULT_PITCH, DT_CENTER, DT_END_ELLIPSIS, DT_SINGLELINE,
     DT_VCENTER, DT_WORDBREAK, DeleteObject, DrawTextW, ExtSelectClipRgn, FF_SWISS, FONT_QUALITY,
-    FillRect, GetDC, GetDeviceCaps, GetStockObject, GetTextExtentPoint32W, HDC, HFONT, HGDIOBJ,
-    IntersectClipRect, LOGPIXELSY, NULL_PEN, OUT_DEFAULT_PRECIS, RGN_AND, ReleaseDC, RestoreDC,
-    RoundRect, SaveDC, SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
+    FillRect, GetDC, GetStockObject, GetTextExtentPoint32W, HDC, HFONT, HGDIOBJ, IntersectClipRect,
+    NULL_PEN, OUT_DEFAULT_PRECIS, RGN_AND, ReleaseDC, RestoreDC, RoundRect, SaveDC, SelectObject,
+    SetBkMode, SetTextColor, TRANSPARENT,
 };
 use windows::Win32::Graphics::GdiPlus;
 use windows::Win32::UI::WindowsAndMessaging::{self, HICON};
@@ -49,16 +49,19 @@ pub(in crate::shell) fn cached_font_with(
 }
 
 /// Chrome text font ("Segoe UI" at the shell text size/weight) sized for
-/// `hdc`'s DPI. Shared cache entry - do not delete.
-pub(in crate::shell) fn chrome_text_font(hdc: HDC) -> HFONT {
-    chrome_text_font_with_quality(hdc, CLEARTYPE_QUALITY)
+/// the current chrome scale. Shared cache entry - do not delete.
+pub(in crate::shell) fn chrome_text_font() -> HFONT {
+    chrome_text_font_with_quality(CLEARTYPE_QUALITY)
 }
 
 pub(in crate::shell::chrome) fn measure_chrome_text_width(text: &str) -> i32 {
-    static WIDTHS: OnceLock<Mutex<HashMap<String, i32>>> = OnceLock::new();
+    // Widths are per font height: the height follows the chrome scale, which
+    // differs per monitor and per simulated device.
+    static WIDTHS: OnceLock<Mutex<HashMap<i32, HashMap<String, i32>>>> = OnceLock::new();
+    let height = logical_font_height(SHELL_TEXT_POINT_SIZE);
     let widths = WIDTHS.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(widths) = widths.lock()
-        && let Some(width) = widths.get(text)
+        && let Some(width) = widths.get(&height).and_then(|by_text| by_text.get(text))
     {
         return *width;
     }
@@ -69,7 +72,7 @@ pub(in crate::shell::chrome) fn measure_chrome_text_width(text: &str) -> i32 {
         if hdc.is_invalid() {
             0
         } else {
-            let font = chrome_text_font(hdc);
+            let font = chrome_text_font();
             let old = SelectObject(hdc, HGDIOBJ(font.0));
             let mut size = SIZE::default();
             let _ = GetTextExtentPoint32W(hdc, &wide, &mut size);
@@ -81,13 +84,16 @@ pub(in crate::shell::chrome) fn measure_chrome_text_width(text: &str) -> i32 {
         }
     };
     if let Ok(mut widths) = widths.lock() {
-        widths.insert(text.to_string(), width);
+        widths
+            .entry(height)
+            .or_default()
+            .insert(text.to_string(), width);
     }
     width
 }
 
-fn chrome_text_font_with_quality(hdc: HDC, quality: FONT_QUALITY) -> HFONT {
-    let height = logical_font_height(hdc, SHELL_TEXT_POINT_SIZE);
+fn chrome_text_font_with_quality(quality: FONT_QUALITY) -> HFONT {
+    let height = logical_font_height(SHELL_TEXT_POINT_SIZE);
     cached_font_with("Segoe UI", height, SHELL_TEXT_WEIGHT, quality, || unsafe {
         CreateFontW(
             -height,
@@ -139,7 +145,7 @@ pub(in crate::shell) fn draw_text_multiline_antialiased(
     }
     let mut wide = text.encode_utf16().collect::<Vec<_>>();
     let mut rect = rect;
-    let font = chrome_text_font_with_quality(hdc, ANTIALIASED_QUALITY);
+    let font = chrome_text_font_with_quality(ANTIALIASED_QUALITY);
     unsafe {
         let old_font = if font.is_invalid() {
             HGDIOBJ::default()
@@ -174,7 +180,7 @@ fn draw_text_with_quality(
 
     let mut wide: Vec<u16> = text.encode_utf16().collect();
     let mut rect = rect;
-    let font = chrome_text_font_with_quality(hdc, quality);
+    let font = chrome_text_font_with_quality(quality);
     unsafe {
         let old_font = if font.is_invalid() {
             HGDIOBJ::default()
@@ -195,10 +201,8 @@ fn draw_text_with_quality(
     }
 }
 
-pub(in crate::shell) fn logical_font_height(hdc: HDC, point_size: i32) -> i32 {
-    let dpi_y = unsafe { GetDeviceCaps(Some(hdc), LOGPIXELSY) };
-    let dpi_y = if dpi_y > 0 { dpi_y } else { 96 };
-    (point_size * dpi_y + 36) / 72
+pub(in crate::shell) fn logical_font_height(point_size: i32) -> i32 {
+    (f64::from(point_size) * 96.0 / 72.0 * crate::dpi::chrome_scale()).round() as i32
 }
 
 pub(in crate::shell) fn draw_badge(hdc: HDC, item_rect: RECT, badge: &str) {
@@ -880,4 +884,24 @@ pub(in crate::shell) fn rgb_to_colorref(rgb: u32) -> COLORREF {
     let g = (rgb >> 8) & 0xff;
     let b = rgb & 0xff;
     COLORREF(r | (g << 8) | (b << 16))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn text_width_follows_the_chrome_scale() {
+        let text = "Chrome scale width probe";
+        let standard = {
+            let _scale = crate::dpi::enter_test_scale(1.0);
+            measure_chrome_text_width(text)
+        };
+        let doubled = {
+            let _scale = crate::dpi::enter_test_scale(2.0);
+            measure_chrome_text_width(text)
+        };
+        assert!(standard > 0);
+        assert!(doubled > standard, "{doubled} <= {standard}");
+    }
 }

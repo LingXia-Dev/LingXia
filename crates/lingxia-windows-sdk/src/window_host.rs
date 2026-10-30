@@ -3209,6 +3209,8 @@ fn sync_window_layout(hwnd: HWND) {
         }
         return;
     }
+    // A frame can have been created/re-scaled during this same window message.
+    let _scale = crate::dpi::enter_window_message(hwnd);
     let Some(webtag_key) = active_webtag_key_for_window(hwnd) else {
         #[cfg(feature = "shell-chrome")]
         sync_chrome_overlays(hwnd, None);
@@ -5200,8 +5202,8 @@ fn sync_webtag_content_bounds_to_rect(hwnd: HWND, webtag_key: &str, rect: RECT) 
 }
 
 /// Physical pixels per CSS pixel for the page in `hwnd`: the device-frame
-/// fit when simulated (frame geometry is physical by design), else the
-/// monitor scale.
+/// display scale when simulated (monitor DPI limited by the work area),
+/// else the monitor scale.
 fn window_css_scale(hwnd: HWND) -> f64 {
     #[cfg(feature = "device-frame")]
     if let Some(fit) = crate::device_frame::device_frame_fit_scale(hwnd_handle(hwnd)) {

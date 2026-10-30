@@ -129,24 +129,30 @@ fn screen_corner_radius(spec: &WindowsDeviceFrame) -> i32 {
         .clamp(0, spec.screen_width.min(spec.screen_height) / 2)
 }
 
-/// Fit factor shrinking the device assembly into the monitor work area,
-/// capped at 1.0 (small devices never scale up). The toolbar and shadow
-/// margins are fixed chrome, so only the bezel block scales.
-fn fit_scale_for(content: HWND, spec: &WindowsDeviceFrame) -> f64 {
-    let margin = FRAME_SHADOW_MARGIN;
-    let toolbar_block = if spec.toolbar.is_some() {
-        TOOLBAR_HEIGHT + TOOLBAR_GAP
-    } else {
-        0
-    };
-    let work = monitor_work_area(content);
+/// Display scale honoring the monitor DPI, limited by the available work
+/// area. Device presets are logical pixels; the toolbar and shadow margins
+/// are host chrome at `chrome_scale`, so only the bezel block shrinks to fit.
+fn fit_scale_for(content: HWND, spec: &WindowsDeviceFrame, chrome_scale: f64) -> f64 {
+    fit_scale_in(monitor_work_area(content), spec, chrome_scale)
+}
+
+fn fit_scale_in(work: RECT, spec: &WindowsDeviceFrame, chrome_scale: f64) -> f64 {
+    let (margin, toolbar_block) = chrome_extent(spec, chrome_scale);
     let avail_width = (work.right - work.left - 2 * margin).max(1) as f64;
     let avail_height = (work.bottom - work.top - toolbar_block - 2 * margin).max(1) as f64;
     let bezel_width = (spec.screen_width + 2 * spec.bezel_width).max(1) as f64;
     let bezel_height = (spec.screen_height + 2 * spec.bezel_width).max(1) as f64;
-    (avail_width / bezel_width)
-        .min(avail_height / bezel_height)
-        .min(1.0)
+    fit_scale(
+        chrome_scale,
+        (bezel_width, bezel_height),
+        (avail_width, avail_height),
+    )
+}
+
+fn fit_scale(monitor_scale: f64, device: (f64, f64), available: (f64, f64)) -> f64 {
+    monitor_scale
+        .min(available.0 / device.0)
+        .min(available.1 / device.1)
 }
 
 fn monitor_work_area(hwnd: HWND) -> RECT {
@@ -174,8 +180,10 @@ fn monitor_work_area(hwnd: HWND) -> RECT {
 /// Uniformly scales every geometric spec field by `fit`.
 fn scale_spec(spec: &mut WindowsDeviceFrame, fit: f64) {
     let scaled = |value: i32| ((value as f64) * fit).round() as i32;
-    spec.screen_width = scaled(spec.screen_width).max(1);
-    spec.screen_height = scaled(spec.screen_height).max(1);
+    // WebView2 rounds its CSS viewport up. Rounding HWND bounds up as well
+    // can turn a 430px preset into 431 CSS px at a fractional fit factor.
+    spec.screen_width = (spec.screen_width as f64 * fit).floor().max(1.0) as i32;
+    spec.screen_height = (spec.screen_height as f64 * fit).floor().max(1.0) as i32;
     spec.bezel_width = scaled(spec.bezel_width);
     spec.outer_corner_radius = scaled(spec.outer_corner_radius);
     spec.screen_corner_radius = scaled(spec.screen_corner_radius);
@@ -236,9 +244,35 @@ const TOOLBAR_DOT_SPACING: i32 = 8;
 const CLOSE_DOT_COLOR: u32 = 0xFF6159;
 const MINIMIZE_DOT_COLOR: u32 = 0xFFBD38;
 
+/// Scale of the toolbar and shadow ring: the monitor DPI. They are host
+/// chrome around the device, so they keep their size when the bezel block
+/// shrinks to fit the work area, like the macOS runner's point-sized toolbar.
+fn chrome_scale_for(content: HWND) -> f64 {
+    crate::dpi::window_scale(content)
+}
+
+fn chrome_px(value: i32, chrome_scale: f64) -> i32 {
+    (f64::from(value) * chrome_scale).round() as i32
+}
+
+/// Shadow margin and toolbar block (toolbar plus gap; 0 without a toolbar)
+/// at `chrome_scale`. The fit and the layout share it so the assembly that
+/// was fitted is the one laid out.
+fn chrome_extent(spec: &WindowsDeviceFrame, chrome_scale: f64) -> (i32, i32) {
+    let margin = chrome_px(FRAME_SHADOW_MARGIN, chrome_scale);
+    let toolbar_block = if spec.toolbar.is_some() {
+        chrome_px(TOOLBAR_HEIGHT, chrome_scale) + chrome_px(TOOLBAR_GAP, chrome_scale)
+    } else {
+        0
+    };
+    (margin, toolbar_block)
+}
+
 /// Pixel geometry of one presented frame, all in shell-window coordinates.
 #[derive(Debug, Clone, Copy, Default)]
 struct FrameLayout {
+    /// Scale the toolbar and shadow were laid out at (see [`chrome_scale_for`]).
+    chrome_scale: f64,
     /// Shell (layered) window size.
     width: i32,
     height: i32,
@@ -257,18 +291,21 @@ struct FrameLayout {
     appearance_rect: RECT,
 }
 
-fn compute_layout(spec: &WindowsDeviceFrame) -> FrameLayout {
-    let margin = FRAME_SHADOW_MARGIN;
+impl FrameLayout {
+    /// A toolbar or shadow metric at this layout's chrome scale.
+    fn px(&self, value: i32) -> i32 {
+        chrome_px(value, self.chrome_scale)
+    }
+}
+
+fn compute_layout(spec: &WindowsDeviceFrame, chrome_scale: f64) -> FrameLayout {
+    let (margin, toolbar_block) = chrome_extent(spec, chrome_scale);
     let bezel_width = spec.screen_width + 2 * spec.bezel_width;
     let bezel_height = spec.screen_height + 2 * spec.bezel_width;
     let has_toolbar = spec.toolbar.is_some();
-    let toolbar_block = if has_toolbar {
-        TOOLBAR_HEIGHT + TOOLBAR_GAP
-    } else {
-        0
-    };
     let bezel_top = margin + toolbar_block;
     let mut layout = FrameLayout {
+        chrome_scale,
         width: bezel_width + 2 * margin,
         height: bezel_height + toolbar_block + 2 * margin,
         bezel: RECT {
@@ -281,11 +318,12 @@ fn compute_layout(spec: &WindowsDeviceFrame) -> FrameLayout {
         ..Default::default()
     };
     if has_toolbar {
+        let toolbar_height = layout.px(TOOLBAR_HEIGHT);
         layout.toolbar = RECT {
             left: margin,
             top: margin,
             right: margin + bezel_width,
-            bottom: margin + TOOLBAR_HEIGHT,
+            bottom: margin + toolbar_height,
         };
         // The close/minimize dots exist only when the toolbar owns the window
         // controls; otherwise the shell chrome keeps its standard caption
@@ -295,18 +333,20 @@ fn compute_layout(spec: &WindowsDeviceFrame) -> FrameLayout {
             .as_ref()
             .is_some_and(|toolbar| toolbar.window_dots)
         {
-            let dot = (TOOLBAR_DOT_RADIUS * 2.0) as i32;
-            let dot_top = layout.toolbar.top + (TOOLBAR_HEIGHT - dot) / 2;
+            let dot = (TOOLBAR_DOT_RADIUS * 2.0 * chrome_scale as f32).round() as i32;
+            let dot_top = layout.toolbar.top + (toolbar_height - dot) / 2;
+            let side_margin = layout.px(TOOLBAR_SIDE_MARGIN);
+            let spacing = layout.px(TOOLBAR_DOT_SPACING);
             layout.close_rect = RECT {
-                left: layout.toolbar.left + TOOLBAR_SIDE_MARGIN,
+                left: layout.toolbar.left + side_margin,
                 top: dot_top,
-                right: layout.toolbar.left + TOOLBAR_SIDE_MARGIN + dot,
+                right: layout.toolbar.left + side_margin + dot,
                 bottom: dot_top + dot,
             };
             layout.minimize_rect = RECT {
-                left: layout.close_rect.right + TOOLBAR_DOT_SPACING,
+                left: layout.close_rect.right + spacing,
                 top: dot_top,
-                right: layout.close_rect.right + TOOLBAR_DOT_SPACING + dot,
+                right: layout.close_rect.right + spacing + dot,
                 bottom: dot_top + dot,
             };
         }
@@ -329,9 +369,13 @@ struct DeviceFrameState {
     /// The top status-bar overlay (time + signal/battery), 0 when absent.
     status_bar: isize,
     spec: WindowsDeviceFrame,
-    /// Work-area fit factor applied to `spec` (1.0 = native size). The
-    /// webview mirrors it as its rasterization scale so pages keep the
-    /// simulated device's logical viewport.
+    /// Logical geometry, retained so monitor changes never rescale an
+    /// already-scaled frame.
+    logical_spec: WindowsDeviceFrame,
+    /// Scale from `logical_spec` to `spec`: the monitor DPI, reduced when the
+    /// device would overflow the work area. The webview mirrors it as its
+    /// rasterization scale so pages keep the simulated device's logical
+    /// viewport.
     fit_scale: f64,
     layout: FrameLayout,
     /// `GWL_STYLE` of the content window before the borderless restyle.
@@ -432,7 +476,12 @@ fn sync_capsule_overlay(content: HWND, spec: &WindowsDeviceFrame, existing: isiz
         if existing != 0 && is_window_handle_valid(existing) {
             existing
         } else {
-            create_capsule_window(content, spec).unwrap_or(0)
+            create_capsule_window(
+                content,
+                spec,
+                content_fit_scale(hwnd_handle(content)).unwrap_or(1.0),
+            )
+            .unwrap_or(0)
         }
     } else {
         destroy_capsule(existing);
@@ -467,8 +516,8 @@ pub(super) fn content_screen_clip_style(content: isize) -> Option<(i32, u32)> {
     })
 }
 
-/// Work-area fit factor of the content window's device frame, `None` when
-/// unframed.
+/// Display scale of the content window's device frame (monitor DPI limited
+/// by the work area), `None` when unframed.
 pub(super) fn content_fit_scale(content: isize) -> Option<f64> {
     frame_state(content, |state| state.fit_scale)
 }
@@ -728,15 +777,16 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
     }) {
         return;
     }
-    // Fit the simulated device to the monitor work area (the macOS runner's
-    // fitScale): every geometric spec field scales together, so the frame,
-    // overlays, and corner visuals stay proportionate. The factor is kept on
-    // the frame state; the shell mirrors it into the webview's
-    // rasterization scale so the page keeps the device's logical viewport.
-    let fit = fit_scale_for(content, &spec);
-    if fit < 1.0 {
-        scale_spec(&mut spec, fit);
-    }
+    // Scale the logical preset to the monitor DPI, shrunk to the work area
+    // when it would not fit (the macOS runner's fitScale): every geometric
+    // spec field scales together, so the frame, overlays, and corner visuals
+    // stay proportionate. The factor is kept on the frame state; the shell
+    // mirrors it into the webview's rasterization scale so the page keeps the
+    // device's logical viewport.
+    let logical_spec = spec.clone();
+    let chrome_scale = chrome_scale_for(content);
+    let fit = fit_scale_for(content, &spec, chrome_scale);
+    scale_spec(&mut spec, fit);
     install_device_frame_subclass(content);
     // The status bar's transparent/foreground/background are page-driven — the
     // shell sets them per active page (e.g. an immersive `custom` page floats a
@@ -754,7 +804,11 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
         new_sb.foreground = old_sb.foreground;
         new_sb.background = old_sb.background;
     }
-    if !device_frame_needs_rebuild(content, &spec) {
+    // A DPI change can leave the fitted spec as it was (e.g. a device fitted
+    // to the work area on both monitors) while the toolbar must still resize.
+    let chrome_changed =
+        frame_state(handle, |state| state.layout.chrome_scale != chrome_scale).unwrap_or(false);
+    if !chrome_changed && !device_frame_needs_rebuild(content, &spec) {
         if sync_host_layout {
             sync_device_frame_for_content(content);
         }
@@ -776,6 +830,7 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
     })
     .unwrap_or(false);
     if toolbar_only
+        && !chrome_changed
         && content_matches_spec_screen(content, &spec)
         && let Some((frame, mut layout, old_capsule)) =
             frame_state(handle, |state| (state.frame, state.layout, state.capsule))
@@ -788,6 +843,7 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
             && let Some(state) = frames.get_mut(&handle)
         {
             state.spec = spec;
+            state.logical_spec = logical_spec;
             state.layout = layout;
             state.capsule = capsule;
         }
@@ -868,13 +924,22 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
 
     // Keep the assembly on screen: the shell extends past the content by
     // the content offset (shadow + toolbar + bezel).
-    let layout = compute_layout(&spec);
+    let layout = compute_layout(&spec, chrome_scale);
     let mut rect = RECT::default();
     unsafe {
         let _ = WindowsAndMessaging::GetWindowRect(content, &mut rect);
     }
-    let x = rect.left.max(layout.content_offset.0);
-    let y = rect.top.max(layout.content_offset.1);
+    let work = monitor_work_area(content);
+    let min_x = work.left + layout.content_offset.0;
+    let min_y = work.top + layout.content_offset.1;
+    let x = rect.left.clamp(
+        min_x,
+        (work.right - layout.width + layout.content_offset.0).max(min_x),
+    );
+    let y = rect.top.clamp(
+        min_y,
+        (work.bottom - layout.height + layout.content_offset.1).max(min_y),
+    );
     // A maximized desktop window ignores a smaller SetWindowPos, and
     // SW_SHOWNORMAL restores the last 1440-class rectangle — leaving the
     // toolbar on the new device while the page stays expanded.
@@ -894,14 +959,14 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
     let Some((frame, layout)) = create_frame_window(content, &spec, layout) else {
         return;
     };
-    let capsule = create_capsule_window(content, &spec).unwrap_or(0);
+    let capsule = create_capsule_window(content, &spec, fit).unwrap_or(0);
     let cutout = create_cutout_window(content, &spec).unwrap_or(0);
     let corner_mask = if composition_corners {
         0
     } else {
         create_corner_mask(content, &spec)
     };
-    let status_bar = create_status_bar(content, &spec);
+    let status_bar = create_status_bar(content, &spec, fit);
     let frames = DEVICE_FRAMES.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(mut frames) = frames.lock() {
         frames.insert(
@@ -913,6 +978,7 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
                 corner_mask,
                 status_bar,
                 spec,
+                logical_spec,
                 fit_scale: fit,
                 layout,
                 saved_style,
@@ -1180,6 +1246,13 @@ unsafe extern "system" fn device_frame_host_proc(
     lparam: LPARAM,
 ) -> LRESULT {
     let original = device_frame_window_state(hwnd).map(|state| state.original_proc);
+    if msg == WindowsAndMessaging::WM_DPICHANGED
+        && !unsafe { WindowsAndMessaging::IsIconic(hwnd) }.as_bool()
+        && let Some(spec) = frame_state(hwnd_handle(hwnd), |state| state.logical_spec.clone())
+    {
+        apply_device_frame(hwnd, spec);
+        return LRESULT(0);
+    }
     if msg == WindowsAndMessaging::WM_WINDOWPOSCHANGED {
         let pos = lparam.0 as *const WindowsAndMessaging::WINDOWPOS;
         if !pos.is_null() {
@@ -1650,5 +1723,123 @@ mod tests {
     fn unknown_window_size_rebuilds() {
         let spec = phone_frame();
         assert!(spec_and_window_require_rebuild(Some(&spec), &spec, None));
+    }
+}
+
+#[cfg(test)]
+mod scale_tests {
+    use super::{
+        FRAME_SHADOW_MARGIN, RECT, TOOLBAR_GAP, TOOLBAR_HEIGHT, WindowsDeviceFrame,
+        WindowsDeviceFrameToolbar, compute_layout, fit_scale, fit_scale_in, scale_spec,
+    };
+
+    fn pro_max_with_toolbar() -> WindowsDeviceFrame {
+        WindowsDeviceFrame {
+            screen_width: 430,
+            screen_height: 932,
+            bezel_width: 4,
+            outer_corner_radius: 60,
+            screen_corner_radius: 56,
+            cutout: None,
+            status_bar: None,
+            bezel_color: 0,
+            screen_corner_color: 0,
+            toolbar: Some(WindowsDeviceFrameToolbar {
+                selector_label: "iPhone 15 Pro Max".to_string(),
+                selector_items: Vec::new(),
+                action_command: None,
+                rotate_command: None,
+                appearance_command: None,
+                appearance_dark: false,
+                capsule_items: Vec::new(),
+                capsule_close_command: None,
+                window_dots: true,
+            }),
+        }
+    }
+
+    #[test]
+    fn toolbar_and_shadow_follow_the_monitor_scale() {
+        let mut frame = pro_max_with_toolbar();
+        let standard = compute_layout(&frame, 1.0);
+        assert_eq!(
+            standard.toolbar.bottom - standard.toolbar.top,
+            TOOLBAR_HEIGHT
+        );
+        assert_eq!(
+            standard.bezel.top,
+            FRAME_SHADOW_MARGIN + TOOLBAR_HEIGHT + TOOLBAR_GAP
+        );
+
+        // The bezel block fits at 2.0 while the chrome stays at 225%.
+        scale_spec(&mut frame, 2.0);
+        let layout = compute_layout(&frame, 2.25);
+        assert_eq!(layout.toolbar.bottom - layout.toolbar.top, 72);
+        assert_eq!(layout.bezel.top, 54 + 72 + 27);
+        assert_eq!(layout.close_rect.right - layout.close_rect.left, 27);
+        assert_eq!(
+            layout.bezel.right - layout.bezel.left,
+            frame.screen_width + 2 * frame.bezel_width
+        );
+    }
+
+    #[test]
+    fn fit_leaves_room_for_the_scaled_toolbar_and_shadow() {
+        // 225% monitor too short for a full-size Pro Max plus its toolbar.
+        let work = RECT {
+            left: 0,
+            top: 0,
+            right: 3840,
+            bottom: 2088,
+        };
+        let mut frame = pro_max_with_toolbar();
+        let fit = fit_scale_in(work, &frame, 2.25);
+        assert!(fit < 2.25, "{fit}");
+        scale_spec(&mut frame, fit);
+        let layout = compute_layout(&frame, 2.25);
+        assert!(layout.height <= work.bottom - work.top, "{}", layout.height);
+        assert!(layout.width <= work.right - work.left, "{}", layout.width);
+    }
+
+    #[test]
+    fn high_dpi_enlarges_phone() {
+        let scale = fit_scale(2.25, (440.0, 942.0), (3792.0, 2260.0));
+        assert_eq!(scale, 2.25);
+    }
+
+    #[test]
+    fn frame_geometry_uses_the_same_scale_as_the_page() {
+        for scale in [0.75, 1.0, 1.5, 2.0851063829787235, 2.25] {
+            let mut frame = WindowsDeviceFrame {
+                screen_width: 430,
+                screen_height: 932,
+                bezel_width: 4,
+                outer_corner_radius: 60,
+                screen_corner_radius: 56,
+                cutout: None,
+                status_bar: None,
+                bezel_color: 0,
+                screen_corner_color: 0,
+                toolbar: None,
+            };
+            scale_spec(&mut frame, scale);
+            assert_eq!((frame.screen_width as f64 / scale).ceil(), 430.0);
+            assert_eq!((frame.screen_height as f64 / scale).ceil(), 932.0);
+            assert_eq!(frame.bezel_width, (4.0 * scale).round() as i32);
+            assert_eq!(frame.screen_corner_radius, (56.0 * scale).round() as i32);
+        }
+    }
+
+    #[test]
+    fn small_work_area_limits_portrait_and_landscape() {
+        let portrait = fit_scale(2.25, (440.0, 942.0), (1872.0, 900.0));
+        assert_eq!(portrait, 900.0 / 942.0);
+        let landscape = fit_scale(2.25, (942.0, 440.0), (1200.0, 900.0));
+        assert_eq!(landscape, 1200.0 / 942.0);
+    }
+
+    #[test]
+    fn standard_dpi_does_not_fill_a_large_monitor() {
+        assert_eq!(fit_scale(1.0, (440.0, 942.0), (3792.0, 2260.0)), 1.0);
     }
 }

@@ -74,6 +74,9 @@ remain above native sheets and guest lxapps without intercepting input.
 A process whose `app.json` has `devWsUrl` uses that same mark to show the
 port it dials. The phone tab shows only the port. The desktop chip shows the
 port, and `DEV` plus the port when the service mark is also up.
+Runner hosts never show this mark, even with `devWsUrl` configured. Runner
+identity is registered before SDK initialization (or supplied by
+`LINGXIA_RUNNER`); hiding the mark does not disable the dev connection.
 
 `--env` is not a channel alias. `--channel` is not accepted on
 `lingxia build` / `dev` / `package`. `lingxia publish` splits the two axes:
