@@ -1,7 +1,7 @@
 {
   "appId": "lingxia-showcase-gpu",
   "appName": "LingXia Showcase GPU",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "minRuntime": "0.28.0",
   "pages": [
     {
@@ -138,7 +138,10 @@
           "zh-CN": "媒体"
         },
         "page": "media",
-        "iconPath": "public/tab-media.svg"
+        "iconPath": "public/tab-media.svg",
+        "showOn": [
+          "mobile"
+        ]
       },
       {
         "text": {
