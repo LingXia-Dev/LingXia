@@ -174,13 +174,18 @@ fn run(job: &Job) -> Result<Value, String> {
     let mut display = layout(&mut page, width, height, job.scale)?;
     // `__picker: "<data-testid>"` opens the View's picker on that editor, as a tap would.
     if let Some(test_id) = job.state.as_ref().and_then(|s| s["__picker"].as_str()) {
-        let identity = display
+        let node = display
             .nodes
             .iter()
             .find(|node| node.test_id == test_id)
-            .map(|node| node.identity.clone())
             .ok_or_else(|| format!("__picker: no node {test_id}"))?;
-        if !page.open_picker_now(&identity, Some("2026-10-29"))? {
+        let (identity, select) = (node.identity.clone(), node.select.is_some());
+        let opened = if select {
+            page.open_select_now(&identity)?
+        } else {
+            page.open_picker_now(&identity, Some("2026-10-29"))?
+        };
+        if !opened {
             return Err(format!("__picker: {test_id} is no date or time editor"));
         }
         display = layout(&mut page, width, height, job.scale)?;

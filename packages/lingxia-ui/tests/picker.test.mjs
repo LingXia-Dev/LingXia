@@ -49,8 +49,10 @@ test('a time picker honours the step and the hour cycle, and takes typed digits'
   open({ kind: 'time', value: '13:15', step: 900 });
   const nodes = render(view, env);
   const column = testId => nodes.find(n => n.testId === testId).children[0].props;
-  assert.equal(column('lx-picker-minute').listCount, 4, 'a 15-minute step offers four minutes');
-  assert.deepEqual(JSON.parse(column('lx-picker-period').listItemKeys), ['am', 'pm']);
+  const minutes = JSON.parse(column('lx-picker-minute').listItemKeys);
+  assert.deepEqual(minutes.slice(4, 8), ['1:0', '1:15', '1:30', '1:45'], 'a 15-minute step offers four minutes, repeated around the middle');
+  assert.equal(minutes.length, 12);
+  assert.deepEqual(JSON.parse(column('lx-picker-period').listItemKeys), ['0:am', '0:pm'], 'AM/PM does not repeat');
   pickerKey('ArrowDown'); pickerKey('Enter');
   assert.equal(JSON.parse(takePickerResults())[0].value, '13:30');
   open({ kind: 'time', value: '13:15', step: 900 });

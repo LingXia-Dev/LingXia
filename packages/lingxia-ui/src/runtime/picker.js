@@ -20,7 +20,7 @@ const today = () => {
  * A date or time editor asked for its picker: `{identity, kind, value, min, max, step}` from native,
  * `identity` being the editor's native key, returned with the result. False for any other kind.
  */
-export function openPicker({ identity, kind, value, min, max, step, today: day, options, selected, label } = {}) {
+export function openPicker({ identity, kind, value, min, max, step, today: day, options, selected, label, anchorWidth } = {}) {
   if (typeof identity !== 'string' || !['date', 'time', 'select'].includes(kind)) return false;
   fixedToday = parseDate(day);
   const key = nextKey++;
@@ -29,8 +29,10 @@ export function openPicker({ identity, kind, value, min, max, step, today: day, 
       value: String(option.value), label: String(option.label), enabled: option.enabled !== false })) : [];
     if (!list.length) return false;
     const chosen = Number.isInteger(selected) && list[selected] ? selected : -1;
+    // As wide as its field up to 360 pt, never narrower than its options.
+    const width = Number.isFinite(anchorWidth) ? Math.min(Math.max(anchorWidth, 0), 360) : 0;
     picker = { kind, key, identity, options: list, selected: chosen, focus: chosen >= 0 ? chosen : list.findIndex(o => o.enabled),
-      label: typeof label === 'string' ? label : '', typed: '', typedAt: 0 };
+      label: typeof label === 'string' ? label : '', typed: '', typedAt: 0, width };
     return true;
   }
   if (kind === 'date') {
@@ -162,16 +164,23 @@ function dateBody(words, env) {
 
 const ROW = 40, VISIBLE = 5;
 
-// A column of choices whose selected row starts in the middle band; scrolling snaps row by row.
-function timeColumn(testId, label, values, selected, format, choose) {
-  const index = Math.max(0, values.indexOf(selected));
-  const pad = ROW * Math.floor(VISIBLE / 2);
+// A column of choices whose selected row starts in the middle band; scrolling snaps row by row. A
+// cyclic column (hours, minutes) repeats its values around the middle copy, so it never shows blanks.
+function timeColumn(testId, label, values, selected, format, choose, cyclic = false) {
+  const copies = cyclic ? 3 : 1, middle = cyclic ? 1 : 0;
+  const index = middle * values.length + Math.max(0, values.indexOf(selected));
+  const pad = cyclic ? 0 : ROW * Math.floor(VISIBLE / 2);
+  const offset = cyclic ? Math.floor(VISIBLE / 2) : 0;
   return h('column', { 'data-testid': testId, role: 'listbox', 'aria-label': label, style: { width: 64 } },
-    h(listTag, { count: values.length, itemKeys: values.map(String), height: () => ROW,
-      anchor: { index, align: 'start', seq: index }, style: { height: ROW * VISIBLE, paddingTop: pad, paddingBottom: pad, scrollSnapType: 'y' },
+    h(listTag, { count: values.length * copies, itemKeys: Array.from({ length: values.length * copies }, (_, i) => `${Math.floor(i / values.length)}:${values[i % values.length]}`),
+      height: () => ROW, anchor: { index: Math.max(0, index - offset), align: 'start', seq: index },
+      style: { height: ROW * VISIBLE, paddingTop: pad, paddingBottom: pad, scrollSnapType: 'y' },
       row: i => {
-        const value = values[i], on = value === selected;
-        return h('button', { key: String(value), 'data-testid': `${testId}-${value}`, role: 'option', 'aria-selected': on, onClick: () => choose(value),
+        const value = values[i % values.length], copy = Math.floor(i / values.length), on = value === selected;
+        // Automation names the middle copy's rows; the others are its repeats.
+        const id = copy === middle ? `${testId}-${value}` : `${testId}-${value}-${copy}`;
+        return h('button', { key: `${copy}:${value}`, 'data-testid': id, role: 'option', 'aria-selected': on && copy === middle,
+          'aria-hidden': copy !== middle, onClick: () => choose(value),
           style: { height: ROW, alignItems: 'center', justifyContent: 'center', borderRadius: 8, scrollSnapAlign: 'center',
             backgroundColor: on ? 'accent/12' : 'transparent', color: on ? 'accent' : 'text',
             fontSize: 17, fontWeight: on ? 600 : 400, fontVariantNumeric: 'tabular-nums' } }, format(value));
@@ -185,8 +194,8 @@ function timeBody(words, env) {
   const set = next => { picker.value = { ...picker.value, ...next }; picker.typed = ''; };
   const columns = [
     timeColumn('lx-picker-hour', words.hour, hourValues(cycle), cycle === 'h12' ? (hour % 12 || 12) : hour, cycle === 'h12' ? String : two,
-      value => set({ hour: cycle === 'h12' ? (value % 12) + (hour >= 12 ? 12 : 0) : value })),
-    timeColumn('lx-picker-minute', words.minute, minuteValues(picker.step), minute, two, value => set({ minute: value })),
+      value => set({ hour: cycle === 'h12' ? (value % 12) + (hour >= 12 ? 12 : 0) : value }), true),
+    timeColumn('lx-picker-minute', words.minute, minuteValues(picker.step), minute, two, value => set({ minute: value }), true),
   ];
   if (cycle === 'h12') columns.push(timeColumn('lx-picker-period', words.period, ['am', 'pm'], hour >= 12 ? 'pm' : 'am', period => words[period],
     period => set({ hour: (hour % 12) + (period === 'pm' ? 12 : 0) })));
@@ -196,16 +205,17 @@ function timeBody(words, env) {
 function selectBody() {
   const { options, selected, focus } = picker;
   const check = 'M4 10.5l4 4 8-9';
-  return h('column', { role: 'listbox', 'aria-label': picker.label || 'Options', style: { gap: 2, minWidth: 200 } },
+  // The band follows the keyboard; the trailing check marks the choice.
+  return h('column', { role: 'listbox', 'aria-label': picker.label || 'Options', style: { gap: 2, minWidth: Math.max(160, picker.width - 24) } },
     ...options.map((option, index) => h('button', { key: `o${index}`, 'data-testid': `lx-picker-option-${index}`, role: 'option',
       'aria-selected': index === selected, disabled: !option.enabled, onClick: () => settleSelect(index),
-      style: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 36, paddingLeft: 10, paddingRight: 12, borderRadius: 8,
+      style: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 36, paddingLeft: 12, paddingRight: 10, borderRadius: 8,
         backgroundColor: index === focus ? 'surface-sunken' : 'transparent', color: option.enabled ? 'text' : 'text-faint', fontSize: 15 } },
+      h('text', { style: { flexGrow: 1, textAlign: 'start' } }, option.label),
       index === selected
         ? h('vector', { 'aria-hidden': true, paths: [{ d: check, fill: 'none', stroke: 'currentColor', strokeWidth: 2,
           strokeLinecap: 'round', strokeLinejoin: 'round' }], style: { width: 18, height: 18, color: 'accent' } })
-        : h('spacer', { style: { width: 18, height: 18 } }),
-      h('text', { style: { flexGrow: 1, textAlign: 'start' } }, option.label))));
+        : h('spacer', { style: { width: 18, height: 18 } }))));
 }
 
 /** The popover's anchor: the editor it opened from, or null for a sheet. */

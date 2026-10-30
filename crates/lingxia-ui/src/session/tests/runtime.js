@@ -3270,7 +3270,7 @@
     const now = /* @__PURE__ */ new Date();
     return { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() };
   };
-  function openPicker({ identity, kind, value, min, max, step, today: day, options: options2, selected, label: label2 } = {}) {
+  function openPicker({ identity, kind, value, min, max, step, today: day, options: options2, selected, label: label2, anchorWidth } = {}) {
     if (typeof identity !== "string" || !["date", "time", "select"].includes(kind)) return false;
     fixedToday = parseDate(day);
     const key = nextKey++;
@@ -3282,6 +3282,7 @@
       })) : [];
       if (!list.length) return false;
       const chosen = Number.isInteger(selected) && list[selected] ? selected : -1;
+      const width = Number.isFinite(anchorWidth) ? Math.min(Math.max(anchorWidth, 0), 360) : 0;
       picker = {
         kind,
         key,
@@ -3291,7 +3292,8 @@
         focus: chosen >= 0 ? chosen : list.findIndex((o) => o.enabled),
         label: typeof label2 === "string" ? label2 : "",
         typed: "",
-        typedAt: 0
+        typedAt: 0,
+        width
       };
       return true;
     }
@@ -3469,25 +3471,29 @@
   }
   var ROW = 40;
   var VISIBLE = 5;
-  function timeColumn(testId, label2, values, selected, format, choose) {
-    const index = Math.max(0, values.indexOf(selected));
-    const pad2 = ROW * Math.floor(VISIBLE / 2);
+  function timeColumn(testId, label2, values, selected, format, choose, cyclic = false) {
+    const copies = cyclic ? 3 : 1, middle = cyclic ? 1 : 0;
+    const index = middle * values.length + Math.max(0, values.indexOf(selected));
+    const pad2 = cyclic ? 0 : ROW * Math.floor(VISIBLE / 2);
+    const offset = cyclic ? Math.floor(VISIBLE / 2) : 0;
     return h(
       "column",
       { "data-testid": testId, role: "listbox", "aria-label": label2, style: { width: 64 } },
       h(listTag, {
-        count: values.length,
-        itemKeys: values.map(String),
+        count: values.length * copies,
+        itemKeys: Array.from({ length: values.length * copies }, (_, i) => `${Math.floor(i / values.length)}:${values[i % values.length]}`),
         height: () => ROW,
-        anchor: { index, align: "start", seq: index },
+        anchor: { index: Math.max(0, index - offset), align: "start", seq: index },
         style: { height: ROW * VISIBLE, paddingTop: pad2, paddingBottom: pad2, scrollSnapType: "y" },
         row: (i) => {
-          const value = values[i], on = value === selected;
+          const value = values[i % values.length], copy2 = Math.floor(i / values.length), on = value === selected;
+          const id = copy2 === middle ? `${testId}-${value}` : `${testId}-${value}-${copy2}`;
           return h("button", {
-            key: String(value),
-            "data-testid": `${testId}-${value}`,
+            key: `${copy2}:${value}`,
+            "data-testid": id,
             role: "option",
-            "aria-selected": on,
+            "aria-selected": on && copy2 === middle,
+            "aria-hidden": copy2 !== middle,
             onClick: () => choose(value),
             style: {
               height: ROW,
@@ -3521,9 +3527,10 @@
         hourValues(cycle),
         cycle === "h12" ? hour % 12 || 12 : hour,
         cycle === "h12" ? String : two,
-        (value) => set({ hour: cycle === "h12" ? value % 12 + (hour >= 12 ? 12 : 0) : value })
+        (value) => set({ hour: cycle === "h12" ? value % 12 + (hour >= 12 ? 12 : 0) : value }),
+        true
       ),
-      timeColumn("lx-picker-minute", words.minute, minuteValues(picker.step), minute, two, (value) => set({ minute: value }))
+      timeColumn("lx-picker-minute", words.minute, minuteValues(picker.step), minute, two, (value) => set({ minute: value }), true)
     ];
     if (cycle === "h12") columns.push(timeColumn(
       "lx-picker-period",
@@ -3540,7 +3547,7 @@
     const check = "M4 10.5l4 4 8-9";
     return h(
       "column",
-      { role: "listbox", "aria-label": picker.label || "Options", style: { gap: 2, minWidth: 200 } },
+      { role: "listbox", "aria-label": picker.label || "Options", style: { gap: 2, minWidth: Math.max(160, picker.width - 24) } },
       ...options2.map((option2, index) => h(
         "button",
         {
@@ -3555,14 +3562,15 @@
             alignItems: "center",
             gap: 8,
             minHeight: 36,
-            paddingLeft: 10,
-            paddingRight: 12,
+            paddingLeft: 12,
+            paddingRight: 10,
             borderRadius: 8,
             backgroundColor: index === focus ? "surface-sunken" : "transparent",
             color: option2.enabled ? "text" : "text-faint",
             fontSize: 15
           }
         },
+        h("text", { style: { flexGrow: 1, textAlign: "start" } }, option2.label),
         index === selected ? h("vector", { "aria-hidden": true, paths: [{
           d: check,
           fill: "none",
@@ -3570,8 +3578,7 @@
           strokeWidth: 2,
           strokeLinecap: "round",
           strokeLinejoin: "round"
-        }], style: { width: 18, height: 18, color: "accent" } }) : h("spacer", { style: { width: 18, height: 18 } }),
-        h("text", { style: { flexGrow: 1, textAlign: "start" } }, option2.label)
+        }], style: { width: 18, height: 18, color: "accent" } }) : h("spacer", { style: { width: 18, height: 18 } })
       ))
     );
   }

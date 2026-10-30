@@ -99,6 +99,7 @@ impl ViewSession {
                 if let Some(today) = today {
                     request["today"] = today.into();
                 }
+                request["anchorWidth"] = self.anchor_width(identity).into();
                 self.open_view_picker(&request)
             }
             None => Ok(false),
@@ -115,6 +116,11 @@ impl ViewSession {
         if !self.presented_layout_commit(generation) {
             return Ok(false);
         }
+        self.open_select_now(identity)
+    }
+
+    /// Open the View's picker on `<select>` `identity` of the last layout, as a tap would.
+    pub fn open_select_now(&mut self, identity: &str) -> Result<bool, String> {
         let Some(request) = self.retained.as_ref().and_then(|retained| {
             let node = retained
                 .nodes
@@ -124,11 +130,20 @@ impl ViewSession {
             Some(serde_json::json!({
                 "identity": identity, "kind": "select", "options": select.options,
                 "selected": select.selected, "label": node.accessibility_label,
+                "anchorWidth": node.bounds[2],
             }))
         }) else {
             return Ok(false);
         };
         self.open_view_picker(&request)
+    }
+
+    /// The laid-out width of the control a popover opens from, logical pixels.
+    fn anchor_width(&self, identity: &str) -> f32 {
+        self.retained
+            .as_ref()
+            .and_then(|retained| retained.nodes.iter().find(|node| node.identity == identity))
+            .map_or(0.0, |node| node.bounds[2])
     }
 
     /// A key while the picker is open; a choice it made applies at once.
