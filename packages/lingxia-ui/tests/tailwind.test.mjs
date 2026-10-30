@@ -12,13 +12,17 @@ const env = (theme = 'light', width = 400) => ({ theme, viewport: { width, heigh
 const node = (tag, props, view = {}) => rendered(() => h(tag, props, ...(tag === 'text' ? ['x'] : [])), view).props;
 
 test('flex direction follows utility cascade, responsive rules and explicit style', async () => {
-  await use(['flex', 'flex-col', 'md:flex-row', 'flex-row-reverse', 'flex-col-reverse']);
+  await use(['flex', 'inline-flex', 'flex-col', 'md:flex-row', 'flex-row-reverse', 'flex-col-reverse']);
   assert.deepEqual(classStyle('flex flex-col md:flex-row', env('light', 360)), { display: 'flex', flexDirection: 'column' });
   assert.deepEqual(classStyle('md:flex-row flex-col flex', env('light', 900)), { display: 'flex', flexDirection: 'row' });
   assert.equal(node('view', { className: 'flex-col', style: { flexDirection: 'row-reverse' } }).flexDirection, 'row-reverse');
   assert.equal(classStyle('flex-col-reverse').flexDirection, 'column-reverse');
   const view = rendered(() => h('view', { className: 'flex flex-col' }, h('text', {}, 'Hello')));
   assert.deepEqual([view.tag, view.props.display, view.props.flexDirection], ['column', 'flex', 'column']);
+  // As in CSS, a `flex` view lays out a row; a `<column>` stays a column.
+  assert.equal(rendered(() => h('view', { className: 'flex' }, h('text', {}, 'a'))).props.flexDirection, 'row');
+  assert.equal(rendered(() => h('view', { className: 'inline-flex' }, h('text', {}, 'a'))).props.flexDirection, 'row');
+  assert.equal(rendered(() => h('column', { className: 'flex' }, h('text', {}, 'a'))).props.flexDirection, undefined);
   assert.throws(() => describe(() => h('grid', { className: 'flex-col', style: { gridTemplateColumns: 2 } }), {}), /UI_CLASS_ELEMENT: flex-col does not apply to <grid>; use grid-flow-col/);
 });
 

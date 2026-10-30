@@ -33,7 +33,7 @@ a flex container unless it is a grid.
 
 | Element | Lays out children |
 | --- | --- |
-| `<column>`, `<view>`, `<page>` | flex column |
+| `<column>`, `<view>`, `<page>` | flex column; a `<view>` with `flex` or `inline-flex` lays out a row, as in CSS |
 | `<row>` | flex row |
 | `<grid>` | CSS Grid; the same as `grid` on any container |
 | `<stack>` | every child in one cell, overlapping; place them with `self-*`, `justify-self-*` and insets |

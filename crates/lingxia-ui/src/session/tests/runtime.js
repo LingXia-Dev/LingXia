@@ -2425,6 +2425,8 @@
     const stray = base && Object.keys(base).find((key) => !elements[tag].style.includes(key) && !(props.style && key in props.style));
     if (stray) throw Error(classElementProblem(authoredClass(props.className, stray, env), stray, tag));
     const author = mergeStyle(direction, extra, base, muted, props.style);
+    if (tag === "view" && (author?.display === "flex" || author?.display === "inline-flex") && author.flexDirection === void 0)
+      author.flexDirection = "row";
     const { fields, typography } = lowerStyle(tag, author, env, inherited);
     const states2 = {};
     const state = (name, wire, allowed, requirement) => {

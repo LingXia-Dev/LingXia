@@ -20,7 +20,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 }
 ```
 
-- `<page>` is the root: it absorbs safe-area insets and the keyboard. `view` is a column.
+- `<page>` is the root: it absorbs safe-area insets and the keyboard. `view` is a column until `flex` makes it a row, as in CSS.
   `fixed` insets and `vh`/`dvh` measure the page's safe box (inside system bars, above the keyboard);
   `hidden` removes a node entirely.
 - Layout is flex or CSS Grid (`grid grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] col-span-2`).

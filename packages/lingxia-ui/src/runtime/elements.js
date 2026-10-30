@@ -131,6 +131,9 @@ function lowerNodeStyle(tag, props, extra, inherited, direction, structure) {
   const stray = base && Object.keys(base).find(key => !elements[tag].style.includes(key) && !(props.style && key in props.style));
   if (stray) throw Error(classElementProblem(authoredClass(props.className, stray, env), stray, tag));
   const author = mergeStyle(direction, extra, base, muted, props.style);
+  // A `<view>` is a block until it says `flex`: then, as in CSS, it lays out a row.
+  if (tag === 'view' && (author?.display === 'flex' || author?.display === 'inline-flex') && author.flexDirection === undefined)
+    author.flexDirection = 'row';
   const { fields, typography } = lowerStyle(tag, author, env, inherited);
   const states = {};
   const state = (name, wire, allowed, requirement) => {
