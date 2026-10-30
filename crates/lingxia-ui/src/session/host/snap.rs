@@ -1,5 +1,6 @@
 //! `scroll-snap-type` regions settle on a snap point once input stops: after a finger, a wheel
-//! or a platform fling goes quiet, the region eases to its nearest point. A new movement cancels it.
+//! or a platform fling goes quiet, a critically damped spring carries the region to its nearest
+//! point. A new movement cancels it.
 use super::Inner;
 use crate::platform::PlatformAdapter;
 use std::sync::Arc;
@@ -8,7 +9,12 @@ use std::time::Duration;
 /// Quiet time after the last movement before a region settles; covers a fling's last steps.
 const IDLE: Duration = Duration::from_millis(120);
 const STEP: Duration = Duration::from_millis(16);
-const SETTLE_MS: f32 = 200.0;
+/// The spring's perceptual duration.
+const SPRING: Duration = Duration::from_millis(350);
+
+fn spring() -> crate::animation::spring::Spring {
+    crate::animation::spring::Spring::new(SPRING, 0.0).expect("a valid spring")
+}
 
 #[derive(Default)]
 pub(super) struct Snaps {
@@ -62,23 +68,28 @@ impl<A: PlatformAdapter> Inner<A> {
                 .collect::<Vec<_>>()
         };
         if !moves.is_empty() {
-            self.snap_step(serial, moves, if reduce { SETTLE_MS } else { 0.0 });
+            self.snap_step(serial, moves, if reduce { f32::INFINITY } else { 0.0 });
         }
     }
 
     fn snap_step(self: &Arc<Self>, serial: u64, moves: Vec<(String, f32, f32)>, elapsed: f32) {
-        let done = elapsed >= SETTLE_MS;
+        let spring = spring();
+        let t = f64::from(elapsed) / 1000.0;
+        let done = moves
+            .iter()
+            .all(|(_, from, to)| t >= spring.settle(f64::from(from - to), 0.0, 2.0));
         {
             let mut main = self.main();
             if main.snaps.serial != serial {
                 return;
             }
-            // Ease out: fast first, landing gently.
-            let t = (elapsed / SETTLE_MS).min(1.0);
-            let eased = 1.0 - (1.0 - t).powi(3);
             for (id, from, to) in &moves {
-                main.interaction
-                    .set_scroll_offset(id, from + (to - from) * eased);
+                let at = if done {
+                    *to
+                } else {
+                    spring.at(f64::from(*from), f64::from(*to), 0.0, t).0 as f32
+                };
+                main.interaction.set_scroll_offset(id, at);
             }
         }
         self.deliver(vec![crate::interaction::view::Effect::Redraw]);

@@ -30,6 +30,11 @@ timing, up to 10 s each; the defaults are 150 ms and `cubic-bezier(0.4, 0, 0.2, 
 a state variant (`active:`, `hover:`, `focus:`) changes one of those properties. A change mid-flight
 continues from the value on screen.
 
+`ease-spring` (no bounce), `ease-spring-bouncy` and `ease-[spring(0.4)]` (bounce 0–0.9) time a
+transition by a spring instead: `duration-*` is how long it feels, and it settles when it settles.
+Retargeted mid-flight, a spring keeps its velocity as well as its value. Transforms may overshoot;
+opacity and colours stop at their ends. Keyframes take no spring.
+
 Some changes land at once instead of animating:
 
 - an element seen for the first time, unless it has `starting:` values (see below);

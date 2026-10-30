@@ -1,5 +1,6 @@
 //! Implicit transitions between natively resolved paint values (field 171).
 use super::interpolate::Easing;
+use super::spring::Spring;
 use super::wire::Ease;
 use serde::Deserialize;
 use std::{collections::BTreeMap, time::Duration};
@@ -32,7 +33,14 @@ pub struct TransitionDef {
     properties: [bool; 7],
     duration: Duration,
     delay: Duration,
-    easing: Easing,
+    timing: Timing,
+}
+
+/// A curve over the duration, or a spring whose duration is perceptual.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Timing {
+    Ease(Easing),
+    Spring(f64),
 }
 
 #[derive(Deserialize)]
@@ -83,7 +91,13 @@ impl TransitionDef {
             properties,
             duration,
             delay: time(wire.delay_ms, 0.0)?,
-            easing: super::wire::easing(wire.easing).map_err(|_| invalid())?,
+            timing: match wire.easing {
+                Ease::Spring { spring } if spring.is_finite() && (0.0..=0.9).contains(&spring) => {
+                    Timing::Spring(spring)
+                }
+                Ease::Spring { .. } => return Err(invalid()),
+                ease => Timing::Ease(super::wire::easing(ease).map_err(|_| invalid())?),
+            },
         })
     }
 
@@ -295,14 +309,105 @@ pub fn mix_oklab(from: [u8; 4], to: [u8; 4], t: f64) -> [u8; 4] {
 struct Instance {
     from: Value,
     to: Value,
+    /// How long it runs: the curve's duration, or until the spring settles.
     duration: Duration,
     delay: Duration,
-    easing: Easing,
+    curve: Curve,
     /// Set by the first presentation of the frame that started it.
     started: Option<Duration>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+enum Curve {
+    Ease(Easing),
+    /// Each numeric channel starts with its own velocity, in units per second.
+    Spring {
+        spring: Spring,
+        velocity: Vec<f64>,
+    },
+}
+
+/// The numeric channels a spring moves one by one; colours and shadows move by progress.
+fn channels(value: &Value) -> Option<Vec<f64>> {
+    match value {
+        Value::Number(v) => Some(vec![*v]),
+        Value::Transform(t) => Some(vec![
+            t.translate[0],
+            t.translate[1],
+            t.rotate,
+            t.scale[0],
+            t.scale[1],
+        ]),
+        Value::Offset(o) => Some(o.to_vec()),
+        _ => None,
+    }
+}
+
+fn with_channels(to: &Value, c: &[f64]) -> Value {
+    match to {
+        Value::Number(_) => Value::Number(c[0]),
+        Value::Transform(t) => Value::Transform(Decomposed {
+            translate: [c[0], c[1]],
+            rotate: c[2],
+            scale: [c[3], c[4]],
+            origin: t.origin,
+        }),
+        Value::Offset(_) => Value::Offset([c[0], c[1]]),
+        other => other.clone(),
+    }
+}
+
 impl Instance {
+    /// A transition from `from` to `to` on the definition's timing; a spring keeps `velocity`.
+    fn new(
+        definition: &TransitionDef,
+        policy: Policy,
+        from: Value,
+        to: Value,
+        velocity: Option<Vec<f64>>,
+    ) -> Result<Self, String> {
+        let duration = definition.duration.mul_f64(policy.scale);
+        let delay = definition.delay.mul_f64(policy.scale);
+        let bounce = match definition.timing {
+            Timing::Spring(bounce) => bounce,
+            Timing::Ease(easing) => {
+                return Ok(Self {
+                    from,
+                    to,
+                    duration,
+                    delay,
+                    curve: Curve::Ease(easing),
+                    started: None,
+                });
+            }
+        };
+        let spring = Spring::new(duration, bounce)?;
+        let limit = crate::protocol::limits::TRANSITION_MS as f64 / 1000.0;
+        let (start, end) = (channels(&from), channels(&to));
+        let velocity = match (&start, &end, velocity) {
+            (Some(start), Some(_), Some(v)) if v.len() == start.len() => v,
+            (Some(start), Some(_), _) => vec![0.0; start.len()],
+            _ => Vec::new(),
+        };
+        let settle = match (&start, &end) {
+            (Some(start), Some(end)) => start
+                .iter()
+                .zip(end)
+                .zip(&velocity)
+                .map(|((a, b), v)| spring.settle(a - b, *v, limit))
+                .fold(0.0, f64::max),
+            _ => spring.settle(1.0, 0.0, limit),
+        };
+        Ok(Self {
+            from,
+            to,
+            duration: Duration::from_secs_f64(settle.max(0.001)),
+            delay,
+            curve: Curve::Spring { spring, velocity },
+            started: None,
+        })
+    }
+
     fn elapsed(&self, now: Duration) -> Duration {
         self.started
             .map(|start| now.saturating_sub(start))
@@ -318,9 +423,54 @@ impl Instance {
         if elapsed < self.delay {
             return Ok(self.from.clone());
         }
-        let progress =
-            ((elapsed - self.delay).as_secs_f64() / self.duration.as_secs_f64()).min(1.0);
-        Ok(mix(&self.from, &self.to, self.easing.sample(progress)?))
+        if elapsed >= self.delay + self.duration {
+            return Ok(self.to.clone());
+        }
+        let t = (elapsed - self.delay).as_secs_f64();
+        match &self.curve {
+            Curve::Ease(easing) => {
+                let progress = (t / self.duration.as_secs_f64()).min(1.0);
+                Ok(mix(&self.from, &self.to, easing.sample(progress)?))
+            }
+            Curve::Spring { spring, velocity } => {
+                match (channels(&self.from), channels(&self.to)) {
+                    (Some(from), Some(to)) => {
+                        let moved: Vec<f64> = (0..from.len())
+                            .map(|i| spring.at(from[i], to[i], velocity[i], t).0)
+                            .collect();
+                        Ok(match with_channels(&self.to, &moved) {
+                            // Opacity has no overshoot to show.
+                            Value::Number(v) => {
+                                Value::Number(v.clamp(from[0].min(to[0]), from[0].max(to[0])))
+                            }
+                            value => value,
+                        })
+                    }
+                    _ => {
+                        let progress = 1.0 - spring.basis(t)[0];
+                        Ok(mix(&self.from, &self.to, progress.clamp(0.0, 1.0)))
+                    }
+                }
+            }
+        }
+    }
+
+    /// Each channel's velocity now, for a retarget to carry on; `None` for curves.
+    fn velocity(&self, now: Duration) -> Option<Vec<f64>> {
+        let Curve::Spring { spring, velocity } = &self.curve else {
+            return None;
+        };
+        let elapsed = self.elapsed(now);
+        if elapsed >= self.delay + self.duration {
+            return None;
+        }
+        let t = elapsed.saturating_sub(self.delay).as_secs_f64();
+        let (from, to) = (channels(&self.from)?, channels(&self.to)?);
+        Some(
+            (0..from.len())
+                .map(|i| spring.at(from[i], to[i], velocity[i], t).1)
+                .collect(),
+        )
     }
 
     fn wakeup(&self, now: Duration) -> super::Wakeup {
@@ -329,7 +479,7 @@ impl Instance {
             super::Wakeup::NextFrame
         } else if elapsed < self.delay {
             super::Wakeup::After(self.delay - elapsed)
-        } else if self.easing == Easing::STEP_END {
+        } else if self.curve == Curve::Ease(Easing::STEP_END) {
             super::Wakeup::After((self.delay + self.duration).saturating_sub(elapsed))
         } else {
             super::Wakeup::NextFrame
@@ -419,14 +569,14 @@ impl Node {
         if from[0].abs() < 0.5 && from[1].abs() < 0.5 {
             return Ok(None);
         }
-        Ok(Some(Instance {
-            from: Value::Offset(from),
-            to: Value::Offset([0.0; 2]),
-            duration: definition.duration.mul_f64(policy.scale),
-            delay: definition.delay.mul_f64(policy.scale),
-            easing: definition.easing,
-            started: None,
-        }))
+        let velocity = running.and_then(|instance| instance.velocity(now));
+        Ok(Some(Instance::new(
+            definition,
+            policy,
+            Value::Offset(from),
+            Value::Offset([0.0; 2]),
+            velocity,
+        )?))
     }
 }
 
@@ -516,16 +666,10 @@ impl Transitions {
                             continue;
                         };
                         if begin != end {
+                            let velocity = ghost.and_then(|instance| instance.velocity(now));
                             instances.insert(
                                 property,
-                                Instance {
-                                    from: begin,
-                                    to: end,
-                                    duration: definition.duration.mul_f64(policy.scale),
-                                    delay: definition.delay.mul_f64(policy.scale),
-                                    easing: definition.easing,
-                                    started: None,
-                                },
+                                Instance::new(&definition, policy, begin, end, velocity)?,
                             );
                         }
                     }
@@ -553,20 +697,14 @@ impl Transitions {
                     if !policy.start {
                         continue;
                     }
-                    let from = match running {
-                        Some(instance) => instance.sample(now)?,
-                        None => before,
+                    // A retarget starts from the value on screen, a spring also with its velocity.
+                    let (from, velocity) = match running {
+                        Some(instance) => (instance.sample(now)?, instance.velocity(now)),
+                        None => (before, None),
                     };
                     instances.insert(
                         property,
-                        Instance {
-                            from,
-                            to: after,
-                            duration: definition.duration.mul_f64(policy.scale),
-                            delay: definition.delay.mul_f64(policy.scale),
-                            easing: definition.easing,
-                            started: None,
-                        },
+                        Instance::new(&definition, policy, from, after, velocity)?,
                     );
                 }
                 if let Some(instance) = old
@@ -625,16 +763,10 @@ impl Transitions {
                     continue;
                 };
                 if begin != end {
+                    let velocity = running.and_then(|instance| instance.velocity(now));
                     instances.insert(
                         property,
-                        Instance {
-                            from: begin,
-                            to: end,
-                            duration: old.definition.duration.mul_f64(policy.scale),
-                            delay: old.definition.delay.mul_f64(policy.scale),
-                            easing: old.definition.easing,
-                            started: None,
-                        },
+                        Instance::new(&old.definition, policy, begin, end, velocity)?,
                     );
                 }
             }
@@ -866,6 +998,55 @@ mod tests {
             .unwrap();
         slow.start(ms(0));
         assert_eq!(slow.overrides("a", ms(200)).unwrap().opacity, Some(0.5));
+    }
+
+    #[test]
+    fn a_spring_retarget_keeps_position_and_velocity() {
+        let def = TransitionDef::decode(
+            r#"{"properties":["transform"],"durationMs":300,"delayMs":0,"easing":{"spring":0.2}}"#,
+        )
+        .unwrap();
+        let moved = |y: f64| {
+            let mut style = style(1.0);
+            style.transform = Some(Decomposed {
+                translate: [0.0, y],
+                ..Decomposed::default()
+            });
+            [("a".to_owned(), def, style)]
+        };
+        let y = |t: &Transitions, at| {
+            t.overrides("a", ms(at))
+                .unwrap()
+                .transform
+                .map(|d| d.translate[1])
+        };
+        let first = Transitions::default()
+            .reconcile(moved(0.0), ms(0), MOVE)
+            .unwrap();
+        let mut down = first.reconcile(moved(100.0), ms(0), MOVE).unwrap();
+        down.start(ms(0));
+        // Retarget back up mid-flight: the value continues, and so does the downward velocity.
+        let (before, just_before) = (y(&down, 80).unwrap(), y(&down, 79).unwrap());
+        let mut up = down.reconcile(moved(0.0), ms(80), MOVE).unwrap();
+        up.start(ms(80));
+        let (at, just_after) = (y(&up, 80).unwrap(), y(&up, 81).unwrap());
+        assert!((at - before).abs() < 1e-9, "{at} {before}");
+        assert!(
+            just_after > at && before > just_before,
+            "still moving down: {just_after} {at}"
+        );
+        // It settles on the new target and reports no wakeup after.
+        let settled = (80..3000)
+            .step_by(16)
+            .find(|t| y(&up, *t).is_none())
+            .unwrap();
+        assert!(settled < 2000, "{settled}");
+        assert!(
+            TransitionDef::decode(
+                r#"{"properties":["opacity"],"durationMs":300,"delayMs":0,"easing":{"spring":1.5}}"#
+            )
+            .is_err()
+        );
     }
 
     #[test]

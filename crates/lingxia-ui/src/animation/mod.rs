@@ -6,6 +6,7 @@ pub mod transition;
 mod wire;
 pub use wire::decode_definition;
 pub mod interpolate;
+pub mod spring;
 pub use effect::{Effect, TransformTracks, Visual};
 use std::{collections::BTreeMap, num::NonZeroU32, sync::Arc, time::Duration};
 

@@ -61,6 +61,10 @@ enum Iterations {
 pub(crate) enum Ease {
     Named(String),
     Bezier([f64; 4]),
+    /// A transition's spring by bounce; keyframes refuse it.
+    Spring {
+        spring: f64,
+    },
 }
 
 #[derive(Deserialize)]
