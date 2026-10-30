@@ -4,10 +4,30 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 use thiserror::Error;
 
 static APP_CONFIG: OnceLock<AppConfig> = OnceLock::new();
+static RUNNER_HOST: AtomicBool = AtomicBool::new(false);
 const APP_STATE_DIR: &str = "app_state";
+
+/// Identify a Runner before SDK initialization, including direct launches.
+/// Registration is process-wide and cannot be revoked by the environment.
+pub fn register_runner_host() {
+    RUNNER_HOST.store(true, Ordering::Release);
+}
+
+/// Whether this host is a Runner rather than a product app in a dev session.
+pub fn runner_active() -> bool {
+    runner_identity(
+        RUNNER_HOST.load(Ordering::Acquire),
+        std::env::var("LINGXIA_RUNNER").ok().as_deref(),
+    )
+}
+
+fn runner_identity(registered: bool, marker: Option<&str>) -> bool {
+    registered || marker.is_some_and(|value| !value.trim().is_empty())
+}
 
 pub mod service_env;
 pub mod update;
@@ -1363,6 +1383,22 @@ mod browser_chrome_tests {
         let disabled: BrowserChromeConfig = serde_json::from_str(r#"{"bookmarks":false}"#).unwrap();
         assert!(!disabled.bookmarks);
         assert_eq!(serde_json::to_value(disabled).unwrap()["bookmarks"], false);
+    }
+}
+
+#[cfg(test)]
+mod runner_identity_tests {
+    use super::runner_identity;
+
+    #[test]
+    fn native_runner_identity_survives_missing_or_empty_environment() {
+        assert!(runner_identity(true, None));
+        assert!(runner_identity(true, Some("")));
+        assert!(runner_identity(true, Some("  ")));
+        assert!(runner_identity(false, Some("1")));
+        assert!(!runner_identity(false, None));
+        assert!(!runner_identity(false, Some("")));
+        assert!(!runner_identity(false, Some("  ")));
     }
 }
 
