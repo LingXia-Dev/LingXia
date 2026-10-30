@@ -1,7 +1,7 @@
 {
   "appId": "lingxia-showcase-gpu",
   "appName": "LingXia Showcase GPU",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "minRuntime": "0.28.0",
   "pages": [
     {
@@ -118,6 +118,14 @@
       },
       {
         "text": {
+          "default": "View Lab",
+          "zh-CN": "实验室"
+        },
+        "page": "view-lab",
+        "iconPath": "public/tab-lab.svg"
+      },
+      {
+        "text": {
           "default": "ToDo",
           "zh-CN": "待办"
         },
@@ -149,7 +157,7 @@
           "zh-CN": "窗口"
         },
         "page": "surface",
-        "iconPath": "public/tab-home.svg",
+        "iconPath": "public/tab-surface.svg",
         "showOn": [
           "desktop"
         ]
