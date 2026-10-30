@@ -136,15 +136,13 @@ impl SystemFonts {
         let mut by_postscript: std::collections::HashMap<String, parley::fontique::FamilyId> =
             Default::default();
         for path in &self.files {
-            let Some(data) = std::fs::File::open(path)
+            let Some(blob) = std::fs::File::open(path)
                 .ok()
-                // SAFETY: system font files are read-only for the life of the process.
-                .and_then(|file| unsafe { memmap2::Mmap::map(&file) }.ok())
+                .and_then(|file| map_face_file(&file))
             else {
                 log::warn!(target: "lingxia_ui", "UI_FONT: cannot read {}", path.display());
                 continue;
             };
-            let blob = parley::fontique::Blob::new(std::sync::Arc::new(data));
             crate::text::outlines::note_file(blob.id(), path);
             for (id, infos) in collection.register_fonts(blob.clone(), None) {
                 for info in infos {
@@ -227,6 +225,58 @@ fn keys(lang: &str) -> Vec<(Script, Option<Language>)> {
         _ => {}
     }
     keys
+}
+
+/// The tag `hvgl` tables are renamed to: the tag just below `hvgl`, so a sorted table directory
+/// stays sorted for binary search.
+pub(crate) const HIDDEN_HVGL: [u8; 4] = *b"hvgk";
+
+/// Maps a face file for registration. fontique drops every face carrying an `hvgl` table, since
+/// it cannot outline them; our renderer outlines those through the platform, so such a file is
+/// mapped copy-on-write and the table renamed, which copies only the directory's pages.
+fn map_face_file(file: &std::fs::File) -> Option<parley::fontique::Blob<u8>> {
+    // SAFETY: system font files are read-only for the life of the process.
+    let data = unsafe { memmap2::Mmap::map(file) }.ok()?;
+    if hvgl_records(&data).is_empty() {
+        return Some(parley::fontique::Blob::new(std::sync::Arc::new(data)));
+    }
+    drop(data);
+    // SAFETY: as above; the copy-on-write mapping is private, the file is never written.
+    let mut data = unsafe { memmap2::MmapOptions::new().map_copy(file) }.ok()?;
+    hide_hvgl(&mut data);
+    Some(parley::fontique::Blob::new(std::sync::Arc::new(data)))
+}
+
+/// Renames every `hvgl` table record in a font file or collection to [`HIDDEN_HVGL`].
+pub(crate) fn hide_hvgl(data: &mut [u8]) {
+    for record in hvgl_records(data) {
+        data[record..record + 4].copy_from_slice(&HIDDEN_HVGL);
+    }
+}
+
+/// Offsets of the `hvgl` table records in each face's table directory.
+fn hvgl_records(data: &[u8]) -> Vec<usize> {
+    let u16_at = |at: usize| Some(u16::from_be_bytes(data.get(at..at + 2)?.try_into().ok()?));
+    let u32_at = |at: usize| Some(u32::from_be_bytes(data.get(at..at + 4)?.try_into().ok()?));
+    let faces: Vec<usize> = if data.get(..4) == Some(b"ttcf") {
+        let count = u32_at(8).unwrap_or(0) as usize;
+        (0..count)
+            .filter_map(|i| u32_at(12 + 4 * i).map(|offset| offset as usize))
+            .collect()
+    } else {
+        vec![0]
+    };
+    let mut records = Vec::new();
+    for face in faces {
+        let tables = u16_at(face + 4).unwrap_or(0) as usize;
+        for i in 0..tables {
+            let record = face + 12 + 16 * i;
+            if data.get(record..record + 4) == Some(b"hvgl") {
+                records.push(record);
+            }
+        }
+    }
+    records
 }
 
 /// A face's PostScript name, which names one face across platforms and name tables.

@@ -170,6 +170,51 @@ fn a_fallback_face_by_file_shapes_han() {
     assert_eq!(glyphs, 2);
 }
 
+/// Every face of a collection gets its `hvgl` record renamed and nothing else, and the renamed
+/// directory stays sorted.
+#[test]
+fn hide_hvgl_renames_the_record_in_every_face() {
+    fn face(tags: &[&[u8; 4]]) -> Vec<u8> {
+        let mut face = vec![0, 1, 0, 0];
+        face.extend((tags.len() as u16).to_be_bytes());
+        face.extend([0; 6]);
+        for tag in tags {
+            face.extend(*tag);
+            face.extend([0; 12]);
+        }
+        face
+    }
+    let faces = [
+        face(&[b"cmap", b"head", b"hvgl", b"name"]),
+        face(&[b"glyf", b"head"]),
+    ];
+    let mut data = b"ttcf".to_vec();
+    data.extend([0, 1, 0, 0]);
+    data.extend((faces.len() as u32).to_be_bytes());
+    let mut offset = 12 + 4 * faces.len();
+    for face in &faces {
+        data.extend((offset as u32).to_be_bytes());
+        offset += face.len();
+    }
+    for face in &faces {
+        data.extend(face);
+    }
+    let tags = |data: &[u8], at: usize, count: usize| -> Vec<[u8; 4]> {
+        (0..count)
+            .map(|i| data[at + 12 + 16 * i..][..4].try_into().unwrap())
+            .collect()
+    };
+    let before = data.clone();
+    super::hide_hvgl(&mut data);
+    let first = 12 + 4 * faces.len();
+    let renamed = tags(&data, first, 4);
+    assert_eq!(renamed, [*b"cmap", *b"head", super::HIDDEN_HVGL, *b"name"]);
+    assert!(renamed.is_sorted());
+    assert_eq!(tags(&data, first + faces[0].len(), 2), [*b"glyf", *b"head"]);
+    let changed = before.iter().zip(&data).filter(|(a, b)| a != b).count();
+    assert_eq!(changed, 1, "only the tag's last byte differs");
+}
+
 /// A face whose outlines live only in `hvgl` registers by file, shapes Han from its own tables
 /// and draws through the platform's outlines.
 #[test]

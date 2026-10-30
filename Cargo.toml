@@ -148,8 +148,6 @@ rong_timer = "0.6.1"
 rong_url = "0.6.1"
 
 [patch.crates-io]
-# Temporary: fontique with the `hvgl` feature (keep hvgl-outline faces), until upstream takes it.
-fontique = { path = "../fontique" }
 # Temporary: taffy 0.14 with the aspect-ratio max transfer and the capped non-shrinking basis
 # (branch `lingxia-0.14`), until upstream takes them.
 taffy = { path = "../taffy" }

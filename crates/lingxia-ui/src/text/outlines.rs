@@ -79,7 +79,10 @@ fn describe(font: &parley::FontData) -> Face {
             .is_some_and(|f| f.table_data(Tag::new(tag)).is_some())
     };
     Face {
-        external: !has(b"glyf") && !has(b"CFF ") && !has(b"CFF2") && has(b"hvgl"),
+        external: !has(b"glyf")
+            && !has(b"CFF ")
+            && !has(b"CFF2")
+            && (has(b"hvgl") || has(&crate::text::fonts::HIDDEN_HVGL)),
         units_per_em: parsed
             .as_ref()
             .and_then(|f| f.head().ok())
