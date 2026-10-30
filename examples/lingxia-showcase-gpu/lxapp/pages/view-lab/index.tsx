@@ -450,7 +450,7 @@ function Overlays() {
         <spacer className="self-center w-10 h-1 rounded-full bg-line-strong" />
         <text role="heading" headingLevel={3} className="text-base font-semibold">Filters</text>
         <scroll data-testid="lab-sheet-scroll" className="max-h-48">
-          {Array.from({ length: 12 }, (_, i) => <text key={i} className="py-2 text-sm">{`Filter ${i + 1}`}</text>)}
+          {Array.from({ length: 12 }, (_, i) => <text key={`f${i}`} className="py-2 text-sm">{`Filter ${i + 1}`}</text>)}
         </scroll>
         <Button testId="lab-sheet-apply" onClick={() => { act('apply'); sheet.set(false); }}>Apply</Button>
       </dialog>
