@@ -36,7 +36,6 @@ export function prepare(renderPage, view, windows = {}) {
     candidate.tree = resolveNode(renderPage(view), 'root');
     render.site = null;
     if (!candidate.tree || candidate.tree.fragment) throw Error('UI_ROOT: page must return one layout node');
-    finishTopLayer(candidate.tree);
     // Logic-requested feedback (toast, modal, action sheet) draws above the page's own children.
     const env = envOf(view), overlay = overlayNode(env);
     if (overlay) candidate.tree.children.push(decorateOverlay(resolveNode(overlay, `root/${candidate.tree.element}/key:"lx-overlay"`, 1,
@@ -52,6 +51,7 @@ export function prepare(renderPage, view, windows = {}) {
       if (anchor && panel) panel.wire.push(['anchorTo', anchor]);
       candidate.tree.children.push(layer);
     }
+    finishTopLayer(candidate.tree);
     candidate.baseLocals = new Map(candidate.locals);
     return encodeTree(candidate.tree, windows);
   });

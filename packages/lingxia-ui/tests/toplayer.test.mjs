@@ -95,8 +95,8 @@ test('a controlled popover follows open; opening one auto popover closes the oth
   assert.ok(byId(nodes, 'b'));
   assert.ok(byId(nodes, 'a'), 'a manual popover does not close auto ones');
   assert.equal(byId(nodes, 'b-backdrop'), undefined, 'a manual popover has no light dismiss');
-  assert.equal(escapeOverlay(), false, 'the topmost (manual) is not closable');
-  assert.deepEqual(calls, [['a', true], ['b', true]]);
+  assert.equal(escapeOverlay(), true, 'Escape skips the manual popover and closes the auto one');
+  assert.deepEqual(calls, [['a', true], ['b', true], ['a', false]]);
 });
 
 test('popover ids are unique, invokers name one, and past the budget an overlay stays closed', () => {

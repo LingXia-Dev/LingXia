@@ -296,20 +296,20 @@
     return map;
   };
   var aliasesByDirection = { ltr: aliases("ltr"), rtl: aliases("rtl") };
-  function resetLonghands(result, layer4) {
-    for (const name of Object.keys(layer4))
-      for (const longhand of longhands[name] ?? []) if (!(longhand in layer4)) delete result[longhand];
+  function resetLonghands(result, layer2) {
+    for (const name of Object.keys(layer2))
+      for (const longhand of longhands[name] ?? []) if (!(longhand in layer2)) delete result[longhand];
   }
   function mergeStyle(direction, ...layers) {
     const result = {};
     const alias = aliasesByDirection[direction] ?? aliasesByDirection.ltr;
-    for (const layer4 of layers) {
-      if (!layer4) continue;
-      for (const name of Object.keys(layer4)) {
-        for (const longhand of longhands[name] ?? []) if (!(longhand in layer4)) delete result[longhand];
-        for (const other of alias[name] ?? []) if (!(other in layer4)) delete result[other];
+    for (const layer2 of layers) {
+      if (!layer2) continue;
+      for (const name of Object.keys(layer2)) {
+        for (const longhand of longhands[name] ?? []) if (!(longhand in layer2)) delete result[longhand];
+        for (const other of alias[name] ?? []) if (!(other in layer2)) delete result[other];
       }
-      Object.assign(result, layer4);
+      Object.assign(result, layer2);
     }
     return result;
   }
@@ -422,7 +422,7 @@
       throw Error("UI_STYLE_VALUE: maskImage");
     };
     const position = (stop) => stop.offset !== void 0 !== (stop.px !== void 0) && (stop.offset === void 0 || finite(stop.offset) && Math.abs(stop.offset) <= 16) && (stop.px === void 0 || finite(stop.px) && Math.abs(stop.px) <= 16384);
-    if (!Array.isArray(value) || !value.length || value.length > 4 || value.some((layer4) => !layer4 || !["top", "bottom", "left", "right"].includes(layer4.to) || Object.keys(layer4).some((key) => !["to", "stops"].includes(key)) || !Array.isArray(layer4.stops) || layer4.stops.length < 2 || layer4.stops.length > 16 || layer4.stops.some((stop) => !stop || Object.keys(stop).some((key) => !["alpha", "offset", "px"].includes(key)) || !finite(stop.alpha) || stop.alpha < 0 || stop.alpha > 1 || !position(stop)))) invalid2();
+    if (!Array.isArray(value) || !value.length || value.length > 4 || value.some((layer2) => !layer2 || !["top", "bottom", "left", "right"].includes(layer2.to) || Object.keys(layer2).some((key) => !["to", "stops"].includes(key)) || !Array.isArray(layer2.stops) || layer2.stops.length < 2 || layer2.stops.length > 16 || layer2.stops.some((stop) => !stop || Object.keys(stop).some((key) => !["alpha", "offset", "px"].includes(key)) || !finite(stop.alpha) || stop.alpha < 0 || stop.alpha > 1 || !position(stop)))) invalid2();
     return JSON.stringify(value.map(({ to, stops }) => ({ to, stops: stops.map(({ alpha, offset, px }) => offset === void 0 ? { px, alpha } : { offset, alpha }) })));
   }
   function transitionValue(value) {
@@ -749,9 +749,9 @@
       }
     }
     if (shadow.enabled) {
-      style2.boxShadow = (shadow.composite === false ? shadow.fixedLayers ?? [] : shadow.layers ?? []).map(({ useColor, ...layer4 }) => ({
-        ...layer4,
-        color: useColor && shadow.color !== void 0 ? shadow.color : layer4.color
+      style2.boxShadow = (shadow.composite === false ? shadow.fixedLayers ?? [] : shadow.layers ?? []).map(({ useColor, ...layer2 }) => ({
+        ...layer2,
+        color: useColor && shadow.color !== void 0 ? shadow.color : layer2.color
       }));
       if (shadow.composite !== false && shadow.ringWidth > 0)
         style2.boxShadow.unshift({ offsetX: 0, offsetY: 0, blur: 0, spread: shadow.ringWidth, color: shadow.ringColor ?? "currentColor" });
@@ -887,7 +887,7 @@
     if (!closers.has(closedby)) throw Error('UI_PROP: closedby must be "any", "closerequest" or "none"');
     if (!open || !admitted(identity)) return null;
     const close = () => onClose?.();
-    collected().entries.push({ identity, sequence: opened.get(identity), close: closedby === "none" ? null : close });
+    collected().entries.push({ identity, kind: "dialog", sequence: opened.get(identity), close: closedby === "none" ? null : close });
     const env = envOf(render.view);
     const backdrop2 = { ...backdropFade, backgroundColor: "scrim", ...resolveClasses(props.className, env)?.backdrop };
     const testId = props["data-testid"];
@@ -931,7 +931,7 @@
     entry.open = true;
     if (!anchors.has(id)) anchors.set(id, invoker?.id === id ? invoker.identity : null);
     const anchor = anchors.get(id);
-    top.entries.push({ identity, sequence: opened.get(identity), close: kind === "auto" ? () => toggle(id, false) : null });
+    top.entries.push({ identity, kind, sequence: opened.get(identity), close: kind === "auto" ? () => toggle(id, false) : null });
     const env = envOf(render.view);
     const style2 = anchor ? { ...rest.style, position: "absolute", top: 0, left: 0 } : { ...placement(rest, env), ...rest.style };
     const testId = props["data-testid"];
@@ -1007,7 +1007,7 @@
     walk(tree);
   }
   function closeTopmost() {
-    const entries2 = page.committed?.topLayer?.entries ?? [];
+    const entries2 = (page.committed?.topLayer?.entries ?? []).filter((entry) => entry.kind !== "manual");
     const top = [...entries2].sort((a, b) => b.sequence - a.sequence)[0];
     if (!top?.close) return false;
     top.close();
@@ -1078,19 +1078,12 @@
     return true;
   }
   function escapeOverlay() {
-    if (sheets.length) {
-      settleSheet(-1);
-      return true;
-    }
-    if (modals.length) {
-      settleModal(false);
-      return true;
-    }
+    if (closeTopmost()) return true;
     if (toast) {
       toast = null;
       return true;
     }
-    return closeTopmost();
+    return false;
   }
   function takeOverlayTimers() {
     const result = timers;
@@ -1137,8 +1130,8 @@
   };
   var fade = { properties: ["opacity", "transform"], durationMs: ENTER_MS, delayMs: 0, easing: [0.4, 0, 0.2, 1] };
   var toastFade = { properties: ["opacity", "transform"], durationMs: 200, delayMs: 0, easing: [0, 0, 0.58, 1] };
-  var layer2 = { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 1e4 };
-  function toastNode(env) {
+  var fill = { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 };
+  function toastNode() {
     const { title, icon, position, mask } = toast;
     const bare = icon === "none";
     const box = h(
@@ -1170,11 +1163,11 @@
     );
     return h(
       "stack",
-      { style: layer2 },
+      { id: "lx-toast", popover: "manual", open: true, style: { ...fill, marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0 } },
       mask && h("button", { "data-testid": "lx-toast-mask", "aria-hidden": true, onClick() {
-      }, style: { ...layer2, zIndex: 0, backgroundColor: "shadow/30" } }),
+      }, style: { ...fill, zIndex: 0, backgroundColor: "shadow/30" } }),
       h("column", { style: {
-        ...layer2,
+        ...fill,
         zIndex: 1,
         alignItems: "center",
         justifyContent: position === "top" ? "start" : position === "bottom" ? "end" : "center",
@@ -1197,29 +1190,26 @@
       fontWeight: confirm ? 600 : 400
     } }, label2);
     return h(
-      "column",
-      { style: { ...layer2, alignItems: "center", justifyContent: "center", backgroundColor: "scrim", padding: 24 } },
+      "dialog",
+      {
+        "data-testid": "lx-modal",
+        key: `modal-${modal.key}`,
+        open: true,
+        onClose: () => settleModal(false),
+        "aria-label": modal.title || modal.content || "Dialog",
+        style: { width: 320, maxWidth: "86%", borderRadius: 14, backgroundColor: "surface-raised", overflow: "hidden", transition: fade }
+      },
       h(
         "column",
-        {
-          "data-testid": "lx-modal",
-          key: `modal-${modal.key}`,
-          role: "dialog",
-          "aria-label": modal.title || modal.content || "Dialog",
-          style: { width: 320, maxWidth: "100%", borderRadius: 14, backgroundColor: "surface-raised", overflow: "hidden", transition: fade }
-        },
-        h(
-          "column",
-          { style: { padding: 20, gap: 8, alignItems: "center" } },
-          modal.title && h("text", { role: "heading", style: { fontSize: 17, fontWeight: 600, textAlign: "center", color: "text" } }, modal.title),
-          modal.content && h("text", { style: { fontSize: 15, textAlign: "center", color: "text-muted" } }, modal.content)
-        ),
-        h(
-          "row",
-          { style: { borderTopWidth: 1, borderColor: "line" } },
-          modal.showCancel && button("lx-modal-cancel", modal.cancelText, false, "text-muted"),
-          button("lx-modal-confirm", modal.confirmText, true, "accent")
-        )
+        { style: { padding: 20, gap: 8, alignItems: "center" } },
+        modal.title && h("text", { role: "heading", style: { fontSize: 17, fontWeight: 600, textAlign: "center", color: "text" } }, modal.title),
+        modal.content && h("text", { style: { fontSize: 15, textAlign: "center", color: "text-muted" } }, modal.content)
+      ),
+      h(
+        "row",
+        { style: { borderTopWidth: 1, borderColor: "line" } },
+        modal.showCancel && button("lx-modal-cancel", modal.cancelText, false, "text-muted"),
+        button("lx-modal-confirm", modal.confirmText, true, "accent")
       )
     );
   }
@@ -1233,37 +1223,31 @@
       color,
       fontSize: 17
     } }, label2);
+    const place = phone ? { marginTop: "auto", marginBottom: 8, marginLeft: 8, marginRight: 8 } : { width: 320 };
     return h(
-      "stack",
-      { style: layer2 },
-      h("button", { "data-testid": "lx-action-sheet-backdrop", "aria-hidden": true, onClick: () => settleSheet(-1), style: { ...layer2, zIndex: 0, backgroundColor: "scrim" } }),
+      "dialog",
+      {
+        "data-testid": "lx-action-sheet",
+        key: `sheet-${sheet.key}`,
+        open: true,
+        closedby: "any",
+        onClose: () => settleSheet(-1),
+        "aria-label": "Actions",
+        style: { ...place, gap: 8, transition: fade }
+      },
       h(
         "column",
-        { style: { ...layer2, zIndex: 1, alignItems: "center", justifyContent: phone ? "end" : "center", padding: phone ? 8 : 24 } },
-        h(
+        { style: { borderRadius: 14, backgroundColor: "surface-raised", overflow: "hidden" } },
+        ...sheet.items.map((label2, index) => h(
           "column",
-          {
-            "data-testid": "lx-action-sheet",
-            key: `sheet-${sheet.key}`,
-            role: "dialog",
-            "aria-label": "Actions",
-            style: { width: phone ? "100%" : 320, gap: 8, transition: fade }
-          },
-          h(
-            "column",
-            { style: { borderRadius: 14, backgroundColor: "surface-raised", overflow: "hidden" } },
-            ...sheet.items.map((label2, index) => h(
-              "column",
-              { key: `item-${index}`, style: index ? { borderTopWidth: 1, borderColor: "line" } : {} },
-              item(`lx-action-sheet-item-${index}`, label2, index, "accent")
-            ))
-          ),
-          h(
-            "column",
-            { style: { borderRadius: 14, backgroundColor: "surface-raised", overflow: "hidden" } },
-            item("lx-action-sheet-cancel", sheet.cancelText, -1, "text")
-          )
-        )
+          { key: `item-${index}`, style: index ? { borderTopWidth: 1, borderColor: "line" } : {} },
+          item(`lx-action-sheet-item-${index}`, label2, index, "accent")
+        ))
+      ),
+      h(
+        "column",
+        { style: { borderRadius: 14, backgroundColor: "surface-raised", overflow: "hidden" } },
+        item("lx-action-sheet-cancel", sheet.cancelText, -1, "text")
       )
     );
   }
@@ -1271,10 +1255,10 @@
     if (!hasOverlay()) return null;
     return h(
       "stack",
-      { key: "lx-overlay", style: layer2 },
+      { key: "lx-overlay", style: { position: "absolute", top: 0, left: 0, width: 0, height: 0 } },
       sheets.length > 0 && sheetNode(env),
       modals.length > 0 && modalNode(),
-      toast && toastNode(env)
+      toast && toastNode()
     );
   }
   function decorateOverlay(node, env) {
@@ -2997,6 +2981,7 @@
   function semantics(tag, props, wire) {
     const { role, headingLevel, accessibilityHidden, accessibilityLiveRegion } = props;
     if (role !== void 0) {
+      if (role === "dialog") throw Error('UI_PROP: role="dialog" is the <dialog> element');
       if (!fieldOptions.role.includes(role)) throw Error(`UI_PROP: role must be one of ${fieldOptions.role.join(", ")}`);
       wire("role", role);
     }
@@ -3623,7 +3608,6 @@
     else picker.value = { ...picker.value, minute: minutes[index] };
     return true;
   }
-  var layer3 = { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 };
   function dateBody(words, env) {
     const { focus, value, min, max } = picker;
     const first = env?.firstWeekday ?? 1, now = today();
@@ -3834,39 +3818,36 @@
       }, words.done)
     );
     const name = picker.kind === "date" ? words.title(words.months[picker.focus.month - 1], picker.focus.year) : picker.kind === "time" ? words.hour : picker.label || "Options";
-    const panel = h(
-      "column",
-      {
-        "data-testid": "lx-picker",
-        key: `picker-${picker.key}`,
-        role: "dialog",
-        "aria-label": name,
-        style: {
-          padding: 12,
-          gap: 12,
-          borderRadius: 14,
-          backgroundColor: "surface-raised",
-          borderWidth: touch ? 0 : 1,
-          borderColor: "line",
-          boxShadow: [{ offsetX: 0, offsetY: 8, blur: 24, spread: 0, color: "shadow/20" }],
-          // A popover is its content's size; native moves it against its editor.
-          ...touch ? { width: "100%" } : { position: "absolute", top: 0, left: 0 }
-        }
+    const panel = {
+      "data-testid": "lx-picker",
+      key: `picker-${picker.key}`,
+      "aria-label": name,
+      style: {
+        padding: 12,
+        gap: 12,
+        borderRadius: 14,
+        backgroundColor: "surface-raised",
+        borderWidth: touch ? 0 : 1,
+        borderColor: "line",
+        boxShadow: [{ offsetX: 0, offsetY: 8, blur: 24, spread: 0, color: "shadow/20" }]
+      }
+    };
+    return touch ? h("dialog", {
+      ...panel,
+      open: true,
+      closedby: "any",
+      onClose: () => settle(null),
+      style: { ...panel.style, marginTop: "auto", marginBottom: 8, marginLeft: 8, marginRight: 8 }
+    }, body, footer) : h("view", {
+      ...panel,
+      id: "lx-picker",
+      popover: "auto",
+      open: true,
+      onToggle: (open) => {
+        if (!open) settle(null);
       },
-      body,
-      footer
-    );
-    return h(
-      "stack",
-      { key: "lx-picker-layer", style: { ...layer3, zIndex: 1e4 } },
-      h("button", {
-        "data-testid": "lx-picker-backdrop",
-        "aria-hidden": true,
-        onClick: () => settle(null),
-        style: { ...layer3, backgroundColor: touch ? "scrim" : "transparent" }
-      }),
-      touch ? h("column", { style: { ...layer3, justifyContent: "end", padding: 8 } }, panel) : panel
-    );
+      style: { ...panel.style, position: "absolute", top: 0, left: 0 }
+    }, body, footer);
   }
   function resetPicker() {
     picker = null;
@@ -3905,7 +3886,6 @@
       candidate.tree = resolveNode(renderPage(view), "root");
       render.site = null;
       if (!candidate.tree || candidate.tree.fragment) throw Error("UI_ROOT: page must return one layout node");
-      finishTopLayer(candidate.tree);
       const env = envOf(view), overlay = overlayNode(env);
       if (overlay) candidate.tree.children.push(decorateOverlay(resolveNode(
         overlay,
@@ -3915,17 +3895,18 @@
       ), env));
       const picker2 = pickerNode(env);
       if (picker2) {
-        const layer4 = resolveNode(
+        const layer2 = resolveNode(
           picker2,
           `root/${candidate.tree.element}/key:"lx-picker-layer"`,
           1,
           { tag: candidate.tree.element, typography: candidate.tree.typography }
         );
         const anchor = pickerAnchor(env);
-        const panel = layer4.children.find((child) => child.props?.testId === "lx-picker");
+        const panel = layer2.children.find((child) => child.props?.testId === "lx-picker");
         if (anchor && panel) panel.wire.push(["anchorTo", anchor]);
-        candidate.tree.children.push(layer4);
+        candidate.tree.children.push(layer2);
       }
+      finishTopLayer(candidate.tree);
       candidate.baseLocals = new Map(candidate.locals);
       return encodeTree(candidate.tree, windows);
     });

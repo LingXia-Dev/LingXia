@@ -34,7 +34,7 @@ fn semantic(frame: &PresentedFrame, test_id: &str) -> Option<SemanticNode> {
 #[test]
 fn authored_roles_project_with_levels_positions_and_names() {
     let frame = frame(
-        "h('column',{},h('text',{'data-testid':'h',role:'heading',headingLevel:3},'Plans'),h('text',{'data-testid':'h2',role:'heading'},'Default'),h('column',{'data-testid':'list',role:'list','aria-label':'Bills'},h('row',{'data-testid':'a',role:'listitem'},h('text',{},'Water')),h('row',{'data-testid':'b',role:'listitem'},h('text',{},'Power'))),h('column',{'data-testid':'d',role:'dialog','aria-label':'Confirm'},h('button',{'data-testid':'ok',role:'heading',onClick(){}},'OK')))",
+        "h('column',{},h('text',{'data-testid':'h',role:'heading',headingLevel:3},'Plans'),h('text',{'data-testid':'h2',role:'heading'},'Default'),h('column',{'data-testid':'list',role:'list','aria-label':'Bills'},h('row',{'data-testid':'a',role:'listitem'},h('text',{},'Water')),h('row',{'data-testid':'b',role:'listitem'},h('text',{},'Power'))),h('column',{'data-testid':'d',role:'menu','aria-label':'Confirm'},h('button',{'data-testid':'ok',role:'heading',onClick(){}},'OK')))",
     );
     let heading = semantic(&frame, "h").unwrap();
     assert_eq!(
@@ -49,11 +49,8 @@ fn authored_roles_project_with_levels_positions_and_names() {
     );
     assert_eq!(semantic(&frame, "b").unwrap().position, Some((1, 1)));
     assert_eq!(semantic(&frame, "b").unwrap().role, Role::ListItem);
-    let dialog = semantic(&frame, "d").unwrap();
-    assert_eq!(
-        (dialog.role, dialog.name.as_str()),
-        (Role::Dialog, "Confirm")
-    );
+    let menu = semantic(&frame, "d").unwrap();
+    assert_eq!((menu.role, menu.name.as_str()), (Role::Menu, "Confirm"));
     // Controls keep their own role.
     assert_eq!(semantic(&frame, "ok").unwrap().role, Role::Button);
 }

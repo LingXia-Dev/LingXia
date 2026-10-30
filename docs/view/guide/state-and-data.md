@@ -145,15 +145,13 @@ export function render() {
     <page className="p-4 gap-3">
       <textarea bind={draft} aria-label="Draft" />
       <button onClick={() => saved.set(draft.value)} className="rounded-lg bg-accent px-4 py-2 text-on-accent">Save</button>
-      {guard.pending && (
-        <column role="dialog" aria-label="Discard changes?" className="gap-2 p-4 rounded-xl bg-surface-sunken">
-          <text>Discard your changes?</text>
-          <row className="gap-2">
-            <button onClick={() => guard.answer(false)} className="rounded-lg bg-surface-sunken px-4 py-2 text-text">Keep editing</button>
-            <button onClick={() => guard.answer(true)} className="rounded-lg bg-accent px-4 py-2 text-on-accent">Discard</button>
-          </row>
-        </column>
-      )}
+      <dialog open={guard.pending !== null} onClose={() => guard.answer(false)} aria-label="Discard changes?" className="gap-2 p-4 rounded-xl bg-surface-raised">
+        <text>Discard your changes?</text>
+        <row className="gap-2">
+          <button onClick={() => guard.answer(false)} className="rounded-lg bg-surface-sunken px-4 py-2 text-text">Keep editing</button>
+          <button onClick={() => guard.answer(true)} className="rounded-lg bg-accent px-4 py-2 text-on-accent">Discard</button>
+        </row>
+      </dialog>
     </page>
   );
 }

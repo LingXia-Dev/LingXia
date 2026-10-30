@@ -16,7 +16,7 @@ export declare function childrenToArray(children: Child): readonly Exclude<Child
 export interface Props {
   style?: Style; className?: string; key?: string; "data-testid"?: string; dir?: "ltr" | "rtl" | "auto"; children?: Child;
   /** Semantic role; controls keep their own. Headings take `headingLevel` 1..6. */
-  role?: "heading" | "list" | "listitem" | "dialog" | "alert" | "status" | "menu" | "menuitem"; headingLevel?: 1 | 2 | 3 | 4 | 5 | 6;
+  role?: "heading" | "list" | "listitem" | "alert" | "status" | "menu" | "menuitem"; headingLevel?: 1 | 2 | 3 | 4 | 5 | 6;
   /** Removes the node and its subtree from accessibility. */
   "aria-hidden"?: boolean;
   /** Announce changes; `alert` is assertive and `status` polite unless set. */

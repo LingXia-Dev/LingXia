@@ -26,7 +26,7 @@ fn page(render: &str) -> crate::ViewSession {
     crate::ViewSession::new(&source).unwrap()
 }
 
-const TREE: &str = "h('column',{},h('text',{'data-testid':'title',role:'heading'},'Bills'),h('column',{'data-testid':'list',role:'list'},h('column',{'data-testid':'a',role:'listitem'},h('row',{},h('text',{'data-testid':'a-text'},'Water'))),h('column',{'data-testid':'b',role:'listitem'},h('text',{},'Power')),h('column',{'data-testid':'c',role:'listitem'},h('text',{},'Gas'))),h('column',{'data-testid':'dialog',role:'dialog','aria-label':'Confirm'},h('row',{},h('text',{'data-testid':'body'},'Pay all?'),h('button',{'data-testid':'ok',onClick(){}},'OK'))),h('scroll',{'data-testid':'feed',style:{height:80}},h('text',{'data-testid':'f1'},'one'),h('text',{},'two')))";
+const TREE: &str = "h('column',{},h('text',{'data-testid':'title',role:'heading'},'Bills'),h('column',{'data-testid':'list',role:'list'},h('column',{'data-testid':'a',role:'listitem'},h('row',{},h('text',{'data-testid':'a-text'},'Water'))),h('column',{'data-testid':'b',role:'listitem'},h('text',{},'Power')),h('column',{'data-testid':'c',role:'listitem'},h('text',{},'Gas'))),h('column',{'data-testid':'dialog',role:'menu','aria-label':'Confirm'},h('row',{},h('text',{'data-testid':'body'},'Pay all?'),h('button',{'data-testid':'ok',onClick(){}},'OK'))),h('scroll',{'data-testid':'feed',style:{height:80}},h('text',{'data-testid':'f1'},'one'),h('text',{},'two')))";
 
 #[test]
 fn containers_with_a_role_hold_their_descendants_and_wrappers_collapse() {

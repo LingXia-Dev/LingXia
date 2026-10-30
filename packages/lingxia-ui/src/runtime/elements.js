@@ -483,6 +483,7 @@ function structure(sibling, flat) {
 function semantics(tag, props, wire) {
   const { role, headingLevel, accessibilityHidden, accessibilityLiveRegion } = props;
   if (role !== undefined) {
+    if (role === 'dialog') throw Error('UI_PROP: role="dialog" is the <dialog> element');
     if (!fieldOptions.role.includes(role)) throw Error(`UI_PROP: role must be one of ${fieldOptions.role.join(', ')}`);
     wire('role', role);
   }

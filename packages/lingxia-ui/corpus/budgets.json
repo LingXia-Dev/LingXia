@@ -307,12 +307,12 @@
   "layers": 1,
   "nodes": 105,
   "outlineGlyphs": 0,
-  "paints": 160,
+  "paints": 158,
   "shadows": 0,
   "vectorElements": 589,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 2020
+  "wireValues": 2010
  },
  "corpus/h-home.open@phone-light": {
   "backdrops": 0,
@@ -322,12 +322,12 @@
   "layers": 1,
   "nodes": 105,
   "outlineGlyphs": 0,
-  "paints": 176,
+  "paints": 174,
   "shadows": 16,
   "vectorElements": 589,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 2020
+  "wireValues": 2010
  },
  "corpus/h-home.open@tablet-dark": {
   "backdrops": 0,
@@ -337,12 +337,12 @@
   "layers": 1,
   "nodes": 105,
   "outlineGlyphs": 0,
-  "paints": 172,
+  "paints": 170,
   "shadows": 0,
   "vectorElements": 663,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 2020
+  "wireValues": 2010
  },
  "corpus/h-home.open@tablet-light": {
   "backdrops": 0,
@@ -352,44 +352,14 @@
   "layers": 1,
   "nodes": 105,
   "outlineGlyphs": 0,
-  "paints": 188,
+  "paints": 186,
   "shadows": 16,
   "vectorElements": 663,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 2020
+  "wireValues": 2010
  },
  "corpus/h-home@phone-dark": {
-  "backdrops": 0,
-  "glyphs": 400,
-  "imagePixels": 0,
-  "images": 0,
-  "layers": 1,
-  "nodes": 82,
-  "outlineGlyphs": 0,
-  "paints": 100,
-  "shadows": 0,
-  "vectorElements": 589,
-  "layoutPasses": 1,
-  "viewPasses": 1,
-  "wireValues": 1670
- },
- "corpus/h-home@phone-light": {
-  "backdrops": 0,
-  "glyphs": 400,
-  "imagePixels": 0,
-  "images": 0,
-  "layers": 1,
-  "nodes": 82,
-  "outlineGlyphs": 0,
-  "paints": 118,
-  "shadows": 18,
-  "vectorElements": 589,
-  "layoutPasses": 1,
-  "viewPasses": 1,
-  "wireValues": 1670
- },
- "corpus/h-home@tablet-dark": {
   "backdrops": 0,
   "glyphs": 400,
   "imagePixels": 0,
@@ -402,9 +372,9 @@
   "vectorElements": 589,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1670
+  "wireValues": 1660
  },
- "corpus/h-home@tablet-light": {
+ "corpus/h-home@phone-light": {
   "backdrops": 0,
   "glyphs": 400,
   "imagePixels": 0,
@@ -417,7 +387,37 @@
   "vectorElements": 589,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1670
+  "wireValues": 1660
+ },
+ "corpus/h-home@tablet-dark": {
+  "backdrops": 0,
+  "glyphs": 400,
+  "imagePixels": 0,
+  "images": 0,
+  "layers": 1,
+  "nodes": 82,
+  "outlineGlyphs": 0,
+  "paints": 98,
+  "shadows": 0,
+  "vectorElements": 589,
+  "layoutPasses": 1,
+  "viewPasses": 1,
+  "wireValues": 1660
+ },
+ "corpus/h-home@tablet-light": {
+  "backdrops": 0,
+  "glyphs": 400,
+  "imagePixels": 0,
+  "images": 0,
+  "layers": 1,
+  "nodes": 82,
+  "outlineGlyphs": 0,
+  "paints": 116,
+  "shadows": 18,
+  "vectorElements": 589,
+  "layoutPasses": 1,
+  "viewPasses": 1,
+  "wireValues": 1660
  },
  "corpus/h-speedtest.result@phone-dark": {
   "backdrops": 0,
@@ -547,12 +547,12 @@
   "layers": 7,
   "nodes": 62,
   "outlineGlyphs": 0,
-  "paints": 155,
+  "paints": 152,
   "shadows": 2,
   "vectorElements": 424,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1310
+  "wireValues": 1300
  },
  "corpus/h-speedtest@phone-light": {
   "backdrops": 0,
@@ -562,12 +562,12 @@
   "layers": 7,
   "nodes": 62,
   "outlineGlyphs": 0,
-  "paints": 159,
+  "paints": 156,
   "shadows": 6,
   "vectorElements": 424,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1310
+  "wireValues": 1300
  },
  "corpus/h-speedtest@tablet-dark": {
   "backdrops": 0,
@@ -577,12 +577,12 @@
   "layers": 7,
   "nodes": 62,
   "outlineGlyphs": 0,
-  "paints": 155,
+  "paints": 152,
   "shadows": 2,
   "vectorElements": 424,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1310
+  "wireValues": 1300
  },
  "corpus/h-speedtest@tablet-light": {
   "backdrops": 0,
@@ -592,12 +592,12 @@
   "layers": 7,
   "nodes": 62,
   "outlineGlyphs": 0,
-  "paints": 159,
+  "paints": 156,
   "shadows": 6,
   "vectorElements": 424,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1310
+  "wireValues": 1300
  },
  "corpus/home@phone-dark": {
   "backdrops": 1,
@@ -792,7 +792,7 @@
   "vectorElements": 25,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 2688
+  "wireValues": 2696
  },
  "corpus/pickers.date-popover@phone-light": {
   "backdrops": 0,
@@ -807,7 +807,7 @@
   "vectorElements": 25,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 2688
+  "wireValues": 2696
  },
  "corpus/pickers.date-popover@tablet-dark": {
   "backdrops": 0,
@@ -822,7 +822,7 @@
   "vectorElements": 25,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 2688
+  "wireValues": 2696
  },
  "corpus/pickers.date-popover@tablet-light": {
   "backdrops": 0,
@@ -837,7 +837,7 @@
   "vectorElements": 25,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 2688
+  "wireValues": 2696
  },
  "corpus/pickers.date-sheet@phone-dark": {
   "backdrops": 0,
@@ -845,14 +845,14 @@
   "imagePixels": 0,
   "images": 0,
   "layers": 4,
-  "nodes": 78,
+  "nodes": 77,
   "outlineGlyphs": 0,
   "paints": 122,
   "shadows": 1,
   "vectorElements": 25,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 2782
+  "wireValues": 2768
  },
  "corpus/pickers.date-sheet@phone-light": {
   "backdrops": 0,
@@ -860,14 +860,14 @@
   "imagePixels": 0,
   "images": 0,
   "layers": 4,
-  "nodes": 78,
+  "nodes": 77,
   "outlineGlyphs": 0,
   "paints": 122,
   "shadows": 1,
   "vectorElements": 25,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 2782
+  "wireValues": 2768
  },
  "corpus/pickers.date-sheet@tablet-dark": {
   "backdrops": 0,
@@ -875,14 +875,14 @@
   "imagePixels": 0,
   "images": 0,
   "layers": 4,
-  "nodes": 78,
+  "nodes": 77,
   "outlineGlyphs": 0,
   "paints": 122,
   "shadows": 1,
   "vectorElements": 25,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 2782
+  "wireValues": 2768
  },
  "corpus/pickers.date-sheet@tablet-light": {
   "backdrops": 0,
@@ -890,14 +890,14 @@
   "imagePixels": 0,
   "images": 0,
   "layers": 4,
-  "nodes": 78,
+  "nodes": 77,
   "outlineGlyphs": 0,
   "paints": 122,
   "shadows": 1,
   "vectorElements": 25,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 2782
+  "wireValues": 2768
  },
  "corpus/pickers.select-popover@phone-dark": {
   "backdrops": 0,
@@ -912,7 +912,7 @@
   "vectorElements": 15,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 494
+  "wireValues": 502
  },
  "corpus/pickers.select-popover@phone-light": {
   "backdrops": 0,
@@ -927,7 +927,7 @@
   "vectorElements": 15,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 494
+  "wireValues": 502
  },
  "corpus/pickers.select-popover@tablet-dark": {
   "backdrops": 0,
@@ -942,7 +942,7 @@
   "vectorElements": 15,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 494
+  "wireValues": 502
  },
  "corpus/pickers.select-popover@tablet-light": {
   "backdrops": 0,
@@ -957,7 +957,7 @@
   "vectorElements": 15,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 494
+  "wireValues": 502
  },
  "corpus/pickers.time-sheet@phone-dark": {
   "backdrops": 0,
@@ -965,14 +965,14 @@
   "imagePixels": 0,
   "images": 0,
   "layers": 7,
-  "nodes": 79,
+  "nodes": 78,
   "outlineGlyphs": 0,
   "paints": 57,
   "shadows": 1,
   "vectorElements": 3,
   "layoutPasses": 4,
   "viewPasses": 4,
-  "wireValues": 6308
+  "wireValues": 6252
  },
  "corpus/pickers.time-sheet@phone-light": {
   "backdrops": 0,
@@ -980,14 +980,14 @@
   "imagePixels": 0,
   "images": 0,
   "layers": 7,
-  "nodes": 79,
+  "nodes": 78,
   "outlineGlyphs": 0,
   "paints": 57,
   "shadows": 1,
   "vectorElements": 3,
   "layoutPasses": 4,
   "viewPasses": 4,
-  "wireValues": 6308
+  "wireValues": 6252
  },
  "corpus/pickers.time-sheet@tablet-dark": {
   "backdrops": 0,
@@ -995,14 +995,14 @@
   "imagePixels": 0,
   "images": 0,
   "layers": 7,
-  "nodes": 79,
+  "nodes": 78,
   "outlineGlyphs": 0,
   "paints": 57,
   "shadows": 1,
   "vectorElements": 3,
   "layoutPasses": 4,
   "viewPasses": 4,
-  "wireValues": 6308
+  "wireValues": 6252
  },
  "corpus/pickers.time-sheet@tablet-light": {
   "backdrops": 0,
@@ -1010,14 +1010,14 @@
   "imagePixels": 0,
   "images": 0,
   "layers": 7,
-  "nodes": 79,
+  "nodes": 78,
   "outlineGlyphs": 0,
   "paints": 57,
   "shadows": 1,
   "vectorElements": 3,
   "layoutPasses": 4,
   "viewPasses": 4,
-  "wireValues": 6308
+  "wireValues": 6252
  },
  "corpus/rtl@phone-dark": {
   "backdrops": 0,
@@ -1087,7 +1087,7 @@
   "layers": 1,
   "nodes": 28,
   "outlineGlyphs": 0,
-  "paints": 56,
+  "paints": 54,
   "shadows": 8,
   "vectorElements": 0,
   "layoutPasses": 1,
@@ -1102,7 +1102,7 @@
   "layers": 1,
   "nodes": 28,
   "outlineGlyphs": 0,
-  "paints": 56,
+  "paints": 54,
   "shadows": 8,
   "vectorElements": 0,
   "layoutPasses": 1,
@@ -1117,7 +1117,7 @@
   "layers": 1,
   "nodes": 28,
   "outlineGlyphs": 0,
-  "paints": 56,
+  "paints": 54,
   "shadows": 8,
   "vectorElements": 0,
   "layoutPasses": 1,
@@ -1132,7 +1132,7 @@
   "layers": 1,
   "nodes": 28,
   "outlineGlyphs": 0,
-  "paints": 56,
+  "paints": 54,
   "shadows": 8,
   "vectorElements": 0,
   "layoutPasses": 1,
@@ -2461,63 +2461,63 @@
  },
  "showcase-gpu/view-lab@phone-dark": {
   "backdrops": 0,
-  "glyphs": 119,
+  "glyphs": 126,
   "imagePixels": 0,
   "images": 0,
   "layers": 7,
-  "nodes": 78,
+  "nodes": 79,
   "outlineGlyphs": 0,
-  "paints": 80,
+  "paints": 82,
   "shadows": 2,
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1586
+  "wireValues": 1632
  },
  "showcase-gpu/view-lab@phone-light": {
   "backdrops": 0,
-  "glyphs": 119,
+  "glyphs": 126,
   "imagePixels": 0,
   "images": 0,
   "layers": 7,
-  "nodes": 78,
+  "nodes": 79,
   "outlineGlyphs": 0,
-  "paints": 80,
+  "paints": 82,
   "shadows": 2,
   "vectorElements": 0,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1586
+  "wireValues": 1632
  },
  "showcase-gpu/view-lab@tablet-dark": {
   "backdrops": 0,
-  "glyphs": 143,
+  "glyphs": 150,
   "imagePixels": 0,
   "images": 0,
   "layers": 7,
-  "nodes": 78,
+  "nodes": 79,
   "outlineGlyphs": 0,
-  "paints": 125,
+  "paints": 127,
   "shadows": 5,
   "vectorElements": 141,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1586
+  "wireValues": 1632
  },
  "showcase-gpu/view-lab@tablet-light": {
   "backdrops": 0,
-  "glyphs": 143,
+  "glyphs": 150,
   "imagePixels": 0,
   "images": 0,
   "layers": 7,
-  "nodes": 78,
+  "nodes": 79,
   "outlineGlyphs": 0,
-  "paints": 125,
+  "paints": 127,
   "shadows": 5,
   "vectorElements": 141,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 1586
+  "wireValues": 1632
  },
  "showcase-gpu/wifi@phone-dark": {
   "backdrops": 0,

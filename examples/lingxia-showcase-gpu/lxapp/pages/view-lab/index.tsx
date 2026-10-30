@@ -300,15 +300,13 @@ function Focus() {
         <Button testId="lab-focus-open" onClick={() => open.set(true)}>Open dialog</Button>
         <text data-testid="lab-focus-choice" className="text-sm">{`chosen: ${choice.value}`}</text>
       </row>
-      {open.value ? (
-        <column data-testid="lab-focus-dialog" role="dialog" aria-label="Confirm payment" className="gap-3 p-4 rounded-xl border border-line bg-surface">
-          <text role="heading" headingLevel={3} className="text-sm font-semibold">Confirm payment</text>
-          <row className="gap-2">
-            <Button testId="lab-focus-confirm" onClick={() => close('confirm')}>Confirm</Button>
-            <Button testId="lab-focus-cancel" variant="secondary" onClick={() => close('cancel')}>Cancel</Button>
-          </row>
-        </column>
-      ) : null}
+      <dialog open={open.value} onClose={() => close('escape')} data-testid="lab-focus-dialog" aria-label="Confirm payment" className="w-72 gap-3 p-4 rounded-xl border border-line bg-surface">
+        <text role="heading" headingLevel={3} className="text-sm font-semibold">Confirm payment</text>
+        <row className="gap-2">
+          <Button testId="lab-focus-confirm" onClick={() => close('confirm')}>Confirm</Button>
+          <Button testId="lab-focus-cancel" variant="secondary" onClick={() => close('cancel')}>Cancel</Button>
+        </row>
+      </dialog>
     </Section>
   );
 }

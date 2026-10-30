@@ -59,14 +59,14 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - Rich text: `<text>Read <span className="font-bold">this</span> or <link onClick={go}>that</link></text>`;
   runs take text paint only; links are accent + underline by default. `select-text` lets users
   long-press to select the nearest word and copy; there a long-press on a link selects, elsewhere it presses.
-- Semantics: `role="heading" headingLevel={2}`, `list`/`listitem`, `dialog`, `alert`/`status`
+- Semantics: `role="heading" headingLevel={2}`, `list`/`listitem`, `menu`/`menuitem`, `alert`/`status`
   (announced), `aria-hidden` for decoration. A layout element with a role, or a scroll,
   groups its content for screen readers ("item 2 of 3"); plain wrappers collapse.
   `aria-pressed`, `aria-selected`, `aria-expanded`, `aria-busy` announce states (e.g. `aria-busy={req.status === 'loading'}`).
 - `<dialog open onClose closedby aria-label>` is modal, above the page (`backdrop:` styles its scrim;
   `mt-auto mb-0 w-full` makes a sheet). `<view id popover>` + `<button popoverTarget>` is a light-dismiss
   popover anchored to its invoker (`positionArea`, `open`/`onToggle`); `role="menu"` + `<button role="menuitem">` closes on click.
-- Keyboard: Tab and arrows follow reading order (no `tabIndex`); a visible `role="dialog"` keeps focus inside
+- Keyboard: Tab and arrows follow reading order (no `tabIndex`); an open `<dialog>` keeps focus inside
   and returns it on close; the focus ring shows only after keyboard input.
 - Inputs take `type` (`password`, `email`, `number`, `tel`, `search`, `date`, `time`), `inputMode`, `maxLength`, `autoComplete`, `enterKeyHint` (on a textarea, `send`/`go`/`done`/`search` makes Return submit), `autoCapitalize`, `spellCheck`;
   `type="number"` with `min`/`max`/`step` clamps on blur/submit; `type="date|time"` opens the

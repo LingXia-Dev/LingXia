@@ -13,7 +13,7 @@ Styles each element accepts are in [styles.md](styles.md).
 | `key` | `string` |  |
 | `"data-testid"` | `string` |  |
 | `dir` | `"ltr" \| "rtl" \| "auto"` |  |
-| `role` | `"heading" \| "list" \| "listitem" \| "dialog" \| "alert" \| "status" \| "menu" \| "menuitem"` | Semantic role; controls keep their own. Headings take `headingLevel` 1..6. |
+| `role` | `"heading" \| "list" \| "listitem" \| "alert" \| "status" \| "menu" \| "menuitem"` | Semantic role; controls keep their own. Headings take `headingLevel` 1..6. |
 | `headingLevel` | `1 \| 2 \| 3 \| 4 \| 5 \| 6` |  |
 | `"aria-hidden"` | `boolean` | Removes the node and its subtree from accessibility. |
 | `"aria-live"` | `"off" \| "polite" \| "assertive"` | Announce changes; `alert` is assertive and `status` polite unless set. |

@@ -84,7 +84,7 @@ function dialog(props, children, identity, parent) {
   if (!closers.has(closedby)) throw Error('UI_PROP: closedby must be "any", "closerequest" or "none"');
   if (!open || !admitted(identity)) return null;
   const close = () => onClose?.();
-  collected().entries.push({ identity, sequence: opened.get(identity), close: closedby === 'none' ? null : close });
+  collected().entries.push({ identity, kind: 'dialog', sequence: opened.get(identity), close: closedby === 'none' ? null : close });
   const env = envOf(render.view);
   const backdrop = { ...backdropFade, backgroundColor: 'scrim', ...resolveClasses(props.className, env)?.backdrop };
   const testId = props['data-testid'];
@@ -116,7 +116,7 @@ function popover(tag, props, children, identity, parent) {
   // The invoker that opened it anchors it; one opened from code is placed by its classes.
   if (!anchors.has(id)) anchors.set(id, invoker?.id === id ? invoker.identity : null);
   const anchor = anchors.get(id);
-  top.entries.push({ identity, sequence: opened.get(identity), close: kind === 'auto' ? () => toggle(id, false) : null });
+  top.entries.push({ identity, kind, sequence: opened.get(identity), close: kind === 'auto' ? () => toggle(id, false) : null });
   const env = envOf(render.view);
   const style = anchor ? { ...rest.style, position: 'absolute', top: 0, left: 0 } : { ...placement(rest, env), ...rest.style };
   const testId = props['data-testid'];
@@ -191,7 +191,8 @@ export function finishTopLayer(tree) {
 
 /** Escape, Android back and the screen reader's dismiss close the topmost closable overlay. */
 export function closeTopmost() {
-  const entries = page.committed?.topLayer?.entries ?? [];
+  // Manual popovers take no close request; a dialog that refuses one shields those below it.
+  const entries = (page.committed?.topLayer?.entries ?? []).filter(entry => entry.kind !== 'manual');
   const top = [...entries].sort((a, b) => b.sequence - a.sequence)[0];
   if (!top?.close) return false;
   top.close();

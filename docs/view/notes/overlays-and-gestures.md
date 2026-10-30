@@ -29,7 +29,7 @@ Two primitives, spelled as HTML spells them. A sheet and a menu are not primitiv
 - A tap outside a `popover="auto"` closes it and is swallowed, on every platform: a mouse click on macOS too, so no button fires under a closing menu. The web lets it through. The picker already behaves this way.
 - A `role="menuitem"` closes its popover after `onClick`. The web has no shipped menu element; this is what the ARIA menu pattern prescribes, and otherwise every item repeats a close.
 - `onToggle` takes a boolean, not the `toggle` event's `newState: "open"|"closed"`, matching `<Details>`.
-- `role="dialog"` leaves the author's role list (`UI_ROLE` names `<dialog>`). `role="menu"` and `menuitem` are added.
+- `role="dialog"` leaves the author's role list (`UI_PROP` names `<dialog>`). `role="menu"` and `menuitem` are added.
 
 **Top layer.** An open dialog or popover lays out against the page's whole box, as an `absolute` child of `<page>` does (under the bars; `<page>`'s safe-area padding is not applied, so a sheet's background reaches the screen edge and the scrim covers everything), and paints above all page content in open order, ignoring ancestor clips and transforms. Its bottom edge rises with the keyboard, so a sheet holding an editor stays in view. This is native, not a JS hoist: `layout_parents` already sends `fixed` to the root; a top-layer flag does the same and `RetainedScene` appends those nodes to paint order. The tree stays intact, so identity, inherited typography and `<List>` rows work. A popover whose row is evicted, or whose anchor is gone, closes (`onToggle(false)`). Closed content does not exist, as in `<Details>`: `useLocal` inside it resets unless named above it.
 

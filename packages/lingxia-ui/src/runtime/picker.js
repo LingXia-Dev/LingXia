@@ -125,8 +125,6 @@ export function pickerKey(key, rtl = false) {
   return true;
 }
 
-const layer = { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 };
-
 function dateBody(words, env) {
   const { focus, value, min, max } = picker;
   const first = env?.firstWeekday ?? 1, now = today();
@@ -235,16 +233,15 @@ export function pickerNode(env) {
       style: { paddingTop: 8, paddingBottom: 8, paddingLeft: 14, paddingRight: 14, borderRadius: 8, backgroundColor: 'accent', color: 'on-accent', fontSize: 15, fontWeight: 600 } }, words.done));
   const name = picker.kind === 'date' ? words.title(words.months[picker.focus.month - 1], picker.focus.year)
     : picker.kind === 'time' ? words.hour : picker.label || 'Options';
-  const panel = h('column', { 'data-testid': 'lx-picker', key: `picker-${picker.key}`, role: 'dialog', 'aria-label': name,
+  const panel = { 'data-testid': 'lx-picker', key: `picker-${picker.key}`, 'aria-label': name,
     style: { padding: 12, gap: 12, borderRadius: 14, backgroundColor: 'surface-raised', borderWidth: touch ? 0 : 1, borderColor: 'line',
-      boxShadow: [{ offsetX: 0, offsetY: 8, blur: 24, spread: 0, color: 'shadow/20' }],
-      // A popover is its content's size; native moves it against its editor.
-      ...(touch ? { width: '100%' } : { position: 'absolute', top: 0, left: 0 }) } },
-    body, footer);
-  return h('stack', { key: 'lx-picker-layer', style: { ...layer, zIndex: 10000 } },
-    h('button', { 'data-testid': 'lx-picker-backdrop', 'aria-hidden': true, onClick: () => settle(null),
-      style: { ...layer, backgroundColor: touch ? 'scrim' : 'transparent' } }),
-    touch ? h('column', { style: { ...layer, justifyContent: 'end', padding: 8 } }, panel) : panel);
+      boxShadow: [{ offsetX: 0, offsetY: 8, blur: 24, spread: 0, color: 'shadow/20' }] } };
+  // Touch: a bottom sheet. A mouse: a popover that native moves against its editor.
+  return touch
+    ? h('dialog', { ...panel, open: true, closedby: 'any', onClose: () => settle(null),
+      style: { ...panel.style, marginTop: 'auto', marginBottom: 8, marginLeft: 8, marginRight: 8 } }, body, footer)
+    : h('view', { ...panel, id: 'lx-picker', popover: 'auto', open: true, onToggle: open => { if (!open) settle(null); },
+      style: { ...panel.style, position: 'absolute', top: 0, left: 0 } }, body, footer);
 }
 
 export function resetPicker() { picker = null; results = []; }

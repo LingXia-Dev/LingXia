@@ -49,21 +49,22 @@ change what is painted.
 ## Roles
 
 Controls, editors, scrolls, images and text get their roles automatically. Any other element can
-take one of the structural roles with `role`; on a control, `role` is ignored except `gridcell` and
-`option`, which a button may take.
+take one of the structural roles with `role`; on a control, `role` is ignored except `gridcell`,
+`option` and `menuitem`, which a button may take.
 
 | `role` | Use |
 | --- | --- |
 | `heading` | a section title; `headingLevel` 1–6 (default 2) |
 | `list`, `listitem` | a group of items; each item reports its position among the `listitem`s of its nearest `list` |
-| `dialog` | a sheet or confirmation, named by `aria-label` |
+| `menu`, `menuitem` | a popover of actions and its buttons |
 | `alert` | an urgent message, announced assertively when its text changes |
 | `status` | a result or progress message, announced politely when its text changes |
 | `grid`, `gridcell` | a two-dimensional set of cells, such as a month of days; name each cell in full |
 | `listbox`, `option` | a set of choices to pick one from; mark the chosen one with `aria-selected` |
 
-`role="dialog"` describes the region; it does not trap focus or block what is behind it. Hide or disable
-the content behind a modal yourself.
+A modal is the `<dialog>` element, not a role: it keeps focus inside and hides the page behind it
+([Interaction](interaction.md#dialogs-popovers-and-menus)). `role="menu"` names a popover of actions and
+`role="menuitem"` its buttons.
 
 The full role list is in [semantics](../reference/semantics.md).
 
