@@ -78,6 +78,8 @@ pub(super) struct AndroidAdapter {
     raster: OnceLock<Arc<lingxia_ui::renderer::pool::Mailbox<(DisplayList, CommitTicket)>>>,
     /// UI-thread time of the last frame handoff to Java, for the present log.
     reconcile_us: AtomicU64,
+    /// A dialog of the top layer is open: the page sits above the host's bars.
+    modal: std::sync::atomic::AtomicBool,
 }
 
 pub(super) enum Frame {
@@ -134,6 +136,7 @@ impl AndroidAdapter {
             images: Mutex::new(HashMap::new()),
             raster: OnceLock::new(),
             reconcile_us: AtomicU64::new(0),
+            modal: Default::default(),
         }
     }
 
@@ -694,6 +697,14 @@ impl HostEvents for AndroidAdapter {
                 .and_then(|snapshot| snapshot.get("metrics").map(|raw| raw.get().to_owned()))
                 .unwrap_or_default();
         let metrics_us = started.elapsed().as_micros();
+        // An exiting dialog still covers the bars until its exit ends.
+        let open = frame.frame.nodes.iter().any(|node| {
+            node.role.as_deref() == Some("dialog") && lingxia_ui::interaction::frame::visible(node)
+        });
+        let modal = open || (self.modal.load(Ordering::Relaxed) && frame.metrics.ghosts > 0);
+        if self.modal.swap(modal, Ordering::Relaxed) != modal {
+            self.flag(jni_str!("topLayer"), modal);
+        }
         let started = Instant::now();
         self.void(jni_str!("presented"));
         info(&format!(

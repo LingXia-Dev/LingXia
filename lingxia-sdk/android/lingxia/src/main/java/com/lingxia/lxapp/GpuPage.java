@@ -46,6 +46,10 @@ public final class GpuPage extends FrameLayout {
                 public void onChrome(GpuView.Chrome chrome) {
                     if (chromeListener != null) chromeListener.accept(GpuPage.this, chrome);
                 }
+                public void onTopLayer(boolean modal) {
+                    topLayer = modal;
+                    if (topLayerListener != null) topLayerListener.accept(GpuPage.this, modal);
+                }
                 public void onError(Throwable error) {
                     if (!reported) { reported = true; created(token, null, error.toString()); }
                     android.util.Log.e("LingXia.UI", "GPU page " + webTag, error);
@@ -61,6 +65,11 @@ public final class GpuPage extends FrameLayout {
     }
 
     private java.util.function.BiConsumer<GpuPage, GpuView.Chrome> chromeListener;
+    private java.util.function.BiConsumer<GpuPage, Boolean> topLayerListener;
+    private boolean topLayer;
+    /** Whoever shows this page lifts it above its bars while a dialog is open. */
+    public void setTopLayerListener(java.util.function.BiConsumer<GpuPage, Boolean> listener) { topLayerListener = listener; }
+    public boolean hasTopLayer() { return topLayer; }
     /** Whoever shows this page applies its chrome; it may arrive before the page is current. */
     public void setChromeListener(java.util.function.BiConsumer<GpuPage, GpuView.Chrome> listener) { chromeListener = listener; }
     /** The chrome this page last asked for, or null before its first frame. */

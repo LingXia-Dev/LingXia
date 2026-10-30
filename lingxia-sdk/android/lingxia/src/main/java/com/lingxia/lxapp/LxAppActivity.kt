@@ -135,6 +135,8 @@ class LxAppActivity : AppCompatActivity() {
         private const val TAG = "LingXia.WebView"
         /** GPU navigation stages, at debug level: transitions are timing-sensitive. */
         private const val NAV_TAG = "LingXia.Nav"
+        /** Above the navigation and tab bars, whatever their elevation. */
+        private const val TOP_LAYER_Z = 10_000f
         const val META_FORCE_IMMERSIVE = "com.lingxia.FORCE_IMMERSIVE"
         const val EXTRA_APP_ID = "appId"
         /** Route of the first page: only the orientation to take before its WebView exists. */
@@ -332,8 +334,20 @@ class LxAppActivity : AppCompatActivity() {
         set(value) {
             field = value
             (value as? GpuPage)?.setChromeListener(gpuChromeListener)
+            (value as? GpuPage)?.setTopLayerListener(gpuTopLayerListener)
             applyGpuChrome((value as? GpuPage)?.chrome)
+            applyGpuTopLayer((value as? GpuPage)?.hasTopLayer() == true)
         }
+
+    private val gpuTopLayerListener = java.util.function.BiConsumer<GpuPage, Boolean> { page, modal ->
+        if (page === currentWebView) applyGpuTopLayer(modal)
+    }
+
+    /** An open dialog of the GPU page on screen lifts the pages above the bars, which then take no touches. */
+    private fun applyGpuTopLayer(modal: Boolean) {
+        if (!::webViewContainer.isInitialized) return
+        webViewContainer.translationZ = if (modal) TOP_LAYER_Z else 0f
+    }
 
     /** The host chrome of the GPU page on screen; null on WebView pages, which keep their config. */
     private var gpuChrome: com.lingxia.ui.GpuView.Chrome? = null
@@ -837,8 +851,16 @@ class LxAppActivity : AppCompatActivity() {
             val page = currentWebView as? GpuPage
             if (page != null) {
                 var left = 0
+                var top = 0
                 var right = 0
                 var bottom = 0
+                // A GPU page spans the screen: the navigation bar over its top is chrome too.
+                val navigation = navigationBar
+                if (page.getGlobalVisibleRect(pageBounds) && navigation != null && navigation.isShown &&
+                    navigation.getGlobalVisibleRect(barBounds) && barBounds.intersect(pageBounds) &&
+                    barBounds.top <= pageBounds.top) {
+                    top = barBounds.bottom - pageBounds.top
+                }
                 val bar = tabBar
                 // Actual clipped frames avoid double-counting space already reserved by margins.
                 if (page.getGlobalVisibleRect(pageBounds) && bar != null && bar.isShown &&
@@ -849,7 +871,7 @@ class LxAppActivity : AppCompatActivity() {
                         TabBarState.Position.BOTTOM -> bottom = pageBounds.bottom - barBounds.top
                     }
                 }
-                page.setChromeInsets(left, 0, right, bottom)
+                page.setChromeInsets(left, top, right, bottom)
             }
             reportKeptChromeInsets()
             true
@@ -882,7 +904,8 @@ class LxAppActivity : AppCompatActivity() {
                 KeptPageGeometry.Box(left, top, left + page.width, top + page.height),
                 barBox, chrome, bar.config.position,
             )
-            page.setChromeInsets(overlap.left, 0, overlap.right, overlap.bottom)
+            val navigation = if (chrome.gpu && chrome.navigationBar) currentBars().navigationBar else 0
+            page.setChromeInsets(overlap.left, navigation, overlap.right, overlap.bottom)
         }
     }
 
@@ -1102,6 +1125,7 @@ class LxAppActivity : AppCompatActivity() {
             navigationBar = navigationBar?.visibility == View.VISIBLE,
             tabBar = tabBar?.visibility == View.VISIBLE,
             fullscreen = isPageFullscreen,
+            gpu = currentWebView is GpuPage,
         )
         val margins = KeptPageGeometry.margins(chrome, bars, imeContentBottomInset)
         FrameLayout.LayoutParams(webViewContainer.layoutParams as FrameLayout.LayoutParams).apply {

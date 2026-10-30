@@ -109,6 +109,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         default boolean onRestart(long generation) { return false; }
         /** The host chrome this page asks for changed; it arrives before the frame it colours. */
         default void onChrome(Chrome chrome) { }
+        /** A top-layer dialog opened or closed; the host lifts the page above its bars meanwhile. */
+        default void onTopLayer(boolean modal) { }
     }
 
     /** Host chrome colours (ARGB) the core resolves from this page's palette. */
@@ -855,6 +857,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         @Override public void stopFling() { surface.stopFling(); }
         @Override public void clicked() { surface.performClick(); }
         @Override public void haptic() { surface.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS); }
+        @Override public void topLayer(boolean modal) { listener.onTopLayer(modal); }
         @Override public int editText(int index, String text, int start, int end) {
             JSONObject node = surface.node(index);
             if (node == null || snapshot == null) return GpuIme.EDIT_FAILED;

@@ -42,6 +42,8 @@ interface GpuPlatform {
     void stopFling();
     void clicked();
     void haptic();
+    /** A top-layer dialog opened or closed: while one is open the page covers the host's bars. */
+    void topLayer(boolean modal);
     /** Apply an accessibility edit: {@link GpuIme#EDIT_APPLIED}, {@code EDIT_NOT_READY} (the core resends) or {@code EDIT_FAILED}. */
     int editText(int node, String text, int start, int end);
 

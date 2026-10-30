@@ -11,8 +11,16 @@ internal object KeptPageGeometry {
     /** Page container parent margins for one page's chrome. */
     data class Margins(val top: Int, val bottom: Int, val left: Int, val right: Int)
 
-    /** What a page shows around it; the pixels come from the current [Bars]. */
-    data class Chrome(val navigationBar: Boolean, val tabBar: Boolean, val fullscreen: Boolean)
+    /**
+     * What a page shows around it; the pixels come from the current [Bars]. A GPU page spans
+     * the screen and takes its bars as insets, so an open dialog can cover them.
+     */
+    data class Chrome(
+        val navigationBar: Boolean,
+        val tabBar: Boolean,
+        val fullscreen: Boolean,
+        val gpu: Boolean = false,
+    )
 
     /**
      * Bar sizes in the current window. They change with configuration (a three-button
@@ -32,6 +40,7 @@ internal object KeptPageGeometry {
     data class Frame(val width: Int, val height: Int, val translationX: Float, val translationY: Float)
 
     fun margins(chrome: Chrome, bars: Bars, ime: Int = 0): Margins {
+        if (chrome.gpu) return Margins(top = 0, bottom = ime, left = 0, right = 0)
         var bottom = 0
         var left = 0
         var right = 0

@@ -56,6 +56,7 @@ public class GpuNativeLoadTest {
         public void stopFling() { }
         public void clicked() { events.add("clicked"); }
         public void haptic() { }
+        public void topLayer(boolean modal) { }
         public int editText(int node, String text, int start, int end) { events.add("edit:" + text); return 0; }
         public void loaded() { loaded++; }
         public void presented() { presented++; }
