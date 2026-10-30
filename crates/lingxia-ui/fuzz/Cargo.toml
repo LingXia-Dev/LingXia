@@ -44,15 +44,3 @@ test = false
 doc = false
 bench = false
 
-# Temporary: the root manifest's rong patch (feat/multi-engine) until the owner publishes `rong`; remove both together.
-[patch.crates-io]
-rong = { path = "../../../../rong" }
-rong_core = { path = "../../../../rong/core" }
-rong_rt = { path = "../../../../rong/rong_rt" }
-rong_macro = { path = "../../../../rong/rong_macro" }
-rong_quickjs = { path = "../../../../rong/quickjs" }
-rong_quickjs_sys = { path = "../../../../rong/quickjs/sys" }
-rong_jscore = { path = "../../../../rong/javascriptcore" }
-rong_jscore_sys = { path = "../../../../rong/javascriptcore/sys" }
-rong_arkjs = { path = "../../../../rong/arkjs" }
-rong_arkjs_sys = { path = "../../../../rong/arkjs/sys" }

@@ -897,6 +897,7 @@ name = "lingxia-ui"
 version = "0.28.0"
 dependencies = [
  "image",
+ "libc",
  "lingxia-theme",
  "log",
  "memmap2",
@@ -1294,7 +1295,9 @@ dependencies = [
 
 [[package]]
 name = "rong"
-version = "0.6.3"
+version = "0.6.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae52467b2c071fcbda89100e785ce91ebe8a54fa395ad2c2fab5046a71f3d3e6"
 dependencies = [
  "futures",
  "rong_core",
@@ -1306,7 +1309,9 @@ dependencies = [
 
 [[package]]
 name = "rong_core"
-version = "0.6.4"
+version = "0.6.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6be414b5bdeae0ab3858ee13c3c151cf7164b0f34f021a10bc0f3ef63d96517b"
 dependencies = [
  "bytes",
  "futures",
@@ -1320,6 +1325,8 @@ dependencies = [
 [[package]]
 name = "rong_macro"
 version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d2067ead8a67ea03ddcc6de2250d15f3ccb5d0f6f745ee3de7511d1be5f8eb2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1329,7 +1336,9 @@ dependencies = [
 
 [[package]]
 name = "rong_quickjs"
-version = "0.6.2"
+version = "0.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c45e991c05ae3933a4069d8964f9f07cb8e0cadab059dd8ef42c0923d28b109"
 dependencies = [
  "libc",
  "rong_core",
@@ -1340,6 +1349,8 @@ dependencies = [
 [[package]]
 name = "rong_quickjs_sys"
 version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab32d31d5a4534f44a6f0ded7ef82fd5e48b952acc2ddf822d0715866b1aa940"
 dependencies = [
  "bindgen",
  "cc",
@@ -1347,7 +1358,9 @@ dependencies = [
 
 [[package]]
 name = "rong_rt"
-version = "0.6.3"
+version = "0.6.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "187545723cc0308b8c84b082f8c92a1a08688060415d8db3866393d7a43f88f8"
 dependencies = [
  "bytes",
  "futures",
@@ -1371,6 +1384,8 @@ dependencies = [
 [[package]]
 name = "rong_typegen"
 version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b2f3f5c0e544bf555f8fd5fbde2c0f5f5150ed78d6b416d081b7217891deb6c"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2142,19 +2157,3 @@ checksum = "27bc9d5b815bc103f142aa054f561d9187d191692ec7c2d1e2b4737f8dbd7296"
 dependencies = [
  "zune-core",
 ]
-
-[[patch.unused]]
-name = "rong_arkjs"
-version = "0.6.2"
-
-[[patch.unused]]
-name = "rong_arkjs_sys"
-version = "0.6.1"
-
-[[patch.unused]]
-name = "rong_jscore"
-version = "0.6.1"
-
-[[patch.unused]]
-name = "rong_jscore_sys"
-version = "0.6.1"

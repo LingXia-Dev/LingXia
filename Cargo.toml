@@ -131,8 +131,8 @@ napi-ohos = "1.2.0"
 napi-derive-ohos = "1.2.0"
 
 # Rong v0.6 product release
-rong = { version = "0.6.3", default-features = false }
-rong_rt = { version = "0.6.3", default-features = false }
+rong = { version = "0.6.4", default-features = false }
+rong_rt = { version = "0.6.4", default-features = false }
 rong_modules = { version = "0.6.2", default-features = false }
 rong_http = { version = "0.6.4", default-features = false }
 rong_console = "0.6.0"
@@ -153,16 +153,4 @@ fontique = { path = "../fontique" }
 # Temporary: taffy 0.14 with the aspect-ratio max transfer and the capped non-shrinking basis
 # (branch `lingxia-0.14`), until upstream takes them.
 taffy = { path = "../taffy" }
-# Temporary: rong's additive engine features (feat/multi-engine), until the owner publishes `rong`.
-# The facade's path dependencies must resolve to the same checkout, hence every engine crate.
-rong = { path = "../rong" }
-rong_core = { path = "../rong/core" }
-rong_rt = { path = "../rong/rong_rt" }
-rong_macro = { path = "../rong/rong_macro" }
-rong_quickjs = { path = "../rong/quickjs" }
-rong_quickjs_sys = { path = "../rong/quickjs/sys" }
-rong_jscore = { path = "../rong/javascriptcore" }
-rong_jscore_sys = { path = "../rong/javascriptcore/sys" }
-rong_arkjs = { path = "../rong/arkjs" }
-rong_arkjs_sys = { path = "../rong/arkjs/sys" }
 portable-pty = { git = "https://github.com/LingXia-Dev/wezterm.git", rev = "59d0fb89c54a77c12afe2561dc6969d8dc55fc4f", package = "portable-pty" }
