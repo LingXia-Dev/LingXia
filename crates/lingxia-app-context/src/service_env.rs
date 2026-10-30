@@ -147,7 +147,11 @@ fn dev_session_port() -> Option<u16> {
 /// A baked `devWsUrl` contributes the port the process dials. `compact` is
 /// the phone tab, which fits one token, so a port replaces `DEV`. A desktop
 /// chip shows the port, and `DEV` plus the port when both apply.
+/// Runners never show the mark; their dev connection remains active.
 pub fn dev_mark(compact: bool) -> Option<String> {
+    if crate::runner_active() {
+        return None;
+    }
     dev_mark_from(dev_service_banner(), dev_session_port(), compact)
 }
 
