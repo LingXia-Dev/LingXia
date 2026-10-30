@@ -42,8 +42,8 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   (controls), `hover:` (fine pointers), `disabled:`, `placeholder:`,
   `space-*`/`divide-*`. `data-*`, `has-*`, `focus-within:`, `group-active:`. `*:`, `**:`, `in-*:`, other `group-*:`, `peer-*:` fail naming the TS-side form.
 - `translate`/`rotate`/`scale`/`origin` are static and state variants may set them; skew and 3D fail.
-  `transition-*`/`animate-*` animate paint and transforms only; editors/scrolls/sliders, gradients and
-  `scale-0` jump. `starting:`/`exit:` animate enter and removal; `transition-layout` animates position.
+  `transition-*`/`animate-*` animate paint and transforms only; scaled or rotated editors/scrolls/sliders,
+  gradients and `scale-0` jump. `starting:`/`exit:` animate enter and removal; `transition-layout` animates position.
 - Utilities that would draw nothing (filters but `blur-*`, radial masks, text shadows, cursors, outlines) fail naming what to use.
 - In `lingxia dev`, saving View code of GPU pages swaps those pages in place, keeping `useLocal`, scroll
   and focus; Logic or config edits rebuild and reopen. Dev builds' runtime errors name `file:line:col`.
@@ -63,6 +63,9 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   (announced), `aria-hidden` for decoration. A layout element with a role, or a scroll,
   groups its content for screen readers ("item 2 of 3"); plain wrappers collapse.
   `aria-pressed`, `aria-selected`, `aria-expanded`, `aria-busy` announce states (e.g. `aria-busy={req.status === 'loading'}`).
+- `<dialog open onClose closedby aria-label>` is modal, above the page (`backdrop:` styles its scrim;
+  `mt-auto mb-0 w-full` makes a sheet). `<view id popover>` + `<button popoverTarget>` is a light-dismiss
+  popover anchored to its invoker (`positionArea`, `open`/`onToggle`); `role="menu"` + `<button role="menuitem">` closes on click.
 - Keyboard: Tab and arrows follow reading order (no `tabIndex`); a visible `role="dialog"` keeps focus inside
   and returns it on close; the focus ring shows only after keyboard input.
 - Inputs take `type` (`password`, `email`, `number`, `tel`, `search`, `date`, `time`), `inputMode`, `maxLength`, `autoComplete`, `enterKeyHint` (on a textarea, `send`/`go`/`done`/`search` makes Return submit), `autoCapitalize`, `spellCheck`;

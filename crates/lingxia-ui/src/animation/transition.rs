@@ -168,8 +168,10 @@ impl ShadowLayer {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Resolved {
     pub opacity: f64,
-    /// `None` when the subtree holds an editor, scroll or slider.
+    /// `None` when the box cannot take a transform.
     pub transform: Option<Decomposed>,
+    /// The subtree holds an editor, scroll or slider: only translation animates.
+    pub translate_only: bool,
     pub background: Option<[u8; 4]>,
     pub foreground: [u8; 4],
     pub border: Option<[u8; 4]>,
@@ -799,6 +801,7 @@ mod tests {
         Resolved {
             opacity,
             transform: Some(Decomposed::default()),
+            translate_only: false,
             background: Some([0; 4]),
             foreground: [0, 0, 0, 255],
             border: None,

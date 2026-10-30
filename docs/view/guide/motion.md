@@ -33,7 +33,7 @@ continues from the value on screen.
 Some changes land at once instead of animating:
 
 - an element seen for the first time, unless it has `starting:` values (see below);
-- a transform of a subtree that holds an editor, a `<scroll>` or a `<slider>`;
+- a scale or rotation of a subtree that holds an editor, a `<scroll>` or a `<slider>` (its translation animates);
 - a gradient background;
 - a shadow on an element with unequal corner radii;
 - a transform to `scale-0`, which paints nothing until it lands.
@@ -98,8 +98,8 @@ export function render() {
 }
 ```
 
-Only position moves: a size change lands at once. Input follows the box where it is drawn. A box whose
-subtree holds an editor, a `<scroll>` or a `<slider>` moves at once, as do more than 256 at a time.
+Only position moves: a size change lands at once. Input follows the box where it is drawn. More than
+256 boxes moving at a time land at once.
 
 ## Animations
 

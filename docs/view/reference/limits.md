@@ -29,3 +29,4 @@ Page-wide bounds the runtime and the native decoder both enforce. Exceeding one 
 | `plotWork` | 16384 | Geometry all plots of one frame draw. |
 | `dataAttributeBytes` | 65536 (64 KiB) | `data-*` props of a page, as UTF-8 JSON; automation reads them, nothing draws them. |
 | `blurLayers` | 8 | Elements a frame draws with `blur-*`; past it further ones draw sharp. |
+| `topLayer` | 16 | Dialogs and popovers open at once; a further one stays closed (`UI_BUDGET`) and fires no `onClose` or `onToggle`. |

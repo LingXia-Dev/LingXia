@@ -94,14 +94,16 @@ fn keyword(record: &Record, field: usize) -> Option<Dimension> {
     }
 }
 
-/// The box each record is laid out, clipped and painted in: fixed boxes
-/// escape to the root, every other record keeps its tree parent.
+/// The box each record is laid out, clipped and painted in: fixed boxes and
+/// the top layer escape to the root, every other record keeps its tree parent.
 pub(crate) fn layout_parents(records: &[Record]) -> Vec<Option<usize>> {
     records
         .iter()
         .map(|record| {
             record.parent.map(|parent| {
-                if record.string(field::POSITION) == Some("fixed") {
+                if record.string(field::POSITION) == Some("fixed")
+                    || record.number(field::TOP_LAYER) == Some(1.0)
+                {
                     0
                 } else {
                     parent

@@ -9,6 +9,7 @@ const groups = {
   layout: { label: 'Layout', sections: [Display, Sizing, Direction, Structure, StickyHeaders, Fragments, Disclosure] },
   text: { label: 'Text', sections: [TextLayout, RichText, Selection] },
   input: { label: 'Input', sections: [Accessibility, Inputs, Controls, Focus, NestedControls, StateVariants] },
+  overlay: { label: 'Overlay', sections: [Overlays] },
 };
 type Group = keyof typeof groups;
 
@@ -412,6 +413,49 @@ function Disclosure() {
         <Summary className="py-2 text-sm font-semibold">Open-source licenses</Summary>
         <text data-testid="lab-disclosure-body" className="text-sm text-muted">MIT, Apache-2.0, BSD-3-Clause</text>
       </Details>
+    </Section>
+  );
+}
+
+// Dialogs and popovers draw in the top layer: above the page and unclipped by this section.
+function Overlays() {
+  const confirm = useLocal('overlay-confirm', false);
+  const sheet = useLocal('overlay-sheet', false);
+  const last = useLocal('overlay-last', 'none');
+  const act = (value: string) => last.set(value);
+  return (
+    <Section title="Overlays" testId="lab-overlays">
+      <row className="gap-2 items-center flex-wrap">
+        <Button testId="lab-overlay-confirm" onClick={() => confirm.set(true)}>Dialog</Button>
+        <Button testId="lab-overlay-sheet" variant="secondary" onClick={() => sheet.set(true)}>Sheet</Button>
+        <button popoverTarget="lab-menu" data-testid="lab-overlay-more" aria-label="More" className="ms-auto rounded-full px-3 py-1.5 bg-surface-sunken text-text">⋯</button>
+      </row>
+      <text data-testid="lab-overlay-last" className="text-sm">{`last: ${last.value}`}</text>
+      <view id="lab-menu" popover role="menu" aria-label="Note actions" data-testid="lab-menu"
+        style={{ positionArea: 'bottom span-inline-start' }} className="w-44 p-1 rounded-xl bg-surface-raised shadow-lg border border-line">
+        {['Rename', 'Share', 'Delete'].map(item => (
+          <button key={item} role="menuitem" data-testid={`lab-menu-${item.toLowerCase()}`} onClick={() => act(item)}
+            className="px-3 py-2 rounded-lg text-start text-text active:bg-surface-sunken">{item}</button>
+        ))}
+      </view>
+      <dialog open={confirm.value} onClose={() => confirm.set(false)} aria-label="Delete note?" data-testid="lab-dialog"
+        className="w-72 p-4 gap-3 rounded-2xl bg-surface-raised transition duration-200 starting:opacity-0 starting:scale-95 exit:opacity-0 exit:scale-95">
+        <text role="heading" headingLevel={3} className="text-base font-semibold">Delete note?</text>
+        <text className="text-sm text-muted">Escape cancels; the backdrop does not.</text>
+        <row className="gap-2 justify-end">
+          <Button testId="lab-dialog-cancel" variant="secondary" onClick={() => { act('cancel'); confirm.set(false); }}>Cancel</Button>
+          <Button testId="lab-dialog-delete" onClick={() => { act('delete'); confirm.set(false); }}>Delete</Button>
+        </row>
+      </dialog>
+      <dialog open={sheet.value} onClose={() => sheet.set(false)} closedby="any" aria-label="Filters" data-testid="lab-sheet"
+        className="mt-auto mb-0 w-full p-4 pb-8 gap-3 rounded-t-3xl bg-surface-raised transition-transform duration-300 ease-out starting:translate-y-full exit:translate-y-full">
+        <spacer className="self-center w-10 h-1 rounded-full bg-line-strong" />
+        <text role="heading" headingLevel={3} className="text-base font-semibold">Filters</text>
+        <scroll data-testid="lab-sheet-scroll" className="max-h-48">
+          {Array.from({ length: 12 }, (_, i) => <text key={i} className="py-2 text-sm">{`Filter ${i + 1}`}</text>)}
+        </scroll>
+        <Button testId="lab-sheet-apply" onClick={() => { act('apply'); sheet.set(false); }}>Apply</Button>
+      </dialog>
     </Section>
   );
 }

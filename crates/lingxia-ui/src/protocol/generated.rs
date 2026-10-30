@@ -229,6 +229,9 @@ pub mod field {
     pub const ANCHOR_TO: usize = 193;
     pub const SCROLL_SNAP: usize = 194;
     pub const SNAP_ALIGN: usize = 195;
+    pub const TOP_LAYER: usize = 196;
+    pub const ANCHOR_AREA: usize = 197;
+    pub const ANCHOR_NAME: usize = 198;
 }
 
 pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page", "span", "link", "select"];
@@ -431,6 +434,9 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("anchorTo", "anchor"),
     ("scrollSnap", "scroll-snap"),
     ("snapAlign", "snap-align"),
+    ("topLayer", "flag"),
+    ("anchorArea", "anchor-area"),
+    ("anchorName", "anchor"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -462,7 +468,8 @@ pub fn options(kind: &str) -> Option<&'static [&'static str]> {
         "grid-auto-flow" => Some(&["row", "column", "row-dense", "column-dense"]),
         "align-content" => Some(&["start", "center", "end", "between", "around", "evenly", "stretch"]),
         "direction" => Some(&["ltr", "rtl", "auto"]),
-        "role" => Some(&["heading", "list", "listitem", "dialog", "alert", "status", "grid", "gridcell", "listbox", "option"]),
+        "role" => Some(&["heading", "list", "listitem", "dialog", "alert", "status", "grid", "gridcell", "listbox", "option", "menu", "menuitem"]),
+        "anchor-area" => Some(&["bottom span-inline-end", "bottom span-inline-start", "bottom", "top span-inline-end", "top span-inline-start", "top"]),
         "live-region" => Some(&["off", "polite", "assertive"]),
         "input-keyboard" => Some(&["text", "number", "email", "phone", "search", "date", "time"]),
         "auto-complete" => Some(&["off", "on", "username", "current-password", "new-password", "one-time-code", "email", "tel", "name", "given-name", "family-name", "street-address", "postal-code", "country", "cc-number", "cc-exp", "cc-csc", "bday"]),
@@ -511,6 +518,7 @@ pub mod limits {
     pub const LAYOUT_MOTIONS: usize = 256;
     pub const DATA_ATTRIBUTE_BYTES: usize = 65536;
     pub const BLUR_LAYERS: usize = 8;
+    pub const TOP_LAYER: usize = 16;
 }
 
 /// Environment keys and where each comes from: `device` facts, a host `push`, or the `session`.
@@ -816,7 +824,10 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
-    FieldAdmission { tags: Some(&[tag::COLUMN]), parent: None },
+    FieldAdmission { tags: Some(&[tag::COLUMN, tag::ROW, tag::STACK, tag::GRID]), parent: None },
     FieldAdmission { tags: Some(&[tag::SCROLL, tag::LIST]), parent: None },
     FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: Some(&[tag::COLUMN]), parent: None },
+    FieldAdmission { tags: Some(&[tag::COLUMN, tag::ROW, tag::STACK, tag::GRID]), parent: None },
+    FieldAdmission { tags: Some(&[tag::BUTTON]), parent: None },
 ];

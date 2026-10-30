@@ -3,6 +3,7 @@
 // through the same bridge reply the WebView polyfill sends, so Logic sees no difference.
 import { h } from './nodes.js';
 import { lowerStyle } from '../style/lower.js';
+import { closeTopmost } from './toplayer.js';
 
 let toast = null, modals = [], sheets = [], timers = [], nextToken = 1;
 const ENTER_MS = 200;
@@ -65,7 +66,7 @@ export function escapeOverlay() {
   if (sheets.length) { settleSheet(-1); return true; }
   if (modals.length) { settleModal(false); return true; }
   if (toast) { toast = null; return true; }
-  return false;
+  return closeTopmost();
 }
 
 export function takeOverlayTimers() { const result = timers; timers = []; return JSON.stringify(result); }

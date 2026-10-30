@@ -20,8 +20,8 @@ Two primitives, spelled as HTML spells them. A sheet and a menu are not primitiv
 | Web | Here |
 | --- | --- |
 | `<dialog open>`, `close` event, `closedby="any\|closerequest\|none"`, `::backdrop` | `<dialog open onClose closedby>`, `backdrop:` (paint only). Default `closerequest`, as a modal's is |
-| `popover` (`auto`, `manual`), `popovertarget`, `toggle` | `popover`, `popoverTarget`, `onToggle(open)`; `closedby` defaults to `any` for `auto`, `none` for `manual`; `id` is new, page-unique (`UI_ID`), read only by `popoverTarget` and `aria-actions` |
-| `position-area`, `position-try-fallbacks` | `positionArea` / `position-area-{top,bottom,start,end}[-span-start\|-span-end]`; flips and stays on screen always; the gap is the author's margin |
+| `popover` (`auto`, `manual`), `popovertarget`, `toggle` | `popover`, `popoverTarget`, `onToggle(open)`; `auto` behaves as `closedby="any"`, `manual` as `none` (no `closedby` on popovers, as in HTML); `id` is new, page-unique (`UI_ID`), read only by `popoverTarget` and `aria-actions` |
+| `position-area`, `position-try-fallbacks`, `anchor-name` | `positionArea` (`top`/`bottom`, optionally `span-inline-start\|end`; style or `[position-area:…]`); flips and stays on screen always, 4 px from the anchor; the opening invoker carries the anchor name |
 | `showPopover()` | `open` + `onToggle`: controlled exactly as `<Details>` is, uncontrolled without `open` |
 
 **Departures, all deliberate:**

@@ -37,6 +37,10 @@ pub enum Role {
     ListBox,
     /// One choice of a list box.
     Option,
+    /// A popover of actions.
+    Menu,
+    /// One action of a menu; a button.
+    MenuItem,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -294,7 +298,7 @@ impl Projection<'_> {
         } else if let Some(role) = node
             .role
             .as_deref()
-            .filter(|role| !button || matches!(*role, "gridcell" | "option"))
+            .filter(|role| !button || matches!(*role, "gridcell" | "option" | "menuitem"))
         {
             match role {
                 "heading" => Role::Heading,
@@ -306,6 +310,8 @@ impl Projection<'_> {
                 "gridcell" => Role::GridCell,
                 "listbox" => Role::ListBox,
                 "option" => Role::Option,
+                "menu" => Role::Menu,
+                "menuitem" => Role::MenuItem,
                 _ => Role::Status,
             }
         } else if button {
@@ -326,6 +332,7 @@ impl Projection<'_> {
                 | Role::ComboBox
                 | Role::Grid
                 | Role::ListBox
+                | Role::Menu
         ) || (matches!(
             role,
             Role::Heading
@@ -334,6 +341,7 @@ impl Projection<'_> {
                 | Role::Status
                 | Role::GridCell
                 | Role::Option
+                | Role::MenuItem
         ) && !label.is_empty())
             || (input.is_some() && !label.is_empty())
         {

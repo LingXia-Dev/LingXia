@@ -249,3 +249,42 @@ fn reentering_replaces_the_ghost_and_resumes_from_it() {
     assert_eq!(*samples.last().unwrap(), 0);
     assert!(samples.windows(2).all(|w| w[0] >= w[1]), "{samples:?}");
 }
+
+#[test]
+fn a_sheet_holding_a_scroll_slides_in_by_composition() {
+    let sheet = "h('dialog',{open:shown.value,'aria-label':'Sheet','data-testid':'sheet',className:'starting:down exit:down',style:{marginTop:'auto',marginBottom:0,width:200,height:60,backgroundColor:'#000000',transition:{properties:['transform'],durationMs:200,delayMs:0,easing:'linear'}}},h('scroll',{'data-testid':'inner',style:{height:40}},h('column',{style:{height:300}})))";
+    let module = super::source(&format!(
+        "function render(){{const shown=useLocal('shown',false);return h('page',{{}},h('button',{{'data-testid':'toggle',onClick(){{shown.set(!shown.value)}},style:{{width:40,height:20}}}},'T'),{sheet})}}"
+    ))
+    .replace(
+        "__lingxiaPublish(render);",
+        "configureClasses([{name:'starting:down',when:{state:'starting'},style:{translate:[0,60]}},{name:'exit:down',when:{state:'exit'},style:{translate:[0,60]}}]);__lingxiaPublish(render);",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    page.set_animation_surface(Some(SURFACE), Duration::ZERO)
+        .unwrap();
+    let (shot, _) = present(&mut page, frame_time(0), true);
+    toggle(&mut page, &shot);
+    let top = |shot: &Shot| {
+        shot.nodes
+            .iter()
+            .find(|n| n.test_id == "inner")
+            .map(|n| n.bounds[1])
+            .unwrap()
+    };
+    let mut tops = Vec::new();
+    for index in 1..30 {
+        let (shot, wakeup) = present(&mut page, frame_time(index), index == 1);
+        tops.push(top(&shot));
+        if wakeup == Wakeup::None {
+            break;
+        }
+    }
+    assert_eq!(tops[0], 100.0, "the scroll starts a full sheet height down");
+    assert_eq!(*tops.last().unwrap(), 40.0, "and lands at the page bottom");
+    assert!(tops.windows(2).all(|w| w[0] >= w[1]), "{tops:?}");
+    assert!(
+        tops.iter().filter(|t| **t > 40.0 && **t < 100.0).count() >= 8,
+        "{tops:?}"
+    );
+}

@@ -36,9 +36,16 @@ pub(crate) fn apply(
                 // A subtree that cannot take a paint affine keeps jumping.
                 if resolved.transform.is_some() {
                     let source = value.as_str().ok_or_else(invalid)?;
-                    resolved.transform = Some(
-                        crate::scene::transform::StaticTransform::parse(source)?.decomposed(size),
-                    );
+                    let decomposed =
+                        crate::scene::transform::StaticTransform::parse(source)?.decomposed(size);
+                    resolved.transform = Some(if resolved.translate_only {
+                        super::transition::Decomposed {
+                            translate: decomposed.translate,
+                            ..Default::default()
+                        }
+                    } else {
+                        decomposed
+                    });
                 }
             }
             field::BACKGROUND => {

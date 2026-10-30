@@ -127,8 +127,8 @@ final class GpuAccessibilityElement: UIAccessibilityElement {
         case "slider": traits.insert(.adjustable)
         case "text": traits.insert(.staticText)
         // A day of a month or a choice of a picker column: pressable, and selected when chosen.
-        case "grid-cell", "option": traits.insert(.button)
-        case "grid", "list-box", "list", "list-item", "dialog", "alert", "status", "text-field",
+        case "grid-cell", "option", "menu-item": traits.insert(.button)
+        case "grid", "list-box", "list", "list-item", "dialog", "alert", "status", "text-field", "menu",
              "scroll-view", "horizontal-scroll-view", "radio-group": break
         default:
             // A role the core added without a mapping here is a bug, never silently traitless.
@@ -186,6 +186,14 @@ final class GpuAccessibilityElement: UIAccessibilityElement {
         }
         return MainActor.assumeIsolated {
             perform(forward ? "scroll-forward" : "scroll-backward")
+        }
+    }
+
+    /// VoiceOver's two-finger scrub is a close request for the topmost dialog or popover.
+    override func accessibilityPerformEscape() -> Bool {
+        MainActor.assumeIsolated {
+            guard let page else { return false }
+            return gpuPageKey(page.token, 8, false, false)
         }
     }
 

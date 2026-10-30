@@ -51,7 +51,7 @@ export function useLocal(...args) {
   counts.set(render.scope, order + 1);
   return local(`#${order}`, args[0], '', order);
 }
-export function hasLocalUpdates() { return page.updates.size > 0; }
+export function hasLocalUpdates() { return page.updates.size > 0 || page.invalidated === true; }
 
 export function useView() {
   if (!render.active) throw Error('UI_SCOPE: useView outside render');

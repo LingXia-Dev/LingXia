@@ -418,6 +418,7 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
         field::LIST_ANCHOR => list_anchor(value),
         field::ON_CLICK => ensure(handle(value), "UI_PROP: invalid handle or flag"),
         field::ENABLED => ensure(flag(value), "UI_PROP: invalid handle or flag"),
+        field::TOP_LAYER => ensure(value.as_u64() == Some(1), "UI_FIELD: invalid top layer"),
         field::Z_INDEX => ensure(
             value.as_i64().is_some_and(|v| v.abs() <= 10_000),
             "UI_STYLE: invalid z-index",
@@ -439,11 +440,12 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             ),
             "state-style" => focus_style(value).map(drop),
             "number" => number(id, value),
-            // The native identity of the node a popover sits against.
+            // A popover's anchor: a node's native identity, or a CSS anchor name (`--…`).
             "anchor" => ensure(
-                value
-                    .as_str()
-                    .is_some_and(|s| s.starts_with('/') && s.len() <= 4096),
+                value.as_str().is_some_and(|s| {
+                    (s.starts_with('/') || (s.starts_with("--") && s.len() > 2)) && s.len() <= 4096
+                }) && (id != field::ANCHOR_NAME
+                    || value.as_str().is_some_and(|s| s.starts_with("--"))),
                 "UI_FIELD: invalid anchor",
             ),
             _ => {

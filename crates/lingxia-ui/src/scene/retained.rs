@@ -66,7 +66,7 @@ pub(crate) struct RetainedLayout {
     pub(crate) transforms: Vec<Option<crate::scene::transform::StaticTransform>>,
     pub(crate) stickies: Vec<Option<crate::scene::sticky::Sticky>>,
     /// The node a popover sits against, by identity; composition places it below or above.
-    pub(crate) anchors: Vec<Option<String>>,
+    pub(crate) anchors: Vec<Option<(String, crate::scene::anchor::Area)>>,
     pub(crate) backdrops: Vec<Option<(f32, f32)>>,
     pub(crate) masks: Vec<Option<Arc<Vec<crate::scene::mask::MaskLayer>>>>,
     pub(crate) blurs: Vec<f32>,
@@ -166,6 +166,7 @@ impl RetainedLayout {
         Some(Arc::new(next))
     }
     /// Nodes whose subtree holds an editor, scroll or slider and so cannot take a paint affine.
+    /// They still move: composition translates them.
     pub(crate) fn transform_blocked(&self) -> Vec<bool> {
         let mut blocked: Vec<bool> = self
             .nodes
@@ -315,12 +316,15 @@ impl RetainedLayout {
         };
         crate::animation::transition::Resolved {
             opacity: f64::from(self.opacities[index]),
-            transform: (!blocked).then(|| {
+            // A live subtree carries only its translation, which composition applies.
+            transform: Some(
                 style
                     .transform
                     .map(|t| t.decomposed([w, h]))
-                    .unwrap_or_default()
-            }),
+                    .unwrap_or_default(),
+            )
+            .map(|t| if blocked { translation_of(t) } else { t }),
+            translate_only: blocked,
             background: (!style.gradient).then(|| style.background.map(painted).unwrap_or([0; 4])),
             foreground: style.foreground,
             border: style.border.map(painted),
@@ -340,7 +344,7 @@ impl RetainedLayout {
                     })
                     .collect()
             }),
-            position: (!blocked).then(|| [f64::from(x - moved[0]), f64::from(y - moved[1])]),
+            position: Some([f64::from(x - moved[0]), f64::from(y - moved[1])]),
         }
     }
 
@@ -367,6 +371,8 @@ impl RetainedLayout {
         }
         let animated = !visuals.is_empty() || self.transforms.iter().any(Option::is_some);
         let count = self.nodes.len();
+        // A subtree holding an editor, scroll or slider moves by composition, so its live parts follow.
+        let blocked = (!visuals.is_empty()).then(|| self.transform_blocked());
         let mut transforms: Vec<Affine> = vec![Affine::IDENTITY; count];
         let viewport = [
             0.0,
@@ -488,15 +494,30 @@ impl RetainedLayout {
                 let [dx, dy] = sticky.shift(natural, viewport, container);
                 translation = [translation[0] - dx, translation[1] - dy];
             }
-            if let Some(anchor) = &self.anchors[index]
+            if let Some((anchor, area)) = &self.anchors[index]
                 && let Some(target) = self.nodes.iter().position(|node| &node.identity == anchor)
             {
                 // The target is composed already: it precedes the popover in paint order.
                 let mut natural = self.nodes[index].bounds;
                 natural[0] -= translation[0];
                 natural[1] -= translation[1];
-                let [dx, dy] = crate::scene::anchor::place(natural, nodes[target].bounds, viewport);
+                let [dx, dy] =
+                    crate::scene::anchor::place(natural, nodes[target].bounds, viewport, *area);
                 translation = [translation[0] - dx, translation[1] - dy];
+            }
+            let composed = blocked.as_ref().is_some_and(|blocked| blocked[index]);
+            if composed
+                && let Some(moved) = visuals
+                    .get(&self.nodes[index].identity)
+                    .and_then(|visual| visual.transition.transform)
+            {
+                let [_, _, w, h] = self.nodes[index].bounds;
+                let laid_out = self.paint_styles[index]
+                    .transform
+                    .map(|t| t.translation([w, h]))
+                    .unwrap_or_default();
+                translation[0] -= (moved.translate[0] - f64::from(laid_out[0])) as f32;
+                translation[1] -= (moved.translate[1] - f64::from(laid_out[1])) as f32;
             }
             let node = &mut nodes[index];
             node.order = position as u32;
@@ -525,7 +546,10 @@ impl RetainedLayout {
             let visual = visuals.get(&node.identity);
             let paint_style = &self.paint_styles[index];
             let overrides = visual.map(|v| &v.transition);
-            let inherited = match (overrides.and_then(|o| o.transform), self.transforms[index]) {
+            let inherited = match (
+                overrides.and_then(|o| o.transform).filter(|_| !composed),
+                self.transforms[index],
+            ) {
                 (Some(transition), _) => {
                     let [_, _, w, h] = node.bounds;
                     let laid_out = paint_style
@@ -1241,4 +1265,13 @@ fn snap_to_pixels([x, y, w, h]: [f32; 4], scale: f32) -> [f32; 4] {
         (down(x + w) - left).max(0.0),
         (down(y + h) - top).max(0.0),
     ]
+}
+
+fn translation_of(
+    t: crate::animation::transition::Decomposed,
+) -> crate::animation::transition::Decomposed {
+    crate::animation::transition::Decomposed {
+        translate: t.translate,
+        ..Default::default()
+    }
 }

@@ -188,6 +188,8 @@ fn projected_roles_match_the_schema_vocabulary() {
         Role::GridCell,
         Role::ListBox,
         Role::Option,
+        Role::Menu,
+        Role::MenuItem,
     ]
     .iter()
     .map(|role| {
@@ -216,4 +218,35 @@ fn a_select_speaks_its_chosen_label_else_its_placeholder() {
         semantic(&frame, "empty").unwrap().value.as_deref(),
         Some("Choose a plan")
     );
+}
+
+#[test]
+fn an_open_dialog_is_modal_and_escapes_its_clipped_scrolled_parent() {
+    let frame = frame(
+        "h('page',{},h('scroll',{style:{height:80,overflow:'hidden'}},h('button',{'data-testid':'behind',onClick(){}},'Behind'),h('view',{style:{height:400}}),h('dialog',{open:true,'aria-label':'Confirm','data-testid':'d',style:{width:200,height:100}},h('button',{'data-testid':'ok',onClick(){}},'OK'))))",
+    );
+    assert!(
+        semantic(&frame, "behind").is_none(),
+        "the page behind is hidden"
+    );
+    let dialog = semantic(&frame, "d").unwrap();
+    assert_eq!(
+        (dialog.role, dialog.name.as_str()),
+        (Role::Dialog, "Confirm")
+    );
+    assert!(semantic(&frame, "ok").is_some());
+    // Laid out against the page, centred by its auto margins, outside the 80 px scroll.
+    let node = frame.nodes.iter().find(|n| n.test_id == "d").unwrap();
+    assert_eq!(node.bounds, [50.0, 150.0, 200.0, 100.0]);
+}
+
+#[test]
+fn a_menu_and_its_items_project_their_roles() {
+    let frame = frame(
+        "h('page',{},h('button',{popoverTarget:'m'},'More'),h('view',{id:'m',popover:true,open:true,role:'menu','aria-label':'Actions','data-testid':'menu'},h('button',{role:'menuitem','data-testid':'rename',onClick(){}},'Rename')))",
+    );
+    let menu = semantic(&frame, "menu").unwrap();
+    assert_eq!((menu.role, menu.name.as_str()), (Role::Menu, "Actions"));
+    let item = semantic(&frame, "rename").unwrap();
+    assert_eq!((item.role, item.name.as_str()), (Role::MenuItem, "Rename"));
 }

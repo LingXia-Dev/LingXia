@@ -12,7 +12,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_ANIMATION` | build, runtime, native | An invalid or over-budget animation definition, or an inline `style.animation`. |
 | `UI_BOOTSTRAP_TIMEOUT` | native | Logic did not deliver the first page state in time. |
 | `UI_BRIDGE` | native | The View-Logic connection failed or was replaced. |
-| `UI_BUDGET` | native | A warning, once per page and limit: a frame used at least three quarters of a page limit. |
+| `UI_BUDGET` | runtime, native | A warning, once per page and limit: a frame used at least three quarters of a page limit, or a dialog or popover past `topLayer` stayed closed. |
 | `UI_BUFFER` | native | A malformed wire buffer reached the native decoder. |
 | `UI_BUTTON` | build, runtime, native | Invalid button label, a scroll or list inside a composed control, or a control whose only content is another control. |
 | `UI_CHANNEL` | runtime | Invalid `useChannel` call or channel failure. |
@@ -39,6 +39,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_FRAME` | native | The platform presenter kept refusing frames prepared ahead; the page falls back to one frame at a time. |
 | `UI_GRADIENT` | runtime, native | A gradient with geometry its kind does not take, or invalid stops. |
 | `UI_GRID` | native | An invalid grid track list or line. |
+| `UI_ID` | runtime | A popover without an id, two popovers with one id, or a `popoverTarget` naming no popover on the page. |
 | `UI_IMAGE` | runtime, native | Invalid image source, alt, retry key or callback, or a failed load. |
 | `UI_INPUT` | runtime, native | Invalid editor prop, binding or text. |
 | `UI_KEY` | build, runtime, native | A non-string or duplicate sibling key, or a component keyed by its own function name. |

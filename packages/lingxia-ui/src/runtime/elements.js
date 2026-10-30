@@ -10,6 +10,7 @@ import { has, validInputText } from './data.js';
 import { fieldOptions } from '../generated/wire.js';
 import * as check from './validate.js';
 import { defaultSeries } from '../style/color.js';
+import { expand, invokerHandler, popoverScope } from './toplayer.js';
 
 const common = new Set(commonProps);
 const semanticStates = { pressed: 'statePressed', selected: 'stateSelected', expanded: 'stateExpanded', busy: 'stateBusy' };
@@ -153,6 +154,7 @@ function lowerNodeStyle(tag, props, extra, inherited, direction, structure) {
   state('exit', 'exitStyle', true);
   state('focusWithin', 'focusWithinStyle', true);
   state('groupActive', 'groupPressedStyle', true);
+  if (classes?.backdrop && tag !== 'dialog') throw Error(`UI_STYLE: backdrop: styles a <dialog>'s backdrop, not <${tag}>`);
   // `has-checked:`/`has-disabled:` depend on descendants, known once the children resolve.
   const descendants = {};
   for (const [name, kind] of [['hasChecked', 'checked'], ['hasDisabled', 'disabled']]) {
@@ -189,7 +191,17 @@ export function resolveNode(node, identity, depth = 0, parent = {}) {
     catch (error) { throw located(error, `${tag.name || '<anonymous>'}${location ? ` (${location})` : ''}`); }
     finally { render.scope = previous; }
   }
-  try { return resolveElement(tag, original, children, identity, depth, parent); }
+  try {
+    // An open <dialog> or popover becomes a top-layer box; a closed one renders nothing.
+    const expansion = expand(tag, original, children, identity, parent);
+    if (expansion === null) return null;
+    if (expansion) {
+      const result = resolveNode(expansion.node, identity, depth + 1, { ...parent, extra: undefined, sibling: undefined });
+      expansion.finish(result);
+      return result;
+    }
+    return resolveElement(tag, original, children, identity, depth, parent);
+  }
   catch (error) { throw located(error, `<${tag}>${location ? ` (${location})` : ''}`); }
 }
 
@@ -266,6 +278,11 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   if (data) wire('dataAttributes', JSON.stringify(data));
   if (props.dir !== undefined) wire('direction', props.dir);
   semantics(tag, props, wire);
+  if (tag === 'dialog') {
+    if (props.role !== undefined) throw Error('UI_PROP: a <dialog> keeps its own role');
+    if (!props.accessibilityLabel) throw Error('UI_A11Y: <dialog> needs an accessible name; add aria-label="…"');
+    wire('role', 'dialog');
+  }
   switch (tag) {
     case 'link':
       check.label(props.accessibilityLabel, 'UI_TEXT');
@@ -273,12 +290,14 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       if (props.accessibilityLabel !== undefined) wire('accessibilityLabel', props.accessibilityLabel);
       if (props.onClick && !disabled) on('onClick', props.onClick);
       break;
-    case 'button':
+    case 'button': {
       check.label(props.accessibilityLabel, 'UI_BUTTON');
       if (props.onClick !== undefined && typeof props.onClick !== 'function') throw Error('UI_PROP: onClick');
       if (props.accessibilityLabel !== undefined) wire('accessibilityLabel', props.accessibilityLabel);
-      if (props.onClick && !disabled) on('onClick', props.onClick);
+      const click = invokerHandler(props, identity, parent.popovers ?? []);
+      if (click && !disabled) on('onClick', click);
       break;
+    }
     case 'checkbox': case 'switch':
       check.label(props.accessibilityLabel, 'UI_CHECK');
       if (props.value !== undefined && typeof props.value !== 'boolean') throw Error('UI_CHECK: value must be boolean');
@@ -414,6 +433,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
         tag, typography: style.typography, direction, extra: position < last ? style.children : undefined,
         sibling: { index: position, count: flat.length },
         inControl: parent.inControl || admission.tags[element.wire].children === 'content',
+        popovers: props[popoverScope] ?? parent.popovers,
       });
       // A component's fragment opens in its place, named under the component's slot or key.
       if (node?.fragment) return node.fragment.flatMap(inner => place(key === undefined
@@ -490,7 +510,8 @@ function semantics(tag, props, wire) {
     }
   }
   // Containers and text take a label here; controls wire their own.
-  if (['view', 'column', 'row', 'page', 'text'].includes(tag) && props.accessibilityLabel !== undefined) {
+  if (role === 'menuitem' && tag !== 'button') throw Error('UI_PROP: role="menuitem" belongs on a <button>');
+  if (['view', 'column', 'row', 'page', 'text', 'dialog'].includes(tag) && props.accessibilityLabel !== undefined) {
     check.label(props.accessibilityLabel, 'UI_PROP');
     wire('accessibilityLabel', props.accessibilityLabel);
   }

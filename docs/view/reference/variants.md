@@ -10,6 +10,7 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 | Variant | Applies to |
 | --- | --- |
 | `placeholder:` | editors; `text-*` color only |
+| `backdrop:` | any element |
 | `first:` | any element |
 | `last:` | any element |
 | `only:` | any element |
@@ -54,7 +55,6 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 | `marker:` | `marker:` | selector  ::marker |
 | `selection:` | `selection:` | selector  ::selection |
 | `file:` | `file:` | selector ::file-selector-button |
-| `backdrop:` | `backdrop:` | selector ::backdrop |
 | `details-content:` | `details-content:` | selector ::details-content |
 | `before:` | `before:` | selector ::before |
 | `after:` | `after:` | selector ::after |

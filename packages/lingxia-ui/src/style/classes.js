@@ -174,6 +174,9 @@ export function resolveClasses(className, env = {}) {
     const full = cascade([...plain, ...extra]);
     result[state] = state === 'disabled' ? full : changed(full, base);
   }
+  // `backdrop:` styles a dialog's backdrop on its own, not as a delta of the dialog.
+  const backdrop = own.filter(rule => rule.when?.state === 'backdrop');
+  if (backdrop.length) result.backdrop = cascade(backdrop);
   const children = matched.filter(rule => rule.when?.children);
   if (children.length) result.children = cascade(children);
   // Cache only the class cascade; inline values and inheritance resolve per node.

@@ -13,7 +13,7 @@ Styles each element accepts are in [styles.md](styles.md).
 | `key` | `string` |  |
 | `"data-testid"` | `string` |  |
 | `dir` | `"ltr" \| "rtl" \| "auto"` |  |
-| `role` | `"heading" \| "list" \| "listitem" \| "dialog" \| "alert" \| "status"` | Semantic role; controls keep their own. Headings take `headingLevel` 1..6. |
+| `role` | `"heading" \| "list" \| "listitem" \| "dialog" \| "alert" \| "status" \| "menu" \| "menuitem"` | Semantic role; controls keep their own. Headings take `headingLevel` 1..6. |
 | `headingLevel` | `1 \| 2 \| 3 \| 4 \| 5 \| 6` |  |
 | `"aria-hidden"` | `boolean` | Removes the node and its subtree from accessibility. |
 | `"aria-live"` | `"off" \| "polite" \| "assertive"` | Announce changes; `alert` is assertive and `status` polite unless set. |
@@ -31,6 +31,10 @@ Children: any elements and text. Renders as `column`. May sit inside a composed 
 | Prop | Type | Required |
 | --- | --- | --- |
 | `aria-label` | `string` |  |
+| `id` | `string` |  |
+| `popover` | `boolean \| "auto" \| "manual"` |  |
+| `open` | `boolean` |  |
+| `onToggle` | `(open: boolean) => void` |  |
 
 ## `<column>`
 
@@ -39,6 +43,10 @@ Children: any elements and text. May sit inside a composed `<button>` or `<check
 | Prop | Type | Required |
 | --- | --- | --- |
 | `aria-label` | `string` |  |
+| `id` | `string` |  |
+| `popover` | `boolean \| "auto" \| "manual"` |  |
+| `open` | `boolean` |  |
+| `onToggle` | `(open: boolean) => void` |  |
 
 ## `<row>`
 
@@ -47,6 +55,10 @@ Children: any elements and text. May sit inside a composed `<button>` or `<check
 | Prop | Type | Required |
 | --- | --- | --- |
 | `aria-label` | `string` |  |
+| `id` | `string` |  |
+| `popover` | `boolean \| "auto" \| "manual"` |  |
+| `open` | `boolean` |  |
+| `onToggle` | `(open: boolean) => void` |  |
 
 ## `<page>`
 
@@ -73,6 +85,7 @@ Children: text, or noninteractive content elements (a composed control). Not all
 | `onClick` | `() => void` |  |
 | `disabled` | `boolean` |  |
 | `aria-label` | `string` |  |
+| `popoverTarget` | `string` |  |
 
 ## `<spacer>`
 
@@ -216,13 +229,34 @@ Binding: `bind={local}` with a `useLocal<number>` cell, or `value` plus `onChang
 
 Children: any elements and text. May sit inside a composed `<button>` or `<checkbox>`.
 
-No element-specific props.
+| Prop | Type | Required |
+| --- | --- | --- |
+| `id` | `string` |  |
+| `popover` | `boolean \| "auto" \| "manual"` |  |
+| `open` | `boolean` |  |
+| `onToggle` | `(open: boolean) => void` |  |
 
 ## `<stack>`
 
 Children: any elements and text. May sit inside a composed `<button>` or `<checkbox>`.
 
-No element-specific props.
+| Prop | Type | Required |
+| --- | --- | --- |
+| `id` | `string` |  |
+| `popover` | `boolean \| "auto" \| "manual"` |  |
+| `open` | `boolean` |  |
+| `onToggle` | `(open: boolean) => void` |  |
+
+## `<dialog>`
+
+Children: any elements and text. Renders as `column`. May sit inside a composed `<button>` or `<checkbox>`.
+
+| Prop | Type | Required |
+| --- | --- | --- |
+| `open` | `boolean` |  |
+| `onClose` | `() => void` |  |
+| `closedby` | `"any" \| "closerequest" \| "none"` |  |
+| `aria-label` | `string` | yes |
 
 ## `<plot>`
 

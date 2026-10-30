@@ -868,6 +868,7 @@ function selectorParts(selector) {
   const name = unescape(match[1]), rest = match[2];
   if (!rest) return { name };
   if (rest === '::placeholder') return { name, placeholder: true };
+  if (rest === '::backdrop') return { name, state: 'backdrop' };
   let remaining = rest, structure, data, has;
   // `data-*` matches the element's own data-* props, resolved at render like a media query.
   const attribute = remaining.match(/^\[data-([a-z][a-z0-9-]*)(?:="([^"\\]*)")?\]/);

@@ -83,6 +83,34 @@ impl Renderer {
                     || record.parent.is_some_and(|parent| unspoken[parent]),
             );
         }
+        // A dialog in the top layer is modal: assistive tech reaches only it and its containers.
+        let in_top_layer = |mut at: Option<usize>| {
+            while let Some(index) = at {
+                if records[index].number(field::TOP_LAYER) == Some(1.0) {
+                    return true;
+                }
+                at = records[index].parent;
+            }
+            false
+        };
+        if let Some(modal) = (0..records.len()).rev().find(|&index| {
+            records[index].string(field::ROLE) == Some("dialog")
+                && !hidden[index]
+                && in_top_layer(Some(index))
+        }) {
+            let mut around = vec![false; records.len()];
+            let mut at = Some(modal);
+            while let Some(index) = at {
+                around[index] = true;
+                at = records[index].parent;
+            }
+            let mut inside = vec![false; records.len()];
+            for (index, record) in records.iter().enumerate() {
+                inside[index] =
+                    index == modal || record.parent.is_some_and(|parent| inside[parent]);
+                unspoken[index] |= !inside[index] && !around[index];
+            }
+        }
         let mut content_boxes: Vec<[f32; 4]> = Vec::with_capacity(records.len());
         let mut selectables = Vec::with_capacity(records.len());
         let mut selectable_count = 0;
@@ -254,7 +282,19 @@ impl Renderer {
                 (layout.size.width - layout.padding.left - layout.padding.right).max(0.0),
                 (layout.size.height - layout.padding.top - layout.padding.bottom).max(0.0),
             ]);
-            anchors.push(record.string(field::ANCHOR_TO).map(str::to_owned));
+            anchors.push(record.string(field::ANCHOR_TO).map(|target| {
+                let area = record.string(field::ANCHOR_AREA);
+                let named = target.starts_with("--").then(|| {
+                    records
+                        .iter()
+                        .position(|other| other.string(field::ANCHOR_NAME) == Some(target))
+                        .map(|other| identities[other].clone())
+                });
+                (
+                    named.flatten().unwrap_or_else(|| target.to_owned()),
+                    crate::scene::anchor::Area::parse(area, directions[index]),
+                )
+            }));
             stickies.push((record.string(field::POSITION) == Some("sticky")).then(|| {
                 let rtl = directions[index];
                 let side = |physical, left| {

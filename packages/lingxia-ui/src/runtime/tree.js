@@ -8,6 +8,7 @@ import { sited } from './errors.js';
 import { overlayNode, decorateOverlay, resetOverlays } from './overlay.js';
 import { pickerNode, pickerAnchor, resetPicker } from './picker.js';
 import { envOf } from './hooks.js';
+import { finishTopLayer, resetTopLayer } from './toplayer.js';
 
 // Candidate transactions: prepare renders and encodes without touching the
 // committed page; commit adopts the candidate, discard drops it.
@@ -35,6 +36,7 @@ export function prepare(renderPage, view, windows = {}) {
     candidate.tree = resolveNode(renderPage(view), 'root');
     render.site = null;
     if (!candidate.tree || candidate.tree.fragment) throw Error('UI_ROOT: page must return one layout node');
+    finishTopLayer(candidate.tree);
     // Logic-requested feedback (toast, modal, action sheet) draws above the page's own children.
     const env = envOf(view), overlay = overlayNode(env);
     if (overlay) candidate.tree.children.push(decorateOverlay(resolveNode(overlay, `root/${candidate.tree.element}/key:"lx-overlay"`, 1,
@@ -62,6 +64,7 @@ export function prepareWindows(windows) {
   if (!base) throw Error('UI_LIST: no retained description');
   return runCandidate(base.view, base.locals, candidate => {
     candidate.resources = new Map(base.resources);
+    candidate.topLayer = base.topLayer;
     candidate.tree = copyTree(base.tree);
     candidate.baseLocals = new Map(base.baseLocals);
     retainCells(candidate.baseLocals);
@@ -75,7 +78,7 @@ export function commit() {
   const previous = page.committed;
   for (const cell of candidate.locals.values()) if (page.updates.has(cell)) cell.value = page.updates.get(cell);
   page.locals = candidate.locals; page.callbacks = candidate.callbacks;
-  page.committed = candidate; render.candidate = null; page.updates.clear();
+  page.committed = candidate; render.candidate = null; page.updates.clear(); page.invalidated = false;
   const retained = new Set(page.locals.values()), next = new Map(), definitions = new Map();
   for (const [cell, resource] of page.resources) if (!retained.has(cell)) resource.dispose();
   for (const cell of retained) {
@@ -135,7 +138,7 @@ export function reset() {
   for (const resource of page.resources.values()) resource.dispose();
   page.resources.clear();
   resetActions();
-  resetOverlays(); resetPicker();
+  resetOverlays(); resetPicker(); resetTopLayer();
 }
 
 const accepts = (kind, value) => kind === 'number' ? typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1e9
