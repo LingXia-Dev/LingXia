@@ -347,6 +347,10 @@ class LxAppActivity : AppCompatActivity() {
     private fun applyGpuTopLayer(modal: Boolean) {
         if (!::webViewContainer.isInitialized) return
         webViewContainer.translationZ = if (modal) TOP_LAYER_Z else 0f
+        // Under the dialog the bars are out of reach for assistive tech too.
+        val hidden = if (modal) View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS else View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+        navigationBar?.importantForAccessibility = hidden
+        tabBar?.importantForAccessibility = hidden
     }
 
     /** The host chrome of the GPU page on screen; null on WebView pages, which keep their config. */

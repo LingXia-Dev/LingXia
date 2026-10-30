@@ -139,18 +139,12 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
      */
     public static boolean closeRequest(android.app.Activity activity) {
         for (GpuView view : new java.util.ArrayList<>(LIVE)) {
-            if (view.host != 0 && !view.destroyed && view.isShown() && activityOf(view.getContext()) == activity
+            // Pages are created on the application context: match the window they are shown in.
+            if (view.host != 0 && !view.destroyed && view.isShown()
+                && view.getRootView() == activity.getWindow().getDecorView()
                 && nativeCloseRequest(view.host)) return true;
         }
         return false;
-    }
-
-    private static android.app.Activity activityOf(android.content.Context context) {
-        while (context instanceof android.content.ContextWrapper) {
-            if (context instanceof android.app.Activity) return (android.app.Activity) context;
-            context = ((android.content.ContextWrapper) context).getBaseContext();
-        }
-        return null;
     }
     private TextView bootstrapMessage;
     private int bootstrapSurfaceImportance;
