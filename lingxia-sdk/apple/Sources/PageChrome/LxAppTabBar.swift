@@ -882,6 +882,8 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
             indicator.backgroundColor = PlatformColor(argb: config.selected_color)
                 .withAlphaComponent(TabBarMetrics.activeIndicatorOpacity)
             indicator.layer.cornerRadius = 16
+            // Decoration only: inside the button it would take the tap on the icon.
+            indicator.isUserInteractionEnabled = false
             indicator.translatesAutoresizingMaskIntoConstraints = false
             button.insertSubview(indicator, at: 0)
             NSLayoutConstraint.activate([
@@ -1054,6 +1056,8 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
             indicator.backgroundColor = PlatformColor(argb: config.selected_color)
                 .withAlphaComponent(TabBarMetrics.activeIndicatorOpacity)
             indicator.layer.cornerRadius = 16
+            // Decoration only: inside the button it would take the tap on the icon.
+            indicator.isUserInteractionEnabled = false
             indicator.translatesAutoresizingMaskIntoConstraints = false
             button.insertSubview(indicator, at: 0)
             NSLayoutConstraint.activate([
