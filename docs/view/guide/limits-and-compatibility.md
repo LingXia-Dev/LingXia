@@ -50,8 +50,8 @@ any of the page's code:
   hosts keep running old pages unchanged.
 - A host older than the page refuses it with `UI_COMPAT` instead of guessing at fields it does not know.
   Update the host app or SDK; the page itself is fine.
-- The page needs an engine that can interrupt runaway View code. Android's engine can; this is one reason
-  native pages run on Android only today.
+- The page needs an engine that can interrupt runaway View code. Every host that renders native pages
+  has one.
 
 ## Renderer fallback
 
@@ -64,5 +64,5 @@ is in effect. The CPU path draws the same frames.
 
 | Platform | Native pages |
 | --- | --- |
-| Android | yes |
-| iOS, macOS, HarmonyOS, Windows | not yet; use WebView pages |
+| Android, iOS, macOS | yes |
+| HarmonyOS, Windows | not yet; use WebView pages |

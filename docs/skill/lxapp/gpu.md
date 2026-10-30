@@ -1,4 +1,4 @@
-# GPU Views (experimental, Android)
+# GPU Views (Android, iOS, macOS)
 
 A page renders natively when its `index.json` has `"renderer": "gpu"`; its View
 is `index.tsx` (Logic stays in `index.ts`). Add `@lingxia/ui` as a dependency.
@@ -40,11 +40,11 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   pack's high-contrast palette; `shadow-*` layers use the `shadow` role.
 - Supported variants: `dark:`, `rtl:`/`ltr:`, `first:`/`last:`/`odd:`/`even:`/`only:`/`empty:`, `sm:`–`2xl:`, `focus:` (editors), `active:`
   (controls), `hover:` (fine pointers), `disabled:`, `placeholder:`,
-  `space-*`/`divide-*`. `*:`, `**:`, `in-*:`, `group-*:`, `peer-*:` fail naming the TS-side form.
+  `space-*`/`divide-*`. `data-*`, `has-*`, `focus-within:`, `group-active:`. `*:`, `**:`, `in-*:`, other `group-*:`, `peer-*:` fail naming the TS-side form.
 - `translate`/`rotate`/`scale`/`origin` are static and state variants may set them; skew and 3D fail.
   `transition-*`/`animate-*` animate paint and transforms only; editors/scrolls/sliders, gradients and
-  `scale-0` jump, and there are no exit or layout animations.
-- Utilities that would draw nothing (filters, masks, text shadows, cursors, outlines) fail naming what to use.
+  `scale-0` jump. `starting:`/`exit:` animate enter and removal; `transition-layout` animates position.
+- Utilities that would draw nothing (filters but `blur-*`, radial masks, text shadows, cursors, outlines) fail naming what to use.
 - In `lingxia dev`, saving View code of GPU pages swaps those pages in place, keeping `useLocal`, scroll
   and focus; Logic or config edits rebuild and reopen. Dev builds' runtime errors name `file:line:col`.
 - The build reports every problem with `file:line:col`, split into unknown
@@ -71,8 +71,8 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - While an image loads its background colour shows; `placeholder="tiny.jpg"` paints a small stand-in scaled smooth.
 - `object-top`, `object-left-bottom` or `object-[25%_75%]` (`objectPosition`) align a covered or contained image; pixel offsets fail.
 - `<textarea rows={2} maxRows={6}/>` grows with its lines in that range, then scrolls.
-- `<select options={[{value,label,disabled?}]} bind={cell} placeholder aria-label/>` opens the platform
-  picker; arrows change the choice; automation uses `locator.selectOption(valueOrLabel)`.
+- `<select options={[{value,label,disabled?}]} bind={cell} placeholder aria-label/>` opens the View's own
+  picker (popover with a mouse, sheet on touch); arrows change the choice; automation uses `locator.selectOption(valueOrLabel)`.
 - `locator.dblclick()` selects the word at an element's center in selectable text and editors (a long press on touch).
 - `locator.click()` on content inside a control (a checkbox's label) clicks that control, as a finger would; it fails when the control is disabled.
 - `enterKeyHint="next"|"previous"` moves focus to the adjacent enabled editor in reading order

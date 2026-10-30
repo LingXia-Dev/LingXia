@@ -48,8 +48,8 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 
 ## Platform status
 
-Native rendering ships on **Android**. On other platforms a page marked `"renderer": "gpu"` does not
-render natively yet; keep WebView pages there.
+Native rendering ships on **Android**, **iOS** and **macOS**. On HarmonyOS and Windows a page marked
+`"renderer": "gpu"` does not render natively yet; keep WebView pages there.
 
 ## How to read this guide
 

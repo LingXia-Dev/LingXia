@@ -84,7 +84,7 @@ editor finishes the composition, so the last composed text is the value.
 
 Every action key calls `onSubmit`: `enterKeyHint` chooses its label, and focus does not move to the
 next field on its own. On a `<textarea>`, `enterKeyHint` `send`, `go`, `done` or `search` makes Return
-submit (Shift+Return inserts a newline); otherwise Return inserts a newline. There is no `focus()` API; `autoFocus` is the only way to place focus.
+submit (Shift+Return inserts a newline); otherwise Return inserts a newline. `autoFocus` places focus on mount; `cell.focus()` focuses the editor bound to that `useLocal` cell.
 
 `<input type="search">` has the search keyboard and room for its magnifier. `<textarea>` is 120 px tall until sized.
 
@@ -140,6 +140,12 @@ control and its accessible name. `<switch>` takes plain text as its label. Both 
 `<radio options={[{ value, label, disabled?, 'data-testid'? }]}>` draws a group of 1–64 options. Values are
 unique non-empty strings. Choosing the selected option again does nothing. `disabled` on the group
 disables every option.
+
+## Select
+
+`<select options={[{ value, label, disabled? }]}>` opens the View's own picker, like the date and time
+inputs: a listbox popover with a mouse or trackpad, a bottom sheet on touch. Arrows change the choice,
+typing jumps to a label; automation uses `locator.selectOption(valueOrLabel)`.
 
 ## Slider
 

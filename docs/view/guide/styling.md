@@ -221,7 +221,7 @@ Each of these fails the build with `UI_CLASS_UNSUPPORTED` rather than rendering 
 - Skew and 3D transforms (`skew-*`, `rotate-x-*`, `perspective-*`).
 - Per-edge border colors and styles (`border-t-red-500`); borders share one color and style.
 - `cursor-*` and `pointer-events-*`: there is no cursor, and hit testing follows the rules in [Interaction](interaction.md).
-- Floats, columns, tables, `visibility`, `static`, scroll snapping and scroll margins.
+- Floats, columns, tables, `visibility`, `static` and scroll margins. `snap-proximity` too: every snap is mandatory ([Lists and scrolling](lists-and-scrolling.md)).
 - Size transitions ([Motion](motion.md)); position changes animate with `transition-layout`.
 
 ```tsx error UI_CLASS_UNSUPPORTED
