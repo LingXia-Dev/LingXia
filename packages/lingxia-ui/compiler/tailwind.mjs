@@ -3,7 +3,7 @@ import postcss from 'postcss';
 import { parse, formatHex8 } from 'culori';
 import { readFile } from 'node:fs/promises';
 import { tokenSelectorTheme, validateTokens, fontFaces, classRulesAsUtilities } from './stylesheets.mjs';
-import { lowerAnimation, easing as lowerEasing } from './animation.mjs';
+import { lowerAnimation, transitionEasing as lowerEasing } from './animation.mjs';
 import { css as cssStyle, keywords, style as styleTable, limits, roles } from '../src/generated/contract.js';
 
 // Tailwind owns utility expansion and cascade order; this module lowers each
@@ -138,8 +138,12 @@ function roleColor(value) {
 
 /** The Tailwind colour names for the roles: `text-muted` is `muted`, so the class reads `text-muted`. */
 // The View's own variant and utility: `exit:` styles a removed element's ghost; `transition-layout`
-// adds FLIP position motion to whatever `transition-*` sets.
+// adds FLIP position motion to whatever `transition-*` sets; `ease-spring*` time a transition by a spring.
 export const viewExtensions = `@custom-variant exit (&:where(.lx-exit));
+@theme {
+  --ease-spring: spring(0);
+  --ease-spring-bouncy: spring(0.25);
+}
 @utility transition-layout {
   --lx-transition-layout: 1;
   transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));

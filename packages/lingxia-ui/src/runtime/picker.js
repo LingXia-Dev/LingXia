@@ -219,6 +219,8 @@ function selectBody() {
 /** The popover's anchor: the editor it opened from, or null for a sheet. */
 export const pickerAnchor = env => picker && (env?.pointer ?? 'coarse') !== 'coarse' ? picker.identity : null;
 
+const sheetStyle = ({ borderRadius, ...rest }) => rest;
+
 /** The open picker above the page, or null. */
 export function pickerNode(env) {
   if (!picker) return null;
@@ -239,7 +241,10 @@ export function pickerNode(env) {
   // Touch: a bottom sheet. A mouse: a popover that native moves against its editor.
   return touch
     ? h('dialog', { ...panel, open: true, closedby: 'any', onClose: () => settle(null),
-      style: { ...panel.style, marginTop: 'auto', marginBottom: 8, marginLeft: 8, marginRight: 8 } }, body, footer)
+      // Edge to edge and flush with the bottom; the content clears the home indicator.
+      style: { ...sheetStyle(panel.style), marginTop: 'auto', marginBottom: 0, marginLeft: 0, marginRight: 0, width: '100%',
+        borderTopLeftRadius: 14, borderTopRightRadius: 14, paddingBottom: 12 + (env?.safeArea?.bottom ?? 0),
+        paddingLeft: 12 + (env?.safeArea?.left ?? 0), paddingRight: 12 + (env?.safeArea?.right ?? 0) } }, body, footer)
     : h('view', { ...panel, id: 'lx-picker', popover: 'auto', open: true, onToggle: open => { if (!open) settle(null); },
       style: { ...panel.style, position: 'absolute', top: 0, left: 0 } }, body, footer);
 }

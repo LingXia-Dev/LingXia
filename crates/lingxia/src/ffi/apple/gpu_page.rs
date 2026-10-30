@@ -303,6 +303,8 @@ mod bridge {
         fn gpu_pages_text_menu(token: i64, menu: &str);
         #[swift_bridge(swift_name = "GpuPages.haptic")]
         fn gpu_pages_haptic(token: i64);
+        #[swift_bridge(swift_name = "GpuPages.topLayer")]
+        fn gpu_pages_top_layer(token: i64, modal: bool);
         #[swift_bridge(swift_name = "GpuPages.copyText")]
         fn gpu_pages_copy_text(text: &str);
         #[swift_bridge(swift_name = "GpuPages.accessibilityEvent")]
@@ -1058,6 +1060,9 @@ mod live {
         }
         fn haptic(&self, token: i64) {
             super::bridge::gpu_pages_haptic(token);
+        }
+        fn top_layer(&self, token: i64, modal: bool) {
+            super::bridge::gpu_pages_top_layer(token, modal);
         }
         fn copy_text(&self, text: &str) {
             super::bridge::gpu_pages_copy_text(text);

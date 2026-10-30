@@ -20,7 +20,15 @@ function words(value) {
   if (depth) fail('unbalanced parentheses');
   return result;
 }
+/** A transition's timing: an easing, or `spring(bounce)` (bounce 0..0.9), which keyframes refuse. */
+export function transitionEasing(value) {
+  const spring = /^spring\(\s*([^()]*)\s*\)$/.exec(value);
+  if (!spring) return easing(value);
+  const bounce = numeric(spring[1], 0, 0.9);
+  return { spring: bounce };
+}
 export function easing(value) {
+  if (/^spring\(/.test(value)) fail('spring timing applies to transitions, not keyframes');
   const named = {linear:'linear', 'step-end':'step-end', ease:[.25,.1,.25,1],
     'ease-in':[.42,0,1,1], 'ease-out':[0,0,.58,1], 'ease-in-out':[.42,0,.58,1]};
   if (Object.hasOwn(named,value)) return named[value];

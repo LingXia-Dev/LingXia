@@ -158,6 +158,8 @@ export interface Env {
   readonly viewport: Readonly<{ width: number; height: number }>;
   /** System bars and host chrome over the surface, logical pixels. */
   readonly insets: Readonly<{ top: number; right: number; bottom: number; left: number }>;
+  /** The system bars alone (status bar, cutout, home indicator), as CSS `env(safe-area-inset-*)`; a dialog covering host chrome pads by these, logical pixels. */
+  readonly safeArea: Readonly<{ top: number; right: number; bottom: number; left: number }>;
   readonly keyboard: Readonly<{ height: number }>;
   /** `fine` pointers (mouse, trackpad) hover; `coarse` ones (touch) do not. */
   readonly pointer: "fine" | "coarse";

@@ -199,3 +199,12 @@ test('transition utilities lower to one bounded transition of painted properties
   assert.equal(records[6], 171);
   assert.deepEqual(JSON.parse(records[7]), { properties: ['opacity'], durationMs: 200, delayMs: 0, easing: [0.4, 0, 0.2, 1] });
 });
+
+test('ease-spring times a transition by a spring; keyframes refuse one', async () => {
+  const rules = await compileUtilities(new Set(['transition-transform', 'ease-spring', 'ease-spring-bouncy', 'ease-[spring(0.4)]', 'ease-[spring(2)]']));
+  const easing = name => rules.find(rule => rule.name === name && !rule.error)?.motion?.easing;
+  assert.deepEqual(easing('ease-spring'), { spring: 0 });
+  assert.deepEqual(easing('ease-spring-bouncy'), { spring: 0.25 });
+  assert.deepEqual(easing('ease-[spring(0.4)]'), { spring: 0.4 });
+  assert.ok(rules.find(rule => rule.name === 'ease-[spring(2)]').error, 'bounce is 0..0.9');
+});

@@ -31,6 +31,10 @@ Two primitives, spelled as HTML spells them. A sheet and a menu are not primitiv
 - `onToggle` takes a boolean, not the `toggle` event's `newState: "open"|"closed"`, matching `<Details>`.
 - `role="dialog"` leaves the author's role list (`UI_PROP` names `<dialog>`). `role="menu"` and `menuitem` are added.
 
+**Departures made while building it:** placement is the `positionArea` style (or `[position-area:…]`), not new
+utilities; the popover sits a fixed 4 px from its anchor rather than taking the author's margin; `closedby` is
+dialog-only, as in HTML; the opening invoker carries a CSS anchor name the popover sits against.
+
 **Top layer.** An open dialog or popover lays out against the page's whole box, as an `absolute` child of `<page>` does (under the bars; `<page>`'s safe-area padding is not applied, so a sheet's background reaches the screen edge and the scrim covers everything), and paints above all page content in open order, ignoring ancestor clips and transforms. Its bottom edge rises with the keyboard, so a sheet holding an editor stays in view. This is native, not a JS hoist: `layout_parents` already sends `fixed` to the root; a top-layer flag does the same and `RetainedScene` appends those nodes to paint order. The tree stays intact, so identity, inherited typography and `<List>` rows work. A popover whose row is evicted, or whose anchor is gone, closes (`onToggle(false)`). Closed content does not exist, as in `<Details>`: `useLocal` inside it resets unless named above it.
 
 **Anchoring.** The invoker that opened a popover anchors it through the existing `anchorTo`; `scene/anchor.rs` gains `positionArea` and RTL and follows scrolling without a render. A popover opened with no invoker is placed by its classes, centred by default.
@@ -101,7 +105,7 @@ Adjustable is a new action pair on the node (`AccessibilityAction` has `SetProgr
 
 ## Springs
 
-`ease-spring`, `ease-spring-bouncy` (bounce 0.25) and `ease-[spring(0.4)]`: bounce in `[0, 1)`, after CSS's `spring()` proposal and SwiftUI. `duration-*` stays the one duration knob and means perceptual duration, so there are no stiffness or damping props. With ω = 2π/duration and ζ = 1 − bounce, each channel is closed-form, so sampling stays a pure function of time as today and corpus runs stay deterministic:
+`ease-spring`, `ease-spring-bouncy` (bounce 0.25) and `ease-[spring(0.4)]`: bounce 0–0.9, after CSS's `spring()` proposal and SwiftUI. `duration-*` stays the one duration knob and means perceptual duration, so there are no stiffness or damping props. With ω = 2π/duration and ζ = 1 − bounce, each channel is closed-form, so sampling stays a pure function of time as today and corpus runs stay deterministic:
 
 `x(t) = to + (x₀ − to)·A(t) + v₀·B(t)`
 

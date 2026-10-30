@@ -432,7 +432,7 @@
     };
     if (!value || typeof value !== "object" || Object.keys(value).some((key) => !["properties", "durationMs", "delayMs", "easing"].includes(key))) invalid2();
     const { properties, durationMs, delayMs = 0, easing = [0.4, 0, 0.2, 1] } = value;
-    if (!Array.isArray(properties) || !properties.length || properties.length > options["transition-property"].length || new Set(properties).size !== properties.length || properties.some((name) => !options["transition-property"].includes(name)) || !finite(durationMs) || durationMs <= 0 || durationMs > limits.transitionMs || !finite(delayMs) || delayMs < 0 || delayMs > limits.transitionMs || !(easing === "linear" || easing === "step-end" || Array.isArray(easing) && easing.length === 4 && easing.every(finite))) invalid2();
+    if (!Array.isArray(properties) || !properties.length || properties.length > options["transition-property"].length || new Set(properties).size !== properties.length || properties.some((name) => !options["transition-property"].includes(name)) || !finite(durationMs) || durationMs <= 0 || durationMs > limits.transitionMs || !finite(delayMs) || delayMs < 0 || delayMs > limits.transitionMs || !(easing === "linear" || easing === "step-end" || Array.isArray(easing) && easing.length === 4 && easing.every(finite) || easing && typeof easing === "object" && Object.keys(easing).join() === "spring" && finite(easing.spring) && easing.spring >= 0 && easing.spring <= 0.9)) invalid2();
     return JSON.stringify({ properties, durationMs, delayMs, easing });
   }
   function animation(value) {
@@ -949,7 +949,7 @@
         h(tag, { ...rest, key: "panel", [panelMark]: true, [popoverScope]: [...scope, id], style: style2 }, ...children)
       ),
       finish: (result) => {
-        result.wire.push(["topLayer", 1]);
+        result.wire.push(["topLayer", kind === "auto" ? 1 : 2]);
         const panel = result.children.find((child) => child.props?.key === "panel");
         if (anchor && panel) panel.wire.push(["anchorTo", anchorName(id)]);
       }
@@ -3797,6 +3797,7 @@
     );
   }
   var pickerAnchor = (env) => picker && (env?.pointer ?? "coarse") !== "coarse" ? picker.identity : null;
+  var sheetStyle = ({ borderRadius, ...rest }) => rest;
   function pickerNode(env) {
     if (!picker) return null;
     const words = wordsFor(env?.displayLanguage);
@@ -3837,7 +3838,20 @@
       open: true,
       closedby: "any",
       onClose: () => settle(null),
-      style: { ...panel.style, marginTop: "auto", marginBottom: 8, marginLeft: 8, marginRight: 8 }
+      // Edge to edge and flush with the bottom; the content clears the home indicator.
+      style: {
+        ...sheetStyle(panel.style),
+        marginTop: "auto",
+        marginBottom: 0,
+        marginLeft: 0,
+        marginRight: 0,
+        width: "100%",
+        borderTopLeftRadius: 14,
+        borderTopRightRadius: 14,
+        paddingBottom: 12 + (env?.safeArea?.bottom ?? 0),
+        paddingLeft: 12 + (env?.safeArea?.left ?? 0),
+        paddingRight: 12 + (env?.safeArea?.right ?? 0)
+      }
     }, body, footer) : h("view", {
       ...panel,
       id: "lx-picker",

@@ -526,6 +526,7 @@ pub const ENVIRONMENT_KEYS: &[(&str, &str)] = &[
     ("theme", "device"),
     ("viewport", "session"),
     ("insets", "device"),
+    ("safeArea", "device"),
     ("keyboard", "device"),
     ("pointer", "device"),
     ("os", "device"),
@@ -549,6 +550,7 @@ pub fn check_environment(value: &serde_json::Value) -> bool {
     value.is_object()
         && matches!(value["theme"].as_str(), Some("light") | Some("dark"))
         && ["top", "right", "bottom", "left"].iter().all(|edge| value["insets"][edge].as_f64().is_some_and(|n| n.is_finite() && (0.0..=16384.0).contains(&n)))
+        && (value.get("safeArea").is_none() || ["top", "right", "bottom", "left"].iter().all(|edge| value["safeArea"][edge].as_f64().is_some_and(|n| n.is_finite() && (0.0..=16384.0).contains(&n))))
         && value["keyboard"]["height"].as_f64().is_some_and(|n| n.is_finite() && (0.0..=16384.0).contains(&n))
         && matches!(value["pointer"].as_str(), Some("fine") | Some("coarse"))
         && value["os"].as_str().is_some_and(|s| !s.is_empty() && s.len() <= 128)

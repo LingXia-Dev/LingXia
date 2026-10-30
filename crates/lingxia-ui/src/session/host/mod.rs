@@ -627,6 +627,19 @@ impl<A: PlatformAdapter> ViewHost<A> {
         handled
     }
 
+    /// A platform close request (Android back): the topmost dialog or light-dismiss popover
+    /// closes and the request is consumed; false when none is open.
+    pub fn close_request(&self) -> bool {
+        if !self.inner.lifecycle.accepts_input() {
+            return false;
+        }
+        let Some(effects) = self.inner.main().interaction.close_request() else {
+            return false;
+        };
+        self.inner.deliver(effects);
+        true
+    }
+
     /// After a session failure the page takes no input at all, platform gestures
     /// (refresh, selection handles) included, until it reloads.
     pub fn input_blocked(&self) -> bool {

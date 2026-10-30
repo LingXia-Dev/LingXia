@@ -117,7 +117,8 @@ Build carousels from a horizontal `<scroll>`.
 
 `<dialog>` and the `popover` attribute work as in HTML. Open ones draw in the top layer: above the
 whole page (under the system bars, above the keyboard) whatever their place in the tree, unclipped
-by their ancestors.
+by their ancestors. On phones an open dialog also covers the host's navigation and tab bars, which
+take no input meanwhile; pad its content by `env.safeArea` (the system bars alone), not `env.insets`.
 
 ```tsx
 import { useLocal } from '@lingxia/ui';
@@ -142,11 +143,11 @@ export function render() {
 
 - `<dialog open onClose closedby>` is always modal: a backdrop (`backdrop:` styles it, `bg-scrim` by
   default) takes taps, focus stays inside, and assistive tech reads only the dialog. `closedby`:
-  `closerequest` (default) closes on Escape, `any` also on a backdrop tap, `none` only from code.
+  `closerequest` (default) closes on Escape or Android back, `any` also on a backdrop tap, `none` only from code.
   It needs `aria-label`. A dialog is centred by auto margins; `mt-auto mb-0 w-full` makes a sheet.
 - `popover` (`auto`) or `popover="manual"` on a `<view>`, `<row>`, `<column>`, `<stack>` or `<grid>`
   with an `id`; `<button popoverTarget="id">` toggles it and gets `aria-expanded`. An auto popover
-  closes on a tap outside (the tap goes nowhere else), on Escape and when another auto popover opens.
+  closes on a tap outside (the tap goes nowhere else), on Escape or Android back, and when another auto popover opens.
   Opened by its invoker it sits below it, flipping above when needed; `positionArea` (`top`,
   `bottom span-inline-start`, …) picks the side. `open` and `onToggle(open)` control it from state.
 - `role="menu"` names a popover of actions; a `<button role="menuitem">` closes its popover after `onClick`.

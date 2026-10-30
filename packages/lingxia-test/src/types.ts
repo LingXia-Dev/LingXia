@@ -410,7 +410,8 @@ export type ViewFunction<R, A extends unknown[]> = ((scope: ViewScope, ...args: 
 /** Roles `getByRole` resolves on both renderers. */
 export type LocatorRole =
   | "button" | "link" | "heading" | "textbox" | "checkbox" | "switch" | "radio" | "radiogroup"
-  | "slider" | "img" | "list" | "listitem" | "dialog" | "alert" | "status" | "combobox";
+  | "slider" | "img" | "list" | "listitem" | "dialog" | "alert" | "status" | "combobox"
+  | "menu" | "menuitem";
 
 export interface TestView {
   testId(id: string): Locator;

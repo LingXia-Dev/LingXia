@@ -4331,9 +4331,37 @@ fn a_snapping_scroll_settles_on_the_nearest_point_once_input_stops() {
     platform.advance(std::time::Duration::from_millis(100));
     platform.settle(&[&host]);
     assert_eq!(top("r1"), -16.0, "no settle while input continues");
-    for _ in 0..30 {
+    let mut tops = Vec::new();
+    for _ in 0..60 {
         platform.advance(std::time::Duration::from_millis(16));
         platform.settle(&[&host]);
+        tops.push(top("r1"));
     }
     assert_eq!(top("r1"), 0.0, "settled on row 1, the nearest point");
+    // A critically damped spring: it never passes the point.
+    assert!(tops.iter().all(|t| (-16.0..=0.0).contains(t)), "{tops:?}");
+}
+
+#[test]
+fn a_close_request_closes_the_topmost_dialog_or_popover_and_is_refused_without_one() {
+    let worker = ViewWorker::spawn("test-close-request").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){const open=useLocal('open',true);return h('page',{},h('text',{'data-testid':'state'},open.value?'open':'closed'),h('view',{id:'toast',popover:'manual',open:true,'data-testid':'toast'}),h('dialog',{open:open.value,onClose(){open.set(false)},'aria-label':'Confirm','data-testid':'d'}))}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let text = || {
+        host.automation_request(&serde_json::json!({"op":"query","css":"[data-testid=\"state\"]"}))
+            .unwrap()["text"]
+            .clone()
+    };
+    assert!(host.close_request(), "the open dialog takes it");
+    platform.settle(&[&host]);
+    assert_eq!(text(), "closed");
+    assert!(!host.close_request(), "a manual popover takes none");
 }

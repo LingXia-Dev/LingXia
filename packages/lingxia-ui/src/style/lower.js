@@ -204,7 +204,8 @@ function transitionValue(value) {
   if (!Array.isArray(properties) || !properties.length || properties.length > options['transition-property'].length ||
       new Set(properties).size !== properties.length || properties.some(name => !options['transition-property'].includes(name)) ||
       !finite(durationMs) || durationMs <= 0 || durationMs > limits.transitionMs || !finite(delayMs) || delayMs < 0 || delayMs > limits.transitionMs ||
-      !(easing === 'linear' || easing === 'step-end' || (Array.isArray(easing) && easing.length === 4 && easing.every(finite)))) invalid();
+      !(easing === 'linear' || easing === 'step-end' || (Array.isArray(easing) && easing.length === 4 && easing.every(finite)) ||
+        (easing && typeof easing === 'object' && Object.keys(easing).join() === 'spring' && finite(easing.spring) && easing.spring >= 0 && easing.spring <= 0.9))) invalid();
   return JSON.stringify({ properties, durationMs, delayMs, easing });
 }
 

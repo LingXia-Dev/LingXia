@@ -110,6 +110,7 @@ pub fn register_natives(env: &mut Env, class: &JClass) -> jni::errors::Result<()
         method!("nativeRequestFrame", "(J)V", request_frame),
         method!("nativeRedraw", "(J)V", redraw),
         method!("nativeFrameCurrent", "(J)Z", frame_current),
+        method!("nativeCloseRequest", "(J)Z", close_request),
         method!("nativeVsync", "(J)V", vsync),
         method!("nativeRetry", "(J)V", retry),
         method!("nativeConnect", "(JJLjava/lang/String;)V", connect),
@@ -477,6 +478,14 @@ extern "system" fn window_focus<'a>(
         host(handle)?.window_focus(focused);
         Ok(())
     })
+}
+
+extern "system" fn close_request<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+) -> jboolean {
+    run(&mut env, |_| Ok(host(handle)?.close_request()))
 }
 
 extern "system" fn input_blocked<'a>(

@@ -102,7 +102,7 @@ pub(crate) fn layout_parents(records: &[Record]) -> Vec<Option<usize>> {
         .map(|record| {
             record.parent.map(|parent| {
                 if record.string(field::POSITION) == Some("fixed")
-                    || record.number(field::TOP_LAYER) == Some(1.0)
+                    || record.number(field::TOP_LAYER).is_some()
                 {
                     0
                 } else {

@@ -17,6 +17,8 @@ private final class LxAppRootContainer: UIView {
     weak var tabBarHitTarget: UIView?
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        // A GPU page above the bars holds an open dialog; the bars under it take nothing.
+        if subviews.last is GpuPageView { return super.hitTest(point, with: event) }
         if let tabBar = tabBarHitTarget,
            !tabBar.isHidden,
            tabBar.alpha > 0.01,
@@ -745,16 +747,15 @@ final class LxAppViewController: UIViewController, ObservableObject {
         }
         if activeGpuView !== view {
             activeGpuView?.removeFromSuperview()
-            // Pinned where a WebView page sits, so chrome insets match.
+            // The whole screen: the bars over it are chrome insets the page pads by, and an open
+            // dialog's top layer can cover them.
             view.translatesAutoresizingMaskIntoConstraints = false
             rootContainer.addSubview(view)
             NSLayoutConstraint.activate([
-                view.topAnchor.constraint(
-                    equalTo: rootContainer.topAnchor, constant: calculateTopOffset(for: appId, path: path)),
+                view.topAnchor.constraint(equalTo: rootContainer.topAnchor),
                 view.leadingAnchor.constraint(equalTo: self.view.leadingAnchor),
                 view.trailingAnchor.constraint(equalTo: self.view.trailingAnchor),
-                view.bottomAnchor.constraint(
-                    equalTo: self.view.bottomAnchor, constant: -standardTabBarInset(for: appId)),
+                view.bottomAnchor.constraint(equalTo: self.view.bottomAnchor),
             ])
             activeGpuView = view
         }

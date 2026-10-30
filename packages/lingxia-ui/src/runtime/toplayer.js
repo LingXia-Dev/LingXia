@@ -126,7 +126,8 @@ function popover(tag, props, children, identity, parent) {
         style: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'transparent' } }),
       h(tag, { ...rest, key: 'panel', [panelMark]: true, [popoverScope]: [...scope, id], style }, ...children)),
     finish: result => {
-      result.wire.push(['topLayer', 1]);
+      // A manual popover is in the top layer but takes no close request.
+      result.wire.push(['topLayer', kind === 'auto' ? 1 : 2]);
       const panel = result.children.find(child => child.props?.key === 'panel');
       if (anchor && panel) panel.wire.push(['anchorTo', anchorName(id)]);
     },

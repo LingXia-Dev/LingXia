@@ -69,6 +69,12 @@ impl DeviceFacts {
                 "bottom": edge(2, height),
                 "left": edge(3, width),
             },
+            "safeArea": {
+                "top": logical(self.system_insets[0].min(f32::from(height))),
+                "right": logical(self.system_insets[1].min(f32::from(width))),
+                "bottom": logical(self.system_insets[2].min(f32::from(height))),
+                "left": logical(self.system_insets[3].min(f32::from(width))),
+            },
             "keyboard": {"height": logical(self.keyboard.min(f32::from(height)))},
             "os": self.os,
             "pointer": if self.fine_pointer { "fine" } else { "coarse" },

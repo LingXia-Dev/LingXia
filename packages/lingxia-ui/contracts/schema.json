@@ -369,6 +369,7 @@
     "theme": {"type": "\"light\" | \"dark\"", "check": "enum", "values": ["light", "dark"], "origin": "device"},
     "viewport": {"type": "Readonly<{ width: number; height: number }>", "check": "none", "origin": "session", "doc": "The page surface in logical pixels."},
     "insets": {"type": "Readonly<{ top: number; right: number; bottom: number; left: number }>", "check": "edges", "origin": "device", "doc": "System bars and host chrome over the surface, logical pixels."},
+    "safeArea": {"type": "Readonly<{ top: number; right: number; bottom: number; left: number }>", "check": "edges", "origin": "device", "optional": true, "doc": "The system bars alone (status bar, cutout, home indicator), as CSS `env(safe-area-inset-*)`; a dialog covering host chrome pads by these, logical pixels."},
     "keyboard": {"type": "Readonly<{ height: number }>", "check": "keyboard", "origin": "device"},
     "pointer": {"type": "\"fine\" | \"coarse\"", "check": "enum", "values": ["fine", "coarse"], "origin": "device", "default": "coarse", "doc": "`fine` pointers (mouse, trackpad) hover; `coarse` ones (touch) do not."},
     "os": {"type": "string", "check": "name", "origin": "device"},

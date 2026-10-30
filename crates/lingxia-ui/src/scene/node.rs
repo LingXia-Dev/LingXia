@@ -20,6 +20,9 @@ pub struct SelectSnapshot {
 
 #[derive(Clone, Serialize)]
 pub struct NodeSnapshot {
+    /// A top-layer box that takes close requests (a dialog, an auto popover).
+    #[serde(skip)]
+    pub close_request: bool,
     pub identity: String,
     pub tag: &'static str,
     pub test_id: String,

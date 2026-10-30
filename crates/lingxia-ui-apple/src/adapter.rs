@@ -29,6 +29,8 @@ pub struct AppleAdapter {
     images: Mutex<HashMap<u64, Box<dyn Send>>>,
     /// The pressed and keyboard-focused nodes with feedback drawn, redrawn per frame.
     highlights: Mutex<[Option<usize>; 2]>,
+    /// A dialog of the top layer is open: the view sits above the host's bars.
+    modal: std::sync::atomic::AtomicBool,
 }
 
 impl AppleAdapter {
@@ -47,6 +49,7 @@ impl AppleAdapter {
             target: Mutex::new(lingxia_ui::renderer::surfaces::Target::Unavailable),
             images: Mutex::new(HashMap::new()),
             highlights: Mutex::new([None; 2]),
+            modal: Default::default(),
         }
     }
 
@@ -383,6 +386,15 @@ impl HostEvents for AppleAdapter {
         self.shell.loaded(self.token);
     }
     fn presented(&self, frame: &FrameSnapshot, timing: &FrameTiming) {
+        // An exiting dialog still covers the bars until its exit ends.
+        let open = frame.frame.nodes.iter().any(|node| {
+            node.role.as_deref() == Some("dialog") && lingxia_ui::interaction::frame::visible(node)
+        });
+        let modal = open
+            || (self.modal.load(std::sync::atomic::Ordering::Relaxed) && frame.metrics.ghosts > 0);
+        if self.modal.swap(modal, std::sync::atomic::Ordering::Relaxed) != modal {
+            self.shell.top_layer(self.token, modal);
+        }
         // Feedback follows its node as the page scrolls and changes.
         let highlights = *self.highlights.lock().unwrap_or_else(|p| p.into_inner());
         for (which, node) in highlights.into_iter().enumerate() {

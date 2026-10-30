@@ -86,7 +86,7 @@ impl Renderer {
         // A dialog in the top layer is modal: assistive tech reaches only it and its containers.
         let in_top_layer = |mut at: Option<usize>| {
             while let Some(index) = at {
-                if records[index].number(field::TOP_LAYER) == Some(1.0) {
+                if records[index].number(field::TOP_LAYER).is_some() {
                     return true;
                 }
                 at = records[index].parent;
@@ -1027,6 +1027,7 @@ impl Renderer {
             };
             ranges.push(paint_start..commands.len());
             nodes.push(NodeSnapshot {
+                close_request: record.number(field::TOP_LAYER) == Some(1.0),
                 plot_local: None,
                 data: record
                     .string(field::DATA_ATTRIBUTES)

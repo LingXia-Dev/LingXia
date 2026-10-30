@@ -421,6 +421,8 @@ function Overlays() {
   const sheet = useLocal('overlay-sheet', false);
   const last = useLocal('overlay-last', 'none');
   const act = (value: string) => last.set(value);
+  // The sheet covers the bars; its content clears the home indicator or gesture bar.
+  const safeBottom = useView().env.safeArea?.bottom ?? 0;
   return (
     <Section title="Overlays" testId="lab-overlays">
       <row className="gap-2 items-center flex-wrap">
@@ -446,7 +448,8 @@ function Overlays() {
         </row>
       </dialog>
       <dialog open={sheet.value} onClose={() => sheet.set(false)} closedby="any" aria-label="Filters" data-testid="lab-sheet"
-        className="mt-auto mb-0 w-full p-4 pb-8 gap-3 rounded-t-3xl bg-surface-raised transition-transform duration-300 ease-out starting:translate-y-full exit:translate-y-full">
+        style={{ paddingBottom: 16 + safeBottom }}
+        className="mt-auto mb-0 w-full p-4 gap-3 rounded-t-3xl bg-surface-raised transition-transform duration-300 ease-out starting:translate-y-full exit:translate-y-full">
         <spacer className="self-center w-10 h-1 rounded-full bg-line-strong" />
         <text role="heading" headingLevel={3} className="text-base font-semibold">Filters</text>
         <scroll data-testid="lab-sheet-scroll" className="max-h-48">

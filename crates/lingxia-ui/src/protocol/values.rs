@@ -418,7 +418,11 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
         field::LIST_ANCHOR => list_anchor(value),
         field::ON_CLICK => ensure(handle(value), "UI_PROP: invalid handle or flag"),
         field::ENABLED => ensure(flag(value), "UI_PROP: invalid handle or flag"),
-        field::TOP_LAYER => ensure(value.as_u64() == Some(1), "UI_FIELD: invalid top layer"),
+        // 1 takes close requests (Escape, back); 2 is a manual popover, which does not.
+        field::TOP_LAYER => ensure(
+            matches!(value.as_u64(), Some(1 | 2)),
+            "UI_FIELD: invalid top layer",
+        ),
         field::Z_INDEX => ensure(
             value.as_i64().is_some_and(|v| v.abs() <= 10_000),
             "UI_STYLE: invalid z-index",

@@ -248,7 +248,7 @@ is still refused on an element that does not render its style ([styles.md](style
 | `animate` | `animate-bounce`, `animate-none`, `animate-ping`, `animate-pulse`, `animate-spin` |  |
 | `delay` | `delay-75`, `delay-100`, `delay-150`, `delay-200`, `delay-300`, … (8) |  |
 | `duration` | `duration-75`, `duration-100`, `duration-150`, `duration-200`, `duration-300`, … (8) | unsupported transition time (1) |
-| `ease` | `ease-in`, `ease-in-out`, `ease-linear`, `ease-out` | unsupported easing initial (1) |
+| `ease` | `ease-in`, `ease-in-out`, `ease-linear`, `ease-out`, `ease-spring`, `ease-spring-bouncy` | unsupported easing initial (1) |
 | `transition` | `transition`, `transition-all`, `transition-colors`, `transition-layout`, `transition-none`, … (8) | transition-behavior (2) |
 
 ## Scrolling

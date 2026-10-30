@@ -52,6 +52,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     static native void nativeRequestFrame(long host);
     static native void nativeRedraw(long host);
     static native boolean nativeFrameCurrent(long host);
+    static native boolean nativeCloseRequest(long host);
     static native void nativeVsync(long host);
     static native void nativeRetry(long host);
     static native void nativeConnect(long host, long connection, String nonce);
@@ -128,6 +129,27 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     private final GpuRecovery recovery = new GpuRecovery(this);
     // Zero after disposal.
     private long host;
+    private static final java.util.Set<GpuView> LIVE = java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
+
+    /**
+     * Back as a close request: the shown page's topmost dialog or light-dismiss popover closes,
+     * and the back is consumed. False when no page of {@code activity} holds one.
+     */
+    public static boolean closeRequest(android.app.Activity activity) {
+        for (GpuView view : new java.util.ArrayList<>(LIVE)) {
+            if (view.host != 0 && !view.destroyed && view.isShown() && activityOf(view.getContext()) == activity
+                && nativeCloseRequest(view.host)) return true;
+        }
+        return false;
+    }
+
+    private static android.app.Activity activityOf(android.content.Context context) {
+        while (context instanceof android.content.ContextWrapper) {
+            if (context instanceof android.app.Activity) return (android.app.Activity) context;
+            context = ((android.content.ContextWrapper) context).getBaseContext();
+        }
+        return null;
+    }
     private TextView bootstrapMessage;
     private int bootstrapSurfaceImportance;
     private final Listener listener;
@@ -249,6 +271,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         });
         feedback.getOverlay().add(staticSelection);
         host = nativeHostCreate(new Platform(), worker, logic, imageOwner);
+        LIVE.add(this);
         ime.setCaretActive(false);
         // The CPU route draws through lockCanvas, which uses the holder format (RGB_565 by
         // default); a later change would recreate the surface.

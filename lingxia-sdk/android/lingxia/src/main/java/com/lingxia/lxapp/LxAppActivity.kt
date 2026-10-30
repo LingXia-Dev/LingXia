@@ -624,6 +624,8 @@ class LxAppActivity : AppCompatActivity() {
                             Log.d(TAG, "BackPress: closing top surface")
                             return
                         }
+                        // A GPU page's open dialog or popover takes back before the page leaves.
+                        if (com.lingxia.ui.GpuView.closeRequest(this@LxAppActivity)) return
                         currentWebView?.visibility = View.VISIBLE
                         NativeApi.onLxappEvent(appId, NativeApi.UI_EVENT_BACK_PRESS, "")
                     } catch (e: Exception) {

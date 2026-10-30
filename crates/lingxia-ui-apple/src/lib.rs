@@ -40,6 +40,9 @@ pub trait Shell: Send + Sync + 'static {
     /// [`chrome::feedback_shape`]: lingxia_ui::interaction::chrome::feedback_shape
     fn feedback(&self, token: i64, ring: bool, shape: &[f32], color: u32, width: f32);
     fn haptic(&self, token: i64);
+    /// A top-layer dialog opened or closed: while one is open the view covers the host's bars,
+    /// which take no input.
+    fn top_layer(&self, token: i64, modal: bool);
     /// Put `text` on the system pasteboard.
     fn copy_text(&self, text: &str);
     /// Show or move the text menu (frame-contract `TextMenu` JSON), or close it (empty).

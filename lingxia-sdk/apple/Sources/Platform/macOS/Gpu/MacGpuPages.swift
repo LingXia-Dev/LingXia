@@ -493,6 +493,9 @@ public enum GpuPages {
         }
     }
 
+    /// The window's sidebar and title bar are not page chrome: a dialog covers the page's own box.
+    static func topLayer(token: Int64, modal: Bool) {}
+
     static func haptic(token: Int64) {
         MainActor.assumeIsolated { NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now) }
     }

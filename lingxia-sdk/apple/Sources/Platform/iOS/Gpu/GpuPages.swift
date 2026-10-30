@@ -155,6 +155,7 @@ final class GpuPageView: UIView {
     /// Host chrome drawn over this view's edges: bars above it among its siblings that span
     /// most of its width and cross its top or bottom (an immersive tab bar, a clear title bar).
     private var chrome: (top: CGFloat, bottom: CGFloat) {
+        if let raised { return raised.chrome }
         guard let parent = superview, let index = parent.subviews.firstIndex(of: self) else { return (0, 0) }
         var top: CGFloat = 0
         var bottom: CGFloat = 0
@@ -165,6 +166,22 @@ final class GpuPageView: UIView {
             if rect.maxY >= bounds.maxY { bottom = max(bottom, bounds.maxY - rect.minY) }
         }
         return (top, bottom)
+    }
+
+    /// Set while a top-layer dialog lifts this view above the bars: where it sat, and the
+    /// chrome the page keeps padding by meanwhile.
+    private var raised: (index: Int, chrome: (top: CGFloat, bottom: CGFloat))?
+
+    func topLayer(_ modal: Bool) {
+        guard let parent = superview else { return }
+        if modal, raised == nil, let index = parent.subviews.firstIndex(of: self) {
+            raised = (index, chrome)
+            parent.bringSubviewToFront(self)
+        } else if !modal, let index = raised?.index {
+            raised = nil
+            parent.insertSubview(self, at: min(index, parent.subviews.count - 1))
+            report()
+        }
     }
 
     /// The host changed its bars; the page re-measures what covers it.
@@ -468,6 +485,10 @@ public enum GpuPages {
             let rects = UnsafeBufferPointer(start: UnsafePointer<Float>(bitPattern: shape), count: Int(count))
             views[token]?.feedback(ring: ring, rects: rects, argb: color, width: width)
         }
+    }
+
+    static func topLayer(token: Int64, modal: Bool) {
+        MainActor.assumeIsolated { views[token]?.topLayer(modal) }
     }
 
     static func haptic(token: Int64) {

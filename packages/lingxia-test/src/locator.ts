@@ -146,6 +146,8 @@ export const ROLE_SELECTORS: Readonly<Record<LocatorRole, string>> = {
   alert: '[role="alert"]',
   status: '[role="status"]',
   combobox: 'select, [role="combobox"]',
+  menu: '[role="menu"]',
+  menuitem: '[role="menuitem"]',
 };
 
 export function roleSelector(role: string): string {

@@ -129,6 +129,16 @@ impl ViewInteraction {
         effects
     }
 
+    /// A close request reaches the View while the frame shows a box that takes one.
+    pub fn close_request(&mut self) -> Option<Vec<Effect>> {
+        let frame = self.frame.as_ref()?;
+        if !frame.nodes.iter().any(|node| node.close_request) {
+            return None;
+        }
+        self.dispatches.push(super::Dispatch::Escape);
+        Some(vec![Effect::Dispatch])
+    }
+
     pub(super) fn finish_keyboard(&mut self, page: PageTicket) -> Vec<Effect> {
         let mut effects = self.track_dialogs(page);
         effects.extend(self.finish_pending(page));
