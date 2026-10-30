@@ -494,6 +494,13 @@ fn is_retryable_transport_error(error: &str) -> bool {
         return false;
     }
 
+    // Nothing is listening: retrying only adds backoff, and Windows spends
+    // ~2s on each refused connect, even on loopback. Unix says "connection
+    // refused", Windows "actively refused it".
+    if lower.contains("connection refused") || lower.contains("actively refused") {
+        return false;
+    }
+
     // Timeouts from rong_rt: "request timeout", "read timeout".
     lower.contains("timeout")
         // Generic "temporary failure" phrasing from DNS resolvers etc.
@@ -2430,6 +2437,13 @@ mod tests {
         assert!(!is_retryable_transport_error("download canceled"));
         assert!(!is_retryable_transport_error("http status 404"));
         assert!(is_retryable_transport_error("connection aborted"));
+        // rong_rt >= 0.6.4 appends the cause chain, which contains "connect error".
+        assert!(!is_retryable_transport_error(
+            "request failed: client error (Connect): tcp connect error: No connection could be made because the target machine actively refused it. (os error 10061)"
+        ));
+        assert!(!is_retryable_transport_error(
+            "request failed: client error (Connect): tcp connect error: Connection refused (os error 111)"
+        ));
     }
 
     #[test]
