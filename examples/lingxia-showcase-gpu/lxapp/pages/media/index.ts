@@ -443,6 +443,11 @@ Page({
     this._switchMode(options?.type);
   },
 
+  // A tab page loads in the background; `navigationBar.update` patches whichever page is current.
+  onShow: function () {
+    void lx.navigationBar.update({ title: getModeTitle(this.data.mediaType) });
+  },
+
   onHide: function () {
     this._stopCompression();
     this.cancelPreviewSession();
@@ -459,9 +464,6 @@ Page({
     const modeKey = resolveModeKey(params);
     const state = createState(modeKey);
     this.setData(state);
-
-    const title = getModeTitle(state.mediaType);
-    void lx.navigationBar.update({ title });
   },
 
   openSourcePicker: async function () {
