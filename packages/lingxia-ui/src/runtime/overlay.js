@@ -90,27 +90,30 @@ export function resetOverlays() {
 
 export const hasOverlay = () => Boolean(toast || modals.length || sheets.length);
 
+// The mobile hosts' native toast (iOS LxAppToast): a dark HUD in every theme, filled status icons.
+const RING = 'M14 0a14 14 0 0 1 14 14a14 14 0 0 1-14 14a14 14 0 0 1-14-14a14 14 0 0 1 14-14z';
 const icons = {
-  success: [{ d: 'M18 1a17 17 0 1 1 0 34a17 17 0 1 1 0-34z', fill: 'none', stroke: 'currentColor', strokeWidth: 2 },
-    { d: 'M11 18l5 5 9-9', fill: 'none', stroke: 'currentColor', strokeWidth: 2.5, strokeLinecap: 'round', strokeLinejoin: 'round' }],
-  error: [{ d: 'M18 1a17 17 0 1 1 0 34a17 17 0 1 1 0-34z', fill: 'none', stroke: 'currentColor', strokeWidth: 2 },
-    { d: 'M13 13l10 10M23 13l-10 10', fill: 'none', stroke: 'currentColor', strokeWidth: 2.5, strokeLinecap: 'round' }],
-  loading: [{ d: 'M18 4a14 14 0 0 1 14 14', fill: 'none', stroke: 'currentColor', strokeWidth: 2.5, strokeLinecap: 'round' }],
+  success: [{ d: RING, fill: 'success' }, { d: 'M8.5 14.5l3.5 3.5 7.5-7.5', fill: 'none', stroke: '#ffffff', strokeWidth: 2.5, strokeLinecap: 'round', strokeLinejoin: 'round' }],
+  error: [{ d: RING, fill: 'danger' }, { d: 'M10 10l8 8M18 10l-8 8', fill: 'none', stroke: '#ffffff', strokeWidth: 2.5, strokeLinecap: 'round' }],
+  loading: [{ d: 'M14 3a11 11 0 0 1 11 11', fill: 'none', stroke: 'accent', strokeWidth: 2.5, strokeLinecap: 'round' }],
 };
 const spin = { name: 'lx-overlay-spin', durationMs: 800, delayMs: 0, iterations: null, whenReduced: 'base', easing: 'linear', opacity: null,
   transforms: [{ kind: 'rotate', angle: [{ offset: 0, value: 0 }, { offset: 1, value: 360 }] }] };
 const fade = { properties: ['opacity', 'transform'], durationMs: ENTER_MS, delayMs: 0, easing: [0.4, 0, 0.2, 1] };
+const toastFade = { properties: ['opacity', 'transform'], durationMs: 200, delayMs: 0, easing: [0, 0, 0.58, 1] };
 const layer = { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10000 };
 
 function toastNode(env) {
   const { title, icon, position, mask } = toast;
-  const spacing = icon === 'none' ? { paddingTop: 12, paddingBottom: 12, paddingLeft: 20, paddingRight: 20 } : { minWidth: 120, padding: 20 };
+  const bare = icon === 'none';
   const box = h('column', { 'data-testid': 'lx-toast', key: `toast-${toast.key}`, role: 'status', 'aria-live': 'polite', 'aria-label': title,
-    style: { alignItems: 'center', gap: 10, maxWidth: 280, ...spacing, borderRadius: 12, backgroundColor: 'text/80', transition: fade } },
-    icon !== 'none' && h('vector', { 'data-testid': 'lx-toast-icon', 'aria-hidden': true, paths: icons[icon], style: { width: 36, height: 36, color: 'canvas' } }),
-    h('text', { style: { color: 'canvas', fontSize: 16, fontWeight: 500, textAlign: 'center' } }, title));
+    style: { alignItems: 'center', justifyContent: 'center', gap: 12, minWidth: 120, maxWidth: 280, minHeight: bare ? 60 : 100,
+      paddingLeft: 20, paddingRight: 20, paddingTop: bare ? 16 : 20, paddingBottom: bare ? 16 : 20, borderRadius: 12,
+      backgroundColor: 'shadow/80', transition: toastFade } },
+    !bare && h('vector', { 'data-testid': 'lx-toast-icon', 'aria-hidden': true, paths: icons[icon], viewBox: [0, 0, 28, 28], style: { width: 28, height: 28 } }),
+    h('text', { style: { color: '#ffffff', fontSize: 16, fontWeight: 500, textAlign: 'center', lineClamp: bare ? 3 : 2 } }, title));
   return h('stack', { style: layer },
-    mask && h('button', { 'data-testid': 'lx-toast-mask', 'aria-hidden': true, onClick() {}, style: { ...layer, zIndex: 0, backgroundColor: 'transparent' } }),
+    mask && h('button', { 'data-testid': 'lx-toast-mask', 'aria-hidden': true, onClick() {}, style: { ...layer, zIndex: 0, backgroundColor: 'shadow/30' } }),
     h('column', { style: { ...layer, zIndex: 1, alignItems: 'center', justifyContent: position === 'top' ? 'start' : position === 'bottom' ? 'end' : 'center',
       paddingTop: position === 'top' ? 80 : 0, paddingBottom: position === 'bottom' ? 80 : 0 } }, box));
 }
@@ -157,8 +160,10 @@ export function overlayNode(env) {
 /** Presence and spin, set on resolved nodes: enter from and leave toward a faded, smaller box. */
 export function decorateOverlay(node, env) {
   const enter = lowerStyle('column', { opacity: 0, scale: [0.94, 0.94] }, env).fields;
+  const toastEnter = lowerStyle('column', { opacity: 0, scale: [0.8, 0.8] }, env).fields;
   const walk = item => {
-    if (['lx-toast', 'lx-modal', 'lx-action-sheet'].includes(item.props?.testId)) item.states = { ...item.states, startingStyle: enter, exitStyle: enter };
+    if (['lx-modal', 'lx-action-sheet'].includes(item.props?.testId)) item.states = { ...item.states, startingStyle: enter, exitStyle: enter };
+    if (item.props?.testId === 'lx-toast') item.states = { ...item.states, startingStyle: toastEnter, exitStyle: toastEnter };
     if (item.props?.testId === 'lx-toast-icon' && toast?.icon === 'loading') item.fields = { ...item.fields, animation: spin };
     for (const child of item.children ?? []) walk(child);
   };
