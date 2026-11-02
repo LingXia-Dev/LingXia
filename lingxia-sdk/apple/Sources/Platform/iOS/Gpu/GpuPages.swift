@@ -170,18 +170,23 @@ final class GpuPageView: UIView {
 
     /// Set while a top-layer dialog lifts this view above the bars: where it sat, and the
     /// chrome the page keeps padding by meanwhile.
-    private var raised: (index: Int, chrome: (top: CGFloat, bottom: CGFloat))?
+    private var raised: (index: Int, chrome: (top: CGFloat, bottom: CGFloat), covered: [UIView])?
 
     func topLayer(_ modal: Bool) {
         guard let parent = superview else { return }
         if modal, raised == nil, let index = parent.subviews.firstIndex(of: self) {
-            raised = (index, chrome)
+            // The bars it covers leave VoiceOver too, as under any modal.
+            let covered = parent.subviews[(index + 1)...].filter { !$0.accessibilityElementsHidden }
+            covered.forEach { $0.accessibilityElementsHidden = true }
+            raised = (index, chrome, covered)
             parent.bringSubviewToFront(self)
-        } else if !modal, let index = raised?.index {
-            raised = nil
-            parent.insertSubview(self, at: min(index, parent.subviews.count - 1))
+        } else if !modal, let raised {
+            self.raised = nil
+            raised.covered.forEach { $0.accessibilityElementsHidden = false }
+            parent.insertSubview(self, at: min(raised.index, parent.subviews.count - 1))
             report()
         }
+        UIAccessibility.post(notification: .screenChanged, argument: nil)
     }
 
     /// The host changed its bars; the page re-measures what covers it.
