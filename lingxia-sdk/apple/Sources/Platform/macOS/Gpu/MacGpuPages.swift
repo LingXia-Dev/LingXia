@@ -25,6 +25,25 @@ final class GpuPageView: NSView {
     /// The text menu on screen, closed when the core takes it away.
     var textMenu: NSMenu?
 
+    /// A simulated phone (the Runner): its system bars, the host bars over the page and its
+    /// width, in points; nil measures the window as a desktop page does.
+    struct Simulation: Equatable {
+        var safeArea: NSEdgeInsets
+        var chromeTop: CGFloat
+        var chromeBottom: CGFloat
+        var smallestWidth: CGFloat
+
+        static func == (a: Self, b: Self) -> Bool {
+            NSEdgeInsetsEqual(a.safeArea, b.safeArea) && a.chromeTop == b.chromeTop
+                && a.chromeBottom == b.chromeBottom && a.smallestWidth == b.smallestWidth
+        }
+    }
+    var simulation: Simulation? {
+        didSet { if simulation != oldValue { report() } }
+    }
+    /// A host that draws phone bars over the page lifts it above them while a dialog is open.
+    var topLayerChanged: (@MainActor (Bool) -> Void)?
+
     override func isAccessibilityElement() -> Bool { false }
 
     override func accessibilityChildren() -> [Any]? { semantics.list }
@@ -140,8 +159,9 @@ final class GpuPageView: NSView {
         guard let window, bounds.width > 0, bounds.height > 0 else { return }
         let presentable = !window.isMiniaturized && !NSApp.isHidden
         let scale = window.backingScaleFactor
-        let insets = safeAreaInsets
+        let insets = simulation?.safeArea ?? safeAreaInsets
         let screen = window.screen?.frame.size ?? window.frame.size
+        let smallest = simulation?.smallestWidth ?? min(screen.width, screen.height)
         // The lxapp's chosen scheme, as its WebView pages get it; a float's own window
         // does not carry the main window's appearance.
         let appId = gpuPageInfo(token).app_id.toString()
@@ -158,10 +178,10 @@ final class GpuPageView: NSView {
             Float(insets.right * scale),
             Float(insets.bottom * scale),
             Float(insets.left * scale),
+            Float((simulation?.chromeTop ?? 0) * scale),
+            Float((simulation?.chromeBottom ?? 0) * scale),
             0,
-            0,
-            0,
-            Float(min(screen.width, screen.height)),
+            Float(smallest),
             Locale.preferredLanguages.first ?? "en",
             NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
             NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast,
@@ -493,8 +513,11 @@ public enum GpuPages {
         }
     }
 
-    /// The window's sidebar and title bar are not page chrome: a dialog covers the page's own box.
-    static func topLayer(token: Int64, modal: Bool) {}
+    /// A desktop window's sidebar and title bar are not page chrome: a dialog covers the page's
+    /// own box. A simulated phone lifts its page above its bars.
+    static func topLayer(token: Int64, modal: Bool) {
+        MainActor.assumeIsolated { views[token]?.topLayerChanged?(modal) }
+    }
 
     static func haptic(token: Int64) {
         MainActor.assumeIsolated { NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now) }
@@ -607,8 +630,27 @@ public enum GpuPages {
             cg.scaleBy(x: 1, y: -1)
             view.drawFeedback(in: cg)
             cg.restoreGState()
+            drawViewsAbove(view, upTo: contentView)
         }
         context.flushGraphics()
+    }
+
+    /// Chrome stacked over a page (a simulated device's bars) covers its frame on screen too.
+    @MainActor private static func drawViewsAbove(_ view: NSView, upTo contentView: NSView) {
+        var branch = view
+        while branch !== contentView, let parent = branch.superview {
+            for sibling in parent.subviews.drop(while: { $0 !== branch }).dropFirst()
+            where !sibling.isHidden && sibling.alphaValue > 0 {
+                guard let rep = sibling.bitmapImageRepForCachingDisplay(in: sibling.bounds) else { continue }
+                sibling.cacheDisplay(in: sibling.bounds, to: rep)
+                let frame = sibling.convert(sibling.bounds, to: contentView)
+                let rect = contentView.isFlipped
+                    ? CGRect(x: frame.minX, y: contentView.bounds.height - frame.maxY, width: frame.width, height: frame.height)
+                    : frame
+                rep.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil)
+            }
+            branch = parent
+        }
     }
 
     /// The GPU page token of a page of the app, or 0 when it is not a GPU page.

@@ -386,6 +386,61 @@ import WebKit
             RunnerBridge.presentBrowserTabInSurfaceShell(shell, tabId: tabId)
         }
     }
+
+    /// GPU pages in the Runner's simulated phone, mounted as the macOS lxapp host mounts them.
+    @MainActor
+    public enum GpuPage {
+        /// The page's GPU view, or nil when it renders in a WebView.
+        public static func view(appId: String, pageInstanceId: String?) -> NSView? {
+            guard let session = RunnerBridge.sessionId(for: appId) else { return nil }
+            return GpuPageMount.view(appId: appId, sessionId: session, pageInstanceId: pageInstanceId)
+        }
+
+        public static func attach(_ view: NSView, to container: NSView) {
+            guard let view = view as? GpuPageView else { return }
+            GpuPageMount.attach(view, to: container)
+        }
+
+        public static func detach(_ view: NSView?) {
+            GpuPageMount.detach(view)
+        }
+
+        public static func shown(appId: String, path: String) {
+            GpuPageMount.shown(appId: appId, path: path)
+        }
+
+        /// Calls `ready` once the page exists (a GPU page has no WebView to wait for).
+        public static func whenReady(
+            appId: String, pageInstanceId: String?, _ ready: @escaping @MainActor (Bool) -> Void
+        ) {
+            WebViewManager.awaitPageWebView(
+                appId: appId, sessionId: RunnerBridge.sessionId(for: appId) ?? 0,
+                pageInstanceId: pageInstanceId, completion: ready)
+        }
+
+        /// The simulated phone around the page: its system bars, the host bars drawn over the
+        /// page and its width, in points.
+        public static func simulate(
+            _ view: NSView, safeArea: NSEdgeInsets, chromeTop: CGFloat, chromeBottom: CGFloat,
+            smallestWidth: CGFloat
+        ) {
+            (view as? GpuPageView)?.simulation = .init(
+                safeArea: safeArea, chromeTop: chromeTop, chromeBottom: chromeBottom,
+                smallestWidth: smallestWidth)
+        }
+
+        /// Called when a top-layer dialog opens or closes: lift the page above the phone's bars.
+        public static func onTopLayer(_ view: NSView, _ handler: @escaping @MainActor (Bool) -> Void) {
+            (view as? GpuPageView)?.topLayerChanged = handler
+        }
+
+        /// The colour the page asks its host to paint around it, once its first frame resolved it.
+        public static func canvas(_ view: NSView) -> NSColor? {
+            (view as? GpuPageView)?.chrome?.canvas
+        }
+
+        public static let chromeChanged = GpuHostChrome.changed
+    }
 }
 
 #else

@@ -236,8 +236,7 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         if let old = activeWebView, old !== webView {
             WebViewManager.detachLxAppWebView(old)
         }
-        activeGpuView?.lxPullToRefreshController?.unmount()
-        activeGpuView?.removeFromSuperview()
+        GpuPageMount.detach(activeGpuView)
         if activeGpuView != nil {
             activeGpuView = nil
             applyPageCanvasBackground()
@@ -260,27 +259,19 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
     /// Show the page's GPU view when it renders natively; false for a WebView page.
     private func showGpuPage(pageInstanceId: String?) -> Bool {
-        let token = GpuPages.token(appId: appId, sessionId: sessionId, pageInstanceId: pageInstanceId)
-        guard token != 0 else { return false }
-        let view = GpuPages.view(for: token)
+        guard let view = GpuPageMount.view(appId: appId, sessionId: sessionId, pageInstanceId: pageInstanceId)
+        else { return false }
         if activeGpuView === view, view.superview === webViewContainer { return true }
         pageTransition.cancelPendingWait()
         if let old = activeWebView {
             WebViewManager.detachLxAppWebView(old)
             activeWebView = nil
         }
-        activeGpuView?.lxPullToRefreshController?.unmount()
-        activeGpuView?.removeFromSuperview()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        webViewContainer.addSubview(view)
-        // Hosted like a WebView page, so a declared pull to refresh moves and refreshes it.
-        let pullToRefresh = MacPullToRefreshController.attachIfNeeded(to: view, in: webViewContainer)
-        NSLayoutConstraint.activate(pullToRefresh.pageConstraints(in: webViewContainer))
-        pullToRefresh.didAttachPage()
+        GpuPageMount.detach(activeGpuView)
+        GpuPageMount.attach(view, to: webViewContainer)
         activeGpuView = view
         applyGpuChrome()
-        // As attaching a page's WebView does: the page's onShow, then onReady after its frame.
-        lingxia.onPageShow(appId, currentPath)
+        GpuPageMount.shown(appId: appId, path: currentPath)
         return true
     }
 

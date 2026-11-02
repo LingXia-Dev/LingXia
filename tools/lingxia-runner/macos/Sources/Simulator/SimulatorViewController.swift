@@ -19,6 +19,11 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
     private var displayScale: CGFloat
     
     private var webViewContainer: NSView!
+    /// The GPU page on screen, spanning the phone screen under the bars; nil for a WebView page.
+    private var activeGpuView: NSView?
+    /// A dialog of the GPU page is open: the window controller hides the bars it draws.
+    var onTopLayer: ((Bool) -> Void)?
+    private var topLayerOpen = false
     internal var tabBarView: NSView?
     internal var tabBarConfig: RunnerTabBarConfig?
     internal var selectedTabIndex: Int = 0
@@ -60,6 +65,7 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
         tabBarTopConstraint?.constant = newMargin
         view.needsLayout = true
         view.layoutSubtreeIfNeeded()
+        simulateGpuPhone()
     }
     
     // MARK: - View Lifecycle
@@ -84,6 +90,7 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
     public override func viewDidLayout() {
         super.viewDidLayout()
         reportSurfaceMetrics()
+        simulateGpuPhone()
     }
 
     /// Keep the adaptive surface context aligned with the selected device frame.
@@ -249,12 +256,13 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
         RunnerSupport.TabBar.setDisplayScale(tabBarView, scale: displayScale)
 
         if let tabBar = tabBarView {
-            view.addSubview(tabBar, positioned: .above, relativeTo: webViewContainer)
+            view.addSubview(tabBar, positioned: .above, relativeTo: nil)
             updateWebViewEdgeConstraints(tabBar: tabBar, config: tabBarConfig)
         }
 
         view.needsLayout = true
         view.layoutSubtreeIfNeeded()
+        simulateGpuPhone()
     }
 
     func setDisplayScale(_ value: CGFloat) {
@@ -273,7 +281,70 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
         if let webView = RunnerSupport.WebView.page(
             appId: appId, pageInstanceId: currentPageInstanceId) {
             showWebViewToUser(webView, pageInstanceId: currentPageInstanceId)
+        } else {
+            showGpuPageWhenReady(pageInstanceId: currentPageInstanceId)
         }
+    }
+
+    /// The first page can mount before its shell exists: show it once the runtime reports it.
+    private func showGpuPageWhenReady(pageInstanceId: String?) {
+        if showGpuPage(pageInstanceId: pageInstanceId) { return }
+        let path = currentPath
+        LingxiaRunnerSPI.GpuPage.whenReady(appId: appId, pageInstanceId: pageInstanceId) { [weak self] ready in
+            guard let self, ready, self.currentPath == path,
+                  self.currentPageInstanceId == pageInstanceId,
+                  RunnerSupport.WebView.page(appId: self.appId, pageInstanceId: pageInstanceId) == nil
+            else { return }
+            _ = self.showGpuPage(pageInstanceId: pageInstanceId)
+        }
+    }
+
+    /// Show the page's GPU view when it renders natively; false for a WebView page. It spans the
+    /// phone screen, as on a phone: the bars drawn over it are chrome insets the page pads by,
+    /// and an open dialog's top layer covers them.
+    private func showGpuPage(pageInstanceId: String?) -> Bool {
+        guard let page = LingxiaRunnerSPI.GpuPage.view(appId: appId, pageInstanceId: pageInstanceId)
+        else { return false }
+        if activeGpuView === page, page.superview === view { return true }
+        RunnerSupport.WebView.removeCurrentFromSuperview()
+        LingxiaRunnerSPI.GpuPage.detach(activeGpuView)
+        setTopLayer(false)
+        LingxiaRunnerSPI.GpuPage.attach(page, to: view)
+        LingxiaRunnerSPI.GpuPage.onTopLayer(page) { [weak self] modal in self?.setTopLayer(modal) }
+        activeGpuView = page
+        if let tabBar = tabBarView {
+            view.addSubview(tabBar, positioned: .above, relativeTo: nil)
+        }
+        simulateGpuPhone()
+        LingxiaRunnerSPI.GpuPage.shown(appId: appId, path: currentPath)
+        return true
+    }
+
+    /// The emulated phone's system bars, the bars drawn over the page and its width.
+    private func simulateGpuPhone() {
+        guard let page = activeGpuView, view.bounds.width > 0 else { return }
+        let statusBar = SimulatorWindowController.Layout.systemStatusBarHeight
+        // Phones with a status bar taller than 20 pt have a home indicator.
+        let homeIndicator: CGFloat = statusBar > 20 ? 34 : 0
+        var tabBarHeight: CGFloat = 0
+        if let tabBar = tabBarView, !tabBar.isHidden, tabBar.frame.minY <= 1 {
+            tabBarHeight = tabBar.frame.height
+        }
+        LingxiaRunnerSPI.GpuPage.simulate(
+            page,
+            safeArea: NSEdgeInsets(top: statusBar, left: 0, bottom: homeIndicator, right: 0),
+            chromeTop: currentTopMargin,
+            chromeBottom: tabBarHeight,
+            smallestWidth: min(view.bounds.width, view.bounds.height)
+        )
+    }
+
+    /// While a dialog is open the bars sit under it and take no clicks, as on a phone.
+    private func setTopLayer(_ modal: Bool) {
+        guard modal != topLayerOpen else { return }
+        topLayerOpen = modal
+        tabBarView?.isHidden = modal
+        onTopLayer?(modal)
     }
     
     /// Unified method to show a WebView to the user
@@ -305,9 +376,12 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
         webViewContainer.layer?.masksToBounds = true
         pageTransition.install(animation, on: webViewContainer)
         RunnerSupport.WebView.removeCurrentFromSuperview()
+        LingxiaRunnerSPI.GpuPage.detach(activeGpuView)
+        activeGpuView = nil
+        setTopLayer(false)
         RunnerSupport.WebView.attachLxApp(webView, to: webViewContainer)
         if let tabBar = tabBarView {
-            view.addSubview(tabBar, positioned: .above, relativeTo: webViewContainer)
+            view.addSubview(tabBar, positioned: .above, relativeTo: nil)
         }
     }
 
@@ -364,9 +438,11 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
         updateNavigationBar(appId: appId, path: path)
         updateTabBar()
         
-        // Show WebView
+        // Show the page: its WebView, or its GPU view when it renders natively.
         if let webView = RunnerSupport.WebView.page(appId: appId, pageInstanceId: pageInstanceId) {
             showWebViewToUser(webView, pageInstanceId: pageInstanceId, animation: animationType)
+        } else {
+            showGpuPageWhenReady(pageInstanceId: pageInstanceId)
         }
 
         // Update app state

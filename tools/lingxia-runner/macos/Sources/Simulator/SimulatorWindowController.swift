@@ -446,6 +446,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
 
         // Create view controller for WebView content
         let vc = SimulatorViewController(appId: appId, path: path, displayScale: appliedScale)
+        vc.onTopLayer = { [weak self] modal in self?.applyTopLayer(modal) }
         viewController = vc
         
         // Add view controller's view to phone content
@@ -1021,6 +1022,17 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         }
     }
     
+    /// A GPU page's open dialog covers the navigation bar, which takes no clicks meanwhile;
+    /// the status bar keeps its text over the dialog's scrim.
+    private func applyTopLayer(_ modal: Bool) {
+        if modal {
+            navigationBar?.isHidden = true
+            systemStatusBar?.layer?.backgroundColor = NSColor.clear.cgColor
+        } else if !appId.isEmpty, !currentPath.isEmpty {
+            updateNavigationBar(with: RunnerSupport.Navigation.state(appId: appId, path: currentPath))
+        }
+    }
+
     // MARK: - Navigation Bar Update
     
     public func updateNavigationBar(with config: NavigationBarState?) {
@@ -1532,6 +1544,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
 
         guard let phoneContent = phoneContentView else { return }
         let vc = SimulatorViewController(appId: appId, path: path, displayScale: appliedScale)
+        vc.onTopLayer = { [weak self] modal in self?.applyTopLayer(modal) }
         viewController = vc
         vc.view.translatesAutoresizingMaskIntoConstraints = false
         phoneContent.addSubview(vc.view, positioned: .below, relativeTo: nil)
