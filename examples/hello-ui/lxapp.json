@@ -1,5 +1,6 @@
 {
   "appId": "hello-ui",
+  "renderer": "gpu",
   "appName": "Hello UI",
   "version": "0.1.0",
   "minRuntime": "0.28.0",

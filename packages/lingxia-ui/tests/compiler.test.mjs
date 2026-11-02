@@ -16,7 +16,6 @@ const flags = (source, pattern) => assert.match(audit(source, 'page.tsx').join('
 async function project(files, run) {
   const root = await mkdtemp(join(tmpdir(), 'lingxia-ui-compiler-'));
   try {
-    await writeFile(join(root, 'page.json'), '{"renderer":"gpu"}');
     for (const [name, contents] of Object.entries(files)) await writeFile(join(root, name), contents);
     await run(root, page => buildPages(root, [page ?? 'page.tsx'], join(root, 'dist')));
   } finally { await rm(root, { recursive: true, force: true }); }
@@ -182,7 +181,7 @@ export function render() {
   });
 });
 
-test('wrapper components forward children; renderer config is the only page switch', async () => {
+test('wrapper components forward children; a page config naming a renderer is refused', async () => {
   await project({ 'page.tsx': `
       function Card(props){return <column {...props}/>}
       export function render(){return <Card><text children="Replaced">Visible{true}{false}{null}{''}</text></Card>}
@@ -194,8 +193,8 @@ test('wrapper components forward children; renderer config is the only page swit
     await writeFile(join(root, 'page.tsx'), "import * as components from './components';export function render(){return <components.Card className='flex flex-col'><text>Member</text></components.Card>}");
     await build(); await load(root);
     assert.equal(tree(describePage()).props.flexDirection, 'column');
-    await writeFile(join(root, 'page.json'), '{"renderer":"webview"}');
-    await assert.rejects(build(), /page.json: expected "renderer": "gpu"/);
+    await writeFile(join(root, 'page.json'), '{"renderer":"gpu"}');
+    await assert.rejects(build(), /page.json: renderer: removed; an lxapp declares one renderer in lxapp.json/);
     await assert.rejects(build('../outside.tsx'), /Invalid GPU page path/);
   });
 });
@@ -226,7 +225,7 @@ test('page builds reject invalid keyframes and inline animation before installin
 
 test('compiler emits executable ESM UI, carries the action catalog and preserves page config', async () => {
   await project({
-    'page.json': '{"renderer":"gpu","title":"Hello"}',
+    'page.json': '{"title":"Hello"}',
     'page.tsx': `export function render() { return <column>
       <stack><text>Back</text><text style={{position:"absolute",left:12,top:-4}}>Front</text></stack>
       <grid style={{gridTemplateColumns:2}}><text style={{lineClamp:2}}>Hello, world!</text><text>Second card</text></grid>

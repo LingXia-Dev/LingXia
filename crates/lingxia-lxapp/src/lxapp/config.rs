@@ -97,6 +97,10 @@ pub(crate) struct LxAppConfig {
     /// Plugin definitions.
     #[serde(default)]
     pub(crate) plugins: BTreeMap<String, LxPlugin>,
+
+    /// How every page of the lxapp renders: `webview` (default) or `gpu`.
+    #[serde(default)]
+    pub(crate) renderer: crate::page::config::PageRenderer,
 }
 
 impl LxAppConfig {
@@ -348,7 +352,15 @@ mod tests {
         });
         assert!(
             LxAppConfig::from_value(manifest).is_err(),
-            "renderer belongs to the page config"
+            "renderer belongs to the manifest, not a page entry"
+        );
+        let gpu = serde_json::json!({
+            "appId":"gpu", "version":"1.0.0", "logic":false, "renderer":"gpu",
+            "pages":[{"name":"home", "path":"pages/home/index.js"}]
+        });
+        assert_eq!(
+            LxAppConfig::from_value(gpu).unwrap().renderer,
+            crate::page::config::PageRenderer::Gpu
         );
         let mut outside = serde_json::json!({
             "appId":"gpu", "version":"1.0.0", "logic":false,

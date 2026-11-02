@@ -1,5 +1,6 @@
 {
   "appId": "gpu-renderer-fixture",
+  "renderer": "gpu",
   "appName": "GPU Renderer Fixtures",
   "version": "1.0.0",
   "logic": false,

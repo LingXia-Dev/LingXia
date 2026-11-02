@@ -265,9 +265,9 @@ function analyse(path, contents, label, loader, literalColors) {
 }
 
 /**
- * Compiles GPU pages. `pages` are page source paths relative to `root`; each
- * page's sibling `.json` must declare `"renderer": "gpu"`, which is the only
- * thing that makes a page native. Output is `<base>.js` beside a copy of the config.
+ * Compiles GPU pages. `pages` are page source paths relative to `root`, the pages of an lxapp whose
+ * `lxapp.json` declares `"renderer": "gpu"`. Output is `<base>.js` beside a copy of the page config,
+ * when the page has one; a page config naming a renderer is refused.
  * Returns the `UI_PERF` warnings (also printed; they never stop the build), whether Tailwind ran
  * warm, and how many files were analysed afresh.
  */
@@ -287,8 +287,9 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     const rel = relative(root, source);
     const base = page.replace(/\.[jt]sx?$/, '');
     if (rel.startsWith('..') || isAbsolute(rel) || base === page) throw Error(`Invalid GPU page path: ${page}`);
-    const config = JSON.parse(await readFile(join(root, `${base}.json`), 'utf8'));
-    if (config.renderer !== 'gpu') throw Error(`${base}.json: expected "renderer": "gpu"`);
+    const configPath = join(root, `${base}.json`);
+    const config = existsSync(configPath) ? JSON.parse(await readFile(configPath, 'utf8')) : null;
+    if (config && 'renderer' in config) throw Error(`${base}.json: renderer: removed; an lxapp declares one renderer in lxapp.json`);
     const catalog = catalogs[page] ?? { __names: [], __modes: {} };
     if (!Array.isArray(catalog.__names) || catalog.__names.some(name => typeof name !== 'string' || !['call', 'stream'].includes(catalog.__modes?.[name])))
       throw Error(`${page}: invalid GPU action metadata`);
@@ -375,7 +376,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     await writeFile(dest, module);
     // Dev builds record each page's inputs so `lingxia dev` can rebuild only the pages an edit touches.
     if (bundled.metafile) inputs[page] = Object.keys(bundled.metafile.inputs).filter(path => !path.startsWith('..') && !path.includes('node_modules') && path !== '<stdin>').map(path => path.split('\\').join('/'));
-    await copyFile(join(root, `${base}.json`), join(output, `${base}.json`));
+    if (config) await copyFile(configPath, join(output, `${base}.json`));
   }
   if (Object.keys(inputs).length) {
     const path = join(root, '.lingxia', 'gpu-inputs.json');

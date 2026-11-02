@@ -45,7 +45,6 @@ const blocks = await chapters();
 async function project(block, run) {
   const root = await mkdtemp(join(tmpdir(), 'lingxia-view-doc-'));
   try {
-    await writeFile(join(root, 'page.json'), '{"renderer":"gpu"}');
     await writeFile(join(root, 'page.tsx'), block.source);
     if (block.theme) await writeFile(join(root, 'theme.css'), block.theme);
     return await run(root);

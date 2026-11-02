@@ -495,14 +495,19 @@ impl PageInstance {
                 (PageConfig::default(), Some(error.to_string()))
             }
         };
+        // One guard: a `config()` temporary in the literal would live across the next call.
+        let (renderer, requires_bridge_ready) = {
+            let config = lxapp.config();
+            (config.renderer, config.logic_entry().is_some())
+        };
         PageState {
-            renderer: page_config.renderer,
+            renderer,
             event: None,
             render_status: PageRenderStatus::Unstarted,
             entry: EntryPhase::Idle,
             visibility: Visibility::Hidden,
             bridge_ready: false,
-            requires_bridge_ready: lxapp.logic_enabled(),
+            requires_bridge_ready,
             ready_dispatched: false,
             reset: PageReset::None,
             parked: false,

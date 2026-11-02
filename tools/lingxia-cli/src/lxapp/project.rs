@@ -174,10 +174,15 @@ fn validate_page_configs(project_root: &Path, pages: &[String]) -> Result<()> {
                 relative.display()
             ));
         }
+        if object.contains_key("renderer") {
+            return Err(anyhow!(
+                "{} renderer: removed; an lxapp declares one renderer in lxapp.json",
+                relative.display()
+            ));
+        }
         for key in object.keys() {
             if ![
                 "navigationStyle",
-                "renderer",
                 "navigationBar",
                 "enablePullDownRefresh",
                 "pageOrientation",
@@ -189,14 +194,6 @@ fn validate_page_configs(project_root: &Path, pages: &[String]) -> Result<()> {
                     relative.display()
                 ));
             }
-        }
-        if let Some(renderer) = object.get("renderer")
-            && !matches!(renderer.as_str(), Some("gpu" | "webview"))
-        {
-            return Err(anyhow!(
-                "{} renderer: expected gpu or webview",
-                relative.display()
-            ));
         }
         if let Some(style) = object.get("navigationStyle")
             && !matches!(style.as_str(), Some("default" | "custom"))
@@ -234,6 +231,11 @@ fn validate_page_configs(project_root: &Path, pages: &[String]) -> Result<()> {
 }
 
 fn validate_page_chrome_manifest(manifest: &Value) -> Result<()> {
+    if let Some(value) = manifest.get("renderer")
+        && !matches!(value.as_str(), Some("gpu" | "webview"))
+    {
+        return Err(anyhow!("renderer: expected gpu or webview"));
+    }
     if let Some(value) = manifest.get("appearance") {
         match value.as_str() {
             Some("auto" | "light" | "dark") => {}
@@ -1145,6 +1147,22 @@ mod tests {
             .to_string();
 
         assert!(error.contains("backgroundColor: removed; page background is host-owned"));
+    }
+
+    #[test]
+    fn rejects_a_page_level_renderer_and_checks_the_manifest_one() {
+        let temp = tempdir().unwrap();
+        write_file(
+            temp.path(),
+            "pages/home/index.json",
+            r#"{"renderer":"gpu"}"#,
+        );
+        let error = validate_page_configs(temp.path(), &["pages/home/index".to_string()])
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("renderer: removed"), "{error}");
+        assert!(validate_page_chrome_manifest(&serde_json::json!({"renderer":"gpu"})).is_ok());
+        assert!(validate_page_chrome_manifest(&serde_json::json!({"renderer":"canvas"})).is_err());
     }
 
     #[test]

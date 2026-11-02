@@ -116,9 +116,14 @@ pub fn resolve_page_path(
 /// First line of every compiled GPU View; the native loader reads it before running the module.
 pub(crate) const UI_MODULE_HEADER: &str = "// LingXia UI module; ";
 
-/// A page renders natively exactly when its `<base>.json` declares `"renderer": "gpu"`.
-pub(crate) fn is_gpu_page(project_root: &Path, page: &str) -> bool {
-    fs::read_to_string(project_root.join(format!("{}.json", page_base(page))))
+/// Every page of an lxapp renders natively exactly when its `lxapp.json` declares
+/// `"renderer": "gpu"`.
+pub(crate) fn is_gpu_page(project_root: &Path, _page: &str) -> bool {
+    is_gpu_lxapp(project_root)
+}
+
+pub(crate) fn is_gpu_lxapp(project_root: &Path) -> bool {
+    fs::read_to_string(project_root.join("lxapp.json"))
         .ok()
         .and_then(|text| serde_json::from_str::<Value>(&text).ok())
         .is_some_and(|value| value["renderer"] == "gpu")
@@ -273,17 +278,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn gpu_page_does_not_select_react_for_webview_siblings() {
+    fn a_gpu_lxapp_resolves_every_page_to_its_view_module() {
         let dir = tempfile::tempdir().unwrap();
         fs::write(
             dir.path().join("lxapp.json"),
-            r#"{"pages":[{"name":"native","path":"native"},{"name":"web","path":"web"}]}"#,
+            r#"{"renderer":"gpu","pages":[{"name":"native","path":"native"},{"name":"other","path":"other"}]}"#,
         )
         .unwrap();
-        fs::write(dir.path().join("native.json"), r#"{"renderer":"gpu"}"#).unwrap();
-        fs::write(dir.path().join("native.tsx"), "").unwrap();
-        fs::write(dir.path().join("native.ts"), "").unwrap();
-        fs::write(dir.path().join("web.html"), "").unwrap();
+        for file in ["native.tsx", "native.ts", "other.tsx"] {
+            fs::write(dir.path().join(file), "").unwrap();
+        }
         assert_eq!(
             detect_project_framework(dir.path()).unwrap(),
             ProjectFramework::Html
@@ -294,7 +298,12 @@ mod tests {
         );
         assert_eq!(page_base("pages/home/index.tsx"), "pages/home/index");
         assert_eq!(compiled_page_path(dir.path(), "native.tsx"), "native.js");
-        assert_eq!(compiled_page_path(dir.path(), "web.html"), "web.html");
+        fs::write(
+            dir.path().join("lxapp.json"),
+            r#"{"pages":[{"name":"native","path":"native.tsx"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(compiled_page_path(dir.path(), "native.tsx"), "native.tsx");
     }
 
     #[test]

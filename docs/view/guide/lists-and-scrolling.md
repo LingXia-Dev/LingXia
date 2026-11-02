@@ -121,7 +121,7 @@ estimated heights. Its text and attributes are readable once it draws.
 Pull to refresh belongs to the host. Enable it in the page config and handle it in Logic:
 
 ```json
-{ "renderer": "gpu", "enablePullDownRefresh": true }
+{ "enablePullDownRefresh": true }
 ```
 
 ```ts

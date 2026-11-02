@@ -32,11 +32,10 @@ const viewports = [
 async function gpuPages(root) {
   const manifest = JSON.parse(await readFile(join(root, 'lxapp.json'), 'utf8'));
   const pages = [];
+  if (manifest.renderer !== 'gpu') return pages;
   for (const page of manifest.pages ?? []) {
     const path = page.path.replace(/\.tsx$/, '');
-    const config = join(root, `${path}.json`);
-    const gpu = existsSync(config) && JSON.parse(await readFile(config, 'utf8')).renderer === 'gpu';
-    if (gpu && existsSync(join(root, `${path}.tsx`))) pages.push(`${path}.tsx`);
+    if (existsSync(join(root, `${path}.tsx`))) pages.push(`${path}.tsx`);
   }
   return pages;
 }

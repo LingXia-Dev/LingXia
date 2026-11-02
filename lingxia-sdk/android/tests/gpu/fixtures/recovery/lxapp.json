@@ -1,1 +1,1 @@
-{"appid":"gpu-recovery-fixture","logic":false,"pages":[{"path":"pages/home/index"}]}
+{"appid":"gpu-recovery-fixture","logic":false,"renderer":"gpu","pages":[{"path":"pages/home/index"}]}

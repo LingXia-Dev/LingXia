@@ -6,7 +6,8 @@ use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
-/// Rendering backend is presentation metadata, never caller authority.
+/// Rendering backend of every page of an lxapp (`lxapp.json` `renderer`); presentation
+/// metadata, never caller authority.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum PageRenderer {
@@ -166,8 +167,6 @@ impl<'de> Deserialize<'de> for OrientationOverride {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PageConfig {
     #[serde(default)]
-    pub renderer: PageRenderer,
-    #[serde(default)]
     pub navigation_style: NavigationStyle,
 
     #[serde(default)]
@@ -203,6 +202,11 @@ impl PageConfig {
                     "{path}.{field}: removed; use {replacement}"
                 )));
             }
+        }
+        if object.contains_key("renderer") {
+            return Err(serde_json::Error::custom(format!(
+                "{path}.renderer: removed; an lxapp declares one renderer in lxapp.json"
+            )));
         }
         if object.contains_key("backgroundColor") {
             return Err(serde_json::Error::custom(format!(
@@ -326,7 +330,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn renderer_comes_from_the_page_config_beside_any_module() {
+    fn page_configs_sit_beside_any_module_and_carry_no_renderer() {
         assert_eq!(
             path_to_json_path("/pages/home/index.js"),
             "pages/home/index.json"
@@ -335,21 +339,10 @@ mod tests {
             path_to_json_path("pages/v1.2/index.html"),
             "pages/v1.2/index.json"
         );
-        assert_eq!(
-            PageConfig::from_value("page.json", serde_json::json!({}))
-                .unwrap()
-                .renderer,
-            PageRenderer::Webview
-        );
-        assert_eq!(
-            PageConfig::from_value("page.json", serde_json::json!({"renderer":"gpu"}))
-                .unwrap()
-                .renderer,
-            PageRenderer::Gpu
-        );
-        assert!(
-            PageConfig::from_value("page.json", serde_json::json!({"renderer":"canvas"})).is_err()
-        );
+        let error = PageConfig::from_value("page.json", serde_json::json!({"renderer":"gpu"}))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("lxapp.json"), "{error}");
     }
 
     #[test]

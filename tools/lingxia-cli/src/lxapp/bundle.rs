@@ -76,11 +76,10 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn recognizes_a_compiled_gpu_module_by_its_page_config_and_header() {
+    fn recognizes_a_compiled_gpu_module_by_its_manifest_and_header() {
         let temp = tempfile::tempdir().unwrap();
-        fs::write(temp.path().join("home.json"), r#"{"renderer":"gpu"}"#).unwrap();
         fs::write(temp.path().join("home.tsx"), "export function render(){}").unwrap();
-        write_manifest(temp.path(), &[("home", "home.tsx")], None);
+        write_gpu_manifest(temp.path(), "home.tsx");
         assert!(
             !is_built_bundle_dir(temp.path()),
             "a TSX source is not a module"
@@ -90,7 +89,7 @@ mod tests {
             "function r(){}export{r as render}",
         )
         .unwrap();
-        write_manifest(temp.path(), &[("home", "home.js")], None);
+        write_gpu_manifest(temp.path(), "home.js");
         assert!(
             !is_built_bundle_dir(temp.path()),
             "a module without the header is not compiled"
@@ -101,6 +100,16 @@ mod tests {
         )
         .unwrap();
         assert!(is_built_bundle_dir(temp.path()));
+    }
+
+    fn write_gpu_manifest(dir: &Path, home: &str) {
+        fs::write(
+            dir.join("lxapp.json"),
+            format!(
+                r#"{{"appId":"demo","appName":"Demo","version":"1.0.0","renderer":"gpu","pages":[{{"name":"home","path":"{home}"}}]}}"#
+            ),
+        )
+        .unwrap();
     }
 
     fn write_manifest(dir: &Path, pages: &[(&str, &str)], logic: Option<&str>) {

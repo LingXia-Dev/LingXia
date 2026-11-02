@@ -6,6 +6,5 @@
     }
   },
   "enablePullDownRefresh": true,
-  "renderer": "gpu",
   "pageOrientation": "auto"
 }

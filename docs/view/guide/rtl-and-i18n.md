@@ -98,5 +98,5 @@ strings in `view.data`. Format numbers, currencies, dates and plural forms in Lo
 navigation bar title in the page config:
 
 ```json
-{ "renderer": "gpu", "navigationBar": { "title": { "default": "Settings", "ar": "الإعدادات" } } }
+{ "navigationBar": { "title": { "default": "Settings", "ar": "الإعدادات" } } }
 ```

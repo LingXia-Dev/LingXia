@@ -45,15 +45,21 @@ function Row({ title, done, onToggle }: { title: string; done: boolean; onToggle
 
 ## A page
 
-A page is a directory under `pages/`. Its `index.json` opts it into native rendering:
+An lxapp opts into native rendering once, in `lxapp.json`; every page renders natively and none
+may name a renderer of its own:
 
 ```json
-{ "renderer": "gpu", "navigationBar": { "title": { "default": "Groceries" } } }
+{ "appId": "groceries", "version": "1.0.0", "renderer": "gpu", "pages": [{ "name": "list", "path": "pages/list/index" }] }
+```
+
+A page is a directory under `pages/`. Its optional `index.json` sets its chrome:
+
+```json
+{ "navigationBar": { "title": { "default": "Groceries" } } }
 ```
 
 `index.tsx` is the View and exports `render`. `index.ts` is the page's Logic (`Page({ data, …methods })`)
-and is optional. Add `@lingxia/ui` to the lxapp's dependencies; `lingxia build` compiles every page
-whose config says `"renderer": "gpu"`, and only those.
+and is optional. Add `@lingxia/ui` to the lxapp's dependencies; `lingxia build` compiles every page.
 
 `render(view)` runs whenever `view.data`, `view.env` or local state changes. `view.data` is the Logic
 page's data, deeply read-only. `view.actions` holds Logic's methods: each returns a `Promise`, and an

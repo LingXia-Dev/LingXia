@@ -1,5 +1,6 @@
 {
   "appId": "lingxia.corpus.view",
+  "renderer": "gpu",
   "appName": "View corpus",
   "version": "1.0.0",
   "logic": false,

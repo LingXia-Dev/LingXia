@@ -191,10 +191,9 @@ mod tests {
         };
         write(
             "lxapp.json",
-            r#"{"appId":"prime-test","appName":"Prime","version":"1.0.0","pages":[{"name":"a","path":"pages/a/index"}]}"#,
+            r#"{"appId":"prime-test","appName":"Prime","version":"1.0.0","renderer":"gpu","pages":[{"name":"a","path":"pages/a/index"}]}"#,
         );
         write("package.json", r#"{"name":"prime-test","private":true}"#);
-        write("pages/a/index.json", r#"{"renderer":"gpu"}"#);
         write(
             "pages/a/index.tsx",
             "export function render() { return <column className=\"p-4 gap-2\"><text className=\"text-sm\">Hello</text></column>; }\n",

@@ -11,8 +11,9 @@ and CPU/GPU painting. It has no lxapp, route, page-stack or WebView dependency.
 `crates/lingxia-lxapp` owns page configuration, resource authority and Logic
 bridging; `crates/lingxia/src/gpu_page` binds lxapp pages to platform page
 shells (creation, live registry, dispose-once leases, connection-generation
-gate, worker key) and `crates/lingxia/src/ffi/<platform>` only marshals. A page renders
-natively exactly when its page config declares `"renderer": "gpu"`.
+gate, worker key) and `crates/lingxia/src/ffi/<platform>` only marshals. Every page of an lxapp
+renders natively exactly when its `lxapp.json` declares `"renderer": "gpu"`; page configs name no
+renderer.
 
 | Module | Owns |
 | --- | --- |

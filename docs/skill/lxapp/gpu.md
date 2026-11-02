@@ -1,7 +1,8 @@
 # GPU Views (Android, iOS, macOS)
 
-A page renders natively when its `index.json` has `"renderer": "gpu"`; its View
-is `index.tsx` (Logic stays in `index.ts`). Add `@lingxia/ui` as a dependency.
+An lxapp renders natively when its `lxapp.json` has `"renderer": "gpu"`: every page does, and a page
+config naming a renderer fails the build (no mixed apps). A page's View is `index.tsx` (Logic stays in
+`index.ts`). Add `@lingxia/ui` as a dependency.
 There is no DOM. The host owns navbar and tabbar.
 
 ```tsx
