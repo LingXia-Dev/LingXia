@@ -792,7 +792,7 @@
   "vectorElements": 25,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 2696
+  "wireValues": 2698
  },
  "corpus/pickers.date-popover@phone-light": {
   "backdrops": 0,
@@ -807,7 +807,7 @@
   "vectorElements": 25,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 2696
+  "wireValues": 2698
  },
  "corpus/pickers.date-popover@tablet-dark": {
   "backdrops": 0,
@@ -822,7 +822,7 @@
   "vectorElements": 25,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 2696
+  "wireValues": 2698
  },
  "corpus/pickers.date-popover@tablet-light": {
   "backdrops": 0,
@@ -837,7 +837,7 @@
   "vectorElements": 25,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 2696
+  "wireValues": 2698
  },
  "corpus/pickers.date-sheet@phone-dark": {
   "backdrops": 0,
@@ -847,12 +847,12 @@
   "layers": 4,
   "nodes": 77,
   "outlineGlyphs": 0,
-  "paints": 122,
+  "paints": 123,
   "shadows": 1,
   "vectorElements": 25,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 2768
+  "wireValues": 2758
  },
  "corpus/pickers.date-sheet@phone-light": {
   "backdrops": 0,
@@ -862,12 +862,12 @@
   "layers": 4,
   "nodes": 77,
   "outlineGlyphs": 0,
-  "paints": 122,
+  "paints": 123,
   "shadows": 1,
   "vectorElements": 25,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 2768
+  "wireValues": 2758
  },
  "corpus/pickers.date-sheet@tablet-dark": {
   "backdrops": 0,
@@ -877,12 +877,12 @@
   "layers": 4,
   "nodes": 77,
   "outlineGlyphs": 0,
-  "paints": 122,
+  "paints": 123,
   "shadows": 1,
   "vectorElements": 25,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 2768
+  "wireValues": 2758
  },
  "corpus/pickers.date-sheet@tablet-light": {
   "backdrops": 0,
@@ -892,12 +892,12 @@
   "layers": 4,
   "nodes": 77,
   "outlineGlyphs": 0,
-  "paints": 122,
+  "paints": 123,
   "shadows": 1,
   "vectorElements": 25,
   "layoutPasses": 1,
   "viewPasses": 1,
-  "wireValues": 2768
+  "wireValues": 2758
  },
  "corpus/pickers.select-popover@phone-dark": {
   "backdrops": 0,
@@ -961,63 +961,63 @@
  },
  "corpus/pickers.time-sheet@phone-dark": {
   "backdrops": 0,
-  "glyphs": 84,
+  "glyphs": 91,
   "imagePixels": 0,
   "images": 0,
   "layers": 7,
-  "nodes": 78,
+  "nodes": 79,
   "outlineGlyphs": 0,
-  "paints": 57,
+  "paints": 59,
   "shadows": 1,
   "vectorElements": 3,
   "layoutPasses": 4,
   "viewPasses": 4,
-  "wireValues": 6252
+  "wireValues": 6260
  },
  "corpus/pickers.time-sheet@phone-light": {
   "backdrops": 0,
-  "glyphs": 84,
+  "glyphs": 91,
   "imagePixels": 0,
   "images": 0,
   "layers": 7,
-  "nodes": 78,
+  "nodes": 79,
   "outlineGlyphs": 0,
-  "paints": 57,
+  "paints": 59,
   "shadows": 1,
   "vectorElements": 3,
   "layoutPasses": 4,
   "viewPasses": 4,
-  "wireValues": 6252
+  "wireValues": 6260
  },
  "corpus/pickers.time-sheet@tablet-dark": {
   "backdrops": 0,
-  "glyphs": 84,
+  "glyphs": 91,
   "imagePixels": 0,
   "images": 0,
   "layers": 7,
-  "nodes": 78,
+  "nodes": 79,
   "outlineGlyphs": 0,
-  "paints": 57,
+  "paints": 59,
   "shadows": 1,
   "vectorElements": 3,
   "layoutPasses": 4,
   "viewPasses": 4,
-  "wireValues": 6252
+  "wireValues": 6260
  },
  "corpus/pickers.time-sheet@tablet-light": {
   "backdrops": 0,
-  "glyphs": 84,
+  "glyphs": 91,
   "imagePixels": 0,
   "images": 0,
   "layers": 7,
-  "nodes": 78,
+  "nodes": 79,
   "outlineGlyphs": 0,
-  "paints": 57,
+  "paints": 59,
   "shadows": 1,
   "vectorElements": 3,
   "layoutPasses": 4,
   "viewPasses": 4,
-  "wireValues": 6252
+  "wireValues": 6260
  },
  "corpus/rtl@phone-dark": {
   "backdrops": 0,

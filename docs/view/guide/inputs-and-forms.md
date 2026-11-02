@@ -98,7 +98,7 @@ submits, and the corrected text is reported through `onInput`. The value stays a
 
 With `type="date"` or `type="time"`, tapping the input opens the View's own picker instead of a
 keyboard, drawn in the theme's roles and the same on every platform: a popover under the field with a
-mouse or trackpad, a bottom sheet with Cancel and Done on touch. The date picker shows a month (weeks
+mouse or trackpad, on touch a bottom sheet with Cancel, a title and Done along its top. The date picker shows a month (weeks
 start on `env.firstWeekday`), marks today and the value, and greys days outside `min`/`max`; arrows move
 by day and week, Page Up/Down by month, Return picks, Escape cancels. The time picker has hour and minute
 columns (and AM/PM when `env.hourCycle` is `h12`) that snap as they scroll; `step` (seconds) sets the

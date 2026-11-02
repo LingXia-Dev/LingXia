@@ -3608,7 +3608,7 @@
     else picker.value = { ...picker.value, minute: minutes[index] };
     return true;
   }
-  function dateBody(words, env) {
+  function dateBody(words, env, titled) {
     const { focus, value, min, max } = picker;
     const first = env?.firstWeekday ?? 1, now = today();
     const shift = (months) => {
@@ -3667,8 +3667,8 @@
       { style: { gap: 8, alignSelf: "center" } },
       h(
         "row",
-        { style: { alignItems: "center", gap: 4 } },
-        h("text", { "data-testid": "lx-picker-title", "aria-live": "polite", style: { flexGrow: 1, fontSize: 16, fontWeight: 600, color: "text", paddingLeft: 8 } }, title),
+        { style: { alignItems: "center", gap: 4, justifyContent: titled ? "start" : "space-between" } },
+        titled && h("text", { "data-testid": "lx-picker-title", "aria-live": "polite", style: { flexGrow: 1, fontSize: 16, fontWeight: 600, color: "text", paddingLeft: 8 } }, title),
         iconButton("lx-picker-previous", words.previous, "M12.5 4l-6 6 6 6", -1),
         iconButton("lx-picker-next", words.next, "M7.5 4l6 6-6 6", 1)
       ),
@@ -3798,27 +3798,44 @@
   }
   var pickerAnchor = (env) => picker && (env?.pointer ?? "coarse") !== "coarse" ? picker.identity : null;
   var sheetStyle = ({ borderRadius, ...rest }) => rest;
+  var clock = ({ hour, minute }, words, env) => {
+    const mm = String(minute).padStart(2, "0");
+    if (env?.hourCycle !== "h12") return `${String(hour).padStart(2, "0")}:${mm}`;
+    return `${hour % 12 || 12}:${mm} ${hour < 12 ? words.am : words.pm}`;
+  };
   function pickerNode(env) {
     if (!picker) return null;
     const words = wordsFor(env?.displayLanguage);
     const touch = (env?.pointer ?? "coarse") === "coarse";
-    const body = picker.kind === "date" ? dateBody(words, env) : picker.kind === "time" ? timeBody(words, env) : selectBody();
-    const done = picker.kind === "time" || touch && picker.kind === "date";
-    const footer = done && h(
+    const body = picker.kind === "date" ? dateBody(words, env, !touch) : picker.kind === "time" ? timeBody(words, env) : selectBody();
+    const commit2 = () => picker.kind === "date" ? settle(iso2(picker.focus)) : picker.kind === "time" ? settle(timeIso(picker.value)) : settleSelect(picker.focus);
+    const cancel = (style2) => h("button", { "data-testid": "lx-picker-cancel", onClick: () => settle(null), style: style2 }, words.cancel);
+    const done = (style2) => h("button", { "data-testid": "lx-picker-done", onClick: commit2, style: style2 }, words.done);
+    const monthTitle = picker.kind === "date" && words.title(words.months[picker.focus.month - 1], picker.focus.year);
+    const text2 = { paddingTop: 8, paddingBottom: 8, paddingLeft: 4, paddingRight: 4, fontSize: 16, backgroundColor: "transparent" };
+    const toolbar = touch && h(
+      "row",
+      { style: { alignItems: "center", gap: 8 } },
+      cancel({ ...text2, color: "text-muted" }),
+      h(
+        "text",
+        {
+          "data-testid": "lx-picker-title",
+          "aria-live": "polite",
+          style: { flexGrow: 1, flexBasis: 0, minWidth: 0, textAlign: "center", fontSize: 16, fontWeight: 600, color: "text", lineClamp: 1 }
+        },
+        monthTitle || (picker.kind === "time" ? clock(picker.value, words, env) : picker.label || "")
+      ),
+      done({ ...text2, color: "accent", fontWeight: 600 })
+    );
+    const button = { paddingTop: 8, paddingBottom: 8, paddingLeft: 14, paddingRight: 14, borderRadius: 8, fontSize: 15 };
+    const footer = !touch && picker.kind === "time" && h(
       "row",
       { style: { gap: 8, justifyContent: "end" } },
-      h("button", {
-        "data-testid": "lx-picker-cancel",
-        onClick: () => settle(null),
-        style: { paddingTop: 8, paddingBottom: 8, paddingLeft: 14, paddingRight: 14, borderRadius: 8, color: "text", fontSize: 15 }
-      }, words.cancel),
-      h("button", {
-        "data-testid": "lx-picker-done",
-        onClick: () => settle(picker.kind === "date" ? iso2(picker.focus) : timeIso(picker.value)),
-        style: { paddingTop: 8, paddingBottom: 8, paddingLeft: 14, paddingRight: 14, borderRadius: 8, backgroundColor: "accent", color: "on-accent", fontSize: 15, fontWeight: 600 }
-      }, words.done)
+      cancel({ ...button, color: "text" }),
+      done({ ...button, backgroundColor: "accent", color: "on-accent", fontWeight: 600 })
     );
-    const name = picker.kind === "date" ? words.title(words.months[picker.focus.month - 1], picker.focus.year) : picker.kind === "time" ? words.hour : picker.label || "Options";
+    const name = picker.kind === "date" ? monthTitle : picker.kind === "time" ? words.hour : picker.label || "Options";
     const panel = {
       "data-testid": "lx-picker",
       key: `picker-${picker.key}`,
@@ -3852,7 +3869,7 @@
         paddingLeft: 12 + (env?.safeArea?.left ?? 0),
         paddingRight: 12 + (env?.safeArea?.right ?? 0)
       }
-    }, body, footer) : h("view", {
+    }, toolbar, body) : h("view", {
       ...panel,
       id: "lx-picker",
       popover: "auto",

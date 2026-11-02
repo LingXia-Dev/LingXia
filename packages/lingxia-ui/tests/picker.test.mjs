@@ -74,3 +74,21 @@ test('a select picker lists options, skips disabled ones and types ahead', () =>
   pickerKey('d'); pickerKey('Enter');
   assert.equal(JSON.parse(takePickerResults())[0].value, 'd');
 });
+
+test('on touch every picker sheet opens with Cancel, a title and Done on top', () => {
+  for (const [request, title] of [
+    [{ kind: 'date', value: '2026-10-29' }, 'October 2026'],
+    [{ kind: 'time', value: '18:05' }, '6:05 PM'],
+    [{ kind: 'select', options: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }], selected: 0, label: 'Plan' }, 'Plan'],
+  ]) {
+    reset();
+    open(request);
+    const nodes = render(() => h('column', {}), { pointer: 'coarse', hourCycle: 'h12', displayLanguage: 'en-US' });
+    const sheet = nodes.find(n => n.testId === 'lx-picker');
+    const toolbar = sheet.children[0];
+    assert.deepEqual(toolbar.children.map(n => n.testId), ['lx-picker-cancel', 'lx-picker-title', 'lx-picker-done'], request.kind);
+    assert.equal(toolbar.children[1].text, title);
+    dispatch(toolbar.children[2].props.onClick);
+    assert.equal(hasPicker(), false, `${request.kind}: Done commits`);
+  }
+});
