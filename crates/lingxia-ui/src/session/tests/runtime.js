@@ -3633,7 +3633,8 @@
     const rows = Array.from({ length: 6 }, (_, week) => cells.slice(week * 7, week * 7 + 7));
     const cell = ({ date, inMonth }) => {
       const id = iso2(date), enabled = within(date, min, max);
-      const selected = value && compare(date, value) === 0, focused = compare(date, focus) === 0, isToday = compare(date, now) === 0;
+      const selected = titled ? value && compare(date, value) === 0 : compare(date, focus) === 0;
+      const focused = compare(date, focus) === 0, isToday = compare(date, now) === 0;
       const name = words.full(date.day, words.months[date.month - 1], date.year, words.longDays[weekday(date.year, date.month, date.day)]);
       return h(
         "button",
@@ -3644,7 +3645,10 @@
           "aria-label": name,
           "aria-selected": Boolean(selected),
           disabled: !enabled,
-          onClick: () => settle(id),
+          onClick: () => {
+            if (titled) settle(id);
+            else picker.focus = date;
+          },
           style: {
             width: 36,
             height: 36,
@@ -3756,8 +3760,9 @@
     ));
     return h("row", { style: { gap: 8, justifyContent: "center" } }, ...columns);
   }
-  function selectBody() {
-    const { options: options2, selected, focus } = picker;
+  function selectBody(touch) {
+    const { options: options2, focus } = picker;
+    const selected = touch ? focus : picker.selected;
     const check = "M4 10.5l4 4 8-9";
     return h(
       "column",
@@ -3770,7 +3775,10 @@
           role: "option",
           "aria-selected": index === selected,
           disabled: !option2.enabled,
-          onClick: () => settleSelect(index),
+          onClick: () => {
+            if (touch) picker.focus = index;
+            else settleSelect(index);
+          },
           style: {
             flexDirection: "row",
             alignItems: "center",
@@ -3807,7 +3815,7 @@
     if (!picker) return null;
     const words = wordsFor(env?.displayLanguage);
     const touch = (env?.pointer ?? "coarse") === "coarse";
-    const body = picker.kind === "date" ? dateBody(words, env, !touch) : picker.kind === "time" ? timeBody(words, env) : selectBody();
+    const body = picker.kind === "date" ? dateBody(words, env, !touch) : picker.kind === "time" ? timeBody(words, env) : selectBody(touch);
     const commit2 = () => picker.kind === "date" ? settle(iso2(picker.focus)) : picker.kind === "time" ? settle(timeIso(picker.value)) : settleSelect(picker.focus);
     const cancel = (style2) => h("button", { "data-testid": "lx-picker-cancel", onClick: () => settle(null), style: style2 }, words.cancel);
     const done = (style2) => h("button", { "data-testid": "lx-picker-done", onClick: commit2, style: style2 }, words.done);

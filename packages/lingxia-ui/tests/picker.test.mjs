@@ -28,16 +28,24 @@ test('a date picker opens on its editor, moves by keys and commits an ISO date',
   assert.equal(hasPicker(), false);
 });
 
-test('a tap commits a day; Escape and the backdrop cancel', () => {
+test('on touch a tap picks a day and Done commits it; Cancel and Escape keep the old value', () => {
   reset();
   const view = () => h('column', {});
   const env = { pointer: 'coarse', displayLanguage: 'zh-Hans-CN' };
-  open({ kind: 'date', value: '' });
+  open({ kind: 'date', value: '2026-10-29' });
   let nodes = render(view, env);
-  assert.ok(nodes.find(n => n.testId === 'lx-picker-done'), 'touch draws a sheet with Done');
-  const day = nodes.find(n => n.testId.startsWith('lx-picker-day-') && n.props.enabled !== 0);
-  dispatch(day.props.onClick);
-  assert.equal(JSON.parse(takePickerResults())[0].value, day.testId.slice('lx-picker-day-'.length));
+  dispatch(nodes.find(n => n.testId === 'lx-picker-day-2026-10-21').props.onClick);
+  assert.equal(takePickerResults(), '[]', 'a tap alone commits nothing');
+  nodes = render(view, env);
+  assert.equal(nodes.find(n => n.testId === 'lx-picker-day-2026-10-21').props.stateSelected, 1, 'the picked day shows as chosen');
+  dispatch(nodes.find(n => n.testId === 'lx-picker-cancel').props.onClick);
+  assert.deepEqual(JSON.parse(takePickerResults())[0].value, null);
+  open({ kind: 'date', value: '2026-10-29' });
+  nodes = render(view, env);
+  dispatch(nodes.find(n => n.testId === 'lx-picker-day-2026-10-21').props.onClick);
+  nodes = render(view, env);
+  dispatch(nodes.find(n => n.testId === 'lx-picker-done').props.onClick);
+  assert.equal(JSON.parse(takePickerResults())[0].value, '2026-10-21');
   open({ kind: 'date', value: '' }); pickerKey('Escape');
   assert.deepEqual(JSON.parse(takePickerResults())[0].value, null);
 });
