@@ -9,6 +9,7 @@ description = "iOS adapter for the LingXia GPU View host: presentation and platf
 default = []
 # Metal presentation through wgpu; without it frames rasterize on the CPU.
 gpu = ["lingxia-ui/gpu", "dep:raw-window-handle"]
+hot-swap = ["lingxia-ui/hot-swap"]
 
 [dependencies]
 lingxia-ui = { workspace = true }

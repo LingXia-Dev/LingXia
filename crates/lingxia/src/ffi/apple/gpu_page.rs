@@ -1150,6 +1150,12 @@ mod live {
             on_page(self.token, move |page| page.host().load(source));
             Ok(())
         }
+        #[cfg(feature = "devtool")]
+        fn swap_module(&self, source: &str) -> Result<(), LxAppError> {
+            let source = source.to_owned();
+            on_page(self.token, move |page| page.host().swap_module(source));
+            Ok(())
+        }
         fn park(&self) -> Result<(), LxAppError> {
             on_page(self.token, |page| page.host().park());
             Ok(())
