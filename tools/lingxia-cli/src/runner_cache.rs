@@ -110,9 +110,19 @@ pub struct RunnerBuild {
     /// the field existed; a same-version install without it still runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub protocol: Option<u32>,
+    /// Cargo profile a local build used (`release` or `debug`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<String>,
 }
 
 impl RunnerBuild {
+    /// The profile the Runner was built with; release assets are release.
+    pub fn profile(&self) -> Option<&str> {
+        self.profile
+            .as_deref()
+            .or(self.release.then_some("release"))
+    }
+
     fn describe(&self) -> String {
         match (&self.commit, self.release) {
             (Some(commit), _) => format!("{} built from {}", self.version, short(commit)),
@@ -146,6 +156,11 @@ impl CliBuild {
 
 fn short(commit: &str) -> &str {
     &commit[..commit.len().min(9)]
+}
+
+/// The stamp of the Runner installed in `dir`.
+pub fn installed_build(dir: &Path) -> Option<RunnerBuild> {
+    read_stamp(dir)
 }
 
 fn read_stamp(dir: &Path) -> Option<RunnerBuild> {
@@ -473,6 +488,7 @@ pub fn ensure_runner(version: &str, force: bool) -> Result<PathBuf> {
             // the field empty and reads the release tag instead.
             protocol: release_cli
                 .then_some(lingxia_control_protocol::dev_session::DEV_SESSION_PROTOCOL_VERSION),
+            profile: Some("release".to_string()),
         },
     )?;
 
@@ -590,6 +606,7 @@ mod tests {
             commit: Some(commit.into()),
             release: false,
             protocol: None,
+            profile: None,
         }
     }
 
@@ -599,6 +616,7 @@ mod tests {
             commit: None,
             release: true,
             protocol: None,
+            profile: None,
         }
     }
 

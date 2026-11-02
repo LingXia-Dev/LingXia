@@ -295,6 +295,7 @@ if (Test-Path $ProtocolFile) {
         $RunnerStamp.protocol = [int]$Matches[1]
     }
 }
+$RunnerStamp.profile = $BuildProfile
 [IO.File]::WriteAllText(
     (Join-Path $TmpTargetDir "runner-build.json"),
     ($RunnerStamp | ConvertTo-Json -Compress)

@@ -3,7 +3,7 @@ set -euo pipefail
 
 if [[ $# -ne 0 ]]; then
   echo "Usage: $0" >&2
-  echo "Environment: RUNNER_VERSION, RUNNER_TARGET_DIR, LINGXIA_BIN, CARGO_BIN, NPM_BIN" >&2
+  echo "Environment: RUNNER_VERSION, RUNNER_TARGET_DIR, RUNNER_BUILD_PROFILE (release|debug), LINGXIA_BIN, CARGO_BIN, NPM_BIN" >&2
   exit 2
 fi
 
@@ -26,6 +26,17 @@ TARGET_DIR="${RUNNER_TARGET_DIR:-$HOME/.lingxia/runner/$RUNNER_VERSION}"
 TARGET_PARENT="$(dirname "$TARGET_DIR")"
 TMP_TARGET_DIR="$TARGET_PARENT/.tmp-runner-$RUNNER_VERSION-$$"
 BACKUP_TARGET_DIR="$TARGET_PARENT/.prev-runner-$RUNNER_VERSION-$$"
+# Release by default, like the published Runner: a debug Runner renders GPU
+# pages tens of times slower and reads as a performance bug.
+BUILD_PROFILE="${RUNNER_BUILD_PROFILE:-release}"
+case "$BUILD_PROFILE" in
+  release) BUILD_ARGS=(--release) ;;
+  debug) BUILD_ARGS=() ;;
+  *)
+    echo "ERROR: unsupported RUNNER_BUILD_PROFILE: $BUILD_PROFILE (expected debug or release)" >&2
+    exit 2
+    ;;
+esac
 LINGXIA_BIN="${LINGXIA_BIN:-lingxia}"
 CARGO_BIN="${CARGO_BIN:-cargo}"
 NPM_BIN="${NPM_BIN:-npm}"
@@ -103,12 +114,12 @@ echo "==> Generating apple SDK resources (i18n + icons)"
 # plugin compiles anything, so a fresh checkout needs them first.
 ensure_swift_bridge "$ROOT_DIR"
 
-echo "==> Building Runner"
+echo "==> Building Runner ($BUILD_PROFILE)"
 # Standalone Swift Package: one `lingxia build` runs the Swift build whose plugin
 # compiles the native lib, picking up LINGXIA_WITH_PROVIDERS injection.
 (
   cd "$SCRIPT_DIR"
-  "$LINGXIA_BIN" build
+  "$LINGXIA_BIN" build ${BUILD_ARGS[@]+"${BUILD_ARGS[@]}"}
 )
 
 # The bundle name follows the package's display name ("LingXia Runner.app"
@@ -130,16 +141,11 @@ cp -R "$APP_SRC" "$TMP_TARGET_DIR/"
 RUNNER_COMMIT="$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || true)"
 PROTOCOL_FILE="$ROOT_DIR/crates/lingxia-control-protocol/src/lib.rs"
 RUNNER_PROTOCOL="$(awk -F= '/DEV_SESSION_PROTOCOL_VERSION: u32/ { gsub(/[^0-9]/, "", $2); print $2; exit }' "$PROTOCOL_FILE")"
-if [[ -n "$RUNNER_COMMIT" && -n "$RUNNER_PROTOCOL" ]]; then
-  printf '{"version":"%s","commit":"%s","protocol":%s}\n' \
-    "$RUNNER_VERSION" "$RUNNER_COMMIT" "$RUNNER_PROTOCOL" \
-    > "$TMP_TARGET_DIR/runner-build.json"
-elif [[ -n "$RUNNER_COMMIT" ]]; then
-  printf '{"version":"%s","commit":"%s"}\n' "$RUNNER_VERSION" "$RUNNER_COMMIT" \
-    > "$TMP_TARGET_DIR/runner-build.json"
-else
-  printf '{"version":"%s"}\n' "$RUNNER_VERSION" > "$TMP_TARGET_DIR/runner-build.json"
-fi
+STAMP="\"version\":\"$RUNNER_VERSION\""
+[[ -n "$RUNNER_COMMIT" ]] && STAMP+=",\"commit\":\"$RUNNER_COMMIT\""
+[[ -n "$RUNNER_PROTOCOL" ]] && STAMP+=",\"protocol\":$RUNNER_PROTOCOL"
+STAMP+=",\"profile\":\"$BUILD_PROFILE\""
+printf '{%s}\n' "$STAMP" > "$TMP_TARGET_DIR/runner-build.json"
 mkdir -p "$TARGET_PARENT"
 if [[ -e "$TARGET_DIR" ]]; then
   mv "$TARGET_DIR" "$BACKUP_TARGET_DIR"

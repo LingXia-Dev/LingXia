@@ -480,7 +480,12 @@ fn launch_runner_for_lxapp(
         )
     })?;
 
-    println!("{} Launched {}", "[runner]".cyan(), app_path.display());
+    println!(
+        "{} Launched {}{}",
+        "[runner]".cyan(),
+        app_path.display(),
+        profile_note(&app_path)
+    );
     Ok(RunnerProcess::MacOsApp {
         child,
         pid_file,
@@ -547,7 +552,12 @@ fn launch_runner_for_web(
             executable_path.display()
         )
     })?;
-    println!("{} Launched {}", "[runner]".cyan(), app_path.display());
+    println!(
+        "{} Launched {}{}",
+        "[runner]".cyan(),
+        app_path.display(),
+        profile_note(&app_path)
+    );
     Ok(RunnerProcess::MacOsApp {
         child,
         pid_file,
@@ -860,7 +870,12 @@ fn launch_windows_runner_for_lxapp(
         })?)
     };
 
-    println!("{} Launched {}", "[runner]".cyan(), exe_path.display());
+    println!(
+        "{} Launched {}{}",
+        "[runner]".cyan(),
+        exe_path.display(),
+        profile_note(&exe_path)
+    );
     Ok(child)
 }
 
@@ -922,7 +937,12 @@ fn launch_windows_runner_for_web(
             )
         })?)
     };
-    println!("{} Launched {}", "[runner]".cyan(), exe_path.display());
+    println!(
+        "{} Launched {}{}",
+        "[runner]".cyan(),
+        exe_path.display(),
+        profile_note(&exe_path)
+    );
     Ok(child)
 }
 
@@ -1468,6 +1488,17 @@ fn terminate_runner_from_pid_file(pid_file: &Path) {
         }
     }
     let _ = std::fs::remove_file(pid_file);
+}
+
+/// ` (release build)` for the Runner at `path`, read from the stamp beside it.
+/// A debug Runner is shown loudly: it is many times slower.
+fn profile_note(path: &Path) -> String {
+    let build = path.parent().and_then(crate::runner_cache::installed_build);
+    match build.as_ref().and_then(|build| build.profile()) {
+        Some("debug") => format!(" {}", "(debug build, slow)".yellow()),
+        Some(profile) => format!(" ({profile} build)"),
+        None => " (build profile unrecorded)".to_string(),
+    }
 }
 
 fn installed_runner_app_path() -> Result<PathBuf> {
