@@ -1,5 +1,8 @@
 # Styling
 
+Tailwind classes in `className` are the styling dialect. `style` is for values computed at render time;
+a `style` object whose every value is fixed builds with a `UI_STYLE_STATIC` warning.
+
 ```css
 @theme {
   --radius-card: 14px;

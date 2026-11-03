@@ -421,6 +421,7 @@ const errorNotes = {
   UI_LOCAL: 'A duplicate `useLocal` name in one component, or `set` on an unmounted cell.',
   UI_MODULE: 'The compiled page module failed to load.',
   UI_PAGE: 'A call reached a page that was already discarded.',
+  UI_STYLE_STATIC: 'A build warning; the page still builds: a `style` object whose every value is fixed. Write it as Tailwind classes; `style` is for computed values.',
   UI_PERF: 'A build warning; the page still builds: literal rows above 50 outside `<List>`, an opacity or backdrop layer repeated per row, or a bundled image above 2048 px or 8 MiB.',
   UI_PARENT: 'A node listed before its parent reached the native decoder.',
   UI_PATCH: 'An invalid state patch from Logic.',

@@ -425,6 +425,27 @@ export function render() {
   });
 });
 
+test('UI_STYLE_STATIC warns on a style object of fixed values only; computed and style-only values stay quiet', async () => {
+  await project({
+    'page.tsx': `import { useView } from '@lingxia/view';
+export function render() {
+  const { env } = useView();
+  const wide = env.viewport.width > 600;
+  return <column>
+    <text style={{ fontSize: 18, color: 'text-muted' }}>fixed</text>
+    <text style={{ fontSize: wide ? 22 : 18, color: 'accent' }}>computed</text>
+    <view style={{ positionArea: 'bottom' }} id="tip" popover><text>tip</text></view>
+    <spacer style={{ width: \`\${env.viewport.width / 2}px\` }} />
+  </column>;
+}`,
+  }, async (root, build) => {
+    const { warnings } = await build();
+    await load(root);
+    assert.deepEqual(warnings.map(line => line.replace(/: UI_STYLE_STATIC: .*/, '')), ['page.tsx:6:11']);
+    assert.match(warnings[0], /write it as Tailwind classes in className and keep style for computed values/);
+  });
+});
+
 test('a component keyed by its own function name fails the build: release builds rename functions', () => {
   flags('function A(){return <text>a</text>} const parts=[A]; export function render(){ return <column>{parts.map(Part => <Part key={Part.name} />)}</column>; }',
     /UI_KEY: Part\.name is not a stable key; release builds rename functions, so key by a label or index/);

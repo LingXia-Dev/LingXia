@@ -2,6 +2,7 @@ import { build } from 'esbuild';
 import ts from 'typescript';
 import { collectClassUsage } from './class-usage.mjs';
 import { perfWarnings } from './perf.mjs';
+import { staticStyleWarnings } from './static-style.mjs';
 import { sourceChecker, moduleChecker, parseSource } from './source.mjs';
 import { moduleBanner } from './compatibility.mjs';
 import { compileUtilities, tailwindWarm } from './tailwind.mjs';
@@ -268,7 +269,7 @@ function analyse(path, contents, label, loader, literalColors) {
  * Compiles GPU pages. `pages` are page source paths relative to `root`, the pages of an lxapp whose
  * `lxapp.json` declares `"renderer": "gpu"`. Output is `<base>.js` beside a copy of the page config,
  * when the page has one; a page config naming a renderer is refused.
- * Returns the `UI_PERF` warnings (also printed; they never stop the build), whether Tailwind ran
+ * Returns the `UI_PERF` and `UI_STYLE_STATIC` warnings (also printed; they never stop the build), whether Tailwind ran
  * warm, and how many files were analysed afresh.
  */
 /**
@@ -359,6 +360,12 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
       const lines = report(perf.map(line => line.startsWith(root + sep) ? line.slice(root.length + 1) : line), rel);
       warnings.push(...lines.text.split('\n'));
       console.warn(`${page}: ${lines.count} performance warning${lines.count === 1 ? '' : 's'}\n${lines.text}`);
+    }
+    const statics = staticStyleWarnings(sourceFiles.filter(file => !file.fileName.includes(`${sep}node_modules${sep}`)));
+    if (statics.length) {
+      const lines = report(statics.map(line => line.startsWith(root + sep) ? line.slice(root.length + 1) : line), rel);
+      warnings.push(...lines.text.split('\n'));
+      console.warn(`${page}: ${lines.count} style warning${lines.count === 1 ? '' : 's'}\n${lines.text}`);
     }
     const dest = join(output, `${base}.js`);
     await mkdir(dirname(dest), { recursive: true });
