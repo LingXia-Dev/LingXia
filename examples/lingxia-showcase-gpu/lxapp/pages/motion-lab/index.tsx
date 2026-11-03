@@ -13,7 +13,7 @@ export function render({ data, actions }: View<Actions, { dipped: boolean }>) {
   const order = useLocal('order', ['One', 'Two', 'Three', 'Four']);
   const visible = shown.value && !data.dipped;
   return (
-    <Page testId="motion-lab" title="Motion lab">
+    <Page testId="motion-lab">
       <Section title="Pressed scale" testId="motion-press">
         <button data-testid="motion-press-button" onClick={() => {}} className="px-4 py-3 rounded-xl bg-accent text-on-accent active:scale-95 transition-transform duration-150">
           Press and hold

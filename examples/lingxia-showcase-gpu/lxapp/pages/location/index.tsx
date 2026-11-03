@@ -26,7 +26,7 @@ export function render({ data, actions }: View) {
       ]
     : [];
   return (
-    <Page title="getLocation">
+    <Page>
       <Card testId="location-card" className="p-6 gap-4 items-center">
         <text className="text-base text-muted">Current Location</text>
         {data.isLoading ? (

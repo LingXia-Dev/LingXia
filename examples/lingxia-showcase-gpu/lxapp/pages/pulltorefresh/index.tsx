@@ -10,8 +10,7 @@ export function render({ data, actions }: View) {
   return (
     <Page
       testId="pull-refresh-page"
-      title="Pull Down Refresh Demo"
-      subtitle="Pull down on this page to trigger refresh, or use the buttons below to control it programmatically."
+      intro="Pull down on this page to trigger refresh, or use the buttons below to control it programmatically."
     >
       <text data-testid="pull-refresh-title" className="text-xs text-muted text-center">
         Pull down to refresh

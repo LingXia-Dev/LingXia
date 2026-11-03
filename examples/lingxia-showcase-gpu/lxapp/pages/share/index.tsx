@@ -21,7 +21,7 @@ export function render({ data, actions }: View) {
     <text className="px-3 py-2 rounded-lg bg-surface-sunken text-xs text-muted break-all">{String(value || 'No selection')}</text>
   );
   return (
-    <Page title="Share" subtitle="lx.share opens the native system share sheet.">
+    <Page intro="lx.share opens the native system share sheet.">
       <text data-testid="share-status" className={failure.value ? 'text-sm text-center text-danger' : 'text-sm text-center'}>
         {failure.value || String(data.statusText || 'Ready')}
       </text>

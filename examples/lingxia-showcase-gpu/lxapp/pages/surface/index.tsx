@@ -10,7 +10,7 @@ export function render({ data, actions }: View) {
     message.set('');
   };
   return (
-    <Page testId="surface-page" scrollId="surface-scroll" title="Surface Page" subtitle="Inspect the query string and send a message to the opener.">
+    <Page testId="surface-page" scrollId="surface-scroll" intro="Inspect the query string and send a message to the opener.">
       <Section title="Query string">
         <text data-testid="surface-query" className="font-mono text-sm">
           {String(data.queryString || '(none)')}

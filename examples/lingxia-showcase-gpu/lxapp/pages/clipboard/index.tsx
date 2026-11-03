@@ -20,7 +20,7 @@ export function render({ data, actions }: View) {
   };
   const status = failure.value || (busy.value ? 'Working...' : String(data.statusText || 'Ready'));
   return (
-    <Page title="Clipboard" subtitle="lx.clipboard reads and writes the system clipboard. Write never toasts.">
+    <Page intro="lx.clipboard reads and writes the system clipboard. Write never toasts.">
       <Section title="Status">
         <text data-testid="clipboard-status" className={failure.value ? 'text-sm text-danger' : 'text-sm'}>
           {status}

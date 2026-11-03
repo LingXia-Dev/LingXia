@@ -93,8 +93,7 @@ function Capture({ data, actions }: Pane) {
   const scan = data.mediaType === 'scanCode';
   return (
     <Page
-      title={scan ? 'lx.scanCode' : 'Save to Album'}
-      subtitle={scan ? 'Scan QR codes and barcodes using camera or album' : 'Capture photo or video and save to device album'}
+      intro={scan ? 'Scan QR codes and barcodes using camera or album' : 'Capture photo or video and save to device album'}
     >
       {scan ? (
         <column className="gap-4">
@@ -168,7 +167,7 @@ function ImageTools({ data, actions }: Pane) {
   const source = data.imageInfoResult as Data | null;
   const result = data.compressResult as Data | null;
   return (
-    <Page title="Image Tools" subtitle="lx.getImageInfo and lx.compressImage: inspect an image and make a compressed copy">
+    <Page intro="lx.getImageInfo and lx.compressImage: inspect an image and make a compressed copy">
       <Button testId="media-pickImageForInfo" disabled={!!data.imageInfoBusy} onClick={() => actions.pickImageForInfo()}>
         {data.imageInfoBusy ? 'Getting Info...' : 'Pick Image'}
       </Button>
@@ -227,7 +226,7 @@ function VideoTools({ data, actions }: Pane) {
   const progress = Math.max(0, Math.min(100, Number(data.videoCompressProgress) || 0));
   const ratio = thumb ? Number(thumb.width || 1) / Math.max(1, Number(thumb.height || 1)) : 1;
   return (
-    <Page title="Video Tools" subtitle="lx.getVideoInfo, lx.extractVideoThumbnail and lx.compressVideo">
+    <Page intro="lx.getVideoInfo, lx.extractVideoThumbnail and lx.compressVideo">
       <Button testId="media-pickVideoForTools" disabled={!!data.thumbnailBusy || !!data.videoInfoBusy} onClick={() => actions.pickVideoForTools()}>
         {data.thumbnailVideoPath ? 'Pick Another Video' : 'Pick Video'}
       </Button>
@@ -390,7 +389,7 @@ function Gallery({ data, actions }: Pane) {
     </button>
   );
   return (
-    <Page title="Media Manager" subtitle={String(data.headerSubtitle || 'lx.chooseMedia / lx.previewMedia')}>
+    <Page intro={String(data.headerSubtitle || 'lx.chooseMedia / lx.previewMedia')}>
       <Card className="divide-y divide-line">
         <Setting
           label={video ? 'Video Source' : 'Photo Source'}

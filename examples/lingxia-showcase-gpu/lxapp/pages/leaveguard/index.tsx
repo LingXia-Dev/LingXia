@@ -8,7 +8,7 @@ export function render(_view: View) {
   const dirty = draft.value !== saved.value;
   const guard = useLeaveGuard('draft', { enabled: dirty });
   return (
-    <Page title="Leave guard" subtitle="Edit the draft, then go back or home: the page stays and asks. Save, and it leaves at once.">
+    <Page intro="Edit the draft, then go back or home: the page stays and asks. Save, and it leaves at once.">
       <Section title="Draft">
         <Field testId="leave-draft" label="Draft" bind={draft} placeholder="Type something" />
         <row className="items-center justify-between gap-2">

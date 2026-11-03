@@ -550,7 +550,7 @@ function Surface({ data, actions }: Pane) {
       });
   };
   return (
-    <Page testId="ui-page" data={{ 'data-instance-tag': String(data.instanceTag ?? '') }} title="lx.surface">
+    <Page testId="ui-page" data={{ 'data-instance-tag': String(data.instanceTag ?? '') }}>
       <Section title="Open a surface" description={kinds.find(item => item.value === kind.value)?.hint}>
         <Options label="Kind" testId="surface-kind" bind={kind} options={kinds} disabled={active} />
         {kind.value === 'aside' && <Options label="Edge" testId="surface-edge" bind={edge} options={titled(['left', 'right', 'top', 'bottom'])} />}

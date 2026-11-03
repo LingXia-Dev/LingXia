@@ -15,7 +15,7 @@ export function render({ data, actions }: View) {
   const connected = data.connectedWifi as Wifi | null;
   const events = (data.wifiConnectedEvents ?? []) as WifiEvent[];
   return (
-    <Page title="WiFi Management">
+    <Page>
       <Section title="WiFi Module" description="Initialize or stop WiFi module">
         <grid className="gap-3 grid-cols-2">
           <Button testId="wifi-start" disabled={enabled || !!data.scanning} onClick={() => actions.startWifi()}>

@@ -16,7 +16,7 @@ type Group = keyof typeof groups;
 export function render() {
   const group = useLocal<Group>('group', 'paint');
   return (
-    <Page testId="view-lab" title="View lab">
+    <Page testId="view-lab">
       <row className="gap-2">
         {(Object.keys(groups) as Group[]).map(key => (
           <Button key={key} testId={`lab-tab-${key}`} size="sm" variant={group.value === key ? 'primary' : 'secondary'} onClick={() => group.set(key)}>

@@ -1,6 +1,6 @@
 import { useLocal, type View } from '@lingxia/ui';
 import '../../theme/index.css';
-import { Button, ErrorState, Field, Page, Segmented } from '../../shared/ui';
+import { Button, ErrorState, Field, Header, Page, Segmented } from '../../shared/ui';
 
 const categories = ['Product', 'Bug', 'Idea'].map(label => ({ value: label.toLowerCase(), label }));
 
@@ -28,7 +28,8 @@ export function render({ actions }: View) {
     }
   };
   return (
-    <Page title="Help us improve" subtitle="Share a bug, an idea, or anything that felt confusing in the showcase.">
+    <Page>
+      <Header title="Help us improve" subtitle="Share a bug, an idea, or anything that felt confusing in the showcase." />
       <column className="gap-2">
         <text className="text-sm font-medium">What is this about?</text>
         <Segmented
