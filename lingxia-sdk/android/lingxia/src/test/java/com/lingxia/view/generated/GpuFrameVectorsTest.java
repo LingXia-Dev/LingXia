@@ -167,9 +167,7 @@ public class GpuFrameVectorsTest {
             case GpuFrame.INPUT_REQUEST_HIT_TEST: return GpuFrame.InputRequest.hitTest(r.identity(), r.generation(), r.point(), r.word());
             case GpuFrame.INPUT_REQUEST_FOCUS: return GpuFrame.InputRequest.focus(r.identity(), r.generation());
             case GpuFrame.INPUT_REQUEST_QUERY: return GpuFrame.InputRequest.query(r.identity(), r.token());
-            case GpuFrame.INPUT_REQUEST_SELECT: return GpuFrame.InputRequest.select(r.identity(), r.generation(), r.index());
             case GpuFrame.INPUT_REQUEST_BLUR: return GpuFrame.InputRequest.blur(r.identity(), r.token());
-            case GpuFrame.INPUT_REQUEST_PICK: return GpuFrame.InputRequest.pick(r.identity(), r.token(), r.parts());
             case GpuFrame.INPUT_REQUEST_EDIT: {
                 GpuFrame.InputEdit[] edits = r.edits();
                 JSONObject[] built = new JSONObject[edits.length];
@@ -188,7 +186,7 @@ public class GpuFrameVectorsTest {
             ops.add(vector.getString("op"));
             assertEquals(vector.toString(), canon(vector), canon(rebuild(new GpuFrame.InputRequest(vector))));
         }
-        assertEquals(8, ops.size());
+        assertEquals(6, ops.size());
     }
 
     @Test public void inputRepliesCopyRootsAndTextMenuDecodeEveryField() throws Exception {
