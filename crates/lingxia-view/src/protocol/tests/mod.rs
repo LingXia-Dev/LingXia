@@ -584,7 +584,7 @@ fn text_alignment_wire_values_are_validated() {
 fn compiled_wire_table_matches_the_contract_schema() {
     let path = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../packages/lingxia-view/contracts/schema.json"
+        "/../../contracts/view/schema.json"
     );
     // Published crates ship without the package tree; the repository gate runs this.
     let Ok(text) = std::fs::read_to_string(path) else {
@@ -620,7 +620,7 @@ fn contract_drift_reports_fields_missing_on_either_side() {
 fn contract_drift_reports_admission_and_limit_changes() {
     let path = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../packages/lingxia-view/contracts/schema.json"
+        "/../../contracts/view/schema.json"
     );
     let Ok(text) = std::fs::read_to_string(path) else {
         return;

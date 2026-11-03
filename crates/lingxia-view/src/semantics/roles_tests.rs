@@ -158,7 +158,7 @@ fn heading_levels_need_a_heading_role_on_the_wire() {
 #[test]
 fn projected_roles_match_the_schema_vocabulary() {
     let schema: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../packages/lingxia-view/contracts/schema.json"
+        "../../../../contracts/view/schema.json"
     ))
     .unwrap();
     let roles: Vec<String> = [

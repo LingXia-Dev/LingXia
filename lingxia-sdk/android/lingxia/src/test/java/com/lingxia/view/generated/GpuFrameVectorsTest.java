@@ -50,7 +50,7 @@ public class GpuFrameVectorsTest {
     }
 
     static JSONObject vectors() throws Exception {
-        byte[] bytes = Files.readAllBytes(Paths.get("../../../packages/lingxia-view/contracts/vectors/frame.json"));
+        byte[] bytes = Files.readAllBytes(Paths.get("../../../contracts/view/vectors/frame.json"));
         return new JSONObject(new String(bytes, StandardCharsets.UTF_8));
     }
 

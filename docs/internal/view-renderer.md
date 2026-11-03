@@ -30,12 +30,12 @@ renderer.
 
 ## Wire contract
 
-`packages/lingxia-view/contracts/schema.json` is the single source for tags,
+`contracts/view/schema.json` is the single source for tags,
 field ids, option enums, the CSS-named author style table (with the CSS
 longhand each key accepts), element admission, wire admission (per-tag
 children, content eligibility, required parent and fields, per-field tags) and
 page limits (nodes, depth, animation and item-key bytes, image bytes, source
-length). `contracts/generate.mjs` writes the Rust tables, lxapp's
+length). `contracts/view/generate.mjs` writes the Rust tables, lxapp's
 `page/view_limits.rs`, `wire.js`, `contract.js`, the authoring `.d.ts` and the
 native-test runtime bundle; no consumer keeps its own copy. `--check` fails on
 drift; a Rust test compares every compiled table with the schema. Field and
@@ -43,7 +43,7 @@ tag ids are append-only and dense; reserved fields are rejected by the decoder.
 
 The schema `frame` section types what adapters receive (snapshot, semantics,
 automation); it generates `GpuFrame.java` and `GpuFrame.swift`.
-`contracts/vectors/frame.json` holds real host output, re-recorded with
+`contracts/view/vectors/frame.json` holds real host output, re-recorded with
 `LINGXIA_UPDATE_VECTORS=1 cargo test -p lingxia-view --lib every_message`; Rust
 holds it to the schema, the Android JVM and Swift suites decode it, and the
 JVM suite fails on any key the decoder never reads.

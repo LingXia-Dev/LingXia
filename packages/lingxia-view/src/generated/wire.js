@@ -1,4 +1,4 @@
-// Generated from packages/lingxia-view/contracts/schema.json; do not edit.
+// Generated from contracts/view/schema.json; do not edit.
 export const uiAbi = 1;
 export const maxField = 198;
 export const tags = {"column":0,"row":1,"text":2,"button":3,"spacer":4,"scroll":5,"list":6,"image":7,"input":8,"textarea":9,"checkbox":10,"switch":11,"radio":12,"radio-option":13,"search":14,"slider":15,"grid":16,"stack":17,"plot":18,"vector":19,"page":20,"span":21,"link":22,"select":23};

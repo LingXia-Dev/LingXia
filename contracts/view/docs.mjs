@@ -3,10 +3,11 @@
 // `--check` fails on drift instead of writing.
 import { readFile, readdir, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import ts from 'typescript';
-import { build } from 'esbuild';
-import { readSchema, elementStyle, generate, packageRoot, repositoryRoot } from './generate.mjs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { readSchema, elementStyle, generate, contractsRoot, packageRoot, repositoryRoot, resolveDependency, loadDependency } from './generate.mjs';
+
+const ts = (await loadDependency('typescript')).default;
+const { build } = await loadDependency('esbuild');
 
 const header = '_Generated from the View schema (`schema.json`) and the compiler; do not edit._\n';
 // A code span that may itself hold backticks (template literal types).
@@ -19,7 +20,7 @@ const list = items => items.map(code).join(', ');
 // ---- authoring API types --------------------------------------------------------------
 
 async function apiMembers(name) {
-  const path = join(packageRoot, 'contracts/api.d.ts');
+  const path = join(contractsRoot, 'api.d.ts');
   const file = ts.createSourceFile(path, await readFile(path, 'utf8'), ts.ScriptTarget.ES2020, true);
   const members = [];
   const visit = node => {
@@ -122,9 +123,9 @@ async function lowering(generated) {
   const contract = generated[contractPath];
   if (!contract) throw Error(`docs.mjs: the generation lacks ${contractPath}`);
   // This module sits in the compiler's package, so its ESM resolution matches the compiler's imports.
-  const theme = import.meta.resolve('tailwindcss/theme.css');
+  const theme = resolveDependency('tailwindcss/theme.css');
   const plugin = { name: 'fresh-contract', setup(builder) {
-    builder.onResolve({ filter: /^[^./]/ }, ({ path }) => ({ path: path.startsWith('node:') ? path : import.meta.resolve(path), external: true }));
+    builder.onResolve({ filter: /^[^./]/ }, ({ path }) => ({ path: path.startsWith('node:') ? path : resolveDependency(path), external: true }));
     builder.onResolve({ filter: /generated\/contract\.js$/ }, ({ path, resolveDir }) => ({ path: resolve(resolveDir, path) }));
     builder.onLoad({ filter: /generated[\\/]contract\.js$/ }, () => ({ contents: contract, loader: 'js' }));
   } };
@@ -136,9 +137,9 @@ async function lowering(generated) {
 }
 
 async function designSystem() {
-  const { __unstable__loadDesignSystem: load } = await import('tailwindcss');
-  const theme = await readFile(new URL(import.meta.resolve('tailwindcss/theme.css')), 'utf8');
-  const { roleTheme, viewExtensions } = await import('../compiler/tailwind.mjs');
+  const { __unstable__loadDesignSystem: load } = await loadDependency('tailwindcss');
+  const theme = await readFile(new URL(resolveDependency('tailwindcss/theme.css')), 'utf8');
+  const { roleTheme, viewExtensions } = await import(pathToFileURL(join(packageRoot, 'compiler/tailwind.mjs')).href);
   return load(`${theme}\n${roleTheme}\n${viewExtensions}\n@tailwind utilities;`);
 }
 
@@ -536,7 +537,8 @@ export async function docs(schema, generated) {
   };
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+// Not top-level await: generate() imports this module back, and would wait on its evaluation.
+const main = async () => {
   const schema = await readSchema();
   // Once generate.mjs includes the reference, its generation already holds these pages.
   const fresh = await generate(schema);
@@ -554,4 +556,6 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     await mkdir(dirname(join(repositoryRoot, path)), { recursive: true });
     await writeFile(join(repositoryRoot, path), content);
   }
-}
+};
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1])
+  main().catch(error => { console.error(error); process.exit(1); });

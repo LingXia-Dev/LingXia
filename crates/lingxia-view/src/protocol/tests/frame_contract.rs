@@ -5,7 +5,7 @@ use serde_json::Value;
 fn schema() -> Value {
     let path = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../packages/lingxia-view/contracts/schema.json"
+        "/../../contracts/view/schema.json"
     );
     let text = std::fs::read_to_string(path).expect("contract schema");
     serde_json::from_str::<Value>(&text).expect("schema JSON")["frame"].clone()

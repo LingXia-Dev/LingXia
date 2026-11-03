@@ -1,4 +1,4 @@
-// Generated from packages/lingxia-view/contracts/schema.json; do not edit.
+// Generated from contracts/view/schema.json; do not edit.
 
 export type Child = JSX.Element | string | number | boolean | null | undefined | readonly Child[];
 export type TextChild = string | number | boolean | null | undefined | readonly TextChild[];

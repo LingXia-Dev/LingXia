@@ -1,4 +1,4 @@
-// Generated from packages/lingxia-view/contracts/schema.json; do not edit.
+// Generated from contracts/view/schema.json; do not edit.
 //! GPU page resource bounds lxapp enforces before bytes reach the View.
 
 /// Largest encoded image a GPU page may load.

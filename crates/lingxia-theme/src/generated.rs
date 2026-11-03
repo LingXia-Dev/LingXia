@@ -1,4 +1,4 @@
-// Generated from packages/lingxia-view/contracts/schema.json; do not edit.
+// Generated from contracts/view/schema.json; do not edit.
 //! Roles are palette slots in order; append-only.
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]

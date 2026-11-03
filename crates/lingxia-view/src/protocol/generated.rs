@@ -1,4 +1,4 @@
-// Generated from packages/lingxia-view/contracts/schema.json; do not edit.
+// Generated from contracts/view/schema.json; do not edit.
 //! Wire ids are append-only; native validation stays independent of the JS runtime.
 
 pub const UI_ABI: u32 = 1;

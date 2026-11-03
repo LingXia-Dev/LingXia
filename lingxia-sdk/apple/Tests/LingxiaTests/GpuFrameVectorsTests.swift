@@ -11,7 +11,7 @@ final class GpuFrameVectorsTests: XCTestCase {
     private func vectors() throws -> Data {
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
-            .appendingPathComponent("../../../../packages/lingxia-view/contracts/vectors/frame.json")
+            .appendingPathComponent("../../../../contracts/view/vectors/frame.json")
         return try Data(contentsOf: url.standardizedFileURL)
     }
 

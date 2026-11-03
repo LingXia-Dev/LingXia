@@ -44,6 +44,8 @@ TSX lxapp; the React showcase is its parity reference. SDK device probes belong
 in `lingxia-sdk/android/tests/gpu`, outside app bundles. `examples/hello-view` is
 the minimal GPU compiler fixture. Read `docs/internal/view-authoring.md`,
 `view-renderer.md`, `view-styling.md` and `view-animation.md` before changing GPU contracts.
+The View contract lives in `contracts/view/`; after editing `schema.json` or `api.d.ts`, run
+`node contracts/view/generate.mjs` (CI runs it with `--check`).
 
 - Rust gate: `cargo check --workspace --all-targets` (CI runs clippy on the same scope). The workspace default feature set skips the Windows browser shell — cover it with `cargo clippy -p lingxia-windows-sdk --features browser-shell`.
 - JS deps live in the `packages/` npm workspace (repo root is not a workspace). `lingxia-cli`'s `build.rs` embeds JS from `packages/lingxia-bridge` and `packages/lingxia-polyfills`, so `npm install` there before the first cargo build; each example project also needs its own `npm install`.

@@ -1,4 +1,4 @@
-// Generated from packages/lingxia-view/contracts/schema.json; do not edit.
+// Generated from contracts/view/schema.json; do not edit.
 package com.lingxia.view.generated;
 
 /** Semantic node roles, live-region kinds, event kinds and JSON keys of the shared projection. */

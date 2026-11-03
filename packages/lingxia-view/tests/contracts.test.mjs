@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readSchema, drift, generate } from '../contracts/generate.mjs';
+import { readSchema, drift, generate } from '../../../contracts/view/generate.mjs';
 
 test('committed artifacts match a fresh generation from the contract schema', async () => {
   assert.deepEqual(await drift(await readSchema()), []);

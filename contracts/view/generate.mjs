@@ -1,18 +1,21 @@
 // Every artifact derived from schema.json. `--check` fails on drift instead of writing.
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { build } from 'esbuild';
-import ts from 'typescript';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-export const packageRoot = fileURLToPath(new URL('..', import.meta.url));
-export const repositoryRoot = join(packageRoot, '../..');
+export const contractsRoot = fileURLToPath(new URL('.', import.meta.url));
+export const repositoryRoot = join(contractsRoot, '../..');
+export const packageRoot = join(repositoryRoot, 'packages/lingxia-view');
+// esbuild, TypeScript and Tailwind are @lingxia/view's dependencies: resolve them from there.
+export const { resolveDependency, loadDependency } = await import(pathToFileURL(join(packageRoot, 'compiler/dependencies.mjs')).href);
+const { build } = await loadDependency('esbuild');
+const ts = (await loadDependency('typescript')).default;
 
 export async function readSchema() {
-  return JSON.parse(await readFile(join(packageRoot, 'contracts/schema.json'), 'utf8'));
+  return JSON.parse(await readFile(join(contractsRoot, 'schema.json'), 'utf8'));
 }
 
-const header = '// Generated from packages/lingxia-view/contracts/schema.json; do not edit.\n';
+const header = '// Generated from contracts/view/schema.json; do not edit.\n';
 const screaming = name => name.replace(/-/g, '_').replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase();
 const object = entries => JSON.stringify(Object.fromEntries(entries));
 
@@ -90,7 +93,7 @@ function themeRust(schema) {
   const variants = roles.map((role, slot) => `    /// ${role.doc}\n    ${roleVariant(role.name)} = ${slot},`).join('\n');
   const pairs = roles.flatMap(role => Object.entries(role.on ?? {}).map(([background, ratio]) =>
     `    (Role::${roleVariant(role.name)}, Role::${roleVariant(background)}, ${Number(ratio).toFixed(1)}),`)).join('\n');
-  return `// Generated from packages/lingxia-view/contracts/schema.json; do not edit.
+  return `// Generated from contracts/view/schema.json; do not edit.
 //! Roles are palette slots in order; append-only.
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -373,7 +376,7 @@ export const css = ${JSON.stringify(css)};
 export const keywords = ${JSON.stringify(keywords)};
 /** Enumerated values by option kind. */
 export const options = ${JSON.stringify(schema.options)};
-/** Props every element accepts, read from \`interface Props\` in contracts/api.d.ts. */
+/** Props every element accepts, read from \`interface Props\` in contracts/view/api.d.ts. */
 export const commonProps = ${JSON.stringify(common)};
 /** Colour roles in palette-slot order. */
 export const roles = ${JSON.stringify(schema.roles.map(role => role.name))};
@@ -668,7 +671,7 @@ ${encodes.join('\n')}
   });
   const enums = Object.entries(types).filter(([, def]) => def.enum).map(([name, def]) =>
     `/// \`${name}\` values.\npublic enum GpuFrame${name}: String, Sendable {\n${def.enum.map(value => `    case ${camel(value)} = ${JSON.stringify(value)}`).join('\n')}\n}`);
-  return `// Generated from packages/lingxia-view/contracts/schema.json; do not edit.
+  return `// Generated from contracts/view/schema.json; do not edit.
 // The frame contract every Apple platform decodes: ${Object.entries(messages).map(([name, type]) => `${name} = ${type}`).join(', ')}.
 import Foundation
 
@@ -718,7 +721,7 @@ ${messages_.join('\n\n')}
 export async function generate(schema) {
   validate(schema);
   validateAuthor(schema);
-  const api = await readFile(join(packageRoot, 'contracts/api.d.ts'), 'utf8');
+  const api = await readFile(join(contractsRoot, 'api.d.ts'), 'utf8');
   const generated = {
     'crates/lingxia-view/src/protocol/generated.rs': rust(schema),
     'crates/lingxia-theme/src/generated.rs': themeRust(schema),

@@ -2,12 +2,15 @@
 
 ## Package layout
 
+`contracts/view/` at the repository root: `schema.json` (tags, fields,
+CSS-named style, elements), `api.d.ts` (hook and data types), `generate.mjs`
+and `docs.mjs`. Every generated artifact in the package, the crates, the
+Android and Apple SDKs and `docs/view/reference` comes from here;
+`node contracts/view/generate.mjs --check` and the contract tests fail on drift
+in either direction.
+
 `packages/lingxia-view`:
 
-- `contracts/` — `schema.json` (tags, fields, CSS-named style, elements),
-  `api.d.ts` (hook and data types) and `generate.mjs`. Every generated
-  artifact comes from here; `generate.mjs --check` and the contract tests fail
-  on drift in either direction.
 - `compiler/` — TSX audit, JSX source annotation, Tailwind lowering,
   stylesheet loading and the module banner.
 - `src/runtime/` — render state, JSX arena, hooks, the action bridge, element

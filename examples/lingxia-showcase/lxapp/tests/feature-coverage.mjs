@@ -47,7 +47,7 @@ function configFeatures(lxapp) {
 
 /** Interactive GPU View element kinds, from the View contract. */
 function viewKinds() {
-  const schema = json(join(repo, 'packages/lingxia-view/contracts/schema.json'));
+  const schema = json(join(repo, 'contracts/view/schema.json'));
   return new Set(Object.entries(schema.elements)
     .filter(([name, element]) => element.binding || ['button', 'link'].includes(name)
       || (element.style ?? []).some((group) => group === 'scroll' || group === 'overscroll'))

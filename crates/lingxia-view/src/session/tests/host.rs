@@ -3134,7 +3134,7 @@ fn every_message_adapters_receive_matches_the_frame_schema() {
     });
     let path = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../packages/lingxia-view/contracts/vectors/frame.json"
+        "/../../contracts/view/vectors/frame.json"
     );
     if std::env::var_os("LINGXIA_UPDATE_VECTORS").is_some() {
         std::fs::create_dir_all(std::path::Path::new(path).parent().unwrap()).unwrap();
