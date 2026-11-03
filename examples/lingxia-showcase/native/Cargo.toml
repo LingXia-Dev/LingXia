@@ -56,7 +56,7 @@ cloud = []
 lingxia = { version = "0.28.0", default-features = false }
 lingxia-control-runtime = { version = "0.28.0", optional = true, default-features = false }
 lingxia-device-io = { version = "0.28.0", optional = true, default-features = false }
-rong = { version = "0.6.3", default-features = false }
+rong = { version = "0.6.4", default-features = false }
 log = "0.4.34"
 
 # Platform-specific dependencies for FFI
@@ -75,18 +75,6 @@ codegen-units = 1
 strip = true
 
 [patch.crates-io]
-# Temporary: rong's additive engine features (feat/multi-engine), until the owner publishes `rong`.
-# The facade's path dependencies must resolve to the same checkout, hence every engine crate.
-rong = { path = "../../../../rong" }
-rong_core = { path = "../../../../rong/core" }
-rong_rt = { path = "../../../../rong/rong_rt" }
-rong_macro = { path = "../../../../rong/rong_macro" }
-rong_quickjs = { path = "../../../../rong/quickjs" }
-rong_quickjs_sys = { path = "../../../../rong/quickjs/sys" }
-rong_jscore = { path = "../../../../rong/javascriptcore" }
-rong_jscore_sys = { path = "../../../../rong/javascriptcore/sys" }
-rong_arkjs = { path = "../../../../rong/arkjs" }
-rong_arkjs_sys = { path = "../../../../rong/arkjs/sys" }
 portable-pty = { git = "https://github.com/LingXia-Dev/wezterm.git", rev = "59d0fb89c54a77c12afe2561dc6969d8dc55fc4f", package = "portable-pty" }
 lingxia = { path = "../../../crates/lingxia" }
 lingxia-app-context = { path = "../../../crates/lingxia-app-context" }
