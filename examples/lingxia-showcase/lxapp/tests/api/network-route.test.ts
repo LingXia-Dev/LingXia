@@ -1,7 +1,7 @@
 import { expect, spec } from '@lingxia/test';
 import type { NetworkRouteHandler, ScenarioInput } from '@lingxia/types/automation';
-import { bindFixture } from '../helpers/poll.js';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { bindFixture } from '@lingxia/test/showcase/helpers/poll.js';
+import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 import outage from '../fixtures/network/outage.json';
 import status from '../scenarios/route/status.json';
 

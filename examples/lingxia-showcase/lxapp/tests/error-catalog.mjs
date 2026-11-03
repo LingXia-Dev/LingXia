@@ -32,7 +32,7 @@ export const families = [
 
 // Stronger real-device contracts are listed separately from code handling.
 export const runtimeOwners = [
-  { code: 4004, id: 'PULL-001', file: 'pages/pull-to-refresh.test.ts' },
-  { code: 'BRIDGE_STREAM_CLOSED', id: 'CHANNEL-ERROR-001', file: 'pages/channel.test.ts' },
-  { code: 'BRIDGE_TOPIC_NOT_FOUND', id: 'CHANNEL-ERROR-001', file: 'pages/channel.test.ts' },
+  { code: 4004, id: 'PULL-001', file: 'packages/lingxia-test/showcase/pages/pull-to-refresh.test.ts' },
+  { code: 'BRIDGE_STREAM_CLOSED', id: 'CHANNEL-ERROR-001', file: 'packages/lingxia-test/showcase/pages/channel.test.ts' },
+  { code: 'BRIDGE_TOPIC_NOT_FOUND', id: 'CHANNEL-ERROR-001', file: 'packages/lingxia-test/showcase/pages/channel.test.ts' },
 ];

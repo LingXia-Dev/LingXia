@@ -1,5 +1,5 @@
 import { rawAutomation } from '@lingxia/test/runner';
-import { SHOWCASE_APP_ID } from './helpers/app.js';
+import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 
 // Before the first spec: the showcase is open and its current page is ready,
 // so its Logic runtime runs. The first WebView creation can stall well past

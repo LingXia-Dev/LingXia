@@ -37,7 +37,7 @@ test('every published error code has an executable owner and an explicit coverag
   const codes = new Set(families.flatMap((family) => family.codes));
   for (const owner of runtimeOwners) {
     assert.ok(codes.has(owner.code));
-    const source = readFileSync(new URL(`../${owner.file}`, import.meta.url), 'utf8');
+    const source = read(owner.file);
     assert.ok(source.includes(owner.id), `missing runtime owner ${owner.id}`);
     assert.ok(source.includes(String(owner.code)), `runtime owner does not mention ${owner.code}`);
   }

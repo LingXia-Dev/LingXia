@@ -1,7 +1,7 @@
 import { expect, spec } from '@lingxia/test';
-import { SHOWCASE_APP_ID } from '../../helpers/app.js';
-import { runtimePlatform } from '../../helpers/platform.js';
-import { bindFixture } from '../../helpers/poll.js';
+import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
+import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
+import { bindFixture } from '@lingxia/test/showcase/helpers/poll.js';
 
 /**
  * `lx.clipboard` is the system clipboard, not a runtime-private buffer. The

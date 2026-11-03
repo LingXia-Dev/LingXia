@@ -2,9 +2,9 @@ import { expect, spec } from '@lingxia/test';
 import homeConfig from '../../../pages/home/index.json';
 import uiConfig from '../../../pages/ui/index.json';
 import pullConfig from '../../../pages/pulltorefresh/index.json';
-import { SHOWCASE_APP_ID } from '../../helpers/app.js';
-import { androidDevice } from '../../helpers/android-device.js';
-import { bindFixture } from '../../helpers/poll.js';
+import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
+import { androidDevice } from '@lingxia/test/showcase/helpers/android-device.js';
+import { bindFixture } from '@lingxia/test/showcase/helpers/poll.js';
 
 const args = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 spec.configure({ skip: args.platform === 'android' ? undefined : 'Android only' });

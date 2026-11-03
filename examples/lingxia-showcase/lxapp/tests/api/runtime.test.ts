@@ -1,7 +1,7 @@
 import { expect, spec } from '@lingxia/test';
-import { bindFixture, type Caught } from '../helpers/poll.js';
-import { waitForCurrentPage } from '../helpers/page.js';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { bindFixture, type Caught } from '@lingxia/test/showcase/helpers/poll.js';
+import { waitForCurrentPage } from '@lingxia/test/showcase/helpers/page.js';
+import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 
 
 spec("read core app, device, screen, network, and system state", { id: "LOGIC-001", covers: [

@@ -1,5 +1,5 @@
 import { expect, spec, type Fixture } from '@lingxia/test';
-import { runtimePlatform } from '../../helpers/platform.js';
+import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
 
 /**
  * The host browser's page driver (`t.automation.browser`) against

@@ -1,8 +1,8 @@
-import { waitForCurrentPage } from '../../helpers/page.js';
+import { waitForCurrentPage } from '@lingxia/test/showcase/helpers/page.js';
 import { expect, spec, type Fixture } from '@lingxia/test';
-import { bindFixture, eventually, specNamespace } from '../../helpers/poll.js';
-import { SHOWCASE_APP_ID } from '../../helpers/app.js';
-import { runtimePlatform } from '../../helpers/platform.js';
+import { bindFixture, eventually, specNamespace } from '@lingxia/test/showcase/helpers/poll.js';
+import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
+import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
 import type { DesktopDriver, DesktopWindowInfo } from '@lingxia/types/automation';
 import type { TestApp } from '@lingxia/test';
 

@@ -1,6 +1,6 @@
 import { expect, spec, type Fixture, type JsonValue, type TestApp } from '@lingxia/test';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
-import { bindFixture, type Caught } from '../helpers/poll.js';
+import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
+import { bindFixture, type Caught } from '@lingxia/test/showcase/helpers/poll.js';
 
 /**
  * One rejected call and the code an app author branches on: `api` is the

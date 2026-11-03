@@ -1,8 +1,8 @@
-// Keeps tests/shared.test.ts, shared-specs.json and the React showcase's
-// page and flow specs in step: every source spec is imported, every skip
+// Keeps tests/shared.test.ts, shared-specs.json and the shared page and flow
+// specs of @lingxia/test in step: every source spec is imported, every skip
 // names an imported file and gives a reason.
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -11,7 +11,7 @@ const source = join(here, manifest.source);
 const specs = ['pages', 'flows'].flatMap((dir) =>
   readdirSync(join(source, dir)).filter((name) => name.endsWith('.test.ts')).map((name) => `${dir}/${name}`));
 const entry = readFileSync(join(here, 'shared.test.ts'), 'utf8');
-const prefix = relative(here, source).split('\\').join('/');
+const prefix = '@lingxia/test/showcase';
 const imported = [...entry.matchAll(/^import '([^']+)';$/gm)].map((m) => m[1])
   .filter((path) => path.startsWith(`${prefix}/`))
   .map((path) => path.slice(prefix.length + 1).replace(/\.js$/, '.ts'));
@@ -52,7 +52,8 @@ const sourceIds = (root, attr, computed = false) => {
   walk(root);
   return (id) => ids.has(id) || prefixes.some((prefix) => prefix && id.startsWith(prefix));
 };
-const lxapps = { react: join(source, '../..'), gpu: join(here, '..') };
+// The React showcase renders every id the shared specs name; it is read, never imported.
+const lxapps = { react: join(here, '../../../lingxia-showcase'), gpu: join(here, '..') };
 const has = { react: sourceIds(join(lxapps.react, 'lxapp'), 'data-testid'), gpu: sourceIds(lxapps.gpu, 'data-testid', true) };
 for (const [id, reason] of Object.entries(manifest.keyed ?? {})) {
   if (typeof reason !== 'string' || !reason.trim()) problems.push(`keyed id ${id} has no reason`);

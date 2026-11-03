@@ -1,11 +1,11 @@
 import { spec } from '@lingxia/test';
-import { attachShot } from '../../helpers/poll.js';
+import { attachShot } from '@lingxia/test/showcase/helpers/poll.js';
 import type {
   DesktopAxNode,
   DesktopDriver,
   DesktopWindowInfo,
 } from '@lingxia/types/automation';
-import { runtimePlatform } from '../../helpers/platform.js';
+import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
 
 function locationPrompt(windows: DesktopWindowInfo[]): DesktopWindowInfo | undefined {
   return windows.find((window) => (

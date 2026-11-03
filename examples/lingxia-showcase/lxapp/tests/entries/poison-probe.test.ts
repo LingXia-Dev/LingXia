@@ -3,7 +3,7 @@
 // whether `home` still boots — reproduces the Harmony post-navigation
 // bridge-poisoning without the lifecycle fixtures.
 import { expect, spec } from '@lingxia/test';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 
 spec('relaunch/push/pop churn leaves home bootable', { app: SHOWCASE_APP_ID }, async (t) => {
   const app = t.app;

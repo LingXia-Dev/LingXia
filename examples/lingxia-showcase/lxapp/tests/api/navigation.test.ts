@@ -1,9 +1,9 @@
 import type { PageInfo } from '@lingxia/types/automation';
-import { currentPageOrNull, waitForElementAttribute } from '../helpers/page.js';
+import { currentPageOrNull, waitForElementAttribute } from '@lingxia/test/showcase/helpers/page.js';
 import { expect, spec, type AnyLogicPage, type TestApp } from '@lingxia/test';
-import { bindFixture, eventually, relaunchFromLogic, specNamespace, type Caught } from '../helpers/poll.js';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
-import type { ProbeWindow } from '../helpers/view.js';
+import { bindFixture, eventually, relaunchFromLogic, specNamespace, type Caught } from '@lingxia/test/showcase/helpers/poll.js';
+import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
+import type { ProbeWindow } from '@lingxia/test/showcase/helpers/view.js';
 
 
 async function waitForCurrent(app: TestApp, name: string): Promise<PageInfo> {

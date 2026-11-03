@@ -1,7 +1,6 @@
 import { keyedElement } from '../helpers/keyed.js';
 import { spec, type TestApp, expect } from '@lingxia/test';
-import type { Todo } from '../../shared/lib/todo-utils.js';
-import type { TodoPage } from '../../pages/todo/contract.js';
+import type { Todo, TodoPage } from '../contracts.js';
 import { attachShot, bindFixture } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 

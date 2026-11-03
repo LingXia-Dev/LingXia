@@ -63,15 +63,14 @@ function testFiles(dir) {
   });
 }
 
-/** Spec files each app runs: its own, plus the shared ones the GPU showcase does not skip. */
+/** Spec files each app runs: its own, plus the shared suite (the GPU showcase minus its skips). */
 function specFiles(app) {
   const own = testFiles(join(APPS[app].lxapp, 'tests'));
-  if (app !== 'gpu') return own;
-  const manifest = json(join(APPS.gpu.lxapp, 'tests/shared-specs.json'));
-  const source = join(APPS.gpu.lxapp, 'tests', manifest.source);
-  const shared = ['pages', 'flows'].flatMap((dir) => testFiles(join(source, dir)))
-    .filter((file) => !(relative(source, file).split('\\').join('/') in manifest.skip));
-  return [...own, ...shared];
+  const source = join(repo, 'packages/lingxia-test/showcase');
+  const shared = ['pages', 'flows'].flatMap((dir) => testFiles(join(source, dir)));
+  if (app !== 'gpu') return [...own, ...shared];
+  const { skip } = json(join(APPS.gpu.lxapp, 'tests/shared-specs.json'));
+  return [...own, ...shared.filter((file) => !(relative(source, file).split('\\').join('/') in skip))];
 }
 
 /** `covers` ids of the specs in `file` whose bodies drive the UI as a user does. */

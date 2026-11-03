@@ -1,6 +1,6 @@
 import { expect, spec } from '@lingxia/test';
-import { bindFixture } from '../helpers/poll.js';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { bindFixture } from '@lingxia/test/showcase/helpers/poll.js';
+import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 import profile from '../scenarios/mocks/profile.json';
 
 // `mocks/config.json` sends these calls to `mocks/index.ts`: the app calls

@@ -1,6 +1,6 @@
 {
-  "$comment": "The React showcase's page and flow specs, run here on GPU pages. Every file runs unless skipped with a reason; `node tests/shared-specs.check.mjs` keeps this, tests/shared.test.ts and the source in step.",
-  "source": "../../../lingxia-showcase/lxapp/tests",
+  "$comment": "The shared page and flow specs from @lingxia/test/showcase, run here on GPU pages. Every file runs unless skipped with a reason; `node tests/shared-specs.check.mjs` keeps this, tests/shared.test.ts and the source in step.",
+  "source": "../../../../packages/lingxia-test/showcase",
   "skip": {
     "flows/browser-control-navigation.test.ts": "drives the desktop built-in browser, which this mobile-first mirror does not host",
     "pages/bridge.test.ts": "drives the WebView page bridge (window.LingXiaBridge); a GPU page has none",

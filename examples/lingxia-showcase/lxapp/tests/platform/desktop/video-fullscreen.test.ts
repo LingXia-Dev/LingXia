@@ -1,8 +1,8 @@
 import { expect, spec } from '@lingxia/test';
 import type { DesktopWindowInfo } from '@lingxia/types/automation';
-import { SHOWCASE_APP_ID } from '../../helpers/app.js';
-import { currentPageOrNull, waitForCurrentPage, waitForCurrentPageVisible, waitForElementText } from '../../helpers/page.js';
-import { bindFixture, eventually } from '../../helpers/poll.js';
+import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
+import { currentPageOrNull, waitForCurrentPage, waitForCurrentPageVisible, waitForElementText } from '@lingxia/test/showcase/helpers/page.js';
+import { bindFixture, eventually } from '@lingxia/test/showcase/helpers/poll.js';
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const httpBase = testArgs.httpBase;

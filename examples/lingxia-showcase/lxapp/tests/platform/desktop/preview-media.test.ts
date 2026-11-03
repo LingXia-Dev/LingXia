@@ -1,8 +1,8 @@
 import { expect, spec } from '@lingxia/test';
 import type { DesktopWindowInfo } from '@lingxia/types/automation';
-import { SHOWCASE_APP_ID } from '../../helpers/app.js';
-import { runtimePlatform } from '../../helpers/platform.js';
-import { bindFixture, eventually } from '../../helpers/poll.js';
+import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
+import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
+import { bindFixture, eventually } from '@lingxia/test/showcase/helpers/poll.js';
 import type { PreviewMediaHandle } from '@lingxia/types';
 
 /** What the probes keep on Logic's `globalThis` under their spec's key. */

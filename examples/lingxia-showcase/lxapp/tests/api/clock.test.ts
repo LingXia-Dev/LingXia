@@ -1,6 +1,6 @@
 import { expect, spec } from '@lingxia/test';
-import { bindFixture } from '../helpers/poll.js';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { bindFixture } from '@lingxia/test/showcase/helpers/poll.js';
+import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 
 const STATUS = 'https://api.example.com/lingxia-showcase/clock/status';
 const START = Date.UTC(2030, 0, 1);

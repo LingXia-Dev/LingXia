@@ -10,10 +10,10 @@ import type {
   SurfaceLayoutAsideSlot,
   SurfaceLayoutSnapshot,
 } from '@lingxia/types/automation';
-import { SHOWCASE_APP_ID } from '../../helpers/app.js';
-import { runtimePlatform } from '../../helpers/platform.js';
-import { attachShot } from '../../helpers/poll.js';
-import type { ProbeDocument, ProbeElement } from '../../helpers/view.js';
+import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
+import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
+import { attachShot } from '@lingxia/test/showcase/helpers/poll.js';
+import type { ProbeDocument, ProbeElement } from '@lingxia/test/showcase/helpers/view.js';
 import type { AppSurface } from '@lingxia/types';
 
 function isLocalizedSettingsLabel(name: string): boolean {

@@ -10,7 +10,7 @@ Start the host with `lingxia dev`, then from the showcase lxapp directory (with
 its npm dependencies installed):
 
 ```sh
-lxdev --session <id> test tests/flows/browser-control-navigation.test.ts --verbose
+lxdev --session <id> test ../../../packages/lingxia-test/showcase/flows/browser-control-navigation.test.ts --verbose
 ```
 
 The defaults match Fusheng. For another host, pass `--arg forwardSelector=…`,

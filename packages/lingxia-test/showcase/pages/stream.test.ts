@@ -2,7 +2,7 @@ import { keyedElement } from '../helpers/keyed.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { expect, spec } from '@lingxia/test';
 import type { PageContract } from '@lingxia/types/page';
-import type { Message } from '../../pages/stream/index.js';
+import type { Message } from '../contracts.js';
 import { bindFixture } from '../helpers/poll.js';
 import {
   waitForElementAttribute,

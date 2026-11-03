@@ -1,5 +1,5 @@
 import { expect, spec, type Fixture } from '@lingxia/test';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 
 // Contract checks for routed Logic fetch, run with their document:
 //

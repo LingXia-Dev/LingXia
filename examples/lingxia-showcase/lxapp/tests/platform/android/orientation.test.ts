@@ -1,6 +1,6 @@
 import { expect, spec } from '@lingxia/test';
-import { SHOWCASE_APP_ID } from '../../helpers/app.js';
-import { bindFixture } from '../../helpers/poll.js';
+import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
+import { bindFixture } from '@lingxia/test/showcase/helpers/poll.js';
 
 const platform = globalThis.__LINGXIA_AUTOMATION_HOST__?.args?.platform?.toLowerCase();
 spec.configure({ skip: platform === 'android' ? undefined : 'Android only' });

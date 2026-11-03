@@ -1,9 +1,9 @@
-import { currentPageOrNull, waitForCurrentPage } from '../helpers/page.js';
+import { currentPageOrNull, waitForCurrentPage } from '@lingxia/test/showcase/helpers/page.js';
 import { expect, spec } from '@lingxia/test';
 import { rawAutomation } from '@lingxia/test/runner';
-import { bindFixture, expectReject, specNamespace } from '../helpers/poll.js';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
-import type { ProbeDocument, ProbeElement } from '../helpers/view.js';
+import { bindFixture, expectReject, specNamespace } from '@lingxia/test/showcase/helpers/poll.js';
+import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
+import type { ProbeDocument, ProbeElement } from '@lingxia/test/showcase/helpers/view.js';
 
 spec("expose only host automation authority in the test runtime", { id: "AUT-000", covers: ['lx.automation'], app: SHOWCASE_APP_ID }, (t) => {
     const testLx = lx as unknown as Record<string, unknown>;

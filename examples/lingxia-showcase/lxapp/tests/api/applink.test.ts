@@ -1,7 +1,7 @@
 import { expect, spec } from '@lingxia/test';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
-import { waitForCurrentPage, waitForElementAttribute } from '../helpers/page.js';
-import { bindFixture, expectReject } from '../helpers/poll.js';
+import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
+import { waitForCurrentPage, waitForElementAttribute } from '@lingxia/test/showcase/helpers/page.js';
+import { bindFixture, expectReject } from '@lingxia/test/showcase/helpers/poll.js';
 
 spec('route a warm AppLink onto the query page once', {
   id: 'APPLINK-001',

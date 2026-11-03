@@ -1,10 +1,10 @@
 import { expect, spec, type Fixture, type TestApp, type TestView } from '@lingxia/test';
 import type { DesktopAxNode, DesktopWindowInfo } from '@lingxia/types/automation';
-import { runtimePlatform } from '../../helpers/platform.js';
-import { waitForElementAttribute } from '../../helpers/page.js';
-import { bindFixture, eventually } from '../../helpers/poll.js';
-import { SHOWCASE_APP_ID } from '../../helpers/app.js';
-import type { ProbeElement, ProbeWindow } from '../../helpers/view.js';
+import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
+import { waitForElementAttribute } from '@lingxia/test/showcase/helpers/page.js';
+import { bindFixture, eventually } from '@lingxia/test/showcase/helpers/poll.js';
+import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
+import type { ProbeElement, ProbeWindow } from '@lingxia/test/showcase/helpers/view.js';
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const targetPlatform = testArgs.platform?.toLocaleLowerCase();

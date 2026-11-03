@@ -1,6 +1,6 @@
 import { expect, spec } from '@lingxia/test';
-import { bindFixture, specNamespace } from '../helpers/poll.js';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { bindFixture, specNamespace } from '@lingxia/test/showcase/helpers/poll.js';
+import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 
 spec("reject storage and file operations on invalid inputs", { id: "LOGIC-005", covers: ['Storage.set', 'LxFile.text', 'lx.fs.stat'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, namespace } = bindFixture(t, "LOGIC-005");

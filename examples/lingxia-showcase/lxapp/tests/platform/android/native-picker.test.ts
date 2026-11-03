@@ -1,9 +1,9 @@
 import { expect, spec, type Fixture } from '@lingxia/test';
 import type { PageContract } from '@lingxia/types/page';
-import { SHOWCASE_APP_ID } from '../../helpers/app.js';
-import { androidDevice, androidCancelLabels, androidConfirmLabels } from '../../helpers/android-device.js';
-import { bindFixture } from '../../helpers/poll.js';
-import type { ProbeDocument } from '../../helpers/view.js';
+import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
+import { androidDevice, androidCancelLabels, androidConfirmLabels } from '@lingxia/test/showcase/helpers/android-device.js';
+import { bindFixture } from '@lingxia/test/showcase/helpers/poll.js';
+import type { ProbeDocument } from '@lingxia/test/showcase/helpers/view.js';
 
 const args = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 spec.configure({ skip: args.platform === 'android' ? undefined : 'Android only' });

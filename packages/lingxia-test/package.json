@@ -21,6 +21,7 @@
       "import": "./dist/report-types.js",
       "default": "./dist/report-types.js"
     },
+    "./showcase/*": "./showcase/*",
     "./package.json": "./package.json",
     "./schemas/*": "./schemas/*"
   },

@@ -5,6 +5,10 @@ Showcase. A passing suite must show that a public capability is present, works
 through its real boundary, reports failures predictably, and leaves no state
 behind.
 
+The page and flow specs both showcases run, and their helpers, live in
+`packages/lingxia-test/showcase` and are imported as `@lingxia/test/showcase/…`;
+`node scripts/ci/check-example-imports.mjs` keeps examples from importing each other.
+
 ## Suite boundaries
 
 | Entry | Purpose | Run on |
@@ -89,7 +93,7 @@ Use `--id ID` or `--last-failed path/to/report.json` for focused reruns;
 `--verbose` adds the full action trace. `--shard i/n` needs a separate host session
 and output directory per shard. Filtered runs cannot refresh the covers gate.
 
-Retries require real state recovery. `pages/todo.test.ts` supplies `spec.reset`
+Retries require real state recovery. The shared `pages/todo.test.ts` (in `/test/showcase`) supplies `spec.reset`
 and bounded `t.defer` cleanup; run it with `--retries 1`. Do not enable retries
 for the whole suite without file-specific reset hooks: cold-start, permission,
 and host-window contracts cannot share a generic relaunch reset.

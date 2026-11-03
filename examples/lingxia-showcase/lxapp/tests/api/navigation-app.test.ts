@@ -1,9 +1,9 @@
 import { expect, spec } from '@lingxia/test';
 import type { ShowcaseAppInstance } from '../../shared/lib/app.js';
 import type { LxAppRuntimeInfo } from '@lingxia/types/automation';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
-import { waitForCurrentPageVisible } from '../helpers/page.js';
-import { bindFixture, eventually } from '../helpers/poll.js';
+import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
+import { waitForCurrentPageVisible } from '@lingxia/test/showcase/helpers/page.js';
+import { bindFixture, eventually } from '@lingxia/test/showcase/helpers/poll.js';
 
 const CHAT_APP_ID = 'lingxia-chat';
 

@@ -1,6 +1,6 @@
 import { spec, expect } from '@lingxia/test';
-import { bindFixture, eventually, specNamespace } from '../../helpers/poll.js';
-import { SHOWCASE_APP_ID } from '../../helpers/app.js';
+import { bindFixture, eventually, specNamespace } from '@lingxia/test/showcase/helpers/poll.js';
+import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 
 spec("leave no native overlay window after page navigation", { id: "WINDOWS-NAV-001", covers: ['NavDriver.relaunch', 'NavDriver.to', 'NavDriver.back', 'DesktopDriver.windows'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "WINDOWS-NAV-001");

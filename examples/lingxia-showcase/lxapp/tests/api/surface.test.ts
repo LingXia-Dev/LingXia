@@ -1,8 +1,8 @@
 import { expect, spec } from '@lingxia/test';
 import { rawAutomation } from '@lingxia/test/runner';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
-import { waitForCurrentPageVisible } from '../helpers/page.js';
-import { bindFixture, eventually } from '../helpers/poll.js';
+import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
+import { waitForCurrentPageVisible } from '@lingxia/test/showcase/helpers/page.js';
+import { bindFixture, eventually } from '@lingxia/test/showcase/helpers/poll.js';
 import { LX_RETURNED_OBJECT_SURFACES, LX_RUNTIME_SURFACES } from './manifest.js';
 
 /** A host that did not build a driver throws on the getter rather than

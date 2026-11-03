@@ -1,11 +1,11 @@
-import { SHOWCASE_APP_ID } from '../../helpers/app.js';
+import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 import { expect, spec, type Fixture, type JsonValue, type TestApp } from '@lingxia/test';
 import type {
   TerminalPaneSnapshot,
   TerminalPaneTree,
   TerminalWorkspaceSnapshot,
 } from '@lingxia/types/automation';
-import type { ProbeDocument, ProbeElement } from '../../helpers/view.js';
+import type { ProbeDocument, ProbeElement } from '@lingxia/test/showcase/helpers/view.js';
 
 const SETTINGS_APP_ID = 'app.lingxia.terminal-settings';
 

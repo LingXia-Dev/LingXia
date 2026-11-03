@@ -1,7 +1,7 @@
 import { expect, spec } from '@lingxia/test';
-import { bindFixture, specNamespace } from '../helpers/poll.js';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
-import { runtimePlatform } from '../helpers/platform.js';
+import { bindFixture, specNamespace } from '@lingxia/test/showcase/helpers/poll.js';
+import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
+import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
 
 const args = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 

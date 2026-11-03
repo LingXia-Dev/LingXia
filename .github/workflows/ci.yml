@@ -1672,6 +1672,9 @@ jobs:
       - name: Check generated View contract artifacts
         run: node contracts/view/generate.mjs --check
 
+      - name: Check that examples do not import from each other
+        run: node scripts/ci/check-example-imports.mjs
+
       - name: Check GPU showcase contracts and Logic
         working-directory: examples/lingxia-showcase-gpu/lxapp
         run: |
