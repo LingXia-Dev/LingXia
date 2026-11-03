@@ -50,7 +50,7 @@ The Node/Python scripts also run from the repository root; relative sibling
 imports remain inside `scripts/`.
 
 `GpuRecoveryProbe` targets `com.lingxia.view.smoke`, not showcase. Build the
-standalone host with `fixtures/recovery` using `node tools/lingxia-ui-android/run.mjs
+standalone host with `fixtures/recovery` using `node lingxia-sdk/android/tests/gpu/smoke/run.mjs
 --project lingxia-sdk/android/tests/gpu/fixtures/recovery`. It deliberately fails one candidate, verifies
 the retained frame, clicks Retry and checks the committed count and retained draft.
 It also runs an infinite loop, verifies the execution deadline and explicitly
@@ -76,7 +76,7 @@ tasks. Run with the keyboard available and the current showcase starting at Home
 Renderer fixtures (flex, tracking, italic, padded text, strike, vector, cover,
 percent, shadow, gradient, alignment, border) and the interactive renderer lab
 are one Logic-free lxapp in `fixtures/renderer`, a page each. Open one in the
-smoke host with `node tools/lingxia-ui-android/run.mjs --project
+smoke host with `node lingxia-sdk/android/tests/gpu/smoke/run.mjs --project
 lingxia-sdk/android/tests/gpu/fixtures/renderer --page <name> --allow-literal-colors`. The flag lets these
 pages keep the exact hex and palette colours their probes read as pixels; app pages must use theme roles.
 `GpuFlexBasisProbe` runs on the `flex` page: content versus zero basis,

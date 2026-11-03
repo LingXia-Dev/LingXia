@@ -3,7 +3,7 @@
 import { copyFileSync, mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { androidSdk, latestNdk, options, output, repoRoot, run, tool } from '../../lingxia-sdk/android/tests/gpu/scripts/android-sdk.mjs';
+import { androidSdk, latestNdk, options, output, repoRoot, run, tool } from '../scripts/android-sdk.mjs';
 
 const args = options();
 const here = fileURLToPath(new URL('.', import.meta.url));
@@ -27,7 +27,7 @@ run('cargo', ['build', '-p', 'lingxia-view-android', '--features', 'gpu', '--tar
 const jniLibs = join(here, 'src/main/jniLibs/arm64-v8a');
 mkdirSync(jniLibs, { recursive: true });
 copyFileSync(join(repoRoot, 'target/aarch64-linux-android/release/liblingxia_view_android.so'), join(jniLibs, 'liblingxia_view_android.so'));
-run(join(repoRoot, 'lingxia-sdk/android', windows ? 'gradlew.bat' : 'gradlew'), ['-p', here, `-PuiAssets=${project}/dist`, 'assembleDebug', '--console=plain'], { env });
+run(join(repoRoot, 'lingxia-sdk/android', windows ? 'gradlew.bat' : 'gradlew'), ['-p', here, `-PviewAssets=${project}/dist`, 'assembleDebug', '--console=plain'], { env });
 const adb = tool(sdk, 'platform-tools/adb'), selector = args.device ? ['-s', args.device] : [];
-run(adb, [...selector, 'install', '-r', join(here, 'build/outputs/apk/debug/LingXiaUiSmoke-debug.apk')]);
+run(adb, [...selector, 'install', '-r', join(here, 'build/outputs/apk/debug/LingXiaViewSmoke-debug.apk')]);
 run(adb, [...selector, 'shell', 'am', 'start', '-n', 'com.lingxia.view.smoke/com.lingxia.view.SmokeActivity', ...(args.page ? ['--es', 'page', args.page] : [])]);

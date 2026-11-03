@@ -154,7 +154,6 @@ jobs:
               - 'contracts/**'
               - 'examples/lingxia-showcase-gpu/**'
               - 'lingxia-sdk/android/tests/gpu/**'
-              - 'tools/lingxia-ui-android/**'
               - 'examples/lingxia-showcase/lxapp/**'
               - 'crates/lingxia-lxapp/src/appservice/scripts/**'
               - 'crates/lingxia-browser-shell/webui/**'

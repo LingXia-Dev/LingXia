@@ -51,7 +51,7 @@ const files = [
   ...walk(join(gpu, 'probes'), /\.java$/),
   ...walk(join(gpu, 'instrumentation'), /\.java$/),
   ...walk(join(gpu, 'scripts'), /\.mjs$/),
-  ...walk(join(repo, 'tools/lingxia-ui-android'), /^verify.*\.mjs$/),
+  ...walk(join(repo, 'lingxia-sdk/android/tests/gpu/smoke'), /^verify.*\.mjs$/),
 ];
 const nameOf = file => basename(file).replace(/\.java$/, '');
 

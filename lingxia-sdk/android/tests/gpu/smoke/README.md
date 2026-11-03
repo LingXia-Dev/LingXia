@@ -9,8 +9,8 @@ From the repository root:
 
 ```sh
 npm --prefix packages install
-node tools/lingxia-ui-android/run.mjs --device <serial>
-node tools/lingxia-ui-android/run.mjs --project lingxia-sdk/android/tests/gpu/fixtures/renderer --page flex
+node lingxia-sdk/android/tests/gpu/smoke/run.mjs --device <serial>
+node lingxia-sdk/android/tests/gpu/smoke/run.mjs --project lingxia-sdk/android/tests/gpu/fixtures/renderer --page flex
 ```
 
 `run.mjs` builds the project with `packages/lingxia-view/build.mjs`, cross-builds
