@@ -41,8 +41,8 @@ Reference projects under `examples/`:
 
 `examples/lingxia-showcase-gpu` is an independent Android GPU host and embedded
 TSX lxapp; the React showcase is its parity reference. SDK device probes belong
-in `lingxia-sdk/android/tests/gpu`, outside app bundles. `examples/hello-view` is
-the minimal GPU compiler fixture. Read `docs/internal/view-authoring.md`,
+in `lingxia-sdk/android/tests/gpu`, outside app bundles. `lingxia-sdk/fixtures/hello-view`
+is the bare-renderer smoke fixture every platform's smoke harness loads. Read `docs/internal/view-authoring.md`,
 `view-renderer.md`, `view-styling.md` and `view-animation.md` before changing GPU contracts.
 The View contract lives in `contracts/view/`; after editing `schema.json` or `api.d.ts`, run
 `node contracts/view/generate.mjs` (CI runs it with `--check`).

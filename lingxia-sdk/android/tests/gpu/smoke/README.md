@@ -22,7 +22,7 @@ It needs Rust's Android target, JDK 17, Android SDK 35 and an NDK; set
 Off-device checks for the same pages:
 
 ```sh
-node packages/lingxia-view/build.mjs examples/hello-view
+node packages/lingxia-view/build.mjs lingxia-sdk/fixtures/hello-view
 cargo test -p lingxia-view
 npm test --prefix packages --workspace @lingxia/view
 ```

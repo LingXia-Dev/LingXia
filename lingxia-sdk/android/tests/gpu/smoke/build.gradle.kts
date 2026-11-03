@@ -13,6 +13,6 @@ android {
         versionName = "0.1"
         ndk { abiFilters += "arm64-v8a" }
     }
-    sourceSets["main"].assets.srcDir(providers.gradleProperty("viewAssets").getOrElse("../../../../../examples/hello-view/dist"))
+    sourceSets["main"].assets.srcDir(providers.gradleProperty("viewAssets").getOrElse("../../../../fixtures/hello-view/dist"))
 }
 dependencies { implementation(project(":lingxia-core")) }

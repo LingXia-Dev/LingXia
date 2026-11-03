@@ -7,7 +7,7 @@
     "strict": true,
     "noEmit": true,
     "types": [],
-    "paths": { "@lingxia/view": ["../../packages/lingxia-view/src/index.d.ts"] }
+    "paths": { "@lingxia/view": ["../../../packages/lingxia-view/src/index.d.ts"] }
   },
-  "include": ["pages/**/*.tsx", "../../packages/lingxia-view/src/index.d.ts"]
+  "include": ["pages/**/*.tsx", "../../../packages/lingxia-view/src/index.d.ts"]
 }

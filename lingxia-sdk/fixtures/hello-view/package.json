@@ -3,5 +3,5 @@
   "version": "0.1.0",
   "private": true,
   "scripts": { "build": "lingxia build" },
-  "devDependencies": { "@lingxia/view": "file:../../packages/lingxia-view" }
+  "devDependencies": { "@lingxia/view": "file:../../../packages/lingxia-view" }
 }

@@ -12,5 +12,6 @@ LingXia cross-platform SDK for native integrations
 lingxia-sdk/
 ├── android/     # Android SDK implementation
 ├── apple/       # iOS/macOS SDK implementation
-└── harmony/     # HarmonyOS SDK implementation
+├── harmony/     # HarmonyOS SDK implementation
+└── fixtures/    # Platform-neutral lxapps the SDK test harnesses load (hello-view: bare-renderer smoke)
 ```

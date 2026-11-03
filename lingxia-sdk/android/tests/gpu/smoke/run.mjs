@@ -7,7 +7,7 @@ import { androidSdk, latestNdk, options, output, repoRoot, run, tool } from '../
 
 const args = options();
 const here = fileURLToPath(new URL('.', import.meta.url));
-const project = resolve(args.project ?? join(repoRoot, 'examples/hello-view'));
+const project = resolve(args.project ?? join(repoRoot, 'lingxia-sdk/fixtures/hello-view'));
 const sdk = androidSdk(args.sdk), ndk = latestNdk(sdk), windows = process.platform === 'win32';
 const host = windows ? 'windows-x86_64' : process.platform === 'darwin' ? 'darwin-x86_64' : 'linux-x86_64';
 const llvm = join(ndk, 'toolchains/llvm/prebuilt', host, 'bin');
