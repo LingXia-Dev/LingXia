@@ -42,6 +42,8 @@ import '@lingxia/test/showcase/pages/ui.test.js';
 import '@lingxia/test/showcase/pages/chrome.test.js';
 import '@lingxia/test/showcase/pages/clipboard.test.js';
 import '@lingxia/test/showcase/pages/leave-guard.test.js';
+import '@lingxia/test/showcase/pages/host-chrome.test.js';
+import '@lingxia/test/showcase/pages/orientation.test.js';
 import '@lingxia/test/showcase/pages/render.test.js';
 import '../pending/backlog-pending.test.js';
 
