@@ -93,6 +93,11 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     private var systemStatusBar: NSView?
     private var statusBarHeightConstraint: NSLayoutConstraint?
     private var navigationBar: NSView?
+    /// Our own window refits in flight: their animation steps are not a requested resize.
+    private var refitting = 0
+    /// A refit answering a requested resize lands at once, so the next request (an automation
+    /// turn right after) finds no animation in flight.
+    private var refitsImmediately = false
     private var floatingCapsuleContainer: NSView?
     private var floatingCapsuleMoreButton: NSButton?
     private var floatingCapsuleCloseButton: NSButton?
@@ -390,11 +395,12 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         let newFrame = NSRect(origin: newOrigin, size: newSize)
 
         placeWindow(at: newFrame.origin)
-        NSAnimationContext.runAnimationGroup { ctx in
+        refitting += 1
+        NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.25
             ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             window.animator().setFrame(newFrame, display: true)
-        }
+        }, completionHandler: { [weak self] in self?.refitting -= 1 })
 
         if show {
             devToolsPanel?.updateInfo(device: Self.currentDeviceSize, path: currentPath)
@@ -935,10 +941,15 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         let newOrigin = centeredOrigin(for: newWindowSize, around: anchorFrame(of: window))
         let newFrame = NSRect(origin: newOrigin, size: newWindowSize)
         placeWindow(at: newFrame.origin)
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.3
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            window.animator().setFrame(newFrame, display: true)
+        if refitsImmediately {
+            window.setFrame(newFrame, display: true)
+        } else {
+            refitting += 1
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = 0.3
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                window.animator().setFrame(newFrame, display: true)
+            }, completionHandler: { [weak self] in self?.refitting -= 1 })
         }
 
         updateDeviceFrameSize(for: layout)
@@ -1465,6 +1476,21 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     }
     
     // MARK: - NSWindowDelegate
+
+    /// A window given the other aspect, by automation or a script, turns the device as a user
+    /// would: device frame, bars and page then all relayout; the refit settles the window size.
+    public func windowDidResize(_ notification: Notification) {
+        guard let window, !window.inLiveResize, refitting == 0 else { return }
+        let app = RunnerApp.shared
+        let device = app.selectedDeviceSize
+        guard device.supportsOrientation, !device.isResizableDesktop else { return }
+        let size = window.contentLayoutRect.size
+        let wide = size.width > size.height
+        guard wide != (app.deviceOrientation == .landscape) else { return }
+        refitsImmediately = true
+        defer { refitsImmediately = false }
+        app.setDeviceOrientation(wide ? .landscape : .portrait)
+    }
     
     public func windowWillMove(_ notification: Notification) {
         if NSApp.currentEvent?.type == .leftMouseDragged {
