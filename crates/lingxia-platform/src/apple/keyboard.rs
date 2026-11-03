@@ -105,8 +105,16 @@ fn perform_app_keyboard_on_main(
         };
         let window_number: isize = msg_send![window, windowNumber];
 
+        // Key events need a key window; hand activation back to the app the user was in.
+        let workspace: *mut AnyObject = msg_send![class!(NSWorkspace), sharedWorkspace];
+        let previous: *mut AnyObject = msg_send![workspace, frontmostApplication];
         let _: () = msg_send![window, makeKeyAndOrderFront: std::ptr::null_mut::<AnyObject>()];
-        dispatch_action(window, action)?;
+        let result = dispatch_action(window, action);
+        let current: *mut AnyObject = msg_send![workspace, frontmostApplication];
+        if !previous.is_null() && current != previous {
+            let _: bool = msg_send![previous, activateWithOptions: 0usize];
+        }
+        result?;
 
         Ok(window_number.to_string())
     }

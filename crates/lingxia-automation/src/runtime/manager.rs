@@ -4,7 +4,7 @@ use super::context;
 use super::profile::{Quarantine, SpawnFn, TeardownFn};
 use super::protocol::*;
 use super::run::RunShared;
-use log::{error, warn};
+use log::{error, info, warn};
 use rong::{JSContextService as _, JSRuntime, JSValue, Rong, RongJS, Source};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak, mpsc};
@@ -318,21 +318,43 @@ fn executor_main(runtime: Weak<RuntimeInner>, receiver: mpsc::Receiver<RunReques
     }
 }
 
-/// A fully covered window pauses its page's animation frames as a sleeping
-/// display does. Bring the app's window over other apps' at the start of the
-/// run, without taking keyboard focus from the terminal or editor that started
-/// it; the app orders its own window, so no Accessibility permission is
-/// involved. Nothing public keeps it there if the user covers it again.
+/// GPU pages are driven through the in-process semantics tree and keep completing
+/// frames while their window is covered, so a run of GPU lxapps leaves the window
+/// where the user put it. WebKit pauses a covered page's animation frames and
+/// timers: with a WebView lxapp open, a minimized or fully covered window is
+/// ordered in front of other apps' windows, never activated or made key, and
+/// the run says why.
 async fn raise_app_window() {
     use lingxia_platform::error::PlatformError;
     use lingxia_platform::traits::screenshot::AppScreenshot;
+    if !webview_lxapp_open() {
+        return;
+    }
     let Some(platform) = lxapp::get_platform() else {
         return;
     };
-    match platform.bring_app_window_to_front(None, false).await {
-        Ok(_) | Err(PlatformError::NotSupported(_)) => {}
+    match platform.raise_app_window_if_hidden().await {
+        Ok(Some(reason)) => {
+            info!("automation run: raised the app window for its WebView pages ({reason})")
+        }
+        Ok(None) => {}
+        Err(PlatformError::NotSupported(_)) => {
+            match platform.bring_app_window_to_front(None, false).await {
+                Ok(_) | Err(PlatformError::NotSupported(_)) => {}
+                Err(err) => warn!("could not raise the app window for the run: {err}"),
+            }
+        }
         Err(err) => warn!("could not raise the app window for the run: {err}"),
     }
+}
+
+/// Whether an lxapp on the navigation stack renders with WebViews.
+fn webview_lxapp_open() -> bool {
+    lxapp::list_lxapps()
+        .iter()
+        .filter(|info| info.in_stack)
+        .filter_map(|info| lxapp::try_get(&info.appid))
+        .any(|app| app.renderer() == lxapp::PageRenderer::Webview)
 }
 
 async fn execute_run(

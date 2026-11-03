@@ -524,9 +524,10 @@ lxdev test args --preset ci                 # show the effective arguments
   use `toBeInViewport()`. Actions scroll their target into view.
 - **`force` is a last resort.** `click({ force: true })` / `fill(text, {
   force: true })` dispatch DOM events directly; use only after
-  `element is obscured`. A run raises the host window when it starts, and
-  actions and waits keep their original deadline without raising it again;
-  keep the window uncovered (`lxdev host focus`).
+  `element is obscured`.
+- **Runs leave the window where it is.** A GPU lxapp runs covered or behind other apps. With a
+  WebView lxapp open, a run orders a minimized or fully covered window in front at its start,
+  without taking focus, and logs why; keep it uncovered after that (`lxdev host focus`).
 - **A locked screen stops the run** on macOS: pages are hidden, so the rest
   are reported as not run. Unlock it and run again.
 - **`fill` updates framework state**; assert the state, not only the DOM.

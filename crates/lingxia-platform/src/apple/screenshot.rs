@@ -39,7 +39,7 @@ impl AppScreenshot for Platform {
         #[cfg(target_os = "macos")]
         {
             let window = self.resolve_app_window(window_id).await?;
-            bring_to_front_macos(&window.id, focus).await?;
+            bring_to_front_macos(&window.id, focus, false).await?;
             list_app_windows_macos()
                 .await?
                 .into_iter()
@@ -49,6 +49,20 @@ impl AppScreenshot for Platform {
         #[cfg(not(target_os = "macos"))]
         {
             let _ = (window_id, focus);
+            Err(PlatformError::NotSupported(
+                "raising an app window is macOS-only on Apple platforms".to_string(),
+            ))
+        }
+    }
+
+    async fn raise_app_window_if_hidden(&self) -> Result<Option<&'static str>, PlatformError> {
+        #[cfg(target_os = "macos")]
+        {
+            let window = self.resolve_app_window(None).await?;
+            bring_to_front_macos(&window.id, false, true).await
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
             Err(PlatformError::NotSupported(
                 "raising an app window is macOS-only on Apple platforms".to_string(),
             ))
@@ -225,7 +239,13 @@ async fn list_app_windows_macos() -> Result<Vec<WindowInfo>, PlatformError> {
 /// `focus` the window may be raised without becoming key if the system
 /// declines to switch apps.
 #[cfg(target_os = "macos")]
-async fn bring_to_front_macos(id: &str, focus: bool) -> Result<(), PlatformError> {
+/// Raises window `id`. With `only_if_hidden` it acts only on a minimized window or one nothing of
+/// which is visible, and says why it raised; it never activates the app then.
+async fn bring_to_front_macos(
+    id: &str,
+    focus: bool,
+    only_if_hidden: bool,
+) -> Result<Option<&'static str>, PlatformError> {
     use dispatch2::DispatchQueue;
     use objc2::runtime::AnyObject;
     use objc2::{class, msg_send};
@@ -234,7 +254,7 @@ async fn bring_to_front_macos(id: &str, focus: bool) -> Result<(), PlatformError
     let number: i64 = id
         .parse()
         .map_err(|_| PlatformError::InvalidParameter(format!("not a window id: {id}")))?;
-    let (tx, rx) = oneshot::channel::<Result<(), String>>();
+    let (tx, rx) = oneshot::channel::<Result<Option<&'static str>, String>>();
     let tx_state = Arc::new(Mutex::new(Some(tx)));
     let tx_state_for_block = Arc::clone(&tx_state);
 
@@ -266,6 +286,19 @@ async fn bring_to_front_macos(id: &str, focus: bool) -> Result<(), PlatformError
                 continue;
             }
             let miniaturized: bool = msg_send![window, isMiniaturized];
+            // NSWindowOcclusionStateVisible
+            let occlusion: usize = msg_send![window, occlusionState];
+            let reason = if miniaturized {
+                "minimized"
+            } else if occlusion & (1 << 1) == 0 {
+                "covered by other windows"
+            } else {
+                "requested"
+            };
+            if only_if_hidden && reason == "requested" {
+                let _ = sender.send(Ok(None));
+                return;
+            }
             if miniaturized {
                 let _: () = msg_send![window, deminiaturize: std::ptr::null_mut::<AnyObject>()];
             }
@@ -275,7 +308,7 @@ async fn bring_to_front_macos(id: &str, focus: bool) -> Result<(), PlatformError
                     msg_send![window, makeKeyAndOrderFront: std::ptr::null_mut::<AnyObject>()];
             }
             let _: () = msg_send![window, orderFrontRegardless];
-            let _ = sender.send(Ok(()));
+            let _ = sender.send(Ok(Some(reason)));
             return;
         }
         let _ = sender.send(Err(format!("window {number} no longer exists")));

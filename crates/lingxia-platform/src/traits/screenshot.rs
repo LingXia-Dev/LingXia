@@ -99,4 +99,12 @@ pub trait AppScreenshot: Send + Sync {
             "raising an app window is not implemented for this platform".to_string(),
         ))
     }
+
+    /// Order the app's page window in front of other apps' windows only when it is minimized or
+    /// nothing of it can be seen, without activating the app. Returns why it raised, or `None`.
+    async fn raise_app_window_if_hidden(&self) -> Result<Option<&'static str>, PlatformError> {
+        Err(PlatformError::NotSupported(
+            "raising an app window is not implemented for this platform".to_string(),
+        ))
+    }
 }

@@ -164,7 +164,7 @@ fn perform_app_mouse_on_main(
             return Err("NSWindow has no contentView".to_string());
         }
 
-        let _: () = msg_send![window, makeKeyAndOrderFront: std::ptr::null_mut::<AnyObject>()];
+        // Events go to the window directly: it needs neither key status nor to be in front.
         dispatch_action(window, content_view, action)?;
 
         Ok(window_number.to_string())

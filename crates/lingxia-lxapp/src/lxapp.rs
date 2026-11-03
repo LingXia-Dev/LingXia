@@ -1722,6 +1722,11 @@ impl LxApp {
         self.runtime.app_data_dir()
     }
 
+    /// The renderer `lxapp.json` declares for every page of this app.
+    pub fn renderer(&self) -> crate::PageRenderer {
+        self.config().renderer
+    }
+
     pub(crate) fn config(&self) -> std::sync::MutexGuard<'_, LxAppConfig> {
         self.config
             .lock()
