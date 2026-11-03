@@ -27,9 +27,9 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - Layout is flex or CSS Grid (`grid grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] col-span-2`).
   Row items shrink to min-content as in CSS (`min-w-0` to truncate, `shrink-0` to pin). `<button>` is
   unstyled as after Tailwind's preflight: give it its fill, padding and radius.
-- Style with complete Tailwind classes or CSS-named `style` (`backgroundColor`,
-  `marginTop`, `gridTemplateColumns`, `lineClamp`, `objectFit`). Unitless
-  `lineHeight` is a multiplier. Each element accepts only styles it renders.
+- Style with complete Tailwind classes. `style` (CSS-named: `backgroundColor`, `marginTop`,
+  `gridTemplateColumns`) is only for values computed at render time; a `style` object of fixed values
+  warns `UI_STYLE_STATIC`. Unitless `lineHeight` is a multiplier. Each element accepts only styles it renders.
 - RTL: use `ps`/`ms`/`start-`/`text-start` etc.; they mirror with `env.direction` (from the
   display language) or a `dir` prop. Mirror icons with `rtl:-scale-x-100`.
 - Colours are theme roles, never hex: `bg-surface`, `text-muted`, `border-line` (decorative) or
@@ -45,6 +45,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - `translate`/`rotate`/`scale`/`origin` are static and state variants may set them; skew and 3D fail.
   `transition-*`/`animate-*` animate paint and transforms only; scaled or rotated editors/scrolls/sliders,
   gradients and `scale-0` jump. `starting:`/`exit:` animate enter and removal; `transition-layout` animates position.
+  `ease-spring`, `ease-spring-bouncy` or `ease-[spring(0.4)]` time a transition by a spring; `duration-*` stays the knob.
 - Utilities that would draw nothing (filters but `blur-*`, radial masks, text shadows, cursors, outlines) fail naming what to use.
 - In `lingxia dev`, saving View code of GPU pages swaps those pages in place, keeping `useLocal`, scroll
   and focus; Logic or config edits rebuild and reopen. Dev builds' runtime errors name `file:line:col`.
@@ -55,6 +56,8 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   `useChannel(name, action, { params, onData? })` take `view.actions` references.
   Errors are `{ code, message }`; reloads keep old values (`stale`). `useLeaveGuard(name, { enabled })`.
 - Lists: `<List items getKey renderItem />`; hooks inside rows need stable keys.
+- Scroll snap: `snap-x`/`snap-y` on a `<scroll>` or `<List>`, `snap-start|center|end` on children; every snap is mandatory.
+- No pointer, swipe, pinch or long-press handlers and no drag-and-drop: drags scroll or move sliders.
 - `<vector paths gradients>`: paths take SVG `transform`, caps, joins, dash offset and
   `fill`/`stroke: 'url(#id)'` naming a `gradients` entry (linear, radial or conic, ≤8).
 - Rich text: `<text>Read <span className="font-bold">this</span> or <link onClick={go}>that</link></text>`;

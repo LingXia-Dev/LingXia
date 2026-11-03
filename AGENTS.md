@@ -9,7 +9,7 @@ The repo ships agent-oriented docs as a skill rooted at [docs/skill/SKILL.md](do
 - `docs/skill/cli/` — `lingxia` and `lxdev` command references, distribution
 - `docs/skill/native/` — Rust native routes and host addons
 
-Skill docs are loaded into an agent's context, so keep them concise: state what to do and the one non-obvious consequence. Leave rationale, history, and edge-case reasoning to the PR and code comments.
+Skill docs are loaded into an agent's context, so keep them concise: state what to do and the one non-obvious consequence. Leave rationale, history, and edge-case reasoning to the PR and code comments. The skill is written for agents and is self-contained: it never references repository paths or other docs. Human-facing documentation is kept separately and maintained in parallel.
 
 ## Internal docs
 
