@@ -4,10 +4,10 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { readReference } from './reference.mjs';
-const require = createRequire(new URL('../../../packages/lingxia-ui/package.json', import.meta.url));
+const require = createRequire(new URL('../../../packages/lingxia-view/package.json', import.meta.url));
 const source = require('esbuild').buildSync({
   entryPoints: [fileURLToPath(new URL('../lxapp/pages/api/index.tsx', import.meta.url))],
-  bundle: true, write: false, format: 'cjs', external: ['@lingxia/ui'], loader: { '.css': 'empty' },
+  bundle: true, write: false, format: 'cjs', external: ['@lingxia/view'], loader: { '.css': 'empty' },
 }).outputFiles[0].text;
 const module = { exports: {} };
 vm.runInNewContext(source, { module, exports: module.exports, require: () => ({}) });

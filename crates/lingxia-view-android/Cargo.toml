@@ -1,0 +1,22 @@
+[package]
+name = "lingxia-view-android"
+version.workspace = true
+edition.workspace = true
+license = "MIT"
+description = "Android adapter for the LingXia GPU View host: JNI natives, presentation and platform mechanics"
+
+[lib]
+# The cdylib lets SDK JVM tests load the real core on the host.
+crate-type = ["rlib", "cdylib"]
+
+[features]
+default = []
+gpu = ["lingxia-view/gpu", "dep:raw-window-handle"]
+# Dev sessions: swap a page module in place (`ViewHost::swap_module`).
+hot-swap = ["lingxia-view/hot-swap"]
+
+[dependencies]
+lingxia-view = { workspace = true }
+jni = "0.22.4"
+serde_json = { workspace = true }
+raw-window-handle = { version = "=0.6.2", optional = true }

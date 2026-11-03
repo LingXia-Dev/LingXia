@@ -1,7 +1,7 @@
 # State and data
 
 ```tsx data={"userId":"u1"}
-import { useLocal, useRequest, useStream, type Stream, type View } from '@lingxia/ui';
+import { useLocal, useRequest, useStream, type Stream, type View } from '@lingxia/view';
 
 type Profile = { name: string; plan: string };
 type Chunk = { token: string };
@@ -109,7 +109,7 @@ A two-way channel to a Logic method `method(params, channel)`. It opens after co
 `connect()` opens it again. Unmounting closes it.
 
 ```tsx
-import { useChannel, useLocal, type ChannelEndpoint, type View } from '@lingxia/ui';
+import { useChannel, useLocal, type ChannelEndpoint, type View } from '@lingxia/view';
 
 type Tick = { symbol: string; price: number };
 type Actions = { ticker(params: { symbol: string }, channel: ChannelEndpoint<Tick, { symbol: string }>): void };
@@ -135,7 +135,7 @@ While `enabled`, a back gesture or a tap on home does not leave the page. Instea
 every guard must accept.
 
 ```tsx
-import { useLeaveGuard, useLocal } from '@lingxia/ui';
+import { useLeaveGuard, useLocal } from '@lingxia/view';
 
 export function render() {
   const saved = useLocal('saved', '');

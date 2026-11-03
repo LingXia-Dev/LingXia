@@ -52,7 +52,7 @@ pub(super) fn initialize(env: &mut Env) -> Result<(), jni::errors::Error> {
     if CLASS.set(global).is_ok() {
         lxapp::register_gpu_page_view_factory(Arc::new(gpu_page::Binding(Arc::new(Factory))))
             .map_err(|_| jni::errors::Error::JniCall(jni::errors::JniError::Unknown))?;
-        lingxia_ui_android::set_image_loader(Arc::new(Images));
+        lingxia_view_android::set_image_loader(Arc::new(Images));
     }
     Ok(())
 }
@@ -331,7 +331,7 @@ extern "system" fn presented(
 /// Loads for GPU pages; the image owner is the page's token.
 struct Images;
 
-impl lingxia_ui_android::ImageLoader for Images {
+impl lingxia_view_android::ImageLoader for Images {
     fn load(
         &self,
         owner: i64,

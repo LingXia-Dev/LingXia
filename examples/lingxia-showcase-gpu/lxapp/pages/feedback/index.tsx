@@ -1,4 +1,4 @@
-import { useLocal, type View } from '@lingxia/ui';
+import { useLocal, type View } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, ErrorState, Field, Header, Page, Segmented } from '../../shared/ui';
 

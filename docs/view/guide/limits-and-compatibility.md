@@ -1,7 +1,7 @@
 # Limits and compatibility
 
 ```tsx
-import { List, useView } from '@lingxia/ui';
+import { List, useView } from '@lingxia/view';
 
 const rows = Array.from({ length: 10000 }, (_, i) => ({ id: `r${i}`, label: `Row ${i + 1}` }));
 

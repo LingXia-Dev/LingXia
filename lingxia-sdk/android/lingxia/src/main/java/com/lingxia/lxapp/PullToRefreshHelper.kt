@@ -59,7 +59,7 @@ internal class PullToRefreshHelper(
     private var startY = 0f
     private var currentPullDistance = 0f
     private var webView: View? = null
-    private var gpuTouchCallback: com.lingxia.ui.GpuView.PullToRefresh? = null
+    private var gpuTouchCallback: com.lingxia.view.GpuView.PullToRefresh? = null
     private var webTouchCallback: ((MotionEvent) -> Boolean)? = null
     // The wrapper last moved down, so a reset puts back the one it moved even
     // after a page swap made another wrapper current.
@@ -124,7 +124,7 @@ internal class PullToRefreshHelper(
         ensureIndicatorAttached()
 
         if (webView is GpuPage) {
-            gpuTouchCallback = com.lingxia.ui.GpuView.PullToRefresh { event -> handleTouch(webView, event) }
+            gpuTouchCallback = com.lingxia.view.GpuView.PullToRefresh { event -> handleTouch(webView, event) }
             webView.setPullToRefresh(gpuTouchCallback)
         }
         if (webView is com.lingxia.lxapp.WebView) {

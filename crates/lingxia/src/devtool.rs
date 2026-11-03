@@ -453,7 +453,7 @@ pub fn hot_swap_gpu_page(appid: &str, path: &str) -> Result<usize, String> {
     sync_dev_bundle(appid)?;
     // Device-side swap timing: the bundle sync here, the module swap in the page host.
     log::info!(
-        target: "lingxia_ui",
+        target: "lingxia_view",
         "UI_SWAP page={path} sync_ms={}",
         started.elapsed().as_millis()
     );

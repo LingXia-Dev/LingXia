@@ -1,4 +1,4 @@
-import { List, useLocal, useStream, type ReadonlyData, type Stream, type View } from '@lingxia/ui';
+import { List, useLocal, useStream, type ReadonlyData, type Stream, type View } from '@lingxia/view';
 import '../../theme/index.css';
 import { Chart } from '../../shared/chart';
 import { EmptyState, ErrorState, Icon } from '../../shared/ui';

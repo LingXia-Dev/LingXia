@@ -1,4 +1,4 @@
-import { useLocal, useView } from '@lingxia/ui';
+import { useLocal, useView } from '@lingxia/view';
 
 // The interactive renderer lab: tabs, editors, controls, a keyed grid and a virtual list.
 export function render() {

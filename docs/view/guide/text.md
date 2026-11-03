@@ -1,7 +1,7 @@
 # Text
 
 ```tsx
-import { useLocal } from '@lingxia/ui';
+import { useLocal } from '@lingxia/view';
 
 export function render() {
   const opened = useLocal('opened', 0);

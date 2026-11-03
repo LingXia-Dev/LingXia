@@ -1,4 +1,4 @@
-import { Details, Fragment, List, Summary, useLocal, useView, type VectorPath } from '@lingxia/ui';
+import { Details, Fragment, List, Summary, useLocal, useView, type VectorPath } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Icon, Page, Section } from '../../shared/ui';
 

@@ -1,7 +1,7 @@
 # RTL and i18n
 
 ```tsx
-import { useView, type VectorPath } from '@lingxia/ui';
+import { useView, type VectorPath } from '@lingxia/view';
 
 const messages = {
   en: { title: 'Settings', account: 'Account', language: 'Language' },
@@ -70,7 +70,7 @@ matches the theme. Use them for what logical properties cannot express, chiefly 
 point along the reading direction:
 
 ```tsx
-import { type VectorPath } from '@lingxia/ui';
+import { type VectorPath } from '@lingxia/view';
 
 const back: VectorPath[] = [{ d: 'M15 6l-6 6 6 6', fill: 'none', stroke: 'currentColor', strokeWidth: 2 }];
 

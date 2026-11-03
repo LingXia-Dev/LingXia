@@ -1,4 +1,4 @@
-import { List, useLocal, type View } from '@lingxia/ui';
+import { List, useLocal, type View } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, EmptyState, ErrorState, Icon, Segmented } from '../../shared/ui';
 import type { Todo, TodoActions, TodoFilter, TodoPageData } from '../../shared/todo-types';

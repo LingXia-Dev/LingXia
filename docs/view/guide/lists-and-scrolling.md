@@ -1,7 +1,7 @@
 # Lists and scrolling
 
 ```tsx data={"messages":[{"id":"m1","text":"Hi"},{"id":"m2","text":"Hello there"}],"hasMore":true}
-import { List, useLocal, type View } from '@lingxia/ui';
+import { List, useLocal, type View } from '@lingxia/view';
 
 type Message = { id: string; text: string };
 type Actions = { loadOlder(): Promise<void> };

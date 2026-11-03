@@ -13,7 +13,7 @@
 }
 
 # Classes the Rust runtime resolves by name to call their static methods.
--keep class com.lingxia.ui.GpuView { *; }
+-keep class com.lingxia.view.GpuView { *; }
 -keep class com.lingxia.lxapp.GpuPage { *; }
 -keep class com.lingxia.app.AppScreenshot { public static !synthetic <methods>; }
 -keep class com.lingxia.app.UpdateManager { public static !synthetic <methods>; }

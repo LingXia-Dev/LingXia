@@ -1,4 +1,4 @@
-import type { Child, Local } from '@lingxia/ui';
+import type { Child, Local } from '@lingxia/view';
 import type { DataAttributes } from './layout';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'destructive' | 'ghost';

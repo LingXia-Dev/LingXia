@@ -7,7 +7,7 @@ import { androidSdk, latestNdk, options, output, repoRoot, run, tool } from '../
 
 const args = options();
 const here = fileURLToPath(new URL('.', import.meta.url));
-const project = resolve(args.project ?? join(repoRoot, 'examples/hello-ui'));
+const project = resolve(args.project ?? join(repoRoot, 'examples/hello-view'));
 const sdk = androidSdk(args.sdk), ndk = latestNdk(sdk), windows = process.platform === 'win32';
 const host = windows ? 'windows-x86_64' : process.platform === 'darwin' ? 'darwin-x86_64' : 'linux-x86_64';
 const llvm = join(ndk, 'toolchains/llvm/prebuilt', host, 'bin');
@@ -22,12 +22,12 @@ const env = {
   BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android: `-I"${resourceDir}/include" -I"${sysroot}" -I"${sysroot}/aarch64-linux-android"`,
 };
 
-run('node', [join(repoRoot, 'packages/lingxia-ui/build.mjs'), project, ...(args['allow-literal-colors'] ? ['--allow-literal-colors'] : [])], { cwd: repoRoot });
-run('cargo', ['build', '-p', 'lingxia-ui-android', '--features', 'gpu', '--target', 'aarch64-linux-android', '--release'], { cwd: repoRoot, env });
+run('node', [join(repoRoot, 'packages/lingxia-view/build.mjs'), project, ...(args['allow-literal-colors'] ? ['--allow-literal-colors'] : [])], { cwd: repoRoot });
+run('cargo', ['build', '-p', 'lingxia-view-android', '--features', 'gpu', '--target', 'aarch64-linux-android', '--release'], { cwd: repoRoot, env });
 const jniLibs = join(here, 'src/main/jniLibs/arm64-v8a');
 mkdirSync(jniLibs, { recursive: true });
-copyFileSync(join(repoRoot, 'target/aarch64-linux-android/release/liblingxia_ui_android.so'), join(jniLibs, 'liblingxia_ui_android.so'));
+copyFileSync(join(repoRoot, 'target/aarch64-linux-android/release/liblingxia_view_android.so'), join(jniLibs, 'liblingxia_view_android.so'));
 run(join(repoRoot, 'lingxia-sdk/android', windows ? 'gradlew.bat' : 'gradlew'), ['-p', here, `-PuiAssets=${project}/dist`, 'assembleDebug', '--console=plain'], { env });
 const adb = tool(sdk, 'platform-tools/adb'), selector = args.device ? ['-s', args.device] : [];
 run(adb, [...selector, 'install', '-r', join(here, 'build/outputs/apk/debug/LingXiaUiSmoke-debug.apk')]);
-run(adb, [...selector, 'shell', 'am', 'start', '-n', 'com.lingxia.ui.smoke/com.lingxia.ui.SmokeActivity', ...(args.page ? ['--es', 'page', args.page] : [])]);
+run(adb, [...selector, 'shell', 'am', 'start', '-n', 'com.lingxia.view.smoke/com.lingxia.view.SmokeActivity', ...(args.page ? ['--es', 'page', args.page] : [])]);

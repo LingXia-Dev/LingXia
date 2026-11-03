@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="lingxia_ui_undo">撤销</string>
-    <string name="lingxia_ui_redo">重做</string>
+    <string name="lingxia_view_undo">撤销</string>
+    <string name="lingxia_view_redo">重做</string>
 </resources>

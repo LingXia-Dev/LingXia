@@ -1,7 +1,7 @@
 # Pages and components
 
 ```tsx data={"items":[{"id":"a","title":"Milk","done":false},{"id":"b","title":"Bread","done":true}]}
-import { useLocal, type Child, type View } from '@lingxia/ui';
+import { useLocal, type Child, type View } from '@lingxia/view';
 
 type Item = { id: string; title: string; done: boolean };
 type Actions = { toggle(input: { id: string }): Promise<void> };
@@ -59,7 +59,7 @@ A page is a directory under `pages/`. Its optional `index.json` sets its chrome:
 ```
 
 `index.tsx` is the View and exports `render`. `index.ts` is the page's Logic (`Page({ data, …methods })`)
-and is optional. Add `@lingxia/ui` to the lxapp's dependencies; `lingxia build` compiles every page.
+and is optional. Add `@lingxia/view` to the lxapp's dependencies; `lingxia build` compiles every page.
 
 `render(view)` runs whenever `view.data`, `view.env` or local state changes. `view.data` is the Logic
 page's data, deeply read-only. `view.actions` holds Logic's methods: each returns a `Promise`, and an
@@ -81,10 +81,10 @@ Wrap siblings in a `<column>`, `<row>` or `<page>` instead. `<view>` is a `<colu
 
 Anywhere else, a fragment groups children without a box: `<>…</>` or a component that returns one lays
 its children out in its place, and each keeps its own identity and local state while siblings come and
-go. `<Fragment key>` (from `@lingxia/ui`) names a group in a keyed map, so it moves as one:
+go. `<Fragment key>` (from `@lingxia/view`) names a group in a keyed map, so it moves as one:
 
 ```tsx
-import { Fragment, useLocal } from '@lingxia/ui';
+import { Fragment, useLocal } from '@lingxia/view';
 
 function Term({ word, meaning }: { word: string; meaning: string }) {
   return <><text className="font-semibold">{word}</text><text className="text-muted">{meaning}</text></>;
@@ -109,7 +109,7 @@ Components receive props only. Read the page View inside one with `useView()`; p
 down as props when the component needs its type.
 
 ```tsx
-import { useView, type Child } from '@lingxia/ui';
+import { useView, type Child } from '@lingxia/view';
 
 function Section({ title, children }: { title: string; children?: Child }) {
   const { env } = useView();

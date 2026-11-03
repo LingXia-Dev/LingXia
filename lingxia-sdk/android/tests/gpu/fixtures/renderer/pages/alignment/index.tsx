@@ -1,4 +1,4 @@
-import { useLocal, useView } from '@lingxia/ui';
+import { useLocal, useView } from '@lingxia/view';
 
 const alignments = ['right', 'left', 'center', 'start', 'end', 'justify'] as const;
 const classes = { right: 'text-right', left: 'text-left', center: 'text-center', start: 'text-start', end: 'text-end', justify: 'text-justify' };

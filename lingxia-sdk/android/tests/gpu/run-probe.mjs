@@ -34,10 +34,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const [app, page] = (targets.targets[probe] ?? targets.default).split('/');
   const { package: pkg, project } = targets.apps[app];
   run(adb, ['-s', serial, 'push', jar, '/data/local/tmp/gpu-independent-probe.jar']);
-  if (pkg === 'com.lingxia.ui.smoke') {
+  if (pkg === 'com.lingxia.view.smoke') {
     console.log(`${probe} expects the smoke host built with --project ${project}`);
     run(adb, ['-s', serial, 'shell', 'am', 'force-stop', pkg]);
-    run(adb, ['-s', serial, 'shell', 'am', 'start', '-W', '-n', `${pkg}/com.lingxia.ui.SmokeActivity`, ...(page ? ['--es', 'page', page] : [])]);
+    run(adb, ['-s', serial, 'shell', 'am', 'start', '-W', '-n', `${pkg}/com.lingxia.view.SmokeActivity`, ...(page ? ['--es', 'page', page] : [])]);
   }
   run(adb, ['-s', serial, 'shell', `GPU_PACKAGE=${pkg} CLASSPATH=/data/local/tmp/gpu-independent-probe.jar app_process /system/bin ${probe}`]);
 }

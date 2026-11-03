@@ -1,4 +1,4 @@
-import { useLocal, useView } from '@lingxia/ui';
+import { useLocal, useView } from '@lingxia/view';
 export function render() {
   const { env } = useView();
   const tracking = useLocal('tracking-enabled', false);

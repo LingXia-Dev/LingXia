@@ -2803,8 +2803,8 @@ dependencies = [
  "lingxia-terminal-config",
  "lingxia-theme",
  "lingxia-transfer",
- "lingxia-ui-android",
- "lingxia-ui-apple",
+ "lingxia-view-android",
+ "lingxia-view-apple",
  "lingxia-update",
  "lingxia-webview",
  "lingxia-windows-contract",
@@ -3296,7 +3296,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "lingxia-ui"
+name = "lingxia-view"
 version = "0.28.0"
 dependencies = [
  "glifo",
@@ -3322,20 +3322,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "lingxia-ui-android"
+name = "lingxia-view-android"
 version = "0.28.0"
 dependencies = [
  "jni",
- "lingxia-ui",
+ "lingxia-view",
  "raw-window-handle",
  "serde_json",
 ]
 
 [[package]]
-name = "lingxia-ui-apple"
+name = "lingxia-view-apple"
 version = "0.28.0"
 dependencies = [
- "lingxia-ui",
+ "lingxia-view",
  "log",
  "objc2-core-foundation",
  "objc2-core-graphics",

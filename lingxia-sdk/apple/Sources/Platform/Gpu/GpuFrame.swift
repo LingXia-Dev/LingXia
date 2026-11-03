@@ -1,4 +1,4 @@
-// Generated from packages/lingxia-ui/contracts/schema.json; do not edit.
+// Generated from packages/lingxia-view/contracts/schema.json; do not edit.
 // The frame contract every Apple platform decodes: snapshot = FrameSnapshot, semanticNode = SemanticNode, automationRequest = AutomationRequest, automationElement = AutomationElement, automationQueryAll = AutomationQueryAll, automationTree = AutomationTree, automationFrame = AutomationFrame, automationCall = AutomationCall, automationResult = AutomationResult, inputRequest = InputRequest, inputReply = InputReply, copySelection = CopyReply, semanticRoots = SemanticRoots, textMenu = TextMenu.
 import Foundation
 

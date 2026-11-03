@@ -1,7 +1,7 @@
 # Coming from React
 
 ```tsx data={"query":"lamp"}
-import { List, useLocal, useRequest, type View } from '@lingxia/ui';
+import { List, useLocal, useRequest, type View } from '@lingxia/view';
 
 type Product = { id: string; name: string; price: string };
 type Actions = { search(input: { query: string }): Promise<Product[]> };

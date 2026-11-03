@@ -143,8 +143,8 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_lingxiaInit<'a>(
         // the app classloader. Doing this in `JNI_OnLoad` can fail on Android.
         init_cached_java_classes(env);
 
-        let gpu_class = env.find_class(jni_str!("com/lingxia/ui/GpuView"))?;
-        if let Err(error) = lingxia_ui_android::register_natives(env, &gpu_class) {
+        let gpu_class = env.find_class(jni_str!("com/lingxia/view/GpuView"))?;
+        if let Err(error) = lingxia_view_android::register_natives(env, &gpu_class) {
             error!("Failed to register Android GPU renderer: {error}");
             return Err(jni::errors::Error::JniCall(jni::errors::JniError::Unknown));
         }
@@ -624,7 +624,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_onMemoryPressure(
     _class: JClass,
 ) {
     lxapp::release_retained_surfaces();
-    lingxia_ui_android::release_transient();
+    lingxia_view_android::release_transient();
 }
 
 #[unsafe(no_mangle)]

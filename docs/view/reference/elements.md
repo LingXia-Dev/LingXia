@@ -106,7 +106,7 @@ Children: any elements and text. Not allowed inside a composed `<button>` or `<c
 
 Children: none. Not allowed inside a composed `<button>` or `<checkbox>`.
 
-A component from `@lingxia/ui`, rendered as the `list` element.
+A component from `@lingxia/view`, rendered as the `list` element.
 
 | Prop | Type | Required |
 | --- | --- | --- |

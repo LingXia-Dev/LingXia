@@ -25,7 +25,7 @@ export function createAndroidDeviceFixture(runAdb, token = randomBytes(24).toStr
       const operation = path.slice(token.length + 2);
       if (request.method === 'GET' && operation === 'health') return reply(200, { ok: true });
       if (request.method === 'GET' && operation === 'hierarchy') {
-        const remote = `/sdcard/lingxia-ui-${token}.xml`;
+        const remote = `/sdcard/lingxia-view-${token}.xml`;
         let dumped = false;
         for (let attempt = 0; attempt < 3; attempt++) {
           const result = await runAdb(['shell', 'uiautomator', 'dump', '--compressed', remote]);

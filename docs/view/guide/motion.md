@@ -4,7 +4,7 @@ Transitions and keyframe animations run in the renderer. The View declares them 
 no JavaScript runs per frame.
 
 ```tsx
-import { useLocal } from '@lingxia/ui';
+import { useLocal } from '@lingxia/view';
 
 export function render() {
   const shown = useLocal('shown', true);
@@ -61,7 +61,7 @@ leaves toward when a re-render removes it. Both take paint properties only and a
 own transition:
 
 ```tsx
-import { useLocal } from '@lingxia/ui';
+import { useLocal } from '@lingxia/view';
 
 export function render() {
   const open = useLocal('open', false);
@@ -90,7 +90,7 @@ element's `duration-*`, `delay-*` and `ease-*`; it adds to the properties `trans
 moves the others instead of jumping:
 
 ```tsx
-import { useLocal } from '@lingxia/ui';
+import { useLocal } from '@lingxia/view';
 
 export function render() {
   const rows = useLocal('rows', ['a', 'b', 'c']);

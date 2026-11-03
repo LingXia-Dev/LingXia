@@ -7,7 +7,7 @@ const [adb, serial] = process.argv.slice(2);
 if (!adb || !serial) throw Error('Usage: node verify.mjs <adb path> <device serial>');
 const run = (...args) => execFileSync(adb, ['-s', serial, ...args], { timeout: 30000, stdio: ['ignore','pipe','pipe'] });
 const shell = (...args) => run('shell', ...args).toString('utf8');
-const snapshot = () => JSON.parse(shell('run-as', 'com.lingxia.ui.smoke', 'cat', 'files/ui-snapshot.json'));
+const snapshot = () => JSON.parse(shell('run-as', 'com.lingxia.view.smoke', 'cat', 'files/ui-snapshot.json'));
 const countText = frame => frame.nodes.find(node => node.test_id === 'hello-count').text;
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function until(check) {
@@ -16,15 +16,15 @@ async function until(check) {
   throw Error('Timed out waiting for device state');
 }
 
-const evidence = resolve('target/hello-ui-smoke-evidence');
+const evidence = resolve('target/hello-view-smoke-evidence');
 await mkdir(evidence, { recursive: true });
-shell('am', 'force-stop', 'com.lingxia.ui.smoke');
-shell('run-as', 'com.lingxia.ui.smoke', 'rm', '-f', 'files/ui-snapshot.json');
-shell('am', 'start', '-n', 'com.lingxia.ui.smoke/com.lingxia.ui.SmokeActivity');
+shell('am', 'force-stop', 'com.lingxia.view.smoke');
+shell('run-as', 'com.lingxia.view.smoke', 'rm', '-f', 'files/ui-snapshot.json');
+shell('am', 'start', '-n', 'com.lingxia.view.smoke/com.lingxia.view.SmokeActivity');
 await until(() => { try { return snapshot().backend === 'vello-vulkan' && countText(snapshot()) === 'Your first hello starts here.'; } catch { return false; } });
 await delay(500);
-shell('uiautomator', 'dump', '/sdcard/hello-ui-verify.xml');
-const hierarchy = shell('cat', '/sdcard/hello-ui-verify.xml');
+shell('uiautomator', 'dump', '/sdcard/hello-view-verify.xml');
+const hierarchy = shell('cat', '/sdcard/hello-view-verify.xml');
 const button = hierarchy.match(/<node[^>]*text="Say hello"[^>]*>/)?.[0];
 assert.ok(button?.includes('class="android.widget.Button"'), 'button must be accessible');
 const bounds = button.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/).slice(1).map(Number);
@@ -36,7 +36,7 @@ await until(() => countText(snapshot()) === 'Hello received 2 times.');
 const beforeResume = snapshot().generation;
 shell('input', 'keyevent', 'KEYCODE_HOME');
 await delay(400);
-shell('am', 'start', '-n', 'com.lingxia.ui.smoke/com.lingxia.ui.SmokeActivity');
+shell('am', 'start', '-n', 'com.lingxia.view.smoke/com.lingxia.view.SmokeActivity');
 await until(() => snapshot().generation > beforeResume);
 assert.equal(countText(snapshot()), 'Hello received 2 times.');
 const before = snapshot().generation;

@@ -5,7 +5,7 @@ JSX over a fixed set of elements, styled with Tailwind utilities, compiled at bu
 shaped and painted by the host. This guide is the complete reference for that dialect.
 
 ```tsx data={"id":"n1"}
-import { useLocal, useRequest, type View } from '@lingxia/ui';
+import { useLocal, useRequest, type View } from '@lingxia/view';
 
 type Actions = { load(query: { id: string }): Promise<{ title: string; body: string }> };
 

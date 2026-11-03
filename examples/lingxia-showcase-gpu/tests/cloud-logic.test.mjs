@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 
-const require = createRequire(new URL('../../../packages/lingxia-ui/package.json', import.meta.url));
+const require = createRequire(new URL('../../../packages/lingxia-view/package.json', import.meta.url));
 const { buildSync } = require('esbuild');
 const source = buildSync({
   entryPoints: [fileURLToPath(new URL('../lxapp/pages/cloud/index.ts', import.meta.url))],

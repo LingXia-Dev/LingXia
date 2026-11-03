@@ -14,7 +14,7 @@ it has no layer for: give a new crate one there and a line below.
 |---|---|---|
 | 1. Contracts | `app-context`, `provider`, `log`, `messaging`, `settings`, `surface`, `shell`, `update`, `control-protocol`, `theme` | Types, policy, wire formats. No runtime. |
 | 2. Platform | `webview`, `platform`, `windows-contract`, `device-io`, `transfer` | OS, WebView hosting and HTTP transfer. Knows nothing of lxapps. |
-| 3. Runtime | `lxapp`, `ui`, `ui-android`, `ui-apple`, `logic`, `service`, `media`, `browser`, `terminal`, `terminal-config` | What a shipped app runs. |
+| 3. Runtime | `lxapp`, `view`, `view-android`, `view-apple`, `logic`, `service`, `media`, `browser`, `terminal`, `terminal-config` | What a shipped app runs. |
 | 4. Products and dev features | `browser-shell`, `proxy`, `control-commands`, `network-dev`, `automation` | Built on the runtime; pulled in by facade features. |
 | 5. Facade | `lingxia` | The app-author API, the platform entry surface, init. |
 | 6. Host integrations | `control-runtime`, `windows-sdk` | Linked by host apps beside the facade. |
@@ -59,9 +59,9 @@ Names omit the `lingxia-` prefix.
 - `windows-contract`: Windows host UI traits shared by `platform` and `windows-sdk`.
 - `device-io`: sessionless desktop input, AX, windows, clipboard, processes.
 - `lxapp`: the lxapp container and runtime: pages, bridge, host APIs, updates.
-- `ui`: GPU View language, layout, text, rendering and the platform adapter traits; no app authorization.
-- `ui-android`: the Android adapter for `ui`: `GpuView` JNI natives, presentation and platform mechanics.
-- `ui-apple`: the iOS adapter for `ui`: a `ViewHost` per GPU page behind the Swift view, presentation and platform mechanics.
+- `view`: the View language, layout, text, rendering and the platform adapter traits; no app authorization.
+- `view-android`: the Android adapter for `view`: `GpuView` JNI natives, presentation and platform mechanics.
+- `view-apple`: the iOS and macOS adapter for `view`: a `ViewHost` per GPU page behind the Swift view, presentation and platform mechanics.
 - `logic`: the JavaScript (Logic) runtime.
 - `service`: service APIs shared by JS bindings, shell and facade.
 - `transfer`: every HTTP fetch LingXia makes for itself: the content-addressed

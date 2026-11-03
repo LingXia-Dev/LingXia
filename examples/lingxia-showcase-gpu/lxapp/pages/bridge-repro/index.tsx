@@ -1,4 +1,4 @@
-import { useLocal, useRequest, useStream, type View } from '@lingxia/ui';
+import { useLocal, useRequest, useStream, type View } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Card, Page } from '../../shared/ui';
 
@@ -6,7 +6,7 @@ type BootstrapProbe = { nonce: number; viewSentAt: number; logicReceivedAt: numb
 type Tick = { seq: number; ts: number };
 type Actions = {
   onBootstrapProbe(params: { nonce: number; viewSentAt: number }): Promise<BootstrapProbe>;
-  onTicks(): import('@lingxia/ui').Stream<Tick, void>;
+  onTicks(): import('@lingxia/view').Stream<Tick, void>;
   onEcho(params: { n: number }): Promise<{ n: number; ts: number }>;
 };
 type Data = { bootstrapMarker?: string; logicLoadedAt?: number };

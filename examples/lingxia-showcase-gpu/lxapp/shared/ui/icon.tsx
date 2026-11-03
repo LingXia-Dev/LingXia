@@ -1,4 +1,4 @@
-import type { VectorProps } from '@lingxia/ui';
+import type { VectorProps } from '@lingxia/view';
 
 // React showcase paths plus the monochrome ToDo note.
 const paths = {

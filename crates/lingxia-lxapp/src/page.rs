@@ -2,7 +2,7 @@ pub(crate) mod config;
 pub(crate) mod definition;
 pub(crate) mod runtime;
 #[rustfmt::skip]
-pub(crate) mod ui_limits;
+pub(crate) mod view_limits;
 mod view;
 pub(crate) use view::PageView;
 pub use view::{
@@ -2157,7 +2157,7 @@ impl PageInstance {
             return self.gpu_image_bytes(source);
         }
         if self.renderer() != PageRenderer::Gpu
-            || source.len() > ui_limits::SOURCE_BYTES
+            || source.len() > view_limits::SOURCE_BYTES
             || source.contains('\0')
         {
             return Err(LxAppError::InvalidParameter(
@@ -2178,7 +2178,7 @@ impl PageInstance {
         let store = lingxia_transfer::store::shared()
             .ok_or_else(|| LxAppError::Runtime("HTTP store unavailable".into()))?;
         let mut request = lingxia_transfer::store::FetchRequest::new(source, app.appid.clone());
-        request.max_bytes = ui_limits::IMAGE_BYTES as u64;
+        request.max_bytes = view_limits::IMAGE_BYTES as u64;
         request.timeout = std::time::Duration::from_secs(30);
         // The app's own guard decides plain http as it does every other request.
         request.allow_http = true;

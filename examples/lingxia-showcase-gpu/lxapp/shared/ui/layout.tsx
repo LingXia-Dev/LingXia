@@ -1,4 +1,4 @@
-import type { Child } from '@lingxia/ui';
+import type { Child } from '@lingxia/view';
 
 /** Authored `data-*` props: page state automation reads as attributes. */
 export type DataAttributes = Record<`data-${string}`, string>;

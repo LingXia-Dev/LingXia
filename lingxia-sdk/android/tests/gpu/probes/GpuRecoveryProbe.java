@@ -8,7 +8,7 @@ public class GpuRecoveryProbe {
     static UiAutomation automation;
     static AccessibilityNodeInfo find(AccessibilityNodeInfo node, String id) {
         if (node == null) return null;
-        if (("com.lingxia.ui.smoke:id/" + id).equals(node.getViewIdResourceName())) return node;
+        if (("com.lingxia.view.smoke:id/" + id).equals(node.getViewIdResourceName())) return node;
         for (int i = 0; i < node.getChildCount(); i++) {
             AccessibilityNodeInfo found = find(node.getChild(i), id);
             if (found != null) return found;

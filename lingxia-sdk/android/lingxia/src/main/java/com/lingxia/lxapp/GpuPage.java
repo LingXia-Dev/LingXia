@@ -5,7 +5,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.widget.FrameLayout;
 import com.lingxia.app.Lingxia;
-import com.lingxia.ui.GpuView;
+import com.lingxia.view.GpuView;
 import java.util.HashMap;
 
 /** SDK-owned page shell. The registry is confined to the main thread. */

@@ -1,7 +1,7 @@
 # Accessibility
 
 ```tsx
-import { useLocal } from '@lingxia/ui';
+import { useLocal } from '@lingxia/view';
 
 const bills = ['Water', 'Power', 'Internet'];
 

@@ -1,4 +1,4 @@
-import { useLocal } from '@lingxia/ui';
+import { useLocal } from '@lingxia/view';
 
 let failNext = false;
 let timeoutNext = false;

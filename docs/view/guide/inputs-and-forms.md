@@ -1,7 +1,7 @@
 # Inputs and forms
 
 ```tsx
-import { useLocal, type View } from '@lingxia/ui';
+import { useLocal, type View } from '@lingxia/view';
 
 type Actions = { signUp(form: { email: string; code: string; plan: string; news: boolean; seats: number }): Promise<void> };
 
@@ -42,7 +42,7 @@ export function render({ actions }: View<Actions>) {
 Every control is controlled. Either bind a `useLocal` cell of the right type:
 
 ```tsx
-import { useLocal } from '@lingxia/ui';
+import { useLocal } from '@lingxia/view';
 
 export function render() {
   const name = useLocal('name', '');
@@ -107,7 +107,7 @@ Choosing runs `onInput` then `onSubmit`, as typing and Return would. The value i
 `HH:MM` / `HH:MM:SS`. `min` and `max` take the same form; automation can `fill` the field directly.
 
 ```tsx
-import { useLocal } from '@lingxia/ui';
+import { useLocal } from '@lingxia/view';
 
 export function render() {
   const day = useLocal('day', '');
@@ -160,13 +160,13 @@ Logic action to submit, and disable the submit button while the action runs (as 
 
 ## Disclosure
 
-`<Details>` with a `<Summary>` (both from `@lingxia/ui`) is HTML's details/summary: the summary is a
+`<Details>` with a `<Summary>` (both from `@lingxia/view`) is HTML's details/summary: the summary is a
 button that shows a chevron and announces expanded or collapsed, and the rest of the children exist only
 while open. It keeps its own open state, starting from `defaultOpen`; pass `open` and `onToggle` to
 control it. `className` on `<Summary>` styles the toggle.
 
 ```tsx
-import { Details, Summary } from '@lingxia/ui';
+import { Details, Summary } from '@lingxia/view';
 
 export function render() {
   return (

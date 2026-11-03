@@ -1,4 +1,4 @@
-import { type Child, type View } from '@lingxia/ui';
+import { type Child, type View } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Card, ErrorState, InfoList, InfoRow, Page, Section } from '../../shared/ui';
 

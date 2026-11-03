@@ -1,4 +1,4 @@
-import type { ResourceError } from '@lingxia/ui';
+import type { ResourceError } from '@lingxia/view';
 import { Icon, type IconName } from './icon';
 import { Button } from './controls';
 

@@ -1,6 +1,6 @@
 # Android GPU smoke host
 
-A standalone Android app (`com.lingxia.ui.smoke`) that runs one Logic-free GPU
+A standalone Android app (`com.lingxia.view.smoke`) that runs one Logic-free GPU
 lxapp through the SDK's `GpuView`, without the lxapp runtime or a Logic
 service. Use it to look at renderer behavior on a device in isolation; anything
 that needs Logic, navigation or host chrome runs in the SDK host instead.
@@ -13,7 +13,7 @@ node tools/lingxia-ui-android/run.mjs --device <serial>
 node tools/lingxia-ui-android/run.mjs --project lingxia-sdk/android/tests/gpu/fixtures/renderer --page flex
 ```
 
-`run.mjs` builds the project with `packages/lingxia-ui/build.mjs`, cross-builds
+`run.mjs` builds the project with `packages/lingxia-view/build.mjs`, cross-builds
 the core for `aarch64-linux-android`, assembles the host and launches it.
 `--page` opens one page of a multi-page fixture (default: the first page).
 It needs Rust's Android target, JDK 17, Android SDK 35 and an NDK; set
@@ -22,9 +22,9 @@ It needs Rust's Android target, JDK 17, Android SDK 35 and an NDK; set
 Off-device checks for the same pages:
 
 ```sh
-node packages/lingxia-ui/build.mjs examples/hello-ui
-cargo test -p lingxia-ui
-npm test --prefix packages --workspace @lingxia/ui
+node packages/lingxia-view/build.mjs examples/hello-view
+cargo test -p lingxia-view
+npm test --prefix packages --workspace @lingxia/view
 ```
 
 The host supplies assets, system insets, lifecycle and an evidence snapshot;

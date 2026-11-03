@@ -862,7 +862,7 @@ mod tests {
     fn source_exported_package_changes_invalidate_cached_bundle() {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path();
-        let package = root.join("node_modules/@lingxia/ui");
+        let package = root.join("node_modules/@lingxia/view");
         fs::create_dir_all(package.join("src")).unwrap();
         fs::create_dir_all(root.join("dist")).unwrap();
         fs::write(

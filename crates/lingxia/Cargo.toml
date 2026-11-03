@@ -16,7 +16,7 @@ automation = ["dep:lingxia-automation", "dep:base64"]
 # automation facade does not pull native input, AX, clipboard, or snapshot code.
 desktop-automation = ["automation", "lingxia-automation/desktop"]
 automation-runtime = ["automation", "lingxia-automation/runtime"]
-devtool = ["lxapp/automation", "lxapp/dev-bundles", "lingxia-ui-android/hot-swap", "lingxia-ui-apple?/hot-swap"]
+devtool = ["lxapp/automation", "lxapp/dev-bundles", "lingxia-view-android/hot-swap", "lingxia-view-apple?/hot-swap"]
 # Low-level managed browser tabs. Advanced hosts may provide their own native
 # browser UI/chrome on top of this.
 browser-runtime = ["dep:lingxia-browser"]
@@ -50,7 +50,7 @@ apple-capture = ["realtime-capture", "lingxia-platform/apple-capture-provider"]
 harmony-capture = ["realtime-capture", "lingxia-platform/harmony-capture-provider"]
 webview-input = ["lingxia-webview/webview-input"]
 # GPU pages on Apple platforms: links the View isolate (QuickJS) and the renderer.
-apple-gpu = ["dep:lingxia-ui-apple", "lingxia-ui-apple/gpu", "dep:base64"]
+apple-gpu = ["dep:lingxia-view-apple", "lingxia-view-apple/gpu", "dep:base64"]
 
 [dependencies]
 rong_rt = { workspace = true, default-features = false }
@@ -91,12 +91,12 @@ zstd = "0.14"
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.22.4"
 android_logger = "0.15.1"
-lingxia-ui-android = { workspace = true, features = ["gpu"] }
+lingxia-view-android = { workspace = true, features = ["gpu"] }
 
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
 # JavaScriptCore stays rong's primary engine (Logic) when QuickJS is linked for View isolates.
 rong = { workspace = true, features = ["jscore", "primary-jscore"] }
-lingxia-ui-apple = { workspace = true, optional = true }
+lingxia-view-apple = { workspace = true, optional = true }
 swift-bridge = "0.1.59"
 oslog = "0.2.0"
 

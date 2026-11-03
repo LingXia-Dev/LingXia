@@ -7,7 +7,7 @@
 ```
 
 ```tsx
-import { useLocal } from '@lingxia/ui';
+import { useLocal } from '@lingxia/view';
 import './theme.css';
 
 const tone = { neutral: 'bg-surface-raised text-text', accent: 'bg-accent text-on-accent' } as const;
@@ -43,7 +43,7 @@ branches of conditionals, `&&`/`||`/`??`, `const` aliases and object maps (also 
 running your code. A name assembled at runtime is not compiled and fails when it renders:
 
 ```tsx error UI_CLASS
-import { useLocal } from '@lingxia/ui';
+import { useLocal } from '@lingxia/view';
 
 export function render() {
   const size = useLocal('size', 4);

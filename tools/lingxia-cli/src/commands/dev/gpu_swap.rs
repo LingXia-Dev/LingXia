@@ -55,7 +55,7 @@ fn canonical(path: &Path) -> PathBuf {
 }
 
 // A `prime` request compiles into a scratch directory: it only fills the warm caches.
-const COMPILER: &str = "import { buildPages } from '@lingxia/ui/compiler';
+const COMPILER: &str = "import { buildPages } from '@lingxia/view/compiler';
 import { createInterface } from 'node:readline';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -180,7 +180,7 @@ pub(super) fn page_path(page: &str) -> String {
 mod tests {
     use super::*;
 
-    /// An lxapp with one GPU page that resolves `@lingxia/ui` from this repository.
+    /// An lxapp with one GPU page that resolves `@lingxia/view` from this repository.
     fn gpu_lxapp() -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
@@ -202,12 +202,12 @@ mod tests {
             ".lingxia/gpu-inputs.json",
             r#"{"pages/a/index.tsx":["pages/a/index.tsx"]}"#,
         );
-        let packages = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/lingxia-ui");
+        let packages = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/lingxia-view");
         std::fs::create_dir_all(root.join("node_modules/@lingxia")).unwrap();
         #[cfg(unix)]
         std::os::unix::fs::symlink(
             packages.canonicalize().unwrap(),
-            root.join("node_modules/@lingxia/ui"),
+            root.join("node_modules/@lingxia/view"),
         )
         .unwrap();
         dir

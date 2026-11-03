@@ -5,7 +5,7 @@ const [adb, serial] = process.argv.slice(2);
 if (!adb || !serial) throw Error('Usage: node verify-pages.mjs <adb> <serial>');
 const run = (...args) => execFileSync(adb, ['-s', serial, ...args], { timeout: 30000, stdio: ['ignore','pipe','pipe'] });
 const shell = (...args) => run('shell', ...args).toString();
-const snapshot = () => JSON.parse(shell('run-as','com.lingxia.ui.smoke','cat','files/ui-snapshot.json'));
+const snapshot = () => JSON.parse(shell('run-as','com.lingxia.view.smoke','cat','files/ui-snapshot.json'));
 const delay = ms => new Promise(resolve => setTimeout(resolve,ms));
 async function until(check) {
   for (let n=0;n<150;n++) { try { if (check()) return; } catch {} await delay(200); }
@@ -20,9 +20,9 @@ async function tap(text) {
   const [x1,y1,x2,y2]=button.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/).slice(1).map(Number);
   shell('input','tap',String(Math.round((x1+x2)/2)),String(Math.round((y1+y2)/2)));
 }
-shell('am','force-stop','com.lingxia.ui.smoke');
-shell('run-as','com.lingxia.ui.smoke','rm','-f','files/ui-snapshot.json');
-shell('am','start','-n','com.lingxia.ui.smoke/com.lingxia.ui.SmokeActivity','--ez','multiPage','true');
+shell('am','force-stop','com.lingxia.view.smoke');
+shell('run-as','com.lingxia.view.smoke','rm','-f','files/ui-snapshot.json');
+shell('am','start','-n','com.lingxia.view.smoke/com.lingxia.view.SmokeActivity','--ez','multiPage','true');
 await until(() => snapshot().page===0 && snapshot().backend==='vello-vulkan');
 await tap('Say hello'); await until(() => count()==='Hello received 1 time.');
 await tap('Switch page'); await until(() => snapshot().page===1);
@@ -37,8 +37,8 @@ await writeFile('target/showcase-gpu-evidence/page-0.png',run('exec-out','screen
 await tap('Switch page'); await until(() => snapshot().page===1);
 assert.equal(count(),'Hello received 2 times.','Second context survives detachment');
 await writeFile('target/showcase-gpu-evidence/page-1.png',run('exec-out','screencap','-p'));
-shell('am','force-stop','com.lingxia.ui.smoke');
-shell('run-as','com.lingxia.ui.smoke','rm','-f','files/ui-snapshot.json');
-shell('am','start','-n','com.lingxia.ui.smoke/com.lingxia.ui.SmokeActivity');
+shell('am','force-stop','com.lingxia.view.smoke');
+shell('run-as','com.lingxia.view.smoke','rm','-f','files/ui-snapshot.json');
+shell('am','start','-n','com.lingxia.view.smoke/com.lingxia.view.SmokeActivity');
 await until(() => snapshot().page===0 && count()==='Your first hello starts here.');
 console.log('PASS: two Vulkan pages share a View executor, retain independent state across surface detachment, and recreate cleanly');

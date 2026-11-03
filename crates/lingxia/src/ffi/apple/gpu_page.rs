@@ -340,7 +340,7 @@ fn gpu_page_measured(
 ) {
     #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     {
-        let facts = lingxia_ui_apple::lingxia_ui::platform::DeviceFacts {
+        let facts = lingxia_view_apple::lingxia_view::platform::DeviceFacts {
             width,
             height,
             scale,
@@ -387,7 +387,7 @@ fn gpu_page_measured(
 }
 
 fn gpu_page_attach(token: i64, view: usize, width: u32, height: u32) {
-    log::debug!(target: "lingxia_ui", "attach token={token} {width}x{height}");
+    log::debug!(target: "lingxia_view", "attach token={token} {width}x{height}");
     #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     with_page(token, |page| page.attach(view, width, height));
     #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
@@ -395,7 +395,7 @@ fn gpu_page_attach(token: i64, view: usize, width: u32, height: u32) {
 }
 
 fn gpu_page_suspend(token: i64) {
-    log::debug!(target: "lingxia_ui", "suspend token={token}");
+    log::debug!(target: "lingxia_view", "suspend token={token}");
     #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     with_page(token, |page| page.suspend());
     #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
@@ -421,7 +421,7 @@ fn gpu_page_readback(token: i64) -> Vec<u8> {
                 out.extend_from_slice(&pixels);
             }
             Ok(None) => {}
-            Err(error) => log::warn!(target: "lingxia_ui", "GPU readback: {error}"),
+            Err(error) => log::warn!(target: "lingxia_view", "GPU readback: {error}"),
         });
         out
     }
@@ -445,7 +445,7 @@ fn gpu_page_pointer(
 ) -> bool {
     #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     {
-        use lingxia_ui_apple::lingxia_ui::interaction::view::{Pointer, PointerPhase};
+        use lingxia_view_apple::lingxia_view::interaction::view::{Pointer, PointerPhase};
         let phase = match phase {
             0 => PointerPhase::Down,
             1 => PointerPhase::Move,
@@ -476,7 +476,7 @@ fn gpu_page_pointer(
 fn gpu_page_wheel(token: i64, x: f32, y: f32, dx: f32, dy: f32, precise: bool, phase: u8) -> bool {
     #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     {
-        use lingxia_ui_apple::lingxia_ui::interaction::view::{Wheel, WheelPhase};
+        use lingxia_view_apple::lingxia_view::interaction::view::{Wheel, WheelPhase};
         let phase = match phase {
             1 => WheelPhase::Began,
             2 => WheelPhase::Changed,
@@ -514,7 +514,7 @@ fn gpu_page_hover(token: i64, inside: bool, x: f32, y: f32) {
 fn gpu_page_key(token: i64, key: i64, shift: bool, repeating: bool) -> bool {
     #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     {
-        use lingxia_ui_apple::lingxia_ui::interaction::view::Key;
+        use lingxia_view_apple::lingxia_view::interaction::view::Key;
         let Some(key) = Key::from_code(key) else {
             return false;
         };
@@ -594,7 +594,7 @@ fn gpu_page_caret(
 ) {
     #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     with_page(token, |page| {
-        use lingxia_ui_apple::lingxia_ui::session::host::CaretState;
+        use lingxia_view_apple::lingxia_view::session::host::CaretState;
         page.host().caret(
             eligible,
             connected.then(|| CaretState {
@@ -639,7 +639,7 @@ fn gpu_page_context_menu(token: i64, x: f32, y: f32) -> bool {
 fn gpu_page_text_menu_action(token: i64, action: u8) -> bool {
     #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     {
-        use lingxia_ui_apple::lingxia_ui::session::host::MenuAction;
+        use lingxia_view_apple::lingxia_view::session::host::MenuAction;
         let action = match action {
             0 => MenuAction::Cut,
             1 => MenuAction::Copy,
@@ -845,7 +845,7 @@ fn gpu_page_semantic_node(token: i64, id: u32) -> String {
 fn gpu_page_accessibility(token: i64, id: u32, action: u8, number: f64, argument: &str) -> bool {
     #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     {
-        use lingxia_ui_apple::lingxia_ui::interaction::view::AccessibilityAction as A;
+        use lingxia_view_apple::lingxia_view::interaction::view::AccessibilityAction as A;
         let action = match action {
             0 => A::Focus,
             1 => A::ClearFocus,
@@ -905,7 +905,7 @@ fn gpu_page_vsync(token: i64) {
 }
 
 fn gpu_page_window_visible(token: i64, visible: bool) {
-    log::debug!(target: "lingxia_ui", "window token={token} visible={visible}");
+    log::debug!(target: "lingxia_view", "window token={token} visible={visible}");
     #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     with_page(token, |page| page.host().window_visible(visible));
     #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
@@ -918,8 +918,8 @@ pub(super) use live::{install, token_of};
 #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
 mod live {
     use super::*;
-    use lingxia_ui_apple::lingxia_ui::session::lifecycle::ConnectionTicket;
-    use lingxia_ui_apple::{Page, Shell};
+    use lingxia_view_apple::lingxia_view::session::lifecycle::ConnectionTicket;
+    use lingxia_view_apple::{Page, Shell};
     use std::cell::RefCell;
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -938,7 +938,7 @@ mod live {
     }
 
     fn on_page(token: Token, work: impl FnOnce(&Page) + Send + 'static) {
-        lingxia_ui_apple::post_main(Box::new(move || with_page(token, work)));
+        lingxia_view_apple::post_main(Box::new(move || with_page(token, work)));
     }
 
     /// The live GPU page token of `page`, or 0.
@@ -1022,8 +1022,8 @@ mod live {
             text: Option<&str>,
             start: i32,
             end: i32,
-        ) -> lingxia_ui_apple::lingxia_ui::platform::EditOutcome {
-            use lingxia_ui_apple::lingxia_ui::platform::EditOutcome;
+        ) -> lingxia_view_apple::lingxia_view::platform::EditOutcome {
+            use lingxia_view_apple::lingxia_view::platform::EditOutcome;
             match super::bridge::gpu_pages_ime_edit(
                 token,
                 generation,
@@ -1041,7 +1041,7 @@ mod live {
         fn host_chrome(
             &self,
             token: i64,
-            chrome: &lingxia_ui_apple::lingxia_ui::platform::HostChrome,
+            chrome: &lingxia_view_apple::lingxia_view::platform::HostChrome,
         ) {
             let argb = |[r, g, b, a]: [u8; 4]| u32::from_be_bytes([a, r, g, b]);
             super::bridge::gpu_pages_host_chrome(
@@ -1082,7 +1082,7 @@ mod live {
         fn recovery(
             &self,
             token: i64,
-            failure: Option<&lingxia_ui_apple::lingxia_ui::session::host::Failure>,
+            failure: Option<&lingxia_view_apple::lingxia_view::session::host::Failure>,
         ) {
             if let Some(failure) = failure {
                 log::warn!("GPU page {token} failed: {}", failure.error);
@@ -1165,7 +1165,7 @@ mod live {
         }
         fn automation(&self, request: serde_json::Value, reply: AutomationReply) {
             let token = self.token;
-            lingxia_ui_apple::post_main(Box::new(move || {
+            lingxia_view_apple::post_main(Box::new(move || {
                 let mut answer = None;
                 with_page(token, |page| {
                     answer = Some(if request["op"] != "screenshot" {
@@ -1198,7 +1198,7 @@ mod live {
             _: &PageInstance,
             request: Creation,
         ) -> Result<(), LxAppError> {
-            lingxia_ui_apple::post_main(Box::new(move || {
+            lingxia_view_apple::post_main(Box::new(move || {
                 let created = Page::new(token, Arc::new(Bridge), &request.worker, request.logic)
                     .map(|page| {
                         page.host().load(request.source);
@@ -1211,7 +1211,7 @@ mod live {
         }
 
         fn dispose(&self, token: Token) {
-            lingxia_ui_apple::post_main(Box::new(move || {
+            lingxia_view_apple::post_main(Box::new(move || {
                 let page = PAGES.with(|pages| pages.borrow_mut().remove(&token));
                 drop(page);
                 super::bridge::gpu_pages_dispose(token);

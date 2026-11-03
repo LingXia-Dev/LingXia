@@ -354,13 +354,13 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     /** The host chrome of the GPU page on screen; null on WebView pages, which keep their config. */
-    private var gpuChrome: com.lingxia.ui.GpuView.Chrome? = null
-    private val gpuChromeListener = java.util.function.BiConsumer<GpuPage, com.lingxia.ui.GpuView.Chrome> { page, chrome ->
+    private var gpuChrome: com.lingxia.view.GpuView.Chrome? = null
+    private val gpuChromeListener = java.util.function.BiConsumer<GpuPage, com.lingxia.view.GpuView.Chrome> { page, chrome ->
         if (page === currentWebView) applyGpuChrome(chrome)
     }
 
     /** Chrome around a GPU page takes the colours its palette resolves to; only the page on screen paints it. */
-    private fun applyGpuChrome(chrome: com.lingxia.ui.GpuView.Chrome?) {
+    private fun applyGpuChrome(chrome: com.lingxia.view.GpuView.Chrome?) {
         if (chrome === gpuChrome) return
         gpuChrome = chrome
         tabBar?.setTheme(chrome?.let { TabBar.Theme(it.bar, it.contentMuted, it.accent, it.barLine) })
@@ -643,7 +643,7 @@ class LxAppActivity : AppCompatActivity() {
                             return
                         }
                         // A GPU page's open dialog or popover takes back before the page leaves.
-                        if (com.lingxia.ui.GpuView.closeRequest(this@LxAppActivity)) return
+                        if (com.lingxia.view.GpuView.closeRequest(this@LxAppActivity)) return
                         currentWebView?.visibility = View.VISIBLE
                         NativeApi.onLxappEvent(appId, NativeApi.UI_EVENT_BACK_PRESS, "")
                     } catch (e: Exception) {
@@ -889,7 +889,7 @@ class LxAppActivity : AppCompatActivity() {
      */
     private fun reportKeptChromeInsets() {
         val bar = tabBar ?: return
-        if (!com.lingxia.ui.GpuView.keepsSurfaces() || !::webViewContainer.isInitialized ||
+        if (!com.lingxia.view.GpuView.keepsSurfaces() || !::webViewContainer.isInitialized ||
             bar.width <= 0 || bar.height <= 0) return
         val root = IntArray(2).also { rootContainer.getLocationInWindow(it) }
         val at = IntArray(2).also { bar.getLocationInWindow(it) }
@@ -1169,7 +1169,7 @@ class LxAppActivity : AppCompatActivity() {
 
     /** Frames every kept GPU page container under its own chrome; see [KeptPageGeometry]. */
     private fun layoutKeptPages() {
-        if (!com.lingxia.ui.GpuView.keepsSurfaces()) return
+        if (!com.lingxia.view.GpuView.keepsSurfaces()) return
         val parent = webViewContainer.parent as? View ?: return
         val width = parent.width - parent.paddingLeft - parent.paddingRight
         val height = parent.height - parent.paddingTop - parent.paddingBottom
@@ -1753,7 +1753,7 @@ class LxAppActivity : AppCompatActivity() {
         ++presentTicket
         if (gpuOutgoingCover != null) clearGpuTransitionCover()
         // A replace between kept surfaces needs no cover; see navigateToPage.
-        val covered = !(animationType == AnimationType.NONE && com.lingxia.ui.GpuView.keepsSurfaces())
+        val covered = !(animationType == AnimationType.NONE && com.lingxia.view.GpuView.keepsSurfaces())
         val navigate = Runnable {
             if (version != gpuTransitionVersion || isFinishing || isDestroyed) return@Runnable
             // Frozen before the chrome changes: re-laid out under the next page's bars, the
@@ -1796,7 +1796,7 @@ class LxAppActivity : AppCompatActivity() {
             if (handled == 0 && version == gpuTransitionVersion) clearGpuTransitionCover()
         }
         if (previous is GpuPage && target != previous.getCurrentPath() && gpuTransitionCover == null &&
-            !com.lingxia.ui.GpuView.keepsSurfaces())
+            !com.lingxia.view.GpuView.keepsSurfaces())
             prepareGpuTransition(version, dispatch)
         else dispatch.run()
     }
@@ -2166,7 +2166,7 @@ class LxAppActivity : AppCompatActivity() {
         oldContainer?.tag = "previous_webview_container" // Re-tag old container
         newContainer.tag = "current_webview_container"
         // The incoming page fills the parent again; kept ones are framed by layoutKeptPages.
-        if (com.lingxia.ui.GpuView.keepsSurfaces() && newContainer.layoutParams?.width != FrameLayout.LayoutParams.MATCH_PARENT) {
+        if (com.lingxia.view.GpuView.keepsSurfaces() && newContainer.layoutParams?.width != FrameLayout.LayoutParams.MATCH_PARENT) {
             newContainer.layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
             newContainer.translationX = 0f
@@ -2312,7 +2312,7 @@ class LxAppActivity : AppCompatActivity() {
         val gpu = container.getChildAt(0) as? GpuPage
         gpu?.pause()
         val path = (container.getChildAt(0) as? View)?.getCurrentPath()
-        if (gpu != null && isTabPath(path) && com.lingxia.ui.GpuView.keepsSurfaces()) {
+        if (gpu != null && isTabPath(path) && com.lingxia.view.GpuView.keepsSurfaces()) {
             // Stays attached behind the current page: the page fades its layer and the
             // runtime decides whether its surface is kept (surface_retention).
             container.translationX = 0f
@@ -2448,7 +2448,7 @@ class LxAppActivity : AppCompatActivity() {
 
             // Kept surfaces switch GPU pages without a cover: the incoming page stays off screen
             // over the outgoing one until, after layout, it holds a current frame or presents one.
-            val keepSwitch = com.lingxia.ui.GpuView.keepsSurfaces() && isReplace &&
+            val keepSwitch = com.lingxia.view.GpuView.keepsSurfaces() && isReplace &&
                 newWebView is GpuPage && oldWebView is GpuPage && oldWebView !== newWebView &&
                 gpuTransitionCover == null
 

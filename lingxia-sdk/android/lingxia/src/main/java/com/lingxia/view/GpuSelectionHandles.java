@@ -1,0 +1,147 @@
+package com.lingxia.view;
+
+import android.graphics.*;
+import android.graphics.drawable.Drawable;
+import android.view.MotionEvent;
+import com.lingxia.view.generated.GpuFrame;
+import org.json.*;
+
+/** Selection chrome above the SurfaceView; positions always come from a presented frame. */
+final class GpuSelectionHandles extends Drawable {
+    interface Host {
+        JSONObject frame();
+        float scale();
+        boolean busy();
+        /** A handle was grabbed or let go; the core hides and restores the text menu. */
+        void dragging(boolean active);
+    }
+    private final GpuIme ime;
+    private final Host host;
+    private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
+    private GpuIme.Ticket owner;
+    private String text;
+    private float scale, x, y, dx, dy;
+    private int fixed, pointer;
+    private boolean collapsed, released, pending, querying;
+    private long movement, failedGeneration=-1, gesture;
+
+    GpuSelectionHandles(GpuIme ime,Host host) { this.ime=ime; this.host=host; }
+    boolean dragging() { return owner != null; }
+    private JSONObject node() {
+        if (!ime.menuActive()) return null;
+        GpuInputConnection connection=ime.capture().connection;
+        JSONObject frame=host.frame(); GpuFrame.Node[] nodes=frame == null ? null : new GpuFrame.FrameSnapshot(frame).nodes();
+        for(int i=0;nodes != null && i<nodes.length;i++) {
+            GpuFrame.Input input=nodes[i].input();
+            Long token=input == null ? null : input.editToken();
+            if (input != null && GpuIme.editable(nodes[i].json) && input.geometry()!=null && input.edit()!=null
+                && connection.identity.equals(nodes[i].identity()) && token != null && token == connection.token) return nodes[i].json;
+        }
+        return null;
+    }
+    private boolean matches(JSONObject node) {
+        GpuFrame.Edit state=new GpuFrame.Node(node).input().edit();
+        long[] selection=state == null ? null : state.selection();
+        GpuInputConnection c=ime.capture().connection;
+        return c != null && c.settled() && selection != null && selection.length == 2 && ime.menuText().equals(state.text())
+            && selection[0]==c.anchor() && selection[1]==c.focus();
+    }
+    /** Center x, line bottom, line midpoint, or null when that end is offscreen or clipped. */
+    private float[] endpoint(JSONObject node,String name) {
+        return GpuView.nativeHandleEndpoint(node.toString(),name.equals("anchor") ? 0 : 1);
+    }
+    void update() {
+        if (owner != null) {
+            GpuIme.Ticket now=ime.capture();
+            if (!ime.menuActive() || now.epoch != owner.epoch || now.connection != owner.connection
+                || host.scale()!=scale || !ime.menuText().equals(text) || node()==null) cancel();
+            else pump();
+        }
+        invalidateSelf();
+    }
+    void cancel() {
+        boolean grabbed=owner != null;
+        owner=null; pending=querying=released=false; gesture++; invalidateSelf();
+        if (grabbed) host.dragging(false);
+    }
+    private void finish() { cancel(); }
+    boolean touch(MotionEvent event) {
+        int action=event.getActionMasked();
+        if (action==MotionEvent.ACTION_DOWN) {
+            cancel(); JSONObject node=node(); if (node==null || !matches(node) || host.busy()) return false;
+            float factor=host.scale(), px=event.getX()/factor, py=event.getY()/factor;
+            GpuInputConnection c=ime.capture().connection;
+            float[] grabbed=GpuView.nativeHandleHit(node.toString(),px,py,c.anchor()==c.focus());
+            if (grabbed==null) return false;
+            int chosen=(int)grabbed[0]; float[] hit={grabbed[1],grabbed[2],grabbed[3]};
+            owner=ime.capture(); text=ime.menuText(); scale=factor; pointer=event.getPointerId(0);
+            collapsed=c.anchor()==c.focus(); fixed=chosen==0 ? c.focus() : c.anchor();
+            dx=px-hit[0]; dy=py-hit[2]; x=hit[0]; y=hit[2]; movement=0; failedGeneration=-1;
+            host.dragging(true); ime.focus(node,new GpuFrame.FrameSnapshot(host.frame()).generation()); return true;
+        }
+        if (owner==null) return false;
+        if (action==MotionEvent.ACTION_CANCEL || action==MotionEvent.ACTION_POINTER_DOWN) { cancel(); return true; }
+        int index=event.findPointerIndex(pointer); if (index<0) { cancel(); return true; }
+        if (action==MotionEvent.ACTION_MOVE || action==MotionEvent.ACTION_UP) {
+            float nextX=event.getX(index)/scale-dx, nextY=event.getY(index)/scale-dy;
+            if (nextX!=x || nextY!=y) { x=nextX; y=nextY; pending=true; movement++; failedGeneration=-1; }
+            if (action==MotionEvent.ACTION_UP) released=true;
+            update();
+        }
+        return true;
+    }
+    private void pump() {
+        if (querying || host.busy()) return;
+        JSONObject node=node(); if (node==null || !matches(node)) return;
+        if (!pending) { if (released) finish(); return; }
+        long generation=new GpuFrame.FrameSnapshot(host.frame()).generation(); if (generation==failedGeneration) return;
+        float[] drag=GpuView.nativeHandleDrag(node.toString(),x,y);
+        if (drag==null) { cancel(); return; }
+        float px=drag[0], py=drag[1]; int edgeX=(int)drag[2], edgeY=(int)drag[3];
+        if (drag[4]==0) { pending=false; if (released) finish(); return; }
+        long serial=gesture, point=movement; querying=true;
+        boolean sent=ime.dragSelection(node,generation,px,py,edgeX,edgeY,fixed,collapsed,() -> owner!=null && gesture==serial && movement==point,result -> {
+            if (gesture!=serial || owner==null) return;
+            querying=false;
+            if (result==GpuIme.DragResult.CANCELLED) { cancel(); return; }
+            if (point!=movement) { pump(); return; }
+            if (result==GpuIme.DragResult.STALE_FRAME) { failedGeneration=generation; return; }
+            pending=false;
+            // Re-query after a scrolling frame while the finger remains beyond the content edge.
+            if (result==GpuIme.DragResult.EDITED && !released) pending=edgeX!=0 || edgeY!=0;
+            update();
+        });
+        if (!sent) querying=false;
+    }
+    @Override public void draw(Canvas canvas) {
+        JSONObject node=node(); if (node==null) return;
+        paint.setColor(handleColor(host.frame()));
+        float factor=host.scale(); int saved=canvas.save(); canvas.scale(factor,factor);
+        GpuFrame.Node decoded=new GpuFrame.Node(node);
+        GpuFrame.Clip[] clips=decoded.clips();
+        for(int i=0;clips!=null && i<clips.length;i++) {
+            float[] b=clips[i].bounds();
+            float left=b[0],top=b[1],right=left+b[2],bottom=top+b[3];
+            float radius=Math.max(0,Math.min(clips[i].radius(),Math.min(right-left,bottom-top)/2));
+            Path path=new Path(); path.addRoundRect(new RectF(left,top,right,bottom),radius,radius,Path.Direction.CW); canvas.clipPath(path);
+        }
+        GpuFrame.Edit edit=decoded.input().edit();
+        long[] selected=edit==null ? null : edit.selection();
+        if (selected==null || selected.length != 2) { canvas.restoreToCount(saved); return; }
+        for(int i=0;i<2;i++) {
+            if (i==0 && selected[0]==selected[1]) continue;
+            float[] endpoint=endpoint(node,i==0 ? "anchor" : "caret"); if (endpoint==null) continue;
+            canvas.drawRect(endpoint[0]-1,endpoint[1]-1,endpoint[0]+1,endpoint[1]+7,paint);
+            canvas.drawCircle(endpoint[0],endpoint[1]+8,7,paint);
+        }
+        canvas.restoreToCount(saved);
+    }
+    @Override public void setAlpha(int alpha) { paint.setAlpha(alpha); invalidateSelf(); }
+    @Override public void setColorFilter(ColorFilter filter) { paint.setColorFilter(filter); invalidateSelf(); }
+    /** The handle colour the core chose for the frame's theme. */
+    static int handleColor(JSONObject frame) {
+        GpuFrame.FeedbackStyle style=frame == null ? null : new GpuFrame.FrameSnapshot(frame).feedback();
+        return style == null ? 0 : (int)style.selectionHandle();
+    }
+    @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
+}

@@ -20,7 +20,7 @@ Generated fixtures live under `target/gpu-device-fixtures`, outside lxapp bundle
 These SDK-owned Android device tools exercise the GPU renderer and the
 showcase app fixture at `examples/lingxia-showcase-gpu`. They are not bundled
 with the host or lxapp. Shared interaction semantics belong in Rust tests under
-`crates/lingxia-ui`; Android adapter unit tests live in
+`crates/lingxia-view`; Android adapter unit tests live in
 `lingxia-sdk/android/lingxia/src/test`.
 
 `probe-targets.json` names the app (and page) each probe and driver targets;
@@ -49,7 +49,7 @@ SDK tools also accept `ANDROID_SDK_ROOT`/`ANDROID_HOME`; direct adb scripts use
 The Node/Python scripts also run from the repository root; relative sibling
 imports remain inside `scripts/`.
 
-`GpuRecoveryProbe` targets `com.lingxia.ui.smoke`, not showcase. Build the
+`GpuRecoveryProbe` targets `com.lingxia.view.smoke`, not showcase. Build the
 standalone host with `fixtures/recovery` using `node tools/lingxia-ui-android/run.mjs
 --project lingxia-sdk/android/tests/gpu/fixtures/recovery`. It deliberately fails one candidate, verifies
 the retained frame, clicks Retry and checks the committed count and retained draft.
@@ -62,7 +62,7 @@ Inspect `gpu-recovery-failed.png` and `gpu-recovery-restored.png` in
 Build `:app:assembleReleaseAndroidTest` from its Android project with
 `-Plingxia.gpuDeviceTests=true -Plingxia.applicationIdSuffix=.dev`, after installing
 the matching release host. Install `app-release-androidTest.apk` and run
-`adb shell am instrument -w -e class com.lingxia.ui.tests.GpuSessionRecoveryTest
+`adb shell am instrument -w -e class com.lingxia.view.tests.GpuSessionRecoveryTest
 com.lingxia.example.gpu.dev.test/androidx.test.runner.AndroidJUnitRunner`.
 This injects a session error through reflection in the test APK, clicks the
 host-owned reload action, waits for fresh Logic readiness and rejects an old

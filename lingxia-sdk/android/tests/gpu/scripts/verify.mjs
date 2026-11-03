@@ -5,7 +5,7 @@ const [adb, serial] = process.argv.slice(2);
 if (!adb || !serial) throw Error('Usage: node verify.mjs <adb> <serial>');
 const run = (...args) => execFileSync(adb, ['-s', serial, ...args], { timeout: 30000 });
 const shell = (...args) => run('shell', ...args).toString();
-const frame = () => JSON.parse(shell('run-as', 'com.lingxia.ui.smoke', 'cat', 'files/ui-snapshot.json'));
+const frame = () => JSON.parse(shell('run-as', 'com.lingxia.view.smoke', 'cat', 'files/ui-snapshot.json'));
 const node = id => frame().nodes.find(n => n.test_id === id);
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function until(check) {
@@ -15,7 +15,7 @@ async function until(check) {
 async function tap(id) {
   shell('uiautomator', 'dump', '/sdcard/showcase-gpu.xml');
   const xml = shell('cat', '/sdcard/showcase-gpu.xml');
-  const element = xml.match(new RegExp(`<node[^>]*resource-id="com.lingxia.ui.smoke:id/${id}"[^>]*>`))?.[0];
+  const element = xml.match(new RegExp(`<node[^>]*resource-id="com.lingxia.view.smoke:id/${id}"[^>]*>`))?.[0];
   assert.ok(element, `Accessible node ${id}`);
   assert.ok(element.includes('clickable="true"'), `${id} is clickable`);
   const [x1,y1,x2,y2] = element.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/).slice(1).map(Number);
@@ -24,9 +24,9 @@ async function tap(id) {
 const evidence = 'target/showcase-gpu-evidence';
 await mkdir(evidence, { recursive: true });
 const capture = name => writeFile(`${evidence}/${name}.png`, run('exec-out','screencap','-p'));
-shell('am','force-stop','com.lingxia.ui.smoke');
-shell('run-as','com.lingxia.ui.smoke','rm','-f','files/ui-snapshot.json');
-shell('am','start','-n','com.lingxia.ui.smoke/com.lingxia.ui.SmokeActivity');
+shell('am','force-stop','com.lingxia.view.smoke');
+shell('run-as','com.lingxia.view.smoke','rm','-f','files/ui-snapshot.json');
+shell('am','start','-n','com.lingxia.view.smoke/com.lingxia.view.SmokeActivity');
 await until(() => frame().backend === 'vello-vulkan' && node('showcase-gpu'));
 await tap('say-hello');
 await until(() => node('hello-count').text === 'Hello received 1 time.');
@@ -47,7 +47,7 @@ await until(() => node('hello-count').text === 'Hello received 1 time.');
 const before = frame().generation;
 shell('input','keyevent','KEYCODE_HOME');
 await delay(400);
-shell('am','start','-n','com.lingxia.ui.smoke/com.lingxia.ui.SmokeActivity');
+shell('am','start','-n','com.lingxia.view.smoke/com.lingxia.view.SmokeActivity');
 await until(() => frame().generation > before);
 assert.equal(node('hello-count').text, 'Hello received 1 time.');
 assert.equal(node('theme').text, 'Light');

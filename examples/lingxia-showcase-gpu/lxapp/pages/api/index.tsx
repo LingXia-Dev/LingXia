@@ -1,4 +1,4 @@
-import { useLocal, type View } from '@lingxia/ui';
+import { useLocal, type View } from '@lingxia/view';
 import { Card, Icon, Page, type IconName } from '../../shared/ui';
 import '../../theme/index.css';
 

@@ -71,7 +71,7 @@ pages park them like other motion.
 
 - `starting:`/`exit:` lower to two new state-style fields, as `hoverStyle`/`pressedStyle` do; the
   transition field gains `layout` in its property set.
-- `lingxia_ui::animation` owns ghosts (retained command ranges keyed by identity, reusing
+- `lingxia_view::animation` owns ghosts (retained command ranges keyed by identity, reusing
   `animated_spans`) and FLIP offsets; adapters change nothing.
 
 ## Not in this step

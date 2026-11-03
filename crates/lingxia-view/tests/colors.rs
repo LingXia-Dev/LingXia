@@ -1,0 +1,179 @@
+use lingxia_view::protocol::field::{
+    BACKGROUND, COLOR, FONT_SIZE, HEIGHT, INSET_LEFT, INSET_TOP, WIDTH,
+};
+use lingxia_view::protocol::tag::{COLUMN, SEARCH, STACK, TEXT};
+use lingxia_view::{
+    Renderer,
+    protocol::{color, decode},
+};
+use serde_json::{Value, json};
+
+fn node(wire: &mut Vec<Value>, tag: usize, parent: i64, text: &str, fields: Value) {
+    let fields = fields.as_array().unwrap();
+    wire.extend(
+        json!([tag, parent, "", "", text, fields.len() / 2])
+            .as_array()
+            .unwrap()
+            .clone(),
+    );
+    wire.extend(fields.iter().cloned());
+}
+
+#[test]
+fn colors_accept_only_rgb_rgba_or_roles() {
+    assert_eq!(color("#1234AB").unwrap(), [0x12, 0x34, 0xab, 255]);
+    assert_eq!(color("#1234ab80").unwrap(), [0x12, 0x34, 0xab, 128]);
+    assert_eq!(color("#ffffff00").unwrap(), [255, 255, 255, 0]);
+    // Literal parsing takes hex only; the wire also takes roles with an optional alpha.
+    assert!(color("surface").is_err());
+    for role in ["surface", "text/8", "line-strong/100"] {
+        let wire = json!([TEXT, -1, "", "", "label", 1, BACKGROUND, role]);
+        assert!(decode(wire.as_array().unwrap()).is_ok(), "{role}");
+    }
+    for invalid in [
+        "#abc",
+        "#abcd",
+        "#1234567",
+        "#123456789",
+        "#+00000",
+        "#+0000000",
+        "#000000gg",
+        "#１２３",
+        "123456",
+        "transparent",
+        "unknown",
+        "primary",
+        "text/101",
+    ] {
+        assert!(color(invalid).is_err(), "{invalid}");
+        for field in [COLOR, BACKGROUND] {
+            let wire = json!([TEXT, -1, "", "", "label", 1, field, invalid]);
+            assert!(decode(wire.as_array().unwrap()).is_err(), "{invalid}");
+        }
+    }
+}
+
+#[test]
+fn translucent_stack_layers_composite_in_order_without_premultiplying_twice() {
+    let mut wire = vec![];
+    node(
+        &mut wire,
+        STACK,
+        -1,
+        "",
+        json!([WIDTH, 64, HEIGHT, 64, BACKGROUND, "#204060"]),
+    );
+    node(
+        &mut wire,
+        COLUMN,
+        0,
+        "",
+        json!([WIDTH, 32, HEIGHT, 64, BACKGROUND, "#00000080"]),
+    );
+    node(
+        &mut wire,
+        COLUMN,
+        0,
+        "",
+        json!([
+            WIDTH,
+            32,
+            HEIGHT,
+            64,
+            BACKGROUND,
+            "#ff000000",
+            INSET_LEFT,
+            32
+        ]),
+    );
+    node(
+        &mut wire,
+        COLUMN,
+        0,
+        "",
+        json!([
+            WIDTH,
+            32,
+            HEIGHT,
+            32,
+            BACKGROUND,
+            "#ffffff80",
+            INSET_TOP,
+            32
+        ]),
+    );
+    let frame = Renderer::default()
+        .layout(&decode(&wire).unwrap(), 64, 64, 1.0)
+        .unwrap()
+        .rasterize()
+        .unwrap();
+    let pixels = frame.pixels.data_as_u8_slice();
+    for (x, y, expected) in [
+        (16, 16, [16u8, 32, 48, 255]),
+        (48, 16, [32, 64, 96, 255]),
+        (16, 48, [136, 144, 152, 255]),
+    ] {
+        let offset = (y * 64 + x) * 4;
+        for channel in 0..4 {
+            assert!(
+                pixels[offset + channel].abs_diff(expected[channel]) <= 1,
+                "pixel ({x},{y}) is {:?}",
+                &pixels[offset..offset + 4]
+            );
+        }
+    }
+}
+
+#[test]
+fn transparent_text_and_search_strokes_keep_geometry_without_visible_ink() {
+    let render = |tint: &str| {
+        let mut wire = vec![];
+        node(&mut wire, COLUMN, -1, "", json!([BACKGROUND, "#ffffff"]));
+        node(
+            &mut wire,
+            TEXT,
+            0,
+            "Alpha text",
+            json!([FONT_SIZE, 24, COLOR, tint]),
+        );
+        node(
+            &mut wire,
+            SEARCH,
+            0,
+            "",
+            json!([WIDTH, 160, HEIGHT, 48, COLOR, tint, BACKGROUND, "#ffffff"]),
+        );
+        Renderer::default()
+            .layout(&decode(&wire).unwrap(), 220, 100, 1.0)
+            .unwrap()
+    };
+    let opaque = render("#000000");
+    let transparent = render("#00000000");
+    assert_eq!(opaque.nodes[1].bounds, transparent.nodes[1].bounds);
+    assert_eq!(opaque.nodes[2].bounds, transparent.nodes[2].bounds);
+    assert!(
+        opaque
+            .rasterize()
+            .unwrap()
+            .pixels
+            .data_as_u8_slice()
+            .chunks_exact(4)
+            .any(|pixel| pixel[0] < 200)
+    );
+    let transparent = transparent.rasterize().unwrap();
+    let ink = transparent
+        .pixels
+        .data_as_u8_slice()
+        .chunks_exact(4)
+        .enumerate()
+        .find(|(_, pixel)| pixel.iter().any(|channel| *channel < 254));
+    assert!(
+        ink.is_none(),
+        "unexpected ink: {ink:?}; bounds: {:?}",
+        transparent
+            .nodes
+            .iter()
+            .map(|node| node.bounds)
+            .collect::<Vec<_>>()
+    );
+}

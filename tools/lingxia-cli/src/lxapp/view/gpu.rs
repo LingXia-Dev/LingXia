@@ -38,7 +38,7 @@ pub(super) fn build(project: &Project, dev: bool) -> Result<()> {
             .with_context(|| format!("write {}", output.display()))?;
     }
     let catalogs = catalogs(project, &pages)?;
-    let script = "import { buildPages } from '@lingxia/ui/compiler'; await buildPages(process.cwd(), JSON.parse(process.argv[1]), process.argv[2], JSON.parse(process.argv[3]), { dev: process.argv[4] === 'dev' });";
+    let script = "import { buildPages } from '@lingxia/view/compiler'; await buildPages(process.cwd(), JSON.parse(process.argv[1]), process.argv[2], JSON.parse(process.argv[3]), { dev: process.argv[4] === 'dev' });";
     let result = Command::new("node")
         .args(["--input-type=module", "--eval", script])
         .arg(serde_json::to_string(&pages)?)
@@ -47,7 +47,7 @@ pub(super) fn build(project: &Project, dev: bool) -> Result<()> {
         .arg(if dev { "dev" } else { "release" })
         .current_dir(&project.root)
         .status()
-        .context("Failed to start GPU page compiler; install @lingxia/ui in the lxapp")?;
+        .context("Failed to start GPU page compiler; install @lingxia/view in the lxapp")?;
     if !result.success() {
         bail!("GPU page compilation failed; see the compiler diagnostic above");
     }

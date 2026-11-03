@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="lingxia_ui_undo">Undo</string>
-    <string name="lingxia_ui_redo">Redo</string>
+    <string name="lingxia_view_undo">Undo</string>
+    <string name="lingxia_view_redo">Redo</string>
 </resources>

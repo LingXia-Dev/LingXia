@@ -3639,9 +3639,9 @@ dependencies = [
  "lingxia-terminal-config",
  "lingxia-theme",
  "lingxia-transfer",
- "lingxia-ui-android",
- "lingxia-ui-apple",
  "lingxia-update",
+ "lingxia-view-android",
+ "lingxia-view-apple",
  "lingxia-webview",
  "lingxia-windows-contract",
  "log",
@@ -4326,7 +4326,22 @@ dependencies = [
 ]
 
 [[package]]
-name = "lingxia-ui"
+name = "lingxia-update"
+version = "0.28.0"
+dependencies = [
+ "base64 0.23.1",
+ "ed25519-dalek",
+ "lingxia-app-context",
+ "lingxia-provider",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror 2.0.20",
+ "tokio",
+]
+
+[[package]]
+name = "lingxia-view"
 version = "0.28.0"
 dependencies = [
  "glifo",
@@ -4352,20 +4367,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "lingxia-ui-android"
+name = "lingxia-view-android"
 version = "0.28.0"
 dependencies = [
  "jni",
- "lingxia-ui",
+ "lingxia-view",
  "raw-window-handle",
  "serde_json",
 ]
 
 [[package]]
-name = "lingxia-ui-apple"
+name = "lingxia-view-apple"
 version = "0.28.0"
 dependencies = [
- "lingxia-ui",
+ "lingxia-view",
  "log",
  "objc2-core-foundation",
  "objc2-core-graphics",
@@ -4374,21 +4389,6 @@ dependencies = [
  "serde_json",
  "skrifa 0.44.0",
  "vello_cpu",
-]
-
-[[package]]
-name = "lingxia-update"
-version = "0.28.0"
-dependencies = [
- "base64 0.23.1",
- "ed25519-dalek",
- "lingxia-app-context",
- "lingxia-provider",
- "serde",
- "serde_json",
- "sha2 0.11.0",
- "thiserror 2.0.20",
- "tokio",
 ]
 
 [[package]]

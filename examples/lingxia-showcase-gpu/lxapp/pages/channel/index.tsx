@@ -1,4 +1,4 @@
-import { useChannel, useLocal, type ChannelEndpoint, type View } from '@lingxia/ui';
+import { useChannel, useLocal, type ChannelEndpoint, type View } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Card, ErrorState, Page, Section } from '../../shared/ui';
 import type { ClientCommand, ServerMessage, TickerUpdate } from '../../shared/channel-types';

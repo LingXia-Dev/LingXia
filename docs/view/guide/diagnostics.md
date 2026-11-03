@@ -1,7 +1,7 @@
 # Diagnostics
 
 ```tsx
-import { useRequest, type ResourceError, type View } from '@lingxia/ui';
+import { useRequest, type ResourceError, type View } from '@lingxia/view';
 
 type Actions = { orders(): Promise<{ id: string; total: string }[]> };
 

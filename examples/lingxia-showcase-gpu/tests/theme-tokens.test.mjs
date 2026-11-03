@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-const postcss = createRequire(new URL('../../../packages/lingxia-ui/package.json', import.meta.url))('postcss');
+const postcss = createRequire(new URL('../../../packages/lingxia-view/package.json', import.meta.url))('postcss');
 
 test('GPU showcase stylesheets hold scales and elevation only; colours come from theme roles', async () => {
   const props = [];

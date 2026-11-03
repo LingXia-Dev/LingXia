@@ -1,4 +1,4 @@
-import { useLocal, type ReadonlyData } from '@lingxia/ui';
+import { useLocal, type ReadonlyData } from '@lingxia/view';
 import type { ChartData } from './stream-types';
 import { chartScale } from './chart-scale';
 import { chartPercentages } from './chart-percent';

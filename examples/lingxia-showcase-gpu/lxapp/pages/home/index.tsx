@@ -1,4 +1,4 @@
-import { useLocal, type View } from '@lingxia/ui';
+import { useLocal, type View } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Card, Notice, Segmented } from '../../shared/ui';
 import { resolveDisplayLanguage } from '../../shared/display-language';

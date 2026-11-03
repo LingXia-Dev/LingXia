@@ -1,4 +1,4 @@
-import {useLocal} from '@lingxia/ui';
+import {useLocal} from '@lingxia/view';
 
 export function render() {
   const attempt=useLocal('attempt',0), status=useLocal('status','loading');

@@ -1,4 +1,4 @@
-import { useLocal, useView } from '@lingxia/ui';
+import { useLocal, useView } from '@lingxia/view';
 
 const icons = [
   ['M6 19a4 4 0 0 1-.4-7.98A5.5 5.5 0 0 1 16 8.5h.5a4.5 4.5 0 1 1 .5 9H6z'],

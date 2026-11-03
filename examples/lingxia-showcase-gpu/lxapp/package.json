@@ -7,7 +7,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.logic.json && tsc --noEmit -p tests/tsconfig.json"
   },
   "dependencies": {
-    "@lingxia/ui": "file:../../../packages/lingxia-ui"
+    "@lingxia/view": "file:../../../packages/lingxia-view"
   },
   "devDependencies": {
     "@lingxia/types": "file:../../../packages/lingxia-types",

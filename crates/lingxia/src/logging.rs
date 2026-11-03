@@ -419,7 +419,7 @@ mod tests {
         let at = |target: &str, level: Level| {
             SdkLogger.enabled(&Metadata::builder().target(target).level(level).build())
         };
-        assert!(at("lingxia_ui", Level::Debug) && at("lxapp::page", Level::Info));
+        assert!(at("lingxia_view", Level::Debug) && at("lxapp::page", Level::Info));
         assert!(!at("hyper::proto::h1", Level::Debug) && !at("wgpu_core::device", Level::Info));
         assert!(at("rustls::conn", Level::Warn), "their warnings still pass");
     }

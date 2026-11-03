@@ -1,4 +1,4 @@
-import { useLeaveGuard, useLocal, type View } from '@lingxia/ui';
+import { useLeaveGuard, useLocal, type View } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, ErrorState, Field, Page, Section } from '../../shared/ui';
 

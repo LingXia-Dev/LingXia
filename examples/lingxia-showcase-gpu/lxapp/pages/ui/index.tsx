@@ -1,4 +1,4 @@
-import { useLocal, type Child, type Local, type View } from '@lingxia/ui';
+import { useLocal, type Child, type Local, type View } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Card, Field, InfoList, InfoRow, Page, Section, Segmented } from '../../shared/ui';
 

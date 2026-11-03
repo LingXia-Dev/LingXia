@@ -1,7 +1,7 @@
 # Images and vectors
 
 ```tsx
-import { useLocal, type VectorPath } from '@lingxia/ui';
+import { useLocal, type VectorPath } from '@lingxia/view';
 
 const icons: Record<'chevron' | 'star', VectorPath[]> = {
   chevron: [{ d: 'M9 6l6 6-6 6', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' }],
@@ -117,7 +117,7 @@ There is no `<svg>` element and no SVG file import; convert icons to path data a
 tooltips are yours to lay out around it.
 
 ```tsx
-import { useLocal } from '@lingxia/ui';
+import { useLocal } from '@lingxia/view';
 
 const sales = [12, 18, 9, 24, 16];
 

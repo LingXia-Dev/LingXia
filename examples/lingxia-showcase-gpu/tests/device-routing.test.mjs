@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
-const require = createRequire(new URL('../../../packages/lingxia-ui/package.json', import.meta.url));
+const require = createRequire(new URL('../../../packages/lingxia-view/package.json', import.meta.url));
 const source = require('esbuild').buildSync({ entryPoints: [fileURLToPath(new URL('../lxapp/pages/device/index.ts', import.meta.url))], bundle: true, write: false, format: 'iife' }).outputFiles[0].text;
 function fixture() {
   let page, listener, stops = 0;

@@ -1,4 +1,4 @@
-import { type View } from '@lingxia/ui';
+import { type View } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, ErrorState, InfoList, InfoRow, Page, Section, Segmented } from '../../shared/ui';
 

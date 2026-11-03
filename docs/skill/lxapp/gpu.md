@@ -2,11 +2,11 @@
 
 An lxapp renders natively when its `lxapp.json` has `"renderer": "gpu"`: every page does, and a page
 config naming a renderer fails the build (no mixed apps). A page's View is `index.tsx` (Logic stays in
-`index.ts`). Add `@lingxia/ui` as a dependency.
+`index.ts`). Add `@lingxia/view` as a dependency.
 There is no DOM. The host owns navbar and tabbar.
 
 ```tsx
-import { useLocal, useRequest, type View } from '@lingxia/ui';
+import { useLocal, useRequest, type View } from '@lingxia/view';
 
 type Actions = { load(q: { id: string }): Promise<{ title: string }> };
 

@@ -8,11 +8,11 @@
       ]
     },
     "renderer": {
-      "package": "com.lingxia.ui.smoke",
+      "package": "com.lingxia.view.smoke",
       "project": "lingxia-sdk/android/tests/gpu/fixtures/renderer"
     },
     "recovery": {
-      "package": "com.lingxia.ui.smoke",
+      "package": "com.lingxia.view.smoke",
       "project": "lingxia-sdk/android/tests/gpu/fixtures/recovery"
     },
     "contracts": {
@@ -21,8 +21,8 @@
       ]
     },
     "hello": {
-      "package": "com.lingxia.ui.smoke",
-      "project": "examples/hello-ui"
+      "package": "com.lingxia.view.smoke",
+      "project": "examples/hello-view"
     }
   },
   "default": "showcase",

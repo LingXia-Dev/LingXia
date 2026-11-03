@@ -1,7 +1,7 @@
 # Interaction
 
 ```tsx
-import { useLocal, type VectorPath } from '@lingxia/ui';
+import { useLocal, type VectorPath } from '@lingxia/view';
 
 const chevron: VectorPath[] = [{ d: 'M9 6l6 6-6 6', fill: 'none', stroke: 'currentColor', strokeWidth: 2 }];
 
@@ -54,7 +54,7 @@ pressed; the row activates when the press lands on its other content. Assistive 
 and each inner control as separate nodes, and the row's name leaves the inner controls' text out.
 
 ```tsx
-import { useLocal } from '@lingxia/ui';
+import { useLocal } from '@lingxia/view';
 
 export function render() {
   const on = useLocal('on', true);
@@ -121,7 +121,7 @@ by their ancestors. On phones an open dialog also covers the host's navigation a
 take no input meanwhile; pad its content by `env.safeArea` (the system bars alone), not `env.insets`.
 
 ```tsx
-import { useLocal } from '@lingxia/ui';
+import { useLocal } from '@lingxia/view';
 
 export function render() {
   const open = useLocal('open', false);

@@ -42,7 +42,7 @@ executed and CPU-rendered after the CSS-named authoring rewrite · — not verif
 | Charts | percentages match recorded ECharts values; a selection dims the other series |
 | Accessibility | one node per composed control, named by its text; screen-reader speech unverified |
 | Hover | not exercised: Android reports a coarse pointer |
-| Animation | not authored; see `docs/internal/ui-animation.md` |
+| Animation | not authored; see `docs/internal/view-animation.md` |
 
 Parity tests compare against the React showcase as committed at `HEAD`; uncommitted
 edits there print a notice naming the file and are not compared until committed.
