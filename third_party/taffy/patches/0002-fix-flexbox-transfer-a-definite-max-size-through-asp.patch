@@ -1,0 +1,76 @@
+From 5616126b08f8cd45f7d3a1405678f6e94a1092af Mon Sep 17 00:00:00 2001
+From: Michael <michael@lingxia.app>
+Date: Wed, 28 Oct 2026 12:11:00 -0700
+Subject: [PATCH 2/2] fix(flexbox): transfer a definite max size through
+ aspect-ratio to an auto axis
+
+A flex item with width: 100%, max-width: 240px and aspect-ratio: 1 sized its height from
+the unclamped width. CSS transfers the max-width through the ratio to the auto height
+(CSS Sizing 4), so the item and its container are 240px tall.
+---
+ src/compute/flexbox.rs             | 24 ++++++++++++++++++++----
+ tests/aspect_ratio_max_transfer.rs |  9 +++++++++
+ 2 files changed, 29 insertions(+), 4 deletions(-)
+
+diff --git a/src/compute/flexbox.rs b/src/compute/flexbox.rs
+index 3dd10fb6..5abed1e1 100644
+--- a/src/compute/flexbox.rs
++++ b/src/compute/flexbox.rs
+@@ -687,10 +687,12 @@ fn generate_anonymous_flex_items(
+                     .min_size()
+                     .maybe_resolve(percent_resolution_size, |val, basis| tree.calc(val, basis))
+                     .maybe_add(box_sizing_adjustment),
+-                max_size: child_style
+-                    .max_size()
+-                    .maybe_resolve(percent_resolution_size, |val, basis| tree.calc(val, basis))
+-                    .maybe_add(box_sizing_adjustment),
++                max_size: transfer_max_size(
++                    child_style.max_size().maybe_resolve(percent_resolution_size, |val, basis| tree.calc(val, basis)),
++                    child_style.size(),
++                    aspect_ratio,
++                )
++                .maybe_add(box_sizing_adjustment),
+                 aspect_ratio,
+ 
+                 inset: child_style
+@@ -3586,3 +3588,17 @@ mod balance {
+         }
+     }
+ }
++
++/// A definite max size transfers through `aspect-ratio` to an axis whose preferred size is
++/// `auto` and has no max of its own (CSS Sizing 4, "transferred size suggestion").
++fn transfer_max_size(
++    max_size: Size<Option<f32>>,
++    size: Size<Dimension>,
++    aspect_ratio: Option<f32>,
++) -> Size<Option<f32>> {
++    let transferred = max_size.maybe_apply_aspect_ratio(aspect_ratio);
++    Size {
++        width: max_size.width.or(transferred.width.filter(|_| size.width.is_auto())),
++        height: max_size.height.or(transferred.height.filter(|_| size.height.is_auto())),
++    }
++}
+diff --git a/tests/aspect_ratio_max_transfer.rs b/tests/aspect_ratio_max_transfer.rs
+index cc589d69..e3b1ccee 100644
+--- a/tests/aspect_ratio_max_transfer.rs
++++ b/tests/aspect_ratio_max_transfer.rs
+@@ -32,6 +32,15 @@ fn column_height(shrink: f32, item_max_height: Option<f32>) -> (f32, Size<f32>)
+     (tree.layout(column).unwrap().size.height, tree.layout(item).unwrap().size)
+ }
+ 
++#[test]
++fn max_width_transfers_through_aspect_ratio_to_the_auto_height() {
++    for shrink in [0.0, 1.0] {
++        let (column, item) = column_height(shrink, None);
++        assert_eq!(item, Size { width: 240.0, height: 240.0 }, "shrink {shrink}");
++        assert_eq!(column, 240.0, "shrink {shrink}");
++    }
++}
++
+ #[test]
+ fn a_non_shrinking_items_basis_contribution_is_capped_by_its_max_size() {
+     let (column, item) = column_height(0.0, Some(240.0));
+-- 
+2.50.1 (Apple Git-155)
+

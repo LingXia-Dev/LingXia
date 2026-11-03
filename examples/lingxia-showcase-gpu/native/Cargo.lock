@@ -2803,9 +2803,9 @@ dependencies = [
  "lingxia-terminal-config",
  "lingxia-theme",
  "lingxia-transfer",
+ "lingxia-update",
  "lingxia-view-android",
  "lingxia-view-apple",
- "lingxia-update",
  "lingxia-webview",
  "lingxia-windows-contract",
  "log",
@@ -3296,6 +3296,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "lingxia-update"
+version = "0.28.0"
+dependencies = [
+ "base64 0.23.1",
+ "ed25519-dalek",
+ "lingxia-app-context",
+ "lingxia-provider",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "thiserror 2.0.21",
+ "tokio",
+]
+
+[[package]]
 name = "lingxia-view"
 version = "0.28.0"
 dependencies = [
@@ -3344,21 +3359,6 @@ dependencies = [
  "serde_json",
  "skrifa",
  "vello_cpu",
-]
-
-[[package]]
-name = "lingxia-update"
-version = "0.28.0"
-dependencies = [
- "base64 0.23.1",
- "ed25519-dalek",
- "lingxia-app-context",
- "lingxia-provider",
- "serde",
- "serde_json",
- "sha2 0.11.1",
- "thiserror 2.0.21",
- "tokio",
 ]
 
 [[package]]
@@ -6534,8 +6534,6 @@ dependencies = [
 [[package]]
 name = "taffy"
 version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "639627c87f43b9181c811f40a6296409e093a17bc761214cba3c15df74f86b99"
 dependencies = [
  "arrayvec",
  "serde",
