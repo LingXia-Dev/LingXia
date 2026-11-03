@@ -601,7 +601,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     }
     
     private func createNavigationBar() -> NSView {
-        let navBar = NSView()
+        let navBar = SimulatorNavigationBarView()
         navBar.wantsLayer = true
         navBar.layer?.backgroundColor = NSColor.clear.cgColor
         navBar.translatesAutoresizingMaskIntoConstraints = false
@@ -1122,10 +1122,12 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         
         if config.show_back_button, let image = CapsuleButtonImages.createBackButtonImage(color: iconColor) {
             let backButton = makeButton(image: image, action: #selector(backButtonClicked))
+            backButton.setAccessibilityLabel("Back")
             backButton.frame = NSRect(x: buttonX, y: buttonY, width: buttonSize, height: buttonSize)
             navBar.addSubview(backButton)
         } else if config.show_home_button, let image = CapsuleButtonImages.createHomeButtonImage(color: iconColor) {
             let homeButton = makeButton(image: image, action: #selector(homeButtonClicked))
+            homeButton.setAccessibilityLabel("Home")
             homeButton.frame = NSRect(x: buttonX, y: buttonY, width: buttonSize, height: buttonSize)
             navBar.addSubview(homeButton)
         }
@@ -1611,3 +1613,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             to: path, pageInstanceId: pageInstanceId, animationType: animationType)
     }
 }
+
+/// The simulated navigation bar: its class name places its buttons in host chrome's
+/// navigation-bar area for accessibility and automation.
+final class SimulatorNavigationBarView: NSView {}

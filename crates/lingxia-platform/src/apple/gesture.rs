@@ -608,6 +608,8 @@ mod mac {
                 }
                 let here = if name.contains("Sidebar") {
                     "sidebar"
+                } else if name.contains("TabBar") {
+                    "tabBar"
                 } else if name.contains("Toolbar")
                     || name.contains("NavigationBar")
                     || name.contains("TitleBar")
@@ -655,6 +657,86 @@ mod mac {
                 for i in 0..count {
                     let child: *mut AnyObject = msg_send![subviews, objectAtIndex: i];
                     visit(child, content, content_height, flipped, here, scope, out);
+                }
+                // SwiftUI draws its controls without views; their accessibility elements stand in.
+                if name.contains("HostingView") && scope.as_deref().is_none_or(|s| s == here) {
+                    ax_visit(swiftui_elements(view), content, flipped, here, out);
+                }
+            }
+        }
+
+        /// A SwiftUI host's accessibility elements. SwiftUI builds them only once an assistive
+        /// client turns on `AXEnhancedUserInterface`; turning it on and back builds them at once,
+        /// and they stay.
+        unsafe fn swiftui_elements(view: *mut AnyObject) -> *mut AnyObject {
+            unsafe {
+                let children: *mut AnyObject = msg_send![view, accessibilityChildren];
+                let count: usize = if children.is_null() { 0 } else { msg_send![children, count] };
+                if count > 0 {
+                    return children;
+                }
+                let app: *mut AnyObject = msg_send![objc2::class!(NSApplication), sharedApplication];
+                let attribute = objc2_foundation::NSString::from_str("AXEnhancedUserInterface");
+                let previous: *mut AnyObject = msg_send![app, accessibilityAttributeValue: &*attribute];
+                let on = objc2_foundation::NSNumber::new_bool(true);
+                let _: () = msg_send![app, accessibilitySetValue: &*on, forAttribute: &*attribute];
+                let children: *mut AnyObject = msg_send![view, accessibilityChildren];
+                let restore = if previous.is_null() {
+                    objc2_foundation::NSNumber::new_bool(false)
+                } else {
+                    let was: bool = msg_send![previous, boolValue];
+                    objc2_foundation::NSNumber::new_bool(was)
+                };
+                let _: () = msg_send![app, accessibilitySetValue: &*restore, forAttribute: &*attribute];
+                children
+            }
+        }
+
+        /// Buttons among `elements` (an `NSArray` of accessibility elements), by their label and
+        /// screen frame converted into `content`.
+        unsafe fn ax_visit(
+            elements: *mut AnyObject,
+            content: *mut AnyObject,
+            flipped: bool,
+            area: &str,
+            out: &mut Vec<ChromeElement>,
+        ) {
+            unsafe {
+                if elements.is_null() {
+                    return;
+                }
+                let count: usize = msg_send![elements, count];
+                for i in 0..count {
+                    let element: *mut AnyObject = msg_send![elements, objectAtIndex: i];
+                    let role: *const AnyObject = msg_send![element, accessibilityRole];
+                    let role = string(role);
+                    if matches!(role.as_str(), "AXButton" | "AXRadioButton" | "AXTab") {
+                        let ax: *const AnyObject = msg_send![element, accessibilityLabel];
+                        let label = string(ax);
+                        if !label.trim().is_empty() {
+                            let screen: NSRect = msg_send![element, accessibilityFrame];
+                            let window: *mut AnyObject = msg_send![content, window];
+                            let in_window: NSRect = msg_send![window, convertRectFromScreen: screen];
+                            let rect: NSRect = msg_send![content, convertRect: in_window, fromView: std::ptr::null_mut::<AnyObject>()];
+                            let bounds: NSRect = msg_send![content, bounds];
+                            let top = if flipped {
+                                rect.origin.y
+                            } else {
+                                bounds.size.height - (rect.origin.y + rect.size.height)
+                            };
+                            let selected: bool = msg_send![element, isAccessibilitySelected];
+                            out.push(ChromeElement {
+                                label: label.trim().to_owned(),
+                                role: if area == "tabBar" { "tab".into() } else { "button".into() },
+                                scope: area.into(),
+                                selected,
+                                bounds: [rect.origin.x, top, rect.size.width, rect.size.height],
+                            });
+                            continue;
+                        }
+                    }
+                    let children: *mut AnyObject = msg_send![element, accessibilityChildren];
+                    ax_visit(children, content, flipped, area, out);
                 }
             }
         }

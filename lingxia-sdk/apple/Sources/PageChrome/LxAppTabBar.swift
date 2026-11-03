@@ -346,6 +346,8 @@ struct MacOSLxAppTabBar: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         .buttonStyle(PlainButtonStyle())
+        .accessibilityLabel(item.cachedText)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     /// First folded item index, or -1 when every item has its own slot.

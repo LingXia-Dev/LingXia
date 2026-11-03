@@ -1,8 +1,11 @@
 import AppKit
 
 /// Toolbar for simulator window - Xcode Simulator style
-/// Floating toolbar with device selector and window controls
+/// Floating toolbar with device selector and window controls. These are the simulator's own
+/// controls, not the simulated app's chrome: the runtime name keeps them out of the host
+/// chrome's navigation-bar area.
 @MainActor
+@objc(LXSimulatorDeviceControls)
 public class SimulatorToolbar: NSView {
     
     // MARK: - Layout Constants
