@@ -35,6 +35,8 @@ spec('a panel opens before its list scrolls and its list returns to the top befo
   await view.testId('lab-tab-gesture').click();
   const state = view.testId('lab-chain-state');
   await expect(state).toHaveText('at=1');
+  // On a phone the panel starts below the fold: scroll the page by a drag on plain text.
+  await view.drag(view.testId('lab-drag-state'), { dx: 0, dy: -300, durationMs: 600 });
   // One upward drag from inside the list: the panel opens fully, then the list scrolls.
   await view.drag(view.testId('lab-chain-row-2'), { dx: 0, dy: -300, durationMs: 800 });
   await expect(state).toHaveText('at=0');
@@ -63,4 +65,23 @@ spec('a sheet moves between its detents and closes when dragged off', { covers: 
   await view.drag(view.testId('lab-detents-title'), { dx: 0, dy: 600, durationMs: 500 });
   await expect(sheet).not.toBeAttached();
   await expect(state).toHaveText('open=false at=2 closed=1');
+});
+
+spec('a swipe row opens to its actions, deletes on a full swipe, and offers its actions to assistive tech', { covers: ['view:drag', 'view:a11y'], start: { page: 'view-lab' } }, async (t) => {
+  const view = t.app.view;
+  await view.testId('lab-tab-swipe').click();
+  const state = view.testId('lab-swipe-state');
+  await expect(state).toHaveText('rows=3 last=none');
+  // Closed, the controls behind a row are out of reach for assistive tech.
+  await expect(view.getByRole('button', { name: 'Delete' })).toHaveCount(0);
+  await view.drag(view.testId('lab-swipe-row-groceries'), { dx: -160, dy: 0, durationMs: 500 });
+  await view.testId('lab-swipe-delete-groceries').click();
+  await expect(state).toHaveText('rows=2 last=deleted Groceries');
+  // The same actions as a screen reader's rotor offers them.
+  await view.testId('lab-swipe-row-dentist').performAction('Archive');
+  await expect(state).toHaveText('rows=2 last=archived Dentist');
+  // A full swipe deletes: past half the row, it heads for its last point.
+  const { width } = await view.viewport();
+  await view.drag(view.testId('lab-swipe-row-rent'), { dx: -width * 0.85, dy: 0, durationMs: 500 });
+  await expect(state).toHaveText('rows=1 last=deleted Rent');
 });

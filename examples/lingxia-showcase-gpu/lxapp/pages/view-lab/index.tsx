@@ -10,7 +10,8 @@ const groups = {
   text: { label: 'Text', sections: [TextLayout, RichText, Selection] },
   input: { label: 'Input', sections: [Accessibility, Inputs, Controls, Focus, NestedControls, StateVariants] },
   overlay: { label: 'Overlay', sections: [Overlays] },
-  gesture: { label: 'Gesture', sections: [DragChain, Drag, Detents] },
+  gesture: { label: 'Gesture', sections: [Drag, DragChain, Detents] },
+  swipe: { label: 'Swipe', sections: [SwipeRows] },
 };
 type Group = keyof typeof groups;
 
@@ -18,7 +19,7 @@ export function render() {
   const group = useLocal<Group>('group', 'paint');
   return (
     <Page testId="view-lab">
-      <row className="gap-2">
+      <row className="gap-2 flex-wrap">
         {(Object.keys(groups) as Group[]).map(key => (
           <Button key={key} testId={`lab-tab-${key}`} size="sm" variant={group.value === key ? 'primary' : 'secondary'} onClick={() => group.set(key)}>
             {groups[key].label}
@@ -488,9 +489,9 @@ function DragChain() {
   const at = useLocal('chain-at', 1);
   return (
     <Section title="Drag and scroll" testId="lab-chain">
-      <view className="h-72 rounded-xl bg-surface-sunken overflow-hidden">
-        <column drag="y" dragSnapPoints={[0, 160]} bind={at} aria-label="Panel" data-testid="lab-chain-panel"
-          className="h-72 rounded-t-xl bg-surface-raised">
+      <view className="h-56 rounded-xl bg-surface-sunken overflow-hidden">
+        <column drag="y" dragSnapPoints={[0, 96]} bind={at} aria-label="Panel" data-testid="lab-chain-panel"
+          className="h-56 rounded-t-xl bg-surface-raised">
           <text data-testid="lab-chain-title" className="p-3 text-sm font-semibold">Pull up, then keep going</text>
           <scroll data-testid="lab-chain-list" className="grow basis-0">
             {Array.from({ length: 20 }, (_, i) => (
@@ -528,5 +529,47 @@ function Detents() {
         </scroll>
       </dialog>
     </Section>
+  );
+}
+
+// Rows that swipe open to Archive and Delete behind them; a full swipe deletes. Screen readers and
+// specs reach both as the row's own actions (`aria-actions`). The strip is exactly as wide as the
+// reveal (two 72 px actions = 144), so an open row shows no gap past its last action.
+
+function SwipeRows() {
+  const items = useLocal('swipe-items', ['Groceries', 'Dentist', 'Rent']);
+  const last = useLocal('swipe-last', 'none');
+  const remove = (item: string) => { items.set(items.value.filter(other => other !== item)); last.set(`deleted ${item}`); };
+  return (
+    <Section title="Swipe rows" testId="lab-swipe">
+      <column className="overflow-hidden bg-surface">
+        {items.value.map((item, index) => (
+          <Fragment key={item}>
+            {index > 0 && <view className="h-px bg-line" />}
+            <SwipeRow item={item} onOpen={() => last.set(`opened ${item}`)} onArchive={() => last.set(`archived ${item}`)} onDelete={() => remove(item)} />
+          </Fragment>
+        ))}
+      </column>
+      <text data-testid="lab-swipe-state" className="text-xs text-muted">{`rows=${items.value.length} last=${last.value}`}</text>
+    </Section>
+  );
+}
+
+function SwipeRow({ item, onOpen, onArchive, onDelete }: { item: string; onOpen: () => void; onArchive: () => void; onDelete: () => void }) {
+  const open = useLocal('open', 0);
+  const id = item.toLowerCase();
+  const strip = 'h-full items-center justify-center text-sm font-medium';
+  return (
+    <stack className="h-12">
+      <row className="absolute top-0 bottom-0 right-0 w-[144px]">
+        <button id={`archive-${id}`} data-testid={`lab-swipe-archive-${id}`} onClick={() => { open.set(0); onArchive(); }}
+          className={`${strip} w-[72px] bg-accent text-on-accent`}>Archive</button>
+        <button id={`delete-${id}`} data-testid={`lab-swipe-delete-${id}`} onClick={onDelete}
+          className={`${strip} w-[72px] bg-danger text-on-danger`}>Delete</button>
+      </row>
+      <button drag="x" dragSnapPoints={[0, -144, '-100%']} bind={open} aria-actions={`archive-${id} delete-${id}`}
+        data-testid={`lab-swipe-row-${id}`} onClick={onOpen} onDragEnd={({ index }) => { if (index === 2) onDelete(); }}
+        className="absolute inset-0 px-4 justify-center items-start text-start bg-surface text-sm text-text">{item}</button>
+    </stack>
   );
 }
