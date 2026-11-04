@@ -803,7 +803,7 @@ mod tests {
 
 #[cfg(all(test, feature = "runtime"))]
 mod action_script_tests {
-    use super::action_script;
+    use super::{action_script, split_action_error};
     use rong::{JSResult, Rong, RongJS, Source};
     use serde_json::{Value, json};
 
