@@ -425,7 +425,9 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
                 .is_some_and(|source| source.len() <= 1024 && drag(source)),
             "UI_PROP: invalid drag",
         ),
-        field::ENABLED => ensure(flag(value), "UI_PROP: invalid handle or flag"),
+        field::ENABLED | field::DRAG_SCRIM => {
+            ensure(flag(value), "UI_PROP: invalid handle or flag")
+        }
         // 1 takes close requests (Escape, back); 2 is a manual popover, which does not.
         field::TOP_LAYER => ensure(
             matches!(value.as_u64(), Some(1 | 2)),

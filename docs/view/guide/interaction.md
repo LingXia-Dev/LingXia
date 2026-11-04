@@ -194,6 +194,9 @@ export function render() {
   closes on a tap outside (the tap goes nowhere else), on Escape or Android back, and when another auto popover opens.
   Opened by its invoker it sits below it, flipping above when needed; `positionArea` (`top`,
   `bottom span-inline-start`, …) picks the side. `open` and `onToggle(open)` control it from state.
+- `<dialog drag="y" dragSnapPoints={[0, '50%', '100%']} bind={detent}>` is a sheet with detents. One
+  that comes to rest wholly off screen calls `onClose` (unless `closedby="none"`), and its scrim fades
+  with how much of it is on screen. Its `exit:` styles have nothing left to show by then.
 - `role="menu"` names a popover of actions; a `<button role="menuitem">` closes its popover after `onClick`.
 - At most 16 are open at once; another stays closed with a `UI_BUDGET` warning. A closed one renders
   nothing, so local state inside it resets.

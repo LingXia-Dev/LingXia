@@ -43,3 +43,19 @@ test('drag props are checked where they are written', () => {
     /out of range/);
   assert.throws(() => render(panel({ drag: 'x', bind: { value: 0 } })), /mounted number useLocal cell/);
 });
+
+test('a dialog that settles hidden closes; closedby="none" keeps it; its backdrop fades with it', () => {
+  reset();
+  let closes = 0;
+  const sheet = closedby => () => h('page', {}, h('dialog', { open: true, onClose: () => closes++, closedby, drag: 'y',
+    dragSnapPoints: [0, '100%'], 'aria-label': 'Filters', 'data-testid': 'sheet' }));
+  const nodes = render(sheet('any'));
+  assert.equal(byId(nodes, 'sheet-backdrop').props.dragScrim, 1);
+  dispatch(byId(nodes, 'sheet').props.onDragEvent, JSON.stringify({ phase: 'settle', index: 1, velocity: 0, hidden: false }));
+  assert.equal(closes, 0, 'only a hidden settle closes');
+  dispatch(byId(render(sheet('any')), 'sheet').props.onDragEvent, JSON.stringify({ phase: 'settle', index: 1, velocity: 0, hidden: true }));
+  assert.equal(closes, 1);
+  dispatch(byId(render(sheet('none')), 'sheet').props.onDragEvent, JSON.stringify({ phase: 'settle', index: 1, velocity: 0, hidden: true }));
+  assert.equal(closes, 1);
+  assert.equal(byId(render(() => h('page', {}, h('dialog', { open: true, 'aria-label': 'Plain', 'data-testid': 'p' }))), 'p-backdrop').props.dragScrim, undefined);
+});

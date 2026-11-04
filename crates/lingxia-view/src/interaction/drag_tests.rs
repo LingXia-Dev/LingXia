@@ -19,6 +19,7 @@ fn panel(index: usize) -> NodeSnapshot {
         handle: 7,
         duration: std::time::Duration::from_millis(300),
         bounce: 0.0,
+        hides: Vec::new(),
     });
     panel
 }
@@ -365,7 +366,29 @@ fn distance_past_the_points_passes_to_an_enclosing_scroll_and_across_its_axis_th
     present(&mut interaction, vec![outer, row], 2);
     interaction.pointer(pointer(PointerPhase::Down, 50.0, 0.0), page);
     interaction.pointer(pointer(PointerPhase::Move, 10.0, 0.0), page);
-    assert_eq!(scrolled(&interaction, "page"), 32.0, "only distance past slop");
+    assert_eq!(
+        scrolled(&interaction, "page"),
+        32.0,
+        "only distance past slop"
+    );
     assert!(events(&mut interaction).is_empty());
     assert!(interaction.can_scroll_vertically(-1));
+}
+
+#[test]
+fn a_settle_on_a_point_that_hides_the_element_says_so() {
+    let mut interaction = ViewInteraction::default();
+    let mut hidden = panel(0);
+    hidden.drag.as_mut().unwrap().hides = vec![false, false, true];
+    present(&mut interaction, vec![hidden], 1);
+    interaction.drag_settled("sheet", 2);
+    interaction.drag_settled("sheet", 1);
+    let settled = events(&mut interaction);
+    assert_eq!(
+        (
+            settled[0]["hidden"].as_bool(),
+            settled[1]["hidden"].as_bool()
+        ),
+        (Some(true), Some(false))
+    );
 }

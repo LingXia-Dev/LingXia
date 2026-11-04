@@ -168,13 +168,21 @@ impl ViewInteraction {
 
     fn drag_event(&mut self, phase: &str, index: usize, velocity: f32) {
         if let Some(identity) = self.gesture.drag.clone() {
-            self.drag_dispatch(&identity, phase, index, velocity);
+            self.drag_dispatch(&identity, phase, index, velocity, false);
         }
     }
 
     /// A release's spring landed on point `index`: the View learns it (and its `bind`).
     pub fn drag_settled(&mut self, identity: &str, index: usize) -> Vec<Effect> {
-        self.drag_dispatch(identity, "settle", index, 0.0);
+        let hidden = self.frame.as_ref().is_some_and(|frame| {
+            frame.index_of(identity).is_some_and(|node| {
+                frame.nodes[node]
+                    .drag
+                    .as_ref()
+                    .is_some_and(|drag| drag.hides.get(index) == Some(&true))
+            })
+        });
+        self.drag_dispatch(identity, "settle", index, 0.0, hidden);
         if self.dispatches.is_empty() {
             Vec::new()
         } else {
@@ -182,7 +190,14 @@ impl ViewInteraction {
         }
     }
 
-    fn drag_dispatch(&mut self, identity: &str, phase: &str, index: usize, velocity: f32) {
+    fn drag_dispatch(
+        &mut self,
+        identity: &str,
+        phase: &str,
+        index: usize,
+        velocity: f32,
+        hidden: bool,
+    ) {
         let Some(frame) = self.frame.as_ref() else {
             return;
         };
@@ -197,7 +212,7 @@ impl ViewInteraction {
         self.dispatches.push(Dispatch::DragEvent {
             commit: frame.commit,
             handle,
-            payload: serde_json::json!({"phase": phase, "index": index, "velocity": velocity})
+            payload: serde_json::json!({"phase": phase, "index": index, "velocity": velocity, "hidden": hidden})
                 .to_string(),
         });
     }

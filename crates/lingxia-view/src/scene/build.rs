@@ -1031,6 +1031,7 @@ impl Renderer {
                     drag_snapshot(source, record, [bounds[2], bounds[3]], directions[index])
                 }),
                 close_request: record.number(field::TOP_LAYER) == Some(1.0),
+                drag_scrim: record.number(field::DRAG_SCRIM) == Some(1.0),
                 plot_local: None,
                 data: record
                     .string(field::DATA_ATTRIBUTES)
@@ -1394,6 +1395,7 @@ fn drag_snapshot(
     (index < points.len()).then(|| crate::scene::node::DragSnapshot {
         duration,
         bounce,
+        hides: Vec::new(),
         axis: if horizontal {
             crate::scene::node::ScrollAxis::Horizontal
         } else {

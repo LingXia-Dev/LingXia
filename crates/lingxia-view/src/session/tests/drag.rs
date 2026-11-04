@@ -86,3 +86,26 @@ fn the_release_spring_is_the_elements_transition_timing() {
     assert_eq!(timing("a"), (500, 0.25));
     assert_eq!(timing("b"), (300, 0.0));
 }
+
+#[test]
+fn a_dragged_dialog_knows_which_points_hide_it_and_its_scrim_follows_how_much_shows() {
+    let module = super::source(
+        "function render(){return h('page',{},h('dialog',{open:true,onClose(){},closedby:'any','aria-label':'Sheet','data-testid':'sheet',drag:'y',dragSnapPoints:[0,'50%','100%'],style:{marginTop:'auto',marginBottom:0,height:100}},h('text',{},'Hi')))}",
+    );
+    let mut session = ViewSession::new(&module).unwrap();
+    let display = session.layout(100, 200, 1.0).unwrap();
+    let panel = display.nodes.iter().find(|n| n.test_id == "sheet").unwrap();
+    assert_eq!(panel.drag.as_ref().unwrap().hides, [false, false, true]);
+    let retained = &display.retained;
+    let scrim = retained
+        .nodes
+        .iter()
+        .position(|n| n.drag_scrim)
+        .expect("the backdrop fades");
+    let half = HashMap::from([(DragSnapshot::key(&panel.identity), 50.0)]);
+    let share = |offsets: &HashMap<String, f32>| {
+        retained.scrim_share(scrim, [0.0; 2], offsets, [0.0, 0.0, 100.0, 200.0])
+    };
+    assert_eq!(share(&HashMap::new()), 1.0);
+    assert!((share(&half) - 0.5).abs() < 1e-6);
+}

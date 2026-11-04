@@ -234,6 +234,7 @@ pub mod field {
     pub const ANCHOR_NAME: usize = 198;
     pub const DRAG: usize = 199;
     pub const ON_DRAG_EVENT: usize = 200;
+    pub const DRAG_SCRIM: usize = 201;
 }
 
 pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page", "span", "link", "select"];
@@ -441,6 +442,7 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("anchorName", "anchor"),
     ("drag", "drag"),
     ("onDragEvent", "handle"),
+    ("dragScrim", "flag"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -839,4 +841,5 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::BUTTON]), parent: None },
     FieldAdmission { tags: Some(&[tag::COLUMN, tag::ROW, tag::STACK, tag::GRID, tag::BUTTON]), parent: None },
     FieldAdmission { tags: Some(&[tag::COLUMN, tag::ROW, tag::STACK, tag::GRID, tag::BUTTON]), parent: None },
+    FieldAdmission { tags: Some(&[tag::BUTTON]), parent: None },
 ];

@@ -10,7 +10,7 @@ import { has, validInputText } from './data.js';
 import { fieldOptions } from '../generated/wire.js';
 import * as check from './validate.js';
 import { defaultSeries } from '../style/color.js';
-import { expand, invokerHandler, popoverScope } from './toplayer.js';
+import { expand, invokerHandler, popoverScope, dragClose, scrimMark } from './toplayer.js';
 
 const common = new Set(commonProps);
 const semanticStates = { pressed: 'statePressed', selected: 'stateSelected', expanded: 'stateExpanded', busy: 'stateBusy' };
@@ -281,6 +281,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   if (props.drag !== undefined) dragElement(tag, props, wire, on);
   else for (const key of ['dragSnapPoints', 'bind', 'onDragStart', 'onDragEnd'])
     if (props[key] !== undefined && !element.binding) throw Error(`UI_PROP: ${key} belongs to an element with drag`);
+  if (props[scrimMark]) wire('dragScrim', 1);
   if (tag === 'dialog') {
     if (props.role !== undefined) throw Error('UI_PROP: a <dialog> keeps its own role');
     if (!props.accessibilityLabel) throw Error('UI_A11Y: <dialog> needs an accessible name; add aria-label="…"');
@@ -544,12 +545,15 @@ function dragElement(tag, props, wire, on) {
   }
   if (!Number.isInteger(index) || index < 0 || index >= points.length) throw Error('UI_PROP: the bound snap index is out of range');
   wire('drag', JSON.stringify({ axis, points, index }));
+  const close = props[dragClose];
   on('onDragEvent', payload => {
     const event = JSON.parse(payload);
     if (event.phase === 'start') onDragStart?.();
     else if (event.phase === 'end') onDragEnd?.({ index: event.index, velocity: event.velocity });
     else if (event.phase === 'settle' && Number.isInteger(event.index) && event.index >= 0 && event.index < points.length) {
       if (cell !== undefined && cell.value !== event.index) cell.set(event.index);
+      // A dialog that came to rest wholly off screen is dismissed.
+      if (event.hidden === true) close?.();
     }
   }, 'text');
 }

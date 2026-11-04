@@ -513,6 +513,17 @@ impl RetainedLayout {
                     ))
                     .copied()
                     .unwrap_or_else(|| drag.rest());
+                let laid = shifted(self.nodes[index].bounds, translation, None);
+                let hides = drag
+                    .points
+                    .iter()
+                    .map(|point| {
+                        !overlaps(shifted(laid, [0.0; 2], Some((drag.axis, *point))), viewport)
+                    })
+                    .collect();
+                if let Some(composed) = nodes[index].drag.as_mut() {
+                    composed.hides = hides;
+                }
                 translation[drag.axis.index()] -= at;
             }
             let composed = blocked.as_ref().is_some_and(|blocked| blocked[index]);
@@ -590,9 +601,12 @@ impl RetainedLayout {
                     "UI_TRANSFORM: editors, scrolls and sliders cannot rotate or scale".into(),
                 );
             }
-            let alpha = visual
+            let mut alpha = visual
                 .and_then(|v| v.opacity.or(v.transition.opacity))
                 .unwrap_or(self.opacities[index] as f64);
+            if self.nodes[index].drag_scrim {
+                alpha *= self.scrim_share(index, translation, offsets, viewport);
+            }
             if !alpha.is_finite() || !(0.0..=1.0).contains(&alpha) {
                 return Err("UI_ANIMATION: invalid visual opacity".into());
             }
@@ -1283,5 +1297,72 @@ fn translation_of(
     crate::animation::transition::Decomposed {
         translate: t.translate,
         ..Default::default()
+    }
+}
+
+/// `bounds` less a composed `translation`, then moved `by` a drag offset along its axis.
+fn shifted(
+    bounds: [f32; 4],
+    translation: [f32; 2],
+    by: Option<(crate::scene::node::ScrollAxis, f32)>,
+) -> [f32; 4] {
+    let mut out = [
+        bounds[0] - translation[0],
+        bounds[1] - translation[1],
+        bounds[2],
+        bounds[3],
+    ];
+    if let Some((axis, offset)) = by {
+        out[axis.index()] += offset;
+    }
+    out
+}
+
+fn overlaps(a: [f32; 4], b: [f32; 4]) -> bool {
+    a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3]
+}
+
+/// The share of `bounds` inside `viewport`.
+fn on_screen(bounds: [f32; 4], viewport: [f32; 4]) -> f32 {
+    let w = (bounds[0] + bounds[2]).min(viewport[0] + viewport[2]) - bounds[0].max(viewport[0]);
+    let h = (bounds[1] + bounds[3]).min(viewport[1] + viewport[3]) - bounds[1].max(viewport[1]);
+    let area = bounds[2] * bounds[3];
+    if area <= 0.0 {
+        return 1.0;
+    }
+    (w.max(0.0) * h.max(0.0) / area).clamp(0.0, 1.0)
+}
+
+impl RetainedLayout {
+    /// How much of the dragged panel beside scrim `index` is on screen, against its most open point.
+    pub(crate) fn scrim_share(
+        &self,
+        index: usize,
+        translation: [f32; 2],
+        offsets: &HashMap<String, f32>,
+        viewport: [f32; 4],
+    ) -> f64 {
+        let parent = self.parents[index];
+        let Some(panel) = (0..self.nodes.len()).find(|candidate| {
+            self.parents[*candidate] == parent && self.nodes[*candidate].drag.is_some()
+        }) else {
+            return 1.0;
+        };
+        let node = &self.nodes[panel];
+        let drag = node.drag.as_ref().unwrap();
+        let at = offsets
+            .get(&crate::scene::node::DragSnapshot::key(&node.identity))
+            .copied()
+            .unwrap_or_else(|| drag.rest());
+        let laid = shifted(node.bounds, translation, None);
+        let open = on_screen(
+            shifted(laid, [0.0; 2], Some((drag.axis, drag.range().0))),
+            viewport,
+        );
+        let now = on_screen(shifted(laid, [0.0; 2], Some((drag.axis, at))), viewport);
+        if open <= 0.0 {
+            return 1.0;
+        }
+        f64::from((now / open).clamp(0.0, 1.0))
     }
 }

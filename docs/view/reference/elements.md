@@ -287,6 +287,11 @@ Children: any elements and text. Renders as `column`. May sit inside a composed 
 | `onClose` | `() => void` |  |
 | `closedby` | `"any" \| "closerequest" \| "none"` |  |
 | `aria-label` | `string` | yes |
+| `drag` | `"x" \| "y"` |  |
+| `dragSnapPoints` | `` readonly (number \| `${number}%`)[] `` |  |
+| `bind` | `Local<number>` |  |
+| `onDragStart` | `() => void` |  |
+| `onDragEnd` | `(info: { index: number; velocity: number }) => void` |  |
 
 ## `<plot>`
 

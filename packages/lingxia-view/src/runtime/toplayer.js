@@ -9,6 +9,10 @@ import { report } from './actions.js';
 
 /** Marks the panel a <dialog> or popover expands to, so resolution does not expand it again. */
 export const panelMark = Symbol('top-layer panel');
+/** A dialog's close, for its panel to call when dragged off screen. */
+export const dragClose = Symbol('drag close');
+/** Marks a backdrop that fades with how much of its dragged dialog is on screen. */
+export const scrimMark = Symbol('drag scrim');
 /** The popover ids a node sits inside, innermost last. */
 export const popoverScope = Symbol('popover scope');
 
@@ -91,8 +95,9 @@ function dialog(props, children, identity, parent) {
   return {
     node: layer(identity, env,
       h('button', { key: 'backdrop', 'aria-hidden': true, 'data-testid': testId && `${testId}-backdrop`, onClick: closedby === 'any' ? close : () => {},
+        ...(rest.drag !== undefined ? { [scrimMark]: true } : {}),
         style: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, ...backdrop } }),
-      h('dialog', { ...rest, key: 'panel', [panelMark]: true, [popoverScope]: parent.popovers ?? [], style: { ...placement(rest, env), ...rest.style } }, ...children)),
+      h('dialog', { ...rest, key: 'panel', [panelMark]: true, [popoverScope]: parent.popovers ?? [], ...(closedby === 'none' ? {} : { [dragClose]: close }), style: { ...placement(rest, env), ...rest.style } }, ...children)),
     finish: result => { result.wire.push(['topLayer', 1]); },
   };
 }

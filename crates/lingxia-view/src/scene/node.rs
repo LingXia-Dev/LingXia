@@ -23,6 +23,9 @@ pub struct NodeSnapshot {
     /// A top-layer box that takes close requests (a dialog, an auto popover).
     #[serde(skip)]
     pub close_request: bool,
+    /// A dialog backdrop whose opacity follows how much of its dragged panel is on screen.
+    #[serde(skip)]
+    pub drag_scrim: bool,
     pub identity: String,
     pub tag: &'static str,
     pub test_id: String,
@@ -122,6 +125,8 @@ pub struct DragSnapshot {
     /// The release spring: the element's `duration-*` and `ease-spring*` bounce.
     pub duration: std::time::Duration,
     pub bounce: f64,
+    /// Per point: resting there leaves no part of the element in the viewport (set by composition).
+    pub hides: Vec<bool>,
 }
 
 impl DragSnapshot {
