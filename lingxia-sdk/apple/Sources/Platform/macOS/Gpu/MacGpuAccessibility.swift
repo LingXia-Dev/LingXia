@@ -72,6 +72,8 @@ final class MacGpuAccessibilityElement: NSAccessibilityElement {
     let id: UInt32
     private let token: Int64
     private weak var page: GpuPageView?
+    private var dismissable = false
+    private var adjustable = (forward: false, backward: false)
 
     @MainActor init(page: GpuPageView, id: UInt32) {
         self.id = id
@@ -88,6 +90,16 @@ final class MacGpuAccessibilityElement: NSAccessibilityElement {
         setAccessibilityRole(Self.role(node))
         setAccessibilityEnabled(node.enabled)
         setAccessibilitySelected(node.selected == true || node.checked == true)
+        // A swipe row's `aria-actions`: the same actions VoiceOver's rotor and automation perform.
+        let token = self.token, id = self.id
+        setAccessibilityCustomActions(node.actions.compactMap { action in
+            guard action.kind == "custom", let label = action.label else { return nil }
+            let index = Double(action.index ?? 0)
+            return NSAccessibilityCustomAction(name: label) { gpuPageAccessibility(token, id, 14, index, "") }
+        })
+        dismissable = node.actions.contains { $0.kind == "dismiss" }
+        adjustable = (node.actions.contains { $0.kind == "scroll-forward" },
+                      node.actions.contains { $0.kind == "scroll-backward" })
         // Frames are in screen space; the node's bounds are in the page view's points.
         if let page, node.bounds.count == 4 {
             let local = NSRect(
@@ -140,6 +152,19 @@ final class MacGpuAccessibilityElement: NSAccessibilityElement {
     override func accessibilityPerformIncrement() -> Bool { send(4) }
 
     override func accessibilityPerformDecrement() -> Bool { send(5) }
+
+    /// Escape for assistive tech: an open dialog closes as its close request would.
+    override func accessibilityPerformCancel() -> Bool { dismissable && send(15) }
+
+    /// Only the actions the node has: AppKit would otherwise list every overridden one.
+    override func isAccessibilitySelectorAllowed(_ selector: Selector) -> Bool {
+        switch selector {
+        case #selector(accessibilityPerformCancel): return dismissable
+        case #selector(accessibilityPerformIncrement): return adjustable.forward
+        case #selector(accessibilityPerformDecrement): return adjustable.backward
+        default: return super.isAccessibilitySelectorAllowed(selector)
+        }
+    }
 
     override func isAccessibilityFocused() -> Bool { false }
 
