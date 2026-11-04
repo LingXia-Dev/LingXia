@@ -148,6 +148,23 @@ impl DragModel {
         true
     }
 
+    /// Move by `delta` without leaving the points; returns what is left over.
+    pub fn move_within(&mut self, identity: &str, delta: f32) -> f32 {
+        let Some(drag) = self.regions.get(identity) else {
+            return delta;
+        };
+        let (min, max) = drag.range();
+        let offset = self.offset(identity);
+        if !delta.is_finite() || offset < min - 0.01 || offset > max + 0.01 {
+            // Already stretched past an end: the stretch is the element's alone.
+            self.drag_by(identity, delta);
+            return 0.0;
+        }
+        let after = (offset + delta).clamp(min, max);
+        self.offsets.insert(identity.to_owned(), after);
+        delta - (after - offset)
+    }
+
     /// The finger let go with `velocity` (logical px/s, screen direction); `fling` is the
     /// least speed that carries it at least one point on.
     pub fn release(&mut self, identity: &str, velocity: f32, fling: f32) -> Option<Release> {

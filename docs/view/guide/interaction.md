@@ -147,6 +147,11 @@ export function render() {
 - `onDragStart()` runs once the finger has moved past slop on the element's axis (a press inside it is
   cancelled then); `onDragEnd({ index, velocity })` on release, with the point it heads for and px/s.
 - A finger on a moving element catches it where it is.
+- With a scroll inside on the same axis, a drag from inside it moves toward the element's lowest
+  offset (opening a sheet) before the scroll scrolls, and back toward the scroll's start before the
+  element closes, all in one gesture; the release flicks whichever moved last. `overscroll-contain`
+  on the inner scroll keeps the gesture to the scroll. Distance past the element's points passes to a
+  scroll around it on the same axis; a finger across the axis scrolls as if the element were not there.
 - It needs `aria-label` (a `<button>` is named by its content). Screen readers announce it as an
   adjustable whose value is its point, 1 to the number of points; increment and decrement step it.
   Focused, the arrow keys on its axis, Home and End do the same. Automation reads the point as the

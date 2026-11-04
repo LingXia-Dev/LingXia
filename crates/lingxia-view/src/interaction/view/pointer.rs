@@ -140,7 +140,27 @@ impl ViewInteraction {
                     } else {
                         ScrollAxis::Vertical
                     };
-                    if self.drag.axis(&identity) == Some(axis) {
+                    let prefix = format!("{identity}/");
+                    let inner = self
+                        .scroll
+                        .target_for_axis(self.gesture.target.as_deref(), axis)
+                        .filter(|region| {
+                            frame.nodes.iter().any(|node| {
+                                node.scroll.as_ref().is_some_and(|s| &s.id == region)
+                                    && node.identity.starts_with(&prefix)
+                            })
+                        });
+                    // An `overscroll-contain` scroll inside keeps the gesture to itself.
+                    let contained = inner
+                        .as_deref()
+                        .is_some_and(|region| self.scroll.contains_region(region));
+                    if self.drag.axis(&identity) == Some(axis) && !contained {
+                        let outer = frame
+                            .index_of(&identity)
+                            .and_then(|index| frame.nodes[index].scroll_parent.clone())
+                            .and_then(|parent| self.scroll.target_for_axis(Some(&parent), axis));
+                        self.gesture.inner = inner;
+                        self.gesture.outer = outer;
                         self.gesture.axis = Some(axis);
                         self.gesture.target = None;
                         self.gesture.dragging = true;
@@ -188,7 +208,7 @@ impl ViewInteraction {
                     };
                     let finger = (position - self.gesture.last) / scale;
                     self.gesture.last = position;
-                    self.drag.drag_by(&identity, finger);
+                    self.chain(&identity, finger);
                     effects.push(Effect::Redraw);
                     return (true, effects);
                 }
@@ -241,10 +261,25 @@ impl ViewInteraction {
                         Some(ScrollAxis::Horizontal) => event.velocity[0],
                         _ => event.velocity[1],
                     } / scale;
-                    if let Some(release) =
-                        self.drag
-                            .release(&identity, velocity, event.min_fling / scale)
-                    {
+                    // A flick while a scroll moved last is that scroll's; the element rests.
+                    let flung = self
+                        .gesture
+                        .mover
+                        .clone()
+                        .filter(|_| velocity.abs() >= event.min_fling / scale);
+                    if let Some(region) = flung.clone() {
+                        effects.push(Effect::Fling {
+                            region,
+                            horizontal: self.gesture.axis == Some(ScrollAxis::Horizontal),
+                            velocity: -velocity * scale,
+                        });
+                    }
+                    let (velocity, fling) = if flung.is_some() {
+                        (0.0, f32::INFINITY)
+                    } else {
+                        (velocity, event.min_fling / scale)
+                    };
+                    if let Some(release) = self.drag.release(&identity, velocity, fling) {
                         self.drag_event("end", release.index, velocity);
                         effects.push(Effect::Dispatch);
                     }
@@ -361,9 +396,51 @@ impl ViewInteraction {
         effects
     }
 
+    /// One finger step through the chain: toward expansion (a lower offset) the element moves
+    /// first and its inner scroll takes the rest; toward collapse the inner scroll goes first.
+    /// Distance past the points passes to an enclosing scroll, else the element stretches.
+    fn chain(&mut self, identity: &str, finger: f32) {
+        let mut rest = finger;
+        let inner = self.gesture.inner.clone();
+        let scroll = |model: &mut ScrollModel, region: &Option<String>, rest: &mut f32| {
+            let Some(region) = region else { return None };
+            let took = -model.drag_region(region, -*rest);
+            *rest -= took;
+            (took != 0.0).then(|| region.clone())
+        };
+        let mut mover = None;
+        if rest > 0.0 {
+            mover = scroll(&mut self.scroll, &inner, &mut rest);
+        }
+        let left = self.drag.move_within(identity, rest);
+        if left != rest {
+            mover = None;
+        }
+        rest = left;
+        if rest < 0.0
+            && let Some(region) = scroll(&mut self.scroll, &inner, &mut rest)
+        {
+            mover = Some(region);
+        }
+        if rest.abs() > 0.001 {
+            let outer = self.gesture.outer.clone();
+            if let Some(region) = scroll(&mut self.scroll, &outer, &mut rest) {
+                mover = Some(region);
+            }
+        }
+        if rest.abs() > 0.001 {
+            self.drag.drag_by(identity, rest);
+            mover = None;
+        }
+        if finger != 0.0 {
+            self.gesture.mover = mover;
+        }
+    }
+
     /// Whether a vertical gesture can still scroll content, for host pull-to-refresh arbitration.
     pub fn can_scroll_vertically(&self, direction: i32) -> bool {
         self.gesture.long_pressed
+            || self.gesture.holding
             || self.slider.dragging()
             || self.scroll.can_scroll(
                 self.gesture.target.as_deref(),

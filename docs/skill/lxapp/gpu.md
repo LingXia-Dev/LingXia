@@ -61,6 +61,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   finger move an element; it springs (its `transition-transform duration-* ease-spring*`) to the nearest point, a flick one on.
   `bind={cell}` is the point's index (setting it springs there), `onDragStart()`, `onDragEnd({ index, velocity })`.
   Needs `aria-label`: screen readers and arrow keys step it; specs read the point as `toHaveValue('1')`.
+  A same-axis scroll inside it scrolls only once it is fully open (lowest offset) and returns to its top before it closes.
 - No other pointer, swipe, pinch or long-press handlers and no drag-and-drop.
 - `<vector paths gradients>`: paths take SVG `transform`, caps, joins, dash offset and
   `fill`/`stroke: 'url(#id)'` naming a `gradients` entry (linear, radial or conic, ≤8).

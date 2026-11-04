@@ -59,7 +59,7 @@ pub(crate) fn node(identity: &str, tag: &'static str, bounds: [f32; 4]) -> NodeS
     }
 }
 
-fn region(id: &str, parent: Option<&str>, offset: f32, max: f32) -> ScrollSnapshot {
+pub(crate) fn region(id: &str, parent: Option<&str>, offset: f32, max: f32) -> ScrollSnapshot {
     ScrollSnapshot {
         rtl: false,
         contain: false,

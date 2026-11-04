@@ -174,6 +174,32 @@ impl ScrollModel {
         changed
     }
 
+    /// Move region `id` alone by a finger distance (as `drag_by`); returns the distance it took.
+    pub fn drag_region(&mut self, id: &str, delta: f32) -> f32 {
+        let Some(region) = self.regions.get(id) else {
+            return 0.0;
+        };
+        if !delta.is_finite() {
+            return 0.0;
+        }
+        let sign = if region.rtl { -1.0 } else { 1.0 };
+        let before = self.offset(id);
+        let after = (before + sign * delta).clamp(0.0, region.max_offset.max(0.0));
+        if after == before {
+            return 0.0;
+        }
+        if !region.snap.is_empty() {
+            self.moved_snaps.insert(id.to_owned());
+        }
+        self.offsets.insert(id.to_owned(), after);
+        self.revision += 1;
+        sign * (after - before)
+    }
+
+    pub fn contains_region(&self, id: &str) -> bool {
+        self.regions.get(id).is_some_and(|region| region.contain)
+    }
+
     /// Whether a region or an ancestor on `axis` can still move in `direction`.
     pub fn can_scroll<'a>(
         &'a self,

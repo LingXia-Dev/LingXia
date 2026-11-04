@@ -257,3 +257,115 @@ fn an_element_that_enters_rests_on_its_point_and_one_point_is_not_steppable() {
     assert_eq!(model.offset("sheet"), 40.0);
     assert!(model.step("sheet", 1).is_none() && !super::frame::draggable(&only));
 }
+
+/// The panel at its middle point, holding a list that scrolls 300 on the same axis.
+fn sheet_with_list(contain: bool) -> Vec<NodeSnapshot> {
+    let mut list = node("sheet/list", "scroll", [0.0, 0.0, 100.0, 200.0]);
+    let mut region = super::policy_tests::region("list", None, 0.0, 300.0);
+    region.contain = contain;
+    list.scroll = Some(region);
+    vec![panel(1), list]
+}
+
+fn scrolled(interaction: &ViewInteraction, id: &str) -> f32 {
+    interaction.scroll().offset(id)
+}
+
+#[test]
+fn expanding_moves_the_element_first_and_collapsing_the_inner_scroll_first_in_one_gesture() {
+    let mut interaction = ViewInteraction::default();
+    let page = PageTicket::new(1);
+    present(&mut interaction, sheet_with_list(false), 1);
+    interaction.pointer(pointer(PointerPhase::Down, 150.0, 0.0), page);
+    interaction.pointer(pointer(PointerPhase::Move, 130.0, 0.0), page);
+    assert_eq!(
+        (offset(&interaction), scrolled(&interaction, "list")),
+        (88.0, 0.0)
+    );
+    assert_eq!(events(&mut interaction)[0]["phase"], "start");
+    // Fully open, the rest of the same move scrolls the list.
+    interaction.pointer(pointer(PointerPhase::Move, 30.0, 0.0), page);
+    assert_eq!(
+        (offset(&interaction), scrolled(&interaction, "list")),
+        (0.0, 12.0)
+    );
+    // Back down: the list returns to its top before the element follows.
+    interaction.pointer(pointer(PointerPhase::Move, 60.0, 0.0), page);
+    assert_eq!(
+        (offset(&interaction), scrolled(&interaction, "list")),
+        (18.0, 0.0)
+    );
+    interaction.pointer(pointer(PointerPhase::Up, 60.0, 0.0), page);
+    assert_eq!(settle(&mut interaction), [0]);
+}
+
+#[test]
+fn a_release_while_the_inner_scroll_moves_flings_the_scroll_and_rests_the_element() {
+    let mut interaction = ViewInteraction::default();
+    let page = PageTicket::new(1);
+    present(&mut interaction, sheet_with_list(false), 1);
+    interaction.pointer(pointer(PointerPhase::Down, 150.0, 0.0), page);
+    interaction.pointer(pointer(PointerPhase::Move, 130.0, 0.0), page);
+    interaction.pointer(pointer(PointerPhase::Move, 20.0, 0.0), page);
+    let (_, effects) = interaction.pointer(pointer(PointerPhase::Up, 20.0, -900.0), page);
+    assert!(effects.contains(&Effect::Fling {
+        region: "list".into(),
+        horizontal: false,
+        velocity: 900.0
+    }));
+    assert_eq!(
+        settle(&mut interaction),
+        [0],
+        "the flick went to the list, not the element"
+    );
+}
+
+#[test]
+fn a_contained_inner_scroll_keeps_the_gesture() {
+    let mut interaction = ViewInteraction::default();
+    let page = PageTicket::new(1);
+    present(&mut interaction, sheet_with_list(true), 1);
+    interaction.pointer(pointer(PointerPhase::Down, 150.0, 0.0), page);
+    interaction.pointer(pointer(PointerPhase::Move, 100.0, 0.0), page);
+    assert_eq!(
+        (offset(&interaction), scrolled(&interaction, "list")),
+        (100.0, 42.0)
+    );
+    assert!(events(&mut interaction).is_empty());
+}
+
+#[test]
+fn distance_past_the_points_passes_to_an_enclosing_scroll_and_across_its_axis_the_element_stays() {
+    let mut interaction = ViewInteraction::default();
+    let page = PageTicket::new(1);
+    let mut outer = node("page", "scroll", [0.0, 0.0, 100.0, 400.0]);
+    outer.scroll = Some(super::policy_tests::region("page", None, 0.0, 500.0));
+    let mut inside = panel(1);
+    inside.identity = "page/sheet".into();
+    inside.scroll_parent = Some("page".into());
+    present(&mut interaction, vec![outer.clone(), inside.clone()], 1);
+    interaction.pointer(pointer(PointerPhase::Down, 150.0, 0.0), page);
+    interaction.pointer(pointer(PointerPhase::Move, 130.0, 0.0), page);
+    interaction.pointer(pointer(PointerPhase::Move, 30.0, 0.0), page);
+    let at = interaction.offsets()[&DragSnapshot::key("page/sheet")];
+    assert_eq!((at, scrolled(&interaction, "page")), (0.0, 12.0));
+    interaction.pointer(pointer(PointerPhase::Up, 30.0, 0.0), page);
+    interaction.take_drag_releases();
+    interaction.take_dispatch();
+
+    // A row that drags sideways inside a vertical list: a vertical finger scrolls the list.
+    let mut row = node("page/row", "button", [0.0, 0.0, 100.0, 60.0]);
+    row.on_click = Some(3);
+    row.scroll_parent = Some("page".into());
+    row.accessibility_label = Some("Row".into());
+    row.drag = Some(DragSnapshot {
+        axis: ScrollAxis::Horizontal,
+        ..panel(0).drag.unwrap()
+    });
+    present(&mut interaction, vec![outer, row], 2);
+    interaction.pointer(pointer(PointerPhase::Down, 50.0, 0.0), page);
+    interaction.pointer(pointer(PointerPhase::Move, 10.0, 0.0), page);
+    assert_eq!(scrolled(&interaction, "page"), 32.0, "only distance past slop");
+    assert!(events(&mut interaction).is_empty());
+    assert!(interaction.can_scroll_vertically(-1));
+}

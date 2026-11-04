@@ -66,6 +66,10 @@ struct Gesture {
     /// The innermost `drag` element under the press, and whether the finger moves it.
     drag: Option<String>,
     holding: bool,
+    /// Same-axis scrolls inside and around the held element, and the one that moved last.
+    inner: Option<String>,
+    outer: Option<String>,
+    mover: Option<String>,
     /// A finger or button is down.
     touching: bool,
 }
