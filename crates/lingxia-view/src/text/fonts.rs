@@ -1,6 +1,8 @@
 //! System font fallback chains read from the platform's font configuration.
 use parley::FontContext;
-use parley::fontique::{Collection, FallbackKey, GenericFamily, Language, Script};
+/// The families [`SystemFonts::with_generic`] names.
+pub use parley::fontique::GenericFamily;
+use parley::fontique::{Collection, FallbackKey, Language, Script};
 use skrifa::{FontRef, MetadataProvider, string::StringId};
 use std::path::Path;
 use std::sync::OnceLock;
@@ -14,6 +16,8 @@ pub struct SystemFonts {
     files: Vec<std::path::PathBuf>,
     /// Fallback faces in those files by PostScript name, per language tag.
     faces: Vec<(String, String)>,
+    /// Faces in those files that stand for a generic family, by PostScript name.
+    generics: Vec<(GenericFamily, String)>,
 }
 
 /// Languages whose script needs its own fallback face: a sample of the script, then named
@@ -96,6 +100,21 @@ impl SystemFonts {
         fonts
     }
 
+    /// Names `postscript` in `file` as `family`'s face, ahead of any the system collection has:
+    /// a platform without a system collection (OHOS) has no default face otherwise.
+    pub fn with_generic(
+        mut self,
+        family: GenericFamily,
+        file: std::path::PathBuf,
+        postscript: String,
+    ) -> Self {
+        if !self.files.contains(&file) {
+            self.files.push(file);
+        }
+        self.generics.push((family, postscript));
+        self
+    }
+
     /// fontique maps only lang families whose faces carry a postScriptName, so
     /// vendor CJK families fall through to tofu; this names every face from its file.
     pub fn from_android_xml(xml: &str, dir: &Path) -> Self {
@@ -175,6 +194,24 @@ impl SystemFonts {
             Some((lang, collection.family_by_name(name).map(|f| f.id())?))
         });
         let chain: Vec<_> = faces.chain(named).map(|(l, id)| (l.clone(), id)).collect();
+        let mut generics: Vec<(GenericFamily, Vec<parley::fontique::FamilyId>)> = Vec::new();
+        for (family, face) in &self.generics {
+            let Some(id) = by_postscript.get(face).copied() else {
+                log::warn!(target: "lingxia_view", "UI_FONT: no face {face} for {family:?}");
+                continue;
+            };
+            match generics.iter_mut().find(|(f, _)| f == family) {
+                Some((_, ids)) => ids.push(id),
+                None => generics.push((*family, vec![id])),
+            }
+        }
+        for (family, ids) in generics {
+            let rest: Vec<_> = collection
+                .generic_families(family)
+                .filter(|id| !ids.contains(id))
+                .collect();
+            collection.set_generic_families(family, ids.into_iter().chain(rest));
+        }
         for (lang, id) in chain {
             for (script, locale) in keys(&lang) {
                 collection.append_fallbacks(

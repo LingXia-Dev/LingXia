@@ -287,3 +287,64 @@ fn an_hvgl_face_shapes_and_draws_through_platform_outlines() {
     }
     assert_eq!(drawn, 5);
 }
+
+/// A generic family named by file is the default face where no system collection has one.
+#[test]
+fn a_generic_family_by_file_is_the_default_face() {
+    let path = Path::new("/System/Library/Fonts/Supplemental/Arial.ttf");
+    let Ok(data) = std::fs::read(path) else {
+        eprintln!("skipped: host fonts unavailable");
+        return;
+    };
+    let postscript = postscript_name(&data, 0).expect("Arial has a PostScript name");
+    let mut fonts = FontContext {
+        collection: Collection::new(CollectionOptions {
+            shared: false,
+            system_fonts: false,
+        }),
+        source_cache: Default::default(),
+    };
+    assert!(
+        fonts
+            .collection
+            .generic_families(GenericFamily::SansSerif)
+            .next()
+            .is_none()
+    );
+    SystemFonts::default()
+        .with_generic(
+            GenericFamily::SansSerif,
+            path.to_path_buf(),
+            postscript.clone(),
+        )
+        .with_generic(
+            GenericFamily::SansSerif,
+            path.to_path_buf(),
+            "Missing-Regular".into(),
+        )
+        .apply(&mut fonts.collection);
+    let ids: Vec<_> = fonts
+        .collection
+        .generic_families(GenericFamily::SansSerif)
+        .collect();
+    assert_eq!(ids.len(), 1, "the missing face is skipped");
+    let mut layouts = LayoutContext::<()>::new();
+    let text = "Home";
+    let mut builder = layouts.ranged_builder(&mut fonts, text, 1.0, true);
+    builder.push_default(Generic::SansSerif);
+    let mut layout = builder.build(text);
+    layout.break_all_lines(None);
+    let glyphs: Vec<u32> = layout
+        .lines()
+        .flat_map(|line| line.items().collect::<Vec<_>>())
+        .filter_map(|item| match item {
+            parley::PositionedLayoutItem::GlyphRun(run) => {
+                Some(run.glyphs().map(|g| g.id).collect::<Vec<_>>())
+            }
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    assert_eq!(glyphs.len(), 4);
+    assert!(glyphs.iter().all(|id| *id != 0), "no notdef glyphs");
+}
