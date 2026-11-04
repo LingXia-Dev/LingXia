@@ -517,6 +517,14 @@ fn transition(value: &Value) -> Result<(), String> {
                     .iter()
                     .all(|p| p.as_f64().is_some_and(f64::is_finite))
         }
+        // `ease-spring*`: a bounce, as the runtime lowers it.
+        Some(Value::Object(spring)) => {
+            spring.len() == 1
+                && spring
+                    .get("spring")
+                    .and_then(Value::as_f64)
+                    .is_some_and(|bounce| (0.0..=0.9).contains(&bounce))
+        }
         _ => false,
     };
     ensure(

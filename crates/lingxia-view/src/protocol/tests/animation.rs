@@ -61,3 +61,25 @@ fn aggregate_animation_payload_is_bounded_before_layout() {
     let error = decode(&buffer).err().unwrap();
     assert!(error.contains("page payload budget"), "{error}");
 }
+
+#[test]
+fn a_transition_takes_a_spring_easing_by_bounce() {
+    let transition = |easing: Value| {
+        let source =
+            json!({"properties": ["transform"], "durationMs": 300, "delayMs": 0, "easing": easing});
+        decode(
+            json!([0, -1, "", "", "", 1, field::TRANSITION, source.to_string()])
+                .as_array()
+                .unwrap(),
+        )
+    };
+    assert!(transition(json!({"spring": 0.25})).is_ok());
+    assert!(transition(json!({"spring": 0})).is_ok());
+    for bad in [
+        json!({"spring": 1.0}),
+        json!({"spring": "0.2"}),
+        json!({"spring": 0.2, "x": 1}),
+    ] {
+        assert!(transition(bad).is_err());
+    }
+}
