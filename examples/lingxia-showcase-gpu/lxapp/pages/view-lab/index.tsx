@@ -10,6 +10,7 @@ const groups = {
   text: { label: 'Text', sections: [TextLayout, RichText, Selection] },
   input: { label: 'Input', sections: [Accessibility, Inputs, Controls, Focus, NestedControls, StateVariants] },
   overlay: { label: 'Overlay', sections: [Overlays] },
+  gesture: { label: 'Gesture', sections: [Drag, DragChain, Detents] },
 };
 type Group = keyof typeof groups;
 
@@ -456,6 +457,75 @@ function Overlays() {
           {Array.from({ length: 12 }, (_, i) => <text key={`f${i}`} className="py-2 text-sm">{`Filter ${i + 1}`}</text>)}
         </scroll>
         <Button testId="lab-sheet-apply" onClick={() => { act('apply'); sheet.set(false); }}>Apply</Button>
+      </dialog>
+    </Section>
+  );
+}
+
+// A card the finger moves along its track: it springs to the nearest of three points, a flick
+// carries it one on; arrows and assistive tech step it, and `bind` follows where it lands.
+function Drag() {
+  const at = useLocal('drag-at', 0);
+  const last = useLocal('drag-last', 'none');
+  return (
+    <Section title="Drag" testId="lab-drag">
+      <view className="h-20 rounded-xl bg-surface-sunken p-2">
+        <view drag="x" dragSnapPoints={[0, 112, 224]} bind={at} aria-label="Card" data-testid="lab-drag-card"
+          onDragStart={() => last.set('dragging')} onDragEnd={({ index }) => last.set(`released at ${index}`)}
+          className="w-20 h-16 rounded-lg bg-accent items-center justify-center">
+          <text className="text-sm text-on-accent">Drag</text>
+        </view>
+      </view>
+      <text data-testid="lab-drag-state" className="text-xs text-muted tabular-nums">{`at=${at.value} last=${last.value}`}</text>
+      <Button testId="lab-drag-reset" size="sm" variant="secondary" onClick={() => at.set(0)}>Back to start</Button>
+    </Section>
+  );
+}
+
+// A panel holding a list: pulled up it opens before the list scrolls; pulled down from the list,
+// the list returns to its top before the panel closes, all in one gesture.
+function DragChain() {
+  const at = useLocal('chain-at', 1);
+  return (
+    <Section title="Drag and scroll" testId="lab-chain">
+      <view className="h-72 rounded-xl bg-surface-sunken overflow-hidden">
+        <column drag="y" dragSnapPoints={[0, 160]} bind={at} aria-label="Panel" data-testid="lab-chain-panel"
+          className="h-72 rounded-t-xl bg-surface-raised">
+          <text data-testid="lab-chain-title" className="p-3 text-sm font-semibold">Pull up, then keep going</text>
+          <scroll data-testid="lab-chain-list" className="grow basis-0">
+            {Array.from({ length: 20 }, (_, i) => (
+              <text key={`c${i}`} data-testid={`lab-chain-row-${i + 1}`} className="px-3 py-2 text-sm border-b border-line">{`Item ${i + 1}`}</text>
+            ))}
+          </scroll>
+        </column>
+      </view>
+      <text data-testid="lab-chain-state" className="text-xs text-muted tabular-nums">{`at=${at.value}`}</text>
+    </Section>
+  );
+}
+
+// A sheet with detents: dragged between half and full height, dragged off it closes, and its scrim
+// fades with how much of it is on screen. Its list scrolls once the sheet is fully open.
+function Detents() {
+  const open = useLocal('detents-open', false);
+  const detent = useLocal('detents-at', 1);
+  const closed = useLocal('detents-closed', 0);
+  const safeBottom = useView().env.safeArea?.bottom ?? 0;
+  return (
+    <Section title="Sheet detents" testId="lab-detents">
+      <row className="gap-2 items-center">
+        <Button testId="lab-detents-open" onClick={() => { detent.set(1); open.set(true); }}>Open sheet</Button>
+        <text data-testid="lab-detents-state" className="text-xs text-muted tabular-nums">{`open=${open.value} at=${detent.value} closed=${closed.value}`}</text>
+      </row>
+      <dialog open={open.value} onClose={() => { closed.set(closed.value + 1); open.set(false); }} closedby="any" aria-label="Places"
+        drag="y" dragSnapPoints={[0, '45%', '100%']} bind={detent} data-testid="lab-detents-sheet"
+        style={{ paddingBottom: 16 + safeBottom }}
+        className="mt-auto mb-0 w-full h-[85dvh] p-4 gap-3 rounded-t-3xl bg-surface-raised transition-transform duration-300 ease-spring starting:translate-y-full exit:translate-y-full">
+        <spacer className="self-center w-10 h-1 rounded-full bg-line-strong" />
+        <text data-testid="lab-detents-title" role="heading" headingLevel={3} className="text-base font-semibold">Places</text>
+        <scroll data-testid="lab-detents-list" className="grow basis-0">
+          {Array.from({ length: 30 }, (_, i) => <text key={`p${i}`} data-testid={`lab-detents-row-${i + 1}`} className="py-2 text-sm">{`Place ${i + 1}`}</text>)}
+        </scroll>
       </dialog>
     </Section>
   );
