@@ -215,6 +215,10 @@ export struct LxAppNavigation {
     try {
       const current: CurrentLxApp = getCurrentLxapp();
       if (current && current.appid && current.appid.length > 0) {
+        if (LxAppContainer.closeGpuTopLayer(current.appid)) {
+          this.lastBackHandledAt = now;
+          return true;
+        }
         hilog.info(DOMAIN, TAG, `Forwarding system back press to ${current.appid}`);
         const handled: boolean = onLxappEvent(current.appid, UiEventType.BackPress, '');
         if (handled) {

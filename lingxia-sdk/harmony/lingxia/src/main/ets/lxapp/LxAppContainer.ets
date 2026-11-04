@@ -20,12 +20,12 @@ import {
 } from './WebViewBridge';
 import { LingXiaWebView } from './LingXiaWebView';
 import { GpuPage } from '../view/GpuPage';
-import { GpuPageModel, GpuPages } from '../view/GpuPages';
+import { GpuChrome, GpuPageModel, GpuPages } from '../view/GpuPages';
 import { NavigationBar, NavigationBarState, NAVBAR_TOTAL_HEIGHT, isColorDark } from './NavigationBar';
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';
 import { TabBar, tabBarExtraBottomHeight } from './TabBar';
 import { TabBarPosition, TabBarItem, UiEventType } from 'liblingxia.so';
-import liblingxia, { TabBarState, getNavigationBarState, isPullDownRefreshEnabled, onPageShow, onLxappEvent, setSurfaceViewport, setSurfaceWidth, pageBackgroundColor, refreshIndicatorColor, syncLxappHostUI } from 'liblingxia.so';
+import liblingxia, { gpuPageCloseRequest, TabBarState, getNavigationBarState, isPullDownRefreshEnabled, onPageShow, onLxappEvent, setSurfaceViewport, setSurfaceWidth, pageBackgroundColor, refreshIndicatorColor, syncLxappHostUI } from 'liblingxia.so';
 import { notePageOrigin, setCapsuleGeometryListener } from './capsuleGeometry';
 import { NAVIGATION_ACTION_BACK, NAVIGATION_ACTION_HOME, CAPSULE_ACTION_CLOSE } from '../app/NativeBridge';
 import { AnimationType, EDGE_BACK_SWIPE_ZONE_WIDTH_VP } from './LxAppNavigation';
@@ -174,6 +174,13 @@ export struct LxAppContainer {
   @State gpuPages: Map<string, GpuPageModel> = new Map()
   private gpuCreated = (page: GpuPageModel): void => this.handleGpuPage('create', page);
   private gpuDisposed = (page: GpuPageModel): void => this.handleGpuPage('destroy', page);
+  /** Bumped when a GPU page of this app changes its chrome, so the bars re-read it. */
+  @State gpuChromeRevision: number = 0
+  private gpuChanged = (page: GpuPageModel): void => {
+    if (page.appId === this.appId) {
+      this.gpuChromeRevision += 1;
+    }
+  };
   @State presentationOverlayWebTag: string = '' // WebView tag currently displayed in presentation (may include #instance suffix)
   @State private presentationPreviousWebTag: string = '' // Previously focused WebView before presentation took focus
   @State overlayActive: boolean = false
@@ -368,6 +375,7 @@ export struct LxAppContainer {
 
     GpuPages.onCreated(this.gpuCreated);
     GpuPages.onDisposed(this.gpuDisposed);
+    GpuPages.onChanged(this.gpuChanged);
     GpuPages.all().forEach((page: GpuPageModel) => this.handleGpuPage('create', page));
 
     this.startKeyboardMonitor();
@@ -406,6 +414,7 @@ export struct LxAppContainer {
   aboutToDisappear() {
     GpuPages.off(this.gpuCreated);
     GpuPages.off(this.gpuDisposed);
+    GpuPages.off(this.gpuChanged);
     // Unregister this container
     LxAppContainer.activeContainers.delete(this.appId);
     if (LxAppContainer.statusBarOwner === this) {
@@ -1027,6 +1036,8 @@ export struct LxAppContainer {
           refreshKey: key,
           pageCanvasColor: resolveCanvasColor(this.appearanceDark),
           bottomInset: this.isTabBarVertical() ? 0 : this.bottomIndicatorInset,
+          chromeBar: this.currentGpuChrome()?.bar ?? 0,
+          chromeLine: this.currentGpuChrome()?.barLine ?? 0,
           onTabSelected: (appId: string, index: number, item: TabBarItem): void => this.handleTabSelected(index)
         })
           // Above the left-edge swipe strip so the first tab stays tappable.
@@ -1840,34 +1851,43 @@ export struct LxAppContainer {
     .zIndex(this.getRenderZIndex(webTag))
   }
 
-  /** A GPU page in the slot and frame a WebView of the same tag would take. */
+  /** Back: the shown GPU page of `appId` closed its own top layer (a dialog, a menu). */
+  static closeGpuTopLayer(appId: string): boolean {
+    const container = LxAppContainer.activeContainers.get(appId);
+    const page = container ? GpuPages.byWebTag(container.currentWebTag) : undefined;
+    return page !== undefined && gpuPageCloseRequest(page.token);
+  }
+
+  /** The palette chrome of the shown GPU page, or null for a WebView page. */
+  private currentGpuChrome(): GpuChrome | null {
+    void this.gpuChromeRevision;
+    return GpuPages.byWebTag(this.currentWebTag)?.chrome ?? null;
+  }
+
+  /** Host bars over a GPU page (top, right, bottom, left), device pixels. */
+  private getGpuChromeInsets(webTag: string): number[] {
+    const px = (vp: number): number => this.getUIContext().vp2px(vp);
+    return [px(this.getPageNavTop(webTag)), 0, px(this.getWebBottomPadding()), 0];
+  }
+
+  /**
+   * A GPU page spans the window under the host bars, which reach it as insets, so it
+   * draws behind translucent bars and its dialogs can cover them.
+   */
   @Builder
   buildGpuPageComponent(page: GpuPageModel): void {
-    Column() {
-      Stack() {
-        GpuPage({
-          page: page,
-          pageVisible: this.getRenderVisibility(page.webTag) === Visibility.Visible,
-        })
-          .translate(this.getRenderTranslation(page.webTag))
-          .margin(this.getRenderMargin(page.webTag))
-          .width(this.getRenderWidth(page.webTag))
-          .height(this.getRenderHeight(page.webTag))
-          .padding(this.getRenderPadding(page.webTag))
-          .visibility(this.getRenderVisibility(page.webTag))
-          .borderRadius(this.getRenderBorderRadius(page.webTag))
-          .clip(this.getRenderClip(page.webTag))
-          .hitTestBehavior(this.getRenderHitTest(page.webTag))
-      }
-      .width(this.getStackWidth(page.webTag))
-      .height(this.getStackHeight(page.webTag))
-      .alignContent(this.getRenderAlignment(page.webTag))
+    Stack() {
+      GpuPage({
+        page: page,
+        chromeInsets: this.getGpuChromeInsets(page.webTag),
+        pageVisible: this.getRenderVisibility(page.webTag) === Visibility.Visible,
+      })
+        .translate(this.getRenderTranslation(page.webTag))
+        .visibility(this.getRenderVisibility(page.webTag))
+        .hitTestBehavior(this.getRenderHitTest(page.webTag))
     }
     .width('100%')
     .height('100%')
-    .padding(this.getWrapperPadding(page.webTag))
-    .justifyContent(this.getWrapperJustify(page.webTag))
-    .alignItems(this.getWrapperAlign(page.webTag))
     .hitTestBehavior(HitTestMode.Transparent)
     .zIndex(this.getRenderZIndex(page.webTag))
   }
