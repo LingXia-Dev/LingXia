@@ -505,6 +505,38 @@ impl WindowSurfaceController {
         removed
     }
 
+    /// Remove every non-root surface presenting `app_id`, in one commit.
+    fn close_surfaces_presenting(&self, app_id: &str, reason: &str) -> Vec<String> {
+        let ids: Vec<String> = {
+            let manager = self.manager.lock().unwrap();
+            let graph = manager.graph();
+            graph
+                .surfaces()
+                .iter()
+                .filter(|surface| !graph.is_root_main(&surface.id))
+                .filter(|surface| match &surface.content {
+                    lingxia_surface::SurfaceContent::Lxapp { app_id: id, .. }
+                    | lingxia_surface::SurfaceContent::Page { app_id: id, .. } => id == app_id,
+                    _ => false,
+                })
+                .map(|surface| surface.id.clone())
+                .collect()
+        };
+        if ids.is_empty() {
+            return ids;
+        }
+        let before = self.manager.lock().unwrap().graph().active_main_id.clone();
+        let mut removed = Vec::new();
+        for id in &ids {
+            removed.extend(self.close_deferred(id, reason).into_removed());
+        }
+        if self.manager.lock().unwrap().graph().active_main_id != before {
+            *self.active_main_publication_blocked.lock().unwrap() = false;
+        }
+        self.commit();
+        removed
+    }
+
     fn contains(&self, id: &str) -> bool {
         self.manager.lock().unwrap().graph().get(id).is_some()
     }
@@ -3028,6 +3060,13 @@ impl LxApp {
         shell_slot_kind(kind).is_some_and(|kind| {
             window_controller(PRIMARY_WINDOW, &self.runtime).slot_collapsed(kind)
         })
+    }
+
+    /// A runtime-driven shutdown leaves the platform no close gesture to report,
+    /// so drop this app's switcher rows and asides before it goes away.
+    pub(crate) fn close_window_surfaces_for_shutdown(&self) -> Vec<String> {
+        window_controller(PRIMARY_WINDOW, &self.runtime)
+            .close_surfaces_presenting(&self.appid, close_reason_str(CloseReason::AppClosed))
     }
 
     pub fn forget_surface(&self, id: &str) -> bool {
