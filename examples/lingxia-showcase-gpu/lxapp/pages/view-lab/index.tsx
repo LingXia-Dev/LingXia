@@ -10,7 +10,7 @@ const groups = {
   text: { label: 'Text', sections: [TextLayout, RichText, Selection] },
   input: { label: 'Input', sections: [Accessibility, Inputs, Controls, Focus, NestedControls, StateVariants] },
   overlay: { label: 'Overlay', sections: [Overlays] },
-  gesture: { label: 'Gesture', sections: [Drag, DragChain, Detents] },
+  gesture: { label: 'Gesture', sections: [DragChain, Drag, Detents] },
 };
 type Group = keyof typeof groups;
 
