@@ -1,0 +1,24 @@
+[package]
+name = "lingxia-view-harmony"
+version.workspace = true
+edition.workspace = true
+license = "MIT"
+description = "HarmonyOS adapter for the LingXia GPU View host: XComponent presentation, accessibility, input method and platform mechanics"
+
+[features]
+default = []
+hot-swap = ["lingxia-view/hot-swap"]
+
+# Off OHOS the crate is empty, so the workspace builds it on every host.
+[target.'cfg(target_env = "ohos")'.dependencies]
+# GLES presentation through wgpu over EGL; a page whose attach fails rasterizes on the CPU.
+lingxia-view = { workspace = true, features = ["gpu"] }
+log = { workspace = true }
+serde_json = { workspace = true }
+skrifa = "=0.44.0"
+memmap2 = "0.9.11"
+libc = "0.2"
+napi-sys-ohos = { version = "1.2.0", features = ["napi4"] }
+raw-window-handle = "=0.6.2"
+# OHOS has no Vulkan surface in wgpu 30: GLES over EGL is the only presenter.
+wgpu = { version = "=30.0.0", default-features = false, features = ["gles"] }

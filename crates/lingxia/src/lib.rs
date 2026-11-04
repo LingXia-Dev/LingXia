@@ -198,6 +198,7 @@ pub mod file;
 #[cfg(any(
     target_os = "android",
     all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"),
+    all(target_env = "ohos", feature = "harmony-gpu"),
     test
 ))]
 mod gpu_page;

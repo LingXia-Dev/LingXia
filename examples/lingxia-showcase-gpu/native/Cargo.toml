@@ -67,7 +67,9 @@ jni = "0.22.4"
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
 lingxia = { version = "0.28.0", default-features = false, features = ["apple-gpu"] }
 
+# GPU pages on HarmonyOS.
 [target.'cfg(target_env = "ohos")'.dependencies]
+lingxia = { version = "0.28.0", default-features = false, features = ["harmony-gpu"] }
 napi-ohos = "1.2"
 napi-derive-ohos = "1.2"
 

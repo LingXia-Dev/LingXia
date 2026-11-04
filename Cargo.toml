@@ -3,6 +3,7 @@ members = [
     "crates/lingxia-view",
     "crates/lingxia-view-android",
     "crates/lingxia-view-apple",
+    "crates/lingxia-view-harmony",
     "crates/lingxia-app-context",
     "crates/lingxia-theme",
     "crates/lingxia-control-runtime",
@@ -120,6 +121,7 @@ lingxia-transfer = { path = "crates/lingxia-transfer", version = "0.28.0" }
 lingxia-view = { path = "crates/lingxia-view", version = "0.28.0" }
 lingxia-view-android = { path = "crates/lingxia-view-android", version = "0.28.0" }
 lingxia-view-apple = { path = "crates/lingxia-view-apple", version = "0.28.0" }
+lingxia-view-harmony = { path = "crates/lingxia-view-harmony", version = "0.28.0" }
 lingxia-terminal = { path = "crates/lingxia-terminal", version = "0.28.0" }
 lingxia-terminal-config = { path = "crates/lingxia-terminal-config", version = "0.28.0" }
 lingxia-settings = { path = "crates/lingxia-settings", version = "0.28.0" }

@@ -3642,6 +3642,7 @@ dependencies = [
  "lingxia-update",
  "lingxia-view-android",
  "lingxia-view-apple",
+ "lingxia-view-harmony",
  "lingxia-webview",
  "lingxia-windows-contract",
  "log",
@@ -4389,6 +4390,21 @@ dependencies = [
  "serde_json",
  "skrifa 0.44.0",
  "vello_cpu",
+]
+
+[[package]]
+name = "lingxia-view-harmony"
+version = "0.28.0"
+dependencies = [
+ "libc",
+ "lingxia-view",
+ "log",
+ "memmap2",
+ "napi-sys-ohos",
+ "raw-window-handle",
+ "serde_json",
+ "skrifa 0.44.0",
+ "wgpu",
 ]
 
 [[package]]

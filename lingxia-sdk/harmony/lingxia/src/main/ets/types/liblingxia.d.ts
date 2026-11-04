@@ -608,4 +608,22 @@ declare module 'liblingxia.so' {
 
   /** Returns true when the current runtime config should enable WebView debugging. */
   export function shouldEnableWebViewDebugging(): boolean;
+
+  // GPU pages (the `harmony-gpu` host feature). Tokens name one page from creation to disposal.
+  /** Mount the page's XComponent node into its `ContentSlot` content; false when the page is gone. */
+  export function gpuPageMount(token: number, content: Object): boolean;
+  /** The page's facts (`GpuFacts` JSON) and its top-left on screen, device pixels. */
+  export function gpuPageMeasured(token: number, facts: string, originX: number, originY: number): void;
+  export function gpuPageSetVisible(token: number, visible: boolean): void;
+  export function gpuPageWindowVisible(token: number, visible: boolean): void;
+  export function gpuPageWindowFocus(token: number, focused: boolean): void;
+  export function gpuPageReveal(token: number, surfaceHoldsFrame: boolean): void;
+  /** Back: true when the page closed its own top layer. */
+  export function gpuPageCloseRequest(token: number): boolean;
+  export function gpuPageCanScrollVertically(token: number, x: number, y: number, direction: number): boolean;
+  export function gpuPageTextMenuAction(token: number, action: number): boolean;
+  export function gpuPageTextMenuDismissed(token: number): void;
+  export function gpuPageInputBlocked(token: number): boolean;
+  /** The GPU token of a page instance, or 0 for a WebView page. */
+  export function gpuPageToken(pageInstanceId: string): number;
 }

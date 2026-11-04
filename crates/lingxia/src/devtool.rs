@@ -460,12 +460,14 @@ pub fn hot_swap_gpu_page(appid: &str, path: &str) -> Result<usize, String> {
     #[cfg(any(
         target_os = "android",
         all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"),
+        all(target_env = "ohos", feature = "harmony-gpu"),
         test
     ))]
     return crate::gpu_page::hot_swap(appid, path).map_err(|err| err.to_string());
     #[cfg(not(any(
         target_os = "android",
         all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"),
+        all(target_env = "ohos", feature = "harmony-gpu"),
         test
     )))]
     {

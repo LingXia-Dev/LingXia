@@ -19,6 +19,8 @@ import {
   getWebviewGeneration
 } from './WebViewBridge';
 import { LingXiaWebView } from './LingXiaWebView';
+import { GpuPage } from '../view/GpuPage';
+import { GpuPageModel, GpuPages } from '../view/GpuPages';
 import { NavigationBar, NavigationBarState, NAVBAR_TOTAL_HEIGHT, isColorDark } from './NavigationBar';
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';
 import { TabBar, tabBarExtraBottomHeight } from './TabBar';
@@ -168,6 +170,10 @@ export struct LxAppContainer {
   @State webViewComponents: Map<string, webview.WebviewController> = new Map() // Store Web components for each WebView
   @State currentWebTag: string = '' // Current active WebView tag
   @State webViewKeys: string[] = [] // Array of WebView keys for ForEach
+  /** GPU pages by webtag; they take a page's place where a WebView would. */
+  @State gpuPages: Map<string, GpuPageModel> = new Map()
+  private gpuCreated = (page: GpuPageModel): void => this.handleGpuPage('create', page);
+  private gpuDisposed = (page: GpuPageModel): void => this.handleGpuPage('destroy', page);
   @State presentationOverlayWebTag: string = '' // WebView tag currently displayed in presentation (may include #instance suffix)
   @State private presentationPreviousWebTag: string = '' // Previously focused WebView before presentation took focus
   @State overlayActive: boolean = false
@@ -360,10 +366,46 @@ export struct LxAppContainer {
       }
     });
 
+    GpuPages.onCreated(this.gpuCreated);
+    GpuPages.onDisposed(this.gpuDisposed);
+    GpuPages.all().forEach((page: GpuPageModel) => this.handleGpuPage('create', page));
+
     this.startKeyboardMonitor();
   }
 
+  /** A GPU page of this app appeared or went away: the WebView events' counterpart. */
+  private handleGpuPage(action: string, page: GpuPageModel): void {
+    if (page.appId !== this.appId) {
+      return;
+    }
+    hilog.info(DOMAIN, TAG, `GPU page ${action}: ${page.webTag} (container: ${this.appId})`);
+    if (action === 'create') {
+      const wantCurrent: boolean = page.webTag === this.targetWebTag;
+      if (wantCurrent) {
+        this.currentWebTag = page.webTag;
+      }
+      const pages = new Map<string, GpuPageModel>(this.gpuPages);
+      pages.set(page.webTag, page);
+      this.gpuPages = pages;
+      if (this.pendingWebTag === page.webTag) {
+        this.pendingWebTag = '';
+        this.navigateToPage(page.webTag);
+      } else if (wantCurrent) {
+        this.triggerOnPageShowIfNeeded(page.webTag);
+      }
+      return;
+    }
+    const pages = new Map<string, GpuPageModel>(this.gpuPages);
+    pages.delete(page.webTag);
+    this.gpuPages = pages;
+    if (this.currentWebTag === page.webTag) {
+      this.currentWebTag = this.webViewKeys.length > 0 ? this.webViewKeys[0] : '';
+    }
+  }
+
   aboutToDisappear() {
+    GpuPages.off(this.gpuCreated);
+    GpuPages.off(this.gpuDisposed);
     // Unregister this container
     LxAppContainer.activeContainers.delete(this.appId);
     if (LxAppContainer.statusBarOwner === this) {
@@ -1181,6 +1223,9 @@ export struct LxAppContainer {
       ForEach(this.getRenderableWebEntries(), (entry: RenderableWebEntry) => {
         this.buildWebViewComponent(entry.webTag, entry.controller)
       }, (entry: RenderableWebEntry) => `${entry.webTag}@${entry.generation}`)
+      ForEach(Array.from(this.gpuPages.values()), (page: GpuPageModel) => {
+        this.buildGpuPageComponent(page)
+      }, (page: GpuPageModel) => `${page.webTag}#${page.token}`)
       // Overlay mask on top
       if (this.shouldRenderOverlayMask()) {
         Column()
@@ -1550,8 +1595,9 @@ export struct LxAppContainer {
     }
 
     const webViewController = WebViewManager.getController(newWebTag);
+    const gpuPage: GpuPageModel | undefined = GpuPages.byWebTag(newWebTag);
 
-    if (!webViewController) {
+    if (!webViewController && gpuPage === undefined) {
       this.pendingWebTag = newWebTag;
       hilog.warn(DOMAIN, TAG, `WebView not found for page: ${newWebTag}; waiting for create`);
       return false;
@@ -1561,9 +1607,15 @@ export struct LxAppContainer {
     // Store previous WebView for animation
     const oldWebTag = this.currentWebTag;
 
-    // Ensure WebView component is tracked under its tag
-    this.webViewComponents.set(newWebTag, webViewController);
-    this.webViewKeys = Array.from(this.webViewComponents.keys());
+    // Ensure the page's component is tracked under its tag
+    if (webViewController) {
+      this.webViewComponents.set(newWebTag, webViewController);
+      this.webViewKeys = Array.from(this.webViewComponents.keys());
+    } else if (gpuPage !== undefined && !this.gpuPages.has(newWebTag)) {
+      const pages = new Map<string, GpuPageModel>(this.gpuPages);
+      pages.set(newWebTag, gpuPage);
+      this.gpuPages = pages;
+    }
     this.pageShowTriggered.delete(newWebTag);
 
     // Determine if animation should be used
@@ -1786,6 +1838,38 @@ export struct LxAppContainer {
     .alignItems(this.getWrapperAlign(webTag))
     .hitTestBehavior(HitTestMode.Transparent)
     .zIndex(this.getRenderZIndex(webTag))
+  }
+
+  /** A GPU page in the slot and frame a WebView of the same tag would take. */
+  @Builder
+  buildGpuPageComponent(page: GpuPageModel): void {
+    Column() {
+      Stack() {
+        GpuPage({
+          page: page,
+          pageVisible: this.getRenderVisibility(page.webTag) === Visibility.Visible,
+        })
+          .translate(this.getRenderTranslation(page.webTag))
+          .margin(this.getRenderMargin(page.webTag))
+          .width(this.getRenderWidth(page.webTag))
+          .height(this.getRenderHeight(page.webTag))
+          .padding(this.getRenderPadding(page.webTag))
+          .visibility(this.getRenderVisibility(page.webTag))
+          .borderRadius(this.getRenderBorderRadius(page.webTag))
+          .clip(this.getRenderClip(page.webTag))
+          .hitTestBehavior(this.getRenderHitTest(page.webTag))
+      }
+      .width(this.getStackWidth(page.webTag))
+      .height(this.getStackHeight(page.webTag))
+      .alignContent(this.getRenderAlignment(page.webTag))
+    }
+    .width('100%')
+    .height('100%')
+    .padding(this.getWrapperPadding(page.webTag))
+    .justifyContent(this.getWrapperJustify(page.webTag))
+    .alignItems(this.getWrapperAlign(page.webTag))
+    .hitTestBehavior(HitTestMode.Transparent)
+    .zIndex(this.getRenderZIndex(page.webTag))
   }
 
   /**
