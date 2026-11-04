@@ -3,6 +3,10 @@ import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { waitForCurrentPage } from '../helpers/page.js';
 import { bindFixture } from '../helpers/poll.js';
 import { tabIndex } from '../helpers/tabs.js';
+import { pinEnglish } from '../helpers/language.js';
+
+// Labels below are the English ones.
+spec.beforeEach(pinEnglish);
 
 // Host chrome driven as a user does: found through the host's own view or
 // accessibility tree by its label, pressed with a real tap at its bounds.

@@ -6,6 +6,10 @@ import { bindFixture, eventually, relaunchFromLogic, type Caught } from '../help
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { waitForCurrentPage } from '../helpers/page.js';
 import { runtimePlatform } from '../helpers/platform.js';
+import { pinEnglish } from '../helpers/language.js';
+
+// Labels below are the English ones.
+spec.beforeEach(pinEnglish);
 
 function hex(value: string | null | undefined): string {
   return (value ?? '').replace(/\\/g, '/').toUpperCase();
