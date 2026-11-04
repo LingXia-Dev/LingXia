@@ -10,11 +10,23 @@ export function turn(t: Fixture, orientation: 'portrait' | 'landscape' | 'auto')
   return t.step(`device.turn ${orientation}`, () => turnNow(t, orientation));
 }
 
+const NO_DEVICE = 'turning a phone needs the device fixture: --secret-arg androidDevice=<url>';
+
+async function android(t: Fixture): Promise<boolean> {
+  return (await t.app.logic.eval(({ lx }) => String(lx.host.getBaseInfo().os || '').toLowerCase())) === 'android';
+}
+
+/**
+ * Skip the spec unless the device can be turned. Call it in the spec body before deferring a
+ * restore: a skip from cleanup would fail the spec instead.
+ */
+export async function requireTurn(t: Fixture): Promise<void> {
+  if (!t.arg('androidDevice', { required: false }) && await android(t)) t.skip(NO_DEVICE);
+}
+
 async function turnNow(t: Fixture, orientation: 'portrait' | 'landscape' | 'auto'): Promise<void> {
-  const device = t.arg('androidDevice', { required: false });
-  const os = await t.app.logic.eval(({ lx }) => String(lx.host.getBaseInfo().os || '').toLowerCase());
-  if (os === 'android') {
-    if (!device) t.skip('turning a phone needs the device fixture: --secret-arg androidDevice=<url>');
+  if (await android(t)) {
+    if (!t.arg('androidDevice', { required: false })) t.skip(NO_DEVICE);
     await androidDevice(t).rotate(orientation);
     return;
   }

@@ -1,7 +1,7 @@
 import { expect, spec } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { bindFixture } from '../helpers/poll.js';
-import { turn } from '../helpers/orientation.js';
+import { requireTurn, turn } from '../helpers/orientation.js';
 
 const wide = async (view: { viewport(): Promise<{ width: number; height: number }> }) => {
   const { width, height } = await view.viewport();
@@ -20,6 +20,7 @@ spec('a page that follows the device turns with it', {
   await view.testId('home-page').waitFor({ timeout: 30_000 });
   const start = await wide(view);
   // Leave the device or window as the spec found it.
+  await requireTurn(t);
   t.defer(async () => { await turn(t, start ? 'landscape' : 'portrait'); await turn(t, 'auto'); });
 
   await turn(t, 'landscape');
@@ -38,6 +39,7 @@ spec('a landscape page lies down while the phone is upright, and the next page s
   requires: { input: ['touch'] },
 }, async (t) => {
   const { app } = bindFixture(t, 'ORIENT-LANDSCAPE-001');
+  await requireTurn(t);
   t.defer(async () => { await turn(t, 'auto'); });
   await turn(t, 'portrait');
   await app.nav.relaunch({ page: 'home' });
