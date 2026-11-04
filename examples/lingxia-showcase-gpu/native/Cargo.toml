@@ -106,3 +106,45 @@ lingxia-transfer = { path = "../../../crates/lingxia-transfer" }
 lingxia-update = { path = "../../../crates/lingxia-update" }
 lingxia-webview = { path = "../../../crates/lingxia-webview" }
 lingxia-windows-sdk = { path = "../../../crates/lingxia-windows-sdk" }
+
+# Renderer hot path: fast enough in debug builds that gesture and spring timing stay trustworthy.
+[profile.dev.package.lingxia-view]
+opt-level = 2
+[profile.dev.package.lingxia-view-apple]
+opt-level = 2
+[profile.dev.package.lingxia-view-android]
+opt-level = 2
+[profile.dev.package.vello_cpu]
+opt-level = 2
+[profile.dev.package.vello_common]
+opt-level = 2
+[profile.dev.package.vello_gpu]
+opt-level = 2
+[profile.dev.package.parley]
+opt-level = 2
+[profile.dev.package.taffy]
+opt-level = 2
+[profile.dev.package.wgpu]
+opt-level = 2
+[profile.dev.package.wgpu-core]
+opt-level = 2
+[profile.dev.package.wgpu-hal]
+opt-level = 2
+[profile.dev.package.rong_quickjs]
+opt-level = 2
+[profile.dev.package.rong_quickjs_sys]
+opt-level = 2
+[profile.dev.package.rong_core]
+opt-level = 2
+[profile.dev.package.skrifa]
+opt-level = 2
+[profile.dev.package.read-fonts]
+opt-level = 2
+[profile.dev.package.harfrust]
+opt-level = 2
+[profile.dev.package.kurbo]
+opt-level = 2
+[profile.dev.package.glifo]
+opt-level = 2
+[profile.dev.package.fontique]
+opt-level = 2
