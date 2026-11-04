@@ -1123,16 +1123,19 @@ final class LxAppViewController: UIViewController, ObservableObject {
             // Same turn as the post: a `Task { @MainActor }` hop let the user
             // reopen overflow, then this dismiss-on-refresh closed it.
             MainActor.assumeIsolated {
-                if let appId, appId == LxAppCore.currentAppId {
+                // Launch-time patches can arrive after init registered this
+                // observer but before setupUI created the containers. Rust
+                // retains the patch; the first navigation reads the latest
+                // state. Still complete its waiter below while unmounted.
+                if let appId, appId == LxAppCore.currentAppId,
+                   self.isViewLoaded, self.rootContainer != nil {
                     let path = self.getCurrentPath()
                     self.updateTabBar(for: appId, path: path)
                     self.updateNavigationBar(appId: appId, path: path)
                     self.bringUIElementsToFront()
                     // Appearance changes arrive through this notification too;
                     // restyle so every canvas follows the resolved scheme.
-                    if self.isViewLoaded {
-                        self.applyAppStyling(for: appId)
-                    }
+                    self.applyAppStyling(for: appId)
                 }
                 if let appId {
                     TabBarUpdateWaiters.complete(appId)
