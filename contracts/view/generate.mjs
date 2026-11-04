@@ -734,6 +734,7 @@ export async function generate(schema) {
     'lingxia-sdk/android/lingxia/src/main/java/com/lingxia/view/generated/GpuFrame.java': frameJava(schema),
     'lingxia-sdk/apple/Sources/Platform/Gpu/GpuFrame.swift': frameSwift(schema),
   };
+  Object.assign(generated, (await import('./arkts.mjs')).arkts(schema));
   generated['crates/lingxia-view/src/session/tests/runtime.js'] = await nativeTestRuntime(generated);
   Object.assign(generated, await (await import('./docs.mjs')).docs(schema, generated));
   return generated;

@@ -1,5 +1,6 @@
 import { NodeContent } from '@kit.ArkUI';
 import { LxLog } from '../app/LxLog';
+import { GpuFrameTextMenu } from './generated/GpuFrame';
 
 const TAG = 'LingXia.GpuPages';
 
@@ -46,7 +47,7 @@ export class GpuPageModel {
   chrome: GpuChrome | null = null;
   press: GpuFeedback | null = null;
   focusRing: GpuFeedback | null = null;
-  textMenu: string = '';
+  textMenu: GpuFrameTextMenu | null = null;
   topLayer: boolean = false;
   recovery: GpuRecovery | null = null;
   holdSurface: boolean = false;
@@ -148,7 +149,7 @@ export class GpuPages {
         break;
       }
       case 'textMenu':
-        page.textMenu = payload;
+        page.textMenu = payload.length > 0 ? JSON.parse(payload) as GpuFrameTextMenu : null;
         break;
       case 'topLayer':
         page.topLayer = payload === 'true';
