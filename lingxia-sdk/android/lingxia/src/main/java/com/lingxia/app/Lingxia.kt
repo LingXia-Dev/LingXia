@@ -66,6 +66,15 @@ object Lingxia {
     @JvmStatic
     internal fun urlPlayerEngineFactory(): UrlPlayerEngineFactory? = urlPlayerEngineFactoryRef
 
+    /**
+     * Runs [gate] around every system permission prompt LingXia shows; `null`
+     * prompts directly. Last write wins.
+     */
+    @JvmStatic
+    fun setPermissionGate(gate: PermissionGate?) {
+        PermissionGates.gate = gate
+    }
+
     // Marks an Intent the runtime accepted, so the cold-start dispatch and the
     // lifecycle callback cannot deliver the same tap twice.
     private const val APPLINK_CONSUMED_EXTRA = "com.lingxia.app.APPLINK_CONSUMED"

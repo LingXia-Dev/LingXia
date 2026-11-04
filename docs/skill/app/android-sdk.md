@@ -28,3 +28,26 @@ Lingxia.quickStart(this) { registerHostAddon() }
   swap live players.
 - Emit `FirstFrameRendered` only once a frame reached the surface. No HTTP
   headers are passed to the engine.
+
+## Permission gate
+
+Runs before every system permission prompt LingXia shows, e.g. to explain the
+purpose first where a store requires it. The host owns the UI and policy (per
+build flavor); without a gate LingXia prompts directly.
+
+```kotlin
+Lingxia.setPermissionGate(object : PermissionGate {
+    override fun beforePrompt(prompt: PermissionPrompt) {
+        showPurposeDialog(prompt.activity, prompt.feature) { agreed ->
+            if (agreed) prompt.proceed() else prompt.deny()
+        }
+    }
+    override fun afterPrompt(prompt: PermissionPrompt, outcome: PermissionOutcome) {}
+})
+```
+
+- `deny()` fails the lx API as permission denied without a system prompt and
+  skips `afterPrompt`. An undecided prompt is denied when its activity is
+  destroyed; prompts are gated one at a time.
+- `prompt.blocked` (before) and `DENIED_PERMANENTLY` (after) mean the system
+  will not prompt again: guide the user to Settings instead of explaining.

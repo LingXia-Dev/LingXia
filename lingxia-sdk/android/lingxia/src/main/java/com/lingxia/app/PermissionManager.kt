@@ -30,7 +30,8 @@ internal fun allExpectedPermissionsGranted(
 internal object PermissionManager {
     private data class PendingRequest(
         val permissions: Array<String>,
-        val callback: (Boolean) -> Unit
+        val callback: (Boolean) -> Unit,
+        val finish: (Boolean) -> Unit,
     )
 
     private val pendingRequests = ConcurrentHashMap<Int, PendingRequest>()
@@ -39,6 +40,7 @@ internal object PermissionManager {
 
     fun ensurePermissions(
         activity: Activity,
+        feature: PermissionFeature,
         permissions: Array<String>,
         onResult: (Boolean) -> Unit
     ) {
@@ -51,14 +53,12 @@ internal object PermissionManager {
             return
         }
 
-        val requestCode = requestCodeGenerator.incrementAndGet()
-        pendingRequests[requestCode] = PendingRequest(missing.toTypedArray(), onResult)
-
-        ActivityCompat.requestPermissions(
-            activity,
-            missing.toTypedArray(),
-            requestCode
-        )
+        val requested = missing.toTypedArray()
+        PermissionGates.run(activity, feature, requested, declined = { onResult(false) }) { finish ->
+            val requestCode = requestCodeGenerator.incrementAndGet()
+            pendingRequests[requestCode] = PendingRequest(requested, onResult, finish)
+            ActivityCompat.requestPermissions(activity, requested, requestCode)
+        }
     }
 
     fun handleRequestPermissionsResult(
@@ -71,6 +71,7 @@ internal object PermissionManager {
 
         val granted = allExpectedPermissionsGranted(expected, permissions, grantResults)
 
+        pending.finish(granted)
         mainHandler.post { pending.callback(granted) }
         return true
     }

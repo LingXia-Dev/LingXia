@@ -16,6 +16,7 @@ import android.os.Bundle
 import androidx.core.content.ContextCompat
 import com.lingxia.app.Lingxia
 import com.lingxia.app.PermissionManager
+import com.lingxia.app.PermissionFeature
 import com.lingxia.lxapp.LxApp
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -86,6 +87,7 @@ internal object LxAppNotification {
         var granted = false
         PermissionManager.ensurePermissions(
             activity,
+            PermissionFeature.NOTIFICATION,
             arrayOf(android.Manifest.permission.POST_NOTIFICATIONS)
         ) { ok ->
             granted = ok

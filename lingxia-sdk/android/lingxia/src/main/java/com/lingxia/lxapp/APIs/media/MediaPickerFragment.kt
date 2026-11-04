@@ -37,6 +37,8 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.lingxia.app.LxLog
 import com.lingxia.app.NativeApi
+import com.lingxia.app.PermissionGates
+import com.lingxia.app.PermissionFeature
 import com.lingxia.lxapp.R
 import org.json.JSONObject
 import android.view.animation.AccelerateDecelerateInterpolator
@@ -201,11 +203,15 @@ internal class MediaPickerFragment : Fragment() {
     private var limitedModeActive: Boolean = false
     private var pendingLimitedReload: Boolean = false
 
+    private var finishPermissionPrompt: ((Boolean) -> Unit)? = null
+
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
         val ctx = activity ?: return@registerForActivityResult
         val state = permissionState(ctx)
+        finishPermissionPrompt?.invoke(state != PermissionState.NONE)
+        finishPermissionPrompt = null
         limitedModeActive = state == PermissionState.LIMITED
         when (state) {
             PermissionState.FULL -> {
@@ -301,6 +307,8 @@ internal class MediaPickerFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        finishPermissionPrompt?.invoke(false)
+        finishPermissionPrompt = null
         recycler = null
         sendBtn = null
         sendBtnBackground = null
@@ -571,7 +579,10 @@ internal class MediaPickerFragment : Fragment() {
             PermissionState.NONE -> {
                 limitedModeActive = false
                 pendingOnLoaded = onLoaded
-                permissionLauncher.launch(getNeededPermissions())
+                launchPermissionPrompt(getNeededPermissions()) {
+                    sendFailure(3004)
+                    removeSelf()
+                }
             }
         }
         if (state != PermissionState.NONE && allItems.isNotEmpty()) {
@@ -771,7 +782,24 @@ internal class MediaPickerFragment : Fragment() {
                 PERM_READ_MEDIA_IMAGES,
                 PERM_READ_MEDIA_VIDEO
             )
-            permissionLauncher.launch(perms)
+            launchPermissionPrompt(perms) { pendingLimitedReload = false }
+        }
+    }
+
+    private fun launchPermissionPrompt(permissions: Array<String>, declined: () -> Unit) {
+        val act = activity ?: return
+        PermissionGates.run(
+            act,
+            PermissionFeature.MEDIA_LIBRARY,
+            permissions,
+            declined = { if (isAdded) declined() },
+        ) { finish ->
+            if (!isAdded) {
+                finish(false)
+                return@run
+            }
+            finishPermissionPrompt = finish
+            permissionLauncher.launch(permissions)
         }
     }
 
