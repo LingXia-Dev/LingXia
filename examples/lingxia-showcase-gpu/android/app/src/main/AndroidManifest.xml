@@ -24,7 +24,7 @@
             </intent-filter>
 
 
-                    <!-- LingXia AppLinks BEGIN -->
+            <!-- LingXia AppLinks BEGIN -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -32,7 +32,7 @@
                 <data android:scheme="https" android:host="applink.lingxia.app" />
             </intent-filter>
             <!-- LingXia AppLinks END -->
-</activity>
+        </activity>
     </application>
 
 </manifest>
