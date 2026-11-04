@@ -134,12 +134,15 @@ struct TabBarHelper {
     /// and costs a fraction of the draw. Vector and unreadable files load as
     /// they did.
     static func chromeIconImage(contentsOfFile path: String, maxPixelSize: Int = 256) -> NSImage? {
-        let url = URL(fileURLWithPath: path)
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+        // Decode from the bytes: a brand logo is often WebP behind a `.png`
+        // URL, and a URL source lets ImageIO take the suffix as a type hint.
+        guard let data = FileManager.default.contents(atPath: path) else { return nil }
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               CGImageSourceGetCount(source) > 0,
               let type = CGImageSourceGetType(source) as String?,
               type != "com.adobe.pdf",
               !type.contains("svg") else {
+            // Vector files keep the suffix-driven loader that tints SVG glyphs.
             return NSImage(contentsOfFile: path)
         }
         let options: [CFString: Any] = [
@@ -149,7 +152,7 @@ struct TabBarHelper {
             kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
         ]
         guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
-            return NSImage(contentsOfFile: path)
+            return NSImage(data: data)
         }
         return NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
     }
