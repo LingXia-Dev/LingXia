@@ -282,6 +282,17 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   else for (const key of ['dragSnapPoints', 'bind', 'onDragStart', 'onDragEnd'])
     if (props[key] !== undefined && !element.binding) throw Error(`UI_PROP: ${key} belongs to an element with drag`);
   if (props[scrimMark]) wire('dragScrim', 1);
+  if (props['aria-actions'] !== undefined) {
+    // The ids of the controls behind a swipe row: assistive tech offers them as the row's own actions.
+    const ids = typeof props['aria-actions'] === 'string' ? props['aria-actions'].trim().split(/\s+/) : [];
+    if (props.drag === undefined) throw Error('UI_PROP: aria-actions belongs to an element with drag');
+    if (!ids.length || ids.length > 8 || ids.some(id => !id || id.length > 256)) throw Error('UI_PROP: aria-actions lists 1..8 element ids');
+    wire('ariaActions', ids.join(' '));
+  }
+  if (tag === 'button' && props.id !== undefined) {
+    if (typeof props.id !== 'string' || !props.id.length || props.id.length > 256) throw Error('UI_ID: an id is 1..256 characters');
+    wire('elementId', props.id);
+  }
   if (tag === 'dialog') {
     if (props.role !== undefined) throw Error('UI_PROP: a <dialog> keeps its own role');
     if (!props.accessibilityLabel) throw Error('UI_A11Y: <dialog> needs an accessible name; add aria-label="…"');

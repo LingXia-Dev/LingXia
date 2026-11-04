@@ -18,6 +18,8 @@ pub(crate) fn node(identity: &str, tag: &'static str, bounds: [f32; 4]) -> NodeS
     NodeSnapshot {
         close_request: false,
         drag_scrim: false,
+        element_id: None,
+        aria_actions: Vec::new(),
         drag: None,
         identity: identity.into(),
         tag,

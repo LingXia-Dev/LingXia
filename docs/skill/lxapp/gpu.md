@@ -75,6 +75,8 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - `<dialog open onClose closedby aria-label>` is modal, above the page (`backdrop:` styles its scrim;
   `mt-auto mb-0 w-full` makes a sheet). `<view id popover>` + `<button popoverTarget>` is a light-dismiss
   popover anchored to its invoker (`positionArea`, `open`/`onToggle`); `role="menu"` + `<button role="menuitem">` closes on click.
+- Swipe row: `<button drag="x" dragSnapPoints={[0, -144, '-100%']} aria-actions="archive-1 delete-1">` over `<button id="archive-1">`s;
+  screen readers get those as the row's actions; specs call `locator.performAction('Delete')` (or `increment`/`decrement`/`dismiss`).
 - Sheet detents: `<dialog drag="y" dragSnapPoints={[0, '50%', '100%']} bind={detent}>`; resting wholly off screen calls `onClose`, the scrim fades with it.
 - Keyboard: Tab and arrows follow reading order (no `tabIndex`); an open `<dialog>` keeps focus inside
   and returns it on close; the focus ring shows only after keyboard input.

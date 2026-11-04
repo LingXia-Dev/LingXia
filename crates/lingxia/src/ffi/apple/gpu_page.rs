@@ -861,6 +861,8 @@ fn gpu_page_accessibility(token: i64, id: u32, action: u8, number: f64, argument
             11 => A::Copy,
             12 => A::Cut,
             13 => A::Paste(argument.to_owned()),
+            14 => A::Custom(number as usize),
+            15 => A::Dismiss,
             _ => return false,
         };
         let mut handled = false;

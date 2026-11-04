@@ -12,13 +12,16 @@ import org.json.JSONObject;
 /** Maps the shared semantic projection onto AccessibilityNodeInfo; no role or state inference here. */
 final class GpuAccessibility {
     static final int SELECT_ITEM = 0x02010000;
+    /** A swipe row's `aria-actions` entries, by position. */
+    static final int CUSTOM_ACTION = 0x02020000;
     static final int SET_PROGRESS = 16908349;
     /** AndroidX `AccessibilityNodeInfoCompat.setRoleDescription` key, read by TalkBack. */
     static final String ROLE_DESCRIPTION = "AccessibilityNodeInfo.roleDescription";
 
     // Rust action opcodes; see the JNI accessibility codec.
     static final int FOCUS = 0, CLEAR_FOCUS = 1, CLICK = 2, SHOW_ON_SCREEN = 3, SCROLL_FORWARD = 4, SCROLL_BACKWARD = 5,
-        PROGRESS = 6, SET_TEXT = 7, SET_SELECTION = 8, CLEAR_SELECTION = 9, SELECT = 10, COPY = 11, CUT = 12, PASTE = 13;
+        PROGRESS = 6, SET_TEXT = 7, SET_SELECTION = 8, CLEAR_SELECTION = 9, SELECT = 10, COPY = 11, CUT = 12, PASTE = 13,
+        CUSTOM = 14, DISMISS = 15;
 
     static String className(String role) {
         switch (role) {
@@ -165,6 +168,15 @@ final class GpuAccessibility {
                     info.addAction(new AccessibilityNodeInfo.AccessibilityAction(SELECT_ITEM + (index == null ? 0 : index.intValue()), action.label()));
                     break;
                 }
+                case GpuFrame.SEMANTIC_ACTION_CUSTOM: {
+                    Long index = action.index();
+                    info.addAction(new AccessibilityNodeInfo.AccessibilityAction(CUSTOM_ACTION + (index == null ? 0 : index.intValue()), action.label()));
+                    break;
+                }
+                case GpuFrame.SEMANTIC_ACTION_DISMISS:
+                    info.setDismissable(true);
+                    info.addAction(AccessibilityNodeInfo.ACTION_DISMISS);
+                    break;
                 case GpuFrame.SEMANTIC_ACTION_SHOW_ON_SCREEN: info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN); break;
                 default: break;
             }
@@ -204,6 +216,8 @@ final class GpuAccessibility {
         if (action == AccessibilityNodeInfo.ACTION_CUT) return CUT;
         if (action == AccessibilityNodeInfo.ACTION_PASTE) return PASTE;
         if (action >= SELECT_ITEM && action < SELECT_ITEM + 128) return SELECT;
+        if (action >= CUSTOM_ACTION && action < CUSTOM_ACTION + 8) return CUSTOM;
+        if (action == AccessibilityNodeInfo.ACTION_DISMISS) return DISMISS;
         return -1;
     }
 }

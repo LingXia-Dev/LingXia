@@ -87,6 +87,14 @@ struct JSQueryOptions {
 }
 
 #[derive(FromJSObject)]
+struct JSSemanticOptions {
+    css: String,
+    index: Option<usize>,
+    page: Option<String>,
+    name: String,
+}
+
+#[derive(FromJSObject)]
 struct JSClickOptions {
     css: String,
     index: Option<usize>,
@@ -377,6 +385,21 @@ impl JSPageDriver {
         auto::page_dblclick(&app, options.page.as_deref(), &options.css, options.index)
             .await
             .map_err(fail(&app, options.page.as_deref()))
+    }
+
+    /// A semantic action by name on the match, as assistive tech performs it.
+    #[js_method(rename = "semanticAction")]
+    async fn semantic_action(&self, ctx: JSContext, options: JSSemanticOptions) -> JSResult<()> {
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
+        auto::page_semantic_action(
+            &app,
+            options.page.as_deref(),
+            &options.css,
+            options.index,
+            &options.name,
+        )
+        .await
+        .map_err(fail(&app, options.page.as_deref()))
     }
 
     #[js_method(rename = "type")]

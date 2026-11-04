@@ -742,6 +742,7 @@ public struct GpuFrameAutomationAction: Decodable, Sendable {
     public let text: String?
     public let key: String?
     public let value: String?
+    public let name: String?
 
     enum CodingKeys: String, CodingKey {
         case kind = "kind"
@@ -749,6 +750,7 @@ public struct GpuFrameAutomationAction: Decodable, Sendable {
         case text = "text"
         case key = "key"
         case value = "value"
+        case name = "name"
     }
 }
 

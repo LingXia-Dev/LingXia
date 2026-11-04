@@ -147,6 +147,10 @@ export function render() {
 - `onDragStart()` runs once the finger has moved past slop on the element's axis (a press inside it is
   cancelled then); `onDragEnd({ index, velocity })` on release, with the point it heads for and px/s.
 - A finger on a moving element catches it where it is.
+- Swipe rows: a `<button drag="x" dragSnapPoints={[0, -144, '-100%']} aria-actions="archive-1 delete-1">`
+  over a row of `<button id="archive-1">`… behind it. While the row rests closed, those controls leave
+  screen-reader navigation and the row offers them as its own actions, named by their text; specs reach
+  them with `locator.performAction('Delete')` (also `increment`, `decrement`, and `dismiss` on a dialog).
 - With a scroll inside on the same axis, a drag from inside it moves toward the element's lowest
   offset (opening a sheet) before the scroll scrolls, and back toward the scroll's start before the
   element closes, all in one gesture; the release flicks whichever moved last. `overscroll-contain`

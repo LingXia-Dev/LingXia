@@ -64,6 +64,13 @@ pub enum Action {
     Cut,
     /// Replace an enabled, non-secure editor's selection with the clipboard.
     Paste,
+    /// One of a swipe row's `aria-actions`, by position, named by its control.
+    Custom {
+        index: usize,
+        label: String,
+    },
+    /// Close the dialog, as Escape or back would.
+    Dismiss,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -195,7 +202,38 @@ impl Projection<'_> {
 
     fn published(&self, index: usize) -> bool {
         let node = &self.frame.nodes[index];
-        meaningful(node) && visible(node)
+        meaningful(node) && visible(node) && !self.covered(node)
+    }
+
+    /// A control a swipe row names in `aria-actions` stays out of linear navigation while the
+    /// row rests closed over it: the row offers it as an action instead.
+    fn covered(&self, node: &NodeSnapshot) -> bool {
+        let Some(id) = &node.element_id else {
+            return false;
+        };
+        self.frame.nodes.iter().any(|row| {
+            row.aria_actions.contains(id)
+                && row.drag.as_ref().is_some_and(|drag| {
+                    let at = self
+                        .drags
+                        .and_then(|drags| drags.target(&row.identity))
+                        .unwrap_or(drag.index);
+                    drag.points.get(at).is_some_and(|point| point.abs() < 0.5)
+                })
+        })
+    }
+
+    /// The controls a node's `aria-actions` names, in order, that the frame holds.
+    pub fn action_targets(&self, node: &NodeSnapshot) -> Vec<usize> {
+        node.aria_actions
+            .iter()
+            .filter_map(|id| {
+                self.frame
+                    .nodes
+                    .iter()
+                    .position(|other| other.element_id.as_ref() == Some(id))
+            })
+            .collect()
     }
 
     /// A published layout node with a role (or a scroll) groups the published nodes
@@ -263,6 +301,15 @@ impl Projection<'_> {
     }
 
     pub fn node(&self, id: u32) -> Option<SemanticNode> {
+        let index = self.ids.index(id)?;
+        if self.covered(self.frame.node(index)?) {
+            return None;
+        }
+        self.reachable_node(id)
+    }
+
+    /// [`Self::node`] for a control a closed swipe row covers too, to name the row's actions.
+    fn reachable_node(&self, id: u32) -> Option<SemanticNode> {
         let index = self.ids.index(id)?;
         let node = self.frame.node(index)?;
         if node.accessibility_hidden.unwrap_or(false) {
@@ -358,7 +405,7 @@ impl Projection<'_> {
         let mut enabled = match input {
             Some(input) => input.enabled,
             None if select.is_some() => select.is_some_and(|select| select.on_select.is_some()),
-            None => !(button || check) || activatable,
+            None => !(button || check) || activatable || node.drag.is_some(),
         };
         let mut actions = Vec::new();
         let mut focusable = button || check || input.is_some() || select.is_some();
@@ -495,6 +542,22 @@ impl Projection<'_> {
             if node.selection_range.is_some_and(|[a, b]| a != b) {
                 actions.push(Action::Copy);
             }
+        }
+        for (position, target) in self.action_targets(node).into_iter().enumerate() {
+            let label = self
+                .ids
+                .id(target)
+                .and_then(|id| self.reachable_node(id))
+                .map(|target| target.name)
+                .filter(|name| !name.is_empty())
+                .unwrap_or_else(|| self.frame.nodes[target].text.clone());
+            actions.push(Action::Custom {
+                index: position,
+                label,
+            });
+        }
+        if role == Role::Dialog && self.frame.nodes.iter().any(|node| node.close_request) {
+            actions.push(Action::Dismiss);
         }
         if meaningful(node) {
             actions.push(Action::ShowOnScreen);

@@ -392,3 +392,111 @@ fn a_settle_on_a_point_that_hides_the_element_says_so() {
         (Some(true), Some(false))
     );
 }
+
+/// A row that swipes open to reveal its Delete button, which `aria-actions` names.
+fn swipe_row(index: usize) -> Vec<NodeSnapshot> {
+    let mut delete = node("list/delete", "button", [0.0, 0.0, 100.0, 40.0]);
+    delete.on_click = Some(5);
+    delete.text = "Delete".into();
+    delete.element_id = Some("del-1".into());
+    let mut row = node("list/row", "button", [0.0, 0.0, 100.0, 40.0]);
+    row.on_click = Some(6);
+    row.text = "Groceries".into();
+    row.test_id = "row".into();
+    row.aria_actions = vec!["del-1".into()];
+    row.drag = Some(DragSnapshot {
+        axis: ScrollAxis::Horizontal,
+        points: vec![0.0, -88.0],
+        ..panel(index).drag.unwrap()
+    });
+    vec![delete, row]
+}
+
+#[test]
+fn a_swipe_row_offers_the_controls_behind_it_as_its_own_actions() {
+    let mut interaction = ViewInteraction::default();
+    let page = PageTicket::new(1);
+    present(&mut interaction, swipe_row(0), 1);
+    let semantics = interaction.semantics().unwrap();
+    let row = semantics.ids.id(1).unwrap();
+    let actions = semantics.node(row).unwrap().actions;
+    assert!(
+        actions.contains(&Action::Custom {
+            index: 0,
+            label: "Delete".into()
+        }),
+        "{actions:?}"
+    );
+    let roots = semantics.roots();
+    assert!(
+        !roots.contains(&semantics.ids.id(0).unwrap()),
+        "a covered control leaves linear navigation"
+    );
+    assert!(semantics.node(semantics.ids.id(0).unwrap()).is_none());
+    assert_eq!(
+        crate::semantics::query::select(&semantics, "[role=\"button\"]").unwrap(),
+        [1]
+    );
+    let (handled, _) = interaction.accessibility(row, AccessibilityAction::Custom(0), page);
+    assert!(handled);
+    assert_eq!(
+        interaction.take_dispatch(),
+        [Dispatch::Click {
+            commit: CommitTicket::new(1),
+            handle: 5
+        }]
+    );
+    // Automation names the action as a screen reader reads it.
+    let effects = interaction
+        .automate(
+            "[data-testid=\"row\"]",
+            None,
+            AutomationAct::Action("Delete".into()),
+            false,
+            page,
+        )
+        .unwrap();
+    assert!(effects.contains(&Effect::Dispatch));
+    assert_eq!(interaction.take_dispatch().len(), 1);
+    assert!(
+        interaction
+            .automate(
+                "[data-testid=\"row\"]",
+                None,
+                AutomationAct::Action("Archive".into()),
+                false,
+                page
+            )
+            .unwrap_err()
+            .contains("has no action")
+    );
+    // Swiped open, the control is in reach again.
+    present(&mut interaction, swipe_row(1), 2);
+    let semantics = interaction.semantics().unwrap();
+    assert!(semantics.roots().contains(&semantics.ids.id(0).unwrap()));
+}
+
+#[test]
+fn an_open_dialog_can_be_dismissed_as_escape_would() {
+    let mut interaction = ViewInteraction::default();
+    let page = PageTicket::new(1);
+    let mut layer = node("layer", "column", [0.0, 0.0, 100.0, 200.0]);
+    layer.close_request = true;
+    let mut dialog = node("layer/panel", "column", [0.0, 100.0, 100.0, 100.0]);
+    dialog.role = Some("dialog".into());
+    dialog.accessibility_label = Some("Filters".into());
+    present(&mut interaction, vec![layer, dialog], 1);
+    let id = interaction.semantics().unwrap().ids.id(1).unwrap();
+    assert!(
+        interaction
+            .semantics()
+            .unwrap()
+            .node(id)
+            .unwrap()
+            .actions
+            .contains(&Action::Dismiss)
+    );
+    let (handled, _) = interaction.accessibility(id, AccessibilityAction::Dismiss, page);
+    assert!(handled);
+    assert_eq!(interaction.take_dispatch(), [Dispatch::Escape]);
+}

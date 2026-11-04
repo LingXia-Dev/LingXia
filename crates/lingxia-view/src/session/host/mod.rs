@@ -899,6 +899,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     Some("press") => AutomationAct::Press(string("key")),
                     Some("select") => AutomationAct::SelectOption(string("value")),
                     Some("dblclick") => AutomationAct::DoubleClick,
+                    Some("action") => AutomationAct::Action(string("name")),
                     other => return Err(format!("E_UNSUPPORTED: automation action {other:?}")),
                 };
                 let force = action["force"].as_bool().unwrap_or(false);

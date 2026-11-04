@@ -419,6 +419,14 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
         field::ON_CLICK | field::ON_DRAG_EVENT => {
             ensure(handle(value), "UI_PROP: invalid handle or flag")
         }
+        field::ELEMENT_ID | field::ARIA_ACTIONS => ensure(
+            value.as_str().is_some_and(|ids| {
+                let count = ids.split(' ').count();
+                (1..=if id == field::ELEMENT_ID { 1 } else { 8 }).contains(&count)
+                    && ids.split(' ').all(|id| (1..=256).contains(&id.len()))
+            }),
+            "UI_PROP: invalid element id",
+        ),
         field::DRAG => ensure(
             value
                 .as_str()

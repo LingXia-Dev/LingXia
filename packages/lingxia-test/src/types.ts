@@ -241,6 +241,11 @@ export interface Locator {
   click(options?: ActionOptions): Promise<void>;
   /** Double-click: on text and editors, selects the word at the center (a long press on touch). */
   dblclick(options?: ActionOptions): Promise<void>;
+  /**
+   * Perform a semantic action by name, as a screen reader does: a swipe row's
+   * `aria-actions` control (by its name), `increment`, `decrement` or `dismiss`.
+   */
+  performAction(name: string, options?: InputOptions): Promise<void>;
   fill(text: string, options?: ActionOptions): Promise<void>;
   /** Choose an option of a `<select>` by value, else by label. */
   selectOption(value: string, options?: ActionOptions): Promise<void>;

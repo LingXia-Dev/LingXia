@@ -43,6 +43,8 @@ public final class GpuFrame {
     public static final String SEMANTIC_ACTION_COPY = "copy";
     public static final String SEMANTIC_ACTION_CUT = "cut";
     public static final String SEMANTIC_ACTION_PASTE = "paste";
+    public static final String SEMANTIC_ACTION_CUSTOM = "custom";
+    public static final String SEMANTIC_ACTION_DISMISS = "dismiss";
     public static final String AUTOMATION_REQUEST_QUERY = "query";
     public static final String AUTOMATION_REQUEST_ACT = "act";
     public static final String AUTOMATION_REQUEST_TREE = "tree";
@@ -70,6 +72,7 @@ public final class GpuFrame {
     public static final String AUTOMATION_ACTION_PRESS = "press";
     public static final String AUTOMATION_ACTION_SELECT = "select";
     public static final String AUTOMATION_ACTION_DBLCLICK = "dblclick";
+    public static final String AUTOMATION_ACTION_ACTION = "action";
     public static final String TEXT_MENU_TARGET_TEXT = "text";
     public static final String TEXT_MENU_TARGET_EDITOR = "editor";
     public static final String MENU_ACTION_CUT = "cut";
@@ -727,6 +730,8 @@ public final class GpuFrame {
         public String key() { return json.isNull("key") ? null : json.optString("key", null); }
         /** `value`: string? */
         public String value() { return json.isNull("value") ? null : json.optString("value", null); }
+        /** `name`: string? */
+        public String name() { return json.isNull("name") ? null : json.optString("name", null); }
     }
 
     public static final class AutomationElement {

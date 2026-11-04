@@ -71,6 +71,7 @@ export interface PageLike {
   type(options: { css: string; text: string; page?: string; index?: number }): Promise<void>;
   selectOption?(options: { css: string; value: string; page?: string; index?: number }): Promise<void>;
   dblclick?(options: { css: string; page?: string; index?: number }): Promise<void>;
+  semanticAction?(options: { css: string; page?: string; index?: number; name: string }): Promise<void>;
   /** Bring a match on screen; GPU pages need it before an action. */
   scrollTo?(options: { css: string; page?: string; index?: number }): Promise<void>;
 }
@@ -215,6 +216,12 @@ export class PageLocator implements Locator {
     const force = options?.force === true;
     return this.act("click", options, (css, index) =>
       this.page.click({ page: this.options.page, css, index, ...(force ? { force } : {}) }));
+  }
+
+  performAction(name: string, options?: InputOptions): Promise<void> {
+    if (typeof name !== "string" || !name) return Promise.reject(new TypeError("performAction() takes an action name"));
+    if (!this.page.semanticAction) return Promise.reject(new Error("This page driver does not support semantic actions"));
+    return this.act("performAction", options, (css, index) => this.page.semanticAction!({ page: this.options.page, css, index, name }));
   }
 
   dblclick(options?: ActionOptions): Promise<void> {

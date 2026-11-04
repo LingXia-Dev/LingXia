@@ -22,6 +22,9 @@ pub enum AutomationAct {
     /// Select the word at the match's center (text and editors), as a long press or a
     /// desktop double click does; a click on anything else.
     DoubleClick,
+    /// A semantic action by name: an `aria-actions` control's name, or `increment`,
+    /// `decrement`, `dismiss`.
+    Action(String),
 }
 
 fn key(name: &str) -> Result<(super::Key, bool), String> {
@@ -181,6 +184,43 @@ impl ViewInteraction {
             | AutomationAct::Press(_)
             | AutomationAct::SelectOption(_) => {
                 unreachable!("handled above")
+            }
+            AutomationAct::Action(name) => {
+                let projection = self
+                    .semantics()
+                    .ok_or("E_PAGE_NOT_READY: no presented frame")?;
+                let actions = projection
+                    .node(id)
+                    .map(|node| node.actions)
+                    .unwrap_or_default();
+                let wanted = name.to_lowercase();
+                let action = actions
+                    .iter()
+                    .find_map(|action| match (action, wanted.as_str()) {
+                        (crate::semantics::projection::Action::Custom { index, label }, _)
+                            if label.to_lowercase() == wanted =>
+                        {
+                            Some(AccessibilityAction::Custom(*index))
+                        }
+                        (crate::semantics::projection::Action::ScrollForward, "increment") => {
+                            Some(AccessibilityAction::ScrollForward)
+                        }
+                        (crate::semantics::projection::Action::ScrollBackward, "decrement") => {
+                            Some(AccessibilityAction::ScrollBackward)
+                        }
+                        (crate::semantics::projection::Action::Dismiss, "dismiss") => {
+                            Some(AccessibilityAction::Dismiss)
+                        }
+                        _ => None,
+                    });
+                match action {
+                    Some(action) => action,
+                    None => {
+                        return Err(format!(
+                            "Element not interactable: {selector} has no action {name:?}"
+                        ));
+                    }
+                }
             }
             AutomationAct::Fill(_) | AutomationAct::Type(_) if !editable => {
                 return Err(format!(

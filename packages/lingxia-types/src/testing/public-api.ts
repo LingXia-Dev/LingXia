@@ -288,6 +288,7 @@ const PAGE_DRIVER_API = [
   'gesture',
   'key',
   'pointer',
+  'semanticAction',
   'press',
   'query',
   'screenshot',

@@ -19,6 +19,10 @@ pub enum AccessibilityAction {
     Cut,
     /// Replace an editor's selection with this clipboard text.
     Paste(String),
+    /// A swipe row's `aria-actions` entry by position: its control is pressed.
+    Custom(usize),
+    /// A dialog's close request.
+    Dismiss,
 }
 
 impl ViewInteraction {
@@ -142,6 +146,21 @@ impl ViewInteraction {
                 let effects =
                     self.propose_number(index, slider::shift(&range, value, direction), page);
                 (!effects.is_empty(), effects)
+            }
+            AccessibilityAction::Custom(position) => {
+                let target = self
+                    .semantics()
+                    .and_then(|semantics| semantics.action_targets(node).get(position).copied());
+                match target {
+                    Some(target) => (true, self.activate(target, None, false, None)),
+                    None => (false, Vec::new()),
+                }
+            }
+            AccessibilityAction::Dismiss if node.role.as_deref() == Some("dialog") => {
+                match self.close_request() {
+                    Some(effects) => (true, effects),
+                    None => (false, Vec::new()),
+                }
             }
             AccessibilityAction::ScrollForward | AccessibilityAction::ScrollBackward
                 if frame::draggable(node) =>

@@ -35,6 +35,10 @@ pub enum GpuAction {
     },
     /// Select the word at the match's center (text, editors); a click elsewhere.
     DoubleClick,
+    /// A semantic action by name, as assistive tech performs it.
+    Action {
+        name: String,
+    },
 }
 
 /// What a live GPU page offers automation; implemented by the GPU page binding.

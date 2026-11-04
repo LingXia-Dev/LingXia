@@ -90,7 +90,7 @@ final class GpuAccessibilityElement: UIAccessibilityElement {
         scrollableHorizontally = node.scroll?.horizontal ?? false
         accessibilityCustomActions = node.actions.compactMap { action in
             let kind = action.kind
-            guard ["copy", "cut", "paste", "select-item"].contains(kind) else { return nil }
+            guard ["copy", "cut", "paste", "select-item", "custom"].contains(kind) else { return nil }
             let name = action.label ?? Self.actionName(kind)
             return UIAccessibilityCustomAction(name: name) { [weak self] _ in
                 MainActor.assumeIsolated { self?.perform(kind, index: action.index) ?? false }
@@ -157,6 +157,9 @@ final class GpuAccessibilityElement: UIAccessibilityElement {
             argument = UIPasteboard.general.string ?? ""
         case "select-item":
             code = 10
+            number = Double(index ?? 0)
+        case "custom":
+            code = 14
             number = Double(index ?? 0)
         default: return false
         }

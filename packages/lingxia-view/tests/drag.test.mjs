@@ -59,3 +59,15 @@ test('a dialog that settles hidden closes; closedby="none" keeps it; its backdro
   assert.equal(closes, 1);
   assert.equal(byId(render(() => h('page', {}, h('dialog', { open: true, 'aria-label': 'Plain', 'data-testid': 'p' }))), 'p-backdrop').props.dragScrim, undefined);
 });
+
+test('a swipe row names the controls behind it; they carry their ids', () => {
+  reset();
+  const nodes = render(() => h('page', {}, h('stack', {},
+    h('button', { id: 'del-1', 'data-testid': 'del', onClick: () => {} }, 'Delete'),
+    h('button', { 'data-testid': 'row', drag: 'x', dragSnapPoints: [0, -88], 'aria-actions': 'del-1', onClick: () => {} }, 'Groceries'))));
+  assert.equal(byId(nodes, 'del').props.elementId, 'del-1');
+  assert.equal(byId(nodes, 'row').props.ariaActions, 'del-1');
+  assert.throws(() => render(() => h('page', {}, h('button', { 'aria-actions': 'x', onClick: () => {} }, 'Row'))), /aria-actions belongs to an element with drag/);
+  assert.throws(() => render(() => h('page', {}, h('button', { drag: 'x', dragSnapPoints: [0, 1], 'aria-actions': '  ', onClick: () => {} }, 'Row'))), /1\.\.8 element ids/);
+  assert.throws(() => render(() => h('page', {}, h('button', { id: '', onClick: () => {} }, 'Row'))), /UI_ID/);
+});

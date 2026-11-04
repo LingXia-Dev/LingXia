@@ -40,6 +40,7 @@ Children: any elements and text. Renders as `column`. May sit inside a composed 
 | `bind` | `Local<number>` |  |
 | `onDragStart` | `() => void` |  |
 | `onDragEnd` | `(info: { index: number; velocity: number }) => void` |  |
+| `aria-actions` | `string` |  |
 
 ## `<column>`
 
@@ -57,6 +58,7 @@ Children: any elements and text. May sit inside a composed `<button>` or `<check
 | `bind` | `Local<number>` |  |
 | `onDragStart` | `() => void` |  |
 | `onDragEnd` | `(info: { index: number; velocity: number }) => void` |  |
+| `aria-actions` | `string` |  |
 
 ## `<row>`
 
@@ -74,6 +76,7 @@ Children: any elements and text. May sit inside a composed `<button>` or `<check
 | `bind` | `Local<number>` |  |
 | `onDragStart` | `() => void` |  |
 | `onDragEnd` | `(info: { index: number; velocity: number }) => void` |  |
+| `aria-actions` | `string` |  |
 
 ## `<page>`
 
@@ -101,11 +104,13 @@ Children: text, or noninteractive content elements (a composed control). Not all
 | `disabled` | `boolean` |  |
 | `aria-label` | `string` |  |
 | `popoverTarget` | `string` |  |
+| `id` | `string` |  |
 | `drag` | `"x" \| "y"` |  |
 | `dragSnapPoints` | `` readonly (number \| `${number}%`)[] `` |  |
 | `bind` | `Local<number>` |  |
 | `onDragStart` | `() => void` |  |
 | `onDragEnd` | `(info: { index: number; velocity: number }) => void` |  |
+| `aria-actions` | `string` |  |
 
 ## `<spacer>`
 
@@ -260,6 +265,7 @@ Children: any elements and text. May sit inside a composed `<button>` or `<check
 | `bind` | `Local<number>` |  |
 | `onDragStart` | `() => void` |  |
 | `onDragEnd` | `(info: { index: number; velocity: number }) => void` |  |
+| `aria-actions` | `string` |  |
 
 ## `<stack>`
 
@@ -276,6 +282,7 @@ Children: any elements and text. May sit inside a composed `<button>` or `<check
 | `bind` | `Local<number>` |  |
 | `onDragStart` | `() => void` |  |
 | `onDragEnd` | `(info: { index: number; velocity: number }) => void` |  |
+| `aria-actions` | `string` |  |
 
 ## `<dialog>`
 

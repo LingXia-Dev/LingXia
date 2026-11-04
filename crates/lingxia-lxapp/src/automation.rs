@@ -726,6 +726,30 @@ const DOM_TREE_SCRIPT: &str = r#"(() => {
   return { nodes: walk(document.body, 0) };
 })()"#;
 
+/// Perform a semantic action on the match by name (a swipe row's `aria-actions` control,
+/// `increment`, `decrement`, `dismiss`), as assistive tech does; GPU pages only.
+pub async fn page_semantic_action(
+    app: &Arc<LxApp>,
+    page_name: Option<&str>,
+    selector: &str,
+    index: Option<usize>,
+    name: &str,
+) -> Result<(), String> {
+    match gpu::backend(app, page_name)? {
+        Some(page) => {
+            page.act(
+                selector,
+                index,
+                gpu::GpuAction::Action {
+                    name: name.to_owned(),
+                },
+            )
+            .await
+        }
+        None => Err("E_UNSUPPORTED: semantic actions run on GPU pages".into()),
+    }
+}
+
 /// Double-click the match: GPU pages select the word at its center (text and editors), as a
 /// long press does; WebView pages get `dblclick` and the word under its center selected.
 pub async fn page_dblclick(

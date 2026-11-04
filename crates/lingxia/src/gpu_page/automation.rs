@@ -59,6 +59,7 @@ impl GpuPageAutomation for GpuAutomation {
             GpuAction::Press { key } => json!({"kind": "press", "key": key}),
             GpuAction::SelectOption { value } => json!({"kind": "select", "value": value}),
             GpuAction::DoubleClick => json!({"kind": "dblclick"}),
+            GpuAction::Action { name } => json!({"kind": "action", "name": name}),
         };
         let reply =
             self.request(json!({"op": "act", "css": css, "index": index, "action": action}));
