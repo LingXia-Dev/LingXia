@@ -519,6 +519,9 @@ public enum GpuPages {
         MainActor.assumeIsolated { views[token]?.topLayerChanged?(modal) }
     }
 
+    /// A desktop window has no back swipe or enclosing scroll view competing for the pointer.
+    static func claim(token: Int64, exclusive: Bool) {}
+
     static func haptic(token: Int64) {
         MainActor.assumeIsolated { NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now) }
     }

@@ -373,8 +373,7 @@ impl Feedback for AppleAdapter {
                     velocity,
                 } => self.shell.fling(self.token, region, *horizontal, *velocity),
                 Effect::StopFling => self.shell.stop_fling(self.token),
-                // Nothing on the page's Apple host can take a gesture from it.
-                Effect::Claim { .. } => {}
+                Effect::Claim { exclusive } => self.shell.claim(self.token, *exclusive),
                 _ => {}
             }
         }

@@ -43,6 +43,9 @@ pub trait Shell: Send + Sync + 'static {
     /// A top-layer dialog opened or closed: while one is open the view covers the host's bars,
     /// which take no input.
     fn top_layer(&self, token: i64, modal: bool);
+    /// The View takes the gesture under the finger (`true`) or lets it go: while it holds it,
+    /// enclosing scroll views and the back swipe stand down.
+    fn claim(&self, token: i64, exclusive: bool);
     /// Put `text` on the system pasteboard.
     fn copy_text(&self, text: &str);
     /// Show or move the text menu (frame-contract `TextMenu` JSON), or close it (empty).

@@ -101,6 +101,8 @@ final class GpuPageView: UIView {
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
+        // A page that leaves mid-gesture must not keep the back swipe switched off.
+        if window == nil { claimGesture(false) }
         if window == nil {
             if let tracked {
                 send(3, tracked)
@@ -171,6 +173,36 @@ final class GpuPageView: UIView {
     /// Set while a top-layer dialog lifts this view above the bars: where it sat, and the
     /// chrome the page keeps padding by meanwhile.
     private var raised: (index: Int, chrome: (top: CGFloat, bottom: CGFloat), covered: [UIView])?
+
+    /// Recognizers standing down while the View holds a gesture, and where it began on screen.
+    private var heldOff: [UIGestureRecognizer] = []
+    private var touchStart: CGPoint?
+
+    /// The View took the gesture under the finger (a drag, a scroll, a slider) or let it go.
+    /// Enclosing scroll views and the back swipe stand down meanwhile; a touch that began at
+    /// a screen edge keeps the back swipe, which owns that edge.
+    func claimGesture(_ exclusive: Bool) {
+        guard exclusive else {
+            heldOff.forEach { $0.isEnabled = true }
+            heldOff = []
+            return
+        }
+        guard heldOff.isEmpty, let window else { return }
+        let edge: CGFloat = 24
+        let atEdge = touchStart.map { $0.x < edge || $0.x > window.bounds.width - edge } ?? false
+        var recognizers: [UIGestureRecognizer] = []
+        var ancestor = superview
+        while let view = ancestor {
+            if let scroll = view as? UIScrollView { recognizers.append(scroll.panGestureRecognizer) }
+            if !atEdge {
+                recognizers += (view.gestureRecognizers ?? []).filter { $0 is UIScreenEdgePanGestureRecognizer }
+            }
+            ancestor = view.superview
+        }
+        // One already tracking keeps the gesture; disabling it now would cancel the user's.
+        heldOff = recognizers.filter { $0.isEnabled && $0.state == .possible }
+        heldOff.forEach { $0.isEnabled = false }
+    }
 
     func topLayer(_ modal: Bool) {
         guard let parent = superview else { return }
@@ -295,6 +327,7 @@ final class GpuPageView: UIView {
             return
         }
         if gpuPageInputBlocked(token) { return }
+        touchStart = touch.location(in: window)
         // A hardware keyboard's keys reach the page once it is touched.
         if Self.hardwareKeyboard, !isFirstResponder { becomeFirstResponder() }
         if handleTouch(0, at: touch.location(in: self)) {
@@ -494,6 +527,10 @@ public enum GpuPages {
 
     static func topLayer(token: Int64, modal: Bool) {
         MainActor.assumeIsolated { views[token]?.topLayer(modal) }
+    }
+
+    static func claim(token: Int64, exclusive: Bool) {
+        MainActor.assumeIsolated { views[token]?.claimGesture(exclusive) }
     }
 
     static func haptic(token: Int64) {
