@@ -311,6 +311,7 @@ const limitNotes = {
   ghosts: 'Removed elements still drawing their exit at once; past it further removals vanish at once.',
   layoutMotions: 'Elements moving to a new layout position under `transition-layout` at once; past it further moves land at once.',
   blurLayers: 'Elements a frame draws with `blur-*`; past it further ones draw sharp.',
+  dragSnapPoints: 'Snap points one `drag` element declares in `dragSnapPoints`.',
   topLayer: 'Dialogs and popovers open at once; a further one stays closed (`UI_BUDGET`) and fires no `onClose` or `onToggle`.',
   dataAttributeBytes: '`data-*` props of a page, as UTF-8 JSON; automation reads them, nothing draws them.',
   outlineGlyphs: "Glyphs the platform outlines (Apple's PingFang UI faces) in one frame, each filled as a path; past it frames slow down.",

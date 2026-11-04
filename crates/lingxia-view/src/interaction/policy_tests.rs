@@ -17,6 +17,7 @@ use std::sync::Arc;
 pub(crate) fn node(identity: &str, tag: &'static str, bounds: [f32; 4]) -> NodeSnapshot {
     NodeSnapshot {
         close_request: false,
+        drag: None,
         identity: identity.into(),
         tag,
         test_id: String::new(),
@@ -415,6 +416,7 @@ fn radio_groups_take_one_tab_stop_and_arrows_wrap_inside_the_group() {
         ids: &ids,
         keyboard_focus: None,
         inert: false,
+        drags: None,
     };
     let group = semantics.node(ids.id(0).unwrap()).unwrap();
     assert_eq!(
@@ -467,6 +469,7 @@ fn projection_exposes_roles_ranges_masked_text_and_only_enabled_actions() {
         ids: &ids,
         keyboard_focus: None,
         inert: false,
+        drags: None,
     };
     let seek = semantics.node(ids.id(0).unwrap()).unwrap();
     assert_eq!(
@@ -494,6 +497,7 @@ fn projection_exposes_roles_ranges_masked_text_and_only_enabled_actions() {
         ids: &ids,
         keyboard_focus: None,
         inert: false,
+        drags: None,
     };
     let inert = semantics.node(ids.id(0).unwrap()).unwrap();
     assert!(!inert.enabled && !inert.actions.contains(&Action::SetProgress));

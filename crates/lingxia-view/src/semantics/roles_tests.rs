@@ -27,6 +27,7 @@ fn semantic(frame: &PresentedFrame, test_id: &str) -> Option<SemanticNode> {
         ids: &ids,
         keyboard_focus: None,
         inert: false,
+        drags: None,
     }
     .node(ids.id(index)?)
 }
@@ -157,10 +158,8 @@ fn heading_levels_need_a_heading_role_on_the_wire() {
 
 #[test]
 fn projected_roles_match_the_schema_vocabulary() {
-    let schema: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../contracts/view/schema.json"
-    ))
-    .unwrap();
+    let schema: serde_json::Value =
+        serde_json::from_str(include_str!("../../../../contracts/view/schema.json")).unwrap();
     let roles: Vec<String> = [
         Role::Button,
         Role::CheckBox,

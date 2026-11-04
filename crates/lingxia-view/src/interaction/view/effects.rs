@@ -118,6 +118,12 @@ pub enum Dispatch {
     },
     /// Escape: the View dismisses its innermost overlay.
     Escape,
+    /// A `drag` element's `onDragEvent`: `{phase: start|end|settle, index, velocity}`.
+    DragEvent {
+        commit: CommitTicket,
+        handle: u64,
+        payload: String,
+    },
     /// A key for the View's open picker (`ArrowUp`, `Enter`, `Escape`, a character, ...).
     PickerKey {
         key: String,

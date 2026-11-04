@@ -1027,6 +1027,9 @@ impl Renderer {
             };
             ranges.push(paint_start..commands.len());
             nodes.push(NodeSnapshot {
+                drag: record.string(field::DRAG).and_then(|source| {
+                    drag_snapshot(source, record, [bounds[2], bounds[3]], directions[index])
+                }),
                 close_request: record.number(field::TOP_LAYER) == Some(1.0),
                 plot_local: None,
                 data: record
@@ -1357,4 +1360,50 @@ fn snap_points(records: &[crate::protocol::Record], nodes: &mut [NodeSnapshot]) 
             scroll.snap = points;
         }
     }
+}
+
+/// A record's `drag` field, its `%` points resolved against its own size; RTL mirrors `x`.
+fn drag_snapshot(
+    source: &str,
+    record: &crate::protocol::Record,
+    [width, height]: [f32; 2],
+    rtl: bool,
+) -> Option<crate::scene::node::DragSnapshot> {
+    let value: serde_json::Value = serde_json::from_str(source).ok()?;
+    let horizontal = value["axis"].as_str()? == "x";
+    let extent = if horizontal { width } else { height };
+    let mirror = if horizontal && rtl { -1.0 } else { 1.0 };
+    let points = value["points"]
+        .as_array()?
+        .iter()
+        .map(|point| match point {
+            serde_json::Value::String(text) => text
+                .strip_suffix('%')
+                .and_then(|n| n.parse::<f32>().ok())
+                .map(|n| n / 100.0 * extent),
+            other => other.as_f64().map(|n| n as f32),
+        })
+        .map(|point| point.map(|p| p * mirror))
+        .collect::<Option<Vec<_>>>()?;
+    let index = usize::try_from(value["index"].as_u64()?).ok()?;
+    let (duration, bounce) = record
+        .string(field::TRANSITION)
+        .and_then(|source| crate::animation::transition::TransitionDef::decode(source).ok())
+        .map(|transition| transition.release())
+        .unwrap_or((std::time::Duration::from_millis(300), 0.0));
+    (index < points.len()).then(|| crate::scene::node::DragSnapshot {
+        duration,
+        bounce,
+        axis: if horizontal {
+            crate::scene::node::ScrollAxis::Horizontal
+        } else {
+            crate::scene::node::ScrollAxis::Vertical
+        },
+        points,
+        index,
+        handle: record
+            .number(field::ON_DRAG_EVENT)
+            .map(|h| h as u64)
+            .unwrap_or(0),
+    })
 }

@@ -63,6 +63,11 @@ struct Gesture {
     selectable: Option<usize>,
     /// A fine pointer is dragging a selection across `selectable` text.
     selecting: bool,
+    /// The innermost `drag` element under the press, and whether the finger moves it.
+    drag: Option<String>,
+    holding: bool,
+    /// A finger or button is down.
+    touching: bool,
 }
 
 struct PendingFocus {
@@ -75,6 +80,7 @@ struct PendingFocus {
 pub struct ViewInteraction {
     frame: Option<Arc<PresentedFrame>>,
     scroll: ScrollModel,
+    drag: crate::interaction::drag::DragModel,
     reach: ReachTracker,
     ids: SemanticIds,
     slider: SliderInput,
@@ -119,6 +125,23 @@ impl ViewInteraction {
         snapshot.focus_style.then(|| snapshot.identity.clone())
     }
 
+    /// Scroll and drag offsets to request with the next frame.
+    pub fn offsets(&self) -> HashMap<String, f32> {
+        let mut offsets = self.scroll.snapshot();
+        self.drag.snapshot_into(&mut offsets);
+        offsets
+    }
+
+    /// Releases since the last call, for the host to spring to their snap points.
+    pub fn take_drag_releases(&mut self) -> Vec<crate::interaction::drag::Release> {
+        self.drag.take_released()
+    }
+
+    /// A release's spring step; `done` ends it.
+    pub fn set_drag_offset(&mut self, identity: &str, offset: f32, done: bool) {
+        self.drag.set(identity, offset, done);
+    }
+
     /// Snapping regions input moved since the last call.
     pub fn take_moved_snaps(&mut self) -> Vec<String> {
         self.scroll.take_moved_snaps()
@@ -132,6 +155,47 @@ impl ViewInteraction {
     /// A finger is dragging a scroll region.
     pub fn holding_scroll(&self) -> bool {
         self.gesture.dragging
+    }
+
+    /// A finger is down on drag element `identity`: its spring stops where it is.
+    pub fn drag_held(&self, identity: &str) -> bool {
+        self.gesture.touching && self.gesture.drag.as_deref() == Some(identity)
+    }
+
+    fn drag_event(&mut self, phase: &str, index: usize, velocity: f32) {
+        if let Some(identity) = self.gesture.drag.clone() {
+            self.drag_dispatch(&identity, phase, index, velocity);
+        }
+    }
+
+    /// A release's spring landed on point `index`: the View learns it (and its `bind`).
+    pub fn drag_settled(&mut self, identity: &str, index: usize) -> Vec<Effect> {
+        self.drag_dispatch(identity, "settle", index, 0.0);
+        if self.dispatches.is_empty() {
+            Vec::new()
+        } else {
+            vec![Effect::Dispatch]
+        }
+    }
+
+    fn drag_dispatch(&mut self, identity: &str, phase: &str, index: usize, velocity: f32) {
+        let Some(frame) = self.frame.as_ref() else {
+            return;
+        };
+        let Some(handle) = self
+            .drag
+            .region(identity)
+            .map(|drag| drag.handle)
+            .filter(|h| *h != 0)
+        else {
+            return;
+        };
+        self.dispatches.push(Dispatch::DragEvent {
+            commit: frame.commit,
+            handle,
+            payload: serde_json::json!({"phase": phase, "index": index, "velocity": velocity})
+                .to_string(),
+        });
     }
 
     /// Automation: scroll a list to an off-screen row's offset, and the list itself on screen;
@@ -258,6 +322,7 @@ impl ViewInteraction {
             ids: &self.ids,
             keyboard_focus: self.keyboard_focus,
             inert: self.inert,
+            drags: Some(&self.drag),
         })
     }
 
@@ -381,7 +446,9 @@ impl ViewInteraction {
             }
             if let Some(identity) = focused
                 && let Some(index) = next.nodes.iter().position(|node| {
-                    node.identity == identity && frame::interactive(node) && frame::visible(node)
+                    node.identity == identity
+                        && (frame::interactive(node) || frame::draggable(node))
+                        && frame::visible(node)
                 })
             {
                 self.keyboard_focus = Some(index);
@@ -395,6 +462,7 @@ impl ViewInteraction {
         }
         self.scroll
             .accept(&next, requested_revision, requested_offsets);
+        self.drag.accept(&next);
         let Reached { handles, more } = self.reach.presented(&next);
         let reach = (!handles.is_empty() || more).then(|| Dispatch::Reach {
             commit: next.commit,

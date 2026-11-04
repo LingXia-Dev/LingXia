@@ -416,7 +416,15 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             "UI_LIST: invalid extent",
         ),
         field::LIST_ANCHOR => list_anchor(value),
-        field::ON_CLICK => ensure(handle(value), "UI_PROP: invalid handle or flag"),
+        field::ON_CLICK | field::ON_DRAG_EVENT => {
+            ensure(handle(value), "UI_PROP: invalid handle or flag")
+        }
+        field::DRAG => ensure(
+            value
+                .as_str()
+                .is_some_and(|source| source.len() <= 1024 && drag(source)),
+            "UI_PROP: invalid drag",
+        ),
         field::ENABLED => ensure(flag(value), "UI_PROP: invalid handle or flag"),
         // 1 takes close requests (Escape, back); 2 is a manual popover, which does not.
         field::TOP_LAYER => ensure(
@@ -561,4 +569,28 @@ fn list_anchor(value: &Value) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// `{axis: "x"|"y", points: [px | "n%"], index}` with 1..dragSnapPoints points.
+fn drag(source: &str) -> bool {
+    let Ok(value) = serde_json::from_str::<Value>(source) else {
+        return false;
+    };
+    let points = value["points"].as_array();
+    matches!(value["axis"].as_str(), Some("x" | "y"))
+        && points.is_some_and(|points| {
+            (1..=limits::DRAG_SNAP_POINTS).contains(&points.len())
+                && points.iter().all(|point| match point {
+                    Value::String(text) => text
+                        .strip_suffix('%')
+                        .and_then(|n| n.parse::<f64>().ok())
+                        .is_some_and(|n| n.is_finite() && n.abs() <= 1000.0),
+                    other => other
+                        .as_f64()
+                        .is_some_and(|n| n.is_finite() && n.abs() <= 16384.0),
+                })
+        })
+        && value["index"]
+            .as_u64()
+            .is_some_and(|index| points.is_some_and(|points| (index as usize) < points.len()))
 }

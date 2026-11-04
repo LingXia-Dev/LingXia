@@ -168,7 +168,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 page: self.lifecycle.page(),
                 rebuild: main.dirty || main.snapshot.is_none(),
                 revision: main.interaction.scroll().revision(),
-                offsets: main.interaction.scroll().snapshot(),
+                offsets: main.interaction.offsets(),
                 caret: !main.caret.hidden,
                 visible: main.visible,
                 sample: Duration::ZERO,

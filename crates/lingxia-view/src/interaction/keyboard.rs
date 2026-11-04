@@ -56,7 +56,7 @@ pub fn candidate(
     let Some(node) = frame.nodes.get(index) else {
         return false;
     };
-    interactive(node)
+    (interactive(node) || super::frame::draggable(node))
         && node.bounds[2] > 0.0
         && node.bounds[3] > 0.0
         && (super::frame::visible(node) || revealable(node))

@@ -19,6 +19,7 @@ mod bridge;
 mod clipboard;
 pub(crate) mod decode;
 mod dispatch;
+mod drag;
 mod edits;
 mod environment;
 mod fonts;
@@ -248,6 +249,7 @@ struct Main<F> {
     act_call: Option<(u64, String)>,
     virtual_rows: virtual_rows::VirtualRows,
     snaps: snap::Snaps,
+    drags: drag::Drags,
     /// User activations reported dropped, and clicks that ran a callback, for frame metrics.
     dropped_activations: u64,
     activations: u64,
@@ -384,6 +386,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     act_call: None,
                     virtual_rows: Default::default(),
                     snaps: Default::default(),
+                    drags: Default::default(),
                     dropped_activations: 0,
                     activations: 0,
                     chrome: None,

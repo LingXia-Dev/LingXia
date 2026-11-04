@@ -143,6 +143,24 @@ impl ViewInteraction {
                     self.propose_number(index, slider::shift(&range, value, direction), page);
                 (!effects.is_empty(), effects)
             }
+            AccessibilityAction::ScrollForward | AccessibilityAction::ScrollBackward
+                if frame::draggable(node) =>
+            {
+                let direction = if action == AccessibilityAction::ScrollForward {
+                    1
+                } else {
+                    -1
+                };
+                let moved = self.drag.step(&node.identity, direction).is_some();
+                (
+                    moved,
+                    if moved {
+                        vec![Effect::Redraw]
+                    } else {
+                        Vec::new()
+                    },
+                )
+            }
             AccessibilityAction::SetText(text) if frame::editable(node) => {
                 if text.len() > crate::text::input::MAX_TEXT_BYTES {
                     return (false, Vec::new());

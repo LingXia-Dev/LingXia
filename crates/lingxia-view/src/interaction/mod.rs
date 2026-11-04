@@ -1,5 +1,8 @@
 //! Platform-neutral input, editor and selection policy.
 pub mod chrome;
+pub mod drag;
+#[cfg(test)]
+mod drag_tests;
 #[cfg(test)]
 mod focus_tests;
 pub mod frame;

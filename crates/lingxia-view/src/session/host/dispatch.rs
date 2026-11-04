@@ -12,6 +12,8 @@ type Activation = Box<dyn FnOnce(&mut ViewSession) -> Result<bool, String> + Sen
 impl<A: PlatformAdapter> Inner<A> {
     /// Run host-owned effects and hand the rest to the adapter, in order.
     pub(super) fn deliver(self: &Arc<Self>, mut effects: Vec<Effect>) {
+        // Pointer, keys, assistive input and frames all hand drag releases over here.
+        self.drag_later();
         self.queue_edits(&mut effects);
         if effects.is_empty() {
             return;
@@ -273,6 +275,15 @@ impl<A: PlatformAdapter> Inner<A> {
                     page,
                     true,
                     Box::new(move |session| session.submit_editor(commit, &identity)),
+                ),
+                Dispatch::DragEvent {
+                    commit,
+                    handle,
+                    payload,
+                } => self.activate(
+                    page,
+                    false,
+                    Box::new(move |session| session.text_event(commit, handle, &payload)),
                 ),
                 Dispatch::Escape => {
                     self.activate(page, false, Box::new(|session| session.escape()))

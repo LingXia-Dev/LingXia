@@ -1,0 +1,88 @@
+//! `drag` elements end to end: authored points resolve against the element, an offset moves its
+//! subtree, and a settle reaches the bound snap index.
+use crate::ViewSession;
+use crate::scene::node::DragSnapshot;
+use std::collections::HashMap;
+
+fn page(dir: &str) -> ViewSession {
+    let module = super::source(&format!(
+        "function render(){{const at=useLocal('at',0);return h('page',{{dir:'{dir}'}},h('column',{{'data-testid':'panel',drag:'x',dragSnapPoints:[0,'50%',-30],bind:at,'aria-label':'Panel',style:{{width:120,height:40}}}},h('text',{{'data-testid':'label'}},'at '+at.value)))}}"
+    ));
+    ViewSession::new(&module).unwrap()
+}
+
+#[test]
+fn points_resolve_against_the_element_and_mirror_in_rtl() {
+    for (dir, sign) in [("ltr", 1.0), ("rtl", -1.0)] {
+        let mut session = page(dir);
+        let display = session.layout(200, 100, 1.0).unwrap();
+        let panel = display.nodes.iter().find(|n| n.test_id == "panel").unwrap();
+        let drag = panel.drag.as_ref().unwrap();
+        assert_eq!(drag.points, [0.0, 60.0 * sign, -30.0 * sign], "{dir}");
+        assert_eq!((drag.index, drag.handle > 0), (0, true));
+    }
+}
+
+#[test]
+fn an_offset_moves_the_whole_subtree_and_a_settle_sets_the_bound_index() {
+    let mut session = page("ltr");
+    let display = session.layout(200, 100, 1.0).unwrap();
+    let panel = display.nodes.iter().find(|n| n.test_id == "panel").unwrap();
+    let (identity, handle) = (panel.identity.clone(), panel.drag.as_ref().unwrap().handle);
+    let label_x = display
+        .nodes
+        .iter()
+        .find(|n| n.test_id == "label")
+        .unwrap()
+        .bounds[0];
+    let offsets = HashMap::from([(DragSnapshot::key(&identity), 60.0)]);
+    let moved = session
+        .prepare_native(200, 100, 1.0, false, Some(&offsets), Ok)
+        .unwrap();
+    let label = moved.nodes.iter().find(|n| n.test_id == "label").unwrap();
+    assert_eq!(label.bounds[0], label_x + 60.0);
+    let generation = session.generation();
+    assert!(
+        session
+            .text_event(
+                generation,
+                handle,
+                r#"{"phase":"settle","index":1,"velocity":0}"#
+            )
+            .unwrap()
+    );
+    let display = session.layout(200, 100, 1.0).unwrap();
+    let panel = display.nodes.iter().find(|n| n.test_id == "panel").unwrap();
+    assert_eq!(panel.drag.as_ref().unwrap().index, 1);
+    assert_eq!(
+        display
+            .nodes
+            .iter()
+            .find(|n| n.test_id == "label")
+            .unwrap()
+            .text,
+        "at 1"
+    );
+}
+
+#[test]
+fn the_release_spring_is_the_elements_transition_timing() {
+    let module = super::source(
+        "function render(){return h('page',{},h('view',{'data-testid':'a',drag:'y','aria-label':'A',style:{height:10,transition:{properties:['transform'],durationMs:500,delayMs:0,easing:{spring:0.25}}}}),h('view',{'data-testid':'b',drag:'y','aria-label':'B',style:{height:10}}))}",
+    );
+    let mut session = ViewSession::new(&module).unwrap();
+    let display = session.layout(100, 100, 1.0).unwrap();
+    let timing = |id: &str| {
+        let drag = display
+            .nodes
+            .iter()
+            .find(|n| n.test_id == id)
+            .unwrap()
+            .drag
+            .clone()
+            .unwrap();
+        (drag.duration.as_millis(), drag.bounce)
+    };
+    assert_eq!(timing("a"), (500, 0.25));
+    assert_eq!(timing("b"), (300, 0.0));
+}

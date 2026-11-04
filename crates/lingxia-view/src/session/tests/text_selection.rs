@@ -100,6 +100,7 @@ fn selectable_text_projects_selection_actions() {
         ids: &ids,
         keyboard_focus: None,
         inert: false,
+        drags: None,
     }
     .node(ids.id(0).unwrap())
     .unwrap();

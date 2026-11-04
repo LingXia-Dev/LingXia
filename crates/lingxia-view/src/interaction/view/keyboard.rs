@@ -241,6 +241,32 @@ impl ViewInteraction {
                 return (true, Vec::new());
             }
         }
+        // Arrows on its own axis, Home and End step a drag element through its points in order.
+        if let Some(index) = origin
+            && let Some(node) = frame.node(index).filter(|node| frame::draggable(node))
+        {
+            let drag = node.drag.as_ref().unwrap();
+            let horizontal = drag.axis == ScrollAxis::Horizontal;
+            let release = match key {
+                Key::Right if horizontal => self.drag.step(&node.identity, 1),
+                Key::Left if horizontal => self.drag.step(&node.identity, -1),
+                Key::Down if !horizontal => self.drag.step(&node.identity, 1),
+                Key::Up if !horizontal => self.drag.step(&node.identity, -1),
+                Key::Home => self.drag.go(&node.identity, 0),
+                Key::End => self.drag.go(&node.identity, drag.points.len() - 1),
+                Key::Activate if !frame::interactive(node) => return (true, Vec::new()),
+                _ => None,
+            };
+            if release.is_some() {
+                return (true, vec![Effect::Redraw]);
+            }
+            if matches!(key, Key::Home | Key::End)
+                || (horizontal && matches!(key, Key::Left | Key::Right))
+                || (!horizontal && matches!(key, Key::Up | Key::Down))
+            {
+                return (true, Vec::new());
+            }
+        }
         // Arrows change a select's choice without opening its picker, as on the Web.
         if matches!(key, Key::Left | Key::Right | Key::Up | Key::Down)
             && let Some(index) = origin

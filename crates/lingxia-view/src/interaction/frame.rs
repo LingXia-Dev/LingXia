@@ -159,6 +159,11 @@ fn activatable(node: &NodeSnapshot) -> bool {
             .is_some_and(|select| select.on_select.is_some())
 }
 
+/// A `drag` element with somewhere to go: keys and assistive input step it between points.
+pub fn draggable(node: &NodeSnapshot) -> bool {
+    node.drag.as_ref().is_some_and(|drag| drag.points.len() > 1)
+}
+
 /// Targets of pointer activation and keyboard focus.
 pub fn interactive(node: &NodeSnapshot) -> bool {
     activatable(node) || editable(node) || slider_enabled(node)

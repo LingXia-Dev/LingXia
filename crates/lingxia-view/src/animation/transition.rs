@@ -104,6 +104,14 @@ impl TransitionDef {
     pub fn covers(&self, property: Property) -> bool {
         self.properties[property as usize]
     }
+
+    /// The spring a released drag takes: this duration, and the bounce of an `ease-spring*`.
+    pub fn release(&self) -> (Duration, f64) {
+        match self.timing {
+            Timing::Spring(bounce) => (self.duration, bounce),
+            Timing::Ease(_) => (self.duration, 0.0),
+        }
+    }
 }
 
 /// A transform as independent translate/rotate/scale about a box-relative origin.

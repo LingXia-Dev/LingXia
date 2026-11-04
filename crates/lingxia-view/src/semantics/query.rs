@@ -310,15 +310,23 @@ pub fn describe(
             .selected
             .map(|index| select.options[index].value.clone())
     });
-    let value = chosen.or_else(|| {
-        input.map(|input| {
-            input
-                .edit
-                .as_ref()
-                .map(|edit| edit.text.clone())
-                .unwrap_or_else(|| input.value.clone())
+    let value = chosen
+        .or_else(|| {
+            input.map(|input| {
+                input
+                    .edit
+                    .as_ref()
+                    .map(|edit| edit.text.clone())
+                    .unwrap_or_else(|| input.value.clone())
+            })
         })
-    });
+        // A range reads as `<input type="range">` does: its number as text.
+        .or_else(|| {
+            semantic
+                .as_ref()
+                .and_then(|s| s.range.as_ref())
+                .map(|range| range.value.to_string())
+        });
     let (text, text_truncated) = truncate(&text_content(&projection.frame.nodes, index), max_text);
     let value = value.map(|value| truncate(&value, max_text));
     let [left, top, width, height] = node.bounds;
@@ -371,6 +379,21 @@ pub fn tree(projection: &Projection) -> Value {
             out.insert("testId".into(), json!(node.test_id));
         }
         out.insert("bounds".into(), json!(node.bounds));
+        if let Some(drag) = &projection.frame.nodes[node.index].drag {
+            let index = projection
+                .drags
+                .and_then(|drags| drags.target(&projection.frame.nodes[node.index].identity))
+                .unwrap_or(drag.index);
+            let axis = if drag.axis == crate::scene::node::ScrollAxis::Horizontal {
+                "x"
+            } else {
+                "y"
+            };
+            out.insert(
+                "drag".into(),
+                json!({ "axis": axis, "index": index, "count": drag.points.len() }),
+            );
+        }
         for (key, flag) in [
             ("disabled", !node.enabled),
             ("focused", node.focused),

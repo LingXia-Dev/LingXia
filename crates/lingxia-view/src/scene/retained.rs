@@ -505,6 +505,16 @@ impl RetainedLayout {
                     crate::scene::anchor::place(natural, nodes[target].bounds, viewport, *area);
                 translation = [translation[0] - dx, translation[1] - dy];
             }
+            // A drag element sits at its offset, its whole subtree with it.
+            if let Some(drag) = &self.nodes[index].drag {
+                let at = offsets
+                    .get(&crate::scene::node::DragSnapshot::key(
+                        &self.nodes[index].identity,
+                    ))
+                    .copied()
+                    .unwrap_or_else(|| drag.rest());
+                translation[drag.axis.index()] -= at;
+            }
             let composed = blocked.as_ref().is_some_and(|blocked| blocked[index]);
             if composed
                 && let Some(moved) = visuals

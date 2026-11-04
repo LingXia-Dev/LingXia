@@ -106,12 +106,51 @@ The host recognizes the gestures; the View receives their outcome:
 | Gesture | Outcome |
 | --- | --- |
 | tap | the control's handler (`onClick`, `onChange`, focus for editors) |
-| drag, fling | scrolls the innermost `<scroll>`/`<List>` on that axis; drags a `<slider>` |
+| drag, fling | moves a `drag` element on its axis; else scrolls the innermost `<scroll>`/`<List>` on that axis; drags a `<slider>` |
 | long press | selects text where `select-text` is set; editors show their text menu |
 | tap on a `<plot>` | `onSelect(index)`, or `-1` when it clears the selection |
 
 There are no pointer, touch, swipe, pinch or long-press handlers on elements, and no drag-and-drop.
 Build carousels from a horizontal `<scroll>`.
+
+## Dragging an element
+
+`drag="x"` or `drag="y"` lets the finger move a `<view>`, `<row>`, `<column>`, `<stack>`, `<grid>` or
+`<button>` along one axis, its whole subtree with it, between its `dragSnapPoints`: up to 8 offsets from
+where layout put it, in px or `%` of its own size (`x` offsets mirror in RTL, like `start`/`end`). The
+points are also its bounds: past the first or last it follows only part of the finger. On release it
+springs to the nearest point, carried on by the finger's speed; a flick moves at least one point on.
+The spring takes the element's transition timing (`transition-transform duration-500 ease-spring-bouncy`);
+without one it is 300 ms with no bounce.
+
+```tsx
+import { useLocal } from '@lingxia/view';
+
+export function render() {
+  const at = useLocal('at', 0);
+  const heading = useLocal('heading', -1);
+  return (
+    <page className="p-4 gap-3">
+      <view drag="x" dragSnapPoints={[0, 120, 240]} bind={at} aria-label="Card"
+        onDragStart={() => heading.set(-1)} onDragEnd={({ index }) => heading.set(index)}
+        className="w-20 h-16 rounded-lg bg-accent transition-transform duration-300 ease-spring" />
+      <text className="text-sm text-muted">{`at ${at.value}, heading for ${heading.value}`}</text>
+      <button onClick={() => at.set(0)}>Back to start</button>
+    </page>
+  );
+}
+```
+
+- `bind` takes a `useLocal` number: the index of the point the element rests on. It changes when the
+  element lands, not while it moves; setting it springs the element there. While a finger holds the
+  element, a value set from code waits for the release, and the finger's point wins.
+- `onDragStart()` runs once the finger has moved past slop on the element's axis (a press inside it is
+  cancelled then); `onDragEnd({ index, velocity })` on release, with the point it heads for and px/s.
+- A finger on a moving element catches it where it is.
+- It needs `aria-label` (a `<button>` is named by its content). Screen readers announce it as an
+  adjustable whose value is its point, 1 to the number of points; increment and decrement step it.
+  Focused, the arrow keys on its axis, Home and End do the same. Automation reads the point as the
+  locator's value (`toHaveValue('2')`) and `drag: { axis, index, count }` in the accessibility tree.
 
 ## Dialogs, popovers and menus
 

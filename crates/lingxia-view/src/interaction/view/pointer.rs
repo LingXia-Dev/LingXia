@@ -45,6 +45,8 @@ impl ViewInteraction {
                     down: [event.x, event.y],
                     last: event.y,
                     target: frame.scroll_hit(point),
+                    drag: self.drag.hit(&frame, point),
+                    touching: true,
                     ..Default::default()
                 };
                 let pressed = self.gesture.pressed;
@@ -52,6 +54,7 @@ impl ViewInteraction {
                     .begin(pressed.and_then(|index| frame.node(index)), point);
                 if pressed.is_none()
                     && self.gesture.target.is_none()
+                    && self.gesture.drag.is_none()
                     && frame.outside_plot_selections(point).is_empty()
                     && frame.selectable_hit(point).is_none()
                     && !frame.has_text_selection()
@@ -127,6 +130,33 @@ impl ViewInteraction {
                     effects.push(Effect::Dispatch);
                     return (true, effects);
                 }
+                // A drag element on the finger's axis takes the gesture.
+                if !self.gesture.dragging
+                    && self.gesture.moved
+                    && let Some(identity) = self.gesture.drag.clone()
+                {
+                    let axis = if dx.abs() > dy.abs() {
+                        ScrollAxis::Horizontal
+                    } else {
+                        ScrollAxis::Vertical
+                    };
+                    if self.drag.axis(&identity) == Some(axis) {
+                        self.gesture.axis = Some(axis);
+                        self.gesture.target = None;
+                        self.gesture.dragging = true;
+                        self.gesture.holding = true;
+                        self.drag.hold(&identity);
+                        effects.extend(self.cancel_press());
+                        effects.push(Effect::Claim { exclusive: true });
+                        let (start, distance) = match axis {
+                            ScrollAxis::Horizontal => (self.gesture.down[0], dx),
+                            ScrollAxis::Vertical => (self.gesture.down[1], dy),
+                        };
+                        self.gesture.last = start + event.slop.copysign(distance);
+                        self.drag_event("start", 0, 0.0);
+                        effects.push(Effect::Dispatch);
+                    }
+                }
                 if !self.gesture.dragging && self.gesture.moved && self.gesture.target.is_some() {
                     let axis = if dx.abs() > dy.abs() {
                         ScrollAxis::Horizontal
@@ -147,6 +177,20 @@ impl ViewInteraction {
                         };
                         self.gesture.last = start + event.slop.copysign(distance);
                     }
+                }
+                if self.gesture.holding
+                    && let Some(identity) = self.gesture.drag.clone()
+                {
+                    let axis = self.gesture.axis.unwrap_or(ScrollAxis::Vertical);
+                    let position = match axis {
+                        ScrollAxis::Horizontal => event.x,
+                        ScrollAxis::Vertical => event.y,
+                    };
+                    let finger = (position - self.gesture.last) / scale;
+                    self.gesture.last = position;
+                    self.drag.drag_by(&identity, finger);
+                    effects.push(Effect::Redraw);
+                    return (true, effects);
                 }
                 if self.gesture.dragging {
                     let position = if self.gesture.axis == Some(ScrollAxis::Horizontal) {
@@ -182,6 +226,33 @@ impl ViewInteraction {
                 let target = self.gesture.pressed;
                 let same_frame = self.gesture.pressed_commit == Some(frame.commit);
                 effects.extend(self.cancel_press());
+                self.gesture.touching = false;
+                // A finger that caught a spring and let go without dragging lets it finish.
+                if !self.gesture.holding
+                    && let Some(identity) = self.gesture.drag.clone()
+                {
+                    self.drag.resume(&identity);
+                }
+                if self.gesture.holding
+                    && let Some(identity) = self.gesture.drag.clone()
+                {
+                    let scale = frame.scale;
+                    let velocity = match self.gesture.axis {
+                        Some(ScrollAxis::Horizontal) => event.velocity[0],
+                        _ => event.velocity[1],
+                    } / scale;
+                    if let Some(release) =
+                        self.drag
+                            .release(&identity, velocity, event.min_fling / scale)
+                    {
+                        self.drag_event("end", release.index, velocity);
+                        effects.push(Effect::Dispatch);
+                    }
+                    self.gesture.holding = false;
+                    self.gesture.dragging = false;
+                    effects.push(Effect::Claim { exclusive: false });
+                    return (true, effects);
+                }
                 if self.gesture.dragging {
                     let axis = self.gesture.axis.unwrap_or(ScrollAxis::Vertical);
                     let speed = -match axis {
@@ -222,6 +293,19 @@ impl ViewInteraction {
                 effects.push(Effect::Claim { exclusive: false });
             }
             PointerPhase::Cancel => {
+                self.gesture.touching = false;
+                if let Some(identity) = self.gesture.drag.clone() {
+                    if self.gesture.holding {
+                        self.gesture.holding = false;
+                        self.gesture.dragging = false;
+                        if let Some(release) = self.drag.release(&identity, 0.0, f32::INFINITY) {
+                            self.drag_event("end", release.index, 0.0);
+                            effects.push(Effect::Dispatch);
+                        }
+                    } else {
+                        self.drag.resume(&identity);
+                    }
+                }
                 self.gesture.moved = true;
                 self.slider.cancel();
                 effects.extend(self.cancel_press());

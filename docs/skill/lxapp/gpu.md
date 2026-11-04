@@ -57,7 +57,11 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   Errors are `{ code, message }`; reloads keep old values (`stale`). `useLeaveGuard(name, { enabled })`.
 - Lists: `<List items getKey renderItem />`; hooks inside rows need stable keys.
 - Scroll snap: `snap-x`/`snap-y` on a `<scroll>` or `<List>`, `snap-start|center|end` on children; every snap is mandatory.
-- No pointer, swipe, pinch or long-press handlers and no drag-and-drop: drags scroll or move sliders.
+- `drag="x|y" dragSnapPoints={[0, 120, '50%']}` (≤8, px or % of its own size; `x` mirrors in RTL) lets the
+  finger move an element; it springs (its `transition-transform duration-* ease-spring*`) to the nearest point, a flick one on.
+  `bind={cell}` is the point's index (setting it springs there), `onDragStart()`, `onDragEnd({ index, velocity })`.
+  Needs `aria-label`: screen readers and arrow keys step it; specs read the point as `toHaveValue('1')`.
+- No other pointer, swipe, pinch or long-press handlers and no drag-and-drop.
 - `<vector paths gradients>`: paths take SVG `transform`, caps, joins, dash offset and
   `fill`/`stroke: 'url(#id)'` naming a `gradients` entry (linear, radial or conic, ≤8).
 - Rich text: `<text>Read <span className="font-bold">this</span> or <link onClick={go}>that</link></text>`;

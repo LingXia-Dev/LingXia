@@ -278,6 +278,9 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   if (data) wire('dataAttributes', JSON.stringify(data));
   if (props.dir !== undefined) wire('direction', props.dir);
   semantics(tag, props, wire);
+  if (props.drag !== undefined) dragElement(tag, props, wire, on);
+  else for (const key of ['dragSnapPoints', 'bind', 'onDragStart', 'onDragEnd'])
+    if (props[key] !== undefined && !element.binding) throw Error(`UI_PROP: ${key} belongs to an element with drag`);
   if (tag === 'dialog') {
     if (props.role !== undefined) throw Error('UI_PROP: a <dialog> keeps its own role');
     if (!props.accessibilityLabel) throw Error('UI_A11Y: <dialog> needs an accessible name; add aria-label="…"');
@@ -516,6 +519,39 @@ function semantics(tag, props, wire) {
     check.label(props.accessibilityLabel, 'UI_PROP');
     wire('accessibilityLabel', props.accessibilityLabel);
   }
+}
+
+// `drag="x|y"`: the host moves the element with the finger between its snap points (offsets
+// from where layout put it, px or % of its own size) and springs it to one on release.
+const dragPoint = /^-?\d+(\.\d+)?%$/;
+function dragElement(tag, props, wire, on) {
+  const { drag: axis, dragSnapPoints: points = [0], bind: cell, onDragStart, onDragEnd } = props;
+  if (axis !== 'x' && axis !== 'y') throw Error('UI_PROP: drag is "x" or "y"');
+  if (!Array.isArray(points) || !points.length || points.length > limits.dragSnapPoints ||
+      points.some(point => typeof point === 'number' ? !Number.isFinite(point) || Math.abs(point) > 16384
+        : typeof point !== 'string' || !dragPoint.test(point) || Math.abs(parseFloat(point)) > 1000))
+    throw Error(`UI_PROP: dragSnapPoints are 1..${limits.dragSnapPoints} offsets in px or %`);
+  if (tag !== 'dialog' && tag !== 'button' && !props.accessibilityLabel)
+    throw Error('UI_A11Y: an element with drag needs aria-label, so assistive tech can move it');
+  for (const [name, value] of [['onDragStart', onDragStart], ['onDragEnd', onDragEnd]])
+    if (value !== undefined && typeof value !== 'function') throw Error(`UI_PROP: ${name}`);
+  let index = 0;
+  if (cell !== undefined) {
+    const bound = cellOf(cell);
+    if (!bound || render.candidate.locals.get(bound.key) !== bound.cell || typeof cell.value !== 'number')
+      throw Error('UI_PROP: bind on a drag element takes a mounted number useLocal cell');
+    index = cell.value;
+  }
+  if (!Number.isInteger(index) || index < 0 || index >= points.length) throw Error('UI_PROP: the bound snap index is out of range');
+  wire('drag', JSON.stringify({ axis, points, index }));
+  on('onDragEvent', payload => {
+    const event = JSON.parse(payload);
+    if (event.phase === 'start') onDragStart?.();
+    else if (event.phase === 'end') onDragEnd?.({ index: event.index, velocity: event.velocity });
+    else if (event.phase === 'settle' && Number.isInteger(event.index) && event.index >= 0 && event.index < points.length) {
+      if (cell !== undefined && cell.value !== event.index) cell.set(event.index);
+    }
+  }, 'text');
 }
 
 // A select's options, validated like a radio group's and sent whole.

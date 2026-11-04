@@ -152,6 +152,7 @@ pub fn meaningful(node: &NodeSnapshot) -> bool {
             || node.range.is_some()
             || node.input.is_some()
             || node.tag == "image"
+            || node.drag.is_some()
             || (node.tag == "plot"
                 && node
                     .accessibility_label
@@ -179,6 +180,8 @@ pub struct Projection<'a> {
     pub keyboard_focus: Option<usize>,
     /// An interrupted session leaves content readable but inert.
     pub inert: bool,
+    /// Live snap points of `drag` elements, ahead of the frame once input moved them.
+    pub drags: Option<&'a crate::interaction::drag::DragModel>,
 }
 
 impl Projection<'_> {
@@ -316,6 +319,9 @@ impl Projection<'_> {
             }
         } else if button {
             Role::Button
+        } else if node.drag.is_some() {
+            // Moved between its snap points, a drag element adjusts like a slider.
+            Role::Slider
         } else if matches!(node.tag, "image" | "plot") {
             Role::Image
         } else {
@@ -367,6 +373,22 @@ impl Projection<'_> {
                 if range.value > range.min {
                     actions.push(Action::ScrollBackward);
                 }
+            }
+        }
+        let drag = node.drag.as_ref().map(|drag| {
+            let at = self
+                .drags
+                .and_then(|drags| drags.target(&node.identity))
+                .unwrap_or(drag.index);
+            (at, drag.points.len())
+        });
+        if let Some((at, count)) = drag {
+            focusable = true;
+            if at + 1 < count {
+                actions.push(Action::ScrollForward);
+            }
+            if at > 0 {
+                actions.push(Action::ScrollBackward);
             }
         }
         let mut children = if self.is_container(index) {
@@ -506,11 +528,22 @@ impl Projection<'_> {
                 .scroll
                 .as_ref()
                 .is_some_and(|scroll| scroll.max_offset > 0.0),
-            range: node.range.as_ref().map(|range| Range {
-                min: range.min,
-                max: range.max,
-                value: range.value,
-            }),
+            range: node
+                .range
+                .as_ref()
+                .map(|range| Range {
+                    min: range.min,
+                    max: range.max,
+                    value: range.value,
+                })
+                .or_else(|| {
+                    drag.filter(|_| role == Role::Slider)
+                        .map(|(at, count)| Range {
+                            min: 1.0,
+                            max: count as f64,
+                            value: (at + 1) as f64,
+                        })
+                }),
             text_field,
             parent,
             children,

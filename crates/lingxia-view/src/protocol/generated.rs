@@ -232,6 +232,8 @@ pub mod field {
     pub const TOP_LAYER: usize = 196;
     pub const ANCHOR_AREA: usize = 197;
     pub const ANCHOR_NAME: usize = 198;
+    pub const DRAG: usize = 199;
+    pub const ON_DRAG_EVENT: usize = 200;
 }
 
 pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page", "span", "link", "select"];
@@ -437,6 +439,8 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("topLayer", "flag"),
     ("anchorArea", "anchor-area"),
     ("anchorName", "anchor"),
+    ("drag", "drag"),
+    ("onDragEvent", "handle"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -519,6 +523,7 @@ pub mod limits {
     pub const DATA_ATTRIBUTE_BYTES: usize = 65536;
     pub const BLUR_LAYERS: usize = 8;
     pub const TOP_LAYER: usize = 16;
+    pub const DRAG_SNAP_POINTS: usize = 8;
 }
 
 /// Environment keys and where each comes from: `device` facts, a host `push`, or the `session`.
@@ -832,4 +837,6 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::COLUMN]), parent: None },
     FieldAdmission { tags: Some(&[tag::COLUMN, tag::ROW, tag::STACK, tag::GRID]), parent: None },
     FieldAdmission { tags: Some(&[tag::BUTTON]), parent: None },
+    FieldAdmission { tags: Some(&[tag::COLUMN, tag::ROW, tag::STACK, tag::GRID, tag::BUTTON]), parent: None },
+    FieldAdmission { tags: Some(&[tag::COLUMN, tag::ROW, tag::STACK, tag::GRID, tag::BUTTON]), parent: None },
 ];

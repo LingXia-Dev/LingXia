@@ -35,6 +35,11 @@ Children: any elements and text. Renders as `column`. May sit inside a composed 
 | `popover` | `boolean \| "auto" \| "manual"` |  |
 | `open` | `boolean` |  |
 | `onToggle` | `(open: boolean) => void` |  |
+| `drag` | `"x" \| "y"` |  |
+| `dragSnapPoints` | `` readonly (number \| `${number}%`)[] `` |  |
+| `bind` | `Local<number>` |  |
+| `onDragStart` | `() => void` |  |
+| `onDragEnd` | `(info: { index: number; velocity: number }) => void` |  |
 
 ## `<column>`
 
@@ -47,6 +52,11 @@ Children: any elements and text. May sit inside a composed `<button>` or `<check
 | `popover` | `boolean \| "auto" \| "manual"` |  |
 | `open` | `boolean` |  |
 | `onToggle` | `(open: boolean) => void` |  |
+| `drag` | `"x" \| "y"` |  |
+| `dragSnapPoints` | `` readonly (number \| `${number}%`)[] `` |  |
+| `bind` | `Local<number>` |  |
+| `onDragStart` | `() => void` |  |
+| `onDragEnd` | `(info: { index: number; velocity: number }) => void` |  |
 
 ## `<row>`
 
@@ -59,6 +69,11 @@ Children: any elements and text. May sit inside a composed `<button>` or `<check
 | `popover` | `boolean \| "auto" \| "manual"` |  |
 | `open` | `boolean` |  |
 | `onToggle` | `(open: boolean) => void` |  |
+| `drag` | `"x" \| "y"` |  |
+| `dragSnapPoints` | `` readonly (number \| `${number}%`)[] `` |  |
+| `bind` | `Local<number>` |  |
+| `onDragStart` | `() => void` |  |
+| `onDragEnd` | `(info: { index: number; velocity: number }) => void` |  |
 
 ## `<page>`
 
@@ -86,6 +101,11 @@ Children: text, or noninteractive content elements (a composed control). Not all
 | `disabled` | `boolean` |  |
 | `aria-label` | `string` |  |
 | `popoverTarget` | `string` |  |
+| `drag` | `"x" \| "y"` |  |
+| `dragSnapPoints` | `` readonly (number \| `${number}%`)[] `` |  |
+| `bind` | `Local<number>` |  |
+| `onDragStart` | `() => void` |  |
+| `onDragEnd` | `(info: { index: number; velocity: number }) => void` |  |
 
 ## `<spacer>`
 
@@ -235,6 +255,11 @@ Children: any elements and text. May sit inside a composed `<button>` or `<check
 | `popover` | `boolean \| "auto" \| "manual"` |  |
 | `open` | `boolean` |  |
 | `onToggle` | `(open: boolean) => void` |  |
+| `drag` | `"x" \| "y"` |  |
+| `dragSnapPoints` | `` readonly (number \| `${number}%`)[] `` |  |
+| `bind` | `Local<number>` |  |
+| `onDragStart` | `() => void` |  |
+| `onDragEnd` | `(info: { index: number; velocity: number }) => void` |  |
 
 ## `<stack>`
 
@@ -246,6 +271,11 @@ Children: any elements and text. May sit inside a composed `<button>` or `<check
 | `popover` | `boolean \| "auto" \| "manual"` |  |
 | `open` | `boolean` |  |
 | `onToggle` | `(open: boolean) => void` |  |
+| `drag` | `"x" \| "y"` |  |
+| `dragSnapPoints` | `` readonly (number \| `${number}%`)[] `` |  |
+| `bind` | `Local<number>` |  |
+| `onDragStart` | `() => void` |  |
+| `onDragEnd` | `(info: { index: number; velocity: number }) => void` |  |
 
 ## `<dialog>`
 

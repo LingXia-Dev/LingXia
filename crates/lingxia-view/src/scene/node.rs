@@ -105,6 +105,44 @@ pub struct NodeSnapshot {
     /// Authored `data-*` props, for automation only: no semantics, no adapter payload.
     #[serde(skip)]
     pub(crate) data: Option<std::sync::Arc<std::collections::BTreeMap<String, String>>>,
+    /// A `drag` element: the host moves it between its snap points.
+    #[serde(skip)]
+    pub drag: Option<DragSnapshot>,
+}
+
+/// Snap points of a `drag` element, in logical pixels from where layout put it along `axis`
+/// (positive is down, or right on screen); it rests on `points[index]`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DragSnapshot {
+    pub axis: ScrollAxis,
+    pub points: Vec<f32>,
+    pub index: usize,
+    /// `onDragEvent`, or 0.
+    pub handle: u64,
+    /// The release spring: the element's `duration-*` and `ease-spring*` bounce.
+    pub duration: std::time::Duration,
+    pub bounce: f64,
+}
+
+impl DragSnapshot {
+    pub fn rest(&self) -> f32 {
+        self.points[self.index]
+    }
+
+    pub fn range(&self) -> (f32, f32) {
+        let min = self.points.iter().copied().fold(f32::INFINITY, f32::min);
+        let max = self
+            .points
+            .iter()
+            .copied()
+            .fold(f32::NEG_INFINITY, f32::max);
+        (min, max)
+    }
+
+    /// The offset `identity`'s drag takes from a frame's offsets.
+    pub fn key(identity: &str) -> String {
+        format!("drag:{identity}")
+    }
 }
 
 impl NodeSnapshot {
