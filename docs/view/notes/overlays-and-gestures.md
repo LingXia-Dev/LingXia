@@ -70,7 +70,7 @@ Three cases, and scroll already is one of them.
 - `drag`: `'x'` or `'y'`. No free 2D drag, no reordering in this step.
 - `dragSnapPoints`: up to 8 offsets from the laid-out box, px or % of its own size. They are also the constraints; there is no `dragConstraints`. `x` offsets are inline-direction and mirror in RTL, like `start`/`end`.
 - Past the ends the element rubber-bands. `overscroll-none` makes it stop hard. There is no `dragElastic`.
-- Release timing is the element's `duration-*` and `ease-spring*` (default 300 ms, bounce 0). There is no `dragTransition`.
+- Release timing is the element's transition timing (`transition-transform duration-* ease-spring*`; default 300 ms, bounce 0). There is no `dragTransition`.
 
 **Outcomes that reach JS, all discrete, through the existing dispatch queue:**
 
@@ -98,10 +98,10 @@ Considered and rejected: sheets as a scroll with a transparent top region. It ne
 A scroll inside a sheet at a partial detent extends its `max_offset` by the part off screen, or its end could never be reached.
 
 **Accessibility: every gesture has an equivalent, enforced at build (`UI_A11Y`).** A `drag` needs one of:
-- `aria-label`: adjustable. Increment and decrement move between points; value is "2 of 3". Keyboard arrows do the same when focused. A `<dialog>` is named already.
+- `aria-label`: adjustable. Increment and decrement move between points in index order; the value is a range from 1 to the number of points, read as a number. Keyboard arrows on the element's axis, Home and End do the same when focused. A `<dialog>` is named already.
 - `aria-actions` (ARIA 1.3 draft, attribute shipping in Chromium; IDs of the elements behind): the row speaks those as custom actions, and they leave linear navigation while hidden.
 
-Adjustable is a new action pair on the node (`AccessibilityAction` has `SetProgress`; add `Increment`/`Decrement`), `Dismiss` is new, and the custom-action projection takes a label. Automation sees the same states: `drag: { axis, index, count }` in the semantic tree, the actions via `locator`, and `t.app.view.drag` for the pointer path.
+Increment and decrement are the `scroll-forward`/`scroll-backward` pair sliders already use on both platforms, not a new pair; `Dismiss` is new, and the custom-action projection takes a label. Automation sees the same states: `drag: { axis, index, count }` in the semantic tree, the actions via `locator`, and `t.app.view.drag` for the pointer path.
 
 ## Springs
 
