@@ -24,7 +24,16 @@ pub struct Context(
 
 impl Default for Context {
     fn default() -> Self {
-        Self::with_backends(wgpu::Backends::from_env().unwrap_or_default())
+        Self::with_backends(wgpu::Backends::from_env().unwrap_or_else(default_backends))
+    }
+}
+
+/// wgpu has no Vulkan surface for an OHOS window, only EGL; other platforms take every backend.
+fn default_backends() -> wgpu::Backends {
+    if cfg!(target_env = "ohos") {
+        wgpu::Backends::GL
+    } else {
+        wgpu::Backends::default()
     }
 }
 
@@ -730,6 +739,16 @@ fn depth_view(surface: &RenderSurface<'_>, device: &wgpu::Device) -> wgpu::Textu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_ohos_narrows_the_default_backends() {
+        let expected = if cfg!(target_env = "ohos") {
+            wgpu::Backends::GL
+        } else {
+            wgpu::Backends::default()
+        };
+        assert_eq!(default_backends(), expected);
+    }
 
     #[test]
     #[ignore = "requires a GPU adapter; run explicitly with --features gpu -- --ignored"]
