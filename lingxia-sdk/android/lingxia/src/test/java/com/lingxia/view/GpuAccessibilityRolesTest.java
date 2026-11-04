@@ -50,9 +50,9 @@ public class GpuAccessibilityRolesTest {
         try {
             GpuView.nativeLoad(host, GpuNative.module(
                 "function render(){const p=useLocal('p','');return h('column',{},"
-                + "h('select',{testId:'p',bind:p,accessibilityLabel:'Billing plan',placeholder:'Choose a plan',"
+                + "h('select',{'data-testid':'p',bind:p,'aria-label':'Billing plan',placeholder:'Choose a plan',"
                 + "options:[{value:'m',label:'Monthly'},{value:'y',label:'Yearly'}],style:{height:40}}),"
-                + "h('input',{testId:'e',accessibilityLabel:'Name',style:{height:40}}))}"));
+                + "h('input',{'data-testid':'e','aria-label':'Name',style:{height:40}}))}"));
             GpuView.nativeSetVisible(host, true);
             fake.pump(host, () -> fake.presented >= 1);
             Map<String, JSONObject> nodes = nodes(host);
@@ -79,12 +79,12 @@ public class GpuAccessibilityRolesTest {
         try {
             GpuView.nativeLoad(host, GpuNative.module(
                 "function render(){const n=useLocal('n',0);return h('column',{},"
-                + "h('button',{testId:'add',onClick:()=>n.set(n.value+1),style:{height:60}},'Add'),"
-                + "h('text',{testId:'h',role:'heading',headingLevel:3},'Plans'),"
-                + "h('column',{testId:'list',role:'list'},h('row',{testId:'a',role:'listitem'},h('text',{},'Water')),h('row',{testId:'b',role:'listitem'},h('text',{},'Power'))),"
-                + "h('column',{testId:'d',role:'dialog',accessibilityLabel:'Confirm'},h('text',{},'Sure?')),"
-                + "h('text',{testId:'s',role:'status'},'Saved '+n.value),"
-                + "h('text',{},'Read the ',h('link',{testId:'l',onPress(){}},'terms')))}"));
+                + "h('button',{'data-testid':'add',onClick:()=>n.set(n.value+1),style:{height:60}},'Add'),"
+                + "h('text',{'data-testid':'h',role:'heading',headingLevel:3},'Plans'),"
+                + "h('column',{'data-testid':'list',role:'list'},h('row',{'data-testid':'a',role:'listitem'},h('text',{},'Water')),h('row',{'data-testid':'b',role:'listitem'},h('text',{},'Power'))),"
+                + "h('dialog',{'data-testid':'d',open:n.value>1,'aria-label':'Confirm'},h('text',{},'Sure?')),"
+                + "h('text',{'data-testid':'s',role:'status'},'Saved '+n.value),"
+                + "h('text',{},'Read the ',h('link',{'data-testid':'l',onClick(){}},'terms')))}"));
             GpuView.nativeSetVisible(host, true);
             fake.pump(host, () -> fake.presented >= 1);
             Map<String, JSONObject> nodes = nodes(host);
@@ -93,14 +93,18 @@ public class GpuAccessibilityRolesTest {
             assertEquals("android.widget.ListView", list.getClassName());
             assertEquals(2, list.getCollectionInfo().getRowCount());
             assertEquals(1, info(nodes.get("b")).getCollectionItemInfo().getRowIndex());
-            AccessibilityNodeInfo dialog = info(nodes.get("d"));
-            assertEquals("Confirm", dialog.getPaneTitle());
-            assertTrue(!dialog.isClickable());
             assertEquals(View.ACCESSIBILITY_LIVE_REGION_POLITE, info(nodes.get("s")).getLiveRegion());
             assertEquals("Link", String.valueOf(info(nodes.get("l")).getExtras().getCharSequence(GpuAccessibility.ROLE_DESCRIPTION)));
             assertTrue(GpuView.nativePointer(host, 0, 40, 40, 8, 0, 0, 50));
             GpuView.nativePointer(host, 2, 40, 40, 8, 0, 0, 50);
             fake.pump(host, () -> fake.events.contains("live:polite:Saved 1"));
+            // An open dialog is modal and hides the page (and its live region), so a second tap opens it.
+            assertTrue(GpuView.nativePointer(host, 0, 40, 40, 8, 0, 0, 50));
+            GpuView.nativePointer(host, 2, 40, 40, 8, 0, 0, 50);
+            fake.pump(host, () -> { try { return nodes(host).containsKey("d"); } catch (Exception e) { throw new AssertionError(e); } });
+            AccessibilityNodeInfo dialog = info(nodes(host).get("d"));
+            assertEquals("Confirm", dialog.getPaneTitle());
+            assertTrue(!dialog.isClickable());
         } finally {
             GpuView.nativeHostRelease(host);
             fake.release();

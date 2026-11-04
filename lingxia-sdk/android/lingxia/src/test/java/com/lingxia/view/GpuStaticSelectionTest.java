@@ -38,7 +38,7 @@ public class GpuStaticSelectionTest {
         long host = GpuView.nativeHostCreate(fake, "test:jvm-selection", false, 0);
         try {
             GpuView.nativeLoad(host, GpuNative.module(
-                "function render(){return h('text',{testId:'p',style:{userSelect:'text',fontSize:16,width:90}},'hello brave new world')}"));
+                "function render(){return h('text',{'data-testid':'p',style:{userSelect:'text',fontSize:16,width:90}},'hello brave new world')}"));
             GpuView.nativeSetVisible(host, true);
             fake.pump(host, () -> fake.presented >= 1);
             JSONArray b = node(fake, "p").getJSONArray("bounds");

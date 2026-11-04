@@ -62,7 +62,9 @@ public class GpuNativeLoadTest {
         public void presented() { presented++; }
         public void message(long connection, String message) { }
         public boolean restart(long connection) { return false; }
-        public void recovery(int message, int action, boolean retained, String error) { if (message >= 0) fail(error); }
+        // A throw inside a JNI callback never reaches the test; pump reports it instead.
+        volatile String failure;
+        public void recovery(int message, int action, boolean retained, String error) { if (message >= 0) failure = error; }
         public void bootstrapOverdue(boolean overdue) { }
         final ArrayList<String> copied = new ArrayList<>();
         public void copyText(String text) { copied.add(text); }
@@ -79,6 +81,7 @@ public class GpuNativeLoadTest {
         void pump(long host, java.util.function.BooleanSupplier done) throws InterruptedException {
             long deadline = System.currentTimeMillis() + 20000;
             while (!done.getAsBoolean()) {
+                if (failure != null) fail(failure);
                 assertTrue("host deadline", System.currentTimeMillis() < deadline);
                 Long task = tasks.poll(20, TimeUnit.MILLISECONDS);
                 if (task != null) GpuView.nativeRunTask(task);
@@ -111,7 +114,7 @@ public class GpuNativeLoadTest {
         long host = GpuView.nativeHostCreate(fake, "test:jvm", false, 0);
         try {
             GpuView.nativeLoad(host, GpuNative.module(
-                "function render(){const e=useView().env;return h('text',{testId:'env'},e.canDock+' '+e.sizeClass+' '+e.displayLanguage)}"));
+                "function render(){const e=useView().env;return h('text',{'data-testid':'env'},e.canDock+' '+e.sizeClass+' '+e.displayLanguage)}"));
             GpuView.nativeSetVisible(host, true);
             fake.pump(host, () -> fake.presented >= 1);
             assertEquals("false compact en", text(last(fake), "env"));
@@ -139,7 +142,7 @@ public class GpuNativeLoadTest {
         Fake fake = new Fake();
         long host = GpuView.nativeHostCreate(fake, "test:jvm", false, 0);
         GpuView.nativeLoad(host, GpuNative.module(
-            "function render(){const n=useLocal('n',0);return h('column',{},h('button',{testId:'add',onClick:()=>n.set(n.value+1),style:{height:60}},'Count '+n.value),h('image',{src:'lx://pic.png',style:{width:20,height:20}}))}"));
+            "function render(){const n=useLocal('n',0);return h('column',{},h('button',{'data-testid':'add',onClick:()=>n.set(n.value+1),style:{height:60}},'Count '+n.value),h('image',{src:'lx://pic.png',style:{width:20,height:20}}))}"));
         fake.pump(host, () -> fake.loaded == 1);
         GpuView.nativeSetVisible(host, true);
         fake.pump(host, () -> fake.presented == 1 && !fake.pixels.isEmpty());
@@ -167,7 +170,7 @@ public class GpuNativeLoadTest {
         long host = GpuView.nativeHostCreate(fake, "test:jvm", false, 0);
         try {
             GpuView.nativeLoad(host, GpuNative.module(
-                "function render(){return h('text',{testId:'p',style:{userSelect:'text'}},'hello brave world')}"));
+                "function render(){return h('text',{'data-testid':'p',style:{userSelect:'text'}},'hello brave world')}"));
             GpuView.nativeSetVisible(host, true);
             fake.pump(host, () -> fake.presented >= 1);
             int id = new JSONObject(GpuView.nativeSemanticRoots(host)).getJSONArray("roots").getInt(0);
