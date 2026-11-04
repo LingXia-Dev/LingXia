@@ -513,12 +513,14 @@ impl RetainedLayout {
                     ))
                     .copied()
                     .unwrap_or_else(|| drag.rest());
+                // The page's box, not the surface: on phones the surface also spans the system bars.
+                let page = self.nodes.first().map_or(viewport, |root| root.bounds);
                 let laid = shifted(self.nodes[index].bounds, translation, None);
                 let hides = drag
                     .points
                     .iter()
                     .map(|point| {
-                        !overlaps(shifted(laid, [0.0; 2], Some((drag.axis, *point))), viewport)
+                        !overlaps(shifted(laid, [0.0; 2], Some((drag.axis, *point))), page)
                     })
                     .collect();
                 if let Some(composed) = nodes[index].drag.as_mut() {
@@ -1354,6 +1356,7 @@ impl RetainedLayout {
             .get(&crate::scene::node::DragSnapshot::key(&node.identity))
             .copied()
             .unwrap_or_else(|| drag.rest());
+        let viewport = self.nodes.first().map_or(viewport, |root| root.bounds);
         let laid = shifted(node.bounds, translation, None);
         let open = on_screen(
             shifted(laid, [0.0; 2], Some((drag.axis, drag.range().0))),
