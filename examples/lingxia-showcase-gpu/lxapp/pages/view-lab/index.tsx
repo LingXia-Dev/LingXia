@@ -11,7 +11,7 @@ const groups = {
   input: { label: 'Input', sections: [Accessibility, Inputs, Controls, Focus, NestedControls, StateVariants] },
   overlay: { label: 'Overlay', sections: [Overlays] },
   gesture: { label: 'Gesture', sections: [Drag, DragChain, Detents] },
-  swipe: { label: 'Swipe', sections: [SwipeRows] },
+  swipe: { label: 'Swipe', sections: [SwipeRows, Pager] },
 };
 type Group = keyof typeof groups;
 
@@ -571,5 +571,28 @@ function SwipeRow({ item, onOpen, onArchive, onDelete }: { item: string; onOpen:
         data-testid={`lab-swipe-row-${id}`} onClick={onOpen} onDragEnd={({ index }) => { if (index === 2) onDelete(); }}
         className="absolute inset-0 px-4 justify-center items-start text-start bg-surface text-sm text-text">{item}</button>
     </stack>
+  );
+}
+
+// A pager: a horizontal scroll that stops on every page (`snap-always`), its page bound both ways.
+function Pager() {
+  const page = useLocal('pager-page', 0);
+  const pages = ['Morning', 'Noon', 'Evening'];
+  return (
+    <Section title="Pager" testId="lab-pager">
+      <scroll data-testid="lab-pager-scroll" bind={page} className="w-72 overflow-x-auto snap-x snap-always rounded-xl bg-surface-sunken">
+        <row>
+          {pages.map(name => (
+            <column key={name} className="snap-start shrink-0 w-72 h-28 items-center justify-center">
+              <text className="text-lg font-semibold">{name}</text>
+            </column>
+          ))}
+        </row>
+      </scroll>
+      <row className="gap-2 items-center">
+        <text data-testid="lab-pager-state" className="grow text-xs text-muted tabular-nums">{`page=${page.value}`}</text>
+        <Button testId="lab-pager-next" size="sm" variant="secondary" onClick={() => page.set((page.value + 1) % pages.length)}>Next</Button>
+      </row>
+    </Section>
   );
 }

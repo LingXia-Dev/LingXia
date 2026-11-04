@@ -118,6 +118,12 @@ pub enum Dispatch {
     },
     /// Escape: the View dismisses its innermost overlay.
     Escape,
+    /// A bound snapping scroll came to rest on snap point `index`.
+    SnapChange {
+        commit: CommitTicket,
+        handle: u64,
+        index: usize,
+    },
     /// A `drag` element's `onDragEvent`: `{phase: start|end|settle, index, velocity}`.
     DragEvent {
         commit: CommitTicket,

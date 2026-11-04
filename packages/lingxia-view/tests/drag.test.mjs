@@ -71,3 +71,16 @@ test('a swipe row names the controls behind it; they carry their ids', () => {
   assert.throws(() => render(() => h('page', {}, h('button', { drag: 'x', dragSnapPoints: [0, 1], 'aria-actions': '  ', onClick: () => {} }, 'Row'))), /1\.\.8 element ids/);
   assert.throws(() => render(() => h('page', {}, h('button', { id: '', onClick: () => {} }, 'Row'))), /UI_ID/);
 });
+
+test('bind on a snapping scroll sends its snap index and takes the one it settles on', () => {
+  reset();
+  let cell;
+  const view = () => { cell = useLocal('page', 1); return h('page', {}, h('scroll', { 'data-testid': 's', bind: cell })); };
+  const scroll = byId(render(view), 's');
+  assert.equal(scroll.props.snapIndex, 1);
+  assert.equal(dispatch(scroll.props.onSnapChange, '2'), true);
+  assert.equal(cell.value, 2);
+  dispatch(byId(render(view), 's').props.onSnapChange, '-1');
+  assert.equal(cell.value, 2, 'a negative index is ignored');
+  assert.throws(() => render(() => h('page', {}, h('scroll', { bind: { value: 0 } }))), /snap index/);
+});

@@ -416,7 +416,11 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             "UI_LIST: invalid extent",
         ),
         field::LIST_ANCHOR => list_anchor(value),
-        field::ON_CLICK | field::ON_DRAG_EVENT => {
+        field::SNAP_INDEX => ensure(
+            value.as_u64().is_some_and(|index| index < 4096),
+            "UI_PROP: invalid snap index",
+        ),
+        field::ON_CLICK | field::ON_DRAG_EVENT | field::ON_SNAP_CHANGE => {
             ensure(handle(value), "UI_PROP: invalid handle or flag")
         }
         field::ELEMENT_ID | field::ARIA_ACTIONS => ensure(

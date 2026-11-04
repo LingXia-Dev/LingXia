@@ -14,6 +14,7 @@ impl<A: PlatformAdapter> Inner<A> {
     pub(super) fn deliver(self: &Arc<Self>, mut effects: Vec<Effect>) {
         // Pointer, keys, assistive input and frames all hand drag releases over here.
         self.drag_later();
+        self.snap_later();
         self.queue_edits(&mut effects);
         if effects.is_empty() {
             return;
@@ -275,6 +276,15 @@ impl<A: PlatformAdapter> Inner<A> {
                     page,
                     true,
                     Box::new(move |session| session.submit_editor(commit, &identity)),
+                ),
+                Dispatch::SnapChange {
+                    commit,
+                    handle,
+                    index,
+                } => self.activate(
+                    page,
+                    false,
+                    Box::new(move |session| session.text_event(commit, handle, &index.to_string())),
                 ),
                 Dispatch::DragEvent {
                     commit,

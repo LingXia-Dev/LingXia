@@ -259,6 +259,14 @@ impl Renderer {
                         .iter()
                         .find(|(id, _)| *id == field::ON_REACH_END)
                         .and_then(|(_, v)| v.as_u64()),
+                    snap_stop: record.string(field::SNAP_STOP) == Some("always"),
+                    snap_index: record.number(field::SNAP_INDEX).map(|index| index as usize),
+                    on_snap: record
+                        .fields
+                        .iter()
+                        .find(|(id, _)| *id == field::ON_SNAP_CHANGE)
+                        .and_then(|(_, v)| v.as_u64())
+                        .filter(|handle| *handle != 0),
                     parent: scroll_parent.clone(),
                     offset: 0.0,
                     max_offset,
@@ -1344,10 +1352,19 @@ fn snap_points(records: &[crate::protocol::Record], nodes: &mut [NodeSnapshot]) 
         let origin = nodes[index].bounds[axis];
         let extent = nodes[index].bounds[axis + 2];
         let max = scroll.max_offset.max(0.0);
+        // Snap areas are the region's children, or the children of a wrapper that has no
+        // alignment of its own (a horizontal scroll's content row).
+        let area = |child: &crate::protocol::Record| {
+            child.parent == Some(index)
+                || child.parent.is_some_and(|parent| {
+                    records[parent].parent == Some(index)
+                        && records[parent].string(field::SNAP_ALIGN).is_none()
+                })
+        };
         let mut points: Vec<f32> = records
             .iter()
             .enumerate()
-            .filter(|(_, child)| child.parent == Some(index))
+            .filter(|(_, child)| area(child))
             .filter_map(|(child, record)| {
                 let start = nodes[child].bounds[axis] - origin;
                 let size = nodes[child].bounds[axis + 2];

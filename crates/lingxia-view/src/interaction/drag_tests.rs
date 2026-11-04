@@ -500,3 +500,144 @@ fn an_open_dialog_can_be_dismissed_as_escape_would() {
     assert!(handled);
     assert_eq!(interaction.take_dispatch(), [Dispatch::Escape]);
 }
+
+/// A 100-wide pager of three pages that stops at every one and reports where it rests.
+fn pager(index: usize) -> Vec<NodeSnapshot> {
+    let mut pages = node("pager", "scroll", [0.0, 0.0, 100.0, 100.0]);
+    let mut region = super::policy_tests::region("pager", None, 0.0, 200.0);
+    region.axis = ScrollAxis::Horizontal;
+    region.snap = vec![0.0, 100.0, 200.0];
+    region.snap_stop = true;
+    region.snap_index = Some(index);
+    region.on_snap = Some(9);
+    pages.scroll = Some(region);
+    vec![pages]
+}
+
+fn pages_settle(interaction: &mut ViewInteraction) -> Vec<usize> {
+    let mut landed = Vec::new();
+    for id in interaction.take_moved_snaps() {
+        if let Some(to) = interaction.scroll().snap_target(&id) {
+            interaction.set_scroll_offset(&id, to);
+        }
+        interaction.snap_settled(&id);
+    }
+    for dispatch in interaction.take_dispatch() {
+        if let Dispatch::SnapChange {
+            handle: 9, index, ..
+        } = dispatch
+        {
+            landed.push(index);
+        }
+    }
+    landed
+}
+
+#[test]
+fn a_pager_flick_stops_on_the_next_page_and_bind_follows_both_ways() {
+    let mut interaction = ViewInteraction::default();
+    let page = PageTicket::new(1);
+    present(&mut interaction, pager(0), 1);
+    let horizontal = |phase, x: f32, velocity: f32| Pointer {
+        phase,
+        x,
+        y: 50.0,
+        slop: 8.0,
+        velocity: [velocity, 0.0],
+        min_fling: 50.0,
+    };
+    interaction.pointer(horizontal(PointerPhase::Down, 90.0, 0.0), page);
+    interaction.pointer(horizontal(PointerPhase::Move, 60.0, 0.0), page);
+    let (_, effects) = interaction.pointer(horizontal(PointerPhase::Up, 60.0, -3000.0), page);
+    assert!(
+        !effects
+            .iter()
+            .any(|effect| matches!(effect, Effect::Fling { .. })),
+        "snap-always releases into the spring, not a fling"
+    );
+    assert_eq!(
+        interaction.scroll().snap_target("pager"),
+        Some(100.0),
+        "one page, however fast"
+    );
+    assert_eq!(pages_settle(&mut interaction), [1]);
+    // The View moves it: it springs there and does not report the index back.
+    present(&mut interaction, pager(2), 2);
+    assert_eq!(interaction.scroll().snap_target("pager"), Some(200.0));
+    pages_settle(&mut interaction);
+    // Assistive scrolling steps one page.
+    let id = interaction.semantics().unwrap().ids.id(0).unwrap();
+    let (handled, _) = interaction.accessibility(id, AccessibilityAction::ScrollBackward, page);
+    assert!(handled);
+    assert_eq!(pages_settle(&mut interaction), [1]);
+}
+
+#[test]
+fn a_trackpad_swipe_pages_a_snap_always_region_by_one() {
+    let mut interaction = ViewInteraction::default();
+    present(&mut interaction, pager(0), 1);
+    let wheel = |phase, dx: f32| Wheel {
+        phase,
+        x: 50.0,
+        y: 50.0,
+        dx,
+        dy: 0.0,
+        precise: true,
+    };
+    interaction.wheel(wheel(WheelPhase::Began, -10.0));
+    interaction.wheel(wheel(WheelPhase::Changed, -10.0));
+    let moved = interaction.scroll().offset("pager");
+    assert!(moved > 12.5, "{moved}");
+    assert_eq!(
+        interaction.scroll().snap_target("pager"),
+        Some(100.0),
+        "an eighth of a page goes one on"
+    );
+    assert_eq!(pages_settle(&mut interaction), [1]);
+}
+
+#[test]
+fn an_assistive_step_wins_over_a_page_index_requested_before_it() {
+    let mut interaction = ViewInteraction::default();
+    let page = PageTicket::new(1);
+    present(&mut interaction, pager(1), 1);
+    interaction.set_scroll_offset("pager", 100.0);
+    pages_settle(&mut interaction);
+    // The View asks for page 2; before that frame arrives, a screen reader steps back.
+    let requested = interaction.scroll().revision();
+    let id = interaction.semantics().unwrap().ids.id(0).unwrap();
+    interaction.accessibility(id, AccessibilityAction::ScrollBackward, page);
+    let offsets = interaction.offsets();
+    let mut late = pager(2);
+    late[0].scroll.as_mut().unwrap().offset = 100.0;
+    interaction.presented(
+        Arc::new(PresentedFrame::new(CommitTicket::new(2), 1.0, late)),
+        requested,
+        &offsets,
+        page,
+    );
+    assert_eq!(
+        interaction.scroll().snap_target("pager"),
+        Some(0.0),
+        "the later input wins"
+    );
+    assert_eq!(pages_settle(&mut interaction), [0]);
+}
+
+#[test]
+fn a_step_before_a_view_set_page_lands_reports_where_it_rests() {
+    let mut interaction = ViewInteraction::default();
+    let page = PageTicket::new(1);
+    present(&mut interaction, pager(1), 1);
+    interaction.set_scroll_offset("pager", 100.0);
+    pages_settle(&mut interaction);
+    // The View moves to page 2; mid-spring a screen reader steps back to page 1.
+    present(&mut interaction, pager(2), 2);
+    let id = interaction.semantics().unwrap().ids.id(0).unwrap();
+    interaction.accessibility(id, AccessibilityAction::ScrollBackward, page);
+    assert_eq!(
+        pages_settle(&mut interaction),
+        [1],
+        "the View heard page 2 last, so 1 is news"
+    );
+}

@@ -85,3 +85,17 @@ spec('a swipe row opens to its actions, deletes on a full swipe, and offers its 
   await view.drag(view.testId('lab-swipe-row-rent'), { dx: -width * 0.85, dy: 0, durationMs: 500 });
   await expect(state).toHaveText('rows=1 last=deleted Rent');
 });
+
+spec('a pager stops on the next page however fast the flick, and its bound page moves it', { covers: ['view:scroll', 'view:a11y'], start: { page: 'view-lab' } }, async (t) => {
+  const view = t.app.view;
+  await view.testId('lab-tab-swipe').click();
+  const state = view.testId('lab-pager-state');
+  await expect(state).toHaveText('page=0');
+  await view.fling('left', 4000, { at: view.testId('lab-pager-scroll') });
+  await expect(state).toHaveText('page=1');
+  await view.testId('lab-pager-next').click();
+  await expect(state).toHaveText('page=2');
+  // A screen reader's scroll steps one page.
+  await view.testId('lab-pager-scroll').performAction('decrement');
+  await expect(state).toHaveText('page=1');
+});

@@ -385,6 +385,14 @@ pub struct ScrollSnapshot {
     /// Offsets a `scroll-snap-type` region settles on, ascending.
     #[serde(skip)]
     pub(crate) snap: Vec<f32>,
+    /// `snap-always`: a fling stops at the next snap point.
+    #[serde(skip)]
+    pub(crate) snap_stop: bool,
+    /// `bind`: the snap point the View wants it on, and where to report the one it lands on.
+    #[serde(skip)]
+    pub(crate) snap_index: Option<usize>,
+    #[serde(skip)]
+    pub(crate) on_snap: Option<u64>,
 }
 
 pub struct Frame {

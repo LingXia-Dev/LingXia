@@ -280,7 +280,18 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   semantics(tag, props, wire);
   if (props.drag !== undefined) dragElement(tag, props, wire, on);
   else for (const key of ['dragSnapPoints', 'bind', 'onDragStart', 'onDragEnd'])
-    if (props[key] !== undefined && !element.binding) throw Error(`UI_PROP: ${key} belongs to an element with drag`);
+    if (props[key] !== undefined && !element.binding && !(key === 'bind' && tag === 'scroll')) throw Error(`UI_PROP: ${key} belongs to an element with drag`);
+  // A snapping scroll's `bind`: the index of the snap point it rests on, two-way.
+  if (tag === 'scroll' && props.bind !== undefined) {
+    const cell = props.bind, bound = cellOf(cell);
+    if (!bound || render.candidate.locals.get(bound.key) !== bound.cell || !Number.isInteger(cell.value) || cell.value < 0)
+      throw Error('UI_PROP: bind on a <scroll> takes a mounted useLocal cell holding a snap index');
+    wire('snapIndex', cell.value);
+    on('onSnapChange', payload => {
+      const index = Number(payload);
+      if (Number.isInteger(index) && index >= 0 && cell.value !== index) cell.set(index);
+    }, 'text');
+  }
   if (props[scrimMark]) wire('dragScrim', 1);
   if (props['aria-actions'] !== undefined) {
     // The ids of the controls behind a swipe row: assistive tech offers them as the row's own actions.

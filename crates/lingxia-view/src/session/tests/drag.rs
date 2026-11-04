@@ -109,3 +109,23 @@ fn a_dragged_dialog_knows_which_points_hide_it_and_its_scrim_follows_how_much_sh
     assert_eq!(share(&HashMap::new()), 1.0);
     assert!((share(&half) - 0.5).abs() < 1e-6);
 }
+
+#[test]
+fn a_pager_snaps_on_the_pages_inside_its_content_row() {
+    let module = super::source(
+        "function render(){const at=useLocal('at',0);return h('page',{},h('scroll',{'data-testid':'pager',bind:at,style:{width:100,height:50,overflowX:'auto',scrollSnapType:'x',scrollSnapStop:'always'}},h('row',{},['a','b','c'].map(k=>h('column',{key:k,style:{width:100,height:50,flexShrink:0,scrollSnapAlign:'start'}})))))}",
+    );
+    let mut session = ViewSession::new(&module).unwrap();
+    let display = session.layout(100, 50, 1.0).unwrap();
+    let scroll = display
+        .nodes
+        .iter()
+        .find(|n| n.test_id == "pager")
+        .unwrap()
+        .scroll
+        .clone()
+        .unwrap();
+    assert_eq!(scroll.snap, [0.0, 100.0, 200.0]);
+    assert!(scroll.snap_stop && scroll.on_snap.is_some());
+    assert_eq!(scroll.snap_index, Some(0));
+}

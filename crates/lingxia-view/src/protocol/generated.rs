@@ -237,6 +237,9 @@ pub mod field {
     pub const DRAG_SCRIM: usize = 201;
     pub const ELEMENT_ID: usize = 202;
     pub const ARIA_ACTIONS: usize = 203;
+    pub const SNAP_STOP: usize = 204;
+    pub const SNAP_INDEX: usize = 205;
+    pub const ON_SNAP_CHANGE: usize = 206;
 }
 
 pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page", "span", "link", "select"];
@@ -447,11 +450,15 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("dragScrim", "flag"),
     ("elementId", "element-id"),
     ("ariaActions", "element-ids"),
+    ("snapStop", "snap-stop"),
+    ("snapIndex", "snap-index"),
+    ("onSnapChange", "handle"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
 pub fn options(kind: &str) -> Option<&'static [&'static str]> {
     match kind {
+        "snap-stop" => Some(&["normal", "always"]),
         "font-family" => Some(&["sans", "mono", "serif"]),
         "font-style" => Some(&["normal", "italic"]),
         "flex-wrap" => Some(&["nowrap", "wrap", "wrap-reverse"]),
@@ -848,4 +855,7 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::BUTTON]), parent: None },
     FieldAdmission { tags: Some(&[tag::BUTTON]), parent: None },
     FieldAdmission { tags: Some(&[tag::COLUMN, tag::ROW, tag::STACK, tag::GRID, tag::BUTTON]), parent: None },
+    FieldAdmission { tags: Some(&[tag::SCROLL, tag::LIST]), parent: None },
+    FieldAdmission { tags: Some(&[tag::SCROLL]), parent: None },
+    FieldAdmission { tags: Some(&[tag::SCROLL]), parent: None },
 ];

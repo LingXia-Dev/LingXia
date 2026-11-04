@@ -59,13 +59,24 @@ impl<A: PlatformAdapter> Inner<A> {
                 return;
             }
             let pending = std::mem::take(&mut main.snaps.pending);
-            pending
+            let mut resting = Vec::new();
+            let moves = pending
                 .into_iter()
                 .filter_map(|id| {
-                    let to = main.interaction.scroll().snap_target(&id)?;
+                    let Some(to) = main.interaction.scroll().snap_target(&id) else {
+                        resting.push(id);
+                        return None;
+                    };
                     Some((id.clone(), main.interaction.scroll().offset(&id), to))
                 })
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>();
+            let effects: Vec<_> = resting
+                .iter()
+                .flat_map(|id| main.interaction.snap_settled(id))
+                .collect();
+            drop(main);
+            self.deliver(effects);
+            moves
         };
         if !moves.is_empty() {
             self.snap_step(serial, moves, if reduce { f32::INFINITY } else { 0.0 });
@@ -92,7 +103,14 @@ impl<A: PlatformAdapter> Inner<A> {
                 main.interaction.set_scroll_offset(id, at);
             }
         }
-        self.deliver(vec![crate::interaction::view::Effect::Redraw]);
+        let mut effects = vec![crate::interaction::view::Effect::Redraw];
+        if done {
+            let mut main = self.main();
+            for (id, _, _) in &moves {
+                effects.extend(main.interaction.snap_settled(id));
+            }
+        }
+        self.deliver(effects);
         if !done {
             let inner = self.clone();
             self.adapter.post_after(

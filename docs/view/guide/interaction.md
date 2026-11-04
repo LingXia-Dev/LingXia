@@ -111,7 +111,9 @@ The host recognizes the gestures; the View receives their outcome:
 | tap on a `<plot>` | `onSelect(index)`, or `-1` when it clears the selection |
 
 There are no pointer, touch, swipe, pinch or long-press handlers on elements, and no drag-and-drop.
-Build carousels from a horizontal `<scroll>`.
+Build carousels from a horizontal `<scroll>`. A pager is one with `snap-x snap-always` and `snap-start`
+pages: a flick stops on the next page however fast, and `bind={page}` (a `useLocal` number) is the
+page it rests on, two-way: setting it springs there. Assistive scrolling steps one page.
 
 ## Dragging an element
 

@@ -187,6 +187,7 @@ impl ViewInteraction {
                         .scroll
                         .target_for_axis(self.gesture.target.as_deref(), axis)
                     {
+                        self.gesture.scroll_from = self.scroll.offset(&target);
                         self.gesture.axis = Some(axis);
                         self.gesture.target = Some(target);
                         self.gesture.dragging = true;
@@ -294,8 +295,20 @@ impl ViewInteraction {
                         ScrollAxis::Horizontal => event.velocity[0],
                         ScrollAxis::Vertical => event.velocity[1],
                     };
-                    if speed.abs() >= event.min_fling
-                        && let Some(region) = self.gesture.target.clone()
+                    let region = self.gesture.target.clone();
+                    if let Some(region) = region.as_deref().filter(|r| self.scroll.snap_stop(r)) {
+                        // `snap-always` releases into the spring toward the next point, no fling.
+                        let fling = speed.abs() >= event.min_fling;
+                        let sign = if axis == ScrollAxis::Horizontal && self.scroll.rtl(region) {
+                            -1.0
+                        } else {
+                            1.0
+                        };
+                        let direction = if fling { speed.signum() * sign } else { 0.0 };
+                        self.scroll
+                            .snap_fling(region, self.gesture.scroll_from, direction);
+                    } else if speed.abs() >= event.min_fling
+                        && let Some(region) = region
                     {
                         effects.push(Effect::Fling {
                             region,

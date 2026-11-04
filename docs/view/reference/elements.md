@@ -126,6 +126,7 @@ Children: any elements and text. Not allowed inside a composed `<button>` or `<c
 | --- | --- | --- |
 | `onReachStart` | `() => void` |  |
 | `onReachEnd` | `() => void` |  |
+| `bind` | `Local<number>` |  |
 
 ## `<List>`
 

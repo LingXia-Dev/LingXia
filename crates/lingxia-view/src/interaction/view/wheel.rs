@@ -80,6 +80,9 @@ impl ViewInteraction {
             // Momentum may follow and keeps the latch; a new Began replaces it.
             return (true, Vec::new());
         }
+        if fresh {
+            self.scroll.wheel_began(&target);
+        }
         let moved = distance != 0.0 && self.scroll.drag_by(&target, -distance);
         let mut effects = Vec::new();
         if moved {

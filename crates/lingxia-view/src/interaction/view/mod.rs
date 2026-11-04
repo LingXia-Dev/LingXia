@@ -66,6 +66,8 @@ struct Gesture {
     /// The innermost `drag` element under the press, and whether the finger moves it.
     drag: Option<String>,
     holding: bool,
+    /// Where the scrolled region was when the finger took it, for `snap-always`.
+    scroll_from: f32,
     /// Same-axis scrolls inside and around the held element, and the one that moved last.
     inner: Option<String>,
     outer: Option<String>,
@@ -144,6 +146,24 @@ impl ViewInteraction {
     /// A release's spring step; `done` ends it.
     pub fn set_drag_offset(&mut self, identity: &str, offset: f32, done: bool) {
         self.drag.set(identity, offset, done);
+    }
+
+    /// A snapping region came to rest: a bound one tells the View its index.
+    pub fn snap_settled(&mut self, id: &str) -> Vec<Effect> {
+        let Some(commit) = self.frame.as_ref().map(|frame| frame.commit) else {
+            return Vec::new();
+        };
+        match self.scroll.snap_settled(id) {
+            Some((handle, index)) => {
+                self.dispatches.push(Dispatch::SnapChange {
+                    commit,
+                    handle,
+                    index,
+                });
+                vec![Effect::Dispatch]
+            }
+            None => Vec::new(),
+        }
     }
 
     /// Snapping regions input moved since the last call.

@@ -207,6 +207,23 @@ impl ViewInteraction {
                 if node.scroll.is_some() =>
             {
                 let scroll = node.scroll.as_ref().unwrap();
+                if !scroll.snap.is_empty() {
+                    // A pager steps one page, as a screen reader's scroll means there.
+                    let direction = if action == AccessibilityAction::ScrollForward {
+                        1
+                    } else {
+                        -1
+                    };
+                    let moved = self.scroll.snap_step(&scroll.id, direction);
+                    return (
+                        moved,
+                        if moved {
+                            vec![Effect::StopFling, Effect::Redraw]
+                        } else {
+                            Vec::new()
+                        },
+                    );
+                }
                 let length = match scroll.axis {
                     ScrollAxis::Horizontal => node.visible_bounds[2],
                     ScrollAxis::Vertical => node.visible_bounds[3],

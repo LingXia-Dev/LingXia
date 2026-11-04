@@ -57,6 +57,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   Errors are `{ code, message }`; reloads keep old values (`stale`). `useLeaveGuard(name, { enabled })`.
 - Lists: `<List items getKey renderItem />`; hooks inside rows need stable keys.
 - Scroll snap: `snap-x`/`snap-y` on a `<scroll>` or `<List>`, `snap-start|center|end` on children; every snap is mandatory.
+  Pager: `<scroll bind={page} className="overflow-x-auto snap-x snap-always">`; a flick stops one page on, `bind` is the resting page, two-way.
 - `drag="x|y" dragSnapPoints={[0, 120, '50%']}` (≤8, px or % of its own size; `x` mirrors in RTL) lets the
   finger move an element; it springs (its `transition-transform duration-* ease-spring*`) to the nearest point, a flick one on.
   `bind={cell}` is the point's index (setting it springs there), `onDragStart()`, `onDragEnd({ index, velocity })`.

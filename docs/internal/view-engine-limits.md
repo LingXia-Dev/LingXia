@@ -21,4 +21,4 @@ decodable and its GPU memory bounded, and page code cannot act on them.
 | `ghosts` | 64 | Removed elements still drawing their exit at once; past it further removals vanish at once. |
 | `layoutMotions` | 256 | Elements moving to a new layout position under `transition-layout` at once; past it further moves land at once. |
 
-Wire ABI: 1. Highest field id: 203.
+Wire ABI: 1. Highest field id: 206.

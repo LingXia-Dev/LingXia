@@ -274,7 +274,7 @@ is still refused on an element that does not render its style ([styles.md](style
 | Family | Supported | Refused |
 | --- | --- | --- |
 | `blur` | `blur-2xl`, `blur-3xl`, `blur-lg`, `blur-md`, `blur-none`, … (8) |  |
-| `snap` | `snap-align-none`, `snap-center`, `snap-end`, `snap-none`, `snap-start`, … (7) | scroll-snap-stop (2); proximity snapping (1); scroll-snap-type (1) |
+| `snap` | `snap-align-none`, `snap-always`, `snap-center`, `snap-end`, `snap-none`, … (9) | proximity snapping (1); scroll-snap-type (1) |
 
 ## Accepted without effect
 

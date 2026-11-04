@@ -28,7 +28,7 @@
     "link": {"children": "text", "parent": "text"},
     "select": {"children": "text"}
   },
-  "options": {
+  "options": {"snap-stop": ["normal", "always"],
     "font-family": ["sans", "mono", "serif"],
     "font-style": ["normal", "italic"],
     "flex-wrap": ["nowrap", "wrap", "wrap-reverse"],
@@ -269,7 +269,10 @@
     {"id": 200, "key": "onDragEvent", "wire": "onDragEvent", "kind": "handle", "tags": ["column", "row", "stack", "grid", "button"]},
     {"id": 201, "key": "dragScrim", "wire": "dragScrim", "kind": "flag", "tags": ["button"]},
     {"id": 202, "key": "elementId", "wire": "elementId", "kind": "element-id", "tags": ["button"]},
-    {"id": 203, "key": "ariaActions", "wire": "ariaActions", "kind": "element-ids", "tags": ["column", "row", "stack", "grid", "button"]}
+    {"id": 203, "key": "ariaActions", "wire": "ariaActions", "kind": "element-ids", "tags": ["column", "row", "stack", "grid", "button"]},
+    {"id": 204, "key": "snapStop", "wire": "snapStop", "kind": "snap-stop", "tags": ["scroll", "list"]},
+    {"id": 205, "key": "snapIndex", "wire": "snapIndex", "kind": "snap-index", "tags": ["scroll"]},
+    {"id": 206, "key": "onSnapChange", "wire": "onSnapChange", "kind": "handle", "tags": ["scroll"]}
   ],
   "input": {
     "autofill": {"username": "username", "current-password": "password", "new-password": "newPassword", "one-time-code": "smsOTPCode", "email": "emailAddress", "tel": "phone", "name": "personName", "given-name": "personGivenName", "family-name": "personFamilyName", "street-address": "postalAddress", "postal-code": "postalCode", "country": "addressCountry", "cc-number": "creditCardNumber", "cc-exp": "creditCardExpirationDate", "cc-csc": "creditCardSecurityCode", "bday": "birthDateFull"},
@@ -505,6 +508,7 @@
     "overflowX": {"type": "\"auto\"", "group": "scroll", "lower": "scroll-axis", "wire": "scrollAxis", "css": "overflow-x"},
     "overflowY": {"type": "\"auto\"", "group": "scroll", "lower": "scroll-axis", "wire": "scrollAxis", "css": "overflow-y"},
     "overscrollBehavior": {"type": "\"auto\" | \"contain\" | \"none\"", "group": "overscroll", "lower": "option", "wire": "overscroll", "css": ["overscroll-behavior", "overscroll-behavior-x", "overscroll-behavior-y"]},
+    "scrollSnapStop": {"type": "\"normal\" | \"always\"", "group": "overscroll", "lower": "option", "wire": "snapStop", "css": "scroll-snap-stop"},
     "scrollSnapType": {"type": "\"none\" | \"x\" | \"y\"", "group": "overscroll", "lower": "snap-type", "wire": "scrollSnap", "css": "scroll-snap-type"},
     "scrollSnapAlign": {"type": "\"none\" | \"start\" | \"center\" | \"end\"", "group": "box", "lower": "option", "wire": "snapAlign", "css": "scroll-snap-align"},
     "placeholderColor": {"type": "string", "group": "editor", "lower": "color", "wire": "placeholderColor", "paint": true},
@@ -519,7 +523,7 @@
     "text": {"wire": "text", "children": "runs", "style": ["box", "padding", "text", "textBlock"], "props": {"aria-label": {"type": "string"}}},
     "button": {"wire": "button", "children": "content", "style": ["box", "padding", "flex", "align", "direction", "gap", "text", "grid"], "props": {"onClick": {"type": "() => void"}, "disabled": {"type": "boolean"}, "aria-label": {"type": "string"}, "popoverTarget": {"type": "string"}, "id": {"type": "string"}, "drag": {"type": "\"x\" | \"y\""}, "dragSnapPoints": {"type": "readonly (number | `${number}%`)[]"}, "bind": {"type": "Local<number>"}, "onDragStart": {"type": "() => void"}, "onDragEnd": {"type": "(info: { index: number; velocity: number }) => void"}, "aria-actions": {"type": "string"}}},
     "spacer": {"wire": "spacer", "children": "none", "style": ["box"], "props": {}},
-    "scroll": {"wire": "scroll", "children": "any", "style": ["box", "padding", "flex", "align", "gap", "text", "scroll", "overscroll"], "props": {"onReachStart": {"type": "() => void"}, "onReachEnd": {"type": "() => void"}}},
+    "scroll": {"wire": "scroll", "children": "any", "style": ["box", "padding", "flex", "align", "gap", "text", "scroll", "overscroll"], "props": {"onReachStart": {"type": "() => void"}, "onReachEnd": {"type": "() => void"}, "bind": {"type": "Local<number>"}}},
     "list": {"wire": "list", "component": {"name": "List", "replaces": ["count", "row", "height", "itemKeys"], "props": {"items": {"type": "readonly T[]", "required": true}, "getKey": {"type": "(item: T, index: number) => string", "required": true}, "renderItem": {"type": "(item: T, index: number) => JSX.Element", "required": true}, "getItemHeight": {"type": "(item: T, index: number) => number"}}}, "children": "none", "style": ["box", "padding", "gap", "text", "overscroll"], "props": {"count": {"type": "number", "required": true}, "row": {"type": "(index: number) => JSX.Element", "required": true}, "height": {"type": "(index: number) => number"}, "anchor": {"type": "\"end\" | { index: number; align: \"start\" | \"end\"; seq?: number }"}, "itemKeys": {"type": "readonly string[]"}, "onReachStart": {"type": "() => void"}, "onReachEnd": {"type": "() => void"}}},
     "image": {"wire": "image", "children": "none", "style": ["box", "media", "imagePlacement"], "props": {"src": {"type": "string", "required": true}, "placeholder": {"type": "string"}, "alt": {"type": "string"}, "retryKey": {"type": "string"}, "onLoad": {"type": "() => void"}, "onError": {"type": "() => void"}}},
     "input": {"wire": "input", "children": "none", "style": ["box", "padding", "text", "editor"], "binding": {"type": "string", "event": "onInput"}, "props": {"aria-label": {"type": "string"}, "placeholder": {"type": "string"}, "type": {"type": "\"text\" | \"password\" | \"email\" | \"number\" | \"tel\" | \"search\" | \"date\" | \"time\""}, "inputMode": {"type": "\"text\" | \"numeric\" | \"decimal\" | \"tel\" | \"email\""}, "autoFocus": {"type": "boolean"}, "disabled": {"type": "boolean"}, "onSubmit": {"type": "(value: string) => void"}, "maxLength": {"type": "number"}, "autoComplete": {"type": "AutoComplete"}, "enterKeyHint": {"type": "\"enter\" | \"done\" | \"go\" | \"next\" | \"previous\" | \"search\" | \"send\""}, "autoCapitalize": {"type": "\"none\" | \"sentences\" | \"words\" | \"characters\" | \"off\" | \"on\""}, "spellCheck": {"type": "boolean"}, "min": {"type": "number | string"}, "max": {"type": "number | string"}, "step": {"type": "number"}}},

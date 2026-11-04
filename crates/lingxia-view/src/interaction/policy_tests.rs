@@ -76,6 +76,9 @@ pub(crate) fn region(id: &str, parent: Option<&str>, offset: f32, max: f32) -> S
         offset,
         max_offset: max,
         snap: Vec::new(),
+        snap_stop: false,
+        snap_index: None,
+        on_snap: None,
     }
 }
 
