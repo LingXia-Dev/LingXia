@@ -1867,7 +1867,20 @@ export struct LxAppContainer {
   /** Host bars over a GPU page (top, right, bottom, left), device pixels. */
   private getGpuChromeInsets(webTag: string): number[] {
     const px = (vp: number): number => this.getUIContext().vp2px(vp);
-    return [px(this.getPageNavTop(webTag)), 0, px(this.getWebBottomPadding()), 0];
+    return [px(this.getPageNavTop(webTag)), 0, px(this.getTabBarCoverage()), 0];
+  }
+
+  /**
+   * The height a shown horizontal tab bar covers at the window's bottom, vp. Unlike the
+   * WebView's reservation it counts a transparent bar too: a GPU page always lies under it.
+   */
+  private getTabBarCoverage(): number {
+    const hasTabBar = (this.tabBarState?.items?.length ?? 0) > 0;
+    if (!hasTabBar || this.tabBarState?.isVisible !== true || this.isTabBarVertical()) {
+      return 0;
+    }
+    const tabBarSize: number = (this.tabBarState?.dimension as number) ?? TAB_BAR_HORIZONTAL_HEIGHT;
+    return tabBarSize + tabBarExtraBottomHeight(this.bottomIndicatorInset, this.isTabBarTransparent());
   }
 
   /**
