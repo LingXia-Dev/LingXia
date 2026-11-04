@@ -18,6 +18,7 @@ import com.lingxia.app.Lingxia
 import com.lingxia.app.LxLog
 import com.lingxia.lxapp.LxApp
 import com.lingxia.app.PermissionManager
+import com.lingxia.app.PermissionFeature
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -96,7 +97,7 @@ internal object LxAppLocation {
         if (!hasFinePermission && !hasCoarsePermission) {
             // On the first request, prompt the system permission dialog and
             // only continue with the location request after the user decides.
-            PermissionManager.ensurePermissions(activity, LOCATION_PERMISSIONS) { granted ->
+            PermissionManager.ensurePermissions(activity, PermissionFeature.LOCATION, LOCATION_PERMISSIONS) { granted ->
                 if (granted) {
                     requestSingleLocationWithConfig(activity, callbackId, isHighAccuracy, includeAltitude, expireTimeMs)
                 } else {
