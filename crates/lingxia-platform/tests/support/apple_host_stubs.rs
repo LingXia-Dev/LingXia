@@ -70,7 +70,7 @@ host_stub!(reveal_in_file_manager(path: RustStr) -> bool);
 host_stub!(on_home_first_ready());
 host_stub!(show_splash_campaign(image_path: RustStr, duration_ms: u32));
 lifecycle_stub!(update_tabbar_ui(appid: RustStr));
-host_stub!(present_layout(window_id: RustStr, layout_json: RustStr) -> bool);
+lifecycle_stub!(present_layout(window_id: RustStr, layout_json: RustStr));
 host_stub!(close_surface(id: RustStr, appid: RustStr, reason: RustStr) -> bool);
 host_stub!(request_lxapp_main_activation(appid: RustStr));
 host_stub!(navigate(appid: RustStr, webtag: RustStr, animation_type: i32) -> bool);
