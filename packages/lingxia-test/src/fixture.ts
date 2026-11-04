@@ -1429,6 +1429,7 @@ export class LiveFixture implements Fixture {
       toBeEnabled: (options?: ExpectOptions) => this.retryLocator(locator, "toBeEnabled", inverted, withMessage(options), true),
       toBeDisabled: (options?: ExpectOptions) => this.retryLocator(locator, "toBeDisabled", inverted, withMessage(options), true),
       toBeEditable: (options?: ExpectOptions) => this.retryLocator(locator, "toBeEditable", inverted, withMessage(options), true),
+      toBeFocused: (options?: ExpectOptions) => this.retryLocator(locator, "toBeFocused", inverted, withMessage(options), true),
       toHaveText: (expected: string | RegExp, options?: ExpectOptions) =>
         this.retryLocator(locator, "toHaveText", inverted, withMessage(options), expected),
       toContainText: (expected: string | RegExp, options?: ExpectOptions) =>
@@ -1804,6 +1805,7 @@ function locatorActual(matcher: string, resolved: LocatorResolve | undefined, ex
   if (matcher === "toBeEnabled") return resolved.enabled;
   if (matcher === "toBeDisabled") return resolved.enabled === false;
   if (matcher === "toBeEditable") return resolved.editable;
+  if (matcher === "toBeFocused") return resolved.focused === true;
   if (matcher === "toHaveCount") return resolved.count;
   if (matcher === "toHaveText") return resolved.text;
   if (matcher === "toHaveValue") return resolved.value;
@@ -1818,8 +1820,8 @@ function matchLocator(
   expected: unknown,
   inverted: boolean,
 ): void {
-  if (["toBeHidden", "toBeAttached", "toBeEnabled", "toBeDisabled", "toBeEditable"].includes(matcher)) {
-    if (["toBeEnabled", "toBeDisabled", "toBeEditable"].includes(matcher) && resolved.count !== 1) {
+  if (["toBeHidden", "toBeAttached", "toBeEnabled", "toBeDisabled", "toBeEditable", "toBeFocused"].includes(matcher)) {
+    if (["toBeEnabled", "toBeDisabled", "toBeEditable", "toBeFocused"].includes(matcher) && resolved.count !== 1) {
       throw new Error(`Expected one attached element, received ${resolved.count}`);
     }
     applyMatcher("toBe", locatorActual(matcher, resolved), true, inverted);

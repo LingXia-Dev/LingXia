@@ -1048,6 +1048,8 @@ export interface LocatorMatchers extends NeedsMatcher<"expect(locator) checks no
   toBeEnabled(options?: ExpectOptions): Promise<void>;
   toBeDisabled(options?: ExpectOptions): Promise<void>;
   toBeEditable(options?: ExpectOptions): Promise<void>;
+  /** The single match holds keyboard focus. */
+  toBeFocused(options?: ExpectOptions): Promise<void>;
   toHaveText(expected: string | RegExp, options?: ExpectOptions): Promise<void>;
   /** The text contains `expected` (exact substring) or matches the RegExp. */
   toContainText(expected: string | RegExp, options?: ExpectOptions): Promise<void>;

@@ -995,6 +995,7 @@ pub fn build_query_script(
       inViewport,
       enabled: !disabled,
       editable,
+      focused: document.activeElement === el,
       text: text.value,
       text_truncated: text.truncated,
       value: value ? value.value : null,

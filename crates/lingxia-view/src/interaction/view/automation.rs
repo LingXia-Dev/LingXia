@@ -43,6 +43,12 @@ fn key(name: &str) -> Result<(super::Key, bool), String> {
         "End" => Key::End,
         "Enter" | " " | "Space" => Key::Activate,
         "Escape" => Key::Escape,
+        "PageUp" => Key::PageUp,
+        "PageDown" => Key::PageDown,
+        // A printable character: a menu's or select's type-ahead.
+        other if other.chars().count() == 1 && !other.starts_with(char::is_control) => {
+            Key::Char(other.chars().next().unwrap())
+        }
         other => return Err(format!("E_UNSUPPORTED: key {other:?} on a GPU page")),
     };
     Ok((key, shift))

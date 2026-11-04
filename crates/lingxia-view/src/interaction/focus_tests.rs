@@ -101,3 +101,68 @@ fn a_dialog_opened_by_pointer_leaves_focus_and_its_ring_alone() {
     // The keyboard still lands inside the dialog first.
     assert_eq!(tab(&mut interaction), Some(2));
 }
+
+#[test]
+fn a_menu_takes_home_end_wrapping_arrows_and_type_ahead() {
+    use super::policy_tests::node;
+    use super::view::*;
+    use crate::session::lifecycle::{CommitTicket, PageTicket};
+    let mut menu = node("m", "column", [0.0, 0.0, 100.0, 120.0]);
+    menu.role = Some("menu".into());
+    menu.accessibility_label = Some("Actions".into());
+    let items = ["Rename", "Share", "Delete"]
+        .iter()
+        .enumerate()
+        .map(|(i, name)| {
+            let mut item = node(
+                &format!("m/{i}"),
+                "button",
+                [0.0, 40.0 * i as f32, 100.0, 40.0],
+            );
+            item.role = Some("menuitem".into());
+            item.text = (*name).into();
+            item.test_id = format!("item-{i}");
+            item.on_click = Some(10 + i as u64);
+            item
+        });
+    let nodes: Vec<_> = std::iter::once(menu).chain(items).collect();
+    let mut interaction = ViewInteraction::default();
+    let page = PageTicket::new(1);
+    let offsets = interaction.offsets();
+    interaction.presented(
+        std::sync::Arc::new(super::frame::PresentedFrame::new(
+            CommitTicket::new(1),
+            1.0,
+            nodes,
+        )),
+        interaction.scroll().revision(),
+        &offsets,
+        page,
+    );
+    let press = |interaction: &mut ViewInteraction, on: &str, key: &str| {
+        interaction
+            .automate(
+                &format!("[data-testid=\"{on}\"]"),
+                None,
+                AutomationAct::Press(key.into()),
+                false,
+                page,
+            )
+            .unwrap();
+        interaction.keyboard_focus()
+    };
+    assert_eq!(press(&mut interaction, "item-0", "End"), Some(3));
+    assert_eq!(
+        press(&mut interaction, "item-2", "ArrowDown"),
+        Some(1),
+        "arrows wrap inside a menu"
+    );
+    assert_eq!(press(&mut interaction, "item-0", "Home"), Some(1));
+    assert_eq!(
+        press(&mut interaction, "item-0", "d"),
+        Some(3),
+        "a letter jumps to the next item it starts"
+    );
+    assert_eq!(press(&mut interaction, "item-2", "S"), Some(2));
+    assert_eq!(press(&mut interaction, "item-1", "ArrowUp"), Some(1));
+}

@@ -767,6 +767,8 @@ public final class GpuFrame {
         public boolean enabled() { return json.optBoolean("enabled"); }
         /** `editable`: bool */
         public boolean editable() { return json.optBoolean("editable"); }
+        /** `focused`: bool? */
+        public Boolean focused() { if (json.isNull("focused")) return null; return json.optBoolean("focused"); }
         /** `checked`: bool? */
         public Boolean checked() { if (json.isNull("checked")) return null; return json.optBoolean("checked"); }
         /** `text`: string? */

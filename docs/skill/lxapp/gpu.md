@@ -80,7 +80,8 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   screen readers get those as the row's actions; specs call `locator.performAction('Delete')` (or `increment`/`decrement`/`dismiss`).
 - Sheet detents: `<dialog drag="y" dragSnapPoints={[0, '50%', '100%']} bind={detent}>`; resting wholly off screen calls `onClose`, the scrim fades with it.
 - Keyboard: Tab and arrows follow reading order (no `tabIndex`); an open `<dialog>` keeps focus inside
-  and returns it on close; the focus ring shows only after keyboard input.
+  and returns it on close; the focus ring shows only after keyboard input. In a menu, arrows wrap,
+  Home/End jump, a typed letter finds the next item; `expect(locator).toBeFocused()` checks focus.
 - Inputs take `type` (`password`, `email`, `number`, `tel`, `search`, `date`, `time`), `inputMode`, `maxLength`, `autoComplete`, `enterKeyHint` (on a textarea, `send`/`go`/`done`/`search` makes Return submit), `autoCapitalize`, `spellCheck`;
   `type="number"` with `min`/`max`/`step` clamps on blur/submit; `type="date|time"` opens the
   View's own themed picker (popover with a mouse, sheet on touch) and reports ISO strings.

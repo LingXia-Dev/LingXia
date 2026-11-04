@@ -771,6 +771,7 @@ public struct GpuFrameAutomationElement: Decodable, Sendable {
     public let inViewport: Bool
     public let enabled: Bool
     public let editable: Bool
+    public let focused: Bool?
     public let checked: Bool?
     public let text: String?
     public let textTruncated: Bool?
@@ -795,6 +796,7 @@ public struct GpuFrameAutomationElement: Decodable, Sendable {
         case inViewport = "inViewport"
         case enabled = "enabled"
         case editable = "editable"
+        case focused = "focused"
         case checked = "checked"
         case text = "text"
         case textTruncated = "text_truncated"

@@ -221,7 +221,9 @@ geometry or content changed, the tap is dropped rather than delivered to the wro
 ## Keyboard
 
 A hardware keyboard moves focus between controls in tree order and draws a focus ring. A radio group
-is one stop: its selected option, or its first enabled one.
+is one stop: its selected option, or its first enabled one. Inside a `role="menu"`, the up and down
+arrows move between its items and wrap, Home and End go to the first and last, and a typed letter
+moves to the next item whose name starts with it. Specs check focus with `toBeFocused()`.
 
 ## Feedback from Logic
 

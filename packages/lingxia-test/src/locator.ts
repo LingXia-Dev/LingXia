@@ -44,6 +44,8 @@ export interface QueryMatch {
   value?: string | null;
   enabled?: boolean;
   editable?: boolean;
+  /** Holds keyboard focus (`document.activeElement` on a WebView page). */
+  focused?: boolean;
   /** On a GPU page: `data-testid` and the authored `data-*` props, the only attributes it has. */
   attributes?: Record<string, string>;
   rect?: {
@@ -94,6 +96,7 @@ export interface LocatorResolve {
   index: number;
   enabled?: boolean;
   editable?: boolean;
+  focused?: boolean;
   rect?: QueryMatch["rect"];
   renderer?: "gpu";
   /** Attribute values read for the single match, by name (`null`: absent). */
@@ -386,7 +389,7 @@ export class PageLocator implements Locator {
         text: items[0]?.text ?? "",
         value: items[0]?.value ?? null,
         index: items[0]?.index ?? 0,
-        enabled: items[0]?.enabled, editable: items[0]?.editable,
+        enabled: items[0]?.enabled, editable: items[0]?.editable, focused: items[0]?.focused,
         kind: "hidden",
       };
     } else {
@@ -400,7 +403,7 @@ export class PageLocator implements Locator {
         text: unique.text ?? "",
         value: unique.value ?? null,
         index: unique.index ?? items.indexOf(unique),
-        enabled: unique.enabled, editable: unique.editable, rect: unique.rect,
+        enabled: unique.enabled, editable: unique.editable, focused: unique.focused, rect: unique.rect,
         ...(unique.renderer ? { renderer: unique.renderer } : {}),
         kind: "unique",
       };

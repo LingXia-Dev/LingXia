@@ -241,6 +241,18 @@ impl ViewInteraction {
                 return (true, Vec::new());
             }
         }
+        // In a menu, arrows move between its items (wrapping), Home and End go to the ends and a
+        // character jumps to the next item whose name starts with it, as ARIA's menu pattern does.
+        if let Some(index) = origin
+            && let Some(target) = self.menu_key(&frame, index, key)
+        {
+            return (
+                true,
+                target
+                    .map(|next| self.navigate(next, false, page))
+                    .unwrap_or_default(),
+            );
+        }
         // Arrows on its own axis, Home and End step a drag element through its points in order.
         if let Some(index) = origin
             && let Some(node) = frame.node(index).filter(|node| frame::draggable(node))
@@ -339,6 +351,54 @@ impl ViewInteraction {
             }
         }
         (false, Vec::new())
+    }
+
+    /// A menu key on menu item `index`: `None` when the key is not a menu key, else the item to
+    /// focus (`Some(None)` when none matches).
+    fn menu_key(&self, frame: &PresentedFrame, index: usize, key: Key) -> Option<Option<usize>> {
+        if frame.nodes[index].role.as_deref() != Some("menuitem") {
+            return None;
+        }
+        let identity = &frame.nodes[index].identity;
+        let menu = frame
+            .nodes
+            .iter()
+            .filter(|node| {
+                node.role.as_deref() == Some("menu")
+                    && identity.starts_with(&format!("{}/", node.identity))
+            })
+            .max_by_key(|node| node.identity.len())?;
+        let prefix = format!("{}/", menu.identity);
+        let items: Vec<usize> = (0..frame.nodes.len())
+            .filter(|i| {
+                let node = &frame.nodes[*i];
+                node.role.as_deref() == Some("menuitem")
+                    && node.identity.starts_with(&prefix)
+                    && frame::interactive(node)
+                    && frame::visible(node)
+            })
+            .collect();
+        let at = items.iter().position(|i| *i == index)?;
+        let count = items.len();
+        let name = |i: usize| {
+            self.semantics()
+                .and_then(|semantics| semantics.ids.id(i).and_then(|id| semantics.node(id)))
+                .map(|node| node.name.to_lowercase())
+                .unwrap_or_default()
+        };
+        Some(match key {
+            Key::Down => Some(items[(at + 1) % count]),
+            Key::Up => Some(items[(at + count - 1) % count]),
+            Key::Home => items.first().copied(),
+            Key::End => items.last().copied(),
+            Key::Char(character) if !character.is_whitespace() => {
+                let wanted = character.to_lowercase().to_string();
+                (1..=count)
+                    .map(|step| items[(at + step) % count])
+                    .find(|i| name(*i).starts_with(&wanted))
+            }
+            _ => return None,
+        })
     }
 
     /// The host view gained keyboard focus from the system focus search.

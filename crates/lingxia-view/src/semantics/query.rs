@@ -346,6 +346,7 @@ pub fn describe(
         "inViewport": in_viewport,
         "enabled": semantic.as_ref().is_none_or(|s| s.enabled),
         "editable": input.is_some_and(|i| i.enabled),
+        "focused": semantic.as_ref().is_some_and(|s| s.focused),
         "checked": node.checked,
         "text": text,
         "text_truncated": text_truncated,
