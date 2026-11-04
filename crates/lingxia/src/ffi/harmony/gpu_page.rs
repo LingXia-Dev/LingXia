@@ -253,15 +253,17 @@ impl NativeFactory for Factory {
         })
         .to_string();
         lingxia_view_harmony::post_main(Box::new(move || {
+            // ArkTS must know the token before the host's first events, sent during creation;
+            // it builds the page's ContentSlot, then mounts it with `gpuPageMount`.
+            arkts(token, "create", &describe);
             let created =
                 Page::new(token, Arc::new(Bridge), &request.worker, request.logic).map(|page| {
                     page.with_host(|host| host.load(request.source));
                     PAGES.with(|pages| pages.borrow_mut().insert(token, page));
                     Arc::new(HarmonyPage { token }) as Arc<dyn NativePage>
                 });
-            if created.is_ok() {
-                // ArkTS builds the page's ContentSlot, then mounts it with `gpuPageMount`.
-                arkts(token, "create", &describe);
+            if created.is_err() {
+                arkts(token, "dispose", "");
             }
             gpu_page::created(token, created);
         }));

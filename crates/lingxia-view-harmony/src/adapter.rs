@@ -109,6 +109,7 @@ impl HarmonyAdapter {
     }
 
     pub(crate) fn surface_created(&self, host: &pages::Host, window: NativeWindow) {
+        log::debug!(target: "lingxia_view", "surface created token={}", self.token);
         let window = Arc::new(window);
         *lock(&self.window) = Some(window.clone());
         if let Some((width, height)) = *lock(&self.size) {
@@ -117,6 +118,7 @@ impl HarmonyAdapter {
     }
 
     pub(crate) fn surface_resized(&self, host: &pages::Host, width: u32, height: u32) {
+        log::debug!(target: "lingxia_view", "surface {width}x{height} token={}", self.token);
         *lock(&self.size) = Some((width, height));
         if let Some(window) = lock(&self.window).clone() {
             window.set_geometry(width, height);
@@ -126,20 +128,34 @@ impl HarmonyAdapter {
         host.surface_changed();
     }
 
+    /// The window goes away; its size is kept, a recreated surface usually has the same.
     pub(crate) fn surface_destroyed(&self, host: &pages::Host) {
+        log::debug!(target: "lingxia_view", "surface destroyed token={}", self.token);
         surfaces::suspend(self.gpu.load(Ordering::Acquire));
         *lock(&self.window) = None;
-        *lock(&self.size) = None;
         host.surface_lost();
     }
 
-    /// A display frame: run the requested vsync and any fling, or stop the callbacks.
+    /// The node's surface came back on screen (window foregrounded, screen unlocked): its
+    /// buffers may be gone, so the current frame is drawn again.
+    pub(crate) fn surface_shown(&self, host: &pages::Host) {
+        log::debug!(target: "lingxia_view", "surface shown token={}", self.token);
+        host.window_visible(true);
+        host.redraw();
+    }
+
+    pub(crate) fn surface_hidden(&self, host: &pages::Host) {
+        log::debug!(target: "lingxia_view", "surface hidden token={}", self.token);
+        host.window_visible(false);
+    }
+
+    /// A display frame: step any fling, run the requested vsync.
     pub(crate) fn display_frame(&self, host: &pages::Host) {
-        let fling = self.step_fling(host);
+        if self.step_fling(host) {
+            crate::xcomponent::request_frame(self.token);
+        }
         if self.vsync.swap(false, Ordering::AcqRel) {
             host.vsync();
-        } else if !fling {
-            pages::with_node(self.token, |node| node.stop_frames());
         }
     }
 
@@ -334,7 +350,7 @@ fn rasterize(host: &WeakViewHost<HarmonyAdapter>, display: DisplayList, generati
 impl FrameScheduler for HarmonyAdapter {
     fn request_vsync(&self) {
         self.vsync.store(true, Ordering::Release);
-        pages::with_node(self.token, |node| node.request_frame());
+        crate::xcomponent::request_frame(self.token);
     }
 }
 
@@ -474,7 +490,7 @@ impl Feedback for HarmonyAdapter {
                         velocity: *velocity,
                         last: Instant::now(),
                     });
-                    pages::with_node(self.token, |node| node.request_frame());
+                    crate::xcomponent::request_frame(self.token);
                 }
                 Effect::StopFling => *lock(&self.fling) = None,
                 Effect::Clicked => {}

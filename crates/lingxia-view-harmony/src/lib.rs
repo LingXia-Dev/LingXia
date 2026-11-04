@@ -66,7 +66,6 @@ mod pages {
     struct Registry {
         hosts: HashMap<i64, Host>,
         nodes: HashMap<i64, xcomponent::Node>,
-        tokens: HashMap<usize, i64>,
     }
 
     thread_local! {
@@ -77,14 +76,6 @@ mod pages {
     pub(crate) fn with<T>(token: i64, work: impl FnOnce(&Host) -> T) -> Option<T> {
         let host = PAGES.with(|pages| pages.borrow().hosts.get(&token).cloned())?;
         Some(work(&host))
-    }
-
-    pub(crate) fn with_node(token: i64, work: impl FnOnce(&xcomponent::Node)) {
-        PAGES.with(|pages| {
-            if let Some(node) = pages.borrow().nodes.get(&token) {
-                work(node);
-            }
-        });
     }
 
     pub(crate) fn provider(token: i64) -> Option<*mut sys::ArkUI_AccessibilityProvider> {
@@ -110,18 +101,6 @@ mod pages {
         });
         drop(node);
         host
-    }
-
-    pub(crate) fn bind_node(node: sys::ArkUI_NodeHandle, token: i64) {
-        PAGES.with(|pages| pages.borrow_mut().tokens.insert(node as usize, token));
-    }
-
-    pub(crate) fn unbind_node(node: sys::ArkUI_NodeHandle) {
-        PAGES.with(|pages| pages.borrow_mut().tokens.remove(&(node as usize)));
-    }
-
-    pub(crate) fn node_token(node: sys::ArkUI_NodeHandle) -> Option<i64> {
-        PAGES.with(|pages| pages.borrow().tokens.get(&(node as usize)).copied())
     }
 
     /// An accessibility Paste: the clipboard arrives later, so the action reports success now.

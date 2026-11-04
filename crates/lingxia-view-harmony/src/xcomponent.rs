@@ -71,11 +71,11 @@ pub(crate) struct Node {
     pub(crate) provider: *mut sys::ArkUI_AccessibilityProvider,
 }
 
-const EVENTS: [i32; 6] = [
+// Hardware keys reach the page once they map to `Key`; Back must keep reaching the page stack.
+const EVENTS: [i32; 5] = [
     sys::NODE_TOUCH_EVENT,
     sys::NODE_ON_FOCUS,
     sys::NODE_ON_BLUR,
-    sys::NODE_ON_KEY_EVENT,
     sys::NODE_ON_HOVER,
     sys::NODE_ON_AXIS,
 ];
@@ -117,9 +117,15 @@ impl Node {
             // The page runs its own input connection; the XComponent must not raise one.
             sys::OH_ArkUI_XComponent_SetNeedSoftKeyboard(handle, false);
             for kind in EVENTS {
-                (api.register_node_event)(handle, kind, 0, user);
+                let code = (api.register_node_event)(handle, kind, 0, user);
+                if code != 0 {
+                    log::warn!(target: "lingxia_view", "UI_INPUT: node event {kind} refused ({code})");
+                }
             }
-            (api.add_node_event_receiver)(handle, on_event);
+            let code = (api.add_node_event_receiver)(handle, on_event);
+            if code != 0 {
+                log::warn!(target: "lingxia_view", "UI_INPUT: node event receiver refused ({code})");
+            }
 
             let holder = sys::OH_ArkUI_SurfaceHolder_Create(handle);
             let callback = sys::OH_ArkUI_SurfaceCallback_Create();
@@ -127,13 +133,14 @@ impl Node {
             sys::OH_ArkUI_SurfaceCallback_SetSurfaceCreatedEvent(callback, surface_created);
             sys::OH_ArkUI_SurfaceCallback_SetSurfaceChangedEvent(callback, surface_changed);
             sys::OH_ArkUI_SurfaceCallback_SetSurfaceDestroyedEvent(callback, surface_destroyed);
+            sys::OH_ArkUI_SurfaceCallback_SetSurfaceShowEvent(callback, surface_shown);
+            sys::OH_ArkUI_SurfaceCallback_SetSurfaceHideEvent(callback, surface_hidden);
             sys::OH_ArkUI_SurfaceHolder_AddSurfaceCallback(holder, callback);
 
             let provider = sys::OH_ArkUI_AccessibilityProvider_Create(handle);
             if !provider.is_null() {
                 accessibility::attach(token, provider)?;
             }
-            pages::bind_node(handle, token);
             let code = sys::OH_ArkUI_NodeContent_AddNode(content, handle);
             if code != 0 {
                 return Err(format!("UI_SURFACE: ContentSlot refused the node ({code})"));
@@ -148,29 +155,74 @@ impl Node {
             })
         }
     }
+}
 
-    /// Ask for one display frame callback; ArkUI keeps calling until unregistered.
-    pub(crate) fn request_frame(&self) {
-        // SAFETY: main thread, live node.
-        unsafe { sys::OH_ArkUI_XComponent_RegisterOnFrameCallback(self.handle, on_frame) };
+/// Ask for one display frame for page `token`; any thread (the host asks from its worker).
+pub(crate) fn request_frame(token: i64) {
+    vsync::request(token);
+}
+
+/// One display-synchronized callback per frame for every page that asked. The vsync
+/// callback runs on its own thread, so it posts the frame to the main thread.
+mod vsync {
+    use super::*;
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    static WANTED: Mutex<Vec<i64>> = Mutex::new(Vec::new());
+    static PENDING: AtomicBool = AtomicBool::new(false);
+
+    fn source() -> Option<*mut sys::OH_NativeVSync> {
+        static VSYNC: OnceLock<usize> = OnceLock::new();
+        let vsync = *VSYNC.get_or_init(|| {
+            let name = c"lingxia-view";
+            // SAFETY: a NUL-terminated name and its length.
+            unsafe { sys::OH_NativeVSync_Create(name.as_ptr(), name.count_bytes() as u32) as usize }
+        });
+        (vsync != 0).then_some(vsync as *mut sys::OH_NativeVSync)
     }
 
-    pub(crate) fn stop_frames(&self) {
-        // SAFETY: main thread, live node.
-        unsafe { sys::OH_ArkUI_XComponent_UnregisterOnFrameCallback(self.handle) };
+    unsafe extern "C" fn fired(_timestamp: i64, _data: *mut c_void) {
+        PENDING.store(false, Ordering::Release);
+        crate::dispatch::post_main(Box::new(|| {
+            let tokens = std::mem::take(&mut *WANTED.lock().unwrap_or_else(|p| p.into_inner()));
+            for token in tokens {
+                pages::with(token, |host| host.adapter().display_frame(host));
+            }
+        }));
+    }
+
+    pub(super) fn request(token: i64) {
+        {
+            let mut wanted = WANTED.lock().unwrap_or_else(|p| p.into_inner());
+            if !wanted.contains(&token) {
+                wanted.push(token);
+            }
+        }
+        if PENDING.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        let Some(vsync) = source() else {
+            PENDING.store(false, Ordering::Release);
+            return log::warn!(target: "lingxia_view", "UI_VSYNC: no display sync");
+        };
+        // SAFETY: the vsync source lives for the process; the callback ignores its data.
+        let code = unsafe { sys::OH_NativeVSync_RequestFrame(vsync, fired, std::ptr::null_mut()) };
+        if code != 0 {
+            PENDING.store(false, Ordering::Release);
+            log::warn!(target: "lingxia_view", "UI_VSYNC: frame request refused ({code})");
+        }
     }
 }
 
 impl Drop for Node {
     fn drop(&mut self) {
         let Ok(api) = api() else { return };
-        pages::unbind_node(self.handle);
         // SAFETY: main thread; releases what `mount` created, in reverse.
         unsafe {
             if !self.provider.is_null() {
                 sys::OH_ArkUI_AccessibilityProvider_Dispose(self.provider);
             }
-            sys::OH_ArkUI_XComponent_UnregisterOnFrameCallback(self.handle);
             sys::OH_ArkUI_NodeContent_RemoveNode(self.content, self.handle);
             for kind in EVENTS {
                 (api.unregister_node_event)(self.handle, kind);
@@ -216,11 +268,16 @@ unsafe extern "C" fn surface_destroyed(holder: *mut sys::OH_ArkUI_SurfaceHolder)
     });
 }
 
-unsafe extern "C" fn on_frame(node: sys::ArkUI_NodeHandle, _timestamp: u64, _target: u64) {
-    let Some(token) = pages::node_token(node) else {
-        return;
-    };
-    pages::with(token, |host| host.adapter().display_frame(host));
+unsafe extern "C" fn surface_shown(holder: *mut sys::OH_ArkUI_SurfaceHolder) {
+    pages::with(holder_token(holder), |host| {
+        host.adapter().surface_shown(host)
+    });
+}
+
+unsafe extern "C" fn surface_hidden(holder: *mut sys::OH_ArkUI_SurfaceHolder) {
+    pages::with(holder_token(holder), |host| {
+        host.adapter().surface_hidden(host)
+    });
 }
 
 unsafe extern "C" fn on_event(event: *mut sys::ArkUI_NodeEvent) {
@@ -251,6 +308,9 @@ fn touch(host: &pages::Host, input: *mut sys::ArkUI_UIInputEvent) {
             sys::OH_ArkUI_UIInputEvent_GetEventTime(input),
         )
     };
+    // Node events report virtual pixels; the host works in device pixels.
+    let scale = adapter.placement().0;
+    let (x, y) = (x * scale, y * scale);
     let phase = match action {
         sys::UI_TOUCH_EVENT_ACTION_DOWN => PointerPhase::Down,
         sys::UI_TOUCH_EVENT_ACTION_MOVE => PointerPhase::Move,
@@ -267,8 +327,8 @@ fn touch(host: &pages::Host, input: *mut sys::ArkUI_UIInputEvent) {
             for i in 0..sys::OH_ArkUI_PointerEvent_GetHistorySize(input) {
                 tracker.add(
                     sys::OH_ArkUI_PointerEvent_GetHistoryEventTime(input, i),
-                    sys::OH_ArkUI_PointerEvent_GetHistoryX(input, 0, i),
-                    sys::OH_ArkUI_PointerEvent_GetHistoryY(input, 0, i),
+                    sys::OH_ArkUI_PointerEvent_GetHistoryX(input, 0, i) * scale,
+                    sys::OH_ArkUI_PointerEvent_GetHistoryY(input, 0, i) * scale,
                 );
             }
         }
@@ -279,7 +339,6 @@ fn touch(host: &pages::Host, input: *mut sys::ArkUI_UIInputEvent) {
             [0.0; 2]
         }
     };
-    let scale = adapter.placement().0;
     let consumed = host.pointer(Pointer {
         phase,
         x,

@@ -29,6 +29,8 @@ export struct GpuPage {
     if (!this.page.mounted) {
       this.page.mounted = gpuPageMount(this.page.token, this.page.content);
     }
+    // The host starts hidden; `@Watch` only reports later changes.
+    gpuPageSetVisible(this.page.token, this.pageVisible);
     const context = Lingxia.context as common.UIAbilityContext;
     window.getLastWindow(context).then((win: window.Window) => {
       this.win = win;

@@ -204,14 +204,17 @@ unsafe extern "C" {
         callback: *mut OH_ArkUI_SurfaceCallback,
         event: unsafe extern "C" fn(holder: *mut OH_ArkUI_SurfaceHolder),
     );
+    pub fn OH_ArkUI_SurfaceCallback_SetSurfaceShowEvent(
+        callback: *mut OH_ArkUI_SurfaceCallback,
+        event: unsafe extern "C" fn(holder: *mut OH_ArkUI_SurfaceHolder),
+    );
+    pub fn OH_ArkUI_SurfaceCallback_SetSurfaceHideEvent(
+        callback: *mut OH_ArkUI_SurfaceCallback,
+        event: unsafe extern "C" fn(holder: *mut OH_ArkUI_SurfaceHolder),
+    );
     pub fn OH_ArkUI_XComponent_GetNativeWindow(
         holder: *mut OH_ArkUI_SurfaceHolder,
     ) -> *mut OHNativeWindow;
-    pub fn OH_ArkUI_XComponent_RegisterOnFrameCallback(
-        node: ArkUI_NodeHandle,
-        callback: unsafe extern "C" fn(node: ArkUI_NodeHandle, timestamp: u64, target: u64),
-    ) -> i32;
-    pub fn OH_ArkUI_XComponent_UnregisterOnFrameCallback(node: ArkUI_NodeHandle) -> i32;
     pub fn OH_ArkUI_XComponent_SetNeedSoftKeyboard(node: ArkUI_NodeHandle, need: bool) -> i32;
     pub fn OH_ArkUI_AccessibilityProvider_Create(
         node: ArkUI_NodeHandle,
@@ -447,6 +450,20 @@ pub struct ArkUI_AccessibilityProviderCallbacksWithInstance {
     ) -> i32,
     pub clear_focused: unsafe extern "C" fn(Instance) -> i32,
     pub cursor_position: unsafe extern "C" fn(Instance, i64, i32, *mut i32) -> i32,
+}
+
+// ---- Display sync ---------------------------------------------------------------------------
+
+opaque!(OH_NativeVSync);
+
+#[link(name = "native_vsync")]
+unsafe extern "C" {
+    pub fn OH_NativeVSync_Create(name: *const c_char, length: u32) -> *mut OH_NativeVSync;
+    pub fn OH_NativeVSync_RequestFrame(
+        vsync: *mut OH_NativeVSync,
+        callback: unsafe extern "C" fn(timestamp: i64, data: *mut c_void),
+        data: *mut c_void,
+    ) -> i32;
 }
 
 // ---- Native window --------------------------------------------------------------------------
