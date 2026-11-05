@@ -89,6 +89,11 @@ internal object LxAppGesture {
             val density = activity.resources.displayMetrics.density
             val out = JSONArray()
             fun visit(view: View, area: String) {
+                if (view is com.lingxia.lxapp.GpuPage && view.isShown) {
+                    // A GPU page's recovery panel is host chrome drawn inside the page.
+                    view.findViewWithTag<View>(com.lingxia.view.GpuView.RECOVERY_TAG)?.let { visit(it, area) }
+                    return
+                }
                 if (!view.isShown || view is com.lingxia.lxapp.WebView || view is com.lingxia.lxapp.GpuPage) return
                 // An overlay added this frame has no position yet: a tap at its unlaid bounds
                 // lands on the backdrop and dismisses it.

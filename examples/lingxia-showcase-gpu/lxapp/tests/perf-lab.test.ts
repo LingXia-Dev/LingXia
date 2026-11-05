@@ -32,7 +32,6 @@ const KNOWN: Record<string, Record<string, string>> = {
     'PERF-FILL-001': 'reads 0 frames as a spec in some runs (31 frames the run before); under investigation',
     'PERF-TEXT-001': 'reads 1 frame as a spec though the scene draws ~14 fps when driven by hand; under investigation',
     'PERF-IMAGE-001': 'reads 0 frames as a spec, as PERF-TEXT-001; under investigation',
-    'PERF-FAIL-001': 'the Android chrome reader does not read the GPU recovery panel; it shows (seen on the Pixel)',
   },
 };
 

@@ -33,6 +33,7 @@ final class GpuRecovery {
         int padding = Math.round(16 * host.getResources().getDisplayMetrics().density);
         current.setPadding(padding, padding, padding, padding);
         current.setClickable(true);
+        current.setTag(GpuView.RECOVERY_TAG);
         TextView text = new TextView(host.getContext());
         text.setTextColor(dark ? Color.WHITE : Color.rgb(32, 34, 38));
         text.setTextSize(16);

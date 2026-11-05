@@ -133,6 +133,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
 
     private final android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
     private final GpuRecovery recovery = new GpuRecovery(this);
+    /** Tags the recovery panel, so host automation reads it although it never reads page content. */
+    public static final String RECOVERY_TAG = "lingxia.gpu.recovery";
     // Zero after disposal.
     private long host;
     private static final java.util.Set<GpuView> LIVE = java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
