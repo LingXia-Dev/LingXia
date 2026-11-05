@@ -117,6 +117,9 @@ impl Mirror {
 static MIRROR: Mutex<Option<Mirror>> = Mutex::new(None);
 /// A focus request is on its way to the core; edits wait for it.
 static FOCUSING: Mutex<Option<String>> = Mutex::new(None);
+/// The page and edit token this side last blurred: frames drawn before the core saw the blur
+/// still show that editor focused, and must not raise the keyboard for it again.
+static BLURRED: Mutex<Option<(i64, u64)>> = Mutex::new(None);
 
 fn mirror<T>(work: impl FnOnce(&mut Mirror) -> T) -> Option<T> {
     MIRROR
@@ -205,7 +208,9 @@ pub(crate) fn reconcile(page: i64, frame: &FrameSnapshot) {
     });
     let current = MIRROR.lock().unwrap_or_else(|p| p.into_inner()).clone();
     match (focused, current) {
-        (None, Some(m)) if m.page == page => disconnect(page),
+        (None, Some(m)) if m.page == page => {
+            drop_connection(page);
+        }
         (Some((identity, token, ime, state, ..)), Some(m))
             if m.page == page && m.identity == identity && m.token == token =>
         {
@@ -220,7 +225,9 @@ pub(crate) fn reconcile(page: i64, frame: &FrameSnapshot) {
             os::update();
         }
         (Some((identity, token, ime, state, value, raise)), current)
-            if raise || current.is_some() =>
+            if (raise
+                && *BLURRED.lock().unwrap_or_else(|p| p.into_inner()) != Some((page, token)))
+                || current.is_some() =>
         {
             let state = state.unwrap_or_else(|| json!({"text": value}));
             connect(Mirror::from_state(
@@ -368,8 +375,25 @@ pub(crate) fn edit_text(
     EditOutcome::Applied
 }
 
-/// End text input on page `page`: detach the keyboard and tell the core no editor is connected.
+/// An activation ends text input on page `page`: detach the keyboard and blur the editor in the
+/// core, so a frame drawn before it saw the blur does not raise the keyboard again.
 pub(crate) fn disconnect(page: i64) {
+    let Some(was) = drop_connection(page) else {
+        return;
+    };
+    *BLURRED.lock().unwrap_or_else(|p| p.into_inner()) = Some((page, was.token));
+    let request = json!({"op": "blur", "identity": was.identity, "token": was.token});
+    pages::with(page, move |host| {
+        host.input(request.to_string(), move |_| {
+            on_main(move || {
+                pages::with(page, |host| host.redraw());
+            });
+        });
+    });
+}
+
+/// The focused editor went away: detach the keyboard; the core already knows.
+fn drop_connection(page: i64) -> Option<Mirror> {
     let was = MIRROR
         .lock()
         .unwrap_or_else(|p| p.into_inner())
@@ -378,10 +402,15 @@ pub(crate) fn disconnect(page: i64) {
         os::detach();
         pages::with(page, |host| host.caret(false, None));
     }
+    was
 }
 
 /// The page ended: drop the connection without telling the core.
 pub(crate) fn reset(page: i64) {
+    BLURRED
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .take_if(|(blurred, _)| *blurred == page);
     if MIRROR
         .lock()
         .unwrap_or_else(|p| p.into_inner())
