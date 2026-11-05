@@ -150,6 +150,19 @@ fn platform() -> JSResult<Arc<lingxia_platform::Platform>> {
     lxapp::get_platform().ok_or_else(|| auto_err("platform is not initialized"))
 }
 
+/// A WebView app has no page input where the host reaches GPU pages only.
+fn app_inputs(
+    inputs: Vec<GestureInput>,
+    webview_page_gestures: bool,
+    gpu_app: bool,
+) -> Vec<GestureInput> {
+    if gpu_app || webview_page_gestures {
+        inputs
+    } else {
+        Vec::new()
+    }
+}
+
 #[js_class(clone)]
 pub(crate) struct JSPageGesture {
     lxapp: Weak<LxApp>,
@@ -273,12 +286,22 @@ impl JSPageGesture {
         json_to_js(&ctx, &serde_json::json!(elements))
     }
 
-    /// The devices this host can imitate (`touch`, `mouse`, `trackpad`).
+    /// The devices this host can imitate (`touch`, `mouse`, `trackpad`) on
+    /// this app's pages.
     #[js_method]
     fn inputs(&self, ctx: JSContext) -> JSResult<JSValue> {
-        let inputs = lxapp::get_platform()
-            .map(|p| p.gesture_inputs())
-            .unwrap_or_default();
+        let Some(platform) = lxapp::get_platform() else {
+            return json_to_js(&ctx, &serde_json::json!([]));
+        };
+        let gpu_app = self
+            .lxapp
+            .upgrade()
+            .is_none_or(|app| app.renderer() == lxapp::PageRenderer::Gpu);
+        let inputs = app_inputs(
+            platform.gesture_inputs(),
+            platform.webview_page_gestures(),
+            gpu_app,
+        );
         json_to_js(&ctx, &serde_json::json!(inputs))
     }
 
@@ -334,5 +357,18 @@ impl JSPageGesture {
             "durationMs": result.duration_ms,
         });
         json_to_js(&ctx, &json)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_webview_app_has_no_input_where_only_gpu_pages_take_gestures() {
+        let touch = || vec![GestureInput::Touch];
+        assert_eq!(app_inputs(touch(), false, true), touch());
+        assert!(app_inputs(touch(), false, false).is_empty());
+        assert_eq!(app_inputs(touch(), true, false), touch());
     }
 }

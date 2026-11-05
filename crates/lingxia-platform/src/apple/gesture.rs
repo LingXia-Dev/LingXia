@@ -18,6 +18,11 @@ impl AppGesture for Platform {
         vec![crate::traits::gesture::GestureInput::Touch]
     }
 
+    #[cfg(target_os = "ios")]
+    fn webview_page_gestures(&self) -> bool {
+        false
+    }
+
     async fn perform_app_gesture(
         &self,
         request: AppGestureRequest,

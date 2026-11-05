@@ -267,6 +267,12 @@ pub trait AppGesture: Send + Sync {
         Vec::new()
     }
 
+    /// False where page gestures reach GPU pages only (iOS has no public touch
+    /// injection into a WebView).
+    fn webview_page_gestures(&self) -> bool {
+        true
+    }
+
     async fn perform_app_gesture(
         &self,
         request: AppGestureRequest,
