@@ -270,7 +270,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   const own = props.dir === 'auto' && !editor ? strongDirection(children) : props.dir === 'auto' ? undefined : props.dir;
   if (props.dir === 'auto' && !editor) props.dir = own;
   const direction = own ?? parent.direction ?? (envOf(render.view)?.direction === 'rtl' ? 'rtl' : 'ltr');
-  const authored = entries(children), flat = authored.map(entry => entry.child), slot = authored.map(entry => entry.slot);
+  const authored = entries(children), flat = authored.map(entry => entry.child);
   // The data-* props as variants and automation read them; nothing below changes them.
   const data = dataOf(props);
   const style = nodeStyle(tag, props, data, parent.extra, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat));
@@ -465,7 +465,8 @@ function resolveElement(tag, original, children, identity, depth, parent) {
     }));
     if (tag === 'text' && result.children.length > limits.runs) throw Error(`UI_TEXT: more than ${limits.runs} runs`);
   } else if (!leaf && tag !== 'radio') {
-    const keys = new Set(), last = flat.length - 1;
+    // Placed children and, for unkeyed ones, the slot they were authored at.
+    const keys = new Set(), last = flat.length - 1, placed = [], slots = [];
     const place = ({ child, slot: at, key }, position, nesting) => {
       if (nesting > 128) throw Error('UI_LIMIT: children too deep');
       if (key !== undefined && typeof key !== 'string') throw Error('UI_KEY: expected string');
@@ -479,24 +480,28 @@ function resolveElement(tag, original, children, identity, depth, parent) {
         popovers: props[popoverScope] ?? parent.popovers,
       });
       // A component's fragment opens in its place, named under the component's slot or key.
-      if (node?.fragment) return node.fragment.flatMap(inner => place(key === undefined
-        ? { ...inner, slot: inner.slot === undefined ? undefined : `${at}.${inner.slot}`, key: inner.key }
-        : { child: inner.child, key: JSON.stringify([key, inner.key ?? `#${inner.slot}`]) }, position, nesting + 1));
-      if (node === null) return [];
-      if (key === undefined) return [{ ...node, slot: at }];
+      if (node?.fragment) {
+        for (const inner of node.fragment) place(key === undefined
+          ? { ...inner, slot: inner.slot === undefined ? undefined : `${at}.${inner.slot}`, key: inner.key }
+          : { child: inner.child, key: JSON.stringify([key, inner.key ?? `#${inner.slot}`]) }, position, nesting + 1);
+        return;
+      }
+      if (node === null) return;
+      if (key === undefined) { placed.push(node); slots.push(at); return; }
       // Inside a keyed fragment the wire key is the composed one native names the node by.
-      return [node.props.key === key ? node : { ...node, props: { ...node.props, key } }];
+      placed.push(node.props.key === key ? node : { ...node, props: { ...node.props, key } });
+      slots.push(undefined);
     };
-    result.children = authored.flatMap((entry, position) => place(entry, position, 0));
+    for (let position = 0; position < authored.length; position++) place(authored[position], position, 0);
+    result.children = placed;
     // A pressable control around nothing but another control adds a second target for one action.
     if ((tag === 'button' || tag === 'checkbox') && result.children.length === 1 && interactiveTags.has(result.children[0].tag))
       throw Error(`UI_BUTTON: <${tag}> holds only a <${result.children[0].tag}>; put the action on that control`);
     // Native names an unkeyed child by its rendered position; where a hole moved it, send the slot.
-    result.children = result.children.map((child, ordinal) => {
-      if (child.slot === undefined) return child;
-      const { slot: at, ...rest } = child;
-      return at === String(ordinal) ? rest : { ...rest, slot: at };
-    });
+    for (let ordinal = 0; ordinal < placed.length; ordinal++) {
+      const at = slots[ordinal];
+      if (at !== undefined && at !== String(ordinal)) placed[ordinal] = { ...placed[ordinal], slot: at };
+    }
   }
   for (const kind in style.descendants)
     if (result.children.some(child => holds(child, kind))) Object.assign(result.fields, style.descendants[kind]);

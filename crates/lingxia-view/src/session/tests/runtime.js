@@ -2815,7 +2815,7 @@
     const own2 = props.dir === "auto" && !editor2 ? strongDirection(children) : props.dir === "auto" ? void 0 : props.dir;
     if (props.dir === "auto" && !editor2) props.dir = own2;
     const direction = own2 ?? parent.direction ?? (envOf(render.view)?.direction === "rtl" ? "rtl" : "ltr");
-    const authored = entries(children), flat = authored.map((entry) => entry.child), slot = authored.map((entry) => entry.slot);
+    const authored = entries(children), flat = authored.map((entry) => entry.child);
     const data = dataOf(props);
     const style2 = nodeStyle(tag, props, data, parent.extra, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat));
     const inline = (child) => typeof child === "string" || typeof child === "number";
@@ -3036,7 +3036,7 @@
       }));
       if (tag === "text" && result.children.length > limits.runs) throw Error(`UI_TEXT: more than ${limits.runs} runs`);
     } else if (!leaf && tag !== "radio") {
-      const keys = /* @__PURE__ */ new Set(), last = flat.length - 1;
+      const keys = /* @__PURE__ */ new Set(), last = flat.length - 1, placed = [], slots = [];
       const place = ({ child, slot: at, key }, position, nesting) => {
         if (nesting > 128) throw Error("UI_LIMIT: children too deep");
         if (key !== void 0 && typeof key !== "string") throw Error("UI_KEY: expected string");
@@ -3052,19 +3052,27 @@
           inControl: parent.inControl || admission.tags[element.wire].children === "content",
           popovers: props[popoverScope] ?? parent.popovers
         });
-        if (node?.fragment) return node.fragment.flatMap((inner) => place(key === void 0 ? { ...inner, slot: inner.slot === void 0 ? void 0 : `${at}.${inner.slot}`, key: inner.key } : { child: inner.child, key: JSON.stringify([key, inner.key ?? `#${inner.slot}`]) }, position, nesting + 1));
-        if (node === null) return [];
-        if (key === void 0) return [{ ...node, slot: at }];
-        return [node.props.key === key ? node : { ...node, props: { ...node.props, key } }];
+        if (node?.fragment) {
+          for (const inner of node.fragment) place(key === void 0 ? { ...inner, slot: inner.slot === void 0 ? void 0 : `${at}.${inner.slot}`, key: inner.key } : { child: inner.child, key: JSON.stringify([key, inner.key ?? `#${inner.slot}`]) }, position, nesting + 1);
+          return;
+        }
+        if (node === null) return;
+        if (key === void 0) {
+          placed.push(node);
+          slots.push(at);
+          return;
+        }
+        placed.push(node.props.key === key ? node : { ...node, props: { ...node.props, key } });
+        slots.push(void 0);
       };
-      result.children = authored.flatMap((entry, position) => place(entry, position, 0));
+      for (let position = 0; position < authored.length; position++) place(authored[position], position, 0);
+      result.children = placed;
       if ((tag === "button" || tag === "checkbox") && result.children.length === 1 && interactiveTags.has(result.children[0].tag))
         throw Error(`UI_BUTTON: <${tag}> holds only a <${result.children[0].tag}>; put the action on that control`);
-      result.children = result.children.map((child, ordinal) => {
-        if (child.slot === void 0) return child;
-        const { slot: at, ...rest } = child;
-        return at === String(ordinal) ? rest : { ...rest, slot: at };
-      });
+      for (let ordinal = 0; ordinal < placed.length; ordinal++) {
+        const at = slots[ordinal];
+        if (at !== void 0 && at !== String(ordinal)) placed[ordinal] = { ...placed[ordinal], slot: at };
+      }
     }
     for (const kind in style2.descendants)
       if (result.children.some((child) => holds(child, kind))) Object.assign(result.fields, style2.descendants[kind]);
