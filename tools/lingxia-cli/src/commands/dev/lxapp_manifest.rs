@@ -8,6 +8,13 @@ use std::path::{Path, PathBuf};
 
 const DEV_MANIFEST_DIR: &str = ".lingxia/dev/lxapp";
 const MANIFEST_FILE: &str = "manifest.json";
+/// Published file bytes by sha256, and the manifests that list them by dist hash: every
+/// session of a project writes `dist`, so bytes are served from here, never from `dist`.
+const BLOBS_DIR: &str = "blobs";
+const SNAPSHOTS_DIR: &str = "snapshots";
+const KEPT_SNAPSHOTS: usize = 8;
+/// A blob younger than this may belong to a publish still writing its snapshot.
+const BLOB_GRACE: std::time::Duration = std::time::Duration::from_secs(600);
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -57,6 +64,7 @@ pub(crate) fn write_configured_manifests(
                 manifest.app_id
             ));
         }
+        let manifest = capture(project_root, &dist_dir, manifest)?;
         write_manifest(project_root, &manifest)?;
         written.push(manifest);
     }
@@ -114,6 +122,7 @@ pub(crate) fn resolve_published_file(
 pub(crate) fn publish_dist(project_root: &Path, dist_dir: &Path) -> Result<DevLxAppManifest> {
     let manifest = build_manifest(dist_dir)
         .with_context(|| format!("Failed to build dev manifest for {}", dist_dir.display()))?;
+    let manifest = capture(project_root, dist_dir, manifest)?;
     write_manifest(project_root, &manifest)?;
     Ok(manifest)
 }
@@ -178,17 +187,144 @@ fn write_manifest(project_root: &Path, manifest: &DevLxAppManifest) -> Result<()
             .with_context(|| format!("Failed to create {}", parent.display()))?;
     }
     let bytes = serde_json::to_vec_pretty(manifest)?;
-    if fs::read(&path).ok().as_deref() == Some(bytes.as_slice()) {
-        return Ok(());
+    let snapshots = app_dir(project_root, &manifest.app_id).join(SNAPSHOTS_DIR);
+    fs::create_dir_all(&snapshots)
+        .with_context(|| format!("Failed to create {}", snapshots.display()))?;
+    write_atomic(
+        &snapshots.join(format!("{}.json", manifest.dist_hash)),
+        &bytes,
+    )?;
+    if fs::read(&path).ok().as_deref() != Some(bytes.as_slice()) {
+        write_atomic(&path, &bytes)?;
     }
-    fs::write(&path, bytes).with_context(|| format!("Failed to write {}", path.display()))
+    prune(project_root, &manifest.app_id);
+    Ok(())
 }
 
-fn manifest_path(project_root: &Path, app_id: &str) -> PathBuf {
+fn app_dir(project_root: &Path, app_id: &str) -> PathBuf {
     project_root
         .join(DEV_MANIFEST_DIR)
         .join(sanitize_component(app_id))
-        .join(MANIFEST_FILE)
+}
+
+fn manifest_path(project_root: &Path, app_id: &str) -> PathBuf {
+    app_dir(project_root, app_id).join(MANIFEST_FILE)
+}
+
+/// Copy each listed file into the blob store. A file rewritten since it was hashed is
+/// listed as the bytes captured, so the manifest always describes what will be served.
+fn capture(
+    project_root: &Path,
+    dist_dir: &Path,
+    mut manifest: DevLxAppManifest,
+) -> Result<DevLxAppManifest> {
+    let blobs = app_dir(project_root, &manifest.app_id).join(BLOBS_DIR);
+    fs::create_dir_all(&blobs).with_context(|| format!("Failed to create {}", blobs.display()))?;
+    let mut moved = false;
+    for file in &mut manifest.files {
+        if blobs.join(&file.hash).is_file() {
+            continue;
+        }
+        let source = dist_dir.join(&file.path);
+        let bytes =
+            fs::read(&source).with_context(|| format!("Failed to read {}", source.display()))?;
+        let hash = sha256_hex(&bytes);
+        if hash != file.hash || bytes.len() as u64 != file.size {
+            file.hash = hash;
+            file.size = bytes.len() as u64;
+            moved = true;
+        }
+        write_atomic(&blobs.join(&file.hash), &bytes)?;
+    }
+    if moved {
+        manifest.dist_hash = hash_file_list(&manifest.files);
+    }
+    Ok(manifest)
+}
+
+fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+    let temporary = path.with_extension(format!("tmp-{}", std::process::id()));
+    fs::write(&temporary, bytes)
+        .with_context(|| format!("Failed to write {}", temporary.display()))?;
+    fs::rename(&temporary, path).with_context(|| format!("Failed to publish {}", path.display()))
+}
+
+/// Keep the newest snapshots and the blobs they list; best effort, as another session
+/// may prune the same store.
+fn prune(project_root: &Path, app_id: &str) {
+    let dir = app_dir(project_root, app_id);
+    let Ok(entries) = fs::read_dir(dir.join(SNAPSHOTS_DIR)) else {
+        return;
+    };
+    let mut snapshots: Vec<(std::time::SystemTime, PathBuf)> = entries
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "json"))
+        .filter_map(|entry| Some((entry.metadata().ok()?.modified().ok()?, entry.path())))
+        .collect();
+    snapshots.sort_by(|a, b| b.0.cmp(&a.0));
+    for (_, stale) in snapshots.iter().skip(KEPT_SNAPSHOTS) {
+        let _ = fs::remove_file(stale);
+    }
+    let mut listed = BTreeSet::new();
+    for (_, path) in snapshots.iter().take(KEPT_SNAPSHOTS) {
+        let Some(manifest) = fs::read(path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<DevLxAppManifest>(&bytes).ok())
+        else {
+            continue;
+        };
+        listed.extend(manifest.files.into_iter().map(|file| file.hash));
+    }
+    let Ok(blobs) = fs::read_dir(dir.join(BLOBS_DIR)) else {
+        return;
+    };
+    for blob in blobs.filter_map(|entry| entry.ok()) {
+        let name = blob.file_name().to_string_lossy().into_owned();
+        let old = blob
+            .metadata()
+            .and_then(|meta| meta.modified())
+            .ok()
+            .and_then(|modified| modified.elapsed().ok())
+            .is_some_and(|age| age > BLOB_GRACE);
+        if old && !listed.contains(&name) {
+            let _ = fs::remove_file(blob.path());
+        }
+    }
+}
+
+/// The manifest published as `dist_hash`, while its snapshot is kept.
+pub(crate) fn load_snapshot(
+    project_root: &Path,
+    app_id: &str,
+    dist_hash: &str,
+) -> Result<Option<DevLxAppManifest>> {
+    if !is_sha256(dist_hash) {
+        return Ok(None);
+    }
+    let path = app_dir(project_root, app_id)
+        .join(SNAPSHOTS_DIR)
+        .join(format!("{dist_hash}.json"));
+    match fs::read(&path) {
+        Ok(bytes) => serde_json::from_slice(&bytes)
+            .map(Some)
+            .with_context(|| format!("Invalid JSON in {}", path.display())),
+        Err(_) => Ok(None),
+    }
+}
+
+/// The captured bytes of a published file, by its sha256.
+pub(crate) fn read_blob(project_root: &Path, app_id: &str, hash: &str) -> Option<Vec<u8>> {
+    if !is_sha256(hash) {
+        return None;
+    }
+    fs::read(app_dir(project_root, app_id).join(BLOBS_DIR).join(hash)).ok()
+}
+
+fn is_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 fn configured_dist_dir(project_root: &Path, app_id: &str) -> Result<PathBuf> {

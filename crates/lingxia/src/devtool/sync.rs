@@ -178,6 +178,16 @@ pub(crate) fn sync_from(
 
     for file in missing {
         let target = staging_dir.join(&file.path);
+        // By hash first: the bytes this manifest lists, even if the server's build output moved
+        // on since; an older server only serves files by path.
+        let blob = dev_bundle_url(
+            base_url,
+            &format!(
+                "lxapp/{}/blob/{}",
+                encode_path_component(app_id),
+                encode_path_component(&file.hash)
+            ),
+        );
         let url = dev_bundle_url(
             base_url,
             &format!(
@@ -186,9 +196,13 @@ pub(crate) fn sync_from(
                 encode_path_component(&file.path)
             ),
         );
-        let bytes = match http_get(&url, deadline)? {
+        let bytes = match http_get(&blob, deadline)? {
             (200, body) => body,
-            (status, _) => return Err(format!("GET {url} returned HTTP {status}")),
+            (404, _) => match http_get(&url, deadline)? {
+                (200, body) => body,
+                (status, _) => return Err(format!("GET {url} returned HTTP {status}")),
+            },
+            (status, _) => return Err(format!("GET {blob} returned HTTP {status}")),
         };
         if bytes.len() as u64 != file.size {
             return Err(format!(

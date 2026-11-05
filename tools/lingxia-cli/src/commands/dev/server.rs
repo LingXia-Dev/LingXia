@@ -1717,18 +1717,38 @@ fn handle_dev_lxapp_http_request(
         return dev_lxapp_bundle_archive(state, &app_id, &hash);
     }
 
+    // A file by the hash its manifest lists: the bytes that manifest described, whatever
+    // another build has written to `dist` since.
+    if let Some((app_id, hash)) = rest.split_once("/blob/") {
+        let app_id = decode_url_path_component(app_id)?;
+        if !super::lxapp_manifest::is_published(&state.project_root, &app_id) {
+            return Ok(None);
+        }
+        return Ok(
+            super::lxapp_manifest::read_blob(&state.project_root, &app_id, hash)
+                .map(|body| ("application/octet-stream", body)),
+        );
+    }
+
     let Some((app_id, relative_path)) = rest.split_once("/files/") else {
         return Ok(None);
     };
     let app_id = decode_url_path_component(app_id)?;
     let relative_path = decode_url_path_component(relative_path)?;
-    if !super::lxapp_manifest::is_published(&state.project_root, &app_id)
-        || !super::lxapp_manifest::load_manifest(&state.project_root, &app_id)?
-            .files
-            .iter()
-            .any(|file| file.path == relative_path)
-    {
+    if !super::lxapp_manifest::is_published(&state.project_root, &app_id) {
         return Ok(None);
+    }
+    let manifest = super::lxapp_manifest::load_manifest(&state.project_root, &app_id)?;
+    let Some(listed) = manifest
+        .files
+        .iter()
+        .find(|file| file.path == relative_path)
+    else {
+        return Ok(None);
+    };
+    if let Some(body) = super::lxapp_manifest::read_blob(&state.project_root, &app_id, &listed.hash)
+    {
+        return Ok(Some((content_type_for_path(&relative_path), body)));
     }
     let file_path = if let Some(dist) = state.attached_dist(&app_id) {
         super::lxapp_manifest::resolve_published_file(
@@ -1748,7 +1768,7 @@ fn handle_dev_lxapp_http_request(
 /// Every file of `app_id`'s published bundle as one zstd tar, for a client syncing
 /// a whole bundle in one request; pages repeat the UI runtime, which the long
 /// window compresses away (6.5 MB of pages to about 0.3 MB). `None` (a 404) when the bundle is not
-/// published or `hash` is no longer its current hash.
+/// published or `hash` is neither its current hash nor one of its kept snapshots.
 fn dev_lxapp_bundle_archive(
     state: &DevServerState,
     app_id: &str,
@@ -1757,13 +1777,30 @@ fn dev_lxapp_bundle_archive(
     if !super::lxapp_manifest::is_published(&state.project_root, app_id) {
         return Ok(None);
     }
-    let manifest = super::lxapp_manifest::load_manifest(&state.project_root, app_id)?;
-    if manifest.dist_hash != hash {
-        return Ok(None);
-    }
+    let current = super::lxapp_manifest::load_manifest(&state.project_root, app_id)?;
+    let manifest = if current.dist_hash == hash {
+        current
+    } else {
+        // A client that read an earlier manifest gets that manifest's bytes.
+        match super::lxapp_manifest::load_snapshot(&state.project_root, app_id, hash)? {
+            Some(snapshot) => snapshot,
+            None => return Ok(None),
+        }
+    };
     let dist = state.attached_dist(app_id);
     let mut archive = tar::Builder::new(Vec::new());
     for file in &manifest.files {
+        if let Some(body) =
+            super::lxapp_manifest::read_blob(&state.project_root, app_id, &file.hash)
+        {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(body.len() as u64);
+            header.set_mode(0o644);
+            archive
+                .append_data(&mut header, &file.path, body.as_slice())
+                .with_context(|| format!("Failed to archive {}", file.path))?;
+            continue;
+        }
         let file_path = match &dist {
             Some(dist) => super::lxapp_manifest::resolve_published_file(
                 &state.project_root,
@@ -2950,6 +2987,93 @@ mod tests {
             serde_json::from_slice(&std::fs::read(&manifest_path).unwrap()).unwrap();
 
         assert_ne!(first["distHash"], second["distHash"]);
+    }
+
+    #[test]
+    fn a_second_session_rebuilding_dist_never_changes_the_bytes_a_manifest_lists() {
+        let temp = tempfile::tempdir().unwrap();
+        let project = temp.path();
+        let dist = project.join("lxapp/dist");
+        std::fs::create_dir_all(dist.join("pages")).unwrap();
+        std::fs::write(
+            project.join("lingxia.yaml"),
+            "app:\n  projectName: demo-host\n  packageId: app.example.demohost\n  productName: Demo Host\n  productVersion: 1.0.0\n  platforms: [windows]\n  homeAppId: demo\nresources:\n  bundles:\n    - type: lxapp\n      appId: demo\n      path: lxapp\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dist.join("lxapp.json"),
+            r#"{"appId":"demo","version":"1.0.0","pages":{}}"#,
+        )
+        .unwrap();
+        std::fs::write(dist.join("pages/index.js"), "release build").unwrap();
+        // Two sessions of one project share its dist and its published store.
+        let session = || {
+            DevServerState::new(
+                project.to_path_buf(),
+                Arc::new(AtomicBool::new(false)),
+                None,
+                false,
+            )
+        };
+        let (first, _second) = (session(), session());
+        refresh_lxapp_manifests(project).unwrap();
+        let get = |target: &str| super::handle_dev_lxapp_http_request(&first, target).unwrap();
+        let read: super::super::lxapp_manifest::DevLxAppManifest =
+            serde_json::from_slice(&get("/__lingxia/dev/lxapp/demo/manifest.json").unwrap().1)
+                .unwrap();
+        let listed = read
+            .files
+            .iter()
+            .find(|f| f.path == "pages/index.js")
+            .unwrap()
+            .clone();
+
+        // The other session's build rewrites dist, then publishes the shared manifest.
+        std::fs::write(dist.join("pages/index.js"), "a dev-mode build, longer").unwrap();
+        let live = std::fs::read(dist.join("pages/index.js")).unwrap();
+        assert_ne!(
+            live.len() as u64,
+            listed.size,
+            "dist no longer holds what was listed"
+        );
+        let by_path = get("/__lingxia/dev/lxapp/demo/files/pages/index.js")
+            .unwrap()
+            .1;
+        assert_eq!(
+            by_path.len() as u64,
+            listed.size,
+            "served from the published bytes, not dist"
+        );
+        refresh_lxapp_manifests(project).unwrap();
+        let by_hash = get(&format!("/__lingxia/dev/lxapp/demo/blob/{}", listed.hash))
+            .unwrap()
+            .1;
+        assert_eq!(by_hash, b"release build");
+        let (_, archive) = get(&format!(
+            "/__lingxia/dev/lxapp/demo/bundle/{}.tar.zst",
+            read.dist_hash
+        ))
+        .expect("an earlier manifest's archive is still served");
+        let mut decoder = zstd::stream::read::Decoder::new(archive.as_slice()).unwrap();
+        decoder
+            .window_log_max(super::DEV_BUNDLE_WINDOW_LOG)
+            .unwrap();
+        let mut entries = tar::Archive::new(decoder);
+        let mut page = None;
+        for entry in entries.entries().unwrap() {
+            let mut entry = entry.unwrap();
+            if entry.path().unwrap().to_string_lossy() == "pages/index.js" {
+                let mut bytes = Vec::new();
+                std::io::Read::read_to_end(&mut entry, &mut bytes).unwrap();
+                page = Some(bytes);
+            }
+        }
+        assert_eq!(page.as_deref(), Some(&b"release build"[..]));
+        let current = super::super::lxapp_manifest::load_manifest(project, "demo").unwrap();
+        assert_ne!(
+            current.dist_hash, read.dist_hash,
+            "the new build is published too"
+        );
     }
 
     #[test]
