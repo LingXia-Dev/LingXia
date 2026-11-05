@@ -609,7 +609,7 @@ declare module 'liblingxia.so' {
   /** Returns true when the current runtime config should enable WebView debugging. */
   export function shouldEnableWebViewDebugging(): boolean;
 
-  // GPU pages (the `harmony-gpu` host feature). Tokens name one page from creation to disposal.
+  // GPU pages. Tokens name one page from creation to disposal.
   /** Mount the page's XComponent node into its `ContentSlot` content; false when the page is gone. */
   export function gpuPageMount(token: number, content: Object): boolean;
   /** The page's facts (`GpuFacts` JSON) and its top-left on screen, device pixels. */

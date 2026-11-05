@@ -15,8 +15,8 @@ hot-swap = ["lingxia-view/hot-swap"]
 lingxia-view = { workspace = true, features = ["gpu"] }
 log = { workspace = true }
 serde_json = { workspace = true }
-libc = "0.2"
-napi-sys-ohos = { version = "1.2.0", features = ["napi4"] }
-raw-window-handle = "=0.6.2"
+libc = { workspace = true }
+napi-sys-ohos = { workspace = true, features = ["napi4"] }
+raw-window-handle = { workspace = true }
 # OHOS has no Vulkan surface in wgpu 30: GLES over EGL is the only presenter.
-wgpu = { version = "=30.0.0", default-features = false, features = ["gles"] }
+wgpu = { workspace = true, features = ["gles"] }
