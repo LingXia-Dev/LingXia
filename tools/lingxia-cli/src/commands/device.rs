@@ -84,6 +84,7 @@ pub fn launch(
 
     let run_config = RunConfig {
         package_id: bundle_id,
+        application_id: None,
         main_activity: None,
         device_id: device,
         restart,

@@ -68,6 +68,9 @@ pub(super) fn execute_android(mut ctx: DevContext) -> Result<()> {
         // Step 2: Install
         println!("{}", "Step 2/4: Installing...".bold());
         let package_id = ctx.config.resolved_package_id("android")?;
+        let application_id = ctx
+            .config
+            .resolved_package_id_with_suffix("android", &ctx.resolved_env)?;
         let install_config = InstallConfig {
             project_root: ctx.project_root.clone(),
             artifact_path: Some(artifact_path.to_path_buf()),
@@ -94,6 +97,7 @@ pub(super) fn execute_android(mut ctx: DevContext) -> Result<()> {
         let run_config = RunConfig {
             device_id: ctx.device.clone(),
             package_id,
+            application_id: Some(application_id),
             main_activity: None,
             restart: false,
         };

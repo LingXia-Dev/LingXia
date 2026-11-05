@@ -75,6 +75,7 @@ pub(super) fn execute_ios(ctx: DevContext) -> Result<()> {
 
         let run_config = RunConfig {
             package_id: bundle_id.clone(),
+            application_id: None,
             main_activity: None,
             device_id: ctx.device.clone(),
             restart: false,

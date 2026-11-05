@@ -231,6 +231,8 @@ pub struct InstallConfig {
 #[derive(Debug, Clone)]
 pub struct RunConfig {
     pub package_id: String,
+    /// The env-suffixed id just installed; without it Android picks among the installed variants.
+    pub application_id: Option<String>,
     pub main_activity: Option<String>,
     pub device_id: Option<String>,
     /// Restart the app by terminating an existing instance before launch.

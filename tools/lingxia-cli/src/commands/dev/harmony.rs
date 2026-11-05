@@ -80,6 +80,7 @@ pub(super) fn execute_harmony(ctx: DevContext) -> Result<()> {
 
         let run_config = RunConfig {
             package_id: bundle_name.clone(),
+            application_id: None,
             main_activity: None, // defaults to "EntryAbility" in harmony platform
             device_id: ctx.device.clone(),
             restart: false,

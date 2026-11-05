@@ -703,13 +703,17 @@ impl Platform for AndroidPlatform {
         // the *application* id on device — Kotlin/Java class FQCNs stay
         // canonical. Auto-detect which variant is installed so callers don't
         // have to track env state.
-        let installed_id = resolve_installed_app_id(Some(device_id.as_str()), base_id)?
-            .ok_or_else(|| {
-                anyhow!(
-                    "No installed package matching {base_id} (or {base_id}.<env>) on device. \
+        let installed_id = resolve_installed_app_id(
+            Some(device_id.as_str()),
+            base_id,
+            config.application_id.as_deref(),
+        )?
+        .ok_or_else(|| {
+            anyhow!(
+                "No installed package matching {base_id} (or {base_id}.<env>) on device. \
                      Run `lingxia install` first."
-                )
-            })?;
+            )
+        })?;
 
         let class_fqcn = config
             .main_activity
@@ -1176,8 +1180,12 @@ fn adb_command(device_id: Option<&str>) -> Command {
 
 /// Pick the installed application id matching `base_id` (canonical) or
 /// `base_id.<single-segment>` (env-suffixed via Gradle's
-/// `applicationIdSuffix`). When several coexist, prefer the canonical id.
-fn resolve_installed_app_id(device_id: Option<&str>, base_id: &str) -> Result<Option<String>> {
+/// `applicationIdSuffix`): `preferred` when installed, else the canonical id.
+fn resolve_installed_app_id(
+    device_id: Option<&str>,
+    base_id: &str,
+    preferred: Option<&str>,
+) -> Result<Option<String>> {
     let output = adb_command(device_id)
         .arg("shell")
         .args(["pm", "list", "packages"])
@@ -1189,9 +1197,16 @@ fn resolve_installed_app_id(device_id: Option<&str>, base_id: &str) -> Result<Op
             String::from_utf8_lossy(&output.stderr).trim()
         ));
     }
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(pick_installed_app_id(
+        &String::from_utf8_lossy(&output.stdout),
+        base_id,
+        preferred,
+    ))
+}
+
+fn pick_installed_app_id(packages: &str, base_id: &str, preferred: Option<&str>) -> Option<String> {
     let prefix = format!("{base_id}.");
-    let mut matches: Vec<String> = stdout
+    let mut matches: Vec<String> = packages
         .lines()
         .filter_map(|line| line.strip_prefix("package:").map(|s| s.trim().to_string()))
         .filter(|pkg| {
@@ -1202,11 +1217,10 @@ fn resolve_installed_app_id(device_id: Option<&str>, base_id: &str) -> Result<Op
                     .unwrap_or(false)
         })
         .collect();
-    if matches.is_empty() {
-        return Ok(None);
-    }
-    if let Some(idx) = matches.iter().position(|p| p == base_id) {
-        return Ok(Some(matches.swap_remove(idx)));
+    for wanted in preferred.into_iter().chain([base_id]) {
+        if let Some(idx) = matches.iter().position(|p| p == wanted) {
+            return Some(matches.swap_remove(idx));
+        }
     }
     if matches.len() > 1 {
         eprintln!(
@@ -1216,7 +1230,7 @@ fn resolve_installed_app_id(device_id: Option<&str>, base_id: &str) -> Result<Op
             matches[0]
         );
     }
-    Ok(Some(matches.remove(0)))
+    (!matches.is_empty()).then(|| matches.remove(0))
 }
 
 fn run_adb_shell_checked(device_id: Option<&str>, args: &[&str], label: &str) -> Result<()> {
@@ -1554,6 +1568,31 @@ fn resolve_android_assets_dir(project_root: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn launch_picks_the_variant_just_installed() {
+        let packages = "package:com.example.app\npackage:com.example.app.dev\npackage:com.example.app.dev.extra\n";
+        let pick = |preferred| super::pick_installed_app_id(packages, "com.example.app", preferred);
+        assert_eq!(
+            pick(Some("com.example.app.dev")).as_deref(),
+            Some("com.example.app.dev")
+        );
+        assert_eq!(pick(None).as_deref(), Some("com.example.app"));
+        // A preferred id that is not installed falls back to the canonical one.
+        assert_eq!(
+            pick(Some("com.example.app.qa")).as_deref(),
+            Some("com.example.app")
+        );
+        let dev_only = "package:com.example.app.dev\n";
+        assert_eq!(
+            super::pick_installed_app_id(dev_only, "com.example.app", None).as_deref(),
+            Some("com.example.app.dev")
+        );
+        assert_eq!(
+            super::pick_installed_app_id("", "com.example.app", None),
+            None
+        );
+    }
+
     use super::apply_applinks;
     use super::{
         android_env_adaptive_icon_xml, android_env_icon_foreground_xml,
