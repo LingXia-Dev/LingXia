@@ -233,5 +233,14 @@ mod tests {
         assert!(refit.working_bytes() < plan.working_bytes());
         assert!(compositor.budget_warned());
         drop(held);
+        // Held only by the backdrop cache, the same textures yield to the frame.
+        let cached = (0..5)
+            .map(|_| compositor.lease(device, RETINA.0, RETINA.1).unwrap())
+            .collect();
+        compositor.cache_backdrops(cached);
+        let (_, flattened) =
+            compositor.fit(Plan::flattened(RETINA.0, RETINA.1, 1, nested(8)).unwrap().0);
+        assert_eq!(flattened, 0);
+        assert!(compositor.cached_backdrops().0 < 5);
     }
 }

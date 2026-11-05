@@ -257,7 +257,14 @@ impl Plan {
                     backend.draw(&mut stack.last_mut().unwrap().1, range.clone())?
                 }
                 Step::Push(layer) => {
-                    let surface = if matches!(layer, Layer::Backdrop { .. }) {
+                    let reused = if matches!(layer, Layer::Backdrop { .. }) {
+                        backend.reuse(layer, self.width, self.height)?
+                    } else {
+                        None
+                    };
+                    let surface = if let Some(surface) = reused {
+                        surface
+                    } else if matches!(layer, Layer::Backdrop { .. }) {
                         let nearest = stack
                             .iter()
                             .rposition(|(layer, _)| layer.as_ref().is_some_and(Layer::is_root))
@@ -314,6 +321,16 @@ pub trait Backend {
     /// Initializes the owner's surface with its filtered, border-box-clipped backdrop. Reads
     /// only the backdrop's region of `source`, before anything else writes to it.
     fn filter(&mut self, source: &Self::Surface, layer: &Layer) -> Result<Self::Surface, String>;
+    /// The owner's surface for backdrop `layer` from an earlier frame's filtering, when nothing
+    /// beneath it changed: no capture is needed.
+    fn reuse(
+        &mut self,
+        _layer: &Layer,
+        _width: u16,
+        _height: u16,
+    ) -> Result<Option<Self::Surface>, String> {
+        Ok(None)
+    }
 }
 
 /// Removes the deepest group, preferring opacity and backdrop groups over clips, which keep

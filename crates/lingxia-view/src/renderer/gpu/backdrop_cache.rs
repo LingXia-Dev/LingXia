@@ -81,6 +81,15 @@ impl<T: Clone> BackdropCache<T> {
         self.bytes = 0;
     }
 
+    /// Drop the least recently used image; false when none is left.
+    pub fn evict_oldest(&mut self) -> bool {
+        let Some((.., bytes)) = self.entries.pop_front() else {
+            return false;
+        };
+        self.bytes -= bytes;
+        true
+    }
+
     pub fn bytes(&self) -> u64 {
         self.bytes
     }
@@ -115,6 +124,25 @@ impl<T: Clone> BackdropCache<T> {
             };
             self.bytes -= evicted;
         }
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn test_key(index: u16) -> BackdropKey {
+    BackdropKey {
+        size: [index, 0],
+        scale: 1.0,
+        images: Vec::new(),
+        beneath: Vec::new(),
+        clip: ClipSnapshot {
+            bounds: [0.0; 4],
+            radius: 0.0,
+            radii: None,
+            transform: None,
+        },
+        blur: 0.0,
+        saturation: 1.0,
+        filter_scale: 1.0,
     }
 }
 

@@ -108,6 +108,16 @@ impl Compositor {
     }
 
     #[cfg(test)]
+    pub(crate) fn cache_backdrops(&mut self, surfaces: Vec<Surface>) {
+        for (index, surface) in surfaces.into_iter().enumerate() {
+            let size = surface.size();
+            let bytes = u64::from(size.width) * u64::from(size.height) * 4;
+            let key = crate::renderer::gpu::backdrop_cache::test_key(index as u16);
+            self.backdrops.insert(key, surface, bytes, u64::MAX);
+        }
+    }
+
+    #[cfg(test)]
     pub(crate) fn budget_warned(&self) -> bool {
         self.budget_warned
     }
@@ -120,6 +130,8 @@ impl Compositor {
     ) -> crate::scene::composite::Plan {
         let (width, height) = plan.dimensions();
         self.pool.set_frame(width, height);
+        // Cached backdrops are only a speedup; they yield before the frame loses a group.
+        while plan.working_bytes() > self.pool.available() && self.backdrops.evict_oldest() {}
         let available = self.pool.available();
         let (plan, flattened) = plan.within(available);
         if flattened > 0 && !self.budget_warned {
@@ -481,8 +493,8 @@ where
                 if let Some(key) = key {
                     let bytes =
                         u64::from(region.filtered_width) * u64::from(region.filtered_height) * 4;
-                    // A quarter of the frame's lease budget, itself under `compositeBytes`:
-                    // cached images never crowd a frame's working surfaces into flattening.
+                    // A quarter of the frame's lease budget, itself under `compositeBytes`;
+                    // `fit` evicts them before a frame would flatten.
                     let budget =
                         crate::renderer::gpu::surface::lease_budget(size.width, size.height) / 4;
                     self.resources
@@ -492,11 +504,46 @@ where
                 filtered
             }
         };
-        let output = self.overwritten(size.width, size.height)?;
+        self.place(&filtered, &region, clip, size.width, size.height)
+    }
+
+    fn reuse(&mut self, layer: &Layer, width: u16, height: u16) -> Result<Option<Surface>, String> {
+        let Layer::Backdrop { clip, blur, .. } = layer else {
+            return Ok(None);
+        };
+        let Some(filtered) = self
+            .backdrops
+            .front()
+            .and_then(|key| self.resources.backdrops.get(key))
+        else {
+            return Ok(None);
+        };
+        let Some(region) = crate::scene::backdrop_region::Region::new(*clip, width, height, *blur)?
+        else {
+            return Ok(None);
+        };
+        self.backdrops.pop_front();
+        self.resources.stats.backdrop_hits += 1;
+        self.place(&filtered, &region, clip, width, height)
+            .map(Some)
+    }
+}
+
+impl<F> Gpu<'_, F> {
+    /// The owner's surface: `filtered` stretched over the backdrop's region, within its clip.
+    fn place(
+        &mut self,
+        filtered: &Surface,
+        region: &crate::scene::backdrop_region::Region,
+        clip: &crate::scene::node::ClipSnapshot,
+        width: u16,
+        height: u16,
+    ) -> Result<Surface, String> {
+        let output = self.overwritten(width, height)?;
         let started = std::time::Instant::now();
-        let mut scene = Scene::new(size.width, size.height);
+        let mut scene = Scene::new(width, height);
         scene.push_clip_layer(&clip.path());
-        let bindings = image_brush(&mut scene, &filtered, Default::default());
+        let bindings = image_brush(&mut scene, filtered, Default::default());
         scene.set_paint_transform(region.placement());
         scene.fill_rect(&region.bounds());
         scene.pop_layer();
@@ -509,9 +556,7 @@ where
         )?;
         Ok(output)
     }
-}
 
-impl<F> Gpu<'_, F> {
     /// The backdrop's region of `source`, blurred and saturated at the filter's resolution.
     fn filtered(
         &mut self,
