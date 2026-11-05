@@ -65,6 +65,17 @@ type Shared = Arc<Mutex<Presenter>>;
 static SURFACES: LazyLock<Mutex<HashMap<u64, Shared>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
+/// One device domain for the process: a page opened after every other page closed (a relaunch)
+/// reuses its adapter and device instead of creating them again.
+static CONTEXT: Mutex<Option<lingxia_view::renderer::gpu::Context>> = Mutex::new(None);
+
+fn shared_context()
+-> Result<std::sync::MutexGuard<'static, Option<lingxia_view::renderer::gpu::Context>>, String> {
+    CONTEXT
+        .lock()
+        .map_err(|_| "UI_SURFACE: poisoned GPU context".into())
+}
+
 fn registry() -> Result<std::sync::MutexGuard<'static, HashMap<u64, Shared>>, String> {
     SURFACES
         .lock()
@@ -117,13 +128,10 @@ pub(super) fn attach(
         lock(&presenter)?.resume(Arc::new(window), width, height)?;
         return Ok(existing);
     }
-    // The registry retains the device domain only while a presenter exists.
-    let shared = registry()?.values().next().cloned();
-    let context = match shared {
-        Some(presenter) => lock(&presenter)?.context(),
-        None => Default::default(),
-    };
+    let context = shared_context()?.clone().unwrap_or_default();
     let presenter = Presenter::with_fallback(context, Arc::new(window), width, height)?;
+    // The context the presenter settled on, GLES when the Vulkan driver was refused.
+    shared_context()?.get_or_insert_with(|| presenter.context());
     let id = NEXT.fetch_add(1, Ordering::Relaxed);
     registry()?.insert(id, Arc::new(Mutex::new(presenter)));
     Ok(id)
