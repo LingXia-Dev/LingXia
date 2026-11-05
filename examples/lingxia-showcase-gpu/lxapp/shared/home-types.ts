@@ -17,5 +17,4 @@ export interface HomeActions {
   greet(request: GreetingRequest): Promise<void>;
   setAppearance(request: AppearanceRequest): Promise<void>;
   setDisplayLanguage(request: DisplayLanguageRequest): Promise<void>;
-  openDevice(): Promise<void>;
 }
