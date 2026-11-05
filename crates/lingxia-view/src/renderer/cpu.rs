@@ -100,7 +100,7 @@ where
         Ok(())
     }
 
-    fn filter(&mut self, source: Self::Surface, layer: &Layer) -> Result<Self::Surface, String> {
+    fn filter(&mut self, source: &Self::Surface, layer: &Layer) -> Result<Self::Surface, String> {
         let Layer::Backdrop {
             clip,
             blur,
@@ -113,7 +113,6 @@ where
         let (width, height) = (source.width(), source.height());
         let Some(region) = crate::scene::backdrop_region::Region::new(*clip, width, height, *blur)?
         else {
-            drop(source);
             return self.blank(width, height);
         };
         let mut cropped = Pixmap::new(region.width, region.height);
@@ -127,7 +126,6 @@ where
                 &source.data_as_u8_slice()[offset..offset + region.width as usize * 4],
             );
         }
-        drop(source);
         let mut context = RenderContext::new(region.filtered_width, region.filtered_height);
         if *blur > 0.0 {
             context.push_filter_layer(region.filter.clone());
@@ -214,7 +212,7 @@ mod tests {
                 Cpu::new(|_: Range<usize>, _: &mut RenderContext, _: &mut Resources| Ok(()));
             let output = backend
                 .filter(
-                    Arc::new(source),
+                    &Arc::new(source),
                     &Layer::Backdrop {
                         clip: ClipSnapshot {
                             bounds: [16.0, 16.0, 64.0, 64.0],
@@ -268,7 +266,7 @@ mod tests {
             Cpu::new(|_: Range<usize>, _: &mut RenderContext, _: &mut Resources| Ok(()));
         let output = backend
             .filter(
-                Arc::new(source),
+                &Arc::new(source),
                 &Layer::Backdrop {
                     clip: ClipSnapshot {
                         bounds: [16.0, 16.0, 64.0, 64.0],

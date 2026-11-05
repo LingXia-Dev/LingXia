@@ -262,19 +262,24 @@ impl Plan {
                             .iter()
                             .rposition(|(layer, _)| layer.as_ref().is_some_and(Layer::is_root))
                             .unwrap_or(0);
-                        let mut capture = backend.snapshot(&stack.last().unwrap().1)?;
-                        // Merge unfinished overflow clips from inner to outer.
-                        // Each is composited once; never replay the display prefix.
-                        for index in (nearest..stack.len() - 1).rev() {
-                            let mut parent = backend.snapshot(&stack[index].1)?;
-                            backend.composite(
-                                &mut parent,
-                                &capture,
-                                stack[index + 1].0.as_ref().unwrap(),
-                            )?;
-                            capture = parent;
+                        if nearest + 1 >= stack.len() {
+                            // Nothing to merge: the backdrop is read straight from the live surface.
+                            backend.filter(&stack.last().unwrap().1, layer)?
+                        } else {
+                            let mut capture = backend.snapshot(&stack.last().unwrap().1)?;
+                            // Merge unfinished overflow clips from inner to outer.
+                            // Each is composited once; never replay the display prefix.
+                            for index in (nearest..stack.len() - 1).rev() {
+                                let mut parent = backend.snapshot(&stack[index].1)?;
+                                backend.composite(
+                                    &mut parent,
+                                    &capture,
+                                    stack[index + 1].0.as_ref().unwrap(),
+                                )?;
+                                capture = parent;
+                            }
+                            backend.filter(&capture, layer)?
                         }
-                        backend.filter(capture, layer)?
                     } else {
                         backend.blank(self.width, self.height)?
                     };
@@ -306,8 +311,9 @@ pub trait Backend {
         source: &Self::Surface,
         layer: &Layer,
     ) -> Result<(), String>;
-    /// Initializes the owner's surface with its filtered, border-box-clipped backdrop.
-    fn filter(&mut self, source: Self::Surface, layer: &Layer) -> Result<Self::Surface, String>;
+    /// Initializes the owner's surface with its filtered, border-box-clipped backdrop. Reads
+    /// only the backdrop's region of `source`, before anything else writes to it.
+    fn filter(&mut self, source: &Self::Surface, layer: &Layer) -> Result<Self::Surface, String>;
 }
 
 /// Removes the deepest group, preferring opacity and backdrop groups over clips, which keep

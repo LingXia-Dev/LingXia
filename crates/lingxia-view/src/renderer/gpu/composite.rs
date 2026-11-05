@@ -199,6 +199,11 @@ struct Gpu<'a, F> {
 }
 
 impl<F> Gpu<'_, F> {
+    /// A pooled surface for a target the next pass overwrites entirely: no clear pass, no submit.
+    fn overwritten(&mut self, width: u16, height: u16) -> Result<Surface, String> {
+        self.resources.pool.lease(self.device, width, height)
+    }
+
     fn render(
         &mut self,
         scene: &Scene,
@@ -297,7 +302,7 @@ where
 
     fn snapshot(&mut self, source: &Surface) -> Result<Surface, String> {
         let size = source.size();
-        let target = self.blank(size.width, size.height)?;
+        let target = self.overwritten(size.width, size.height)?;
         let mut encoder = self.device.create_command_encoder(&Default::default());
         encoder.copy_texture_to_texture(
             source.texture().as_image_copy(),
@@ -345,7 +350,7 @@ where
         self.render(&scene, &bindings, target, TargetInit::SrcOver)
     }
 
-    fn filter(&mut self, source: Surface, layer: &Layer) -> Result<Surface, String> {
+    fn filter(&mut self, source: &Surface, layer: &Layer) -> Result<Surface, String> {
         let Layer::Backdrop {
             clip,
             blur,
@@ -359,10 +364,9 @@ where
         let Some(region) =
             crate::scene::backdrop_region::Region::new(*clip, size.width, size.height, *blur)?
         else {
-            drop(source);
             return self.blank(size.width, size.height);
         };
-        let cropped = self.blank(region.width, region.height)?;
+        let cropped = self.overwritten(region.width, region.height)?;
         let mut encoder = self.device.create_command_encoder(&Default::default());
         let mut input = source.texture().as_image_copy();
         input.origin = wgpu::Origin3d {
@@ -376,8 +380,7 @@ where
             cropped.texture().size(),
         );
         self.queue.submit([encoder.finish()]);
-        drop(source);
-        let mut filtered = self.blank(region.filtered_width, region.filtered_height)?;
+        let mut filtered = self.overwritten(region.filtered_width, region.filtered_height)?;
         let mut scene = Scene::new(region.filtered_width, region.filtered_height);
         if *blur > 0.0 {
             scene.push_filter_layer(region.filter.clone());
@@ -400,7 +403,7 @@ where
         )?;
         drop(cropped);
         if saturation.amount() != 1.0 {
-            let colored = self.blank(region.filtered_width, region.filtered_height)?;
+            let colored = self.overwritten(region.filtered_width, region.filtered_height)?;
             let pass = self
                 .resources
                 .saturation
@@ -416,7 +419,7 @@ where
             self.queue.submit([encoder.finish()]);
             filtered = colored;
         }
-        let output = self.blank(size.width, size.height)?;
+        let output = self.overwritten(size.width, size.height)?;
         let mut scene = Scene::new(size.width, size.height);
         scene.push_clip_layer(&clip.path());
         let bindings = image_brush(&mut scene, &filtered, Default::default());
