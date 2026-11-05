@@ -16,8 +16,10 @@ use std::time::{Duration, Instant};
 
 /// ArkUI's long-press delay.
 const LONG_PRESS: Duration = Duration::from_millis(500);
-/// Fling decay per second of the scroll velocity; tuned against ArkUI `Scroll` by eye.
-const FLING_FRICTION: f32 = 4.2;
+/// Fling travel `LINEAR·v + QUADRATIC·v²` (vp, vp/s): fitted to ArkUI `List` under the same touches,
+/// where a faster flick travels disproportionately further.
+const FLING_LINEAR: f32 = 0.184;
+const FLING_QUADRATIC: f32 = 1.49e-4;
 /// A fling below this speed stops, in device pixels per second.
 const FLING_STOP: f32 = 20.0;
 
@@ -28,6 +30,8 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 struct Fling {
     region: String,
     velocity: f32,
+    /// Exponential decay per second, chosen so the whole fling covers the fitted travel.
+    decay: f32,
     last: Instant,
 }
 
@@ -173,7 +177,7 @@ impl HarmonyAdapter {
         let dt = now.duration_since(state.last).as_secs_f32();
         state.last = now;
         let delta = state.velocity * dt;
-        state.velocity *= (-FLING_FRICTION * dt).exp();
+        state.velocity *= (-state.decay * dt).exp();
         let moved = host.scroll_by(&state.region, delta);
         if !moved || state.velocity.abs() < FLING_STOP {
             *fling = None;
@@ -479,9 +483,11 @@ impl Feedback for HarmonyAdapter {
                 Effect::Fling {
                     region, velocity, ..
                 } => {
+                    let speed = velocity.abs() / self.placement().0;
                     *lock(&self.fling) = Some(Fling {
                         region: region.clone(),
                         velocity: *velocity,
+                        decay: 1.0 / (FLING_LINEAR + FLING_QUADRATIC * speed),
                         last: Instant::now(),
                     });
                     crate::xcomponent::request_frame(self.token);
