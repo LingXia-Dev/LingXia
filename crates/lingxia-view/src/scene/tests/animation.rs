@@ -263,6 +263,68 @@ fn backdrop_clip_and_blur_follow_uniform_scale_and_reject_nonuniform_scale() {
 }
 
 #[test]
+fn groups_with_no_surface_inside_draw_in_their_span_and_a_frame_clip_is_dropped() {
+    use crate::scene::composite::{Layer, Step};
+    let clip = |bounds| ClipSnapshot {
+        bounds,
+        radius: 0.0,
+        radii: None,
+        transform: None,
+    };
+    let rect = Paint::Rect {
+        color: [255, 0, 0, 255],
+        bounds: [0.0, 0.0, 8.0, 8.0],
+        radius: 0.0,
+        corners: None,
+    };
+    let mut display = primitives(1.0);
+    display.commands = vec![
+        Paint::Clip(clip([4.0, 4.0, 20.0, 20.0])),
+        Paint::Opacity {
+            node: 0,
+            alpha: 0.5,
+        },
+        rect.clone(),
+        Paint::PopOpacity,
+        Paint::PopClip,
+    ];
+    let plan = display.composition_plan().unwrap();
+    assert!(
+        plan.steps()
+            .iter()
+            .all(|step| matches!(step, Step::Draw(_))),
+        "a clip and an opacity group around plain paints need no surface"
+    );
+    display.commands = vec![
+        Paint::Clip(clip([0.0, 0.0, 80.0, 80.0])),
+        Paint::Clip(clip([4.0, 4.0, 20.0, 20.0])),
+        Paint::Backdrop {
+            node: 0,
+            clip: clip([4.0, 4.0, 16.0, 16.0]),
+            blur: 4.0,
+            saturation: 1.0,
+            opacity: 1.0,
+        },
+        rect,
+        Paint::PopBackdrop,
+        Paint::PopClip,
+        Paint::PopClip,
+    ];
+    let plan = display.composition_plan().unwrap();
+    let groups: Vec<_> = plan
+        .steps()
+        .iter()
+        .filter_map(|step| match step {
+            Step::Push(Layer::Clip(clip)) => Some(format!("clip {:?}", clip.bounds)),
+            Step::Push(Layer::Backdrop { .. }) => Some("backdrop".into()),
+            Step::Push(_) => Some("other".into()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(groups, ["clip [4.0, 4.0, 20.0, 20.0]", "backdrop"]);
+}
+
+#[test]
 fn a_transitioning_background_is_painted_on_a_node_that_has_none() {
     use crate::animation::transition::Overrides;
     let mut page = crate::ViewSession::new(&crate::session::tests::source(

@@ -457,11 +457,17 @@ impl DisplayList {
     /// surface background; remaining span indices address paints plus one.
     pub fn composition_plan(&self) -> Result<crate::scene::composite::Plan, String> {
         use crate::scene::composite::{Layer, Plan, Step};
+        let inline = self.inline_groups();
         let mut steps = Vec::new();
         let mut groups = Vec::new();
         let mut start = 0;
         let mut transform = Affine::IDENTITY;
         for (index, paint) in self.commands.iter().enumerate() {
+            if inline[index] {
+                // Drawn in its span, as the flat path draws it: no surface of its own.
+                continue;
+            }
+            // `Some(None)` ends the span without a group: a clip that clips nothing.
             let marker = match paint {
                 Paint::Transform(matrix) => {
                     transform = checked_paint_transform(*matrix)?;
@@ -469,12 +475,17 @@ impl DisplayList {
                 }
                 Paint::Clip(clip) => {
                     let clip = transformed_clip(*clip, transform)?.scaled(self.scale);
-                    groups.push(0);
-                    Some(Step::Push(Layer::Clip(clip)))
+                    if self.covers_frame(&clip) {
+                        groups.push(5);
+                        Some(None)
+                    } else {
+                        groups.push(0);
+                        Some(Some(Step::Push(Layer::Clip(clip))))
+                    }
                 }
                 Paint::Opacity { alpha, .. } => {
                     groups.push(1);
-                    Some(Step::Push(Layer::Opacity(*alpha)))
+                    Some(Some(Step::Push(Layer::Opacity(*alpha))))
                 }
                 Paint::Backdrop {
                     clip,
@@ -491,28 +502,28 @@ impl DisplayList {
                     }
                     let clip = transformed_clip(*clip, transform)?.scaled(self.scale);
                     groups.push(2);
-                    Some(Step::Push(Layer::Backdrop {
+                    Some(Some(Step::Push(Layer::Backdrop {
                         clip,
                         blur: blur * self.scale * sx as f32,
                         saturation: crate::scene::color_filter::Saturation::new(*saturation)?,
                         opacity: *opacity,
-                    }))
+                    })))
                 }
                 Paint::Mask { mask, .. } => {
                     groups.push(3);
-                    Some(Step::Push(Layer::Mask(std::sync::Arc::new(
+                    Some(Some(Step::Push(Layer::Mask(std::sync::Arc::new(
                         crate::scene::composite::DeviceMask::new(
                             mask,
                             Affine::scale(f64::from(self.scale)),
                         ),
-                    ))))
+                    )))))
                 }
                 Paint::Blur { radius, .. } => {
                     let [sx, _, _, sy, _, _] = transform.as_coeffs();
                     groups.push(4);
-                    Some(Step::Push(Layer::Blur(
+                    Some(Some(Step::Push(Layer::Blur(
                         radius * self.scale * ((sx * sy).abs().sqrt() as f32),
-                    )))
+                    ))))
                 }
                 Paint::PopClip
                 | Paint::PopOpacity
@@ -526,10 +537,11 @@ impl DisplayList {
                         Paint::PopBlur => 4,
                         _ => 2,
                     };
-                    if groups.pop() != Some(kind) {
-                        return Err("UI_COMPOSITE: mismatched display-list group".into());
+                    match groups.pop() {
+                        Some(5) if kind == 0 => Some(None),
+                        Some(open) if open == kind => Some(Some(Step::Pop)),
+                        _ => return Err("UI_COMPOSITE: mismatched display-list group".into()),
                     }
-                    Some(Step::Pop)
                 }
                 _ => None,
             };
@@ -538,7 +550,7 @@ impl DisplayList {
                 if start < end {
                     steps.push(Step::Draw(start..end));
                 }
-                steps.push(marker);
+                steps.extend(marker);
                 start = end + 1;
             }
         }
@@ -547,6 +559,54 @@ impl DisplayList {
         }
         Plan::flattened(self.width, self.height, self.commands.len() + 1, steps)
             .map(|(plan, _)| plan)
+    }
+
+    /// Opening and closing commands of groups that need no surface of their own: clips and
+    /// opacity groups with no other surface inside, which their span draws as the flat path does.
+    fn inline_groups(&self) -> Vec<bool> {
+        let mut inline = vec![false; self.commands.len()];
+        // Open groups: where each opened, whether it can be inline, and whether all inside is.
+        let mut open: Vec<(usize, bool, bool)> = Vec::new();
+        for (index, paint) in self.commands.iter().enumerate() {
+            match paint {
+                Paint::Clip(_) | Paint::Opacity { .. } => open.push((index, true, true)),
+                Paint::Backdrop { .. } | Paint::Mask { .. } | Paint::Blur { .. } => {
+                    open.push((index, false, true))
+                }
+                Paint::PopClip
+                | Paint::PopOpacity
+                | Paint::PopBackdrop
+                | Paint::PopMask(_)
+                | Paint::PopBlur => {
+                    let Some((opened, kind, inside)) = open.pop() else {
+                        // The plan reports the mismatch; nothing here is inline.
+                        return vec![false; self.commands.len()];
+                    };
+                    let flat = kind && inside;
+                    if flat {
+                        inline[opened] = true;
+                        inline[index] = true;
+                    }
+                    if let Some(parent) = open.last_mut() {
+                        parent.2 &= flat;
+                    }
+                }
+                _ => {}
+            }
+        }
+        inline
+    }
+
+    /// A clip that keeps the whole frame: an axis-aligned, square-cornered box over every pixel.
+    fn covers_frame(&self, clip: &crate::scene::node::ClipSnapshot) -> bool {
+        let [x, y, w, h] = clip.bounds;
+        clip.transform.is_none()
+            && clip.radius == 0.0
+            && clip.radii.is_none()
+            && x <= 0.0
+            && y <= 0.0
+            && x + w >= f32::from(self.width)
+            && y + h >= f32::from(self.height)
     }
 
     pub(crate) fn composition_span(
