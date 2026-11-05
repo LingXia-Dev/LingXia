@@ -208,13 +208,17 @@ impl Compositor {
         F: FnMut(Range<usize>, &mut Scene, &mut TextureBindings) -> Result<(), String>,
     {
         self.stats = CompositeStats::default();
-        plan.render(&mut Gpu {
+        let mut gpu = Gpu {
             device,
             queue,
             resources: self,
             draw,
             backdrops,
-        })
+            uncleared: Vec::new(),
+        };
+        let surface = plan.render(&mut gpu)?;
+        gpu.settle(&surface);
+        Ok(surface)
     }
 
     /// Backdrop images held for later frames: their count and bytes.
@@ -294,12 +298,49 @@ struct Gpu<'a, F> {
     draw: F,
     /// The key of each backdrop still to filter, in plan order; empty when nothing is cached.
     backdrops: std::collections::VecDeque<crate::renderer::gpu::backdrop_cache::BackdropKey>,
+    /// Blank surfaces not yet cleared: the first draw into one clears it in the same pass.
+    uncleared: Vec<Surface>,
 }
 
 impl<F> Gpu<'_, F> {
     /// A pooled surface for a target the next pass overwrites entirely: no clear pass, no submit.
     fn overwritten(&mut self, width: u16, height: u16) -> Result<Surface, String> {
         self.resources.pool.lease(self.device, width, height)
+    }
+
+    /// Clear `surface` now if it is still blank and about to be read.
+    fn settle(&mut self, surface: &Surface) {
+        if !self.take_uncleared(surface) {
+            return;
+        }
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        drop(encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("LingXia clear composition surface"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: surface.view(),
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        }));
+        self.queue.submit([encoder.finish()]);
+        self.resources.stats.clears += 1;
+        self.resources.stats.submits += 1;
+    }
+
+    fn take_uncleared(&mut self, surface: &Surface) -> bool {
+        let Some(index) = self.uncleared.iter().position(|held| held.same(surface)) else {
+            return false;
+        };
+        self.uncleared.swap_remove(index);
+        true
     }
 
     fn render(
@@ -309,6 +350,12 @@ impl<F> Gpu<'_, F> {
         target: &Surface,
         init: TargetInit<'_>,
     ) -> Result<(), String> {
+        let init = match init {
+            TargetInit::SrcOver if self.take_uncleared(target) => {
+                TargetInit::Clear(Default::default())
+            }
+            init => init,
+        };
         let size = target.size();
         let pixels = u64::from(size.width) * u64::from(size.height);
         let depth = self.resources.depth_view(self.device, &size);
@@ -372,26 +419,7 @@ where
 
     fn blank(&mut self, width: u16, height: u16) -> Result<Surface, String> {
         let surface = self.resources.pool.lease(self.device, width, height)?;
-        let mut encoder = self.device.create_command_encoder(&Default::default());
-        drop(encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("LingXia clear composition surface"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: surface.view(),
-                depth_slice: None,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
-            multiview_mask: None,
-        }));
-        self.queue.submit([encoder.finish()]);
-        self.resources.stats.clears += 1;
-        self.resources.stats.submits += 1;
+        self.uncleared.push(surface.clone());
         Ok(surface)
     }
 
@@ -409,6 +437,7 @@ where
     }
 
     fn snapshot(&mut self, source: &Surface) -> Result<Surface, String> {
+        self.settle(source);
         let size = source.size();
         let target = self.overwritten(size.width, size.height)?;
         let mut encoder = self.device.create_command_encoder(&Default::default());
@@ -431,6 +460,7 @@ where
         source: &Surface,
         layer: &Layer,
     ) -> Result<(), String> {
+        self.settle(source);
         let started = std::time::Instant::now();
         let size = target.size();
         let mut scene = Scene::new(size.width, size.height);
@@ -474,6 +504,7 @@ where
         else {
             return Err("UI_COMPOSITE: expected backdrop".into());
         };
+        self.settle(source);
         let key = self.backdrops.pop_front();
         let size = source.size();
         let Some(region) =

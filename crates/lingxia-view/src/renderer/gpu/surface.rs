@@ -85,6 +85,9 @@ impl Surface {
     pub fn texture(&self) -> &wgpu::Texture {
         &self.lease.resource.texture
     }
+    pub(crate) fn same(&self, other: &Surface) -> bool {
+        Arc::ptr_eq(&self.lease, &other.lease)
+    }
     pub(crate) fn view(&self) -> &wgpu::TextureView {
         &self.lease.resource.view
     }
