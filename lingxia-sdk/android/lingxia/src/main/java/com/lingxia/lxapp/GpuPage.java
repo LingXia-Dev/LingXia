@@ -54,7 +54,8 @@ public final class GpuPage extends FrameLayout {
                 }
                 public void onError(Throwable error) {
                     if (!reported) { reported = true; created(token, null, error.toString()); }
-                    android.util.Log.e("LingXia.UI", "GPU page " + webTag, error);
+                    // Through the host log pipeline, so `lxdev logs` shows why the page refused to present.
+                    com.lingxia.app.LxLog.INSTANCE.e("LingXia.UI", "GPU page " + webTag + " failed: " + error.getMessage(), null, appId, path);
                 }
             }, logic);
             candidate.pause();
