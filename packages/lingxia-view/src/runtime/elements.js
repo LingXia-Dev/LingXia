@@ -45,8 +45,9 @@ const dataProp = /^data-[a-z][a-z0-9-]*$/;
 /** The element's data-* props as `data-*` variants read them: present unless false or nullish. */
 function dataOf(props) {
   let data;
-  for (const [key, value] of Object.entries(props)) {
-    if (!dataProp.test(key) || value === false || value == null) continue;
+  for (const key in props) {
+    const value = props[key];
+    if (!key.startsWith('data-') || !dataProp.test(key) || value === false || value == null) continue;
     (data ??= {})[key.slice(5)] = value === true ? '' : String(value);
   }
   return data;
@@ -54,8 +55,9 @@ function dataOf(props) {
 
 function admit(tag, element, props) {
   let data = 0;
-  for (const [key, value] of Object.entries(props)) {
+  for (const key in props) {
     if (common.has(key) || has(element.props, key)) continue;
+    const value = props[key];
     if (dataProp.test(key)) {
       if (!['string', 'number', 'boolean'].includes(typeof value) && value != null) throw Error(`UI_PROP: ${key} must be a string, number or boolean`);
       if (typeof value === 'string' && value.length > 256) throw Error(`UI_PROP: ${key} exceeds 256 characters`);
@@ -91,15 +93,14 @@ function envKey(env) {
   return JSON.stringify([env?.theme, env?.viewport, env?.pointer, env?.reducedMotion, env?.insets, env?.keyboard]);
 }
 
-function nodeStyle(tag, props, extra, inherited, direction, structure) {
-  if (props.style !== undefined || extra !== undefined || props.className === undefined) return lowerNodeStyle(tag, props, extra, inherited, direction, structure);
+function nodeStyle(tag, props, data, extra, inherited, direction, structure) {
+  if (props.style !== undefined || extra !== undefined || props.className === undefined) return lowerNodeStyle(tag, props, data, extra, inherited, direction, structure);
   const environment = envKey(envOf(render.view));
   if (environment !== loweredEnv) { lowered.clear(); loweredEnv = environment; }
-  const data = dataOf(props);
   const key = `${tag}\u0000${props.className}\u0000${data ? JSON.stringify(data) : ''}\u0000${props.disabled === true}\u0000${direction}\u0000${(structure ?? []).join(",")}\u0000${inherited.fontSize}\u0000${inherited.lineHeight}`;
   let style = lowered.get(key);
   if (!style) {
-    style = lowerNodeStyle(tag, props, extra, inherited, direction, structure);
+    style = lowerNodeStyle(tag, props, data, extra, inherited, direction, structure);
     if (lowered.size >= 2048) lowered.delete(lowered.keys().next().value);
     lowered.set(key, style);
   }
@@ -121,8 +122,8 @@ const runTags = new Set(['span', 'link']);
 const disabledField = { color: 'text-muted', backgroundColor: 'surface-sunken', borderColor: 'line' };
 
 // Classes, then the parent's child rule, then inline style; `disabled:` replaces the class cascade.
-function lowerNodeStyle(tag, props, extra, inherited, direction, structure) {
-  const env = { ...envOf(render.view), direction, structure, data: dataOf(props) };
+function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure) {
+  const env = { ...envOf(render.view), direction, structure, data };
   const classes = resolveClasses(props.className, env);
   // A run takes the size of `text-sm` but not the line height paired with it.
   if (classes?.pairedLeading && runTags.has(tag)) delete classes.base.lineHeight;
@@ -226,15 +227,16 @@ function strongDirection(children, depth = 0) {
 }
 
 // DOM-named accessibility props as the runtime carries them.
-const ariaNames = { 'aria-label': 'accessibilityLabel', 'aria-hidden': 'accessibilityHidden', 'aria-live': 'accessibilityLiveRegion' };
+const ariaNames = [['aria-label', 'accessibilityLabel'], ['aria-hidden', 'accessibilityHidden'], ['aria-live', 'accessibilityLiveRegion']];
+const ariaStates = [['aria-pressed', 'pressed'], ['aria-selected', 'selected'], ['aria-expanded', 'expanded'], ['aria-busy', 'busy']];
 function ariaProps(props) {
-  for (const [authored, internal] of Object.entries(ariaNames))
+  for (const [authored, internal] of ariaNames)
     if (authored in props) { props[internal] = props[authored]; delete props[authored]; }
   let state;
-  for (const name of ['pressed', 'selected', 'expanded', 'busy']) {
-    if (props[`aria-${name}`] === undefined) continue;
-    (state ??= {})[name] = props[`aria-${name}`];
-    delete props[`aria-${name}`];
+  for (const [authored, name] of ariaStates) {
+    if (props[authored] === undefined) continue;
+    (state ??= {})[name] = props[authored];
+    delete props[authored];
   }
   if (state) props.accessibilityState = state;
 }
@@ -258,7 +260,9 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   if (props.dir === 'auto' && !editor) props.dir = own;
   const direction = own ?? parent.direction ?? (envOf(render.view)?.direction === 'rtl' ? 'rtl' : 'ltr');
   const authored = entries(children), flat = authored.map(entry => entry.child), slot = authored.map(entry => entry.slot);
-  const style = nodeStyle(tag, props, parent.extra, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat));
+  // The data-* props as variants and automation read them; nothing below changes them.
+  const data = dataOf(props);
+  const style = nodeStyle(tag, props, data, parent.extra, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat));
   const inline = child => typeof child === 'string' || typeof child === 'number';
   if ((tag === 'span' || tag === 'link') && !parent.inText) throw Error(`UI_TEXT: <${tag}> belongs inside <text>`);
   if (tag === 'link' && parent.inLink) throw Error('UI_TEXT: links do not nest');
@@ -275,7 +279,6 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   const on = (key, callback, kind, isolated) => result.handlers.push([key, handle(), callbackOf(callback, kind, isolated)]);
   if (disabled) wire('enabled', 0);
   // Authored data-* props reach automation (getAttribute, [data-x] selectors), never semantics.
-  const data = dataOf(props);
   if (data) wire('dataAttributes', JSON.stringify(data));
   if (props.dir !== undefined) wire('direction', props.dir);
   semantics(tag, props, wire);

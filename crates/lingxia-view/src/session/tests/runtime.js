@@ -2609,16 +2609,18 @@
   var dataProp = /^data-[a-z][a-z0-9-]*$/;
   function dataOf(props) {
     let data;
-    for (const [key, value] of Object.entries(props)) {
-      if (!dataProp.test(key) || value === false || value == null) continue;
+    for (const key in props) {
+      const value = props[key];
+      if (!key.startsWith("data-") || !dataProp.test(key) || value === false || value == null) continue;
       (data ?? (data = {}))[key.slice(5)] = value === true ? "" : String(value);
     }
     return data;
   }
   function admit2(tag, element, props) {
     let data = 0;
-    for (const [key, value] of Object.entries(props)) {
+    for (const key in props) {
       if (common2.has(key) || has(element.props, key)) continue;
+      const value = props[key];
       if (dataProp.test(key)) {
         if (!["string", "number", "boolean"].includes(typeof value) && value != null) throw Error(`UI_PROP: ${key} must be a string, number or boolean`);
         if (typeof value === "string" && value.length > 256) throw Error(`UI_PROP: ${key} exceeds 256 characters`);
@@ -2650,18 +2652,17 @@
   function envKey(env) {
     return JSON.stringify([env?.theme, env?.viewport, env?.pointer, env?.reducedMotion, env?.insets, env?.keyboard]);
   }
-  function nodeStyle(tag, props, extra, inherited, direction, structure2) {
-    if (props.style !== void 0 || extra !== void 0 || props.className === void 0) return lowerNodeStyle(tag, props, extra, inherited, direction, structure2);
+  function nodeStyle(tag, props, data, extra, inherited, direction, structure2) {
+    if (props.style !== void 0 || extra !== void 0 || props.className === void 0) return lowerNodeStyle(tag, props, data, extra, inherited, direction, structure2);
     const environment = envKey(envOf(render.view));
     if (environment !== loweredEnv) {
       lowered.clear();
       loweredEnv = environment;
     }
-    const data = dataOf(props);
     const key = `${tag}\0${props.className}\0${data ? JSON.stringify(data) : ""}\0${props.disabled === true}\0${direction}\0${(structure2 ?? []).join(",")}\0${inherited.fontSize}\0${inherited.lineHeight}`;
     let style2 = lowered.get(key);
     if (!style2) {
-      style2 = lowerNodeStyle(tag, props, extra, inherited, direction, structure2);
+      style2 = lowerNodeStyle(tag, props, data, extra, inherited, direction, structure2);
       if (lowered.size >= 2048) lowered.delete(lowered.keys().next().value);
       lowered.set(key, style2);
     }
@@ -2677,8 +2678,8 @@
   var fieldTags = /* @__PURE__ */ new Set(["input", "textarea", "select"]);
   var runTags = /* @__PURE__ */ new Set(["span", "link"]);
   var disabledField = { color: "text-muted", backgroundColor: "surface-sunken", borderColor: "line" };
-  function lowerNodeStyle(tag, props, extra, inherited, direction, structure2) {
-    const env = { ...envOf(render.view), direction, structure: structure2, data: dataOf(props) };
+  function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure2) {
+    const env = { ...envOf(render.view), direction, structure: structure2, data };
     const classes = resolveClasses(props.className, env);
     if (classes?.pairedLeading && runTags.has(tag)) delete classes.base.lineHeight;
     const disabled = props.disabled === true;
@@ -2770,18 +2771,19 @@
     }
     return void 0;
   }
-  var ariaNames = { "aria-label": "accessibilityLabel", "aria-hidden": "accessibilityHidden", "aria-live": "accessibilityLiveRegion" };
+  var ariaNames = [["aria-label", "accessibilityLabel"], ["aria-hidden", "accessibilityHidden"], ["aria-live", "accessibilityLiveRegion"]];
+  var ariaStates = [["aria-pressed", "pressed"], ["aria-selected", "selected"], ["aria-expanded", "expanded"], ["aria-busy", "busy"]];
   function ariaProps(props) {
-    for (const [authored, internal] of Object.entries(ariaNames))
+    for (const [authored, internal] of ariaNames)
       if (authored in props) {
         props[internal] = props[authored];
         delete props[authored];
       }
     let state;
-    for (const name of ["pressed", "selected", "expanded", "busy"]) {
-      if (props[`aria-${name}`] === void 0) continue;
-      (state ?? (state = {}))[name] = props[`aria-${name}`];
-      delete props[`aria-${name}`];
+    for (const [authored, name] of ariaStates) {
+      if (props[authored] === void 0) continue;
+      (state ?? (state = {}))[name] = props[authored];
+      delete props[authored];
     }
     if (state) props.accessibilityState = state;
   }
@@ -2803,7 +2805,8 @@
     if (props.dir === "auto" && !editor2) props.dir = own2;
     const direction = own2 ?? parent.direction ?? (envOf(render.view)?.direction === "rtl" ? "rtl" : "ltr");
     const authored = entries(children), flat = authored.map((entry) => entry.child), slot = authored.map((entry) => entry.slot);
-    const style2 = nodeStyle(tag, props, parent.extra, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat));
+    const data = dataOf(props);
+    const style2 = nodeStyle(tag, props, data, parent.extra, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat));
     const inline = (child) => typeof child === "string" || typeof child === "number";
     if ((tag === "span" || tag === "link") && !parent.inText) throw Error(`UI_TEXT: <${tag}> belongs inside <text>`);
     if (tag === "link" && parent.inLink) throw Error("UI_TEXT: links do not nest");
@@ -2829,7 +2832,6 @@
     const wire = (key, value) => result.wire.push([key, value]);
     const on = (key, callback, kind, isolated) => result.handlers.push([key, handle(), callbackOf(callback, kind, isolated)]);
     if (disabled) wire("enabled", 0);
-    const data = dataOf(props);
     if (data) wire("dataAttributes", JSON.stringify(data));
     if (props.dir !== void 0) wire("direction", props.dir);
     semantics(tag, props, wire);
