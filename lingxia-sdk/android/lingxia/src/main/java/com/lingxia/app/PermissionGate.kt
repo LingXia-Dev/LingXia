@@ -48,8 +48,9 @@ class PermissionPrompt internal constructor(
 }
 
 /**
- * Host hook around every system permission prompt LingXia shows. Prompts are
- * gated one at a time, on the main thread.
+ * Host hook, called each time an lx API needs a permission it lacks (never
+ * once granted), including after a denial ([PermissionPrompt.blocked]).
+ * Prompts are gated one at a time, on the main thread.
  */
 fun interface PermissionGate {
     /**

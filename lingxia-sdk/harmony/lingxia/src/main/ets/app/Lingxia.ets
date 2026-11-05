@@ -94,7 +94,7 @@ export class Lingxia {
    * instead of sitting through initialization.
    */
   /**
-   * Runs [gate] around every system permission prompt LingXia shows; `null`
+   * Runs [gate] each time an lx API needs a permission it lacks; `null`
    * prompts directly. Last write wins.
    */
   public static setPermissionGate(gate: PermissionGate | null): void {

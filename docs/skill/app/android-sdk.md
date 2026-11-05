@@ -31,9 +31,10 @@ Lingxia.quickStart(this) { registerHostAddon() }
 
 ## Permission gate
 
-Runs before every system permission prompt LingXia shows, e.g. to explain the
-purpose first where a store requires it. The host owns the UI and policy (per
-build flavor); without a gate LingXia prompts directly.
+Called each time an lx API needs a permission it lacks (never once granted,
+also after a denial), e.g. to explain the purpose first where a store requires
+it. The host owns the UI and policy (per build flavor); without a gate LingXia
+prompts directly.
 
 ```kotlin
 Lingxia.setPermissionGate(object : PermissionGate {

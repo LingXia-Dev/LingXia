@@ -72,15 +72,19 @@ export class LxAppNotification {
 
   private static async ensurePermission(): Promise<string> {
     const current = await LxAppNotification.currentPermission();
-    if (current !== 'default') {
+    if (current === 'granted') {
       return current;
     }
     const ctx = Lingxia.context;
     if (!ctx) {
       return 'denied';
     }
+    const blocked = current === 'denied';
     const granted = await PermissionGates.run(ctx, PermissionFeature.NOTIFICATION,
-      [], false, async () => {
+      [], blocked, async () => {
+        if (blocked) {
+          return PermissionOutcome.DENIED_PERMANENTLY;
+        }
         try {
           await notificationManager.requestEnableNotification(ctx);
         } catch (error) {
