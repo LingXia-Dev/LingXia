@@ -66,8 +66,76 @@ mod gpu {
 }
 
 /// Writes one premultiplied RGBA frame into the window's next buffer; false when none
-/// is free (the host re-prepares the frame).
-pub(crate) fn blit(_window: &NativeWindow, _pixels: &[u8], _width: u32, _height: u32) -> bool {
-    log::warn!(target: "lingxia_view", "UI_SURFACE: CPU frames are not shown on HarmonyOS yet");
-    false
+/// is free (the host re-prepares the frame). Any thread.
+pub(crate) fn blit(window: &NativeWindow, pixels: &[u8], width: u32, height: u32) -> bool {
+    let window = window.as_ptr();
+    // SAFETY: a retained window; the buffer is ours between request and flush or abort.
+    unsafe {
+        sys::OH_NativeWindow_NativeWindowHandleOpt(
+            window,
+            sys::SET_FORMAT,
+            sys::PIXEL_FMT_RGBA_8888,
+        );
+        sys::OH_NativeWindow_NativeWindowHandleOpt(
+            window,
+            sys::SET_USAGE,
+            sys::USAGE_CPU_READ_WRITE_DMA,
+        );
+        let mut buffer = std::ptr::null_mut();
+        let mut fence = -1;
+        if sys::OH_NativeWindow_NativeWindowRequestBuffer(window, &mut buffer, &mut fence) != 0
+            || buffer.is_null()
+        {
+            return false;
+        }
+        if fence >= 0 {
+            let mut poll = libc::pollfd {
+                fd: fence,
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            libc::poll(&mut poll, 1, 3000);
+            libc::close(fence);
+        }
+        let handle = sys::OH_NativeWindow_GetBufferHandleFromNative(buffer);
+        let Some(handle) = handle.as_ref() else {
+            sys::OH_NativeWindow_NativeWindowAbortBuffer(window, buffer);
+            return false;
+        };
+        let size = handle.size.max(0) as usize;
+        let (base, mapped) = if handle.vir_addr.is_null() {
+            let map = libc::mmap(
+                std::ptr::null_mut(),
+                size,
+                libc::PROT_READ | libc::PROT_WRITE,
+                libc::MAP_SHARED,
+                handle.fd,
+                0,
+            );
+            if map == libc::MAP_FAILED {
+                sys::OH_NativeWindow_NativeWindowAbortBuffer(window, buffer);
+                return false;
+            }
+            (map.cast::<u8>(), true)
+        } else {
+            (handle.vir_addr.cast::<u8>(), false)
+        };
+        let stride = handle.stride.max(0) as usize;
+        let row = (width as usize * 4).min(stride);
+        for y in 0..(height as usize).min(handle.height.max(0) as usize) {
+            let from = y * width as usize * 4;
+            if from + row > pixels.len() || y * stride + row > size {
+                break;
+            }
+            std::ptr::copy_nonoverlapping(pixels.as_ptr().add(from), base.add(y * stride), row);
+        }
+        if mapped {
+            libc::munmap(base.cast(), size);
+        }
+        let region = sys::Region {
+            rects: std::ptr::null_mut(),
+            rect_number: 0,
+        };
+        sys::OH_NativeWindow_NativeWindowFlushBuffer(window, buffer, -1, region) == 0
+    }
 }

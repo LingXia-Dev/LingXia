@@ -482,16 +482,56 @@ unsafe extern "C" {
         buffer: *mut *mut OHNativeWindowBuffer,
         fence: *mut i32,
     ) -> i32;
+    pub fn OH_NativeWindow_GetBufferHandleFromNative(
+        buffer: *mut OHNativeWindowBuffer,
+    ) -> *mut BufferHandle;
+    pub fn OH_NativeWindow_NativeWindowFlushBuffer(
+        window: *mut OHNativeWindow,
+        buffer: *mut OHNativeWindowBuffer,
+        fence: i32,
+        region: Region,
+    ) -> i32;
     pub fn OH_NativeWindow_NativeWindowAbortBuffer(
         window: *mut OHNativeWindow,
         buffer: *mut OHNativeWindowBuffer,
     ) -> i32;
 }
 
+#[repr(C)]
+pub struct BufferHandle {
+    pub fd: i32,
+    pub width: i32,
+    pub stride: i32,
+    pub height: i32,
+    pub size: i32,
+    pub format: i32,
+    pub usage: u64,
+    pub vir_addr: *mut c_void,
+    pub key: i32,
+    pub phy_addr: u64,
+}
+
+#[repr(C)]
+pub struct Rect {
+    pub x: i32,
+    pub y: i32,
+    pub w: u32,
+    pub h: u32,
+}
+
+/// A null `rects` damages the whole buffer.
+#[repr(C)]
+pub struct Region {
+    pub rects: *mut Rect,
+    pub rect_number: i32,
+}
+
 /// `NativeWindowOperation` codes.
 pub const SET_BUFFER_GEOMETRY: i32 = 0;
 pub const SET_FORMAT: i32 = 3;
-pub const SET_USAGE: i32 = 4;
+pub const SET_USAGE: i32 = 5;
+pub const PIXEL_FMT_RGBA_8888: i32 = 12;
+pub const USAGE_CPU_READ_WRITE_DMA: u64 = (1 << 0) | (1 << 1) | (1 << 3);
 
 // ---- Input method ---------------------------------------------------------------------------
 
