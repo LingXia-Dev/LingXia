@@ -112,10 +112,11 @@ pub(crate) fn scroll_windows(
 /// confined to a cloned candidate cache until ViewSession commits the frame.
 pub(crate) fn reconcile(
     records: &[Record],
-    display: &DisplayList,
+    display: &mut DisplayList,
     lists: &mut Lists,
     offsets: &mut HashMap<String, f32>,
 ) -> Result<Option<Windows>, String> {
+    let mut glides = Vec::new();
     let mut alive = HashSet::new();
     let mut windows = Windows::new();
     let mut changed = false;
@@ -184,15 +185,17 @@ pub(crate) fn reconcile(
             .collect();
         let measured = state.metrics.measure(&rows, position, viewport)?;
         let mut target = scroll.offset + (measured - original_position) as f32;
+        let mut glide = None;
         let next_anchor = record.string(field::LIST_ANCHOR).map(str::to_owned);
-        if next_anchor != state.anchor
-            && let Some(encoded) = &next_anchor
+        let changed_anchor = next_anchor != state.anchor;
+        if let Some(encoded) = &next_anchor
+            && (changed_anchor || encoded.contains("\"duration\""))
         {
             let value: serde_json::Value =
                 serde_json::from_str(encoded).map_err(|_| "UI_LIST: invalid anchor")?;
-            if value == "end" {
-                target = (state.metrics.total() + (padding + bottom) as f64 - node.bounds[3] as f64)
-                    .max(0.0) as f32;
+            let to = if value == "end" {
+                (state.metrics.total() + (padding + bottom) as f64 - node.bounds[3] as f64).max(0.0)
+                    as f32
             } else {
                 let row = value["index"]
                     .as_u64()
@@ -202,13 +205,29 @@ pub(crate) fn reconcile(
                 } else {
                     Align::Start
                 };
-                target = state.metrics.anchor_offset(
+                state.metrics.anchor_offset(
                     Anchor::Row { index: row, align },
                     scroll.content_size[1] as f64,
-                )? as f32;
+                )? as f32
+            };
+            match value["duration"].as_f64().filter(|d| *d > 0.0) {
+                // The host scrolls there; each frame re-aims it as rows are measured.
+                Some(duration) => glide = Some((encoded.clone(), to, duration as f32)),
+                None => target = to,
             }
         }
         state.next_anchor = next_anchor;
+        if let Some((key, to, duration_ms)) = glide {
+            glides.push((
+                index,
+                crate::scene::node::Glide {
+                    key,
+                    start: changed_anchor,
+                    to,
+                    duration_ms,
+                },
+            ));
+        }
         if (target - scroll.offset).abs() > 0.01 {
             offsets.insert(id.clone(), target);
             changed = true;
@@ -227,6 +246,11 @@ pub(crate) fn reconcile(
         windows.insert(id, desired);
     }
     lists.retain(|id, _| alive.contains(id));
+    for (index, glide) in glides {
+        if let Some(scroll) = display.nodes[index].scroll.as_mut() {
+            scroll.glide = Some(glide);
+        }
+    }
     Ok(changed.then_some(windows))
 }
 

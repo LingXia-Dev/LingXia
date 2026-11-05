@@ -1,4 +1,4 @@
-export type PerfScene = 'list' | 'animation' | 'fill' | 'text' | 'touch' | 'transition' | 'images';
+export type PerfScene = 'list' | 'data' | 'animation' | 'fill' | 'text' | 'touch' | 'transition' | 'images';
 export interface PerfData {
   /** The scene a run drives, or '' between runs. */
   running: PerfScene | '';

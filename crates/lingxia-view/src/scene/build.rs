@@ -267,6 +267,7 @@ impl Renderer {
                         .find(|(id, _)| *id == field::ON_SNAP_CHANGE)
                         .and_then(|(_, v)| v.as_u64())
                         .filter(|handle| *handle != 0),
+                    glide: None,
                     parent: scroll_parent.clone(),
                     offset: 0.0,
                     max_offset,

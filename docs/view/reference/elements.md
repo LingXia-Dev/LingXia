@@ -140,7 +140,7 @@ A component from `@lingxia/view`, rendered as the `list` element.
 | `getKey` | `(item: T, index: number) => string` | yes |
 | `renderItem` | `(item: T, index: number) => JSX.Element` | yes |
 | `getItemHeight` | `(item: T, index: number) => number` |  |
-| `anchor` | `"end" \| { index: number; align: "start" \| "end"; seq?: number }` |  |
+| `anchor` | `"end" \| { index: number; align: "start" \| "end"; seq?: number; duration?: number }` |  |
 | `onReachStart` | `() => void` |  |
 | `onReachEnd` | `() => void` |  |
 

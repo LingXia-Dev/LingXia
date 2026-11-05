@@ -835,6 +835,7 @@ impl<A: PlatformAdapter> Inner<A> {
         }
         self.adapter.reconcile(&snapshot);
         self.deliver(presented.effects);
+        self.glide_later();
         if let Some(reach) = presented.reach {
             self.reach(page, reach);
         }

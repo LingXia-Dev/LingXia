@@ -21,6 +21,28 @@ pub struct ScrollModel {
     reported: HashMap<String, usize>,
     /// Where a wheel or trackpad swipe found each `snap-always` region, for paging.
     wheeled_from: HashMap<String, f32>,
+    /// List anchors with a `duration` the host is scrolling toward.
+    glides: HashMap<String, GlideRun>,
+    started_glides: Vec<String>,
+}
+
+struct GlideRun {
+    key: String,
+    from: f32,
+    to: f32,
+    duration_ms: f32,
+    started: Option<std::time::Duration>,
+}
+
+/// Grace past a glide's duration for the frame that confirms its landing.
+const GLIDE_GRACE_MS: f32 = 1000.0;
+
+fn ease_in_out(t: f32) -> f32 {
+    if t < 0.5 {
+        4.0 * t * t * t
+    } else {
+        1.0 - (-2.0 * t + 2.0).powi(3) / 2.0
+    }
 }
 
 impl ScrollModel {
@@ -115,16 +137,69 @@ impl ScrollModel {
             } else {
                 self.offset(&scroll.id) + correction
             };
-            self.offsets.insert(
-                scroll.id.clone(),
-                desired.clamp(0.0, scroll.max_offset.max(0.0)),
-            );
+            let max = scroll.max_offset.max(0.0);
+            let desired = desired.clamp(0.0, max);
+            self.offsets.insert(scroll.id.clone(), desired);
+            if let Some(glide) = &scroll.glide {
+                let to = glide.to.clamp(0.0, max);
+                if glide.start {
+                    self.glides.insert(
+                        scroll.id.clone(),
+                        GlideRun {
+                            key: glide.key.clone(),
+                            from: desired,
+                            to,
+                            duration_ms: glide.duration_ms,
+                            started: None,
+                        },
+                    );
+                    self.started_glides.push(scroll.id.clone());
+                } else if let Some(run) = self.glides.get_mut(&scroll.id)
+                    && run.key == glide.key
+                {
+                    run.from += correction;
+                    run.to = to;
+                }
+            } else if let Some(run) = self.glides.get_mut(&scroll.id) {
+                run.from += correction;
+                run.to = (run.to + correction).clamp(0.0, max);
+            }
         }
         let regions = &self.regions;
         self.offsets.retain(|id, _| regions.contains_key(id));
         self.goals.retain(|id, _| regions.contains_key(id));
         self.wheeled_from.retain(|id, _| regions.contains_key(id));
         self.reported.retain(|id, _| regions.contains_key(id));
+        self.glides.retain(|id, _| regions.contains_key(id));
+    }
+
+    /// Regions whose glide began with the last accepted frame.
+    pub fn take_started_glides(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.started_glides)
+    }
+
+    /// Move a gliding region to where it is at `now`: `None` once input or a newer anchor
+    /// took it over, `Some(true)` once a frame showed it landed.
+    pub fn glide_step(&mut self, id: &str, now: std::time::Duration, jump: bool) -> Option<bool> {
+        let run = self.glides.get_mut(id)?;
+        let started = *run.started.get_or_insert(now);
+        let elapsed = now.saturating_sub(started).as_secs_f32() * 1000.0;
+        let t = if jump {
+            1.0
+        } else {
+            (elapsed / run.duration_ms).min(1.0)
+        };
+        let (at, to, late) = (
+            run.from + (run.to - run.from) * ease_in_out(t),
+            run.to,
+            elapsed > run.duration_ms + GLIDE_GRACE_MS,
+        );
+        self.scroll_to(id, at);
+        if t >= 1.0 && ((self.offset(id) - to).abs() <= 0.5 || late) {
+            self.glides.remove(id);
+            return Some(true);
+        }
+        Some(false)
     }
 
     /// A wheel or trackpad swipe begins on `id`: a `snap-always` region pages from here.
@@ -308,6 +383,7 @@ impl ScrollModel {
             };
             let parent = region.parent.clone();
             if region.axis == axis {
+                self.glides.remove(&current);
                 let sign = if visual && region.rtl { -1.0 } else { 1.0 };
                 let before = self.offset(&current);
                 let after = (before + sign * delta).clamp(0.0, region.max_offset.max(0.0));
@@ -342,6 +418,7 @@ impl ScrollModel {
         let sign = if region.rtl { -1.0 } else { 1.0 };
         let before = self.offset(id);
         let after = (before + sign * delta).clamp(0.0, region.max_offset.max(0.0));
+        self.glides.remove(id);
         if after == before {
             return 0.0;
         }

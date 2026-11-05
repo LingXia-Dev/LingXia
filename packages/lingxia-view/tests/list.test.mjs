@@ -54,6 +54,16 @@ test('cross-window anchors reuse old geometry until native refines the destinati
  assert.equal(output.find(r=>r.id==='row-1').text,'1:1','offscreen row locals survive the jump');
 });
 
+test('a gliding anchor keeps rendering the window it is in',()=>{
+ reset();let anchor,visited=[];
+ const page=()=>h(listTag,{count:1000,anchor,row:i=>{visited.push(i);return row(i);}});
+ prepare(page,{},window(0,3));commit();
+ anchor={index:999,align:'end',duration:500};visited=[];
+ const output=records(prepare(page,{},window(0,3)));commit();
+ assert.deepEqual(visited,[0,1,2],'native scrolls there; the window follows');
+ assert.equal(output.find(r=>r.tag==='list').fields.get('listAnchor'),JSON.stringify(anchor));
+});
+
 test('anchor refinement reevaluates overlapping rows with the new render props',()=>{
  reset();let anchor,version='old',visited=[];
  const page=()=>h(listTag,{count:1000,anchor,row:i=>{visited.push(i);return h('text',{'data-testid':`row-${i}`},`${version}:${i}`);}});
@@ -116,6 +126,8 @@ test('invalid descriptions and windows cannot replace a committed list',()=>{
   {count:-1,row:()=>h('text')}, {count:100001,row:()=>h('text')},
   {count:1,row:42}, {count:1,row:()=>h('text'),height:()=>NaN},
   {count:1,row:()=>h('text'),anchor:{index:0,align:'center'}},
+  {count:1,row:()=>h('text'),anchor:{index:0,align:'start',duration:-1}},
+  {count:1,row:()=>h('text'),anchor:{index:0,align:'start',duration:60001}},
  ]) {
   assert.throws(()=>prepare(()=>h(listTag,props),{}),/UI_LIST/);
   assert.equal(dispatch(handle),true);

@@ -2539,8 +2539,13 @@
     }
     if (props.anchor !== void 0 && props.anchor !== "end") {
       const a = props.anchor;
-      if (!a || typeof a !== "object" || Object.keys(a).some((k) => !["index", "align", "seq"].includes(k)) || !Number.isSafeInteger(a.index) || a.index < 0 || !["start", "end"].includes(a.align) || a.seq !== void 0 && (!Number.isSafeInteger(a.seq) || a.seq < 0)) throw Error("UI_LIST: invalid anchor");
-      props.anchor = { index: a.index, align: a.align, ...a.seq === void 0 ? {} : { seq: a.seq } };
+      if (!a || typeof a !== "object" || Object.keys(a).some((k) => !["index", "align", "seq", "duration"].includes(k)) || !Number.isSafeInteger(a.index) || a.index < 0 || !["start", "end"].includes(a.align) || a.seq !== void 0 && (!Number.isSafeInteger(a.seq) || a.seq < 0) || a.duration !== void 0 && (!Number.isFinite(a.duration) || a.duration < 0 || a.duration > 6e4)) throw Error("UI_LIST: invalid anchor");
+      props.anchor = {
+        index: a.index,
+        align: a.align,
+        ...a.seq === void 0 ? {} : { seq: a.seq },
+        ...a.duration ? { duration: a.duration } : {}
+      };
     }
   }
   var iso = { date: /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/, time: /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/ };
@@ -3290,7 +3295,7 @@
         if (!Number.isSafeInteger(window.start) || !Number.isSafeInteger(window.end) || window.start < 0 || window.end < window.start || window.end > Math.max(props.count, node.list.previousCount) || ![window.leading, window.trailing].every((v) => Number.isFinite(v) && v >= 0 && v <= 16384e5)) throw Error("UI_LIST: invalid window");
         if (window.end > props.count) window = initialWindow(props.count);
         const target = props.anchor === "end" ? props.count - 1 : Math.min(props.anchor?.index ?? 0, props.count - 1);
-        if (node.list.anchorChanged && props.count > 0 && (target < window.start || target >= window.end)) {
+        if (node.list.anchorChanged && !props.anchor?.duration && props.count > 0 && (target < window.start || target >= window.end)) {
           node.list.cache = new Map([...node.list.anchorCache].filter(([i, row]) => props.itemKeys === void 0 || row.props.key === `key:${JSON.stringify(props.itemKeys[i])}`));
           seededAnchor = true;
         }

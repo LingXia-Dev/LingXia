@@ -571,13 +571,16 @@ fn list_anchor(value: &Value) -> Result<(), String> {
         let object = value.as_object().ok_or("UI_LIST: invalid anchor")?;
         if object
             .keys()
-            .any(|k| !matches!(k.as_str(), "index" | "align" | "seq"))
+            .any(|k| !matches!(k.as_str(), "index" | "align" | "seq" | "duration"))
             || object.get("index").and_then(Value::as_u64).is_none()
             || !matches!(
                 object.get("align").and_then(Value::as_str),
                 Some("start" | "end")
             )
             || object.get("seq").is_some_and(|v| v.as_u64().is_none())
+            || object
+                .get("duration")
+                .is_some_and(|v| v.as_f64().is_none_or(|d| !(0.0..=60000.0).contains(&d)))
         {
             return Err("UI_LIST: invalid anchor".into());
         }

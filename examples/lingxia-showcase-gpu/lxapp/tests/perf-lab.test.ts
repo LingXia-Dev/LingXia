@@ -61,6 +61,12 @@ spec('a 1000-row list keeps pace through flings', { id: 'PERF-LIST-001', covers:
   await expectFrames(t, await t.app.metrics({ windowMs: Date.now() - started }));
 });
 
+spec('a 1000-row list keeps pace while Logic moves its anchor every tick', { id: 'PERF-DATA-001', covers: ['view:list'] }, async (t) => {
+  await measurable(t);
+  await scene(t, 'data', 1000);
+  await expectFrames(t, await runBudget(t, 'data', 1000));
+});
+
 spec('250 springs at once keep pace', { id: 'PERF-ANIM-001' }, async (t) => {
   await measurable(t);
   await scene(t, 'animation', 250);

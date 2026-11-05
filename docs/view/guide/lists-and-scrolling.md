@@ -111,6 +111,8 @@ arrays. A mutable array is keyed again on every render.
 - `anchor="end"` moves to the end once.
 - `anchor={{ index, align: 'start' | 'end', seq }}` brings row `index` to the top or bottom of the viewport.
   Change `seq` to move again to the same index.
+- Add `duration` (ms) to scroll there smoothly instead of jumping. The scroll runs natively, so rows render
+  only as they come into view; a finger or wheel on the list stops it, and reduced motion jumps.
 
 To keep a chat at its newest message, anchor the last index with `seq` set to the item count, as in the
 first example: each new message changes `seq` and moves the list once. Jumping far away does not render

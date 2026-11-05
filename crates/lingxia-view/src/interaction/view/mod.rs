@@ -176,6 +176,19 @@ impl ViewInteraction {
         self.scroll.scroll_to(id, offset)
     }
 
+    /// Regions whose list anchor began a glide with the last presented frame.
+    pub fn take_started_glides(&mut self) -> Vec<String> {
+        self.scroll.take_started_glides()
+    }
+
+    /// One step of region `id`'s glide (see [`ScrollModel::glide_step`]).
+    pub fn glide_step(&mut self, id: &str, now: std::time::Duration, jump: bool) -> Option<bool> {
+        if self.gesture.dragging {
+            return None;
+        }
+        self.scroll.glide_step(id, now, jump)
+    }
+
     /// A finger is dragging a scroll region.
     pub fn holding_scroll(&self) -> bool {
         self.gesture.dragging

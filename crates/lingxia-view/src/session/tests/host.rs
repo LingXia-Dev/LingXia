@@ -4551,3 +4551,65 @@ fn a_close_request_closes_the_topmost_dialog_or_popover_and_is_refused_without_o
     assert_eq!(text(), "closed");
     assert!(!host.close_request(), "a manual popover takes none");
 }
+
+#[test]
+fn a_list_anchor_with_a_duration_glides_there_and_input_stops_it() {
+    use crate::interaction::view::{Wheel, WheelPhase};
+    let glide = |stop_at: Option<usize>| {
+        let worker = ViewWorker::spawn("test-list-glide").unwrap();
+        let platform = Platform::new(&[&worker]);
+        let host = platform.host(
+            &worker,
+            &source(
+                "function render(){return h(listTag,{count:200,anchor:{index:50,align:'start',duration:400},style:{height:100},row:i=>h('text',{'data-testid':'r'+i,style:{height:40}},String(i))})}",
+            ),
+            false,
+        );
+        host.set_visible(true);
+        platform.settle(&[&host]);
+        let offset = || {
+            host.snapshot().unwrap().frame.nodes[0]
+                .scroll
+                .as_ref()
+                .unwrap()
+                .offset
+        };
+        let mut offsets = vec![offset()];
+        for step in 0..40 {
+            if stop_at == Some(step) {
+                host.wheel(Wheel {
+                    x: 50.0,
+                    y: 50.0,
+                    dx: 0.0,
+                    dy: -2.0,
+                    precise: true,
+                    phase: WheelPhase::Changed,
+                });
+            }
+            *host.adapter().clock.lock().unwrap() += Duration::from_millis(16);
+            platform.advance(Duration::from_millis(16));
+            platform.settle(&[&host]);
+            offsets.push(offset());
+        }
+        offsets
+    };
+    let offsets = glide(None);
+    assert_eq!(offsets[0], 0.0, "a glide does not jump: {offsets:?}");
+    assert_eq!(
+        *offsets.last().unwrap(),
+        2000.0,
+        "row 50 at the top: {offsets:?}"
+    );
+    assert!(offsets.windows(2).all(|w| w[0] <= w[1]), "{offsets:?}");
+    assert!(
+        offsets.iter().filter(|o| **o > 0.0 && **o < 2000.0).count() > 10,
+        "{offsets:?}"
+    );
+    let stopped = glide(Some(10));
+    let at = stopped[11];
+    assert!(at > 0.0 && at < 2000.0, "{stopped:?}");
+    assert!(
+        stopped[12..].iter().all(|o| *o == at),
+        "input took it over: {stopped:?}"
+    );
+}

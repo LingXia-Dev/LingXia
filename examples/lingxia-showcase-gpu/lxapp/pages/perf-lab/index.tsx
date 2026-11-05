@@ -18,6 +18,7 @@ interface SceneSpec {
 
 const scenes: Record<PerfScene, SceneSpec> = {
   list: { label: 'List', knob: 'rows', counts: [100, 1000, 5000, 20000], judge: 'frames' },
+  data: { label: 'Data', knob: 'rows', counts: [100, 1000, 5000, 20000], judge: 'frames' },
   animation: { label: 'Springs', knob: 'nodes', counts: [100, 250, 500], judge: 'frames' },
   fill: { label: 'Fill', knob: 'layers', counts: [4, 8, 16], judge: 'frames' },
   text: { label: 'Text', knob: 'paragraphs', counts: [1, 4, 12], judge: 'frames' },
@@ -111,7 +112,8 @@ function stall() {
 function Workload({ scene, count, data }: { scene: PerfScene; count: number; data: PerfData }) {
   const active = data.running === scene;
   switch (scene) {
-    case 'list': return <LongList count={count} step={active ? data.tick * 2 : -1} />;
+    case 'list': return <LongList count={count} step={-1} glide={active} />;
+    case 'data': return <LongList count={count} step={active ? data.tick * 2 : -1} glide={false} />;
     case 'animation': return <Springs count={count} phase={active && data.phase} />;
     case 'fill': return <Layers count={count} spinning={active} />;
     case 'text': return <Relayout count={count} tick={active ? data.tick : 0} />;
@@ -124,9 +126,13 @@ function Workload({ scene, count, data }: { scene: PerfScene; count: number; dat
 /** Rows are added this many at a time, as the list nears its end. */
 const LIST_PAGE = 2000;
 
-/** Text, an image and a badge per row; a run moves two rows per tick. The list grows by
- *  pages at its end, so a large knob never asks one render for all its rows. */
-function LongList({ count, step }: { count: number; step: number }) {
+/** How far a List run scrolls; its glide lasts the whole run. */
+const GLIDE_ROWS = 90;
+
+/** Text, an image and a badge per row. A List run glides natively (the View runs only when the
+ *  window shifts); a Data run moves Logic's anchor two rows per tick, a full render each. The
+ *  list grows by pages at its end, so a large knob never asks one render for all its rows. */
+function LongList({ count, step, glide }: { count: number; step: number; glide: boolean }) {
   // One cell per knob value: a new size starts again from one page.
   const shown = useLocal(`shown-${count}`, Math.min(count, LIST_PAGE));
   const rows = rowsOf(shown.value);
@@ -134,7 +140,8 @@ function LongList({ count, step }: { count: number; step: number }) {
   return (
     <List data-testid="perf-list" data-shown={String(shown.value)} className="h-96 rounded-lg border border-line" items={rows} getKey={i => String(i)}
       onReachEnd={grow}
-      anchor={step >= 0 ? { index: Math.min(step % count, shown.value - 1), align: 'start', seq: step } : undefined}
+      anchor={glide ? { index: Math.min(GLIDE_ROWS, shown.value - 1), align: 'start', duration: RUN_MS }
+        : step >= 0 ? { index: Math.min(step % count, shown.value - 1), align: 'start', seq: step } : undefined}
       renderItem={i => (
         <row data-testid={`perf-row-${i}`} className="items-center gap-3 px-3 py-2 border-b border-line">
           <image src={image(i)} alt="" className="w-10 h-10 rounded-full" />

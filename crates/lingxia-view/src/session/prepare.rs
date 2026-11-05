@@ -527,7 +527,7 @@ impl ViewSession {
                 }
                 if let Some(windows) = crate::layout::list_layout::reconcile(
                     &records,
-                    &display,
+                    &mut display,
                     &mut lists,
                     &mut offsets,
                 )? {

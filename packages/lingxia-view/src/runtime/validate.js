@@ -157,10 +157,12 @@ export function listKeys(props) {
   }
   if (props.anchor !== undefined && props.anchor !== 'end') {
     const a = props.anchor;
-    if (!a || typeof a !== 'object' || Object.keys(a).some(k => !['index', 'align', 'seq'].includes(k)) ||
+    if (!a || typeof a !== 'object' || Object.keys(a).some(k => !['index', 'align', 'seq', 'duration'].includes(k)) ||
         !Number.isSafeInteger(a.index) || a.index < 0 || !['start', 'end'].includes(a.align) ||
-        (a.seq !== undefined && (!Number.isSafeInteger(a.seq) || a.seq < 0))) throw Error('UI_LIST: invalid anchor');
-    props.anchor = { index: a.index, align: a.align, ...(a.seq === undefined ? {} : { seq: a.seq }) };
+        (a.seq !== undefined && (!Number.isSafeInteger(a.seq) || a.seq < 0)) ||
+        (a.duration !== undefined && (!Number.isFinite(a.duration) || a.duration < 0 || a.duration > 60000))) throw Error('UI_LIST: invalid anchor');
+    props.anchor = { index: a.index, align: a.align, ...(a.seq === undefined ? {} : { seq: a.seq }),
+      ...(a.duration ? { duration: a.duration } : {}) };
   }
 }
 

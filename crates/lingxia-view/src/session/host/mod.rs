@@ -24,6 +24,7 @@ mod edits;
 mod environment;
 mod fonts;
 mod frame_stats;
+mod glide;
 #[cfg(feature = "hot-swap")]
 mod hot_swap;
 mod images;

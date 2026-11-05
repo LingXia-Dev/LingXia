@@ -83,7 +83,8 @@ export function encodeTree(tree, windows) {
       // A full render may shrink the list before native can reconcile its old window.
       if (window.end > props.count) window = initialWindow(props.count);
       const target = props.anchor === 'end' ? props.count - 1 : Math.min(props.anchor?.index ?? 0, props.count - 1);
-      if (node.list.anchorChanged && props.count > 0 && (target < window.start || target >= window.end)) {
+      // A gliding anchor scrolls natively: the window follows the scroll, not the target.
+      if (node.list.anchorChanged && !props.anchor?.duration && props.count > 0 && (target < window.start || target >= window.end)) {
         // Keep old geometry only until native chooses the destination window.
         // These rows cannot be committed for an anchor outside this window.
         node.list.cache = new Map([...node.list.anchorCache].filter(([i, row]) =>

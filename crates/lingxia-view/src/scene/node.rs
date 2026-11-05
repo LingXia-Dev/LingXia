@@ -393,6 +393,19 @@ pub struct ScrollSnapshot {
     pub(crate) snap_index: Option<usize>,
     #[serde(skip)]
     pub(crate) on_snap: Option<u64>,
+    /// A list anchor with a `duration`: where its row sits now, for the host to scroll to.
+    #[serde(skip)]
+    pub(crate) glide: Option<Glide>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Glide {
+    /// The encoded anchor, which later frames re-aim by.
+    pub key: String,
+    /// The anchor changed with this frame: a glide starts from where the region is.
+    pub start: bool,
+    pub to: f32,
+    pub duration_ms: f32,
 }
 
 pub struct Frame {

@@ -26,13 +26,13 @@ Page({
           this.setData({ phase });
           await sleep(600);
         }
-      } else if (scene === 'list' || scene === 'images' || scene === 'text') {
+      } else if (scene === 'data' || scene === 'images' || scene === 'text') {
         for (let tick = 1; Date.now() < until; tick++) {
           this.setData({ tick });
           await sleep(TICK_MS);
         }
       } else {
-        // Fill animates on its own and touch waits for a finger.
+        // List glides natively, fill animates on its own and touch waits for a finger.
         await sleep(ms);
       }
     } finally {
