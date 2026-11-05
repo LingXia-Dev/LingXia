@@ -3223,35 +3223,42 @@
     let count = 0, plotWork = 0, animationBytes = 0, itemKeyBytes = 0, dataBytes = 0;
     const write = (node, parent, depth) => {
       if (depth > limits.depth || ++count > limits.nodes) throw Error("UI_LIMIT: candidate too large");
-      const { tag, props, identity } = node, encoded = [];
-      for (const [key, value] of Object.entries(node.fields)) {
+      const { tag, props, identity, fields, states: states2, wire, handlers } = node;
+      const index = output.length;
+      output.push(tags[tag], parent, props.key ?? "", props.testId ?? "", node.text, 0);
+      const start = output.length;
+      for (const key in fields) {
+        const value = fields[key];
         if (key === "animation") {
           animationBytes += utf8Bytes(JSON.stringify(value), 32768);
           if (animationBytes > limits.animationBytes) throw Error("UI_ANIMATION: page payload budget exceeded");
         }
-        encoded.push(field[key], encodeValue(key, value));
+        output.push(field[key], encodeValue(key, value));
       }
-      for (const [key, style2] of Object.entries(node.states)) {
-        const pairs = Object.entries(style2).flatMap(([name, value]) => [field[name], encodeValue(name, value)]);
-        if (pairs.length) encoded.push(field[key], JSON.stringify(pairs));
+      for (const key in states2) {
+        const style2 = states2[key], pairs = [];
+        for (const name in style2) pairs.push(field[name], encodeValue(name, style2[name]));
+        if (pairs.length) output.push(field[key], JSON.stringify(pairs));
       }
-      for (const [key, value] of node.wire) {
+      for (let i = 0; i < wire.length; i++) {
+        const key = wire[i][0], value = wire[i][1];
         if (key === "dataAttributes") {
           dataBytes += utf8Bytes(value, limits.dataAttributeBytes);
           if (dataBytes > limits.dataAttributeBytes) throw Error("UI_PROP: data-* page budget exceeded");
         }
-        encoded.push(field[key], value);
+        output.push(field[key], value);
       }
-      for (const [key, id, entry] of node.handlers) {
-        candidate.callbacks.set(id, entry);
-        encoded.push(field[key], id);
+      for (let i = 0; i < handlers.length; i++) {
+        const handler = handlers[i];
+        candidate.callbacks.set(handler[1], handler[2]);
+        output.push(field[handler[0]], handler[1]);
       }
       if (node.plotWork) {
         plotWork += node.plotWork;
         if (plotWork > 16384) throw Error("UI_LIMIT: plot geometry budget exceeded");
       }
-      if (node.rowIndex !== void 0) encoded.push(field.listRowIndex, node.rowIndex);
-      if (node.slot !== void 0) encoded.push(field.childSlot, node.slot);
+      if (node.rowIndex !== void 0) output.push(field.listRowIndex, node.rowIndex);
+      if (node.slot !== void 0) output.push(field.childSlot, node.slot);
       let window, seededAnchor = false;
       if (node.list) {
         window = windows[identity] ?? node.list.window ?? initialWindow(props.count);
@@ -3266,20 +3273,20 @@
         node.list.anchorCache = null;
         node.list.previousCount = props.count;
         node.list.window = { ...window };
-        encoded.push(field.listId, identity, field.listCount, props.count, field.listLeading, window.leading, field.listTrailing, window.trailing);
+        output.push(field.listId, identity, field.listCount, props.count, field.listLeading, window.leading, field.listTrailing, window.trailing);
         if (props.itemKeys !== void 0) {
           const { payload, bytes } = keyPayload(props.itemKeys);
           itemKeyBytes += bytes;
           if (itemKeyBytes > limits.itemKeyBytes) throw Error("UI_LIST: itemKeys page budget exceeded");
-          encoded.push(field.listItemKeys, payload);
+          output.push(field.listItemKeys, payload);
         }
-        if (props.anchor !== void 0) encoded.push(field.listAnchor, JSON.stringify(props.anchor));
+        if (props.anchor !== void 0) output.push(field.listAnchor, JSON.stringify(props.anchor));
         candidate.lists.set(identity, node.list);
       }
-      const index = output.length;
-      output.push(tags[tag], parent, props.key ?? "", props.testId ?? "", node.text, encoded.length / 2, ...encoded);
+      output[start - 1] = (output.length - start) / 2;
       if (!node.list) {
-        for (const child of node.children) write(child, index, depth + 1);
+        const children = node.children;
+        for (let i = 0; i < children.length; i++) write(children[i], index, depth + 1);
         return;
       }
       writeRows(node, window, index, depth, write);
