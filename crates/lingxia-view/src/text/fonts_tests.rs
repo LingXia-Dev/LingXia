@@ -348,3 +348,35 @@ fn a_generic_family_by_file_is_the_default_face() {
     assert_eq!(glyphs.len(), 4);
     assert!(glyphs.iter().all(|id| *id != 0), "no notdef glyphs");
 }
+
+/// Families named by a configuration resolve to the faces in a font directory, whatever the
+/// configuration's spelling.
+#[test]
+fn configured_families_resolve_from_font_dirs() {
+    let arial = Path::new("/System/Library/Fonts/Supplemental/Arial.ttf");
+    if !arial.exists() {
+        eprintln!("skipped: host fonts unavailable");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("lingxia-font-dirs-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::copy(arial, dir.join("Arial.ttf")).unwrap();
+    let fonts = SystemFonts::from_font_dirs(
+        std::slice::from_ref(&dir),
+        &[
+            ("en".into(), "ARIAL".into()),
+            ("ja".into(), "Missing Sans".into()),
+        ],
+        &[(
+            GenericFamily::SansSerif,
+            vec!["Missing".into(), "ari-al".into()],
+        )],
+    );
+    assert_eq!(fonts.faces, [("en".to_owned(), "ArialMT".to_owned())]);
+    assert_eq!(
+        fonts.generics,
+        [(GenericFamily::SansSerif, "ArialMT".to_owned())]
+    );
+    assert_eq!(fonts.files, [dir.join("Arial.ttf")]);
+    let _ = std::fs::remove_dir_all(&dir);
+}

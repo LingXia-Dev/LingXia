@@ -115,6 +115,37 @@ impl SystemFonts {
         self
     }
 
+    /// Fallbacks and generic families named by family, resolved to faces in the font files of
+    /// `dirs`: for a platform whose configuration names families but has no system collection
+    /// (OHOS). `generics` lists candidate families per generic family, the first found wins.
+    pub fn from_font_dirs(
+        dirs: &[std::path::PathBuf],
+        fallbacks: &[(String, String)],
+        generics: &[(GenericFamily, Vec<String>)],
+    ) -> Self {
+        let faces = scan_dirs(dirs);
+        let find = |family: &str| faces.get(&family_key(family)).cloned();
+        let picked = fallbacks
+            .iter()
+            .filter_map(|(lang, family)| {
+                let found = find(family);
+                if found.is_none() {
+                    log::debug!(target: "lingxia_view", "UI_FONT: no file for {family} ({lang})");
+                }
+                let (file, postscript) = found?;
+                Some((lang.clone(), file, postscript))
+            })
+            .collect();
+        let mut fonts = Self::from_files(picked);
+        for (family, candidates) in generics {
+            match candidates.iter().find_map(|name| find(name)) {
+                Some((file, postscript)) => fonts = fonts.with_generic(*family, file, postscript),
+                None => log::warn!(target: "lingxia_view", "UI_FONT: no face for {family:?}"),
+            }
+        }
+        fonts
+    }
+
     /// fontique maps only lang families whose faces carry a postScriptName, so
     /// vendor CJK families fall through to tofu; this names every face from its file.
     pub fn from_android_xml(xml: &str, dir: &Path) -> Self {
@@ -334,6 +365,62 @@ fn family_name(path: &Path, index: u32) -> Option<String> {
         .into_iter()
         .find_map(|id| font.localized_strings(id).english_or_first())
         .map(|name| name.chars().collect())
+}
+
+/// Configuration and file family names differ in spacing and case ("HarmonyOS-Sans").
+fn family_key(family: &str) -> String {
+    family
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .map(|c| c.to_ascii_lowercase())
+        .collect()
+}
+
+/// Family key to the file and PostScript name of its first face found in `dirs`.
+fn scan_dirs(
+    dirs: &[std::path::PathBuf],
+) -> std::collections::HashMap<String, (std::path::PathBuf, String)> {
+    let mut faces = std::collections::HashMap::new();
+    for path in dirs
+        .iter()
+        .filter_map(|dir| std::fs::read_dir(dir).ok())
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+    {
+        if !matches!(
+            path.extension().and_then(|e| e.to_str()),
+            Some("ttf" | "otf" | "ttc")
+        ) {
+            continue;
+        }
+        let Ok(file) = std::fs::File::open(&path) else {
+            continue;
+        };
+        // SAFETY: system font files are read-only for the life of the process.
+        let Ok(data) = (unsafe { memmap2::Mmap::map(&file) }) else {
+            continue;
+        };
+        let count = skrifa::raw::FileRef::new(&data).map_or(1, |file| file.fonts().count());
+        for index in 0..count as u32 {
+            let Ok(font) = FontRef::from_index(&data, index) else {
+                continue;
+            };
+            let read = |id| {
+                font.localized_strings(id)
+                    .english_or_first()
+                    .map(|s| s.chars().collect::<String>())
+            };
+            let family =
+                read(StringId::TYPOGRAPHIC_FAMILY_NAME).or_else(|| read(StringId::FAMILY_NAME));
+            if let (Some(family), Some(postscript)) = (family, read(StringId::POSTSCRIPT_NAME)) {
+                faces
+                    .entry(family_key(&family))
+                    .or_insert_with(|| (path.clone(), postscript));
+            }
+        }
+    }
+    faces
 }
 
 /// The parley locale for a BCP 47 display language.
