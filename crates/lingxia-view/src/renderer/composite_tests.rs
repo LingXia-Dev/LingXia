@@ -165,9 +165,11 @@ fn display_plan_preserves_gpu_text_images_clipping_opacity_and_retained_scroll()
                 drop(flat);
                 let composed = compositor.render_display(&display, device, queue).unwrap();
                 let actual = readback(device, queue, composed.texture());
+                // The composed path draws through an offscreen layer and an image composite, one
+                // more premultiplied rounding than the flat render.
                 for (index, (actual, expected)) in actual.iter().zip(&expected).enumerate() {
                     assert!(
-                        actual.abs_diff(*expected) <= 3,
+                        actual.abs_diff(*expected) <= 4,
                         "scale={scale} offset={offset} transformed={transformed:?} byte={index}: {actual} vs {expected}"
                     );
                 }
