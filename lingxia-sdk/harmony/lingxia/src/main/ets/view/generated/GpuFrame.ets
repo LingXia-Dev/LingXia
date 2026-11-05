@@ -558,6 +558,7 @@ export interface GpuFrameCompositeStats {
   backdropMisses: number;
   capturePixels: number;
   filterPixels: number;
+  flattened: number;
 }
 
 /** `BackdropCacheStats` in the frame contract. */

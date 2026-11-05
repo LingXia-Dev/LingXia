@@ -223,13 +223,16 @@ mod tests {
             steps
         };
         let (plan, _) = Plan::flattened(RETINA.0, RETINA.1, 1, nested(8)).unwrap();
-        let plan = compositor.fit(plan);
+        let (plan, flattened) = compositor.fit(plan);
+        assert_eq!(flattened, 0);
         let held: Vec<_> = (0..5)
             .map(|_| compositor.lease(device, RETINA.0, RETINA.1).unwrap())
             .collect();
         assert!(!compositor.budget_warned(), "the first frame fit");
         // With five frames held, the next plan flattens to the room left, warning once.
-        let refit = compositor.fit(Plan::flattened(RETINA.0, RETINA.1, 1, nested(8)).unwrap().0);
+        let (refit, flattened) =
+            compositor.fit(Plan::flattened(RETINA.0, RETINA.1, 1, nested(8)).unwrap().0);
+        assert!(flattened > 0);
         assert!(refit.working_bytes() < plan.working_bytes());
         assert!(compositor.budget_warned());
         drop(held);

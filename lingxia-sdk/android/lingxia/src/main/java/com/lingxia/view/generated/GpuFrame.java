@@ -888,6 +888,8 @@ public final class GpuFrame {
         public long capturePixels() { return json.optLong("capturePixels"); }
         /** `filterPixels`: u64 */
         public long filterPixels() { return json.optLong("filterPixels"); }
+        /** `flattened`: u32 */
+        public long flattened() { return json.optLong("flattened"); }
     }
 
     public static final class BackdropCacheStats {

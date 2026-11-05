@@ -900,6 +900,7 @@ public struct GpuFrameCompositeStats: Decodable, Sendable {
     public let backdropMisses: UInt32
     public let capturePixels: UInt64
     public let filterPixels: UInt64
+    public let flattened: UInt32
 
     enum CodingKeys: String, CodingKey {
         case draws = "draws"
@@ -916,6 +917,7 @@ public struct GpuFrameCompositeStats: Decodable, Sendable {
         case backdropMisses = "backdropMisses"
         case capturePixels = "capturePixels"
         case filterPixels = "filterPixels"
+        case flattened = "flattened"
     }
 }
 

@@ -34,6 +34,8 @@ pub struct CompositeStats {
     /// Pixels the missed backdrops captured, and blurred at the filter's resolution.
     pub capture_pixels: u64,
     pub filter_pixels: u64,
+    /// Nested groups the texture budget drew flattened; nonzero means a visual downgrade.
+    pub flattened: u32,
 }
 
 /// Device-bound pipelines and scratch reused across frames. A draw callback and
@@ -123,11 +125,11 @@ impl Compositor {
     }
 
     /// Fit `plan` beside the textures earlier frames still hold; a frame that does not fit
-    /// draws its deepest groups flattened rather than failing.
+    /// draws its deepest groups flattened rather than failing. Also returns how many.
     pub(crate) fn fit(
         &mut self,
         plan: crate::scene::composite::Plan,
-    ) -> crate::scene::composite::Plan {
+    ) -> (crate::scene::composite::Plan, u32) {
         let (width, height) = plan.dimensions();
         self.pool.set_frame(width, height);
         // Cached backdrops are only a speedup; they yield before the frame loses a group.
@@ -141,7 +143,7 @@ impl Compositor {
                 "UI_BUDGET: this page's layers need more GPU texture memory than `leaseFrames` allows ({available} bytes free at {width}x{height}); {flattened} nested group(s) draw flattened"
             );
         }
-        plan
+        (plan, u32::try_from(flattened).unwrap_or(u32::MAX))
     }
 
     fn depth_view(
@@ -237,7 +239,7 @@ impl Compositor {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Result<Surface, String> {
-        let plan = self.fit(display.composition_plan()?);
+        let (plan, flattened) = self.fit(display.composition_plan()?);
         let backdrops = crate::renderer::gpu::backdrop_cache::keys(&plan, display);
         // Move caches out for the callback's lifetime; restore them on errors too.
         let mut images = std::mem::take(&mut self.images);
@@ -277,6 +279,7 @@ impl Compositor {
             },
             backdrops,
         );
+        self.stats.flattened = flattened;
         glyph_cache.maintain();
         self.images = images;
         self.glyph_cache = glyph_cache;

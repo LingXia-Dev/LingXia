@@ -455,6 +455,8 @@ export interface PageCompositeStats {
   /** Pixels missed backdrops captured, and blurred at the filter's resolution. */
   capturePixels: number;
   filterPixels: number;
+  /** Nested groups the texture budget drew flattened; nonzero is a visual downgrade. */
+  flattened: number;
 }
 
 export interface PageBackdropCache {
