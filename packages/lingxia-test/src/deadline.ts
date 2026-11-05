@@ -69,7 +69,7 @@ export class ActionDeadline {
   clampNote(): string | undefined {
     return this.clampedFrom === undefined
       ? undefined
-      : `timeout ${this.clampedFrom}ms was clamped to ${this.timeout}ms, the time left in the spec's budget`;
+      : `timeout ${this.clampedFrom}ms was clamped to ${this.timeout}ms, the time left in the test's budget`;
   }
 
   /**

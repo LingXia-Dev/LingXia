@@ -195,9 +195,9 @@ fn bundle_test_entry(entry: &Path) -> Result<TestBundle> {
 /// What a bundle asks the test framework for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Purpose {
-    /// Run the selected specs.
+    /// Run the selected tests.
     Run,
-    /// List the selected specs (`lxdev test list`).
+    /// List the selected tests (`lxdev test list`).
     List,
 }
 
@@ -477,7 +477,7 @@ globalThis.__RONG_TEST_HOST__ = {{\n\
   ? globalThis.__LINGXIA_TEST__\n\
   : globalThis.__RONG_TEST__;\n\
 if (!__lx_test_framework || typeof __lx_test_framework.run !== \"function\") {\n\
-  throw new Error('No test framework was registered. Import spec from \"@lingxia/test\" (or test from \"@rongjs/test\").');\n\
+  throw new Error('No test framework was registered. Import test from \"@lingxia/test\" (or from \"@rongjs/test\").');\n\
 }\n\
 ",
     );
@@ -486,7 +486,7 @@ if (!__lx_test_framework || typeof __lx_test_framework.run !== \"function\") {\n
         // A framework without `list` would run the specs instead.
         Purpose::List => {
             "if (typeof __lx_test_framework.list !== \"function\") {\n\
-  throw new Error('This @lingxia/test cannot list specs; install the version that matches lxdev.');\n\
+  throw new Error('This @lingxia/test cannot list tests; install the version that matches lxdev.');\n\
 }\n\
 return await __lx_test_framework.list();\n"
         }
@@ -1711,7 +1711,7 @@ mod tests {
         assert_eq!(probe + 1, LINE_PROBE_LINE as usize);
     }
 
-    /// Spec files whose `spec`, `spec.configure` and hook calls are followed by
+    /// Test files whose `test`, `test.configure` and hook calls are followed by
     /// comments, blank lines and banners, and sit at file boundaries: the shape
     /// that lost its file when the engine ran the bundle a line lower.
     fn commented_spec_files(dir: &tempfile::TempDir) {
@@ -1723,24 +1723,24 @@ mod tests {
         write(
             dir,
             "node_modules/@lingxia/test/index.js",
-            "export function spec(title) { globalThis.__frames.push([title, new Error().stack]); }\n\
-             spec.configure = (options) => { globalThis.__frames.push(['configure:' + options.tags.join(), new Error().stack]); };\n\
-             spec.beforeEach = () => { globalThis.__frames.push(['beforeEach', new Error().stack]); };\n",
+            "export function test(title) { globalThis.__frames.push([title, new Error().stack]); }\n\
+             test.configure = (options) => { globalThis.__frames.push(['configure:' + options.tags.join(), new Error().stack]); };\n\
+             test.beforeEach = () => { globalThis.__frames.push(['beforeEach', new Error().stack]); };\n",
         );
         write(
             dir,
             "tests/a.test.ts",
-            "/* Banner.\n *\n * Run: lxdev test tests/a.test.ts\n */\n\nimport { spec } from '@lingxia/test';\n\n\
-             spec.configure({ tags: ['a'] });\n\n// ── section ──\n\n\
-             spec.beforeEach(async () => {\n  // hook body\n});\n// after hook\n\
-             spec('a1', async () => {\n  // body comment first\n  const n: number = 1;\n});\n// after spec\n/* block */\n\
-             spec('a2', async () => {});\n// last line of the file is a comment\n",
+            "/* Banner.\n *\n * Run: lxdev test tests/a.test.ts\n */\n\nimport { test } from '@lingxia/test';\n\n\
+             test.configure({ tags: ['a'] });\n\n// ── section ──\n\n\
+             test.beforeEach(async () => {\n  // hook body\n});\n// after hook\n\
+             test('a1', async () => {\n  // body comment first\n  const n: number = 1;\n});\n// after test\n/* block */\n\
+             test('a2', async () => {});\n// last line of the file is a comment\n",
         );
         write(
             dir,
             "tests/b.test.ts",
-            "import { spec } from '@lingxia/test';\nspec.configure({\n  tags: ['b'],\n});\n// right after configure\n\
-             spec('b1', () => {\n}); // same-line comment\n// comment\n",
+            "import { test } from '@lingxia/test';\ntest.configure({\n  tags: ['b'],\n});\n// right after configure\n\
+             test('b1', () => {\n}); // same-line comment\n// comment\n",
         );
     }
 

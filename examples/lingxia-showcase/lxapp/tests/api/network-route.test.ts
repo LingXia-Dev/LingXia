@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import type { NetworkRouteHandler, ScenarioInput } from '@lingxia/types/automation';
 import { bindFixture } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
@@ -9,7 +9,7 @@ import status from '../scenarios/route/status.json';
 // route never fulfills a host the app's policy would refuse.
 const BASE = 'https://api.example.com/lingxia-showcase/route';
 
-spec("route Logic fetch to a faked error and a transport failure", {
+test("route Logic fetch to a faked error and a transport failure", {
   id: "AUT-NET-001",
   covers: ['NetworkDriver.route', 'NetworkDriver.requests', 'NetworkRoute.requests', 'NetworkRoute.unroute'],
   app: SHOWCASE_APP_ID,
@@ -76,7 +76,7 @@ spec("route Logic fetch to a faked error and a transport failure", {
   expect(await patch.remove()).toBeUndefined();
 });
 
-spec("reject a route handler that mixes fulfill and abort", {
+test("reject a route handler that mixes fulfill and abort", {
   id: "AUT-NET-003",
   covers: ['NetworkDriver.route'],
   app: SHOWCASE_APP_ID,
@@ -94,7 +94,7 @@ spec("reject a route handler that mixes fulfill and abort", {
   expect(message).toContain('choose one of fulfill, abort, continue, or hang');
 });
 
-spec("reject network routes from inside app Logic", {
+test("reject network routes from inside app Logic", {
   id: "AUT-NET-002",
   covers: ['NetworkDriver.route'],
   app: SHOWCASE_APP_ID,
@@ -128,7 +128,7 @@ spec("reject network routes from inside app Logic", {
   expect(rejection.message).toContain('host automation run');
 });
 
-spec("serve a scenario file with a sequence, relative times and file-order precedence", {
+test("serve a scenario file with a sequence, relative times and file-order precedence", {
   id: "AUT-NET-004",
   covers: [
     'LxAppDriver.mock',
@@ -185,7 +185,7 @@ spec("serve a scenario file with a sequence, relative times and file-order prece
   expect(await scenario.remove()).toBeUndefined();
 });
 
-spec("reject a scenario the host cannot install, naming the rule", {
+test("reject a scenario the host cannot install, naming the rule", {
   id: "AUT-NET-006",
   covers: ['MockDriver.use'],
   app: SHOWCASE_APP_ID,
@@ -223,7 +223,7 @@ spec("reject a scenario the host cannot install, naming the rule", {
 
 });
 
-spec("switch a scenario's variant mid-spec and answer renames by their JSON body", {
+test("switch a scenario's variant mid-spec and answer renames by their JSON body", {
   id: "AUT-NET-007",
   covers: ['MockDriver.use', 'Scenario.variant', 'Scenario.calls', 'Scenario.rules'],
   app: SHOWCASE_APP_ID,
@@ -280,7 +280,7 @@ spec("switch a scenario's variant mid-spec and answer renames by their JSON body
   expect(offline.rules.map((rule) => [rule.index, rule.hits])).toEqual([[1, 1], [2, 1], [3, 1], [4, 1]]);
 });
 
-spec("stream SSE answers to fetch and to Rong.SSE, which reconnects with Last-Event-ID", {
+test("stream SSE answers to fetch and to Rong.SSE, which reconnects with Last-Event-ID", {
   id: "AUT-NET-005",
   covers: ['NetworkDriver.route', 'NetworkRoute.requests'],
   app: SHOWCASE_APP_ID,

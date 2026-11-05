@@ -1,10 +1,10 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { bindFixture } from '../helpers/poll.js';
 import type { TestApp } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { runtimePlatform } from '../helpers/platform.js';
 
-spec('round-trip text, empty clipboard, and typed image items', {
+test('round-trip text, empty clipboard, and typed image items', {
   id: 'LOGIC-CLIPBOARD-001',
   covers: [
     'lx.clipboard.writeText',

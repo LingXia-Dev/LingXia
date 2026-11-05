@@ -1,4 +1,4 @@
-import { expect, spec, type Fixture, type TestApp, type TestView } from '@lingxia/test';
+import { expect, test, type Fixture, type TestApp, type TestView } from '@lingxia/test';
 import type { DesktopAxNode, DesktopWindowInfo } from '@lingxia/types/automation';
 import { runtimePlatform } from '../../helpers/platform.js';
 import { waitForElementAttribute } from '../../helpers/page.js';
@@ -150,9 +150,9 @@ function newSurfaceWindow(
     ))[0];
 }
 
-spec.configure({ skip: selectedGate ? 'a --arg gate run selects only its gate' : undefined });
+test.configure({ skip: selectedGate ? 'a --arg gate run selects only its gate' : undefined });
 
-spec('native close disposes a secondary window in the dock and tray host', {
+test('native close disposes a secondary window in the dock and tray host', {
   id: 'DESKTOP-SURFACE-NATIVE-CLOSE-001',
   covers: ['PageSurface.onClose', 'PageSurface.alive', 'PageSurface.visible'],
   app: SHOWCASE_APP_ID,
@@ -195,7 +195,7 @@ spec('native close disposes a secondary window in the dock and tray host', {
   expect(state.closed).toBe(1);
 });
 
-spec('open a page window with system chrome and with full chrome', {
+test('open a page window with system chrome and with full chrome', {
   id: 'DESKTOP-SURFACE-WINDOW-001',
   covers: [
     'lx.surface.openPage',
@@ -353,7 +353,7 @@ async function invokeCaption(
   await desktop.ax.invoke({ window: window.id, match: `id:${node.id}` });
 }
 
-spec('caption buttons stay on top and can close both chrome modes', {
+test('caption buttons stay on top and can close both chrome modes', {
   id: 'DESKTOP-SURFACE-WINDOW-CHROME-001',
   covers: [
     'lx.surface.openPage',
@@ -452,7 +452,7 @@ spec('caption buttons stay on top and can close both chrome modes', {
   }
 });
 
-spec('deliver a child page message to its opener before closing', {
+test('deliver a child page message to its opener before closing', {
   id: 'DESKTOP-SURFACE-MESSAGE-001',
   covers: ['PageSurface.onMessage', 'PageMessagePort.postMessage'],
   app: SHOWCASE_APP_ID,
@@ -525,7 +525,7 @@ spec('deliver a child page message to its opener before closing', {
   );
 });
 
-spec('push a message from the opener into its page window', {
+test('push a message from the opener into its page window', {
   id: 'DESKTOP-SURFACE-POST-001',
   covers: ['PageSurface.postMessage', 'PageSurface.close', 'PageSurface.onClose', 'PageSurface.alive'],
   app: SHOWCASE_APP_ID,

@@ -1,5 +1,5 @@
 import type { TestApp, TestView } from '@lingxia/test';
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { waitForCurrentPage, waitForElementText } from '../helpers/page.js';
 import { bindFixture, eventually } from '../helpers/poll.js';
@@ -22,7 +22,7 @@ async function makeDirty(t: Parameters<typeof waitForElementText>[0], view: Test
   await waitForElementText(t, view, '[data-testid="leave-status"]', (text) => text === 'Unsaved changes');
 }
 
-spec('a guarded page asks on user back, and leaves only once the user discards', {
+test('a guarded page asks on user back, and leaves only once the user discards', {
   id: 'UI-LEAVE-GUARD-001',
   app: SHOWCASE_APP_ID,
   timeout: 90_000,
@@ -65,7 +65,7 @@ spec('a guarded page asks on user back, and leaves only once the user discards',
   });
 });
 
-spec('home asks too, and a confirmed home goes home', {
+test('home asks too, and a confirmed home goes home', {
   id: 'UI-LEAVE-GUARD-004',
   app: SHOWCASE_APP_ID,
   timeout: 90_000,
@@ -88,7 +88,7 @@ spec('home asks too, and a confirmed home goes home', {
   expect(home.name).toBe('home');
 });
 
-spec('saving releases the guard', {
+test('saving releases the guard', {
   id: 'UI-LEAVE-GUARD-002',
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
@@ -103,7 +103,7 @@ spec('saving releases the guard', {
   expect(landed.name).toBe('api');
 });
 
-spec('a programmatic back is never held', {
+test('a programmatic back is never held', {
   id: 'UI-LEAVE-GUARD-003',
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
@@ -117,7 +117,7 @@ spec('a programmatic back is never held', {
   expect(landed.name).toBe('api');
 });
 
-spec('tab labels and titles declared per language follow the display language', {
+test('tab labels and titles declared per language follow the display language', {
   id: 'UI-LOCALIZED-CHROME-001',
   covers: ['lx.host.control.displayLanguage.setPreference'],
   app: SHOWCASE_APP_ID,

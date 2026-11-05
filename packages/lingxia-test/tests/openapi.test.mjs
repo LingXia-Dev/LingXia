@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
-import { spec, expect } from "../dist/index.js";
+import { test as lxTest, expect } from "../dist/index.js";
 import { reset, run } from "../dist/runner.js";
 import { validateSchema } from "../dist/schema.js";
 import { OpenApiIndex, compileTemplate, pathOf, templateMatches } from "../dist/openapi.js";
@@ -282,7 +282,7 @@ test("toMatchSchema fails clearly without --openapi, and checks with it", async 
   world.app.network = capturingNetwork([]);
   installFakeHost(world, { control: { openapi: JSON.stringify([{ name: "devices.yaml", doc: API }]) } });
   const seen = [];
-  spec("schema assertions", async () => {
+  lxTest("schema assertions", async () => {
     expect({ id: "d1", name: "Office", room: null }).toMatchSchema("Device");
     expect({ id: "d1" }).not.toMatchSchema("Device");
     expect({ error: "x" }).toMatchSchema({ ref: "#/components/schemas/Problem", document: "devices.yaml" });
@@ -312,7 +312,7 @@ test("t.openapi names the run's documents; without them a spec can skip itself",
     if (!t.openapi) t.skip("needs its OpenAPI document: run with --openapi");
     expect({ id: "d1", name: "Office", room: null }).toMatchSchema("Device");
   };
-  spec("contract only", contractOnly);
+  lxTest("contract only", contractOnly);
   let report = await run();
   assert.equal(report.cases[0].status, "skipped");
   assert.match(report.cases[0].reason, /needs its OpenAPI document/);
@@ -322,7 +322,7 @@ test("t.openapi names the run's documents; without them a spec can skip itself",
   withContract.app.network = capturingNetwork([]);
   installFakeHost(withContract, { control: { openapi: JSON.stringify([{ name: "devices.yaml", doc: API }]) } });
   let documents;
-  spec("contract only", async (t) => {
+  lxTest("contract only", async (t) => {
     documents = t.openapi?.documents;
     await contractOnly(t);
   });
@@ -360,17 +360,17 @@ test("routed mismatches fail the spec; the server's are warnings", async () => {
   let seq = 0;
   const hit = (overrides) => records.push({ seq: ++seq, source: "network", pattern: null, timestamp: 0, ...response(overrides) });
 
-  spec("routed list", async () => {
+  lxTest("routed list", async () => {
     hit({ source: "route", pattern: "**/v1/devices", body: JSON.stringify({ items: [{ id: "d1" }], total: 1 }) });
   });
-  spec("live list", async () => {
+  lxTest("live list", async () => {
     hit({ body: JSON.stringify({ items: [], total: "none" }) });
     hit({ url: "https://metrics.example.com/beacon", contentType: "text/plain", body: null });
   });
-  spec("clean", async () => {
+  lxTest("clean", async () => {
     hit({ source: "patch", pattern: "**/v1/devices" });
   });
-  spec.fail("known stale fixture", { expected: { code: "E_OPENAPI_CONTRACT" } }, async () => {
+  lxTest.fail("known stale fixture", { expected: { code: "E_OPENAPI_CONTRACT" } }, async () => {
     hit({ source: "route", pattern: "**/v1/devices", body: JSON.stringify({ items: [], total: "0" }) });
   });
 
@@ -413,7 +413,7 @@ test("a contract failure after a locator timed out on a hidden page carries no h
   world.app.page.eval = async (options) => /visibilityState/.test(options.script)
     ? { state: "hidden", animationFrames: false } : evalPage(options);
   installFakeHost(world, { control: { openapi: JSON.stringify([{ name: "devices.yaml", doc: API }]) } });
-  spec("stale fixture on a hidden page", async (t) => {
+  lxTest("stale fixture on a hidden page", async (t) => {
     // A locator failure the spec expected: not what failed it.
     await t.reject(() => t.app.view.testId("sheet").click({ timeout: 50 }));
     records.push({ seq: 1, source: "route", pattern: "**/v1/devices", timestamp: 0,
@@ -434,8 +434,8 @@ test("a host that cannot capture responses fails the spec through normal cleanup
   const { attempts } = installFakeHost(world, {
     control: { openapi: JSON.stringify([{ name: "api.json", doc: API }]) }, attempts: true,
   });
-  spec("one", async () => {});
-  spec("two", async () => {});
+  lxTest("one", async () => {});
+  lxTest("two", async () => {});
   const report = await run();
   assert.equal(report.cases[0].status, "failed");
   assert.match(report.cases[0].error.message, /captureResponses is not a function/);

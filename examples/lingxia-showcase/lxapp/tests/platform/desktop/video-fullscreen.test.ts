@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import type { DesktopWindowInfo } from '@lingxia/types/automation';
 import { SHOWCASE_APP_ID } from '../../helpers/app.js';
 import { currentPageOrNull, waitForCurrentPage, waitForCurrentPageVisible, waitForElementText } from '../../helpers/page.js';
@@ -10,7 +10,7 @@ const selectedGate = testArgs.gate?.toLocaleLowerCase();
 // Windows rejects `requestFullScreen` with an internal error, so the contract
 // is proven where the host implements it; PEND-VIDEO-FS-WINDOWS-001 owns the gap.
 const targetPlatform = testArgs.platform?.toLowerCase();
-spec.configure({
+test.configure({
   skip: httpBase && !selectedGate && targetPlatform !== 'windows'
     ? undefined
     : 'needs --arg httpBase; not on Windows or in a gate run',
@@ -32,7 +32,7 @@ function showcaseHost(windows: DesktopWindowInfo[]): DesktopWindowInfo | undefin
     ))[0];
 }
 
-spec('enter and leave native video fullscreen from VideoContext', {
+test('enter and leave native video fullscreen from VideoContext', {
   id: 'DESKTOP-VIDEO-FULLSCREEN-001',
   covers: ['lx.createVideoContext', 'VideoContext.requestFullScreen', 'VideoContext.exitFullScreen', 'DesktopDriver.windows', 'DesktopDriver.displays'],
   app: SHOWCASE_APP_ID,

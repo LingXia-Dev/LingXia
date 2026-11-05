@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
-import { spec } from "../dist/index.js";
+import { test as lxTest } from "../dist/index.js";
 import { reset, run } from "../dist/runner.js";
 import { runBudget, shuffleWithSeed } from "../dist/runtime.js";
 
@@ -36,7 +36,7 @@ test("shuffle and repeat-each plan every execution, reproducibly", async () => {
     const world = createWorld();
     const { events } = installFakeHost(world, { control });
     const ran = [];
-    for (const name of ["alpha", "beta", "gamma", "delta"]) spec(name, async () => { ran.push(name); });
+    for (const name of ["alpha", "beta", "gamma", "delta"]) lxTest(name, async () => { ran.push(name); });
     const report = await run();
     return { ran, report, events };
   };
@@ -63,16 +63,16 @@ test("an exhausted budget reports N/M and skips the rest as not run", async () =
   const world = createWorld();
   const { events } = installFakeHost(world, { control: { budgetMs: "60" } });
   const ran = [];
-  spec("slow", async () => { ran.push("slow"); await new Promise((resolve) => setTimeout(resolve, 90)); });
-  spec("second", async () => { ran.push("second"); });
-  spec("third", async () => { ran.push("third"); });
+  lxTest("slow", async () => { ran.push("slow"); await new Promise((resolve) => setTimeout(resolve, 90)); });
+  lxTest("second", async () => { ran.push("second"); });
+  lxTest("third", async () => { ran.push("third"); });
 
   const report = await run();
   assert.deepEqual(ran, ["slow"]);
   assert.equal(report.partial, true);
   assert.equal(report.skipped, 2);
   assert.deepEqual(report.meta.budget, { ms: 60, auto: false, planned: 3, exhausted_after: 1 });
-  assert.match(report.cases[1].reason, /exhausted after 1\/3 specs/);
+  assert.match(report.cases[1].reason, /exhausted after 1\/3 tests/);
   const diagnostic = events.find((e) => e.type === "diagnostic" && e.phase === "budget");
-  assert.match(diagnostic?.message ?? "", /exhausted after 1\/3 specs/);
+  assert.match(diagnostic?.message ?? "", /exhausted after 1\/3 tests/);
 });

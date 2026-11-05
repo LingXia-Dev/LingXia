@@ -1,6 +1,6 @@
 import type { Fixture, LogicPage, TestApp, TestView } from '@lingxia/test';
 import { currentPageOrNull, waitForCurrentPage, waitForElementText } from '../helpers/page.js';
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { bindFixture, eventually, specNamespace } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import type { ProbeElement } from '../helpers/view.js';
@@ -11,7 +11,7 @@ interface SurfaceLifecycleState {
   lastLifecycle: string;
 }
 
-spec('preserve hyphenated routes through show and ready', { id: 'PAGE-LIFECYCLE-008', covers: ['lx.navigateTo', 'lx.navigateBack'], app: SHOWCASE_APP_ID }, async (t) => {
+test('preserve hyphenated routes through show and ready', { id: 'PAGE-LIFECYCLE-008', covers: ['lx.navigateTo', 'lx.navigateBack'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, defer } = bindFixture(t, 'PAGE-LIFECYCLE-008');
   defer(async () => {
     await app.nav.relaunch({ page: 'home' });
@@ -53,7 +53,7 @@ async function waitForSurfaceLifecycle(
   return state;
 }
 
-spec("fire onShow/onHide on the same page instance across navigation", { id: "PAGE-LIFECYCLE-001", covers: ['lx.navigateTo', 'lx.navigateBack'], app: SHOWCASE_APP_ID }, async (t) => {
+test("fire onShow/onHide on the same page instance across navigation", { id: "PAGE-LIFECYCLE-001", covers: ['lx.navigateTo', 'lx.navigateBack'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, defer } = bindFixture(t, "PAGE-LIFECYCLE-001");
 
   defer(async () => {
@@ -85,7 +85,7 @@ spec("fire onShow/onHide on the same page instance across navigation", { id: "PA
   expect(reshown.lastLifecycle).toBe('onShow (#2)');
 });
 
-spec('relaunching the same route keeps the replacement page shown', {
+test('relaunching the same route keeps the replacement page shown', {
   id: 'PAGE-LIFECYCLE-009',
   covers: ['lx.reLaunch'],
   app: SHOWCASE_APP_ID,
@@ -168,7 +168,7 @@ const waitForViewCounter = (t: Fixture, view: TestView, expected: string) => wai
   (text) => text.trim() === expected,
 );
 
-spec("reset logic data and the rendered document when a page is re-entered", { id: "PAGE-LIFECYCLE-002", covers: ['lx.navigateTo', 'lx.navigateBack'], app: SHOWCASE_APP_ID, timeout: 45_000 }, async (t) => {
+test("reset logic data and the rendered document when a page is re-entered", { id: "PAGE-LIFECYCLE-002", covers: ['lx.navigateTo', 'lx.navigateBack'], app: SHOWCASE_APP_ID, timeout: 45_000 }, async (t) => {
   const { app, defer } = bindFixture(t, "PAGE-LIFECYCLE-002");
 
   defer(async () => {
@@ -217,7 +217,7 @@ spec("reset logic data and the rendered document when a page is re-entered", { i
   expect(await second.view.testId('lifecycle-popup').count()).toBe(0);
 });
 
-spec("stack two live instances of one route and unwind them independently", { id: "PAGE-LIFECYCLE-003", covers: ['lx.navigateTo', 'lx.navigateBack'], app: SHOWCASE_APP_ID }, async (t) => {
+test("stack two live instances of one route and unwind them independently", { id: "PAGE-LIFECYCLE-003", covers: ['lx.navigateTo', 'lx.navigateBack'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, defer } = bindFixture(t, "PAGE-LIFECYCLE-003");
 
   defer(async () => {
@@ -284,7 +284,7 @@ spec("stack two live instances of one route and unwind them independently", { id
   await waitForCurrentPage(app, 'home');
 });
 
-spec('deliver exactly one onLoad and one onReady to a re-entered page', {
+test('deliver exactly one onLoad and one onReady to a re-entered page', {
   id: 'PAGE-LIFECYCLE-004',
   covers: ['lx.navigateTo', 'lx.navigateBack'],
   app: SHOWCASE_APP_ID,
@@ -330,7 +330,7 @@ spec('deliver exactly one onLoad and one onReady to a re-entered page', {
   expect(count('onShow')).toBe(1);
 });
 
-spec("park a left page instead of re-rendering it off-screen", { id: "PAGE-LIFECYCLE-005", covers: ['lx.navigateBack'], app: SHOWCASE_APP_ID }, async (t) => {
+test("park a left page instead of re-rendering it off-screen", { id: "PAGE-LIFECYCLE-005", covers: ['lx.navigateBack'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, defer } = bindFixture(t, "PAGE-LIFECYCLE-005");
 
   defer(async () => {
@@ -356,7 +356,7 @@ spec("park a left page instead of re-rendering it off-screen", { id: "PAGE-LIFEC
   expect(second.previousInstanceTag).toBe(first.instanceTag);
 });
 
-spec("fire onLoad once per tab instance, not on preload or later switchTab", {
+test("fire onLoad once per tab instance, not on preload or later switchTab", {
   id: "PAGE-LIFECYCLE-007",
   covers: ['lx.switchTab'],
   app: SHOWCASE_APP_ID,
@@ -395,7 +395,7 @@ spec("fire onLoad once per tab instance, not on preload or later switchTab", {
   expect(second).toBe(1);
 });
 
-spec("unload a pushed page dropped by switchTab", { id: "PAGE-LIFECYCLE-006", covers: ['lx.switchTab', 'lx.navigateTo'], app: SHOWCASE_APP_ID }, async (t) => {
+test("unload a pushed page dropped by switchTab", { id: "PAGE-LIFECYCLE-006", covers: ['lx.switchTab', 'lx.navigateTo'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, defer } = bindFixture(t, "PAGE-LIFECYCLE-006");
 
   defer(async () => {

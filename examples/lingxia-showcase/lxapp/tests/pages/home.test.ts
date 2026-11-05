@@ -1,5 +1,5 @@
 import type { TestApp } from '@lingxia/test';
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import type { LxAppRuntimeTabBarInfo } from '@lingxia/types/automation';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { eventually } from '../helpers/poll.js';
@@ -28,7 +28,7 @@ async function waitForTabBar(
   );
 }
 
-spec('home View MessagePort is up without relaunch', async (t) => {
+test('home View MessagePort is up without relaunch', async (t) => {
   const app = t.automation.lxapp(SHOWCASE_APP_ID);
   const current = await currentPageOrNull(app);
   if (current?.name !== 'home') {
@@ -39,7 +39,7 @@ spec('home View MessagePort is up without relaunch', async (t) => {
   await waitForCurrentPage(app, 'home', 20_000);
 });
 
-spec('greets through real page input and the Logic bridge', async (t) => {
+test('greets through real page input and the Logic bridge', async (t) => {
   const app = t.automation.lxapp(SHOWCASE_APP_ID);
   await app.nav.relaunch({ page: 'home' });
   await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
@@ -70,7 +70,7 @@ spec('greets through real page input and the Logic bridge', async (t) => {
   )).toContain(name);
 });
 
-spec('switches display language from the home control', {
+test('switches display language from the home control', {
   id: 'UI-LANGUAGE-001',
   covers: [
     'lx.host.displayLanguage.watch',

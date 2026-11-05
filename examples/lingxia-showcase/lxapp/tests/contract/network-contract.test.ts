@@ -1,4 +1,4 @@
-import { expect, spec, type Fixture } from '@lingxia/test';
+import { expect, test, type Fixture } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
 // Contract checks for routed Logic fetch, run with their document:
@@ -9,9 +9,9 @@ import { SHOWCASE_APP_ID } from '../helpers/app.js';
 // Every response a route fulfills is validated against the document; one
 // that breaks it fails its spec with E_OPENAPI_CONTRACT. Without --openapi
 // (`lxdev test tests/`, a platform entry) they skip themselves.
-spec.configure({ tags: ['routed', 'contract'] });
+test.configure({ tags: ['routed', 'contract'] });
 
-spec.beforeEach((t) => {
+test.beforeEach((t) => {
   if (!t.openapi) {
     t.skip('needs its OpenAPI document: run with --openapi tests/contract/devices.openapi.yaml');
   }
@@ -26,7 +26,7 @@ async function fetchJson(t: Fixture, url: string, method = 'GET') {
   }, url, method);
 }
 
-spec('a routed device list follows the contract', {
+test('a routed device list follows the contract', {
   id: 'CONTRACT-001',
   covers: ['CONTRACT-LIST'],
   app: SHOWCASE_APP_ID,
@@ -41,7 +41,7 @@ spec('a routed device list follows the contract', {
   expect((body as { items: unknown[] }).items[0]).toMatchSchema('Device');
 });
 
-spec('a routed client error carries a problem body', {
+test('a routed client error carries a problem body', {
   id: 'CONTRACT-002',
   covers: ['CONTRACT-ERROR'],
   app: SHOWCASE_APP_ID,
@@ -56,7 +56,7 @@ spec('a routed client error carries a problem body', {
   expect(body).toMatchSchema({ ref: '#/components/schemas/Problem' });
 });
 
-spec.fail('a fixture that drifted from the contract fails its spec', {
+test.fail('a fixture that drifted from the contract fails its spec', {
   id: 'CONTRACT-003',
   covers: ['CONTRACT-RENAME'],
   app: SHOWCASE_APP_ID,

@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { bindFixture, type Caught } from '../helpers/poll.js';
 
@@ -16,7 +16,7 @@ const bannerSkip = DESKTOP_HOSTS.has(testArgs.platform?.toLocaleLowerCase() ?? '
   ? undefined
   : 'host banners are desktop only';
 
-spec('publish the lxapp sandbox roots through lx.env', {
+test('publish the lxapp sandbox roots through lx.env', {
   id: 'ENV-001',
   covers: ['lx.env', 'lx.env.USER_DATA_PATH', 'lx.env.USER_CACHE_PATH'],
   app: SHOWCASE_APP_ID,
@@ -40,7 +40,7 @@ spec('publish the lxapp sandbox roots through lx.env', {
   expect(env.stable).toBeTruthy();
 });
 
-spec('capture a host app screenshot into the lxapp sandbox', {
+test('capture a host app screenshot into the lxapp sandbox', {
   id: 'HOSTAPP-SHOT-001',
   covers: ['lx.host', 'lx.host.screenshot'],
   app: SHOWCASE_APP_ID,
@@ -70,7 +70,7 @@ spec('capture a host app screenshot into the lxapp sandbox', {
   expect(shot.bytes).toBeGreaterThan(0);
 });
 
-spec('set and clear the host app badge without leaving one behind', {
+test('set and clear the host app badge without leaving one behind', {
   id: 'HOSTAPP-BADGE-001',
   covers: ['lx.host.setBadge'],
   app: SHOWCASE_APP_ID,
@@ -98,7 +98,7 @@ spec('set and clear the host app badge without leaving one behind', {
   }
 });
 
-spec('tell a hidden tray from a shown one in what setBadge reports', {
+test('tell a hidden tray from a shown one in what setBadge reports', {
   id: 'HOSTAPP-BADGE-004',
   covers: ['lx.host.setBadge', 'lx.tray.show', 'lx.tray.hide'],
   app: SHOWCASE_APP_ID,
@@ -126,7 +126,7 @@ spec('tell a hidden tray from a shown one in what setBadge reports', {
   expect(shown === true || shown === false).toBe(true);
 });
 
-spec('report a surface this platform does not have instead of failing', {
+test('report a surface this platform does not have instead of failing', {
   id: 'HOSTAPP-BADGE-003',
   covers: ['lx.host.setBadge'],
   app: SHOWCASE_APP_ID,
@@ -166,7 +166,7 @@ spec('report a surface this platform does not have instead of failing', {
   expect(bad.code).toBe('E_INVALID_ARG');
 });
 
-spec('reject a badge value that is neither a string, a number, nor null', {
+test('reject a badge value that is neither a string, a number, nor null', {
   id: 'HOSTAPP-BADGE-002',
   covers: ['lx.host.setBadge'],
   app: SHOWCASE_APP_ID,
@@ -203,7 +203,7 @@ spec('reject a badge value that is neither a string, a number, nor null', {
   }
 });
 
-spec('answer checkUpdate with a decision instead of throwing', {
+test('answer checkUpdate with a decision instead of throwing', {
   id: 'HOSTAPP-UPDATE-001',
   covers: ['lx.host.checkUpdate', 'lx.getUpdateManager', 'UpdateManager.onUpdateReady', 'UpdateManager.onUpdateFailed'],
   app: SHOWCASE_APP_ID,
@@ -232,7 +232,7 @@ spec('answer checkUpdate with a decision instead of throwing', {
   else expect(result.version).toBe(null);
 });
 
-spec('reject an invalid host display language', {
+test('reject an invalid host display language', {
   id: 'HOSTAPP-LANG-002',
   covers: ['lx.host.control.displayLanguage.setPreference'],
   app: SHOWCASE_APP_ID,
@@ -257,7 +257,7 @@ spec('reject an invalid host display language', {
   }
 });
 
-spec('subscribe to and release the display language listener', {
+test('subscribe to and release the display language listener', {
   id: 'HOSTAPP-LANG-001',
   covers: ['lx.host.displayLanguage.watch'],
   app: SHOWCASE_APP_ID,
@@ -277,7 +277,7 @@ spec('subscribe to and release the display language listener', {
   expect(result.distinct).toBeTruthy();
 });
 
-spec('request permission and replace local notifications by id', {
+test('request permission and replace local notifications by id', {
   id: 'HOSTAPP-NOTIFICATION-001',
   covers: [
     'lx.host.notification',
@@ -383,7 +383,7 @@ spec('request permission and replace local notifications by id', {
   expect(result.rejected).toEqual({ http: true, page: true, title: true, both: true, emptyId: true });
 });
 
-spec('show a toast, dismiss a prompt, and reject bad banner options', {
+test('show a toast, dismiss a prompt, and reject bad banner options', {
   skip: bannerSkip,
   id: 'HOSTAPP-BANNER-001',
   covers: [
@@ -468,7 +468,7 @@ spec('show a toast, dismiss a prompt, and reject bad banner options', {
   expect(result.rejected).toEqual({ title: true, emptyId: true, tooMany: true, background: true });
 });
 
-spec('report autostart state and accept an idempotent write', {
+test('report autostart state and accept an idempotent write', {
   skip: autostartSkip,
   id: 'HOSTAPP-AUTOSTART-001',
   covers: ['lx.host.autostart', 'lx.host.autostart.isEnabled', 'lx.host.autostart.setEnabled'],
@@ -503,7 +503,7 @@ spec('report autostart state and accept an idempotent write', {
   expect(result.after).toBe(result.before);
 });
 
-spec('clear product caches while preserving live app storage', {
+test('clear product caches while preserving live app storage', {
   id: 'HOSTAPP-CACHE-001',
   covers: ['lx.host.cache', 'lx.host.cache.size', 'lx.host.cache.clear'],
   app: SHOWCASE_APP_ID,
@@ -545,7 +545,7 @@ spec('clear product caches while preserving live app storage', {
   expect(result.kv).toBe('keep');
 });
 
-spec('show, label, and retract the host tray item', {
+test('show, label, and retract the host tray item', {
   id: 'HOSTAPP-TRAY-001',
   covers: [
     'lx.tray',
@@ -586,7 +586,7 @@ spec('show, label, and retract the host tray item', {
   expect(result.unsubscribe).toBe('function');
 });
 
-spec('declare, patch, and retract runtime sidebar actions atomically', {
+test('declare, patch, and retract runtime sidebar actions atomically', {
   id: 'HOSTAPP-SIDEBAR-001',
   covers: [
     'lx.shell',
@@ -809,7 +809,7 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
   });
 });
 
-spec('reject shell surface reconfigure for an id the shell never realized', {
+test('reject shell surface reconfigure for an id the shell never realized', {
   id: 'HOSTAPP-SHELL-RECONFIG-001',
   covers: ['lx.shell.reconfigure'],
   app: SHOWCASE_APP_ID,
@@ -831,7 +831,7 @@ spec('reject shell surface reconfigure for an id the shell never realized', {
   expect(String(result.code).length).toBeGreaterThan(0);
 });
 
-spec('subscribe to and release the surface context listener', {
+test('subscribe to and release the surface context listener', {
   id: 'HOSTAPP-SURFACE-CTX-001',
   covers: ['lx.surface', 'lx.surface.watchContext'],
   app: SHOWCASE_APP_ID,

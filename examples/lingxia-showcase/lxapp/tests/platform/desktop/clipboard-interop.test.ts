@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../../helpers/app.js';
 import { runtimePlatform } from '../../helpers/platform.js';
 import { bindFixture } from '../../helpers/poll.js';
@@ -13,7 +13,7 @@ import { bindFixture } from '../../helpers/poll.js';
  * The driver runs in the host process, so neither direction raises the macOS
  * paste prompt. The person's clipboard text is put back afterwards.
  */
-spec('lx.clipboard reads and writes the same clipboard the OS sees', {
+test('lx.clipboard reads and writes the same clipboard the OS sees', {
   id: 'DESKTOP-CLIPBOARD-001',
   covers: [
     'lx.clipboard.readText',

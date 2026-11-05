@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { rawAutomation } from '@lingxia/test/runner';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { waitForCurrentPageVisible } from '../helpers/page.js';
@@ -105,7 +105,7 @@ const SHAPE_COVERS = [
     .flatMap((surface) => surface.members.map((member) => `shape:${surface.name}.${member}`)),
 ];
 
-spec('publish every public runtime and returned-object member', {
+test('publish every public runtime and returned-object member', {
   id: 'SHAPE-RUNTIME',
   covers: SHAPE_COVERS,
   app: SHOWCASE_APP_ID,

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
-import { spec } from "../dist/index.js";
+import { test as lxTest } from "../dist/index.js";
 import { reset, run } from "../dist/runner.js";
 import { renderHtml } from "../dist/report.js";
 
@@ -77,7 +77,7 @@ test("routes are traced, scoped to their spec, and removed when it ends", async 
   installFakeHost(world);
   let seenAfterFirst;
 
-  spec("first", async (t) => {
+  lxTest("first", async (t) => {
     const route = await t.app.network.route(
       { url: "/v1/devices", method: "patch", times: 1 },
       { status: 501, json: { error: "unsupported_by_firmware" } },
@@ -94,7 +94,7 @@ test("routes are traced, scoped to their spec, and removed when it ends", async 
     assert.equal(await route.remove(), undefined, "removing an expired route is not an error");
     assert.equal(t.app.network.removeAll, undefined, "routes are spec-scoped; there is no removeAll");
   });
-  spec("second", async (t) => {
+  lxTest("second", async (t) => {
     seenAfterFirst = network.routes.size;
     await t.app.network.route("/v1/clients", { abort: "failed" });
     await t.app.network.route("/v1/slow", { status: 202, delay: 300 });
@@ -136,7 +136,7 @@ test("route.waitForCall hands out calls in order, then times out listing recent 
   const seen = [];
   let failure;
 
-  spec("waits", { forensics: false }, async (t) => {
+  lxTest("waits", { forensics: false }, async (t) => {
     const route = await t.app.network.route("/v1/save", { status: 204 });
     // A call made before the wait is still the first one handed out.
     network.hit("https://h/v1/save?n=1", { method: "POST", status: 204 });
@@ -173,7 +173,7 @@ test("reading t.app.network never throws; a host without routing fails the call"
   let read;
   let rejected;
 
-  spec("unsupported host", async (t) => {
+  lxTest("unsupported host", async (t) => {
     read = typeof t.app.network.route;
     try {
       await t.app.network.route("**", { status: 200 });
@@ -190,7 +190,7 @@ test("reading t.app.network never throws; a host without routing fails the call"
 test("a host without test routing does not break t.app", async () => {
   const world = createWorld();
   installFakeHost(world);
-  spec("no network", async (t) => {
+  lxTest("no network", async (t) => {
     await t.app.info();
   });
   assert.equal((await run()).failed, 0);
@@ -276,7 +276,7 @@ test("t.scenario.use installs a variant for one spec, traces it, and lists its c
     },
   };
 
-  spec("variants", async (t) => {
+  lxTest("variants", async (t) => {
     const a = await t.scenario.use(wifi, { variant: "a" });
     assert.equal(a.variant, "a");
     // Switching variants mid-spec replaces the first.
@@ -289,7 +289,7 @@ test("t.scenario.use installs a variant for one spec, traces it, and lists its c
     seen = await b.calls({ function: "orders.submit" });
     removed = await b.remove();
   });
-  spec("after", async () => {});
+  lxTest("after", async () => {});
 
   const report = await run();
   assert.equal(report.failed, 0, JSON.stringify(report.cases));
@@ -313,7 +313,7 @@ test("scenario calls name what answered; waitForCall waits per target", async ()
   const got = {};
   let failure;
 
-  spec("targets", { forensics: false }, async (t) => {
+  lxTest("targets", { forensics: false }, async (t) => {
     const scenario = await t.scenario.use({
       name: "Orders",
       rules: [{ http: "POST **/orders", status: 201, json: {} }, { function: "orders.status", result: "ok" }],
@@ -352,9 +352,9 @@ test("each spec starts with fresh mock handler state; a companion that cannot is
   scenarios.companion = { reset: false, reason: "its handlers are rebuilt, not reset" };
   const { events } = installFakeHost(world);
   const seen = [];
-  spec("one", async () => { seen.push(scenarios.resets); });
-  spec("two", async () => { seen.push(scenarios.resets); });
-  spec("three", async (t) => {
+  lxTest("one", async () => { seen.push(scenarios.resets); });
+  lxTest("two", async () => { seen.push(scenarios.resets); });
+  lxTest("three", async (t) => {
     seen.push(scenarios.resets);
     const scenario = await t.scenario.use({ rules: [{ http: "GET **/a", json: {} }] });
     scenarios.hit(null, { kind: "http", method: "GET", url: "https://h/b", status: 200, time: 1, answeredBy: "mock (GET **/b)" });
@@ -368,7 +368,7 @@ test("each spec starts with fresh mock handler state; a companion that cannot is
   assert.deepEqual(seen, [1, 2, 3, ["mock", "mock"]]);
   const notes = events.filter((event) => event.type === "diagnostic" && event.phase === "mock");
   assert.equal(notes.length, 1, JSON.stringify(events));
-  assert.match(notes[0].message, /not reset per spec: its handlers are rebuilt, not reset/);
+  assert.match(notes[0].message, /not reset per test: its handlers are rebuilt, not reset/);
 });
 
 test("t.scenario.use rejections reach the spec as they are", async () => {
@@ -376,7 +376,7 @@ test("t.scenario.use rejections reach the spec as they are", async () => {
   fakeScenarios(world.app);
   installFakeHost(world);
   let message;
-  spec("old format", async (t) => {
+  lxTest("old format", async (t) => {
     try {
       await t.scenario.use({ routes: [] });
     } catch (error) {
@@ -398,7 +398,7 @@ test("a failed spec reports its scenario, per-rule hits and who answered each ca
       answeredBy: "real", noMatch: "no rule matched PATCH https://h/devices/1 (1 rule for this target: rule 3 match.json.name: missing)" },
   ];
 
-  spec("shows the wrong network", async (t) => {
+  lxTest("shows the wrong network", async (t) => {
     await t.scenario.use({
       name: "Wi-Fi",
       rules: [{ http: "PATCH **/devices/*", match: { json: { name: "Office" } }, status: 409 }],
@@ -439,8 +439,8 @@ test("a failed spec reports the app's last Logic network calls, secrets masked",
     ];
   };
 
-  spec("passes", async () => {});
-  spec("rename fails", async () => {
+  lxTest("passes", async () => {});
+  lxTest("rename fails", async () => {
     throw new Error("rename-error never showed");
   });
 
@@ -475,7 +475,7 @@ test("--record-network attaches each spec's scenario and masks secrets", async (
       : null;
   };
 
-  spec("records", { id: "rec-1" }, async () => {});
+  lxTest("records", { id: "rec-1" }, async () => {});
   const report = await run();
   assert.equal(report.failed, 0);
   assert.deepEqual(calls, [["start", undefined], ["stop", "records"]]);
@@ -489,7 +489,7 @@ test("--record-network attaches each spec's scenario and masks secrets", async (
 test("--record-network on a host without recording fails the run", async () => {
   const world = createWorld();
   installFakeHost(world, { control: { recordNetwork: "1" } });
-  spec("records nothing", async () => {});
+  lxTest("records nothing", async () => {});
   await assert.rejects(() => run(), /--record-network needs a host that records network traffic/);
 });
 
@@ -497,7 +497,7 @@ test("--record-network on a host without recording fails the run", async () => {
 /** Run one spec and hand back what it caught, with the report. */
 async function catching(body) {
   const caught = {};
-  spec("waits", { forensics: false }, async (t) => { await body(t, caught); });
+  lxTest("waits", { forensics: false }, async (t) => { await body(t, caught); });
   const report = await run();
   assert.equal(report.failed, 0, JSON.stringify(report.cases));
   return caught;

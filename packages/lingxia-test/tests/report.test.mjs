@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
-import { spec, expect } from "../dist/index.js";
+import { test as lxTest, expect } from "../dist/index.js";
 import { reset, trackPublicSurface } from "../dist/runner.js";
 import { looksSecretKey } from "../dist/redact.js";
 
@@ -20,7 +20,7 @@ function decodeAttachment(attachments, name) {
 
 test("a late equality difference survives truncated previews", async () => {
   const { attachments } = installFakeHost(createWorld());
-  spec("compares the full value", { id: "DIFF-LATE", forensics: false }, () => {
+  lxTest("compares the full value", { id: "DIFF-LATE", forensics: false }, () => {
     expect(`${"x".repeat(160)}a`).toEqual(`${"x".repeat(160)}b`);
   });
   await globalThis.__LINGXIA_TEST__.run();
@@ -34,7 +34,7 @@ test("a late equality difference survives truncated previews", async () => {
 
 test("report timeline preserves step, assertion and attachment order", async () => {
   const { attachments } = installFakeHost(createWorld());
-  spec("records the process", { id: "TRACE-ORDER", forensics: false }, async (t) => {
+  lxTest("records the process", { id: "TRACE-ORDER", forensics: false }, async (t) => {
     await t.step("prepare", async () => {
       expect(1).toBe(1);
       await t.attach("input.txt", "order-42");
@@ -59,7 +59,7 @@ test("passing attempt reports bounded network provenance and links timeline atta
     networkLog: () => [{ time: networkStart, kind: "fetch", method: "POST", url: "https://api.example/orders",
       status: 201, durationMs: 12, source: "route", answeredBy: "rule 1 (orders:ready)" }],
   });
-  spec("creates an order", { id: "TRACE-NETWORK", forensics: false }, async (t) => {
+  lxTest("creates an order", { id: "TRACE-NETWORK", forensics: false }, async (t) => {
     await t.step("create", async () => {
       advanceClock = false;
       networkStart = Date.now();
@@ -87,8 +87,8 @@ test("the network summary counts every call; only the latest 20 are listed", asy
     url: `https://api.example/${i}`, status: 200, durationMs: 1, source: i % 5 === 0 ? "route" : "network" }));
   let count = 20;
   const { attachments } = installFakeHost(createWorld(), { networkLog: (_since, limit) => calls(count).slice(-limit) });
-  spec("exactly twenty", { forensics: false }, () => {});
-  spec("twenty-five", { forensics: false }, () => { count = 25; });
+  lxTest("exactly twenty", { forensics: false }, () => {});
+  lxTest("twenty-five", { forensics: false }, () => { count = 25; });
   await globalThis.__LINGXIA_TEST__.run();
   const [twenty, more] = JSON.parse(decodeAttachment(attachments, "report.json")).cases;
   assert.deepEqual(twenty.network_summary, { observed: 20, routed: 4, real: 16, limit_reached: false });
@@ -98,18 +98,18 @@ test("the network summary counts every call; only the latest 20 are listed", asy
 
 test("scoped nesting after await keeps its parent and overlapping top-level steps fail closed", async () => {
   const { attachments } = installFakeHost(createWorld());
-  spec("scoped nesting", { id: "STEP-NEST", forensics: false }, async (t) => {
+  lxTest("scoped nesting", { id: "STEP-NEST", forensics: false }, async (t) => {
     await t.step("outer", async (step) => {
       await Promise.resolve();
       await step.step("inner", async () => { expect(1).toBe(1); });
     });
   });
-  spec("ambiguous overlap", { id: "STEP-OVERLAP", forensics: false }, async (t) => {
+  lxTest("ambiguous overlap", { id: "STEP-OVERLAP", forensics: false }, async (t) => {
     const first = t.step("A", async () => { await Promise.resolve(); expect(2).toBe(2); });
     const second = t.step("B", async () => {});
     await Promise.allSettled([first, second]);
   });
-  spec("ambiguous sibling overlap", { id: "STEP-SIBLING", forensics: false }, async (t) => {
+  lxTest("ambiguous sibling overlap", { id: "STEP-SIBLING", forensics: false }, async (t) => {
     await t.step("outer", async (step) => {
       const first = step.step("A", async () => { await Promise.resolve(); expect(3).toBe(3); });
       const second = step.step("B", async () => {});
@@ -129,15 +129,15 @@ test("scoped nesting after await keeps its parent and overlapping top-level step
 
 test("a caught step failure is the body's to handle; an unawaited child still fails the case", async () => {
   const { attachments } = installFakeHost(createWorld());
-  spec("caught top-level", { id: "STEP-CAUGHT-TOP", forensics: false }, async (t) => {
+  lxTest("caught top-level", { id: "STEP-CAUGHT-TOP", forensics: false }, async (t) => {
     await t.step("top", async () => { throw new Error("top failed"); }).catch(() => {});
   });
-  spec("caught child", { id: "STEP-CAUGHT", forensics: false }, async (t) => {
+  lxTest("caught child", { id: "STEP-CAUGHT", forensics: false }, async (t) => {
     await t.step("outer", async (step) => {
       await step.step("child", async () => { throw new Error("child failed"); }).catch(() => {});
     });
   });
-  spec("unawaited child", { id: "STEP-UNAWAITED", forensics: false }, async (t) => {
+  lxTest("unawaited child", { id: "STEP-UNAWAITED", forensics: false }, async (t) => {
     await t.step("outer", async (step) => {
       void step.step("child", async () => {
         await new Promise((resolve) => setTimeout(resolve, 20));
@@ -163,10 +163,10 @@ test("requested network recording that cannot start fails the case through norma
     if (command === "start") throw new Error("recorder unavailable");
     return { name: "discarded partial recording" };
   };
-  spec("needs a recording", { id: "RECORD-SETUP", forensics: false }, async () => {
+  lxTest("needs a recording", { id: "RECORD-SETUP", forensics: false }, async () => {
     throw new Error("body must not run");
   });
-  spec("the run goes on", { forensics: false }, () => {});
+  lxTest("the run goes on", { forensics: false }, () => {});
   await globalThis.__LINGXIA_TEST__.run();
   const report = JSON.parse(decodeAttachment(attachments, "report.json"));
   assert.equal(report.cases[0].status, "failed");
@@ -176,15 +176,15 @@ test("requested network recording that cannot start fails the case through norma
   assert.equal(attempts.open, undefined, "attempt cleanup still runs");
 });
 
-test("spec.fail treats a body rejection as the declared failure", async () => {
+test("test.fail treats a body rejection as the declared failure", async () => {
   const world = createWorld();
   const { attachments } = installFakeHost(world);
   class ApiError extends Error {}
-  spec.fail("product rejects", async () => {
+  lxTest.fail("product rejects", async () => {
     throw new ApiError("upstream 500");
   });
-  spec.fail("rejected promise", () => Promise.reject(new Error("nope")));
-  spec.beforeEach(() => {});
+  lxTest.fail("rejected promise", () => Promise.reject(new Error("nope")));
+  lxTest.beforeEach(() => {});
 
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   const report = JSON.parse(decodeAttachment(attachments, "report.json"));
@@ -193,15 +193,15 @@ test("spec.fail treats a body rejection as the declared failure", async () => {
   assert.equal(protocol.failed, 0);
 });
 
-test("a step failure the body observed never overrides spec.fail or a caught rejection", async () => {
+test("a step failure the body observed never overrides test.fail or a caught rejection", async () => {
   const { attachments } = installFakeHost(createWorld());
-  spec.fail("fails in a step", { forensics: false }, async (t) => {
+  lxTest.fail("fails in a step", { forensics: false }, async (t) => {
     await t.step("submit", () => { throw new Error("known bug"); });
   });
-  spec("rejection pinned", { forensics: false }, async (t) => {
+  lxTest("rejection pinned", { forensics: false }, async (t) => {
     await t.reject(() => t.step("submit", () => { throw new Error("refused"); }), { message: "refused" });
   });
-  spec("rejection caught", { forensics: false }, async (t) => {
+  lxTest("rejection caught", { forensics: false }, async (t) => {
     try { await t.step("submit", () => { throw new Error("refused"); }); } catch { /* expected */ }
   });
   await globalThis.__LINGXIA_TEST__.run();
@@ -214,18 +214,18 @@ test("t.skip stops the spec and reports it skipped with its reason", async () =>
   const world = createWorld();
   const { attachments, events } = installFakeHost(world);
   let after = false, cleaned = false;
-  spec("no offline client", { forensics: false }, async (t) => {
+  lxTest("no offline client", { forensics: false }, async (t) => {
     t.defer(() => { cleaned = true; });
     t.skip("this account has no offline client");
     after = true;
   });
-  spec("skip inside a step", { forensics: false }, async (t) => {
+  lxTest("skip inside a step", { forensics: false }, async (t) => {
     await t.step("find client", () => t.skip("none found"));
   });
-  spec.fail("skip wins over spec.fail", async (t) => {
+  lxTest.fail("skip wins over test.fail", async (t) => {
     t.skip("not applicable");
   });
-  spec("swallowed skip is still a skip", async (t) => {
+  lxTest("swallowed skip is still a skip", async (t) => {
     try { t.skip("caught"); } catch { /* the author swallowed it */ }
   });
 
@@ -255,7 +255,7 @@ test("declared secret args are masked everywhere but reach the spec", async () =
     logs: "login with hunter22 ok",
   });
   let seen;
-  spec("logs in", async (t) => {
+  lxTest("logs in", async (t) => {
     seen = { password: t.arg("password"), pin: t.arg("pin") };
     await t.attach("note.txt", `typed ${t.arg("password")}`);
     await t.attach("form.json", { pin: t.arg("pin"), nested: [`pw:${t.arg("password")}`] });
@@ -289,7 +289,7 @@ test("a credential-named --arg is masked in meta.args only", async () => {
     args: { apiKey: "k-123456", maxTokens: "1000", passWithNoTests: "yes" },
     control: {},
   });
-  spec("echoes", { forensics: false }, async (t) => {
+  lxTest("echoes", { forensics: false }, async (t) => {
     expect(`${t.arg("apiKey")}/${t.arg("maxTokens")}`).toBe("x");
   });
   await globalThis.__LINGXIA_TEST__.run();
@@ -305,7 +305,7 @@ test("report.html stays well-formed when a secret overlaps markup", async () => 
     args: { token: "</script>" },
     control: { secretArgs: '["token"]' },
   });
-  spec("echoes", { forensics: false }, async (t) => {
+  lxTest("echoes", { forensics: false }, async (t) => {
     expect(`x${t.arg("token")}`).toBe("y");
   });
   await globalThis.__LINGXIA_TEST__.run();
@@ -321,8 +321,8 @@ test("run controls stay out of the args and a user arg never filters the run", a
     control: { id: "second", platform: "ios" },
   });
   let seen;
-  spec("first", () => {});
-  spec("second", (t) => { seen = { id: t.arg("id"), grep: t.arg("grep"), platform: t.arg("platform", { required: false }) }; });
+  lxTest("first", () => {});
+  lxTest("second", (t) => { seen = { id: t.arg("id"), grep: t.arg("grep"), platform: t.arg("platform", { required: false }) }; });
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   assert.deepEqual(protocol.cases.map((c) => c.id), ["second"]);
   assert.deepEqual(seen, { id: "user-value", grep: "nothing-matches", platform: undefined });
@@ -344,40 +344,40 @@ test("credential names match whole trailing words, not substrings", () => {
   }
 });
 
-test("spec.fail with expected grades only the matching failure xfail", async () => {
+test("test.fail with expected grades only the matching failure xfail", async () => {
   const world = createWorld();
   const { attachments } = installFakeHost(world);
   class ApiError extends Error {
     constructor(code, message) { super(message); this.code = code; }
   }
-  spec.fail("known code", { expected: { code: "E_QUOTA" } }, async () => {
+  lxTest.fail("known code", { expected: { code: "E_QUOTA" } }, async () => {
     throw new ApiError("E_QUOTA", "quota exceeded");
   });
-  spec.fail("known message regex", { expected: { message: /quota/ } }, async () => {
+  lxTest.fail("known message regex", { expected: { message: /quota/ } }, async () => {
     throw new Error("quota exceeded");
   });
-  spec.fail("other failure", { expected: { code: "E_QUOTA", message: "quota" } }, async (t) => {
+  lxTest.fail("other failure", { expected: { code: "E_QUOTA", message: "quota" } }, async (t) => {
     await t.app.view.testId("mistyped").click({ timeout: 20, interval: 5 });
   });
-  spec.fail("known but passes", { expected: { code: "E_QUOTA" } }, async () => {});
+  lxTest.fail("known but passes", { expected: { code: "E_QUOTA" } }, async () => {});
 
   await globalThis.__LINGXIA_TEST__.run();
   const report = JSON.parse(decodeAttachment(attachments, "report.json"));
   assert.deepEqual(report.cases.map((c) => c.status), ["xfail", "xfail", "failed", "xpass"]);
   assert.match(report.cases[2].error.message,
-    /spec\.fail expected a failure with code "E_QUOTA", got "E_TIMEOUT" and a message containing "quota"; the body failed differently/);
-  assert.throws(() => spec("not fail", { expected: { code: "X" } }, () => {}), /only meaningful for spec\.fail/);
-  assert.throws(() => spec.fail("empty", { expected: {} }, () => {}), /needs a code or a message/);
+    /test\.fail expected a failure with code "E_QUOTA", got "E_TIMEOUT" and a message containing "quota"; the body failed differently/);
+  assert.throws(() => lxTest("not fail", { expected: { code: "X" } }, () => {}), /only meaningful for test\.fail/);
+  assert.throws(() => lxTest.fail("empty", { expected: {} }, () => {}), /needs a code or a message/);
 });
 
 test("t.skip rejects during cleanup", async () => {
   const world = createWorld();
   const { attachments } = installFakeHost(world);
-  spec("skip in defer", { forensics: false }, async (t) => {
+  lxTest("skip in defer", { forensics: false }, async (t) => {
     t.defer(() => t.skip("too late"));
   });
-  spec.afterEach((t) => t.skip("also too late"));
-  spec("skip in afterEach", { forensics: false }, async () => {});
+  lxTest.afterEach((t) => t.skip("also too late"));
+  lxTest("skip in afterEach", { forensics: false }, async () => {});
 
   await globalThis.__LINGXIA_TEST__.run();
   const report = JSON.parse(decodeAttachment(attachments, "report.json"));
@@ -388,17 +388,17 @@ test("t.skip rejects during cleanup", async () => {
   }
 });
 
-test("spec.fail grades a body assertion xfail, a pass xpass, and a timeout timeout", async () => {
+test("test.fail grades a body assertion xfail, a pass xpass, and a timeout timeout", async () => {
   const world = createWorld();
   const { attachments } = installFakeHost(world);
 
-  spec.fail("known broken", async () => {
+  lxTest.fail("known broken", async () => {
     expect(1).toBe(2);
   });
-  spec.fail("unexpectedly passes", async () => {
+  lxTest.fail("unexpectedly passes", async () => {
     expect(1).toBe(1);
   });
-  spec.fail("timeout is not xfail", { timeout: 40 }, async (t) => {
+  lxTest.fail("timeout is not xfail", { timeout: 40 }, async (t) => {
     await new Promise((resolve) => setTimeout(resolve, 200));
     await t.app.logic.eval(() => 1);
   });
@@ -418,7 +418,7 @@ test("failed specs attach forensics and report.html stays a single inlined file"
   world.add({ testId: "home-name", visible: true, value: "" });
   const { attachments } = installFakeHost(world, { logs: "bridge: setData\nconsole: boom" });
 
-  spec("fails for forensics", async (t) => {
+  lxTest("fails for forensics", async (t) => {
     await t.attach("note.txt", "author note");
     expect(false).toBe(true);
   });
@@ -447,7 +447,7 @@ test("omits the log tail when the host has no ring", async () => {
   const world = createWorld();
   const { attachments } = installFakeHost(world);
 
-  spec("fails without logs", async () => {
+  lxTest("fails without logs", async () => {
     expect(1).toBe(2);
   });
 
@@ -466,13 +466,13 @@ test("report json and html include run metadata, steps, expected/actual, and no 
     control: { platform: "windows" },
   });
 
-  spec("steps and a matcher failure", { id: "UNIT-REPORT-001", covers: ["lx.demo"] }, async (t) => {
+  lxTest("steps and a matcher failure", { id: "UNIT-REPORT-001", covers: ["lx.demo"] }, async (t) => {
     await t.step("record a passing step", async () => {
       expect(1).toBe(1);
     });
     expect(1).toBe(2);
   });
-  spec.skip("pending backlog hole", {
+  lxTest.skip("pending backlog hole", {
     id: "PEND-UNIT-001",
     covers: ["lx.share"],
     reason: "OS share sheet cannot be driven without a device-lab helper",
@@ -521,7 +521,7 @@ test("expect.poll(fn) retries an arbitrary read", async () => {
   const world = createWorld();
   installFakeHost(world);
   let value = 0;
-  spec("polls", async (t) => {
+  lxTest("polls", async (t) => {
     setTimeout(() => {
       value = 3;
     }, 30);
@@ -535,13 +535,13 @@ test("attaches a CI-ingestible junit.xml alongside the HTML report", async () =>
   const world = createWorld();
   const { attachments } = installFakeHost(world, { control: { platform: "macos" } });
 
-  spec("passes", { id: "JUNIT-OK", covers: ["lx.getStorage"] }, async () => {
+  lxTest("passes", { id: "JUNIT-OK", covers: ["lx.getStorage"] }, async () => {
     expect(1).toBe(1);
   });
-  spec("breaks", { id: "JUNIT-BAD" }, async () => {
+  lxTest("breaks", { id: "JUNIT-BAD" }, async () => {
     expect("left").toBe("right");
   });
-  spec.skip("pending", { id: "JUNIT-PEND", reason: "OS dialog" });
+  lxTest.skip("pending", { id: "JUNIT-PEND", reason: "OS dialog" });
 
   await globalThis.__LINGXIA_TEST__.run();
   const xml = decodeAttachment(attachments, "junit.xml");
@@ -560,10 +560,10 @@ test("junit writes an expected failure as skipped, not as a pass", async () => {
   const world = createWorld();
   const { attachments } = installFakeHost(world);
 
-  spec.fail("known broken", { id: "JUNIT-XFAIL", covers: ["AC-ORDER-01"], reason: "upstream" }, async () => {
+  lxTest.fail("known broken", { id: "JUNIT-XFAIL", covers: ["AC-ORDER-01"], reason: "upstream" }, async () => {
     expect(1).toBe(2);
   });
-  spec("works", { id: "JUNIT-OK2" }, async () => {
+  lxTest("works", { id: "JUNIT-OK2" }, async () => {
     expect(1).toBe(1);
   });
 
@@ -573,7 +573,7 @@ test("junit writes an expected failure as skipped, not as a pass", async () => {
   assert.match(xml, /<testsuites [^>]*tests="2"[^>]*failures="0"[^>]*skipped="1"/);
   assert.match(xml, /<testcase name="known broken"[^>]*>\s*<skipped type="xfail" message="upstream"\/>/);
   assert.match(xml, /<property name="covers" value="AC-ORDER-01"\/>/);
-  assert.doesNotMatch(xml, /spec\.fail: failed as declared<\/system-out>/);
+  assert.doesNotMatch(xml, /test\.fail: failed as declared<\/system-out>/);
 });
 
 test("the skip option skips with its reason and never runs the body", async () => {
@@ -581,13 +581,13 @@ test("the skip option skips with its reason and never runs the body", async () =
   installFakeHost(world);
   let ran = 0;
 
-  spec("runs", { id: "SKIP-RUN", skip: undefined }, async () => {
+  lxTest("runs", { id: "SKIP-RUN", skip: undefined }, async () => {
     ran += 1;
   });
-  spec("skipped", { id: "SKIP-OWN", skip: "Android only" }, async () => {
+  lxTest("skipped", { id: "SKIP-OWN", skip: "Android only" }, async () => {
     ran += 100;
   });
-  assert.throws(() => spec("blank", { skip: " " }, async () => {}), /skip must be a non-empty reason/);
+  assert.throws(() => lxTest("blank", { skip: " " }, async () => {}), /skip must be a non-empty reason/);
 
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(ran, 1);
@@ -602,7 +602,7 @@ test("an app that declares no coverage gets no coverage panel", async () => {
   const { attachments } = installFakeHost(world);
 
   // What `lingxia new` scaffolds: one journey spec, no cover tags.
-  spec("home greets by name", async () => {
+  lxTest("home greets by name", async () => {
     expect(1).toBe(1);
   });
 
@@ -620,10 +620,10 @@ test("declared tags are the default coverage scope", async () => {
   const world = createWorld();
   const { attachments } = installFakeHost(world);
 
-  spec("proves storage behaviour", { id: "COV-1", covers: ["lx.getStorage"] }, async () => {
+  lxTest("proves storage behaviour", { id: "COV-1", covers: ["lx.getStorage"] }, async () => {
     expect(1).toBe(1);
   });
-  spec.skip("pending hole", { id: "COV-3", covers: ["lx.share"], reason: "OS share sheet" });
+  lxTest.skip("pending hole", { id: "COV-3", covers: ["lx.share"], reason: "OS share sheet" });
 
   await globalThis.__LINGXIA_TEST__.run();
   const html = decodeAttachment(attachments, "report.html");
@@ -643,7 +643,7 @@ test("a passing spec that never reaches its tag is not credited with it", async 
   world.setCalls("probe", ["lx.getStorage"]);
 
   // Declares two capabilities and only ever touches one of them.
-  spec("claims more than it does", {
+  lxTest("claims more than it does", {
     id: "COV-CLAIM",
     covers: ["lx.getStorage", "lx.tray"],
   }, async (t) => {
@@ -659,7 +659,7 @@ test("a passing spec that never reaches its tag is not credited with it", async 
   // Declared by a passing spec, never called: the whole point is that this
   // does not read the same as the one above.
   assert.match(html, /class="cover cover-claimed"[^>]*>lx\.tray</);
-  assert.match(html, /but no eval in those specs reached it/);
+  assert.match(html, /but no eval in those tests reached it/);
 });
 
 test("returned-object tags are not claimed against lx.* call records", async () => {
@@ -670,7 +670,7 @@ test("returned-object tags are not claimed against lx.* call records", async () 
   // The recorder never emits `Storage.set` / `DownloadTask.wait` / `LxFile.text`.
   // Matching those strings against `calls` would paint every eval-driven
   // object cover as claimed, including LOGIC-003 and TRANSFER-DOWNLOAD-001.
-  spec("uses returned objects", {
+  lxTest("uses returned objects", {
     id: "COV-OBJ",
     covers: ["lx.getStorage", "Storage.set", "DownloadTask.wait", "LxFile.text"],
   }, async (t) => {
@@ -695,7 +695,7 @@ test("a parent lx.* path does not prove a primitive member", async () => {
   const { attachments } = installFakeHost(world);
   world.setCalls("probe", ["lx.env"]);
 
-  spec("reads env", {
+  lxTest("reads env", {
     id: "COV-ENV-PARENT",
     covers: ["lx.env", "lx.env.USER_DATA_PATH"],
   }, async (t) => {
@@ -715,7 +715,7 @@ test("a primitive lx.* member path in calls is behaviour", async () => {
   const { attachments } = installFakeHost(world);
   world.setCalls("probe", ["lx.env", "lx.env.USER_DATA_PATH"]);
 
-  spec("reads the sandbox root", {
+  lxTest("reads the sandbox root", {
     id: "COV-ENV-MEMBER",
     covers: ["lx.env", "lx.env.USER_DATA_PATH"],
   }, async (t) => {
@@ -742,7 +742,7 @@ test("an eval whose script returns undefined yields undefined, not the envelope"
 
   let seen = "unset";
   let observed = null;
-  spec("reads an undefined result", { id: "COV-UNDEF", covers: ["lx.getStorage"] }, async (t) => {
+  lxTest("reads an undefined result", { id: "COV-UNDEF", covers: ["lx.getStorage"] }, async (t) => {
     seen = await t.app.logic.eval(() => "returns undefined");
     observed = [...t.observed];
   });
@@ -760,7 +760,7 @@ test("a spec that runs no eval keeps its declared coverage", async () => {
   // Driving through the page or native chrome is a legitimate way to exercise
   // an API, and it produces no eval to observe. Absence of observation must not
   // read as absence of coverage, or every DOM-driven spec regresses at once.
-  spec("drives without eval", { id: "COV-NOEVAL", covers: ["lx.getStorage"] }, async () => {
+  lxTest("drives without eval", { id: "COV-NOEVAL", covers: ["lx.getStorage"] }, async () => {
     expect(1).toBe(1);
   });
 
@@ -778,7 +778,7 @@ test("an expected failure is not coverage", async () => {
 
   // xfail records a known-broken outcome. Counting it credits the suite for
   // the one result it has already admitted does not work.
-  spec.fail("known broken", { id: "COV-XFAIL", covers: ["lx.share"], reason: "upstream" }, async () => {
+  lxTest.fail("known broken", { id: "COV-XFAIL", covers: ["lx.share"], reason: "upstream" }, async () => {
     expect(1).toBe(2);
   });
 
@@ -792,13 +792,13 @@ test("a conformance suite opts into the whole published surface", async () => {
   const { attachments } = installFakeHost(world);
   trackPublicSurface();
 
-  spec("proves storage behaviour", { id: "COV-1", covers: ["lx.getStorage"] }, async () => {
+  lxTest("proves storage behaviour", { id: "COV-1", covers: ["lx.getStorage"] }, async () => {
     expect(1).toBe(1);
   });
-  spec("only proves a member exists", { id: "COV-2", covers: ["shape:lx.getLocation"] }, async () => {
+  lxTest("only proves a member exists", { id: "COV-2", covers: ["shape:lx.getLocation"] }, async () => {
     expect(1).toBe(1);
   });
-  spec.skip("pending hole", { id: "COV-3", covers: ["lx.share"], reason: "OS share sheet" });
+  lxTest.skip("pending hole", { id: "COV-3", covers: ["lx.share"], reason: "OS share sheet" });
 
   await globalThis.__LINGXIA_TEST__.run();
   const html = decodeAttachment(attachments, "report.html");
@@ -823,7 +823,7 @@ test("the report is named after the app under test", async () => {
     pagesCount: 4,
   });
 
-  spec("passes", async () => {
+  lxTest("passes", async () => {
     expect(1).toBe(1);
   });
 
@@ -850,7 +850,7 @@ test("an unreachable app still produces a titled report", async () => {
     throw new Error("app is not up");
   };
 
-  spec("passes", async () => {
+  lxTest("passes", async () => {
     expect(1).toBe(1);
   });
 
@@ -864,7 +864,7 @@ test("a spec that never calls t.step still records what it did", async () => {
   world.add({ testId: "home-name", visible: true, value: "" });
   const { attachments } = installFakeHost(world);
 
-  spec("flat spec", { id: "TRACE-1" }, async (t) => {
+  lxTest("flat spec", { id: "TRACE-1" }, async (t) => {
     await t.app.nav.relaunch({ page: "home" });
     await t.app.view.testId("home-name").fill("Ada");
     await t.app.logic.eval(() => 1 + 1);
@@ -890,7 +890,7 @@ test("a retry loop records one action, not one per poll", async () => {
   const { attachments } = installFakeHost(world);
   let reads = 0;
 
-  spec("polls", { id: "TRACE-2" }, async (t) => {
+  lxTest("polls", { id: "TRACE-2" }, async (t) => {
     await t.step("wait for the value", async () => {
       await expect.poll(async () => {
         reads += 1;
@@ -913,7 +913,7 @@ test("a hand-rolled poll collapses into one row with a count", async () => {
   const world = createWorld();
   const { attachments } = installFakeHost(world);
 
-  spec("polls by hand", { id: "TRACE-3" }, async (t) => {
+  lxTest("polls by hand", { id: "TRACE-3" }, async (t) => {
     // No expect.poll(fn) here — the shape a project's own helper takes.
     for (let attempt = 0; attempt < 6; attempt += 1) {
       await t.app.nav.current();
@@ -946,7 +946,7 @@ test("an app name cannot inject markup into the report", async () => {
     pagesCount: 1,
   });
 
-  spec("passes", async () => {
+  lxTest("passes", async () => {
     expect(1).toBe(1);
   });
 
@@ -964,7 +964,7 @@ test("a spec timeout marks the action that never returned", async () => {
   const driver = globalThis.lx.automation().lxapp();
   driver.eval = () => new Promise(() => {});
 
-  spec("hangs in a driver call", { id: "HANG-1", timeout: 120 }, async (t) => {
+  lxTest("hangs in a driver call", { id: "HANG-1", timeout: 120 }, async (t) => {
     await t.app.logic.eval(() => 1);
   });
 
@@ -1002,12 +1002,12 @@ test("a failed toMatchSchema points at its own line, and a unit spec names no pa
   const here = fileURLToPath(import.meta.url).replaceAll("\\", "/");
   let assertionLine;
 
-  spec("unit schema", { tags: ["unit"] }, async () => {
+  lxTest("unit schema", { tags: ["unit"] }, async () => {
     const slot = { "at:10:20": 1 };
     assertionLine = Number(new Error().stack.split("\n")[1].match(/:(\d+):\d+\)?$/)[1]) + 1;
     expect(slot).toMatchSchema("Slot");
   });
-  spec("on a page", async (t) => {
+  lxTest("on a page", async (t) => {
     await t.app.nav.to({ page: "onboarding" });
     expect({ "at:10:20": 1 }).toMatchSchema("Slot");
   });

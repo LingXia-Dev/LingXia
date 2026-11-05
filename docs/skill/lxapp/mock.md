@@ -17,9 +17,9 @@ never imports them; release builds contain none.
 | `lingxia dev --mock all\|none` | this session, from its first request; also CI |
 | `lxdev mock all\|none [TARGET…]` | live, temporary; `lxdev mock reset` drops it |
 
-With none of them, everything is real. Specs see the first two (live changes
+With none of them, everything is real. Tests see the first two (live changes
 stand aside during a run) and add scenario states with
-[`t.scenario.use`](#in-specs).
+[`t.scenario.use`](#in-tests).
 
 ## `mocks/index.ts`: the handlers
 
@@ -61,8 +61,8 @@ export default {
   a `mocks/` created after the start, and deleting it (the app then has no
   mocks) — no restart.
 - **State.** Module state lives until a save under `mocks/`,
-  `lxdev mock reset`, an app restart, or the next spec. `lxdev mock` counts
-  handler hits since the last load, save, reset or spec, and says since when.
+  `lxdev mock reset`, an app restart, or the next test. `lxdev mock` counts
+  handler hits since the last load, save, reset or test, and says since when.
 - **Errors fail the call, loudly**: a handler that throws, returns
   `undefined`, or returns an invalid answer rejects the `fetch` with
   `TypeError: fetch failed` (`error.data.detail` says which handler and why).
@@ -121,7 +121,7 @@ GET https://api.example.com/locations/l1/clients → 200  answered by: mock (GET
 GET https://api.example.com/qoe/summary → 200  answered by: real · live target
 ```
 
-## In specs
+## In tests
 
 ```ts
 import checkout from '../scenarios/checkout.json';
@@ -130,14 +130,14 @@ const scenario = await t.scenario.use(checkout, { variant: 'unknown' });
 // { name, variant, rules, calls(filter?), waitForCall(target), remove() }
 ```
 
-- A spec answers from the session's selection (`mocks/config.json`, over it
+- A test answers from the session's selection (`mocks/config.json`, over it
   `lingxia dev --mock`). To run a whole suite against mocks:
   `lingxia dev --background --mock all`, then `lxdev test`.
-- Each spec starts with fresh handler state and no scenario; a second `use`
-  replaces the first; the spec's end removes it.
+- Each test starts with fresh handler state and no scenario; a second `use`
+  replaces the first; the test's end removes it.
 - With `lxdev test --openapi`, a handler's answer is checked like a routed
-  one: off the contract, it fails the spec with `E_OPENAPI_CONTRACT`.
-- More: [Scenarios in specs](./testing.md#scenarios-in-specs).
+  one: off the contract, it fails the test with `E_OPENAPI_CONTRACT`.
+- More: [Scenarios in tests](./testing.md#scenarios-in-tests).
 
 ## Scenarios
 
@@ -184,6 +184,6 @@ answers, and a call none matches goes to the selection.
 - `function` rules and Function targets need the dev session's companion to
   support them; otherwise nothing of the scenario is installed and the
   message says why.
-- To start a scenario from real traffic, run a spec with
+- To start a scenario from real traffic, run a test with
   `lxdev test --record-network DIR` ([Testing](testing.md)); only `fetch`
   answers become rules.

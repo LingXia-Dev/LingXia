@@ -1,9 +1,9 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../../helpers/app.js';
 import { bindFixture } from '../../helpers/poll.js';
 
 const platform = globalThis.__LINGXIA_AUTOMATION_HOST__?.args?.platform?.toLowerCase();
-spec.configure({ skip: platform === 'android' ? undefined : 'Android only' });
+test.configure({ skip: platform === 'android' ? undefined : 'Android only' });
 
 type Orientation = 'portrait' | 'landscape';
 interface OrientationProbe {
@@ -13,7 +13,7 @@ interface OrientationProbe {
   offLive: () => void;
 }
 
-spec('rotate the Android viewport and deliver events only to live listeners', {
+test('rotate the Android viewport and deliver events only to live listeners', {
   id: 'ANDROID-ORIENTATION-001',
   app: SHOWCASE_APP_ID,
   covers: ['lx.setDeviceOrientation', 'lx.onDeviceOrientationChange'],

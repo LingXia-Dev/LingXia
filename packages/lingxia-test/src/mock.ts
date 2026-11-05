@@ -173,5 +173,5 @@ export async function resetMocks(driver: LxAppDriver, reasons: Set<string>): Pro
     : undefined;
   if (reason === undefined || reasons.has(reason)) return undefined;
   reasons.add(reason);
-  return `mock handler state of the Functions is not reset per spec: ${reason}`;
+  return `mock handler state of the Functions is not reset per test: ${reason}`;
 }

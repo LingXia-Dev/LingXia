@@ -1,5 +1,5 @@
 import { waitForCurrentPage } from '../../helpers/page.js';
-import { expect, spec, type Fixture } from '@lingxia/test';
+import { expect, test, type Fixture } from '@lingxia/test';
 import { bindFixture, eventually, specNamespace } from '../../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../../helpers/app.js';
 import { runtimePlatform } from '../../helpers/platform.js';
@@ -181,7 +181,7 @@ async function restoreShowcaseSidebarActions(app: TestApp): Promise<void> {
   });
 }
 
-spec("restore rendered home content after closing covering web tabs", { id: "DESKTOP-BROWSER-001", covers: [
+test("restore rendered home content after closing covering web tabs", { id: "DESKTOP-BROWSER-001", covers: [
       'BrowserDriver.tabs',
       'BrowserDriver.close',
       'DesktopDriver.pointer',

@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../../helpers/app.js';
 import { runtimePlatform } from '../../helpers/platform.js';
 import { bindFixture, type Caught } from '../../helpers/poll.js';
@@ -27,7 +27,7 @@ interface WifiRoundTrip {
   stopped: boolean;
 }
 
-spec('scan, read, and observe Wi-Fi on a real radio', {
+test('scan, read, and observe Wi-Fi on a real radio', {
   skip: androidSkip,
   id: 'ANDROID-WIFI-001',
   covers: ['lx.startWifi', 'lx.getWifiList', 'lx.getConnectedWifi', 'lx.onWifiConnected', 'lx.stopWifi'],
@@ -88,7 +88,7 @@ spec('scan, read, and observe Wi-Fi on a real radio', {
   expect(result.stopped).toBe(true);
 });
 
-spec('save an image and a video into the photo library', {
+test('save an image and a video into the photo library', {
   skip: androidMediaSkip,
   id: 'ANDROID-PHOTOS-001',
   covers: ['lx.saveImageToPhotosAlbum', 'lx.saveVideoToPhotosAlbum', 'lx.downloadFile'],
@@ -126,7 +126,7 @@ spec('save an image and a video into the photo library', {
   });
 });
 
-spec('fire both haptics without a dialog', {
+test('fire both haptics without a dialog', {
   skip: androidSkip,
   id: 'ANDROID-HAPTICS-001',
   covers: ['lx.vibrateShort', 'lx.vibrateLong'],

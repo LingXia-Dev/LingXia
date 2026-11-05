@@ -1,4 +1,4 @@
-import { spec, type TestApp, expect } from '@lingxia/test';
+import { test, type TestApp, expect } from '@lingxia/test';
 import type { Todo } from '../../shared/lib/todo-utils.js';
 import type { TodoPage } from '../../pages/todo/contract.js';
 import { attachShot, bindFixture } from '../helpers/poll.js';
@@ -25,12 +25,12 @@ async function cleanupStoredTodo(app: TestApp, text: string): Promise<void> {
 
 let pendingTodo: string | undefined;
 
-spec.reset(async t => {
+test.reset(async t => {
   if (pendingTodo) await cleanupStoredTodo(t.app, pendingTodo);
   await t.app.nav.relaunch({ page: 'todo' });
 });
 
-spec("persist todo edits made through the rendered page", { id: "TODO-001", covers: ['lx.getStorage', 'Storage.get', 'Storage.set'], app: SHOWCASE_APP_ID }, async (t) => {
+test("persist todo edits made through the rendered page", { id: "TODO-001", covers: ['lx.getStorage', 'Storage.get', 'Storage.set'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "TODO-001");
   const todo = await app.page<TodoPage>({ name: 'todo' });
   const view = todo.view;
@@ -96,7 +96,7 @@ spec("persist todo edits made through the rendered page", { id: "TODO-001", cove
   }
 });
 
-spec("add and delete a todo through the page's Logic methods", { id: "TODO-002", app: SHOWCASE_APP_ID }, async (t) => {
+test("add and delete a todo through the page's Logic methods", { id: "TODO-002", app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "TODO-002");
   const todo = await app.page<TodoPage>({ name: 'todo' });
   await expect(todo.view.testId('todo-page')).toBeVisible();

@@ -11,17 +11,17 @@ import { clearInline, countStatuses, renderHtml } from "./report.js";
 import { coverageSummary, parseManifest } from "./coverage.js";
 import { ContractError, ContractLedger, parseOpenApiControl, setActiveOpenApi } from "./openapi.js";
 import { matchesTags, parseTagFilter, tagSummary, validateTags } from "./tags.js";
-import type { SpecApi } from "./spec-api.js";
+import type { TestApi } from "./test-api.js";
 import type { LingxiaTestController } from "./host-types.js";
 import type {
   FailOptions,
   FileOptions,
   Fixture,
   RejectExpected,
-  SpecBody,
-  SpecOptions,
-  SpecRequirements,
-  SpecStart,
+  TestBody,
+  TestOptions,
+  TestRequirements,
+  TestStart,
 } from "./types.js";
 import type {
   CaseRecord,
@@ -39,7 +39,7 @@ import type {
 } from "./report-types.js";
 import { SCREEN_LOCKED_NOTE, VISIBILITY_PROBE_BUDGET_MS, VISIBILITY_PROBE_SCRIPT, hiddenCause, pageVisibility } from "./locator.js";
 import {
-  DEFAULT_SPEC_TIMEOUT_MS,
+  DEFAULT_TEST_TIMEOUT_MS,
   FORENSICS_BUDGET_MS,
   MAX_DEFER_BUDGET_MS,
   PACKAGE_NAME,
@@ -65,11 +65,11 @@ interface RegisteredSpec {
   title: string;
   id?: string;
   covers: string[];
-  /** The spec's own tags; the file's `spec.configure` tags join at run start. */
+  /** The spec's own tags; the file's `test.configure` tags join at run start. */
   tags: string[];
   timeout: number;
   timeoutCleanup?: number;
-  start?: SpecStart;
+  start?: TestStart;
   restoreProfile: boolean;
   /** `restoreProfile: { keep }`: storage key globs the rollback keeps. */
   restoreKeep?: string[];
@@ -82,14 +82,14 @@ interface RegisteredSpec {
   requires: { args: string[]; openapi: boolean };
   /**
    * The options the spec was registered with. The fields above are settled
-   * from them and its file's `spec.configure()` defaults when the run starts
+   * from them and its file's `test.configure()` defaults when the run starts
    * (the file is only known then).
    */
-  own: SpecOptions;
-  /** `spec.fail` only: the failure the body is expected to produce. */
+  own: TestOptions;
+  /** `test.fail` only: the failure the body is expected to produce. */
   expected?: RejectExpected;
   annotation: Annotation;
-  body: SpecBody;
+  body: TestBody;
   frames: StackFrame[];
   /**
    * 1-based position among the specs of the same file that need a generated
@@ -101,10 +101,10 @@ interface RegisteredSpec {
 
 interface Hook {
   frames: StackFrame[];
-  fn: SpecBody;
+  fn: TestBody;
 }
 
-/** A `spec.configure()` call, scoped to its file like a hook. */
+/** A `test.configure()` call, scoped to its file like a hook. */
 interface FileConfig {
   frames: StackFrame[];
   options: FileOptions;
@@ -131,20 +131,20 @@ function trackPublicSurface(): void {
 }
 
 function parseArgs(
-  optionsOrBody: SpecOptions | SpecBody,
-  maybeBody?: SpecBody,
-): { options: SpecOptions; body: SpecBody } {
+  optionsOrBody: TestOptions | TestBody,
+  maybeBody?: TestBody,
+): { options: TestOptions; body: TestBody } {
   if (typeof optionsOrBody === "function") {
     return { options: {}, body: optionsOrBody };
   }
   if (typeof maybeBody !== "function") {
-    throw new TypeError("spec() requires a function body");
+    throw new TypeError("test() requires a function body");
   }
   return { options: optionsOrBody, body: maybeBody };
 }
 
 /** `restoreProfile: { keep }` → the keep globs; `true`/absent → none. */
-function restoreProfileKeep(option: SpecOptions["restoreProfile"]): string[] | undefined {
+function restoreProfileKeep(option: TestOptions["restoreProfile"]): string[] | undefined {
   if (option === undefined || typeof option === "boolean") return undefined;
   const keep = option && typeof option === "object" ? (option as { keep?: unknown }).keep : undefined;
   if (!Array.isArray(keep) || keep.some((glob) => typeof glob !== "string" || glob.length === 0)) {
@@ -156,7 +156,7 @@ function restoreProfileKeep(option: SpecOptions["restoreProfile"]): string[] | u
 function validateRequires(requires: unknown, where: string): { args: string[]; openapi: boolean } {
   if (requires === undefined) return { args: [], openapi: false };
   if (!requires || typeof requires !== "object") throw new TypeError(`${where} requires must be an object`);
-  const { args, openapi } = requires as SpecRequirements;
+  const { args, openapi } = requires as TestRequirements;
   if (args !== undefined && (!Array.isArray(args) || args.some((key) => typeof key !== "string" || key.length === 0))) {
     throw new TypeError(`${where} requires.args must be an array of non-empty --arg keys`);
   }
@@ -164,7 +164,7 @@ function validateRequires(requires: unknown, where: string): { args: string[]; o
   return { args: [...new Set(args ?? [])], openapi: openapi === true };
 }
 
-/** Checks what `spec()` and `spec.configure()` accept alike; throws on the first problem. */
+/** Checks what `test()` and `test.configure()` accept alike; throws on the first problem. */
 function validateOptions(options: FileOptions, where: string): void {
   restoreProfileKeep(options.restoreProfile);
   const start = options.start;
@@ -190,7 +190,7 @@ function validateOptions(options: FileOptions, where: string): void {
 }
 
 /**
- * The spec's settings: its own options over its file's `spec.configure()`
+ * The spec's settings: its own options over its file's `test.configure()`
  * defaults. `tags`, `covers` and `requires` add to the file's.
  */
 function settle(item: RegisteredSpec, file: FileOptions | undefined): void {
@@ -198,11 +198,11 @@ function settle(item: RegisteredSpec, file: FileOptions | undefined): void {
   const pick = <K extends keyof FileOptions>(key: K): FileOptions[K] => own[key] !== undefined ? own[key] : file?.[key];
   const restoreProfile = pick("restoreProfile");
   const restoreKeep = restoreProfileKeep(restoreProfile);
-  const fileRequires = validateRequires(file?.requires, "spec.configure()");
-  const ownRequires = validateRequires(own.requires, `spec ${JSON.stringify(item.title)}`);
+  const fileRequires = validateRequires(file?.requires, "test.configure()");
+  const ownRequires = validateRequires(own.requires, `test ${JSON.stringify(item.title)}`);
   item.covers = [...new Set([...(file?.covers ?? []), ...(own.covers ?? [])])];
-  item.tags = [...new Set([...validateTags(file?.tags, "spec.configure()"), ...validateTags(own.tags, `spec ${JSON.stringify(item.title)}`)])];
-  item.timeout = pick("timeout") ?? DEFAULT_SPEC_TIMEOUT_MS;
+  item.tags = [...new Set([...validateTags(file?.tags, "test.configure()"), ...validateTags(own.tags, `test ${JSON.stringify(item.title)}`)])];
+  item.timeout = pick("timeout") ?? DEFAULT_TEST_TIMEOUT_MS;
   item.timeoutCleanup = pick("timeoutCleanup");
   item.start = pick("start");
   item.restoreProfile = restoreProfile === true || restoreKeep !== undefined;
@@ -217,7 +217,7 @@ function settle(item: RegisteredSpec, file: FileOptions | undefined): void {
   };
 }
 
-/** `spec.skip`, `spec.fixme`, or the `skip` option: registered, never run. */
+/** `test.skip`, `test.fixme`, or the `skip` option: registered, never run. */
 function notRun(item: RegisteredSpec): boolean {
   return item.annotation === "skip" || item.annotation === "fixme" || item.skip !== undefined;
 }
@@ -237,20 +237,20 @@ function unmetRequirements(
   return needs.length === 0 ? undefined : `Not run: requires ${needs.join(" and ")}.`;
 }
 
-function register(annotation: Annotation, title: string, optionsOrBody: SpecOptions | SpecBody, maybeBody?: SpecBody): void {
+function register(annotation: Annotation, title: string, optionsOrBody: TestOptions | TestBody, maybeBody?: TestBody): void {
   if (typeof title !== "string" || title.length === 0) {
-    throw new TypeError("spec() requires a non-empty title");
+    throw new TypeError("test() requires a non-empty title");
   }
   const { options, body } = parseArgs(optionsOrBody, maybeBody);
   const expected = (options as FailOptions).expected;
   if (expected !== undefined) {
-    if (annotation !== "fail") throw new TypeError("`expected` is only meaningful for spec.fail()");
-    if (!expected || typeof expected !== "object") throw new TypeError("spec.fail `expected` must be an object");
+    if (annotation !== "fail") throw new TypeError("`expected` is only meaningful for test.fail()");
+    if (!expected || typeof expected !== "object") throw new TypeError("test.fail `expected` must be an object");
     if (expected.code === undefined && expected.message === undefined) {
-      throw new TypeError("spec.fail `expected` needs a code or a message");
+      throw new TypeError("test.fail `expected` needs a code or a message");
     }
   }
-  validateOptions(options, `spec ${JSON.stringify(title)}`);
+  validateOptions(options, `test ${JSON.stringify(title)}`);
   // The bundle map is installed after the modules run, so keep the raw frames;
   // the authored file is only knowable once the run starts. `frames[0]` is a
   // frame inside this package, identical for every caller, so it can order
@@ -261,7 +261,7 @@ function register(annotation: Annotation, title: string, optionsOrBody: SpecOpti
     id: options.id,
     covers: [],
     tags: [],
-    timeout: DEFAULT_SPEC_TIMEOUT_MS,
+    timeout: DEFAULT_TEST_TIMEOUT_MS,
     restoreProfile: false,
     forensics: true,
     requires: { args: [], openapi: false },
@@ -276,49 +276,49 @@ function register(annotation: Annotation, title: string, optionsOrBody: SpecOpti
   specs.push(item);
 }
 
-const spec: SpecApi = Object.assign(
-  function specFn(title: string, optionsOrBody: SpecOptions | SpecBody, maybeBody?: SpecBody): void {
+const test: TestApi = Object.assign(
+  function testFn(title: string, optionsOrBody: TestOptions | TestBody, maybeBody?: TestBody): void {
     register("default", title, optionsOrBody, maybeBody);
   },
   {
-    skip(title: string, optionsOrBody?: SpecOptions | SpecBody, maybeBody?: SpecBody): void {
+    skip(title: string, optionsOrBody?: TestOptions | TestBody, maybeBody?: TestBody): void {
       const body = typeof optionsOrBody === "function" ? optionsOrBody : maybeBody ?? (async () => {});
       const options = typeof optionsOrBody === "function" || optionsOrBody === undefined ? {} : optionsOrBody;
       register("skip", title, options, body);
     },
-    only(title: string, optionsOrBody: SpecOptions | SpecBody, maybeBody?: SpecBody): void {
+    only(title: string, optionsOrBody: TestOptions | TestBody, maybeBody?: TestBody): void {
       register("only", title, optionsOrBody, maybeBody);
     },
-    fixme(title: string, optionsOrBody?: SpecOptions | SpecBody, maybeBody?: SpecBody): void {
+    fixme(title: string, optionsOrBody?: TestOptions | TestBody, maybeBody?: TestBody): void {
       const body = typeof optionsOrBody === "function" ? optionsOrBody : maybeBody ?? (async () => {});
       const options = typeof optionsOrBody === "function" || optionsOrBody === undefined ? {} : optionsOrBody;
       register("fixme", title, options, body);
     },
-    fail(title: string, optionsOrBody: FailOptions | SpecBody, maybeBody?: SpecBody): void {
+    fail(title: string, optionsOrBody: FailOptions | TestBody, maybeBody?: TestBody): void {
       register("fail", title, optionsOrBody, maybeBody);
     },
-    reset(fn: SpecBody): void {
-      if (typeof fn !== "function") throw new TypeError("spec.reset() requires a function");
+    reset(fn: TestBody): void {
+      if (typeof fn !== "function") throw new TypeError("test.reset() requires a function");
       resetHooks.push({ frames: captureFrames(), fn });
     },
-    afterEach(fn: SpecBody): void {
-      if (typeof fn !== "function") throw new TypeError("spec.afterEach() requires a function");
+    afterEach(fn: TestBody): void {
+      if (typeof fn !== "function") throw new TypeError("test.afterEach() requires a function");
       afterHooks.push({ frames: captureFrames(), fn });
     },
-    beforeEach(fn: SpecBody): void {
-      if (typeof fn !== "function") throw new TypeError("spec.beforeEach() requires a function");
+    beforeEach(fn: TestBody): void {
+      if (typeof fn !== "function") throw new TypeError("test.beforeEach() requires a function");
       hooks.push({ frames: captureFrames(), fn });
     },
     configure(options: FileOptions): void {
-      if (!options || typeof options !== "object") throw new TypeError("spec.configure() requires an options object");
-      if ((options as SpecOptions).id !== undefined) throw new TypeError("spec.configure() cannot set `id`: ids are per spec");
-      validateOptions(options, "spec.configure()");
+      if (!options || typeof options !== "object") throw new TypeError("test.configure() requires an options object");
+      if ((options as TestOptions).id !== undefined) throw new TypeError("test.configure() cannot set `id`: ids are per test");
+      validateOptions(options, "test.configure()");
       fileConfigs.push({ frames: captureFrames(), options: { ...options } });
     },
   },
 );
 
-/** Two `spec.configure()` calls of one file: later keys win; lists add up. */
+/** Two `test.configure()` calls of one file: later keys win; lists add up. */
 function mergeFileOptions(previous: FileOptions | undefined, next: FileOptions): FileOptions {
   if (!previous) return { ...next };
   const merged: FileOptions = { ...previous, ...Object.fromEntries(Object.entries(next).filter(([, value]) => value !== undefined)) };
@@ -337,7 +337,7 @@ function sourceOf(item: RegisteredSpec): { file: string; line: number } {
 }
 
 /**
- * Every spec, `spec.configure()` and hook must resolve to the file that
+ * Every spec, `test.configure()` and hook must resolve to the file that
  * registered it: a file-less spec loses its file's tags and hooks without a
  * word, so the run stops and names what it could not place.
  */
@@ -345,19 +345,19 @@ function assertAttributed(): void {
   const lost: string[] = [];
   for (const item of specs) {
     const origin = resolveOrigin(item.frames);
-    if (isUnattributed(origin.file)) lost.push(`spec ${JSON.stringify(item.title)} (${origin.file}:${origin.line})`);
+    if (isUnattributed(origin.file)) lost.push(`test ${JSON.stringify(item.title)} (${origin.file}:${origin.line})`);
   }
   const specFiles = new Set(specs.map((item) => sourceOf(item).file));
   for (const [kind, list] of [["configure", fileConfigs], ["beforeEach", hooks], ["afterEach", afterHooks], ["reset", resetHooks]] as const) {
     for (const entry of list as ReadonlyArray<{ frames: StackFrame[] }>) {
       const owner = resolveOwner(entry.frames, specFiles);
-      if (isUnattributed(owner.file)) lost.push(`spec.${kind}() (${owner.file}:${owner.line})`);
+      if (isUnattributed(owner.file)) lost.push(`test.${kind}() (${owner.file}:${owner.line})`);
     }
   }
   if (lost.length === 0) return;
   const shown = lost.slice(0, 10).join(", ") + (lost.length > 10 ? `, and ${lost.length - 10} more` : "");
   throw new Error(`Cannot tell which file registered ${shown}: the bundle source map has no position for the call. ` +
-    "Its file's tags and hooks would not apply, so the run stops. Please report this with the spec file and the lxdev version.");
+    "Its file's tags and hooks would not apply, so the run stops. Please report this with the test file and the lxdev version.");
 }
 
 function needsGeneratedId(item: RegisteredSpec): boolean {
@@ -433,10 +433,10 @@ function automationRoot(): HostRunAutomation {
 }
 
 /**
- * The untraced automation root of this run, with host authority. Specs drive
+ * The untraced automation root of this run, with host authority. Tests drive
  * the app through `t.app` / `t.automation`, which trace every call and stop
- * with the spec; use this only where no fixture exists (a setup file that
- * waits for the app before the first spec) or to reach the raw driver, e.g.
+ * with the test; use this only where no fixture exists (a setup file that
+ * waits for the app before the first test) or to reach the raw driver, e.g.
  * `rawAutomation().lxapp().eval({ script })`.
  */
 export function rawAutomation(): HostRunAutomation {
@@ -508,7 +508,7 @@ async function recoverAppUnderTest(appId: string | undefined): Promise<string | 
 }
 
 /** Relaunch on the spec's `start` page, or the app's home page. */
-async function relaunchHome(app: LxAppDriver, start?: SpecStart): Promise<void> {
+async function relaunchHome(app: LxAppDriver, start?: TestStart): Promise<void> {
   const page = start?.page ?? (await app.pages())[0]?.name ?? "home";
   try {
     await app.nav.relaunch({ page, ...(start?.query ? { query: start.query } : {}), waitUntil: "ready" });
@@ -614,7 +614,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     const id = resolvedId(item);
     const previous = ids.get(id);
     if (previous) {
-      throw new Error(`Duplicate spec id ${JSON.stringify(id)} (${previous} and ${item.title})`);
+      throw new Error(`Duplicate test id ${JSON.stringify(id)} (${previous} and ${item.title})`);
     }
     ids.set(id, item.title);
   }
@@ -626,7 +626,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
   const forbidOnly = control.forbidOnly === "1" || control["forbid-only"] === "1";
   const hasOnly = specs.some((item) => item.annotation === "only");
   if (hasOnly && forbidOnly) {
-    throw new Error("spec.only is registered; lxdev test --forbid-only refuses to run");
+    throw new Error("test.only is registered; lxdev test --forbid-only refuses to run");
   }
 
   const tagFilter = control.tags ? parseTagFilter(JSON.parse(control.tags) as string[]) : [];
@@ -640,7 +640,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     const file = resolveOwner(config.frames, specFiles).file;
     if (!specFiles.has(file)) {
       await host.emit({ type: "diagnostic", phase: "collect",
-        message: `spec.configure() called from ${file} applies to no spec: no spec file is on its call stack. Call it from a spec file's top level.` });
+        message: `test.configure() called from ${file} applies to no test: no test file is on its call stack. Call it from a test file's top level.` });
       continue;
     }
     fileOptions.set(file, mergeFileOptions(fileOptions.get(file), config.options));
@@ -709,13 +709,13 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
       const file = hookFiles.get(hook)!;
       if (specFiles.has(file)) continue;
       await host.emit({ type: "diagnostic", phase: "collect",
-        message: `spec.${kind}() registered from ${file} never runs: no spec file is on its call stack. Call it (or the helper that registers it) from a spec file's top level.` });
+        message: `test.${kind}() registered from ${file} never runs: no test file is on its call stack. Call it (or the helper that registers it) from a test file's top level.` });
     }
   }
   if (retries > 0) {
     for (const item of selected.filter(item => !notRun(item))) {
       if (!resetHooks.some(hook => hookFiles.get(hook) === sourceOf(item).file)) {
-        throw new Error(`Retries require spec.reset() in ${sourceOf(item).file}; relaunching a page does not reset app state.`);
+        throw new Error(`Retries require test.reset() in ${sourceOf(item).file}; relaunching a page does not reset app state.`);
       }
     }
   }
@@ -752,12 +752,12 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     if (!budgetExhausted && budget && Date.now() - started >= budget.ms) {
       budgetExhausted = { after: executed() };
       await host.emit({ type: "diagnostic", phase: "budget",
-        message: `Run budget of ${Math.round(budget.ms / 1000)}s exhausted after ${budgetExhausted.after}/${plan.length} specs; the rest are reported as not run. Raise --timeout-secs, or split the suite with --shard.` });
+        message: `Run budget of ${Math.round(budget.ms / 1000)}s exhausted after ${budgetExhausted.after}/${plan.length} tests; the rest are reported as not run. Raise --timeout-secs, or split the suite with --shard.` });
     }
     if (!budgetExhausted && !contaminated && !screenLocked && host.screenLocked()) {
       screenLocked = { after: executed() };
       await host.emit({ type: "diagnostic", phase: "screen_locked",
-        message: `${capitalize(SCREEN_LOCKED_NOTE)}. Stopped after ${screenLocked.after}/${plan.length} specs; the rest are reported as not run.` });
+        message: `${capitalize(SCREEN_LOCKED_NOTE)}. Stopped after ${screenLocked.after}/${plan.length} tests; the rest are reported as not run.` });
     }
     const record: CaseRecord = {
       id,
@@ -793,8 +793,8 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     const caseStarted = Date.now();
     const unmet = notRun(item) ? undefined : unmetRequirements(item, args, openapi !== undefined);
     if (budgetExhausted || contaminated || screenLocked || unmet !== undefined || notRun(item)) {
-      if (contaminated) record.reason = contaminationReason ?? `Not run: an earlier spec left the run unable to continue. Recover: ${RECOVER_COMMAND}`;
-      else if (budgetExhausted && budget) record.reason = `Not run: the run budget of ${Math.round(budget.ms / 1000)}s was exhausted after ${budgetExhausted.after}/${plan.length} specs.`;
+      if (contaminated) record.reason = contaminationReason ?? `Not run: an earlier test left the run unable to continue. Recover: ${RECOVER_COMMAND}`;
+      else if (budgetExhausted && budget) record.reason = `Not run: the run budget of ${Math.round(budget.ms / 1000)}s was exhausted after ${budgetExhausted.after}/${plan.length} tests.`;
       else if (screenLocked) record.reason = `Not run: ${SCREEN_LOCKED_NOTE}.`;
       else if (unmet !== undefined) record.reason = unmet;
       record.status = "skipped";
@@ -919,7 +919,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
       (err: unknown) => ({ ok: false as const, err }),
     );
 
-    const timeoutError = new TimeoutError(`spec timed out after ${timeout}ms`);
+    const timeoutError = new TimeoutError(`test timed out after ${timeout}ms`);
     let timedOut = false;
     let bodySettled = false;
     void bodyResult.then(() => { bodySettled = true; });
@@ -1073,7 +1073,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     if (cancelled > 0 && !stuck) {
       await host.emit({ type: "diagnostic", phase: "cleanup",
         message: `"${record.full_name}" ended with ${cancelled} test-context ${cancelled === 1 ? "timer" : "timers"} pending; ` +
-          `cancelled so ${cancelled === 1 ? "it never fires" : "they never fire"} into a later spec.` });
+          `cancelled so ${cancelled === 1 ? "it never fires" : "they never fire"} into a later test.` });
     }
 
     // An answer the spec queued that no dialog used: the dialog it expected
@@ -1113,7 +1113,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     }
     try {
       reclaimFailures.push(...await within(fixture.reclaim(), RECLAIM_BUDGET_MS,
-        `removing the spec's routes, mock scenario and test clocks did not finish within ${RECLAIM_BUDGET_MS}ms`));
+        `removing the test's routes, mock scenario and test clocks did not finish within ${RECLAIM_BUDGET_MS}ms`));
     } catch (reclaimError) {
       reclaimFailures.push(errorMessage(reclaimError));
     }
@@ -1123,18 +1123,18 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     if (attempt !== undefined) {
       try {
         const swept = await within(host.endAttempt!(attempt), RECLAIM_BUDGET_MS,
-          `the host did not finish removing what the spec installed within ${RECLAIM_BUDGET_MS}ms`);
+          `the host did not finish removing what the test installed within ${RECLAIM_BUDGET_MS}ms`);
         if (swept.droppedTimers > 0) forceRelaunchNext = true;
         // Left for the host to sweep: installed where the fixture could not
         // track it (the raw driver), so the spec did not clean it up.
         if (swept.clocks > 0) {
           await host.emit({ type: "diagnostic", phase: "clock",
             message: `"${record.full_name}" left ${swept.clocks} test clock${swept.clocks === 1 ? "" : "s"} installed outside t.app.clock; ` +
-              `the spec's end removed ${swept.clocks === 1 ? "it" : "them"}` +
+              `the test's end removed ${swept.clocks === 1 ? "it" : "them"}` +
               (swept.droppedTimers > 0 ? ` and dropped ${swept.droppedTimers} pending test timer${swept.droppedTimers === 1 ? "" : "s"}; they never fired.` : ".") });
         }
       } catch (sweepError) {
-        reclaimFailures.push(`the host could not remove what the spec installed: ${errorMessage(sweepError)}`);
+        reclaimFailures.push(`the host could not remove what the test installed: ${errorMessage(sweepError)}`);
       }
     }
     if (reclaimFailures.length > 0) {
@@ -1142,10 +1142,10 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
       if (!contaminated) {
         contaminated = true;
         const what = `"${record.full_name}" left test resources the run could not remove (${reclaimFailures.join("; ")}); ` +
-          "a later spec would run against them.";
+          "a later test would run against them.";
         contaminationReason = `Not run: ${what} Recover: ${RECOVER_COMMAND}`;
         await host.emit({ type: "diagnostic", phase: "run_stopped",
-          message: `${what} The remaining specs are not run. Recover: ${RECOVER_COMMAND}` });
+          message: `${what} The remaining tests are not run. Recover: ${RECOVER_COMMAND}` });
       }
     }
     // Test timers dropped with the spec's clock leave the app's polling loops
@@ -1155,14 +1155,14 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     if (item.restoreProfile && !profileRestored && !contaminated && !stuck) {
       // The next spec would start on this spec's data.
       contaminated = true;
-      const what = `"${record.full_name}" could not roll the app's data back (restoreProfile); a later spec would run on its data.`;
+      const what = `"${record.full_name}" could not roll the app's data back (restoreProfile); a later test would run on its data.`;
       contaminationReason = `Not run: ${what} Restart the run.`;
       await host.emit({ type: "diagnostic", phase: "run_stopped",
-        message: `${what} The remaining specs are not run.` });
+        message: `${what} The remaining tests are not run.` });
     }
 
     // Routed responses that break the contract fail the spec like a body
-    // failure would, so `spec.fail({ expected: { code: 'E_OPENAPI_CONTRACT' } })`
+    // failure would, so `test.fail({ expected: { code: 'E_OPENAPI_CONTRACT' } })`
     // can declare one.
     if (ledger) {
       let checked: Awaited<ReturnType<typeof checkContract>> = undefined;
@@ -1203,7 +1203,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
         else error = mismatch;
       } else if (status === "passed") {
         status = "xpass";
-        error = new Error("spec.fail passed (xpass)");
+        error = new Error("test.fail passed (xpass)");
         fixture.failurePhase = "body";
       }
     }
@@ -1227,7 +1227,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     }
 
     // Overlapping steps are a misuse even when the body swallowed the error,
-    // and never the failure `spec.fail` declared.
+    // and never the failure `test.fail` declared.
     if (fixture.stepConflict) {
       if (status === "passed" || status === "xfail" || status === "xpass") {
         status = "failed";
@@ -1245,16 +1245,16 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
       // An xfail may have declared this very timeout; the relaunch still applies.
       if ((status === "passed" || status === "xpass") && !fixture.stepConflict) {
         status = "failed";
-        error = new Error(`${reason}; the next spec starts from a relaunched app`);
+        error = new Error(`${reason}; the next test starts from a relaunched app`);
         fixture.failurePhase = "body";
       }
       forceRelaunchNext = true;
       await host.emit({ type: "diagnostic", phase: "recovery",
-        message: `"${record.full_name}": ${reason}; the next spec starts from a relaunched app.` });
+        message: `"${record.full_name}": ${reason}; the next test starts from a relaunched app.` });
     } else if (fixture.detachedInFlight()) {
       forceRelaunchNext = true;
       await host.emit({ type: "diagnostic", phase: "recovery",
-        message: `"${record.full_name}": a read t.waitFor gave up on is still running in the app; the next spec starts from a relaunched app.` });
+        message: `"${record.full_name}": a read t.waitFor gave up on is still running in the app; the next test starts from a relaunched app.` });
     }
 
     if (status !== "passed" && status !== "skipped") await collectEvidence();
@@ -1329,7 +1329,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
       const unsafe = [
         ...(stuck.spec ? ["abandoned code can resume through an untracked promise in this shared JS context"] : []),
         ...(inFlight.length > 0
-          ? [`${describePending(inFlight)} ${inFlight.length === 1 ? "is" : "are"} still running after ${WEDGED_DEFER_BUDGET_MS}ms and would resume its code during a later spec`]
+          ? [`${describePending(inFlight)} ${inFlight.length === 1 ? "is" : "are"} still running after ${WEDGED_DEFER_BUDGET_MS}ms and would resume its code during a later test`]
           : []),
         ...(unfenced.length > 0
           ? [`it holds host drivers the run cannot revoke (${unfenced.map((name) => `rawAutomation().${name}`).join(", ")})`]
@@ -1343,7 +1343,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
           : `Recovering the app failed: ${failure}`;
         const reason = `${summary}. The run stopped: ${unsafe.join("; ")}. ${recovered}` +
           (revokeError ? `; revoking its automation access failed: ${revokeError}` : "") +
-          ". Make the spec settle (await its work), or give it a longer timeout.";
+          ". Make the test settle (await its work), or give it a longer timeout.";
         const recover = failure !== undefined || revokeError ? ` Recover: ${RECOVER_COMMAND}` : "";
         if (!contaminated) {
           contaminated = true;
@@ -1351,7 +1351,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
         }
         forceRelaunchNext = false;
         await host.emit({ type: "diagnostic", phase: failure === undefined ? "run_stopped" : "recovery_failed",
-          message: `${reason} The remaining specs are not run.${recover}` });
+          message: `${reason} The remaining tests are not run.${recover}` });
       } else if (failure === undefined) {
         forceRelaunchNext = false;
         await host.emit({ type: "diagnostic", phase: "recovery",
@@ -1361,7 +1361,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
         contaminationReason = `Not run: ${summary}, and recovering the app failed: ${failure}. Recover: ${RECOVER_COMMAND}`;
         if (stuck.spec) await revokeSpecAuthority(host, undefined, `${summary}; the run stopped`);
         await host.emit({ type: "diagnostic", phase: "recovery_failed",
-          message: `${summary}, and recovering the app failed: ${failure}. The remaining specs are not run. Recover: ${RECOVER_COMMAND}` });
+          message: `${summary}, and recovering the app failed: ${failure}. The remaining tests are not run. Recover: ${RECOVER_COMMAND}` });
       }
     }
     setPendingOwner(undefined);
@@ -1440,7 +1440,7 @@ function unawaitedMessage(title: string, calls: Array<{ call: string; at: string
 }
 
 /**
- * `undefined` when `error` is the failure `spec.fail` declared; otherwise the
+ * `undefined` when `error` is the failure `test.fail` declared; otherwise the
  * error to report, saying what was expected instead.
  */
 function expectedMismatch(error: unknown, expected: RejectExpected): Error | undefined {
@@ -1458,7 +1458,7 @@ function expectedMismatch(error: unknown, expected: RejectExpected): Error | und
     if (!expected.message.test(message)) problems.push(`a message matching ${String(expected.message)}`);
   }
   if (problems.length === 0) return undefined;
-  const header = `spec.fail expected a failure with ${problems.join(" and ")}; the body failed differently:`;
+  const header = `test.fail expected a failure with ${problems.join(" and ")}; the body failed differently:`;
   if (error instanceof Error) {
     error.message = `${header}\n${error.message}`;
     return error;
@@ -1660,7 +1660,7 @@ async function revokeSpecAuthority(host: ResolvedHost, attempt: number | undefin
   revokeRawAuthority(reason);
   try {
     if (host.revoke) await within(host.revoke(reason), RECLAIM_BUDGET_MS, `the host did not finish revoking within ${RECLAIM_BUDGET_MS}ms`);
-    else if (attempt !== undefined && host.endAttempt) await within(host.endAttempt(attempt), RECLAIM_BUDGET_MS, `the host did not finish removing what the spec installed within ${RECLAIM_BUDGET_MS}ms`);
+    else if (attempt !== undefined && host.endAttempt) await within(host.endAttempt(attempt), RECLAIM_BUDGET_MS, `the host did not finish removing what the test installed within ${RECLAIM_BUDGET_MS}ms`);
     return undefined;
   } catch (error) {
     return errorMessage(error);
@@ -1694,11 +1694,11 @@ function strayAssertionSink(host: ResolvedHost, abandoned: () => string | undefi
     seen += 1;
     if (seen > LISTED_STRAY_ASSERTIONS) return;
     const from = abandoned();
-    const message = `An assertion ran while no spec was running, so no case records it: ` +
+    const message = `An assertion ran while no test was running, so no case records it: ` +
       `expect(received).${entry.matcher} ${entry.passed ? "passed" : "failed"} (expected ${entry.expected}, received ${entry.actual}). ` +
       (from !== undefined
         ? `It comes from ${JSON.stringify(from)}, which the run abandoned; its verdict stands.`
-        : "Code of a spec the run stopped waiting for is still running.") +
+        : "Code of a test the run stopped waiting for is still running.") +
       (seen === LISTED_STRAY_ASSERTIONS ? " Further ones are not listed." : "");
     void host.emit({ type: "diagnostic", phase: "late_assertion", message, ...(from !== undefined ? { case: from } : {}) }).catch(() => {});
   };
@@ -1819,8 +1819,8 @@ if (!globalThis.__LINGXIA_TEST__) {
   });
 }
 
-export { spec, expect, run, list, reset, resolvedId, trackPublicSurface };
-export type { SpecOptions, SpecBody, Fixture };
+export { test, expect, run, list, reset, resolvedId, trackPublicSurface };
+export type { TestOptions, TestBody, Fixture };
 
 /** Bound on the capture driver calls a contract check makes. */
 const CONTRACT_CALL_MS = 5_000;

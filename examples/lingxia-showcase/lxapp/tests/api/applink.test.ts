@@ -1,9 +1,9 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { waitForCurrentPage, waitForElementAttribute } from '../helpers/page.js';
 import { bindFixture, expectReject } from '../helpers/poll.js';
 
-spec('route a warm AppLink onto the query page once', {
+test('route a warm AppLink onto the query page once', {
   id: 'APPLINK-001',
   covers: ['LxAppManager.applink'],
   app: SHOWCASE_APP_ID,
@@ -43,7 +43,7 @@ spec('route a warm AppLink onto the query page once', {
   expect((await app.nav.current()).name).toBe('device');
 });
 
-spec('route a warm AppLink from a product path', {
+test('route a warm AppLink from a product path', {
   id: 'APPLINK-002',
   covers: ['LxAppManager.applink'],
   app: SHOWCASE_APP_ID,

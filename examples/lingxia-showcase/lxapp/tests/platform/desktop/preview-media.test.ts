@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import type { DesktopWindowInfo } from '@lingxia/types/automation';
 import { SHOWCASE_APP_ID } from '../../helpers/app.js';
 import { runtimePlatform } from '../../helpers/platform.js';
@@ -50,7 +50,7 @@ interface HandleState {
  * on a desktop where another app may hold focus. PEND-PREVIEW-DISMISS-001
  * owns the dismissal contract.
  */
-spec('present a local image and report it through the handle', {
+test('present a local image and report it through the handle', {
   skip: previewSkip,
   id: 'DESKTOP-PREVIEW-MEDIA-001',
   covers: [
@@ -155,7 +155,7 @@ spec('present a local image and report it through the handle', {
   });
 });
 
-spec('skip an unreachable https item and keep request indexes', {
+test('skip an unreachable https item and keep request indexes', {
   skip: httpsPreviewSkip,
   id: 'DESKTOP-PREVIEW-HTTPS-SKIP-001',
   covers: [

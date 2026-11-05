@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { spec, expect } from "../dist/index.js";
+import { test as lxTest, expect } from "../dist/index.js";
 import { rawAutomation, reset, run } from "../dist/runner.js";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
 
@@ -24,13 +24,13 @@ test("a spec abandoned with a fetch still in flight stops the run: the app is re
   let ticks = 0;
   let nextRan = false;
 
-  spec("leaves work pending", { timeout: 40, forensics: false }, async (t) => {
+  lxTest("leaves work pending", { timeout: 40, forensics: false }, async (t) => {
     t.defer(() => {});
     setInterval(() => { ticks += 1; }, 100);
     void fetch("https://backend.example.test/slow");
     await new Promise(() => {});
   });
-  spec("runs after it", async (t) => {
+  lxTest("runs after it", async (t) => {
     nextRan = true;
     await t.app.info();
   });
@@ -40,7 +40,7 @@ test("a spec abandoned with a fetch still in flight stops the run: the app is re
   assert.equal(nextRan, false);
   assert.equal(report.partial, true);
   const timedOut = report.cases[0];
-  assert.match(timedOut.error.message, /spec timed out after 40ms/);
+  assert.match(timedOut.error.message, /test timed out after 40ms/);
   assert.match(timedOut.error.message, /did not settle; still pending: .*interval setInterval 100ms/);
   assert.match(timedOut.error.message, /fetch GET https:\/\/backend\.example\.test\/slow/);
   assert.match(timedOut.error.message, /Cleanup skipped because the timed-out body is still running/);
@@ -48,7 +48,7 @@ test("a spec abandoned with a fetch still in flight stops the run: the app is re
   const stopped = events.filter((e) => e.type === "diagnostic" && e.phase === "run_stopped");
   assert.equal(stopped.length, 1, JSON.stringify(events.filter((e) => e.type === "diagnostic")));
   assert.match(stopped[0].message,
-    /^"leaves work pending" left its timed-out body pending: fetch GET https:\/\/backend\.example\.test\/slow \(started \d+ms into the spec\), interval setInterval 100ms .*; cancelled its 1 pending timer\. The run stopped: abandoned code can resume through an untracked promise in this shared JS context; fetch GET https:\/\/backend\.example\.test\/slow \(started \d+ms into the spec\) is still running after 2000ms and would resume its code during a later spec\. Relaunched the app under test on its home page for inspection\. Make the spec settle \(await its work\), or give it a longer timeout\. The remaining specs are not run\.$/);
+    /^"leaves work pending" left its timed-out body pending: fetch GET https:\/\/backend\.example\.test\/slow \(started \d+ms into the test\), interval setInterval 100ms .*; cancelled its 1 pending timer\. The run stopped: abandoned code can resume through an untracked promise in this shared JS context; fetch GET https:\/\/backend\.example\.test\/slow \(started \d+ms into the test\) is still running after 2000ms and would resume its code during a later test\. Relaunched the app under test on its home page for inspection\. Make the test settle \(await its work\), or give it a longer timeout\. The remaining tests are not run\.$/);
   assert.match(report.cases[1].reason, /^Not run: "leaves work pending" left its timed-out body pending: .*The run stopped: abandoned code can resume through an untracked promise in this shared JS context; fetch GET/);
   assert.ok(world.navCalls.some(([method, options]) => method === "relaunch" && options.page === "home"));
 
@@ -63,12 +63,12 @@ test("an abandoned body stops the shared context even when no tracked work remai
   const { events } = installFakeHost(world);
   let ticks = 0;
   let nextRan = false;
-  spec("awaits forever", { timeout: 20, forensics: false }, async (t) => {
+  lxTest("awaits forever", { timeout: 20, forensics: false }, async (t) => {
     t.defer(() => {});
     setInterval(() => { ticks += 1; }, 30);
     await new Promise(() => {});
   });
-  spec("runs after it", async (t) => {
+  lxTest("runs after it", async (t) => {
     nextRan = true;
     await t.app.info();
   });
@@ -89,28 +89,28 @@ test("an abandoned body stops the shared context even when no tracked work remai
 test("a body awaiting nothing the runtime tracks says so", async () => {
   const world = createWorld();
   const { events } = installFakeHost(world);
-  spec("awaits forever", { timeout: 20, forensics: false }, () => new Promise(() => {}));
-  spec("runs next", async () => {});
+  lxTest("awaits forever", { timeout: 20, forensics: false }, () => new Promise(() => {}));
+  lxTest("runs next", async () => {});
 
   const report = await run();
   assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "skipped"]);
   const recovered = events.find((e) => e.type === "diagnostic" && e.phase === "run_stopped");
-  assert.match(recovered.message, /"awaits forever" left its timed-out body pending: an awaited promise that no timer, fetch or fixture call of the spec backs/);
+  assert.match(recovered.message, /"awaits forever" left its timed-out body pending: an awaited promise that no timer, fetch or fixture call of the test backs/);
 });
 
 test("a hung raw-driver eval cannot be taken back: it is named and the run stops", async () => {
   const world = createWorld();
   world.setEval("hangs forever", new Promise(() => {}));
   const { events } = installFakeHost(world);
-  spec("hung eval", { timeout: 30, forensics: false }, async () => {
+  lxTest("hung eval", { timeout: 30, forensics: false }, async () => {
     await rawAutomation().lxapp().eval({ script: "hangs forever" });
   });
-  spec("is not run", async () => {});
+  lxTest("is not run", async () => {});
 
   const report = await run();
   assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "skipped"]);
   const stopped = events.find((e) => e.type === "diagnostic" && e.phase === "run_stopped");
-  assert.match(stopped.message, /^"hung eval" left its timed-out body pending: eval rawAutomation\(\)\.lxapp\(\)\.eval\(\) \(started \d+ms into the spec\)\. The run stopped: .*eval rawAutomation\(\)\.lxapp\(\)\.eval\(\) .* is still running after 2000ms/);
+  assert.match(stopped.message, /^"hung eval" left its timed-out body pending: eval rawAutomation\(\)\.lxapp\(\)\.eval\(\) \(started \d+ms into the test\)\. The run stopped: .*eval rawAutomation\(\)\.lxapp\(\)\.eval\(\) .* is still running after 2000ms/);
 });
 
 test("when recovery fails, the rest are not run and the reason names the stuck work and the fix", async () => {
@@ -119,12 +119,12 @@ test("when recovery fails, the rest are not run and the reason names the stuck w
   hangingFetch();
   let laterRan = false;
 
-  spec("stuck on fetch", { timeout: 30, forensics: false }, async () => {
+  lxTest("stuck on fetch", { timeout: 30, forensics: false }, async () => {
     world.failRelaunch(new Error("home page never became ready"));
     await fetch("https://backend.example.test/hang");
   });
-  spec("would run on a wedged app", async () => { laterRan = true; });
-  spec("so would this", async () => { laterRan = true; });
+  lxTest("would run on a wedged app", async () => { laterRan = true; });
+  lxTest("so would this", async () => { laterRan = true; });
 
   const report = await run();
   assert.equal(laterRan, false);
@@ -136,18 +136,18 @@ test("when recovery fails, the rest are not run and the reason names the stuck w
   }
   const failed = events.filter((e) => e.type === "diagnostic" && e.phase === "recovery_failed");
   assert.equal(failed.length, 1);
-  assert.match(failed[0].message, /The remaining specs are not run\. Recover: lxdev lxapp restart/);
+  assert.match(failed[0].message, /The remaining tests are not run\. Recover: lxdev lxapp restart/);
 });
 
 test("the runner's own timers are not reported as spec work", async () => {
   const world = createWorld();
   world.add({ testId: "late", visible: false });
   const { events } = installFakeHost(world);
-  spec("polls, then hangs", { timeout: 300, forensics: false }, async (t) => {
+  lxTest("polls, then hangs", { timeout: 300, forensics: false }, async (t) => {
     await expect(t.app.view.testId("late")).toBeVisible({ timeout: 50 }).catch(() => {});
     await new Promise(() => {});
   });
-  spec("next", async () => {});
+  lxTest("next", async () => {});
 
   const report = await run();
   assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "skipped"]);
@@ -194,7 +194,7 @@ test("a live spec reads every host tier through rawAutomation() with its full su
   let release;
   const late = new Promise((resolve) => { release = resolve; });
 
-  spec("reads the surface", async () => {
+  lxTest("reads the surface", async () => {
     for (const [name, members] of Object.entries(surfaces)) {
       const tier = rawAutomation()[name];
       seen[name] = { same: tier === hostTiers[name], broken: inspect(tier, members) };
@@ -203,12 +203,12 @@ test("a live spec reads every host tier through rawAutomation() with its full su
     seen.cookies = inspect(rawAutomation().browser.cookies, ["get", "set"]);
     seen.lxapp = typeof rawAutomation().lxapp().eval;
   });
-  spec("abandoned", { timeout: 20, forensics: false }, async () => {
+  lxTest("abandoned", { timeout: 20, forensics: false }, async () => {
     kept = rawAutomation();
     await late;
     try { void kept.shell; lateRead = "read"; } catch (error) { lateRead = error.code; }
   });
-  spec("after it", async () => { release(); });
+  lxTest("after it", async () => { release(); });
 
   const report = await run();
   for (const [name] of Object.entries(surfaces)) {

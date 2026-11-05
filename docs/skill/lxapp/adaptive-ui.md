@@ -100,10 +100,10 @@ Other page-chrome variables: [Page chrome CSS](./guide.md#page-chrome-css).
 
 ## Test runtime switching
 
-Runner device changes report a new viewport. Switch in one spec:
+Runner device changes report a new viewport. Switch in one test:
 
 ```ts
-spec('switches Compact and Workspace views', async (t) => {
+test('switches Compact and Workspace views', async (t) => {
   const devices = await t.automation.device.list();
   const phone = devices.find((device) => device.group === 'phone')!;
   const desktop = devices.find((device) => device.group === 'desktop')!;

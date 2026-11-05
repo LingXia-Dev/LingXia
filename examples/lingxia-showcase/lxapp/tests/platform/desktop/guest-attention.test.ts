@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import type { DesktopWindowInfo } from '@lingxia/types/automation';
 import { SHOWCASE_APP_ID } from '../../helpers/app.js';
 import { runtimePlatform } from '../../helpers/platform.js';
@@ -21,7 +21,7 @@ type Probes = Record<string, BannerProbe | undefined>;
  * Picking an action needs the card's accessibility node, which only the macOS
  * card has; on Windows the card is drawn by hand, so that phase runs on macOS.
  */
-spec('a guest lxapp gets attention for itself only', {
+test('a guest lxapp gets attention for itself only', {
   id: 'DESKTOP-GUEST-ATTENTION-001',
   covers: ['lx.surface.bringToFront'],
   app: SHOWCASE_APP_ID,

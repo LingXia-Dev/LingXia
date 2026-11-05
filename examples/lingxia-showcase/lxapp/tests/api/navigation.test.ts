@@ -1,6 +1,6 @@
 import type { PageInfo } from '@lingxia/types/automation';
 import { currentPageOrNull, waitForElementAttribute } from '../helpers/page.js';
-import { expect, spec, type AnyLogicPage, type TestApp } from '@lingxia/test';
+import { expect, test, type AnyLogicPage, type TestApp } from '@lingxia/test';
 import { bindFixture, eventually, relaunchFromLogic, specNamespace, type Caught } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import type { ProbeWindow } from '../helpers/view.js';
@@ -18,7 +18,7 @@ async function waitForCurrent(app: TestApp, name: string): Promise<PageInfo> {
     });
 }
 
-spec("preserve stack, query, redirect, back, and tab semantics", { id: "NAV-001", covers: [
+test("preserve stack, query, redirect, back, and tab semantics", { id: "NAV-001", covers: [
     'NavDriver.relaunch',
     'NavDriver.to',
     'NavDriver.current',
@@ -79,7 +79,7 @@ spec("preserve stack, query, redirect, back, and tab semantics", { id: "NAV-001"
   expect((await app.nav.stack()).map((page) => page.name)).toEqual(['device']);
 });
 
-spec("reLaunch from Logic and reject invalid navigation", {
+test("reLaunch from Logic and reject invalid navigation", {
   id: "NAV-LOGIC-001",
   covers: ['lx.reLaunch', 'lx.navigateTo', 'lx.navigateBack', 'lx.redirectTo', 'lx.switchTab'],
   app: SHOWCASE_APP_ID,
@@ -233,7 +233,7 @@ async function expectFreshApiTab(app: TestApp, stale: PageInfo, landed?: PageInf
   expect((await app.nav.stack()).map((page) => page.name)).toEqual(['api']);
 }
 
-spec("relaunch onto a warm tab page opens a fresh instance", {
+test("relaunch onto a warm tab page opens a fresh instance", {
   id: "NAV-RELAUNCH-001",
   covers: ['NavDriver.relaunch', 'NavDriver.switchTab', 'lx.reLaunch'],
   app: SHOWCASE_APP_ID,

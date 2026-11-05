@@ -133,8 +133,8 @@ Everything else: [Mocks](../lxapp/mock.md).
 ## `lxdev test`
 
 Runs the project's `tests/*.test.ts` in the session (`lingxia dev` starts it).
-`lxdev test list` lists specs, `presets` and `args` show `lxdev.json`, `cancel`
-releases a run left behind, `report` reprints one. Writing specs, presets,
+`lxdev test list` lists tests, `presets` and `args` show `lxdev.json`, `cancel`
+releases a run left behind, `report` reprints one. Writing tests, presets,
 profiles, secrets, and exit codes: [Testing](../lxapp/testing.md).
 
 ## `lxdev logs`

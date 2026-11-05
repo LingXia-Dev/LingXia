@@ -1,8 +1,8 @@
-//! Bundle-time check of the functions a spec hands to `logic.eval` and
+//! Bundle-time check of the functions a test hands to `logic.eval` and
 //! `view.eval`.
 //!
 //! The fixture sends such a function as source text and runs it in the app's
-//! Logic runtime or a page WebView, so a name it reads from the spec file (a
+//! Logic runtime or a page WebView, so a name it reads from the test file (a
 //! `const`, an import, the fixture `t`) does not exist there. At run time that
 //! is a `ReferenceError` at best; at worst the target has a global of the same
 //! name (`name`, `status`, `location` in a WebView) and the function silently
@@ -54,7 +54,7 @@ struct Capture {
     target: Target,
 }
 
-/// Fail when an eval function in `program` closes over a spec-side binding.
+/// Fail when an eval function in `program` closes over a test-side binding.
 pub(crate) fn check_eval_functions(
     program: &Program<'_>,
     source: &str,
@@ -88,7 +88,7 @@ Pass it as an argument: {callee}(({scope}, {name}) => …, {name})",
         ));
     }
     bail!(
-        "{}\nAn eval function is sent as source text and runs in the app, not in the spec.",
+        "{}\nAn eval function is sent as source text and runs in the app, not in the test.",
         out.join("\n")
     )
 }
@@ -211,7 +211,7 @@ impl<'a> EvalFinder<'_, 'a> {
                     ImportDeclarationSpecifier::ImportSpecifier(specifier)
                         if crate::test_bundle::module_export_name(&specifier.imported)
                             .as_deref()
-                            == Some("spec") =>
+                            == Some("test") =>
                     {
                         (&specifier.local, Origin::Spec)
                     }
@@ -402,7 +402,7 @@ impl Origin {
 
     fn member(self, name: &str) -> Option<Self> {
         match (self, name) {
-            (Self::Module, "spec") => Some(Self::Spec),
+            (Self::Module, "test") => Some(Self::Spec),
             (
                 Self::Spec,
                 "only" | "skip" | "fail" | "fixme" | "beforeEach" | "afterEach" | "reset",
@@ -496,7 +496,7 @@ mod tests {
     use oxc_span::SourceType;
 
     pub(super) fn check(source: &str) -> Result<()> {
-        let source = format!("import {{ spec }} from '@lingxia/test';{source}");
+        let source = format!("import {{ test }} from '@lingxia/test';{source}");
         let source = source.as_str();
         let allocator = Allocator::default();
         let program = Parser::new(&allocator, source, SourceType::ts())
@@ -512,7 +512,7 @@ mod tests {
     #[test]
     fn a_captured_const_fails_with_its_position_and_name() {
         let message = error(
-            "const name = 'Ada';\nspec('x', async (t) => {\n  await t.app.view.eval(({ document }) => document.title === name);\n});\n",
+            "const name = 'Ada';\ntest('x', async (t) => {\n  await t.app.view.eval(({ document }) => document.title === name);\n});\n",
         );
         assert!(message.contains("tests/a.test.ts:3:"), "{message}");
         assert!(
@@ -529,7 +529,7 @@ mod tests {
     #[test]
     fn imports_the_fixture_and_helpers_are_captures_too() {
         let message = error(
-            "import { expect } from '@lingxia/test';\nimport { helper } from './helper';\nspec('x', async (t) => {\n  await t.app.logic.eval(() => { expect(1); helper(); return t; });\n});\n",
+            "import { expect } from '@lingxia/test';\nimport { helper } from './helper';\ntest('x', async (t) => {\n  await t.app.logic.eval(() => { expect(1); helper(); return t; });\n});\n",
         );
         for name in ["expect", "helper", "t"] {
             assert!(
@@ -543,7 +543,7 @@ mod tests {
     #[test]
     fn arguments_locals_globals_and_types_pass() {
         check(
-            "type Todo = { id: string };\nconst id = 'x';\nspec('x', async (t) => {\n  await t.app.logic.eval(({ getCurrentPages }, wanted: string) => {\n    const pages = getCurrentPages() as unknown as Todo[];\n    const found = pages.filter((page) => page.id === wanted);\n    return JSON.stringify(found) + Math.max(1, 2) + String(setTimeout);\n  }, id);\n  await t.app.view.eval({ timeout: 10 }, ({ document }) => document.title);\n});\n",
+            "type Todo = { id: string };\nconst id = 'x';\ntest('x', async (t) => {\n  await t.app.logic.eval(({ getCurrentPages }, wanted: string) => {\n    const pages = getCurrentPages() as unknown as Todo[];\n    const found = pages.filter((page) => page.id === wanted);\n    return JSON.stringify(found) + Math.max(1, 2) + String(setTimeout);\n  }, id);\n  await t.app.view.eval({ timeout: 10 }, ({ document }) => document.title);\n});\n",
         )
         .unwrap();
     }
@@ -551,7 +551,7 @@ mod tests {
     #[test]
     fn page_views_saved_views_and_named_functions_are_checked() {
         let message = error(
-            "const label = 'x';\nfunction read({ document }: any) { return document.title === label; }\nspec('x', async (t) => {\n  const todo = (await t.app.page({ name: 'todo' })).view;\n  await todo.eval(read);\n  const { logic } = t.app;\n  await logic.eval(() => label);\n});\n",
+            "const label = 'x';\nfunction read({ document }: any) { return document.title === label; }\ntest('x', async (t) => {\n  const todo = (await t.app.page({ name: 'todo' })).view;\n  await todo.eval(read);\n  const { logic } = t.app;\n  await logic.eval(() => label);\n});\n",
         );
         assert!(
             message.contains("todo.eval(fn) closes over `label`"),
@@ -566,19 +566,19 @@ mod tests {
     #[test]
     fn other_evals_are_not_fixture_evals() {
         check(
-            "const script = '1';\nspec('x', async (t) => {\n  await rawAutomation().lxapp().eval({ script });\n  await t.automation.browser.eval({ js: script });\n  const other = { eval: (fn: () => string) => fn() };\n  other.eval(() => script);\n});\n",
+            "const script = '1';\ntest('x', async (t) => {\n  await rawAutomation().lxapp().eval({ script });\n  await t.automation.browser.eval({ js: script });\n  const other = { eval: (fn: () => string) => fn() };\n  other.eval(() => script);\n});\n",
         )
         .unwrap();
     }
     #[test]
     fn unrelated_logic_view_and_shadowed_fixtures_are_not_remote() {
-        check("const captured = 1; const logic = { eval: f => f() }; logic.eval(() => captured); const other = { view: logic }; other.view.eval(() => captured); function helper(spec) { spec('local', t => t.app.logic.eval(() => captured)); }").unwrap();
+        check("const captured = 1; const logic = { eval: f => f() }; logic.eval(() => captured); const other = { view: logic }; other.view.eval(() => captured); function helper(test) { test('local', t => t.app.logic.eval(() => captured)); }").unwrap();
     }
 
     #[test]
     fn renamed_nested_bindings_and_named_callbacks_are_remote() {
         let message = error(
-            "const captured = 1; function body({ app: { view: screen } }) { const alias = screen; alias.eval(() => captured); } spec.only('remote', body);",
+            "const captured = 1; function body({ app: { view: screen } }) { const alias = screen; alias.eval(() => captured); } test.only('remote', body);",
         );
         assert!(
             message.contains("alias.eval(fn) closes over `captured`"),
@@ -589,7 +589,7 @@ mod tests {
     #[test]
     fn import_aliases_and_hooks_retain_the_fixture_origin() {
         let message = error(
-            "import * as tests from '@lingxia/test'; const captured = 1; const check = tests.spec; check.beforeEach(({ app }) => { app.logic.eval(() => captured); });",
+            "import * as tests from '@lingxia/test'; const captured = 1; const check = tests.test; check.beforeEach(({ app }) => { app.logic.eval(() => captured); });",
         );
         assert!(
             message.contains("app.logic.eval(fn) closes over `captured`"),
@@ -599,12 +599,12 @@ mod tests {
 
     #[test]
     fn a_computed_business_key_does_not_prove_a_fixture_member() {
-        check("const key = 'logic'; const captured = 1; spec('x', t => { const { [key]: logic } = t.app; logic.eval(() => captured); });").unwrap();
+        check("const key = 'logic'; const captured = 1; test('x', t => { const { [key]: logic } = t.app; logic.eval(() => captured); });").unwrap();
     }
     #[test]
     fn automation_selectors_and_reset_hooks_retain_the_fixture_origin() {
         let message = error(
-            "const captured = 1; spec('other', async t => { await t.automation.lxapp('other').view.eval(() => captured); const { automation } = t; const app = automation.lxapp(); const { logic: runtime } = app; await runtime.eval(() => captured); }); spec.reset(async ({ app }) => { await app.logic.eval(() => captured); });",
+            "const captured = 1; test('other', async t => { await t.automation.lxapp('other').view.eval(() => captured); const { automation } = t; const app = automation.lxapp(); const { logic: runtime } = app; await runtime.eval(() => captured); }); test.reset(async ({ app }) => { await app.logic.eval(() => captured); });",
         );
         for callee in [
             "t.automation.lxapp('other').view.eval",
@@ -621,7 +621,7 @@ mod tests {
     #[test]
     fn fixed_page_handles_keep_remote_eval_provenance() {
         let message = error(
-            "const captured = 1; spec('page', async t => { const page = await t.app.page({ name: 'home' }); page.view.eval(() => captured); await (await t.app.page()).view.eval({ timeout: 5_000 }, () => captured); const other = await t.automation.lxapp('other').page({ instanceId: '7' }, { timeout: 1_000 }); await other.view.eval(() => captured); });",
+            "const captured = 1; test('page', async t => { const page = await t.app.page({ name: 'home' }); page.view.eval(() => captured); await (await t.app.page()).view.eval({ timeout: 5_000 }, () => captured); const other = await t.automation.lxapp('other').page({ instanceId: '7' }, { timeout: 1_000 }); await other.view.eval(() => captured); });",
         );
         for callee in [
             "page.view.eval",
@@ -637,7 +637,7 @@ mod tests {
 
     #[test]
     fn business_selectors_and_raw_automation_are_not_fixture_origins() {
-        check("const captured = 1; const other = { automation: { lxapp: () => ({ logic: { eval: fn => fn() } }) } }; other.automation.lxapp().logic.eval(() => captured); spec('raw', t => { t.automation.browser.eval({ js: String(captured) }); });").unwrap();
+        check("const captured = 1; const other = { automation: { lxapp: () => ({ logic: { eval: fn => fn() } }) } }; other.automation.lxapp().logic.eval(() => captured); test('raw', t => { t.automation.browser.eval({ js: String(captured) }); });").unwrap();
     }
 }
 

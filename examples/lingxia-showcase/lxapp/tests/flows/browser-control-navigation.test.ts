@@ -1,8 +1,8 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 // Run against a host registering Settings and Downloads, with the device awake,
 // unlocked and host foregrounded. Override URLs/selectors/RPC via --arg for a
 // different host; the clicks must target real product links, not injected links.
-spec('control-page links retain trusted bridge authority', {
+test('control-page links retain trusted bridge authority', {
   id: 'BROWSER-CONTROL-NAV-001',
   timeout: 180_000,
 }, async (t) => {

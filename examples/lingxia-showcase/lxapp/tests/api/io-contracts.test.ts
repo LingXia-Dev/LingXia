@@ -1,8 +1,8 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { bindFixture, specNamespace } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
-spec("reject storage and file operations on invalid inputs", { id: "LOGIC-005", covers: ['Storage.set', 'LxFile.text', 'lx.fs.stat'], app: SHOWCASE_APP_ID }, async (t) => {
+test("reject storage and file operations on invalid inputs", { id: "LOGIC-005", covers: ['Storage.set', 'LxFile.text', 'lx.fs.stat'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, namespace } = bindFixture(t, "LOGIC-005");
 
   const result = await app.logic.eval(async ({ lx }, namespace) => {
@@ -30,7 +30,7 @@ spec("reject storage and file operations on invalid inputs", { id: "LOGIC-005", 
   expect(result.oversizedValue).toBeTruthy();
 });
 
-spec("read image info from managed storage and reject a missing image", { id: "MEDIA-INFO-001", covers: ['lx.getImageInfo'], app: SHOWCASE_APP_ID }, async (t) => {
+test("read image info from managed storage and reject a missing image", { id: "MEDIA-INFO-001", covers: ['lx.getImageInfo'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, namespace } = bindFixture(t, "MEDIA-INFO-001");
 
   const result = await app.logic.eval(async ({ lx }, namespace) => {

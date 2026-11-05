@@ -1,5 +1,5 @@
 import type { Fixture, TestApp, TestView } from '@lingxia/test';
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { waitForCurrentPage, waitForElementText } from '../helpers/page.js';
 import { bindFixture, eventually } from '../helpers/poll.js';
@@ -86,7 +86,7 @@ async function startAtHome(app: TestApp): Promise<void> {
   await waitForCurrentPage(app, 'home', 20_000);
 }
 
-spec('hand every preloaded tab a working port once it is shown', {
+test('hand every preloaded tab a working port once it is shown', {
   id: 'BRIDGE-001',
   covers: ['lx.switchTab'],
   app: SHOWCASE_APP_ID,
@@ -113,7 +113,7 @@ spec('hand every preloaded tab a working port once it is shown', {
   expect(await bridgeReady(await tabView(app, 'home'), 'home')).toBe(true);
 });
 
-spec('bootstrap a pushed page through its own port', {
+test('bootstrap a pushed page through its own port', {
   id: 'BRIDGE-002',
   covers: ['lx.navigateTo'],
   app: SHOWCASE_APP_ID,
@@ -131,7 +131,7 @@ spec('bootstrap a pushed page through its own port', {
   await expectGapFreeStream(t, repro);
 });
 
-spec("keep a covered page's port across navigateTo and back", {
+test("keep a covered page's port across navigateTo and back", {
   id: 'BRIDGE-003',
   covers: ['lx.navigateTo', 'lx.navigateBack'],
   app: SHOWCASE_APP_ID,
@@ -158,7 +158,7 @@ spec("keep a covered page's port across navigateTo and back", {
   await expectEcho(t, repro, 2);
 });
 
-spec('bootstrap a re-entered route as a fresh document', {
+test('bootstrap a re-entered route as a fresh document', {
   id: 'BRIDGE-004',
   covers: ['lx.navigateTo', 'lx.navigateBack'],
   app: SHOWCASE_APP_ID,
@@ -188,7 +188,7 @@ spec('bootstrap a re-entered route as a fresh document', {
   await expectEcho(t, reentered, 1);
 });
 
-spec('settle on a working port after rapid re-entry', {
+test('settle on a working port after rapid re-entry', {
   id: 'BRIDGE-005',
   covers: ['lx.navigateTo', 'lx.navigateBack'],
   app: SHOWCASE_APP_ID,
@@ -214,7 +214,7 @@ spec('settle on a working port after rapid re-entry', {
   await expectGapFreeStream(t, repro);
 });
 
-spec('bring the bridge back up after the app restarts', {
+test('bring the bridge back up after the app restarts', {
   id: 'BRIDGE-006',
   covers: ['LxAppManager.restart'],
   app: SHOWCASE_APP_ID,
@@ -248,7 +248,7 @@ spec('bring the bridge back up after the app restarts', {
   await expectEcho(t, repro, 1);
 });
 
-spec('re-enter a route the moment it bootstraps without stalling its port', {
+test('re-enter a route the moment it bootstraps without stalling its port', {
   id: 'BRIDGE-007',
   covers: ['lx.navigateTo', 'lx.navigateBack'],
   app: SHOWCASE_APP_ID,

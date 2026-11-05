@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { bindFixture } from '../helpers/poll.js';
 
@@ -12,7 +12,7 @@ const platform = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<s
 const DESKTOP = ['macos', 'windows'];
 const desktopSkip = platform && DESKTOP.includes(platform) ? undefined : 'desktop hosts only';
 
-spec('reject haptics and the dialer with E_NOT_SUPPORTED on a desktop', {
+test('reject haptics and the dialer with E_NOT_SUPPORTED on a desktop', {
   skip: desktopSkip,
   id: 'DEVICE-ABSENT-001',
   covers: ['lx.vibrateShort', 'lx.vibrateLong', 'lx.makePhoneCall'],
@@ -55,7 +55,7 @@ const ORIENTATION_SUPPORT: Record<string, boolean> = {
   windows: false,
 };
 
-spec('accept both device orientations and reject an unknown one', {
+test('accept both device orientations and reject an unknown one', {
   id: 'DEVICE-ORIENTATION-001',
   covers: ['lx.setDeviceOrientation'],
   app: SHOWCASE_APP_ID,

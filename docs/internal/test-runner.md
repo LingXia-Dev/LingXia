@@ -1,8 +1,8 @@
 # Test runner
 
-`@lingxia/test` executes sequential specs in the host automation context.
+`@lingxia/test` executes sequential tests in the host automation context.
 
-Entry points: `@lingxia/test` is what a spec imports (`spec`, `expect`,
+Entry points: `@lingxia/test` is what a test imports (`test`, `expect`,
 errors, fixture types); `@lingxia/test/runner` holds the runner (`run`,
 `list`, `reset`, `rawAutomation`, `trackPublicSurface`, `renderJUnit`, the
 capability inventory, version and default budgets), which lxdev reaches
@@ -14,27 +14,27 @@ never reaches the authoring entry's declarations; and
 received artifacts. Keep the following invariants when changing these layers:
 
 - New test contexts do not reset product state. Retrying requires a file-scoped
-  `spec.reset` hook.
-- Specs share a JS context. Once any user body, cleanup or unawaited work is
+  `test.reset` hook.
+- Tests share a JS context. Once any user body, cleanup or unawaited work is
   abandoned, stop the run, revoke the whole context, and mark remaining cases
   not run. Settled tracked work does not prove isolation: an untracked promise
-  can resume old code and obtain the next spec's grant. Recovery may restore
-  the app for inspection; it never admits another spec into that context.
-- An `expect` made while no spec runs (a late continuation) goes to the
-  stray sink: a `late_assertion` diagnostic naming the spec the run last
+  can resume old code and obtain the next test's grant. Recovery may restore
+  the app for inspection; it never admits another test into that context.
+- An `expect` made while no test runs (a late continuation) goes to the
+  stray sink: a `late_assertion` diagnostic naming the test the run last
   abandoned (`case`), never another case's record. Finished
   case records copy the fixture's steps, assertions and attachments.
-- A spec's leftover test-context timers are cancelled when it ends (a
+- A test's leftover test-context timers are cancelled when it ends (a
   `cleanup` diagnostic when it otherwise settled), so none fires into the
-  next spec.
+  next test.
 - Pending work is attributed by `pending.ts`: during a run it wraps the test
   context's `setTimeout`/`setInterval`/`fetch`, and `rawAutomation()` returns
   a proxy that records promise-returning driver calls (`eval` as eval), each
-  under the spec that owns the context; fixture calls in flight come from
+  under the test that owns the context; fixture calls in flight come from
   `LiveFixture.pendingCalls()`. Runner-internal timers must use
   `runnerSetTimeout`/`runnerClearTimeout` so they are never reported or
-  cancelled as spec work.
-- The spec, cleanup, evidence, run, and transport have separate deadlines.
+  cancelled as test work.
+- The test, cleanup, evidence, run, and transport have separate deadlines.
   Cleanup has a hard timer around arbitrary user promises, not just checks in
   driver methods. JS deadlines stop waiting, not arbitrary external side effects.
 - `schema_version: 1` results retain the six case statuses, source identity,
@@ -64,16 +64,16 @@ received artifacts. Keep the following invariants when changing these layers:
   error `data` under code `automation_run_in_progress`. `--cancel-active`
   refuses a run polled within the last 15s: its client is alive.
 - `session.test.start` sends `args` (user `--arg`/`--secret-arg`, what the
-  spec's `t.arg()` reads) and `control` (grep, id, ids, shard, retries, passWithNoTests,
+  test's `t.arg()` reads) and `control` (grep, id, ids, shard, retries, passWithNoTests,
   forbidOnly, platform, secretArgs) separately. The host exposes `control` on
   `__LINGXIA_AUTOMATION_HOST__` only when non-empty; without it the framework
   reads those keys from `args`, as older lxdev sent them. Reports put controls
   in `meta.run`. A new lxdev against a host that drops `control` loses its
   filters; the two ship together.
 - `t.skip()` throws the internal `SkipSignal`; from `beforeEach` or the body it
-  grades `skipped` (also under `spec.fail`) and skips failure forensics. During
+  grades `skipped` (also under `test.fail`) and skips failure forensics. During
   cleanup (`t.defer`, `afterEach`) it rejects, and the case fails in the
-  `defer` phase. `spec.fail` without `expected` inverts any body failure; with
+  `defer` phase. `test.fail` without `expected` inverts any body failure; with
   `expected` (`code`, `message` string or RegExp) only a matching one, and a
   mismatch is `failed` with what was expected prepended. Setup failures and
   timeouts keep their status.
@@ -95,12 +95,12 @@ received artifacts. Keep the following invariants when changing these layers:
   poll gap) through the normal cancel path. `lingxia dev` likewise holds its
   source watcher while a run is on (below).
 - Fixture nav (`t.app.nav.*` and the `start` relaunch) sends `waitUntil: 'ready'`
-  unless the spec chose `waitUntil`. The driver then polls the landed instance's
+  unless the test chose `waitUntil`. The driver then polls the landed instance's
   `ready_dispatched` (`lxapp::automation::wait_page_runtime_ready`) off the Logic
   thread; Logic-side `lx.automation()` rejects `'ready'` because awaiting its own
   `onReady` would deadlock. The raw driver default stays `'commit'`. The
   `start` relaunch ignores only the "disposed before ready" rejection (the
-  page's own hand-off); a ready timeout still fails the spec.
+  page's own hand-off); a ready timeout still fails the test.
 - Raw `page.waitFor` states follow `lxdev lxapp page wait` on the first match
   (`hidden` = exists and not visible). Locator states in `@lingxia/test` are
   uniqueness-aware (`attached`/`visible`/`inViewport` need exactly one match,
@@ -129,34 +129,34 @@ received artifacts. Keep the following invariants when changing these layers:
   actionability probe and dispatch address. `toHaveAttribute` reads
   attributes with a read-only page eval inside the retry loop; nothing is
   written to the page.
-- The spec timeout is a timer on the test JS worker; it cannot fire while a
+- The test timeout is a timer on the test JS worker; it cannot fire while a
   driver call blocks that thread in native code. The manager's run deadline and
   lease run off-worker and interrupt JS, and a worker still stuck after the
   grace period is declared wedged.
 - Check actionability before dispatch. Never retry an ambiguous input transport
   failure: the original click may already have had its side effect.
-- Hook scope: `spec.reset/beforeEach/afterEach` keep their raw registration
+- Hook scope: `test.reset/beforeEach/afterEach` keep their raw registration
   frames (the bundle map is installed after the modules run). At run start the
-  owner is the nearest mapped frame in a file that declares specs
+  owner is the nearest mapped frame in a file that declares tests
   (`resolveOwner` in `ids.ts`), so a helper module's `installHooks()` belongs to
-  the calling spec file, and a spec file exporting a hook helper keeps it. With
-  no spec file on the stack the hook falls back to its first authored frame and
+  the calling test file, and a test file exporting a hook helper keeps it. With
+  no test file on the stack the hook falls back to its first authored frame and
   a `diagnostic` event (`phase: "collect"`) says it never runs.
   `captureFrames` raises V8's `Error.stackTraceLimit` to 50 while capturing.
-  Specs themselves are still attributed to their first authored frame.
-- Generated ids (`<file stem>-<n>`) apply to specs with no `id` and no ASCII
-  slug; `n` counts only those specs, per file, in registration order, assigned
+  Tests themselves are still attributed to their first authored frame.
+- Generated ids (`<file stem>-<n>`) apply to tests with no `id` and no ASCII
+  slug; `n` counts only those tests, per file, in registration order, assigned
   at run start once files are known. `n` used to be a run-wide counter over
-  every spec, so ids from older reports can differ for suites with several
-  files or with ASCII specs before a non-ASCII one.
+  every test, so ids from older reports can differ for suites with several
+  files or with ASCII tests before a non-ASCII one.
 - Action deadlines (`deadline.ts` `ActionDeadline`): locator `click/fill/type/
   press/waitFor`, locator matchers and `expect.poll` clamp their timeout to
-  `LiveFixture.budgetRoom()` — the spec deadline less a reporting margin
+  `LiveFixture.budgetRoom()` — the test deadline less a reporting margin
   (`min(250ms, 5%)`), or the cleanup deadline during cleanup — and put the
   clamp in the failure message. Every driver call in those loops (query,
   actionability eval, dispatch, the poll `read`) is raced against the rest of
   the action budget and rejects with a `TimeoutError` naming the call, the
-  action and its location, so the action fails before the spec timer. Raw
+  action and its location, so the action fails before the test timer. Raw
   driver calls (`t.app.logic.eval`, nav) carry their own driver timeouts instead.
   The race only stops waiting: a native call that blocks the JS thread cannot
   be preempted from JS, and an abandoned call may still complete in the app.
@@ -171,12 +171,12 @@ received artifacts. Keep the following invariants when changing these layers:
   (`isElementRefusal`: `E_ELEMENT_NOT_FOUND`/`E_ELEMENT_NOT_INTERACTABLE`, or
   the `Element not found|not interactable:` messages). Keep the lists in step
   with the Rust helpers. An action that times out on such a rejection carries
-  its `code`/`data` on the `AssertionError`, so `spec.fail({ expected: { code
+  its `code`/`data` on the `AssertionError`, so `test.fail({ expected: { code
   } })` can pin it.
 - Failure diagnostics: `LiveFixture` remembers the last failed recorded action
   with its error; the case's `error.failedAction` is set only when the case
-  failed with that same error object (or the spec timed out while it ran), so
-  an action a spec expected to reject is never blamed. `error.page` is the
+  failed with that same error object (or the test timed out while it ran), so
+  an action a test expected to reject is never blamed. `error.page` is the
   current page from the forensics `nav.current()` (`{ name, instanceId }`),
   else the rejection's `data.current`. `report.json` keeps `cases` and adds a
   flat `failures[]` (`id, title, file, line, phase, code, message,
@@ -187,21 +187,21 @@ received artifacts. Keep the following invariants when changing these layers:
 ## Execution and bundling
 
 ```text
-Development machine: lxdev collects/bundles specs → sends them over dev websocket
+Development machine: lxdev collects/bundles tests → sends them over dev websocket
 Target App/Runner:   test JS worker → automation → Logic / WebViews / host / HTTP
 Development machine: lxdev receives progress, results, and artifacts
 ```
 
-- The CLI never executes spec bodies. On a phone, specs and their `fetch` run
+- The CLI never executes test bodies. On a phone, tests and their `fetch` run
   on the phone; with a desktop Runner, in that Runner on the PC.
 - The host reuses one automation worker and creates a fresh JS context per
-  run. Specs execute sequentially and await async hooks and bodies.
+  run. Tests execute sequentially and await async hooks and bodies.
 - Directory input collects `*.test.ts` recursively, follows static imports, and
   strips TypeScript types into one JS script with a source map, reading sources
   without writing a temporary entry into the project. A `.json` import becomes
   a module whose `default` export is the parsed value (validated with line and
   column on error), shared by every importer.
-- A spec, `spec.configure()` or hook belongs to the file of the nearest spec
+- A test, `test.configure()` or hook belongs to the file of the nearest test
   frame on its registration stack, mapped through the bundle map. Engines may
   evaluate the bundle behind lines of their own (Rong's JavaScriptCore backend
   prepends `"use strict";\n`, so frames arrive one line low). The bundle's
@@ -209,22 +209,22 @@ Development machine: lxdev receives progress, results, and artifacts
   lines to the map it installs for `@lingxia/test`, and moves a thrown error's
   frames back to bundle lines before lxdev maps them. A registration that
   still maps to no file fails the run; it is never left file-less.
-- Cleanup order: `spec.afterEach`, then LIFO `t.defer`; `timeoutCleanup`
+- Cleanup order: `test.afterEach`, then LIFO `t.defer`; `timeoutCleanup`
   bounds both. `restoreProfile`'s rollback is the first defer (so it runs
   last) and drops its checkpoint whether or not the rollback succeeded.
 - App under test: `describeSubject` resolves the host's current lxapp at run
-  start and every spec pins it by appid (`pinApp(item.app ?? subject.appid)`),
+  start and every test pins it by appid (`pinApp(item.app ?? subject.appid)`),
   never "current" again. A host whose runtime just started or reconnected may
   have no app in front: `lxapp::automation::resolve_lxapp("current")` then
   falls back to the home app (`current_or_home`), and `describeSubject`
   waits up to `SUBJECT_WAIT_MS` for `no current lxapp` to clear and opens an
   app the host names as `lxapp is not active: <id>`.
-- Before each spec that runs, the runtime lists the lxapps; if the app under
-  test (`spec.app`, else the app `describeSubject` saw at run start) is
+- Before each test that runs, the runtime lists the lxapps; if the app under
+  test (`test.app`, else the app `describeSubject` saw at run start) is
   missing or `closed` (a `closing` one gets 5 s), it opens it, relaunches its
   home page, emits a `diagnostic` with `phase: "recovery"` naming the previous
   case and its status, and records an `app.reopen` step on the new case. A
-  failed reopen is recorded the same way and the spec then fails on its own.
+  failed reopen is recorded the same way and the test then fails on its own.
 - Watch pause: before it bundles, `lxdev test` takes a `session.watch.pause`
   lease (`{ lease, ttl_ms: 300000 }`) from the dev server, and after
   `session.test.start` renews it with the run's id. The server (not the
@@ -238,10 +238,10 @@ Development machine: lxdev receives progress, results, and artifacts
   repeats the check under the command lock every relayed request holds
   until its response is observed, so a run whose lease was taken during the
   (seconds-long) rebuild defers the restart instead of having its app
-  replaced mid-spec.
-- Run end: after the last spec, unless the run stopped (`contaminated`), the
+  replaced mid-test.
+- Run end: after the last test, unless the run stopped (`contaminated`), the
   runtime runs the same `reopenAppUnderTest` it runs
-  before each spec. A failed reopen (there or per spec) is a `diagnostic`
+  before each test. A failed reopen (there or per test) is a `diagnostic`
   with `phase: "recovery_failed"`; lxdev sets `Outcome.app_not_live` from it
   and prints the `Recover:` line, as it does for a `timed_out` or
   `internal_error` run that was not interrupted.
@@ -302,12 +302,12 @@ Development machine: lxdev receives progress, results, and artifacts
 - Run budget: without `--timeout-secs`, lxdev sends `budgetPerSpecMs`
   (30 s), `budgetMinMs` (300 s) and `budgetMaxMs` (3600 s) as controls and
   asks the host for the 3600 s ceiling, because only the runtime knows the
-  selection. The runtime computes max(min, planned executions × per-spec),
-  capped at max, and checks it between specs; with `--timeout-secs` it gets
+  selection. The runtime computes max(min, planned executions × per-test),
+  capped at max, and checks it between tests; with `--timeout-secs` it gets
   `budgetMs` and the host deadline is the same value. Once spent, the rest
   are skipped with a "not run" reason, a `diagnostic` (`phase: "budget"`) is
   emitted, `meta.budget.exhausted_after` records N of `planned`, and the
-  report is partial. A spec cut off by the host deadline instead ends the run
+  report is partial. A test cut off by the host deadline instead ends the run
   `timeout`; lxdev then derives N/M from the streamed cases
   (`budget_exhaustion`). An older runtime ignores the budget controls and
   runs to the host ceiling.
@@ -322,12 +322,12 @@ Development machine: lxdev receives progress, results, and artifacts
   and pauses media. It does not wake an off screen or unlock one.
 - Locked screen: the host's `screenLocked()` answers from
   `CGSessionCopyCurrentDictionary` (`CGSSessionScreenIsLocked`) on macOS and
-  `undefined` elsewhere. The runtime asks before each spec; the first `true`
+  `undefined` elsewhere. The runtime asks before each test; the first `true`
   emits one `diagnostic` (`phase: "screen_locked"`), skips the rest with a
   "not run" reason, and makes the report partial. It does not wait for an
   unlock: nothing but a person can unlock, a wait would outlast lxdev's hang
   watchdog between cases, and results on a hidden page are not results. A
-  spec whose wait times out on a hidden page while the screen is locked
+  test whose wait times out on a hidden page while the screen is locked
   names the lock instead of the observation.
 - Hidden-page evidence belongs to failure forensics, under its separate budget:
   read the page's `visibilityState` and whether an animation frame arrives
@@ -341,44 +341,44 @@ Development machine: lxdev receives progress, results, and artifacts
 - `--shuffle[=SEED]` sends `control.shuffle` (lxdev draws a u32 when no seed
   is given and prints it); the runtime shuffles the planned executions with a
   seeded Fisher–Yates (mulberry32), after `--repeat-each` expansion.
-  `--repeat-each N` (`control.repeatEach`) plans each selected spec N times,
+  `--repeat-each N` (`control.repeatEach`) plans each selected test N times,
   adjacent unless shuffled; each execution is its own case (`repeat`,
   `[repeat k/N]` in `full_name`, attachment path `…/repeat-k/attempt-n`), and
   retries key attempts by id and repeat. `run_started` lists every planned
   execution, and lxdev fills the next unstarted entry with a matching name.
-- Spec calls are found by name: the bundler (`test_spec_check.rs`) refuses
-  any project module that reaches `@lingxia/test`'s `spec` other than by a
+- Test calls are found by name: the bundler (`test_spec_check.rs`) refuses
+  any project module that reaches `@lingxia/test`'s `test` other than by a
   direct call under that name — a value use (alias, ternary, argument), a
-  rename, `export { spec }` / `export * from`, a value namespace import. This
+  rename, `export { test }` / `export * from`, a value namespace import. This
   is what makes `FILE:LINE`, offline listing and `Rerun:` lines exact;
-  conditional skipping is the `skip` spec/file option instead.
-- `FILE:LINE`: lxdev parses the file (Oxc) for spec calls — `spec(…)` and
-  `spec.skip|only|fixme|fail(…)` — and takes the one whose call spans the line, else every call inside the
+  conditional skipping is the `skip` test/file option instead.
+- `FILE:LINE`: lxdev parses the file (Oxc) for test calls — `test(…)` and
+  `test.skip|only|fixme|fail(…)` — and takes the one whose call spans the line, else every call inside the
   smallest node around the line that holds any (a loop, a helper). It sends
   `control.locations`: each bundled file's source name → those calls' line
-  ranges, `null` for a file given whole. The runtime keeps a spec only when
-  its registration frame (source-mapped) is in its file's ranges; a spec
+  ranges, `null` for a file given whole. The runtime keeps a test only when
+  its registration frame (source-mapped) is in its file's ranges; a test
   registered from a file that is not a key is dropped.
 - `lxdev test list` bundles with `Purpose::List`: the bundle calls the framework's
   `list()` instead of `run()`, and throws when there is none, so an older
   `@lingxia/test` fails rather than running the suite. `list()` selects as
   `run()` does, then returns a zero-case report with `listed`. lxdev writes
   no run directory and leaves `latest`. The modules load, so their top-level
-  code runs; only spec bodies and hooks do not. It goes through the same
+  code runs; only test bodies and hooks do not. It goes through the same
   `SessionRun` as a run: watch lease before bundling, `session.test.start`,
   the run cancelled on any exit that did not see it end, Ctrl-C (first:
   cancel and wait `CANCEL_GRACE`, exit 130; second: cancel, resume, exit).
 - `lxdev test list --offline`, or with no session at all (and no
   `--session`), is offline
   (`test_offline.rs`): lxdev bundles as for a list, so the bundle-time checks
-  still run, then reads the spec calls of every project module the bundle
+  still run, then reads the test calls of every project module the bundle
   executes (`TestBundle::sources`, dependencies first) with Oxc — title, `id` and
-  `tags` when they are literals, `spec.configure({ tags })`, the modifier,
+  `tags` when they are literals, `test.configure({ tags })`, the modifier,
   and whether the call sits in a function or loop. It applies `.only`,
   locations, `--id`, `--last-failed` ids, `--shard` (the runtime's FNV-1a
   over UTF-16), `--tag` and `--grep` (Rust `regex`; a pattern it cannot
-  compile is an error) where the values are known. A spec a filter cannot
-  decide is kept; it and any spec with a computed value are marked inexact
+  compile is an error) where the values are known. A test a filter cannot
+  decide is kept; it and any test with a computed value are marked inexact
   (`exact: false` in JSON, `~` in text). The JSON carries `offline: true`.
 - Rerun lines: `meta.reruns` maps each failed id to its command. `FILE:LINE`
   when the id is generated (`generated_id`), the file was one of the run's,
@@ -393,9 +393,9 @@ Development machine: lxdev receives progress, results, and artifacts
   WebView eval, browser tabs, and OS input as separate targets. Locators and
   retry policy belong to `@lingxia/test`, not the product automation runtime.
 - A test program declares no ambient `lx`. The host still injects the root as
-  `lx.automation()` in the test context, but only `runtime.ts` reads it; specs
+  `lx.automation()` in the test context, but only `runtime.ts` reads it; tests
   reach it as `rawAutomation()` or the traced `t.automation`. A second global
-  `lx` type collides with the app's `const lx: Lx` as soon as a spec imports
+  `lx` type collides with the app's `const lx: Lx` as soon as a test imports
   product Logic, and `skipLibCheck` hides the collision; the
   `tests/types-coexist` fixture compiles both in either include order with
   `skipLibCheck` off.
@@ -440,7 +440,7 @@ Development machine: lxdev receives progress, results, and artifacts
   one `ActionDeadline`: a read that never returns fails the wait on time
   and a late one does not count. It polls silenced inside one traced action
   and throws a `TimeoutError` listing the last 10 calls, read within a
-  100 ms slice (skipped when the last read stalled or the spec budget is
+  100 ms slice (skipped when the last read stalled or the test budget is
   spent).
   `t.app.profile.checkpoint()` wraps the raw id as `{ id }`. The clock wrapper
   reports dropped timers as an `info` `diagnostic` (`phase: "clock"`).
@@ -453,13 +453,13 @@ Development machine: lxdev receives progress, results, and artifacts
   matchers, a thenable → `TypeError`, anything else → the once-matchers.
   `expect.poll(read)` is the fixture's retrying poll. The running fixture is
   the module's `ExpectScope`, set when a `LiveFixture` is built and cleared
-  when its spec ends; it also records every assertion. Without one, a locator
+  when its test ends; it also records every assertion. Without one, a locator
   and `poll` throw. The types pick the matchers from the argument
   (`ExpectResult`: `any` → value, `Locator` → locator, `PromiseLike` →
   `PromiseNotAllowed`, which has no matchers). `TEST_ERROR_CODES`
   (`errors.ts`) repeats `AUTOMATION_ERROR_CODES` literally — `@lingxia/test`
   has no runtime import of `@lingxia/types` — and a compile-time check fails
-  when `TestErrorCode` gains a code the list lacks. Codes that reach a spec
+  when `TestErrorCode` gains a code the list lacks. Codes that reach a test
   are `E_*`; lxdev's snake_case run errors stay in the CLI.
 - Trace events are best effort: `emitTrace` resends a failed
   `step_started`/`step_finished` once and drops it, so a transport hiccup
@@ -468,7 +468,7 @@ Development machine: lxdev receives progress, results, and artifacts
   `view.screenshot`, locator queries) retry `isTransientTransportError`
   (`E_TRANSPORT`, `os error 11/35/54/104`, reset, broken pipe, closed
   channel/WebSocket) twice with backoff; input dispatch never does.
-- `spec.configure` options and a spec's own options are validated at
+- `test.configure` options and a test's own options are validated at
   registration but settled at run start (`settle` in `runtime.ts`), once the
   bundle map attributes each call to its file: own options win, `tags`,
   `covers` and `requires` merge. An unmet `requires` skips the case before a
@@ -514,7 +514,7 @@ Development machine: lxdev receives progress, results, and artifacts
   recording `lx` still observes coverage. Methods and bound/native functions
   are rejected before sending (their source is not an expression). A remote
   `ReferenceError` is rethrown named `ReferenceError`, with its code/data and
-  a note that `fn` cannot close over spec state; `t.waitFor` then fails fast.
+  a note that `fn` cannot close over test state; `t.waitFor` then fails fast.
   A page eval's `TypeError` stays retryable (the DOM may not have rendered);
   a Logic one does not.
 - `page.actions.x(payload)` goes through the driver's `page.action`, which
@@ -536,28 +536,28 @@ Development machine: lxdev receives progress, results, and artifacts
   `timeoutMs` key is refused. `LiveFixture.act` passes every rejection
   through `asFixtureTimeout` (`deadline.ts`): `E_AUTOMATION_TIMEOUT` and
   `E_EVAL_TIMEOUT` become a `TimeoutError` (`E_TIMEOUT`) with the driver's
-  error as `cause` and `data.driverCode`, so a spec meets one timeout code;
+  error as `cause` and `data.driverCode`, so a test meets one timeout code;
   `TestErrorCode` and `TEST_ERROR_CODES` leave the two driver codes out.
   A Logic/View eval (`E_EVAL_TIMEOUT`) or page action
   (`E_AUTOMATION_TIMEOUT`) that timed out may still run in the app: the case
   fails even if the body caught it, and `forceRelaunchNext` relaunches the
-  app before the next spec; the run goes on.
+  app before the next test; the run goes on.
 - A `t.waitFor` read its deadline dropped is marked `detached`: it settles on
   its own and never counts as a call the body did not await.
 - Every fixture call runs through `LiveFixture.track` (`act`, the locator
   and poll retries): it is in `inFlight` until it settles, with an `Error`
-  captured at its start for the spec line. Public fixture methods return
+  captured at its start for the test line. Public fixture methods return
   that tracked promise itself, never an `async` wrapper around it. When the
   body settles with calls still in flight, `runtime.ts` stops them
   (`stopUnsettled`: marks their promises handled, sets the abort flag so each
   fails at its next guard or retry, waits up to 2 s, then clears the flag so
-  cleanup can use the fixture) — and, when the body resolved, fails the spec
+  cleanup can use the fixture) — and, when the body resolved, fails the test
   (phase `body`) listing up to five calls with their lines. A call that does
-  not settle in time counts as stuck spec code: the spec is abandoned (above).
+  not settle in time counts as stuck test code: the test is abandoned (above).
 - `t.waitFor` records one `waitFor` action and silences the reads inside it,
-  like `expect.poll`. Its timeout is clamped to the spec budget left since
+  like `expect.poll`. Its timeout is clamped to the test budget left since
   the fixture was built, minus a 100 ms margin, so its own error (last
-  value/error) wins over the bare spec timeout.
+  value/error) wins over the bare test timeout.
   Browser navigation eval returns `{ value, navigation }`; waits require exactly
   one condition. Preserve automation error codes and JSON data in test reports.
 - `LxAppDriver.network` routes are owned by one host run: installation needs
@@ -584,7 +584,7 @@ Development machine: lxdev receives progress, results, and artifacts
   The record's `action` stays `continue`.
 - `hang`: `decide` registers a held token (`Registry::held`) tied to run,
   app and route id, and the wrapper returns a promise that polls
-  `holds(token)` every 200 ms. `remove(run, id)` (the fixture's spec-end
+  `holds(token)` every 200 ms. `remove(run, id)` (the fixture's test-end
   `unroute`, also after `times` expired the route), `remove_app` and
   `clear_run` release the token; the promise then rejects like a transport
   failure. Like a fulfillment, a hang never applies to a host the domain
@@ -595,7 +595,7 @@ Development machine: lxdev receives progress, results, and artifacts
   wrapper pre-cuts to the limit and Rust cuts again on a UTF-8 boundary to
   64 KiB (`MAX_REQUEST_BODY_BYTES`); the process log also caps total body
   bytes. `NetworkDriver.requests()` reads the run-wide log; the fixture's
-  `t.app.network.calls()` filters it to the spec's route ids.
+  `t.app.network.calls()` filters it to the test's route ids.
 - Answers and sequences: a `RouteSpec` holds `answers` (never empty) and a
   `served` counter; `decide_route` serves `answers[min(served, len-1)]` and
   counts it before `times` is spent, so `times` still bounds matches.
@@ -615,10 +615,10 @@ Development machine: lxdev receives progress, results, and artifacts
   compiles `http` rules into `RouteSpec`s carrying `body_match`
   (`scenario::Matcher`, feature `scenario-match`; object keys are checked in
   sorted order so the first difference reported is stable) and returns
-  `(rule index, spec)` pairs.
+  `(rule index, test)` pairs.
 - Installed scenarios (`registry::InstalledScenario`: id, owner, `RuleSlot`s
   with hits and route id, a bounded `ScenarioCall` log, `companion`):
-  `Registry::install_scenario` sets each spec's `origin` (scenario id, rule
+  `Registry::install_scenario` sets each test's `origin` (scenario id, rule
   index) and installs through `install_all`, which installs in reverse so the
   first rule is the newest route; `route()` calls made later still win. The
   dev scenario lives in `Registry::dev`, run scenarios in `run_scenarios`,
@@ -640,12 +640,12 @@ Development machine: lxdev receives progress, results, and artifacts
   rules upstream (below), then installs `http` rules; a failure after the
   companion accepted clears it again. `JSScenario` keeps the resolved rules
   and a snapshot; `rules` and `calls()` read the live entry by scenario id.
-  `@lingxia/test`'s `ScenarioScope` tracks the spec's handle, takes the
+  `@lingxia/test`'s `ScenarioScope` tracks the test's handle, takes the
   failure evidence (`report()`, before the defers) and removes it when the
-  spec ends (framework reclamation, below).
-- Spec attempts (`runtime/authority.rs`, host `beginAttempt()`,
+  test ends (framework reclamation, below).
+- Test attempts (`runtime/authority.rs`, host `beginAttempt()`,
   `endAttempt(token)`, `revoke(reason)`): the runner opens one attempt per
-  executed spec; routes, run scenarios and test-clock leases installed while
+  executed test; routes, run scenarios and test-clock leases installed while
   it is open carry its token (`Route::attempt`, `InstalledScenario::attempt`,
   `Lease::attempt`; admission is the scope's `admit`, checked under the route
   table lock). Closing it removes them (`Registry::reclaim_attempt`, the
@@ -655,25 +655,25 @@ Development machine: lxdev receives progress, results, and artifacts
   A dialog watch (`dialogs/mod.rs`, `lxapp().dialogs.watch()`, keyed by
   appid) belongs to the attempt that opened it the same way and ends with it
   (`dialogs::reclaim_attempt`), which also wakes a pending `unanswered()`
-  with `null`. The runner opens it for the app under test before the spec's
+  with `null`. The runner opens it for the app under test before the test's
   hooks, races `unanswered()` against the body, and `unwatch()`s it after
-  cleanup to fail a passing spec on answers no dialog used. Interception is
-  opt-in per kind: until the spec queues a modal (action sheet) answer, the
+  cleanup to fail a passing test on answers no dialog used. Interception is
+  opt-in per kind: until the test queues a modal (action sheet) answer, the
   hook answers `DialogDecision::Draw(id)`, Logic presents the dialog and
   reports its close (`modal_closed` / `action_sheet_closed`), which becomes
-  the record's `answer` (`drawn: true`); existing specs that tap the drawn
+  the record's `answer` (`drawn: true`); existing tests that tap the drawn
   modal keep working. After the first queued answer of that kind the hook
   answers from the queue, and one with no answer left refuses and resolves
-  `unanswered()`, failing the spec at once. Logic reaches the watch through
+  `unanswered()`, failing the test at once. Logic reaches the watch through
   `lxapp::dialogs::DialogHook`: toasts are reported after the host accepted
   them, modals and `lx.showActionSheet` ask first (sheets the runtime opens
   itself, the media source picker, do not).
 - Diagnostics carry an optional `level`: `info` is expected housekeeping
-  (the timers a spec's own `t.app.clock` dropped when it ended or
+  (the timers a test's own `t.app.clock` dropped when it ended or
   uninstalled), which lxdev prints only with `--verbose`; anything else is a
   warning, e.g. a clock the host swept at the attempt's end because it was
   installed outside `t.app.clock`.
-  The runner ends an abandoned spec's attempt like any other; per-spec
+  The runner ends an abandoned test's attempt like any other; per-test
   refusal of its drivers is the JS grant (above). `revoke`, used only when
   the run stops, also makes `HostAutomationAuthority::check` — every
   `require_host_context`/`require_target_context` and `lx.automation()` —
@@ -682,7 +682,7 @@ Development machine: lxdev receives progress, results, and artifacts
   (which still skip a body that did not settle), the runner stops the
   `--record-network` recording, runs `LiveFixture.reclaim()` (routes,
   scenario, clocks through their handles; one already gone counts as
-  removed) and `endAttempt` — whether or not the body settled (with spec
+  removed) and `endAttempt` — whether or not the body settled (with test
   code still running, the attempt stays open until the revoke). Any failure
   is a cleanup error on that case (phase `defer`) and stops the run with a
   `run_stopped` diagnostic; nothing is left for the run end.
@@ -790,7 +790,7 @@ Development machine: lxdev receives progress, results, and artifacts
   (`Symbol.for('lingxia.automation.network.mocks')` on `globalThis`), shared
   by the `fetch` and `Rong.SSE` wrappers. It asks `host.mockInstance(gen)`,
   which evaluates the stored source in the context again when the generation
-  moved, so module state lasts until a load, `mock.reset`, a spec start
+  moved, so module state lasts until a load, `mock.reset`, a test start
   (`mock.reset()` of the driver, `Fresh::Spec`) or a context restart;
   in-flight handlers finish on the old instance and their timers are not
   cancelled. The handler's answer goes through `host.mockAnswer`, which
@@ -863,7 +863,7 @@ Development machine: lxdev receives progress, results, and artifacts
   preset only if it would not add a second entry. It does
   nothing when the report cannot be read or has no failed case. After
   parsing, `test::nothing_to_rerun` (before a session is resolved) prints
-  `No failed specs in <run>; nothing to rerun` — `kind: "result"`,
+  `No failed tests in <run>; nothing to rerun` — `kind: "result"`,
   `state: "nothing_to_rerun"` for `--format json|jsonl` — and exits 0.
 - `lxdev test args` also prints `ArgSources` (environment and
   `--secrets-file`) as `# --flag KEY=VALUE  (from SOURCE)` lines, secret
@@ -891,7 +891,7 @@ Development machine: lxdev receives progress, results, and artifacts
 ## Network observation
 
 Two sources. The Logic `fetch`/`Rong.SSE` wrapper sees every call an lxapp
-makes, routed or not, and feeds the call log a failed spec reports and the
+makes, routed or not, and feeds the call log a failed test reports and the
 contract capture `--openapi` reads (`NetworkDriver.captureResponses()` /
 `responses()`); its state lives in the route table (`Registry`) under its one
 lock. Rong's network observer (`lingxia-network-dev`'s `observer.rs`,
@@ -987,9 +987,9 @@ redaction live in `capture.rs`.
   (`redact_text`), and query values (`url_pattern`). In-flight records count
   as `dropped`. `dev::run_record` masks the run's `--secret-arg` values in
   the stopped scenario. For `--record-network` the framework starts a
-  recording per spec and attaches the stopped scenario as
+  recording per test and attaches the stopped scenario as
   `network.scenario.json` (masked like any attachment); lxdev copies each to
-  `<dir>/<spec id>.json` after the run, suffixing `-2`, `-3`… when two spec
+  `<dir>/<test id>.json` after the run, suffixing `-2`, `-3`… when two test
   ids sanitize to one name. An unconfirmed start fails the case and attempts
   a stop, since the recording may have started before its acknowledgement
   failed; the run goes on. `lxdev network capture stop FILE [FILE]` writes
@@ -1031,7 +1031,7 @@ redaction live in `capture.rs`.
   (no or a large `Content-Length`), so that one is read once and the app gets
   an equivalent buffered `Response`. `responses({ since, waitMs })` reads past
   a `seq`, first waiting up to `waitMs` for captures already in flight; one
-  still unfinished is read next time. It needs a live run, not an open spec.
+  still unfinished is read next time. It needs a live run, not an open test.
   A response the bounded log or call history lost unread rejects the read
   once, then reads go on. A body over the capture bound arrives
   `bodyTruncated` and is counted as skipped (`truncated`).
@@ -1204,7 +1204,7 @@ it once macOS compresses pages. `heap <pid> | grep
 JSGlobalObjectInspectorController` counts live JS global objects (one per
 context).
 
-Showcase `--preset macos` (203 specs), macOS x86_64, Runner footprint after
+Showcase `--preset macos` (203 tests), macOS x86_64, Runner footprint after
 each run (2026-09):
 
 | build | run 1 | run 2 | run 3 | idle 3 min later |
@@ -1266,7 +1266,7 @@ automation context, page WebViews and native code keep real time.
 - A reopened app has a fresh context (real time); its old lease is replaced
   by the next install or dropped at uninstall/attempt end/run end.
   `uninstall` drops pending fake timers and reports the count; the runner's
-  reclamation (`ClockScope.reclaim`) uninstalls every app a spec installed
+  reclamation (`ClockScope.reclaim`) uninstalls every app a test installed
   on, re-selecting it by appid (an app no longer running counts as
   uninstalled), and sets `forceRelaunchNext` when timers were dropped.
 - Framework timers must not be faked: `Page.js` gets `setTimeout` /
@@ -1317,9 +1317,9 @@ the same cases the Rust parsers reject.
 
 ## Tags, coverage manifest and OpenAPI contract
 
-- Tags: `SpecOptions.tags` plus `spec.configure({ tags })`, which is
+- Tags: `TestOptions.tags` plus `test.configure({ tags })`, which is
   file-scoped like the hooks (`resolveOwner` at run start; a call with no
-  spec file on its stack emits a `collect` diagnostic). A case's `tags` are
+  test file on its stack emits a `collect` diagnostic). A case's `tags` are
   the file's, then its own, deduplicated. `--tag` values travel as
   `control.tags`, a JSON list of clauses: each clause is comma-separated
   terms (`tag` / `!tag`) of which one must hold, and every clause must hold
@@ -1335,9 +1335,9 @@ the same cases the Rust parsers reject.
 - `--covers-manifest`: lxdev reads JSON or YAML (`serde_yaml_ng`, already in
   the workspace), normalizes it to `[{ id, title? }]` and sends it as
   `control.coversManifest` plus `coversManifestFile`. The runtime builds
-  `coverage` from every registered spec, not only the selected ones (those
+  `coverage` from every registered test, not only the selected ones (those
   are `not_run`), and emits a `coverage` diagnostic for `covers` ids missing
-  from the manifest. lxdev refreshes spec statuses from regraded cases and
+  from the manifest. lxdev refreshes test statuses from regraded cases and
   keeps the runtime's `not_run` entries.
 - Payload controls (`openapi`, `coversManifest`) never reach `meta.run`: the
   runtime (`PAYLOAD_CONTROL_KEYS`) and lxdev (`reported_control`) drop them
@@ -1367,16 +1367,16 @@ the same cases the Rust parsers reject.
   Response lookup is exact status, then `NXX`, then `default`; media type is
   the exact JSON type, then `application/json*`, any `+json`, `*/*`.
 - Capture: with `--openapi` the runtime calls
-  `lxapp().network.captureResponses()` for the spec's app before each body
+  `lxapp().network.captureResponses()` for the test's app before each body
   (idempotent); how responses are captured is in
   [Network observation](#network-observation).
   A failed `captureResponses` fails that case; the run goes on.
-- After each spec's cleanup the runtime reads `responses({ since, waitMs:
+- After each test's cleanup the runtime reads `responses({ since, waitMs:
   2500 })` past a run-wide watermark, so a response that arrives after a
-  spec ended is checked with the next spec. A failed read (including a lost
+  test ended is checked with the next test. A failed read (including a lost
   response) fails the case (phase `capture`); the run goes on. Routed (`route`, `patch`) mismatches become a
-  `ContractError` (`E_OPENAPI_CONTRACT`, phase `contract`) before `spec.fail`
-  grading, so a known break can be declared; a spec that already failed gets
+  `ContractError` (`E_OPENAPI_CONTRACT`, phase `contract`) before `test.fail`
+  grading, so a known break can be declared; a test that already failed gets
   the violations appended. Real-server mismatches are `contract.warnings` on
   the case, `openapi.warnings` (at most 100) and a `contract` diagnostic;
   unmatched requests, undocumented statuses and skipped responses (no
@@ -1385,7 +1385,7 @@ the same cases the Rust parsers reject.
 
 ## Review boundary changes
 
-- Product scenarios belong to `t.scenario`, one per spec/run across apps. Its
+- Product scenarios belong to `t.scenario`, one per test/run across apps. Its
   `use(definition, { app?, variant? })` chooses the HTTP app; Function rules
   share the same owner. App-local overrides remain on `app.network`.
 - Scenario transitions close new Logic fetch/SSE admission until both halves
@@ -1409,4 +1409,4 @@ the same cases the Rust parsers reject.
   programming and JSON boundary errors fail immediately. Error-code matchers
   accept a timeout's preserved driver cause as well as its public E_TIMEOUT.
 - Public unary page actions have no bridge timer. Test page actions use the
-  remaining spec budget, so dialogs and pickers are not cut off at five seconds.
+  remaining test budget, so dialogs and pickers are not cut off at five seconds.
