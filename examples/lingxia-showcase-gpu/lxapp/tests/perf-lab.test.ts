@@ -29,9 +29,6 @@ const BUDGETS: Record<string, Budget> = {
 /** Known gaps per platform, each a reason to skip until it is fixed. */
 const KNOWN: Record<string, Record<string, string>> = {
   android: {
-    'PERF-FILL-001': 'reads 0 frames as a spec in some runs (31 frames the run before); under investigation',
-    'PERF-TEXT-001': 'reads 1 frame as a spec though the scene draws ~14 fps when driven by hand; under investigation',
-    'PERF-IMAGE-001': 'reads 0 frames as a spec, as PERF-TEXT-001; under investigation',
   },
 };
 
@@ -57,11 +54,13 @@ async function scene(t: Fixture, name: string, count: number) {
 async function runBudget(t: Fixture, scene: string, count: number): Promise<TestMetrics> {
   const page = await t.app.page<PerfLab>({ name: 'perf-lab' });
   const request: DriveRequest = { scene: scene as DriveRequest['scene'], ms: 5000, count };
-  await page.invoke('drive', { payload: request });
+  // The window opens before the call: a driver that sets state every tick keeps Logic busy,
+  // and the action's reply can arrive only once the run is over.
   const started = Date.now();
+  await page.invoke('drive', { payload: request });
+  await new Promise<void>(resolve => setTimeout(resolve, Math.max(0, request.ms - (Date.now() - started))));
   // A push/pop cycle can run 800 ms past the 5 s: wait for the driver, or the next
   // navigation races the driver's own and pops a page while it is being created.
-  await new Promise<void>(resolve => setTimeout(resolve, 5000));
   await t.waitFor(() => page.data(), { until: data => data.running === '', timeout: 5000 });
   return t.app.metrics({ page: 'perf-lab', windowMs: Date.now() - started });
 }
