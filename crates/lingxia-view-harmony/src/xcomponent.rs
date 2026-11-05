@@ -32,13 +32,13 @@ fn api() -> Result<&'static sys::ArkUI_NativeNodeAPI_1, String> {
 pub(crate) struct Velocity(Vec<(i64, f32, f32)>);
 
 impl Velocity {
-    fn add(&mut self, time: i64, x: f32, y: f32) {
+    pub(crate) fn add(&mut self, time: i64, x: f32, y: f32) {
         self.0.retain(|(t, ..)| time - t <= VELOCITY_WINDOW_NS);
         self.0.push((time, x, y));
     }
 
     /// Least-squares slope over the window, pixels per second.
-    fn estimate(&self) -> [f32; 2] {
+    pub(crate) fn estimate(&self) -> [f32; 2] {
         let n = self.0.len() as f64;
         if n < 2.0 {
             return [0.0; 2];

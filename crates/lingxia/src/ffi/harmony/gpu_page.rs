@@ -38,6 +38,49 @@ fn arkts(token: Token, kind: &str, payload: &str) {
     }
 }
 
+/// Automation touches for GPU pages, by webtag; WebView pages have no driver here.
+struct Gestures;
+
+impl lingxia_platform::harmony::GestureDriver for Gestures {
+    fn perform(
+        &self,
+        app_id: &str,
+        webtag: &str,
+        points: &[lingxia_platform::traits::gesture::GesturePoint],
+        end: lingxia_platform::traits::gesture::GestureEnd,
+        finger: Option<u64>,
+    ) -> std::result::Result<(u32, Option<u64>), String> {
+        use lingxia_platform::traits::gesture::GestureEnd;
+        use lingxia_view_harmony::TouchEnd;
+        let token = match finger {
+            Some(finger) => finger as i64,
+            None => gpu_token(app_id, webtag)?,
+        };
+        let points: Vec<[f64; 3]> = points.iter().map(|p| [p.x, p.y, p.at_ms]).collect();
+        let end = match end {
+            GestureEnd::Up => TouchEnd::Up,
+            GestureEnd::Cancel => TouchEnd::Cancel,
+            GestureEnd::Hold => TouchEnd::Hold,
+        };
+        let events = lingxia_view_harmony::inject_touch(token, &points, finger.is_some(), end)?;
+        Ok((events, (end == TouchEnd::Hold).then_some(token as u64)))
+    }
+
+    fn viewport(&self, app_id: &str, webtag: &str) -> std::result::Result<[f64; 4], String> {
+        lingxia_view_harmony::page_viewport(gpu_token(app_id, webtag)?)
+            .ok_or_else(|| "page is not active".into())
+    }
+}
+
+fn gpu_token(app_id: &str, webtag: &str) -> std::result::Result<i64, String> {
+    let page = lxapp::find_page_by_webtag(app_id, webtag)
+        .ok_or_else(|| format!("no page {webtag} in {app_id}"))?;
+    match token_of(&page) {
+        0 => Err("gestures reach GPU pages only on HarmonyOS".into()),
+        token => Ok(token),
+    }
+}
+
 /// Register the factory and the main-thread dispatcher; `lingxia_init` calls it once.
 pub(super) fn install(env: &Env, data_dir: &str) {
     // SAFETY: `lingxia_init` runs on the main thread with its live env.
@@ -50,6 +93,7 @@ pub(super) fn install(env: &Env, data_dir: &str) {
             std::path::Path::new(data_dir).join("lingxia-gpu-sentinel"),
         ),
     ));
+    lingxia_platform::harmony::set_gesture_driver(Arc::new(Gestures));
     if lxapp::register_gpu_page_view_factory(Arc::new(gpu_page::Binding(Arc::new(Factory))))
         .is_err()
     {

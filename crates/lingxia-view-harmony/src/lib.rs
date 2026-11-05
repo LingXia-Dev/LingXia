@@ -123,6 +123,91 @@ mod pages {
     }
 }
 
+/// How an injected touch sequence ends.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TouchEnd {
+    Up,
+    Cancel,
+    /// The finger stays down; a later sequence continues it.
+    Hold,
+}
+
+/// Touch slop and the slowest fling of injected touches, as for real ones.
+const INJECTED_SLOP_VP: f32 = 8.0;
+const INJECTED_MIN_FLING_VP: f32 = 50.0;
+
+/// Runs timed touches on page `token` as its node would take them: `[x, y, at_ms]` in
+/// logical pixels, a down first unless `continued`. Blocking; never on the main thread.
+/// Returns the events delivered.
+pub fn inject_touch(
+    token: i64,
+    points: &[[f64; 3]],
+    continued: bool,
+    end: TouchEnd,
+) -> Result<u32, String> {
+    use lingxia_view::interaction::view::{Pointer, PointerPhase};
+    let scale =
+        dispatch::run_on_main(move || pages::with(token, |host| host.adapter().placement().0))
+            .flatten()
+            .ok_or("page is not active")?;
+    let started = std::time::Instant::now();
+    let mut tracker = xcomponent::Velocity::default();
+    let mut events = 0;
+    for (i, &[x, y, at]) in points.iter().enumerate() {
+        let due = std::time::Duration::from_secs_f64(at.max(0.0) / 1000.0);
+        if let Some(wait) = due.checked_sub(started.elapsed()) {
+            std::thread::sleep(wait);
+        }
+        let last = i + 1 == points.len();
+        let phase = match (i, last, end) {
+            (0, _, _) if !continued => PointerPhase::Down,
+            (_, true, TouchEnd::Up) => PointerPhase::Up,
+            (_, true, TouchEnd::Cancel) => PointerPhase::Cancel,
+            _ => PointerPhase::Move,
+        };
+        let (x, y) = (x as f32 * scale, y as f32 * scale);
+        // Scheduled times, not delivery times: main-thread latency must not bend the authored velocity.
+        tracker.add((at * 1e6) as i64, x, y);
+        let velocity = if phase == PointerPhase::Up {
+            tracker.estimate()
+        } else {
+            [0.0; 2]
+        };
+        dispatch::run_on_main(move || {
+            pages::with(token, |host| {
+                if phase == PointerPhase::Down {
+                    host.adapter().begin_gesture();
+                }
+                host.pointer(Pointer {
+                    phase,
+                    x,
+                    y,
+                    slop: INJECTED_SLOP_VP * scale,
+                    velocity,
+                    min_fling: INJECTED_MIN_FLING_VP * scale,
+                });
+            })
+        })
+        .flatten()
+        .ok_or("page is not active")?;
+        events += 1;
+    }
+    Ok(events)
+}
+
+/// The page's visible area `[left, top, width, height]` in logical pixels.
+pub fn page_viewport(token: i64) -> Option<[f64; 4]> {
+    dispatch::run_on_main(move || {
+        pages::with(token, |host| {
+            let adapter = host.adapter();
+            let (scale, _) = adapter.placement();
+            let (w, h) = adapter.extent();
+            [0.0, 0.0, f64::from(w / scale), f64::from(h / scale)]
+        })
+    })
+    .flatten()
+}
+
 /// One GPU page: its host, and once mounted, its XComponent node.
 pub struct Page {
     token: i64,
