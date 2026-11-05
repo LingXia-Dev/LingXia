@@ -101,7 +101,7 @@ impl SystemFonts {
     }
 
     /// Names `postscript` in `file` as `family`'s face, ahead of any the system collection has:
-    /// a platform without a system collection (OHOS) has no default face otherwise.
+    /// a platform without a system collection has no default face otherwise.
     pub fn with_generic(
         mut self,
         family: GenericFamily,
@@ -116,8 +116,8 @@ impl SystemFonts {
     }
 
     /// Fallbacks and generic families named by family, resolved to faces in the font files of
-    /// `dirs`: for a platform whose configuration names families but has no system collection
-    /// (OHOS). `generics` lists candidate families per generic family, the first found wins.
+    /// `dirs`: for a platform whose configuration names families but has no system collection.
+    /// `generics` lists candidate families per generic family, the first found wins.
     pub fn from_font_dirs(
         dirs: &[std::path::PathBuf],
         fallbacks: &[(String, String)],
