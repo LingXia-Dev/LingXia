@@ -9,8 +9,8 @@ export function clearArena() { arena = []; }
 
 /** `[tag, props, children, location]` of a handle from the current render. */
 export function readNode(node) {
-  const [owner, offset] = node[brand];
-  if (owner !== epoch || !arena[offset]) throw Error('UI_STALE: candidate from another render');
+  const ref = node[brand], offset = ref[1];
+  if (ref[0] !== epoch || !arena[offset]) throw Error('UI_STALE: candidate from another render');
   return arena[offset];
 }
 
@@ -41,21 +41,25 @@ const kept = child => child !== null && child !== undefined && typeof child !== 
  */
 export function entries(children, prefix = '', scope, depth = 0, result = []) {
   if (depth > 128) throw Error('UI_LIMIT: children too deep');
-  children.forEach((child, index) => {
+  for (let index = 0; index < children.length; index++) {
+    // Sparse arrays keep forEach's meaning: a hole is skipped, not a child.
+    if (!(index in children)) continue;
+    const child = children[index];
     if (result.length >= 16384) throw Error('UI_LIMIT: too many children');
     const slot = prefix ? `${prefix}.${index}` : String(index);
-    if (Array.isArray(child)) return entries(child, slot, scope, depth + 1, result);
+    if (Array.isArray(child)) { entries(child, slot, scope, depth + 1, result); continue; }
     if (isFragment(child)) {
-      const [, props, inner] = readNode(child);
+      const record = readNode(child), props = record[1];
       if (props.key !== undefined && typeof props.key !== 'string') throw Error('UI_KEY: expected string');
       const named = props.key === undefined ? scope : grouped(scope, slot, props.key);
-      return entries(inner, props.key === undefined ? slot : '', named, depth + 1, result);
+      entries(record[2], props.key === undefined ? slot : '', named, depth + 1, result);
+      continue;
     }
-    if (!kept(child)) return;
+    if (!kept(child)) continue;
     const key = nodeKey(child);
     if (!scope) result.push({ child, slot, key });
     else result.push({ child, key: JSON.stringify([scope, key ?? `#${slot}`]) });
-  });
+  }
   return result;
 }
 // A keyed fragment inside another one is named by both keys.

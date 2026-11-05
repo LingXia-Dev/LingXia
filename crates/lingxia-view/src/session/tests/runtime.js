@@ -62,8 +62,8 @@
     arena = [];
   }
   function readNode(node) {
-    const [owner, offset] = node[brand];
-    if (owner !== epoch || !arena[offset]) throw Error("UI_STALE: candidate from another render");
+    const ref = node[brand], offset = ref[1];
+    if (ref[0] !== epoch || !arena[offset]) throw Error("UI_STALE: candidate from another render");
     return arena[offset];
   }
   var isNode = (value) => Boolean(value && typeof value === "object" && brand in value);
@@ -83,21 +83,27 @@
   var kept = (child) => child !== null && child !== void 0 && typeof child !== "boolean" && child !== "";
   function entries(children, prefix = "", scope, depth = 0, result = []) {
     if (depth > 128) throw Error("UI_LIMIT: children too deep");
-    children.forEach((child, index) => {
+    for (let index = 0; index < children.length; index++) {
+      if (!(index in children)) continue;
+      const child = children[index];
       if (result.length >= 16384) throw Error("UI_LIMIT: too many children");
       const slot = prefix ? `${prefix}.${index}` : String(index);
-      if (Array.isArray(child)) return entries(child, slot, scope, depth + 1, result);
+      if (Array.isArray(child)) {
+        entries(child, slot, scope, depth + 1, result);
+        continue;
+      }
       if (isFragment(child)) {
-        const [, props, inner] = readNode(child);
+        const record = readNode(child), props = record[1];
         if (props.key !== void 0 && typeof props.key !== "string") throw Error("UI_KEY: expected string");
         const named = props.key === void 0 ? scope : grouped(scope, slot, props.key);
-        return entries(inner, props.key === void 0 ? slot : "", named, depth + 1, result);
+        entries(record[2], props.key === void 0 ? slot : "", named, depth + 1, result);
+        continue;
       }
-      if (!kept(child)) return;
+      if (!kept(child)) continue;
       const key = nodeKey(child);
       if (!scope) result.push({ child, slot, key });
       else result.push({ child, key: JSON.stringify([scope, key ?? `#${slot}`]) });
-    });
+    }
     return result;
   }
   var grouped = (scope, slot, key) => scope === void 0 ? key : JSON.stringify([scope, key ?? `#${slot}`]);
@@ -871,12 +877,15 @@
     return h("column", { style: { position: "absolute", top: 0, left: 0, right: 0, bottom: env?.keyboard?.height ?? 0, zIndex: layerZ + opened.get(identity) % 1e3 } }, ...children);
   }
   var backdropFade = { opacity: 1, transition: { properties: ["opacity"], durationMs: 200, delayMs: 0, easing: [0, 0, 0.58, 1] } };
+  var popoverProps = ["open", "onToggle", "id"];
   function expand(tag, props, children, identity, parent) {
     if (props[panelMark]) return void 0;
     if (tag === "dialog") return dialog(props, children, identity, parent);
     if (popoverTags.has(tag) && props.popover !== void 0 && props.popover !== false) return popover(tag, props, children, identity, parent);
-    for (const key of ["open", "onToggle", "id"])
-      if (popoverTags.has(tag) && props[key] !== void 0) throw Error(`UI_PROP: ${key} belongs to a popover; add popover`);
+    if (popoverTags.has(tag)) {
+      for (let i = 0; i < popoverProps.length; i++)
+        if (props[popoverProps[i]] !== void 0) throw Error(`UI_PROP: ${popoverProps[i]} belongs to a popover; add popover`);
+    }
     return void 0;
   }
   function common(props, parent, what) {
@@ -2733,7 +2742,8 @@
     if (Array.isArray(node)) return { fragment: entries(node) };
     if (isFragment(node)) return { fragment: entries([node]).map((entry) => entry.slot ? { ...entry, slot: entry.slot.slice(2) } : entry) };
     if (!isNode(node)) throw Error("UI_ROOT: expected one node");
-    const [authored, original, children, location] = readNode(node);
+    const record = readNode(node);
+    const authored = record[0], original = record[1], children = record[2], location = record[3];
     if (authored === "list") throw located(Error("UI_TAG: <list> is not an element; use <List> from @lingxia/view"), `<list>${location ? ` (${location})` : ""}`);
     const tag = authored === listTag ? "list" : authored;
     if (location) render.site = `${typeof tag === "function" ? tag.name || "<anonymous>" : `<${tag}>`} (${location})`;

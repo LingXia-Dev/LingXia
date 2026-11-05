@@ -186,7 +186,8 @@ export function resolveNode(node, identity, depth = 0, parent = {}) {
   if (Array.isArray(node)) return { fragment: entries(node) };
   if (isFragment(node)) return { fragment: entries([node]).map(entry => entry.slot ? { ...entry, slot: entry.slot.slice(2) } : entry) };
   if (!isNode(node)) throw Error('UI_ROOT: expected one node');
-  const [authored, original, children, location] = readNode(node);
+  const record = readNode(node);
+  const authored = record[0], original = record[1], children = record[2], location = record[3];
   // `<List>` renders the list element, which page code cannot name.
   if (authored === 'list') throw located(Error('UI_TAG: <list> is not an element; use <List> from @lingxia/view'), `<list>${location ? ` (${location})` : ''}`);
   const tag = authored === listTag ? 'list' : authored;

@@ -67,12 +67,13 @@ const backdropFade = { opacity: 1, transition: { properties: ['opacity'], durati
  * `<dialog>` and popovers expand to a top-layer box holding a backdrop and the panel; `null`
  * when closed, `undefined` for any other node. `finish` decorates the resolved layer.
  */
+const popoverProps = ['open', 'onToggle', 'id'];
 export function expand(tag, props, children, identity, parent) {
   if (props[panelMark]) return undefined;
   if (tag === 'dialog') return dialog(props, children, identity, parent);
   if (popoverTags.has(tag) && props.popover !== undefined && props.popover !== false) return popover(tag, props, children, identity, parent);
-  for (const key of ['open', 'onToggle', 'id'])
-    if (popoverTags.has(tag) && props[key] !== undefined) throw Error(`UI_PROP: ${key} belongs to a popover; add popover`);
+  if (popoverTags.has(tag)) for (let i = 0; i < popoverProps.length; i++)
+    if (props[popoverProps[i]] !== undefined) throw Error(`UI_PROP: ${popoverProps[i]} belongs to a popover; add popover`);
   return undefined;
 }
 
