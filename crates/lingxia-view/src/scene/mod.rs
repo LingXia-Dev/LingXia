@@ -8,6 +8,7 @@ pub mod composite;
 pub mod cost;
 pub(crate) mod display;
 pub(crate) mod gradient;
+pub(crate) mod hud;
 pub mod image;
 #[cfg(test)]
 mod image_semantics_tests;

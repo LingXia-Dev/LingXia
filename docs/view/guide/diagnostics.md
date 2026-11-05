@@ -116,6 +116,41 @@ Locators read GPU pages through the same semantics assistive technology uses, wi
 - An action resolves once the page applied it. If its control or option disappeared first, it fails
   with `E_ACT_DROPPED` and the locator retries within its timeout.
 
+## Frame statistics
+
+The renderer records every frame a page shows, the same way on every platform: when the frame was
+wanted, the display refresh it showed on, View worker time, and how long the input it shows had
+waited. A frame time is the gap between two frames shown back to back, so an idle page adds none.
+`dropped` counts skipped display refreshes; `jank` counts frame times over twice the refresh interval.
+
+- `lxdev lxapp page hud on` (or `t.app.hud(true)`) draws a HUD over the page: frame time p50/p95/p99,
+  FPS derived from them, dropped and jank, the last input-to-present time, the last reveal's
+  first present, and a bar per recent frame (green within one refresh, amber, red past two). While a
+  finger moves, red dots trail the finger and green dots the frames that showed it. The HUD is not
+  page content: no semantics, no hit testing, not seen by locators.
+- `lxdev lxapp page frame --window-ms 5000` and `t.app.metrics({ windowMs })` read the numbers as
+  `pacing`, next to the page's presentation counters.
+- In View code, `measureFrames(ms)` resolves after `ms` with the same numbers for that window:
+
+```tsx
+import { measureFrames, useLocal } from '@lingxia/view';
+
+export function render() {
+  const result = useLocal('result', '');
+  const measure = async () => {
+    const stats = await measureFrames(5000);
+    const p95 = stats.frameTimeMs?.p95;
+    result.set(p95 === undefined ? 'no frame times' : `p95 ${p95} ms, dropped ${stats.dropped}`);
+  };
+  return (
+    <page className="p-4 gap-3">
+      <button onClick={measure} className="rounded-lg bg-accent text-on-accent px-3 py-2">Measure 5 s</button>
+      <text className="text-sm">{result.value}</text>
+    </page>
+  );
+}
+```
+
 ## `UI_COMPAT`
 
 ```text

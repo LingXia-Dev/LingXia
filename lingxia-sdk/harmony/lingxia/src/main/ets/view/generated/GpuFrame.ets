@@ -75,6 +75,7 @@ export class GpuFrameAutomationRequestKinds {
   static readonly ACT: string = "act";
   static readonly TREE: string = "tree";
   static readonly FRAME: string = "frame";
+  static readonly HUD: string = "hud";
   static readonly ACTION: string = "action";
   static readonly DATA: string = "data";
   static readonly RESULT: string = "result";
@@ -420,6 +421,8 @@ export interface GpuFrameAutomationRequest {
   all?: boolean | null;
   maxText?: number | null;
   action?: GpuFrameAutomationAction | null;
+  windowMs?: number | null;
+  on?: boolean | null;
   name?: string | null;
   args?: Object | null;
   call?: number | null;
@@ -523,6 +526,9 @@ export interface GpuFrameAutomationFrame {
   animationFrames: number;
   wakeups: number;
   reveal: Object;
+  hud: boolean;
+  nodes?: number | null;
+  pacing: GpuFrameFramePacing;
 }
 
 /** `QueueTimes` in the frame contract. */
@@ -536,6 +542,42 @@ export interface GpuFrameQueueTimes {
 export interface GpuFrameEvalTimes {
   last: number;
   max: number;
+}
+
+/** `FramePacing` in the frame contract. */
+export interface GpuFrameFramePacing {
+  windowMs: number;
+  frames: number;
+  samples: number;
+  refreshMs?: number | null;
+  frameTimeMs?: GpuFramePercentiles | null;
+  fps?: number | null;
+  dropped: number;
+  jank: number;
+  late: number;
+  cpuMs?: GpuFramePercentiles | null;
+  queueMs?: GpuFramePercentiles | null;
+  gpuMs?: GpuFramePercentiles | null;
+  inputToPresent: GpuFrameInputLatency;
+  firstPresentMs?: number | null;
+  firstPresentReason?: string | null;
+  reveals: number;
+  revealMs?: GpuFramePercentiles | null;
+}
+
+/** `Percentiles` in the frame contract. */
+export interface GpuFramePercentiles {
+  p50: number;
+  p95: number;
+  p99: number;
+  max: number;
+}
+
+/** `InputLatency` in the frame contract. */
+export interface GpuFrameInputLatency {
+  count: number;
+  lastMs?: number | null;
+  statsMs?: GpuFramePercentiles | null;
 }
 
 /** `AutomationRect` in the frame contract. */

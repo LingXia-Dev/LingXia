@@ -26,6 +26,7 @@
     h: () => h,
     hasLocalUpdates: () => hasLocalUpdates,
     listTag: () => listTag,
+    measureFrames: () => measureFrames,
     prepare: () => prepare,
     prepareWindows: () => prepareWindows,
     readsHostContext: () => readsHostContext,
@@ -1588,10 +1589,10 @@
       if (!["back", "home"].includes(reason)) throw Error("UI_LEAVE: invalid reason");
       if (asking) return;
       asking = true;
-      const current = epoch2, pending = [...holders].reverse();
+      const current = epoch2, pending2 = [...holders].reverse();
       (async () => {
         try {
-          for (const holder of pending) {
+          for (const holder of pending2) {
             if (current !== epoch2 || !holders.has(holder) || !await holder.ask(reason)) return;
           }
           if (current === epoch2) await callHost("navigation.leave", { reason });
@@ -1703,14 +1704,14 @@
   function cancelActions() {
     actionEpoch++;
     leaveGuards.reset();
-    const pending = [...pendingActions.values()];
+    const pending2 = [...pendingActions.values()];
     pendingActions.clear();
     requests = [];
     actions = Object.freeze(/* @__PURE__ */ Object.create(null));
     const oldChannels = [...activeChannels.values()];
     activeChannels.clear();
     channels = closedChannels;
-    for (const { reject } of pending) reject(bridgeError("BRIDGE_CANCELED", "Page reset"));
+    for (const { reject } of pending2) reject(bridgeError("BRIDGE_CANCELED", "Page reset"));
     for (const entry of oldChannels) {
       const error = bridgeError("BRIDGE_CANCELED", "Page reset");
       entry.reject(error);
@@ -1869,21 +1870,21 @@
     if (frame?.v === 2 && ["ch.ack", "ch.data", "ch.close"].includes(frame.kind)) return receiveChannelFrame(frame);
     if (frame?.v !== 2 || !["res", "event"].includes(frame.kind) || typeof frame.id !== "string" || frame.kind === "res" && typeof frame.ok !== "boolean" || frame.kind === "event" && (!Number.isSafeInteger(frame.seq) || frame.seq < 0))
       throw Error("UI_ACTION: invalid response");
-    const pending = pendingActions.get(frame.id);
-    if (!pending) return false;
+    const pending2 = pendingActions.get(frame.id);
+    if (!pending2) return false;
     if (frame.kind === "event") {
-      if (!pending.push) throw Error("UI_STREAM: event for unary action");
-      if (frame.seq <= pending.sequence || pending.sequence === -1 && frame.seq !== 0)
+      if (!pending2.push) throw Error("UI_STREAM: event for unary action");
+      if (frame.seq <= pending2.sequence || pending2.sequence === -1 && frame.seq !== 0)
         throw Error("UI_STREAM: invalid sequence");
       const value2 = immutable(frame.payload ?? null);
-      pending.sequence = frame.seq;
-      pending.push(value2);
+      pending2.sequence = frame.seq;
+      pending2.push(value2);
       return true;
     }
     const value = frame.ok ? immutable(frame.result ?? null) : failure(frame);
     pendingActions.delete(frame.id);
-    if (frame.ok) pending.resolve(value);
-    else pending.reject(value);
+    if (frame.ok) pending2.resolve(value);
+    else pending2.reject(value);
     return true;
   }
   function receiveChannelFrame(frame) {
@@ -3345,6 +3346,36 @@
     }
   }
 
+  // src/runtime/frames.js
+  var pending = [];
+  var waiting = /* @__PURE__ */ new Map();
+  var nextToken2 = 1;
+  var LONGEST_MS = 6e4;
+  function measureFrames(ms) {
+    if (typeof ms !== "number" || !Number.isFinite(ms) || ms <= 0 || ms > LONGEST_MS) {
+      return Promise.reject(new RangeError(`UI_PROP: measureFrames takes 1\u2013${LONGEST_MS} ms`));
+    }
+    const token = nextToken2++;
+    pending.push([token, Math.round(ms)]);
+    return new Promise((resolve) => waiting.set(token, resolve));
+  }
+  function takeFrameMeasures() {
+    const result = pending;
+    pending = [];
+    return JSON.stringify(result);
+  }
+  function frameMeasured(token, stats) {
+    const resolve = waiting.get(token);
+    if (!resolve) return false;
+    waiting.delete(token);
+    resolve(stats);
+    return true;
+  }
+  function resetFrameMeasures() {
+    pending = [];
+    waiting = /* @__PURE__ */ new Map();
+  }
+
   // src/runtime/calendar.js
   var names2 = {
     en: {
@@ -4160,6 +4191,7 @@
     resetOverlays();
     resetPicker();
     resetTopLayer();
+    resetFrameMeasures();
   }
   var accepts2 = (kind, value) => kind === "number" ? typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= 1e9 : kind === "text" ? validInputText(value) : value === void 0;
   function dispatch(handle2, value) {
@@ -4235,6 +4267,8 @@
       __lingxiaClosePicker: closePicker,
       __lingxiaTakePickerResults: takePickerResults,
       __lingxiaPickerIdentity: pickerIdentity,
+      __lingxiaTakeFrameMeasures: takeFrameMeasures,
+      __lingxiaFrameMeasured: frameMeasured,
       // Cleared when a render completes, so it names only a render that never returned.
       __lingxiaSite: () => render.site || ""
     });

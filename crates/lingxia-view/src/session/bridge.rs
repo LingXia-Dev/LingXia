@@ -142,6 +142,34 @@ impl ViewSession {
         serde_json::from_str(&json).map_err(|e| e.to_string())
     }
 
+    /// `measureFrames` windows the View asked for since the last call: `(token, milliseconds)`.
+    pub(crate) fn take_frame_measures(&self) -> Result<Vec<(u64, u64)>, String> {
+        let json: String = self.execute(|| {
+            self.context
+                .eval(Source::from_bytes(
+                    "typeof __lingxiaTakeFrameMeasures === 'function' ? __lingxiaTakeFrameMeasures() : '[]'",
+                ))
+                .map_err(|e| e.to_string())
+        })?;
+        serde_json::from_str(&json).map_err(|e| e.to_string())
+    }
+
+    /// Resolve the `measureFrames` window `token` with `stats`.
+    pub(crate) fn frame_measured(
+        &self,
+        token: u64,
+        stats: &serde_json::Value,
+    ) -> Result<bool, String> {
+        let json = serde_json::to_string(&stats.to_string()).map_err(|e| e.to_string())?;
+        self.execute(|| {
+            self.context
+                .eval(Source::from_bytes(
+                    format!("typeof __lingxiaFrameMeasured === 'function' && __lingxiaFrameMeasured({token}, JSON.parse({json}))").as_bytes(),
+                ))
+                .map_err(|e| e.to_string())
+        })
+    }
+
     /// Escape: the innermost overlay goes (a sheet cancels, a modal cancels, a toast hides).
     pub fn escape(&self) -> Result<bool, String> {
         self.execute(|| {

@@ -20,12 +20,16 @@ pub(super) struct Telemetry {
     eval_max_us: u64,
     animation_frames: usize,
     wakeups: u64,
+    pub(super) stats: super::frame_stats::FrameStats,
 }
 
 impl Telemetry {
     pub(super) fn opened(&mut self, at: Duration) {
+        // Frame statistics belong to the surface: a reveal may start before the module loads.
+        let stats = std::mem::take(&mut self.stats);
         *self = Self {
             opened: at,
+            stats,
             ..Self::default()
         };
     }
@@ -64,7 +68,9 @@ impl Telemetry {
 }
 
 impl<A: PlatformAdapter> Inner<A> {
-    pub(super) fn frame_metrics(&self) -> serde_json::Value {
+    /// `window`: how far back `pacing` reaches; frame stats default to 5 s.
+    pub(super) fn frame_metrics(&self, window: Option<Duration>) -> serde_json::Value {
+        let now = self.adapter.now();
         let main = self.main();
         let telemetry = &main.telemetry;
         let mut sorted: Vec<u64> = telemetry.queue.iter().copied().collect();
@@ -92,6 +98,12 @@ impl<A: PlatformAdapter> Inner<A> {
             "animationFrames": telemetry.animation_frames,
             "wakeups": telemetry.wakeups,
             "reveal": main.reveal.metrics(telemetry.opened),
+            "hud": main.hud,
+            // Nodes the presented frame laid out: a virtual list mounts only rows near the viewport.
+            "nodes": main.snapshot.as_ref().map(|snapshot| snapshot.metrics.nodes),
+            "pacing": telemetry
+                .stats
+                .summary(now, window.unwrap_or(super::frame_stats::DEFAULT_WINDOW)),
         })
     }
 }

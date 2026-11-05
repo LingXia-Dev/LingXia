@@ -644,6 +644,8 @@ public struct GpuFrameAutomationRequest: Decodable, Sendable {
     public let all: Bool?
     public let maxText: UInt64?
     public let action: GpuFrameAutomationAction?
+    public let windowMs: UInt64?
+    public let on: Bool?
     public let name: String?
     public let args: GpuJSON?
     public let call: UInt64?
@@ -655,6 +657,8 @@ public struct GpuFrameAutomationRequest: Decodable, Sendable {
         case all = "all"
         case maxText = "maxText"
         case action = "action"
+        case windowMs = "windowMs"
+        case on = "on"
         case name = "name"
         case args = "args"
         case call = "call"
@@ -835,6 +839,9 @@ public struct GpuFrameAutomationFrame: Decodable, Sendable {
     public let animationFrames: UInt64
     public let wakeups: UInt64
     public let reveal: GpuJSON
+    public let hud: Bool
+    public let nodes: UInt64?
+    public let pacing: GpuFrameFramePacing
 
     enum CodingKeys: String, CodingKey {
         case renderer = "renderer"
@@ -850,6 +857,9 @@ public struct GpuFrameAutomationFrame: Decodable, Sendable {
         case animationFrames = "animationFrames"
         case wakeups = "wakeups"
         case reveal = "reveal"
+        case hud = "hud"
+        case nodes = "nodes"
+        case pacing = "pacing"
     }
 }
 
@@ -874,6 +884,75 @@ public struct GpuFrameEvalTimes: Decodable, Sendable {
     enum CodingKeys: String, CodingKey {
         case last = "last"
         case max = "max"
+    }
+}
+
+/// `FramePacing` in the frame contract.
+public struct GpuFrameFramePacing: Decodable, Sendable {
+    public let windowMs: UInt64
+    public let frames: UInt64
+    public let samples: UInt64
+    public let refreshMs: Double?
+    public let frameTimeMs: GpuFramePercentiles?
+    public let fps: Double?
+    public let dropped: UInt64
+    public let jank: UInt64
+    public let late: UInt64
+    public let cpuMs: GpuFramePercentiles?
+    public let queueMs: GpuFramePercentiles?
+    public let gpuMs: GpuFramePercentiles?
+    public let inputToPresent: GpuFrameInputLatency
+    public let firstPresentMs: Double?
+    public let firstPresentReason: String?
+    public let reveals: UInt64
+    public let revealMs: GpuFramePercentiles?
+
+    enum CodingKeys: String, CodingKey {
+        case windowMs = "windowMs"
+        case frames = "frames"
+        case samples = "samples"
+        case refreshMs = "refreshMs"
+        case frameTimeMs = "frameTimeMs"
+        case fps = "fps"
+        case dropped = "dropped"
+        case jank = "jank"
+        case late = "late"
+        case cpuMs = "cpuMs"
+        case queueMs = "queueMs"
+        case gpuMs = "gpuMs"
+        case inputToPresent = "inputToPresent"
+        case firstPresentMs = "firstPresentMs"
+        case firstPresentReason = "firstPresentReason"
+        case reveals = "reveals"
+        case revealMs = "revealMs"
+    }
+}
+
+/// `Percentiles` in the frame contract.
+public struct GpuFramePercentiles: Decodable, Sendable {
+    public let p50: Double
+    public let p95: Double
+    public let p99: Double
+    public let max: Double
+
+    enum CodingKeys: String, CodingKey {
+        case p50 = "p50"
+        case p95 = "p95"
+        case p99 = "p99"
+        case max = "max"
+    }
+}
+
+/// `InputLatency` in the frame contract.
+public struct GpuFrameInputLatency: Decodable, Sendable {
+    public let count: UInt64
+    public let lastMs: Double?
+    public let statsMs: GpuFramePercentiles?
+
+    enum CodingKeys: String, CodingKey {
+        case count = "count"
+        case lastMs = "lastMs"
+        case statsMs = "statsMs"
     }
 }
 

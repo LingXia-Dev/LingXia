@@ -114,6 +114,20 @@ impl DisplayList {
         display.bind_images(&self.images).unwrap();
         display
     }
+    /// Draw `paints` over everything else as an animated span of their own, so the page's
+    /// own commands keep their encoded scenes while the overlay changes every frame.
+    pub(crate) fn push_overlay(&mut self, identity: &str, paints: Vec<crate::scene::paint::Paint>) {
+        if paints.is_empty() {
+            return;
+        }
+        let start = self.commands.len();
+        self.commands.extend(paints);
+        self.animated.push(AnimatedSpan {
+            identity: identity.to_owned(),
+            commands: start..self.commands.len(),
+        });
+    }
+
     /// The caret blink's off phase.
     pub(crate) fn hide_caret(&mut self) {
         if let Some(index) = self.caret_paint.take() {

@@ -111,6 +111,26 @@ export interface LeaveGuard {
 }
 export declare function useLeaveGuard(name: string, options: { enabled: boolean }): LeaveGuard;
 
+/** Nearest-rank percentiles, in ms. */
+export interface Percentiles { readonly p50: number; readonly p95: number; readonly p99: number; readonly max: number }
+/**
+ * Frames this page showed in a window. A frame time is the gap between two frames shown back to
+ * back; a frame after idle has none. `dropped` counts skipped display refreshes, `jank` frame
+ * times over twice the refresh interval. `null` where the window holds no sample.
+ */
+export interface FrameStats {
+  readonly windowMs: number; readonly frames: number; readonly samples: number;
+  readonly refreshMs: number | null; readonly frameTimeMs: Percentiles | null; readonly fps: number | null;
+  readonly dropped: number; readonly jank: number; readonly late: number;
+  readonly cpuMs: Percentiles | null; readonly queueMs: Percentiles | null; readonly gpuMs: Percentiles | null;
+  readonly inputToPresent: { readonly count: number; readonly lastMs: number | null; readonly statsMs: Percentiles | null };
+  readonly firstPresentMs: number | null; readonly firstPresentReason: string | null; readonly reveals: number;
+  /** Each reveal's wait for a frame, over the window. */
+  readonly revealMs: Percentiles | null;
+}
+/** Measure this page's frames for `ms` (at most 60000) from now; resolves when the window ends. */
+export declare function measureFrames(ms: number): Promise<FrameStats>;
+
 export interface DataListProps<T> extends Omit<ListProps, "count" | "itemKeys" | "row" | "height"> {
   items: readonly T[];
   getKey: (item: T, index: number) => string;

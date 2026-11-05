@@ -6,6 +6,7 @@ export { listTag } from './runtime/elements.js';
 export { List, prepare, prepareWindows, commit, discard, reset, dispatch, describe } from './runtime/tree.js';
 export { useLocal, useView, useRequest, useStream, useChannel, useLeaveGuard, hasLocalUpdates, createView, readsHostContext } from './runtime/hooks.js';
 export { configureActions, takeActionRequests, receiveActionResponse, takeActionErrors, requestLeave } from './runtime/actions.js';
+export { measureFrames } from './runtime/frames.js';
 export { configureClasses } from './style/classes.js';
 export { configureFonts } from './runtime/fonts.js';
 export { configureSourceMap } from './runtime/errors.js';

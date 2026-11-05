@@ -17,6 +17,7 @@
         "editable": true,
         "enabled": true,
         "exists": true,
+        "focused": true,
         "id": null,
         "inViewport": true,
         "index": 0,
@@ -82,6 +83,7 @@
             "editable": true,
             "enabled": true,
             "exists": true,
+            "focused": true,
             "id": null,
             "inViewport": true,
             "index": 0,
@@ -119,6 +121,7 @@
             "editable": true,
             "enabled": true,
             "exists": true,
+            "focused": false,
             "id": null,
             "inViewport": true,
             "index": 1,
@@ -156,6 +159,7 @@
             "editable": false,
             "enabled": true,
             "exists": true,
+            "focused": false,
             "id": null,
             "inViewport": false,
             "index": 2,
@@ -179,7 +183,7 @@
             "text": "",
             "text_truncated": false,
             "type": "range",
-            "value": null,
+            "value": "3",
             "value_truncated": false,
             "visible": true
           },
@@ -193,6 +197,7 @@
             "editable": false,
             "enabled": true,
             "exists": true,
+            "focused": false,
             "id": null,
             "inViewport": false,
             "index": 3,
@@ -230,6 +235,7 @@
             "editable": false,
             "enabled": true,
             "exists": true,
+            "focused": false,
             "id": null,
             "inViewport": false,
             "index": 4,
@@ -363,9 +369,122 @@
         },
         "firstPresentAt": 0,
         "frames": 1,
+        "hud": false,
         "imageCacheBytes": 0,
         "imageCacheEntries": 0,
         "lastPresentAt": 0,
+        "nodes": 20,
+        "pacing": {
+          "cpuMs": {
+            "max": 0,
+            "p50": 0,
+            "p95": 0,
+            "p99": 0
+          },
+          "dropped": 0,
+          "firstPresentMs": 0,
+          "firstPresentReason": "frame",
+          "fps": null,
+          "frameTimeMs": null,
+          "frames": 1,
+          "gpuMs": null,
+          "inputToPresent": {
+            "count": 0,
+            "lastMs": null,
+            "statsMs": null
+          },
+          "jank": 0,
+          "late": 0,
+          "queueMs": {
+            "max": 0,
+            "p50": 0,
+            "p95": 0,
+            "p99": 0
+          },
+          "refreshMs": 0,
+          "revealMs": {
+            "max": 0,
+            "p50": 0,
+            "p95": 0,
+            "p99": 0
+          },
+          "reveals": 1,
+          "samples": 0,
+          "windowMs": 0
+        },
+        "page": "1",
+        "renderer": "gpu",
+        "reveal": {
+          "deadlines": 0,
+          "lastReveal": null,
+          "watchdogs": 0
+        },
+        "wakeups": 0,
+        "workerQueueUs": {
+          "last": 0,
+          "max": 0,
+          "p50": 0
+        }
+      }
+    },
+    {
+      "reply": "automationFrame",
+      "request": {
+        "op": "frame",
+        "windowMs": 0
+      },
+      "value": {
+        "animationFrames": 0,
+        "commit": 1,
+        "evalMs": {
+          "last": 0,
+          "max": 0
+        },
+        "firstPresentAt": 0,
+        "frames": 1,
+        "hud": false,
+        "imageCacheBytes": 0,
+        "imageCacheEntries": 0,
+        "lastPresentAt": 0,
+        "nodes": 20,
+        "pacing": {
+          "cpuMs": {
+            "max": 0,
+            "p50": 0,
+            "p95": 0,
+            "p99": 0
+          },
+          "dropped": 0,
+          "firstPresentMs": 0,
+          "firstPresentReason": "frame",
+          "fps": null,
+          "frameTimeMs": null,
+          "frames": 1,
+          "gpuMs": null,
+          "inputToPresent": {
+            "count": 0,
+            "lastMs": null,
+            "statsMs": null
+          },
+          "jank": 0,
+          "late": 0,
+          "queueMs": {
+            "max": 0,
+            "p50": 0,
+            "p95": 0,
+            "p99": 0
+          },
+          "refreshMs": 0,
+          "revealMs": {
+            "max": 0,
+            "p50": 0,
+            "p95": 0,
+            "p99": 0
+          },
+          "reveals": 1,
+          "samples": 0,
+          "windowMs": 0
+        },
         "page": "1",
         "renderer": "gpu",
         "reveal": {
@@ -389,6 +508,12 @@
         },
         "css": "[data-testid=\"name\"]",
         "op": "act"
+      }
+    },
+    {
+      "request": {
+        "on": false,
+        "op": "hud"
       }
     },
     {

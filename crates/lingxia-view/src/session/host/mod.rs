@@ -23,6 +23,7 @@ mod drag;
 mod edits;
 mod environment;
 mod fonts;
+mod frame_stats;
 #[cfg(feature = "hot-swap")]
 mod hot_swap;
 mod images;
@@ -37,6 +38,7 @@ mod worker;
 /// Largest input-method request [`ViewHost::input`] accepts, in bytes.
 pub use super::input_protocol::MAX_REQUEST_BYTES as MAX_INPUT_REQUEST_BYTES;
 pub use bridge::BridgeUpdate;
+pub(crate) use frame_stats::SPARK as HUD_SPARK;
 pub use reveal::{FIRST_FRAME_WATCHDOG, REVEAL_DEADLINE};
 pub use text_menu::{MenuAction, MenuTarget, TextMenu};
 pub use worker::ViewWorker;
@@ -239,6 +241,14 @@ struct Main<F> {
     /// Host time of the last vsync and the display interval estimate.
     last_vsync: Option<Duration>,
     vsync_interval: Duration,
+    /// The platform's timing for the display frame being served: `(shows at, interval)`.
+    display: Option<(Duration, Duration)>,
+    /// When a frame was first asked for since the last request took the demand.
+    demand_at: Option<Duration>,
+    /// The frame-statistics HUD is drawn over the page.
+    hud: bool,
+    /// `measureFrames` windows a View step asked for: `(token, milliseconds)`.
+    frame_measures: Vec<(u64, u64)>,
     /// Activations dispatched to the worker whose result has not come back: an animation
     /// frame prepared meanwhile would run before the View they change.
     activating: u32,
@@ -380,6 +390,10 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     ahead_epoch: 0,
                     last_vsync: None,
                     vsync_interval: Duration::from_micros(16_667),
+                    display: None,
+                    demand_at: None,
+                    hud: false,
+                    frame_measures: Vec::new(),
                     activating: 0,
                     automation_calls: Default::default(),
                     next_automation_call: 0,
@@ -539,6 +553,43 @@ impl<A: PlatformAdapter> ViewHost<A> {
         self.inner.vsync();
     }
 
+    /// [`Self::vsync`] with the platform's frame timing: the refresh this frame shows on is
+    /// `present_in_us` from now (negative once past), and refreshes come every `interval_us`.
+    pub fn vsync_at(&self, present_in_us: i64, interval_us: u64) {
+        let now = self.inner.adapter.now();
+        let delta = Duration::from_micros(present_in_us.unsigned_abs());
+        let target = if present_in_us >= 0 {
+            now + delta
+        } else {
+            now.saturating_sub(delta)
+        };
+        let interval = Duration::from_micros(interval_us);
+        self.inner.main().display = Some((target, interval));
+        self.inner.vsync();
+    }
+
+    /// The next pointer, wheel or key event happened `age_us` ago on the platform's input
+    /// clock; without it the host takes the time it receives the event.
+    pub fn input_age(&self, age_us: u64) {
+        let at = self
+            .inner
+            .adapter
+            .now()
+            .saturating_sub(Duration::from_micros(age_us));
+        self.inner.main().telemetry.stats.input(at);
+    }
+
+    /// Draw the frame-statistics HUD over the page, or stop.
+    pub fn set_hud(&self, on: bool) {
+        let changed = {
+            let mut main = self.inner.main();
+            std::mem::replace(&mut main.hud, on) != on
+        };
+        if changed {
+            self.redraw();
+        }
+    }
+
     /// A deferred frame of `generation` reached the screen, or `shown: false` when the
     /// target dropped it. Any thread.
     pub fn deferred_presented(&self, generation: CommitTicket, shown: bool) {
@@ -578,6 +629,19 @@ impl<A: PlatformAdapter> ViewHost<A> {
         if event.phase == crate::interaction::view::PointerPhase::Down {
             self.inner.dismiss_editor_menu();
         }
+        self.inner.input_now();
+        if matches!(
+            event.phase,
+            crate::interaction::view::PointerPhase::Down
+                | crate::interaction::view::PointerPhase::Move
+        ) {
+            let at = self.inner.adapter.now();
+            self.inner
+                .main()
+                .telemetry
+                .stats
+                .pointer(at, [event.x, event.y]);
+        }
         let page = self.inner.lifecycle.page();
         let (handled, effects) = self.inner.main().interaction.pointer(event, page);
         self.inner.deliver(effects);
@@ -608,6 +672,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
         if !self.inner.lifecycle.accepts_input() {
             return false;
         }
+        self.inner.input_now();
         let (moved, effects) = self.inner.main().interaction.wheel(event);
         self.inner.deliver(effects);
         self.inner.snap_later();
@@ -624,6 +689,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
         if !self.inner.lifecycle.accepts_input() {
             return false;
         }
+        self.inner.input_now();
         let page = self.inner.lifecycle.page();
         let (handled, effects) = self.inner.main().interaction.key(key, shift, repeat, page);
         self.inner.deliver(effects);
@@ -872,7 +938,8 @@ impl<A: PlatformAdapter> ViewHost<A> {
     /// One automation request from the page driver:
     /// `{op: "query", css, index, all, maxText}` or
     /// `{op: "act", css, index, action: {kind: click|dblclick|fill|type|scroll|press|select, text, key, value, force}}`,
-    /// `{op: "tree"}` or `{op: "frame"}` (presentation counters).
+    /// `{op: "tree"}`, `{op: "frame", windowMs?}` (presentation counters and frame pacing over
+    /// the last `windowMs`) or `{op: "hud", on}` (draw frame statistics over the page).
     /// Screenshots belong to the adapter's presenter.
     pub fn automation_request(
         &self,
@@ -930,7 +997,16 @@ impl<A: PlatformAdapter> ViewHost<A> {
             ),
             Some("data") => self.automation_data(),
             Some("result") => self.automation_result(request["call"].as_u64().unwrap_or(u64::MAX)),
-            Some("frame") => Ok(self.inner.frame_metrics()),
+            Some("frame") => Ok(self
+                .inner
+                .frame_metrics(request["windowMs"].as_u64().map(Duration::from_millis))),
+            Some("hud") => {
+                let on = request["on"]
+                    .as_bool()
+                    .ok_or("E_INVALID_ARG: hud takes `on: boolean`")?;
+                self.set_hud(on);
+                Ok(serde_json::json!({ "hud": on }))
+            }
             other => Err(format!("E_UNSUPPORTED: automation op {other:?}")),
         }
     }
@@ -1178,6 +1254,12 @@ impl<A: PlatformAdapter> ViewHost<A> {
 }
 
 impl<A: PlatformAdapter> Inner<A> {
+    /// An input reached the page now; a platform timestamp given just before wins.
+    fn input_now(&self) {
+        let at = self.adapter.now();
+        self.main().telemetry.stats.input(at);
+    }
+
     fn main(&self) -> MutexGuard<'_, Main<A::Frame>> {
         self.main
             .lock()
@@ -1389,11 +1471,22 @@ impl<A: PlatformAdapter> Inner<A> {
     }
 
     fn set_visible(self: &Arc<Self>, visible: bool) {
-        let disposed = {
+        let (disposed, shown) = {
             let mut main = self.main();
+            let shown = visible && !main.visible;
             main.visible = visible;
-            main.disposed
+            (main.disposed, shown)
         };
+        // Hosts without the reveal protocol show a page by making it visible.
+        if shown && !disposed {
+            let at = self.adapter.now();
+            let current = self.frame_is_current();
+            let mut main = self.main();
+            main.telemetry.stats.reveal_started(at);
+            if current {
+                main.telemetry.stats.reveal_current(at);
+            }
+        }
         self.lifecycle.set_visible(visible && !disposed);
         if visible {
             self.pump_images();

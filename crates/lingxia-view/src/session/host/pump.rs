@@ -20,6 +20,21 @@ pub(super) struct Prepared<F> {
     offsets: HashMap<String, f32>,
     timing: FrameTiming,
     prepared_at: Instant,
+    pacing: Pacing,
+}
+
+/// What frame statistics need to know about a frame beyond its timing.
+#[derive(Clone, Copy, Default)]
+pub(super) struct Pacing {
+    demand: Duration,
+    input: Option<Duration>,
+    /// The refresh it was meant for and the refresh interval, set at vsync.
+    target: Duration,
+    interval: Duration,
+    /// When the display took the frame.
+    done: Duration,
+    /// The newest pointer position the frame shows, for the HUD's trail.
+    point: Option<[f32; 2]>,
 }
 
 /// A presented frame waiting for the adapter to put it on screen.
@@ -32,6 +47,7 @@ pub(super) struct Deferred {
     offsets: HashMap<String, f32>,
     timing: FrameTiming,
     vsync: Instant,
+    pacing: Pacing,
 }
 
 impl<F> Prepared<F> {
@@ -65,6 +81,8 @@ struct Request {
     single_target: bool,
     dropped_activations: u64,
     activations: u64,
+    pacing: Pacing,
+    hud: Option<crate::scene::hud::Hud>,
 }
 
 impl<A: PlatformAdapter> Inner<A> {
@@ -100,6 +118,8 @@ impl<A: PlatformAdapter> Inner<A> {
     }
 
     fn schedule_frame(self: &Arc<Self>, ahead: bool) {
+        let asked = self.adapter.now();
+        self.main().demand_at.get_or_insert(asked);
         let environment = self.adapter.environment().map(|mut environment| {
             self.main().host_environment.apply(&mut environment.value);
             environment
@@ -176,6 +196,13 @@ impl<A: PlatformAdapter> Inner<A> {
                 single_target: main.single_target,
                 dropped_activations: main.dropped_activations,
                 activations: main.activations,
+                pacing: Pacing {
+                    demand: main.demand_at.take().unwrap_or(asked),
+                    input: main.telemetry.stats.take_input(asked),
+                    point: main.telemetry.stats.take_point(),
+                    ..Pacing::default()
+                },
+                hud: main.hud.then(|| main.telemetry.stats.hud(asked)),
             };
             main.dirty = false;
             main.pending = false;
@@ -199,12 +226,14 @@ impl<A: PlatformAdapter> Inner<A> {
         let revision = request.revision;
         let offsets = request.offsets.clone();
         let environment = request.environment.clone();
+        let pacing = request.pacing;
         let mut timing = FrameTiming {
             rebuild: request.rebuild,
             caret_visible: request.caret,
             ..Default::default()
         };
         let queued = Instant::now();
+        let rebuild = request.rebuild;
         self.work_at(
             background,
             Guard::Page(page),
@@ -213,6 +242,13 @@ impl<A: PlatformAdapter> Inner<A> {
                 let prepared = inner.prepare(session, request, now);
                 let reads = session.reads_host_context();
                 inner.main().host_environment.set_reads_host_context(reads);
+                // Only a View step can ask for a measurement, and every one rebuilds.
+                if rebuild
+                    && let Ok(measures) = session.take_frame_measures()
+                    && !measures.is_empty()
+                {
+                    inner.main().frame_measures.extend(measures);
+                }
                 prepared.map(|prepared| {
                     (
                         prepared,
@@ -221,71 +257,110 @@ impl<A: PlatformAdapter> Inner<A> {
                     )
                 })
             },
-            move |inner, result| match result {
-                Some(Ok(((Some((frame, snapshot)), update), queue_us, worker_us))) => {
-                    timing.queue_us = queue_us;
-                    timing.worker_us = worker_us;
-                    if let Some((connection, update)) = update {
-                        inner.publish(connection, update);
-                    }
-                    let prepared = Prepared {
-                        frame,
-                        environment,
-                        snapshot,
-                        surface,
-                        page,
-                        revision,
-                        offsets,
-                        timing,
-                        prepared_at: Instant::now(),
-                    };
-                    {
-                        let mut main = inner.main();
-                        if ahead {
-                            if main.ahead_epoch != epoch {
-                                // What it was built on did not present.
-                                return;
-                            }
-                            main.ahead = false;
-                            if main.prepared.is_some() {
-                                main.next_prepared = Some(prepared);
-                                return;
-                            }
-                            main.busy = true;
+            move |inner, result| {
+                let measures = std::mem::take(&mut inner.main().frame_measures);
+                for (token, ms) in measures {
+                    inner.frame_measure(token, ms);
+                }
+                match result {
+                    Some(Ok(((Some((frame, snapshot)), update), queue_us, worker_us))) => {
+                        timing.queue_us = queue_us;
+                        timing.worker_us = worker_us;
+                        if let Some((connection, update)) = update {
+                            inner.publish(connection, update);
                         }
-                        main.prepared = Some(prepared);
+                        let prepared = Prepared {
+                            frame,
+                            environment,
+                            snapshot,
+                            surface,
+                            page,
+                            revision,
+                            offsets,
+                            timing,
+                            prepared_at: Instant::now(),
+                            pacing,
+                        };
+                        {
+                            let mut main = inner.main();
+                            if ahead {
+                                if main.ahead_epoch != epoch {
+                                    // What it was built on did not present.
+                                    return;
+                                }
+                                main.ahead = false;
+                                if main.prepared.is_some() {
+                                    main.next_prepared = Some(prepared);
+                                    return;
+                                }
+                                main.busy = true;
+                            }
+                            main.prepared = Some(prepared);
+                        }
+                        inner.adapter.request_vsync();
+                        inner.schedule_ahead();
                     }
-                    inner.adapter.request_vsync();
-                    inner.schedule_ahead();
+                    Some(Ok(((None, update), ..))) => {
+                        if let Some((connection, update)) = update {
+                            inner.publish(connection, update);
+                        }
+                        let retry = {
+                            let mut main = inner.main();
+                            main.declined |= main.prepared.is_some() || main.deferred.is_some();
+                            // Nothing else will ask again while an animation waits on this frame.
+                            main.animating && !main.declined && !main.disposed
+                        };
+                        if retry {
+                            let host = inner.clone();
+                            inner.adapter.post_after(
+                                Duration::from_millis(16),
+                                Box::new(move || host.schedule()),
+                            );
+                        }
+                        if !inner.ahead_failed(ahead) {
+                            inner.unprepared(None, surface, page);
+                        }
+                    }
+                    Some(Err(error)) if !inner.ahead_failed(ahead) => {
+                        inner.unprepared(Some(error), surface, page)
+                    }
+                    Some(Err(_)) => {}
+                    None if !inner.ahead_failed(ahead) => inner.unprepared(None, surface, page),
+                    None => {}
                 }
-                Some(Ok(((None, update), ..))) => {
-                    if let Some((connection, update)) = update {
-                        inner.publish(connection, update);
-                    }
-                    let retry = {
-                        let mut main = inner.main();
-                        main.declined |= main.prepared.is_some() || main.deferred.is_some();
-                        // Nothing else will ask again while an animation waits on this frame.
-                        main.animating && !main.declined && !main.disposed
-                    };
-                    if retry {
-                        let host = inner.clone();
-                        inner.adapter.post_after(
-                            Duration::from_millis(16),
-                            Box::new(move || host.schedule()),
-                        );
-                    }
-                    if !inner.ahead_failed(ahead) {
-                        inner.unprepared(None, surface, page);
-                    }
-                }
-                Some(Err(error)) if !inner.ahead_failed(ahead) => {
-                    inner.unprepared(Some(error), surface, page)
-                }
-                Some(Err(_)) => {}
-                None if !inner.ahead_failed(ahead) => inner.unprepared(None, surface, page),
-                None => {}
             },
+        );
+    }
+
+    /// Answer the View's `measureFrames` window `token` once `ms` passed.
+    fn frame_measure(self: &Arc<Self>, token: u64, ms: u64) {
+        let (inner, page) = (self.clone(), self.lifecycle.page());
+        let window = Duration::from_millis(ms);
+        self.adapter.post_after(
+            window,
+            Box::new(move || {
+                if !inner.lifecycle.is_current_page(page) || inner.main().disposed {
+                    return;
+                }
+                let now = inner.adapter.now();
+                let stats = inner.main().telemetry.stats.summary(now, window);
+                inner.work(
+                    Guard::Page(page),
+                    move |inner, session| {
+                        session.frame_measured(token, &stats)?;
+                        inner.drained(session)
+                    },
+                    |inner, result| {
+                        if let Some(Ok(Some((connection, update)))) = result {
+                            inner.publish(connection, update);
+                        }
+                        if !inner.main().disposed {
+                            inner.main().dirty = true;
+                            inner.schedule();
+                        }
+                    },
+                );
+            }),
         );
     }
 
@@ -326,6 +401,14 @@ impl<A: PlatformAdapter> Inner<A> {
         let generation = CommitTicket::new(session.generation().get() + 1);
         let caret = request.caret;
         let surface = request.surface;
+        let hud = request.hud.as_ref().map(|hud| {
+            let top = session.environment["safeArea"]["top"]
+                .as_f64()
+                .or_else(|| session.environment["insets"]["top"].as_f64())
+                .unwrap_or(0.0) as f32;
+            let logical = f32::from(width) / scale.max(f32::MIN_POSITIVE);
+            crate::scene::hud::paints(&mut session.renderer, hud, logical, top, scale)
+        });
         // A frame the target declines is a failed candidate: the session keeps its previous
         // commit (layout, viewport, generation) and the next attempt starts from it.
         let prepared = session.prepare_view_sampled(
@@ -340,6 +423,9 @@ impl<A: PlatformAdapter> Inner<A> {
             |mut display| {
                 if !caret {
                     display.hide_caret();
+                }
+                if let Some(hud) = hud {
+                    display.push_overlay("lingxia:hud", hud);
                 }
                 let nodes = display.nodes.clone();
                 loaded_images = display.loaded_image_count();
@@ -487,7 +573,17 @@ impl<A: PlatformAdapter> Inner<A> {
                 main.vsync_interval = (main.vsync_interval * 7 + delta) / 8;
             }
             main.last_vsync = Some(at);
-            let prepared = main.prepared.take();
+            let platform = main.display.take();
+            if let Some((_, interval)) = platform.filter(|(_, i)| !i.is_zero()) {
+                main.vsync_interval = interval;
+            }
+            let interval = main.vsync_interval;
+            let target = platform.map_or(at + interval, |(target, _)| target);
+            let prepared = main.prepared.take().map(|mut prepared| {
+                prepared.pacing.target = target;
+                prepared.pacing.interval = interval;
+                prepared
+            });
             if prepared.is_some() {
                 main.prepared = main.next_prepared.take();
                 main.busy = main.ahead || main.prepared.is_some();
@@ -518,6 +614,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 offsets,
                 mut timing,
                 prepared_at,
+                pacing,
             } = prepared;
             timing.wait_us = micros(vsync.saturating_duration_since(prepared_at));
             let deferred = !hidden && self.adapter.deferred(&frame);
@@ -530,6 +627,8 @@ impl<A: PlatformAdapter> Inner<A> {
             } else {
                 self.adapter.present(frame)
             };
+            let mut pacing = pacing;
+            pacing.done = self.adapter.now();
             match shown {
                 Ok(true) if deferred => {
                     // Nothing else prepares until this frame is on screen.
@@ -544,6 +643,7 @@ impl<A: PlatformAdapter> Inner<A> {
                         offsets,
                         timing,
                         vsync,
+                        pacing,
                     });
                 }
                 Ok(true) => {
@@ -553,7 +653,9 @@ impl<A: PlatformAdapter> Inner<A> {
                     main.presented_environment = Some(environment);
                     main.catch_up = false;
                     drop(main);
-                    self.presented(snapshot, surface, page, revision, offsets, timing, vsync)
+                    self.presented(
+                        snapshot, surface, page, revision, offsets, timing, vsync, pacing,
+                    )
                 }
                 Ok(false) => {
                     retry = true;
@@ -634,13 +736,17 @@ impl<A: PlatformAdapter> Inner<A> {
                 offsets,
                 timing,
                 vsync,
+                mut pacing,
             } = deferred;
+            pacing.done = self.adapter.now();
             {
                 let mut main = self.main();
                 main.presented_environment = Some(environment);
                 main.catch_up = false;
             }
-            self.presented(snapshot, surface, page, revision, offsets, timing, vsync);
+            self.presented(
+                snapshot, surface, page, revision, offsets, timing, vsync, pacing,
+            );
         } else {
             // Frames built on the dropped one cannot present either.
             let mut main = self.main();
@@ -672,6 +778,7 @@ impl<A: PlatformAdapter> Inner<A> {
         offsets: HashMap<String, f32>,
         mut timing: FrameTiming,
         vsync: Instant,
+        pacing: Pacing,
     ) {
         let rebuild = timing.rebuild;
         let (presented, recovered) = {
@@ -716,7 +823,26 @@ impl<A: PlatformAdapter> Inner<A> {
         self.flush_image_events();
         timing.main_us = micros(vsync.elapsed());
         let now = self.adapter.now();
-        self.main().telemetry.presented(now, &snapshot, &timing);
+        let shown = !self.window_hidden();
+        {
+            let mut main = self.main();
+            main.telemetry.presented(now, &snapshot, &timing);
+            if shown && main.visible {
+                main.telemetry.stats.record(
+                    super::frame_stats::Presented {
+                        demand: pacing.demand,
+                        target: pacing.target,
+                        done: pacing.done,
+                        interval: pacing.interval,
+                        cpu_us: timing.worker_us,
+                        queue_us: timing.queue_us,
+                        gpu_us: None,
+                        input: pacing.input,
+                    },
+                    pacing.point,
+                );
+            }
+        }
         self.adapter.presented(&snapshot, &timing);
         self.revealed_by_frame();
         self.update_text_menu();

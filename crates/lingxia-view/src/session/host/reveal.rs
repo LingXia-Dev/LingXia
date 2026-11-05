@@ -44,8 +44,14 @@ impl Reveal {
 
 impl<A: PlatformAdapter> Inner<A> {
     pub(super) fn begin_reveal(self: &Arc<Self>, surface_holds_frame: bool) {
+        let at = self.adapter.now();
+        self.main().telemetry.stats.reveal_started(at);
         if self.frame_is_current() {
-            self.main().reveal.pending = None;
+            {
+                let mut main = self.main();
+                main.reveal.pending = None;
+                main.telemetry.stats.reveal_current(at);
+            }
             return self.finish_reveal(false, "current");
         }
         let (epoch, delay) = {

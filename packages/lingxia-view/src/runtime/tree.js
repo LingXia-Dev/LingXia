@@ -6,6 +6,7 @@ import { validInputText } from './data.js';
 import { report, resetActions, actionEpochNow, hasActionEpoch } from './actions.js';
 import { sited } from './errors.js';
 import { overlayNode, decorateOverlay, resetOverlays } from './overlay.js';
+import { resetFrameMeasures } from './frames.js';
 import { pickerNode, pickerAnchor, resetPicker } from './picker.js';
 import { envOf } from './hooks.js';
 import { keysOf } from './keys.js';
@@ -140,7 +141,7 @@ export function reset() {
   for (const resource of page.resources.values()) resource.dispose();
   page.resources.clear();
   resetActions();
-  resetOverlays(); resetPicker(); resetTopLayer();
+  resetOverlays(); resetPicker(); resetTopLayer(); resetFrameMeasures();
 }
 
 const accepts = (kind, value) => kind === 'number' ? typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1e9

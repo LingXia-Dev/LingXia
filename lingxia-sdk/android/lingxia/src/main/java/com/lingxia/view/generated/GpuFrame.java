@@ -49,6 +49,7 @@ public final class GpuFrame {
     public static final String AUTOMATION_REQUEST_ACT = "act";
     public static final String AUTOMATION_REQUEST_TREE = "tree";
     public static final String AUTOMATION_REQUEST_FRAME = "frame";
+    public static final String AUTOMATION_REQUEST_HUD = "hud";
     public static final String AUTOMATION_REQUEST_ACTION = "action";
     public static final String AUTOMATION_REQUEST_DATA = "data";
     public static final String AUTOMATION_REQUEST_RESULT = "result";
@@ -617,6 +618,10 @@ public final class GpuFrame {
         public Long maxText() { if (json.isNull("maxText")) return null; return json.optLong("maxText"); }
         /** `action`: AutomationAction? */
         public AutomationAction action() { JSONObject o = json.optJSONObject("action"); return o == null ? null : new AutomationAction(o); }
+        /** `windowMs`: u64? */
+        public Long windowMs() { if (json.isNull("windowMs")) return null; return json.optLong("windowMs"); }
+        /** `on`: bool? */
+        public Boolean on() { if (json.isNull("on")) return null; return json.optBoolean("on"); }
         /** `name`: string? */
         public String name() { return json.isNull("name") ? null : json.optString("name", null); }
         /** `args`: any? */
@@ -825,6 +830,12 @@ public final class GpuFrame {
         public long wakeups() { return json.optLong("wakeups"); }
         /** `reveal`: any */
         public Object reveal() { return json.isNull("reveal") ? null : json.opt("reveal"); }
+        /** `hud`: bool */
+        public boolean hud() { return json.optBoolean("hud"); }
+        /** `nodes`: usize? */
+        public Long nodes() { if (json.isNull("nodes")) return null; return json.optLong("nodes"); }
+        /** `pacing`: FramePacing */
+        public FramePacing pacing() { JSONObject o = json.optJSONObject("pacing"); return o == null ? null : new FramePacing(o); }
     }
 
     public static final class QueueTimes {
@@ -845,6 +856,69 @@ public final class GpuFrame {
         public double last() { return json.optDouble("last"); }
         /** `max`: f64 */
         public double max() { return json.optDouble("max"); }
+    }
+
+    public static final class FramePacing {
+        public final JSONObject json;
+        public FramePacing(JSONObject json) { this.json = json; }
+        /** `windowMs`: u64 */
+        public long windowMs() { return json.optLong("windowMs"); }
+        /** `frames`: usize */
+        public long frames() { return json.optLong("frames"); }
+        /** `samples`: usize */
+        public long samples() { return json.optLong("samples"); }
+        /** `refreshMs`: f64? */
+        public Double refreshMs() { if (json.isNull("refreshMs")) return null; return json.optDouble("refreshMs"); }
+        /** `frameTimeMs`: Percentiles? */
+        public Percentiles frameTimeMs() { JSONObject o = json.optJSONObject("frameTimeMs"); return o == null ? null : new Percentiles(o); }
+        /** `fps`: f64? */
+        public Double fps() { if (json.isNull("fps")) return null; return json.optDouble("fps"); }
+        /** `dropped`: u64 */
+        public long dropped() { return json.optLong("dropped"); }
+        /** `jank`: usize */
+        public long jank() { return json.optLong("jank"); }
+        /** `late`: usize */
+        public long late() { return json.optLong("late"); }
+        /** `cpuMs`: Percentiles? */
+        public Percentiles cpuMs() { JSONObject o = json.optJSONObject("cpuMs"); return o == null ? null : new Percentiles(o); }
+        /** `queueMs`: Percentiles? */
+        public Percentiles queueMs() { JSONObject o = json.optJSONObject("queueMs"); return o == null ? null : new Percentiles(o); }
+        /** `gpuMs`: Percentiles? */
+        public Percentiles gpuMs() { JSONObject o = json.optJSONObject("gpuMs"); return o == null ? null : new Percentiles(o); }
+        /** `inputToPresent`: InputLatency */
+        public InputLatency inputToPresent() { JSONObject o = json.optJSONObject("inputToPresent"); return o == null ? null : new InputLatency(o); }
+        /** `firstPresentMs`: f64? */
+        public Double firstPresentMs() { if (json.isNull("firstPresentMs")) return null; return json.optDouble("firstPresentMs"); }
+        /** `firstPresentReason`: string? */
+        public String firstPresentReason() { return json.isNull("firstPresentReason") ? null : json.optString("firstPresentReason", null); }
+        /** `reveals`: u64 */
+        public long reveals() { return json.optLong("reveals"); }
+        /** `revealMs`: Percentiles? */
+        public Percentiles revealMs() { JSONObject o = json.optJSONObject("revealMs"); return o == null ? null : new Percentiles(o); }
+    }
+
+    public static final class Percentiles {
+        public final JSONObject json;
+        public Percentiles(JSONObject json) { this.json = json; }
+        /** `p50`: f64 */
+        public double p50() { return json.optDouble("p50"); }
+        /** `p95`: f64 */
+        public double p95() { return json.optDouble("p95"); }
+        /** `p99`: f64 */
+        public double p99() { return json.optDouble("p99"); }
+        /** `max`: f64 */
+        public double max() { return json.optDouble("max"); }
+    }
+
+    public static final class InputLatency {
+        public final JSONObject json;
+        public InputLatency(JSONObject json) { this.json = json; }
+        /** `count`: usize */
+        public long count() { return json.optLong("count"); }
+        /** `lastMs`: f64? */
+        public Double lastMs() { if (json.isNull("lastMs")) return null; return json.optDouble("lastMs"); }
+        /** `statsMs`: Percentiles? */
+        public Percentiles statsMs() { JSONObject o = json.optJSONObject("statsMs"); return o == null ? null : new Percentiles(o); }
     }
 
     public static final class AutomationRect {
@@ -1082,6 +1156,9 @@ public final class GpuFrame {
             case "AutomationFrame": return AutomationFrame.class;
             case "QueueTimes": return QueueTimes.class;
             case "EvalTimes": return EvalTimes.class;
+            case "FramePacing": return FramePacing.class;
+            case "Percentiles": return Percentiles.class;
+            case "InputLatency": return InputLatency.class;
             case "AutomationRect": return AutomationRect.class;
             case "AutomationTree": return AutomationTree.class;
             case "AutomationTreeNode": return AutomationTreeNode.class;
@@ -1131,6 +1208,9 @@ public final class GpuFrame {
             case "AutomationFrame": return new AutomationFrame(json);
             case "QueueTimes": return new QueueTimes(json);
             case "EvalTimes": return new EvalTimes(json);
+            case "FramePacing": return new FramePacing(json);
+            case "Percentiles": return new Percentiles(json);
+            case "InputLatency": return new InputLatency(json);
             case "AutomationRect": return new AutomationRect(json);
             case "AutomationTree": return new AutomationTree(json);
             case "AutomationTreeNode": return new AutomationTreeNode(json);

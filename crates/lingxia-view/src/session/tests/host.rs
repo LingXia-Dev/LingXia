@@ -57,6 +57,8 @@ struct Log {
     handed: Vec<CommitTicket>,
     debug: Vec<String>,
     released_transient: usize,
+    /// Whether each prepared frame carried the HUD overlay.
+    hud: Vec<bool>,
 }
 
 struct Fake {
@@ -109,7 +111,16 @@ impl Presenter for Fake {
         _: SurfaceTicket,
         generation: CommitTicket,
     ) -> Result<Option<Encoded>, String> {
-        self.log.lock().unwrap().generations.push(generation);
+        {
+            let mut log = self.log.lock().unwrap();
+            log.generations.push(generation);
+            log.hud.push(
+                display
+                    .animated_spans()
+                    .iter()
+                    .any(|span| span.identity == "lingxia:hud"),
+            );
+        }
         let texts: Vec<String> = display
             .nodes
             .iter()
@@ -1361,6 +1372,106 @@ fn a_spinner_presents_at_display_rate_only_while_visible_and_present() {
         "a removed spinner schedules nothing"
     );
     assert!(platform.timers.lock().unwrap().is_empty());
+}
+
+#[test]
+fn frame_pacing_reports_display_rate_frames_and_the_hud_never_becomes_page_content() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(&format!(
+            "function render(){{return h('column',{{}},h('text',{{}},'spin'),h('column',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}}))}}"
+        )),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 90);
+    let frame = host
+        .automation_request(&serde_json::json!({"op": "frame", "windowMs": 1000}))
+        .unwrap();
+    let pacing = &frame["pacing"];
+    assert!(pacing["samples"].as_u64().unwrap() >= 55, "{pacing}");
+    assert_eq!(pacing["frameTimeMs"]["p50"], 16.67, "{pacing}");
+    assert_eq!(pacing["dropped"], 0, "{pacing}");
+    assert_eq!(pacing["jank"], 0, "{pacing}");
+    assert!(pacing["cpuMs"]["p95"].is_number(), "{pacing}");
+    assert_eq!(frame["hud"], false);
+    assert!(!host.adapter().log.lock().unwrap().hud.iter().any(|on| *on));
+
+    let nodes = host.snapshot().unwrap().frame.nodes.len();
+    let reply = host
+        .automation_request(&serde_json::json!({"op": "hud", "on": true}))
+        .unwrap();
+    assert_eq!(reply["hud"], true);
+    run_frames(&platform, &host, 5);
+    assert_eq!(host.adapter().log.lock().unwrap().hud.last(), Some(&true));
+    assert_eq!(
+        host.snapshot().unwrap().frame.nodes.len(),
+        nodes,
+        "not page content"
+    );
+    assert!(
+        !host
+            .automation_request(&serde_json::json!({"op": "tree"}))
+            .unwrap()
+            .to_string()
+            .contains("frame "),
+        "the HUD is not in the semantics tree"
+    );
+    host.set_hud(false);
+    run_frames(&platform, &host, 2);
+    assert_eq!(host.adapter().log.lock().unwrap().hud.last(), Some(&false));
+}
+
+#[test]
+fn measure_frames_resolves_with_the_window_it_waited_out() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(&format!(
+            "function render(){{const n=useLocal('n','none');return h('column',{{}},h('button',{{onClick:()=>{{measureFrames(500).then(s=>n.set(s.windowMs+':'+(s.samples>=25)+':'+(s.frameTimeMs.p50<17)))}},style:{{height:60}}}},'measured '+n.value),h('column',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}}))}}"
+        )),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 3);
+    tap(&host, 20.0, 20.0);
+    run_frames(&platform, &host, 25);
+    assert_eq!(last(&host)[0], "measured none", "the window has not ended");
+    run_frames(&platform, &host, 10);
+    assert_eq!(last(&host)[0], "measured 500:true:true");
+}
+
+#[test]
+fn an_input_is_charged_to_the_frame_that_shows_it() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){const n=useLocal('n',0);return h('button',{onClick:()=>n.set(n.value+1),style:{height:60}},'tap '+n.value)}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 3);
+    host.input_age(8_000);
+    tap(&host, 20.0, 20.0);
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 3);
+    let pacing = &host
+        .automation_request(&serde_json::json!({"op": "frame"}))
+        .unwrap()["pacing"];
+    assert_eq!(pacing["inputToPresent"]["count"], 1, "{pacing}");
+    assert!(
+        pacing["inputToPresent"]["lastMs"].as_f64().unwrap() >= 8.0,
+        "{pacing}"
+    );
 }
 
 #[test]
@@ -2959,13 +3070,16 @@ fn every_message_adapters_receive_matches_the_frame_schema() {
         serde_json::json!({"op":"query","css":"input","all":true}),
         serde_json::json!({"op":"tree"}),
         serde_json::json!({"op":"frame"}),
+        serde_json::json!({"op":"frame","windowMs":1000}),
         serde_json::json!({"op":"act","css":"[data-testid=\"name\"]","action":{"kind":"fill","text":"Bo"}}),
+        serde_json::json!({"op":"hud","on":false}),
     ];
     let replies = [
         "automationElement",
         "automationElement",
         "automationQueryAll",
         "automationTree",
+        "automationFrame",
         "automationFrame",
     ];
     let mut exchanges = Vec::new();
