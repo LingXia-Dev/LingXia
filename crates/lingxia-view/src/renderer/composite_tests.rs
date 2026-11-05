@@ -334,3 +334,37 @@ fn shared_renderer_preserves_interleaved_page_pixels_and_retained_outputs() {
         );
     }
 }
+
+#[cfg(feature = "gpu")]
+#[test]
+#[ignore = "requires a GPU adapter"]
+fn a_backdrop_is_filtered_again_only_when_what_lies_beneath_changes() {
+    let domain = crate::renderer::gpu::Context::default();
+    let mut context = domain.lock().unwrap();
+    let id = pollster::block_on(context.device(None)).expect("GPU adapter required");
+    let device = &context.devices[id].device;
+    let queue = &context.devices[id].queue;
+    let mut compositor = crate::renderer::gpu::composite::Compositor::new(device);
+    let mut frame = |offset: f32| {
+        let display = backdrop_display(2.0, offset);
+        let output = compositor.render_display(&display, device, queue).unwrap();
+        let actual = crate::renderer::backdrop_tests::readback(device, queue, output.texture());
+        let expected = display.rasterize().unwrap();
+        for (a, b) in actual
+            .chunks_exact(512)
+            .flat_map(|row| row[..96 * 4].iter())
+            .zip(expected.pixels.data_as_u8_slice())
+        {
+            assert!(a.abs_diff(*b) <= 4, "offset {offset}: {a} vs {b}");
+        }
+        compositor.backdrop_filters()
+    };
+    assert_eq!(frame(0.0), 1);
+    // The same content beneath, as when only something above the glass changed.
+    assert_eq!(frame(0.0), 1, "the cached image is composited");
+    // Scrolling the content under the glass changes what it shows.
+    assert_eq!(frame(12.0), 2);
+    assert_eq!(compositor.cached_backdrops().0, 2);
+    compositor.clear();
+    assert_eq!(compositor.cached_backdrops(), (0, 0));
+}

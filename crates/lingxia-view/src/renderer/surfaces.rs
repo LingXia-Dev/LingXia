@@ -122,7 +122,9 @@ pub fn prepare(
         return Ok(None);
     }
     let [scene, images, encode, submit] = presenter.preparation_timings_us();
+    let (filtered, cached, cached_bytes) = presenter.backdrop_cache_stats();
     Ok(Some(serde_json::json!({
+        "backdropCache": {"filtered": filtered, "cached": cached, "cachedBytes": cached_bytes},
         "backend": presenter.backend(),
         "renderer": "sparse-strips",
         "loadedImages": display.loaded_image_count(),

@@ -1,3 +1,4 @@
+pub(crate) mod backdrop_cache;
 pub mod color_filter;
 pub mod composite;
 mod device;
@@ -524,6 +525,15 @@ impl Presenter {
         self.scene_cache_hit = scene_cache_hit;
         self.prepared[slot] = Some(revision);
         Ok(true)
+    }
+
+    /// Backdrops captured and filtered so far, and the filtered images held for later frames:
+    /// `(filtered, cached, cached_bytes)`.
+    pub fn backdrop_cache_stats(&self) -> (u64, usize, u64) {
+        self.compositor.as_ref().map_or((0, 0, 0), |compositor| {
+            let (cached, bytes) = compositor.cached_backdrops();
+            (compositor.backdrop_filters(), cached, bytes)
+        })
     }
 
     /// CPU wall time for acquire, encode, submit, and present; these are not GPU timestamps.

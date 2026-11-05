@@ -20,11 +20,16 @@ pub struct Compositor {
     images: crate::renderer::gpu::images::ImageTextures,
     glyph_cache: glifo::GlyphPrepCache,
     budget_warned: bool,
+    /// Filtered backdrop images reused while what lies beneath them stays the same.
+    backdrops: crate::renderer::gpu::backdrop_cache::BackdropCache<Surface>,
+    /// Backdrops captured and filtered, as opposed to taken from the cache.
+    backdrop_filters: u64,
 }
 
 impl Compositor {
     /// Discard idle textures and depth on suspend. Older leases cannot refill the pool.
     pub fn clear(&mut self) {
+        self.backdrops.clear();
         self.pool.clear();
         self.depth.clear();
         self.images.clear();
@@ -57,6 +62,8 @@ impl Compositor {
             images: Default::default(),
             glyph_cache: Default::default(),
             budget_warned: false,
+            backdrops: Default::default(),
+            backdrop_filters: 0,
         }
     }
 
@@ -142,12 +149,37 @@ impl Compositor {
     where
         F: FnMut(Range<usize>, &mut Scene, &mut TextureBindings) -> Result<(), String>,
     {
+        self.render_keyed(plan, device, queue, draw, Default::default())
+    }
+
+    fn render_keyed<F>(
+        &mut self,
+        plan: &crate::scene::composite::Plan,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        draw: F,
+        backdrops: std::collections::VecDeque<crate::renderer::gpu::backdrop_cache::BackdropKey>,
+    ) -> Result<Surface, String>
+    where
+        F: FnMut(Range<usize>, &mut Scene, &mut TextureBindings) -> Result<(), String>,
+    {
         plan.render(&mut Gpu {
             device,
             queue,
             resources: self,
             draw,
+            backdrops,
         })
+    }
+
+    /// Backdrop images held for later frames: their count and bytes.
+    pub fn cached_backdrops(&self) -> (usize, u64) {
+        (self.backdrops.len(), self.backdrops.bytes())
+    }
+
+    /// Backdrops captured and filtered so far, rather than taken from the cache.
+    pub fn backdrop_filters(&self) -> u64 {
+        self.backdrop_filters
     }
 
     /// Render a retained display using the same text/image encoders as Presenter.
@@ -158,6 +190,7 @@ impl Compositor {
         queue: &wgpu::Queue,
     ) -> Result<Surface, String> {
         let plan = self.fit(display.composition_plan()?);
+        let backdrops = crate::renderer::gpu::backdrop_cache::keys(&plan, display);
         // Move caches out for the callback's lifetime; restore them on errors too.
         let mut images = std::mem::take(&mut self.images);
         let mut glyph_cache = std::mem::take(&mut self.glyph_cache);
@@ -172,18 +205,30 @@ impl Compositor {
                 )
             })
             .collect();
-        let result = self.render(&plan, device, queue, |span, scene, bindings| {
-            display.sparse_span(&mut glyph_cache, scene, &image_ids, &mut glyph_images, span)?;
-            *bindings = images.bindings(
-                device,
-                queue,
-                display
-                    .bitmaps()
-                    .map(|bitmap| bitmap.pixels().clone())
-                    .chain(glyph_images.values().cloned()),
-            );
-            Ok(())
-        });
+        let result = self.render_keyed(
+            &plan,
+            device,
+            queue,
+            |span, scene, bindings| {
+                display.sparse_span(
+                    &mut glyph_cache,
+                    scene,
+                    &image_ids,
+                    &mut glyph_images,
+                    span,
+                )?;
+                *bindings = images.bindings(
+                    device,
+                    queue,
+                    display
+                        .bitmaps()
+                        .map(|bitmap| bitmap.pixels().clone())
+                        .chain(glyph_images.values().cloned()),
+                );
+                Ok(())
+            },
+            backdrops,
+        );
         glyph_cache.maintain();
         self.images = images;
         self.glyph_cache = glyph_cache;
@@ -196,6 +241,8 @@ struct Gpu<'a, F> {
     queue: &'a wgpu::Queue,
     resources: &'a mut Compositor,
     draw: F,
+    /// The key of each backdrop still to filter, in plan order; empty when nothing is cached.
+    backdrops: std::collections::VecDeque<crate::renderer::gpu::backdrop_cache::BackdropKey>,
 }
 
 impl<F> Gpu<'_, F> {
@@ -360,12 +407,61 @@ where
         else {
             return Err("UI_COMPOSITE: expected backdrop".into());
         };
+        let key = self.backdrops.pop_front();
         let size = source.size();
         let Some(region) =
             crate::scene::backdrop_region::Region::new(*clip, size.width, size.height, *blur)?
         else {
             return self.blank(size.width, size.height);
         };
+        let cached = key
+            .as_ref()
+            .and_then(|key| self.resources.backdrops.get(key));
+        let filtered = match cached {
+            Some(filtered) => filtered,
+            None => {
+                self.resources.backdrop_filters += 1;
+                let filtered = self.filtered(source, &region, *blur, *saturation)?;
+                if let Some(key) = key {
+                    let bytes =
+                        u64::from(region.filtered_width) * u64::from(region.filtered_height) * 4;
+                    // A quarter of the frame's lease budget, itself under `compositeBytes`:
+                    // cached images never crowd a frame's working surfaces into flattening.
+                    let budget =
+                        crate::renderer::gpu::surface::lease_budget(size.width, size.height) / 4;
+                    self.resources
+                        .backdrops
+                        .insert(key, filtered.clone(), bytes, budget);
+                }
+                filtered
+            }
+        };
+        let output = self.overwritten(size.width, size.height)?;
+        let mut scene = Scene::new(size.width, size.height);
+        scene.push_clip_layer(&clip.path());
+        let bindings = image_brush(&mut scene, &filtered, Default::default());
+        scene.set_paint_transform(region.placement());
+        scene.fill_rect(&region.bounds());
+        scene.pop_layer();
+        self.render(
+            &scene,
+            &bindings,
+            &output,
+            TargetInit::Clear(Default::default()),
+        )?;
+        Ok(output)
+    }
+}
+
+impl<F> Gpu<'_, F> {
+    /// The backdrop's region of `source`, blurred and saturated at the filter's resolution.
+    fn filtered(
+        &mut self,
+        source: &Surface,
+        region: &crate::scene::backdrop_region::Region,
+        blur: f32,
+        saturation: crate::scene::color_filter::Saturation,
+    ) -> Result<Surface, String> {
         let cropped = self.overwritten(region.width, region.height)?;
         let mut encoder = self.device.create_command_encoder(&Default::default());
         let mut input = source.texture().as_image_copy();
@@ -382,7 +478,7 @@ where
         self.queue.submit([encoder.finish()]);
         let mut filtered = self.overwritten(region.filtered_width, region.filtered_height)?;
         let mut scene = Scene::new(region.filtered_width, region.filtered_height);
-        if *blur > 0.0 {
+        if blur > 0.0 {
             scene.push_filter_layer(region.filter.clone());
         }
         let bindings = image_brush(
@@ -392,7 +488,7 @@ where
         );
         scene.set_paint_transform(region.downscale());
         scene.fill_rect(&region.sampling_bounds);
-        if *blur > 0.0 {
+        if blur > 0.0 {
             scene.pop_layer();
         }
         self.render(
@@ -414,24 +510,11 @@ where
                 &mut encoder,
                 filtered.texture(),
                 colored.texture(),
-                *saturation,
+                saturation,
             )?;
             self.queue.submit([encoder.finish()]);
             filtered = colored;
         }
-        let output = self.overwritten(size.width, size.height)?;
-        let mut scene = Scene::new(size.width, size.height);
-        scene.push_clip_layer(&clip.path());
-        let bindings = image_brush(&mut scene, &filtered, Default::default());
-        scene.set_paint_transform(region.placement());
-        scene.fill_rect(&region.bounds());
-        scene.pop_layer();
-        self.render(
-            &scene,
-            &bindings,
-            &output,
-            TargetInit::Clear(Default::default()),
-        )?;
-        Ok(output)
+        Ok(filtered)
     }
 }
