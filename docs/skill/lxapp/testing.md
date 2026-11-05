@@ -66,6 +66,8 @@ Iterate with `--changed` or a file path; run everything at handoff and in CI.
 
 - Reports go to `test-results/<run-id>/` (`report.html`, `report.json`,
   `junit.xml`); `test-results/latest` is the last run, set after its reports.
+- In `junit.xml` a spec's `covers` is a `covers` property, and a `spec.fail`
+  that failed as declared is `<skipped type="xfail">`, never a pass.
 - A failure after the cases (`--profile-save`, `--record-network`, a failed
   return of the app to its own data) keeps each case's verdict but exits 1
   and is listed as a run error in every report.
