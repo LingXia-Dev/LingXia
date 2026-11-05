@@ -45,3 +45,18 @@ test("dev and build dependencies do not count", () => {
   lxapp.dependencies.push({ name: "lingxia-automation", kind: "dev" });
   assert.deepEqual(checkLayers({ packages: [lxapp] }), []);
 });
+
+test("View and the app runtime do not depend on each other", () => {
+  const metadata = {
+    packages: [
+      pkg("lingxia-view", ["lingxia-lxapp", "lingxia-theme"]),
+      pkg("lingxia-view-apple", ["lingxia-view", "lingxia-terminal-config"]),
+      pkg("lingxia-logic", ["lingxia-view-android"]),
+    ],
+  };
+  assert.deepEqual(checkLayers(metadata), [
+    "lingxia-view depends on lingxia-lxapp, an edge docs/internal/crate-layout.md forbids",
+    "lingxia-view-apple depends on lingxia-terminal-config, an edge docs/internal/crate-layout.md forbids",
+    "lingxia-logic depends on lingxia-view-android, an edge docs/internal/crate-layout.md forbids",
+  ]);
+});

@@ -39,6 +39,10 @@ Build tooling sits outside the layers: `native-macros`, `native-codegen`,
 4. **A description is a claim.** Each crate's `description` says what it
    owns. When the contents drift from it, move the code or fix the
    description in the same change.
+5. **View and the app runtime meet only in the facade.** `view*` depends on
+   none of `lxapp`, `logic`, `service`, `webview`, `platform`, `media`,
+   `browser`, `terminal*`, and `lxapp`, `logic`, `service` on no `view*`;
+   the script's `FORBIDDEN` edges enforce it.
 
 ## What each crate owns
 

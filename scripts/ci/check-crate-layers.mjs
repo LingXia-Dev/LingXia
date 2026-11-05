@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Enforce docs/internal/crate-layout.md: a workspace crate under `crates/`
-// depends only on crates in its own layer or below.
+// depends only on crates in its own layer or below, and on none of the
+// FORBIDDEN edges.
 //
 //   cargo metadata --format-version 1 --no-deps | node scripts/ci/check-crate-layers.mjs
 //
@@ -50,6 +51,23 @@ export const LAYERS = {
 /** Build tooling: outside the layers, depended on from anywhere. */
 export const TOOLING = new Set(["native-macros", "native-codegen", "windows-build"]);
 
+/**
+ * Edges the layer order allows but the design forbids, `*` matching a prefix:
+ * View renders without the app runtime, and the runtime reaches View only
+ * through the facade.
+ */
+export const FORBIDDEN = [
+  {
+    from: ["view*"],
+    to: ["lxapp", "logic", "service", "webview", "platform", "media", "browser", "terminal*"],
+  },
+  { from: ["lxapp", "logic", "service"], to: ["view*"] },
+];
+
+function matches(patterns, name) {
+  return patterns.some((p) => (p.endsWith("*") ? name.startsWith(p.slice(0, -1)) : name === p));
+}
+
 function shortName(name) {
   if (name === "lingxia") return name;
   if (name === "lingxia-lxapp") return "lxapp";
@@ -77,6 +95,9 @@ export function checkLayers(metadata) {
       if (targetLayer === undefined || TOOLING.has(target)) continue;
       if (targetLayer > layer) {
         problems.push(`${pkg.name} (layer ${layer}) depends on ${dep.name} (layer ${targetLayer}), a layer above it`);
+      }
+      if (FORBIDDEN.some((rule) => matches(rule.from, name) && matches(rule.to, target))) {
+        problems.push(`${pkg.name} depends on ${dep.name}, an edge docs/internal/crate-layout.md forbids`);
       }
     }
   }
