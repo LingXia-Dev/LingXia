@@ -4399,11 +4399,9 @@ dependencies = [
  "libc",
  "lingxia-view",
  "log",
- "memmap2",
  "napi-sys-ohos",
  "raw-window-handle",
  "serde_json",
- "skrifa 0.44.0",
  "wgpu",
 ]
 

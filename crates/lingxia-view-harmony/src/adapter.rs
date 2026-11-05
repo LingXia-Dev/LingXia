@@ -410,40 +410,29 @@ impl AccessibilitySink for HarmonyAdapter {
     fn clicked(&self) {}
 }
 
-fn focused_editor(frame: &FrameSnapshot) -> Option<(String, u64)> {
-    frame.frame.nodes.iter().find_map(|node| {
-        let input = node.input.as_ref()?;
-        let token = input.edit_token.filter(|t| *t > 0)?;
-        input.enabled.then(|| (node.identity.clone(), token))
-    })
-}
-
 impl InputMethod for HarmonyAdapter {
     fn reconcile(&self, frame: &FrameSnapshot) {
-        // The input method connection follows the focused editor once the mirror lands.
-        let _ = focused_editor(frame);
+        ime::reconcile(self.token, frame);
     }
     fn focus(&self, editor: &Dispatch, frame: &FrameSnapshot) {
-        let Dispatch::Editor { node, .. } = editor else {
+        let Dispatch::Editor { node, commit, .. } = editor else {
             return;
         };
-        let Some(node) = frame.frame.nodes.get(*node) else {
-            return;
-        };
-        let Some(token) = node.input.as_ref().and_then(|input| input.edit_token) else {
-            return;
-        };
-        ime::connect(self.token, &node.identity, token, None);
+        if let Some(node) = frame.frame.nodes.get(*node) {
+            ime::focus_editor(self.token, &node.identity, commit.get());
+        }
     }
     fn activation(&self) {
         ime::disconnect(self.token);
     }
     fn reset(&self) {
-        ime::disconnect(self.token);
+        ime::reset(self.token);
     }
     fn edit_text(&self, node: usize, text: Option<&str>, start: i32, end: i32) -> EditOutcome {
-        let _ = (node, text, start, end);
-        EditOutcome::Failed
+        let Some(frame) = self.snapshot() else {
+            return EditOutcome::NotReady;
+        };
+        ime::edit_text(self.token, &frame, node, text, start, end)
     }
 }
 

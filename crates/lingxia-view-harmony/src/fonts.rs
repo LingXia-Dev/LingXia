@@ -1,28 +1,17 @@
-//! System font fallbacks from the OHOS font configuration. fontique has no OHOS backend
-//! (it would take the Linux fontconfig one), so every face is registered from its file:
-//! the fallback groups name families per language, and the font directories hold them.
+//! System fonts from the OHOS font configuration. fontique has no OHOS backend (it would
+//! take the Linux fontconfig one), so the configuration's directories, fallback chain and
+//! generic families go to the core, which resolves them to face files.
 use crate::sys;
 use lingxia_view::text::fonts::{GenericFamily, SystemFonts};
-use skrifa::{FontRef, MetadataProvider, string::StringId};
-use std::collections::HashMap;
 use std::ffi::CStr;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-/// Where the configuration API is missing or fails: the families HarmonyOS ships.
+/// Where the configuration API is missing or fails.
 const FALLBACK_DIR: &str = "/system/fonts";
-
 /// The family HarmonyOS draws its UI with, should the configuration name none.
 const DEFAULT_FAMILY: &str = "HarmonyOS Sans";
 
-/// Configuration and file family names differ in spacing and case ("HarmonyOS-Sans").
-fn key(family: &str) -> String {
-    family
-        .chars()
-        .filter(char::is_ascii_alphanumeric)
-        .map(|c| c.to_ascii_lowercase())
-        .collect()
-}
-
+#[derive(Default)]
 struct Configuration {
     dirs: Vec<PathBuf>,
     /// `(language, family)` fallbacks in configuration order.
@@ -34,45 +23,33 @@ struct Configuration {
 pub(crate) fn system_fonts() -> SystemFonts {
     let config = configuration().unwrap_or_else(|| Configuration {
         dirs: vec![FALLBACK_DIR.into()],
-        chain: Vec::new(),
-        generics: Vec::new(),
+        ..Default::default()
     });
-    let faces = index(&config.dirs);
-    let find = |family: &str| faces.get(&key(family)).cloned();
-    let mut picked = Vec::new();
-    for (lang, family) in config.chain {
-        match find(&family) {
-            Some((file, postscript)) => picked.push((lang, file, postscript)),
-            None => log::debug!(target: "lingxia_view", "UI_FONT: no file for {family} ({lang})"),
-        }
-    }
-    let mut fonts = SystemFonts::from_files(picked);
-    let resolve = |names: &[String]| names.iter().find_map(|name| find(name));
-    let sans = config
+    let mut sans: Vec<String> = config.generics.first().cloned().unwrap_or_default();
+    sans.push(DEFAULT_FAMILY.into());
+    let mono: Vec<String> = config
         .generics
         .iter()
-        .find_map(|names| resolve(names))
-        .or_else(|| find(DEFAULT_FAMILY));
-    if let Some((file, postscript)) = sans {
-        for family in [
-            GenericFamily::SansSerif,
-            GenericFamily::SystemUi,
-            GenericFamily::UiSansSerif,
-        ] {
-            fonts = fonts.with_generic(family, file.clone(), postscript.clone());
-        }
-    } else {
-        log::warn!(target: "lingxia_view", "UI_FONT: no default face");
+        .filter(|names| {
+            names
+                .iter()
+                .any(|n| n.to_ascii_lowercase().contains("mono"))
+        })
+        .flatten()
+        .cloned()
+        .collect();
+    let mut generics: Vec<(GenericFamily, Vec<String>)> = [
+        GenericFamily::SansSerif,
+        GenericFamily::SystemUi,
+        GenericFamily::UiSansSerif,
+    ]
+    .into_iter()
+    .map(|family| (family, sans.clone()))
+    .collect();
+    if !mono.is_empty() {
+        generics.push((GenericFamily::Monospace, mono));
     }
-    let mono = config
-        .generics
-        .iter()
-        .filter(|names| names.iter().any(|name| key(name).contains("mono")))
-        .find_map(|names| resolve(names));
-    if let Some((file, postscript)) = mono {
-        fonts = fonts.with_generic(GenericFamily::Monospace, file, postscript);
-    }
-    fonts
+    SystemFonts::from_font_dirs(&config.dirs, &config.chain, &generics)
 }
 
 fn configuration() -> Option<Configuration> {
@@ -124,53 +101,4 @@ fn configuration() -> Option<Configuration> {
     };
     unsafe { sys::OH_Drawing_DestroySystemFontConfigInfo(info) };
     Some(config)
-}
-
-/// Family name to its regular face's file and PostScript name.
-fn index(dirs: &[PathBuf]) -> HashMap<String, (PathBuf, String)> {
-    let mut faces = HashMap::new();
-    for dir in dirs {
-        let Ok(entries) = std::fs::read_dir(dir) else {
-            continue;
-        };
-        for path in entries.flatten().map(|e| e.path()) {
-            if !matches!(
-                path.extension().and_then(|e| e.to_str()),
-                Some("ttf" | "otf" | "ttc")
-            ) {
-                continue;
-            }
-            for (family, postscript) in names(&path) {
-                faces
-                    .entry(key(&family))
-                    .or_insert_with(|| (path.clone(), postscript));
-            }
-        }
-    }
-    faces
-}
-
-/// `(family, PostScript name)` of every face in a file.
-fn names(path: &Path) -> Vec<(String, String)> {
-    let Some(data) = std::fs::File::open(path)
-        .ok()
-        // SAFETY: system font files are read-only for the life of the process.
-        .and_then(|file| unsafe { memmap2::Mmap::map(&file) }.ok())
-    else {
-        return Vec::new();
-    };
-    let count = skrifa::raw::FileRef::new(&data).map_or(1, |file| file.fonts().count());
-    (0..count as u32)
-        .filter_map(|index| {
-            let font = FontRef::from_index(&data, index).ok()?;
-            let read = |id| {
-                font.localized_strings(id)
-                    .english_or_first()
-                    .map(|s| s.chars().collect::<String>())
-            };
-            let family =
-                read(StringId::TYPOGRAPHIC_FAMILY_NAME).or_else(|| read(StringId::FAMILY_NAME))?;
-            Some((family, read(StringId::POSTSCRIPT_NAME)?))
-        })
-        .collect()
 }
