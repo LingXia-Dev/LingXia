@@ -754,7 +754,7 @@ impl HostEvents for AndroidAdapter {
     }
     fn recovery(&self, failure: Option<&Failure>) {
         let (message, action) = failure.map_or((-1, -1), recovery_codes);
-        let retained = failure.is_some_and(|f| f.retained);
+        let retained = failure.is_some_and(|f| !f.covers_page());
         let error = failure.map(|f| f.error.as_str()).unwrap_or_default();
         self.java(|env, platform| {
             let error = env.new_string(error)?;

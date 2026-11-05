@@ -224,6 +224,10 @@ mod bridge {
         // The input event delivered next happened `age_us` ago.
         #[swift_bridge(swift_name = "gpuPageInputAge")]
         fn gpu_page_input_age(token: i64, age_us: u64);
+
+        // The recovery chrome's button was pressed.
+        #[swift_bridge(swift_name = "gpuPageRetry")]
+        fn gpu_page_retry(token: i64);
     }
 
     extern "Swift" {
@@ -318,6 +322,11 @@ mod bridge {
         fn gpu_pages_copy_text(text: &str);
         #[swift_bridge(swift_name = "GpuPages.accessibilityEvent")]
         fn gpu_pages_accessibility_event(token: i64, kind: u8, id: u32, text: &str);
+
+        // Show recovery chrome (`message`, `action`: the core's codes; -1 clears), covering
+        // the page or as a banner under a retained frame.
+        #[swift_bridge(swift_name = "GpuPages.recovery")]
+        fn gpu_pages_recovery(token: i64, message: i32, action: i32, covers: bool);
 
         // Call `gpuPageVsync` on the next display refresh; false without a display link.
         #[swift_bridge(swift_name = "GpuPages.requestVsync")]
@@ -720,6 +729,10 @@ fn gpu_page_input_age(token: i64, age_us: u64) {
     with_page(token, |page| page.host().input_age(age_us));
 }
 
+fn gpu_page_retry(token: i64) {
+    with_page(token, |page| page.host().retry());
+}
+
 fn gpu_page_window_visible(token: i64, visible: bool) {
     log::debug!(target: "lingxia_view", "window token={token} visible={visible}");
     with_page(token, |page| page.host().window_visible(visible));
@@ -898,9 +911,25 @@ mod live {
             token: i64,
             failure: Option<&lingxia_view_apple::lingxia_view::session::host::Failure>,
         ) {
-            if let Some(failure) = failure {
-                log::warn!("GPU page {token} failed: {}", failure.error);
-            }
+            use lingxia_view_apple::lingxia_view::session::host::{
+                RecoveryAction, RecoveryMessage,
+            };
+            let Some(failure) = failure else {
+                return super::bridge::gpu_pages_recovery(token, -1, -1, false);
+            };
+            log::warn!("GPU page {token} failed: {}", failure.error);
+            let message = match failure.message {
+                RecoveryMessage::UpdateRequired => 0,
+                RecoveryMessage::SessionFailed => 1,
+                RecoveryMessage::UpdateFailed => 2,
+                RecoveryMessage::DisplayFailed => 3,
+            };
+            let action = match failure.action {
+                None => -1,
+                Some(RecoveryAction::Retry) => 0,
+                Some(RecoveryAction::Reload) => 1,
+            };
+            super::bridge::gpu_pages_recovery(token, message, action, failure.covers_page());
         }
         fn bootstrap_overdue(&self, token: i64, overdue: bool) {
             if overdue {

@@ -23,6 +23,9 @@ final class GpuPageView: UIView {
     /// The edit menu the core's text menu shows through, and the menu it shows.
     var editMenu: UIEditMenuInteraction?
     var textMenu: GpuFrameTextMenu?
+    /// Recovery chrome after a failure, and whether it hides the page entirely.
+    var recoveryPanel: UIView?
+    var recoveryCovers = false
     var menuChosen = false
     /// Static-text selection handles and the one a finger holds (end, grab offset).
     var handleLayer: CAShapeLayer?
@@ -41,7 +44,10 @@ final class GpuPageView: UIView {
     }
 
     override var accessibilityElements: [Any]? {
-        get { semantics.list }
+        get {
+            guard let panel = recoveryPanel else { return semantics.list }
+            return recoveryCovers ? [panel] : semantics.list + [panel]
+        }
         set {}
     }
 
@@ -599,6 +605,10 @@ public enum GpuPages {
 
     static func topLayer(token: Int64, modal: Bool) {
         MainActor.assumeIsolated { views[token]?.topLayer(modal) }
+    }
+
+    static func recovery(token: Int64, message: Int32, action: Int32, covers: Bool) {
+        MainActor.assumeIsolated { views[token]?.showRecovery(message: message, action: action, covers: covers) }
     }
 
     static func claim(token: Int64, exclusive: Bool) {

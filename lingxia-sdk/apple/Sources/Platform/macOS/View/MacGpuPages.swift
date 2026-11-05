@@ -24,6 +24,9 @@ final class GpuPageView: NSView {
     }
     /// The text menu on screen, closed when the core takes it away.
     var textMenu: NSMenu?
+    /// Recovery chrome after a failure, and whether it hides the page entirely.
+    var recoveryPanel: NSView?
+    var recoveryCovers = false
 
     /// A simulated phone (the Runner): its system bars, the host bars over the page and its
     /// width, in points; nil measures the window as a desktop page does.
@@ -46,7 +49,10 @@ final class GpuPageView: NSView {
 
     override func isAccessibilityElement() -> Bool { false }
 
-    override func accessibilityChildren() -> [Any]? { semantics.list }
+    override func accessibilityChildren() -> [Any]? {
+        guard let panel = recoveryPanel else { return semantics.list }
+        return recoveryCovers ? [panel] : semantics.list + [panel]
+    }
 
     func accessibilityEvent(kind: UInt8, id: UInt32, text: String) {
         semantics.event(kind: kind, id: id, text: text)
@@ -614,6 +620,10 @@ public enum GpuPages {
         MainActor.assumeIsolated { views[token]?.accessibilityEvent(kind: kind, id: id, text: text) }
     }
 
+    static func recovery(token: Int64, message: Int32, action: Int32, covers: Bool) {
+        MainActor.assumeIsolated { views[token]?.showRecovery(message: message, action: action, covers: covers) }
+    }
+
     static func requestVsync(token: Int64) -> Bool {
         guard Thread.isMainThread else { return false }
         return MainActor.assumeIsolated { views[token]?.requestVsync() ?? false }
@@ -632,7 +642,8 @@ public enum GpuPages {
         defer { NSGraphicsContext.restoreGraphicsState() }
         NSGraphicsContext.current = context
         for view in views.values where view.window === contentView.window && !view.isHiddenOrHasHiddenAncestor {
-            guard let image = view.lastFrame() else { continue }
+            // Recovery chrome over the page is part of the window's own bitmap.
+            guard !view.recoveryCovers, let image = view.lastFrame() else { continue }
             let frame = view.convert(view.bounds, to: contentView)
             let rect = contentView.isFlipped
                 ? CGRect(x: frame.minX, y: contentView.bounds.height - frame.maxY, width: frame.width, height: frame.height)

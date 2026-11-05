@@ -43,3 +43,13 @@ app:
 control_session:
   active: "AI 助手正在操作"
   stop: "停止"
+
+# GPU 页面恢复界面；与 Android 的 `gpu.*` 文案相同。
+gpu_recovery:
+  update_required: "请更新应用后打开此页面。"
+  session_failed: "页面已停止响应，请重新载入后继续。尚未保存的输入可能丢失。"
+  update_failed: "页面更新失败，已保留上次显示的内容。"
+  display_failed: "暂时无法显示此页面。"
+  retry: "重试"
+  reload: "重新载入页面"
+  retrying: "正在重试…"

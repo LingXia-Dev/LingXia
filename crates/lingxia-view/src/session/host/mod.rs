@@ -110,6 +110,12 @@ pub struct Failure {
 }
 
 impl Failure {
+    /// Recovery chrome covers the whole page: nothing was presented, or what was is an
+    /// interrupted page that no longer takes input and must not pass for a live one.
+    pub fn covers_page(&self) -> bool {
+        !self.retained || self.message == RecoveryMessage::SessionFailed
+    }
+
     fn new(error: String, recovery: Recovery, retained: bool) -> Self {
         let message = match recovery.kind {
             FailureKind::Compatibility => RecoveryMessage::UpdateRequired,

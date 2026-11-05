@@ -579,7 +579,7 @@ mod mac {
 
     /// Pressable shell chrome of the key window: controls and sidebar rows,
     /// labelled by their accessibility label, else their title or text.
-    /// Page views (WebKit, GPU) are not searched.
+    /// Page views (WebKit, GPU) are not searched, except the host recovery panel over a GPU page.
     pub(super) async fn chrome_elements(
         scope: Option<String>,
     ) -> Result<Vec<crate::traits::gesture::ChromeElement>, PlatformError> {
@@ -627,7 +627,28 @@ mod mac {
             unsafe {
                 let hidden: bool = msg_send![view, isHiddenOrHasHiddenAncestor];
                 let name = class_name(view);
-                if hidden || name.contains("WKWebView") || name.ends_with("GpuPageView") {
+                if hidden || name.contains("WKWebView") {
+                    return;
+                }
+                // A GPU page's own content is not chrome; the host's recovery panel over it is.
+                if name.ends_with("GpuPageView") {
+                    let subviews: *mut AnyObject = msg_send![view, subviews];
+                    let count: usize = msg_send![subviews, count];
+                    for i in 0..count {
+                        let child: *mut AnyObject = msg_send![subviews, objectAtIndex: i];
+                        let id: *const AnyObject = msg_send![child, accessibilityIdentifier];
+                        if !id.is_null() && string(id) == "lx-recovery" {
+                            visit(
+                                child,
+                                content,
+                                content_height,
+                                flipped,
+                                "window",
+                                scope,
+                                out,
+                            );
+                        }
+                    }
                     return;
                 }
                 let here = if name.contains("Sidebar") {
