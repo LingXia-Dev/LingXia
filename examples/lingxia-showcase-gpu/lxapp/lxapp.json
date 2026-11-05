@@ -2,7 +2,7 @@
   "appId": "lingxia-showcase-gpu",
   "renderer": "gpu",
   "appName": "LingXia Showcase GPU",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "minRuntime": "0.28.0",
   "pages": [
     {
@@ -92,6 +92,14 @@
     {
       "name": "motion-lab",
       "path": "pages/motion-lab/index"
+    },
+    {
+      "name": "perf-lab",
+      "path": "pages/perf-lab/index"
+    },
+    {
+      "name": "perf-target",
+      "path": "pages/perf-target/index"
     }
   ],
   "tabBar": {
@@ -127,6 +135,14 @@
       },
       {
         "text": {
+          "default": "Perf",
+          "zh-CN": "性能"
+        },
+        "page": "perf-lab",
+        "iconPath": "public/tab-perf.svg"
+      },
+      {
+        "text": {
           "default": "ToDo",
           "zh-CN": "待办"
         },
@@ -140,17 +156,6 @@
         },
         "page": "media",
         "iconPath": "public/tab-media.svg",
-        "showOn": [
-          "mobile"
-        ]
-      },
-      {
-        "text": {
-          "default": "Device",
-          "zh-CN": "设备"
-        },
-        "page": "device",
-        "iconPath": "public/tab-device.svg",
         "showOn": [
           "mobile"
         ]

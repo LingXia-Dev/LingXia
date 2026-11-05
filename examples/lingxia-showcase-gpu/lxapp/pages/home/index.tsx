@@ -102,6 +102,9 @@ export function render({ data, actions, env }: View<HomeActions, HomePageData>) 
               </text>
             )}
           </Card>
+          <Button testId="home-device" variant="secondary" size="sm" onClick={() => actions.openDevice()}>
+            {t('device')}
+          </Button>
           {Boolean(data.ipAddr) && (
             <row className="max-w-full px-4 py-2 gap-2 items-center rounded-full bg-surface/70 backdrop-blur-md">
               <spacer className="shrink-0 w-1.5 h-1.5 rounded-full bg-success" />

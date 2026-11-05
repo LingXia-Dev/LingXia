@@ -21,6 +21,7 @@ const enUS = {
   languageZh: "中文",
   languageUnavailable: "Language unavailable",
   myIp: "My IP",
+  device: "Device",
 } as const;
 
 const catalogs = {
@@ -46,6 +47,7 @@ const catalogs = {
     languageZh: "中文",
     languageUnavailable: "无法切换语言",
     myIp: "我的 IP",
+    device: "设备",
   },
 } satisfies Record<DisplayLanguage, Record<keyof typeof enUS, string>>;
 
