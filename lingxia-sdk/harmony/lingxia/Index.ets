@@ -22,3 +22,9 @@ export { LxApp } from './src/main/ets/lxapp/LxApp';
 export { LxAppNavigation } from './src/main/ets/lxapp/LxAppNavigation';
 export { LingxiaBaseAbility } from './src/main/ets/app/LingxiaBaseAbility';
 export { LxLog } from './src/main/ets/app/LxLog';
+export {
+  PermissionFeature,
+  PermissionGate,
+  PermissionOutcome,
+  PermissionPrompt
+} from './src/main/ets/app/PermissionGate';

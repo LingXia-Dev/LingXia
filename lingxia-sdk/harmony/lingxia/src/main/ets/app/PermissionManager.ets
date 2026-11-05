@@ -3,6 +3,7 @@ import { abilityAccessCtrl, Permissions } from '@kit.AbilityKit';
 import common from '@ohos.app.ability.common';
 import { onCallback } from 'liblingxia.so';
 import { LxLog } from './LxLog';
+import { PermissionFeature, PermissionGates, PermissionOutcome } from './PermissionGate';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Permission';
@@ -30,24 +31,14 @@ export class PermissionManager {
     return PermissionManager.context !== null;
   }
 
-  public static async ensureCameraAccess(includeMicrophone: boolean): Promise<boolean> {
+  public static async ensureCameraAccess(feature: PermissionFeature, includeMicrophone: boolean): Promise<boolean> {
     const required: Permissions[] = ['ohos.permission.CAMERA' as Permissions];
     if (includeMicrophone) {
       required.push('ohos.permission.MICROPHONE' as Permissions);
     }
-    const granted = await PermissionManager.ensurePermissions(required);
+    const granted = await PermissionManager.ensurePermissions(required, feature);
     if (!granted) {
       hilog.warn(DOMAIN, TAG, 'Camera/microphone permission not granted');
-    }
-    return granted;
-  }
-
-  public static async ensureMicrophoneAccess(): Promise<boolean> {
-    const granted = await PermissionManager.ensurePermissions([
-      'ohos.permission.MICROPHONE' as Permissions
-    ]);
-    if (!granted) {
-      hilog.warn(DOMAIN, TAG, 'Microphone permission not granted');
     }
     return granted;
   }
@@ -55,14 +46,16 @@ export class PermissionManager {
   public static async ensureMediaWriteAccess(): Promise<boolean> {
     const granted = await PermissionManager.ensurePermissions([
       'ohos.permission.WRITE_IMAGEVIDEO' as Permissions
-    ]);
+    ], PermissionFeature.SAVE_MEDIA);
     if (!granted) {
       hilog.warn(DOMAIN, TAG, 'Media write permission not granted');
     }
     return granted;
   }
 
-  public static async ensureLocationAccess(): Promise<boolean> {
+  public static async ensureLocationAccess(
+    feature: PermissionFeature = PermissionFeature.LOCATION
+  ): Promise<boolean> {
     const permissions: Permissions[] = [
       'ohos.permission.LOCATION' as Permissions,
       'ohos.permission.APPROXIMATELY_LOCATION' as Permissions
@@ -77,7 +70,7 @@ export class PermissionManager {
       return true;
     }
 
-    const grantedAll = await PermissionManager.ensurePermissions(permissions);
+    const grantedAll = await PermissionManager.ensurePermissions(permissions, feature, true);
     if (grantedAll) {
       return true;
     }
@@ -126,13 +119,13 @@ export class PermissionManager {
     const wifiPermissionsGranted = await PermissionManager.ensurePermissions([
       'ohos.permission.GET_WIFI_INFO' as Permissions,
       'ohos.permission.SET_WIFI_INFO' as Permissions
-    ]);
+    ], PermissionFeature.WIFI);
     if (!wifiPermissionsGranted) {
       hilog.warn(DOMAIN, TAG, 'WiFi permissions not granted');
       return false;
     }
 
-    const locationGranted = await PermissionManager.ensureLocationAccess();
+    const locationGranted = await PermissionManager.ensureLocationAccess(PermissionFeature.WIFI);
     if (!locationGranted) {
       hilog.warn(DOMAIN, TAG, 'WiFi location permission not granted');
       return false;
@@ -148,7 +141,12 @@ export class PermissionManager {
     return missing.length < permissions.length;
   }
 
-  public static async ensurePermissions(permissions: Permissions[]): Promise<boolean> {
+  /** [anyIsEnough]: one granted permission satisfies the request (precise vs approximate location). */
+  public static async ensurePermissions(
+    permissions: Permissions[],
+    feature: PermissionFeature,
+    anyIsEnough: boolean = false
+  ): Promise<boolean> {
     if (!permissions || permissions.length === 0) {
       return true;
     }
@@ -163,7 +161,54 @@ export class PermissionManager {
       return true;
     }
 
-    return PermissionManager.requestPermissions(ctx, missing);
+    const blocked = missing.some((permission: Permissions) => PermissionGates.asked(ctx, permission));
+    return PermissionGates.run(ctx, feature, missing, blocked, () => {
+      PermissionGates.markAsked(ctx, missing);
+      // Harmony never re-shows a denied prompt; with a gate deciding to go
+      // ahead, offer the system re-grant sheet instead of failing silently.
+      return blocked && PermissionGates.isGated()
+        ? PermissionManager.requestOnSetting(ctx, missing, anyIsEnough)
+        : PermissionManager.requestPermissions(ctx, missing, anyIsEnough);
+    });
+  }
+
+  public static async isGranted(permission: Permissions): Promise<boolean> {
+    const ctx = PermissionManager.context;
+    if (!ctx) {
+      return false;
+    }
+    return (await PermissionManager.collectMissingPermissions(ctx, [permission])).length === 0;
+  }
+
+  private static outcomeOf(results: number[], count: number, anyIsEnough: boolean): PermissionOutcome {
+    const grantedCode = permissionGrantedCode();
+    const grantedCount = results.filter((code: number) => code === grantedCode).length;
+    if (results.length === count && (anyIsEnough ? grantedCount > 0 : grantedCount === count)) {
+      return PermissionOutcome.GRANTED;
+    }
+    // -1 is a user denial, which Harmony never prompts for again.
+    return results.some((code: number) => code === -1)
+      ? PermissionOutcome.DENIED_PERMANENTLY
+      : PermissionOutcome.DENIED;
+  }
+
+  private static async requestOnSetting(
+    context: common.UIAbilityContext,
+    permissions: Permissions[],
+    anyIsEnough: boolean
+  ): Promise<PermissionOutcome> {
+    try {
+      const atManager = abilityAccessCtrl.createAtManager();
+      const results = await atManager.requestPermissionOnSetting(context, permissions);
+      const outcome = PermissionManager.outcomeOf(results as number[], permissions.length, anyIsEnough);
+      if (outcome === PermissionOutcome.GRANTED) {
+        permissions.forEach((permission: Permissions) => PermissionManager.granted.add(permission));
+      }
+      return outcome === PermissionOutcome.GRANTED ? outcome : PermissionOutcome.DENIED_PERMANENTLY;
+    } catch (error) {
+      LxLog.e(TAG, `requestPermissionOnSetting failed: ${String(error)}`);
+      return PermissionOutcome.DENIED_PERMANENTLY;
+    }
   }
 
   private static async collectMissingPermissions(
@@ -213,30 +258,25 @@ export class PermissionManager {
 
   private static async requestPermissions(
     context: common.UIAbilityContext,
-    permissions: Permissions[]
-  ): Promise<boolean> {
+    permissions: Permissions[],
+    anyIsEnough: boolean
+  ): Promise<PermissionOutcome> {
     try {
       const atManager = abilityAccessCtrl.createAtManager();
       const result = await atManager.requestPermissionsFromUser(context, permissions);
+      if (!result || !Array.isArray(result.authResults)) {
+        return PermissionOutcome.DENIED;
+      }
       const grantedCode = permissionGrantedCode();
-
-      if (!result || !Array.isArray(result.authResults) ||
-          result.authResults.length !== permissions.length) {
-        return false;
-      }
-      for (let index = 0; index < permissions.length; index += 1) {
-        if (result.authResults[index] !== grantedCode) {
-          return false;
+      permissions.forEach((permission: Permissions, index: number) => {
+        if (result.authResults[index] === grantedCode) {
+          PermissionManager.granted.add(permission);
         }
-      }
-
-      permissions.forEach((permission: Permissions) => {
-        PermissionManager.granted.add(permission);
       });
-      return true;
+      return PermissionManager.outcomeOf(result.authResults, permissions.length, anyIsEnough);
     } catch (error) {
       LxLog.e(TAG, `requestPermissionsFromUser failed: ${String(error)}`);
-      return false;
+      return PermissionOutcome.DENIED;
     }
   }
 }

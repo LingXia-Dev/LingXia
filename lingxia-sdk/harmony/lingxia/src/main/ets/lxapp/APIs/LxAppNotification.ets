@@ -6,6 +6,7 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import { onCallback } from 'liblingxia.so';
 import { Lingxia } from '../../app/Lingxia';
 import { LxLog } from '../../app/LxLog';
+import { PermissionFeature, PermissionGates, PermissionOutcome } from '../../app/PermissionGate';
 
 const TAG = 'LingXia.Notification';
 const STORE = 'lingxia.local.notifications';
@@ -78,15 +79,22 @@ export class LxAppNotification {
     if (!ctx) {
       return 'denied';
     }
-    try {
-      await notificationManager.requestEnableNotification(ctx);
-    } catch (error) {
-      LxLog.w(TAG, `requestEnableNotification: ${describe(error as Object)}`);
-    }
-    const store = LxAppNotification.store();
-    store?.putSync(ASKED_KEY, true);
-    await store?.flush();
-    return (await notificationManager.isNotificationEnabled()) ? 'granted' : 'denied';
+    const granted = await PermissionGates.run(ctx, PermissionFeature.NOTIFICATION,
+      [], false, async () => {
+        try {
+          await notificationManager.requestEnableNotification(ctx);
+        } catch (error) {
+          LxLog.w(TAG, `requestEnableNotification: ${describe(error as Object)}`);
+        }
+        const store = LxAppNotification.store();
+        store?.putSync(ASKED_KEY, true);
+        await store?.flush();
+        // LingXia does not ask again once asked; only Settings can enable it.
+        return (await notificationManager.isNotificationEnabled())
+          ? PermissionOutcome.GRANTED
+          : PermissionOutcome.DENIED_PERMANENTLY;
+      });
+    return granted ? 'granted' : 'denied';
   }
 
   public static permission(callbackId: string): void {
