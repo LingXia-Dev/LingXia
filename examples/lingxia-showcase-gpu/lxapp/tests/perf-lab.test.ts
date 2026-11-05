@@ -29,7 +29,7 @@ const BUDGETS: Record<string, Budget> = {
 /** Known gaps per platform, each a reason to skip until it is fixed. */
 const KNOWN: Record<string, Record<string, string>> = {
   android: {
-    'PERF-NAV-001': 'presentation refused after fast re-entry: a page pushed right after its pop never reaches onReady',
+    'PERF-NAV-001': 'perf-target at 100 rows spends 100-109 ms of View JS on the Pixel 3, over the 100 ms budget: UI_TIMEOUT refuses most pushes',
     'PERF-FILL-001': 'reads 0 frames as a spec in some runs (31 frames the run before); under investigation',
     'PERF-TEXT-001': 'reads 1 frame as a spec though the scene draws ~14 fps when driven by hand; under investigation',
     'PERF-IMAGE-001': 'reads 0 frames as a spec, as PERF-TEXT-001; under investigation',
@@ -136,8 +136,10 @@ spec('pushed and popped pages show their first frame within budget', { id: 'PERF
   for (let round = 0; round < 3; round++) {
     await t.app.nav.to({ page: 'perf-target', query: { rows: '100' } });
     await t.app.view.testId('perf-target').waitFor({ state: 'visible' });
-    const pushed = await t.waitFor(() => t.app.metrics(), { until: m => m.firstPresentMs !== null });
-    pushes.push(pushed.firstPresentMs!);
+    // Each push reloads the page's module; its reveal statistics outlive the reload and would
+    // report an earlier push, so read the time from this load to its first present.
+    const pushed = await t.waitFor(() => t.app.metrics(), { until: m => m.firstPresentAt !== null });
+    pushes.push(pushed.firstPresentAt!);
     await t.app.nav.back();
   }
   await t.attach('push-first-present-ms', pushes);
