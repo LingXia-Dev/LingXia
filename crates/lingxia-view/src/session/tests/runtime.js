@@ -2649,8 +2649,14 @@
   }
   var lowered = /* @__PURE__ */ new Map();
   var loweredEnv = null;
+  var keyedEnv = {};
+  var keyedEnvKey;
   function envKey(env) {
-    return JSON.stringify([env?.theme, env?.viewport, env?.pointer, env?.reducedMotion, env?.insets, env?.keyboard]);
+    if (env !== keyedEnv) {
+      keyedEnv = env;
+      keyedEnvKey = JSON.stringify([env?.theme, env?.viewport, env?.pointer, env?.reducedMotion, env?.insets, env?.keyboard]);
+    }
+    return keyedEnvKey;
   }
   function nodeStyle(tag, props, data, extra, inherited, direction, structure2) {
     if (props.style !== void 0 || extra !== void 0 || props.className === void 0) return lowerNodeStyle(tag, props, data, extra, inherited, direction, structure2);

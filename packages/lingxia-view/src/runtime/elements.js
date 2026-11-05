@@ -89,8 +89,14 @@ function bind(tag, element, props) {
 // nothing but these inputs, so one lowering serves every node that shares them.
 const lowered = new Map();
 let loweredEnv = null;
+// A view's environment is frozen, so its key is computed once per environment, not per node.
+let keyedEnv = {}, keyedEnvKey;
 function envKey(env) {
-  return JSON.stringify([env?.theme, env?.viewport, env?.pointer, env?.reducedMotion, env?.insets, env?.keyboard]);
+  if (env !== keyedEnv) {
+    keyedEnv = env;
+    keyedEnvKey = JSON.stringify([env?.theme, env?.viewport, env?.pointer, env?.reducedMotion, env?.insets, env?.keyboard]);
+  }
+  return keyedEnvKey;
 }
 
 function nodeStyle(tag, props, data, extra, inherited, direction, structure) {
