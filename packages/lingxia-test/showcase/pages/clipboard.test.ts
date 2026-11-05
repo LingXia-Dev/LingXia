@@ -44,8 +44,9 @@ spec('open the clipboard demo from the API menu and round-trip text', {
     t,
     clipboard,
     '[data-testid="clipboard-status"]',
+    // GPU pages show "Working..." until the action settles; that is not the outcome yet.
     (text) => readsDenied
-      ? text !== 'Wrote text' && !text.includes('Read text')
+      ? text !== 'Wrote text' && text !== 'Working...' && !text.includes('Read text')
       : text.includes('Read text'),
   );
   if (readsDenied) expect(readStatus).not.toContain('No text on clipboard');
