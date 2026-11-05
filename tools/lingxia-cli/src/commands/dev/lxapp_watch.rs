@@ -5,7 +5,7 @@
 //! accepts one more directory while a standalone `lingxia dev listen` holds
 //! its connection; that root leaves when the connection closes. Build outputs
 //! (`dist`, `node_modules`, `.lingxia`, …) are not watched, so a rebuild
-//! cannot loop.
+//! cannot loop; neither are the lxapp's specs in `tests/`.
 
 use super::server::{DevServerState, RestartOutcome};
 use anyhow::{Context, Result};
@@ -159,6 +159,11 @@ fn test_output_dir(root: &Path) -> Option<PathBuf> {
     let value: serde_json::Value = serde_json::from_str(&text).ok()?;
     let dir = value["test"]["outputDir"].as_str()?;
     Some(base.join(dir))
+}
+
+/// The lxapp's specs: `lxdev test` bundles them itself, so an edit there reloads nothing.
+fn specs_dir(root: &Path) -> PathBuf {
+    root.join("tests")
 }
 
 /// Output the watcher must not treat as edits: generated directories by name, editor junk,
@@ -337,7 +342,11 @@ fn run_watch(
 
     let outputs: Vec<PathBuf> = roots
         .iter()
-        .filter_map(|root| test_output_dir(&root.path))
+        .flat_map(|root| {
+            test_output_dir(&root.path)
+                .into_iter()
+                .chain([specs_dir(&root.path)])
+        })
         .filter_map(|dir| dunce::canonicalize(&dir).ok().or(Some(dir)))
         .collect();
     let mut dirty: BTreeSet<String> = BTreeSet::new();
@@ -868,6 +877,20 @@ mod tests {
         ));
         assert!(!is_output(&root.join("pages/home/index.tsx"), &outputs));
         assert!(test_output_dir(tempfile::tempdir().unwrap().path()).is_none());
+    }
+
+    #[test]
+    fn an_edit_to_a_spec_reloads_nothing() {
+        let root = tempfile::tempdir().unwrap();
+        let outputs = vec![specs_dir(root.path())];
+        assert!(is_output(
+            &root.path().join("tests/perf-lab.test.ts"),
+            &outputs
+        ));
+        assert!(!is_output(
+            &root.path().join("pages/tests/index.tsx"),
+            &outputs
+        ));
     }
 
     #[test]
