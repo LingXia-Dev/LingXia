@@ -1,10 +1,10 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { currentPageOrNull, waitForCurrentPage, waitForCurrentPageVisible, waitForElementText } from '../helpers/page.js';
 import { bindFixture, eventually } from '../helpers/poll.js';
 
 const httpBase = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {}).httpBase;
-spec.configure({ skip: httpBase ? undefined : 'needs --arg httpBase' });
+test.configure({ skip: httpBase ? undefined : 'needs --arg httpBase' });
 const VIDEO_ID = 'lx-video-source-fixture';
 
 interface PlaybackState {
@@ -13,7 +13,7 @@ interface PlaybackState {
   duration: number;
 }
 
-spec('drive native playback through VideoContext against a local clip', {
+test('drive native playback through VideoContext against a local clip', {
   id: 'NATIVE-VIDEO-PLAYBACK-001',
   covers: ['lx.createVideoContext', 'VideoContext.play', 'VideoContext.seek', 'VideoContext.stop'],
   app: SHOWCASE_APP_ID,

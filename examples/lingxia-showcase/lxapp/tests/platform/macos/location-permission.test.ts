@@ -1,4 +1,4 @@
-import { spec } from '@lingxia/test';
+import { test } from '@lingxia/test';
 import { attachShot } from '../../helpers/poll.js';
 import type {
   DesktopAxNode,
@@ -77,10 +77,10 @@ async function allowLocation(
 }
 
 const targetPlatform = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>).platform?.toLocaleLowerCase();
-spec.configure({ skip: targetPlatform && targetPlatform !== 'macos' ? 'macOS only' : undefined });
+test.configure({ skip: targetPlatform && targetPlatform !== 'macos' ? 'macOS only' : undefined });
 const promptAppearanceGraceMs = 5_000;
 
-spec('handles the macOS location permission sheet when it appears', {
+test('handles the macOS location permission sheet when it appears', {
   id: 'MACOS-LOCATION-001',
   covers: ['lx.getLocation', 'DesktopDriver.windows', 'DesktopAx.query', 'DesktopAx.invoke'],
 }, async (t) => {

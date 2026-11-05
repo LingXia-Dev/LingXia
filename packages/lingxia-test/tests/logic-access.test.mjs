@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
-import { spec, expect } from "../dist/index.js";
+import { test as lxTest, expect } from "../dist/index.js";
 import { reset } from "../dist/runner.js";
 
 afterEach(() => {
@@ -18,7 +18,7 @@ function logicWorld(pages = []) {
 }
 
 async function runOne(body, options = {}) {
-  spec("under test", { forensics: false, ...options }, body);
+  lxTest("under test", { forensics: false, ...options }, body);
   const report = await globalThis.__LINGXIA_TEST__.run();
   return report.cases[0];
 }
@@ -66,7 +66,7 @@ test("a closure over spec variables fails with an explanation", async () => {
   assert.equal(result.error.name, "ReferenceError");
   assert.equal(result.error.code, "E_EVAL");
   assert.match(result.error.message, /specLocal is not defined/);
-  assert.match(result.error.message, /cannot use variables, imports or helpers of the spec/);
+  assert.match(result.error.message, /cannot use variables, imports or helpers of the test/);
 });
 
 test("methods and bound functions are rejected before anything is sent", async () => {
@@ -332,10 +332,10 @@ test("a caught View eval driver timeout fails its case and relaunches the next",
     throw Object.assign(new Error("page eval did not settle"), { code: "E_EVAL_TIMEOUT" });
   };
   installFakeHost(world);
-  spec("catches eval", { forensics: false }, async (t) => {
+  lxTest("catches eval", { forensics: false }, async (t) => {
     await t.reject(() => t.app.view.eval(() => 1), { code: "E_TIMEOUT" });
   });
-  spec("later", { forensics: false }, () => {});
+  lxTest("later", { forensics: false }, () => {});
   const report = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(report.cases[0].status, "failed");
   assert.match(report.cases[0].error.message, /timed-out View eval may still run/);
@@ -348,11 +348,11 @@ test("a caught page.data Logic timeout fails its case and relaunches the next", 
     throw Object.assign(new Error("Logic eval did not settle"), { code: "E_EVAL_TIMEOUT" });
   };
   installFakeHost(world);
-  spec("catches page data", { forensics: false }, async (t) => {
+  lxTest("catches page data", { forensics: false }, async (t) => {
     const page = await t.app.page();
     await t.reject(() => page.data(), { code: "E_TIMEOUT" });
   });
-  spec("later", { forensics: false }, () => {});
+  lxTest("later", { forensics: false }, () => {});
   const report = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(report.cases[0].status, "failed");
   assert.match(report.cases[0].error.message, /timed-out Logic eval may still run/);
@@ -489,7 +489,7 @@ test("waitFor is clamped to the remaining spec budget", async () => {
   }, { timeout: 400 });
   // The wait's own failure, carrying its last value, beats the spec timer.
   assert.equal(result.status, "failed");
-  assert.match(result.error.message, /timeout 10000ms was clamped to \d+ms, the time left in the spec's budget/);
+  assert.match(result.error.message, /timeout 10000ms was clamped to \d+ms, the time left in the test's budget/);
   assert.match(result.error.message, /Last value: false/);
   assert.ok(Date.now() - started < 2_000);
 });

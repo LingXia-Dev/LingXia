@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../../helpers/app.js';
 import { runtimePlatform } from '../../helpers/platform.js';
 import { bindFixture, eventually } from '../../helpers/poll.js';
@@ -14,7 +14,7 @@ type TerminalProbeStates = Record<string, TerminalProbeState | undefined>;
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const selectedGate = testArgs.gate?.toLocaleLowerCase();
-spec.configure({ skip: selectedGate ? 'a --arg gate run selects only its gate' : undefined });
+test.configure({ skip: selectedGate ? 'a --arg gate run selects only its gate' : undefined });
 
 /**
  * `lx.terminal` exists only inside the host-bundled Terminal Settings lxapp.
@@ -39,7 +39,7 @@ interface SettingsRoundTrip {
   windows: string;
 }
 
-spec('read, revise, reset, and preview terminal settings inside the bundled settings lxapp', {
+test('read, revise, reset, and preview terminal settings inside the bundled settings lxapp', {
   id: 'TERMINAL-API-001',
   covers: [
     'lx.terminal',

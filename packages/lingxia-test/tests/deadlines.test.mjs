@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
-import { spec, expect } from "../dist/index.js";
+import { test as lxTest, expect } from "../dist/index.js";
 import { reset } from "../dist/runner.js";
 
 afterEach(() => {
@@ -23,7 +23,7 @@ test("a query that never returns fails the click by name, not the spec", async (
   world.app.page.query = hang;
   installFakeHost(world);
 
-  spec("hung query", { timeout: 5_000, forensics: false }, (t) => t.app.view.testId("save").click({ timeout: 120 }));
+  lxTest("hung query", { timeout: 5_000, forensics: false }, (t) => t.app.view.testId("save").click({ timeout: 120 }));
 
   const started = Date.now();
   const result = await runOne();
@@ -42,7 +42,7 @@ test("a click that never returns fails the click by name", async () => {
   world.app.page.click = hang;
   installFakeHost(world);
 
-  spec("hung dispatch", { timeout: 5_000, forensics: false }, (t) => t.app.view.testId("save").click({ timeout: 120 }));
+  lxTest("hung dispatch", { timeout: 5_000, forensics: false }, (t) => t.app.view.testId("save").click({ timeout: 120 }));
 
   const result = await runOne();
   assert.equal(result.status, "failed");
@@ -52,7 +52,7 @@ test("a click that never returns fails the click by name", async () => {
 test("an expect.poll read that never returns names the assertion", async () => {
   installFakeHost(createWorld());
 
-  spec("hung read", { timeout: 5_000, forensics: false }, async (t) => {
+  lxTest("hung read", { timeout: 5_000, forensics: false }, async (t) => {
     await t.step("wait for sync", async () => {
       await expect.poll(hang, { timeout: 120 }).toBe(1);
     });
@@ -70,7 +70,7 @@ test("a locator read that never returns fails the locator assertion", async () =
   world.app.page.query = hang;
   installFakeHost(world);
 
-  spec("hung locator read", { timeout: 5_000, forensics: false }, (t) =>
+  lxTest("hung locator read", { timeout: 5_000, forensics: false }, (t) =>
     expect(t.app.view.testId("banner")).toBeVisible({ timeout: 120 }));
 
   const result = await runOne();
@@ -88,7 +88,7 @@ for (const kind of ["locator", "poll"]) {
     world.app.page.query = (options) => ++reads === 1 ? query(options) : hang();
     installFakeHost(world);
 
-    spec("last observation", { timeout: 5_000, forensics: false }, (t) => kind === "locator"
+    lxTest("last observation", { timeout: 5_000, forensics: false }, (t) => kind === "locator"
       ? expect(t.app.view.testId("badge")).toHaveText("Outbox", { timeout: 120, interval: 1 })
       : expect.poll(() => ++reads === 1 ? "Inbox" : hang(), { timeout: 120, interval: 1 }).toBe("Outbox"));
 
@@ -106,19 +106,19 @@ for (const kind of ["locator", "poll"]) {
 test("an assertion timeout longer than the spec's remaining budget is clamped, visibly", async () => {
   installFakeHost(createWorld());
 
-  spec("clamped assertion", { timeout: 400, forensics: false }, (t) =>
+  lxTest("clamped assertion", { timeout: 400, forensics: false }, (t) =>
     expect(t.app.view.testId("absent")).toBeVisible({ timeout: 5_000 }));
 
   const result = await runOne();
   assert.equal(result.status, "failed", "the assertion, not the spec timer, ends the spec");
   assert.match(result.error.message, /toBeVisible/);
-  assert.match(result.error.message, /timeout 5000ms was clamped to \d+ms, the time left in the spec's budget/);
+  assert.match(result.error.message, /timeout 5000ms was clamped to \d+ms, the time left in the test's budget/);
 });
 
 test("an action timeout longer than the spec's remaining budget is clamped, visibly", async () => {
   installFakeHost(createWorld());
 
-  spec("clamped click", { timeout: 400, forensics: false }, (t) =>
+  lxTest("clamped click", { timeout: 400, forensics: false }, (t) =>
     t.app.view.testId("absent").click({ timeout: 5_000 }));
 
   const result = await runOne();
@@ -130,7 +130,7 @@ test("an action timeout longer than the spec's remaining budget is clamped, visi
 test("a timeout within the spec's budget is not clamped", async () => {
   installFakeHost(createWorld());
 
-  spec("unclamped", { timeout: 5_000, forensics: false }, (t) =>
+  lxTest("unclamped", { timeout: 5_000, forensics: false }, (t) =>
     expect.poll(() => 0, { timeout: 80 }).toBe(1));
 
   const result = await runOne();
@@ -155,7 +155,7 @@ for (const [code, transient] of [
     };
     installFakeHost(world);
 
-    spec("mid-transition click", (t) => t.app.view.testId("save").click({ timeout: 1_000, interval: 5 }));
+    lxTest("mid-transition click", (t) => t.app.view.testId("save").click({ timeout: 1_000, interval: 5 }));
 
     const result = await runOne();
     assert.equal(result.status, "passed", JSON.stringify(result.error));
@@ -174,7 +174,7 @@ test("a page error is transient by its code, not its message", async () => {
   };
   installFakeHost(world);
 
-  spec("uncoded", { forensics: false }, (t) => t.app.view.testId("save").click({ timeout: 1_000, interval: 5 }));
+  lxTest("uncoded", { forensics: false }, (t) => t.app.view.testId("save").click({ timeout: 1_000, interval: 5 }));
 
   const result = await runOne();
   assert.equal(result.status, "failed");
@@ -188,7 +188,7 @@ test("a transient error that outlasts the budget is reported as the reason", asy
   };
   installFakeHost(world);
 
-  spec("never lands", { forensics: false }, (t) => t.app.view.testId("save").click({ timeout: 100, interval: 5 }));
+  lxTest("never lands", { forensics: false }, (t) => t.app.view.testId("save").click({ timeout: 100, interval: 5 }));
 
   const result = await runOne();
   assert.equal(result.status, "failed");
@@ -205,7 +205,7 @@ test("a non-transient query error still fails the action at once", async () => {
   };
   installFakeHost(world);
 
-  spec("bad selector", { forensics: false }, (t) => t.app.view.css("[").click({ timeout: 1_000, interval: 5 }));
+  lxTest("bad selector", { forensics: false }, (t) => t.app.view.css("[").click({ timeout: 1_000, interval: 5 }));
 
   const started = Date.now();
   const result = await runOne();
@@ -226,7 +226,7 @@ test("a pre-dispatch page error is retried, a WebView2 dispatch error is not", a
     return click(options);
   };
   installFakeHost(world);
-  spec("retried", (t) => t.app.view.testId("save").click({ timeout: 1_000, interval: 5 }));
+  lxTest("retried", (t) => t.app.view.testId("save").click({ timeout: 1_000, interval: 5 }));
   assert.equal((await runOne()).status, "passed");
   assert.equal(element.clicked, 1);
 
@@ -237,7 +237,7 @@ test("a pre-dispatch page error is retried, a WebView2 dispatch error is not", a
     throw new Error("ExecuteScript failed: 0x8007139F");
   };
   installFakeHost(world);
-  spec("ambiguous", { forensics: false }, (t) => t.app.view.testId("save").click({ timeout: 1_000, interval: 5 }));
+  lxTest("ambiguous", { forensics: false }, (t) => t.app.view.testId("save").click({ timeout: 1_000, interval: 5 }));
   assert.equal((await runOne()).status, "failed");
   assert.equal(dispatched, 1, "an ambiguous dispatch failure must not resubmit the input");
 });
@@ -254,7 +254,7 @@ test("waitFor retries a page that is not ready yet", async () => {
   };
   installFakeHost(world);
 
-  spec("waits across the transition", (t) => t.app.view.testId("sheet").waitFor({ timeout: 1_000, interval: 5 }));
+  lxTest("waits across the transition", (t) => t.app.view.testId("sheet").waitFor({ timeout: 1_000, interval: 5 }));
 
   assert.equal((await runOne()).status, "passed");
 });
@@ -262,7 +262,7 @@ test("waitFor retries a page that is not ready yet", async () => {
 for (const action of ["click", "waitFor"]) {
   test(`${action} reports E_TIMEOUT when the element never appears`, async () => {
     installFakeHost(createWorld());
-    spec("absent", { forensics: false }, (t) =>
+    lxTest("absent", { forensics: false }, (t) =>
       t.app.view.testId("absent")[action]({ timeout: 80, interval: 5 }));
     const result = await runOne();
     assert.equal(result.error.name, "TimeoutError");
@@ -274,7 +274,7 @@ for (const ErrorType of [TypeError, ReferenceError, SyntaxError]) {
   test(`expect.poll does not retry ${ErrorType.name}`, async () => {
     installFakeHost(createWorld());
     let calls = 0;
-    spec("invalid read", { forensics: false }, () =>
+    lxTest("invalid read", { forensics: false }, () =>
       expect.poll(() => { calls++; throw new ErrorType("invalid read"); }, { timeout: 1_000 }).toBe(1));
     const result = await runOne();
     assert.equal(result.error.name, ErrorType.name);

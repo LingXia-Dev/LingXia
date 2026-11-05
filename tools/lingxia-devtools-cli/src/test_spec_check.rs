@@ -1,11 +1,11 @@
-//! Bundle-time check that every spec is registered by a direct `spec` call.
+//! Bundle-time check that every test is registered by a direct `test` call.
 //!
-//! `FILE:LINE`, offline listing and `Rerun:` lines read spec calls from the
-//! source. That only works when `spec` is `@lingxia/test`'s binding, under its
-//! own name, and only ever called: `spec(…)` or `spec.skip(…)`. An alias
-//! (`const s = cond ? spec.skip : spec`), a rename, a re-export or a namespace
+//! `FILE:LINE`, offline listing and `Rerun:` lines read test calls from the
+//! source. That only works when `test` is `@lingxia/test`'s binding, under its
+//! own name, and only ever called: `test(…)` or `test.skip(…)`. An alias
+//! (`const s = cond ? test.skip : test`), a rename, a re-export or a namespace
 //! import hides the registration, so it is refused here instead of producing
-//! a listing that silently misses specs.
+//! a listing that silently misses tests.
 
 use std::collections::HashSet;
 
@@ -22,9 +22,9 @@ use oxc_span::{GetSpan, Span};
 use crate::test_bundle::{line_column, module_export_name};
 
 const PACKAGE: &str = "@lingxia/test";
-const VALUE_USE: &str = "`spec` is used as a value, not called: spec(…) or spec.skip(…)";
+const VALUE_USE: &str = "`test` is used as a value, not called: test(…) or test.skip(…)";
 
-/// Fail when `program` reaches `spec` other than by calling it.
+/// Fail when `program` reaches `test` other than by calling it.
 pub(crate) fn check_spec_usage(program: &Program<'_>, source: &str, display: &str) -> Result<()> {
     // Fills the bindings' symbol ids the import loop reads.
     let semantic = SemanticBuilder::new().build(program).semantic;
@@ -41,15 +41,15 @@ pub(crate) fn check_spec_usage(program: &Program<'_>, source: &str, display: &st
                         ImportDeclarationSpecifier::ImportSpecifier(specifier)
                             if specifier.import_kind == ImportOrExportKind::Value
                                 && module_export_name(&specifier.imported).as_deref()
-                                    == Some("spec") =>
+                                    == Some("test") =>
                         {
                             let local = specifier.local.name.as_str();
-                            if local != "spec" {
+                            if local != "test" {
                                 problems.push((
                                     specifier.span.start,
                                     format!(
-                                        "`spec` is imported as `{local}`. Import it by its own \
-                                         name: import {{ spec }} from '{PACKAGE}'"
+                                        "`test` is imported as `{local}`. Import it by its own \
+                                         name: import {{ test }} from '{PACKAGE}'"
                                     ),
                                 ));
                             } else if let Some(symbol) = specifier.local.symbol_id.get() {
@@ -61,7 +61,7 @@ pub(crate) fn check_spec_usage(program: &Program<'_>, source: &str, display: &st
                                 specifier.span.start,
                                 format!(
                                     "`import * as {}` from '{PACKAGE}'. Import the names you \
-                                     use: import {{ spec, expect }} from '{PACKAGE}'",
+                                     use: import {{ test, expect }} from '{PACKAGE}'",
                                     specifier.local.name
                                 ),
                             ));
@@ -101,9 +101,9 @@ pub(crate) fn check_spec_usage(program: &Program<'_>, source: &str, display: &st
         })
         .collect();
     let hint = if problems.iter().any(|(_, message)| message == VALUE_USE) {
-        "\nCall `spec` directly so every spec is found without running the file. To skip \
-         on a condition known at load time: spec(title, { skip: cond ? 'why' : undefined }, \
-         body), or spec.configure({ skip: … }) for the whole file."
+        "\nCall `test` directly so every test is found without running the file. To skip \
+         on a condition known at load time: test(title, { skip: cond ? 'why' : undefined }, \
+         body), or test.configure({ skip: … }) for the whole file."
     } else {
         ""
     };
@@ -115,7 +115,7 @@ fn check_export_all(export: &ExportAllDeclaration<'_>, problems: &mut Vec<(u32, 
         problems.push((
             export.span.start,
             format!(
-                "`export * from '{PACKAGE}'` re-exports `spec`. Spec files import it from \
+                "`export * from '{PACKAGE}'` re-exports `test`. Test files import it from \
                  '{PACKAGE}' themselves"
             ),
         ));
@@ -128,18 +128,18 @@ fn check_export_from(export: &ExportFromDeclaration<'_>, problems: &mut Vec<(u32
     }
     for specifier in &export.specifiers {
         if specifier.export_kind == ImportOrExportKind::Value
-            && module_export_name(&specifier.local).as_deref() == Some("spec")
+            && module_export_name(&specifier.local).as_deref() == Some("test")
         {
             problems.push((
                 specifier.span.start,
-                format!("re-exports `spec`. Spec files import it from '{PACKAGE}' themselves"),
+                format!("re-exports `test`. Test files import it from '{PACKAGE}' themselves"),
             ));
         }
     }
 }
 
-/// References to the imported `spec`, and the ones that are a call's callee
-/// or the object of one (`spec.skip(…)`).
+/// References to the imported `test`, and the ones that are a call's callee
+/// or the object of one (`test.skip(…)`).
 struct Uses<'s> {
     scoping: &'s oxc_semantic::Scoping,
     symbols: &'s HashSet<SymbolId>,
@@ -185,12 +185,12 @@ impl<'a> Visit<'a> for Uses<'_> {
         if let ModuleExportName::IdentifierReference(ident) = name
             && self.is_spec(ident)
         {
-            // `export { spec }`: never called, always a value.
+            // `export { test }`: never called, always a value.
             self.values.push(ident.span());
         }
     }
 
-    // `typeof spec` names a type; nothing registers there.
+    // `typeof test` names a type; nothing registers there.
     fn visit_ts_type_query(&mut self, _: &TSTypeQuery<'a>) {}
 }
 
@@ -211,30 +211,30 @@ mod tests {
     #[test]
     fn direct_calls_pass() {
         check(
-            "import { spec, type Fixture } from '@lingxia/test';\n\
-             spec.configure({ tags: ['x'] });\n\
-             spec('a', async () => {});\n\
-             spec.skip('b', { skip: 'why' }, async () => {});\n\
-             (spec.only)('c', async () => {});\n\
-             type S = typeof spec;\n\
-             const specs = [1].map((spec) => spec + 1);\n",
+            "import { test, type Fixture } from '@lingxia/test';\n\
+             test.configure({ tags: ['x'] });\n\
+             test('a', async () => {});\n\
+             test.skip('b', { skip: 'why' }, async () => {});\n\
+             (test.only)('c', async () => {});\n\
+             type S = typeof test;\n\
+             const tests = [1].map((test) => test + 1);\n",
         )
         .unwrap();
-        // Another module's `spec` is not this package's.
-        check("import { spec } from './other';\nconst s = spec;\n").unwrap();
+        // Another module's `test` is not this package's.
+        check("import { test } from './other';\nconst s = test;\n").unwrap();
     }
 
     #[test]
     fn aliases_are_refused_with_the_fix() {
         let err = check(
-            "import { spec } from '@lingxia/test';\n\
-             const gated = process ? spec.skip : spec;\n\
+            "import { test } from '@lingxia/test';\n\
+             const gated = process ? test.skip : test;\n\
              gated('a', async () => {});\n",
         )
         .unwrap_err()
         .to_string();
         assert!(
-            err.starts_with("a.test.ts:2:25  `spec` is used as a value"),
+            err.starts_with("a.test.ts:2:25  `test` is used as a value"),
             "{err}"
         );
         assert!(err.contains("\na.test.ts:2:37  "), "{err}");
@@ -242,25 +242,25 @@ mod tests {
 
         for (source, expected) in [
             (
-                "import { spec as it } from '@lingxia/test';\nit('a', async () => {});\n",
-                "a.test.ts:1:10  `spec` is imported as `it`",
+                "import { test as it } from '@lingxia/test';\nit('a', async () => {});\n",
+                "a.test.ts:1:10  `test` is imported as `it`",
             ),
             (
-                "import * as lt from '@lingxia/test';\nlt.spec('a', async () => {});\n",
+                "import * as lt from '@lingxia/test';\nlt.test('a', async () => {});\n",
                 "a.test.ts:1:8  `import * as lt`",
             ),
             (
-                "import { spec } from '@lingxia/test';\nexport { spec };\n",
+                "import { test } from '@lingxia/test';\nexport { test };\n",
                 "2:10",
             ),
             (
-                "export { spec } from '@lingxia/test';\n",
-                "re-exports `spec`",
+                "export { test } from '@lingxia/test';\n",
+                "re-exports `test`",
             ),
-            ("export * from '@lingxia/test';\n", "re-exports `spec`"),
+            ("export * from '@lingxia/test';\n", "re-exports `test`"),
             (
-                "import { spec } from '@lingxia/test';\nregister(spec);\n",
-                "2:10  `spec` is used as a value",
+                "import { test } from '@lingxia/test';\nregister(test);\n",
+                "2:10  `test` is used as a value",
             ),
         ] {
             let err = check(source).unwrap_err().to_string();

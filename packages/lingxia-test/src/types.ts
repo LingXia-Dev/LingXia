@@ -35,9 +35,9 @@ import type {
 } from "@lingxia/types/automation";
 
 /**
- * Every `code` a spec can meet on a rejection or a failed spec: the
+ * Every `code` a test can meet on a rejection or a failed test: the
  * automation driver codes, a broken OpenAPI contract, a fixture call that
- * ran out of time, and a runtime skip. A driver timeout reaches a spec as
+ * ran out of time, and a runtime skip. A driver timeout reaches a test as
  * `E_TIMEOUT`, with the driver's own code in `error.cause.code`.
  */
 export type TestErrorCode =
@@ -60,69 +60,76 @@ export type TestErrorCode =
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 export interface AppErrorCodes {}
 
-/** A `code` a spec may expect: LingXia's `TestErrorCode`s and the app's declared ones. */
+/** A `code` a test may expect: LingXia's `TestErrorCode`s and the app's declared ones. */
 export type ExpectedErrorCode = TestErrorCode | Extract<keyof AppErrorCodes, string>;
 
-export interface SpecOptions {
-  /** Stable id. ASCII titles slug by default; non-ASCII titles need this or become `file-n`. */
+export interface TestOptions {
+  /**
+   * This test's own unique, stable id. ASCII titles slug by default; non-ASCII
+   * titles need this or become `file-n`. Requirement / acceptance ids go in
+   * `covers`, never here.
+   */
   id?: string;
-  /** Declared coverage tags. Journeys omit this. */
+  /**
+   * Requirement ids this test proves, e.g. `AC-OPEN-01` or `lx.getStorage`;
+   * a file's `test.configure({ covers })` adds to them. Not selection `tags`.
+   */
   covers?: readonly string[];
   /**
    * Selection tags (`routed`, `live`, `smoke`, …), merged after the
-   * file's `spec.configure({ tags })`. `lxdev test --tag` selects by them and
+   * file's `test.configure({ tags })`. `lxdev test --tag` selects by them and
    * the report summarizes each. Letters, digits and `_ . : / -`.
    */
   tags?: readonly string[];
-  /** Spec budget in ms (default 30_000). */
+  /** Test budget in ms (default 30_000). */
   timeout?: number;
   /**
    * Relaunch the app on this page before the body (and its `beforeEach`
    * hooks): a fresh instance, every other page unloaded.
    */
-  start?: SpecStart;
+  start?: TestStart;
   /**
-   * Snapshot the app's isolated data before this spec and roll it back after,
-   * so the next spec never sees this one's writes. Relaunches the app on
+   * Snapshot the app's isolated data before this test and roll it back after,
+   * so the next test never sees this one's writes. Relaunches the app on
    * `start`, or on its home page. Needs an
    * isolated run (`lxdev test --profile`); if the rollback fails, the rest of
    * the run is not run. `{ keep: ['auth.*'] }` rolls back everything except
    * the `lx.getStorage()` keys those globs match, which keep their state at
-   * the end of the spec (see `ProfileRestoreOptions`).
+   * the end of the test (see `ProfileRestoreOptions`).
    */
   restoreProfile?: boolean | RestoreProfileOptions;
-  /** Independent cleanup budget; a pending cleanup stops subsequent specs. */
+  /** Independent cleanup budget; a pending cleanup stops subsequent tests. */
   timeoutCleanup?: number;
   /** Pin `t.app` to this lxapp id instead of the current one. */
   app?: string;
   /** Skip auto-attached failure forensics (only when capture itself would wedge). */
   forensics?: boolean;
-  /** Why a skip/fixme spec is registered. Shown in the HTML/JSON report; `t.skip(reason)` overrides it. */
+  /** Why a skip/fixme test is registered. Shown in the HTML/JSON report; `t.skip(reason)` overrides it. */
   reason?: string;
   /**
    * Skip with this reason. For a condition known when the file loads
    * (`skip: platform === 'ios' ? 'desktop only' : undefined`); `t.skip()`
-   * for one found while the spec runs.
+   * for one found while the test runs.
    */
   skip?: string;
   /**
-   * What the spec needs from the run. Unmet, it is reported `skipped` with a
+   * What the test needs from the run. Unmet, it is reported `skipped` with a
    * reason naming what to pass, and its body never runs. Merged with the
-   * file's `spec.configure({ requires })`.
+   * file's `test.configure({ requires })`.
    */
-  requires?: SpecRequirements;
+  requires?: TestRequirements;
 }
 
-/** `start`: the page a spec begins on. */
-export interface SpecStart {
+/** `start`: the page a test begins on. */
+export interface TestStart {
   /** Configured page name (from lxapp.json). */
   page: string;
   /** Query forwarded to the page. */
   query?: Record<string, unknown>;
 }
 
-/** `requires`: run inputs a spec cannot mean anything without. */
-export interface SpecRequirements {
+/** `requires`: run inputs a test cannot mean anything without. */
+export interface TestRequirements {
   /** `--arg` / `--secret-arg` keys that must be given. */
   args?: readonly string[];
   /** The run must check an OpenAPI contract (`lxdev test --openapi`). */
@@ -136,27 +143,27 @@ export interface RestoreProfileOptions {
 }
 
 /**
- * `spec.configure()` options: defaults for every spec in the calling file.
- * Every `SpecOptions` key but `id`; a spec's own option overrides the file's,
+ * `test.configure()` options: defaults for every test in the calling file.
+ * Every `TestOptions` key but `id`; a test's own option overrides the file's,
  * except `tags`, `covers` and `requires`, which add to it.
  */
-export type FileOptions = Omit<SpecOptions, "id">;
+export type FileOptions = Omit<TestOptions, "id">;
 
-/** `spec.fail` options. */
-export interface FailOptions extends SpecOptions {
+/** `test.fail` options. */
+export interface FailOptions extends TestOptions {
   /**
-   * The failure this spec is known to produce. When set, only a body failure
+   * The failure this test is known to produce. When set, only a body failure
    * matching it grades `xfail`; any other failure grades `failed`. Omit it to
    * accept any body failure.
    */
   expected?: RejectExpected;
 }
 
-export type SpecBody = (t: Fixture) => void | Promise<void>;
+export type TestBody = (t: Fixture) => void | Promise<void>;
 
 /** Retrying assertion and wait options. */
 export interface ExpectOptions {
-  /** Default 5000 ms, clamped to the spec's remaining budget. */
+  /** Default 5000 ms, clamped to the test's remaining budget. */
   timeout?: number;
   /** Poll interval in ms (default 50). */
   interval?: number;
@@ -166,7 +173,7 @@ export interface ExpectOptions {
 
 /** `type` / `press` options. */
 export interface InputOptions {
-  /** Default 5000 ms, clamped to the spec's remaining budget. */
+  /** Default 5000 ms, clamped to the test's remaining budget. */
   timeout?: number;
 }
 
@@ -383,7 +390,7 @@ export interface ViewScope {
 /**
  * A function evaluated in the app's Logic runtime. It is sent as source text
  * (`fn.toString()`), so it must be self-contained: no variables, imports or
- * helpers from the spec. Pass values as JSON arguments instead.
+ * helpers from the test. Pass values as JSON arguments instead.
  */
 export type LogicFunction<R, A extends unknown[]> = ((scope: LogicScope, ...args: A) => R | Promise<R>) & CheckedResult<R>;
 
@@ -420,12 +427,12 @@ export interface TestWindow {
 
 /**
  * Leading options of `eval(options, fn, ...args)`. Without them an eval may
- * take 10 s, clamped to the spec's remaining budget.
+ * take 10 s, clamped to the test's remaining budget.
  */
 export interface EvalOptions {
   /**
    * How long `fn` may run, in ms, for work that legitimately takes longer
-   * (a download, a transcode). Clamped to the spec's remaining budget.
+   * (a download, a transcode). Clamped to the test's remaining budget.
    */
   timeout?: number;
 }
@@ -440,7 +447,7 @@ export type PageSelector = { name: string; instanceId?: never } | { instanceId: 
 export interface PageBindOptions {
   /**
    * How long to wait for a matching live instance, in ms (default 5000),
-   * clamped to the spec's remaining budget.
+   * clamped to the test's remaining budget.
    */
   timeout?: number;
 }
@@ -468,7 +475,7 @@ export type PageActionCalls<A> = {
 
 /** Call controls kept separate from an action's JSON payload. */
 export interface PageInvokeOptions {
-  /** Per-call budget in ms; defaults to the spec's remaining budget. */
+  /** Per-call budget in ms; defaults to the test's remaining budget. */
   timeout?: number;
 }
 
@@ -524,7 +531,7 @@ export interface NavWaitOptions {
    * stack changed.
    */
   waitUntil?: "commit" | "ready";
-  /** Bound for `'ready'` in ms (default 15000), clamped to the spec's remaining budget. */
+  /** Bound for `'ready'` in ms (default 15000), clamped to the test's remaining budget. */
   timeout?: number;
 }
 
@@ -615,12 +622,12 @@ export interface NetworkCall {
 
 /** `waitForCall()` options. */
 export interface WaitForCallOptions {
-  /** Default: the action timeout (5000 ms), clamped to the spec's remaining budget. */
+  /** Default: the action timeout (5000 ms), clamped to the test's remaining budget. */
   timeout?: number;
   interval?: number;
 }
 
-/** A test route, spec-scoped: removed when the spec ends. */
+/** A test route, test-scoped: removed when the test ends. */
 export interface TestRoute {
   readonly id: number;
   readonly pattern: string;
@@ -642,12 +649,12 @@ export interface TestRoute {
 
 /**
  * `t.app.network`: test routing of the app's Logic `fetch` and `Rong.SSE`,
- * spec-scoped: routes are removed when the spec ends.
+ * test-scoped: routes are removed when the test ends.
  */
 export interface TestNetwork {
   /** The newest matching route handles a request; unmatched requests are untouched. */
   route(pattern: NetworkRoutePattern, handler: NetworkRouteHandler): Promise<TestRoute>;
-  /** Calls this spec's routes handled, oldest first. */
+  /** Calls this test's routes handled, oldest first. */
   calls(): Promise<NetworkCall[]>;
 }
 
@@ -662,14 +669,14 @@ export interface TestScenarios {
    * `fetch`, `function` rules go to the dev session's companion.
    * `app` installs `http` rules on that lxapp instead of `t.app`; a
    * scenario with `function` rules rejects, since those are not app-scoped.
-   * Spec-scoped: a second call replaces the first, and the spec's end
-   * removes it. A failed spec reports its per-rule hits and the calls that
+   * Test-scoped: a second call replaces the first, and the test's end
+   * removes it. A failed test reports its per-rule hits and the calls that
    * reached it.
    */
   use(definition: ScenarioInput, options?: { app?: string; variant?: string }): Promise<TestScenario>;
 }
 
-/** The scenario `t.scenario.use()` installed, spec-scoped. */
+/** The scenario `t.scenario.use()` installed, test-scoped. */
 export interface TestScenario {
   readonly name: string | null;
   readonly variant: string | null;
@@ -690,14 +697,14 @@ export interface TestScenario {
    * saying so, and the next one resumes after the gap.
    */
   waitForCall(target: ScenarioCallTarget, options?: WaitForCallOptions): Promise<NetworkCall>;
-  /** Remove the scenario before the spec ends. */
+  /** Remove the scenario before the test ends. */
   remove(): Promise<void>;
 }
 
 /**
  * `t.app.clock`: test clock for the app's Logic (`Date`, timers,
- * `performance.now`). Spec-scoped: a clock still installed when the spec
- * ends is uninstalled, and if that drops pending test timers the next spec
+ * `performance.now`). Test-scoped: a clock still installed when the test
+ * ends is uninstalled, and if that drops pending test timers the next test
  * starts from a relaunched home page.
  */
 export interface TestClock {
@@ -717,11 +724,11 @@ export interface TestClock {
 }
 
 /**
- * `t.app.dialogs`: the dialogs the app's Logic opens during this spec, all
+ * `t.app.dialogs`: the dialogs the app's Logic opens during this test, all
  * recorded. Toasts are always drawn. Modals (`lx.showModal`, `alert`,
  * `confirm`) and action sheets are drawn unless an answer is queued for the
  * next one or strict answer mode is explicitly enabled.
- * An answer no dialog used fails the spec when it ends. Each spec starts
+ * An answer no dialog used fails the test when it ends. Each test starts
  * with nothing recorded or queued; outside a test run dialogs draw as usual.
  */
 export interface TestDialogs {
@@ -768,11 +775,11 @@ export interface TestApp {
   readonly logic: TestLogic;
   /** The page stack; actions wait for the landed page's `onReady` unless you pass `waitUntil`. */
   readonly nav: TestNav;
-  /** Spec-scoped test routing of Logic `fetch`. */
+  /** Test-scoped test routing of Logic `fetch`. */
   readonly network: TestNetwork;
-  /** Spec-scoped test clock for the app's Logic. */
+  /** Test-scoped test clock for the app's Logic. */
   readonly clock: TestClock;
-  /** Toasts, modals and action sheets the app's Logic opens during the spec. */
+  /** Toasts, modals and action sheets the app's Logic opens during the test. */
   readonly dialogs: TestDialogs;
   /** Checkpoint and roll back the app's isolated data. */
   readonly profile: ProfileFixture;
@@ -819,7 +826,7 @@ export interface ProfileRestoreOptions {
 
 /**
  * `t.automation`: the host-run automation root, traced and stopped with the
- * spec like `t.app`.
+ * test like `t.app`.
  */
 export interface TestAutomation extends Omit<HostRunAutomation, "lxapp" | "browser" | "desktop" | "terminal"> {
   /** The app `t.app` is pinned to (the same object), or another running one by id. */
@@ -930,8 +937,8 @@ export type ExpectResult<T> =
  * - `expect(locator)` retries the matcher until the element passes (await it);
  * - `expect(value)` checks once, synchronously;
  * - `expect.poll(() => read())` calls `read` until the matcher passes (await it).
- * Retries end at `timeout` (default 5000 ms), clamped to the spec's
- * remaining budget; locators and `poll` need a running spec.
+ * Retries end at `timeout` (default 5000 ms), clamped to the test's
+ * remaining budget; locators and `poll` need a running test.
  */
 export interface Expect {
   <T>(subject: T): ExpectResult<T>;
@@ -947,7 +954,7 @@ export interface Expect {
 export interface WaitForOptions<T = unknown> {
   /** When the value is the one to wait for. Default: it is truthy. */
   until?: (value: T) => boolean;
-  /** Default: the action timeout (5000 ms), clamped to the spec's remaining budget. */
+  /** Default: the action timeout (5000 ms), clamped to the test's remaining budget. */
   timeout?: number;
   interval?: number;
   /**
@@ -979,11 +986,11 @@ export interface Fixture {
   /** Guarded host drivers; use these in tests so actions are traced and stop with the fixture. */
   readonly automation: TestAutomation;
   readonly app: TestApp;
-  /** One product scenario per spec; replacing it replaces HTTP and Function rules together. */
+  /** One product scenario per test; replacing it replaces HTTP and Function rules together. */
   readonly scenario: TestScenarios;
   /**
    * The OpenAPI documents this run checks against (`lxdev test --openapi`),
-   * or `undefined` without them. A spec that only means something against a
+   * or `undefined` without them. A test that only means something against a
    * contract declares it: `requires: { openapi: true }`.
    */
   readonly openapi: OpenApiRun | undefined;
@@ -1009,7 +1016,7 @@ export interface Fixture {
   defer(cleanup: () => void | Promise<void>): void;
   attach(name: string, data: unknown): Promise<void>;
   /**
-   * Stop this spec and report it `skipped` with `reason`, for a precondition
+   * Stop this test and report it `skipped` with `reason`, for a precondition
    * only knowable at run time. Throws; deferred cleanup still runs. Call it
    * from the body or `beforeEach`; it rejects during cleanup.
    */

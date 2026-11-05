@@ -1,13 +1,13 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import type { PageContract } from '@lingxia/types/page';
 import { SHOWCASE_APP_ID } from '../../helpers/app.js';
 import { androidDevice } from '../../helpers/android-device.js';
 import { bindFixture } from '../../helpers/poll.js';
 
 const args = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
-spec.configure({ skip: args.platform === 'android' ? undefined : 'Android only' });
+test.configure({ skip: args.platform === 'android' ? undefined : 'Android only' });
 
-spec('pull down from the screen to refresh, then refresh again', {
+test('pull down from the screen to refresh, then refresh again', {
   id: 'ANDROID-PULL-GESTURE-001', app: SHOWCASE_APP_ID,
   covers: ['lx.startPullDownRefresh', 'lx.stopPullDownRefresh'],
   requires: { args: ['androidDevice'] },

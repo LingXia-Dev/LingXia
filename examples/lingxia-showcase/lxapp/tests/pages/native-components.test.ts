@@ -1,5 +1,5 @@
 // Host e2e for inline native islands. JS protocol stays in @lingxia/elements Node tests.
-import { expect, spec, type Fixture, type TestView } from '@lingxia/test';
+import { expect, test, type Fixture, type TestView } from '@lingxia/test';
 import {
   currentPageOrNull,
   waitForCurrentPage,
@@ -84,7 +84,7 @@ function isWindowsNativeAccent(pixel: { r: number; g: number; b: number }): bool
   return pixel.b >= 180 && pixel.b >= pixel.r + 80 && pixel.b >= pixel.g + 60;
 }
 
-spec("hand an H5 menu press to a native menu above the island video", { id: "NATIVE-ISLAND-001", covers: ['lx.createVideoContext', 'NavDriver.to'], app: SHOWCASE_APP_ID, timeout: 30_000 }, async (t) => {
+test("hand an H5 menu press to a native menu above the island video", { id: "NATIVE-ISLAND-001", covers: ['lx.createVideoContext', 'NavDriver.to'], app: SHOWCASE_APP_ID, timeout: 30_000 }, async (t) => {
   const { app, defer } = bindFixture(t, "NATIVE-ISLAND-001");
   const current = await currentPageOrNull(app);
   if (current?.name !== 'home') await app.nav.relaunch({ page: 'home' });
@@ -566,7 +566,7 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
   await attachWindow(t, 'island-playing.png');
 });
 
-spec("hide the native video overlay before the next page becomes interactive", { id: "NATIVE-VIDEO-001", covers: ['lx.createVideoContext', 'VideoContext.pause', 'NavDriver.to', 'NavDriver.back'], app: SHOWCASE_APP_ID }, async (t) => {
+test("hide the native video overlay before the next page becomes interactive", { id: "NATIVE-VIDEO-001", covers: ['lx.createVideoContext', 'VideoContext.pause', 'NavDriver.to', 'NavDriver.back'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, "NATIVE-VIDEO-001");
 
   const current = await currentPageOrNull(app);

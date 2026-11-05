@@ -31,7 +31,7 @@ export function renderTagSummary(rows: readonly TagSummary[] | undefined): strin
   return `<details class="panel" open>
     <summary><span class="panel-title">By tag</span>
       <span class="panel-sub">${rows.length} tag${rows.length === 1 ? "" : "s"}${failing > 0 ? `, ${failing} failing` : ", all passing"}</span></summary>
-    <div class="panel-body"><table class="tagsum"><thead><tr><th>tag</th><th>specs</th><th>outcome</th></tr></thead><tbody>${body}</tbody></table></div>
+    <div class="panel-body"><table class="tagsum"><thead><tr><th>tag</th><th>tests</th><th>outcome</th></tr></thead><tbody>${body}</tbody></table></div>
   </details>`;
 }
 
@@ -40,7 +40,7 @@ export function renderManifestCoverage(coverage: CoverageSummary | undefined): s
   if (!coverage) return "";
   const rows = coverage.ids.map((entry) => {
     const specs = entry.specs.length === 0
-      ? `<span class="muted">no spec</span>`
+      ? `<span class="muted">no test</span>`
       : entry.specs.map((spec) =>
         `<a class="mini ${toneOf(spec.status)}" href="#case-${escapeHtml(spec.id)}" title="${escapeHtml(spec.title)}">${escapeHtml(spec.id)} · ${escapeHtml(spec.status.replace("_", " "))}</a>`).join(" ");
     return `<tr data-search="${escapeHtml(`${entry.id} ${entry.title ?? ""}`)}">
@@ -55,10 +55,10 @@ export function renderManifestCoverage(coverage: CoverageSummary | undefined): s
     : "";
   return `<details class="panel" open>
     <summary><span class="panel-title">Coverage manifest</span>
-      <span class="panel-sub">${coverage.covered}/${coverage.total} ids covered · ${coverage.passing} passing · ${coverage.failing} failing · ${coverage.uncovered.length} without a spec</span></summary>
+      <span class="panel-sub">${coverage.covered}/${coverage.total} ids covered · ${coverage.passing} passing · ${coverage.failing} failing · ${coverage.uncovered.length} without a test</span></summary>
     <div class="panel-body">
       ${unknown}
-      <table class="tagsum"><thead><tr><th>id</th><th>title</th><th>specs</th></tr></thead><tbody>${rows}</tbody></table>
+      <table class="tagsum"><thead><tr><th>id</th><th>title</th><th>tests</th></tr></thead><tbody>${rows}</tbody></table>
     </div>
   </details>`;
 }

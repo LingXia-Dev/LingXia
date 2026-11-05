@@ -1,11 +1,11 @@
-//! `lxdev test list` without a session: the specs as the source states
+//! `lxdev test list` without a session: the tests as the source states
 //! them.
 //!
 //! The exact listing needs the runtime, which runs the files: a title built
-//! in a template, an id from a variable, or a spec registered in a loop is
-//! only known then. Offline, each spec call is read from the source (Oxc), the
+//! in a template, an id from a variable, or a test registered in a loop is
+//! only known then. Offline, each test call is read from the source (Oxc), the
 //! run's selection is applied where the values it needs are literals, and a
-//! spec whose selection or identity depends on a computed value is kept and
+//! test whose selection or identity depends on a computed value is kept and
 //! marked inexact rather than guessed.
 
 use crate::test_select::{Literal, Locations, SpecCall, SpecMap};
@@ -13,7 +13,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use serde_json::{Value, json};
 use std::path::Path;
 
-/// One spec call, with what the source says about it.
+/// One test call, with what the source says about it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StaticSpec {
     /// As `lxdev test list` shows files.
@@ -108,7 +108,7 @@ fn parse_shard(raw: &str) -> Result<(u32, u32)> {
     parsed.ok_or_else(|| anyhow!("shard must be INDEX/TOTAL (1-based)"))
 }
 
-/// `@lingxia/test`'s `slugTitle`: the id of a spec that gives none.
+/// `@lingxia/test`'s `slugTitle`: the id of a test that gives none.
 fn slug_title(title: &str) -> Option<String> {
     if !title.is_ascii() {
         return None;
@@ -137,7 +137,7 @@ fn stable_hash(value: &str) -> u32 {
     })
 }
 
-/// Whether the spec is selected: `Some(bool)` when the source answers,
+/// Whether the test is selected: `Some(bool)` when the source answers,
 /// `None` when a computed value decides.
 type Verdict = Option<bool>;
 
@@ -157,7 +157,7 @@ fn by_id(id: Option<&str>, test: impl Fn(&str) -> bool) -> Verdict {
     id.map(test)
 }
 
-/// The listing of one file's spec calls. `source_name` is how the run's
+/// The listing of one file's test calls. `source_name` is how the run's
 /// `locations` control names the file.
 pub fn file_specs(
     map: &SpecMap,
@@ -278,7 +278,7 @@ pub fn list(
             .any(|call| call.modifier.as_deref() == Some("only"))
     });
     if has_only && filters.forbid_only {
-        bail!("spec.only is registered; lxdev test --forbid-only refuses to run");
+        bail!("test.only is registered; lxdev test --forbid-only refuses to run");
     }
     let mut out = Vec::new();
     for (file, map) in &maps {
@@ -289,7 +289,7 @@ pub fn list(
     Ok(out)
 }
 
-/// The JSON form of one spec: unknown values are `null`.
+/// The JSON form of one test: unknown values are `null`.
 pub fn to_json(spec: &StaticSpec) -> Value {
     json!({
         "id": spec.id,
@@ -318,23 +318,23 @@ pub fn to_listing_row(spec: &StaticSpec) -> Value {
 mod tests {
     use super::*;
 
-    const SOURCE: &str = r#"import { spec } from "@lingxia/test";
+    const SOURCE: &str = r#"import { test } from "@lingxia/test";
 
-spec.configure({ tags: ["routed"] });
+test.configure({ tags: ["routed"] });
 
-spec("adds an item", { id: "cart-add", tags: ["smoke"] }, async () => {});
+test("adds an item", { id: "cart-add", tags: ["smoke"] }, async () => {});
 
-spec(`removes an item`, async () => {});
+test(`removes an item`, async () => {});
 
-spec.skip("商品", async () => {});
+test.skip("商品", async () => {});
 
-spec(title, { id: dynamicId }, async () => {});
+test(title, { id: dynamicId }, async () => {});
 
 for (const name of ["a", "b"]) {
-  spec(`case ${name}`, async () => {});
+  test(`case ${name}`, async () => {});
 }
 
-spec("computed tags", { tags: TAGS }, async () => {});
+test("computed tags", { tags: TAGS }, async () => {});
 "#;
 
     fn map() -> SpecMap {
@@ -453,7 +453,7 @@ spec("computed tags", { tags: TAGS }, async () => {});
 
     #[test]
     fn only_and_locations_narrow_as_the_runtime_does() {
-        let source = "spec.only('a', async () => {});\nspec('b', async () => {});\n";
+        let source = "test.only('a', async () => {});\ntest('b', async () => {});\n";
         let map = SpecMap::parse(source, Path::new("a.test.ts")).unwrap();
         let specs = file_specs(&map, "a.test.ts", "a.test.ts", &Filters::default(), true);
         assert_eq!(specs.iter().map(|s| s.line).collect::<Vec<_>>(), [1]);
@@ -488,7 +488,7 @@ spec("computed tags", { tags: TAGS }, async () => {});
             .collect();
         let mut both: Vec<u32> = shards.concat();
         both.sort();
-        assert_eq!(both, [5, 7], "each exact spec is in exactly one shard");
+        assert_eq!(both, [5, 7], "each exact test is in exactly one shard");
     }
 
     #[test]
@@ -502,7 +502,7 @@ spec("computed tags", { tags: TAGS }, async () => {});
     fn forbid_only_refuses_as_a_run_would() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("a.test.ts");
-        std::fs::write(&file, "spec.only('a', async () => {});\n").unwrap();
+        std::fs::write(&file, "test.only('a', async () => {});\n").unwrap();
         let filters = Filters {
             forbid_only: true,
             ..Filters::default()

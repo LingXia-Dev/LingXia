@@ -1,5 +1,5 @@
 import type { TestApp, TestView } from '@lingxia/test';
-import { expect, spec, type Fixture } from '@lingxia/test';
+import { expect, test, type Fixture } from '@lingxia/test';
 import type {
   AutomationShellPin,
   BrowserDriver,
@@ -1205,7 +1205,7 @@ async function clearRetainedDynamicChatHandle(app: TestApp): Promise<void> {
   });
 }
 
-spec('projects the declared terminal aside and restores its baseline state', {
+test('projects the declared terminal aside and restores its baseline state', {
   skip: desktopSkip,
   id: 'DESKTOP-SURFACE-DECLARED-001',
   timeout: DESKTOP_CASE_MS,
@@ -1299,7 +1299,7 @@ spec('projects the declared terminal aside and restores its baseline state', {
   expect(topology(result.afterCleanup)).toEqual(topology(before));
 });
 
-spec('gates medium sidebar reveal and compact aside chrome on every desktop', {
+test('gates medium sidebar reveal and compact aside chrome on every desktop', {
   skip: adaptiveDesktopSkip,
   id: 'DESKTOP-ADAPTIVE-001',
   timeout: DESKTOP_CASE_MS,
@@ -1667,7 +1667,7 @@ spec('gates medium sidebar reveal and compact aside chrome on every desktop', {
   }
 });
 
-spec('docks the footer Chat WebView physically beside the main after resize', {
+test('docks the footer Chat WebView physically beside the main after resize', {
   skip: windowsHostSkip,
   id: 'DESKTOP-CHAT-DOCK-001',
   timeout: DESKTOP_CASE_MS,
@@ -1904,7 +1904,7 @@ spec('docks the footer Chat WebView physically beside the main after resize', {
   }
 });
 
-spec('keeps a dynamic app handle synchronized and closes its workspace atomically', {
+test('keeps a dynamic app handle synchronized and closes its workspace atomically', {
   skip: dynamicMainDesktopSkip,
   id: 'DESKTOP-DYNAMIC-MAIN-001',
   timeout: DESKTOP_CASE_MS,
@@ -2316,7 +2316,7 @@ spec('keeps a dynamic app handle synchronized and closes its workspace atomicall
   }
 });
 
-spec('projects a pinned lxapp into a controllable sidebar workspace without content tabs', {
+test('projects a pinned lxapp into a controllable sidebar workspace without content tabs', {
   skip: pinnedWindowsHostSkip,
   id: 'DESKTOP-PINNED-001',
   timeout: DESKTOP_CASE_MS,
@@ -2853,7 +2853,7 @@ spec('projects a pinned lxapp into a controllable sidebar workspace without cont
   }
 });
 
-spec('rejects stable-root mutations without changing the host model', {
+test('rejects stable-root mutations without changing the host model', {
   skip: desktopSkip,
   id: 'DESKTOP-STABLE-ROOT-001',
   timeout: DESKTOP_CASE_MS,
@@ -3013,7 +3013,7 @@ function inRightAside(host: DesktopWindowInfo, rect: { x: number; w: number }): 
     && rect.x + rect.w <= host.bounds.x + host.bounds.w + CHAT_INPUT_AX_SLOP_PX;
 }
 
-spec('keeps an aside lxapp page stack and its floats inside the aside', {
+test('keeps an aside lxapp page stack and its floats inside the aside', {
   skip: desktopSkip,
   id: 'DESKTOP-ASIDE-NAV-001',
   timeout: DESKTOP_CASE_MS,
@@ -3314,7 +3314,7 @@ async function sidebarTabItem(
   return undefined;
 }
 
-spec('maximizes an aside over a main that keeps its frame and restores it on every intent', {
+test('maximizes an aside over a main that keeps its frame and restores it on every intent', {
   skip: macosHostSkip,
   id: 'DESKTOP-ASIDE-MAXIMIZE-001',
   timeout: DESKTOP_CASE_MS,
@@ -3484,7 +3484,7 @@ spec('maximizes an aside over a main that keeps its frame and restores it on eve
   }
 });
 
-spec('migrates one keyed workspace across aside edges and main exactly once', {
+test('migrates one keyed workspace across aside edges and main exactly once', {
   skip: desktopSkip,
   id: 'DESKTOP-MIGRATE-001',
   timeout: DESKTOP_CASE_MS,
@@ -3651,7 +3651,7 @@ spec('migrates one keyed workspace across aside edges and main exactly once', {
   expect(topology(result.afterCleanup)).toEqual(topology(before));
 });
 
-spec('switches, deduplicates concurrent opens, and leaves no ghost rows', {
+test('switches, deduplicates concurrent opens, and leaves no ghost rows', {
   skip: desktopSkip,
   id: 'DESKTOP-SWITCH-001',
   timeout: DESKTOP_CASE_MS,
@@ -4014,7 +4014,7 @@ async function closeNewBrowserTabs(browser: BrowserDriver, before: Set<string>):
   }
 }
 
-spec('docks a URL aside on every edge, shows it, and closes it from the browser driver', {
+test('docks a URL aside on every edge, shows it, and closes it from the browser driver', {
   skip: desktopSkip,
   id: 'DESKTOP-BROWSER-ASIDE-EDGES-001',
   timeout: DESKTOP_CASE_MS,
@@ -4091,7 +4091,7 @@ spec('docks a URL aside on every edge, shows it, and closes it from the browser 
   }
 });
 
-spec('opens a browser aside beside a docked, maximized and collapsed Chat aside without touching the main lifecycle', {
+test('opens a browser aside beside a docked, maximized and collapsed Chat aside without touching the main lifecycle', {
   skip: desktopSkip,
   id: 'DESKTOP-BROWSER-ASIDE-LIFECYCLE-001',
   timeout: DESKTOP_CASE_MS,
@@ -4331,7 +4331,7 @@ async function pressMainBack(
   await desktop.ax.invoke({ window: host.id, match: `id:${back.id}` });
 }
 
-spec('promotes a dragged lxapp aside to a main without reloading it', {
+test('promotes a dragged lxapp aside to a main without reloading it', {
   skip: desktopSkip,
   id: 'DESKTOP-ASIDE-PROMOTE-001',
   timeout: DESKTOP_CASE_MS,
@@ -4444,7 +4444,7 @@ spec('promotes a dragged lxapp aside to a main without reloading it', {
   }
 });
 
-spec('moves a dragged URL aside tab into the main browser without reloading it', {
+test('moves a dragged URL aside tab into the main browser without reloading it', {
   skip: desktopSkip,
   id: 'DESKTOP-BROWSER-ASIDE-PROMOTE-001',
   timeout: DESKTOP_CASE_MS,

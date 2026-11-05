@@ -1,10 +1,10 @@
 import { waitForCurrentPage } from '../helpers/page.js';
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { bindFixture, specNamespace } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
 
-spec("open every component demo through rendered UI and the Logic bridge", { id: "COMPONENTS-001", covers: ['lx.navigateTo'], app: SHOWCASE_APP_ID }, async (t) => {
+test("open every component demo through rendered UI and the Logic bridge", { id: "COMPONENTS-001", covers: ['lx.navigateTo'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "COMPONENTS-001");
 
   const destinations = [

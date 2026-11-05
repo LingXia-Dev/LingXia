@@ -1,6 +1,6 @@
 import type { Fixture, TestApp, TestView } from '@lingxia/test';
 import { waitForElementText } from '../helpers/page.js';
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { bindFixture, eventually, type Caught } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
@@ -37,7 +37,7 @@ async function waitForStatus(t: Fixture, view: TestView, expected: string): Prom
   );
 }
 
-spec("start, render, and stop the native pull-to-refresh lifecycle", { id: "PULL-001", covers: ['lx.startPullDownRefresh', 'lx.stopPullDownRefresh'], app: SHOWCASE_APP_ID }, async (t) => {
+test("start, render, and stop the native pull-to-refresh lifecycle", { id: "PULL-001", covers: ['lx.startPullDownRefresh', 'lx.stopPullDownRefresh'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "PULL-001");
 
   await app.nav.relaunch({ page: 'pullToRefresh' });

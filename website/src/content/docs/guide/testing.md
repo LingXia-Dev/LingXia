@@ -19,12 +19,12 @@ Keep it on the same version as your CLI. `lxdev` warns when the two drift apart,
 
 ## Write a case
 
-A case is a `spec` whose async body receives a test handle `t`. Drive the app through locators and retrying assertions:
+A case is a `test` whose async body receives a test handle `t`. Drive the app through locators and retrying assertions:
 
 ```ts
-import { spec, expect } from '@lingxia/test';
+import { test, expect } from '@lingxia/test';
 
-spec('greets through real page input and the Logic bridge', async (t) => {
+test('greets through real page input and the Logic bridge', async (t) => {
   await t.app.nav.relaunch({ page: 'home' });
   await expect(t.app.view.testId('home-page')).toBeVisible();
 
@@ -78,7 +78,7 @@ Pass values into a run with `--arg` (read with `t.arg('name')`), so one suite ca
 lxdev test tests/flows/checkout.test.ts --arg platform=macos --arg statusUrl=https://…
 ```
 
-Pass a secret with `--secret-arg key=value`: its value is written as `***` wherever it would appear in reports, events and attachments. Reports also list a run's args; an `--arg` named like a credential (`password`, `apiKey`, `DB_TOKEN`) shows as `***` in that list. The spec still reads the real value with `t.arg()`.
+Pass a secret with `--secret-arg key=value`: its value is written as `***` wherever it would appear in reports, events and attachments. Reports also list a run's args; an `--arg` named like a credential (`password`, `apiKey`, `DB_TOKEN`) shows as `***` in that list. The test still reads the real value with `t.arg()`.
 
 Results print as they finish and are written under `test-results/<run-id>/` (`report.html`, `report.json`, `junit.xml`) so CI can keep them as an artifact.
 
@@ -87,25 +87,25 @@ Results print as they finish and are written under `test-results/<run-id>/` (`re
 A case you know is not ready is more useful declared than missing — it keeps the gap visible in the report:
 
 ```ts
-spec.skip('resumes an interrupted upload', {
+test.skip('resumes an interrupted upload', {
   reason: 'needs the retry API',
 });
 ```
 
-When only the run itself can tell whether a case applies, skip from inside the body. `t.skip(reason)` stops the spec and reports it as skipped with that reason — neither passed nor failed:
+When only the run itself can tell whether a case applies, skip from inside the body. `t.skip(reason)` stops the test and reports it as skipped with that reason — neither passed nor failed:
 
 ```ts
-spec('reconnects an offline client', async (t) => {
+test('reconnects an offline client', async (t) => {
   const offline = await findOfflineClient(t);
   if (!offline) t.skip('this account has no offline client');
   // …
 });
 ```
 
-`spec.fail` declares a known-broken case: a failure of its body — a failed assertion or a thrown product error — is reported as the expected failure (`xfail`), and a body that completes is an unexpected pass (`xpass`) that fails the run. Name the failure you expect, so a different one (a mistyped selector, a fixture server that is down) still fails:
+`test.fail` declares a known-broken case: a failure of its body — a failed assertion or a thrown product error — is reported as the expected failure (`xfail`), and a body that completes is an unexpected pass (`xpass`) that fails the run. Name the failure you expect, so a different one (a mistyped selector, a fixture server that is down) still fails:
 
 ```ts
-spec.fail('rejects an over-quota upload', { expected: { code: 'E_QUOTA' } }, async (t) => {
+test.fail('rejects an over-quota upload', { expected: { code: 'E_QUOTA' } }, async (t) => {
   await uploadLargeFile(t);
 });
 ```

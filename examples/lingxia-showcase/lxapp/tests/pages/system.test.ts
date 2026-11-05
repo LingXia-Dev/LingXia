@@ -1,5 +1,5 @@
 import type { TestApp } from '@lingxia/test';
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { bindFixture, eventually, specNamespace } from '../helpers/poll.js';
 import { waitForElementEnabled } from '../helpers/page.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
@@ -48,7 +48,7 @@ async function waitForSystemState(
   });
 }
 
-spec("render host app and system information through page actions", { id: "SYSTEM-001", covers: ['lx.host.getBaseInfo', 'lx.host.displayLanguage.get', 'lx.getSystemSetting'], app: SHOWCASE_APP_ID }, async (t) => {
+test("render host app and system information through page actions", { id: "SYSTEM-001", covers: ['lx.host.getBaseInfo', 'lx.host.displayLanguage.get', 'lx.getSystemSetting'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "SYSTEM-001");
 
   await app.nav.relaunch({ page: 'system', query: { type: 'appBaseInfo' } });
@@ -75,7 +75,7 @@ spec("render host app and system information through page actions", { id: "SYSTE
   await expect(system.testId('system-setting-result')).toContainText('WiFi Enabled', { timeout: 30_000 });
 });
 
-spec('opens the product cache panel from the rendered API menu', {
+test('opens the product cache panel from the rendered API menu', {
   id: 'SYSTEM-CACHE-001',
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
@@ -110,7 +110,7 @@ async function bannerPageState(app: TestApp): Promise<BannerPageState> {
   });
 }
 
-spec('drive banner re-read, prompt, and dismiss from the system page', {
+test('drive banner re-read, prompt, and dismiss from the system page', {
   skip: bannerPageSkip,
   id: 'SYSTEM-BANNER-001',
   covers: ['lx.host.banner', 'lx.host.banner.show', 'lx.host.banner.dismiss'],

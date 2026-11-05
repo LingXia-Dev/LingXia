@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
-import { spec, expect, AssertionError, TEST_ERROR_CODES, TimeoutError } from "../dist/index.js";
+import { test as lxTest, expect, AssertionError, TEST_ERROR_CODES, TimeoutError } from "../dist/index.js";
 import { reset, run } from "../dist/runner.js";
 
 afterEach(() => {
@@ -16,7 +16,7 @@ test("expect(value) checks once; expect.poll(fn) retries until the matcher passe
   let once;
   const started = Date.now();
 
-  spec("ladder", { forensics: false }, async (t) => {
+  lxTest("ladder", { forensics: false }, async (t) => {
     await expect.poll(() => ++reads, { timeout: 1_000, interval: 5 }).toBeGreaterThanOrEqual(3);
     expect(reads).toBe(3);
     try {
@@ -41,7 +41,7 @@ test("expect(locator) retries; the fixture has no expect of its own", async () =
   installFakeHost(world);
   let own;
 
-  spec("locator", { forensics: false }, async (t) => {
+  lxTest("locator", { forensics: false }, async (t) => {
     await expect(t.app.view.testId("save")).toBeVisible({ timeout: 1_000 });
     own = "expect" in t;
   });
@@ -54,7 +54,7 @@ test("expect(locator) retries; the fixture has no expect of its own", async () =
 test("expect(promise) refuses: await it, or poll a read", async () => {
   installFakeHost(createWorld());
 
-  spec("promise", { forensics: false }, async (t) => {
+  lxTest("promise", { forensics: false }, async (t) => {
     expect(t.app.info()).toBeTruthy();
   });
 
@@ -66,8 +66,8 @@ test("expect(promise) refuses: await it, or poll a read", async () => {
 
 test("expect(locator) and expect.poll need a running spec; a value check does not", () => {
   const locator = { [Symbol.for("lingxia.test.locator")]: true, selector: "#x" };
-  assert.throws(() => expect(locator), /expect\(locator\) retries inside a spec's budget/);
-  assert.throws(() => expect.poll(() => 1), /expect\.poll\(read\) retries inside a spec's budget/);
+  assert.throws(() => expect(locator), /expect\(locator\) retries inside a test's budget/);
+  assert.throws(() => expect.poll(() => 1), /expect\.poll\(read\) retries inside a test's budget/);
   assert.throws(() => expect.poll(1), /expect\.poll\(read\) takes a function/);
   expect([1, 2]).toHaveLength(2);
   expect("abc").not.toHaveLength(2);
@@ -93,7 +93,7 @@ test("expect.poll(fn).toHaveLength retries until the length matches", async () =
   const items = [];
   const timer = setInterval(() => items.push(items.length), 5);
 
-  spec("length", { forensics: false }, async () => {
+  lxTest("length", { forensics: false }, async () => {
     await expect.poll(() => [...items], { timeout: 1_000, interval: 5 }).toHaveLength(3);
   });
 
@@ -108,7 +108,7 @@ test("t.app.view has locators, not raw element methods; t.app.page binds a contr
   installFakeHost(world);
   const seen = {};
 
-  spec("view", { forensics: false }, async (t) => {
+  lxTest("view", { forensics: false }, async (t) => {
     seen.pageInput = [typeof t.app.view.pointer, typeof t.app.view.key, typeof (await t.app.page()).view.key];
     seen.viewClick = typeof t.app.view.click;
     seen.viewWaitFor = typeof t.app.view.waitFor;
@@ -144,7 +144,7 @@ test("host tiers read lazily: the read never throws, the call rejects", async ()
   };
   const seen = {};
 
-  spec("tiers", { forensics: false }, async (t) => {
+  lxTest("tiers", { forensics: false }, async (t) => {
     seen.read = typeof t.automation.desktop;
     seen.nested = typeof t.automation.desktop.window.status;
     await t.reject(() => t.automation.desktop.window.status({ title: "x" }), { message: /not built into this host/ });
@@ -162,14 +162,14 @@ test("host tiers read lazily: the read never throws, the call rejects", async ()
   assert.ok(steps.includes("browser.tabs"), steps.join(", "));
 });
 
-test("spec.configure sets file defaults; a spec's own options override them", async () => {
+test("test.configure sets file defaults; a spec's own options override them", async () => {
   const world = createWorld();
   installFakeHost(world);
 
-  spec.configure({ timeout: 1_234, start: { page: "dashboard" }, tags: ["routed"], covers: ["DEV-1"], forensics: false });
-  spec.configure({ tags: ["smoke"] });
-  spec("defaults", async () => {});
-  spec("overrides", { timeout: 5_000, start: { page: "detail", query: { id: "d1" } }, tags: ["own"], covers: ["DEV-2"] }, async () => {});
+  lxTest.configure({ timeout: 1_234, start: { page: "dashboard" }, tags: ["routed"], covers: ["DEV-1"], forensics: false });
+  lxTest.configure({ tags: ["smoke"] });
+  lxTest("defaults", async () => {});
+  lxTest("overrides", { timeout: 5_000, start: { page: "detail", query: { id: "d1" } }, tags: ["own"], covers: ["DEV-2"] }, async () => {});
 
   const report = await run();
   assert.equal(report.failed, 0, JSON.stringify(report.cases));
@@ -187,24 +187,24 @@ test("spec.configure sets file defaults; a spec's own options override them", as
   ]);
 });
 
-test("spec.configure rejects an id and malformed options at registration", () => {
-  assert.throws(() => spec.configure({ id: "shared" }), /cannot set `id`/);
-  assert.throws(() => spec.configure({ timeout: -1 }), /timeout must be a positive finite number/);
-  assert.throws(() => spec.configure({ requires: { args: "PASSWORD" } }), /requires\.args must be an array/);
-  assert.throws(() => spec("bad", { requires: { openapi: "yes" } }, async () => {}), /requires\.openapi must be a boolean/);
-  assert.throws(() => spec("bad start", { start: "home" }, async () => {}), /start must be \{ page, query\? \}/);
-  assert.throws(() => spec.configure({ start: { page: "" } }), /start must be \{ page, query\? \}/);
-  assert.throws(() => spec("bad query", { start: { page: "home", query: [1] } }, async () => {}), /start\.query must be an object/);
+test("test.configure rejects an id and malformed options at registration", () => {
+  assert.throws(() => lxTest.configure({ id: "shared" }), /cannot set `id`/);
+  assert.throws(() => lxTest.configure({ timeout: -1 }), /timeout must be a positive finite number/);
+  assert.throws(() => lxTest.configure({ requires: { args: "PASSWORD" } }), /requires\.args must be an array/);
+  assert.throws(() => lxTest("bad", { requires: { openapi: "yes" } }, async () => {}), /requires\.openapi must be a boolean/);
+  assert.throws(() => lxTest("bad start", { start: "home" }, async () => {}), /start must be \{ page, query\? \}/);
+  assert.throws(() => lxTest.configure({ start: { page: "" } }), /start must be \{ page, query\? \}/);
+  assert.throws(() => lxTest("bad query", { start: { page: "home", query: [1] } }, async () => {}), /start\.query must be an object/);
 });
 
 test("requires skips a spec whose run inputs are missing, naming what to pass", async () => {
   installFakeHost(createWorld(), { args: { ACCOUNT: "qa" }, control: {} });
   let ran = 0;
 
-  spec.configure({ requires: { args: ["ACCOUNT"] } });
-  spec("has its args", async () => { ran += 1; });
-  spec("needs a password", { requires: { args: ["PASSWORD", "OTP"] } }, async () => { ran += 1; });
-  spec("needs a contract", { requires: { openapi: true } }, async () => { ran += 1; });
+  lxTest.configure({ requires: { args: ["ACCOUNT"] } });
+  lxTest("has its args", async () => { ran += 1; });
+  lxTest("needs a password", { requires: { args: ["PASSWORD", "OTP"] } }, async () => { ran += 1; });
+  lxTest("needs a contract", { requires: { openapi: true } }, async () => { ran += 1; });
 
   const report = await run();
   assert.equal(ran, 1);
@@ -214,10 +214,10 @@ test("requires skips a spec whose run inputs are missing, naming what to pass", 
   assert.equal(report.cases[2].reason, "Not run: requires --openapi <document>.");
 });
 
-test("error codes: TimeoutError is E_TIMEOUT and spec.fail can pin it", async () => {
+test("error codes: TimeoutError is E_TIMEOUT and test.fail can pin it", async () => {
   installFakeHost(createWorld());
 
-  spec.fail("waits in vain", { expected: { code: "E_TIMEOUT" }, forensics: false }, async (t) => {
+  lxTest.fail("waits in vain", { expected: { code: "E_TIMEOUT" }, forensics: false }, async (t) => {
     await t.waitFor(() => false, { timeout: 30, interval: 5 });
   });
 
@@ -243,7 +243,7 @@ test("a dropped trace event never fails the action it describes", async () => {
     return emit(event);
   };
 
-  spec("traced", { forensics: false }, async (t) => {
+  lxTest("traced", { forensics: false }, async (t) => {
     await t.app.info();
     await t.app.pages();
   });
@@ -272,7 +272,7 @@ test("an idempotent read the transport dropped is retried; input is not", async 
     return click(options);
   };
 
-  spec("reads", { forensics: false }, async (t) => {
+  lxTest("reads", { forensics: false }, async (t) => {
     const page = await t.app.nav.current();
     assert.equal(page.name, "home");
     await t.reject(() => t.app.view.testId("save").click(), { message: /connection reset/ });
@@ -286,10 +286,10 @@ test("an idempotent read the transport dropped is retried; input is not", async 
 test("each entry exports only its own job", async () => {
   const main = await import("@lingxia/test");
   assert.deepEqual(Object.keys(main).sort(),
-    ["AssertionError", "TEST_ERROR_CODES", "TimeoutError", "expect", "spec"]);
+    ["AssertionError", "TEST_ERROR_CODES", "TimeoutError", "expect", "test"]);
   const runner = await import("@lingxia/test/runner");
   assert.deepEqual(Object.keys(runner).sort(), [
-    "DEFAULT_ACTION_TIMEOUT_MS", "DEFAULT_SPEC_TIMEOUT_MS", "PACKAGE_NAME", "PUBLIC_CAPABILITIES", "VERSION",
+    "DEFAULT_ACTION_TIMEOUT_MS", "DEFAULT_TEST_TIMEOUT_MS", "PACKAGE_NAME", "PUBLIC_CAPABILITIES", "VERSION",
     "list", "rawAutomation", "renderJUnit", "reset", "run", "trackPublicSurface",
   ]);
   assert.deepEqual(Object.keys(await import("@lingxia/test/report")), []);
@@ -300,7 +300,7 @@ test("native input belongs to the app window and keeps its receiver", async () =
   const input = [];
   world.app.page.key = { async type(options) { assert.equal(this, world.app.page.key); input.push(options); } };
   installFakeHost(world);
-  spec("window input", { forensics: false }, async (t) => {
+  lxTest("window input", { forensics: false }, async (t) => {
     const key = t.app.window.key;
     assert.equal(t.app.view.page, undefined);
     await t.app.page();

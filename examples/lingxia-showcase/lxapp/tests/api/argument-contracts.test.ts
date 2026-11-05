@@ -1,4 +1,4 @@
-import { expect, spec, type Fixture, type JsonValue, type TestApp } from '@lingxia/test';
+import { expect, test, type Fixture, type JsonValue, type TestApp } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { bindFixture, type Caught } from '../helpers/poll.js';
 
@@ -51,7 +51,7 @@ async function assertRejections(
   expect(observed).toEqual(cases.map((item) => `${item.label}=${item.code}`));
 }
 
-spec('reject malformed navigation arguments with stable codes', {
+test('reject malformed navigation arguments with stable codes', {
   id: 'ARGS-NAV-001',
   covers: ['lx.navigateTo', 'lx.redirectTo', 'lx.switchTab'],
   app: SHOWCASE_APP_ID,
@@ -75,7 +75,7 @@ spec('reject malformed navigation arguments with stable codes', {
   expect(after.path).toBe(before.path);
 });
 
-spec('reject malformed transfer arguments before touching the network', {
+test('reject malformed transfer arguments before touching the network', {
   id: 'ARGS-TRANSFER-001',
   covers: ['lx.downloadFile', 'lx.uploadFile'],
   app: SHOWCASE_APP_ID,
@@ -109,7 +109,7 @@ spec('reject malformed transfer arguments before touching the network', {
   ]);
 });
 
-spec('answer a missing file with not-found, never an internal error', {
+test('answer a missing file with not-found, never an internal error', {
   id: 'ARGS-FS-001',
   covers: ['lx.fs.stat', 'lx.fs.exists', 'lx.fs.readDir', 'LxFile.text', 'LxFile.exists'],
   app: SHOWCASE_APP_ID,
@@ -135,7 +135,7 @@ spec('answer a missing file with not-found, never an internal error', {
   expect(exists).toEqual([false, false]);
 });
 
-spec('reject malformed clipboard arguments without touching the OS clipboard', {
+test('reject malformed clipboard arguments without touching the OS clipboard', {
   id: 'ARGS-CLIPBOARD-001',
   covers: ['lx.clipboard.write', 'lx.clipboard.writeText', 'lx.clipboard.read'],
   app: SHOWCASE_APP_ID,

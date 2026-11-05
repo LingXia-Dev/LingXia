@@ -16,7 +16,7 @@ behind.
 | `ios.test.ts` | Shared suite plus https `previewMedia` handle contracts | iOS, local |
 | `harmony.test.ts` | Shared suite plus https `previewMedia` handle contracts | Harmony, local |
 
-`contract/` holds routed contract specs that need their OpenAPI document:
+`contract/` holds routed contract tests that need their OpenAPI document:
 `lxdev test tests/contract --openapi tests/contract/devices.openapi.yaml
 --covers-manifest tests/contract/coverage.yaml`. No platform entry imports
 them, and without `--openapi` (for example `lxdev test tests/`) they skip
@@ -26,7 +26,7 @@ themselves.
 `lxdev test --preset macos` (the npm
 `test:automation:*` scripts use them; `lxdev test presets` shows them).
 `scenarios/` holds dev-time product states for `lxdev mock use`, which
-specs may import too (`route/status`, with its `online` and `offline`
+tests may import too (`route/status`, with its `online` and `offline`
 variants, is `AUT-NET-007`'s: `lxdev mock use route/status:offline`).
 `../mocks/` holds the Showcase's mock handlers, answered in development
 for the calls `mocks/config.json` selects (`AUT-NET-008`).
@@ -70,9 +70,9 @@ dialog. Do not fake those dialogs from page JavaScript.
 
 ## Case authoring rules
 
-New cases use `spec` from `@lingxia/test`:
+New cases use `test` from `@lingxia/test`:
 
-- assign a stable domain ID and list public members in `{ covers }` on the spec;
+- assign a stable domain ID and list public members in `{ covers }` on the test;
 - use `bindFixture(t, id)` for a unique `namespace` and `t.defer` cleanup;
 - assert an observable public result, not a private host field;
 - use `expect(locator)` / `expect.poll(fn)` (or `PageDriver.waitFor` on a raw driver); fixed sleeps are
@@ -89,7 +89,7 @@ Use `--id ID` or `--last-failed path/to/report.json` for focused reruns;
 `--verbose` adds the full action trace. `--shard i/n` needs a separate host session
 and output directory per shard. Filtered runs cannot refresh the covers gate.
 
-Retries require real state recovery. `pages/todo.test.ts` supplies `spec.reset`
+Retries require real state recovery. `pages/todo.test.ts` supplies `test.reset`
 and bounded `t.defer` cleanup; run it with `--retries 1`. Do not enable retries
 for the whole suite without file-specific reset hooks: cold-start, permission,
 and host-window contracts cannot share a generic relaunch reset.

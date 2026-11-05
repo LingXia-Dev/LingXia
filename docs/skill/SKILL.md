@@ -76,7 +76,7 @@ lingxia dev stop
 3. Check `lxdev logs` for new errors.
 
 On failure, fix and repeat. Report what you observed, not what the edit should
-do. Keep regressions as `lxdev test` specs: [Testing](./lxapp/testing.md).
+do. Keep regressions as `lxdev test` cases: [Testing](./lxapp/testing.md).
 
 ## Shapes
 
@@ -109,7 +109,7 @@ A JS-Logic lxapp that calls Rust routes is still B. B's id rule:
 | `@lingxia/html` | DOM helpers for HTML-only views | lxapp View (HTML) | `pageReady`, `getPage`, `subscribePage`, `getHost`, `subscribeHost` |
 | `@lingxia/elements` | Pure-JS custom elements (`<lx-video>`, …) | rarely direct — react re-exports wrappers | `registerVideoComponent`, `LxVideoElement` |
 | `@lingxia/types` | Declarations for Logic `lx.*`, `Page({})`, `App({})` | lxapp Logic (devDependency, global) | [Install typing](./lxapp/lx-api.md#install-typing) |
-| `@lingxia/test` | Spec authoring SDK for `lxdev test` | lxapp tests | `import { spec } from '@lingxia/test'` |
+| `@lingxia/test` | Test authoring SDK for `lxdev test` | lxapp tests | `import { test } from '@lingxia/test'` |
 | `@lingxia/bridge` | Bridge runtime + low-level helpers | rarely direct | types such as `LxStream`, `LxChannel` |
 | `@lingxia/native` | Virtual module for the CLI-generated native client | lxapp View | `import { native } from '@lingxia/native'` |
 | `@lingxia/page-runtime` | Internal — shared impl behind react/html | **don't import directly** | — |
@@ -125,7 +125,7 @@ never add them to a project.
 | `lingxia` commands: new, dev, build, package, devices, skill, upgrade | [cli/lingxia.md](./cli/lingxia.md) |
 | Saving an lxapp, `lingxia dev listen`, attaching one the host does not declare | [cli/dev-reload.md](./cli/dev-reload.md) |
 | Drive a running session: `lxdev` lxapp/runner/host/browser/logs | [cli/lxdev.md](./cli/lxdev.md) |
-| Write and run specs (`@lingxia/test`, `lxdev test`) | [lxapp/testing.md](./lxapp/testing.md) |
+| Write and run tests (`@lingxia/test`, `lxdev test`) | [lxapp/testing.md](./lxapp/testing.md) |
 | Mocks and scenarios: `mocks/`, `lxdev mock`, `lingxia dev --mock`, `t.scenario.use` | [lxapp/mock.md](./lxapp/mock.md) |
 | **Lxapp** | |
 | Pages: `Page({})`, View hooks, lifecycle, events, `App({})`, tab bar, page chrome | [lxapp/guide.md](./lxapp/guide.md) |

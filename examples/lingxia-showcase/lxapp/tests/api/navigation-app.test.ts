@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import type { ShowcaseAppInstance } from '../../shared/lib/app.js';
 import type { LxAppRuntimeInfo } from '@lingxia/types/automation';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
@@ -21,9 +21,9 @@ const isOpen = (list: LxAppRuntimeInfo[], appid: string): boolean => (
  * PEND-NAVAPP-DESKTOP-001.
  */
 const platform = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>).platform?.toLowerCase();
-spec.configure({ skip: platform === 'android' ? undefined : 'Android only' });
+test.configure({ skip: platform === 'android' ? undefined : 'Android only' });
 
-spec('hop to the bundled chat lxapp and back', {
+test('hop to the bundled chat lxapp and back', {
   id: 'NAV-APP-001',
   covers: ['App.onLaunch', 'App.onShow', 'App.onHide', 'lx.navigateToApp', 'lx.navigateBackApp', 'LxAppManager.list', 'LxAppManager.current'],
   app: SHOWCASE_APP_ID,

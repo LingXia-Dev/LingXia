@@ -1,9 +1,9 @@
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { waitForElementText } from '../helpers/page.js';
 import type { LingXiaBridgeInterface } from '@lingxia/bridge';
 
-spec('receives channel ticks, switches symbols, and reconnects', { app: SHOWCASE_APP_ID }, async (t) => {
+test('receives channel ticks, switches symbols, and reconnects', { app: SHOWCASE_APP_ID }, async (t) => {
   const app = t.app;
   await app.nav.relaunch({ page: 'channel' });
   const channel = (await app.page({ name: 'channel' }, { timeout: 30_000 })).view;
@@ -30,7 +30,7 @@ spec('receives channel ticks, switches symbols, and reconnects', { app: SHOWCASE
     .toBe('Connected');
 });
 
-spec('closing a real channel ends reads and rejects subsequent sends', {
+test('closing a real channel ends reads and rejects subsequent sends', {
   id: 'CHANNEL-ERROR-001',
   covers: ['LxChannel.close', 'LxChannel.send', 'BRIDGE_STREAM_CLOSED', 'BRIDGE_TOPIC_NOT_FOUND'],
   app: SHOWCASE_APP_ID,

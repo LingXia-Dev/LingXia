@@ -293,7 +293,7 @@ fn dispatch_test(
                     Err(anyhow::anyhow!(test::NO_SESSION_HINT))
                 }
                 Err(err) if project::is_ambiguous(&err) => Err(anyhow::anyhow!(
-                    "{err}\nOr read the specs from the source: `lxdev test list --offline`."
+                    "{err}\nOr read the tests from the source: `lxdev test list --offline`."
                 )),
                 Err(err) => Err(err),
             }

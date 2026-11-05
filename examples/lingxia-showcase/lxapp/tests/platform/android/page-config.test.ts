@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import homeConfig from '../../../pages/home/index.json';
 import uiConfig from '../../../pages/ui/index.json';
 import pullConfig from '../../../pages/pulltorefresh/index.json';
@@ -7,9 +7,9 @@ import { androidDevice } from '../../helpers/android-device.js';
 import { bindFixture } from '../../helpers/poll.js';
 
 const args = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
-spec.configure({ skip: args.platform === 'android' ? undefined : 'Android only' });
+test.configure({ skip: args.platform === 'android' ? undefined : 'Android only' });
 
-spec('page JSON controls native navigation chrome and refresh eligibility', {
+test('page JSON controls native navigation chrome and refresh eligibility', {
   id: 'ANDROID-PAGE-CONFIG-001', app: SHOWCASE_APP_ID,
   covers: ['PageConfig.navigationStyle', 'PageConfig.enablePullDownRefresh', 'lx.navigationBar.update'],
   requires: { args: ['androidDevice'] }, reason: 'requires Android native hierarchy', timeout: 60000,

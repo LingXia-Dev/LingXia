@@ -1,10 +1,10 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { bindFixture, type Caught } from '../helpers/poll.js';
 import { waitForCurrentPage } from '../helpers/page.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
 
-spec("read core app, device, screen, network, and system state", { id: "LOGIC-001", covers: [
+test("read core app, device, screen, network, and system state", { id: "LOGIC-001", covers: [
     'lx.getLxAppInfo',
     'lx.getDeviceInfo',
     'lx.getScreenInfo',
@@ -42,7 +42,7 @@ spec("read core app, device, screen, network, and system state", { id: "LOGIC-00
   expect(['dev', 'prod']).toContain(result.env);
 });
 
-spec("register and remove portable runtime listeners", { id: "LOGIC-002", covers: [
+test("register and remove portable runtime listeners", { id: "LOGIC-002", covers: [
     'lx.onNetworkChange',
     'lx.onDeviceOrientationChange',
     'lx.onKeyDown',
@@ -73,7 +73,7 @@ spec("register and remove portable runtime listeners", { id: "LOGIC-002", covers
   expect(result).toBeTruthy();
 });
 
-spec("answer capability questions consistently with the optional members", { id: "LOGIC-006", covers: ['lx.supports'], app: SHOWCASE_APP_ID }, async (t) => {
+test("answer capability questions consistently with the optional members", { id: "LOGIC-006", covers: ['lx.supports'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "LOGIC-006");
 
   const result = await app.logic.eval(async ({ lx }) => {
@@ -112,7 +112,7 @@ spec("answer capability questions consistently with the optional members", { id:
   });
 });
 
-spec("round-trip isolated key-value storage", { id: "LOGIC-003", covers: ['lx.getStorage', 'Storage.info', 'Storage.set', 'Storage.get', 'Storage.has', 'Storage.list', 'Storage.delete'], app: SHOWCASE_APP_ID }, async (t) => {
+test("round-trip isolated key-value storage", { id: "LOGIC-003", covers: ['lx.getStorage', 'Storage.info', 'Storage.set', 'Storage.get', 'Storage.has', 'Storage.list', 'Storage.delete'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, namespace } = bindFixture(t, "LOGIC-003");
 
   const result = await app.logic.eval(async ({ lx }, namespace) => {
@@ -154,7 +154,7 @@ spec("round-trip isolated key-value storage", { id: "LOGIC-003", covers: ['lx.ge
   expect(result.sizeRestored).toBeTruthy();
 });
 
-spec("round-trip files under lx user cache", { id: "LOGIC-004", covers: [
+test("round-trip files under lx user cache", { id: "LOGIC-004", covers: [
     'lx.fs',
     'lx.fs.copy',
     'lx.fs.exists',
@@ -223,7 +223,7 @@ spec("round-trip files under lx user cache", { id: "LOGIC-004", covers: [
   expect(result.dataPathAvailable).toBeTruthy();
 });
 
-spec("clear, prefix-list, missing vs null, and persist storage across reLaunch", {
+test("clear, prefix-list, missing vs null, and persist storage across reLaunch", {
   id: "LOGIC-007",
   covers: ['Storage.clear', 'Storage.list', 'Storage.get', 'Storage.set', 'lx.reLaunch'],
   app: SHOWCASE_APP_ID,
@@ -286,7 +286,7 @@ spec("clear, prefix-list, missing vs null, and persist storage across reLaunch",
   expect(leftover == null).toBeTruthy();
 });
 
-spec("read directories, LxFile.exists/path, and deny escaped paths", {
+test("read directories, LxFile.exists/path, and deny escaped paths", {
   id: "LOGIC-008",
   covers: ['lx.fs.readDir', 'lx.fs.stat', 'LxFile.exists', 'LxFile.path'],
   app: SHOWCASE_APP_ID,

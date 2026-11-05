@@ -1,11 +1,11 @@
 import { currentPageOrNull, waitForCurrentPage } from '../helpers/page.js';
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { rawAutomation } from '@lingxia/test/runner';
 import { bindFixture, expectReject, specNamespace } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import type { ProbeDocument, ProbeElement } from '../helpers/view.js';
 
-spec("expose only host automation authority in the test runtime", { id: "AUT-000", covers: ['lx.automation'], app: SHOWCASE_APP_ID }, (t) => {
+test("expose only host automation authority in the test runtime", { id: "AUT-000", covers: ['lx.automation'], app: SHOWCASE_APP_ID }, (t) => {
     const testLx = lx as unknown as Record<string, unknown>;
     const scope = globalThis as Record<string, unknown>;
     expect(typeof testLx.automation).toBe('function');
@@ -21,7 +21,7 @@ spec("expose only host automation authority in the test runtime", { id: "AUT-000
     expect(scope.document).toBeUndefined();
   });
 
-spec("select and inspect the current lxapp", { id: "AUT-001", covers: ['Automation.lxapp', 'LxAppDriver.info', 'LxAppDriver.pages'], app: SHOWCASE_APP_ID }, async (t) => {
+test("select and inspect the current lxapp", { id: "AUT-001", covers: ['Automation.lxapp', 'LxAppDriver.info', 'LxAppDriver.pages'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "AUT-001");
 
     const info = await app.info();
@@ -38,7 +38,7 @@ spec("select and inspect the current lxapp", { id: "AUT-001", covers: ['Automati
     expect(pages.some((page) => page.name === 'todo')).toBeTruthy();
   });
 
-spec("reject re-entrant self-eval from the app Logic runtime", { id: "AUT-005", covers: ['LxAppDriver.eval'], app: SHOWCASE_APP_ID }, async (t) => {
+test("reject re-entrant self-eval from the app Logic runtime", { id: "AUT-005", covers: ['LxAppDriver.eval'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "AUT-005");
 
     const rejection = await app.logic.eval({ timeout: 15_000 }, async ({ lx }) => {
@@ -61,14 +61,14 @@ spec("reject re-entrant self-eval from the app Logic runtime", { id: "AUT-005", 
     expect(rejection.message).toContain('cannot eval the calling app');
   });
 
-spec("evaluate across the Logic boundary", { id: "AUT-002", covers: ['LxAppDriver.eval'], app: SHOWCASE_APP_ID }, async (t) => {
+test("evaluate across the Logic boundary", { id: "AUT-002", covers: ['LxAppDriver.eval'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "AUT-002");
 
     // The raw driver's `{ script }` eval is what this spec covers.
     expect(await rawAutomation().lxapp(SHOWCASE_APP_ID).eval({ script: '21 * 2' })).toBe(42);
   });
 
-spec("read the host surface plan with JavaScript-shaped fields", { id: "AUT-003", covers: ['LxAppDriver.surfaceLayout'], app: SHOWCASE_APP_ID }, async (t) => {
+test("read the host surface plan with JavaScript-shaped fields", { id: "AUT-003", covers: ['LxAppDriver.surfaceLayout'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "AUT-003");
 
     const layout = await app.surfaceLayout();
@@ -89,7 +89,7 @@ spec("read the host surface plan with JavaScript-shaped fields", { id: "AUT-003"
     expect(serialized.includes('"active_id"')).toBeFalsy();
   });
 
-spec("wait for every page element state", { id: "AUT-004", covers: ['PageDriver.waitFor'], app: SHOWCASE_APP_ID }, async (t) => {
+test("wait for every page element state", { id: "AUT-004", covers: ['PageDriver.waitFor'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, "AUT-004");
 
     const current = await currentPageOrNull(app);

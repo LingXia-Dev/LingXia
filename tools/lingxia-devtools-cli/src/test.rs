@@ -37,21 +37,21 @@ pub use lingxia_control_protocol::dev_session::select::NO_SESSION_HINT;
 pub(crate) const TEST_LONG_ABOUT: &str = "\
 Run the project's tests/*.test.ts in the app started with `lingxia dev`.
 
-With no path, the run is lxdev.json `test.entry`, else `tests/`. Specs import
-`spec` from @lingxia/test. `LXDEV_ARG_<KEY>` and `LXDEV_SECRET_<KEY>` add
---arg / --secret-arg values.";
+With no path, the run is lxdev.json `test.entry`, else `tests/`. Test files
+import `test` from @lingxia/test. `LXDEV_ARG_<KEY>` and `LXDEV_SECRET_<KEY>`
+add --arg / --secret-arg values.";
 
 const TEST_AFTER_HELP: &str = "\
 Examples:
   lxdev test                        everything
   lxdev test tests/cart.test.ts     one file; several paths allowed
-  lxdev test tests/cart.test.ts:42  the one spec at (or enclosing) line 42
+  lxdev test tests/cart.test.ts:42  the one test at (or enclosing) line 42
   lxdev test --grep \"empty cart\"    by title (or --id ID)
   lxdev test --last-failed          what failed last time
-  lxdev test --changed              only specs the uncommitted work can affect
+  lxdev test --changed              only tests the uncommitted work can affect
   lxdev test --changed-since main   ... or everything since branching from main
   lxdev test --preset ci            arguments from lxdev.json (test.presets)
-  lxdev test list                   list specs without running them
+  lxdev test list                   list tests without running them
   lxdev test presets                the presets in lxdev.json
   lxdev test args --preset ci       the arguments a run would use
   lxdev test cancel                 release a run left by a dead client
@@ -60,11 +60,11 @@ Examples:
 In scripts and CI: `lingxia dev --background` before, `lingxia dev stop` after.
 
 Exit codes:
-  0    every selected spec passed and the run finished its own work
-  1    a spec failed or timed out, the run was incomplete, it could not run,
+  0    every selected test passed and the run finished its own work
+  1    a test failed or timed out, the run was incomplete, it could not run,
        or saving its profile, recording or reports failed (a run error).
-       A spec that never settles times out, is abandoned and the run goes
-       on; it stops (the rest not run) only when that spec left work the
+       A test that never settles times out, is abandoned and the run goes
+       on; it stops (the rest not run) only when that test left work the
        run cannot take back, or the app could not be recovered
   2    invalid arguments
   130  interrupted (Ctrl-C)";
@@ -101,34 +101,34 @@ pub struct TestOptions {
     #[command(subcommand)]
     pub command: Option<TestCommand>,
 
-    /// Test files and directories of `*.test.ts`; `FILE:LINE` runs the spec
+    /// Test files and directories of `*.test.ts`; `FILE:LINE` runs the test
     /// at that line. Default: lxdev.json `test.entry`, else `tests/`
     #[arg(value_name = "PATH[:LINE]", value_parser = crate::test_select::parse_test_path, help_heading = "Selection")]
     pub paths: Vec<crate::test_select::TestPath>,
 
-    /// Run only specs whose title or id matches this regex
+    /// Run only tests whose title or id matches this regex
     #[arg(long, value_name = "PATTERN", help_heading = "Selection")]
     pub grep: Option<String>,
 
-    /// Select one exact stable spec id
+    /// Select one exact stable test id
     #[arg(long, help_heading = "Selection")]
     id: Option<String>,
 
-    /// Run only specs whose tags match (repeatable: every --tag must hold).
-    /// `a,b` is a or b; `!a` is without a. An untagged spec fails `--tag a`
+    /// Run only tests whose tags match (repeatable: every --tag must hold).
+    /// `a,b` is a or b; `!a` is without a. An untagged test fails `--tag a`
     /// and passes `--tag '!a'`
     #[arg(long = "tag", value_name = "EXPR", value_parser = crate::test_contract::parse_tag_expr, help_heading = "Selection")]
     tags: Vec<String>,
 
-    /// Rerun the failed specs of an earlier run: its report.json or run
+    /// Rerun the failed tests of an earlier run: its report.json or run
     /// directory. Without a value, the last run (`latest` in the results
     /// root). Its --preset and --profile (with --profile-save) carry over
     /// unless given; with nothing failed, nothing runs
     #[arg(long, value_name = "REPORT", num_args = 0..=1, default_missing_value = LATEST, help_heading = "Selection")]
     last_failed: Option<PathBuf>,
 
-    /// Run only the specs the uncommitted work (staged, unstaged,
-    /// untracked) can affect: whose spec files import a changed file or
+    /// Run only the tests the uncommitted work (staged, unstaged,
+    /// untracked) can affect: whose test files import a changed file or
     /// name a page with one. A project-wide or unattributable change runs
     /// everything
     #[arg(long, help_heading = "Selection")]
@@ -144,33 +144,33 @@ pub struct TestOptions {
     )]
     pub changed_since: Option<String>,
 
-    /// Partition stable spec ids across independent sessions (INDEX/TOTAL)
+    /// Partition stable test ids across independent sessions (INDEX/TOTAL)
     #[arg(long, help_heading = "Selection")]
     shard: Option<String>,
 
-    /// Retry failed specs (requires a spec.reset hook for their file)
+    /// Retry failed tests (requires a test.reset hook for their file)
     #[arg(long, default_value_t = 0, value_parser = clap::value_parser!(u8).range(0..=10), help_heading = "Execution")]
     retries: u8,
 
-    /// Run every selected spec N times (1-100) to expose flakiness
+    /// Run every selected test N times (1-100) to expose flakiness
     #[arg(long, value_name = "N", default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=100), help_heading = "Execution")]
     repeat_each: u8,
 
-    /// Run the selected specs in a random order to expose order dependence.
+    /// Run the selected tests in a random order to expose order dependence.
     /// Prints the seed; pass `--shuffle=SEED` to reproduce an order
     #[arg(long, value_name = "SEED", num_args = 0..=1, default_missing_value = "random", value_parser = parse_shuffle, help_heading = "Execution")]
     shuffle: Option<ShuffleSeed>,
 
     /// Whole-run budget in seconds. Default: scaled to the selection,
-    /// max(300, planned specs × 30), up to the 3600s runtime ceiling
+    /// max(300, planned tests × 30), up to the 3600s runtime ceiling
     #[arg(long, value_parser = parse_timeout_secs, help_heading = "Execution")]
     timeout_secs: Option<u64>,
 
-    /// Fail if any spec.only is registered
+    /// Fail if any test.only is registered
     #[arg(long, help_heading = "Execution")]
     pub forbid_only: bool,
 
-    /// Allow a selection with no matching specs
+    /// Allow a selection with no matching tests
     #[arg(long, help_heading = "Execution")]
     pass_with_no_tests: bool,
 
@@ -208,12 +208,12 @@ pub struct TestOptions {
 
     /// Check Logic fetch responses against this OpenAPI 3.0/3.1 document
     /// (JSON or YAML, repeatable): a routed response that breaks it fails its
-    /// spec, a server response is a warning. Enables `toMatchSchema`
+    /// test, a server response is a warning. Enables `toMatchSchema`
     #[arg(long = "openapi", value_name = "SPEC", help_heading = "Contract")]
     openapi: Vec<PathBuf>,
 
-    /// Summarize which ids of this list (JSON or YAML) the specs' `covers`
-    /// reach, which have no spec, and which `covers` ids it lacks
+    /// Summarize which ids of this list (JSON or YAML) the tests' `covers`
+    /// reach, which have no test, and which `covers` ids it lacks
     #[arg(long, value_name = "FILE", help_heading = "Contract")]
     covers_manifest: Option<PathBuf>,
 
@@ -241,7 +241,7 @@ pub struct TestOptions {
     #[arg(long, help_heading = "Output")]
     verbose: bool,
 
-    /// Record each spec's real Logic fetch traffic into DIR/<spec id>.json,
+    /// Record each test's real Logic fetch traffic into DIR/<test id>.json,
     /// a scenario file `t.scenario.use()` and `lxdev mock use`
     /// can replay. Credentials and secret values are redacted
     #[arg(long, value_name = "DIR", help_heading = "Output")]
@@ -251,7 +251,7 @@ pub struct TestOptions {
 /// `lxdev test <subcommand>`.
 #[derive(clap::Subcommand)]
 pub enum TestCommand {
-    /// List the selected specs (file:line, id, title, tags) without running
+    /// List the selected tests (file:line, id, title, tags) without running
     /// them. Without a session, read them from the source
     List(Box<ListOptions>),
     /// List the presets in lxdev.json
@@ -268,42 +268,42 @@ pub enum TestCommand {
 #[derive(Args)]
 #[command(args_override_self = true)]
 pub struct ListOptions {
-    /// Test files and directories of `*.test.ts`; `FILE:LINE` lists the spec
+    /// Test files and directories of `*.test.ts`; `FILE:LINE` lists the test
     /// at that line. Default: lxdev.json `test.entry`, else `tests/`
     #[arg(value_name = "PATH[:LINE]", value_parser = crate::test_select::parse_test_path)]
     pub paths: Vec<crate::test_select::TestPath>,
 
-    /// List only specs whose title or id matches this regex
+    /// List only tests whose title or id matches this regex
     #[arg(long, value_name = "PATTERN")]
     pub grep: Option<String>,
 
-    /// Select one exact stable spec id
+    /// Select one exact stable test id
     #[arg(long)]
     pub id: Option<String>,
 
-    /// List only specs whose tags match (repeatable: every --tag must hold).
+    /// List only tests whose tags match (repeatable: every --tag must hold).
     /// `a,b` is a or b; `!a` is without a
     #[arg(long = "tag", value_name = "EXPR", value_parser = crate::test_contract::parse_tag_expr)]
     pub tags: Vec<String>,
 
-    /// The failed specs of an earlier run: its report.json or run directory.
+    /// The failed tests of an earlier run: its report.json or run directory.
     /// Without a value, the last run
     #[arg(long, value_name = "REPORT", num_args = 0..=1, default_missing_value = LATEST)]
     pub last_failed: Option<PathBuf>,
 
-    /// Only the specs the uncommitted work can affect
+    /// Only the tests the uncommitted work can affect
     #[arg(long)]
     pub changed: bool,
 
-    /// Only the specs the changes since branching from REF can affect
+    /// Only the tests the changes since branching from REF can affect
     #[arg(long, value_name = "REF", conflicts_with = "changed")]
     pub changed_since: Option<String>,
 
-    /// Partition stable spec ids across independent sessions (INDEX/TOTAL)
+    /// Partition stable test ids across independent sessions (INDEX/TOTAL)
     #[arg(long)]
     pub shard: Option<String>,
 
-    /// Fail if any spec.only is registered
+    /// Fail if any test.only is registered
     #[arg(long)]
     pub forbid_only: bool,
 
@@ -327,7 +327,7 @@ pub struct ListOptions {
     #[arg(long, value_name = "NAME")]
     pub preset: Option<String>,
 
-    /// Read the specs from the source without asking a session (computed
+    /// Read the tests from the source without asking a session (computed
     /// values marked `~`). The default when no session is running
     #[arg(long, conflicts_with = "cancel_active")]
     pub offline: bool,
@@ -400,7 +400,7 @@ pub struct ReportOptions {
     #[arg(long, value_name = "DIR")]
     pub output_root: Option<PathBuf>,
 
-    /// Only the failed specs
+    /// Only the failed tests
     #[arg(long)]
     pub failures: bool,
 
@@ -477,7 +477,7 @@ impl TestOptions {
 /// only naming the range: a suite too big for one budget is what `--shard`
 /// is for.
 const MAX_TIMEOUT_SECS: u64 = 3600;
-/// The default run budget: this floor, or this much per planned spec
+/// The default run budget: this floor, or this much per planned test
 /// execution when that is more. Only the runtime knows the selection, so it
 /// applies the scaling; the host deadline is then the runtime ceiling.
 const DEFAULT_MIN_BUDGET_SECS: u64 = 300;
@@ -709,7 +709,7 @@ fn execute_inner(info: &SessionInfo, options: TestOptions, selection: Selection)
         let budget = match options.timeout_secs {
             Some(secs) => format!("timeout {secs}s"),
             None => format!(
-                "budget max({DEFAULT_MIN_BUDGET_SECS}s, {DEFAULT_BUDGET_PER_SPEC_SECS}s per spec)"
+                "budget max({DEFAULT_MIN_BUDGET_SECS}s, {DEFAULT_BUDGET_PER_SPEC_SECS}s per test)"
             ),
         };
         eprintln!(
@@ -978,10 +978,10 @@ fn write_minimal_report(run: &FinishedRun, outcome: &Outcome, write: WriteFile) 
         .with_context(|| format!("failed to write {}", path.display()))
 }
 
-/// How long a `lxdev test list` run may take: it only loads the specs.
+/// How long a `lxdev test list` run may take: it only loads the tests.
 const LIST_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// `lxdev test list`: the runtime loads the specs and selects them as for
+/// `lxdev test list`: the runtime loads the tests and selects them as for
 /// a run, then returns the selection without running it. No results are
 /// written and `latest` stays.
 fn list(info: &SessionInfo, options: &TestOptions, selection: &Selection) -> Result<()> {
@@ -1068,7 +1068,7 @@ fn list(info: &SessionInfo, options: &TestOptions, selection: &Selection) -> Res
         }
         if Instant::now() >= deadline {
             bail!(
-                "listing the specs took longer than {}s",
+                "listing the tests took longer than {}s",
                 LIST_TIMEOUT.as_secs()
             );
         }
@@ -1123,16 +1123,16 @@ fn list(info: &SessionInfo, options: &TestOptions, selection: &Selection) -> Res
     }
     print!("{}", crate::test_select::format_listing(&specs));
     match specs.len() {
-        0 => eprintln!("{} no specs match this selection", "test".cyan()),
-        1 => eprintln!("{} 1 spec", "test".cyan()),
-        n => eprintln!("{} {n} specs", "test".cyan()),
+        0 => eprintln!("{} no tests match this selection", "test".cyan()),
+        1 => eprintln!("{} 1 test", "test".cyan()),
+        n => eprintln!("{} {n} tests", "test".cyan()),
     }
     Ok(())
 }
 
 /// `lxdev test list` with no session running: bundle the files (which
-/// runs the bundle-time checks), then list the spec calls as the source
-/// states them. Says so, because a computed title, id or tag, or a spec
+/// runs the bundle-time checks), then list the test calls as the source
+/// states them. Says so, because a computed title, id or tag, or a test
 /// registered in a loop, is only known to a run.
 pub fn list_offline(options: &TestOptions, selection: &Selection, asked: bool) -> Result<()> {
     options.check_output()?;
@@ -1184,9 +1184,9 @@ pub fn list_offline(options: &TestOptions, selection: &Selection, asked: bool) -
         .collect();
     print!("{}", crate::test_select::format_listing(&rows));
     let count = match specs.len() {
-        0 => "no specs match this selection".to_string(),
-        1 => "1 spec".to_string(),
-        n => format!("{n} specs"),
+        0 => "no tests match this selection".to_string(),
+        1 => "1 test".to_string(),
+        n => format!("{n} tests"),
     };
     eprintln!(
         "{} {count}, listed offline from the source{}",
@@ -1282,7 +1282,7 @@ const WATCH_LEASE_TTL: Duration = Duration::from_secs(300);
 
 impl WatchPause {
     /// A session that cannot pause its watcher fails the run: a save during
-    /// it would rebuild and reload the app under a spec.
+    /// it would rebuild and reload the app under a test.
     fn acquire(ws_url: &str) -> Result<Self> {
         let lease = format!(
             "lxdev-test-{}-{}",
@@ -1374,7 +1374,7 @@ pub fn nothing_to_rerun(options: &TestOptions) -> Result<bool> {
         println!("{envelope}");
     } else {
         eprintln!(
-            "{} No failed specs in {}; nothing to rerun",
+            "{} No failed tests in {}; nothing to rerun",
             "test".cyan(),
             run_dir.display()
         );
@@ -1383,7 +1383,7 @@ pub fn nothing_to_rerun(options: &TestOptions) -> Result<bool> {
 }
 
 /// `--changed` / `--changed-since`: narrow the selection and say why.
-/// `true` when no spec is affected, which is said instead and starts
+/// `true` when no test is affected, which is said instead and starts
 /// nothing.
 pub fn nothing_changed(
     options: &TestOptions,
@@ -1424,7 +1424,7 @@ pub fn nothing_changed(
             crate::test_changed::describe(&found, cwd)
         );
         if empty {
-            eprintln!("{} No spec is affected; nothing to run", "test".cyan());
+            eprintln!("{} No test is affected; nothing to run", "test".cyan());
         }
     }
     Ok(empty)
@@ -1454,7 +1454,7 @@ pub(crate) fn resolve_report_path(path: &Path, results_root: &Path) -> Result<Pa
     Ok(report)
 }
 
-/// The ids of the specs that failed in `report`.
+/// The ids of the tests that failed in `report`.
 pub(crate) fn failed_ids(report: &Path) -> Result<Vec<String>> {
     let previous: serde_json::Value = serde_json::from_slice(
         &std::fs::read(report).with_context(|| format!("cannot read {}", report.display()))?,
@@ -1508,7 +1508,7 @@ fn read_latest(root: &Path) -> Option<PathBuf> {
     path.is_dir().then_some(path)
 }
 
-/// lxdev's run controls, sent apart from the spec's args so a user `--arg`
+/// lxdev's run controls, sent apart from the test's args so a user `--arg`
 /// can never steer the run.
 fn run_control(
     options: &TestOptions,
@@ -2003,7 +2003,7 @@ struct Outcome {
     artifacts: Vec<(String, PathBuf, usize)>,
     partial: bool,
     streamed: Vec<StreamedCase>,
-    /// Failures of the run itself: why it stopped before its remaining specs,
+    /// Failures of the run itself: why it stopped before its remaining tests,
     /// or work after its cases (saving the profile, the recorded network, the
     /// reports). Every report and the exit code carry them; each case keeps
     /// its verdict.
@@ -2859,9 +2859,9 @@ impl Rerun {
         format!("{} {}{}", self.prefix, self.paths, self.flags)
     }
 
-    /// One failed case of `cases` (report.json's): `FILE:LINE` when the spec
+    /// One failed case of `cases` (report.json's): `FILE:LINE` when the test
     /// has no id of its own, its file was one the run was given, and no
-    /// other spec was registered on that line; `--id` otherwise.
+    /// other test was registered on that line; `--id` otherwise.
     fn case(&self, case: &serde_json::Value, cases: &[serde_json::Value]) -> Option<String> {
         let id = case["id"].as_str()?;
         let by_line = (|| {
@@ -2896,7 +2896,7 @@ impl Rerun {
     }
 }
 
-/// Whether `id` is the one `@lingxia/test` makes up for a spec without an
+/// Whether `id` is the one `@lingxia/test` makes up for a test without an
 /// `id` option: its title's slug, or `<file stem>-<n>` for a title that has
 /// none.
 fn generated_id(id: &str, title: &str, file: &str) -> bool {
@@ -2964,7 +2964,7 @@ pub(crate) fn rerun_with_id(base: &str, id: &str) -> String {
 }
 
 /// Keep the rerun commands in report.json — `meta.rerun` for the selection,
-/// `meta.reruns` by failed spec id — so `lxdev test report` can print Rerun
+/// `meta.reruns` by failed test id — so `lxdev test report` can print Rerun
 /// lines later, and the settings `--last-failed` carries over
 /// (`meta.run_settings`). Returns `meta.reruns`.
 fn record_rerun(
@@ -3007,8 +3007,8 @@ fn record_rerun(
 /// The report is the deliverable, so name it last and name it absolutely —
 /// a run-scoped directory is otherwise hard to find in scrollback.
 /// "budget exhausted after N/M", when the run budget ended the run early:
-/// the runtime stopped between specs (its report says so), or the host
-/// deadline cut a spec off (only the streamed cases say how far it got).
+/// the runtime stopped between tests (its report says so), or the host
+/// deadline cut a test off (only the streamed cases say how far it got).
 fn budget_exhaustion(outcome: &Outcome) -> Option<String> {
     const HINT: &str = "raise --timeout-secs, or split the suite with --shard INDEX/TOTAL";
     let budget = outcome
@@ -3023,7 +3023,7 @@ fn budget_exhaustion(outcome: &Outcome) -> Option<String> {
         let planned = budget.get("planned").and_then(|v| v.as_u64()).unwrap_or(0);
         let secs = budget.get("ms").and_then(|v| v.as_u64()).unwrap_or(0) / 1000;
         return Some(format!(
-            "run budget ({secs}s) exhausted after {after}/{planned} specs; the rest were not run — {HINT}"
+            "run budget ({secs}s) exhausted after {after}/{planned} tests; the rest were not run — {HINT}"
         ));
     }
     if outcome.state != TestRunState::TimedOut || outcome.streamed.is_empty() {
@@ -3035,7 +3035,7 @@ fn budget_exhaustion(outcome: &Outcome) -> Option<String> {
         .filter(|case| case.status.is_some())
         .count();
     Some(format!(
-        "run budget exhausted after {finished}/{} specs — {HINT}",
+        "run budget exhausted after {finished}/{} tests — {HINT}",
         outcome.streamed.len()
     ))
 }
@@ -3562,7 +3562,7 @@ mod tests {
             lingxia_control_protocol::dev_session::select::SelectError::NoSessions
         )));
         assert!(looks_unreachable(&anyhow!("WebSocket handshake failed")));
-        assert!(!looks_unreachable(&anyhow!("duplicate spec id")));
+        assert!(!looks_unreachable(&anyhow!("duplicate test id")));
     }
 
     #[test]
@@ -3871,7 +3871,7 @@ fn run_errors_html(errors: &[String]) -> String {
 }
 
 /// `xfail` is `<skipped type="xfail">` (pytest's form): the run passes, but a
-/// declared-broken spec must not count as a pass to a JUnit consumer.
+/// declared-broken test must not count as a pass to a JUnit consumer.
 fn junit_skipped(case: &serde_json::Value) -> bool {
     matches!(case["status"].as_str(), Some("skipped" | "xfail"))
 }
@@ -3887,7 +3887,7 @@ fn render_final_junit(
     let cases = report["cases"].as_array().map(Vec::as_slice).unwrap_or(&[]);
     let mut groups: Vec<(&str, Vec<&serde_json::Value>)> = Vec::new();
     for case in cases {
-        let suite = case["suite"].as_str().unwrap_or("specs");
+        let suite = case["suite"].as_str().unwrap_or("tests");
         if let Some((_, items)) = groups.iter_mut().find(|(name, _)| *name == suite) {
             items.push(case);
         } else {
@@ -3959,7 +3959,7 @@ fn render_final_junit(
                     escape_markup(
                         case["reason"]
                             .as_str()
-                            .unwrap_or("spec.fail: failed as declared")
+                            .unwrap_or("test.fail: failed as declared")
                     )
                 ));
             } else if status == "skipped" {
@@ -4157,10 +4157,10 @@ mod recovery_tests {
             "{xml}"
         );
         assert!(
-            xml.contains("<skipped type=\"xfail\" message=\"spec.fail: failed as declared\"/>"),
+            xml.contains("<skipped type=\"xfail\" message=\"test.fail: failed as declared\"/>"),
             "{xml}"
         );
-        assert!(!xml.contains("<system-out>spec.fail"), "{xml}");
+        assert!(!xml.contains("<system-out>test.fail"), "{xml}");
         assert!(xml.contains("<testsuites name=\"@lingxia/test\" tests=\"3\" failures=\"0\" errors=\"0\" skipped=\"2\""), "{xml}");
         assert!(
             xml.contains("tests=\"3\" failures=\"0\" errors=\"0\" skipped=\"2\" time"),
@@ -5089,7 +5089,7 @@ mod lifecycle_tests {
             run_errors: Vec::new(),
         };
         let line = budget_exhaustion(&cut).unwrap();
-        assert!(line.contains("exhausted after 2/4 specs"), "{line}");
+        assert!(line.contains("exhausted after 2/4 tests"), "{line}");
         let passed = Outcome {
             state: TestRunState::Passed,
             ..cut

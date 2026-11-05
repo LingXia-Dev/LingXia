@@ -1,4 +1,4 @@
-import { spec, expect } from '@lingxia/test'
+import { test, expect } from '@lingxia/test'
 
 // Specs run in the target App/Runner, separate from Logic and WebViews.
 // `start` relaunches the app on a page first. Drive it through t.app.view
@@ -8,7 +8,7 @@ import { spec, expect } from '@lingxia/test'
 // lxdev test tests/pages/home.test.ts
 // open test-results/<run>/report.html
 
-spec('home greets by name', { start: { page: 'home' } }, async (t) => {
+test('home greets by name', { start: { page: 'home' } }, async (t) => {
   await t.step('type a name and tap greet', async () => {
     const view = t.app.view
     await view.testId('home-name').fill('Ada')

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
-import { spec } from "../dist/index.js";
+import { test as lxTest } from "../dist/index.js";
 import { rawAutomation, reset, run } from "../dist/runner.js";
 
 afterEach(() => {
@@ -63,13 +63,13 @@ test("t.app.clock is traced and uninstalled when the spec ends", async () => {
   let set;
   let ran;
 
-  spec("polls", async (t) => {
+  lxTest("polls", async (t) => {
     installed = await t.app.clock.install({ now: new Date("2030-01-01T00:00:00Z") });
     ticked = await t.app.clock.tick(3_000);
     set = await t.app.clock.setSystemTime("2031-01-01T00:00:00Z");
     ran = await t.app.clock.runAll({ maxTimers: 5 });
   });
-  spec("next", async () => {});
+  lxTest("next", async () => {});
 
   const report = await run();
   assert.equal(report.failed, 0, JSON.stringify(report.cases));
@@ -98,11 +98,11 @@ test("dropping pending test timers relaunches the next spec", async () => {
   const clock = fakeClock(world);
   const { events } = installFakeHost(world);
 
-  spec("leaves a poll pending", async (t) => {
+  lxTest("leaves a poll pending", async (t) => {
     await t.app.clock.install();
     clock.pending = 1;
   });
-  spec("starts clean", async () => {});
+  lxTest("starts clean", async () => {});
 
   const report = await run();
   assert.equal(report.failed, 0, JSON.stringify(report.cases));
@@ -119,7 +119,7 @@ test("a clock the spec installed outside t.app.clock is removed with a warning",
   const clock = fakeClock(world);
   const { events } = installFakeHost(world, { attempts: true });
 
-  spec("installs through the raw driver", async () => {
+  lxTest("installs through the raw driver", async () => {
     await rawAutomation().lxapp().clock.install();
   });
 
@@ -128,7 +128,7 @@ test("a clock the spec installed outside t.app.clock is removed with a warning",
   assert.deepEqual(clock.calls.map(([name]) => name), ["install", "uninstall"]);
   const notes = events.filter((event) => event.type === "diagnostic" && event.phase === "clock");
   assert.equal(notes.length, 1);
-  assert.match(notes[0].message, /^"installs through the raw driver" left 1 test clock installed outside t\.app\.clock; the spec's end removed it\.$/);
+  assert.match(notes[0].message, /^"installs through the raw driver" left 1 test clock installed outside t\.app\.clock; the test's end removed it\.$/);
   assert.equal(notes[0].level, undefined, "a warning");
 });
 
@@ -138,7 +138,7 @@ test("uninstall resolves nothing and notes the timers it dropped", async () => {
   const { events } = installFakeHost(world);
   let result = "not called";
 
-  spec("drops two", async (t) => {
+  lxTest("drops two", async (t) => {
     await t.app.clock.install();
     clock.pending = 2;
     result = await t.app.clock.uninstall();
@@ -156,7 +156,7 @@ test("clock driver failures keep their codes", async () => {
   fakeClock(world);
   installFakeHost(world);
 
-  spec("twice", async (t) => {
+  lxTest("twice", async (t) => {
     await t.reject(() => t.app.clock.tick(10), { code: "E_CLOCK_NOT_INSTALLED" });
     await t.app.clock.install();
     await t.reject(() => t.app.clock.install(), { code: "E_CLOCK_INSTALLED" });

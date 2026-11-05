@@ -1,5 +1,5 @@
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import type { PageContract } from '@lingxia/types/page';
 import type { Message } from '../../pages/stream/index.js';
 import { bindFixture } from '../helpers/poll.js';
@@ -9,7 +9,7 @@ import {
   waitForElementText,
 } from '../helpers/page.js';
 
-spec('streams a complete response from real page input', { app: SHOWCASE_APP_ID }, async (t) => {
+test('streams a complete response from real page input', { app: SHOWCASE_APP_ID }, async (t) => {
   const app = t.app;
   await app.nav.relaunch({ page: 'stream' });
   const stream = (await app.page({ name: 'stream' }, { timeout: 30_000 })).view;
@@ -46,7 +46,7 @@ spec('streams a complete response from real page input', { app: SHOWCASE_APP_ID 
   expect(response.trim().length).toBeGreaterThan(10);
 });
 
-spec('cancel an active response, finish Logic cleanup, and send again', {
+test('cancel an active response, finish Logic cleanup, and send again', {
   id: 'STREAM-CANCEL-001',
   app: SHOWCASE_APP_ID,
   covers: ['lx.navigateTo'],

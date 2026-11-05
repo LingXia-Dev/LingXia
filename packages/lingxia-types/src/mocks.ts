@@ -7,7 +7,7 @@
  * ```ts
  * import type { Mocks } from '@lingxia/types/mocks';
  *
- * let signedIn = true; // module state: fresh on save, reset, restart and each spec
+ * let signedIn = true; // module state: fresh on save, reset, restart and each test
  *
  * export default {
  *   'GET **\/devices': () => (signedIn ? { json: DEVICES } : { status: 401 }),

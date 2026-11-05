@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import {
   currentPageOrNull,
@@ -21,7 +21,7 @@ type PortStates = Record<string, PortState | undefined>;
 
 const MESSAGE_INPUT = 'input[placeholder="Message to parent page"]';
 
-spec('exchange messages over the port navigateTo returns', {
+test('exchange messages over the port navigateTo returns', {
   id: 'NAV-PORT-001',
   covers: ['lx.navigateTo', 'PageMessagePort.onMessage', 'PageMessagePort.postMessage'],
   app: SHOWCASE_APP_ID,

@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { bindFixture, type Caught } from '../helpers/poll.js';
 
@@ -9,12 +9,12 @@ import { bindFixture, type Caught } from '../helpers/poll.js';
  * vanishing from the report as if transfer were covered.
  */
 const httpBase = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {}).httpBase;
-spec.configure({ skip: httpBase ? undefined : 'needs --arg httpBase' });
+test.configure({ skip: httpBase ? undefined : 'needs --arg httpBase' });
 const pending = {
   reason: 'needs the HTTP fixture: node tests/harness/http-fixture.mjs, then --arg httpBase=<url>',
 };
 
-spec('download a body and read the bytes back out of the sandbox', {
+test('download a body and read the bytes back out of the sandbox', {
   id: 'TRANSFER-DOWNLOAD-001',
   covers: ['lx.downloadFile', 'DownloadTask.result'],
   app: SHOWCASE_APP_ID,
@@ -46,7 +46,7 @@ spec('download a body and read the bytes back out of the sandbox', {
   expect(result.managed).toBeTruthy();
 });
 
-spec('abort an in-flight download and reject with E_ABORT', {
+test('abort an in-flight download and reject with E_ABORT', {
   id: 'TRANSFER-ABORT-001',
   covers: ['DownloadTask.cancel'],
   app: SHOWCASE_APP_ID,
@@ -72,7 +72,7 @@ spec('abort an in-flight download and reject with E_ABORT', {
   expect(outcome.code).toBe('E_ABORT');
 });
 
-spec('stream monotonic download progress across pause and resume', {
+test('stream monotonic download progress across pause and resume', {
   id: 'TRANSFER-PROGRESS-001',
   covers: ['DownloadTask.progress', 'DownloadTask.pause', 'DownloadTask.resume'],
   app: SHOWCASE_APP_ID,
@@ -161,7 +161,7 @@ spec('stream monotonic download progress across pause and resume', {
   expect(result.waitedSize).toBe(1_200_000);
 });
 
-spec('stop download iteration without canceling the transfer promise', {
+test('stop download iteration without canceling the transfer promise', {
   id: 'TRANSFER-RETURN-001',
   covers: ['DownloadTask.progress', 'DownloadTask.progress', 'DownloadTask.result'],
   app: SHOWCASE_APP_ID,
@@ -213,7 +213,7 @@ spec('stop download iteration without canceling the transfer promise', {
   expect(result.finallyCount).toBe(1);
 });
 
-spec('cancel a download through its promise helpers', {
+test('cancel a download through its promise helpers', {
   id: 'TRANSFER-CANCEL-001',
   covers: ['DownloadTask.cancel', 'DownloadTask.result', 'DownloadTask.result'],
   app: SHOWCASE_APP_ID,
@@ -244,7 +244,7 @@ spec('cancel a download through its promise helpers', {
   expect(result.finallyCount).toBe(1);
 });
 
-spec('report the server status a failed download saw', {
+test('report the server status a failed download saw', {
   id: 'TRANSFER-STATUS-001',
   covers: ['lx.downloadFile'],
   app: SHOWCASE_APP_ID,
@@ -274,7 +274,7 @@ spec('report the server status a failed download saw', {
   }
 });
 
-spec('upload a managed file as multipart and read the server echo', {
+test('upload a managed file as multipart and read the server echo', {
   id: 'TRANSFER-UPLOAD-001',
   covers: ['lx.uploadFile', 'UploadTask.result', 'UploadTask.result'],
   app: SHOWCASE_APP_ID,
@@ -305,7 +305,7 @@ spec('upload a managed file as multipart and read the server echo', {
   expect(result.echo.headerEcho).toBe('echo');
 });
 
-spec('keep the multipart envelope intact whatever the caller heads', {
+test('keep the multipart envelope intact whatever the caller heads', {
   id: 'TRANSFER-UPLOAD-002',
   covers: ['lx.uploadFile'],
   app: SHOWCASE_APP_ID,
@@ -341,7 +341,7 @@ spec('keep the multipart envelope intact whatever the caller heads', {
   expect(result.received).toBeGreaterThan(512);
 });
 
-spec('stream upload progress that ends on a completed event', {
+test('stream upload progress that ends on a completed event', {
   id: 'TRANSFER-UPLOAD-PROGRESS-001',
   covers: ['lx.uploadFile', 'UploadTask.progress'],
   app: SHOWCASE_APP_ID,
@@ -392,7 +392,7 @@ spec('stream upload progress that ends on a completed event', {
   expect(result.multipart[0].total).toBeGreaterThan(result.size);
 });
 
-spec('stop upload iteration and observe rejected promise helpers', {
+test('stop upload iteration and observe rejected promise helpers', {
   id: 'TRANSFER-UPLOAD-HELPERS-001',
   covers: ['UploadTask.progress', 'UploadTask.result', 'UploadTask.result'],
   app: SHOWCASE_APP_ID,
@@ -456,7 +456,7 @@ spec('stop upload iteration and observe rejected promise helpers', {
   expect(result.rejectFinallyCount).toBe(1);
 });
 
-spec('upload a raw body with PUT for presigned endpoints', {
+test('upload a raw body with PUT for presigned endpoints', {
   id: 'TRANSFER-UPLOAD-RAW-001',
   covers: ['lx.uploadFile'],
   app: SHOWCASE_APP_ID,
@@ -504,7 +504,7 @@ spec('upload a raw body with PUT for presigned endpoints', {
   expect(result.overriddenContentType).toBe('image/avif');
 });
 
-spec('reject multipart-only options when the body is raw', {
+test('reject multipart-only options when the body is raw', {
   id: 'TRANSFER-UPLOAD-RAW-002',
   covers: ['lx.uploadFile'],
   app: SHOWCASE_APP_ID,
@@ -554,7 +554,7 @@ spec('reject multipart-only options when the body is raw', {
   expect(String(rejectedName.code)).toBe('E_INVALID_ARG');
 });
 
-spec('report the refusing status when a raw upload is rejected mid-body', {
+test('report the refusing status when a raw upload is rejected mid-body', {
   id: 'TRANSFER-UPLOAD-RAW-003',
   covers: ['lx.uploadFile'],
   app: SHOWCASE_APP_ID,
@@ -585,7 +585,7 @@ spec('report the refusing status when a raw upload is rejected mid-body', {
   expect(String((outcome.data as { detail?: string } | undefined)?.detail)).toContain('403');
 });
 
-spec('accept PATCH and an empty file as a raw body', {
+test('accept PATCH and an empty file as a raw body', {
   id: 'TRANSFER-UPLOAD-RAW-004',
   covers: ['lx.uploadFile'],
   app: SHOWCASE_APP_ID,
@@ -614,7 +614,7 @@ spec('accept PATCH and an empty file as a raw body', {
   expect(result.echo.contentType).toBe('application/octet-stream');
 });
 
-spec('deny an upload to a host the lxapp never trusted', {
+test('deny an upload to a host the lxapp never trusted', {
   id: 'TRANSFER-UPLOAD-AUTH-001',
   covers: ['lx.uploadFile'],
   app: SHOWCASE_APP_ID,
@@ -644,7 +644,7 @@ spec('deny an upload to a host the lxapp never trusted', {
   expect(String(outcome.code)).toBe('E_PERMISSION_DENIED');
 });
 
-spec('cancel an upload and reject rather than resolve', {
+test('cancel an upload and reject rather than resolve', {
   id: 'TRANSFER-UPLOAD-CANCEL-001',
   covers: ['UploadTask.cancel'],
   app: SHOWCASE_APP_ID,

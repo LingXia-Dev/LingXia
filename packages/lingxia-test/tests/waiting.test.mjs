@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
-import { spec, expect } from "../dist/index.js";
-import { reset, run, DEFAULT_ACTION_TIMEOUT_MS, DEFAULT_SPEC_TIMEOUT_MS } from "../dist/runner.js";
+import { test as lxTest, expect } from "../dist/index.js";
+import { reset, run, DEFAULT_ACTION_TIMEOUT_MS, DEFAULT_TEST_TIMEOUT_MS } from "../dist/runner.js";
 
 afterEach(() => {
   reset();
@@ -39,7 +39,7 @@ test("locator click miss names nothing, hidden, and N matches", async () => {
     const world = createWorld();
     setup(world);
     const { attachments } = installFakeHost(world);
-    spec(`miss ${kind}`, async (t) => {
+    lxTest(`miss ${kind}`, async (t) => {
       await t.app.view.testId("home-greet").click({ timeout: 80 });
     });
     await globalThis.__LINGXIA_TEST__.run();
@@ -55,7 +55,7 @@ test("a retrying expect reports matcher and last actual, not expected true got f
   world.add({ testId: "home-greeting", visible: true, text: "hi" });
   const { attachments } = installFakeHost(world);
 
-  spec("greeting text", async (t) => {
+  lxTest("greeting text", async (t) => {
     await expect(t.app.view.testId("home-greeting")).toHaveText("hello", { timeout: 80 });
   });
 
@@ -70,11 +70,11 @@ test("a retrying expect reports matcher and last actual, not expected true got f
 
 test("default 5s assertion budget fails faster than the 30s spec budget", async () => {
   assert.equal(DEFAULT_ACTION_TIMEOUT_MS, 5_000);
-  assert.equal(DEFAULT_SPEC_TIMEOUT_MS, 30_000);
+  assert.equal(DEFAULT_TEST_TIMEOUT_MS, 30_000);
   const world = createWorld();
   const { attachments } = installFakeHost(world);
 
-  spec("missing greeting", { timeout: DEFAULT_SPEC_TIMEOUT_MS }, async (t) => {
+  lxTest("missing greeting", { timeout: DEFAULT_TEST_TIMEOUT_MS }, async (t) => {
     await expect(t.app.view.testId("home-greeting")).toBeVisible();
   });
 
@@ -94,7 +94,7 @@ test("timeout aborts later fixture operations", async () => {
   const ops = [];
   let zombie;
 
-  spec("hangs then tries more work", { timeout: 60, forensics: false }, async (t) => {
+  lxTest("hangs then tries more work", { timeout: 60, forensics: false }, async (t) => {
     zombie = (async () => {
       await new Promise((resolve) => setTimeout(resolve, 120));
       ops.push("after-sleep");
@@ -128,7 +128,7 @@ test("locator re-resolves across mutations", async () => {
   const { attachments } = installFakeHost(world);
   const node = world.add({ testId: "home-greeting", visible: false, text: "" });
 
-  spec("appears later", async (t) => {
+  lxTest("appears later", async (t) => {
     setTimeout(() => {
       node.visible = true;
       node.text = "Hello, Ada!";
@@ -151,13 +151,13 @@ test("an eval without its own timeout gets 10 s, clamped to the spec budget", as
     return inner(options);
   };
 
-  spec("a roomy budget", { timeout: 12_000 }, async (t) => {
+  lxTest("a roomy budget", { timeout: 12_000 }, async (t) => {
     await t.app.logic.eval(() => 1);
   });
-  spec("a long budget", { timeout: 600_000 }, async (t) => {
+  lxTest("a long budget", { timeout: 600_000 }, async (t) => {
     await t.app.logic.eval(() => 1);
   });
-  spec("a short budget", { timeout: 4_000 }, async (t) => {
+  lxTest("a short budget", { timeout: 4_000 }, async (t) => {
     await t.app.logic.eval(() => 1);
   });
   const protocol = await globalThis.__LINGXIA_TEST__.run();
@@ -179,7 +179,7 @@ test("wrapping the page driver never writes back onto the driver", async () => {
   };
   const wrappedOriginal = driver.page.eval;
 
-  spec("uses the page driver", { timeout: 9_000 }, async (t) => {
+  lxTest("uses the page driver", { timeout: 9_000 }, async (t) => {
     // Recursion here would blow the stack instead of failing an assertion.
     const value = await t.app.view.eval(() => 1);
     assert.equal(value, "ok");
@@ -201,7 +201,7 @@ test("visible means rendered: an out-of-viewport match is visible, not in the vi
   world.add({ testId: "collapsed", visible: false, text: "" });
   const { attachments } = installFakeHost(world);
 
-  spec("below the fold", async (t) => {
+  lxTest("below the fold", async (t) => {
     const confirm = t.app.view.testId("sheet-confirm");
     await confirm.waitFor({ state: "attached", timeout: 80 });
     await confirm.waitFor({ state: "visible", timeout: 80 });
@@ -225,7 +225,7 @@ test("toBeInViewport passes once the match scrolls into the viewport", async () 
   const row = world.add({ testId: "row", inViewport: false, text: "Row" });
   const { events } = installFakeHost(world);
 
-  spec("scrolls in", async (t) => {
+  lxTest("scrolls in", async (t) => {
     setTimeout(() => { row.inViewport = true; }, 40);
     await expect(t.app.view.testId("row")).toBeInViewport({ timeout: 1_000 });
   });
@@ -241,7 +241,7 @@ test("click({ force }) skips the viewport and hit-test waits but not enabled", a
   const field = world.add({ testId: "sheet-note", inViewport: false, value: "" });
   const { attachments } = installFakeHost(world);
 
-  spec("forced", async (t) => {
+  lxTest("forced", async (t) => {
     await t.reject(() => t.app.view.testId("sheet-confirm").click({ timeout: 120 }), { message: /obscured/ });
     assert.equal(confirm.clicked, undefined);
     await t.app.view.testId("sheet-confirm").click({ force: true, timeout: 500 });
@@ -265,7 +265,7 @@ test("filter, first and last narrow the matches and act on the right DOM node", 
     world.add({ css: "li", text, attributes: { "data-kind": text.split(" ")[0].toLowerCase() } }));
   const { events } = installFakeHost(world);
 
-  spec("narrowed", async (t) => {
+  lxTest("narrowed", async (t) => {
     const rows = t.app.view.css("li");
     await expect(rows).toHaveCount(4);
     await expect(rows.filter({ hasText: "BANANA" })).toHaveCount(2);
@@ -293,7 +293,7 @@ test("toHaveAttribute and toContainText failures name what was found", async () 
   world.add({ testId: "badge", text: "3 unread", attributes: { "aria-label": "Inbox" } });
   const { attachments } = installFakeHost(world);
 
-  spec("attribute miss", async (t) => {
+  lxTest("attribute miss", async (t) => {
     await expect(t.app.view.testId("badge")).toContainText("unread", { timeout: 80 });
     await expect(t.app.view.testId("badge")).toHaveAttribute("aria-label", "Outbox", { timeout: 80 });
   });
@@ -309,7 +309,7 @@ test("fixture nav waits for the landed page unless the caller picks waitUntil; i
   installFakeHost(world);
   let refused;
 
-  spec("navigates", { timeout: 10_000 }, async (t) => {
+  lxTest("navigates", { timeout: 10_000 }, async (t) => {
     await t.app.nav.to({ page: "detail" });
     await t.app.nav.to({ page: "other", waitUntil: "commit" });
     await t.app.nav.to({ page: "slow", timeout: 5_000 });
@@ -344,17 +344,17 @@ test("a driver timeout reaches the spec as E_TIMEOUT, the driver's code as its c
   };
   const seen = {};
 
-  spec("times out", async (t) => {
+  lxTest("times out", async (t) => {
     seen.nav = await t.reject(() => t.app.nav.to({ page: "slow", timeout: 50 }), { code: "E_TIMEOUT" });
     seen.eval = await t.reject(() => t.app.logic.eval({ timeout: 100 }, () => 1), { code: "E_TIMEOUT" });
   });
-  spec("runs after a relaunch", () => {});
+  lxTest("runs after a relaunch", () => {});
 
   const report = await globalThis.__LINGXIA_TEST__.run();
   assert.deepEqual(report.cases.map((c) => c.status), ["failed", "passed"], JSON.stringify(report.cases));
   assert.match(report.cases[0].error.message, /timed-out Logic eval may still run/);
   assert.ok(events.some((e) => e.type === "diagnostic" && e.phase === "recovery" &&
-    /timed-out Logic eval may still run in the app; the next spec starts from a relaunched app/.test(e.message)));
+    /timed-out Logic eval may still run in the app; the next test starts from a relaunched app/.test(e.message)));
   assert.equal(seen.nav.name, "TimeoutError");
   assert.equal(seen.nav.cause.code, "E_AUTOMATION_TIMEOUT");
   assert.deepEqual(seen.nav.data, { page: "slow", driverCode: "E_AUTOMATION_TIMEOUT" });
@@ -368,9 +368,9 @@ test("a `start` spec relaunches on that page, with its query, before beforeEach,
   const { attachments } = installFakeHost(world);
   const order = [];
 
-  spec.beforeEach(async (t) => { order.push(`beforeEach on ${(await t.app.nav.current()).name}`); });
-  spec("home", { start: { page: "home" } }, async () => {});
-  spec("detail", { start: { page: "detail", query: { id: "d1" } } }, async (t) => {
+  lxTest.beforeEach(async (t) => { order.push(`beforeEach on ${(await t.app.nav.current()).name}`); });
+  lxTest("home", { start: { page: "home" } }, async () => {});
+  lxTest("detail", { start: { page: "detail", query: { id: "d1" } } }, async (t) => {
     order.push(`body on ${(await t.app.nav.current()).name}`);
   });
 
@@ -393,7 +393,7 @@ test("a start relaunch tolerates the home page handing off, not a timeout", asyn
     const world = createWorld();
     world.failRelaunch(new Error(message));
     const { attachments } = installFakeHost(world);
-    spec("start", { start: { page: "home" } }, async () => {});
+    lxTest("start", { start: { page: "home" } }, async () => {});
     await globalThis.__LINGXIA_TEST__.run();
     const report = JSON.parse(decodeAttachment(attachments, "report.json"));
     assert.equal(report.cases[0].status, expected, message);
@@ -409,7 +409,7 @@ test("text matchers see whitespace-normalised text, as the user reads it", async
   const { attachments } = installFakeHost(world);
   const seen = [];
 
-  spec("normalised", async (t) => {
+  lxTest("normalised", async (t) => {
     const view = t.app.view;
     await expect(view.testId("band")).toHaveText("Good");
     await expect(view.testId("band")).toHaveText(/^Good$/);
@@ -447,7 +447,7 @@ test("hidden-page actions exhaust their original budget without raising a window
   const probes = hidePage(world);
   installFakeHost(world);
   const errors = [];
-  spec("bounded hidden page", { forensics: false }, async t => {
+  lxTest("bounded hidden page", { forensics: false }, async t => {
     for (const action of [
       () => t.app.view.testId("sheet").waitFor({ timeout: 80 }),
       () => t.app.view.testId("sheet").click({ timeout: 80 }),
@@ -471,19 +471,19 @@ test("a locked screen stops the run once, before the next spec, instead of faili
   globalThis.__LINGXIA_AUTOMATION_HOST__.screenLocked = () => locked;
   const ran = [];
 
-  spec("first", async (t) => {
+  lxTest("first", async (t) => {
     ran.push("first");
     await expect(t.app.view.testId("ready")).toBeVisible();
     locked = true;
   });
-  spec("second", async () => { ran.push("second"); });
-  spec("third", async () => { ran.push("third"); });
+  lxTest("second", async () => { ran.push("second"); });
+  lxTest("third", async () => { ran.push("third"); });
 
   const report = await globalThis.__LINGXIA_TEST__.run();
   assert.deepEqual(ran, ["first"]);
   const locks = events.filter((event) => event.type === "diagnostic" && event.phase === "screen_locked");
   assert.equal(locks.length, 1);
-  assert.match(locks[0].message, /^The screen is locked; unlock it — animations and sheets are paused\. Stopped after 1\/3 specs/);
+  assert.match(locks[0].message, /^The screen is locked; unlock it — animations and sheets are paused\. Stopped after 1\/3 tests/);
   assert.equal(report.partial, true);
   const saved = JSON.parse(decodeAttachment(attachments, "report.json"));
   assert.deepEqual(saved.cases.map((item) => item.status), ["passed", "skipped", "skipped"]);
@@ -496,7 +496,7 @@ test("a run that starts on a locked screen runs nothing", async () => {
   globalThis.__LINGXIA_AUTOMATION_HOST__.screenLocked = () => true;
   let ran = false;
 
-  spec("only", async () => { ran = true; });
+  lxTest("only", async () => { ran = true; });
 
   const report = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(ran, false);
@@ -510,7 +510,7 @@ test("a host that cannot tell, or throws, is never read as locked", async () => 
     installFakeHost(world);
     if (screenLocked) globalThis.__LINGXIA_AUTOMATION_HOST__.screenLocked = screenLocked;
     let ran = false;
-    spec("runs", async () => { ran = true; });
+    lxTest("runs", async () => { ran = true; });
     const report = await globalThis.__LINGXIA_TEST__.run();
     assert.equal(ran, true);
     assert.equal(report.partial, false);
@@ -524,7 +524,7 @@ test("waits that pass never probe the page's visibility", async () => {
   const probes = hidePage(world, { state: "visible", animationFrames: true });
   installFakeHost(world);
 
-  spec("happy path", { forensics: false }, async (t) => {
+  lxTest("happy path", { forensics: false }, async (t) => {
     await t.app.view.testId("ready").click();
     await t.app.view.testId("ready").waitFor();
     await expect(t.app.view.testId("ready")).toHaveText("Ready");
@@ -541,7 +541,7 @@ test("a visible page with running frames adds no hidden-page note", async () => 
   hidePage(world, { state: "visible", animationFrames: true });
   const { attachments } = installFakeHost(world);
 
-  spec("visible page", { forensics: false }, async (t) => {
+  lxTest("visible page", { forensics: false }, async (t) => {
     await expect(t.app.view.testId("sheet")).toBeVisible({ timeout: 80 });
   });
 
@@ -555,7 +555,7 @@ test("failure forensics record the page's visibility", async () => {
   hidePage(world, { state: "visible", animationFrames: false });
   const { attachments } = installFakeHost(world);
 
-  spec("frames paused", async (t) => {
+  lxTest("frames paused", async (t) => {
     await expect(t.app.view.testId("sheet")).toBeVisible({ timeout: 80 });
   });
 
@@ -584,7 +584,7 @@ test("locator reads are one-shot and traced: count, isVisible, textContent, inpu
     try { await read(); errors[name] = "resolved"; } catch (error) { errors[name] = error.message; }
   };
   const result = await (async () => {
-    spec("reads", { forensics: false }, async (t) => {
+    lxTest("reads", { forensics: false }, async (t) => {
       const view = t.app.view;
       seen.counts = [await view.testId("row").count(), await view.testId("missing").count(), await view.testId("title").count()];
       seen.visible = [await view.testId("title").isVisible(), await view.testId("folded").isVisible(), await view.testId("missing").isVisible()];
@@ -627,7 +627,7 @@ test("locator reads are one-shot and traced: count, isVisible, textContent, inpu
 test("t.app.view takes no options on testId, css or screenshot, and no page on eval or scroll", async () => {
   installFakeHost(createWorld());
   const messages = [];
-  spec("options", { forensics: false }, async (t) => {
+  lxTest("options", { forensics: false }, async (t) => {
     for (const call of [
       () => t.app.view.testId("x", { page: "other" }),
       () => t.app.view.css("#x", { index: 1 }),
@@ -653,7 +653,7 @@ test("a retrying locator assertion that times out is an AssertionError with code
   world.add({ testId: "status", text: "loading" });
   installFakeHost(world);
   let caught;
-  spec("times out", { forensics: false }, async (t) => {
+  lxTest("times out", { forensics: false }, async (t) => {
     caught = await t.reject(() => expect(t.app.view.testId("status")).toHaveText("done", { timeout: 60 }), { code: "E_TIMEOUT" });
     await expect(t.app.view.testId("status")).toHaveText("done", { timeout: 60 });
   });
@@ -674,7 +674,7 @@ test("a remote TypeError from Logic fails a retry at once; one from the page ret
   world.useLogic({ lx: {}, getCurrentPages: () => [] });
   installFakeHost(world);
   const seen = {};
-  spec("type errors", { forensics: false }, async (t) => {
+  lxTest("type errors", { forensics: false }, async (t) => {
     // In Logic a TypeError is a programming mistake: no retry.
     let logicReads = 0;
     seen.waitFor = await t.reject(() => t.waitFor(() => { logicReads += 1; return t.app.logic.eval(({ getCurrentPages }) => getCurrentPages()[0].data); },
@@ -738,7 +738,7 @@ test("a hidden-page note explains only a locator failure; a bound locator off th
     world.add({ testId: "sheet", id: "sheet", visible: false, text: "" });
     hidePage(world);
     installFakeHost(world);
-    spec(name, body);
+    lxTest(name, body);
     const report = await run();
     const failed = report.cases[0];
     assert.equal(failed.status, "failed", name);
@@ -766,7 +766,7 @@ test("app.page() binds locators, eval, screenshot and scroll to an instance; cal
   world.app.page.screenshot = (options) => { shots.push(options?.page); return screenshot(options); };
 
   let instanceId;
-  spec("bound", { forensics: false }, async (t) => {
+  lxTest("bound", { forensics: false }, async (t) => {
     await t.app.nav.to({ page: "todo" });
     const page = await t.app.page({ name: "todo" });
     instanceId = page.instanceId;
@@ -803,7 +803,7 @@ test("app.page() waits for a page to open, times out naming it, refuses an ambig
   world.add({ testId: "title", page: "detail", text: "Detail" });
   installFakeHost(world);
   const seen = {};
-  spec("binding", { forensics: false }, async (t) => {
+  lxTest("binding", { forensics: false }, async (t) => {
     // Opens later: the bind waits for it.
     setTimeout(() => { void world.app.nav.to({ page: "detail" }); }, 60);
     const started = Date.now();

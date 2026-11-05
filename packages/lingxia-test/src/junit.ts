@@ -11,7 +11,7 @@ import { PACKAGE_NAME } from "./version.js";
 export function renderJUnit(report: JsonReport): string {
   const suites = new Map<string, CaseRecord[]>();
   for (const item of report.cases) {
-    const name = item.suite ?? "specs";
+    const name = item.suite ?? "tests";
     const bucket = suites.get(name) ?? [];
     bucket.push(item);
     suites.set(name, bucket);
@@ -52,14 +52,14 @@ function renderCase(item: CaseRecord, suite: string): string {
   const verdict = graded(item);
   const inner: string[] = [];
   if (item.status === "xfail") {
-    inner.push(`      <skipped type="xfail" message="${attr(item.reason ?? "spec.fail: failed as declared")}"/>\n`);
+    inner.push(`      <skipped type="xfail" message="${attr(item.reason ?? "test.fail: failed as declared")}"/>\n`);
   } else if (verdict === "skipped") {
     inner.push(`      <skipped message="${attr(item.reason ?? "pending")}"/>\n`);
   } else if (verdict === "failure") {
     const error = item.error;
     const detail = error
       ? `${error.message}${error.stack ? `\n\n${error.stack}` : ""}`
-      : `spec finished as ${item.status}`;
+      : `test finished as ${item.status}`;
     inner.push(
       `      <failure message="${attr(firstLine(error?.message ?? item.status))}" type="${attr(error?.name ?? "Error")}">${text(detail)}</failure>\n`,
     );

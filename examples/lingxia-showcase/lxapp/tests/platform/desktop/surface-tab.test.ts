@@ -1,11 +1,11 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../../helpers/app.js';
 import { runtimePlatform } from '../../helpers/platform.js';
 import { bindFixture, eventually, type Caught } from '../../helpers/poll.js';
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const selectedGate = testArgs.gate?.toLocaleLowerCase();
-spec.configure({ skip: selectedGate ? 'a --arg gate run selects only its gate' : undefined });
+test.configure({ skip: selectedGate ? 'a --arg gate run selects only its gate' : undefined });
 
 interface OpenedTab {
   kind: string;
@@ -39,7 +39,7 @@ function fileUrl(nativeDir: string, relative: string): string {
   return `file://${encodeURI(`${absolute}/${relative}`)}`;
 }
 
-spec('open a browser tab from Logic and control it through TabSurface', {
+test('open a browser tab from Logic and control it through TabSurface', {
   id: 'DESKTOP-SURFACE-TAB-001',
   covers: [
     'lx.surface.openUrl',

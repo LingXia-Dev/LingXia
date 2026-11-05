@@ -1,5 +1,5 @@
 /** Pending backlog items that must or are worth automating, but are not at the
- *  tests/README bar yet. Bodies stay empty (`spec.skip`); modes stay off
+ *  tests/README bar yet. Bodies stay empty (`test.skip`); modes stay off
  *  `automated` in logic-api-coverage.mjs. */
 export default [
   {

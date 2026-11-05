@@ -625,7 +625,7 @@ export interface LxAppPageConfig {
  * Envelope `eval` resolves to with `captureCalls: true`.
  *
  * @internal Report plumbing for the test runner; the `@lingxia/test` fixture
- * unwraps it, and specs never see it.
+ * unwraps it, and tests never see it.
  */
 export interface LxAppEvalTrace<T = unknown> {
   __lxEval: 1;
@@ -647,7 +647,7 @@ export interface LxAppEvalOptions extends LogicLxAppEvalOptions {
    * script reached, instead of the bare value.
    *
    * @internal The test runner sets this so a report can tell a capability a
-   * spec exercised from one it merely declared. Only the evaluated script is
+   * test exercised from one it merely declared. Only the evaluated script is
    * observed — the lxapp's own concurrent work is not.
    */
   captureCalls?: boolean;
@@ -832,7 +832,7 @@ export type NetworkRouteContinue = { continue: true; patchJson?: unknown } &
 
 /**
  * Never answer: the `fetch` stays pending until the route is removed (the
- * spec ends, `unroute()`, or the run ends), then rejects like a transport
+ * test ends, `unroute()`, or the run ends), then rejects like a transport
  * failure. An `AbortSignal` passed to `fetch` still rejects it early. For
  * loading states and client-side timeouts. `times` limits which requests are
  * held, not how long.
@@ -1171,8 +1171,8 @@ export interface NetworkDriver {
   unrouteAll(): Promise<number>;
   /**
    * Run-scoped: requests any route of this automation run handled for the
-   * app, oldest first, across every spec. `t.app.network.calls()` narrows
-   * this to the current spec.
+   * app, oldest first, across every test. `t.app.network.calls()` narrows
+   * this to the current test.
    */
   requests(): Promise<NetworkRouteRequest[]>;
   /**
@@ -1328,7 +1328,7 @@ export interface ModalAnswer {
 }
 
 /**
- * A modal Logic opened while watched: drawn (`drawn: true`) until the spec
+ * A modal Logic opened while watched: drawn (`drawn: true`) until the test
  * queued a modal answer, answered from the queue after.
  */
 export interface ModalRecord {
@@ -1341,7 +1341,7 @@ export interface ModalRecord {
   /**
    * The queued answer it got, or the user's choice when drawn. `null`: a
    * drawn one still open or that failed to present, or (answering) no answer
-   * was queued, so the call rejected and the spec failed.
+   * was queued, so the call rejected and the test failed.
    */
   answer: ModalAnswer | null;
   /** Drawn for the user, not answered from the queue. */
@@ -1367,7 +1367,7 @@ export interface DialogUnwatchResult {
 }
 
 /**
- * The dialogs the selected lxapp's Logic opens while a spec of a host
+ * The dialogs the selected lxapp's Logic opens while a test of a host
  * automation run (`lxdev test`) watches it; outside one every call rejects
  * with `E_AUTOMATION`. Toasts, modals (`showModal`, `alert`, `confirm`) and
  * `showActionSheet` are recorded and drawn. A queued answer applies once;
@@ -1375,7 +1375,7 @@ export interface DialogUnwatchResult {
  * An unwatched app presents every dialog as usual.
  */
 export interface DialogDriver {
-  /** Start watching for the open spec attempt, with nothing recorded or queued. */
+  /** Start watching for the open test attempt, with nothing recorded or queued. */
   watch(): void;
   /** Stop watching; returns the queued answers no dialog used. */
   unwatch(): DialogUnwatchResult;
@@ -1447,7 +1447,7 @@ export interface LxAppDriver extends LogicLxAppDriver {
    */
   readonly clock: ClockDriver;
   /**
-   * The dialogs this lxapp's Logic opens while a spec watches it.
+   * The dialogs this lxapp's Logic opens while a test watches it.
    *
    * @remarks Reading the property always works, but every call rejects with
    * `E_AUTOMATION` outside a host test run (`lxdev test`).

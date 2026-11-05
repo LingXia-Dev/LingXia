@@ -13,7 +13,7 @@ not watched; run `lingxia dev` again.
   `test-results`, `.vite`.
 
 A test run pauses the watcher. Saves made during the run rebuild once, when
-the run ends. Keep files a spec generates outside the watched tree.
+the run ends. Keep files a test generates outside the watched tree.
 [Testing](../lxapp/testing.md).
 
 Saves under `mocks/` reload that lxapp's mocks only.

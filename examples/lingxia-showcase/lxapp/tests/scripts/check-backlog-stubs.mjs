@@ -37,8 +37,8 @@ const pendingSource = fs.readFileSync(pendingTest, "utf8");
 if (!pendingSource.includes("backlog-stubs.mjs")) {
   errors.push("backlog-pending.test.ts must import backlog-stubs.mjs");
 }
-if (!pendingSource.includes("spec.skip")) {
-  errors.push("backlog-pending.test.ts must register spec.skip stubs");
+if (!pendingSource.includes("test.skip")) {
+  errors.push("backlog-pending.test.ts must register test.skip stubs");
 }
 
 for (const entry of manifest.apis) {

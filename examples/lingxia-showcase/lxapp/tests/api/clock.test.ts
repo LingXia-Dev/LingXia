@@ -1,11 +1,11 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { bindFixture } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
 const STATUS = 'https://api.example.com/lingxia-showcase/clock/status';
 const START = Date.UTC(2030, 0, 1);
 
-spec("advance a Logic polling loop with the test clock", {
+test("advance a Logic polling loop with the test clock", {
   id: "AUT-CLOCK-001",
   covers: ['ClockDriver.install', 'ClockDriver.tick', 'ClockDriver.setSystemTime', 'ClockDriver.uninstall'],
   app: SHOWCASE_APP_ID,
@@ -61,7 +61,7 @@ spec("advance a Logic polling loop with the test clock", {
   expect(Math.abs(realNow - Date.now()) < 60_000).toBeTruthy();
 });
 
-spec("refuse a second install and calls without a clock", {
+test("refuse a second install and calls without a clock", {
   id: "AUT-CLOCK-002",
   covers: ['ClockDriver.install', 'ClockDriver.tick', 'ClockDriver.runAll', 'ClockDriver.uninstall'],
   app: SHOWCASE_APP_ID,
@@ -94,7 +94,7 @@ spec("refuse a second install and calls without a clock", {
   // Left installed on purpose: the spec's end uninstalls it.
 });
 
-spec("reject the test clock from inside app Logic", {
+test("reject the test clock from inside app Logic", {
   id: "AUT-CLOCK-003",
   covers: ['ClockDriver.install'],
   app: SHOWCASE_APP_ID,

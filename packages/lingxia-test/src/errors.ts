@@ -39,9 +39,9 @@ export const TEST_ERROR_CODES = [
   "failed",
   /** A routed response broke the run's OpenAPI contract (`lxdev test --openapi`). */
   "E_OPENAPI_CONTRACT",
-  /** A fixture call ran out of time (a wait, an action budget, an eval, a nav), or the spec did. */
+  /** A fixture call ran out of time (a wait, an action budget, an eval, a nav), or the test did. */
   "E_TIMEOUT",
-  /** `t.skip()` stopped the spec. */
+  /** `t.skip()` stopped the test. */
   "E_SKIPPED",
 ] as const satisfies readonly TestErrorCode[];
 

@@ -1,4 +1,4 @@
-import { expect, spec, type Fixture } from '@lingxia/test';
+import { expect, test, type Fixture } from '@lingxia/test';
 import type { PageContract } from '@lingxia/types/page';
 import { SHOWCASE_APP_ID } from '../../helpers/app.js';
 import { androidDevice, androidCancelLabels, androidConfirmLabels } from '../../helpers/android-device.js';
@@ -6,9 +6,9 @@ import { bindFixture } from '../../helpers/poll.js';
 import type { ProbeDocument } from '../../helpers/view.js';
 
 const args = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
-spec.configure({ skip: args.platform === 'android' ? undefined : 'Android only' });
+test.configure({ skip: args.platform === 'android' ? undefined : 'Android only' });
 
-spec('normalize cascading native picker indices before resolving the child column', {
+test('normalize cascading native picker indices before resolving the child column', {
   id: 'ANDROID-PICKER-BOUNDS-001', app: SHOWCASE_APP_ID, covers: ['lx.navigateTo'],
   requires: { args: ['androidDevice'] }, reason: 'requires Android OS input fixture',
   start: { page: 'picker' }, timeout: 60000,
@@ -59,7 +59,7 @@ async function openPicker(t: Fixture, id: string) {
   return { page, device, advanceColumn };
 }
 
-spec('choose a native picker value and render the confirmed selection', {
+test('choose a native picker value and render the confirmed selection', {
   id: 'ANDROID-PICKER-CONFIRM-001', app: SHOWCASE_APP_ID, covers: ['lx.navigateTo'],
   requires: { args: ['androidDevice'] }, reason: 'requires Android OS input fixture',
   start: { page: 'picker' }, timeout: 60000,
@@ -79,7 +79,7 @@ spec('choose a native picker value and render the confirmed selection', {
   expect((await device.nodes()).some((node) => androidConfirmLabels.includes(node.text))).toBe(false);
 });
 
-spec('cancel a native picker and reopen it with the original value', {
+test('cancel a native picker and reopen it with the original value', {
   id: 'ANDROID-PICKER-CANCEL-001', app: SHOWCASE_APP_ID, covers: ['lx.navigateTo'],
   requires: { args: ['androidDevice'] }, reason: 'requires Android OS input fixture',
   start: { page: 'picker' }, timeout: 60000,
@@ -99,7 +99,7 @@ spec('cancel a native picker and reopen it with the original value', {
   expect((await device.nodes()).some((node) => androidConfirmLabels.includes(node.text))).toBe(false);
 });
 
-spec('cascade the native picker city column and preserve the selection on reopen', {
+test('cascade the native picker city column and preserve the selection on reopen', {
   id: 'ANDROID-PICKER-CASCADE-001', app: SHOWCASE_APP_ID, covers: ['lx.navigateTo'],
   requires: { args: ['androidDevice'] }, reason: 'requires Android OS input fixture',
   start: { page: 'picker' }, timeout: 60000,
@@ -121,7 +121,7 @@ spec('cascade the native picker city column and preserve the selection on reopen
   expect((await device.nodes()).some((node) => node.text === '\u786e\u5b9a')).toBe(false);
 });
 
-spec('change both native picker columns and render the selected time', {
+test('change both native picker columns and render the selected time', {
   id: 'ANDROID-PICKER-COLUMNS-001', app: SHOWCASE_APP_ID, covers: ['lx.navigateTo'],
   requires: { args: ['androidDevice'] }, reason: 'requires Android OS input fixture',
   start: { page: 'picker' }, timeout: 60000,

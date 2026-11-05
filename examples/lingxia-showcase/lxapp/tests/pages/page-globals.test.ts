@@ -1,4 +1,4 @@
-import { expect, spec, type LogicApp, type LogicPage } from '@lingxia/test';
+import { expect, test, type LogicApp, type LogicPage } from '@lingxia/test';
 import type { PageSurface } from '@lingxia/types';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { bindFixture } from '../helpers/poll.js';
@@ -7,7 +7,7 @@ interface UiPage extends LogicPage<{ logicCounter: number; instanceTag: string; 
   surface?: PageSurface;
 }
 
-spec('keep App identity across pages and merge setData into the correct View', {
+test('keep App identity across pages and merge setData into the correct View', {
   id: 'PAGE-GLOBALS-001', app: SHOWCASE_APP_ID,
   covers: ['getApp', 'getCurrentPages', 'Page.route', 'Page.setData', 'Page.flush', 'lx.navigateTo'],
 }, async (t) => {
@@ -56,7 +56,7 @@ spec('keep App identity across pages and merge setData into the correct View', {
   await expect(page.view.testId('lifecycle-logic-counter')).toHaveText('8');
 });
 
-spec('inject the owning surface into a page opened as a float', {
+test('inject the owning surface into a page opened as a float', {
   id: 'PAGE-GLOBALS-002', app: SHOWCASE_APP_ID,
   covers: ['Page.surface', 'Page.route', 'lx.surface.openPage', 'PageSurface.id', 'PageSurface.close'],
 }, async (t) => {

@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { bindFixture } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import profile from '../scenarios/mocks/profile.json';
@@ -10,7 +10,7 @@ const BASE = 'https://api.example.com/lingxia-showcase/mocks';
 
 type Read = { status: number; body: Record<string, unknown> };
 
-spec("answer the selected calls from mocks/ handlers, with a scenario state on top", {
+test("answer the selected calls from mocks/ handlers, with a scenario state on top", {
   id: "AUT-NET-008",
   covers: ['LxAppDriver.mock', 'MockDriver.use'],
   app: SHOWCASE_APP_ID,
@@ -64,7 +64,7 @@ spec("answer the selected calls from mocks/ handlers, with a scenario state on t
   );
 });
 
-spec("start every spec with fresh mock handler state", {
+test("start every spec with fresh mock handler state", {
   id: "AUT-NET-009",
   covers: ['MockDriver.reset'],
   app: SHOWCASE_APP_ID,

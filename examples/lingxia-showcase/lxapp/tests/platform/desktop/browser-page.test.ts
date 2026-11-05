@@ -1,4 +1,4 @@
-import { expect, spec, type Fixture } from '@lingxia/test';
+import { expect, test, type Fixture } from '@lingxia/test';
 import { runtimePlatform } from '../../helpers/platform.js';
 
 /**
@@ -10,7 +10,7 @@ import { runtimePlatform } from '../../helpers/platform.js';
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const httpBase = testArgs.httpBase;
 const selectedGate = testArgs.gate?.toLocaleLowerCase();
-spec.configure({ skip: httpBase && !selectedGate ? undefined : 'needs --arg httpBase; not in a gate run' });
+test.configure({ skip: httpBase && !selectedGate ? undefined : 'needs --arg httpBase; not in a gate run' });
 
 const FORM_URL = `${httpBase}/browser/form.html`;
 
@@ -86,7 +86,7 @@ function flatten(nodes: readonly SnapshotNode[]): SnapshotNode[] {
   return nodes.flatMap((node) => [node, ...flatten(node.children ?? [])]);
 }
 
-spec('snapshot outlines roles, names, states and refs', {
+test('snapshot outlines roles, names, states and refs', {
   id: 'BROWSER-PAGE-001',
   covers: ['BrowserDriver.open', 'BrowserDriver.wait', 'BrowserDriver.snapshot'],
 }, async (t) => {
@@ -115,7 +115,7 @@ spec('snapshot outlines roles, names, states and refs', {
   }
 });
 
-spec('snapshot reaches open shadow roots and same-origin iframes', {
+test('snapshot reaches open shadow roots and same-origin iframes', {
   id: 'BROWSER-PAGE-002',
   covers: ['BrowserDriver.snapshot'],
 }, async (t) => {
@@ -126,7 +126,7 @@ spec('snapshot reaches open shadow roots and same-origin iframes', {
   expect(snap).toMatch(/iframe "Cross origin"[^\n]*\[cross-origin: contents unavailable\]/);
 });
 
-spec('snapshot marks off-screen elements and masks passwords', {
+test('snapshot marks off-screen elements and masks passwords', {
   id: 'BROWSER-PAGE-003',
   covers: ['BrowserDriver.snapshot', 'BrowserDriver.fill'],
 }, async (t) => {
@@ -139,7 +139,7 @@ spec('snapshot marks off-screen elements and masks passwords', {
   expect(flatten(json.nodes ?? []).some((node) => node.offscreen)).toBe(true);
 });
 
-spec('snapshot JSON form, subtree root and budget', {
+test('snapshot JSON form, subtree root and budget', {
   id: 'BROWSER-PAGE-004',
   covers: ['BrowserDriver.snapshot'],
 }, async (t) => {
@@ -156,7 +156,7 @@ spec('snapshot JSON form, subtree root and budget', {
   expect(small.text).toContain('truncated');
 });
 
-spec('snapshot sinceLast reports only what changed', {
+test('snapshot sinceLast reports only what changed', {
   id: 'BROWSER-PAGE-005',
   covers: ['BrowserDriver.snapshot', 'BrowserDriver.fill'],
 }, async (t) => {
@@ -170,7 +170,7 @@ spec('snapshot sinceLast reports only what changed', {
   expect(again.diff?.unchanged).toBe(true);
 });
 
-spec('action results can carry the snapshot diff', {
+test('action results can carry the snapshot diff', {
   id: 'BROWSER-PAGE-006',
   covers: ['BrowserDriver.click'],
 }, async (t) => {
@@ -180,7 +180,7 @@ spec('action results can carry the snapshot diff', {
     .some((line) => line.includes('checkbox "I agree"') && line.includes('[checked]'))).toBe(true);
 });
 
-spec('fill fires input/change and drives controlled inputs', {
+test('fill fires input/change and drives controlled inputs', {
   id: 'BROWSER-PAGE-007',
   covers: ['BrowserDriver.fill', 'BrowserDriver.click', 'BrowserDriver.eval'],
 }, async (t) => {
@@ -196,7 +196,7 @@ spec('fill fires input/change and drives controlled inputs', {
   expect(s.e).toContain('change:controlled');
 });
 
-spec('fill sets date, time, number, range, color and contenteditable', {
+test('fill sets date, time, number, range, color and contenteditable', {
   id: 'BROWSER-PAGE-008',
   covers: ['BrowserDriver.fill'],
 }, async (t) => {
@@ -219,7 +219,7 @@ spec('fill sets date, time, number, range, color and contenteditable', {
   expect(details.hint).toBe('YYYY-MM-DD');
 });
 
-spec('type appends, clears, and commits CJK through a composition', {
+test('type appends, clears, and commits CJK through a composition', {
   id: 'BROWSER-PAGE-009',
   covers: ['BrowserDriver.type'],
 }, async (t) => {
@@ -239,7 +239,7 @@ spec('type appends, clears, and commits CJK through a composition', {
   expect(s.comp).toContain('compositionend:你好');
 });
 
-spec('selectOption by label, value, index and multiple', {
+test('selectOption by label, value, index and multiple', {
   id: 'BROWSER-PAGE-010',
   covers: ['BrowserDriver.selectOption'],
 }, async (t) => {
@@ -260,7 +260,7 @@ spec('selectOption by label, value, index and multiple', {
   expect(events).toContain('input:country');
 });
 
-spec('check and uncheck are idempotent and reach styled controls', {
+test('check and uncheck are idempotent and reach styled controls', {
   id: 'BROWSER-PAGE-011',
   covers: ['BrowserDriver.check', 'BrowserDriver.uncheck'],
 }, async (t) => {
@@ -280,7 +280,7 @@ spec('check and uncheck are idempotent and reach styled controls', {
   expect((await browser.check({ tab, ref: ref('switch', 'Dark mode') })).checked).toBe(true);
 });
 
-spec('setInputFiles attaches files without a chooser, even to hidden inputs', {
+test('setInputFiles attaches files without a chooser, even to hidden inputs', {
   id: 'BROWSER-PAGE-012',
   covers: ['BrowserDriver.setInputFiles'],
 }, async (t) => {
@@ -295,7 +295,7 @@ spec('setInputFiles attaches files without a chooser, even to hidden inputs', {
   await failure('usage', () => browser.setInputFiles({ tab, css: '#hidden-file', files: [a, b] }));
 });
 
-spec('actionability failures are typed', {
+test('actionability failures are typed', {
   id: 'BROWSER-PAGE-013',
   covers: ['BrowserDriver.click', 'BrowserDriver.fill'],
 }, async (t) => {
@@ -315,7 +315,7 @@ spec('actionability failures are typed', {
   await failure('stale_ref', () => browser.click({ tab, ref: 'e99999' }));
 });
 
-spec('actions wait for elements to appear, enable and stop moving', {
+test('actions wait for elements to appear, enable and stop moving', {
   id: 'BROWSER-PAGE-014',
   covers: ['BrowserDriver.click'],
 }, async (t) => {
@@ -329,7 +329,7 @@ spec('actions wait for elements to appear, enable and stop moving', {
     .toEqual({ late: 1, 'late-enabled': 1, mover: 1 });
 });
 
-spec('refs act inside shadow roots and same-origin iframes', {
+test('refs act inside shadow roots and same-origin iframes', {
   id: 'BROWSER-PAGE-015',
   covers: ['BrowserDriver.click', 'BrowserDriver.fill'],
 }, async (t) => {
@@ -345,7 +345,7 @@ spec('refs act inside shadow roots and same-origin iframes', {
   expect(s.framed).toBe('framed');
 });
 
-spec('hover, drag, press and scrollTo', {
+test('hover, drag, press and scrollTo', {
   id: 'BROWSER-PAGE-016',
   covers: ['BrowserDriver.hover', 'BrowserDriver.drag', 'BrowserDriver.press', 'BrowserDriver.scrollTo'],
 }, async (t) => {
@@ -368,7 +368,7 @@ spec('hover, drag, press and scrollTo', {
   expect(scrolled.rect?.y).toBeLessThan(s.h);
 });
 
-spec('stale refs say why: removed or navigated', {
+test('stale refs say why: removed or navigated', {
   id: 'BROWSER-PAGE-017',
   covers: ['BrowserDriver.check', 'BrowserDriver.click', 'BrowserDriver.fill'],
 }, async (t) => {
@@ -384,7 +384,7 @@ spec('stale refs say why: removed or navigated', {
   expect((await failure('stale_ref', () => browser.fill({ tab, ref: name, text: 'x' }))).reason).toBe('navigated');
 });
 
-spec('a navigating action reports the page it led to', {
+test('a navigating action reports the page it led to', {
   id: 'BROWSER-PAGE-018',
   covers: ['BrowserDriver.click'],
 }, async (t) => {
@@ -396,7 +396,7 @@ spec('a navigating action reports the page it led to', {
   expect(r.snapshot?.text).toContain('heading "Second page"');
 });
 
-spec('a wait that sees the new URL means the new document', {
+test('a wait that sees the new URL means the new document', {
   id: 'BROWSER-PAGE-022',
   covers: ['BrowserDriver.wait', 'BrowserDriver.snapshot'],
 }, async (t) => {
@@ -418,7 +418,7 @@ spec('a wait that sees the new URL means the new document', {
   expect(await browser.eval<string>({ tab, js: 'location.search' })).toContain('loaded');
 });
 
-spec('text returns readable Markdown', {
+test('text returns readable Markdown', {
   id: 'BROWSER-PAGE-019',
   covers: ['BrowserDriver.text'],
 }, async (t) => {
@@ -434,7 +434,7 @@ spec('text returns readable Markdown', {
   expect(small.markdown).toContain('truncated');
 });
 
-spec('console captures logs and uncaught errors', {
+test('console captures logs and uncaught errors', {
   id: 'BROWSER-PAGE-020',
   covers: ['BrowserDriver.console.list', 'BrowserDriver.console.clear'],
 }, async (t) => {
@@ -454,7 +454,7 @@ spec('console captures logs and uncaught errors', {
   expect(errors.entries.every((entry) => entry.level === 'error')).toBe(true);
 });
 
-spec('screenshots: viewport, full page, element, annotated', {
+test('screenshots: viewport, full page, element, annotated', {
   id: 'BROWSER-PAGE-021',
   covers: ['BrowserDriver.screenshot'],
 }, async (t) => {

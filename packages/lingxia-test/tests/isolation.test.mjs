@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { spec, expect } from "../dist/index.js";
+import { test as lxTest, expect } from "../dist/index.js";
 import { rawAutomation, reset, run } from "../dist/runner.js";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
 
@@ -68,7 +68,7 @@ test("a body that resumes late is refused and charged its own late assertion, an
   let resumed = false;
   let followingRan = false;
 
-  spec("old body", { timeout: 20, forensics: false }, async () => {
+  lxTest("old body", { timeout: 20, forensics: false }, async () => {
     // A handle taken before the timeout, and fresh ones taken after it.
     const nav = rawAutomation().lxapp().nav;
     await fetch("https://backend.example.test/slow");
@@ -82,7 +82,7 @@ test("a body that resumes late is refused and charged its own late assertion, an
     }
     expect("late assertion from old body").toBe("expected");
   });
-  spec("following body", { forensics: false }, async (t) => {
+  lxTest("following body", { forensics: false }, async (t) => {
     followingRan = true;
     // The next spec's own drivers work.
     await rawAutomation().lxapp().nav.to({ page: "following" });
@@ -119,12 +119,12 @@ test("a host tier an abandoned body read cannot be fenced: the run stops and the
   releaseWhenStopped(host, release);
   let outcome;
 
-  spec("keeps a host tier", { timeout: 20, forensics: false }, async () => {
+  lxTest("keeps a host tier", { timeout: 20, forensics: false }, async () => {
     const manager = rawAutomation().lxapps;
     await late;
     try { await manager.open({ appId: "other-app" }); outcome = "acted"; } catch (error) { outcome = error.code; }
   });
-  spec("not run", async () => {});
+  lxTest("not run", async () => {});
 
   const report = await run();
   for (let i = 0; i < 5; i += 1) await tick(5);
@@ -144,13 +144,13 @@ test("a route installed by an abandoned body is removed with its attempt, a late
   const reinstall = {};
   let routesSeenNext;
 
-  spec("routes, then hangs", { timeout: 20, forensics: false }, async (t) => {
+  lxTest("routes, then hangs", { timeout: 20, forensics: false }, async (t) => {
     await t.app.network.route("/v1/devices", { status: 500 });
     await fetch("https://backend.example.test/slow");
     try { await t.app.network.route("/v1/again", { status: 500 }); reinstall.fixture = "installed"; } catch (error) { reinstall.fixture = error.message; }
     try { await rawAutomation().lxapp().network.route("/v1/raw", { status: 500 }); reinstall.raw = "installed"; } catch (error) { reinstall.raw = error.code; }
   });
-  spec("uses the real backend", async () => { routesSeenNext = network.routes.size; });
+  lxTest("uses the real backend", async () => { routesSeenNext = network.routes.size; });
 
   const report = await run();
   assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "skipped"]);
@@ -168,10 +168,10 @@ test("routes a spec installed through the raw driver are removed by the host whe
   const host = installFakeHost(world, { attempts: true });
   let seen;
 
-  spec("installs through the raw driver", async () => {
+  lxTest("installs through the raw driver", async () => {
     await rawAutomation().lxapp().network.route("**", { status: 503 });
   });
-  spec("expects the real backend", async () => { seen = network.routes.size; });
+  lxTest("expects the real backend", async () => { seen = network.routes.size; });
 
   const report = await run();
   assert.deepEqual(report.cases.map((c) => c.status), ["passed", "passed"]);
@@ -187,11 +187,11 @@ test("a route that cannot be removed fails its spec and stops the run instead of
   const { events } = installFakeHost(world);
   let secondRan = false;
 
-  spec("routes", async (t) => {
+  lxTest("routes", async (t) => {
     await t.app.network.route("/v1/devices", { status: 500 });
     network.failUnroute = new Error("route table unreachable");
   });
-  spec("would see the stale route", async () => { secondRan = true; });
+  lxTest("would see the stale route", async () => { secondRan = true; });
 
   const report = await run();
   assert.equal(secondRan, false);
@@ -209,11 +209,11 @@ test("a route that is already gone counts as removed", async () => {
   world.app.network = network;
   installFakeHost(world);
 
-  spec("removes its own route", async (t) => {
+  lxTest("removes its own route", async (t) => {
     const route = await t.app.network.route("/v1/devices", { status: 500 });
     await route.remove();
   });
-  spec("next", async () => {});
+  lxTest("next", async () => {});
 
   const report = await run();
   assert.deepEqual(report.cases.map((c) => c.status), ["passed", "passed"]);
@@ -224,14 +224,14 @@ test("the host failing to remove what an attempt installed fails the spec and st
   const world = createWorld();
   const host = installFakeHost(world, { attempts: true });
   let secondRan = false;
-  spec("installs", async () => { host.attempts.failSweep = new Error("companion unreachable"); });
-  spec("next", async () => { secondRan = true; });
+  lxTest("installs", async () => { host.attempts.failSweep = new Error("companion unreachable"); });
+  lxTest("next", async () => { secondRan = true; });
 
   const report = await run();
   assert.equal(secondRan, false);
   assert.equal(report.partial, true);
   assert.equal(report.cases[0].status, "failed");
-  assert.match(report.cases[0].error.message, /the host could not remove what the spec installed: companion unreachable/);
+  assert.match(report.cases[0].error.message, /the host could not remove what the test installed: companion unreachable/);
 });
 
 test("a scenario and a clock whose removal fails are cleanup errors, not swallowed", async () => {
@@ -249,11 +249,11 @@ test("a scenario and a clock whose removal fails are cleanup errors, not swallow
   installFakeHost(world);
   let secondRan = false;
 
-  spec("mocks and fakes time", async (t) => {
+  lxTest("mocks and fakes time", async (t) => {
     await t.scenario.use({ name: "s", rules: [] });
     await t.app.clock.install();
   });
-  spec("next", async () => { secondRan = true; });
+  lxTest("next", async () => { secondRan = true; });
 
   const report = await run();
   assert.equal(secondRan, false);
@@ -268,8 +268,8 @@ test("a body that returned with a fetch still in flight fails and stops the run 
   installFakeHost(world);
   globalThis.fetch = () => new Promise(() => {});
   let secondRan = false;
-  spec("fires and forgets", async () => { void fetch("https://backend.example.test/forever"); });
-  spec("next", async () => { secondRan = true; });
+  lxTest("fires and forgets", async () => { void fetch("https://backend.example.test/forever"); });
+  lxTest("next", async () => { secondRan = true; });
 
   const report = await run();
   assert.equal(secondRan, false);
@@ -282,14 +282,14 @@ test("a body's leftover timer is cancelled at its end and never fires into the n
   const world = createWorld();
   const { events } = installFakeHost(world);
   let fired = false;
-  spec("leaves a timer", async () => { setTimeout(() => { fired = true; }, 30); });
-  spec("next", async () => { await tick(60); });
+  lxTest("leaves a timer", async () => { setTimeout(() => { fired = true; }, 30); });
+  lxTest("next", async () => { await tick(60); });
 
   const report = await run();
   assert.deepEqual(report.cases.map((c) => c.status), ["passed", "passed"]);
   assert.equal(fired, false);
   const note = events.find((e) => e.type === "diagnostic" && e.phase === "cleanup");
-  assert.match(note.message, /^"leaves a timer" ended with 1 test-context timer pending; cancelled so it never fires into a later spec\.$/);
+  assert.match(note.message, /^"leaves a timer" ended with 1 test-context timer pending; cancelled so it never fires into a later test\.$/);
 });
 
 test("a run started before the host registered its current lxapp waits for it, then pins specs to it by id", async () => {
@@ -298,12 +298,12 @@ test("a run started before the host registered its current lxapp waits for it, t
   setTimeout(() => host.setCurrent(true), 300);
   let seen;
 
-  spec("runs once the app is back", async (t) => {
+  lxTest("runs once the app is back", async (t) => {
     // The host loses track of "current" again: the spec's app is pinned by id.
     host.setCurrent(false);
     seen = (await t.app.info()).appId;
   });
-  spec("still pinned", async (t) => { await t.app.info(); });
+  lxTest("still pinned", async (t) => { await t.app.info(); });
 
   const report = await run();
   assert.deepEqual(report.cases.map((c) => c.status), ["passed", "passed"]);

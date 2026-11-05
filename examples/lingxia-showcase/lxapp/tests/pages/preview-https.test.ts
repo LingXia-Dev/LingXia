@@ -1,11 +1,11 @@
-import { expect, spec, type Fixture } from '@lingxia/test';
+import { expect, test, type Fixture } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { bindFixture, eventually } from '../helpers/poll.js';
 import type { PreviewMediaHandle } from '@lingxia/types';
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const selectedGate = testArgs.gate?.toLocaleLowerCase();
-spec.configure({ skip: selectedGate ? 'a --arg gate run selects only its gate' : undefined });
+test.configure({ skip: selectedGate ? 'a --arg gate run selects only its gate' : undefined });
 
 /** Public samples the Showcase already loads; scheme is `https://` (not the HTTP fixture). */
 const HTTPS_IMAGE =
@@ -108,7 +108,7 @@ async function presentHttpsPreview(
   );
 }
 
-spec('present an https image without downloading first', {
+test('present an https image without downloading first', {
   id: 'DESKTOP-PREVIEW-HTTPS-IMAGE-001',
   covers: [
     'lx.previewMedia',
@@ -121,7 +121,7 @@ spec('present an https image without downloading first', {
   await presentHttpsPreview(t, 'DESKTOP-PREVIEW-HTTPS-IMAGE-001', HTTPS_IMAGE, 'image');
 });
 
-spec('present an https video without downloading first', {
+test('present an https video without downloading first', {
   id: 'DESKTOP-PREVIEW-HTTPS-VIDEO-001',
   covers: [
     'lx.previewMedia',

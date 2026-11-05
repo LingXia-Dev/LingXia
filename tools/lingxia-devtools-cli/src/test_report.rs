@@ -73,7 +73,7 @@ pub fn render(report: &Value, run_dir: &Path, failures_only: bool) -> String {
             count(report, "duration_ms") as f64 / 1000.0,
         );
         if report["partial"] == json!(true) {
-            let _ = writeln!(out, "Incomplete run; not every selected spec ran.");
+            let _ = writeln!(out, "Incomplete run; not every selected test ran.");
         }
     }
     if let Some(state) = report["state"].as_str() {
@@ -131,7 +131,7 @@ pub fn render(report: &Value, run_dir: &Path, failures_only: bool) -> String {
         }
     }
     if failed == 0 && failures_only {
-        let _ = writeln!(out, "No failed specs.");
+        let _ = writeln!(out, "No failed tests.");
     }
     if !failures_only {
         for name in ["report.html", "report.json", "junit.xml"] {
@@ -161,7 +161,7 @@ mod tests {
                   "error": { "message": "expected 3, got 2", "code": "E_ASSERT",
                              "expected": "3", "actual": "2" } },
                 { "id": "C-3", "full_name": "slow page", "status": "timeout",
-                  "error": { "message": "spec timed out after 30000ms" } }
+                  "error": { "message": "test timed out after 30000ms" } }
             ]
         })
     }
@@ -191,7 +191,7 @@ mod tests {
         assert!(!text.contains("passed,"), "{text}");
         assert!(text.contains("cart totals"), "{text}");
         let clean = json!({ "cases": [{ "id": "A", "status": "passed" }] });
-        assert!(render(&clean, Path::new("/r"), true).contains("No failed specs."));
+        assert!(render(&clean, Path::new("/r"), true).contains("No failed tests."));
         // A report without a recorded rerun command still renders.
         let mut legacy = report();
         legacy["meta"] = json!({});

@@ -1,9 +1,9 @@
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
-import { expect, spec, type TestView } from '@lingxia/test';
+import { expect, test, type TestView } from '@lingxia/test';
 import { waitForCurrentPage, waitForElementText } from '../helpers/page.js';
 import { attachShot } from '../helpers/poll.js';
 
-spec('keeps bootstrap, calls, and streams healthy across the page bridge', { app: SHOWCASE_APP_ID }, async (t) => {
+test('keeps bootstrap, calls, and streams healthy across the page bridge', { app: SHOWCASE_APP_ID }, async (t) => {
   const app = t.app;
   // Until the page is bound, a failure shot takes whatever page is current.
   let repro: TestView = app.view;
