@@ -256,8 +256,10 @@ fn authored_backdrop_gpu_matches_cpu_across_retained_scroll() {
                 .zip(expected.pixels.data_as_u8_slice())
                 .enumerate()
             {
+                // A wide blur is filtered small and stretched back; the two rasterizers'
+                // bilinear stretches differ by up to one more level than their blurs.
                 assert!(
-                    a.abs_diff(*b) <= 3,
+                    a.abs_diff(*b) <= 4,
                     "scale={scale} offset={offset} byte={index}: {a} vs {b}"
                 );
             }

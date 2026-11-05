@@ -128,7 +128,7 @@ where
             );
         }
         drop(source);
-        let mut context = RenderContext::new(region.width, region.height);
+        let mut context = RenderContext::new(region.filtered_width, region.filtered_height);
         if *blur > 0.0 {
             context.push_filter_layer(region.filter.clone());
         }
@@ -139,11 +139,13 @@ where
             sampler: vello_cpu::peniko::ImageSampler::new()
                 .with_extend(vello_cpu::peniko::Extend::Reflect),
         });
+        context.set_paint_transform(region.downscale());
         context.fill_rect(&region.sampling_bounds);
+        context.reset_paint_transform();
         if *blur > 0.0 {
             context.pop_layer();
         }
-        let mut filtered = self.finish(context, region.width, region.height);
+        let mut filtered = self.finish(context, region.filtered_width, region.filtered_height);
         saturation.apply(Arc::get_mut(&mut filtered).expect("new private filter image"));
         let mut context = RenderContext::new(width, height);
         context.push_clip_layer(&clip.path());
@@ -151,10 +153,7 @@ where
             image: ImageSource::Pixmap(filtered),
             sampler: Default::default(),
         });
-        context.set_paint_transform(vello_cpu::kurbo::Affine::translate((
-            f64::from(region.x),
-            f64::from(region.y),
-        )));
+        context.set_paint_transform(region.placement());
         context.fill_rect(&region.bounds());
         context.pop_layer();
         Ok(self.finish(context, width, height))

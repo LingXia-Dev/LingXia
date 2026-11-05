@@ -377,8 +377,8 @@ where
         );
         self.queue.submit([encoder.finish()]);
         drop(source);
-        let mut filtered = self.blank(region.width, region.height)?;
-        let mut scene = Scene::new(region.width, region.height);
+        let mut filtered = self.blank(region.filtered_width, region.filtered_height)?;
+        let mut scene = Scene::new(region.filtered_width, region.filtered_height);
         if *blur > 0.0 {
             scene.push_filter_layer(region.filter.clone());
         }
@@ -387,6 +387,7 @@ where
             &cropped,
             vello_cpu::peniko::ImageSampler::new().with_extend(vello_cpu::peniko::Extend::Reflect),
         );
+        scene.set_paint_transform(region.downscale());
         scene.fill_rect(&region.sampling_bounds);
         if *blur > 0.0 {
             scene.pop_layer();
@@ -399,7 +400,7 @@ where
         )?;
         drop(cropped);
         if saturation.amount() != 1.0 {
-            let colored = self.blank(region.width, region.height)?;
+            let colored = self.blank(region.filtered_width, region.filtered_height)?;
             let pass = self
                 .resources
                 .saturation
@@ -419,10 +420,7 @@ where
         let mut scene = Scene::new(size.width, size.height);
         scene.push_clip_layer(&clip.path());
         let bindings = image_brush(&mut scene, &filtered, Default::default());
-        scene.set_paint_transform(vello_cpu::kurbo::Affine::translate((
-            f64::from(region.x),
-            f64::from(region.y),
-        )));
+        scene.set_paint_transform(region.placement());
         scene.fill_rect(&region.bounds());
         scene.pop_layer();
         self.render(
