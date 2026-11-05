@@ -16,6 +16,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxApp } from '../lxapp/LxApp';
 import { LxAppPush } from '../lxapp/APIs/LxAppPush';
 import { PermissionManager } from './PermissionManager';
+import { PermissionGate, PermissionGates } from './PermissionGate';
 import { initNativeBridge, getNativeCallbackFunction } from './NativeBridge';
 import { LxLog } from './LxLog';
 import {
@@ -92,6 +93,14 @@ export class Lingxia {
    * screen, so the OS start window hands off to the cover in one beat
    * instead of sitting through initialization.
    */
+  /**
+   * Runs [gate] around every system permission prompt LingXia shows; `null`
+   * prompts directly. Last write wins.
+   */
+  public static setPermissionGate(gate: PermissionGate | null): void {
+    PermissionGates.gate = gate;
+  }
+
   public static quickStart(context: common.UIAbilityContext, windowStage: window.WindowStage): void {
     if (LxApp.getInstance().getHomeAppId() !== null) {
       return;

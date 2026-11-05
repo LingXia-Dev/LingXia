@@ -51,3 +51,6 @@ Lingxia.setPermissionGate(object : PermissionGate {
   destroyed; prompts are gated one at a time.
 - `prompt.blocked` (before) and `DENIED_PERMANENTLY` (after) mean the system
   will not prompt again: guide the user to Settings instead of explaining.
+- Harmony has the same API (`import { Lingxia, PermissionGate, … } from 'lingxia'`),
+  except `afterPrompt` is required. A denial there is always permanent, and
+  `proceed()` on a blocked prompt opens the system re-grant sheet.

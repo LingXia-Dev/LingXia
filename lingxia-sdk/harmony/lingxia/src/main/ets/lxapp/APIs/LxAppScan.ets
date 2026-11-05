@@ -5,6 +5,7 @@ import { Lingxia } from '../../app/Lingxia';
 import { onCallback } from 'liblingxia.so';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { PermissionManager } from '../../app/PermissionManager';
+import { PermissionFeature } from '../../app/PermissionGate';
 
 const TAG = 'LingXia.Scan';
 
@@ -56,7 +57,7 @@ export class LxAppScan {
         return;
       }
 
-      const cameraGranted: boolean = await PermissionManager.ensureCameraAccess(false);
+      const cameraGranted: boolean = await PermissionManager.ensureCameraAccess(PermissionFeature.SCAN_CODE, false);
       if (!cameraGranted) {
         onCallback(String(options.callbackId), false, '3001');
         return;
