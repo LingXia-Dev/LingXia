@@ -732,7 +732,7 @@ export async function generate(schema) {
     'lingxia-sdk/android/lingxia/src/main/java/com/lingxia/view/generated/GpuSemantics.java': androidSemantics(schema),
     'lingxia-sdk/android/lingxia/src/main/java/com/lingxia/view/generated/GpuInput.java': androidInput(schema),
     'lingxia-sdk/android/lingxia/src/main/java/com/lingxia/view/generated/GpuFrame.java': frameJava(schema),
-    'lingxia-sdk/apple/Sources/Platform/Gpu/GpuFrame.swift': frameSwift(schema),
+    'lingxia-sdk/apple/Sources/Platform/View/GpuFrame.swift': frameSwift(schema),
   };
   Object.assign(generated, (await import('./arkts.mjs')).arkts(schema));
   generated['crates/lingxia-view/src/session/tests/runtime.js'] = await nativeTestRuntime(generated);

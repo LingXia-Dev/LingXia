@@ -123,7 +123,7 @@ Increment and decrement are the `scroll-forward`/`scroll-backward` pair sliders 
 
 **Core does the physics.** No adapter gets per-frame gesture code; `Pointer.velocity` and vsync requests already exist.
 
-**iOS (`Platform/iOS/Gpu`):**
+**iOS (`Platform/iOS/View`):**
 - `Effect::Claim` is a no-op in `crates/lingxia-view-apple/src/adapter.rs`. It must hold off the guest edge-back recognizer and any enclosing `UIScrollView` for the gesture.
 - `GpuAccessibility`: `accessibilityViewIsModal` for the dialog subtree, `accessibilityPerformEscape` → `Dismiss`, `accessibilityDecrement` beside the existing increment, the custom-action allowlist takes labelled actions, `.screenChanged` on open and close, traits for `menu`/`menuitem`. **Roles assert when unmapped.**
 - `GpuTextInput` and `GpuSelectionHandles`: check caret and handles follow a composed move on `Redraw`.
