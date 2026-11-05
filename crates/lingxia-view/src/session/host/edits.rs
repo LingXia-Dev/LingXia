@@ -1,7 +1,8 @@
 //! Accessibility and automation edits reach the platform input method one at a
 //! time. The platform says whether each applied; one whose editor is still
 //! connecting is sent again shortly, and the next waits until a presented frame
-//! shows the previous applied.
+//! shows the previous applied. An automation call that queued an edit settles
+//! once a frame shows it, or with the reason it never will.
 use super::Inner;
 use crate::interaction::view::Effect;
 use crate::platform::{EditOutcome, PlatformAdapter};
@@ -27,6 +28,8 @@ struct Edit {
     sends: u32,
     /// Platform clock time of the first not-ready answer.
     waiting_since: Option<Duration>,
+    /// The automation call this edit completes.
+    call: Option<u64>,
 }
 
 #[derive(Debug, Default)]
@@ -71,6 +74,9 @@ impl<A: PlatformAdapter> Inner<A> {
                 effects.retain(|e| !matches!(e, Effect::EditText { .. }));
                 return;
             };
+            // The call that asked for these edits (a fill) settles when the last one shows.
+            let call = main.act_call.take().map(|(call, _)| call);
+            let queued = main.edits.waiting.len();
             effects.retain(|effect| {
                 let Effect::EditText {
                     node,
@@ -89,10 +95,15 @@ impl<A: PlatformAdapter> Inner<A> {
                         end: *end,
                         sends: 0,
                         waiting_since: None,
+                        call: None,
                     });
                 }
                 false
             });
+            match main.edits.waiting.iter_mut().skip(queued).last() {
+                Some(last) => last.call = call,
+                None => main.act_call = call.map(|call| (call, String::new())),
+            }
         }
         self.send_next_edit();
     }
@@ -124,7 +135,9 @@ impl<A: PlatformAdapter> Inner<A> {
                             .any(|node| node.identity == edit.identity && edit.shown_in(node))
                     });
                     if shown {
+                        let call = edit.call;
                         main.edits.sent = None;
+                        settle(&mut main, call, Ok(serde_json::Value::Null));
                         None
                     } else if *frames > PATIENCE {
                         main.edits.sent.take().map(|(edit, _)| edit)
@@ -147,6 +160,14 @@ impl<A: PlatformAdapter> Inner<A> {
                     "accessibility edit of {} never showed after {ATTEMPTS} sends",
                     edit.identity
                 ));
+                settle(
+                    &mut self.main(),
+                    edit.call,
+                    Err(format!(
+                        "E_EDIT_FAILED: {} never showed the edit",
+                        edit.identity
+                    )),
+                );
             }
         }
         self.send_next_edit();
@@ -176,6 +197,8 @@ impl<A: PlatformAdapter> Inner<A> {
                     .iter()
                     .position(|node| node.identity == edit.identity && node.input.is_some())
                 else {
+                    let reason = format!("E_EDIT_FAILED: {} left before the edit", edit.identity);
+                    settle(&mut main, edit.call, Err(reason));
                     continue;
                 };
                 main.edits.serial += 1;
@@ -197,7 +220,10 @@ impl<A: PlatformAdapter> Inner<A> {
                     if now.saturating_sub(since) >= CONNECT_TIME {
                         self.adapter
                             .warn(&format!("editor {} never became ready", edit.identity));
-                        self.main().edits.failed = true;
+                        let mut main = self.main();
+                        main.edits.failed = true;
+                        let reason = format!("E_EDIT_FAILED: {} never became ready", edit.identity);
+                        settle(&mut main, edit.call, Err(reason));
                         continue;
                     }
                     {
@@ -209,7 +235,10 @@ impl<A: PlatformAdapter> Inner<A> {
                     return;
                 }
                 EditOutcome::Failed => {
-                    self.main().edits.failed = true;
+                    let mut main = self.main();
+                    main.edits.failed = true;
+                    let reason = format!("E_EDIT_FAILED: {} refused the edit", edit.identity);
+                    settle(&mut main, edit.call, Err(reason));
                     continue;
                 }
             }
@@ -233,5 +262,18 @@ impl<A: PlatformAdapter> Inner<A> {
                 host.edit_unshown(unshown);
             }),
         );
+    }
+}
+
+/// Report automation call `call`, if one waits on this edit.
+fn settle<F>(
+    main: &mut super::Main<F>,
+    call: Option<u64>,
+    outcome: Result<serde_json::Value, String>,
+) {
+    if let Some(call) = call
+        && let Some(slot) = main.automation_calls.get_mut(&call)
+    {
+        *slot = Some(outcome);
     }
 }
