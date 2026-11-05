@@ -10,6 +10,7 @@ import { has, validInputText } from './data.js';
 import { fieldOptions } from '../generated/wire.js';
 import * as check from './validate.js';
 import { defaultSeries } from '../style/color.js';
+import { keyPositions } from './keys.js';
 import { expand, invokerHandler, popoverScope, dragClose, scrimMark } from './toplayer.js';
 
 const common = new Set(commonProps);
@@ -616,7 +617,8 @@ function radioOptions(props, identity, fields, disabled) {
 function listState(props, identity) {
   const old = page.committed?.lists.get(identity);
   const anchor = props.anchor === undefined ? null : JSON.stringify(props.anchor);
-  const positions = props.itemKeys && new Map(props.itemKeys.map((key, i) => [`key:${JSON.stringify(key)}`, i]));
+  // Row state is remapped by key only when there is some; a fresh list needs no positions.
+  const positions = props.itemKeys && old?.states?.size ? keyPositions(props.itemKeys) : null;
   const states = positions
     ? new Map([...(old?.states ?? [])].flatMap(([, state]) => positions.has(state.key) ? [[positions.get(state.key), state]] : []))
     : new Map([...(old?.states ?? [])].filter(([i]) => i < props.count));

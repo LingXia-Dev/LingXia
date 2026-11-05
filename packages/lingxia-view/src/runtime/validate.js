@@ -1,6 +1,7 @@
 import { utf8Bytes, has } from './data.js';
 import { limits } from '../generated/contract.js';
 import { fieldOptions } from '../generated/wire.js';
+import { checkKeys, keyPayload } from './keys.js';
 import { seriesProblem, isRole } from '../style/color.js';
 
 // Per-element value checks; native decoding re-validates everything it receives.
@@ -132,18 +133,27 @@ export function image(props) {
   for (const name of ['onLoad', 'onError']) if (props[name] !== undefined && typeof props[name] !== 'function') throw Error('UI_IMAGE: invalid callback');
 }
 
+// `key:"…"` of a key this long is at most 6 bytes per character plus 6, within the limit.
+const SHORT_KEY = Math.floor((limits.identifierBytes - 6) / 6);
+// Surrogates are checked in full: a lone one is not UTF-8.
+const SURROGATE = /[\ud800-\udfff]/;
+
+function checkKey(key, seen) {
+  // A short key without surrogates fits the identifier limit escaped: only others are measured.
+  if (typeof key !== 'string' || seen.has(key) || ((key.length > SHORT_KEY || SURROGATE.test(key)) &&
+      (utf8Bytes(key, limits.identifierBytes) > limits.identifierBytes || utf8Bytes(`key:${JSON.stringify(key)}`, limits.identifierBytes) > limits.identifierBytes)))
+    throw Error('UI_LIST: invalid or duplicate itemKey');
+}
+
 export function listKeys(props) {
   if (!Number.isSafeInteger(props.count) || props.count < 0 || props.count > limits.listRows || typeof props.row !== 'function' ||
       (props.height !== undefined && typeof props.height !== 'function')) throw Error('UI_LIST: invalid row description');
   if (props.itemKeys !== undefined) {
     if (!Array.isArray(props.itemKeys) || props.itemKeys.length !== props.count) throw Error('UI_LIST: itemKeys must match count');
-    const seen = new Set();
-    props.itemKeys = Array.from(props.itemKeys, key => {
-      if (typeof key !== 'string' || utf8Bytes(key, limits.identifierBytes) > limits.identifierBytes || utf8Bytes(`key:${JSON.stringify(key)}`, limits.identifierBytes) > limits.identifierBytes || seen.has(key))
-        throw Error('UI_LIST: invalid or duplicate itemKey');
-      seen.add(key); return key;
-    });
-    if (utf8Bytes(JSON.stringify(props.itemKeys), limits.itemKeyBytes) > limits.itemKeyBytes) throw Error('UI_LIST: itemKeys budget exceeded');
+    // A mutable array is copied so the checked keys are the ones encoded.
+    if (!Object.isFrozen(props.itemKeys)) props.itemKeys = Array.from(props.itemKeys);
+    checkKeys(props.itemKeys, checkKey);
+    if (keyPayload(props.itemKeys).bytes > limits.itemKeyBytes) throw Error('UI_LIST: itemKeys budget exceeded');
   }
   if (props.anchor !== undefined && props.anchor !== 'end') {
     const a = props.anchor;

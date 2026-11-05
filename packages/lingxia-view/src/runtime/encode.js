@@ -3,6 +3,8 @@ import { limits } from '../generated/contract.js';
 import { utf8Bytes } from './data.js';
 import { render } from './state.js';
 import { readNode, isNode } from './nodes.js';
+import { keyPayload } from './keys.js';
+
 import { resolveNode } from './elements.js';
 
 const structured = new Set(['backgroundGradient', 'boxShadow', 'animation']);
@@ -84,8 +86,8 @@ export function encodeTree(tree, windows) {
       node.list.window = { ...window };
       encoded.push(field.listId, identity, field.listCount, props.count, field.listLeading, window.leading, field.listTrailing, window.trailing);
       if (props.itemKeys !== undefined) {
-        const payload = JSON.stringify(props.itemKeys);
-        itemKeyBytes += utf8Bytes(payload, limits.itemKeyBytes);
+        const { payload, bytes } = keyPayload(props.itemKeys);
+        itemKeyBytes += bytes;
         if (itemKeyBytes > limits.itemKeyBytes) throw Error('UI_LIST: itemKeys page budget exceeded');
         encoded.push(field.listItemKeys, payload);
       }

@@ -100,6 +100,10 @@ while it is scrolled out of view. Removing an item from `items` releases its sta
 
 Hooks may sit directly in `renderItem`: their state follows the item's key.
 
+A long list costs nothing per row on a render that passes the same frozen `items` array: its keys are
+read once. `Object.freeze` an array the View builds; Logic data is frozen, but each data update brings new
+arrays. A mutable array is keyed again on every render.
+
 ### Anchors
 
 `anchor` moves the list when its value changes, then leaves scrolling to the user:

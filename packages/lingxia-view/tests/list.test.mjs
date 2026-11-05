@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {h, listTag, prepare, prepareWindows, commit, discard, dispatch, useLocal, reset} from '../src/internal.js';
+import {h, listTag, List, prepare, prepareWindows, commit, discard, dispatch, useLocal, reset} from '../src/internal.js';
 import {decode} from './support/wire.mjs';
 const records=buffer=>decode(buffer).map(node=>({tag:node.tag,id:node.testId,text:node.text,fields:new Map(Object.entries(node.props))}));
 function window(start,end) { return {root:{start,end,leading:start*100,trailing:(1000-end)*100}}; }
@@ -248,4 +248,31 @@ test('offscreen keyed row state survives reorder but is released on semantic rem
  keys=['alpha','gamma'];prepare(page,{},window(0,1));commit();
  keys=['alpha','gamma','beta'];output=records(prepare(page,{},window(2,3)));commit();
  assert.equal(output.find(r=>r.id==='beta').text,'beta:0','removed identity cannot resurrect its old local state');
+});
+
+test('a List given the same frozen items keys them once, however many rows and renders',()=>{
+ reset();const items=Object.freeze(Array.from({length:20000},(_,i)=>i));let keyed=0,tick=0;
+ const page=()=>h(List,{items,getKey:i=>{keyed++;return String(i);},renderItem:i=>h('text',{'data-testid':`row-${i}`},`${i}:${tick}`)});
+ prepare(page,{},{root:{start:0,end:3,leading:0,trailing:0}});commit();
+ assert.equal(keyed,20000);
+ const started=performance.now();
+ for(tick=1;tick<=20;tick++){prepare(page,{},{root:{start:0,end:3,leading:0,trailing:0}});commit();}
+ assert.equal(keyed,20000,'later renders reuse the keys');
+ assert.ok(performance.now()-started<1000,`20 renders took ${performance.now()-started} ms`);
+ const fresh=[...items];keyed=0;
+ const unfrozen=()=>h(List,{items:fresh,getKey:i=>{keyed++;return String(i);},renderItem:i=>h('text',{},String(i))});
+ prepare(unfrozen,{},{root:{start:0,end:3,leading:0,trailing:0}});commit();
+ prepare(unfrozen,{},{root:{start:0,end:3,leading:0,trailing:0}});commit();
+ assert.equal(keyed,40000,'an array that may change is keyed on every render');
+});
+
+test('a List whose frozen items extend the last ones keys only the new items',()=>{
+ reset();let items=Object.freeze(Array.from({length:20000},(_,i)=>String(i))),keyed=0;
+ const page=()=>h(List,{items,getKey:item=>{keyed++;return item;},renderItem:item=>h('text',{},item)});
+ prepare(page,{},{root:{start:0,end:3,leading:0,trailing:0}});commit();
+ items=Object.freeze([...items,...Array.from({length:2000},(_,i)=>String(20000+i))]);keyed=0;
+ prepare(page,{},{root:{start:0,end:3,leading:0,trailing:0}});commit();
+ assert.equal(keyed,2000);
+ items=Object.freeze([...items.slice(0,21999),'0']);
+ assert.throws(()=>prepare(page,{},{root:{start:0,end:3,leading:0,trailing:0}}),/duplicate itemKey/,'a duplicate in the new part is still refused');
 });

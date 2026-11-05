@@ -8,13 +8,15 @@ import { sited } from './errors.js';
 import { overlayNode, decorateOverlay, resetOverlays } from './overlay.js';
 import { pickerNode, pickerAnchor, resetPicker } from './picker.js';
 import { envOf } from './hooks.js';
+import { keysOf } from './keys.js';
 import { finishTopLayer, resetTopLayer } from './toplayer.js';
 
 // Candidate transactions: prepare renders and encodes without touching the
 // committed page; commit adopts the candidate, discard drops it.
 export function List({ items, getKey, renderItem, getItemHeight, ...props }) {
+  const itemKeys = keysOf(items, getKey);
   return h(listTag, { ...props, count: items.length,
-    itemKeys: items.map(getKey), row: index => renderItem(items[index], index),
+    itemKeys, row: index => renderItem(items[index], index),
     ...(getItemHeight ? { height: index => getItemHeight(items[index], index) } : {}) });
 }
 List.__lxid = '@lingxia/view#List';

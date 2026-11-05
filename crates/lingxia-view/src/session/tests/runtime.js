@@ -2355,6 +2355,68 @@
   }
   Details.__lxid = "@lingxia/view#Details";
 
+  // src/runtime/keys.js
+  var parents = /* @__PURE__ */ new WeakMap();
+  var checked = /* @__PURE__ */ new WeakMap();
+  var payloads = /* @__PURE__ */ new WeakMap();
+  var positions = /* @__PURE__ */ new WeakMap();
+  var latest = null;
+  var itemKeys = /* @__PURE__ */ new WeakMap();
+  function keysOf(items, getKey) {
+    const known = itemKeys.get(items);
+    if (known) return known;
+    const frozen = Object.isFrozen(items);
+    const base = frozen && latest && extendsArray(items, latest.items) ? latest : null;
+    const keys = base ? Object.freeze(base.keys.concat(items.slice(base.items.length).map((item, i) => getKey(item, base.items.length + i)))) : Object.freeze(items.map(getKey));
+    if (frozen) {
+      if (base && base.keys.length) parents.set(keys, base.keys);
+      itemKeys.set(items, keys);
+      latest = { items, keys };
+    }
+    return keys;
+  }
+  function extendsArray(items, prefix) {
+    if (items.length < prefix.length || !Object.isFrozen(prefix)) return false;
+    for (let i = 0; i < prefix.length; i++) if (items[i] !== prefix[i]) return false;
+    return true;
+  }
+  function checkKeys(keys, check) {
+    if (checked.has(keys)) return;
+    const parent = parents.get(keys);
+    const parentSeen = parent && checked.get(parent);
+    const seen = parentSeen ? new Set(parentSeen) : /* @__PURE__ */ new Set();
+    for (let i = parentSeen ? parent.length : 0; i < keys.length; i++) {
+      check(keys[i], seen);
+      seen.add(keys[i]);
+    }
+    if (Object.isFrozen(keys)) checked.set(keys, seen);
+  }
+  function keyPayload(keys) {
+    let encoded = payloads.get(keys);
+    if (encoded) return encoded;
+    const parent = parents.get(keys);
+    const base = parent && payloads.get(parent);
+    if (base && keys.length > parent.length) {
+      const tail = JSON.stringify(keys.slice(parent.length));
+      encoded = { payload: `${base.payload.slice(0, -1)},${tail.slice(1)}`, bytes: base.bytes + utf8Bytes(tail, limits.itemKeyBytes) - 1 };
+    } else {
+      const payload = JSON.stringify(keys);
+      encoded = { payload, bytes: utf8Bytes(payload, limits.itemKeyBytes) };
+    }
+    if (Object.isFrozen(keys)) payloads.set(keys, encoded);
+    return encoded;
+  }
+  function keyPositions(keys) {
+    let map = positions.get(keys);
+    if (map) return map;
+    const parent = parents.get(keys);
+    const base = parent && positions.get(parent);
+    map = base ? new Map(base) : /* @__PURE__ */ new Map();
+    for (let i = base ? parent.length : 0; i < keys.length; i++) map.set(`key:${JSON.stringify(keys[i])}`, i);
+    if (Object.isFrozen(keys)) positions.set(keys, map);
+    return map;
+  }
+
   // src/runtime/validate.js
   function label(value, code, required = false) {
     if (value === void 0 && !required) return;
@@ -2451,18 +2513,19 @@
       throw Error("UI_IMAGE: invalid placeholder source");
     for (const name of ["onLoad", "onError"]) if (props[name] !== void 0 && typeof props[name] !== "function") throw Error("UI_IMAGE: invalid callback");
   }
+  var SHORT_KEY = Math.floor((limits.identifierBytes - 6) / 6);
+  var SURROGATE = /[\ud800-\udfff]/;
+  function checkKey(key, seen) {
+    if (typeof key !== "string" || seen.has(key) || (key.length > SHORT_KEY || SURROGATE.test(key)) && (utf8Bytes(key, limits.identifierBytes) > limits.identifierBytes || utf8Bytes(`key:${JSON.stringify(key)}`, limits.identifierBytes) > limits.identifierBytes))
+      throw Error("UI_LIST: invalid or duplicate itemKey");
+  }
   function listKeys(props) {
     if (!Number.isSafeInteger(props.count) || props.count < 0 || props.count > limits.listRows || typeof props.row !== "function" || props.height !== void 0 && typeof props.height !== "function") throw Error("UI_LIST: invalid row description");
     if (props.itemKeys !== void 0) {
       if (!Array.isArray(props.itemKeys) || props.itemKeys.length !== props.count) throw Error("UI_LIST: itemKeys must match count");
-      const seen = /* @__PURE__ */ new Set();
-      props.itemKeys = Array.from(props.itemKeys, (key) => {
-        if (typeof key !== "string" || utf8Bytes(key, limits.identifierBytes) > limits.identifierBytes || utf8Bytes(`key:${JSON.stringify(key)}`, limits.identifierBytes) > limits.identifierBytes || seen.has(key))
-          throw Error("UI_LIST: invalid or duplicate itemKey");
-        seen.add(key);
-        return key;
-      });
-      if (utf8Bytes(JSON.stringify(props.itemKeys), limits.itemKeyBytes) > limits.itemKeyBytes) throw Error("UI_LIST: itemKeys budget exceeded");
+      if (!Object.isFrozen(props.itemKeys)) props.itemKeys = Array.from(props.itemKeys);
+      checkKeys(props.itemKeys, checkKey);
+      if (keyPayload(props.itemKeys).bytes > limits.itemKeyBytes) throw Error("UI_LIST: itemKeys budget exceeded");
     }
     if (props.anchor !== void 0 && props.anchor !== "end") {
       const a = props.anchor;
@@ -3110,8 +3173,8 @@
   function listState(props, identity) {
     const old = page.committed?.lists.get(identity);
     const anchor = props.anchor === void 0 ? null : JSON.stringify(props.anchor);
-    const positions = props.itemKeys && new Map(props.itemKeys.map((key, i) => [`key:${JSON.stringify(key)}`, i]));
-    const states2 = positions ? new Map([...old?.states ?? []].flatMap(([, state]) => positions.has(state.key) ? [[positions.get(state.key), state]] : [])) : new Map([...old?.states ?? []].filter(([i]) => i < props.count));
+    const positions2 = props.itemKeys && old?.states?.size ? keyPositions(props.itemKeys) : null;
+    const states2 = positions2 ? new Map([...old?.states ?? []].flatMap(([, state]) => positions2.has(state.key) ? [[positions2.get(state.key), state]] : [])) : new Map([...old?.states ?? []].filter(([i]) => i < props.count));
     return {
       count: props.count,
       previousCount: old?.count ?? props.count,
@@ -3196,8 +3259,8 @@
         node.list.window = { ...window };
         encoded.push(field.listId, identity, field.listCount, props.count, field.listLeading, window.leading, field.listTrailing, window.trailing);
         if (props.itemKeys !== void 0) {
-          const payload = JSON.stringify(props.itemKeys);
-          itemKeyBytes += utf8Bytes(payload, limits.itemKeyBytes);
+          const { payload, bytes } = keyPayload(props.itemKeys);
+          itemKeyBytes += bytes;
           if (itemKeyBytes > limits.itemKeyBytes) throw Error("UI_LIST: itemKeys page budget exceeded");
           encoded.push(field.listItemKeys, payload);
         }
@@ -3952,10 +4015,11 @@
 
   // src/runtime/tree.js
   function List({ items, getKey, renderItem, getItemHeight, ...props }) {
+    const itemKeys2 = keysOf(items, getKey);
     return h(listTag, {
       ...props,
       count: items.length,
-      itemKeys: items.map(getKey),
+      itemKeys: itemKeys2,
       row: (index) => renderItem(items[index], index),
       ...getItemHeight ? { height: (index) => getItemHeight(items[index], index) } : {}
     });
