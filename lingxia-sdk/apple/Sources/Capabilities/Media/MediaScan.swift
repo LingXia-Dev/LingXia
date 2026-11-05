@@ -205,7 +205,7 @@ final class ScanCodeViewController: UIViewController {
     }
 
     private func ensureCameraPermission() {
-        PermissionManager.ensureCameraAccess { [weak self] granted in
+        PermissionManager.ensureCameraAccess(for: .scanCode) { [weak self] granted in
             guard let self else { return }
             if granted {
                 self.configureSession()

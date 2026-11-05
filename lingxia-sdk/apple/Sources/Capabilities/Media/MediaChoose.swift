@@ -73,7 +73,7 @@ extension LxAppMedia {
             return
         }
 
-        PermissionManager.ensureCameraAccess { granted in
+        PermissionManager.ensureCameraAccess(for: .camera) { granted in
             guard granted else {
                 let _ = onCallback(callbackId, false, "3001")
                 return

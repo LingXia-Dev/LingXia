@@ -641,6 +641,30 @@ extension LxApp {
         MacLocalNotification.requestPermission()
     }
 
+    /// Runs the host permission gate and the add-only Photos prompt; blocks a
+    /// background thread until they finish.
+    nonisolated static func requestPhotoAddAccess() -> Bool {
+        #if os(iOS)
+        return PermissionGates.blocking { done in
+            PermissionManager.ensurePhotoAccess(.addOnly, feature: .saveMedia, completion: done)
+        } ?? false
+        #else
+        return false
+        #endif
+    }
+
+    /// Runs the host permission gate and the when-in-use location prompt;
+    /// blocks a background thread until they finish. iOS only.
+    nonisolated static func requestLocationAccess() -> Bool {
+        #if os(iOS)
+        return PermissionGates.blocking { done in
+            PermissionManager.ensureLocationWhenInUseAccess(for: .location, completion: done)
+        } ?? false
+        #else
+        return false
+        #endif
+    }
+
     nonisolated static func notificationShow(
         id: RustStr,
         title: RustStr,

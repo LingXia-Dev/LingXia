@@ -36,6 +36,17 @@ class LxAppWifi {
     private nonisolated(unsafe) static var lastConnectedSignature: String? = nil
     private static let signatureLock = NSLock()
 
+    #if os(iOS) || os(macOS)
+    @MainActor
+    private static func ensureLocationAccess(completion: @escaping (Bool) -> Void) {
+        #if os(iOS)
+        PermissionManager.ensureLocationWhenInUseAccess(for: .wifi, completion: completion)
+        #else
+        PermissionManager.ensureLocationWhenInUseAccess(completion: completion)
+        #endif
+    }
+    #endif
+
     /**
      * Initialize WiFi module
      * On iOS/macOS, no explicit initialization is needed
@@ -44,7 +55,7 @@ class LxAppWifi {
         #if os(iOS) || os(macOS)
         // Request location permission (required for WiFi info on Apple platforms)
         Task { @MainActor in
-            PermissionManager.ensureLocationWhenInUseAccess { granted in
+            ensureLocationAccess { granted in
                 guard granted else {
                     os_log("%@", log: Self.log, type: .info, "WiFi module initialization denied due to missing location permission")
                     let _ = onCallback(callback_id, false, "12006") // Permission denied
@@ -81,7 +92,7 @@ class LxAppWifi {
         // Check location permission (should already be granted by startWifi)
         // This is a defensive check - permission should have been requested during startWifi
         Task { @MainActor in
-            PermissionManager.ensureLocationWhenInUseAccess { granted in
+            ensureLocationAccess { granted in
                 guard granted else {
                     os_log("%@", log: Self.log, type: .info, "Location permission not granted - skip WiFi listener registration")
                     return
@@ -346,7 +357,7 @@ class LxAppWifi {
     nonisolated public static func getConnectedWifi(callback_id: UInt64) {
         #if os(iOS)
         Task { @MainActor in
-            PermissionManager.ensureLocationWhenInUseAccess { granted in
+            ensureLocationAccess { granted in
                 guard granted else {
                     LXLog.error("Location permission denied", category: "WiFi")
                     let _ = onCallback(callback_id, false, "12006") // Permission denied
@@ -407,7 +418,7 @@ class LxAppWifi {
         }
         #elseif os(macOS)
         Task { @MainActor in
-            PermissionManager.ensureLocationWhenInUseAccess { granted in
+            ensureLocationAccess { granted in
                 guard granted else {
                     os_log("%@", log: Self.log, type: .info, "Location permission denied on macOS")
                     let _ = onCallback(callback_id, false, "12006") // Permission denied

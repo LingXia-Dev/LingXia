@@ -226,6 +226,14 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.notificationRequestPermission")]
         fn notification_request_permission() -> String;
 
+        // Host permission gate plus system prompt; blocks, so call off the main thread.
+        #[swift_bridge(swift_name = "LxApp.requestPhotoAddAccess")]
+        fn request_photo_add_access() -> bool;
+
+        // Host permission gate plus system prompt; blocks, so call off the main thread. iOS only.
+        #[swift_bridge(swift_name = "LxApp.requestLocationAccess")]
+        fn request_location_access() -> bool;
+
         #[swift_bridge(swift_name = "LxApp.notificationShow")]
         fn notification_show(
             id: &str,
@@ -553,6 +561,8 @@ pub use bridge::{
 };
 #[cfg(all(target_os = "macos", not(test)))]
 pub(crate) use bridge::{desktop_banner_hide, desktop_banner_show};
+#[cfg(target_os = "ios")]
+pub(crate) use bridge::{request_location_access, request_photo_add_access};
 #[cfg(target_os = "macos")]
 pub use bridge::{reveal_in_file_manager, set_control_session_indicator};
 

@@ -458,34 +458,16 @@ mod ios {
             return Ok(());
         }
 
-        if matches!(
-            initial_status,
-            PHAuthorizationStatus::Denied | PHAuthorizationStatus::Restricted
-        ) {
-            return Err(PlatformError::Platform(
-                PHOTOS_PERMISSION_DENIED.to_string(),
-            ));
-        }
-
+        // The host's permission gate runs in Swift around the system prompt.
         let (tx, rx) = oneshot::channel();
-        let sender = Arc::new(Mutex::new(Some(tx)));
-        run_on_main(move |_| {
-            let sender = Arc::clone(&sender);
-            let block = RcBlock::new(move |status: PHAuthorizationStatus| {
-                if let Some(tx) = sender.lock().ok().and_then(|mut guard| guard.take()) {
-                    let _ = tx.send(status);
-                }
-            });
-            unsafe {
-                PHPhotoLibrary::requestAuthorizationForAccessLevel_handler(access_level, &block);
-            }
+        std::thread::spawn(move || {
+            let _ = tx.send(crate::apple::ffi::request_photo_add_access());
         });
-
-        let status = rx.await.map_err(|_| {
+        let granted = rx.await.map_err(|_| {
             PlatformError::Platform("Photos permission request was canceled".to_string())
         })?;
 
-        if is_authorized(status) {
+        if granted {
             Ok(())
         } else {
             Err(PlatformError::Platform(
