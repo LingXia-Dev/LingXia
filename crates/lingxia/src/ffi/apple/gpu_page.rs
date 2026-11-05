@@ -215,6 +215,15 @@ mod bridge {
         // The display link fired for a requested frame.
         #[swift_bridge(swift_name = "gpuPageVsync")]
         fn gpu_page_vsync(token: i64);
+
+        // The display link fired: the frame shows `present_in_us` from now, refreshes every
+        // `interval_us`.
+        #[swift_bridge(swift_name = "gpuPageVsyncAt")]
+        fn gpu_page_vsync_at(token: i64, present_in_us: i64, interval_us: u64);
+
+        // The input event delivered next happened `age_us` ago.
+        #[swift_bridge(swift_name = "gpuPageInputAge")]
+        fn gpu_page_input_age(token: i64, age_us: u64);
     }
 
     extern "Swift" {
@@ -699,6 +708,16 @@ fn gpu_page_scroll_by(token: i64, region: &str, delta: f32) -> bool {
 
 fn gpu_page_vsync(token: i64) {
     with_page(token, |page| page.host().vsync());
+}
+
+fn gpu_page_vsync_at(token: i64, present_in_us: i64, interval_us: u64) {
+    with_page(token, |page| {
+        page.host().vsync_at(present_in_us, interval_us)
+    });
+}
+
+fn gpu_page_input_age(token: i64, age_us: u64) {
+    with_page(token, |page| page.host().input_age(age_us));
 }
 
 fn gpu_page_window_visible(token: i64, visible: bool) {

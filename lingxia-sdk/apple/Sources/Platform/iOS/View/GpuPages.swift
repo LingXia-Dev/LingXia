@@ -272,7 +272,7 @@ final class GpuPageView: UIView {
     func requestVsync() -> Bool {
         guard window != nil else { return false }
         if vsyncLink == nil {
-            let link = CADisplayLink(target: GpuVsyncTarget(self), selector: #selector(GpuVsyncTarget.tick))
+            let link = CADisplayLink(target: GpuVsyncTarget(self), selector: #selector(GpuVsyncTarget.tick(_:)))
             link.add(to: .main, forMode: .common)
             vsyncLink = link
         }
@@ -301,7 +301,8 @@ final class GpuPageView: UIView {
 
     @discardableResult
     private func send(_ phase: UInt8, _ touch: UITouch, velocity: (CGFloat, CGFloat) = (0, 0)) -> Bool {
-        send(phase, at: touch.location(in: self), velocity: velocity)
+        gpuPageInputAge(token, gpuInputAge(touch.timestamp))
+        return send(phase, at: touch.location(in: self), velocity: velocity)
     }
 
     @discardableResult
@@ -470,9 +471,10 @@ final class GpuPageView: UIView {
         }
     }
 
-    fileprivate func vsync() {
+    fileprivate func vsync(_ link: CADisplayLink) {
         vsyncLink?.isPaused = true
-        gpuPageVsync(token)
+        let (presentIn, interval) = gpuDisplayTiming(link)
+        gpuPageVsyncAt(token, presentIn, interval)
     }
 
     // MARK: Feedback
@@ -533,7 +535,20 @@ private final class GpuFlingTarget: NSObject {
 private final class GpuVsyncTarget: NSObject {
     weak var view: GpuPageView?
     init(_ view: GpuPageView) { self.view = view }
-    @objc func tick() { view?.vsync() }
+    @objc func tick(_ link: CADisplayLink) { view?.vsync(link) }
+}
+
+/// The refresh a display link frame shows on, from now, and the refresh interval, in µs.
+/// `targetTimestamp` shares `CACurrentMediaTime`'s clock.
+func gpuDisplayTiming(_ link: CADisplayLink) -> (Int64, UInt64) {
+    let presentIn = (link.targetTimestamp - CACurrentMediaTime()) * 1_000_000
+    let interval = max(0, link.targetTimestamp - link.timestamp) * 1_000_000
+    return (Int64(presentIn.rounded()), UInt64(interval.rounded()))
+}
+
+/// How long ago an event stamped on the system uptime clock happened, in µs.
+func gpuInputAge(_ timestamp: TimeInterval) -> UInt64 {
+    UInt64(max(0, CACurrentMediaTime() - timestamp) * 1_000_000)
 }
 
 /// GPU page views by token; Rust calls these on the main thread.

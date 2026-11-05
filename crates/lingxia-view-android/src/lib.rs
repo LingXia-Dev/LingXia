@@ -113,6 +113,8 @@ pub fn register_natives(env: &mut Env, class: &JClass) -> jni::errors::Result<()
         method!("nativeFrameCurrent", "(J)Z", frame_current),
         method!("nativeCloseRequest", "(J)Z", close_request),
         method!("nativeVsync", "(J)V", vsync),
+        method!("nativeVsyncAt", "(JJJ)V", vsync_at),
+        method!("nativeInputAge", "(JJ)V", input_age),
         method!("nativeRetry", "(J)V", retry),
         method!("nativeConnect", "(JJLjava/lang/String;)V", connect),
         method!("nativeReceive", "(JJLjava/lang/String;)V", receive),
@@ -287,6 +289,33 @@ host_call!(long_press, long_press);
 host_call!(cancel, cancel);
 host_call!(focus_left, focus_left);
 host_call!(surface_changed, surface_changed);
+
+/// A Choreographer frame: it shows `present_in_us` from now, refreshes come every `interval_us`.
+extern "system" fn vsync_at<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    present_in_us: jlong,
+    interval_us: jlong,
+) {
+    run(&mut env, |_| {
+        host(handle)?.vsync_at(present_in_us, u64::try_from(interval_us).unwrap_or(0));
+        Ok(())
+    })
+}
+
+/// The input event about to be delivered happened `age_us` ago.
+extern "system" fn input_age<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    age_us: jlong,
+) {
+    run(&mut env, |_| {
+        host(handle)?.input_age(u64::try_from(age_us).unwrap_or(0));
+        Ok(())
+    })
+}
 
 extern "system" fn surface_lost<'a>(mut env: EnvUnowned<'a>, _: JClass<'a>, handle: jlong) {
     run(&mut env, |_| {

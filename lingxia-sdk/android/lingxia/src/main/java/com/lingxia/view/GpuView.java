@@ -54,6 +54,10 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     static native boolean nativeFrameCurrent(long host);
     static native boolean nativeCloseRequest(long host);
     static native void nativeVsync(long host);
+    /** A display frame shown {@code presentInUs} from now; refreshes every {@code intervalUs}. */
+    static native void nativeVsyncAt(long host, long presentInUs, long intervalUs);
+    /** The input event delivered next happened {@code ageUs} ago. */
+    static native void nativeInputAge(long host, long ageUs);
     static native void nativeRetry(long host);
     static native void nativeConnect(long host, long connection, String nonce);
     static native void nativeReceive(long host, long connection, String frame);
@@ -191,8 +195,24 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     private boolean vsyncRequested;
     private final Choreographer.FrameCallback vsync = time -> {
         vsyncRequested = false;
-        if (!destroyed) nativeVsync(host);
+        if (destroyed) return;
+        // Choreographer's time is the vsync that started this frame; the frame shows on the next.
+        long interval = refreshIntervalNanos();
+        nativeVsyncAt(host, (time + interval - System.nanoTime()) / 1000, interval / 1000);
     };
+
+    private long refreshIntervalNanos() {
+        android.view.Display display = getDisplay();
+        float rate = display != null ? display.getRefreshRate() : 60f;
+        return (long) (1_000_000_000d / Math.max(rate, 1f));
+    }
+
+    /** MotionEvent times share System.nanoTime's clock. */
+    private static long inputAgeUs(MotionEvent event) {
+        long at = android.os.Build.VERSION.SDK_INT >= 34
+            ? event.getEventTimeNanos() : event.getEventTime() * 1_000_000L;
+        return Math.max(0, (System.nanoTime() - at) / 1000);
+    }
 
     /** {@code worker} names the View worker this page shares with its app session's pages. */
     public GpuView(Context context, String source, String worker, Listener listener) {
@@ -1087,6 +1107,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 velocity.computeCurrentVelocity(1000, configuration.getScaledMaximumFlingVelocity());
                 vx = velocity.getXVelocity(); vy = velocity.getYVelocity();
             }
+            nativeInputAge(host, inputAgeUs(event));
             boolean handled = nativePointer(host, phase, event.getX(), event.getY(), slop, vx, vy,
                 configuration.getScaledMinimumFlingVelocity());
             if (phase >= 2 && velocity != null) { velocity.recycle(); velocity = null; }

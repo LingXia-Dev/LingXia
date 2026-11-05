@@ -210,7 +210,7 @@ final class GpuPageView: NSView {
         if let existing = vsyncLink as? CADisplayLink {
             link = existing
         } else {
-            link = displayLink(target: GpuVsyncTarget(self), selector: #selector(GpuVsyncTarget.tick))
+            link = displayLink(target: GpuVsyncTarget(self), selector: #selector(GpuVsyncTarget.tick(_:)))
             link.add(to: .main, forMode: .common)
             vsyncLink = link
         }
@@ -218,9 +218,13 @@ final class GpuPageView: NSView {
         return true
     }
 
-    fileprivate func vsync() {
-        if #available(macOS 14.0, *) { (vsyncLink as? CADisplayLink)?.isPaused = true }
-        gpuPageVsync(token)
+    @available(macOS 14.0, *)
+    fileprivate func vsync(_ link: CADisplayLink) {
+        link.isPaused = true
+        // targetTimestamp shares CACurrentMediaTime's clock.
+        let presentIn = (link.targetTimestamp - CACurrentMediaTime()) * 1_000_000
+        let interval = max(0, link.targetTimestamp - link.timestamp) * 1_000_000
+        gpuPageVsyncAt(token, Int64(presentIn.rounded()), UInt64(interval.rounded()))
     }
 
     /// The last presented GPU frame, from Rust's readback.
@@ -249,11 +253,17 @@ final class GpuPageView: NSView {
 
     @discardableResult
     private func send(_ phase: UInt8, _ event: NSEvent) -> Bool {
+        gpuPageInputAge(token, Self.inputAge(event))
         let point = convert(event.locationInWindow, from: nil)
         let scale = window?.backingScaleFactor ?? 2
         return gpuPagePointer(
             token, phase, Float(point.x * scale), Float(point.y * scale),
             Float(Self.slopPoints * scale), 0, 0, .greatestFiniteMagnitude)
+    }
+
+    /// NSEvent timestamps share CACurrentMediaTime's clock (time since boot).
+    private static func inputAge(_ event: NSEvent) -> UInt64 {
+        UInt64(max(0, CACurrentMediaTime() - event.timestamp) * 1_000_000)
     }
 
     private func pixels(_ event: NSEvent) -> (Float, Float) {
@@ -304,6 +314,7 @@ final class GpuPageView: NSView {
         } else {
             phase = 0
         }
+        gpuPageInputAge(token, Self.inputAge(event))
         if !gpuPageWheel(
             token, x, y, Float(event.scrollingDeltaX) * unit, Float(event.scrollingDeltaY) * unit,
             precise, phase)
@@ -454,7 +465,8 @@ public final class GpuCapture: NSObject {
 private final class GpuVsyncTarget: NSObject {
     weak var view: GpuPageView?
     init(_ view: GpuPageView) { self.view = view }
-    @objc func tick() { view?.vsync() }
+    @available(macOS 14.0, *)
+    @objc func tick(_ link: CADisplayLink) { view?.vsync(link) }
 }
 
 extension GpuPageView: PullRefreshPage {
