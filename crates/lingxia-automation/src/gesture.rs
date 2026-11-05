@@ -305,6 +305,15 @@ impl JSPageGesture {
         json_to_js(&ctx, &serde_json::json!(inputs))
     }
 
+    /// Host automation beyond page gestures (`chrome`, `refreshIndicator`, `hostInput`).
+    #[js_method]
+    fn capabilities(&self, ctx: JSContext) -> JSResult<JSValue> {
+        let capabilities = lxapp::get_platform()
+            .map(|platform| platform.host_capabilities())
+            .unwrap_or_default();
+        json_to_js(&ctx, &serde_json::json!(capabilities))
+    }
+
     /// The page's pull-to-refresh indicator `{phase, offset}`; rejects with
     /// `E_UNSUPPORTED` when the page has none.
     #[js_method(rename = "refreshIndicator")]

@@ -2238,6 +2238,13 @@ export interface ChromeElement {
   bounds: [number, number, number, number];
 }
 
+/**
+ * `chrome`: `chrome()` reads the host's bars and window controls.
+ * `refreshIndicator`: `refreshIndicator()` reads pull to refresh.
+ * `hostInput`: injected input reaches the host's own views around the page.
+ */
+export type HostCapability = 'chrome' | 'refreshIndicator' | 'hostInput';
+
 /** Real pointer gestures; `E_UNSUPPORTED` where the host cannot inject them. */
 export interface PageGesture {
   /** Turn the host window wider or taller than it is, as a desktop user resizes it. */
@@ -2247,6 +2254,8 @@ export interface PageGesture {
   perform(options: GestureOptions): Promise<GestureResult>;
   /** The devices this host can imitate; empty where it cannot inject. */
   inputs(): GestureInput[];
+  /** Host automation beyond page gestures; empty where there is none. */
+  capabilities(): HostCapability[];
   /** The on-screen part of the page (or `window`), in its own points. */
   viewport(options?: { page?: string; window?: string | true }): Promise<{ left: number; top: number; width: number; height: number }>;
   /** `E_UNSUPPORTED` when the page has no pull-to-refresh indicator. */

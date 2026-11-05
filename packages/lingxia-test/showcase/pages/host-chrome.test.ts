@@ -15,7 +15,7 @@ spec('a tap on a tab label switches to that tab and shows its declared chrome', 
   id: 'CHROME-TAB-001',
   covers: ['app:tabBar', 'app:tabBar.presentation=immersive', 'page:navigationStyle=default', 'page:navigationStyle=custom'],
   app: SHOWCASE_APP_ID,
-  requires: { input: ['touch', 'mouse'] },
+  requires: { input: ['touch', 'mouse'], chrome: true, hostInput: true },
 }, async (t) => {
   const { app } = bindFixture(t, 'CHROME-TAB-001');
   await app.nav.relaunch({ page: 'home' });
@@ -37,7 +37,7 @@ spec('the navigation bar back button returns to the page below', {
   id: 'CHROME-BACK-001',
   covers: ['app:navigationBar.back'],
   app: SHOWCASE_APP_ID,
-  requires: { input: ['touch', 'mouse'] },
+  requires: { input: ['touch', 'mouse'], chrome: true, hostInput: true },
 }, async (t) => {
   const { app } = bindFixture(t, 'CHROME-BACK-001');
   await app.nav.relaunch({ page: 'api' });

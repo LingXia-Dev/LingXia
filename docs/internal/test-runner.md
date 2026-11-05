@@ -473,6 +473,11 @@ Development machine: lxdev receives progress, results, and artifacts
   bundle map attributes each call to its file: own options win, `tags`,
   `covers` and `requires` merge. An unmet `requires` skips the case before a
   fixture exists, with the reason in `case.reason`.
+- Host capabilities (`requires.chrome | refreshIndicator | hostInput`) come
+  from the platform's `host_capabilities()` via `page.gesture.capabilities()`,
+  read once per run. A step that hits `E_UNSUPPORTED` stays a failure: only a
+  declared requirement skips, so an unexpected loss of support surfaces as a
+  regression instead of a quiet skip.
 - `t.app` and `t.automation` (including `t.automation.lxapp(id)`) share
   fixture guards and tracing.
 - A fixture app wraps an `AppRef` (`{ appid, driver }`), one per app id, and

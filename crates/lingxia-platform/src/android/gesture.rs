@@ -145,6 +145,15 @@ impl AppGesture for Platform {
         vec![GestureInput::Touch]
     }
 
+    fn host_capabilities(&self) -> Vec<crate::traits::gesture::HostCapability> {
+        use crate::traits::gesture::HostCapability;
+        vec![
+            HostCapability::Chrome,
+            HostCapability::RefreshIndicator,
+            HostCapability::HostInput,
+        ]
+    }
+
     async fn perform_app_gesture(
         &self,
         request: AppGestureRequest,

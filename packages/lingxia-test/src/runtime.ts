@@ -177,10 +177,23 @@ function restoreProfileKeep(option: SpecOptions["restoreProfile"]): string[] | u
 
 const GESTURE_INPUTS = ["touch", "mouse", "trackpad"];
 
+const HOST_CAPABILITIES = ["chrome", "refreshIndicator", "hostInput"] as const;
+type HostCapabilityKey = typeof HOST_CAPABILITIES[number];
+const CAPABILITY_NEEDS: Record<HostCapabilityKey, string> = {
+  chrome: "readable host chrome",
+  refreshIndicator: "a readable pull-to-refresh indicator",
+  hostInput: "input that reaches the host's own views",
+};
+
 function validateRequires(requires: unknown, where: string): Requirements {
-  if (requires === undefined) return { args: [], openapi: false, input: [] };
+  if (requires === undefined) return { args: [], openapi: false, input: [], capabilities: [] };
   if (!requires || typeof requires !== "object") throw new TypeError(`${where} requires must be an object`);
   const { args, openapi, input } = requires as SpecRequirements;
+  for (const key of HOST_CAPABILITIES) {
+    const value = (requires as SpecRequirements)[key];
+    if (value !== undefined && typeof value !== "boolean") throw new TypeError(`${where} requires.${key} must be a boolean`);
+  }
+  const capabilities = HOST_CAPABILITIES.filter((key) => (requires as SpecRequirements)[key] === true);
   if (args !== undefined && (!Array.isArray(args) || args.some((key) => typeof key !== "string" || key.length === 0))) {
     throw new TypeError(`${where} requires.args must be an array of non-empty --arg keys`);
   }
@@ -188,7 +201,7 @@ function validateRequires(requires: unknown, where: string): Requirements {
   if (input !== undefined && (!Array.isArray(input) || input.some((kind) => !GESTURE_INPUTS.includes(kind)))) {
     throw new TypeError(`${where} requires.input must be an array of ${GESTURE_INPUTS.join(" | ")}`);
   }
-  return { args: [...new Set(args ?? [])], openapi: openapi === true, input: [...new Set(input ?? [])] };
+  return { args: [...new Set(args ?? [])], openapi: openapi === true, input: [...new Set(input ?? [])], capabilities };
 }
 
 /** Checks what `spec()` and `spec.configure()` accept alike; throws on the first problem. */
@@ -242,6 +255,7 @@ function settle(item: RegisteredSpec, file: FileOptions | undefined): void {
     args: [...new Set([...fileRequires.args, ...ownRequires.args])],
     openapi: fileRequires.openapi || ownRequires.openapi,
     input: [...new Set([...fileRequires.input, ...ownRequires.input])],
+    capabilities: [...new Set([...fileRequires.capabilities, ...ownRequires.capabilities])],
   };
 }
 
@@ -256,6 +270,7 @@ function unmetRequirements(
   args: Readonly<Record<string, string | undefined>>,
   openapi: boolean,
   inputs: readonly string[],
+  capabilities: readonly string[],
 ): string | undefined {
   const missing = item.requires.args.filter((key) => args[key] === undefined);
   const needs: string[] = [];
@@ -265,6 +280,10 @@ function unmetRequirements(
   if (item.requires.openapi && !openapi) needs.push("--openapi <document>");
   if (item.requires.input.length > 0 && !item.requires.input.some((kind) => inputs.includes(kind))) {
     needs.push(`${item.requires.input.join(" or ")} input (this host has ${inputs.length > 0 ? inputs.join(", ") : "no gesture input"})`);
+  }
+  const lacking = item.requires.capabilities.filter((key) => !capabilities.includes(key));
+  if (lacking.length > 0) {
+    needs.push(`${lacking.map((key) => CAPABILITY_NEEDS[key]).join(" and ")} (this host has ${capabilities.length > 0 ? capabilities.join(", ") : "no host capabilities"})`);
   }
   return needs.length === 0 ? undefined : `Not run: requires ${needs.join(" and ")}.`;
 }
@@ -296,7 +315,7 @@ function register(annotation: Annotation, title: string, optionsOrBody: SpecOpti
     timeout: DEFAULT_SPEC_TIMEOUT_MS,
     restoreProfile: false,
     forensics: true,
-    requires: { args: [], openapi: false, input: [] },
+    requires: { args: [], openapi: false, input: [], capabilities: [] },
     own: { ...options },
     expected,
     annotation,
@@ -453,12 +472,21 @@ function unfenceGlobalAutomation(): void {
   hostAutomation = undefined;
 }
 
-interface Requirements { args: string[]; openapi: boolean; input: string[] }
+interface Requirements { args: string[]; openapi: boolean; input: string[]; capabilities: HostCapabilityKey[] }
 
 /** What this host's gestures can imitate. */
 function gestureInputs(): string[] {
   try {
     return pinApp().page.gesture.inputs();
+  } catch {
+    return [];
+  }
+}
+
+/** Host automation beyond page gestures (`chrome`, `refreshIndicator`, `hostInput`). */
+function hostCapabilities(): string[] {
+  try {
+    return pinApp().page.gesture.capabilities();
   } catch {
     return [];
   }
@@ -740,6 +768,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     Array.from({ length: repeatEach }, (_, index) => ({ item, repeat: index + 1 })));
   const plan = shuffleSeed === undefined ? repeated : shuffleWithSeed(repeated, shuffleSeed);
   let inputs: string[] | undefined;
+  let capabilities: string[] | undefined;
   const budget = runBudget(control, plan.length);
   const fullName = (item: RegisteredSpec, repeat: number) =>
     (item.id ? `${item.id} | ${item.title}` : item.title) + (repeatEach > 1 ? ` [repeat ${repeat}/${repeatEach}]` : "");
@@ -852,7 +881,8 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     });
 
     const caseStarted = Date.now();
-    const unmet = notRun(item) ? undefined : unmetRequirements(item, args, openapi !== undefined, item.requires.input.length > 0 ? (inputs ??= gestureInputs()) : []);
+    const unmet = notRun(item) ? undefined : unmetRequirements(item, args, openapi !== undefined, item.requires.input.length > 0 ? (inputs ??= gestureInputs()) : [],
+      item.requires.capabilities.length > 0 ? (capabilities ??= hostCapabilities()) : []);
     if (budgetExhausted || contaminated || screenLocked || unmet !== undefined || notRun(item)) {
       if (contaminated) record.reason = contaminationReason ?? `Not run: an earlier spec left the run unable to continue. Recover: ${RECOVER_COMMAND}`;
       else if (budgetExhausted && budget) record.reason = `Not run: the run budget of ${Math.round(budget.ms / 1000)}s was exhausted after ${budgetExhausted.after}/${plan.length} specs.`;

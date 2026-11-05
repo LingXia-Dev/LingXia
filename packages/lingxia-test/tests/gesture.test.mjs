@@ -122,6 +122,24 @@ test("requires.input rejects an unknown device", () => {
   assert.throws(() => spec("bad", { requires: { input: ["pen"] } }, async () => {}), /requires.input/);
 });
 
+test("requires capabilities skip with the reason where the host lacks one", async () => {
+  const world = createWorld();
+  world.gestureHost.capabilities = ["refreshIndicator"];
+  const ran = [];
+  spec("reads the indicator", { requires: { refreshIndicator: true } }, async () => { ran.push("indicator"); });
+  spec("taps chrome", { requires: { chrome: true, hostInput: true } }, async () => { ran.push("chrome"); });
+  installFakeHost(world);
+  const report = await run();
+  assert.deepEqual(ran, ["indicator"]);
+  assert.equal(report.cases[1].status, "skipped");
+  assert.equal(report.cases[1].reason,
+    "Not run: requires readable host chrome and input that reaches the host's own views (this host has refreshIndicator).");
+});
+
+test("requires capabilities must be booleans", () => {
+  assert.throws(() => spec("bad", { requires: { chrome: "yes" } }, async () => {}), /requires\.chrome must be a boolean/);
+});
+
 test("edge back reports E_UNSUPPORTED with the host's reason", async () => {
   const world = createWorld();
   spec("edge", async (t) => {

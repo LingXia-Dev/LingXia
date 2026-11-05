@@ -109,7 +109,7 @@ async function expectPageIntact(view: TestView, when: string): Promise<void> {
   }
 }
 
-spec("a pull follows the finger, refreshes once past the threshold, and leaves the page whole", { id: "PULL-002", covers: ['page:enablePullDownRefresh'], app: SHOWCASE_APP_ID, requires: { input: ['touch', 'trackpad'] } }, async (t) => {
+spec("a pull follows the finger, refreshes once past the threshold, and leaves the page whole", { id: "PULL-002", covers: ['page:enablePullDownRefresh'], app: SHOWCASE_APP_ID, requires: { input: ['touch', 'trackpad'], refreshIndicator: true, hostInput: true } }, async (t) => {
   const { app } = bindFixture(t, "PULL-002");
   await app.nav.relaunch({ page: 'pullToRefresh' });
   const view = (await app.page({ name: 'pullToRefresh' }, { timeout: 30_000 })).view;
@@ -160,7 +160,7 @@ spec("a pull follows the finger, refreshes once past the threshold, and leaves t
   });
 });
 
-spec("a swipe scrolls the page and a pull below the top scrolls back instead of refreshing", { id: "PULL-003", covers: ['view:scroll'], app: SHOWCASE_APP_ID, requires: { input: ['touch', 'trackpad'] } }, async (t) => {
+spec("a swipe scrolls the page and a pull below the top scrolls back instead of refreshing", { id: "PULL-003", covers: ['view:scroll'], app: SHOWCASE_APP_ID, requires: { input: ['touch', 'trackpad'], refreshIndicator: true } }, async (t) => {
   const { app } = bindFixture(t, "PULL-003");
   await app.nav.relaunch({ page: 'pullToRefresh' });
   const view = (await app.page({ name: 'pullToRefresh' }, { timeout: 30_000 })).view;

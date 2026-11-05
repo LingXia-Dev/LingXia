@@ -214,9 +214,10 @@ export function createWorld(options = {}) {
 
   /** Gestures as sent; `gestureHost` shapes the fake host's answers. */
   const gestureCalls = [];
-  const gestureHost = { inputs: ["touch"], delivered: "window", indicator: undefined, nextFinger: 1 };
+  const gestureHost = { inputs: ["touch"], capabilities: ["chrome", "refreshIndicator", "hostInput"], delivered: "window", indicator: undefined, nextFinger: 1 };
   const gesture = {
     inputs() { return [...gestureHost.inputs]; },
+    capabilities() { return [...gestureHost.capabilities]; },
     async perform(options) {
       if (gestureHost.inputs.length === 0) throw Object.assign(new Error("E_UNSUPPORTED: no gestures"), { code: "E_UNSUPPORTED" });
       gestureCalls.push(structuredClone(options));

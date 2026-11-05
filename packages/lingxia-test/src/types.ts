@@ -134,6 +134,12 @@ export interface SpecRequirements {
   openapi?: boolean;
   /** Gesture devices of which the host must imitate at least one; skipped (with the reason) where it has none. */
   input?: readonly GestureInput[];
+  /** Host chrome is readable (`t.app.chrome`, `t.app.tabBar`). */
+  chrome?: boolean;
+  /** The pull-to-refresh indicator is readable (`view.refreshIndicator()`). */
+  refreshIndicator?: boolean;
+  /** Injected input reaches the host's own views around the page: chrome taps, a pull to refresh. */
+  hostInput?: boolean;
 }
 
 /** `restoreProfile: { keep }`. */

@@ -13,6 +13,16 @@ impl AppGesture for Platform {
         vec![GestureInput::Mouse, GestureInput::Trackpad]
     }
 
+    #[cfg(target_os = "macos")]
+    fn host_capabilities(&self) -> Vec<crate::traits::gesture::HostCapability> {
+        use crate::traits::gesture::HostCapability;
+        vec![
+            HostCapability::Chrome,
+            HostCapability::RefreshIndicator,
+            HostCapability::HostInput,
+        ]
+    }
+
     #[cfg(target_os = "ios")]
     fn gesture_inputs(&self) -> Vec<crate::traits::gesture::GestureInput> {
         vec![crate::traits::gesture::GestureInput::Touch]

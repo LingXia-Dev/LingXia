@@ -302,7 +302,7 @@ const PAGE_DRIVER_API = [
 ] as const;
 const PAGE_POINTER_API = ['click', 'down', 'drag', 'move', 'scroll', 'up'] as const;
 const PAGE_KEY_API = ['press', 'type'] as const;
-const PAGE_GESTURE_API = ['chrome', 'edgeBack', 'inputs', 'orientWindow', 'perform', 'refreshIndicator', 'viewport'] as const;
+const PAGE_GESTURE_API = ['capabilities', 'chrome', 'edgeBack', 'inputs', 'orientWindow', 'perform', 'refreshIndicator', 'viewport'] as const;
 const NAV_DRIVER_API = [
   'back',
   'current',

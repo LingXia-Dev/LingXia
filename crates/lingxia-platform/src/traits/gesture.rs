@@ -14,6 +14,18 @@ pub enum GestureInput {
     Trackpad,
 }
 
+/// Host automation beyond page gestures; a spec that `requires` one is skipped where it is missing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum HostCapability {
+    /// [`AppGesture::chrome_elements`] reads the host's bars and window controls.
+    Chrome,
+    /// [`AppGesture::pull_refresh_indicator`] reads a page's pull-to-refresh indicator.
+    RefreshIndicator,
+    /// Injected input reaches the host's own views around the page: chrome, pull to refresh.
+    HostInput,
+}
+
 /// Where the gesture lands. Page points are page CSS pixels of the page
 /// instance `webtag` names; window points are the window-content unit of
 /// [`AppMouseAction`](super::mouse::AppMouseAction).
@@ -271,6 +283,10 @@ pub trait AppGesture: Send + Sync {
     /// injection into a WebView).
     fn webview_page_gestures(&self) -> bool {
         true
+    }
+
+    fn host_capabilities(&self) -> Vec<HostCapability> {
+        Vec::new()
     }
 
     async fn perform_app_gesture(
