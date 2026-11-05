@@ -2,6 +2,7 @@ import { List, measureFrames, useLocal, type FrameStats, type View } from '@ling
 import '../../theme/index.css';
 import { Button, Page, Section } from '../../shared/ui';
 import type { PerfActions, PerfData, PerfScene } from '../../shared/perf-types';
+import { judgeFrames, judgeInput, judgeReveal, type Verdict } from '../../shared/perf-judge';
 
 // A standard workload per pipeline stage. "Run budget" drives one scene for 5 s and
 // judges the frames the renderer measured; specs drive the same scenes with real gestures.
@@ -38,28 +39,13 @@ function rowsOf(count: number): readonly number[] {
 }
 
 const image = (index: number) => `public/perf/img-${String(index % 16).padStart(2, '0')}.png`;
-const ms = (value: number | null | undefined) => (value == null ? '-' : value.toFixed(1));
 
-interface Verdict { line: string; pass: boolean }
-
-/** A scene passes when frames keep pace with the display, input shows within a few
- *  refreshes, or a returning page shows within a quarter second. */
+/** The shared bar: frames keep pace with the display, input shows within a few refreshes,
+ *  a returning page shows within a quarter second. */
 function judge(spec: SceneSpec, stats: FrameStats): Verdict {
-  const refresh = stats.refreshMs ?? 16.7;
-  if (spec.judge === 'input') {
-    const input = stats.inputToPresent.statsMs;
-    const pass = input !== null && input.p95 <= refresh * 5;
-    return { pass, line: `input→present p50 ${ms(input?.p50)} · p95 ${ms(input?.p95)} · p99 ${ms(input?.p99)} ms (${stats.inputToPresent.count})` };
-  }
-  if (spec.judge === 'reveal') {
-    const reveal = stats.revealMs;
-    const pass = reveal !== null && reveal.p95 <= 250;
-    return { pass, line: `first present p50 ${ms(reveal?.p50)} · p95 ${ms(reveal?.p95)} · p99 ${ms(reveal?.p99)} ms (${stats.reveals} reveals)` };
-  }
-  const times = stats.frameTimeMs;
-  const shown = stats.samples + stats.dropped;
-  const pass = times !== null && times.p95 <= refresh * 2.5 && stats.dropped <= shown * 0.1;
-  return { pass, line: `frame p50 ${ms(times?.p50)} · p95 ${ms(times?.p95)} · p99 ${ms(times?.p99)} ms` };
+  if (spec.judge === 'input') return judgeInput(stats);
+  if (spec.judge === 'reveal') return judgeReveal(stats);
+  return judgeFrames(stats);
 }
 
 export function render({ data, actions }: View<PerfActions, PerfData>) {
