@@ -23,6 +23,8 @@ public final class GpuPage extends FrameLayout {
     private final GpuView content;
     private boolean reported;
     private boolean frameReported, frameWaitLogged;
+    /** Bumped by each module load: a park deferred behind the outgoing transition is stale after one. */
+    private int loads;
 
     private GpuPage(Context context, long token, String appId, String worker, String path, String webTag, String source, boolean logic) {
         super(context);
@@ -149,7 +151,7 @@ public final class GpuPage extends FrameLayout {
     public static void reload(long token, String source) {
         MAIN.post(() -> {
             GpuPage page = PAGES.get(token);
-            if (page != null) { page.frameReported = false; page.frameWaitLogged = false; page.content.reload(source); }
+            if (page != null) { page.loads++; page.frameReported = false; page.frameWaitLogged = false; page.content.reload(source); }
         });
     }
 
@@ -161,7 +163,11 @@ public final class GpuPage extends FrameLayout {
     public static void park(long token) {
         MAIN.post(() -> {
             GpuPage page = PAGES.get(token);
-            if (page != null) page.preserveBeforeRetirement(() -> page.content.park());
+            if (page == null) return;
+            // Re-entering the page reloads it before a deferred park runs; parking then would
+            // strand the new module without a connection.
+            int at = page.loads;
+            page.preserveBeforeRetirement(() -> { if (page.loads == at) page.content.park(); });
         });
     }
 
