@@ -172,6 +172,8 @@ export struct LxAppContainer {
   @State webViewKeys: string[] = [] // Array of WebView keys for ForEach
   /** GPU pages by webtag; they take a page's place where a WebView would. */
   @State gpuPages: Map<string, GpuPageModel> = new Map()
+  /** A GPU page waiting for its first frame before it replaces the shown page. */
+  private pendingRevealTag: string = ''
   private gpuCreated = (page: GpuPageModel): void => this.handleGpuPage('create', page);
   private gpuDisposed = (page: GpuPageModel): void => this.handleGpuPage('destroy', page);
   @State presentationOverlayWebTag: string = '' // WebView tag currently displayed in presentation (may include #instance suffix)
@@ -380,17 +382,16 @@ export struct LxAppContainer {
     }
     hilog.info(DOMAIN, TAG, `GPU page ${action}: ${page.webTag} (container: ${this.appId})`);
     if (action === 'create') {
-      const wantCurrent: boolean = page.webTag === this.targetWebTag;
-      if (wantCurrent) {
-        this.currentWebTag = page.webTag;
-      }
       const pages = new Map<string, GpuPageModel>(this.gpuPages);
       pages.set(page.webTag, page);
       this.gpuPages = pages;
       if (this.pendingWebTag === page.webTag) {
+        // A navigation waited for this page: it replaces the shown one once it has a frame.
         this.pendingWebTag = '';
         this.navigateToPage(page.webTag);
-      } else if (wantCurrent) {
+      } else if (page.webTag === this.targetWebTag) {
+        this.currentWebTag = page.webTag;
+        GpuPages.reveal(page, () => {});
         this.triggerOnPageShowIfNeeded(page.webTag);
       }
       return;
@@ -398,6 +399,9 @@ export struct LxAppContainer {
     const pages = new Map<string, GpuPageModel>(this.gpuPages);
     pages.delete(page.webTag);
     this.gpuPages = pages;
+    if (this.pendingRevealTag === page.webTag) {
+      this.pendingRevealTag = '';
+    }
     if (this.currentWebTag === page.webTag) {
       this.currentWebTag = this.webViewKeys.length > 0 ? this.webViewKeys[0] : '';
     }
@@ -1603,6 +1607,7 @@ export struct LxAppContainer {
       return false;
     }
     this.pendingWebTag = '';
+    this.pendingRevealTag = '';
 
     // Store previous WebView for animation
     const oldWebTag = this.currentWebTag;
@@ -1618,16 +1623,33 @@ export struct LxAppContainer {
     }
     this.pageShowTriggered.delete(newWebTag);
 
-    // Determine if animation should be used
-    const shouldAnimate = this.shouldAnimateTransition();
+    if (gpuPage !== undefined && oldWebTag && oldWebTag !== newWebTag) {
+      // The outgoing page stays on screen until this one has a frame: an empty surface is black.
+      this.pendingRevealTag = newWebTag;
+      GpuPages.reveal(gpuPage, () => {
+        if (this.pendingRevealTag !== newWebTag) {
+          return;
+        }
+        this.pendingRevealTag = '';
+        this.transitionTo(newWebTag, path);
+      });
+      return true;
+    }
+    if (gpuPage !== undefined) {
+      // Nothing to keep on screen: show it now, floored until its first frame.
+      GpuPages.reveal(gpuPage, () => {});
+    }
+    this.transitionTo(newWebTag, path);
+    return true;
+  }
 
-    if (shouldAnimate && oldWebTag) {
+  private transitionTo(newWebTag: string, path: string): void {
+    const oldWebTag = this.currentWebTag;
+    if (this.shouldAnimateTransition() && oldWebTag) {
       this.performAnimatedTransition(oldWebTag, newWebTag, path);
     } else {
       this.performInstantTransition(newWebTag, path);
     }
-
-    return true;
   }
 
   /**
@@ -1877,6 +1899,7 @@ export struct LxAppContainer {
         page: page,
         chromeInsets: this.getGpuChromeInsets(page.webTag),
         pageVisible: this.getRenderVisibility(page.webTag) === Visibility.Visible,
+        floor: resolveCanvasColor(this.appearanceDark),
       })
         .translate(this.getRenderTranslation(page.webTag))
         .visibility(this.getRenderVisibility(page.webTag))

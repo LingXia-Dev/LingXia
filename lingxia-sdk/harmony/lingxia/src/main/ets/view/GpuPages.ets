@@ -1,6 +1,7 @@
 import { NodeContent } from '@kit.ArkUI';
 import { LxLog } from '../app/LxLog';
 import { GpuFrameTextMenu } from './generated/GpuFrame';
+import { gpuPageReveal } from 'liblingxia.so';
 
 const TAG = 'LingXia.GpuPages';
 
@@ -51,6 +52,10 @@ export class GpuPageModel {
   topLayer: boolean = false;
   recovery: GpuRecovery | null = null;
   holdSurface: boolean = false;
+  /** Revealed at least once: its surface has shown a frame and keeps it while the page lives. */
+  revealed: boolean = false;
+  /** Runs once the core reveals the page; a later reveal replaces it. */
+  revealWaiter: (() => void) | null = null;
 
   constructor(token: number, identity: GpuPageIdentity) {
     this.token = token;
@@ -102,6 +107,15 @@ export class GpuPages {
     GpuPages.created = GpuPages.created.filter((l: GpuPageListener) => l !== listener);
     GpuPages.disposed = GpuPages.disposed.filter((l: GpuPageListener) => l !== listener);
     GpuPages.changed = GpuPages.changed.filter((l: GpuPageListener) => l !== listener);
+  }
+
+  /**
+   * Ask the core to reveal `page` in place of the one on screen; `then` runs when it has a frame
+   * to show (or the core gives up waiting), never with the surface still empty.
+   */
+  static reveal(page: GpuPageModel, then: () => void): void {
+    page.revealWaiter = then;
+    gpuPageReveal(page.token, page.revealed);
   }
 
   /** Chrome, top layer or recovery changed; whoever shows the page re-reads it. */
@@ -157,9 +171,15 @@ export class GpuPages {
       case 'recovery':
         page.recovery = payload.length > 0 ? JSON.parse(payload) as GpuRecovery : null;
         break;
-      case 'revealed':
+      case 'revealed': {
+        LxLog.d(TAG, `revealed ${page.webTag} hold=${payload}`);
         page.holdSurface = payload === 'true';
+        page.revealed = true;
+        const waiter = page.revealWaiter;
+        page.revealWaiter = null;
+        waiter?.();
         break;
+      }
       case 'bootstrapOverdue':
       case 'retainSurface':
         break;

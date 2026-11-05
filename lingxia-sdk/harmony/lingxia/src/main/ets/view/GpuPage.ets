@@ -22,6 +22,8 @@ export struct GpuPage {
   /** Host bars over the page: top, right, bottom, left, device pixels. */
   @Prop @Watch('remeasure') chromeInsets: number[] = [0, 0, 0, 0];
   @Prop @Watch('visibilityChanged') pageVisible: boolean = true;
+  /** The page floor, shown until the surface holds a frame: an empty surface is black. */
+  @Prop floor: ResourceColor = Color.White;
   private rect: GpuRect = new GpuRect();
   private win: window.Window | null = null;
 
@@ -77,6 +79,13 @@ export struct GpuPage {
   build() {
     Stack() {
       ContentSlot(this.page.content)
+      if (!this.page.revealed || this.page.holdSurface) {
+        Column()
+          .width('100%')
+          .height('100%')
+          .backgroundColor(this.floor)
+          .hitTestBehavior(HitTestMode.None)
+      }
       if (this.page.press !== null) {
         this.feedback(this.page.press)
       }
