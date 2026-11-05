@@ -13,6 +13,11 @@ impl AppGesture for Platform {
         vec![GestureInput::Mouse, GestureInput::Trackpad]
     }
 
+    #[cfg(target_os = "ios")]
+    fn gesture_inputs(&self) -> Vec<crate::traits::gesture::GestureInput> {
+        vec![crate::traits::gesture::GestureInput::Touch]
+    }
+
     async fn perform_app_gesture(
         &self,
         request: AppGestureRequest,
@@ -23,11 +28,7 @@ impl AppGesture for Platform {
         }
         #[cfg(not(target_os = "macos"))]
         {
-            let _ = request;
-            Err(PlatformError::NotSupported(
-                "iOS has no public touch injection; gestures need a desktop or Android host"
-                    .to_string(),
-            ))
+            ios::perform(request).await
         }
     }
 
@@ -37,6 +38,14 @@ impl AppGesture for Platform {
         target: crate::traits::gesture::GestureTarget,
     ) -> Result<[f64; 4], PlatformError> {
         mac::viewport(target).await
+    }
+
+    #[cfg(target_os = "ios")]
+    async fn gesture_viewport(
+        &self,
+        target: crate::traits::gesture::GestureTarget,
+    ) -> Result<[f64; 4], PlatformError> {
+        ios::viewport(target).await
     }
 
     #[cfg(target_os = "macos")]
@@ -842,5 +851,208 @@ mod mac {
             Ok(Some(PullRefreshIndicator { phase, offset }))
         })
         .await
+    }
+}
+
+/// iOS has no public touch injection, so a GPU page takes the points straight
+/// into its view's touch path; WebView pages and window gestures stay out of reach.
+#[cfg(target_os = "ios")]
+mod ios {
+    use crate::error::PlatformError;
+    use crate::traits::gesture::{
+        AppGestureRequest, AppGestureResult, GestureDelivery, GestureEnd, GestureInput,
+        GesturePoint, GestureTarget,
+    };
+    use dispatch2::DispatchQueue;
+    use objc2::msg_send;
+    use objc2::runtime::AnyObject;
+    use objc2_core_foundation::CGRect;
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{Duration, Instant};
+    use tokio::sync::oneshot;
+
+    /// A finger left down by a `Hold` end: the page view it is on and where it rests.
+    #[derive(Clone, Copy)]
+    struct Held {
+        view: usize,
+        last: (f64, f64),
+    }
+
+    static HELD: Mutex<Option<HashMap<u64, Held>>> = Mutex::new(None);
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+
+    fn held() -> std::sync::MutexGuard<'static, Option<HashMap<u64, Held>>> {
+        HELD.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    async fn on_main<T: Send + 'static>(
+        work: impl FnOnce() -> Result<T, String> + Send + 'static,
+    ) -> Result<T, PlatformError> {
+        let (tx, rx) = oneshot::channel();
+        DispatchQueue::main().exec_async(move || {
+            let _ = tx.send(work());
+        });
+        match tokio::time::timeout(Duration::from_secs(2), rx).await {
+            Ok(Ok(result)) => result.map_err(PlatformError::Platform),
+            Ok(Err(_)) => Err(PlatformError::Platform("gesture event was dropped".into())),
+            Err(_) => Err(PlatformError::Platform("main thread did not answer".into())),
+        }
+    }
+
+    /// Swift's runtime name for the page view ends with its type name.
+    fn is_gpu_page(view: *mut AnyObject) -> bool {
+        !view.is_null()
+            && unsafe { (*view).class() }
+                .name()
+                .to_bytes()
+                .ends_with(b"GpuPageView")
+    }
+
+    /// The front-most GPU page view on screen, searching windows back to front.
+    fn front_gpu_page() -> Result<usize, String> {
+        unsafe fn walk(view: *mut AnyObject, found: &mut Option<usize>) {
+            unsafe {
+                let hidden: bool = msg_send![view, isHidden];
+                if hidden {
+                    return;
+                }
+                if is_gpu_page(view) {
+                    *found = Some(view as usize);
+                }
+                let subviews: *mut AnyObject = msg_send![view, subviews];
+                let count: usize = msg_send![subviews, count];
+                for index in 0..count {
+                    let child: *mut AnyObject = msg_send![subviews, objectAtIndex: index];
+                    walk(child, found);
+                }
+            }
+        }
+        unsafe {
+            let app: *mut AnyObject = msg_send![objc2::class!(UIApplication), sharedApplication];
+            let windows: *mut AnyObject = msg_send![app, windows];
+            let count: usize = msg_send![windows, count];
+            let mut found = None;
+            for index in 0..count {
+                let window: *mut AnyObject = msg_send![windows, objectAtIndex: index];
+                walk(window, &mut found);
+            }
+            found.ok_or_else(|| "no GPU page view on screen".to_string())
+        }
+    }
+
+    fn page_view(target: &GestureTarget) -> Result<usize, String> {
+        match target {
+            GestureTarget::Page { view: Some(view), .. }
+                if *view != 0 && !is_gpu_page(*view as *mut AnyObject) =>
+            {
+                Err("iOS takes automated touches on GPU pages only; a WebView page has no public touch injection".into())
+            }
+            GestureTarget::Page { .. } => front_gpu_page(),
+            GestureTarget::Window { .. } => {
+                Err("iOS has no public touch injection into a window; target a GPU page".into())
+            }
+        }
+    }
+
+    pub(super) async fn viewport(target: GestureTarget) -> Result<[f64; 4], PlatformError> {
+        on_main(move || {
+            let view = page_view(&target)? as *mut AnyObject;
+            let bounds: CGRect = unsafe { msg_send![view, bounds] };
+            Ok([0.0, 0.0, bounds.size.width, bounds.size.height])
+        })
+        .await
+    }
+
+    const DOWN: isize = 0;
+    const MOVE: isize = 1;
+    const UP: isize = 2;
+    const CANCEL: isize = 3;
+
+    /// One touch phase at a view point; false when the page refused it.
+    fn touch(view: usize, phase: isize, (x, y): (f64, f64)) -> Result<bool, String> {
+        // The page the gesture began on must still be the one on screen, which also keeps
+        // a page released since out of reach.
+        if front_gpu_page().ok() != Some(view) {
+            return Err("the page left the screen during the gesture".into());
+        }
+        Ok(unsafe { msg_send![view as *mut AnyObject, automationTouch: phase, x: x, y: y] })
+    }
+
+    pub(super) async fn perform(
+        request: AppGestureRequest,
+    ) -> Result<AppGestureResult, PlatformError> {
+        if let Some(input) = request.input
+            && input != GestureInput::Touch
+        {
+            return Err(PlatformError::NotSupported(format!(
+                "{input:?} gestures are not available on iOS; use touch"
+            )));
+        }
+        let points = request
+            .shape
+            .points()
+            .map_err(PlatformError::InvalidParameter)?;
+        let continued = match request.finger {
+            Some(id) => Some(
+                held()
+                    .as_mut()
+                    .and_then(|fingers| fingers.remove(&id))
+                    .ok_or_else(|| {
+                        PlatformError::InvalidParameter(format!("finger {id} is not held"))
+                    })?,
+            ),
+            None => None,
+        };
+        let view = match continued {
+            Some(finger) => finger.view,
+            None => {
+                let target = request.target.clone();
+                on_main(move || page_view(&target)).await?
+            }
+        };
+        let started = Instant::now();
+        let mut events = 0u32;
+        let mut last = continued.map(|finger| finger.last);
+        for GesturePoint { x, y, at_ms } in points {
+            let due = started + Duration::from_secs_f64(at_ms / 1000.0);
+            tokio::time::sleep_until(due.into()).await;
+            let phase = if last.is_none() { DOWN } else { MOVE };
+            last = Some((x, y));
+            if !on_main(move || touch(view, phase, (x, y))).await? {
+                return Err(PlatformError::Platform(
+                    "the page is not taking input (behind a dialog or leaving)".into(),
+                ));
+            }
+            events += 1;
+        }
+        let at = last.ok_or_else(|| PlatformError::InvalidParameter("no points".into()))?;
+        let finger = match request.end {
+            GestureEnd::Hold => {
+                let id = NEXT.fetch_add(1, Ordering::Relaxed);
+                held()
+                    .get_or_insert_with(HashMap::new)
+                    .insert(id, Held { view, last: at });
+                Some(id)
+            }
+            end => {
+                let phase = if end == GestureEnd::Cancel {
+                    CANCEL
+                } else {
+                    UP
+                };
+                on_main(move || touch(view, phase, at)).await?;
+                events += 1;
+                None
+            }
+        };
+        Ok(AppGestureResult {
+            input: GestureInput::Touch,
+            delivered: GestureDelivery::View,
+            events,
+            duration_ms: started.elapsed().as_secs_f64() * 1000.0,
+            finger,
+        })
     }
 }

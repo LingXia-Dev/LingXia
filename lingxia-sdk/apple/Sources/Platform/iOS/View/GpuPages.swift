@@ -77,7 +77,7 @@ final class GpuPageView: UIView {
     /// An inactive app (Control Center, an incoming call) ends the gesture in flight.
     @objc private func windowFocusChanged(_ note: Notification) {
         let active = note.name == UIApplication.didBecomeActiveNotification
-        if !active { tracked = nil }
+        if !active { tracked = nil; automated = nil }
         gpuPageWindowFocus(token, active)
         ime.updateCaret()
     }
@@ -107,6 +107,10 @@ final class GpuPageView: UIView {
             if let tracked {
                 send(3, tracked)
                 self.tracked = nil
+            }
+            if let automated {
+                send(3, at: automated)
+                self.automated = nil
             }
             cancelLongPress()
             stopFlingNow()
@@ -290,26 +294,33 @@ final class GpuPageView: UIView {
     private static let slopPoints: CGFloat = 10
     private static let minFlingPoints: CGFloat = 50
 
-    private func pixels(_ touch: UITouch) -> (CGFloat, CGFloat) {
-        let point = touch.location(in: self)
+    private func pixels(_ point: CGPoint) -> (CGFloat, CGFloat) {
         let scale = window?.screen.scale ?? UIScreen.main.scale
         return (point.x * scale, point.y * scale)
     }
 
     @discardableResult
     private func send(_ phase: UInt8, _ touch: UITouch, velocity: (CGFloat, CGFloat) = (0, 0)) -> Bool {
-        let (x, y) = pixels(touch)
+        send(phase, at: touch.location(in: self), velocity: velocity)
+    }
+
+    @discardableResult
+    private func send(_ phase: UInt8, at point: CGPoint, velocity: (CGFloat, CGFloat) = (0, 0)) -> Bool {
         let scale = window?.screen.scale ?? UIScreen.main.scale
         return gpuPagePointer(
-            token, phase, Float(x), Float(y), Float(Self.slopPoints * scale),
+            token, phase, Float(point.x * scale), Float(point.y * scale), Float(Self.slopPoints * scale),
             Float(velocity.0), Float(velocity.1), Float(Self.minFlingPoints * scale))
     }
 
     private func record(_ touch: UITouch) {
-        let (x, y) = pixels(touch)
-        samples.append((touch.timestamp, x, y))
+        record(touch.location(in: self), at: touch.timestamp)
+    }
+
+    private func record(_ point: CGPoint, at time: TimeInterval) {
+        let (x, y) = pixels(point)
+        samples.append((time, x, y))
         // The last 100 ms decide the release velocity.
-        samples.removeAll { touch.timestamp - $0.time > 0.1 }
+        samples.removeAll { time - $0.time > 0.1 }
     }
 
     private func releaseVelocity() -> (CGFloat, CGFloat) {
@@ -361,6 +372,52 @@ final class GpuPageView: UIView {
         self.tracked = nil
         if handleTouch(3, at: tracked.location(in: self)) { return }
         send(3, tracked)
+    }
+
+    /// Where an automated finger rests; automation has no `UITouch` to follow.
+    private var automated: CGPoint?
+
+    /// A touch phase from automation (0 down, 1 move, 2 up, 3 cancel) at a view point. It
+    /// takes the path a finger's touches take once UIKit has delivered them here; false
+    /// when the page takes no input now.
+    @objc func automationTouch(_ phase: Int, x: Double, y: Double) -> Bool {
+        let point = CGPoint(x: x, y: y)
+        let now = CACurrentMediaTime()
+        switch phase {
+        case 0:
+            if let tracked {
+                send(3, tracked)
+                self.tracked = nil
+            }
+            if gpuPageInputBlocked(token) { return false }
+            touchStart = convert(point, to: nil)
+            automated = point
+            if handleTouch(0, at: point) { return true }
+            stopFlingNow()
+            samples = []
+            record(point, at: now)
+            send(0, at: point)
+            return true
+        case 1:
+            guard automated != nil else { return false }
+            automated = point
+            if handleTouch(1, at: point) { return true }
+            record(point, at: now)
+            send(1, at: point)
+            return true
+        default:
+            guard automated != nil else { return false }
+            automated = nil
+            let up = phase == 2
+            if handleTouch(up ? 2 : 3, at: point) { return true }
+            if up {
+                record(point, at: now)
+                send(2, at: point, velocity: releaseVelocity())
+            } else {
+                send(3, at: point)
+            }
+            return true
+        }
     }
 
     func armLongPress() {
