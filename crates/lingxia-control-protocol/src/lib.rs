@@ -414,6 +414,7 @@ pub mod methods {
         pub const SCREENSHOT: &str = "lxapp.page.screenshot";
         pub const TREE: &str = "lxapp.page.tree";
         pub const FRAME: &str = "lxapp.page.frame";
+        pub const HUD: &str = "lxapp.page.hud";
     }
 
     /// Automating the machine rather than the app, unlocked by

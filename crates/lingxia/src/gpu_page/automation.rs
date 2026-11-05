@@ -125,6 +125,14 @@ impl GpuPageAutomation for GpuAutomation {
         self.request(json!({"op": "frame"}))
     }
 
+    fn metrics(&self, window_ms: Option<u64>) -> GpuFuture<Value> {
+        self.request(json!({"op": "frame", "windowMs": window_ms}))
+    }
+
+    fn hud(&self, on: bool) -> GpuFuture<Value> {
+        self.request(json!({"op": "hud", "on": on}))
+    }
+
     fn screenshot(&self) -> GpuFuture<Vec<u8>> {
         let reply = self.request(json!({"op": "screenshot"}));
         Box::pin(async move {

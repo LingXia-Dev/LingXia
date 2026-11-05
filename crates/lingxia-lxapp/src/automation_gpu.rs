@@ -73,6 +73,14 @@ pub trait GpuPageAutomation: Send + Sync {
             Err("E_UNSUPPORTED: this GPU page binding has no frame counters".to_owned())
         })
     }
+    /// [`Self::frame`] with frame pacing over the last `window_ms` (default 5 s).
+    fn metrics(&self, _window_ms: Option<u64>) -> GpuFuture<Value> {
+        self.frame()
+    }
+    /// Draw the renderer's frame-statistics HUD over the page, or stop.
+    fn hud(&self, _on: bool) -> GpuFuture<Value> {
+        Box::pin(async { Err("E_UNSUPPORTED: this GPU page binding has no HUD".to_owned()) })
+    }
 }
 
 type Registry = Mutex<HashMap<String, Weak<dyn GpuPageAutomation>>>;

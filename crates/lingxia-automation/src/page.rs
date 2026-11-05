@@ -272,6 +272,19 @@ struct JSScreenshotOptions {
     page: Option<String>,
 }
 
+#[derive(FromJSObject, Default)]
+struct JSFrameOptions {
+    page: Option<String>,
+    #[js_name = "windowMs"]
+    window_ms: Option<u64>,
+}
+
+#[derive(FromJSObject)]
+struct JSHudOptions {
+    page: Option<String>,
+    on: bool,
+}
+
 /// The fields `waitFor` reads off the shared query payload.
 #[derive(serde::Deserialize)]
 struct WaitProbe {
@@ -728,16 +741,27 @@ impl JSPageDriver {
         json_to_js(&ctx, &value)
     }
 
-    /// A GPU page's presentation counters (`ui.frame` and `ui.reveal`).
+    /// A GPU page's presentation counters (`ui.frame` and `ui.reveal`) and frame pacing over
+    /// the last `windowMs`.
     #[js_method(rename = "uiFrame")]
     async fn ui_frame(
         &self,
         ctx: JSContext,
-        options: Optional<JSScreenshotOptions>,
+        options: Optional<JSFrameOptions>,
     ) -> JSResult<JSValue> {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;
         let options = options.0.unwrap_or_default();
-        let value = auto::page_frame(&app, options.page.as_deref())
+        let value = auto::page_frame(&app, options.page.as_deref(), options.window_ms)
+            .await
+            .map_err(fail(&app, options.page.as_deref()))?;
+        json_to_js(&ctx, &value)
+    }
+
+    /// Draw the renderer's frame-statistics HUD over a GPU page, or stop.
+    #[js_method]
+    async fn hud(&self, ctx: JSContext, options: JSHudOptions) -> JSResult<JSValue> {
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
+        let value = auto::page_hud(&app, options.page.as_deref(), options.on)
             .await
             .map_err(fail(&app, options.page.as_deref()))?;
         json_to_js(&ctx, &value)

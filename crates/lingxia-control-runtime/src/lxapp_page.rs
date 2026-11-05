@@ -91,10 +91,20 @@ fn handle_lxapp_page_command_impl(
             .map(Some)
         }
         methods::lxapp_page::FRAME => {
-            let args: PageTargetArgs = parse_args(handler, args)?;
+            let args: FrameArgs = parse_args(handler, args)?;
             run_async(crate::devtool::lxapp_dev_page_frame(
                 args.appid.as_deref(),
                 args.page.as_deref(),
+                args.window_ms,
+            ))
+            .map(Some)
+        }
+        methods::lxapp_page::HUD => {
+            let args: HudArgs = parse_args(handler, args)?;
+            run_async(crate::devtool::lxapp_dev_page_hud(
+                args.appid.as_deref(),
+                args.page.as_deref(),
+                args.on,
             ))
             .map(Some)
         }
@@ -254,6 +264,26 @@ where
 struct AppArgs {
     #[serde(default)]
     appid: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct FrameArgs {
+    #[serde(default)]
+    appid: Option<String>,
+    #[serde(default)]
+    page: Option<String>,
+    #[serde(default)]
+    window_ms: Option<u64>,
+}
+
+#[derive(Deserialize)]
+struct HudArgs {
+    #[serde(default)]
+    appid: Option<String>,
+    #[serde(default)]
+    page: Option<String>,
+    on: bool,
 }
 
 #[derive(Deserialize, Default)]

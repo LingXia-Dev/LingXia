@@ -683,11 +683,27 @@ pub async fn page_tree(app: &Arc<LxApp>, page_name: Option<&str>) -> Result<Valu
 /// A GPU page's presentation counters: `{ renderer, page, commit, firstPresentAt,
 /// lastPresentAt, frames, workerQueueUs, evalMs, imageCacheBytes,
 /// imageCacheEntries, animationFrames, wakeups, reveal: { deadlines, watchdogs,
-/// lastReveal } }`. A WebView page has none.
-pub async fn page_frame(app: &Arc<LxApp>, page_name: Option<&str>) -> Result<Value, String> {
+/// lastReveal }, hud, pacing }`, `pacing` over the last `window_ms`. A WebView page has none.
+pub async fn page_frame(
+    app: &Arc<LxApp>,
+    page_name: Option<&str>,
+    window_ms: Option<u64>,
+) -> Result<Value, String> {
     match gpu::backend(app, page_name)? {
-        Some(page) => page.frame().await,
+        Some(page) => page.metrics(window_ms).await,
         None => Err("E_UNSUPPORTED: frame counters are for GPU pages".into()),
+    }
+}
+
+/// Draw the frame-statistics HUD over a GPU page, or stop: `{ hud }`.
+pub async fn page_hud(
+    app: &Arc<LxApp>,
+    page_name: Option<&str>,
+    on: bool,
+) -> Result<Value, String> {
+    match gpu::backend(app, page_name)? {
+        Some(page) => page.hud(on).await,
+        None => Err("E_UNSUPPORTED: the frame HUD is for GPU pages".into()),
     }
 }
 

@@ -205,6 +205,12 @@ impl PageWaitState {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum HudState {
+    On,
+    Off,
+}
+
 #[derive(Subcommand, Clone)]
 pub enum PageCommand {
     /// Print the current page
@@ -318,6 +324,7 @@ pub enum PageCommand {
         pretty: bool,
     },
     /// Print a GPU page's presentation counters (frames, queue and eval time, image cache, reveal)
+    /// and its frame pacing (frame time percentiles, dropped, jank, input to present)
     Frame {
         /// Page name or runtime instance id; defaults to current page
         #[arg(long)]
@@ -325,9 +332,23 @@ pub enum PageCommand {
         /// LxApp context; defaults to current
         #[arg(long, default_value = "current")]
         app: String,
+        /// How far back frame pacing reaches, in milliseconds (default 5000)
+        #[arg(long)]
+        window_ms: Option<u64>,
         /// Print pretty JSON
         #[arg(long)]
         pretty: bool,
+    },
+    /// Draw the renderer's frame-statistics HUD over a GPU page, or stop
+    Hud {
+        #[arg(value_enum)]
+        state: HudState,
+        /// Page name or runtime instance id; defaults to current page
+        #[arg(long)]
+        page: Option<String>,
+        /// LxApp context; defaults to current
+        #[arg(long, default_value = "current")]
+        app: String,
     },
     /// Find nodes in the accessibility tree by role and, optionally, exact name
     Find {
@@ -803,14 +824,28 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
             .unwrap_or(Value::Null);
             print_json(&data, pretty)?;
         }
-        PageCommand::Frame { page, app, pretty } => {
+        PageCommand::Frame {
+            page,
+            app,
+            window_ms,
+            pretty,
+        } => {
             let data = client::execute_command(
                 ws_url,
                 methods::lxapp_page::FRAME,
-                Some(json!({ "appid": app, "page": page })),
+                Some(json!({ "appid": app, "page": page, "windowMs": window_ms })),
             )?
             .unwrap_or(Value::Null);
             print_json(&data, pretty)?;
+        }
+        PageCommand::Hud { state, page, app } => {
+            let data = client::execute_command(
+                ws_url,
+                methods::lxapp_page::HUD,
+                Some(json!({ "appid": app, "page": page, "on": state == HudState::On })),
+            )?
+            .unwrap_or(Value::Null);
+            print_json(&data, false)?;
         }
         PageCommand::Find {
             role,
@@ -1311,6 +1346,20 @@ mod tests {
         assert!(matches!(
             page_command(&["page", "frame", "--page", "home"]),
             PageCommand::Frame { page: Some(page), .. } if page == "home"
+        ));
+        assert!(matches!(
+            page_command(&["page", "frame", "--window-ms", "2000"]),
+            PageCommand::Frame {
+                window_ms: Some(2000),
+                ..
+            }
+        ));
+        assert!(matches!(
+            page_command(&["page", "hud", "on"]),
+            PageCommand::Hud {
+                state: HudState::On,
+                ..
+            }
         ));
         assert!(matches!(
             page_command(&["page", "find", "button", "--name", "Pay"]),

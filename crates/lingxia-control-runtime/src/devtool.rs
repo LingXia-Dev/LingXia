@@ -620,9 +620,20 @@ pub(crate) async fn lxapp_dev_page_tree(
 pub(crate) async fn lxapp_dev_page_frame(
     appid: Option<&str>,
     page_name: Option<&str>,
+    window_ms: Option<u64>,
 ) -> Result<serde_json::Value, String> {
     let app = auto::resolve_lxapp(appid.unwrap_or("current"))?;
-    auto::page_frame(&app, page_name).await
+    auto::page_frame(&app, page_name, window_ms).await
+}
+
+/// Draw the frame-statistics HUD over a GPU page, or stop.
+pub(crate) async fn lxapp_dev_page_hud(
+    appid: Option<&str>,
+    page_name: Option<&str>,
+    on: bool,
+) -> Result<serde_json::Value, String> {
+    let app = auto::resolve_lxapp(appid.unwrap_or("current"))?;
+    auto::page_hud(&app, page_name, on).await
 }
 
 /// Queries DOM nodes in the target page and returns a JSON description payload.
