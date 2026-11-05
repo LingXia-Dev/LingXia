@@ -101,6 +101,13 @@ impl Context {
             }))
     }
 
+    /// Only a context without a device may enumerate adapters: on GLES that makes the shared EGL
+    /// context current outside wgpu's lock, racing the render threads that use it (`BadAccess`).
+    /// A device here already passed the sentinel for its backend.
+    fn probes_adapters(&self) -> Result<bool, String> {
+        Ok(self.device_count()? == 0)
+    }
+
     pub fn device_count(&self) -> Result<usize, String> {
         Ok(self.lock()?.devices.len())
     }
@@ -204,7 +211,9 @@ impl Presenter {
         // A surface binds the window to its backend; a backend that is going to be
         // refused must not touch the window, or the fallback cannot bind it (Adreno:
         // GLES then finds no compatible device).
-        if context.blocked_backends()?.contains(wgpu::Backends::VULKAN) {
+        if context.probes_adapters()?
+            && context.blocked_backends()?.contains(wgpu::Backends::VULKAN)
+        {
             return Self::gles_fallback(BLOCKED.to_string(), window, width, height).map(
                 |mut presenter| {
                     presenter.target = Some(Box::new(move || rebind.clone().into()));
@@ -779,6 +788,20 @@ mod tests {
         assert_eq!(read.len(), 3 * 2 * 4);
         assert_eq!(&read[..12], &[255, 0, 0, 255, 128, 64, 0, 128, 0, 0, 0, 0]);
         assert_eq!(&read[..12], &read[12..]);
+    }
+
+    #[test]
+    fn only_a_context_without_a_device_probes_adapters() {
+        let context = Context::with_backends(wgpu::Backends::empty());
+        assert_eq!(context.probes_adapters(), Ok(true));
+    }
+
+    #[test]
+    #[ignore = "requires a GPU adapter; run explicitly with --features gpu -- --ignored"]
+    fn a_shared_context_with_a_device_never_probes_adapters() {
+        let context = Context::default();
+        pollster::block_on(context.lock().unwrap().device(None)).expect("GPU adapter required");
+        assert_eq!(context.clone().probes_adapters(), Ok(false));
     }
 
     #[test]
