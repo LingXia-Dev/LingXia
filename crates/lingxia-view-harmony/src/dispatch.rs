@@ -14,6 +14,7 @@ unsafe impl Send for Function {}
 unsafe impl Sync for Function {}
 
 static MAIN: OnceLock<Function> = OnceLock::new();
+static MAIN_THREAD: OnceLock<std::thread::ThreadId> = OnceLock::new();
 
 unsafe extern "C" fn run(
     _env: sys::napi_env,
@@ -64,6 +65,7 @@ pub unsafe fn install(env: sys::napi_env) -> Result<(), String> {
     // SAFETY: created above on this thread.
     unsafe { sys::napi_unref_threadsafe_function(env, function) };
     let _ = MAIN.set(Function(function));
+    let _ = MAIN_THREAD.set(std::thread::current().id());
     Ok(())
 }
 
@@ -163,4 +165,19 @@ pub fn post_after(delay: Duration, task: Task) {
 /// Runs `task` on the main thread, exactly once.
 pub fn post_main(task: Task) {
     post(task);
+}
+
+/// Runs `work` on the main thread and waits for it: for system callbacks that arrive on their
+/// own threads but must answer synchronously from main-thread state. `None` on timeout.
+pub(crate) fn run_on_main<T: Send + 'static>(
+    work: impl FnOnce() -> T + Send + 'static,
+) -> Option<T> {
+    if MAIN_THREAD.get() == Some(&std::thread::current().id()) {
+        return Some(work());
+    }
+    let (send, receive) = std::sync::mpsc::sync_channel(1);
+    post(Box::new(move || {
+        let _ = send.send(work());
+    }));
+    receive.recv_timeout(Duration::from_secs(2)).ok()
 }

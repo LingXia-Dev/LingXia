@@ -664,9 +664,28 @@ unsafe extern "C" {
 
 // ---- Symbols above the compatible API level ---------------------------------------------------
 
-/// Looks up `name` in the already loaded ArkUI library; `None` on a system that lacks it.
+/// Looks up `name` in the ArkUI library; `None` on a system that lacks it. The library is
+/// one of ours, so it is loaded; asking it directly also finds symbols kept out of the
+/// global namespace.
 pub fn optional(name: &std::ffi::CStr) -> Option<*mut c_void> {
-    // SAFETY: RTLD_DEFAULT searches the loaded libraries; the name is NUL-terminated.
-    let symbol = unsafe { libc::dlsym(libc::RTLD_DEFAULT, name.as_ptr()) };
+    // SAFETY: NOLOAD only returns the already loaded library; names are NUL-terminated.
+    let symbol = unsafe {
+        let library = libc::dlopen(
+            c"libace_ndk.z.so".as_ptr(),
+            libc::RTLD_LAZY | libc::RTLD_NOLOAD,
+        );
+        let symbol = if library.is_null() {
+            libc::dlsym(libc::RTLD_DEFAULT, name.as_ptr())
+        } else {
+            libc::dlsym(library, name.as_ptr())
+        };
+        if !library.is_null() {
+            libc::dlclose(library);
+        }
+        symbol
+    };
+    if symbol.is_null() {
+        log::debug!(target: "lingxia_view", "UI_NDK: no {}", name.to_string_lossy());
+    }
     (!symbol.is_null()).then_some(symbol)
 }

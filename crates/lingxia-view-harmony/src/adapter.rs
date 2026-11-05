@@ -89,6 +89,11 @@ impl HarmonyAdapter {
         (scale, *lock(&self.origin))
     }
 
+    /// The surface in device pixels, `(0, 0)` before it is measured.
+    pub(crate) fn extent(&self) -> (f32, f32) {
+        lock(&self.size).map_or((0.0, 0.0), |(w, h)| (w as f32, h as f32))
+    }
+
     pub(crate) fn velocity(&self) -> MutexGuard<'_, Velocity> {
         lock(&self.velocity)
     }

@@ -8,6 +8,10 @@ use std::ffi::{CStr, CString, c_char};
 
 /// The element id ArkUI asks for when it wants the provider's root.
 const ROOT: i64 = -1;
+/// The provider's own root element, parent of the projection's roots; semantic ids start at 1.
+const VIRTUAL_ROOT: i32 = 0;
+/// ArkUI's parent id for a provider root: it hangs under the XComponent itself.
+const HOST_PARENT: i32 = -2_100_000;
 
 /// ArkUI component types; the screen reader speaks the role from these.
 fn component_type(role: Role) -> &'static CStr {
@@ -104,7 +108,7 @@ unsafe fn populate(
         sys::OH_ArkUI_AccessibilityElementInfoSetElementId(info, node.id as i32);
         sys::OH_ArkUI_AccessibilityElementInfoSetParentId(
             info,
-            node.parent.map_or(ROOT as i32, |p| p as i32),
+            node.parent.map_or(VIRTUAL_ROOT, |p| p as i32),
         );
         sys::OH_ArkUI_AccessibilityElementInfoSetComponentType(
             info,
@@ -175,6 +179,39 @@ unsafe fn populate(
     }
 }
 
+/// The provider root: the XComponent's area, holding the projection's roots.
+///
+/// # Safety
+/// `info` must be a live element info ArkUI handed to a provider callback.
+unsafe fn populate_root(
+    info: *mut sys::ArkUI_AccessibilityElementInfo,
+    roots: &[u32],
+    (width, height): (f32, f32),
+    origin: [f32; 2],
+) {
+    let mut children: Vec<i64> = roots.iter().map(|&id| i64::from(id)).collect();
+    let mut rect = sys::ArkUI_AccessibleRect {
+        left_top_x: origin[0] as i32,
+        left_top_y: origin[1] as i32,
+        right_bottom_x: (origin[0] + width) as i32,
+        right_bottom_y: (origin[1] + height) as i32,
+    };
+    // SAFETY: `info` is live for the callback; every pointer outlives its call.
+    unsafe {
+        sys::OH_ArkUI_AccessibilityElementInfoSetElementId(info, VIRTUAL_ROOT);
+        sys::OH_ArkUI_AccessibilityElementInfoSetParentId(info, HOST_PARENT);
+        sys::OH_ArkUI_AccessibilityElementInfoSetComponentType(info, c"root".as_ptr());
+        sys::OH_ArkUI_AccessibilityElementInfoSetScreenRect(info, &mut rect);
+        sys::OH_ArkUI_AccessibilityElementInfoSetVisible(info, true);
+        sys::OH_ArkUI_AccessibilityElementInfoSetEnabled(info, true);
+        sys::OH_ArkUI_AccessibilityElementInfoSetChildNodeIds(
+            info,
+            children.len() as i32,
+            children.as_mut_ptr(),
+        );
+    }
+}
+
 /// The page a provider callback's instance id names.
 fn token(instance: *const c_char) -> Option<i64> {
     // SAFETY: ArkUI passes back the NUL-terminated id it was registered with.
@@ -185,7 +222,7 @@ fn token(instance: *const c_char) -> Option<i64> {
         .ok()
 }
 
-unsafe extern "C" fn find_by_id(
+unsafe fn find_by_id_main(
     instance: *const c_char,
     id: i64,
     mode: i32,
@@ -201,18 +238,36 @@ unsafe extern "C" fn find_by_id(
             let Some(projection) = projection else {
                 return sys::RESULT_FAILED;
             };
-            let mut wanted: Vec<u32> = if id == ROOT {
-                projection.roots()
+            let root = id == ROOT || id == i64::from(VIRTUAL_ROOT);
+            let children = mode
+                & (sys::SEARCH_PREFETCH_CHILDREN | sys::SEARCH_PREFETCH_RECURSIVE_CHILDREN)
+                != 0;
+            let recursive = mode & sys::SEARCH_PREFETCH_RECURSIVE_CHILDREN != 0;
+            let mut wanted: Vec<u32> = Vec::new();
+            if root {
+                let roots = projection.roots();
+                // SAFETY: the list is live for this callback.
+                unsafe {
+                    populate_root(
+                        sys::OH_ArkUI_AddAndGetAccessibilityElementInfo(list),
+                        &roots,
+                        page.adapter().extent(),
+                        origin,
+                    )
+                };
+                if children {
+                    wanted = roots;
+                }
             } else {
-                vec![id as u32]
-            };
-            if mode & (sys::SEARCH_PREFETCH_CHILDREN | sys::SEARCH_PREFETCH_RECURSIVE_CHILDREN) != 0
-            {
-                let recursive = mode & sys::SEARCH_PREFETCH_RECURSIVE_CHILDREN != 0;
+                wanted.push(id as u32);
+            }
+            if children {
+                // Direct children of a node are its own children; of the root, its roots.
+                let first = if root { usize::MAX } else { 0 };
                 let mut i = 0;
                 while i < wanted.len() {
                     if let Some(node) = projection.node(wanted[i])
-                        && (recursive || i == 0)
+                        && (recursive || i == first)
                     {
                         wanted.extend(node.children);
                     }
@@ -235,7 +290,7 @@ unsafe extern "C" fn find_by_id(
     .unwrap_or(sys::RESULT_FAILED)
 }
 
-unsafe extern "C" fn find_by_text(
+unsafe fn find_by_text_main(
     instance: *const c_char,
     _: i64,
     text: *const c_char,
@@ -275,7 +330,7 @@ unsafe extern "C" fn find_by_text(
     .unwrap_or(sys::RESULT_FAILED)
 }
 
-unsafe extern "C" fn find_focused(
+unsafe fn find_focused_main(
     instance: *const c_char,
     _: i64,
     kind: i32,
@@ -304,7 +359,7 @@ unsafe extern "C" fn find_focused(
     .map_or(sys::RESULT_FAILED, |()| sys::RESULT_SUCCESSFUL)
 }
 
-unsafe extern "C" fn find_next_focus(
+unsafe fn find_next_focus_main(
     _: *const c_char,
     _: i64,
     _: i32,
@@ -314,7 +369,7 @@ unsafe extern "C" fn find_next_focus(
     sys::RESULT_FAILED
 }
 
-unsafe extern "C" fn execute_action(
+unsafe fn execute_action_main(
     instance: *const c_char,
     id: i64,
     action: u32,
@@ -373,7 +428,7 @@ unsafe extern "C" fn execute_action(
     )
 }
 
-unsafe extern "C" fn clear_focused(instance: *const c_char) -> i32 {
+unsafe fn clear_focused_main(instance: *const c_char) -> i32 {
     let Some(token) = token(instance) else {
         return sys::RESULT_FAILED;
     };
@@ -386,12 +441,7 @@ unsafe extern "C" fn clear_focused(instance: *const c_char) -> i32 {
     sys::RESULT_SUCCESSFUL
 }
 
-unsafe extern "C" fn cursor_position(
-    instance: *const c_char,
-    id: i64,
-    _: i32,
-    index: *mut i32,
-) -> i32 {
+unsafe fn cursor_position_main(instance: *const c_char, id: i64, _: i32, index: *mut i32) -> i32 {
     let Some(token) = token(instance) else {
         return sys::RESULT_FAILED;
     };
@@ -488,4 +538,92 @@ pub(crate) fn announce(
             sys::OH_ArkUI_DestoryAccessibilityEventInfo(info);
         }
     }
+}
+
+/// Raw pointers ArkUI hands a provider callback, valid until it returns: the calling thread
+/// waits while the main thread fills them.
+#[derive(Clone, Copy)]
+struct Raw(usize);
+unsafe impl Send for Raw {}
+
+macro_rules! on_main {
+    ($body:expr) => {
+        crate::dispatch::run_on_main(move || unsafe { $body }).unwrap_or(sys::RESULT_FAILED)
+    };
+}
+
+unsafe extern "C" fn find_by_id(
+    instance: *const c_char,
+    id: i64,
+    mode: i32,
+    request: i32,
+    list: *mut sys::ArkUI_AccessibilityElementInfoList,
+) -> i32 {
+    let (i, l) = (Raw(instance as usize), Raw(list as usize));
+    on_main!(find_by_id_main(i.0 as _, id, mode, request, l.0 as _))
+}
+
+unsafe extern "C" fn find_by_text(
+    instance: *const c_char,
+    id: i64,
+    text: *const c_char,
+    request: i32,
+    list: *mut sys::ArkUI_AccessibilityElementInfoList,
+) -> i32 {
+    let (i, t, l) = (
+        Raw(instance as usize),
+        Raw(text as usize),
+        Raw(list as usize),
+    );
+    on_main!(find_by_text_main(i.0 as _, id, t.0 as _, request, l.0 as _))
+}
+
+unsafe extern "C" fn find_focused(
+    instance: *const c_char,
+    id: i64,
+    kind: i32,
+    request: i32,
+    info: *mut sys::ArkUI_AccessibilityElementInfo,
+) -> i32 {
+    let (i, o) = (Raw(instance as usize), Raw(info as usize));
+    on_main!(find_focused_main(i.0 as _, id, kind, request, o.0 as _))
+}
+
+unsafe extern "C" fn find_next_focus(
+    instance: *const c_char,
+    id: i64,
+    direction: i32,
+    request: i32,
+    info: *mut sys::ArkUI_AccessibilityElementInfo,
+) -> i32 {
+    let (i, o) = (Raw(instance as usize), Raw(info as usize));
+    on_main!(find_next_focus_main(
+        i.0 as _, id, direction, request, o.0 as _
+    ))
+}
+
+unsafe extern "C" fn execute_action(
+    instance: *const c_char,
+    id: i64,
+    action: u32,
+    arguments: *mut sys::ArkUI_AccessibilityActionArguments,
+    request: i32,
+) -> i32 {
+    let (i, a) = (Raw(instance as usize), Raw(arguments as usize));
+    on_main!(execute_action_main(i.0 as _, id, action, a.0 as _, request))
+}
+
+unsafe extern "C" fn clear_focused(instance: *const c_char) -> i32 {
+    let i = Raw(instance as usize);
+    on_main!(clear_focused_main(i.0 as _))
+}
+
+unsafe extern "C" fn cursor_position(
+    instance: *const c_char,
+    id: i64,
+    request: i32,
+    index: *mut i32,
+) -> i32 {
+    let (i, x) = (Raw(instance as usize), Raw(index as usize));
+    on_main!(cursor_position_main(i.0 as _, id, request, x.0 as _))
 }
