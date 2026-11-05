@@ -54,3 +54,4 @@ Lingxia.setPermissionGate(object : PermissionGate {
 - Harmony has the same API (`import { Lingxia, PermissionGate, … } from 'lingxia'`),
   except `afterPrompt` is required. A denial there is always permanent, and
   `proceed()` on a blocked prompt opens the system re-grant sheet.
+- iOS has the same shape in Swift; see [Apple SDK](./apple-sdk.md).

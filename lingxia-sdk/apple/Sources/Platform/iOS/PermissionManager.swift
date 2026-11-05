@@ -9,84 +9,133 @@ enum PermissionManager {
     private static var locationRequester: LocationPermissionRequester?
 
     @MainActor
-    static func ensureCameraAccess(completion: @escaping (Bool) -> Void) {
+    static func ensureCameraAccess(
+        for feature: PermissionFeature,
+        completion: @escaping (Bool) -> Void
+    ) {
         let status = AVCaptureDevice.authorizationStatus(for: .video)
-        switch status {
-        case .authorized:
+        if status == .authorized {
             completion(true)
-        case .notDetermined:
+            return
+        }
+        PermissionGates.run(
+            feature,
+            permission: "camera",
+            blocked: status != .notDetermined,
+            declined: { completion(false) }
+        ) { finish in
+            guard status == .notDetermined else {
+                finish(.deniedPermanently)
+                completion(false)
+                return
+            }
             AVCaptureDevice.requestAccess(for: .video) { granted in
                 Task { @MainActor in
+                    finish(granted ? .granted : .deniedPermanently)
                     completion(granted)
                 }
             }
-        case .denied, .restricted:
-            completion(false)
-        @unknown default:
-            completion(false)
         }
     }
 
     @MainActor
     static func ensureMicrophoneAccess(completion: @escaping (Bool) -> Void) {
         let audioSession = AVAudioSession.sharedInstance()
-        switch audioSession.recordPermission {
-        case .granted:
+        let status = audioSession.recordPermission
+        if status == .granted {
             completion(true)
-        case .denied:
-            completion(false)
-        case .undetermined:
+            return
+        }
+        PermissionGates.run(
+            .camera,
+            permission: "microphone",
+            blocked: status != .undetermined,
+            declined: { completion(false) }
+        ) { finish in
+            guard status == .undetermined else {
+                finish(.deniedPermanently)
+                completion(false)
+                return
+            }
             audioSession.requestRecordPermission { granted in
                 Task { @MainActor in
+                    finish(granted ? .granted : .deniedPermanently)
                     completion(granted)
                 }
             }
-        @unknown default:
-            completion(false)
         }
     }
 
     @MainActor
     static func ensurePhotoLibraryAccess(completion: @escaping (Bool) -> Void) {
-        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        switch status {
-        case .authorized, .limited:
+        ensurePhotoAccess(.readWrite, feature: .mediaLibrary, completion: completion)
+    }
+
+    @MainActor
+    static func ensurePhotoAccess(
+        _ level: PHAccessLevel,
+        feature: PermissionFeature,
+        completion: @escaping (Bool) -> Void
+    ) {
+        let status = PHPhotoLibrary.authorizationStatus(for: level)
+        if status == .authorized || status == .limited {
             completion(true)
-        case .denied, .restricted:
-            completion(false)
-        case .notDetermined:
-            PHPhotoLibrary.requestAuthorization(for: .readWrite) { newStatus in
+            return
+        }
+        PermissionGates.run(
+            feature,
+            permission: "photos",
+            blocked: status != .notDetermined,
+            declined: { completion(false) }
+        ) { finish in
+            guard status == .notDetermined else {
+                finish(.deniedPermanently)
+                completion(false)
+                return
+            }
+            PHPhotoLibrary.requestAuthorization(for: level) { newStatus in
                 Task { @MainActor in
-                    completion(newStatus == .authorized || newStatus == .limited)
+                    let granted = newStatus == .authorized || newStatus == .limited
+                    finish(granted ? .granted : .deniedPermanently)
+                    completion(granted)
                 }
             }
-        @unknown default:
-            completion(false)
         }
     }
 
     @MainActor
-    static func ensureLocationWhenInUseAccess(completion: @escaping (Bool) -> Void) {
+    static func ensureLocationWhenInUseAccess(
+        for feature: PermissionFeature,
+        completion: @escaping (Bool) -> Void
+    ) {
         guard CLLocationManager.locationServicesEnabled() else {
             completion(false)
             return
         }
 
         let status = CLLocationManager.authorizationStatus()
-        switch status {
-        case .authorizedAlways, .authorizedWhenInUse:
+        if status == .authorizedAlways || status == .authorizedWhenInUse {
             completion(true)
-        case .denied, .restricted:
-            completion(false)
-        case .notDetermined:
+            return
+        }
+        PermissionGates.run(
+            feature,
+            permission: "location",
+            blocked: status != .notDetermined,
+            declined: { completion(false) }
+        ) { finish in
+            guard status == .notDetermined else {
+                finish(.deniedPermanently)
+                completion(false)
+                return
+            }
             let requester = LocationPermissionRequester { granted in
                 Self.locationRequester = nil
+                finish(granted ? .granted : .deniedPermanently)
                 completion(granted)
             }
             Self.locationRequester = requester
             requester.requestWhenInUseAuthorization()
-        @unknown default:
-            completion(false)
         }
     }
 }

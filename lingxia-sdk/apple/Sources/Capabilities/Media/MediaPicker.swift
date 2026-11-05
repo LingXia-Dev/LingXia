@@ -109,10 +109,8 @@ final class MediaPickerViewController: UIViewController, UICollectionViewDataSou
     }
 
     @objc private func onAuthButton() {
-        if #available(iOS 14.0, *) {
-            PHPhotoLibrary.requestAuthorization(for: .readWrite) { [weak self] _ in
-                DispatchQueue.main.async { self?.refreshByAuthState() }
-            }
+        PermissionManager.ensurePhotoLibraryAccess { [weak self] _ in
+            self?.refreshByAuthState()
         }
     }
 
@@ -220,10 +218,8 @@ final class MediaPickerViewController: UIViewController, UICollectionViewDataSou
 
         switch authStatus {
         case .notDetermined:
-            PHPhotoLibrary.requestAuthorization(for: .readWrite) { [weak self] status in
-                DispatchQueue.main.async {
-                    self?.processAuthorizationStatus(status)
-                }
+            PermissionManager.ensurePhotoLibraryAccess { [weak self] _ in
+                self?.processAuthorizationStatus(PHPhotoLibrary.authorizationStatus(for: .readWrite))
             }
         case .limited:
             // Refresh status to avoid rare stale state after app relaunch,

@@ -102,6 +102,7 @@ The contract is these symbols plus their request/event/id types:
 | `LxAppController` | Sessions for advanced embedding: `open` / `openHomeApp` / `navigate` / `close`, `events` stream, interceptors |
 | `LxAppHostView` | Embeddable view: `mount` / `unmount` / `dispatch`, `events` stream (`LxAppHostViewRepresentable` for SwiftUI) |
 | `L10n` | SDK strings for host-owned native chrome: `string(_:)`, `string(_:_:)` |
+| `PermissionGate` | iOS: `Lingxia.setPermissionGate(_:)`; `beforePrompt` calls `prompt.proceed()` / `prompt.deny()` before each system permission prompt, `afterPrompt` gets the outcome |
 
 Do not touch `LxAppRuntime.shared`; both entry points wrap it.
 
@@ -119,3 +120,7 @@ Do not touch `LxAppRuntime.shared`; both entry points wrap it.
 - `Lingxia.displayLanguage` is the effective display language (saved setting,
   else the locale passed to `initializeRuntime()`). `L10n.string` resolves
   `en` / `zh-Hans` from it.
+- `PermissionGate` (iOS): App Review rejects an explanation screen with a way
+  out before the system prompt, so explain with a single "Continue" that calls
+  `proceed()`. `prompt.blocked` means the user denied it before and only
+  Settings can grant it.
