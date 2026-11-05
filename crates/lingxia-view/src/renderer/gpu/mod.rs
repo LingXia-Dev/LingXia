@@ -527,6 +527,13 @@ impl Presenter {
         Ok(true)
     }
 
+    /// The last composited frame's work, `None` when the frame drew without composition.
+    pub fn composite_stats(&self) -> Option<crate::renderer::gpu::composite::CompositeStats> {
+        self.compositor
+            .as_ref()
+            .map(|compositor| compositor.stats())
+    }
+
     /// Backdrops captured and filtered so far, and the filtered images held for later frames:
     /// `(filtered, cached, cached_bytes)`.
     pub fn backdrop_cache_stats(&self) -> (u64, usize, u64) {

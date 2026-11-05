@@ -156,6 +156,10 @@ public final class GpuFrame {
         public Long activations() { if (json.isNull("activations")) return null; return json.optLong("activations"); }
         /** `droppedActivations`: u64? */
         public Long droppedActivations() { if (json.isNull("droppedActivations")) return null; return json.optLong("droppedActivations"); }
+        /** `composite`: CompositeStats? */
+        public CompositeStats composite() { JSONObject o = json.optJSONObject("composite"); return o == null ? null : new CompositeStats(o); }
+        /** `backdropCache`: BackdropCacheStats? */
+        public BackdropCacheStats backdropCache() { JSONObject o = json.optJSONObject("backdropCache"); return o == null ? null : new BackdropCacheStats(o); }
     }
 
     public static final class FrameCost {
@@ -836,6 +840,10 @@ public final class GpuFrame {
         public Long nodes() { if (json.isNull("nodes")) return null; return json.optLong("nodes"); }
         /** `pacing`: FramePacing */
         public FramePacing pacing() { JSONObject o = json.optJSONObject("pacing"); return o == null ? null : new FramePacing(o); }
+        /** `composite`: CompositeStats? */
+        public CompositeStats composite() { JSONObject o = json.optJSONObject("composite"); return o == null ? null : new CompositeStats(o); }
+        /** `backdropCache`: BackdropCacheStats? */
+        public BackdropCacheStats backdropCache() { JSONObject o = json.optJSONObject("backdropCache"); return o == null ? null : new BackdropCacheStats(o); }
     }
 
     public static final class QueueTimes {
@@ -847,6 +855,50 @@ public final class GpuFrame {
         public long p50() { return json.optLong("p50"); }
         /** `max`: u64 */
         public long max() { return json.optLong("max"); }
+    }
+
+    public static final class CompositeStats {
+        public final JSONObject json;
+        public CompositeStats(JSONObject json) { this.json = json; }
+        /** `draws`: u32 */
+        public long draws() { return json.optLong("draws"); }
+        /** `drawPixels`: u64 */
+        public long drawPixels() { return json.optLong("drawPixels"); }
+        /** `contentSceneUs`: u64 */
+        public long contentSceneUs() { return json.optLong("contentSceneUs"); }
+        /** `compositeSceneUs`: u64 */
+        public long compositeSceneUs() { return json.optLong("compositeSceneUs"); }
+        /** `encodeUs`: u64 */
+        public long encodeUs() { return json.optLong("encodeUs"); }
+        /** `submitUs`: u64 */
+        public long submitUs() { return json.optLong("submitUs"); }
+        /** `submits`: u32 */
+        public long submits() { return json.optLong("submits"); }
+        /** `clears`: u32 */
+        public long clears() { return json.optLong("clears"); }
+        /** `copies`: u32 */
+        public long copies() { return json.optLong("copies"); }
+        /** `copyPixels`: u64 */
+        public long copyPixels() { return json.optLong("copyPixels"); }
+        /** `backdropHits`: u32 */
+        public long backdropHits() { return json.optLong("backdropHits"); }
+        /** `backdropMisses`: u32 */
+        public long backdropMisses() { return json.optLong("backdropMisses"); }
+        /** `capturePixels`: u64 */
+        public long capturePixels() { return json.optLong("capturePixels"); }
+        /** `filterPixels`: u64 */
+        public long filterPixels() { return json.optLong("filterPixels"); }
+    }
+
+    public static final class BackdropCacheStats {
+        public final JSONObject json;
+        public BackdropCacheStats(JSONObject json) { this.json = json; }
+        /** `filtered`: u64 */
+        public long filtered() { return json.optLong("filtered"); }
+        /** `cached`: usize */
+        public long cached() { return json.optLong("cached"); }
+        /** `cachedBytes`: u64 */
+        public long cachedBytes() { return json.optLong("cachedBytes"); }
     }
 
     public static final class EvalTimes {
@@ -1155,6 +1207,8 @@ public final class GpuFrame {
             case "AutomationQueryAll": return AutomationQueryAll.class;
             case "AutomationFrame": return AutomationFrame.class;
             case "QueueTimes": return QueueTimes.class;
+            case "CompositeStats": return CompositeStats.class;
+            case "BackdropCacheStats": return BackdropCacheStats.class;
             case "EvalTimes": return EvalTimes.class;
             case "FramePacing": return FramePacing.class;
             case "Percentiles": return Percentiles.class;
@@ -1207,6 +1261,8 @@ public final class GpuFrame {
             case "AutomationQueryAll": return new AutomationQueryAll(json);
             case "AutomationFrame": return new AutomationFrame(json);
             case "QueueTimes": return new QueueTimes(json);
+            case "CompositeStats": return new CompositeStats(json);
+            case "BackdropCacheStats": return new BackdropCacheStats(json);
             case "EvalTimes": return new EvalTimes(json);
             case "FramePacing": return new FramePacing(json);
             case "Percentiles": return new Percentiles(json);

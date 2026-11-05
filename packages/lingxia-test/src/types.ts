@@ -18,6 +18,8 @@ import type {
   GestureDirection,
   GestureInput,
   HostRunAutomation,
+  PageBackdropCache,
+  PageCompositeStats,
   LxAppDriver,
   ModalAnswer,
   ModalRecord,
@@ -963,6 +965,9 @@ export interface TestMetrics extends PageFramePacing {
   /** Nodes the presented frame laid out; `null` before the first frame. */
   nodes: number | null;
   reveal: { count: number; deadlines: number; watchdogs: number; lastReveal: { reason: string; atMs: number } | null };
+  /** The presented frame's composition work; `null` when it drew without composition. */
+  composite: PageCompositeStats | null;
+  backdropCache: PageBackdropCache | null;
 }
 
 /** A checkpoint of the app's isolated data. */

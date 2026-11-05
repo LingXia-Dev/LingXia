@@ -77,7 +77,20 @@ impl<A: PlatformAdapter> Inner<A> {
         sorted.sort_unstable();
         let p50 = sorted.get(sorted.len() / 2).copied().unwrap_or(0);
         let (bytes, entries) = super::decode::retained();
+        // The presenter's own counters ride in the presented frame's metrics.
+        let presented = main
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| serde_json::from_str::<serde_json::Value>(&snapshot.json).ok())
+            .and_then(|frame| frame.get("metrics").cloned());
+        let presenter = |key: &str| {
+            presented
+                .as_ref()
+                .and_then(|metrics| metrics.get(key).cloned())
+        };
         serde_json::json!({
+            "composite": presenter("composite"),
+            "backdropCache": presenter("backdropCache"),
             "renderer": "gpu",
             "page": self.lifecycle.page().get().to_string(),
             "commit": telemetry.commit,

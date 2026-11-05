@@ -160,6 +160,8 @@ export interface GpuFrameFrameMetrics {
   presenterSingleTarget?: boolean | null;
   activations?: number | null;
   droppedActivations?: number | null;
+  composite?: GpuFrameCompositeStats | null;
+  backdropCache?: GpuFrameBackdropCacheStats | null;
 }
 
 /** `FrameCost` in the frame contract. */
@@ -529,6 +531,8 @@ export interface GpuFrameAutomationFrame {
   hud: boolean;
   nodes?: number | null;
   pacing: GpuFrameFramePacing;
+  composite?: GpuFrameCompositeStats | null;
+  backdropCache?: GpuFrameBackdropCacheStats | null;
 }
 
 /** `QueueTimes` in the frame contract. */
@@ -536,6 +540,31 @@ export interface GpuFrameQueueTimes {
   last: number;
   p50: number;
   max: number;
+}
+
+/** `CompositeStats` in the frame contract. */
+export interface GpuFrameCompositeStats {
+  draws: number;
+  drawPixels: number;
+  contentSceneUs: number;
+  compositeSceneUs: number;
+  encodeUs: number;
+  submitUs: number;
+  submits: number;
+  clears: number;
+  copies: number;
+  copyPixels: number;
+  backdropHits: number;
+  backdropMisses: number;
+  capturePixels: number;
+  filterPixels: number;
+}
+
+/** `BackdropCacheStats` in the frame contract. */
+export interface GpuFrameBackdropCacheStats {
+  filtered: number;
+  cached: number;
+  cachedBytes: number;
 }
 
 /** `EvalTimes` in the frame contract. */

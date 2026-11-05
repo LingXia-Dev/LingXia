@@ -125,6 +125,7 @@ pub fn prepare(
     let (filtered, cached, cached_bytes) = presenter.backdrop_cache_stats();
     Ok(Some(serde_json::json!({
         "backdropCache": {"filtered": filtered, "cached": cached, "cachedBytes": cached_bytes},
+        "composite": presenter.composite_stats(),
         "backend": presenter.backend(),
         "renderer": "sparse-strips",
         "loadedImages": display.loaded_image_count(),

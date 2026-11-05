@@ -430,6 +430,37 @@ export interface PageUiFrame {
   nodes: number | null;
   /** Frames shown in the last `windowMs`. */
   pacing: PageFramePacing;
+  /** The presented frame's composition work; `null` when it drew without composition. */
+  composite: PageCompositeStats | null;
+  /** Backdrop images filtered so far and those held for later frames; `null` without composition. */
+  backdropCache: PageBackdropCache | null;
+}
+
+/** One composited frame's work: counts, device pixels and CPU microseconds. */
+export interface PageCompositeStats {
+  /** Scene draws, each one renderer pass and one queue submit, and their target pixels. */
+  draws: number;
+  drawPixels: number;
+  contentSceneUs: number;
+  compositeSceneUs: number;
+  encodeUs: number;
+  submitUs: number;
+  /** Queue submits besides the draws': clears, copies, saturation. */
+  submits: number;
+  clears: number;
+  copies: number;
+  copyPixels: number;
+  backdropHits: number;
+  backdropMisses: number;
+  /** Pixels missed backdrops captured, and blurred at the filter's resolution. */
+  capturePixels: number;
+  filterPixels: number;
+}
+
+export interface PageBackdropCache {
+  filtered: number;
+  cached: number;
+  cachedBytes: number;
 }
 
 /** Nearest-rank percentiles, in ms. */

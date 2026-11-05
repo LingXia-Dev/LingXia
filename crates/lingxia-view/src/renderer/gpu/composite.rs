@@ -9,6 +9,33 @@ use vello_gpu::{Scene, TargetInit, TextureBindings, TextureId};
 
 pub use crate::renderer::gpu::surface::{Surface, TextureStats};
 
+/// What one composited frame did, for diagnostics: counts, pixels and CPU microseconds.
+#[derive(Clone, Copy, Debug, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompositeStats {
+    /// Scene draws, each one renderer pass and one queue submit.
+    pub draws: u32,
+    /// Target pixels of those draws.
+    pub draw_pixels: u64,
+    /// Building the display's content scenes.
+    pub content_scene_us: u64,
+    /// Building the compositor's own scenes: layer composites, backdrop filters and placement.
+    pub composite_scene_us: u64,
+    /// Renderer encode and submit of the draws.
+    pub encode_us: u64,
+    pub submit_us: u64,
+    /// Queue submits besides the draws': clears, copies, saturation.
+    pub submits: u32,
+    pub clears: u32,
+    pub copies: u32,
+    pub copy_pixels: u64,
+    pub backdrop_hits: u32,
+    pub backdrop_misses: u32,
+    /// Pixels the missed backdrops captured, and blurred at the filter's resolution.
+    pub capture_pixels: u64,
+    pub filter_pixels: u64,
+}
+
 /// Device-bound pipelines and scratch reused across frames. A draw callback and
 /// its borrowed display list live only for the duration of `render`.
 pub struct Compositor {
@@ -24,6 +51,8 @@ pub struct Compositor {
     backdrops: crate::renderer::gpu::backdrop_cache::BackdropCache<Surface>,
     /// Backdrops captured and filtered, as opposed to taken from the cache.
     backdrop_filters: u64,
+    /// The last rendered plan's work.
+    stats: CompositeStats,
 }
 
 impl Compositor {
@@ -64,6 +93,7 @@ impl Compositor {
             budget_warned: false,
             backdrops: Default::default(),
             backdrop_filters: 0,
+            stats: CompositeStats::default(),
         }
     }
 
@@ -163,6 +193,7 @@ impl Compositor {
     where
         F: FnMut(Range<usize>, &mut Scene, &mut TextureBindings) -> Result<(), String>,
     {
+        self.stats = CompositeStats::default();
         plan.render(&mut Gpu {
             device,
             queue,
@@ -180,6 +211,11 @@ impl Compositor {
     /// Backdrops captured and filtered so far, rather than taken from the cache.
     pub fn backdrop_filters(&self) -> u64 {
         self.backdrop_filters
+    }
+
+    /// The last rendered plan's work.
+    pub fn stats(&self) -> CompositeStats {
+        self.stats
     }
 
     /// Render a retained display using the same text/image encoders as Presenter.
@@ -259,8 +295,9 @@ impl<F> Gpu<'_, F> {
         init: TargetInit<'_>,
     ) -> Result<(), String> {
         let size = target.size();
+        let pixels = u64::from(size.width) * u64::from(size.height);
         let depth = self.resources.depth_view(self.device, &size);
-        self.resources.renderer.draw(
+        let [encode, submit] = self.resources.renderer.draw(
             self.device,
             self.queue,
             scene,
@@ -272,6 +309,11 @@ impl<F> Gpu<'_, F> {
                 init,
             },
         )?;
+        let stats = &mut self.resources.stats;
+        stats.draws += 1;
+        stats.draw_pixels += pixels;
+        stats.encode_us += encode;
+        stats.submit_us += submit;
         Ok(())
     }
 }
@@ -333,6 +375,8 @@ where
             multiview_mask: None,
         }));
         self.queue.submit([encoder.finish()]);
+        self.resources.stats.clears += 1;
+        self.resources.stats.submits += 1;
         Ok(surface)
     }
 
@@ -341,9 +385,11 @@ where
             return Ok(());
         }
         let size = target.size();
+        let started = std::time::Instant::now();
         let mut scene = Scene::new(size.width, size.height);
         let mut bindings = TextureBindings::new();
         (self.draw)(span, &mut scene, &mut bindings)?;
+        self.resources.stats.content_scene_us += crate::session::metrics::micros(started);
         self.render(&scene, &bindings, target, TargetInit::SrcOver)
     }
 
@@ -357,6 +403,10 @@ where
             source.texture().size(),
         );
         self.queue.submit([encoder.finish()]);
+        let stats = &mut self.resources.stats;
+        stats.copies += 1;
+        stats.submits += 1;
+        stats.copy_pixels += u64::from(size.width) * u64::from(size.height);
         Ok(target)
     }
 
@@ -366,6 +416,7 @@ where
         source: &Surface,
         layer: &Layer,
     ) -> Result<(), String> {
+        let started = std::time::Instant::now();
         let size = target.size();
         let mut scene = Scene::new(size.width, size.height);
         match layer {
@@ -394,6 +445,7 @@ where
             }
         }
         scene.pop_layer();
+        self.resources.stats.composite_scene_us += crate::session::metrics::micros(started);
         self.render(&scene, &bindings, target, TargetInit::SrcOver)
     }
 
@@ -417,10 +469,14 @@ where
         let cached = key
             .as_ref()
             .and_then(|key| self.resources.backdrops.get(key));
+        if cached.is_some() {
+            self.resources.stats.backdrop_hits += 1;
+        }
         let filtered = match cached {
             Some(filtered) => filtered,
             None => {
                 self.resources.backdrop_filters += 1;
+                self.resources.stats.backdrop_misses += 1;
                 let filtered = self.filtered(source, &region, *blur, *saturation)?;
                 if let Some(key) = key {
                     let bytes =
@@ -437,12 +493,14 @@ where
             }
         };
         let output = self.overwritten(size.width, size.height)?;
+        let started = std::time::Instant::now();
         let mut scene = Scene::new(size.width, size.height);
         scene.push_clip_layer(&clip.path());
         let bindings = image_brush(&mut scene, &filtered, Default::default());
         scene.set_paint_transform(region.placement());
         scene.fill_rect(&region.bounds());
         scene.pop_layer();
+        self.resources.stats.composite_scene_us += crate::session::metrics::micros(started);
         self.render(
             &scene,
             &bindings,
@@ -476,7 +534,15 @@ impl<F> Gpu<'_, F> {
             cropped.texture().size(),
         );
         self.queue.submit([encoder.finish()]);
+        let captured = u64::from(region.width) * u64::from(region.height);
+        let stats = &mut self.resources.stats;
+        stats.copies += 1;
+        stats.submits += 1;
+        stats.copy_pixels += captured;
+        stats.capture_pixels += captured;
+        stats.filter_pixels += u64::from(region.filtered_width) * u64::from(region.filtered_height);
         let mut filtered = self.overwritten(region.filtered_width, region.filtered_height)?;
+        let started = std::time::Instant::now();
         let mut scene = Scene::new(region.filtered_width, region.filtered_height);
         if blur > 0.0 {
             scene.push_filter_layer(region.filter.clone());
@@ -491,6 +557,7 @@ impl<F> Gpu<'_, F> {
         if blur > 0.0 {
             scene.pop_layer();
         }
+        self.resources.stats.composite_scene_us += crate::session::metrics::micros(started);
         self.render(
             &scene,
             &bindings,
@@ -513,6 +580,7 @@ impl<F> Gpu<'_, F> {
                 saturation,
             )?;
             self.queue.submit([encoder.finish()]);
+            self.resources.stats.submits += 1;
             filtered = colored;
         }
         Ok(filtered)

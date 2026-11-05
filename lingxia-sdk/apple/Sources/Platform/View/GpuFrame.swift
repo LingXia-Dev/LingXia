@@ -125,6 +125,8 @@ public struct GpuFrameFrameMetrics: Decodable, Sendable {
     public let presenterSingleTarget: Bool?
     public let activations: UInt64?
     public let droppedActivations: UInt64?
+    public let composite: GpuFrameCompositeStats?
+    public let backdropCache: GpuFrameBackdropCacheStats?
 
     enum CodingKeys: String, CodingKey {
         case generation = "generation"
@@ -150,6 +152,8 @@ public struct GpuFrameFrameMetrics: Decodable, Sendable {
         case presenterSingleTarget = "presenterSingleTarget"
         case activations = "activations"
         case droppedActivations = "droppedActivations"
+        case composite = "composite"
+        case backdropCache = "backdropCache"
     }
 }
 
@@ -842,6 +846,8 @@ public struct GpuFrameAutomationFrame: Decodable, Sendable {
     public let hud: Bool
     public let nodes: UInt64?
     public let pacing: GpuFrameFramePacing
+    public let composite: GpuFrameCompositeStats?
+    public let backdropCache: GpuFrameBackdropCacheStats?
 
     enum CodingKeys: String, CodingKey {
         case renderer = "renderer"
@@ -860,6 +866,8 @@ public struct GpuFrameAutomationFrame: Decodable, Sendable {
         case hud = "hud"
         case nodes = "nodes"
         case pacing = "pacing"
+        case composite = "composite"
+        case backdropCache = "backdropCache"
     }
 }
 
@@ -873,6 +881,54 @@ public struct GpuFrameQueueTimes: Decodable, Sendable {
         case last = "last"
         case p50 = "p50"
         case max = "max"
+    }
+}
+
+/// `CompositeStats` in the frame contract.
+public struct GpuFrameCompositeStats: Decodable, Sendable {
+    public let draws: UInt32
+    public let drawPixels: UInt64
+    public let contentSceneUs: UInt64
+    public let compositeSceneUs: UInt64
+    public let encodeUs: UInt64
+    public let submitUs: UInt64
+    public let submits: UInt32
+    public let clears: UInt32
+    public let copies: UInt32
+    public let copyPixels: UInt64
+    public let backdropHits: UInt32
+    public let backdropMisses: UInt32
+    public let capturePixels: UInt64
+    public let filterPixels: UInt64
+
+    enum CodingKeys: String, CodingKey {
+        case draws = "draws"
+        case drawPixels = "drawPixels"
+        case contentSceneUs = "contentSceneUs"
+        case compositeSceneUs = "compositeSceneUs"
+        case encodeUs = "encodeUs"
+        case submitUs = "submitUs"
+        case submits = "submits"
+        case clears = "clears"
+        case copies = "copies"
+        case copyPixels = "copyPixels"
+        case backdropHits = "backdropHits"
+        case backdropMisses = "backdropMisses"
+        case capturePixels = "capturePixels"
+        case filterPixels = "filterPixels"
+    }
+}
+
+/// `BackdropCacheStats` in the frame contract.
+public struct GpuFrameBackdropCacheStats: Decodable, Sendable {
+    public let filtered: UInt64
+    public let cached: UInt64
+    public let cachedBytes: UInt64
+
+    enum CodingKeys: String, CodingKey {
+        case filtered = "filtered"
+        case cached = "cached"
+        case cachedBytes = "cachedBytes"
     }
 }
 
