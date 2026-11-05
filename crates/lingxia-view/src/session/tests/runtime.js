@@ -2630,7 +2630,8 @@
       if (element.binding && (key === "bind" || key === "value" || key === element.binding.event)) continue;
       throw Error(`UI_PROP: ${key} is not a property of <${tag}>`);
     }
-    for (const key of ["key", "data-testid"]) if (props[key] !== void 0 && typeof props[key] !== "string") throw Error(`UI_PROP: ${key} must be a string`);
+    if (props.key !== void 0 && typeof props.key !== "string") throw Error("UI_PROP: key must be a string");
+    if (props["data-testid"] !== void 0 && typeof props["data-testid"] !== "string") throw Error("UI_PROP: data-testid must be a string");
     if (props.disabled !== void 0 && typeof props.disabled !== "boolean") throw Error("UI_PROP: disabled");
     if (props.style !== void 0 && (!props.style || typeof props.style !== "object" || Array.isArray(props.style))) throw Error("UI_PROP: style");
   }
@@ -2780,19 +2781,23 @@
   var ariaNames = [["aria-label", "accessibilityLabel"], ["aria-hidden", "accessibilityHidden"], ["aria-live", "accessibilityLiveRegion"]];
   var ariaStates = [["aria-pressed", "pressed"], ["aria-selected", "selected"], ["aria-expanded", "expanded"], ["aria-busy", "busy"]];
   function ariaProps(props) {
-    for (const [authored, internal] of ariaNames)
+    for (let i = 0; i < ariaNames.length; i++) {
+      const authored = ariaNames[i][0];
       if (authored in props) {
-        props[internal] = props[authored];
+        props[ariaNames[i][1]] = props[authored];
         delete props[authored];
       }
+    }
     let state;
-    for (const [authored, name] of ariaStates) {
+    for (let i = 0; i < ariaStates.length; i++) {
+      const authored = ariaStates[i][0];
       if (props[authored] === void 0) continue;
-      (state ?? (state = {}))[name] = props[authored];
+      (state ?? (state = {}))[ariaStates[i][1]] = props[authored];
       delete props[authored];
     }
     if (state) props.accessibilityState = state;
   }
+  var dragProps = ["dragSnapPoints", "bind", "onDragStart", "onDragEnd"];
   function resolveElement(tag, original, children, identity, depth, parent) {
     if (typeof tag !== "string" || !has(elements, tag)) throw Error(`UI_TAG: ${String(tag)}`);
     const element = elements[tag];
@@ -2842,8 +2847,10 @@
     if (props.dir !== void 0) wire("direction", props.dir);
     semantics(tag, props, wire);
     if (props.drag !== void 0) dragElement(tag, props, wire, on);
-    else for (const key of ["dragSnapPoints", "bind", "onDragStart", "onDragEnd"])
+    else for (let i = 0; i < dragProps.length; i++) {
+      const key = dragProps[i];
       if (props[key] !== void 0 && !element.binding && !(key === "bind" && tag === "scroll")) throw Error(`UI_PROP: ${key} belongs to an element with drag`);
+    }
     if (tag === "scroll" && props.bind !== void 0) {
       const cell = props.bind, bound = cellOf(cell);
       if (!bound || render.candidate.locals.get(bound.key) !== bound.cell || !Number.isInteger(cell.value) || cell.value < 0)
@@ -3059,8 +3066,8 @@
         return at === String(ordinal) ? rest : { ...rest, slot: at };
       });
     }
-    for (const [kind, fields] of Object.entries(style2.descendants))
-      if (result.children.some((child) => holds(child, kind))) Object.assign(result.fields, fields);
+    for (const kind in style2.descendants)
+      if (result.children.some((child) => holds(child, kind))) Object.assign(result.fields, style2.descendants[kind]);
     return result;
   }
   function holds(node, kind) {
