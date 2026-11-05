@@ -1162,6 +1162,12 @@ pub fn report_pull_refresh_indicator(appid: String, webtag: String, phase: Strin
     lingxia_platform::harmony::set_refresh_indicator(&appid, &webtag, indicator);
 }
 
+/// The host's own overlay elements for automation (`[{key,label,role,bounds}]`, window vp).
+#[napi]
+pub fn report_host_overlays(elements: String) {
+    lingxia_platform::harmony::set_host_overlays(&elements);
+}
+
 // ============================================================================
 // Video Player NAPI exports
 // ============================================================================

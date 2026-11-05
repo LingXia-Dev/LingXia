@@ -120,6 +120,11 @@ declare module 'liblingxia.so' {
   export function reportPullRefreshIndicator(appid: string, webtag: string, phase: string, offset: number): void;
 
   /**
+   * Report the host's toast, modal and action-sheet elements (`[{key,label,role,bounds}]`, window vp) for automation
+   */
+  export function reportHostOverlays(elements: string): void;
+
+  /**
    * Register custom schemes (must be called before WebEngine initialization)
    * @returns true if schemes registered successfully, false otherwise
    */

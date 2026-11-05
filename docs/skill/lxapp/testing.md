@@ -169,6 +169,7 @@ spec('pulling the list refreshes it once', { start: { page: 'feed' } }, async (t
   reason, on a host that has none of those devices.
 - iOS takes page gestures on GPU pages only (`delivered: 'view'`); a WebView
   app there reports no input, so `requires.input` skips. HarmonyOS behaves the same.
+- On HarmonyOS, `app.chrome` and window taps reach only the host's own toast, modal and action sheet (`delivered: 'view'`).
 - `requires: { chrome: true }` (likewise `refreshIndicator`, `hostInput`) skips where the host cannot
   read its bars, read pull to refresh, or reach either with input; an undeclared `E_UNSUPPORTED` fails.
 - A locator `click()` or scroll on an Android WebView page goes to the WebView

@@ -4,8 +4,8 @@
 use super::app::Platform;
 use crate::error::PlatformError;
 use crate::traits::gesture::{
-    AppGesture, AppGestureRequest, AppGestureResult, GestureDelivery, GestureEnd, GestureInput,
-    GesturePoint, GestureTarget, HostCapability, PullRefreshIndicator,
+    AppGesture, AppGestureRequest, AppGestureResult, ChromeElement, GestureDelivery, GestureEnd,
+    GestureInput, GesturePoint, GestureTarget, HostCapability, PullRefreshIndicator,
 };
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -45,6 +45,79 @@ pub fn set_refresh_indicator(app_id: &str, webtag: &str, indicator: Option<PullR
         .unwrap_or_else(|p| p.into_inner())
         .get_or_insert_default()
         .insert(app_id.to_owned(), (webtag.to_owned(), indicator));
+}
+
+/// The host's own overlays (toast, modal, action sheet): the only window chrome Harmony can read,
+/// and the only window target a tap reaches. Keys name the element to the shell; bounds are vp.
+static OVERLAYS: Mutex<Vec<(String, ChromeElement)>> = Mutex::new(Vec::new());
+
+#[derive(serde::Deserialize)]
+struct Overlay {
+    key: String,
+    label: String,
+    role: String,
+    bounds: [f64; 4],
+}
+
+/// Replace the overlay elements with the shell's `[{key,label,role,bounds}]`.
+pub fn set_host_overlays(elements: &str) {
+    let Ok(elements) = serde_json::from_str::<Vec<Overlay>>(elements) else {
+        log::warn!("host overlays: unreadable report");
+        return;
+    };
+    *OVERLAYS.lock().unwrap_or_else(|p| p.into_inner()) = elements
+        .into_iter()
+        .map(|o| {
+            let element = ChromeElement {
+                label: o.label,
+                role: o.role,
+                scope: "window".into(),
+                selected: false,
+                bounds: o.bounds,
+            };
+            (o.key, element)
+        })
+        .collect();
+}
+
+/// A tap at window point `at` on a host overlay element: the shell runs that element's press.
+fn overlay_tap(
+    points: &[GesturePoint],
+    end: GestureEnd,
+) -> Result<AppGestureResult, PlatformError> {
+    let unsupported = || {
+        PlatformError::NotSupported(
+            "window gestures reach only the host's own overlays on HarmonyOS; apps cannot inject input"
+                .into(),
+        )
+    };
+    let (first, last) = (
+        points.first().ok_or_else(unsupported)?,
+        points.last().ok_or_else(unsupported)?,
+    );
+    if end != GestureEnd::Up || (first.x - last.x).hypot(first.y - last.y) > 8.0 {
+        return Err(unsupported());
+    }
+    let key = OVERLAYS
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .iter()
+        .rev()
+        .find(|(_, e)| {
+            let [x, y, w, h] = e.bounds;
+            last.x >= x && last.x <= x + w && last.y >= y && last.y <= y + h
+        })
+        .map(|(key, _)| key.clone())
+        .ok_or_else(unsupported)?;
+    lingxia_webview::platform::harmony::tsfn::call_arkts("hostOverlayPress", &[&key])
+        .map_err(|e| PlatformError::Platform(format!("host overlay press: {e}")))?;
+    Ok(AppGestureResult {
+        input: GestureInput::Touch,
+        delivered: GestureDelivery::View,
+        events: 2,
+        duration_ms: last.at_ms,
+        finger: None,
+    })
 }
 
 fn driver() -> Result<Arc<dyn GestureDriver>, PlatformError> {
@@ -94,6 +167,13 @@ impl AppGesture for Platform {
                 "{input:?} gestures are not available on HarmonyOS; use touch"
             )));
         }
+        if matches!(request.target, GestureTarget::Window { .. }) {
+            let points = request
+                .shape
+                .points()
+                .map_err(PlatformError::InvalidParameter)?;
+            return overlay_tap(&points, request.end);
+        }
         let driver = driver()?;
         let (app_id, webtag) = page(request.target)?;
         let points = request
@@ -138,6 +218,24 @@ impl AppGesture for Platform {
                 "page {webtag} is not the presented page"
             ))),
             None => Ok(None),
+        }
+    }
+
+    // Only the host's own overlays are readable: they sit at window scope.
+    async fn chrome_elements(
+        &self,
+        scope: Option<String>,
+    ) -> Result<Vec<ChromeElement>, PlatformError> {
+        match scope.as_deref() {
+            None | Some("window") => Ok(OVERLAYS
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .iter()
+                .map(|(_, e)| e.clone())
+                .collect()),
+            Some(other) => Err(PlatformError::NotSupported(format!(
+                "HarmonyOS reads only the host's own overlays (window scope), not {other}"
+            ))),
         }
     }
 }

@@ -1,4 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { HostOverlays } from '../HostOverlays';
 
 /**
  * Toast icon types
@@ -233,6 +234,9 @@ export struct ToastManager {
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .lineHeight(22)
         .wordBreak(WordBreak.BREAK_ALL)
+        .onAreaChange((_: Area, area: Area) =>
+          HostOverlays.place('toast', 'title', () => this.config?.title ?? '', 'text', area))
+        .onDisAppear(() => HostOverlays.forget('toast', 'title'))
     }
     .padding({ left: 24, right: 24, top: 16, bottom: 16 })
     .backgroundColor('#CC000000') // 80% black opacity
@@ -326,12 +330,14 @@ export struct ToastManager {
     this.config = config;
     this.toastPosition = position;
     this.isVisible = true;
+    HostOverlays.show('toast');
   }
 
   /**
    * Hide toast (called by LxAppToast)
    */
   public hideToast(): void {
+    HostOverlays.hide('toast');
     this.isVisible = false;
     this.config = null;
   }

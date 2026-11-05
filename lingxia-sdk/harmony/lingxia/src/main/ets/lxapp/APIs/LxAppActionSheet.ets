@@ -3,6 +3,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxLog } from '../../app/LxLog';
 import { onCallback } from 'liblingxia.so';
 import { LxAppContainer } from '../LxAppContainer';
+import { HostOverlays } from '../HostOverlays';
 
 /**
  * ActionSheet configuration structure
@@ -139,6 +140,10 @@ export struct ActionSheetManager {
               .onClick(() => {
                 this.handleOptionClick(index);
               })
+              .onAreaChange((_: Area, area: Area) => HostOverlays.place('sheet', `item-${index}`,
+                () => this.config?.options?.[index] ?? '', 'button', area,
+                () => this.handleOptionClick(index)))
+              .onDisAppear(() => HostOverlays.forget('sheet', `item-${index}`))
               // Add top border radius only for first item
               .borderRadius(index === 0 ? { topLeft: 16, topRight: 16, bottomLeft: 0, bottomRight: 0 } : 0)
 
@@ -165,6 +170,9 @@ export struct ActionSheetManager {
             .onClick(() => {
               this.handleCancel();
             })
+            .onAreaChange((_: Area, area: Area) => HostOverlays.place('sheet', 'cancel',
+              () => this.config?.cancelText ?? '', 'button', area, () => this.handleCancel()))
+            .onDisAppear(() => HostOverlays.forget('sheet', 'cancel'))
         }
         .width('100%')
         .backgroundColor(this.appearanceDark ? '#1C1C1E' : '#FFFFFF')
@@ -195,6 +203,7 @@ export struct ActionSheetManager {
   }
 
   private hideActionSheet(): void {
+    HostOverlays.hide('sheet');
     this.isVisible = false;
     this.config = null;
     this.callbackId = "";
@@ -208,5 +217,6 @@ export struct ActionSheetManager {
     this.config = config;
     this.callbackId = callbackId;
     this.isVisible = true;
+    HostOverlays.show('sheet');
   }
 }

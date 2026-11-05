@@ -38,6 +38,7 @@ import { LxNativeVideoPlayer } from '../lxapp/APIs/media/player/LxNativeVideoPla
 import { updateNativeComponentProps } from '../lxapp/NativeComponents/NativeBridgeInternal';
 import { completeWebFileChooserRequest } from '../lxapp/WebFileChooserBridge';
 import { GpuPages } from '../view/GpuPages';
+import { HostOverlays } from '../lxapp/HostOverlays';
 import { getCurrentLxapp, getLxappSessionId, onCallback, openAsideBrowserTab, openBrowserTab, type CurrentLxApp } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
@@ -130,6 +131,10 @@ class NativeBridge {
 
     this.register('gpuPageEvent', (token: string, kind: string, payload: string) => {
       return GpuPages.event(token, kind, payload);
+    });
+
+    this.register('hostOverlayPress', (key: string) => {
+      return HostOverlays.press(key);
     });
 
     this.register('closeLxApp', (appId: string, sessionIdRaw?: Object) => {

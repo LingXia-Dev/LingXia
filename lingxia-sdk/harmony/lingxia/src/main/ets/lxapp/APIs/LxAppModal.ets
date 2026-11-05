@@ -2,6 +2,7 @@ import { USER_DISMISSED_CODE } from '../LxAppDismissal';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { onCallback } from 'liblingxia.so';
 import { LxAppContainer } from '../LxAppContainer';
+import { HostOverlays } from '../HostOverlays';
 
 /**
  * Modal configuration structure
@@ -193,6 +194,9 @@ export struct ModalManager {
           .textAlign(TextAlign.Center)
           .maxLines(2)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .onAreaChange((_: Area, area: Area) =>
+            HostOverlays.place('modal', 'title', () => this.config?.title ?? '', 'text', area))
+          .onDisAppear(() => HostOverlays.forget('modal', 'title'))
       }
 
       // Content
@@ -204,6 +208,9 @@ export struct ModalManager {
           .maxLines(4)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .lineHeight(24)
+          .onAreaChange((_: Area, area: Area) =>
+            HostOverlays.place('modal', 'content', () => this.config?.content ?? '', 'text', area))
+          .onDisAppear(() => HostOverlays.forget('modal', 'content'))
       }
 
       // Buttons
@@ -236,6 +243,9 @@ export struct ModalManager {
           .onClick(() => {
             this.handleCancel();
           })
+          .onAreaChange((_: Area, area: Area) => HostOverlays.place('modal', 'cancel',
+            () => this.config?.cancelText ?? '', 'button', area, () => this.handleCancel()))
+          .onDisAppear(() => HostOverlays.forget('modal', 'cancel'))
 
         Button(this.config?.confirmText || '')
           .layoutWeight(1)
@@ -247,6 +257,9 @@ export struct ModalManager {
           .onClick(() => {
             this.handleConfirm();
           })
+          .onAreaChange((_: Area, area: Area) => HostOverlays.place('modal', 'confirm',
+            () => this.config?.confirmText ?? '', 'button', area, () => this.handleConfirm()))
+          .onDisAppear(() => HostOverlays.forget('modal', 'confirm'))
       }
       .width('100%')
     } else {
@@ -261,6 +274,9 @@ export struct ModalManager {
         .onClick(() => {
           this.handleConfirm();
         })
+        .onAreaChange((_: Area, area: Area) => HostOverlays.place('modal', 'confirm',
+          () => this.config?.confirmText ?? '', 'button', area, () => this.handleConfirm()))
+        .onDisAppear(() => HostOverlays.forget('modal', 'confirm'))
     }
   }
 
@@ -287,6 +303,7 @@ export struct ModalManager {
   }
 
   private hideModal(): void {
+    HostOverlays.hide('modal');
     this.isVisible = false;
     this.config = null;
     this.callbackId = "";
@@ -306,5 +323,6 @@ export struct ModalManager {
     this.config = config;
     this.callbackId = callbackId;
     this.isVisible = true;
+    HostOverlays.show('modal');
   }
 }

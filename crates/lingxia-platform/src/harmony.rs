@@ -17,5 +17,5 @@ mod user_feedback;
 pub mod video_player;
 mod wifi;
 pub use app::Platform;
-pub use gesture::{GestureDriver, set_gesture_driver, set_refresh_indicator};
+pub use gesture::{GestureDriver, set_gesture_driver, set_host_overlays, set_refresh_indicator};
 pub use ui_update::set_harmony_host_appearance_dark;
