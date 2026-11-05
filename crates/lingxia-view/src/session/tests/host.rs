@@ -1643,6 +1643,33 @@ fn a_stopped_window_pauses_the_deadline_and_a_failure_reveals_at_once() {
 }
 
 #[test]
+fn a_failed_reveal_does_not_charge_its_wait_to_the_next_load() {
+    let worker = ViewWorker::spawn("test-reveal-failed-reload").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = revealing_page(&platform, &worker);
+    host.reveal(false);
+    host.fail("UI_TIMEOUT: the render ran out of time".into());
+    host.set_visible(false);
+    host.park();
+    platform.settle(&[&host]);
+    // Pushed again much later: the wait starts with this reveal, not the failed one.
+    *host.adapter().clock.lock().unwrap() += Duration::from_secs(5);
+    host.load(source("function render(){return h('text',{},'again')}"));
+    host.set_visible(true);
+    host.reveal(false);
+    platform.settle(&[&host]);
+    assert_eq!(last(&host), ["again"]);
+    let pacing = host
+        .automation_request(&serde_json::json!({"op": "frame"}))
+        .unwrap()["pacing"]
+        .clone();
+    let waited = pacing["firstPresentMs"]
+        .as_f64()
+        .expect("the reload presented");
+    assert!(waited < 1000.0, "{pacing}");
+}
+
+#[test]
 fn a_window_nothing_of_which_shows_holds_its_frame_until_it_returns() {
     let worker = ViewWorker::spawn("test-window-hidden").unwrap();
     let platform = Platform::new(&[&worker]);

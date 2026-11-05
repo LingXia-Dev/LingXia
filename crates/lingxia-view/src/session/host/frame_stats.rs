@@ -150,6 +150,11 @@ impl FrameStats {
         self.reveal_started = Some(at);
     }
 
+    /// The page failed or left before its reveal presented; a later reveal starts its own wait.
+    pub(super) fn abandon_reveal(&mut self) {
+        self.reveal_started = None;
+    }
+
     /// The reveal showed a frame already on its surface.
     pub(super) fn reveal_current(&mut self, at: Duration) {
         let Some(started) = self.reveal_started.take() else {

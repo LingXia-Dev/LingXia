@@ -1406,6 +1406,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.animation_timer += 1;
             main.bootstrap_timer += 1;
             main.failure = None;
+            main.telemetry.stats.abandon_reveal();
             let page = self.lifecycle.park();
             main.snapshot = None;
             main.prepared = None;
@@ -1576,6 +1577,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.animation_timer += 1;
             main.bootstrap_timer += 1;
             main.pending = false;
+            main.telemetry.stats.abandon_reveal();
             let recovery = self.lifecycle.fail(&error);
             let effects = if recovery.kind == FailureKind::Session {
                 main.interaction.set_inert(true);
