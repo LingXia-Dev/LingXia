@@ -19,7 +19,6 @@ log = { workspace = true }
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
 taffy = { workspace = true }
 skrifa = { workspace = true }
-roxmltree = "0.21.1"
 memmap2 = { workspace = true }
 vello_cpu = { workspace = true }
 vello_common = { workspace = true }

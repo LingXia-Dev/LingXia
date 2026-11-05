@@ -1,8 +1,27 @@
-//! The faces CoreText picks for core's fallback samples, by file: Apple keeps its CJK
+//! The faces CoreText picks for the fallback samples, by file: Apple keeps its CJK
 //! faces (PingFang) out of the collection fontique scans.
-use lingxia_view::text::fonts::{FALLBACK_SAMPLES, SystemFonts};
+use lingxia_view::text::fonts::SystemFonts;
 use objc2_core_foundation::{CFRange, CFString, CFURL, CFURLPathStyle};
 use objc2_core_text::{CTFont, kCTFontURLAttribute};
+
+/// Languages whose script needs its own fallback face: a sample of the script, then named
+/// families to try after the face the platform picks for the sample. Apple's picked Han face
+/// (PingFang UI) registers no face here, and iOS ships no other Chinese face, so Han falls back
+/// to Japanese Hiragino last: most Han renders, simplified-only characters do not.
+const FALLBACK_SAMPLES: [(&str, &str, &[&str]); 4] = [
+    (
+        "zh-Hans",
+        "汉字",
+        &["Hiragino Sans GB", "Heiti SC", "Songti SC", "Hiragino Sans"],
+    ),
+    (
+        "zh-Hant",
+        "漢字",
+        &["Heiti TC", "Songti TC", "Hiragino Sans"],
+    ),
+    ("ja", "かな漢字", &["Hiragino Sans"]),
+    ("ko", "한글", &["Apple SD Gothic Neo"]),
+];
 
 pub(crate) fn system_fonts() -> SystemFonts {
     // SAFETY: CoreText calls with valid strings; a null matrix is the identity.

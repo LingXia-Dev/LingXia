@@ -1,4 +1,4 @@
-//! System font fallback chains read from the platform's font configuration.
+//! System font fallback chains, loaded and named from the files or directories an adapter finds.
 use parley::FontContext;
 /// The families [`SystemFonts::with_generic`] names.
 pub use parley::fontique::GenericFamily;
@@ -19,25 +19,6 @@ pub struct SystemFonts {
     /// Faces in those files that stand for a generic family, by PostScript name.
     generics: Vec<(GenericFamily, String)>,
 }
-
-/// Languages whose script needs its own fallback face: a sample of the script, then named
-/// families to try after the face the platform picks for the sample. Apple's picked Han face
-/// (PingFang UI) registers no face here, and iOS ships no other Chinese face, so Han falls back
-/// to Japanese Hiragino last: most Han renders, simplified-only characters do not.
-pub const FALLBACK_SAMPLES: [(&str, &str, &[&str]); 4] = [
-    (
-        "zh-Hans",
-        "汉字",
-        &["Hiragino Sans GB", "Heiti SC", "Songti SC", "Hiragino Sans"],
-    ),
-    (
-        "zh-Hant",
-        "漢字",
-        &["Heiti TC", "Songti TC", "Hiragino Sans"],
-    ),
-    ("ja", "かな漢字", &["Hiragino Sans"]),
-    ("ko", "한글", &["Apple SD Gothic Neo"]),
-];
 
 static SOURCE: OnceLock<fn() -> SystemFonts> = OnceLock::new();
 static SYSTEM: OnceLock<SystemFonts> = OnceLock::new();
@@ -75,16 +56,8 @@ pub(crate) fn context() -> FontContext {
 }
 
 impl SystemFonts {
-    /// Reads `<root>/etc/fonts.xml` against the faces in `<root>/fonts`.
-    pub fn load_android(root: &Path) -> Self {
-        std::fs::read_to_string(root.join("etc/fonts.xml"))
-            .map(|xml| Self::from_android_xml(&xml, &root.join("fonts")))
-            .unwrap_or_default()
-    }
-
     /// Fallback faces by file, as `(language, file, PostScript name)`: the platform names the
-    /// face its own text system picks for each of [`FALLBACK_SAMPLES`], which the system
-    /// collection may hide, and whose family names may differ from the platform's.
+    /// face its own text system picks per script, which the system collection may hide, and whose family names may differ from the platform's.
     pub fn from_files(faces: Vec<(String, std::path::PathBuf, String)>) -> Self {
         let mut fonts = Self::default();
         for (lang, file, face) in faces {
@@ -146,40 +119,14 @@ impl SystemFonts {
         fonts
     }
 
-    /// fontique maps only lang families whose faces carry a postScriptName, so
-    /// vendor CJK families fall through to tofu; this names every face from its file.
-    pub fn from_android_xml(xml: &str, dir: &Path) -> Self {
-        Self::parse(xml, |file, index| family_name(&dir.join(file), index))
-    }
-
-    fn parse(xml: &str, mut resolve: impl FnMut(&str, u32) -> Option<String>) -> Self {
-        let mut fonts = Self::default();
-        let Ok(doc) = roxmltree::Document::parse(xml) else {
-            return fonts;
-        };
-        for family in doc
-            .root_element()
-            .children()
-            .filter(|n| n.has_tag_name("family"))
-        {
-            let face = family
-                .children()
-                .filter(|n| n.has_tag_name("font") && n.attribute("fallbackFor").is_none())
-                .find_map(|font| {
-                    let file = font.text()?.trim();
-                    let index = font.attribute("index").and_then(|i| i.parse().ok());
-                    resolve(file, index.unwrap_or(0))
-                });
-            let Some(face) = face else { continue };
-            if let Some(langs) = family.attribute("lang") {
-                for lang in langs.split(',').map(str::trim).filter(|l| !l.is_empty()) {
-                    fonts.fallbacks.push((lang.to_owned(), face.clone()));
-                }
-            } else if family.attribute("name") == Some("monospace") {
-                fonts.monospace = Some(face);
-            }
+    /// Fallback families by name, as `(language, family)`, and the monospace family: for a
+    /// platform whose configuration names families rather than faces.
+    pub fn from_families(fallbacks: Vec<(String, String)>, monospace: Option<String>) -> Self {
+        Self {
+            fallbacks,
+            monospace,
+            ..Self::default()
         }
-        fonts
     }
 
     fn apply(&self, collection: &mut Collection) {
@@ -355,8 +302,9 @@ fn postscript_name(data: &[u8], index: u32) -> Option<String> {
         .map(|name| name.chars().collect())
 }
 
-/// The family fontique registers for a face: typographic family, else family.
-fn family_name(path: &Path, index: u32) -> Option<String> {
+/// The family fontique registers for the face at `index` in `path`: typographic family, else
+/// family.
+pub fn family_name(path: &Path, index: u32) -> Option<String> {
     let file = std::fs::File::open(path).ok()?;
     // SAFETY: system font files are read-only for the life of the process.
     let data = unsafe { memmap2::Mmap::map(&file) }.ok()?;

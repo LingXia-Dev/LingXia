@@ -2,42 +2,6 @@ use super::*;
 use parley::fontique::{Blob, CollectionOptions};
 use parley::{GenericFamily as Generic, LayoutContext, StyleProperty};
 
-const XML: &str = r#"<familyset version="23">
-  <family name="sans-serif"><font weight="400">Sans.ttf</font></family>
-  <family name="monospace"><font weight="400">Mono.ttf</font></family>
-  <family lang="zh-Hans"><font weight="400">Missing.ttf</font></family>
-  <family lang="zh-Hans"><font weight="400">SC.ttf</font></family>
-  <family lang="zh-Hant,zh-Bopo"><font weight="400">TC.ttf</font></family>
-  <family lang="ja">
-    <font weight="400" index="1" fallbackFor="serif">Serif.ttc</font>
-    <font weight="400" index="0" postScriptName="NotoSansCJKjp-Regular">CJK.ttc</font>
-  </family>
-  <family lang="und-Zsye"><font weight="400">Emoji.ttf</font></family>
-</familyset>"#;
-
-#[test]
-fn lang_families_resolve_from_file_names() {
-    let fonts = SystemFonts::parse(XML, |file, index| {
-        (file != "Missing.ttf").then(|| format!("{file}#{index}"))
-    });
-    let pairs: Vec<(&str, &str)> = fonts
-        .fallbacks
-        .iter()
-        .map(|(l, f)| (l.as_str(), f.as_str()))
-        .collect();
-    assert_eq!(
-        pairs,
-        [
-            ("zh-Hans", "SC.ttf#0"),
-            ("zh-Hant", "TC.ttf#0"),
-            ("zh-Bopo", "TC.ttf#0"),
-            ("ja", "CJK.ttc#0"),
-            ("und-Zsye", "Emoji.ttf#0"),
-        ]
-    );
-    assert_eq!(fonts.monospace.as_deref(), Some("Mono.ttf#0"));
-}
-
 #[test]
 fn han_is_keyed_by_locale() {
     let hani = Script::from_bytes(*b"Hani");
@@ -95,11 +59,9 @@ fn mixed_latin_and_han_have_no_notdef() {
             .collection
             .register_fonts(Blob::new(std::sync::Arc::new(han)), None);
         if install {
-            SystemFonts::from_android_xml(
-                r#"<familyset><family lang="zh-Hans"><font index="0">Hiragino Sans GB.ttc</font></family></familyset>"#,
-                han_dir,
-            )
-            .apply(&mut fonts.collection);
+            let family = family_name(&han_dir.join("Hiragino Sans GB.ttc"), 0).unwrap();
+            SystemFonts::from_families(vec![("zh-Hans".into(), family)], None)
+                .apply(&mut fonts.collection);
         }
         let mut layouts = LayoutContext::<()>::new();
         let text = "Hello 你好";

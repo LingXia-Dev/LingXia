@@ -12,6 +12,7 @@ use lingxia_view::session::host::{CaretState, ViewHost, ViewWorker};
 use lingxia_view::session::lifecycle::ConnectionTicket;
 
 mod adapter;
+mod fonts;
 #[cfg(all(feature = "gpu", target_os = "android"))]
 mod gpu_surface;
 
@@ -229,7 +230,7 @@ extern "system" fn host_create<'a>(
 
 fn system_fonts() -> lingxia_view::text::fonts::SystemFonts {
     let root = std::env::var("ANDROID_ROOT").unwrap_or_else(|_| "/system".into());
-    lingxia_view::text::fonts::SystemFonts::load_android(std::path::Path::new(&root))
+    fonts::load(std::path::Path::new(&root))
 }
 
 extern "system" fn host_release<'a>(mut env: EnvUnowned<'a>, _: JClass<'a>, handle: jlong) {
