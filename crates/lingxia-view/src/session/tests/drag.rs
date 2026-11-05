@@ -66,6 +66,40 @@ fn an_offset_moves_the_whole_subtree_and_a_settle_sets_the_bound_index() {
 }
 
 #[test]
+fn a_release_the_start_render_overtook_still_reaches_the_element() {
+    let module = super::source(
+        "function render(){const last=useLocal('last','none');return h('page',{},h('view',{'data-testid':'card',drag:'x',dragSnapPoints:[0,50],'aria-label':'Card',onDragStart(){last.set('dragging')},onDragEnd(e){last.set('released at '+e.index)},style:{width:40,height:40}}),h('text',{'data-testid':'last'},last.value))}",
+    );
+    let mut session = ViewSession::new(&module).unwrap();
+    let display = session.layout(200, 100, 1.0).unwrap();
+    let card = display.nodes.iter().find(|n| n.test_id == "card").unwrap();
+    let (identity, handle) = (card.identity.clone(), card.drag.as_ref().unwrap().handle);
+    let pressed = session.generation();
+    let start = r#"{"phase":"start","index":0,"velocity":0}"#;
+    assert!(
+        session
+            .drag_event(pressed, handle, &identity, start)
+            .unwrap()
+    );
+    let text = |session: &mut ViewSession| {
+        let display = session.layout(200, 100, 1.0).unwrap();
+        display
+            .nodes
+            .iter()
+            .find(|n| n.test_id == "last")
+            .unwrap()
+            .text
+            .clone()
+    };
+    assert_eq!(text(&mut session), "dragging");
+    // The release was read against the frame the press saw.
+    let end = r#"{"phase":"end","index":1,"velocity":900}"#;
+    assert!(!session.text_event(pressed, handle, end).unwrap());
+    assert!(session.drag_event(pressed, handle, &identity, end).unwrap());
+    assert_eq!(text(&mut session), "released at 1");
+}
+
+#[test]
 fn the_release_spring_is_the_elements_transition_timing() {
     let module = super::source(
         "function render(){return h('page',{},h('view',{'data-testid':'a',drag:'y','aria-label':'A',style:{height:10,transition:{properties:['transform'],durationMs:500,delayMs:0,easing:{spring:0.25}}}}),h('view',{'data-testid':'b',drag:'y','aria-label':'B',style:{height:10}}))}",

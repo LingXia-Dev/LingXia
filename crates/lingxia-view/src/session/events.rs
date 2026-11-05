@@ -180,6 +180,30 @@ impl ViewSession {
         })
     }
 
+    /// A `drag` element's event. One a newer render overtook goes to the element's current
+    /// handler: a flick released before its start's render lands must still end.
+    pub fn drag_event(
+        &mut self,
+        generation: lifecycle::CommitTicket,
+        handle: u64,
+        identity: &str,
+        payload: &str,
+    ) -> Result<bool, String> {
+        if self.presented_commit(generation) || identity.is_empty() {
+            return self.text_event(generation, handle, payload);
+        }
+        let current = self
+            .retained
+            .as_ref()
+            .and_then(|retained| retained.nodes.iter().find(|node| node.identity == identity))
+            .and_then(|node| node.drag.as_ref())
+            .map(|drag| drag.handle);
+        match current {
+            Some(handle) => self.text_event(self.generation, handle, payload),
+            None => Ok(false),
+        }
+    }
+
     /// Resolve and dispatch selection against committed geometry and callback identity.
     pub fn select_plot(
         &mut self,

@@ -232,6 +232,7 @@ impl ViewInteraction {
         self.dispatches.push(Dispatch::DragEvent {
             commit: frame.commit,
             handle,
+            identity: identity.to_owned(),
             payload: serde_json::json!({"phase": phase, "index": index, "velocity": velocity, "hidden": hidden})
                 .to_string(),
         });

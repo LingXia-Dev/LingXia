@@ -289,11 +289,14 @@ impl<A: PlatformAdapter> Inner<A> {
                 Dispatch::DragEvent {
                     commit,
                     handle,
+                    identity,
                     payload,
                 } => self.activate(
                     page,
                     false,
-                    Box::new(move |session| session.text_event(commit, handle, &payload)),
+                    Box::new(move |session| {
+                        session.drag_event(commit, handle, &identity, &payload)
+                    }),
                 ),
                 Dispatch::Escape => {
                     self.activate(page, false, Box::new(|session| session.escape()))

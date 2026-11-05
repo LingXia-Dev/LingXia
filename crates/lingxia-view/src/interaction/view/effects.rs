@@ -128,6 +128,7 @@ pub enum Dispatch {
     DragEvent {
         commit: CommitTicket,
         handle: u64,
+        identity: String,
         payload: String,
     },
     /// A key for the View's open picker (`ArrowUp`, `Enter`, `Escape`, a character, ...).
