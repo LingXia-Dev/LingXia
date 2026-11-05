@@ -296,6 +296,8 @@ impl Drop for Page {
         let Some(host) = pages::remove(self.token) else {
             return;
         };
+        // A late frame of a leaving page can reconnect its editor; the keyboard must not outlive it.
+        ime::reset(self.token);
         host.dispose();
         let surface = host
             .adapter()
