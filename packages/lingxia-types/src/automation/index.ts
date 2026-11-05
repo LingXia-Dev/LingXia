@@ -424,6 +424,53 @@ export interface PageUiFrame {
   animationFrames: number;
   wakeups: number;
   reveal: { deadlines: number; watchdogs: number; lastReveal: { reason: string; atMs: number } | null };
+  /** The frame-statistics HUD is drawn over the page. */
+  hud: boolean;
+  /** Nodes the presented frame laid out; `null` before the first frame. */
+  nodes: number | null;
+  /** Frames shown in the last `windowMs`. */
+  pacing: PageFramePacing;
+}
+
+/** Nearest-rank percentiles, in ms. */
+export interface PagePercentiles { p50: number; p95: number; p99: number; max: number }
+
+/**
+ * Frames a GPU page showed in a window. A frame time is the gap between two frames shown back to
+ * back; a frame after idle has none. `dropped` counts skipped display refreshes, `jank` frame
+ * times over twice the refresh interval, `late` frames shown after the refresh they were meant
+ * for. `null` where the window holds no sample.
+ */
+export interface PageFramePacing {
+  windowMs: number;
+  frames: number;
+  samples: number;
+  refreshMs: number | null;
+  frameTimeMs: PagePercentiles | null;
+  /** Derived from the frame times. */
+  fps: number | null;
+  dropped: number;
+  jank: number;
+  late: number;
+  /** View worker time per frame: View, layout, encode and submit. */
+  cpuMs: PagePercentiles | null;
+  queueMs: PagePercentiles | null;
+  /** `null` where the backend reports no GPU time. */
+  gpuMs: PagePercentiles | null;
+  /** Pointer, wheel and key input until the frame showing it. */
+  inputToPresent: { count: number; lastMs: number | null; statsMs: PagePercentiles | null };
+  /** The latest reveal's wait for a frame; 0 when its frame was already on the surface. */
+  firstPresentMs: number | null;
+  firstPresentReason: 'frame' | 'current' | null;
+  reveals: number;
+  /** Each reveal's wait for a frame, over the window. */
+  revealMs: PagePercentiles | null;
+}
+
+/** `page.uiFrame()` options. */
+export interface PageFrameOptions extends PageTarget {
+  /** How far back `pacing` reaches (default 5000). */
+  windowMs?: number;
 }
 
 /**
@@ -572,7 +619,9 @@ export interface PageDriver {
   /** The page's accessibility tree: role, name, test id, state and bounds in reading order. */
   tree(options?: PageTarget): Promise<PageTree>;
   /** A GPU page's presentation counters; `E_UNSUPPORTED` on a WebView page. */
-  uiFrame(options?: PageTarget): Promise<PageUiFrame>;
+  uiFrame(options?: PageFrameOptions): Promise<PageUiFrame>;
+  /** Draw the renderer's frame-statistics HUD over a GPU page, or stop. */
+  hud(options: PageTarget & { on: boolean }): Promise<{ hud: boolean }>;
   /** App-window pointer input at page coordinates (`lxdev lxapp page pointer`). */
   readonly pointer: PagePointer;
   /** App-window keyboard input (`lxdev lxapp page key`). */

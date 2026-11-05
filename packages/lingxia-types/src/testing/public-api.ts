@@ -286,6 +286,7 @@ const PAGE_DRIVER_API = [
   'eval',
   'fill',
   'gesture',
+  'hud',
   'key',
   'pointer',
   'semanticAction',

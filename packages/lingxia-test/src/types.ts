@@ -23,6 +23,7 @@ import type {
   ModalRecord,
   NetworkRouteHandler,
   NetworkRoutePattern,
+  PageFramePacing,
   PageInfo,
   PageKey,
   PagePointer,
@@ -943,6 +944,25 @@ export interface TestApp {
   info: LxAppDriver["info"];
   pages: LxAppDriver["pages"];
   surfaceLayout: LxAppDriver["surfaceLayout"];
+  /**
+   * A GPU page's frame pacing over the last `windowMs` (default 5000) plus its presentation
+   * counters; the current page unless `page` names one. Rejects `E_UNSUPPORTED` on a WebView page.
+   */
+  metrics(options?: { page?: string; windowMs?: number }): Promise<TestMetrics>;
+  /** Draw the renderer's frame-statistics HUD over a GPU page, or stop. */
+  hud(on: boolean, options?: { page?: string }): Promise<void>;
+}
+
+/** `t.app.metrics()`: frame times in ms, dropped refreshes and jank, latencies and reveal counters. */
+export interface TestMetrics extends PageFramePacing {
+  /** Milliseconds from the page opening to its first and latest presents. */
+  firstPresentAt: number | null;
+  lastPresentAt: number | null;
+  /** Every frame the page presented since it opened. */
+  framesTotal: number;
+  /** Nodes the presented frame laid out; `null` before the first frame. */
+  nodes: number | null;
+  reveal: { count: number; deadlines: number; watchdogs: number; lastReveal: { reason: string; atMs: number } | null };
 }
 
 /** A checkpoint of the app's isolated data. */

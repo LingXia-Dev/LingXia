@@ -45,6 +45,7 @@ import type {
   RetryMatchers,
   SourceLocation,
   TestApp,
+  TestMetrics,
   PageContract,
   PageSelector,
   PageBindOptions,
@@ -1063,6 +1064,25 @@ export class LiveFixture implements Fixture {
       info: () => this.act("app.info", "", () => this.readRetrying(() => driver().info())),
       pages: () => this.act("app.pages", "", () => this.readRetrying(() => driver().pages())),
       surfaceLayout: () => this.act("app.surfaceLayout", "", () => this.readRetrying(() => driver().surfaceLayout())),
+      metrics: (options?: { page?: string; windowMs?: number }) => this.act("app.metrics", summarise(options), async () => {
+        if (options?.windowMs !== undefined && !(Number.isFinite(options.windowMs) && options.windowMs > 0)) {
+          throw new TypeError("t.app.metrics({ windowMs }) takes a positive number of ms");
+        }
+        // The host binding's options are optional but not nullable.
+        const frame = await this.readRetrying(() => options ? driver().page.uiFrame(options) : driver().page.uiFrame());
+        return {
+          ...frame.pacing,
+          firstPresentAt: frame.firstPresentAt,
+          lastPresentAt: frame.lastPresentAt,
+          framesTotal: frame.frames,
+          nodes: frame.nodes,
+          reveal: { count: frame.pacing.reveals, ...frame.reveal },
+        } satisfies TestMetrics;
+      }),
+      hud: (on: boolean, options?: { page?: string }) => this.act("app.hud", String(on), async () => {
+        if (typeof on !== "boolean") throw new TypeError("t.app.hud(on) takes a boolean");
+        await driver().page.hud({ ...options, on });
+      }),
     } as TestApp;
   }
 

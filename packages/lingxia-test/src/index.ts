@@ -49,6 +49,7 @@ export type {
   SpecStart,
   StepScope,
   TestApp,
+  TestMetrics,
   TestPage,
   PageContract,
   PageSelector,

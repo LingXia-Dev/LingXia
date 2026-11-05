@@ -882,6 +882,28 @@ test("a GPU page brings the match on screen and acts without a DOM probe", async
   assert.ok(!world.evaluated.some((script) => script.includes("elementFromPoint")));
 });
 
+test("t.app.metrics reads frame pacing with the presentation counters and t.app.hud toggles the HUD", async () => {
+  const world = createWorld();
+  const { attachments } = installFakeHost(world);
+
+  spec("metrics", async (t) => {
+    const metrics = await t.app.metrics();
+    assert.equal(metrics.windowMs, 5000);
+    assert.deepEqual(metrics.frameTimeMs, { p50: 16.67, p95: 18.2, p99: 33.3, max: 40 });
+    assert.equal(metrics.dropped, 1);
+    assert.equal(metrics.firstPresentAt, 42);
+    assert.equal(metrics.framesTotal, 120);
+    assert.equal(metrics.reveal.count, 1);
+    assert.equal((await t.app.metrics({ windowMs: 2000 })).windowMs, 2000);
+    await assert.rejects(t.app.metrics({ windowMs: 0 }), TypeError);
+    await t.app.hud(true);
+    assert.equal(world.hud, true);
+  });
+
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(protocol.failed, 0, protocol.failed ? failedMessage(attachments) : "");
+});
+
 test("getByRole matches the role on either renderer and narrows by exact accessible name", async () => {
   const world = createWorld();
   world.add({ tag: "button", text: "Pay now" });
