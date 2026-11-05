@@ -29,7 +29,6 @@ const BUDGETS: Record<string, Budget> = {
 /** Known gaps per platform, each a reason to skip until it is fixed. */
 const KNOWN: Record<string, Record<string, string>> = {
   android: {
-    'PERF-NAV-001': 'perf-target at 100 rows spends 100-109 ms of View JS on the Pixel 3, over the 100 ms budget: UI_TIMEOUT refuses most pushes',
     'PERF-FILL-001': 'reads 0 frames as a spec in some runs (31 frames the run before); under investigation',
     'PERF-TEXT-001': 'reads 1 frame as a spec though the scene draws ~14 fps when driven by hand; under investigation',
     'PERF-IMAGE-001': 'reads 0 frames as a spec, as PERF-TEXT-001; under investigation',
