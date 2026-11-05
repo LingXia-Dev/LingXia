@@ -1,4 +1,3 @@
-#[cfg(feature = "harmony-gpu")]
 #[path = "harmony/gpu_page.rs"]
 mod gpu_page;
 use lingxia_messaging::invoke_callback;
@@ -122,7 +121,6 @@ pub fn lingxia_init(
         log::error!("Failed to initialize TSFN: {}", e);
         return None;
     }
-    #[cfg(feature = "harmony-gpu")]
     gpu_page::install(&env, &data_dir);
 
     // Only create App if we have ResourceManager

@@ -968,7 +968,6 @@ pub fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> bridge::Li
     crate::logging::init();
     install_browser_native_input_host();
     install_browser_present_handler();
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     gpu_page::install();
     lxapp::add_display_language_effective_listener(Box::new(|_| {
         self::bridge::display_language_changed();
@@ -2135,10 +2134,7 @@ fn page_binding_of(page: Option<lxapp::PageInstance>) -> self::bridge::PageBindi
             .webview()
             .map(|webview| webview.get_swift_webview_ptr())
             .unwrap_or(0),
-        #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
         gpu_token: gpu_page::token_of(&page),
-        #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-        gpu_token: 0,
     }
 }
 

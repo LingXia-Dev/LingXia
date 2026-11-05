@@ -1,8 +1,6 @@
 //! Swift marshalling for GPU pages. Rust owns each page's `ViewHost`; Swift
 //! owns its `GpuPageView` and reports measurements to it by token.
-#[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
 use crate::gpu_page::{self, AutomationReply, Creation, NativeFactory, NativePage, Token};
-#[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
 use lxapp::{GpuViewGeneration, LxAppError, PageInstance};
 
 #[swift_bridge::bridge]
@@ -340,98 +338,61 @@ fn gpu_page_measured(
     hour_cycle: &str,
     first_weekday: u8,
 ) {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
-    {
-        let facts = lingxia_view_apple::lingxia_view::platform::DeviceFacts {
-            width,
-            height,
-            scale,
-            os: if cfg!(target_os = "macos") {
-                "macos"
-            } else {
-                "ios"
-            }
-            .into(),
-            dark,
-            system_insets: [inset_top, inset_right, inset_bottom, inset_left],
-            chrome_insets: [chrome_top, 0.0, chrome_bottom, 0.0],
-            keyboard,
-            smallest_width,
-            locale: locale.into(),
-            fine_pointer: cfg!(target_os = "macos"),
-            animation_scale: 1.0,
-            reduce_motion,
-            high_contrast,
-            text_scale: (!text_scale.is_empty())
-                .then(|| text_scale.chunks_exact(2).map(|p| [p[0], p[1]]).collect()),
-            hour_cycle: Some(hour_cycle.to_owned()),
-            first_weekday: Some(first_weekday),
-            ..Default::default()
-        };
-        with_page(token, |page| page.measured(facts));
-    }
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    let _ = (
-        token,
+    let facts = lingxia_view_apple::lingxia_view::platform::DeviceFacts {
         width,
         height,
         scale,
+        os: if cfg!(target_os = "macos") {
+            "macos"
+        } else {
+            "ios"
+        }
+        .into(),
         dark,
-        [inset_top, inset_right, inset_bottom, inset_left],
-        [chrome_top, chrome_bottom, keyboard, smallest_width],
-        locale,
+        system_insets: [inset_top, inset_right, inset_bottom, inset_left],
+        chrome_insets: [chrome_top, 0.0, chrome_bottom, 0.0],
+        keyboard,
+        smallest_width,
+        locale: locale.into(),
+        fine_pointer: cfg!(target_os = "macos"),
+        animation_scale: 1.0,
         reduce_motion,
         high_contrast,
-        text_scale,
-        hour_cycle,
-        first_weekday,
-    );
+        text_scale: (!text_scale.is_empty())
+            .then(|| text_scale.chunks_exact(2).map(|p| [p[0], p[1]]).collect()),
+        hour_cycle: Some(hour_cycle.to_owned()),
+        first_weekday: Some(first_weekday),
+    };
+    with_page(token, |page| page.measured(facts));
 }
 
 fn gpu_page_attach(token: i64, view: usize, width: u32, height: u32) {
     log::debug!(target: "lingxia_view", "attach token={token} {width}x{height}");
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     with_page(token, |page| page.attach(view, width, height));
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    let _ = (token, view, width, height);
 }
 
 fn gpu_page_suspend(token: i64) {
     log::debug!(target: "lingxia_view", "suspend token={token}");
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     with_page(token, |page| page.suspend());
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    let _ = token;
 }
 
 fn gpu_page_set_visible(token: i64, visible: bool) {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     with_page(token, |page| page.host().set_visible(visible));
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    let _ = (token, visible);
 }
 
 fn gpu_page_readback(token: i64) -> Vec<u8> {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
-    {
-        let mut out = Vec::new();
-        with_page(token, |page| match page.readback() {
-            Ok(Some((width, height, pixels))) => {
-                out.reserve(8 + pixels.len());
-                out.extend_from_slice(&width.to_le_bytes());
-                out.extend_from_slice(&height.to_le_bytes());
-                out.extend_from_slice(&pixels);
-            }
-            Ok(None) => {}
-            Err(error) => log::warn!(target: "lingxia_view", "GPU readback: {error}"),
-        });
-        out
-    }
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    {
-        let _ = token;
-        Vec::new()
-    }
+    let mut out = Vec::new();
+    with_page(token, |page| match page.readback() {
+        Ok(Some((width, height, pixels))) => {
+            out.reserve(8 + pixels.len());
+            out.extend_from_slice(&width.to_le_bytes());
+            out.extend_from_slice(&height.to_le_bytes());
+            out.extend_from_slice(&pixels);
+        }
+        Ok(None) => {}
+        Err(error) => log::warn!(target: "lingxia_view", "GPU readback: {error}"),
+    });
+    out
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -445,96 +406,68 @@ fn gpu_page_pointer(
     velocity_y: f32,
     min_fling: f32,
 ) -> bool {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
-    {
-        use lingxia_view_apple::lingxia_view::interaction::view::{Pointer, PointerPhase};
-        let phase = match phase {
-            0 => PointerPhase::Down,
-            1 => PointerPhase::Move,
-            2 => PointerPhase::Up,
-            _ => PointerPhase::Cancel,
-        };
-        let mut handled = false;
-        with_page(token, |page| {
-            handled = page.host().pointer(Pointer {
-                phase,
-                x,
-                y,
-                slop,
-                velocity: [velocity_x, velocity_y],
-                min_fling,
-            })
-        });
-        handled
-    }
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    {
-        let _ = (token, phase, x, y, slop, velocity_x, velocity_y, min_fling);
-        false
-    }
+    use lingxia_view_apple::lingxia_view::interaction::view::{Pointer, PointerPhase};
+    let phase = match phase {
+        0 => PointerPhase::Down,
+        1 => PointerPhase::Move,
+        2 => PointerPhase::Up,
+        _ => PointerPhase::Cancel,
+    };
+    let mut handled = false;
+    with_page(token, |page| {
+        handled = page.host().pointer(Pointer {
+            phase,
+            x,
+            y,
+            slop,
+            velocity: [velocity_x, velocity_y],
+            min_fling,
+        })
+    });
+    handled
 }
 
 #[allow(clippy::too_many_arguments)]
 fn gpu_page_wheel(token: i64, x: f32, y: f32, dx: f32, dy: f32, precise: bool, phase: u8) -> bool {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
-    {
-        use lingxia_view_apple::lingxia_view::interaction::view::{Wheel, WheelPhase};
-        let phase = match phase {
-            1 => WheelPhase::Began,
-            2 => WheelPhase::Changed,
-            3 => WheelPhase::Ended,
-            4 => WheelPhase::Momentum,
-            _ => WheelPhase::Discrete,
-        };
-        let mut moved = false;
-        with_page(token, |page| {
-            moved = page.host().wheel(Wheel {
-                x,
-                y,
-                dx,
-                dy,
-                precise,
-                phase,
-            })
-        });
-        moved
-    }
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    {
-        let _ = (token, x, y, dx, dy, precise, phase);
-        false
-    }
+    use lingxia_view_apple::lingxia_view::interaction::view::{Wheel, WheelPhase};
+    let phase = match phase {
+        1 => WheelPhase::Began,
+        2 => WheelPhase::Changed,
+        3 => WheelPhase::Ended,
+        4 => WheelPhase::Momentum,
+        _ => WheelPhase::Discrete,
+    };
+    let mut moved = false;
+    with_page(token, |page| {
+        moved = page.host().wheel(Wheel {
+            x,
+            y,
+            dx,
+            dy,
+            precise,
+            phase,
+        })
+    });
+    moved
 }
 
 fn gpu_page_hover(token: i64, inside: bool, x: f32, y: f32) {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     with_page(token, |page| page.host().hover(inside.then_some([x, y])));
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    let _ = (token, inside, x, y);
 }
 
 fn gpu_page_key(token: i64, key: i64, shift: bool, repeating: bool) -> bool {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
-    {
-        use lingxia_view_apple::lingxia_view::interaction::view::Key;
-        let Some(key) = Key::from_code(key) else {
-            return false;
-        };
-        let mut handled = false;
-        with_page(token, |page| {
-            handled = page.host().key(key, shift, repeating)
-        });
-        handled
-    }
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    {
-        let _ = (token, key, shift, repeating);
-        false
-    }
+    use lingxia_view_apple::lingxia_view::interaction::view::Key;
+    let Some(key) = Key::from_code(key) else {
+        return false;
+    };
+    let mut handled = false;
+    with_page(token, |page| {
+        handled = page.host().key(key, shift, repeating)
+    });
+    handled
 }
 
 fn gpu_page_focus(token: i64, entered: bool, backward: bool) {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     with_page(token, |page| {
         if entered {
             page.host().focus_entered(backward)
@@ -542,33 +475,19 @@ fn gpu_page_focus(token: i64, entered: bool, backward: bool) {
             page.host().focus_left()
         }
     });
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    let _ = (token, entered, backward);
 }
 
 fn gpu_page_window_focus(token: i64, focused: bool) {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     with_page(token, |page| page.host().window_focus(focused));
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    let _ = (token, focused);
 }
 
 fn gpu_page_input_blocked(token: i64) -> bool {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
-    {
-        let mut blocked = false;
-        with_page(token, |page| blocked = page.host().input_blocked());
-        blocked
-    }
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    {
-        let _ = token;
-        false
-    }
+    let mut blocked = false;
+    with_page(token, |page| blocked = page.host().input_blocked());
+    blocked
 }
 
 fn gpu_page_input(token: i64, request: &str, reply: u64) {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     with_page(token, |page| {
         page.host().input(request.to_owned(), move |value| {
             bridge::gpu_pages_input_reply(
@@ -579,8 +498,6 @@ fn gpu_page_input(token: i64, request: &str, reply: u64) {
             )
         })
     });
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    let _ = (token, request, reply);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -594,7 +511,6 @@ fn gpu_page_caret(
     composition_start: i32,
     composition_end: i32,
 ) {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     with_page(token, |page| {
         use lingxia_view_apple::lingxia_view::session::host::CaretState;
         page.host().caret(
@@ -607,70 +523,39 @@ fn gpu_page_caret(
             }),
         )
     });
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    let _ = (
-        token,
-        eligible,
-        connected,
-        text,
-        [anchor, focus, composition_start, composition_end],
-    );
 }
 
 fn gpu_page_select_word_at(token: i64, x: f32, y: f32) {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     with_page(token, |page| page.host().select_word_at([x, y]));
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    let _ = (token, x, y);
 }
 
 fn gpu_page_context_menu(token: i64, x: f32, y: f32) -> bool {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
-    {
-        let mut opened = false;
-        with_page(token, |page| opened = page.host().context_menu([x, y]));
-        opened
-    }
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    {
-        let _ = (token, x, y);
-        false
-    }
+    let mut opened = false;
+    with_page(token, |page| opened = page.host().context_menu([x, y]));
+    opened
 }
 
 fn gpu_page_text_menu_action(token: i64, action: u8) -> bool {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
-    {
-        use lingxia_view_apple::lingxia_view::session::host::MenuAction;
-        let action = match action {
-            0 => MenuAction::Cut,
-            1 => MenuAction::Copy,
-            2 => MenuAction::Paste,
-            3 => MenuAction::SelectAll,
-            4 => MenuAction::Undo,
-            5 => MenuAction::Redo,
-            _ => return false,
-        };
-        let mut ran = false;
-        with_page(token, |page| ran = page.host().text_menu_action(action));
-        ran
-    }
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    {
-        let _ = (token, action);
-        false
-    }
+    use lingxia_view_apple::lingxia_view::session::host::MenuAction;
+    let action = match action {
+        0 => MenuAction::Cut,
+        1 => MenuAction::Copy,
+        2 => MenuAction::Paste,
+        3 => MenuAction::SelectAll,
+        4 => MenuAction::Undo,
+        5 => MenuAction::Redo,
+        _ => return false,
+    };
+    let mut ran = false;
+    with_page(token, |page| ran = page.host().text_menu_action(action));
+    ran
 }
 
 fn gpu_page_text_menu_dismissed(token: i64) {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     with_page(token, |page| page.host().text_menu_dismissed());
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    let _ = token;
 }
 
 fn gpu_page_copy_selection(token: i64) {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     with_page(token, |page| {
         page.host().copy_text_selection(|text| {
             if let Some(text) = text {
@@ -678,65 +563,35 @@ fn gpu_page_copy_selection(token: i64) {
             }
         })
     });
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    let _ = token;
 }
 
 fn gpu_page_selection_handles(token: i64) -> Vec<f32> {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
-    {
-        let mut handles = Vec::new();
-        with_page(token, |page| handles = page.selection_handles().1);
-        handles
-    }
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    {
-        let _ = token;
-        Vec::new()
-    }
+    let mut handles = Vec::new();
+    with_page(token, |page| handles = page.selection_handles().1);
+    handles
 }
 
 fn gpu_page_selection_handle_color(token: i64) -> u32 {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
-    {
-        let mut color = 0;
-        with_page(token, |page| color = page.selection_handles().0);
-        color
-    }
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    {
-        let _ = token;
-        0
-    }
+    let mut color = 0;
+    with_page(token, |page| color = page.selection_handles().0);
+    color
 }
 
 fn gpu_page_handle_hit(token: i64, x: f32, y: f32) -> Vec<f32> {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
-    {
-        let mut hit = Vec::new();
-        with_page(token, |page| {
-            hit = page.handle_hit(x, y).map(Vec::from).unwrap_or_default()
-        });
-        hit
-    }
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    {
-        let _ = (token, x, y);
-        Vec::new()
-    }
+    let mut hit = Vec::new();
+    with_page(token, |page| {
+        hit = page.handle_hit(x, y).map(Vec::from).unwrap_or_default()
+    });
+    hit
 }
 
 fn gpu_page_handle_drag(token: i64, which: i32, x: f32, y: f32) {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     with_page(token, |page| {
         page.handle_drag(u8::try_from(which).ok(), x, y)
     });
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    let _ = (token, which, x, y);
 }
 
 fn gpu_page_render(token: i64, rebuild: bool) {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     with_page(token, |page| {
         if rebuild {
             page.host().request_frame()
@@ -744,41 +599,25 @@ fn gpu_page_render(token: i64, rebuild: bool) {
             page.host().redraw()
         }
     });
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    let _ = (token, rebuild);
 }
 
 fn gpu_page_node(token: i64, identity: &str) -> String {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
-    {
-        let mut node = String::new();
-        with_page(token, |page| {
-            node = page
-                .host()
-                .snapshot()
-                .and_then(|frame| {
-                    let found = frame.frame.nodes.iter().find(|n| n.identity == identity)?;
-                    serde_json::to_string(found).ok()
-                })
-                .unwrap_or_default()
-        });
-        node
-    }
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    {
-        let _ = (token, identity);
-        String::new()
-    }
+    let mut node = String::new();
+    with_page(token, |page| {
+        node = page
+            .host()
+            .snapshot()
+            .and_then(|frame| {
+                let found = frame.frame.nodes.iter().find(|n| n.identity == identity)?;
+                serde_json::to_string(found).ok()
+            })
+            .unwrap_or_default()
+    });
+    node
 }
 
 fn gpu_page_info(token: i64) -> bridge::GpuPageInfo {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     let page = crate::gpu_page::page_of(token);
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    let page: Option<lxapp::PageInstance> = {
-        let _ = token;
-        None
-    };
     bridge::GpuPageInfo {
         app_id: page.as_ref().map(|p| p.appid()).unwrap_or_default(),
         path: page.as_ref().map(|p| p.path()).unwrap_or_default(),
@@ -790,136 +629,85 @@ fn gpu_page_info(token: i64) -> bridge::GpuPageInfo {
 }
 
 fn gpu_page_can_scroll_vertically(token: i64, x: f32, y: f32, direction: i32) -> bool {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
-    {
-        let mut can = false;
-        with_page(token, |page| {
-            can = page.host().can_scroll_vertically_at([x, y], direction)
-        });
-        can
-    }
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    {
-        let _ = (token, x, y, direction);
-        false
-    }
+    let mut can = false;
+    with_page(token, |page| {
+        can = page.host().can_scroll_vertically_at([x, y], direction)
+    });
+    can
 }
 
 fn gpu_page_semantic_roots(token: i64) -> Vec<u32> {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
-    {
-        let mut roots = Vec::new();
-        with_page(token, |page| {
-            roots = page
-                .host()
-                .semantics(|projection, _| projection.map(|p| p.roots()).unwrap_or_default())
-        });
-        roots
-    }
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    {
-        let _ = token;
-        Vec::new()
-    }
+    let mut roots = Vec::new();
+    with_page(token, |page| {
+        roots = page
+            .host()
+            .semantics(|projection, _| projection.map(|p| p.roots()).unwrap_or_default())
+    });
+    roots
 }
 
 fn gpu_page_semantic_node(token: i64, id: u32) -> String {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
-    {
-        let mut node = String::new();
-        with_page(token, |page| {
-            node = page.host().semantics(|projection, _| {
-                projection
-                    .and_then(|p| p.node(id))
-                    .and_then(|n| serde_json::to_string(&n).ok())
-                    .unwrap_or_default()
-            })
-        });
-        node
-    }
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    {
-        let _ = (token, id);
-        String::new()
-    }
+    let mut node = String::new();
+    with_page(token, |page| {
+        node = page.host().semantics(|projection, _| {
+            projection
+                .and_then(|p| p.node(id))
+                .and_then(|n| serde_json::to_string(&n).ok())
+                .unwrap_or_default()
+        })
+    });
+    node
 }
 
 fn gpu_page_accessibility(token: i64, id: u32, action: u8, number: f64, argument: &str) -> bool {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
-    {
-        use lingxia_view_apple::lingxia_view::interaction::view::AccessibilityAction as A;
-        let action = match action {
-            0 => A::Focus,
-            1 => A::ClearFocus,
-            2 => A::Click,
-            3 => A::ShowOnScreen,
-            4 => A::ScrollForward,
-            5 => A::ScrollBackward,
-            6 => A::SetProgress(number),
-            7 => A::SetText(argument.to_owned()),
-            8 => A::SetSelection(number as i32, argument.parse().unwrap_or(-1)),
-            9 => A::ClearSelection,
-            10 => A::SelectItem(number as usize),
-            11 => A::Copy,
-            12 => A::Cut,
-            13 => A::Paste(argument.to_owned()),
-            14 => A::Custom(number as usize),
-            15 => A::Dismiss,
-            _ => return false,
-        };
-        let mut handled = false;
-        with_page(token, |page| {
-            handled = page.host().accessibility(id, action)
-        });
-        handled
-    }
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    {
-        let _ = (token, id, action, number, argument);
-        false
-    }
+    use lingxia_view_apple::lingxia_view::interaction::view::AccessibilityAction as A;
+    let action = match action {
+        0 => A::Focus,
+        1 => A::ClearFocus,
+        2 => A::Click,
+        3 => A::ShowOnScreen,
+        4 => A::ScrollForward,
+        5 => A::ScrollBackward,
+        6 => A::SetProgress(number),
+        7 => A::SetText(argument.to_owned()),
+        8 => A::SetSelection(number as i32, argument.parse().unwrap_or(-1)),
+        9 => A::ClearSelection,
+        10 => A::SelectItem(number as usize),
+        11 => A::Copy,
+        12 => A::Cut,
+        13 => A::Paste(argument.to_owned()),
+        14 => A::Custom(number as usize),
+        15 => A::Dismiss,
+        _ => return false,
+    };
+    let mut handled = false;
+    with_page(token, |page| {
+        handled = page.host().accessibility(id, action)
+    });
+    handled
 }
 
 fn gpu_page_long_press(token: i64) {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     with_page(token, |page| page.host().long_press());
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    let _ = token;
 }
 
 fn gpu_page_scroll_by(token: i64, region: &str, delta: f32) -> bool {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
-    {
-        let mut moved = false;
-        with_page(token, |page| moved = page.host().scroll_by(region, delta));
-        moved
-    }
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    {
-        let _ = (token, region, delta);
-        false
-    }
+    let mut moved = false;
+    with_page(token, |page| moved = page.host().scroll_by(region, delta));
+    moved
 }
 
 fn gpu_page_vsync(token: i64) {
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     with_page(token, |page| page.host().vsync());
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    let _ = token;
 }
 
 fn gpu_page_window_visible(token: i64, visible: bool) {
     log::debug!(target: "lingxia_view", "window token={token} visible={visible}");
-    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     with_page(token, |page| page.host().window_visible(visible));
-    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
-    let _ = (token, visible);
 }
 
-#[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
 pub(super) use live::{install, token_of};
 
-#[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
 mod live {
     use super::*;
     use lingxia_view_apple::lingxia_view::session::lifecycle::ConnectionTicket;
@@ -1236,5 +1024,4 @@ mod live {
     }
 }
 
-#[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
 use live::with_page;
