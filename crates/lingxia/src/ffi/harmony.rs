@@ -1154,6 +1154,14 @@ pub fn is_pull_down_refresh_enabled(appid: String, path: String) -> bool {
     lxapp::is_pull_down_refresh_enabled(&appid, &path)
 }
 
+/// The shell's pull-to-refresh indicator for automation; an empty `phase` means the page has none.
+#[napi]
+pub fn report_pull_refresh_indicator(appid: String, webtag: String, phase: String, offset: f64) {
+    let indicator = (!phase.is_empty())
+        .then(|| lingxia_platform::traits::gesture::PullRefreshIndicator { phase, offset });
+    lingxia_platform::harmony::set_refresh_indicator(&appid, &webtag, indicator);
+}
+
 // ============================================================================
 // Video Player NAPI exports
 // ============================================================================

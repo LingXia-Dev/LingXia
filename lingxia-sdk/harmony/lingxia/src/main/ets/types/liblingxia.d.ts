@@ -115,6 +115,11 @@ declare module 'liblingxia.so' {
   export function isPullDownRefreshEnabled(appid: string, path: string): boolean;
 
   /**
+   * Report the presented page's pull-to-refresh indicator for automation; an empty phase means none
+   */
+  export function reportPullRefreshIndicator(appid: string, webtag: string, phase: string, offset: number): void;
+
+  /**
    * Register custom schemes (must be called before WebEngine initialization)
    * @returns true if schemes registered successfully, false otherwise
    */

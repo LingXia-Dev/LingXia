@@ -25,7 +25,7 @@ import { NavigationBar, NavigationBarState, NAVBAR_TOTAL_HEIGHT, isColorDark } f
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';
 import { TabBar, tabBarExtraBottomHeight } from './TabBar';
 import { TabBarPosition, TabBarItem, UiEventType } from 'liblingxia.so';
-import liblingxia, { gpuPageCloseRequest, TabBarState, getNavigationBarState, isPullDownRefreshEnabled, onPageShow, onLxappEvent, setSurfaceViewport, setSurfaceWidth, pageBackgroundColor, refreshIndicatorColor, syncLxappHostUI } from 'liblingxia.so';
+import liblingxia, { gpuPageCloseRequest, TabBarState, getNavigationBarState, isPullDownRefreshEnabled, reportPullRefreshIndicator, onPageShow, onLxappEvent, setSurfaceViewport, setSurfaceWidth, pageBackgroundColor, refreshIndicatorColor, syncLxappHostUI } from 'liblingxia.so';
 import { notePageOrigin, setCapsuleGeometryListener } from './capsuleGeometry';
 import { NAVIGATION_ACTION_BACK, NAVIGATION_ACTION_HOME, CAPSULE_ACTION_CLOSE } from '../app/NativeBridge';
 import { AnimationType, EDGE_BACK_SWIPE_ZONE_WIDTH_VP } from './LxAppNavigation';
@@ -168,7 +168,7 @@ export struct LxAppContainer {
   @State navbarRefreshKey: number = 0  // Force NavigationBar refresh when data changes
   @State appearanceDark: boolean = false
   @State webViewComponents: Map<string, webview.WebviewController> = new Map() // Store Web components for each WebView
-  @State currentWebTag: string = '' // Current active WebView tag
+  @Watch('reportRefreshIndicator') @State currentWebTag: string = '' // Current active WebView tag
   @State webViewKeys: string[] = [] // Array of WebView keys for ForEach
   /** GPU pages by webtag; they take a page's place where a WebView would. */
   @State gpuPages: Map<string, GpuPageModel> = new Map()
@@ -207,17 +207,19 @@ export struct LxAppContainer {
   @State private fullscreenWebTag: string = ''
   @State private fullscreenComponentId: string = ''
   // Pull-to-refresh state
-  @State private isRefreshing: boolean = false
+  @Watch('reportRefreshIndicator') @State private isRefreshing: boolean = false
   // A programmatic start already reported the refresh; `Refresh` echoes the
   // bound `refreshing` flip through onRefreshing, which must not report it twice.
   private programmaticRefreshPending: boolean = false
-  @State private enablePullDownRefresh: boolean = false
+  @Watch('reportRefreshIndicator') @State private enablePullDownRefresh: boolean = false
   @State private refreshingWebTag: string = ''
   private refreshShownAt: number = 0
   // Set while the indicator lingers after a stop to honour REFRESH_MIN_VISIBLE_MS.
   private refreshDismissTimer: number = -1
   // How far the content is pulled down right now (vp).
-  @State private pullOffsetVp: number = 0
+  @Watch('reportRefreshIndicator') @State private pullOffsetVp: number = 0
+  // `Refresh`'s own phase: whether a pull is held, and whether it is past the trigger.
+  @Watch('reportRefreshIndicator') @State private refreshStatus: RefreshStatus = RefreshStatus.Inactive
   @State private keyboardOffsetVp: number = 0
 
   private webViewUiCallback = (action: string, info: WebViewInfo) => {
@@ -1298,6 +1300,9 @@ export struct LxAppContainer {
     .onOffsetChange((offset: number) => {
       this.pullOffsetVp = offset
     })
+    .onStateChange((status: RefreshStatus) => {
+      this.refreshStatus = status
+    })
     // The strip a pull opens above the web stack is this component's own
     // background: the stack inside is transparent, so without a colour here
     // the pull bares the ability window, which is system white in both
@@ -1328,6 +1333,21 @@ export struct LxAppContainer {
     .expandSafeArea([SafeAreaType.SYSTEM, SafeAreaType.CUTOUT], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
   
+  /** The indicator as automation reads it, in the phases the other shells use. */
+  reportRefreshIndicator(): void {
+    let phase = '';
+    if (this.enablePullDownRefresh) {
+      if (this.isRefreshing) {
+        phase = 'refreshing';
+      } else if (this.refreshStatus === RefreshStatus.Drag || this.refreshStatus === RefreshStatus.OverDrag) {
+        phase = this.pullOffsetVp >= PULL_TRIGGER_VP ? 'armed' : 'pulling';
+      } else {
+        phase = this.pullOffsetVp > 1 ? 'ending' : 'idle';
+      }
+    }
+    reportPullRefreshIndicator(this.appId, this.currentWebTag, phase, this.pullOffsetVp);
+  }
+
   /**
    * Tell the runtime the page instance `webTag` names is being refreshed
    */

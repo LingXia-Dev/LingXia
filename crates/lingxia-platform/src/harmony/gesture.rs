@@ -5,10 +5,11 @@ use super::app::Platform;
 use crate::error::PlatformError;
 use crate::traits::gesture::{
     AppGesture, AppGestureRequest, AppGestureResult, GestureDelivery, GestureEnd, GestureInput,
-    GesturePoint, GestureTarget,
+    GesturePoint, GestureTarget, HostCapability, PullRefreshIndicator,
 };
 use async_trait::async_trait;
-use std::sync::{Arc, OnceLock};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 
 /// Delivers touches to the page a webtag names; installed by the page host.
 pub trait GestureDriver: Send + Sync + 'static {
@@ -31,6 +32,19 @@ static DRIVER: OnceLock<Arc<dyn GestureDriver>> = OnceLock::new();
 /// Install the gesture driver; the first call wins.
 pub fn set_gesture_driver(driver: Arc<dyn GestureDriver>) {
     let _ = DRIVER.set(driver);
+}
+
+/// Each app's presented page and its pull-to-refresh indicator, as the shell last drew them.
+type Indicators = HashMap<String, (String, Option<PullRefreshIndicator>)>;
+static INDICATORS: Mutex<Option<Indicators>> = Mutex::new(None);
+
+/// Record the indicator of `app_id`'s presented page; `None` when that page has none.
+pub fn set_refresh_indicator(app_id: &str, webtag: &str, indicator: Option<PullRefreshIndicator>) {
+    INDICATORS
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .get_or_insert_default()
+        .insert(app_id.to_owned(), (webtag.to_owned(), indicator));
 }
 
 fn driver() -> Result<Arc<dyn GestureDriver>, PlatformError> {
@@ -57,6 +71,16 @@ impl AppGesture for Platform {
         } else {
             Vec::new()
         }
+    }
+
+    // Touches go straight to the page, so ArkUI chrome and `Refresh` never see them.
+    fn host_capabilities(&self) -> Vec<HostCapability> {
+        vec![HostCapability::RefreshIndicator]
+    }
+
+    // ArkWeb takes no injected touches.
+    fn webview_page_gestures(&self) -> bool {
+        false
     }
 
     async fn perform_app_gesture(
@@ -100,5 +124,20 @@ impl AppGesture for Platform {
             .await
             .map_err(|e| PlatformError::Platform(format!("gesture worker: {e}")))?
             .map_err(PlatformError::Platform)
+    }
+
+    async fn pull_refresh_indicator(
+        &self,
+        app_id: &str,
+        webtag: &str,
+    ) -> Result<Option<PullRefreshIndicator>, PlatformError> {
+        let indicators = INDICATORS.lock().unwrap_or_else(|p| p.into_inner());
+        match indicators.as_ref().and_then(|all| all.get(app_id)) {
+            Some((shown, indicator)) if shown == webtag => Ok(indicator.clone()),
+            Some(_) => Err(PlatformError::Platform(format!(
+                "page {webtag} is not the presented page"
+            ))),
+            None => Ok(None),
+        }
     }
 }
