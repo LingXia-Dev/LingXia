@@ -131,6 +131,24 @@ lingxia-runner-config = { path = "tools/lingxia-runner/config", version = "0.28.
 # Harmony NAPI bindings
 napi-ohos = "1.2.0"
 napi-derive-ohos = "1.2.0"
+napi-sys-ohos = "1.2.0"
+
+# View renderer stack, pinned exactly: the core and its adapters share one
+# version of each.
+skrifa = "=0.44.0"
+vello_cpu = "=0.3.0"
+vello_common = { version = "=0.3.0", default-features = false }
+vello_gpu = { version = "=0.3.0", default-features = false }
+glifo = "=0.4.0"
+wgpu = { version = "=30.0.0", default-features = false }
+raw-window-handle = "=0.6.2"
+parley = { version = "=0.12.0", default-features = false }
+taffy = "=0.14.0"
+pollster = "=0.4.0"
+rong_core = "=0.6.5"
+rong_quickjs_sys = "=0.6.1"
+memmap2 = "0.9.11"
+libc = "0.2"
 
 # Rong v0.6 product release
 rong = { version = "0.6.4", default-features = false }
