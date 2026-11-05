@@ -120,9 +120,6 @@ export struct TabBar {
   // Bottom system-gesture inset (vp): the home-indicator zone swallows taps,
   // so the strip grows and the items sit above it.
   @Prop bottomInset: number = 0;
-  /** A GPU page under the bar: its palette's bar and separator (ARGB), used when the config gives none. */
-  @Prop chromeBar: number = 0;
-  @Prop chromeLine: number = 0;
   // Whether the overflow panel is open above the "more" slot.
   @State private moreVisible: boolean = false;
 
@@ -763,9 +760,6 @@ export struct TabBar {
    */
   private getBackgroundColor(): ResourceColor {
     const bgColor: number = this.tabbar.backgroundColor ?? 0x00000000;
-    if (((bgColor >>> 24) & 0xFF) === 0 && this.chromeBar !== 0) {
-      return this.toResourceColor(this.chromeBar);
-    }
     return this.toResourceColor(bgColor);
   }
 
@@ -773,9 +767,6 @@ export struct TabBar {
    * Get border color
    */
   private getBorderColor(): ResourceColor {
-    if (this.tabbar.borderStyle === undefined && this.chromeLine !== 0) {
-      return this.toResourceColor(this.chromeLine);
-    }
     return this.toResourceColor(this.tabbar.borderStyle ?? 0xFFF0F0F0);
   }
 

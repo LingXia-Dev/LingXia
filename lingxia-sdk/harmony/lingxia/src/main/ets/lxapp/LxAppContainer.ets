@@ -20,7 +20,7 @@ import {
 } from './WebViewBridge';
 import { LingXiaWebView } from './LingXiaWebView';
 import { GpuPage } from '../view/GpuPage';
-import { GpuChrome, GpuPageModel, GpuPages } from '../view/GpuPages';
+import { GpuPageModel, GpuPages } from '../view/GpuPages';
 import { NavigationBar, NavigationBarState, NAVBAR_TOTAL_HEIGHT, isColorDark } from './NavigationBar';
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';
 import { TabBar, tabBarExtraBottomHeight } from './TabBar';
@@ -174,13 +174,6 @@ export struct LxAppContainer {
   @State gpuPages: Map<string, GpuPageModel> = new Map()
   private gpuCreated = (page: GpuPageModel): void => this.handleGpuPage('create', page);
   private gpuDisposed = (page: GpuPageModel): void => this.handleGpuPage('destroy', page);
-  /** Bumped when a GPU page of this app changes its chrome, so the bars re-read it. */
-  @State gpuChromeRevision: number = 0
-  private gpuChanged = (page: GpuPageModel): void => {
-    if (page.appId === this.appId) {
-      this.gpuChromeRevision += 1;
-    }
-  };
   @State presentationOverlayWebTag: string = '' // WebView tag currently displayed in presentation (may include #instance suffix)
   @State private presentationPreviousWebTag: string = '' // Previously focused WebView before presentation took focus
   @State overlayActive: boolean = false
@@ -375,7 +368,6 @@ export struct LxAppContainer {
 
     GpuPages.onCreated(this.gpuCreated);
     GpuPages.onDisposed(this.gpuDisposed);
-    GpuPages.onChanged(this.gpuChanged);
     GpuPages.all().forEach((page: GpuPageModel) => this.handleGpuPage('create', page));
 
     this.startKeyboardMonitor();
@@ -414,7 +406,6 @@ export struct LxAppContainer {
   aboutToDisappear() {
     GpuPages.off(this.gpuCreated);
     GpuPages.off(this.gpuDisposed);
-    GpuPages.off(this.gpuChanged);
     // Unregister this container
     LxAppContainer.activeContainers.delete(this.appId);
     if (LxAppContainer.statusBarOwner === this) {
@@ -1036,8 +1027,6 @@ export struct LxAppContainer {
           refreshKey: key,
           pageCanvasColor: resolveCanvasColor(this.appearanceDark),
           bottomInset: this.isTabBarVertical() ? 0 : this.bottomIndicatorInset,
-          chromeBar: this.currentGpuChrome()?.bar ?? 0,
-          chromeLine: this.currentGpuChrome()?.barLine ?? 0,
           onTabSelected: (appId: string, index: number, item: TabBarItem): void => this.handleTabSelected(index)
         })
           // Above the left-edge swipe strip so the first tab stays tappable.
@@ -1856,12 +1845,6 @@ export struct LxAppContainer {
     const container = LxAppContainer.activeContainers.get(appId);
     const page = container ? GpuPages.byWebTag(container.currentWebTag) : undefined;
     return page !== undefined && gpuPageCloseRequest(page.token);
-  }
-
-  /** The palette chrome of the shown GPU page, or null for a WebView page. */
-  private currentGpuChrome(): GpuChrome | null {
-    void this.gpuChromeRevision;
-    return GpuPages.byWebTag(this.currentWebTag)?.chrome ?? null;
   }
 
   /** Host bars over a GPU page (top, right, bottom, left), device pixels. */
