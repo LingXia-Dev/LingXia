@@ -177,3 +177,21 @@ spec('a page past its View budget shows recovery chrome while the rest of the ap
   await t.app.chrome.tap({ label: again.find(e => RELOAD.test(e.label))!.label, scope: 'window' });
   await expect(t.app.view.testId('perf-tab-list')).toBeVisible({ timeout: 15_000 });
 });
+
+spec('state set from an awaited Logic loop keeps reaching the View', { id: 'PERF-BRIDGE-001' }, async (t) => {
+  await budget(t, 'PERF-BRIDGE-001');
+  // The touch scene draws only the tick counter per update, so the View is not the limit.
+  await scene(t, 'touch', 48);
+  const page = await t.app.page<PerfLab>({ name: 'perf-lab' });
+  const before = (await t.app.metrics()).framesTotal;
+  await page.invoke('drive', { payload: { scene: 'text', ms: 3000, count: 1 } });
+  await new Promise<void>(resolve => setTimeout(resolve, 3000));
+  const { tick } = await t.waitFor(() => page.data(), { until: data => data.running === '', timeout: 5000 });
+  const shown = (await t.app.metrics()).framesTotal - before;
+  await t.attach('ticks-and-frames', { tick, shown });
+  // Ticks come every ~18 ms from an awaited loop. The View keeps the newest state when a
+  // frame is still in flight, so about one frame per two ticks shows on macOS (92 for 170);
+  // the old debounce let through 8.
+  expect(tick).toBeGreaterThan(50);
+  expect(shown).toBeGreaterThan(tick * 0.4);
+});

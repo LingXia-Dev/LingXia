@@ -88,7 +88,10 @@
       for (const waiter of flushWaiters) waiter.reject(error);
       flushWaiters.clear();
     };
-    const DEBOUNCE_WAIT = 16;
+    // Writes within one frame's time of the first unsent write go together. The window
+    // starts at that first write and is never pushed back, so a steady stream still
+    // reaches the View once a frame.
+    const BATCH_WINDOW = 16;
 
     // A listener that throws is the page's bug: report it, never let it cut
     // the runtime's own teardown short. Aborting twice is a no-op.
@@ -130,8 +133,9 @@
         throw err;
       }
 
-      clearTimer(updateTimer);
-      updateTimer = setTimer(submitPending, DEBOUNCE_WAIT);
+      if (updateTimer === null) {
+        updateTimer = setTimer(submitPending, BATCH_WINDOW);
+      }
     };
 
     function submitPending() {
@@ -183,8 +187,7 @@
           }
           resolve();
         });
-        // Submit now: a steady setData stream would otherwise re-arm the
-        // debounce and starve the flush.
+        // Submit now rather than at the end of the batch window.
         clearTimer(updateTimer);
         submitPending();
       });

@@ -1070,7 +1070,7 @@ impl PageInstance {
     ///
     /// Handshake `ready` is kept across a warm-webview restart, so it cannot
     /// answer this. Same-route relaunch parks and rebuilds the document
-    /// while the old service is still flushing a 16ms debounce — that is the
+    /// while the old service is still flushing a 16ms batch — that is the
     /// setData / teardown race. Drop the patch: `this.data` already has it
     /// and the next snapshot reserializes live state.
     pub(crate) fn accepts_view_state_patches(&self) -> bool {

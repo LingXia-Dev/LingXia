@@ -1,41 +1,42 @@
 import type { DriveRequest, PerfData } from '../../shared/perf-types';
 
+const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 const TICK_MS = 16;
 
 // Drivers for the workloads; the View measures the frames they cause. `drive` returns at
-// once and each driver runs on timer callbacks: state set from an `await` continuation
-// reaches the View far less often than once a frame.
+// once so the caller can measure while the scene runs.
 Page({
   data: { running: '', tick: 0, phase: false } as PerfData,
-  drive({ scene, ms, count }: DriveRequest) {
+  drive(request: DriveRequest) {
+    void this.run(request);
+  },
+  async run({ scene, ms, count }: DriveRequest) {
     const until = Date.now() + ms;
-    const done = () => this.setData({ running: '', phase: false });
     this.setData({ running: scene, tick: 0, phase: false });
-    if (scene === 'transition') {
-      const cycle = () => {
-        if (Date.now() >= until) return done();
-        lx.navigateTo({ page: 'perf-target', query: { rows: String(count) } })
-          .then(() => setTimeout(() => {
-            lx.navigateBack().then(() => setTimeout(cycle, 400), done);
-          }, 400), done);
-      };
-      cycle();
-      return;
-    }
-    if (scene === 'fill' || scene === 'touch') {
-      // Fill animates on its own and touch waits for a finger: nothing to change per tick.
-      setTimeout(done, ms);
-      return;
-    }
-    const every = scene === 'animation' ? 600 : TICK_MS;
-    let tick = 0;
-    const timer = setInterval(() => {
-      if (Date.now() >= until) {
-        clearInterval(timer);
-        return done();
+    try {
+      if (scene === 'transition') {
+        while (Date.now() < until) {
+          await lx.navigateTo({ page: 'perf-target', query: { rows: String(count) } });
+          await sleep(400);
+          await lx.navigateBack();
+          await sleep(400);
+        }
+      } else if (scene === 'animation') {
+        for (let phase = true; Date.now() < until; phase = !phase) {
+          this.setData({ phase });
+          await sleep(600);
+        }
+      } else if (scene === 'list' || scene === 'images' || scene === 'text') {
+        for (let tick = 1; Date.now() < until; tick++) {
+          this.setData({ tick });
+          await sleep(TICK_MS);
+        }
+      } else {
+        // Fill animates on its own and touch waits for a finger.
+        await sleep(ms);
       }
-      tick++;
-      this.setData(scene === 'animation' ? { phase: tick % 2 === 1 } : { tick });
-    }, every);
+    } finally {
+      this.setData({ running: '', phase: false });
+    }
   },
 });

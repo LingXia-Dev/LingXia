@@ -106,6 +106,7 @@ export function render({ data, actions }: View<PerfActions, PerfData>) {
         <text data-testid="perf-result" data-verdict={verdict.value} className="text-xs font-mono tabular-nums">
           {result.value ? `${verdict.value.toUpperCase()} · ${result.value}` : running.value ? 'Measuring 5 s…' : 'Not run'}
         </text>
+        <text data-testid="perf-tick" className="text-xs text-muted tabular-nums">{`Logic ticks seen: ${data.tick}`}</text>
         <Workload scene={scene.value} count={count} data={data} />
       </Section>
       <Section title="Stall" description="Runs View code past its time budget: the host replaces the page with recovery chrome." testId="perf-stall-section">

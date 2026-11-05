@@ -2365,6 +2365,49 @@ mod tests {
         Ok(())
     }
 
+    /// A steady setData stream reaches the View once per batch window: later writes join
+    /// the pending batch instead of pushing it back, so writes faster than the window
+    /// (an awaited loop writing every frame) never starve the View.
+    #[test]
+    fn a_steady_set_data_stream_sends_one_batch_per_window() -> JSResult<()> {
+        use rong::{JSEngine, RongJS};
+        let runtime = RongJS::runtime();
+        let ctx = runtime.context();
+        ctx.eval::<()>(Source::from_bytes(
+            "globalThis.__sent = 0; globalThis.PageSvc = class { constructor() {} _setData(ops, done) { __sent++; done(); } };",
+        ))?;
+        ctx.eval::<()>(Source::from_bytes(include_str!("scripts/Page.js")))?;
+        rong_modules::init(&ctx, ["event", "exception", "abort", "console"])
+            .expect("Logic modules");
+        // A clock the test advances: timers fire once their due time passes.
+        ctx.eval::<()>(Source::from_bytes(
+            r#"
+            globalThis.__now = 0; globalThis.__timers = new Map(); globalThis.__next = 0;
+            globalThis.setTimeout = (fn, delay) => { __timers.set(++__next, { fn, due: __now + delay }); return __next; };
+            globalThis.clearTimeout = (id) => { __timers.delete(id); };
+            globalThis.__advance = (ms) => {
+              __now += ms;
+              for (const [id, timer] of [...__timers]) if (timer.due <= __now) { __timers.delete(id); timer.fn(); }
+            };
+            "#,
+        ))?;
+        capture_real_timers(&ctx)?;
+        let sent: i32 = ctx.eval(Source::from_bytes(
+            r#"
+            (() => {
+              __registerPage("pages/home", { data: {} });
+              const page = __LX_CREATE_PAGE__("pages/home", null, "p1");
+              // A write every 10 ms for 160 ms, faster than the 16 ms window.
+              for (let tick = 0; tick < 16; tick++) { page.setData({ tick }); __advance(10); }
+              return __sent;
+            })()
+            "#,
+        ))?;
+        // The window fires at the first 10 ms step past 16 ms: every 20 ms, eight times.
+        assert_eq!(sent, 8, "batches that reached the View in 160 ms");
+        Ok(())
+    }
+
     /// `route` is the configured path whatever file the renderer built.
     #[test]
     fn route_drops_the_view_file_extension() -> JSResult<()> {
