@@ -50,7 +50,8 @@ public final class PermissionPrompt {
     public func deny() { decide(false) }
 }
 
-/// Host hook around every system permission prompt LingXia shows. Prompts are
+/// Host hook, called each time an lx API needs a permission it lacks (never
+/// once granted), including after a denial (`prompt.blocked`). Prompts are
 /// gated one at a time, on the main actor.
 ///
 /// App Review rejects an explanation screen that offers a way out before the
@@ -69,7 +70,7 @@ public extension PermissionGate {
 }
 
 extension Lingxia {
-    /// Runs `gate` around every system permission prompt LingXia shows; `nil`
+    /// Runs `gate` each time an lx API needs a permission it lacks; `nil`
     /// prompts directly. Last write wins.
     public static func setPermissionGate(_ gate: PermissionGate?) {
         PermissionGates.gate = gate

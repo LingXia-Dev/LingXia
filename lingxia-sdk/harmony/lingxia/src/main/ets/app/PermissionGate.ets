@@ -1,6 +1,7 @@
 import common from '@ohos.app.ability.common';
 import { preferences } from '@kit.ArkData';
 import { getCurrentLxapp, type CurrentLxApp } from 'liblingxia.so';
+import { LxLog } from './LxLog';
 
 /** The lx feature that needs a runtime permission. */
 export enum PermissionFeature {
@@ -56,7 +57,8 @@ export class PermissionPrompt {
 }
 
 /**
- * Host hook around every system permission prompt LingXia shows. Prompts are
+ * Host hook, called each time an lx API needs a permission it lacks (never
+ * once granted), including after a denial (`prompt.blocked`). Prompts are
  * gated one at a time.
  */
 export interface PermissionGate {
@@ -123,17 +125,22 @@ export class PermissionGates {
 
   /** Permissions LingXia has prompted for before; Harmony never re-prompts a denial. */
   static asked(context: common.UIAbilityContext, permission: string): boolean {
-    return PermissionGates.store(context).getSync(permission, false) as boolean;
+    try {
+      const store = preferences.getPreferencesSync(context, { name: ASKED_STORE });
+      return store.getSync(permission, false) as boolean;
+    } catch (_error) {
+      return false;
+    }
   }
 
   static markAsked(context: common.UIAbilityContext, permissions: string[]): void {
-    const store = PermissionGates.store(context);
-    permissions.forEach((permission: string) => store.putSync(permission, true));
-    store.flush();
-  }
-
-  private static store(context: common.UIAbilityContext): preferences.Preferences {
-    return preferences.getPreferencesSync(context, { name: ASKED_STORE });
+    try {
+      const store = preferences.getPreferencesSync(context, { name: ASKED_STORE });
+      permissions.forEach((permission: string) => store.putSync(permission, true));
+      store.flush();
+    } catch (error) {
+      LxLog.w('LingXia.PermissionGate', `markAsked failed: ${String(error)}`);
+    }
   }
 
   private static currentAppId(): string | undefined {
