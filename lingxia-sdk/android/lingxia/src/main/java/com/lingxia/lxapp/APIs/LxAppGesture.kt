@@ -200,6 +200,9 @@ internal object LxAppGesture {
         val startedAt = SystemClock.uptimeMillis()
         var events = 0
         var window = finger?.window ?: true
+        // Each event carries its planned time, as a touchscreen stamps its samples: a busy main
+        // thread delays delivery, and real-time stamps would slow the gesture velocity sees.
+        var stamp = startedAt
         for (i in 0 until points.length()) {
             val point: JSONArray = points.getJSONArray(i)
             val x = originX + point.getDouble(0).toFloat() * scale
@@ -207,12 +210,13 @@ internal object LxAppGesture {
             val due = startedAt + point.getDouble(2).toLong()
             val wait = due - SystemClock.uptimeMillis()
             if (wait > 0) SystemClock.sleep(wait)
+            stamp = due
             if (finger == null) {
-                val downTime = SystemClock.uptimeMillis()
-                window = inject(MotionEvent.ACTION_DOWN, downTime, x, y, preferWindow = true)
+                val downTime = due
+                window = inject(MotionEvent.ACTION_DOWN, downTime, x, y, preferWindow = true, at = due)
                 finger = Finger(downTime, window, origin, x, y)
             } else {
-                inject(MotionEvent.ACTION_MOVE, finger.downTime, x, y, preferWindow = finger.window)
+                inject(MotionEvent.ACTION_MOVE, finger.downTime, x, y, preferWindow = finger.window, at = due)
                 finger.x = x
                 finger.y = y
             }
@@ -221,8 +225,8 @@ internal object LxAppGesture {
         val held = finger!!
         val id = when (end) {
             "hold" -> nextFinger.getAndIncrement().also { fingers[it] = held }
-            "cancel" -> { inject(MotionEvent.ACTION_CANCEL, held.downTime, held.x, held.y, held.window); events++; 0L }
-            else -> { inject(MotionEvent.ACTION_UP, held.downTime, held.x, held.y, held.window); events++; 0L }
+            "cancel" -> { inject(MotionEvent.ACTION_CANCEL, held.downTime, held.x, held.y, held.window, stamp); events++; 0L }
+            else -> { inject(MotionEvent.ACTION_UP, held.downTime, held.x, held.y, held.window, stamp); events++; 0L }
         }
         val result = JSONObject()
             .put("delivered", if (window) "window" else "view")
@@ -233,8 +237,8 @@ internal object LxAppGesture {
     }
 
     /** True when the event went through the input dispatcher. */
-    private fun inject(action: Int, downTime: Long, x: Float, y: Float, preferWindow: Boolean): Boolean {
-        val event = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action, x, y, 0)
+    private fun inject(action: Int, downTime: Long, x: Float, y: Float, preferWindow: Boolean, at: Long): Boolean {
+        val event = MotionEvent.obtain(downTime, at, action, x, y, 0)
         event.source = InputDevice.SOURCE_TOUCHSCREEN
         try {
             if (preferWindow) {
