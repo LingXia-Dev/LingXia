@@ -525,16 +525,25 @@ impl HostEvents for HarmonyAdapter {
                 self.highlight(which, node, Some(frame));
             }
         }
-        log::debug!(
-            target: "lingxia_view",
-            "present token={} generation={} size={}x{} workerMs={} nodes={}",
-            self.token,
-            frame.generation.get(),
-            frame.width,
-            frame.height,
-            timing.worker_us / 1000,
-            frame.frame.nodes.len(),
-        );
+        if log::log_enabled!(target: "lingxia_view", log::Level::Debug) {
+            // Borrow the metrics text instead of building the whole frame as a value.
+            let metrics = serde_json::from_str::<
+                std::collections::HashMap<&str, &serde_json::value::RawValue>,
+            >(&frame.json)
+            .ok()
+            .and_then(|snapshot| snapshot.get("metrics").map(|raw| raw.get().to_owned()))
+            .unwrap_or_default();
+            log::debug!(
+                target: "lingxia_view",
+                "present token={} generation={} size={}x{} workerMs={} nodes={} metrics={metrics}",
+                self.token,
+                frame.generation.get(),
+                frame.width,
+                frame.height,
+                timing.worker_us / 1000,
+                frame.frame.nodes.len(),
+            );
+        }
         let connection = self
             .host
             .get()
