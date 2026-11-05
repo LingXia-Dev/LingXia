@@ -1833,3 +1833,145 @@ fn composed_text_reaches_the_page_and_survives_blur_through_input_requests() {
         "Say hell"
     );
 }
+
+/// A render that burns `ms` of this thread's CPU time on its first render and `{data.spin}`
+/// iterations later, calibrated against the thread clock so host load does not change it.
+fn spinning_page() -> Option<(ViewSession, f64)> {
+    let clock = crate::engine::thread_clock::ThreadClock::current()?;
+    if !bounded_jobs() {
+        return None;
+    }
+    let module = source(
+        "function render({data}){let n=0;for(let i=0;i<data.spin;i++)n+=i;return h('text',{},String(data.label))}",
+    );
+    let mut session = ViewSession::new_with_logic(&module, true).ok()?;
+    let probe = 2_000_000u64;
+    session
+        .receive_state(&serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"spin":probe,"label":"probe"}}))
+        .ok()?;
+    let before = clock.elapsed()?;
+    session.render(300, 500, 1.0).ok()?;
+    let spent = clock.elapsed()?.saturating_sub(before).as_secs_f64() * 1000.0;
+    Some((session, probe as f64 / spent.max(0.001)))
+}
+
+/// Render `budgets` of the frame budget in CPU time; each run refines the iteration rate, since
+/// a loaded host (shared cores) changes how much work a CPU millisecond does.
+fn spin_for(
+    session: &mut ViewSession,
+    per_ms: &mut f64,
+    budgets: f64,
+    rev: u64,
+    label: &str,
+) -> Result<String, String> {
+    let clock = crate::engine::thread_clock::ThreadClock::current().unwrap();
+    let ms = super::eval_budget().as_secs_f64() * 1000.0 * budgets;
+    let spin = (*per_ms * ms) as u64;
+    session.receive_state(
+        &serde_json::json!({"v":2,"kind":"state.patch","baseRev":rev-1,"rev":rev,"ops":[
+        {"op":"replace","path":"/spin","value":spin},
+        {"op":"replace","path":"/label","value":label}]}),
+    )?;
+    let before = clock.elapsed().unwrap();
+    let result = session
+        .render(300, 500, 1.0)
+        .map(|frame| frame.nodes[0].text.clone());
+    let spent = clock
+        .elapsed()
+        .unwrap()
+        .saturating_sub(before)
+        .as_secs_f64()
+        * 1000.0;
+    // Only a run that finished measures the rate; an interrupted one stopped early.
+    if result
+        .as_ref()
+        .map_or_else(|e| e.starts_with(super::OVERRUN), |_| true)
+        && spent > 1.0
+    {
+        *per_ms = spin as f64 / spent;
+    }
+    result
+}
+
+#[test]
+fn a_frame_past_its_budget_is_dropped_and_the_page_renders_again() {
+    let Some((mut page, mut per_ms)) = spinning_page() else {
+        return;
+    };
+    let committed = page.generation();
+    let error = spin_for(&mut page, &mut per_ms, 2.0, 1, "slow").unwrap_err();
+    assert!(error.starts_with(super::OVERRUN), "{error}");
+    assert_eq!(
+        page.generation(),
+        committed,
+        "the dropped frame commits nothing"
+    );
+    assert_eq!(
+        spin_for(&mut page, &mut per_ms, 0.2, 2, "quick").unwrap(),
+        "quick"
+    );
+}
+
+#[test]
+fn overrunning_frames_in_a_row_discard_the_page() {
+    use crate::protocol::limits::EVAL_OVERRUN_FRAMES;
+    let Some((mut page, mut per_ms)) = spinning_page() else {
+        return;
+    };
+    let mut rev = 1;
+    // A frame within budget resets the run.
+    for _ in 0..EVAL_OVERRUN_FRAMES - 1 {
+        assert!(
+            spin_for(&mut page, &mut per_ms, 2.0, rev, "slow")
+                .unwrap_err()
+                .starts_with(super::OVERRUN)
+        );
+        rev += 1;
+    }
+    assert_eq!(
+        spin_for(&mut page, &mut per_ms, 0.2, rev, "quick").unwrap(),
+        "quick"
+    );
+    rev += 1;
+    for round in 0..EVAL_OVERRUN_FRAMES {
+        let error = spin_for(&mut page, &mut per_ms, 2.0, rev, "slow").unwrap_err();
+        rev += 1;
+        if round + 1 < EVAL_OVERRUN_FRAMES {
+            assert!(error.starts_with(super::OVERRUN), "{error}");
+        } else {
+            assert!(
+                error.starts_with("UI_TIMEOUT:") && error.contains("in a row"),
+                "{error}"
+            );
+        }
+    }
+    assert!(
+        page.render(300, 500, 1.0)
+            .err()
+            .unwrap()
+            .contains("discard the interrupted page")
+    );
+}
+
+#[test]
+fn a_run_past_the_limit_is_interrupted_at_once_and_a_first_render_gets_the_warm_up_budget() {
+    use crate::protocol::limits::{EVAL_LIMIT_MULTIPLIER, EVAL_WARMUP_MULTIPLIER};
+    assert_eq!((EVAL_WARMUP_MULTIPLIER, EVAL_LIMIT_MULTIPLIER), (2, 4));
+    let Some((_, mut per_ms)) = spinning_page() else {
+        return;
+    };
+    // First render of a fresh module: past one budget, within the warm-up budget.
+    let module = source(
+        "function render({data}){let n=0;for(let i=0;i<data.spin;i++)n+=i;return h('text',{},String(data.label))}",
+    );
+    let mut fresh = ViewSession::new_with_logic(&module, true).unwrap();
+    let ms = super::eval_budget().as_secs_f64() * 1000.0 * 1.3;
+    fresh.receive_state(&serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"spin":(per_ms*ms) as u64,"label":"warm"}})).unwrap();
+    assert_eq!(fresh.render(300, 500, 1.0).unwrap().nodes[0].text, "warm");
+    // Steady state, one run past four budgets: interrupted, no second chance.
+    let error = spin_for(&mut fresh, &mut per_ms, 6.0, 1, "hang").unwrap_err();
+    assert!(
+        error.starts_with("UI_TIMEOUT:") && error.contains("execution limit"),
+        "{error}"
+    );
+}

@@ -20,6 +20,8 @@ pub(super) struct Telemetry {
     eval_max_us: u64,
     animation_frames: usize,
     wakeups: u64,
+    /// Frames dropped for finishing past the View budget since the module loaded.
+    overruns: u64,
     pub(super) stats: super::frame_stats::FrameStats,
 }
 
@@ -54,6 +56,10 @@ impl Telemetry {
             self.eval_max_us = self.eval_max_us.max(self.eval_last_us);
         }
         self.animation_frames = snapshot.metrics.animation_frames;
+    }
+
+    pub(super) fn budget_overrun(&mut self) {
+        self.overruns += 1;
     }
 
     pub(super) fn woke(&mut self) {
@@ -111,6 +117,7 @@ impl<A: PlatformAdapter> Inner<A> {
             "animationFrames": telemetry.animation_frames,
             "wakeups": telemetry.wakeups,
             "reveal": main.reveal.metrics(telemetry.opened),
+            "budget": { "overruns": telemetry.overruns },
             "hud": main.hud,
             // Nodes the presented frame laid out: a virtual list mounts only rows near the viewport.
             "nodes": main.snapshot.as_ref().map(|snapshot| snapshot.metrics.nodes),

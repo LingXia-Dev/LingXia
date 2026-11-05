@@ -454,7 +454,7 @@ impl ViewSession {
             } else {
                 let started = std::time::Instant::now();
                 let (records, timings) =
-                    self.execute(|| decode_context_timed(&self.context, &invoke))?;
+                    self.execute_frame(|| decode_context_timed(&self.context, &invoke))?;
                 metrics.add_view(timings);
                 metrics.view_us += crate::session::metrics::micros(started);
                 metrics.view_passes += 1;
@@ -537,7 +537,7 @@ impl ViewSession {
                     .map_err(|e| e.to_string())?;
                     prepared_js = true;
                     let started = std::time::Instant::now();
-                    let (refined, timings) = self.execute(|| {
+                    let (refined, timings) = self.execute_frame(|| {
                         decode_context_timed(
                             &self.context,
                             &format!("__lingxiaPrepareWindows(JSON.parse({encoded}))"),
@@ -584,7 +584,7 @@ impl ViewSession {
                     });
                 }
             }
-            Err("UI_LIST: window measurement did not converge".into())
+            Err(String::from("UI_LIST: window measurement did not converge"))
         })();
         let candidate = candidate.and_then(|candidate| {
             if prepared_js {
@@ -645,7 +645,8 @@ impl ViewSession {
                 if prepared_js {
                     // A frame the target only declined keeps the user's pending state; any
                     // other failure reverts it, and its error tells the author why.
-                    let _ = self.eval(if error == FRAME_DECLINED {
+                    // A dropped frame keeps it too: the next frame renders it again.
+                    let _ = self.eval(if error == FRAME_DECLINED || error.starts_with(OVERRUN) {
                         "__lingxiaDiscard(true)"
                     } else {
                         "__lingxiaDiscard()"

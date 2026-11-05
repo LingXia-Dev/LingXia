@@ -1077,6 +1077,8 @@ export class LiveFixture implements Fixture {
           framesTotal: frame.frames,
           nodes: frame.nodes,
           reveal: { count: frame.pacing.reveals, ...frame.reveal },
+          // An older host reports no budget counters.
+          budget: frame.budget ?? { overruns: 0 },
           composite: frame.composite ?? null,
           backdropCache: frame.backdropCache ?? null,
         } satisfies TestMetrics;

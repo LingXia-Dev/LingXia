@@ -90,18 +90,21 @@ impl Budget {
         Arc::new(Self { shared, thread })
     }
 
+    /// Run `work`, interrupting it once it passes `limit`; an evaluation that finished past
+    /// `budget` but within `limit` is reported as an [`Overrun`] beside its result.
     pub(crate) fn run<T>(
         &self,
-        duration: Duration,
+        budget: Duration,
+        limit: Duration,
         work: impl FnOnce() -> Result<T, String>,
-    ) -> Result<T, String> {
+    ) -> (Result<T, String>, Option<Overrun>) {
         if self.thread.is_none() {
-            return work();
+            return (work(), None);
         }
         // Read on the worker: the watchdog thread charges this thread's clock.
         let evaluating = Evaluating {
             started: Instant::now(),
-            budget: duration,
+            budget: limit,
             clock: ThreadClock::current().and_then(|clock| Some((clock, clock.elapsed()?))),
         };
         {
@@ -118,17 +121,35 @@ impl Budget {
         let expired = evaluating.expired();
         let (cpu, wall) = evaluating.used();
         drop(guard);
+        let used = cpu.map_or("n/a".to_owned(), |cpu| format!("{}ms", cpu.as_millis()));
         if expired {
-            let cpu = cpu.map_or("n/a".to_owned(), |cpu| format!("{}ms", cpu.as_millis()));
-            Err(format!(
-                "UI_TIMEOUT: View JavaScript exceeded its execution budget (cpu {cpu}, wall {}ms, budget {}ms); discard this page",
-                wall.as_millis(),
-                duration.as_millis()
-            ))
-        } else {
-            result
+            return (
+                Err(format!(
+                    "UI_TIMEOUT: View JavaScript exceeded its execution limit (cpu {used}, wall {}ms, limit {}ms); discard this page",
+                    wall.as_millis(),
+                    limit.as_millis()
+                )),
+                None,
+            );
         }
+        let over = match cpu {
+            Some(cpu) => cpu > budget,
+            None => wall > budget,
+        };
+        let overrun = over.then(|| Overrun {
+            detail: format!(
+                "cpu {used}, wall {}ms, budget {}ms",
+                wall.as_millis(),
+                budget.as_millis()
+            ),
+        });
+        (result, overrun)
     }
+}
+
+/// An evaluation that finished past its budget but within its limit.
+pub(crate) struct Overrun {
+    pub detail: String,
 }
 
 struct Evaluation<'a> {
@@ -184,7 +205,7 @@ mod tests {
                 })
             })
             .collect();
-        let waited = budget.run(limit, || {
+        let (waited, overrun) = budget.run(limit, limit, || {
             std::thread::sleep(limit * 3);
             Ok(())
         });
@@ -192,9 +213,9 @@ mod tests {
         for spinner in spinners {
             let _ = spinner.join();
         }
-        assert!(waited.is_ok(), "{waited:?}");
-        // Computing past the budget fails, naming both clocks.
-        let burned = budget.run(limit, || {
+        assert!(waited.is_ok() && overrun.is_none(), "{waited:?}");
+        // Computing past the limit fails, naming both clocks.
+        let (burned, _) = budget.run(limit, limit, || {
             let started = Instant::now();
             let mut sum = 0u64;
             while started.elapsed() < limit * 3 {
@@ -207,8 +228,17 @@ mod tests {
             error.starts_with("UI_TIMEOUT:") && error.contains("cpu ") && error.contains("wall "),
             "{error}"
         );
-        // A hang that computes nothing ends at ten times the budget.
-        let hung = budget.run(Duration::from_millis(10), || {
+        // Past the budget but within the limit, the work finishes and is reported as an overrun.
+        let (over, overrun) = budget.run(limit, limit * 4, || {
+            let started = Instant::now();
+            while started.elapsed() < limit * 2 {
+                std::hint::black_box(0u64);
+            }
+            Ok(())
+        });
+        assert!(over.is_ok() && overrun.is_some(), "{over:?}");
+        // A hang that computes nothing ends at ten times the limit.
+        let (hung, _) = budget.run(Duration::from_millis(10), Duration::from_millis(10), || {
             std::thread::sleep(Duration::from_millis(150));
             Ok(())
         });

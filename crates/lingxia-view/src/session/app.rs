@@ -217,6 +217,9 @@ mod tests {
         }
         assert!(app.discard(bad));
         assert!(app.discard(click));
-        assert!(started.elapsed() < std::time::Duration::from_secs(10));
+        // Three runs end at the interrupt limit each; nothing waits on a hung one.
+        let limit = crate::session::eval_budget()
+            * crate::protocol::limits::EVAL_LIMIT_MULTIPLIER as u32;
+        assert!(started.elapsed() < limit * 4, "{:?}", started.elapsed());
     }
 }

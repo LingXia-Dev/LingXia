@@ -41,6 +41,9 @@ impl ViewSession {
         std::mem::swap(&mut self.context, &mut other.context);
         std::mem::swap(&mut self._runtime, &mut other._runtime);
         std::mem::swap(&mut self.budget, &mut other.budget);
+        // A swapped-in module's first frame warms the engine, as a loaded one's does.
+        self.warm.swap(&other.warm);
+        self.overruns.swap(&other.overruns);
         let poisoned = self.poisoned.get();
         self.poisoned.set(other.poisoned.get());
         other.poisoned.set(poisoned);

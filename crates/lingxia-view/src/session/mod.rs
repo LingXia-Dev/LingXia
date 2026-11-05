@@ -35,6 +35,11 @@ pub struct ViewSession {
     state: crate::session::state::StateReplica,
     budget: Arc<crate::engine::budget::Budget>,
     poisoned: Cell<bool>,
+    /// The next frame is the module's first since it loaded or was swapped in: it also warms
+    /// the engine, so it gets the warm-up budget.
+    warm: Cell<bool>,
+    /// Frames in a row that finished past their budget; each was dropped.
+    overruns: Cell<u32>,
     environment: serde_json::Value,
     bridge: Option<ViewBridge>,
     retained: Option<Arc<crate::scene::retained::RetainedLayout>>,
@@ -110,6 +115,9 @@ struct ViewBridge {
     ready: bool,
 }
 
+/// Prefix of a frame dropped for finishing past its budget; the page keeps running.
+pub const OVERRUN: &str = "UI_OVERRUN:";
+
 /// The CPU-time budget for one View evaluation; unoptimized builds get a multiple.
 pub(crate) fn eval_budget() -> Duration {
     use crate::protocol::limits::{EVAL_BUDGET_DEBUG_MULTIPLIER, EVAL_BUDGET_MS};
@@ -145,7 +153,7 @@ impl ViewSession {
     ) -> Result<Self, String> {
         crate::engine::compatibility::validate(source)?;
         let context = runtime.context();
-        let initialized = budget.run(Duration::from_secs(1), || {
+        let (initialized, _) = budget.run(Duration::from_secs(1), Duration::from_secs(1), || {
             crate::engine::compatibility::install(&context)?;
             <crate::engine::Active as crate::engine::Engine>::evaluate_module(&context, source)?;
             let valid: bool = context.eval(Source::from_bytes(
@@ -167,6 +175,8 @@ impl ViewSession {
             generation: lifecycle::CommitTicket::new(0),
             budget,
             poisoned: Cell::new(false),
+            warm: Cell::new(true),
+            overruns: Cell::new(0),
             bridge: None,
             retained: None,
             layout_revision: 0,
@@ -257,21 +267,67 @@ impl ViewSession {
         })
     }
 
+    /// A callback or other evaluation: one that finishes past its budget keeps its effects.
     fn execute<T>(&self, work: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+        self.evaluate(false, work)
+    }
+
+    /// One frame's View render: past its budget the frame is dropped (`UI_OVERRUN`), and
+    /// the page is discarded after enough of those in a row.
+    pub(super) fn execute_frame<T>(
+        &self,
+        work: impl FnOnce() -> Result<T, String>,
+    ) -> Result<T, String> {
+        self.evaluate(true, work)
+    }
+
+    fn evaluate<T>(
+        &self,
+        frame: bool,
+        work: impl FnOnce() -> Result<T, String>,
+    ) -> Result<T, String> {
+        use crate::protocol::limits::{
+            EVAL_LIMIT_MULTIPLIER, EVAL_OVERRUN_FRAMES, EVAL_WARMUP_MULTIPLIER,
+        };
         if self.poisoned.get() {
             return Err("UI_TIMEOUT: discard the interrupted page before reusing it".into());
         }
-        // A page's first render also warms the engine for its module: it gets twice the budget.
-        let budget = if self.generation.get() == 0 {
-            eval_budget() * 2
+        let budget = if frame && self.warm.get() {
+            eval_budget() * EVAL_WARMUP_MULTIPLIER as u32
         } else {
             eval_budget()
         };
-        let result = self.budget.run(budget, || {
+        let limit = eval_budget() * EVAL_LIMIT_MULTIPLIER as u32;
+        let (result, overrun) = self.budget.run(budget, limit, || {
             let value = work()?;
             <crate::engine::Active as crate::engine::Engine>::drain_jobs(&self.context)?;
             Ok(value)
         });
+        let result = match (frame, overrun, result) {
+            (true, Some(overrun), Ok(_)) => {
+                let run = self.overruns.get() + 1;
+                self.overruns.set(run);
+                if run as usize >= EVAL_OVERRUN_FRAMES {
+                    // Each run completed, so no element is mid-render to name.
+                    self.poisoned.set(true);
+                    return Err(format!(
+                        "UI_TIMEOUT: View JavaScript overran its budget on {run} frames in a row ({}); discard this page",
+                        overrun.detail
+                    ));
+                } else {
+                    Err(format!(
+                        "{OVERRUN} View JavaScript overran its budget ({}); the frame is dropped",
+                        overrun.detail
+                    ))
+                }
+            }
+            (true, None, Ok(value)) => {
+                self.overruns.set(0);
+                self.warm.set(false);
+                Ok(value)
+            }
+            (_, _, result) => result,
+        };
         if result.is_err() {
             <crate::engine::Active as crate::engine::Engine>::discard_jobs(&self.context);
         }

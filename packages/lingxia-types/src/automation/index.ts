@@ -424,6 +424,8 @@ export interface PageUiFrame {
   animationFrames: number;
   wakeups: number;
   reveal: { deadlines: number; watchdogs: number; lastReveal: { reason: string; atMs: number } | null };
+  /** Frames dropped since the page loaded for finishing past the View budget. */
+  budget: { overruns: number };
   /** The frame-statistics HUD is drawn over the page. */
   hud: boolean;
   /** Nodes the presented frame laid out; `null` before the first frame. */

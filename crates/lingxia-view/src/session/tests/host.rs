@@ -1643,6 +1643,51 @@ fn a_stopped_window_pauses_the_deadline_and_a_failure_reveals_at_once() {
 }
 
 #[test]
+fn a_frame_past_its_budget_is_dropped_without_recovery_and_counted() {
+    let worker = ViewWorker::spawn("test-budget-overrun").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let budget = crate::session::eval_budget().as_millis();
+    // The page's second render runs two budgets once; every other render is quick.
+    let host = platform.host(
+        &worker,
+        &source(&format!(
+            "let n=0;function render(){{n++;if(n===2){{const t=Date.now();while(Date.now()-t<{}){{}}}}return h('text',{{}},'frame '+n)}}",
+            budget * 2
+        )),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    assert_eq!(last(&host), ["frame 1"]);
+    resize(&host, 180);
+    host.surface_changed();
+    platform.settle(&[&host]);
+    assert_ne!(
+        last(&host),
+        ["frame 1"],
+        "the dropped frame is rendered again"
+    );
+    {
+        let log = host.adapter().log.lock().unwrap();
+        assert!(
+            log.recovery.iter().all(Option::is_none),
+            "a dropped frame shows no recovery"
+        );
+        assert!(
+            log.warnings
+                .iter()
+                .any(|w| w.starts_with(crate::session::OVERRUN)),
+            "{:?}",
+            log.warnings
+        );
+    }
+    let frame = host
+        .automation_request(&serde_json::json!({"op": "frame"}))
+        .unwrap();
+    assert_eq!(frame["budget"]["overruns"], 1, "{frame}");
+}
+
+#[test]
 fn a_failed_reveal_does_not_charge_its_wait_to_the_next_load() {
     let worker = ViewWorker::spawn("test-reveal-failed-reload").unwrap();
     let platform = Platform::new(&[&worker]);

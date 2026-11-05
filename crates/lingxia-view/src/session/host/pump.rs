@@ -528,6 +528,25 @@ impl<A: PlatformAdapter> Inner<A> {
         surface: SurfaceTicket,
         page: PageTicket,
     ) {
+        // A dropped frame is not a failure: the page keeps its last frame and renders again.
+        if let Some(error) = error.as_deref()
+            && error.starts_with(crate::session::OVERRUN)
+        {
+            let current = self.lifecycle.is_current_page(page);
+            {
+                let mut main = self.main();
+                main.busy = false;
+                main.dirty = true;
+                if current {
+                    main.telemetry.budget_overrun();
+                }
+            }
+            if current {
+                self.adapter.warn(error);
+                self.schedule();
+            }
+            return;
+        }
         let (pending, effects) = {
             let mut main = self.main();
             main.busy = false;
