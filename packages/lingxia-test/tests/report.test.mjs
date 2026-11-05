@@ -556,6 +556,26 @@ test("attaches a CI-ingestible junit.xml alongside the HTML report", async () =>
   assert.doesNotMatch(xml, /message="[^"]*\n/);
 });
 
+test("junit writes an expected failure as skipped, not as a pass", async () => {
+  const world = createWorld();
+  const { attachments } = installFakeHost(world);
+
+  spec.fail("known broken", { id: "JUNIT-XFAIL", covers: ["AC-ORDER-01"], reason: "upstream" }, async () => {
+    expect(1).toBe(2);
+  });
+  spec("works", { id: "JUNIT-OK2" }, async () => {
+    expect(1).toBe(1);
+  });
+
+  await globalThis.__LINGXIA_TEST__.run();
+  const xml = decodeAttachment(attachments, "junit.xml");
+
+  assert.match(xml, /<testsuites [^>]*tests="2"[^>]*failures="0"[^>]*skipped="1"/);
+  assert.match(xml, /<testcase name="known broken"[^>]*>\s*<skipped type="xfail" message="upstream"\/>/);
+  assert.match(xml, /<property name="covers" value="AC-ORDER-01"\/>/);
+  assert.doesNotMatch(xml, /spec\.fail: failed as declared<\/system-out>/);
+});
+
 test("the skip option skips with its reason and never runs the body", async () => {
   const world = createWorld();
   installFakeHost(world);

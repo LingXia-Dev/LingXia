@@ -3870,6 +3870,12 @@ fn run_errors_html(errors: &[String]) -> String {
     format!("<h2>Run errors</h2><ul class=\"run-errors\">{items}</ul>")
 }
 
+/// `xfail` is `<skipped type="xfail">` (pytest's form): the run passes, but a
+/// declared-broken spec must not count as a pass to a JUnit consumer.
+fn junit_skipped(case: &serde_json::Value) -> bool {
+    matches!(case["status"].as_str(), Some("skipped" | "xfail"))
+}
+
 /// The final JUnit, from the same cases as report.json plus one testcase
 /// per run error.
 fn render_final_junit(
@@ -3898,10 +3904,7 @@ fn render_final_junit(
             )
         })
         .count();
-    let skipped = cases
-        .iter()
-        .filter(|case| case["status"] == "skipped")
-        .count();
+    let skipped = cases.iter().filter(|case| junit_skipped(case)).count();
     let mut xml = format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?><testsuites name=\"@lingxia/test\" tests=\"{}\" failures=\"{failures}\" errors=\"{run_error_count}\" skipped=\"{skipped}\" time=\"{:.3}\">",
         cases.len() + run_error_count,
@@ -3917,10 +3920,7 @@ fn render_final_junit(
                 )
             })
             .count();
-        let suite_skipped = items
-            .iter()
-            .filter(|case| case["status"] == "skipped")
-            .count();
+        let suite_skipped = items.iter().filter(|case| junit_skipped(case)).count();
         let duration: u64 = items
             .iter()
             .map(|case| case["duration_ms"].as_u64().unwrap_or_default())
@@ -3953,7 +3953,16 @@ fn render_final_junit(
             }
             xml.push('>');
             let status = case["status"].as_str().unwrap_or("skipped");
-            if status == "skipped" {
+            if status == "xfail" {
+                xml.push_str(&format!(
+                    "<skipped type=\"xfail\" message=\"{}\"/>",
+                    escape_markup(
+                        case["reason"]
+                            .as_str()
+                            .unwrap_or("spec.fail: failed as declared")
+                    )
+                ));
+            } else if status == "skipped" {
                 xml.push_str(&format!(
                     "<skipped message=\"{}\"/>",
                     escape_markup(case["reason"].as_str().unwrap_or("pending"))
@@ -3979,9 +3988,6 @@ fn render_final_junit(
                 xml.push_str(&format!(
                     "<system-out>Flaky: passed after {attempts} attempts</system-out>"
                 ));
-            }
-            if status == "xfail" {
-                xml.push_str("<system-out>spec.fail: failed as declared</system-out>");
             }
             let mut properties = String::new();
             for key in ["covers", "tags"] {
@@ -4122,6 +4128,44 @@ mod recovery_tests {
             assert!(step["assertions"].is_array());
             assert!(step["attachments"].is_array());
         }
+    }
+
+    #[test]
+    fn final_junit_writes_xfail_as_skipped_not_passed() {
+        let report = json!({
+            "duration_ms": 3, "meta": {"started_at": "2026-01-01T00:00:00Z"},
+            "cases": [
+                {"title": "known broken", "suite": "s.test.ts", "status": "xfail",
+                 "reason": "upstream", "duration_ms": 1, "covers": ["AC-ORDER-01"]},
+                {"title": "declared", "suite": "s.test.ts", "status": "xfail", "duration_ms": 1},
+                {"title": "works", "suite": "s.test.ts", "status": "passed", "duration_ms": 1}
+            ]
+        });
+        let outcome = Outcome {
+            app_not_live: false,
+            state: TestRunState::Passed,
+            result: None,
+            console: vec![],
+            artifacts: vec![],
+            partial: false,
+            streamed: vec![],
+            run_errors: vec![],
+        };
+        let xml = render_final_junit(&report, &outcome, false, "Run completed");
+        assert!(
+            xml.contains("<skipped type=\"xfail\" message=\"upstream\"/>"),
+            "{xml}"
+        );
+        assert!(
+            xml.contains("<skipped type=\"xfail\" message=\"spec.fail: failed as declared\"/>"),
+            "{xml}"
+        );
+        assert!(!xml.contains("<system-out>spec.fail"), "{xml}");
+        assert!(xml.contains("<testsuites name=\"@lingxia/test\" tests=\"3\" failures=\"0\" errors=\"0\" skipped=\"2\""), "{xml}");
+        assert!(
+            xml.contains("tests=\"3\" failures=\"0\" errors=\"0\" skipped=\"2\" time"),
+            "{xml}"
+        );
     }
 
     #[test]
