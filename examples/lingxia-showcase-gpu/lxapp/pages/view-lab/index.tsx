@@ -1,15 +1,17 @@
 import { Details, Fragment, List, Summary, useLocal, useView, type VectorPath } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Icon, Page, Section } from '../../shared/ui';
+import type { LabPageData } from '../../shared/lab-types';
 
 // GPU-only renderer fixtures: one section per View capability, addressed by testId.
 // One group renders at a time: a whole-lab render exceeds the per-render budget on slower phones.
 const groups = {
   paint: { label: 'Paint', sections: [Grid, Gradients, Vectors, Borders, Transforms] },
   layout: { label: 'Layout', sections: [Display, Sizing, Direction, Structure, StickyHeaders, Fragments, Disclosure] },
-  text: { label: 'Text', sections: [TextLayout, RichText, Selection] },
+  text: { label: 'Text', sections: [TextLayout, RichText, Selection, Document] },
   input: { label: 'Input', sections: [Accessibility, Inputs, Controls, Focus, NestedControls, StateVariants] },
   overlay: { label: 'Overlay', sections: [Overlays] },
+  data: { label: 'Data', sections: [Plots] },
   gesture: { label: 'Gesture', sections: [Drag, DragChain, Detents] },
   swipe: { label: 'Swipe', sections: [SwipeRows, Pager] },
 };
@@ -200,6 +202,50 @@ function RichText() {
         {' '}before you <span className="italic line-through text-muted">sign</span> agree.
       </text>
       <text data-testid="lab-rich-presses" className="text-xs text-muted tabular-nums">Link pressed {presses.value} times</text>
+    </Section>
+  );
+}
+
+// A long document: numbered clauses from Logic, inline runs, a clamped preview and a definitions grid.
+function Document() {
+  const { terms } = useView().data as unknown as LabPageData;
+  return (
+    <Section title="Document" testId="lab-document">
+      <column className="gap-4 max-w-[68ch]">
+        <text className="text-xs text-muted tabular-nums">{`Updated ${terms.updated}`}</text>
+        {terms.clauses.map((clause, index) => (
+          <column key={clause.heading} className="gap-2">
+            <text role="heading" headingLevel={3} className="text-base font-semibold">{`${index + 1}. ${clause.heading}`}</text>
+            <text className="text-sm leading-relaxed select-text">
+              {clause.body} <span className="font-semibold">{clause.term}</span> is defined in{' '}
+              <span className="font-mono text-xs bg-surface-sunken">section {index + 2}</span> and its <span className="italic">annexes</span>.
+            </text>
+            <text className="text-xs text-faint line-clamp-2">{clause.body.repeat(3)}</text>
+          </column>
+        ))}
+        <text role="heading" headingLevel={3} className="text-base font-semibold">Definitions</text>
+        <view data-testid="lab-document-terms" className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+          {terms.clauses.map(clause => <Fragment key={clause.term}><Term word={clause.term} meaning={clause.heading} /></Fragment>)}
+        </view>
+      </column>
+    </Section>
+  );
+}
+
+// Bar, line and pie plots the renderer draws from Logic series; a bar takes the selection.
+function Plots() {
+  const { plots } = useView().data as unknown as LabPageData;
+  const picked = useLocal('plots-picked', -1);
+  const colors = ['chart-1', 'chart-2', 'chart-3', 'chart-4', 'chart-5'];
+  return (
+    <Section title="Plots" testId="lab-plots">
+      <plot data-testid="lab-plot-bar" kind="bar" values={plots.hourly} colors={['chart-1']} aria-label="Hourly series"
+        selectedIndex={picked.value} onSelect={index => picked.set(index)} className="h-40" />
+      <text data-testid="lab-plot-picked" className="text-xs text-muted tabular-nums">{picked.value < 0 ? 'No bar selected' : `Hour ${picked.value}: ${plots.hourly[picked.value]}`}</text>
+      <row className="gap-4">
+        <plot data-testid="lab-plot-pie" kind="pie" values={plots.share} colors={colors} aria-label="Share" className="grow basis-0 h-36" />
+        <plot data-testid="lab-plot-line" kind="line" values={plots.latency} colors={['chart-2']} smooth area aria-label="Latency" className="grow basis-0 h-36" />
+      </row>
     </Section>
   );
 }
