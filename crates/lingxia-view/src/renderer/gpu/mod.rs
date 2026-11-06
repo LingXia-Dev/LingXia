@@ -142,6 +142,137 @@ impl Context {
 /// Prefix of the error for an adapter whose driver crashed a previous process.
 const BLOCKED: &str = "UI_SURFACE: GPU driver failed during a previous launch";
 
+/// One frame being drawn into a presenter's target slot, with the drawing state it borrowed.
+pub(crate) struct PrepareJob {
+    slot: usize,
+    epoch: u64,
+    revision: u64,
+    composed: bool,
+    keep_base: bool,
+    width: u32,
+    height: u32,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    target: wgpu::TextureView,
+    depth: Option<wgpu::TextureView>,
+    renderer: crate::renderer::gpu::pass::SceneRenderer,
+    scenes: crate::renderer::gpu::scene::SceneCache,
+    glyph_cache: glifo::GlyphPrepCache,
+    images: crate::renderer::gpu::images::ImageTextures,
+    compositor: Option<crate::renderer::gpu::composite::Compositor>,
+    base: Option<(u64, wgpu::TextureView)>,
+    pass_us: Vec<[u64; 2]>,
+    output: Option<crate::renderer::gpu::composite::Surface>,
+    preparation_us: [u64; 4],
+    scene_cache_hit: bool,
+}
+
+impl PrepareJob {
+    /// Draws `display`; holds no presenter or context lock.
+    pub(crate) fn run(&mut self, display: &crate::DisplayList) -> Result<(), String> {
+        let (width, height) = (self.width, self.height);
+        let target = &self.target;
+        if self.composed {
+            let started = Instant::now();
+            let compositor = self.compositor.get_or_insert_with(|| {
+                crate::renderer::gpu::composite::Compositor::with_renderer(self.renderer.clone())
+            });
+            let output = compositor.render_display(display, &self.device, &self.queue)?;
+            self.output = Some(output);
+            self.base = None;
+            self.pass_us.clear();
+            self.scenes.clear();
+            self.images.clear();
+            self.preparation_us = [0, 0, crate::session::metrics::micros(started), 0];
+            self.scene_cache_hit = false;
+            return Ok(());
+        }
+
+        let size = vello_gpu::RenderSize {
+            width: width as u16,
+            height: height as u16,
+        };
+        let started = Instant::now();
+        let scene_cache_hit = self.scenes.prepare(display, &mut self.glyph_cache)?;
+        self.glyph_cache.maintain();
+        let scene_us = crate::session::metrics::micros(started);
+        let started = Instant::now();
+        let pixels = display
+            .bitmaps()
+            .map(|bitmap| bitmap.pixels().clone())
+            .chain(self.scenes.glyph_images().cloned());
+        let bindings = self.images.bindings(&self.device, &self.queue, pixels);
+        let images_us = crate::session::metrics::micros(started);
+        let [mut encode_us, mut submit_us] = [0, 0];
+        self.pass_us.clear();
+        let mut scenes = self.scenes.scenes();
+        // A kept bottom segment is copied in; only the passes above it draw again.
+        let base = self.scenes.base().filter(|_| self.keep_base);
+        self.base = self.base.take().filter(|(id, view)| {
+            Some(*id) == base && view.texture().size() == target.texture().size()
+        });
+        if let Some(id) = base {
+            let first = scenes.next().ok_or("UI_SURFACE: no base scene")?;
+            if self.base.is_none() {
+                let view = crate::renderer::gpu::device::target_view(&self.device, width, height);
+                let [encode, submit] = self.renderer.draw(
+                    &self.device,
+                    &self.queue,
+                    first,
+                    &bindings,
+                    crate::renderer::gpu::pass::Target {
+                        size: size.clone(),
+                        view: &view,
+                        depth: self.depth.as_ref(),
+                        init: vello_gpu::TargetInit::Clear(vello_gpu::ClearSettings::default()),
+                    },
+                )?;
+                encode_us += encode;
+                submit_us += submit;
+                self.pass_us.push([encode, submit]);
+                self.base = Some((id, view));
+            }
+            let started = Instant::now();
+            let mut encoder = self.device.create_command_encoder(&Default::default());
+            let base = &self.base.as_ref().ok_or("UI_SURFACE: no base")?.1;
+            encoder.copy_texture_to_texture(
+                base.texture().as_image_copy(),
+                target.texture().as_image_copy(),
+                target.texture().size(),
+            );
+            self.queue.submit([encoder.finish()]);
+            let copy = crate::session::metrics::micros(started);
+            submit_us += copy;
+            self.pass_us.push([0, copy]);
+        }
+        for (index, scene) in scenes.enumerate() {
+            let first = index == 0 && base.is_none();
+            let [encode, submit] = self.renderer.draw(
+                &self.device,
+                &self.queue,
+                scene,
+                &bindings,
+                crate::renderer::gpu::pass::Target {
+                    size: size.clone(),
+                    view: target,
+                    depth: self.depth.as_ref(),
+                    init: if first {
+                        vello_gpu::TargetInit::Clear(vello_gpu::ClearSettings::default())
+                    } else {
+                        vello_gpu::TargetInit::SrcOver
+                    },
+                },
+            )?;
+            encode_us += encode;
+            submit_us += submit;
+            self.pass_us.push([encode, submit]);
+        }
+        self.preparation_us = [scene_us, images_us, encode_us, submit_us];
+        self.scene_cache_hit = scene_cache_hit;
+        Ok(())
+    }
+}
+
 /// Surface ownership and presentation stay on the platform UI thread.
 pub struct Presenter {
     surface: Option<RenderSurface<'static>>,
@@ -158,6 +289,8 @@ pub struct Presenter {
     /// page's in-flight ones) must not keep a new base.
     keep_base: bool,
     scene_cache_hit: bool,
+    /// Bumped when the surface goes away or is bound anew: a frame drawn across it is dropped.
+    epoch: u64,
     renderer: crate::renderer::gpu::pass::SceneRenderer,
     scenes: crate::renderer::gpu::scene::SceneCache,
     glyph_cache: glifo::GlyphPrepCache,
@@ -293,6 +426,7 @@ impl Presenter {
             pass_us: Vec::new(),
             base: None,
             keep_base: true,
+            epoch: 0,
             scene_cache_hit: false,
             renderer,
             scenes: Default::default(),
@@ -309,6 +443,7 @@ impl Presenter {
     }
 
     pub fn suspend(&mut self) {
+        self.epoch += 1;
         self.surface = None;
         self.depth = None;
         self.images.clear();
@@ -388,8 +523,25 @@ impl Presenter {
         revision: u64,
         composed: bool,
     ) -> Result<bool, String> {
-        if width == 0 || height == 0 || width > 4096 || height > 4096 {
+        let Some(mut job) = self.begin_prepare(display, width, height, revision, composed)? else {
             return Ok(false);
+        };
+        let result = job.run(display);
+        self.finish_prepare(job, result)
+    }
+
+    /// Picks the target slot and lends the drawing state to a [`PrepareJob`], which draws
+    /// without this presenter: presenting the other slot does not wait for it.
+    pub(crate) fn begin_prepare(
+        &mut self,
+        display: &crate::DisplayList,
+        width: u32,
+        height: u32,
+        revision: u64,
+        composed: bool,
+    ) -> Result<Option<PrepareJob>, String> {
+        if width == 0 || height == 0 || width > 4096 || height > 4096 {
+            return Ok(None);
         }
         if u32::from(display.width) != width || u32::from(display.height) != height {
             return Err("UI_SURFACE: display dimensions mismatch".into());
@@ -404,7 +556,7 @@ impl Presenter {
             self.bind(width, height)?;
         }
         let Some(surface) = &mut self.surface else {
-            return Ok(false);
+            return Ok(None);
         };
         let context = self.context.lock()?;
         if surface.config.width != width || surface.config.height != height {
@@ -420,110 +572,61 @@ impl Presenter {
             [Some(a), Some(b)] => usize::from(b < a),
         };
         self.prepared[slot] = None;
-
-        if composed {
-            // The slot's previous output was presented; its texture can serve this frame.
-            self.composed[slot] = None;
-            let started = Instant::now();
-            let compositor = self.compositor.get_or_insert_with(|| {
-                crate::renderer::gpu::composite::Compositor::with_renderer(self.renderer.clone())
-            });
-            let output = compositor.render_display(display, &device.device, &device.queue)?;
-            self.composed[slot] = Some(output);
-            self.base = None;
-            self.pass_us.clear();
-            self.scenes.clear();
-            self.images.clear();
-            self.preparation_us = [0, 0, crate::session::metrics::micros(started), 0];
-            self.scene_cache_hit = false;
-            self.prepared[slot] = Some(revision);
-            return Ok(true);
-        }
-
-        let size = vello_gpu::RenderSize {
-            width: width as u16,
-            height: height as u16,
-        };
-        let started = Instant::now();
-        let scene_cache_hit = self.scenes.prepare(display, &mut self.glyph_cache)?;
-        self.glyph_cache.maintain();
-        let scene_us = crate::session::metrics::micros(started);
-        let started = Instant::now();
-        let pixels = display
-            .bitmaps()
-            .map(|bitmap| bitmap.pixels().clone())
-            .chain(self.scenes.glyph_images().cloned());
-        let bindings = self.images.bindings(&device.device, &device.queue, pixels);
-        let images_us = crate::session::metrics::micros(started);
-        let [mut encode_us, mut submit_us] = [0, 0];
-        self.pass_us.clear();
-        let target = &surface.target_views[slot];
-        let mut scenes = self.scenes.scenes();
-        // A kept bottom segment is copied in; only the passes above it draw again.
-        let base = self.scenes.base().filter(|_| self.keep_base);
-        self.base = self.base.take().filter(|(id, view)| {
-            Some(*id) == base && view.texture().size() == target.texture().size()
-        });
-        if let Some(id) = base {
-            let first = scenes.next().ok_or("UI_SURFACE: no base scene")?;
-            if self.base.is_none() {
-                let view = crate::renderer::gpu::device::target_view(&device.device, width, height);
-                let [encode, submit] = self.renderer.draw(
-                    &device.device,
-                    &device.queue,
-                    first,
-                    &bindings,
-                    crate::renderer::gpu::pass::Target {
-                        size: size.clone(),
-                        view: &view,
-                        depth: self.depth.as_ref(),
-                        init: vello_gpu::TargetInit::Clear(vello_gpu::ClearSettings::default()),
-                    },
-                )?;
-                encode_us += encode;
-                submit_us += submit;
-                self.pass_us.push([encode, submit]);
-                self.base = Some((id, view));
-            }
-            let started = Instant::now();
-            let mut encoder = device.device.create_command_encoder(&Default::default());
-            let base = &self.base.as_ref().ok_or("UI_SURFACE: no base")?.1;
-            encoder.copy_texture_to_texture(
-                base.texture().as_image_copy(),
-                target.texture().as_image_copy(),
-                target.texture().size(),
-            );
-            device.queue.submit([encoder.finish()]);
-            let copy = crate::session::metrics::micros(started);
-            submit_us += copy;
-            self.pass_us.push([0, copy]);
-        }
-        for (index, scene) in scenes.enumerate() {
-            let first = index == 0 && base.is_none();
-            let [encode, submit] = self.renderer.draw(
-                &device.device,
-                &device.queue,
-                scene,
-                &bindings,
-                crate::renderer::gpu::pass::Target {
-                    size: size.clone(),
-                    view: target,
-                    depth: self.depth.as_ref(),
-                    init: if first {
-                        vello_gpu::TargetInit::Clear(vello_gpu::ClearSettings::default())
-                    } else {
-                        vello_gpu::TargetInit::SrcOver
-                    },
-                },
-            )?;
-            encode_us += encode;
-            submit_us += submit;
-            self.pass_us.push([encode, submit]);
-        }
-        self.preparation_us = [scene_us, images_us, encode_us, submit_us];
+        // The slot's previous output was presented; its texture can serve this frame.
         self.composed[slot] = None;
-        self.scene_cache_hit = scene_cache_hit;
-        self.prepared[slot] = Some(revision);
+        Ok(Some(PrepareJob {
+            slot,
+            epoch: self.epoch,
+            revision,
+            composed,
+            keep_base: self.keep_base,
+            width,
+            height,
+            device: device.device.clone(),
+            queue: device.queue.clone(),
+            target: surface.target_views[slot].clone(),
+            depth: self.depth.clone(),
+            renderer: self.renderer.clone(),
+            scenes: std::mem::take(&mut self.scenes),
+            glyph_cache: std::mem::take(&mut self.glyph_cache),
+            images: std::mem::take(&mut self.images),
+            compositor: self.compositor.take(),
+            base: self.base.take(),
+            pass_us: std::mem::take(&mut self.pass_us),
+            output: None,
+            preparation_us: [0; 4],
+            scene_cache_hit: false,
+        }))
+    }
+
+    /// Takes the drawing state back; the frame is ready to present unless the surface was
+    /// suspended or rebound while it drew.
+    pub(crate) fn finish_prepare(
+        &mut self,
+        job: PrepareJob,
+        result: Result<(), String>,
+    ) -> Result<bool, String> {
+        self.scenes = job.scenes;
+        self.glyph_cache = job.glyph_cache;
+        self.images = job.images;
+        self.compositor = job.compositor;
+        self.base = job.base;
+        self.pass_us = job.pass_us;
+        if job.epoch != self.epoch {
+            // Drawn for a surface that is gone: drop what it would have kept.
+            self.images.clear();
+            self.base = None;
+            if let Some(compositor) = &mut self.compositor {
+                compositor.clear();
+            }
+            self.scenes.clear();
+            return result.map(|()| false);
+        }
+        result?;
+        self.composed[job.slot] = job.output;
+        self.preparation_us = job.preparation_us;
+        self.scene_cache_hit = job.scene_cache_hit;
+        self.prepared[job.slot] = Some(job.revision);
         Ok(true)
     }
 

@@ -112,15 +112,30 @@ pub fn prepare(
     let Some(presenter) = presenter(id)? else {
         return Ok(None);
     };
-    let mut presenter = lock(&presenter)?;
-    if !presenter.prepare(
-        display,
-        u32::from(display.width),
-        u32::from(display.height),
-        revision,
-    )? {
-        return Ok(None);
-    }
+    // Draw without the presenter: the main thread presents the previous frame meanwhile. A
+    // surface bound anew while the frame drew gets it drawn again, as the locked path would.
+    let mut attempts = 0;
+    let presenter = loop {
+        let job = lock(&presenter)?.begin_prepare(
+            display,
+            u32::from(display.width),
+            u32::from(display.height),
+            revision,
+            display.requires_composition(),
+        )?;
+        let Some(mut job) = job else {
+            return Ok(None);
+        };
+        let result = job.run(display);
+        let mut held = lock(&presenter)?;
+        if held.finish_prepare(job, result)? {
+            break held;
+        }
+        attempts += 1;
+        if attempts == 3 {
+            return Ok(None);
+        }
+    };
     let [scene, images, encode, submit] = presenter.preparation_timings_us();
     let (filtered, cached, cached_bytes) = presenter.backdrop_cache_stats();
     Ok(Some(serde_json::json!({
