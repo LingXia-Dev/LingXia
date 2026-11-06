@@ -78,8 +78,11 @@ pub struct FrameTiming {
     pub worker_us: u64,
     /// Prepared to vsync.
     pub wait_us: u64,
-    /// Vsync to the end of the presented frame's main-thread work.
+    /// Vsync to the end of the presented frame's main-thread work; a deferred frame's includes
+    /// its wait for the adapter to show it.
     pub main_us: u64,
+    /// The main thread's own work in that span: the vsync handler and the presented frame.
+    pub main_work_us: u64,
     /// An adapter that draws off the worker: scene, encode, submit and present µs.
     pub gpu_us: [u64; 4],
 }

@@ -681,6 +681,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 flight,
             } = prepared;
             timing.wait_us = micros(vsync.saturating_duration_since(prepared_at));
+            timing.main_work_us = micros(vsync.elapsed());
             let deferred = !hidden && self.adapter.deferred(&frame);
             let newer = {
                 let main = self.main();
@@ -844,6 +845,7 @@ impl<A: PlatformAdapter> Inner<A> {
         pacing: Pacing,
         flight: u64,
     ) {
+        let entered = Instant::now();
         let rebuild = timing.rebuild;
         let (presented, recovered) = {
             let mut main = self.main();
@@ -883,6 +885,7 @@ impl<A: PlatformAdapter> Inner<A> {
         self.update_images(snapshot.images.clone(), snapshot.image_buckets.clone());
         self.flush_image_events();
         timing.main_us = micros(vsync.elapsed());
+        timing.main_work_us += micros(entered.elapsed());
         let now = self.adapter.now();
         let shown = !self.window_hidden();
         {
