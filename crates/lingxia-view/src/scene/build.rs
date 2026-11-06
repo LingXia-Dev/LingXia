@@ -7,6 +7,9 @@ use crate::scene::paint::*;
 use crate::scene::retained::*;
 use crate::semantics::groups::ControlGroups;
 use crate::text::shape::glyph_ink;
+
+/// Glyph-run ink boxes kept between frames; cleared whole when full.
+const INK_ENTRIES: usize = 4096;
 use crate::text::style::{Decoration, TextStyle};
 use lingxia_theme::Role;
 use parley::PositionedLayoutItem;
@@ -53,6 +56,7 @@ impl Renderer {
         ),
         layouts: &mut [Option<crate::text::cache::ShapedText>],
         groups: &ControlGroups,
+        identities: &[String],
         (width, height, scale): (u16, u16, f32),
     ) -> Result<RetainedLayout, String> {
         let colors: Vec<&str> = styles.iter().map(|style| style.color.as_str()).collect();
@@ -65,12 +69,11 @@ impl Renderer {
         let mut shadow_masks = std::collections::HashSet::new();
         let mut shadow_bytes = 0;
         let mut origins: Vec<(f32, f32)> = Vec::new();
-        let mut nodes = Vec::new();
+        let mut nodes = Vec::with_capacity(records.len());
         let viewport = [0.0, 0.0, width as f32 / scale, height as f32 / scale];
         let mut ranges = Vec::new();
         let mut paint_styles = Vec::with_capacity(records.len());
         let mut input_layouts = Vec::new();
-        let identities = crate::protocol::identities(records);
         let mut scroll_parents: Vec<Option<String>> = Vec::new();
         let parents = crate::layout::style::layout_parents(records);
         let hidden = crate::layout::style::hidden(records);
@@ -690,14 +693,15 @@ impl Renderer {
                     0.0
                 };
                 text_offset_y = label_y;
-                for line in text.lines().take(
+                let broken = text.broken_id();
+                for (line_at, line) in text.lines().enumerate().take(
                     record
                         .number(field::TEXT_LINES)
                         .map(|n| n as usize)
                         .unwrap_or(usize::MAX),
                 ) {
                     let metrics = line.metrics();
-                    for item in line.items() {
+                    for (item_at, item) in line.items().enumerate() {
                         if let PositionedLayoutItem::GlyphRun(glyph_run) = item {
                             // In rich text the brush names the run record that owns these glyphs.
                             let owner = paragraphs[index]
@@ -750,14 +754,47 @@ impl Renderer {
                             let glyphs: Vec<Glyph> = glyphs.collect();
                             let skew =
                                 f64::from(run.synthesis().skew().unwrap_or(0.0).to_radians().tan());
-                            let ink = glyph_ink(
-                                run.font(),
-                                run.font_size(),
-                                &coordinates,
-                                &glyphs,
-                                skew as f32,
-                                (1.0 / scale).max(1.0),
-                            );
+                            // Ink is kept relative to the run's origin, so a moved text reuses it.
+                            let origin = [
+                                x + layout.padding.left + label_x,
+                                y + layout.padding.top + label_y,
+                            ];
+                            let key = broken.map(|(shape, lines)| {
+                                (
+                                    shape,
+                                    lines,
+                                    line_at as u32,
+                                    item_at as u32,
+                                    scale.to_bits(),
+                                )
+                            });
+                            let ink = match key.and_then(|key| self.ink_cache.get(&key)) {
+                                Some(ink) => {
+                                    ink.map(|[ix, iy, w, h]| [ix + origin[0], iy + origin[1], w, h])
+                                }
+                                None => {
+                                    let ink = glyph_ink(
+                                        run.font(),
+                                        run.font_size(),
+                                        &coordinates,
+                                        &glyphs,
+                                        skew as f32,
+                                        (1.0 / scale).max(1.0),
+                                    );
+                                    if let Some(key) = key {
+                                        if self.ink_cache.len() >= INK_ENTRIES {
+                                            self.ink_cache.clear();
+                                        }
+                                        self.ink_cache.insert(
+                                            key,
+                                            ink.map(|[ix, iy, w, h]| {
+                                                [ix - origin[0], iy - origin[1], w, h]
+                                            }),
+                                        );
+                                    }
+                                    ink
+                                }
+                            };
                             if !placeholder {
                                 paint_style.texts.push((commands.len(), owner));
                             }

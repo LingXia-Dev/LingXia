@@ -52,7 +52,7 @@ impl Key {
 
 /// How a layout's lines are broken: the width (bits, `u32::MAX` unbounded) and the alignment
 /// applied after (`u8::MAX` none).
-type Lines = (u32, u8);
+pub(crate) type Lines = (u32, u8);
 
 fn lines_of(width: Option<f32>, align: Option<Alignment>) -> Lines {
     (
@@ -91,6 +91,11 @@ impl ShapedText {
         self.shape
     }
 
+    /// The cached entry and line breaks this text is laid out as; equal ids lay out the same.
+    pub(crate) fn broken_id(&self) -> Option<(u64, Lines)> {
+        self.shape.zip(self.lines)
+    }
+
     pub(crate) fn into_layout(self) -> TextLayout {
         Arc::unwrap_or_clone(self.layout)
     }
@@ -108,6 +113,8 @@ struct Entry {
 pub(crate) struct TextCache {
     entries: HashMap<Key, Entry>,
     broken: HashMap<(u64, Lines), Arc<TextLayout>>,
+    /// Ellipsis cuts by the whole text's entry, width and line limit; `None` when it fits.
+    cuts: HashMap<(u64, u32, Option<usize>, bool), Option<ShapedText>>,
     text_bytes: usize,
     next: u64,
 }
@@ -188,9 +195,29 @@ impl TextCache {
         }
     }
 
+    /// The ellipsis cut of the text shaped as `shape`, if one was made at this width.
+    pub(crate) fn cut(&self, key: (u64, f32, Option<usize>, bool)) -> Option<Option<ShapedText>> {
+        self.cuts
+            .get(&(key.0, key.1.to_bits(), key.2, key.3))
+            .cloned()
+    }
+
+    pub(crate) fn keep_cut(
+        &mut self,
+        key: (u64, f32, Option<usize>, bool),
+        cut: Option<ShapedText>,
+    ) {
+        if self.cuts.len() >= MAX_BROKEN {
+            self.cuts.clear();
+        }
+        self.cuts
+            .insert((key.0, key.1.to_bits(), key.2, key.3), cut);
+    }
+
     pub(crate) fn clear(&mut self) {
         self.entries.clear();
         self.broken.clear();
+        self.cuts.clear();
         self.text_bytes = 0;
     }
 }

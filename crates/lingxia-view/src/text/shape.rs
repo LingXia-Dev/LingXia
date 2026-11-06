@@ -309,30 +309,43 @@ impl Renderer {
                 && (!style.nowrap || layout.width() <= width + 0.5)
         };
         let mut whole = self.shape(record, style, text, runs)?;
-        if fits(&mut self.text_cache, &mut whole) {
-            return None;
+        // Entries are evicted, never reused, so an entry id names one shaped text.
+        let shape = whole
+            .shape_id()
+            .map(|shape| (shape, width, lines, style.nowrap));
+        if let Some(cut) = shape.and_then(|key| self.text_cache.cut(key)) {
+            return cut;
         }
-        let ends: Vec<usize> = text.char_indices().map(|(at, _)| at).collect();
-        // Prefixes of `k` characters for k < count; the whole text is known not to fit.
-        let (mut low, mut high) = (0, ends.len().saturating_sub(1));
-        let mut best = self.shape(record, style, "\u{2026}", &clipped(0, 3))?;
-        while low < high {
-            let middle = (low + high).div_ceil(2);
-            let prefix = text[..ends[middle]].trim_end();
-            let candidate = format!("{prefix}\u{2026}");
-            let mut layout = self.shape(
-                record,
-                style,
-                &candidate,
-                &clipped(prefix.len(), candidate.len()),
-            )?;
-            if fits(&mut self.text_cache, &mut layout) {
-                best = layout;
-                low = middle;
-            } else {
-                high = middle - 1;
+        let cut = 'cut: {
+            if fits(&mut self.text_cache, &mut whole) {
+                break 'cut None;
             }
+            let ends: Vec<usize> = text.char_indices().map(|(at, _)| at).collect();
+            // Prefixes of `k` characters for k < count; the whole text is known not to fit.
+            let (mut low, mut high) = (0, ends.len().saturating_sub(1));
+            let mut best = self.shape(record, style, "\u{2026}", &clipped(0, 3))?;
+            while low < high {
+                let middle = (low + high).div_ceil(2);
+                let prefix = text[..ends[middle]].trim_end();
+                let candidate = format!("{prefix}\u{2026}");
+                let mut layout = self.shape(
+                    record,
+                    style,
+                    &candidate,
+                    &clipped(prefix.len(), candidate.len()),
+                )?;
+                if fits(&mut self.text_cache, &mut layout) {
+                    best = layout;
+                    low = middle;
+                } else {
+                    high = middle - 1;
+                }
+            }
+            Some(best)
+        };
+        if let Some(key) = shape {
+            self.text_cache.keep_cut(key, cut.clone());
         }
-        Some(best)
+        cut
     }
 }

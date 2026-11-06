@@ -18,6 +18,9 @@ use std::{collections::HashMap, sync::Arc};
 use taffy::prelude::*;
 use taffy::util::ResolveOrZero;
 
+/// A glyph run by its shaped text's entry, line breaks, line, run and scale.
+pub(crate) type InkKey = (u64, crate::text::cache::Lines, u32, u32, u32);
+
 pub struct Renderer {
     pub(crate) text_scale: crate::text::scale::TextScale,
     pub(crate) fonts: FontContext,
@@ -36,6 +39,8 @@ pub struct Renderer {
     pub(crate) font_faces: std::collections::HashMap<String, Vec<String>>,
     /// The layout tree of the last frame, whose cached boxes the next one starts from.
     pub(crate) layout_tree: Option<persistent::LayoutTree>,
+    /// Ink boxes of laid-out glyph runs, relative to the run origin.
+    pub(crate) ink_cache: HashMap<InkKey, Option<[f32; 4]>>,
 }
 
 #[cfg(test)]
@@ -59,6 +64,7 @@ impl Default for Renderer {
             palette: crate::theme::Palette::builtin(false),
             font_faces: Default::default(),
             layout_tree: None,
+            ink_cache: HashMap::new(),
         }
     }
 }
@@ -67,6 +73,7 @@ impl Renderer {
     pub(crate) fn clear_text_cache(&mut self) {
         // Measured text sizes in the kept layout tree came from the cleared shapes.
         self.layout_tree = None;
+        self.ink_cache.clear();
         self.text_cache.clear();
         self.shadow_cache.clear();
     }
@@ -364,6 +371,7 @@ impl Renderer {
             (&styles, &texts, &paragraphs),
             &mut layouts,
             &groups,
+            &identities,
             (width, height, scale),
         )?;
         self.layout_tree = Some(kept);
