@@ -32,7 +32,7 @@
     return timers().clear(id);
   }
 
-  function createPageInstance(definition, pagePath, pageInstanceId) {
+  function createPageInstance(definition, pagePath, pageInstanceId, gpu) {
     const pageConfig = definition && definition.config;
     if (!pageConfig || typeof pageConfig !== "object") {
       throw new Error("setData: Invalid page configuration");
@@ -88,10 +88,10 @@
       for (const waiter of flushWaiters) waiter.reject(error);
       flushWaiters.clear();
     };
-    // Writes within one frame's time of the first unsent write go together. The window
-    // starts at that first write and is never pushed back, so a steady stream still
-    // reaches the View once a frame.
-    const BATCH_WINDOW = 16;
+    // Writes of one Logic task go together. A GPU View paces its own frames and keeps only
+    // the newest state, so they leave when the task ends; a WebView applies each batch to its
+    // DOM, so writes within 16 ms of the first unsent one wait and leave together.
+    const BATCH_DELAY = gpu ? 0 : 16;
 
     // A listener that throws is the page's bug: report it, never let it cut
     // the runtime's own teardown short. Aborting twice is a no-op.
@@ -134,7 +134,7 @@
       }
 
       if (updateTimer === null) {
-        updateTimer = setTimer(submitPending, BATCH_WINDOW);
+        updateTimer = setTimer(submitPending, BATCH_DELAY);
       }
     };
 
@@ -187,7 +187,7 @@
           }
           resolve();
         });
-        // Submit now rather than at the end of the batch window.
+        // Submit now rather than when the batch would leave.
         clearTimer(updateTimer);
         submitPending();
       });
@@ -241,6 +241,7 @@
     pagePath,
     definitionPath,
     pageInstanceId,
+    gpu,
   ) {
     const resolvedDefinitionPath = definitionPath || pagePath;
     const definition = pageDefinitions.get(resolvedDefinitionPath);
@@ -249,7 +250,7 @@
     }
     // The route is the configured page path, not the renderer's file.
     definition.config.route = pagePath.replace(/\.[^./]+$/, "");
-    return createPageInstance(definition, pagePath, pageInstanceId);
+    return createPageInstance(definition, pagePath, pageInstanceId, gpu === true);
   };
 })();
 

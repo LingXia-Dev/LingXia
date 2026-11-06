@@ -2028,6 +2028,7 @@ impl PageSvc {
         let lxapp = LxApp::from_ctx(ctx)?;
         let definition_path =
             crate::resolve_page_path(&lxapp, path).unwrap_or_else(|| path.to_string());
+        let gpu = lxapp.config().renderer == crate::PageRenderer::Gpu;
 
         let create_page = ctx
             .global()
@@ -2043,6 +2044,7 @@ impl PageSvc {
                     path.to_string(),
                     definition_path,
                     page_instance_id.unwrap_or_default().to_string(),
+                    gpu,
                 ),
             )
             .map_err(|e: RongJSError| e.into_host_in(ctx))
@@ -2365,46 +2367,51 @@ mod tests {
         Ok(())
     }
 
-    /// A steady setData stream reaches the View once per batch window: later writes join
-    /// the pending batch instead of pushing it back, so writes faster than the window
-    /// (an awaited loop writing every frame) never starve the View.
+    /// A GPU page's writes of one Logic task leave together when it ends; a WebView page's
+    /// wait up to 16 ms after the first unsent write and leave as one batch.
     #[test]
-    fn a_steady_set_data_stream_sends_one_batch_per_window() -> JSResult<()> {
+    fn set_data_batches_per_task_on_gpu_pages_and_per_window_on_webview_pages() -> JSResult<()> {
         use rong::{JSEngine, RongJS};
-        let runtime = RongJS::runtime();
-        let ctx = runtime.context();
-        ctx.eval::<()>(Source::from_bytes(
-            "globalThis.__sent = 0; globalThis.PageSvc = class { constructor() {} _setData(ops, done) { __sent++; done(); } };",
-        ))?;
-        ctx.eval::<()>(Source::from_bytes(include_str!("scripts/Page.js")))?;
-        rong_modules::init(&ctx, ["event", "exception", "abort", "console"])
-            .expect("Logic modules");
-        // A clock the test advances: timers fire once their due time passes.
-        ctx.eval::<()>(Source::from_bytes(
-            r#"
-            globalThis.__now = 0; globalThis.__timers = new Map(); globalThis.__next = 0;
-            globalThis.setTimeout = (fn, delay) => { __timers.set(++__next, { fn, due: __now + delay }); return __next; };
-            globalThis.clearTimeout = (id) => { __timers.delete(id); };
-            globalThis.__advance = (ms) => {
-              __now += ms;
-              for (const [id, timer] of [...__timers]) if (timer.due <= __now) { __timers.delete(id); timer.fn(); }
-            };
-            "#,
-        ))?;
-        capture_real_timers(&ctx)?;
-        let sent: i32 = ctx.eval(Source::from_bytes(
-            r#"
-            (() => {
-              __registerPage("pages/home", { data: {} });
-              const page = __LX_CREATE_PAGE__("pages/home", null, "p1");
-              // A write every 10 ms for 160 ms, faster than the 16 ms window.
-              for (let tick = 0; tick < 16; tick++) { page.setData({ tick }); __advance(10); }
-              return __sent;
-            })()
-            "#,
-        ))?;
+        let sent = |gpu: bool| -> JSResult<i32> {
+            let runtime = RongJS::runtime();
+            let ctx = runtime.context();
+            ctx.eval::<()>(Source::from_bytes(
+                "globalThis.__sent = 0; globalThis.PageSvc = class { constructor() {} _setData(ops, done) { __sent++; done(); } };",
+            ))?;
+            ctx.eval::<()>(Source::from_bytes(include_str!("scripts/Page.js")))?;
+            rong_modules::init(&ctx, ["event", "exception", "abort", "console"])
+                .expect("Logic modules");
+            // A clock the test advances: timers fire once their due time passes.
+            ctx.eval::<()>(Source::from_bytes(
+                r#"
+                globalThis.__now = 0; globalThis.__timers = new Map(); globalThis.__next = 0;
+                globalThis.setTimeout = (fn, delay) => { __timers.set(++__next, { fn, due: __now + delay }); return __next; };
+                globalThis.clearTimeout = (id) => { __timers.delete(id); };
+                globalThis.__advance = (ms) => {
+                  __now += ms;
+                  for (const [id, timer] of [...__timers]) if (timer.due <= __now) { __timers.delete(id); timer.fn(); }
+                };
+                "#,
+            ))?;
+            capture_real_timers(&ctx)?;
+            ctx.eval(Source::from_bytes(format!(
+                r#"
+                (() => {{
+                  __registerPage("pages/home", {{ data: {{}} }});
+                  const page = __LX_CREATE_PAGE__("pages/home", null, "p1", {gpu});
+                  // Three writes per task, a task every 10 ms for 160 ms.
+                  for (let tick = 0; tick < 16; tick++) {{
+                    page.setData({{ tick }}); page.setData({{ other: tick }}); page.setData({{ tick: tick + 1 }});
+                    __advance(10);
+                  }}
+                  return __sent;
+                }})()
+                "#
+            )))
+        };
+        assert_eq!(sent(true)?, 16, "GPU: one batch per task in 160 ms");
         // The window fires at the first 10 ms step past 16 ms: every 20 ms, eight times.
-        assert_eq!(sent, 8, "batches that reached the View in 160 ms");
+        assert_eq!(sent(false)?, 8, "WebView: one batch per window in 160 ms");
         Ok(())
     }
 
