@@ -56,6 +56,8 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   `useChannel(name, action, { params, onData? })` take `view.actions` references.
   Errors are `{ code, message }`; reloads keep old values (`stale`). `useLeaveGuard(name, { enabled })`.
 - Lists: `<List items getKey renderItem />`; hooks inside rows need stable keys.
+- A component re-runs only when its props, the `useLocal` cells it reads or the environment change, so render must read
+  nothing else; one that reads `Date`, `Math.random` or a module `let` re-runs every render.
 - Scroll snap: `snap-x`/`snap-y` on a `<scroll>` or `<List>`, `snap-start|center|end` on children; every snap is mandatory.
   Pager: `<scroll bind={page} className="overflow-x-auto snap-x snap-always">`; a flick stops one page on, `bind` is the resting page, two-way.
 - `drag="x|y" dragSnapPoints={[0, 120, '50%']}` (≤8, px or % of its own size; `x` mirrors in RTL) lets the

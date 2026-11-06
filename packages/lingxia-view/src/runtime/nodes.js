@@ -6,6 +6,8 @@ export const brand = Symbol('ui candidate');
 
 export function resetArena() { arena = []; epoch++; }
 export function clearArena() { arena = []; }
+/** The current render's records; a memo record keeps the one its props point into. */
+export const currentArena = () => arena;
 
 /** `[tag, props, children, location]` of a handle from the current render. */
 export function readNode(node) {

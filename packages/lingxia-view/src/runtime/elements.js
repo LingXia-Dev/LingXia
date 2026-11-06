@@ -12,6 +12,7 @@ import * as check from './validate.js';
 import { defaultSeries } from '../style/color.js';
 import { keyPositions } from './keys.js';
 import { expand, invokerHandler, popoverScope, dragClose, scrimMark } from './toplayer.js';
+import { recall, enter, leave, remember } from './memo.js';
 
 const common = new Set(commonProps);
 const semanticStates = { pressed: 'statePressed', selected: 'stateSelected', expanded: 'stateExpanded', busy: 'stateBusy' };
@@ -40,6 +41,8 @@ function componentId(tag) {
 const handle = () => nextHandle++;
 /** Handles issued so far: a row that issued none holds no callback. */
 export const handlesIssued = () => nextHandle;
+/** Marks callbacks as issued without issuing one: a recalled subtree carries its own. */
+export const skipHandle = () => { nextHandle++; };
 const callbackOf = (callback, kind = 'void', isolated = false) => ({ callback, kind, isolated });
 
 const dataProp = /^data-[a-z][a-z0-9-]*$/;
@@ -196,10 +199,19 @@ export function resolveNode(node, identity, depth = 0, parent = {}) {
   // Where a render that never returns was, for UI_TIMEOUT.
   if (location) render.site = `${typeof tag === 'function' ? tag.name || '<anonymous>' : `<${tag}>`} (${location})`;
   if (typeof tag === 'function') {
-    const previous = render.scope;
-    render.scope = `${identity}/component:${componentId(tag)}`;
+    const previous = render.scope, scope = `${identity}/component:${componentId(tag)}`;
+    render.scope = scope;
     const supplied = children.length === 0 ? undefined : children.length === 1 ? children[0] : children;
-    try { return resolveNode(tag({ ...original, children: supplied }), render.scope, depth + 1, parent); }
+    try {
+      const recalled = recall(scope, tag, original, children, parent);
+      if (recalled !== undefined) return recalled;
+      const frame = enter(scope);
+      let result;
+      try { result = resolveNode(tag({ ...original, children: supplied }), scope, depth + 1, parent); }
+      finally { leave(frame); }
+      remember(frame, tag, original, children, parent, result);
+      return result;
+    }
     catch (error) { throw located(error, `${tag.name || '<anonymous>'}${location ? ` (${location})` : ''}`); }
     finally { render.scope = previous; }
   }
@@ -447,6 +459,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   if (tag === 'list') {
     check.listKeys(props);
     result.list = listState(props, identity);
+    render.lists++;
   } else if (runs) {
     // Nested spans flatten into one run list; inner runs layer over the outer span's style.
     const extra = tag === 'span' || tag === 'link' ? style.author : undefined;

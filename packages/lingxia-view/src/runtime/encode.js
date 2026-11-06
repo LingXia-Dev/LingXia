@@ -32,15 +32,56 @@ export function retainCells(cells) {
 
 const initialWindow = count => ({ start: 0, end: Math.min(1, count), leading: 0, trailing: Math.max(0, count - 1) * 64 });
 
+// Encoded subtrees by resolved node. Resolved nodes do not change, so a node a later render
+// reuses (a recalled component, a cached row) copies its encoding instead of writing it again.
+const slices = new WeakMap();
+/** Nodes worth keeping an encoding for: what a later render is likely to reuse whole. */
+export const sliceable = new WeakSet();
+
 /** The flat wire buffer of a resolved tree; list rows render for the requested windows. */
 export function encodeTree(tree, windows) {
   const { candidate } = render;
   const output = []; let count = 0, plotWork = 0, animationBytes = 0, itemKeyBytes = 0, dataBytes = 0;
+  // Header offsets, registered callbacks, lists written and the deepest level, for cutting slices.
+  const heads = [], handled = []; let lists = 0, deepest = 0;
+  const paste = (slice, parent, depth) => {
+    if (depth + slice.depth > limits.depth || (count += slice.nodes) > limits.nodes) throw Error('UI_LIMIT: candidate too large');
+    if ((plotWork += slice.plotWork) > 16384) throw Error('UI_LIMIT: plot geometry budget exceeded');
+    if ((animationBytes += slice.animationBytes) > limits.animationBytes) throw Error('UI_ANIMATION: page payload budget exceeded');
+    if ((dataBytes += slice.dataBytes) > limits.dataAttributeBytes) throw Error('UI_PROP: data-* page budget exceeded');
+    for (let i = 0; i < slice.handlers.length; i++) { const entry = slice.handlers[i]; candidate.callbacks.set(entry[0], entry[1]); handled.push(entry); }
+    const base = output.length, values = slice.values;
+    for (let i = 0; i < values.length; i++) output.push(values[i]);
+    output[base + 1] = parent;
+    for (let i = 0; i < slice.heads.length; i++) {
+      const at = slice.heads[i];
+      if (at) output[base + at + 1] += base;
+      heads.push(base + at);
+    }
+    deepest = Math.max(deepest, depth + slice.depth);
+  };
   const write = (node, parent, depth) => {
+    const slice = slices.get(node);
+    if (slice) return paste(slice, parent, depth);
+    if (!sliceable.has(node)) return writeNode(node, parent, depth);
+    const index = output.length, mark = { heads: heads.length, handled: handled.length, lists, deepest, count, plotWork, animationBytes, dataBytes };
+    deepest = depth;
+    writeNode(node, parent, depth);
+    if (lists === mark.lists) {
+      const values = output.slice(index), at = heads.slice(mark.heads).map(head => head - index);
+      for (let i = 1; i < at.length; i++) values[at[i] + 1] -= index;
+      slices.set(node, { values, heads: at, handlers: handled.slice(mark.handled), depth: deepest - depth, nodes: count - mark.count,
+        plotWork: plotWork - mark.plotWork, animationBytes: animationBytes - mark.animationBytes, dataBytes: dataBytes - mark.dataBytes });
+    }
+    deepest = Math.max(deepest, mark.deepest);
+  };
+  const writeNode = (node, parent, depth) => {
     if (depth > limits.depth || ++count > limits.nodes) throw Error('UI_LIMIT: candidate too large');
+    deepest = Math.max(deepest, depth);
     const { tag, props, identity, fields, states, wire, handlers } = node;
     // Field pairs go straight after the node's header; its pair count is filled in last.
     const index = output.length;
+    heads.push(index);
     output.push(tags[tag], parent, props.key ?? '', props.testId ?? '', node.text, 0);
     const start = output.length;
     for (const key in fields) {
@@ -66,7 +107,7 @@ export function encodeTree(tree, windows) {
     }
     for (let i = 0; i < handlers.length; i++) {
       const handler = handlers[i];
-      candidate.callbacks.set(handler[1], handler[2]); output.push(field[handler[0]], handler[1]);
+      candidate.callbacks.set(handler[1], handler[2]); handled.push([handler[1], handler[2]]); output.push(field[handler[0]], handler[1]);
     }
     if (node.plotWork) {
       plotWork += node.plotWork;
@@ -76,6 +117,7 @@ export function encodeTree(tree, windows) {
     if (node.slot !== undefined) output.push(field.childSlot, node.slot);
     let window, seededAnchor = false;
     if (node.list) {
+      lists++;
       window = windows[identity] ?? node.list.window ?? initialWindow(props.count);
       if (!Number.isSafeInteger(window.start) || !Number.isSafeInteger(window.end) || window.start < 0 ||
           window.end < window.start || window.end > Math.max(props.count, node.list.previousCount) ||
@@ -131,21 +173,27 @@ function writeRows(node, window, index, depth, write) {
       let row = node.list.cache.get(i), key = node.list.states.get(i)?.key;
       if (!row) {
         const { candidate } = render, handles = handlesIssued(), declarations = candidate.declarations.size, resources = candidate.resources.size;
+        const reads = render.cellReads;
         render.readsView = false;
         ({ row, key } = renderRow(node, i, cells, depth));
-        // Reusable in a later render only if it holds no state, callback or resource and read no View.
-        const pure = cells.size === 0 && !render.readsView && handlesIssued() === handles &&
+        // Reusable in a later render only if it holds no state, callback or resource and read no state or View.
+        const pure = cells.size === 0 && !render.readsView && handlesIssued() === handles && render.cellReads === reads &&
           candidate.declarations.size === declarations && candidate.resources.size === resources;
         if (pure) node.list.pure.add(i); else node.list.pure.delete(i);
       } else { row = copyTree(row); retainCells(node.list.states.get(i).locals); }
       if (visibleKeys.has(key)) throw Error('UI_KEY: duplicate list row');
       visibleKeys.add(key);
+      sliceable.add(row);
       write(row, index, depth + 1);
       node.list.cache.set(i, row);
       node.list.states.set(i, { key, locals: cells });
     } finally { render.collectors.pop(); }
   }
-  for (const state of node.list.states.values()) retainCells(state.locals);
+  // Rows outside the window keep an entry only for state to come back to.
+  for (const [i, state] of node.list.states) {
+    if (state.locals.size) retainCells(state.locals);
+    else if (i < window.start || i >= window.end) node.list.states.delete(i);
+  }
 }
 
 export function renderRow(node, i, cells, depth) {

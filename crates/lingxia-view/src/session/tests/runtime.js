@@ -45,7 +45,20 @@
   });
 
   // src/runtime/state.js
-  var render = { active: false, candidate: null, scope: null, view: null, lookupLocals: null, collectors: [], site: null };
+  var render = {
+    active: false,
+    candidate: null,
+    scope: null,
+    view: null,
+    lookupLocals: null,
+    collectors: [],
+    site: null,
+    // Memo: committed subtrees to recall, open component frames, and counters subtrees compare.
+    recall: null,
+    frames: [],
+    lists: 0,
+    cellReads: 0
+  };
   var page = { committed: null, locals: /* @__PURE__ */ new Map(), callbacks: /* @__PURE__ */ new Map(), updates: /* @__PURE__ */ new Map(), resources: /* @__PURE__ */ new Map() };
   function outsideRender(what) {
     if (render.active) throw Error(`UI_RENDER: ${what} during render`);
@@ -62,6 +75,7 @@
   function clearArena() {
     arena = [];
   }
+  var currentArena = () => arena;
   function readNode(node) {
     const ref = node[brand], offset = ref[1];
     if (ref[0] !== epoch || !arena[offset]) throw Error("UI_STALE: candidate from another render");
@@ -125,6 +139,31 @@
       return Object.freeze(Object.fromEntries(Object.entries(value).filter(([, v]) => !omitUndefined || v !== void 0).map(([k, v]) => [k, immutable(v, depth + 1, omitUndefined)])));
     }
     throw Error("UI_LOCAL: expected JSON value");
+  }
+  function shared(value, previous, depth = 0) {
+    if (depth > 64) throw Error("UI_LOCAL: value too deep");
+    if (previous === void 0 || value === null || typeof value !== "object") return immutable(value, depth);
+    if (Array.isArray(value)) {
+      const old2 = Array.isArray(previous) ? previous : [];
+      let same3 = old2.length === value.length;
+      const next = value.map((v, i) => {
+        const item = shared(v, old2[i], depth + 1);
+        same3 && (same3 = item === old2[i]);
+        return item;
+      });
+      return same3 ? previous : Object.freeze(next);
+    }
+    if (Object.getPrototypeOf(value) !== Object.prototype) return immutable(value, depth);
+    const old = previous && typeof previous === "object" && Object.getPrototypeOf(previous) === Object.prototype ? previous : null;
+    const entries2 = [];
+    let same2 = old !== null;
+    for (const key of Object.keys(value)) {
+      const had = old !== null && Object.prototype.hasOwnProperty.call(old, key);
+      const item = shared(value[key], had ? old[key] : void 0, depth + 1);
+      entries2.push([key, item]);
+      same2 && (same2 = had && item === old[key]);
+    }
+    return same2 && entries2.length === Object.keys(old).length ? old : Object.freeze(Object.fromEntries(entries2));
   }
   function utf8Bytes(value, limit) {
     if (value.length > limit) return Infinity;
@@ -1047,8 +1086,8 @@
         const position = ["top", "bottom"].includes(params.position) ? params.position : "center";
         const mask = params.mask === true;
         const duration = Number.isFinite(params.duration) ? Math.max(0, Math.min(params.duration, 6e5)) : 1500;
-        const same = toast && toast.icon === icon && toast.position === position && toast.mask === mask;
-        toast = { token: nextToken++, title: text(params.title), icon, position, mask, key: same ? toast.key : nextToken };
+        const same2 = toast && toast.icon === icon && toast.position === position && toast.mask === mask;
+        toast = { token: nextToken++, title: text(params.title), icon, position, mask, key: same2 ? toast.key : nextToken };
         if (duration > 0) timers.push([toast.token, Math.round(duration)]);
         replies.push(reply(id, true, null));
         changed2 = true;
@@ -1276,10 +1315,10 @@
     );
   }
   function decorateOverlay(node, env) {
-    const enter = lowerStyle("column", { opacity: 0, scale: [0.94, 0.94] }, env).fields;
+    const enter2 = lowerStyle("column", { opacity: 0, scale: [0.94, 0.94] }, env).fields;
     const toastEnter = lowerStyle("column", { opacity: 0, scale: [0.8, 0.8] }, env).fields;
     const walk = (item) => {
-      if (["lx-modal", "lx-action-sheet"].includes(item.props?.testId)) item.states = { ...item.states, startingStyle: enter, exitStyle: enter };
+      if (["lx-modal", "lx-action-sheet"].includes(item.props?.testId)) item.states = { ...item.states, startingStyle: enter2, exitStyle: enter2 };
       if (item.props?.testId === "lx-toast") item.states = { ...item.states, startingStyle: toastEnter, exitStyle: toastEnter };
       if (item.props?.testId === "lx-toast-icon" && toast?.icon === "loading") item.fields = { ...item.fields, animation: spin };
       for (const child of item.children ?? []) walk(child);
@@ -1629,13 +1668,13 @@
           snapshot = { ...snapshot, ...patch };
           state.set(snapshot);
         };
-        const decide = (leave) => {
-          if (typeof leave !== "boolean") throw Error("UI_LEAVE: expected boolean answer");
+        const decide = (leave2) => {
+          if (typeof leave2 !== "boolean") throw Error("UI_LEAVE: expected boolean answer");
           const resolve = answer;
           answer = void 0;
           if (!resolve) return;
           update({ pending: null });
-          resolve(leave);
+          resolve(leave2);
         };
         const holder = {
           cancel() {
@@ -2118,255 +2157,6 @@
     };
   }
 
-  // src/runtime/hooks.js
-  var bindings = /* @__PURE__ */ new WeakMap();
-  function cellOf(binding) {
-    return bindings.get(binding);
-  }
-  function local(name, initial, resource = "", order) {
-    if (!render.active || render.scope === null || order === void 0 && (typeof name !== "string" || !name || name.length > 256))
-      throw Error("UI_SCOPE: invalid local state");
-    const { candidate, scope } = render;
-    const key = JSON.stringify(order !== void 0 ? [scope, order] : resource ? [scope, resource, name] : [scope, name]);
-    if (!resource && candidate.declarations.has(key)) throw Error(`UI_LOCAL: duplicate declaration ${JSON.stringify(name)} in ${scope}`);
-    candidate.declarations.add(key);
-    const cell = candidate.locals.get(key) ?? render.lookupLocals?.get(key) ?? page.locals.get(key) ?? { value: immutable(initial, 0, true) };
-    candidate.locals.set(key, cell);
-    for (const collector of render.collectors) collector.set(key, cell);
-    const binding = Object.freeze({
-      get value() {
-        return page.updates.has(cell) ? page.updates.get(cell) : cell.value;
-      },
-      set(value) {
-        outsideRender("state mutation");
-        if (page.locals.get(key) !== cell && render.candidate?.locals.get(key) !== cell)
-          throw Error(`UI_LOCAL: ${JSON.stringify(name)} in ${scope} is no longer mounted`);
-        page.updates.set(cell, immutable(value, 0, true));
-      },
-      focus() {
-        outsideRender("focus");
-        if (page.locals.get(key) !== cell) throw Error(`UI_LOCAL: ${JSON.stringify(name)} in ${scope} is no longer mounted`);
-        cell.focus = (cell.focus ?? 0) + 1;
-        page.updates.set(cell, page.updates.has(cell) ? page.updates.get(cell) : cell.value);
-      }
-    });
-    bindings.set(binding, { key, cell });
-    return binding;
-  }
-  function useLocal(...args) {
-    var _a;
-    if (args.length === 2) return local(args[0], args[1]);
-    if (args.length !== 1) throw Error("UI_LOCAL: useLocal takes (initial) or (name, initial)");
-    if (!render.active || render.scope === null) throw Error("UI_SCOPE: invalid local state");
-    const counts = (_a = render.candidate).localOrder ?? (_a.localOrder = /* @__PURE__ */ new Map());
-    const order = counts.get(render.scope) ?? 0;
-    counts.set(render.scope, order + 1);
-    return local(`#${order}`, args[0], "", order);
-  }
-  function hasLocalUpdates() {
-    return page.updates.size > 0 || page.invalidated === true;
-  }
-  function useView() {
-    if (!render.active) throw Error("UI_SCOPE: useView outside render");
-    render.readsView = true;
-    return render.view;
-  }
-  function pageAction(action, code, mode) {
-    if (action === void 0 && !Object.keys(render.view.actions).length) return void 0;
-    const info = typeof action === "function" ? actionInfo(action) : void 0;
-    if (!info || info.mode !== mode || info.name.includes("."))
-      throw Error(`${code}: expected a ${mode === "stream" ? "streaming" : "unary"} action from view.actions`);
-    return { action, name: info.name };
-  }
-  function own(name, initial, kind, code, create, definition) {
-    const binding = local(name, initial, kind);
-    const { key, cell } = bindings.get(binding);
-    const state = { get value() {
-      return binding.value;
-    }, set(value) {
-      if (page.locals.get(key) === cell || render.candidate?.locals.get(key) === cell) binding.set(value);
-    } };
-    const { candidate } = render;
-    if (candidate.resourceNames.has(cell)) throw Error(`${code}: duplicate resource name`);
-    candidate.resourceNames.add(cell);
-    const resource = page.resources.get(cell) ?? create(state);
-    candidate.resources.set(cell, { resource, definition });
-    return resource;
-  }
-  var guard = (what, fn) => (...args) => {
-    outsideRender(what);
-    return fn(...args);
-  };
-  function useRequest(name, action, ...params) {
-    if (params.length > 1) throw Error("UI_REQUEST: expected at most one JSON payload");
-    const target = pageAction(action, "UI_REQUEST", "call");
-    const payload = params[0] === void 0 ? void 0 : immutable(params[0]);
-    const resource = own(
-      name,
-      { pending: false, stale: false, value: null, error: null },
-      "request",
-      "UI_REQUEST",
-      requestResource,
-      { action: target?.action, params: payload, key: JSON.stringify(payload) }
-    );
-    return Object.freeze({
-      get pending() {
-        return resource.state.pending;
-      },
-      get stale() {
-        return resource.state.stale;
-      },
-      get value() {
-        return resource.state.value;
-      },
-      get error() {
-        return resource.state.error;
-      },
-      reload: guard("request reload", resource.reload)
-    });
-  }
-  function useStream(name, action, options2 = {}) {
-    if (!options2 || typeof options2 !== "object" || options2.onData !== void 0 && typeof options2.onData !== "function")
-      throw Error("UI_STREAM: onData must be a function");
-    const target = pageAction(action, "UI_STREAM", "stream");
-    const resource = own(
-      name,
-      { status: "idle", error: null, result: null },
-      "stream",
-      "UI_STREAM",
-      streamResource,
-      { action: target?.action, onData: options2.onData }
-    );
-    return Object.freeze({
-      get status() {
-        return resource.state.status;
-      },
-      get error() {
-        return resource.state.error;
-      },
-      get result() {
-        return resource.state.result;
-      },
-      start: guard("stream mutation", resource.start),
-      cancel: guard("stream mutation", resource.cancel)
-    });
-  }
-  function useChannel(name, action, options2) {
-    if (!options2 || typeof options2 !== "object" || !("params" in options2) || options2.onData !== void 0 && typeof options2.onData !== "function")
-      throw Error("UI_CHANNEL: expected { params, onData? }");
-    const target = pageAction(action, "UI_CHANNEL", "call");
-    const params = options2.params === void 0 ? void 0 : immutable(options2.params);
-    const resource = own(
-      name,
-      { connecting: false, connected: false, error: null },
-      "channel",
-      "UI_CHANNEL",
-      (state) => channelResource(state, report),
-      { topic: target?.name, params, key: JSON.stringify(params), onData: options2.onData, channels: render.view.channels }
-    );
-    return Object.freeze({
-      get connecting() {
-        return resource.state.connecting;
-      },
-      get connected() {
-        return resource.state.connected;
-      },
-      get error() {
-        return resource.state.error;
-      },
-      connect: guard("channel resource mutation", resource.connect),
-      close: guard("channel resource mutation", resource.close),
-      send: guard("channel resource mutation", resource.send)
-    });
-  }
-  function useLeaveGuard(name, options2) {
-    if (typeof options2?.enabled !== "boolean") throw Error("UI_LEAVE: expected { enabled: boolean }");
-    const resource = own(name, { pending: null, requests: 0, error: null }, "leave", "UI_LEAVE", leaveGuards.resource, { enabled: options2.enabled });
-    return Object.freeze({
-      get pending() {
-        return resource.state.pending;
-      },
-      get requests() {
-        return resource.state.requests;
-      },
-      get error() {
-        return resource.state.error;
-      },
-      answer: guard("leave mutation", resource.answer),
-      request: guard("leave mutation", resource.request)
-    });
-  }
-  var hostContextKeys = /* @__PURE__ */ new Set(["sizeClass", "canDock"]);
-  var hostContextRead = false;
-  var rawEnvs = /* @__PURE__ */ new WeakMap();
-  function createView(data, env) {
-    const { actions: actions2, channels: channels2 } = currentActions();
-    hostContextRead = false;
-    const frozen = immutable(env);
-    const watched = frozen && typeof frozen === "object" ? new Proxy(frozen, {
-      get(target, key, receiver) {
-        if (hostContextKeys.has(key)) hostContextRead = true;
-        return Reflect.get(target, key, receiver);
-      }
-    }) : frozen;
-    const view = Object.freeze({ data: immutable(data), env: watched, actions: actions2, channels: channels2 });
-    rawEnvs.set(view, frozen);
-    return view;
-  }
-  var envOf = (view) => (view && rawEnvs.get(view)) ?? view?.env;
-  var readsHostContext = () => hostContextRead;
-
-  // src/runtime/details.js
-  function Summary({ children }) {
-    return children ?? null;
-  }
-  Summary.__lxid = "@lingxia/view#Summary";
-  var chevron = [{ d: "M9 6l6 6-6 6", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }];
-  function Details({ open, defaultOpen = false, onToggle, className, "data-testid": testId, children }) {
-    if (open !== void 0 && typeof open !== "boolean") throw Error("UI_PROP: open must be boolean");
-    if (onToggle !== void 0 && typeof onToggle !== "function") throw Error("UI_PROP: onToggle");
-    const local2 = useLocal("open", defaultOpen === true);
-    const expanded = open ?? local2.value;
-    const items = childrenToArray(children);
-    const at = items.findIndex((item) => isNode(item) && readNode(item)[0] === Summary);
-    const summary = at < 0 ? null : readNode(items[at]);
-    const label2 = summary ? childrenToArray(summary[2].length ? summary[2] : summary[1].children) : ["Details"];
-    const body = items.filter((_, index) => index !== at);
-    const toggle2 = () => {
-      if (open === void 0) local2.set(!expanded);
-      onToggle?.(!expanded);
-    };
-    return h(
-      "column",
-      { className, "data-testid": testId },
-      h(
-        "button",
-        {
-          "data-testid": testId && `${testId}-summary`,
-          onClick: toggle2,
-          "aria-expanded": expanded,
-          className: summary?.[1].className,
-          style: summary?.[1].className ? void 0 : { backgroundColor: "transparent", color: "text", paddingTop: 8, paddingBottom: 8 }
-        },
-        h(
-          "row",
-          { style: { alignItems: "center", gap: 8 } },
-          h(
-            "vector",
-            {
-              "aria-hidden": true,
-              paths: chevron,
-              style: { width: 16, height: 16, rotate: expanded ? 90 : 0, transition: { properties: ["transform"], durationMs: 150, delayMs: 0, easing: [0.4, 0, 0.2, 1] } }
-            }
-          ),
-          ...label2.map((item) => typeof item === "string" || typeof item === "number" ? h("text", {}, item) : item)
-        )
-      ),
-      expanded && h("column", { "data-testid": testId && `${testId}-body` }, ...body)
-    );
-  }
-  Details.__lxid = "@lingxia/view#Details";
-
   // src/runtime/keys.js
   var parents = /* @__PURE__ */ new WeakMap();
   var checked = /* @__PURE__ */ new WeakMap();
@@ -2622,6 +2412,9 @@
   }
   var handle = () => nextHandle++;
   var handlesIssued = () => nextHandle;
+  var skipHandle = () => {
+    nextHandle++;
+  };
   var callbackOf = (callback, kind = "void", isolated = false) => ({ callback, kind, isolated });
   var dataProp = /^data-[a-z][a-z0-9-]*$/;
   function dataOf(props) {
@@ -2756,11 +2549,21 @@
     const tag = authored === listTag ? "list" : authored;
     if (location) render.site = `${typeof tag === "function" ? tag.name || "<anonymous>" : `<${tag}>`} (${location})`;
     if (typeof tag === "function") {
-      const previous = render.scope;
-      render.scope = `${identity}/component:${componentId(tag)}`;
+      const previous = render.scope, scope = `${identity}/component:${componentId(tag)}`;
+      render.scope = scope;
       const supplied = children.length === 0 ? void 0 : children.length === 1 ? children[0] : children;
       try {
-        return resolveNode(tag({ ...original, children: supplied }), render.scope, depth + 1, parent);
+        const recalled = recall(scope, tag, original, children, parent);
+        if (recalled !== void 0) return recalled;
+        const frame = enter(scope);
+        let result;
+        try {
+          result = resolveNode(tag({ ...original, children: supplied }), scope, depth + 1, parent);
+        } finally {
+          leave(frame);
+        }
+        remember(frame, tag, original, children, parent, result);
+        return result;
       } catch (error) {
         throw located(error, `${tag.name || "<anonymous>"}${location ? ` (${location})` : ""}`);
       } finally {
@@ -3025,6 +2828,7 @@
     if (tag === "list") {
       listKeys(props);
       result.list = listState(props, identity);
+      render.lists++;
     } else if (runs) {
       const extra = tag === "span" || tag === "link" ? style2.author : void 0;
       result.children = flat.flatMap((child, position) => {
@@ -3264,14 +3068,63 @@
     }
   }
   var initialWindow = (count) => ({ start: 0, end: Math.min(1, count), leading: 0, trailing: Math.max(0, count - 1) * 64 });
+  var slices = /* @__PURE__ */ new WeakMap();
+  var sliceable = /* @__PURE__ */ new WeakSet();
   function encodeTree(tree, windows) {
     const { candidate } = render;
     const output = [];
     let count = 0, plotWork = 0, animationBytes = 0, itemKeyBytes = 0, dataBytes = 0;
+    const heads = [], handled = [];
+    let lists = 0, deepest = 0;
+    const paste = (slice, parent, depth) => {
+      if (depth + slice.depth > limits.depth || (count += slice.nodes) > limits.nodes) throw Error("UI_LIMIT: candidate too large");
+      if ((plotWork += slice.plotWork) > 16384) throw Error("UI_LIMIT: plot geometry budget exceeded");
+      if ((animationBytes += slice.animationBytes) > limits.animationBytes) throw Error("UI_ANIMATION: page payload budget exceeded");
+      if ((dataBytes += slice.dataBytes) > limits.dataAttributeBytes) throw Error("UI_PROP: data-* page budget exceeded");
+      for (let i = 0; i < slice.handlers.length; i++) {
+        const entry = slice.handlers[i];
+        candidate.callbacks.set(entry[0], entry[1]);
+        handled.push(entry);
+      }
+      const base = output.length, values = slice.values;
+      for (let i = 0; i < values.length; i++) output.push(values[i]);
+      output[base + 1] = parent;
+      for (let i = 0; i < slice.heads.length; i++) {
+        const at = slice.heads[i];
+        if (at) output[base + at + 1] += base;
+        heads.push(base + at);
+      }
+      deepest = Math.max(deepest, depth + slice.depth);
+    };
     const write = (node, parent, depth) => {
+      const slice = slices.get(node);
+      if (slice) return paste(slice, parent, depth);
+      if (!sliceable.has(node)) return writeNode(node, parent, depth);
+      const index = output.length, mark = { heads: heads.length, handled: handled.length, lists, deepest, count, plotWork, animationBytes, dataBytes };
+      deepest = depth;
+      writeNode(node, parent, depth);
+      if (lists === mark.lists) {
+        const values = output.slice(index), at = heads.slice(mark.heads).map((head) => head - index);
+        for (let i = 1; i < at.length; i++) values[at[i] + 1] -= index;
+        slices.set(node, {
+          values,
+          heads: at,
+          handlers: handled.slice(mark.handled),
+          depth: deepest - depth,
+          nodes: count - mark.count,
+          plotWork: plotWork - mark.plotWork,
+          animationBytes: animationBytes - mark.animationBytes,
+          dataBytes: dataBytes - mark.dataBytes
+        });
+      }
+      deepest = Math.max(deepest, mark.deepest);
+    };
+    const writeNode = (node, parent, depth) => {
       if (depth > limits.depth || ++count > limits.nodes) throw Error("UI_LIMIT: candidate too large");
+      deepest = Math.max(deepest, depth);
       const { tag, props, identity, fields, states: states2, wire, handlers } = node;
       const index = output.length;
+      heads.push(index);
       output.push(tags[tag], parent, props.key ?? "", props.testId ?? "", node.text, 0);
       const start = output.length;
       for (const key in fields) {
@@ -3298,6 +3151,7 @@
       for (let i = 0; i < handlers.length; i++) {
         const handler = handlers[i];
         candidate.callbacks.set(handler[1], handler[2]);
+        handled.push([handler[1], handler[2]]);
         output.push(field[handler[0]], handler[1]);
       }
       if (node.plotWork) {
@@ -3308,6 +3162,7 @@
       if (node.slot !== void 0) output.push(field.childSlot, node.slot);
       let window, seededAnchor = false;
       if (node.list) {
+        lists++;
         window = windows[identity] ?? node.list.window ?? initialWindow(props.count);
         if (!Number.isSafeInteger(window.start) || !Number.isSafeInteger(window.end) || window.start < 0 || window.end < window.start || window.end > Math.max(props.count, node.list.previousCount) || ![window.leading, window.trailing].every((v) => Number.isFinite(v) && v >= 0 && v <= 16384e5)) throw Error("UI_LIST: invalid window");
         if (window.end > props.count) window = initialWindow(props.count);
@@ -3362,9 +3217,10 @@
         let row = node.list.cache.get(i), key = node.list.states.get(i)?.key;
         if (!row) {
           const { candidate } = render, handles = handlesIssued(), declarations = candidate.declarations.size, resources = candidate.resources.size;
+          const reads = render.cellReads;
           render.readsView = false;
           ({ row, key } = renderRow(node, i, cells, depth));
-          const pure = cells.size === 0 && !render.readsView && handlesIssued() === handles && candidate.declarations.size === declarations && candidate.resources.size === resources;
+          const pure = cells.size === 0 && !render.readsView && handlesIssued() === handles && render.cellReads === reads && candidate.declarations.size === declarations && candidate.resources.size === resources;
           if (pure) node.list.pure.add(i);
           else node.list.pure.delete(i);
         } else {
@@ -3373,6 +3229,7 @@
         }
         if (visibleKeys.has(key)) throw Error("UI_KEY: duplicate list row");
         visibleKeys.add(key);
+        sliceable.add(row);
         write(row, index, depth + 1);
         node.list.cache.set(i, row);
         node.list.states.set(i, { key, locals: cells });
@@ -3380,7 +3237,10 @@
         render.collectors.pop();
       }
     }
-    for (const state of node.list.states.values()) retainCells(state.locals);
+    for (const [i, state] of node.list.states) {
+      if (state.locals.size) retainCells(state.locals);
+      else if (i < window.start || i >= window.end) node.list.states.delete(i);
+    }
   }
   function renderRow(node, i, cells, depth) {
     const { props, identity } = node;
@@ -3423,6 +3283,400 @@
       render.scope = previous;
     }
   }
+
+  // src/runtime/memo.js
+  var compareBudget = 256;
+  var stamps = /* @__PURE__ */ new WeakMap();
+  function viewStamp(view) {
+    let stamp = stamps.get(view);
+    if (!stamp) stamps.set(view, stamp = { env: JSON.stringify(envOf(view) ?? null), actions: view?.actions, channels: view?.channels });
+    return stamp;
+  }
+  var sameView = (a, b) => a.env === b.env && a.actions === b.actions && a.channels === b.channels;
+  function same(a, b, old, budget) {
+    if (Object.is(a, b)) return true;
+    if (typeof a !== "object" || typeof b !== "object" || a === null || b === null || --budget.left < 0) return false;
+    const nodeA = brand in a, nodeB = brand in b;
+    if (nodeA || nodeB) {
+      if (!nodeA || !nodeB) return false;
+      const x = currentArena()[a[brand][1]], y = old[b[brand][1]];
+      return Boolean(x && y) && x[0] === y[0] && sameFields(x[1], y[1], old, budget) && same(x[2], y[2], old, budget);
+    }
+    if (Array.isArray(a)) {
+      if (!Array.isArray(b) || a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++) if (!same(a[i], b[i], old, budget)) return false;
+      return true;
+    }
+    if (Object.getPrototypeOf(a) !== Object.prototype || Object.getPrototypeOf(b) !== Object.prototype) return false;
+    return sameFields(a, b, old, budget);
+  }
+  function sameFields(a, b, old, budget) {
+    let count = 0;
+    for (const key in a) {
+      count++;
+      if (!Object.prototype.hasOwnProperty.call(b, key) || !same(a[key], b[key], old, budget)) return false;
+    }
+    for (const key in b) count--;
+    return count === 0;
+  }
+  var contextKeys = ["tag", "direction", "inControl", "inText", "inLink"];
+  function sameContext(a, b, old) {
+    for (let i = 0; i < contextKeys.length; i++) if (a[contextKeys[i]] !== b[contextKeys[i]]) return false;
+    const budget = { left: compareBudget };
+    return same(a.typography, b.typography, old, budget) && same(a.extra, b.extra, old, budget) && same(a.sibling, b.sibling, old, budget) && same(a.popovers, b.popovers, old, budget);
+  }
+  var topLayerSize = () => {
+    const top = render.candidate.topLayer;
+    return top ? top.entries.length + top.popovers.size + top.invokers.length : 0;
+  };
+  function recall(scope, tag, props, children, parent) {
+    const record = render.recall?.get(scope);
+    if (!record || record.tag !== tag || tag.__lxVolatile || !sameView(record.view, viewStamp(render.view))) return void 0;
+    for (const cell of record.reads) if (page.updates.has(cell)) return void 0;
+    for (const cell of record.cells.values()) if (page.updates.has(cell)) return void 0;
+    const budget = { left: compareBudget };
+    if (!sameFields(props, record.props, record.arena, budget) || !same(children, record.children, record.arena, budget) || !sameContext(parent, record.parent, record.arena)) return void 0;
+    const fresh = { ...record, props, children, parent, arena: currentArena(), result: record.lists ? reuse(record.result) : record.result };
+    keep(fresh);
+    const frame = render.frames[render.frames.length - 1];
+    if (frame) {
+      frame.nested.push(fresh);
+      for (const cell of record.reads) frame.reads.add(cell);
+    }
+    for (const [key, cell] of record.cells) {
+      render.candidate.locals.set(key, cell);
+      for (const collector of render.collectors) collector.set(key, cell);
+    }
+    if (record.handles) skipHandle();
+    if (record.lists) render.lists++;
+    return fresh.result;
+  }
+  function reuse(node) {
+    let children = node.children;
+    for (let i = 0; i < children.length; i++) {
+      const child = reuse(node.children[i]);
+      if (child === node.children[i]) continue;
+      if (children === node.children) children = children.slice();
+      children[i] = child;
+    }
+    if (!node.list) return children === node.children ? node : { ...node, children };
+    const { pure } = node.list, cache2 = /* @__PURE__ */ new Map();
+    for (const [i, row] of node.list.cache) if (pure.has(i)) cache2.set(i, row);
+    return { ...node, children, list: {
+      ...node.list,
+      states: new Map(node.list.states),
+      cache: cache2,
+      pure: new Set(cache2.keys()),
+      reusable: null,
+      anchorChanged: false,
+      anchorCache: null
+    } };
+  }
+  function keep(record) {
+    render.candidate.memo.set(record.scope, record);
+    for (const [key, entry] of record.closures) render.candidate.closures?.set(key, entry);
+    for (const nested of record.nested) keep(nested);
+  }
+  function enter(scope) {
+    const frame = { scope, cells: /* @__PURE__ */ new Map(), reads: /* @__PURE__ */ new Set(), view: false, nested: [], closures: [], handles: handlesIssued(), top: topLayerSize(), lists: render.lists };
+    render.frames.push(frame);
+    render.collectors.push(frame.cells);
+    return frame;
+  }
+  function noteRead(cell) {
+    render.cellReads++;
+    const frame = render.frames[render.frames.length - 1];
+    if (frame) frame.reads.add(cell);
+  }
+  function noteView() {
+    const frame = render.frames[render.frames.length - 1];
+    if (frame) frame.view = true;
+  }
+  function leave(frame) {
+    render.frames.splice(render.frames.lastIndexOf(frame), 1);
+    render.collectors.splice(render.collectors.lastIndexOf(frame.cells), 1);
+    const outer = render.frames[render.frames.length - 1];
+    if (outer) {
+      for (const cell of frame.reads) outer.reads.add(cell);
+      outer.view || (outer.view = frame.view);
+    }
+  }
+  function remember(frame, tag, props, children, parent, result) {
+    if (frame.view || result?.fragment || topLayerSize() !== frame.top || !render.candidate.memo) return;
+    const record = {
+      scope: frame.scope,
+      tag,
+      props,
+      children,
+      parent,
+      arena: currentArena(),
+      result,
+      cells: frame.cells,
+      reads: frame.reads,
+      nested: frame.nested,
+      closures: frame.closures,
+      view: viewStamp(render.view),
+      handles: handlesIssued() !== frame.handles,
+      lists: render.lists !== frame.lists
+    };
+    render.candidate.memo.set(frame.scope, record);
+    render.frames[render.frames.length - 1]?.nested.push(record);
+    if (result && !record.lists) sliceable.add(result);
+  }
+
+  // src/runtime/hooks.js
+  var bindings = /* @__PURE__ */ new WeakMap();
+  function cellOf(binding) {
+    return bindings.get(binding);
+  }
+  function local(name, initial, resource = "", order) {
+    if (!render.active || render.scope === null || order === void 0 && (typeof name !== "string" || !name || name.length > 256))
+      throw Error("UI_SCOPE: invalid local state");
+    const { candidate, scope } = render;
+    const key = JSON.stringify(order !== void 0 ? [scope, order] : resource ? [scope, resource, name] : [scope, name]);
+    if (!resource && candidate.declarations.has(key)) throw Error(`UI_LOCAL: duplicate declaration ${JSON.stringify(name)} in ${scope}`);
+    candidate.declarations.add(key);
+    const cell = candidate.locals.get(key) ?? render.lookupLocals?.get(key) ?? page.locals.get(key) ?? { value: immutable(initial, 0, true) };
+    candidate.locals.set(key, cell);
+    for (const collector of render.collectors) collector.set(key, cell);
+    if (cell.binding) return cell.binding;
+    const binding = cell.binding = Object.freeze({
+      get value() {
+        if (render.active) noteRead(cell);
+        return page.updates.has(cell) ? page.updates.get(cell) : cell.value;
+      },
+      set(value) {
+        outsideRender("state mutation");
+        if (page.locals.get(key) !== cell && render.candidate?.locals.get(key) !== cell)
+          throw Error(`UI_LOCAL: ${JSON.stringify(name)} in ${scope} is no longer mounted`);
+        page.updates.set(cell, immutable(value, 0, true));
+      },
+      focus() {
+        outsideRender("focus");
+        if (page.locals.get(key) !== cell) throw Error(`UI_LOCAL: ${JSON.stringify(name)} in ${scope} is no longer mounted`);
+        cell.focus = (cell.focus ?? 0) + 1;
+        page.updates.set(cell, page.updates.has(cell) ? page.updates.get(cell) : cell.value);
+      }
+    });
+    bindings.set(binding, { key, cell });
+    return binding;
+  }
+  function useLocal(...args) {
+    var _a;
+    if (args.length === 2) return local(args[0], args[1]);
+    if (args.length !== 1) throw Error("UI_LOCAL: useLocal takes (initial) or (name, initial)");
+    if (!render.active || render.scope === null) throw Error("UI_SCOPE: invalid local state");
+    const counts = (_a = render.candidate).localOrder ?? (_a.localOrder = /* @__PURE__ */ new Map());
+    const order = counts.get(render.scope) ?? 0;
+    counts.set(render.scope, order + 1);
+    return local(`#${order}`, args[0], "", order);
+  }
+  function hasLocalUpdates() {
+    return page.updates.size > 0 || page.invalidated === true;
+  }
+  function useView() {
+    if (!render.active) throw Error("UI_SCOPE: useView outside render");
+    render.readsView = true;
+    noteView();
+    return render.view;
+  }
+  function pageAction(action, code, mode) {
+    if (action === void 0 && !Object.keys(render.view.actions).length) return void 0;
+    const info = typeof action === "function" ? actionInfo(action) : void 0;
+    if (!info || info.mode !== mode || info.name.includes("."))
+      throw Error(`${code}: expected a ${mode === "stream" ? "streaming" : "unary"} action from view.actions`);
+    return { action, name: info.name };
+  }
+  function own(name, initial, kind, code, create, definition) {
+    const binding = local(name, initial, kind);
+    const { key, cell } = bindings.get(binding);
+    const state = { get value() {
+      return binding.value;
+    }, set(value) {
+      if (page.locals.get(key) === cell || render.candidate?.locals.get(key) === cell) binding.set(value);
+    } };
+    const { candidate } = render;
+    if (candidate.resourceNames.has(cell)) throw Error(`${code}: duplicate resource name`);
+    candidate.resourceNames.add(cell);
+    const resource = page.resources.get(cell) ?? create(state);
+    candidate.resources.set(cell, { resource, definition });
+    return resource;
+  }
+  var guard = (what, fn) => (...args) => {
+    outsideRender(what);
+    return fn(...args);
+  };
+  function useRequest(name, action, ...params) {
+    if (params.length > 1) throw Error("UI_REQUEST: expected at most one JSON payload");
+    const target = pageAction(action, "UI_REQUEST", "call");
+    const payload = params[0] === void 0 ? void 0 : immutable(params[0]);
+    const resource = own(
+      name,
+      { pending: false, stale: false, value: null, error: null },
+      "request",
+      "UI_REQUEST",
+      requestResource,
+      { action: target?.action, params: payload, key: JSON.stringify(payload) }
+    );
+    return Object.freeze({
+      get pending() {
+        return resource.state.pending;
+      },
+      get stale() {
+        return resource.state.stale;
+      },
+      get value() {
+        return resource.state.value;
+      },
+      get error() {
+        return resource.state.error;
+      },
+      reload: guard("request reload", resource.reload)
+    });
+  }
+  function useStream(name, action, options2 = {}) {
+    if (!options2 || typeof options2 !== "object" || options2.onData !== void 0 && typeof options2.onData !== "function")
+      throw Error("UI_STREAM: onData must be a function");
+    const target = pageAction(action, "UI_STREAM", "stream");
+    const resource = own(
+      name,
+      { status: "idle", error: null, result: null },
+      "stream",
+      "UI_STREAM",
+      streamResource,
+      { action: target?.action, onData: options2.onData }
+    );
+    return Object.freeze({
+      get status() {
+        return resource.state.status;
+      },
+      get error() {
+        return resource.state.error;
+      },
+      get result() {
+        return resource.state.result;
+      },
+      start: guard("stream mutation", resource.start),
+      cancel: guard("stream mutation", resource.cancel)
+    });
+  }
+  function useChannel(name, action, options2) {
+    if (!options2 || typeof options2 !== "object" || !("params" in options2) || options2.onData !== void 0 && typeof options2.onData !== "function")
+      throw Error("UI_CHANNEL: expected { params, onData? }");
+    const target = pageAction(action, "UI_CHANNEL", "call");
+    const params = options2.params === void 0 ? void 0 : immutable(options2.params);
+    const resource = own(
+      name,
+      { connecting: false, connected: false, error: null },
+      "channel",
+      "UI_CHANNEL",
+      (state) => channelResource(state, report),
+      { topic: target?.name, params, key: JSON.stringify(params), onData: options2.onData, channels: render.view.channels }
+    );
+    return Object.freeze({
+      get connecting() {
+        return resource.state.connecting;
+      },
+      get connected() {
+        return resource.state.connected;
+      },
+      get error() {
+        return resource.state.error;
+      },
+      connect: guard("channel resource mutation", resource.connect),
+      close: guard("channel resource mutation", resource.close),
+      send: guard("channel resource mutation", resource.send)
+    });
+  }
+  function useLeaveGuard(name, options2) {
+    if (typeof options2?.enabled !== "boolean") throw Error("UI_LEAVE: expected { enabled: boolean }");
+    const resource = own(name, { pending: null, requests: 0, error: null }, "leave", "UI_LEAVE", leaveGuards.resource, { enabled: options2.enabled });
+    return Object.freeze({
+      get pending() {
+        return resource.state.pending;
+      },
+      get requests() {
+        return resource.state.requests;
+      },
+      get error() {
+        return resource.state.error;
+      },
+      answer: guard("leave mutation", resource.answer),
+      request: guard("leave mutation", resource.request)
+    });
+  }
+  var hostContextKeys = /* @__PURE__ */ new Set(["sizeClass", "canDock"]);
+  var hostContextRead = false;
+  var rawEnvs = /* @__PURE__ */ new WeakMap();
+  var lastData;
+  function createView(data, env) {
+    const { actions: actions2, channels: channels2 } = currentActions();
+    hostContextRead = false;
+    const frozen = immutable(env);
+    const watched = frozen && typeof frozen === "object" ? new Proxy(frozen, {
+      get(target, key, receiver) {
+        if (hostContextKeys.has(key)) hostContextRead = true;
+        return Reflect.get(target, key, receiver);
+      }
+    }) : frozen;
+    const view = Object.freeze({ data: shared(data, lastData), env: watched, actions: actions2, channels: channels2 });
+    lastData = view.data;
+    rawEnvs.set(view, frozen);
+    return view;
+  }
+  var envOf = (view) => (view && rawEnvs.get(view)) ?? view?.env;
+  var readsHostContext = () => hostContextRead;
+
+  // src/runtime/details.js
+  function Summary({ children }) {
+    return children ?? null;
+  }
+  Summary.__lxid = "@lingxia/view#Summary";
+  var chevron = [{ d: "M9 6l6 6-6 6", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }];
+  function Details({ open, defaultOpen = false, onToggle, className, "data-testid": testId, children }) {
+    if (open !== void 0 && typeof open !== "boolean") throw Error("UI_PROP: open must be boolean");
+    if (onToggle !== void 0 && typeof onToggle !== "function") throw Error("UI_PROP: onToggle");
+    const local2 = useLocal("open", defaultOpen === true);
+    const expanded = open ?? local2.value;
+    const items = childrenToArray(children);
+    const at = items.findIndex((item) => isNode(item) && readNode(item)[0] === Summary);
+    const summary = at < 0 ? null : readNode(items[at]);
+    const label2 = summary ? childrenToArray(summary[2].length ? summary[2] : summary[1].children) : ["Details"];
+    const body = items.filter((_, index) => index !== at);
+    const toggle2 = () => {
+      if (open === void 0) local2.set(!expanded);
+      onToggle?.(!expanded);
+    };
+    return h(
+      "column",
+      { className, "data-testid": testId },
+      h(
+        "button",
+        {
+          "data-testid": testId && `${testId}-summary`,
+          onClick: toggle2,
+          "aria-expanded": expanded,
+          className: summary?.[1].className,
+          style: summary?.[1].className ? void 0 : { backgroundColor: "transparent", color: "text", paddingTop: 8, paddingBottom: 8 }
+        },
+        h(
+          "row",
+          { style: { alignItems: "center", gap: 8 } },
+          h(
+            "vector",
+            {
+              "aria-hidden": true,
+              paths: chevron,
+              style: { width: 16, height: 16, rotate: expanded ? 90 : 0, transition: { properties: ["transform"], durationMs: 150, delayMs: 0, easing: [0.4, 0, 0.2, 1] } }
+            }
+          ),
+          ...label2.map((item) => typeof item === "string" || typeof item === "number" ? h("text", {}, item) : item)
+        )
+      ),
+      expanded && h("column", { "data-testid": testId && `${testId}-body` }, ...body)
+    );
+  }
+  Details.__lxid = "@lingxia/view#Details";
 
   // src/runtime/frames.js
   var pending = [];
@@ -4126,7 +4380,7 @@
   function List({ items, getKey, renderItem, getItemHeight, ...props }) {
     const itemKeys2 = keysOf(items, getKey);
     const row = (index) => renderItem(items[index], index);
-    if (typeof renderItem?.__lxRow === "string" && !getItemHeight && Object.isFrozen(items)) row.__lxRows = { items, site: renderItem.__lxRow };
+    if (typeof renderItem === "function" && !getItemHeight && Object.isFrozen(items)) row.__lxRows = { items, site: renderItem };
     return h(listTag, {
       ...props,
       count: items.length,
@@ -4136,11 +4390,22 @@
     });
   }
   List.__lxid = "@lingxia/view#List";
-  function runCandidate(view, lookup, build) {
+  function runCandidate(view, lookup, build, recall2 = null) {
     if (render.active) throw Error("UI_RENDER: recursive render");
     resetArena();
-    Object.assign(render, { active: true, view, lookupLocals: lookup });
-    render.candidate = { locals: /* @__PURE__ */ new Map(), declarations: /* @__PURE__ */ new Set(), callbacks: /* @__PURE__ */ new Map(), lists: /* @__PURE__ */ new Map(), resources: /* @__PURE__ */ new Map(), resourceNames: /* @__PURE__ */ new Set(), view };
+    Object.assign(render, { active: true, view, lookupLocals: lookup, recall: recall2?.memo, recallClosures: recall2?.closures });
+    render.candidate = {
+      locals: /* @__PURE__ */ new Map(),
+      declarations: /* @__PURE__ */ new Set(),
+      callbacks: /* @__PURE__ */ new Map(),
+      lists: /* @__PURE__ */ new Map(),
+      resources: /* @__PURE__ */ new Map(),
+      resourceNames: /* @__PURE__ */ new Set(),
+      view,
+      memo: recall2 && /* @__PURE__ */ new Map(),
+      closures: recall2 && /* @__PURE__ */ new Map(),
+      closureCounts: /* @__PURE__ */ new Map()
+    };
     try {
       render.scope = "root";
       return build(render.candidate);
@@ -4149,7 +4414,7 @@
       throw error;
     } finally {
       clearArena();
-      Object.assign(render, { active: false, scope: null, view: null, lookupLocals: null, collectors: [] });
+      Object.assign(render, { active: false, scope: null, view: null, lookupLocals: null, collectors: [], recall: null, recallClosures: null, frames: [] });
     }
   }
   var movedAnchors = "";
@@ -4164,6 +4429,7 @@
       candidate.tree = resolveNode(renderPage(view), "root");
       render.site = null;
       if (!candidate.tree || candidate.tree.fragment) throw Error("UI_ROOT: page must return one layout node");
+      candidate.tree = { ...candidate.tree, children: [...candidate.tree.children] };
       const env = envOf(view), overlay = overlayNode(env);
       if (overlay) candidate.tree.children.push(decorateOverlay(resolveNode(
         overlay,
@@ -4191,7 +4457,7 @@
         return [];
       }
       return encodeTree(candidate.tree, windows);
-    });
+    }, page.committed ?? { memo: /* @__PURE__ */ new Map(), closures: /* @__PURE__ */ new Map() });
   }
   function prepareWindows(windows) {
     const base = render.candidate ?? page.committed;
@@ -4200,10 +4466,12 @@
       candidate.resources = new Map(base.resources);
       candidate.topLayer = base.topLayer;
       candidate.tree = copyTree(base.tree);
+      candidate.memo = new Map(base.memo);
+      candidate.closures = new Map(base.closures);
       candidate.baseLocals = new Map(base.baseLocals);
       retainCells(candidate.baseLocals);
       return encodeTree(candidate.tree, windows);
-    });
+    }, base);
   }
   function commit() {
     const { candidate } = render;

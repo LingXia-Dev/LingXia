@@ -62,7 +62,7 @@ Unknown tags fail the build (`UI_TAG`). Text must be inside `<text>`; a bare str
 | `useEffect` subscriptions, WebSockets | `useChannel`, `useStream` |
 | `useContext` | props, or `useView()` for the page data and environment |
 | `useRef` to a DOM node | none: there are no nodes to hold |
-| `useMemo`, `useCallback`, `memo` | not needed; compute inline |
+| `useMemo`, `useCallback`, `memo` | not needed: a component re-runs only when its props, the cells it reads or the environment change, and closures keep their identity while what they capture is unchanged |
 | `useReducer` | a `useLocal` cell and plain functions |
 | `beforeunload` / router blockers | `useLeaveGuard` |
 

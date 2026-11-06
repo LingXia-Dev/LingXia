@@ -2,7 +2,7 @@ import { build } from 'esbuild';
 import ts from 'typescript';
 import { collectClassUsage } from './class-usage.mjs';
 import { perfWarnings } from './perf.mjs';
-import { markStableRows } from './stable-rows.mjs';
+import { stabilizeClosures, volatileComponent, ownDeclarations } from './stable-closures.mjs';
 import { staticStyleWarnings } from './static-style.mjs';
 import { sourceChecker, moduleChecker, parseSource } from './source.mjs';
 import { moduleBanner } from './compatibility.mjs';
@@ -181,18 +181,24 @@ export function annotate(source, filename, label) {
 export function identify(source, filename, label) {
   const file = parseSource(filename, source);
   const module = label.replace(/\.[jt]sx?$/, '');
-  const names = [];
+  const names = [], volatile = [], moduleNames = ownDeclarations(file);
   for (const statement of file.statements) {
-    if (ts.isFunctionDeclaration(statement) && statement.name && /^[A-Z]/.test(statement.name.text) && statement.body)
+    if (ts.isFunctionDeclaration(statement) && statement.name && /^[A-Z]/.test(statement.name.text) && statement.body) {
       names.push(statement.name.text);
+      if (volatileComponent(statement, moduleNames)) volatile.push(statement.name.text);
+    }
     if (ts.isVariableStatement(statement) && (statement.declarationList.flags & ts.NodeFlags.Const))
       for (const declaration of statement.declarationList.declarations)
         if (ts.isIdentifier(declaration.name) && /^[A-Z]/.test(declaration.name.text) && declaration.initializer &&
-            (ts.isArrowFunction(declaration.initializer) || ts.isFunctionExpression(declaration.initializer)))
+            (ts.isArrowFunction(declaration.initializer) || ts.isFunctionExpression(declaration.initializer))) {
           names.push(declaration.name.text);
+          if (volatileComponent(declaration.initializer, moduleNames)) volatile.push(declaration.name.text);
+        }
   }
   if (!names.length) return source;
-  return `${source}\n${names.map(name => `${name}.__lxid = ${JSON.stringify(`${module}#${name}`)};`).join('\n')}\n`;
+  // A component that reads the clock, randomness or a module `let` re-runs on every render.
+  return `${source}\n${names.map(name => `${name}.__lxid = ${JSON.stringify(`${module}#${name}`)};`).join('\n')}\n` +
+    volatile.map(name => `${name}.__lxVolatile = true;\n`).join('');
 }
 
 function classProblems(rule, name, tag, suggestions) {
@@ -258,7 +264,7 @@ function analyse(path, contents, label, loader, literalColors) {
   collect(file);
   const analysed = {
     contents, file, names, problems: audit(contents, path, { literalColors }),
-    annotated: identify(loader.endsWith('x') ? markStableRows(annotate(contents, path, label), path, label) : contents, path, label),
+    annotated: identify(loader.endsWith('x') ? stabilizeClosures(annotate(contents, path, label), path, label) : contents, path, label),
   };
   analyses.delete(key);
   if (analyses.size >= 512) analyses.delete(analyses.keys().next().value);

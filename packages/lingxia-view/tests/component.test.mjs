@@ -60,8 +60,8 @@ test('a declined candidate keeps pending updates; a rejected one and reset drop 
 test('empty invoked components retain own state and dispose descendants only after commit', () => {
   let visible = true, owner, child;
   function Child() { child = useLocal('value', 'child'); return h('text', {}, child.value); }
-  function Optional() { owner = useLocal('value', 'owner'); return visible ? h(Child) : null; }
-  const render = () => h('column', {}, h(Optional));
+  function Optional({ visible }) { owner = useLocal('value', 'owner'); return visible ? h(Child) : null; }
+  const render = () => h('column', {}, h(Optional, { visible }));
   describe(render, {}); owner.set('kept'); child.set('changed'); describe(render, {});
   visible = false; prepare(render, {}); discard(); visible = true;
   assert.ok(describe(render, {}).includes('changed'));
@@ -78,8 +78,8 @@ test('an empty component keeps its request while removing its descendant request
   configureActions({__names:['load'], __modes:{load:'call'}});
   const view = createView({}, {}); let visible = true;
   function Child() { useRequest('load', view.actions.load, {owner:'child'}); return h('text'); }
-  function Optional() { useRequest('load', view.actions.load, {owner:'parent'}); return visible ? h(Child) : null; }
-  const render = () => h('column', {}, h(Optional));
+  function Optional({ visible }) { useRequest('load', view.actions.load, {owner:'parent'}); return visible ? h(Child) : null; }
+  const render = () => h('column', {}, h(Optional, { visible }));
   describe(render, view); const started = takeActionRequests().map(JSON.parse);
   assert.equal(started.length, 2);
   visible = false; describe(render, view); takeActionRequests();

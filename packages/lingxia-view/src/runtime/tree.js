@@ -17,24 +17,25 @@ import { finishTopLayer, resetTopLayer } from './toplayer.js';
 export function List({ items, getKey, renderItem, getItemHeight, ...props }) {
   const itemKeys = keysOf(items, getKey);
   const row = index => renderItem(items[index], index);
-  // A renderItem the compiler proved pure builds the same rows from the same frozen items.
-  if (typeof renderItem?.__lxRow === 'string' && !getItemHeight && Object.isFrozen(items)) row.__lxRows = { items, site: renderItem.__lxRow };
+  // The same renderItem over the same frozen items builds the same rows, save those that read state.
+  if (typeof renderItem === 'function' && !getItemHeight && Object.isFrozen(items)) row.__lxRows = { items, site: renderItem };
   return h(listTag, { ...props, count: items.length,
     itemKeys, row,
     ...(getItemHeight ? { height: index => getItemHeight(items[index], index) } : {}) });
 }
 List.__lxid = '@lingxia/view#List';
 
-function runCandidate(view, lookup, build) {
+function runCandidate(view, lookup, build, recall = null) {
   if (render.active) throw Error('UI_RENDER: recursive render');
   resetArena();
-  Object.assign(render, { active: true, view, lookupLocals: lookup });
-  render.candidate = { locals: new Map(), declarations: new Set(), callbacks: new Map(), lists: new Map(), resources: new Map(), resourceNames: new Set(), view };
+  Object.assign(render, { active: true, view, lookupLocals: lookup, recall: recall?.memo, recallClosures: recall?.closures });
+  render.candidate = { locals: new Map(), declarations: new Set(), callbacks: new Map(), lists: new Map(), resources: new Map(), resourceNames: new Set(), view,
+    memo: recall && new Map(), closures: recall && new Map(), closureCounts: new Map() };
   try { render.scope = 'root'; return build(render.candidate); }
   // A render that throws reverts to the committed page: every pending update is dropped,
   // not only the one that threw, so state that makes render fail cannot wedge each retry.
   catch (error) { discard(); throw error; }
-  finally { clearArena(); Object.assign(render, { active: false, scope: null, view: null, lookupLocals: null, collectors: [] }); }
+  finally { clearArena(); Object.assign(render, { active: false, scope: null, view: null, lookupLocals: null, collectors: [], recall: null, recallClosures: null, frames: [] }); }
 }
 
 // With `deferAnchors`, a render whose list anchors moved returns no buffer: native picks their
@@ -48,6 +49,8 @@ export function prepare(renderPage, view, windows = {}, deferAnchors = false) {
     candidate.tree = resolveNode(renderPage(view), 'root');
     render.site = null;
     if (!candidate.tree || candidate.tree.fragment) throw Error('UI_ROOT: page must return one layout node');
+    // The root may be a recalled subtree the committed page shares; layers go into a copy.
+    candidate.tree = { ...candidate.tree, children: [...candidate.tree.children] };
     // Logic-requested feedback (toast, modal, action sheet) draws above the page's own children.
     const env = envOf(view), overlay = overlayNode(env);
     if (overlay) candidate.tree.children.push(decorateOverlay(resolveNode(overlay, `root/${candidate.tree.element}/key:"lx-overlay"`, 1,
@@ -70,7 +73,7 @@ export function prepare(renderPage, view, windows = {}, deferAnchors = false) {
       return [];
     }
     return encodeTree(candidate.tree, windows);
-  });
+  }, page.committed ?? { memo: new Map(), closures: new Map() });
 }
 
 // Native may refine an uncommitted first window after measuring it. The page render
@@ -82,10 +85,12 @@ export function prepareWindows(windows) {
     candidate.resources = new Map(base.resources);
     candidate.topLayer = base.topLayer;
     candidate.tree = copyTree(base.tree);
+    candidate.memo = new Map(base.memo);
+    candidate.closures = new Map(base.closures);
     candidate.baseLocals = new Map(base.baseLocals);
     retainCells(candidate.baseLocals);
     return encodeTree(candidate.tree, windows);
-  });
+  }, base);
 }
 
 export function commit() {

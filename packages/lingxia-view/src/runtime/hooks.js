@@ -1,8 +1,9 @@
-import { immutable } from './data.js';
+import { immutable, shared } from './data.js';
 import { render, page, outsideRender } from './state.js';
 import { actionInfo, currentActions, leaveGuards, report } from './actions.js';
 import { streamResource, requestResource } from './resources.js';
 import { channelResource } from './channel-resource.js';
+import { noteRead, noteView } from './memo.js';
 
 const bindings = new WeakMap();
 
@@ -20,8 +21,13 @@ function local(name, initial, resource = '', order) {
   const cell = candidate.locals.get(key) ?? render.lookupLocals?.get(key) ?? page.locals.get(key) ?? { value: immutable(initial, 0, true) };
   candidate.locals.set(key, cell);
   for (const collector of render.collectors) collector.set(key, cell);
-  const binding = Object.freeze({
-    get value() { return page.updates.has(cell) ? page.updates.get(cell) : cell.value; },
+  // One binding per cell, so a closure that captured it stays equal across renders.
+  if (cell.binding) return cell.binding;
+  const binding = cell.binding = Object.freeze({
+    get value() {
+      if (render.active) noteRead(cell);
+      return page.updates.has(cell) ? page.updates.get(cell) : cell.value;
+    },
     set(value) {
       outsideRender('state mutation');
       // A cell of the prepared candidate takes the value when that candidate commits.
@@ -56,6 +62,7 @@ export function hasLocalUpdates() { return page.updates.size > 0 || page.invalid
 export function useView() {
   if (!render.active) throw Error('UI_SCOPE: useView outside render');
   render.readsView = true;
+  noteView();
   return render.view;
 }
 
@@ -147,6 +154,8 @@ export function useLeaveGuard(name, options) {
 const hostContextKeys = new Set(['sizeClass', 'canDock']);
 let hostContextRead = false;
 const rawEnvs = new WeakMap();
+// The data the last view froze: a new one shares its unchanged parts.
+let lastData;
 
 export function createView(data, env) {
   const { actions, channels } = currentActions();
@@ -158,7 +167,8 @@ export function createView(data, env) {
       return Reflect.get(target, key, receiver);
     },
   }) : frozen;
-  const view = Object.freeze({ data: immutable(data), env: watched, actions, channels });
+  const view = Object.freeze({ data: shared(data, lastData), env: watched, actions, channels });
+  lastData = view.data;
   rawEnvs.set(view, frozen);
   return view;
 }

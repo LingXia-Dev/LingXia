@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { audit, buildPages, identify } from '../compiler/index.mjs';
 import { moduleBanner } from '../compiler/compatibility.mjs';
-import { markStableRows } from '../compiler/stable-rows.mjs';
+import { stabilizeClosures } from '../compiler/stable-closures.mjs';
 import { runInNewContext } from 'node:vm';
 import { maxField } from '../src/generated/wire.js';
 import { tree, decode } from './support/wire.mjs';
@@ -466,20 +466,27 @@ test('a pressable control around a single control fails the build; controls besi
   clean('export function render(){ return <button onClick={() => {}}><row><text>Wi-Fi</text><switch value={true} onChange={() => {}} aria-label="Wi-Fi" /></row></button>; }');
 });
 
-test('a renderItem reading only its arguments and module constants is marked reusable', () => {
+test('closures a render hands on keep their identity while their captures are unchanged', () => {
   const source = `import { List } from '@lingxia/view';
 const label = (i: number) => String(i);
 let mutable = 1;
 export function render({ data }) {
   const local = data.n;
+  let count = 0; count++;
+  const run = () => local;
+  const self = () => self();
   return <column>
     <List items={a} getKey={String} renderItem={i => <text>{label(i) + Math.max(i, 0)}</text>} />
     <List items={a} getKey={String} renderItem={i => <text>{String(local)}</text>} />
     <List items={a} getKey={String} renderItem={i => <text>{String(mutable)}</text>} />
     <List items={a} getKey={String} renderItem={function (i) { return <text>{String(this)}</text>; }} />
+    <button onClick={data.ok ? () => count : run}>Go</button>
   </column>;
 }`;
-  const out = markStableRows(source, 'pages/a/index.tsx', 'pages/a/index.tsx');
-  assert.equal(out.match(/__lxRow/g)?.length, 1);
-  assert.match(out, /renderItem=\{Object\.assign\(i => <text>\{label\(i\)/);
+  const out = stabilizeClosures(source, 'pages/a/index.tsx', 'pages/a/index.tsx');
+  const wrapped = [...out.matchAll(/__lxFn\("[^"]+", \((.*?)\), \[([^\]]*)\]\)/g)].map(m => [m[1].slice(0, 12), m[2]]);
+  assert.deepEqual(wrapped, [['() => local', 'local'], ['i => <text>{', ''], ['i => <text>{', 'local'], ['i => <text>{', 'mutable']]);
+  assert.match(out, /renderItem=\{function \(i\)/, 'this: identity cannot stand for it');
+  assert.match(out, /const self = \(\) => self\(\)/, 'a capture not yet initialised');
+  assert.match(out, /data\.ok \? \(\) => count : run/, 'a reassigned capture');
 });
