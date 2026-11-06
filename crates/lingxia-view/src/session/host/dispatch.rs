@@ -9,6 +9,28 @@ use std::sync::Arc;
 
 type Activation = Box<dyn FnOnce(&mut ViewSession) -> Result<bool, String> + Send>;
 
+/// What one queued input did: the clicks it ran and whether the View changed.
+type Ran = Option<Result<(Vec<crate::session::ClickRecord>, bool), String>>;
+
+/// Main-thread follow-up of one queued input; `rendered` when the frame that ran it
+/// already shows its change.
+type Done<A> = Box<dyn FnOnce(&Arc<Inner<A>>, Ran, bool) + Send>;
+
+/// Input waiting for the worker.
+pub(super) struct Queued<A: PlatformAdapter> {
+    page: PageTicket,
+    run: Activation,
+    done: Done<A>,
+}
+
+/// Queued input a worker job ran, for the main thread.
+pub(super) struct InputRun<A: PlatformAdapter> {
+    ran: Vec<(Done<A>, Ran)>,
+    /// Some input changed the View.
+    pub(super) changed: bool,
+    update: Result<super::bridge::Drained, String>,
+}
+
 impl<A: PlatformAdapter> Inner<A> {
     /// Run host-owned effects and hand the rest to the adapter, in order.
     pub(super) fn deliver(self: &Arc<Self>, mut effects: Vec<Effect>) {
@@ -130,14 +152,12 @@ impl<A: PlatformAdapter> Inner<A> {
         );
     }
 
-    /// Run queued activations against the frame the core resolved them on.
-    fn drain_dispatch(self: &Arc<Self>) {
+    /// Resolve activations against the presented frame and queue them for the worker at
+    /// once, also while a frame is in flight: input never waits for an idle moment.
+    pub(super) fn drain_dispatch(self: &Arc<Self>) {
         let (dispatches, dropped, snapshot) = {
             let mut main = self.main();
-            if main.busy && !main.disposed {
-                main.yield_to_input();
-            }
-            if main.busy || main.disposed {
+            if main.disposed {
                 return;
             }
             let dispatches = main.interaction.take_dispatch();
@@ -345,22 +365,14 @@ impl<A: PlatformAdapter> Inner<A> {
             main.activating += 1;
             main.act_call.take()
         };
-        self.work(
-            Guard::Page(page),
-            move |inner, session| {
-                let changed = activation(session)
-                    .and_then(|changed| Ok(session.apply_picker_results()? || changed));
-                let clicks = session.take_clicks();
-                if !changed? {
-                    return Ok((clicks, None));
-                }
-                Ok((clicks, Some(inner.drained(session)?)))
-            },
-            move |inner, result| {
+        self.queue_input(
+            page,
+            activation,
+            Box::new(move |inner, result, rendered| {
                 inner.main().activating -= 1;
                 let mut dropped = None;
                 let result = result.map(|result| {
-                    result.map(|(clicks, drained)| {
+                    result.map(|(clicks, changed)| {
                         for click in clicks {
                             dropped = dropped.or(match click.outcome {
                                 Ok(false) => Some("its callback is no longer registered"),
@@ -369,7 +381,7 @@ impl<A: PlatformAdapter> Inner<A> {
                             });
                             inner.report_click(page, &identity, &click);
                         }
-                        drained
+                        changed
                     })
                 });
                 if let Some((call, css)) = act {
@@ -383,9 +395,115 @@ impl<A: PlatformAdapter> Inner<A> {
                         *slot = Some(outcome);
                     }
                 }
-                inner.activated(page, announce, result)
+                inner.activated(page, announce, result, rendered)
+            }),
+        );
+    }
+
+    /// Queue input for the worker; the next job of this page runs it before anything else.
+    fn queue_input(self: &Arc<Self>, page: PageTicket, run: Activation, done: Done<A>) {
+        self.input
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .push_back(Queued { page, run, done });
+        {
+            // Two frames drawn before this input would only delay it; a fresh one replaces
+            // both, as the session builds ahead only on a frame that will present.
+            let mut main = self.main();
+            main.input_seq += 1;
+            if main.next_prepared.take().is_some() {
+                main.prepared = None;
+                main.dirty = true;
+            }
+        }
+        // A frame starting now runs the input first; this job runs it if no frame did.
+        self.schedule();
+        self.work(
+            Guard::Page(page),
+            |inner, session| Ok(inner.run_input(session)),
+            move |inner, result| match result {
+                Some(Ok(run)) => inner.input_ran(run, false),
+                Some(Err(error)) => {
+                    inner.abandon_input(false);
+                    if inner.lifecycle.is_current_page(page) {
+                        inner.fail(error);
+                    }
+                }
+                None => inner.abandon_input(true),
             },
         );
+    }
+
+    /// Run queued input against `session`, oldest first. Worker only.
+    pub(super) fn run_input(self: &Arc<Self>, session: &mut ViewSession) -> InputRun<A> {
+        let queued: Vec<_> = self
+            .input
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .drain(..)
+            .collect();
+        let mut changed = false;
+        let mut ran = Vec::with_capacity(queued.len());
+        for Queued { page, run, done } in queued {
+            let result = self.lifecycle.is_current_page(page).then(|| {
+                let result =
+                    run(session).and_then(|changed| Ok(session.apply_picker_results()? || changed));
+                let clicks = session.take_clicks();
+                result.map(|c| (clicks, c))
+            });
+            changed |= matches!(result, Some(Ok((_, true))));
+            ran.push((done, result));
+        }
+        let update = if changed {
+            self.drained(session)
+        } else {
+            Ok(None)
+        };
+        InputRun {
+            ran,
+            changed,
+            update,
+        }
+    }
+
+    /// Finish queued input on the main thread; `rendered` when the frame that ran it
+    /// already rebuilt with its change.
+    pub(super) fn input_ran(self: &Arc<Self>, run: InputRun<A>, rendered: bool) {
+        let InputRun { ran, update, .. } = run;
+        match update {
+            Ok(Some((connection, mut update))) => {
+                // The frame that ran the input renders what it changed.
+                if rendered {
+                    update.changed = false;
+                }
+                self.publish(connection, update);
+            }
+            Ok(None) => {}
+            Err(error) if self.lifecycle.is_current_page(self.lifecycle.page()) => self.fail(error),
+            Err(_) => {}
+        }
+        for (done, result) in ran {
+            done(self, result, rendered);
+        }
+    }
+
+    /// Queued input whose page went away (`stale`), or that can no longer run at all.
+    fn abandon_input(self: &Arc<Self>, stale: bool) {
+        let abandoned: Vec<_> = {
+            let mut queue = self.input.lock().unwrap_or_else(|p| p.into_inner());
+            if stale {
+                let (gone, kept): (std::collections::VecDeque<_>, _) = std::mem::take(&mut *queue)
+                    .into_iter()
+                    .partition(|queued| !self.lifecycle.is_current_page(queued.page));
+                *queue = kept;
+                gone.into()
+            } else {
+                queue.drain(..).collect()
+            }
+        };
+        for queued in abandoned {
+            (queued.done)(self, None, false);
+        }
     }
 
     fn report_click(&self, page: PageTicket, identity: &str, click: &crate::session::ClickRecord) {
@@ -433,22 +551,22 @@ impl<A: PlatformAdapter> Inner<A> {
         self: &Arc<Self>,
         page: PageTicket,
         announce: bool,
-        result: Option<Result<Option<super::bridge::Drained>, String>>,
+        result: Option<Result<bool, String>>,
+        rendered: bool,
     ) {
         let inner = self;
         match result {
-            Some(Ok(Some(update))) => {
-                if let Some((connection, update)) = update {
-                    inner.publish(connection, update);
-                }
+            Some(Ok(true)) => {
                 if inner.main().disposed || !inner.lifecycle.is_current_page(page) {
                     return;
                 }
                 if announce {
                     inner.adapter.clicked();
                 }
-                inner.main().dirty = true;
-                inner.schedule();
+                if !rendered {
+                    inner.main().dirty = true;
+                    inner.schedule();
+                }
             }
             Some(Err(error)) if inner.lifecycle.is_current_page(page) => inner.fail(error),
             // A running animation whose queued frames gave way to this input resumes.
@@ -506,7 +624,7 @@ impl<A: PlatformAdapter> Inner<A> {
     fn drain_number(self: &Arc<Self>) {
         let proposal = {
             let mut main = self.main();
-            if main.busy || main.number_busy || main.disposed {
+            if main.number_busy || main.disposed {
                 return;
             }
             let proposal = main.interaction.take_number();
@@ -518,15 +636,10 @@ impl<A: PlatformAdapter> Inner<A> {
         };
         let page = proposal.page;
         let identity = proposal.identity.clone();
-        self.work(
-            Guard::Page(page),
-            move |inner, session| {
-                if !session.number_control(commit, handle, &identity, value)? {
-                    return Ok(None);
-                }
-                inner.drained(session).map(Some)
-            },
-            move |inner, result| {
+        self.queue_input(
+            page,
+            Box::new(move |session| session.number_control(commit, handle, &identity, value)),
+            Box::new(move |inner, result, rendered| {
                 let pending = {
                     let mut main = inner.main();
                     main.number_busy = false;
@@ -544,17 +657,16 @@ impl<A: PlatformAdapter> Inner<A> {
                             inner.fail(error);
                         }
                     }
-                    Some(Ok(Some(update))) => {
-                        if let Some((connection, update)) = update {
-                            inner.publish(connection, update);
-                        }
+                    Some(Ok((_, true))) if !rendered => {
                         inner.main().dirty = true;
                         inner.schedule();
                     }
+                    // The next proposal goes once the frame showing this one presents.
+                    Some(Ok((_, true))) => {}
                     _ if pending => inner.schedule(),
                     _ => inner.drain_number(),
                 }
-            },
+            }),
         );
     }
 
@@ -565,6 +677,7 @@ impl<A: PlatformAdapter> Inner<A> {
         reply: Box<dyn FnOnce(Option<String>) + Send>,
     ) {
         let page = self.lifecycle.page();
+        self.main().inputs_in_flight += 1;
         self.work(
             Guard::Page(page),
             move |inner, session| {
@@ -591,6 +704,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 Ok((result, update))
             },
             move |inner, result| {
+                inner.main().inputs_in_flight -= 1;
                 let Some(result) = result else {
                     return;
                 };

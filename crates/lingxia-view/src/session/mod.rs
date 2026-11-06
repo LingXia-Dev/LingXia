@@ -119,6 +119,8 @@ struct ViewBridge {
 
 /// Prefix of a frame dropped for finishing past its budget; the page keeps running.
 pub const OVERRUN: &str = "UI_OVERRUN:";
+/// A frame asked to build ahead while two frames already wait under it.
+pub(crate) const AHEAD_REFUSED: &str = "UI_ANIMATION: two frames already wait for presentation";
 
 /// The CPU-time budget for one View evaluation; unoptimized builds get a multiple.
 pub(crate) fn eval_budget() -> Duration {

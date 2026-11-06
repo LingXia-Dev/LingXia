@@ -220,6 +220,9 @@ struct Inner<A: PlatformAdapter> {
     logic: bool,
     /// Worker only: this page's context in the worker's isolate.
     page: Mutex<Option<ViewPageId>>,
+    /// Input resolved on the presented frame, oldest first; every worker frame runs it before
+    /// it renders.
+    input: Mutex<std::collections::VecDeque<dispatch::Queued<A>>>,
     main: Mutex<Main<A::Frame>>,
 }
 
@@ -239,12 +242,19 @@ struct Main<F> {
     prepared: Option<pump::Prepared<F>>,
     /// A frame handed to the adapter that is not on screen yet.
     deferred: Option<pump::Deferred>,
-    /// A frame prepared ahead, while `prepared` waits for its vsync, is in flight.
-    ahead: bool,
-    /// An ahead frame that finished before the frame under it presented.
+    /// The frame the worker is preparing; a completion of any other is stale.
+    in_flight: Option<pump::Flight>,
+    next_flight: u64,
+    /// The flight of the last presented frame, and of the last whose animation state the
+    /// session acknowledged.
+    presented_flight: u64,
+    acked_flight: u64,
+    /// Input-method requests on the worker; their View changes land when they return.
+    inputs_in_flight: u32,
+    /// Bumped per queued input: a frame started before the latest one misses it.
+    input_seq: u64,
+    /// A frame prepared ahead that finished before the frame under it presented.
     next_prepared: Option<pump::Prepared<F>>,
-    /// Bumped to drop ahead frames built on a frame that will not present.
-    ahead_epoch: u64,
     /// Host time of the last vsync and the display interval estimate.
     last_vsync: Option<Duration>,
     vsync_interval: Duration,
@@ -256,11 +266,12 @@ struct Main<F> {
     hud: bool,
     /// `measureFrames` windows a View step asked for: `(token, milliseconds)`.
     frame_measures: Vec<(u64, u64)>,
-    /// Activations dispatched to the worker whose result has not come back: an animation
-    /// frame prepared meanwhile would run before the View they change.
+    /// Queued activations whose result has not come back; automation waits for them.
     activating: u32,
     /// Automation `action`/`data` calls by id; `Some` once answered.
     automation_calls: std::collections::BTreeMap<u64, Option<Result<serde_json::Value, String>>>,
+    /// An answered call settles once a frame started after its answer was seen presents.
+    settle_after: std::collections::HashMap<u64, u64>,
     next_automation_call: u64,
     /// The automation act being delivered; the first activation it starts reports to it.
     act_call: Option<(u64, String)>,
@@ -291,7 +302,6 @@ struct Main<F> {
     catch_up: bool,
     dirty: bool,
     pending: bool,
-    busy: bool,
     number_busy: bool,
     disposed: bool,
     /// Bumped to revoke a pending animation or bootstrap deadline.
@@ -308,32 +318,42 @@ struct Main<F> {
 }
 
 impl<F> Main<F> {
-    /// Forget frames prepared ahead: what they build on will not present.
-    fn drop_ahead(&mut self) {
-        self.next_prepared = None;
-        self.ahead = false;
-        self.ahead_epoch += 1;
+    /// A frame is in flight, prepared or on its way to the screen.
+    fn busy(&self) -> bool {
+        self.in_flight.is_some()
+            || self.prepared.is_some()
+            || self.next_prepared.is_some()
+            || self.deferred.is_some()
     }
 
-    /// Input waits only for frames that change the View: animation frames still queued for
-    /// the presented layout are dropped so the activation runs now. Their commits belong
-    /// to that layout, which the session still accepts.
-    fn yield_to_input(&mut self) {
-        let layout = self.snapshot.as_ref().and_then(|s| s.frame.layout);
-        let same = |frame: &Option<pump::Prepared<F>>| {
-            frame
-                .as_ref()
-                .is_none_or(|frame| layout.is_some() && frame.layout() == layout)
-        };
-        if self.deferred.is_none()
-            && (self.prepared.is_some() || self.ahead)
-            && same(&self.prepared)
-            && same(&self.next_prepared)
-        {
+    /// Forget frames prepared ahead, with the frame they build on: the session builds ahead
+    /// only on frames that present. What they rendered must render again.
+    fn drop_ahead(&mut self) {
+        let ahead = self.in_flight.is_some_and(|flight| flight.ahead);
+        if self.next_prepared.take().is_some() || ahead {
             self.prepared = None;
-            self.drop_ahead();
-            self.busy = false;
+            self.dirty = true;
         }
+        if ahead {
+            self.in_flight = None;
+        }
+    }
+
+    /// Forget every frame: the page or its connection was replaced.
+    fn forget_frames(&mut self) {
+        self.prepared = None;
+        self.next_prepared = None;
+        self.deferred = None;
+        self.in_flight = None;
+    }
+
+    /// A frame may start while another waits for its vsync.
+    fn ahead_allowed(&self) -> bool {
+        #[cfg(test)]
+        if self.no_frames_ahead {
+            return false;
+        }
+        self.visible && !self.single_target
     }
 
     /// When a frame queued behind `queued` others should show: sampling there keeps
@@ -380,6 +400,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                 lifecycle: Lifecycle::new(logic),
                 logic,
                 page: Mutex::new(None),
+                input: Mutex::new(Default::default()),
                 main: Mutex::new(Main {
                     source: String::new(),
                     interaction: ViewInteraction::default(),
@@ -392,9 +413,13 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     snapshot: None,
                     prepared: None,
                     deferred: None,
-                    ahead: false,
+                    in_flight: None,
+                    next_flight: 0,
+                    presented_flight: 0,
+                    acked_flight: 0,
+                    inputs_in_flight: 0,
+                    input_seq: 0,
                     next_prepared: None,
-                    ahead_epoch: 0,
                     last_vsync: None,
                     vsync_interval: Duration::from_micros(16_667),
                     display: None,
@@ -403,6 +428,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     frame_measures: Vec::new(),
                     activating: 0,
                     automation_calls: Default::default(),
+                    settle_after: Default::default(),
                     next_automation_call: 0,
                     act_call: None,
                     virtual_rows: Default::default(),
@@ -425,7 +451,6 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     catch_up: false,
                     dirty: true,
                     pending: false,
-                    busy: false,
                     number_busy: false,
                     disposed: false,
                     animation_timer: 0,
@@ -1028,7 +1053,9 @@ impl<A: PlatformAdapter> ViewHost<A> {
         }
         // A caller that gave up never polls again: past the cap the oldest call expires.
         while main.automation_calls.len() >= 64 {
-            main.automation_calls.pop_first();
+            if let Some((old, _)) = main.automation_calls.pop_first() {
+                main.settle_after.remove(&old);
+            }
         }
         main.next_automation_call += 1;
         let call = main.next_automation_call;
@@ -1076,10 +1103,24 @@ impl<A: PlatformAdapter> ViewHost<A> {
     /// `done` once the call answered and the frame its changes produced is committed.
     fn automation_result(&self, call: u64) -> Result<serde_json::Value, String> {
         let mut main = self.inner.main();
+        // Work the answer started that has not reached the main thread yet.
+        let quiet = main.activating == 0 && main.inputs_in_flight == 0;
+        let after = if quiet && matches!(main.automation_calls.get(&call), Some(Some(_))) {
+            let next = main.next_flight + 1;
+            *main.settle_after.entry(call).or_insert(next)
+        } else {
+            u64::MAX
+        };
         // A page that left (parked) or is not on screen commits no further frame: what its
         // worker already ran is the answer, as when a click navigates away or a dialog covers it.
-        let settled = (!main.dirty && !main.busy && main.activating == 0)
-            || (main.activating == 0 && (main.interaction.parked() || !main.visible));
+        // Otherwise nothing is coming, or a frame started after the answer presented and the
+        // session saw no animation still running; newer Logic state meanwhile does not count.
+        let shown =
+            (!main.dirty && !main.busy()) || (main.acked_flight >= after && !main.animating);
+        let settled = quiet && (shown || main.interaction.parked() || !main.visible);
+        if settled || matches!(main.automation_calls.get(&call), Some(Some(Err(_))) | None) {
+            main.settle_after.remove(&call);
+        }
         match main.automation_calls.get(&call) {
             None => Err(format!(
                 "E_UNSUPPORTED: automation call {call} expired or was never made"
@@ -1345,10 +1386,7 @@ impl<A: PlatformAdapter> Inner<A> {
             let page = self.lifecycle.load();
             main.telemetry.opened(self.adapter.now());
             main.snapshot = None;
-            main.prepared = None;
-            main.deferred = None;
-            main.drop_ahead();
-            main.busy = false;
+            main.forget_frames();
             main.dirty = true;
             main.caret.stop();
             main.styled_press = None;
@@ -1410,10 +1448,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.telemetry.stats.abandon_reveal();
             let page = self.lifecycle.park();
             main.snapshot = None;
-            main.prepared = None;
-            main.deferred = None;
-            main.drop_ahead();
-            main.busy = false;
+            main.forget_frames();
             main.dirty = true;
             main.caret.stop();
             main.styled_press = None;
@@ -1456,9 +1491,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.disposed = true;
             main.animation_timer += 1;
             main.bootstrap_timer += 1;
-            main.prepared = None;
-            main.deferred = None;
-            main.drop_ahead();
+            main.forget_frames();
             main.caret.stop();
             let effects = main.interaction.cancel_all();
             let cancelled = main.images.inflight_tokens();

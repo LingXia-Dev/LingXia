@@ -2,7 +2,6 @@
 //! the presented frame's effects, reach, images and animation wakeup.
 use super::{FrameSnapshot, FrameTiming, Guard, Inner};
 use crate::interaction::frame::PresentedFrame;
-use crate::interaction::view::Effect;
 use crate::platform::{FrameEnvironment, PlatformAdapter};
 use crate::session::lifecycle::{CommitTicket, PageTicket, SurfaceTicket};
 use std::collections::HashMap;
@@ -21,6 +20,17 @@ pub(super) struct Prepared<F> {
     timing: FrameTiming,
     prepared_at: Instant,
     pacing: Pacing,
+    flight: u64,
+}
+
+/// A frame job on the worker.
+#[derive(Clone, Copy)]
+pub(super) struct Flight {
+    pub(super) id: u64,
+    /// Started while the frame before it waited for its vsync.
+    pub(super) ahead: bool,
+    /// The input sequence it ran.
+    pub(super) input: u64,
 }
 
 /// What frame statistics need to know about a frame beyond its timing.
@@ -48,12 +58,7 @@ pub(super) struct Deferred {
     timing: FrameTiming,
     vsync: Instant,
     pacing: Pacing,
-}
-
-impl<F> Prepared<F> {
-    pub(super) fn layout(&self) -> Option<(u64, u64)> {
-        self.snapshot.frame.layout
-    }
+    flight: u64,
 }
 
 // An internal signal, never surfaced; the frame is simply skipped.
@@ -86,38 +91,9 @@ struct Request {
 }
 
 impl<A: PlatformAdapter> Inner<A> {
-    /// Prepare a frame when the page can present and no frame is in flight.
+    /// Prepare a frame when the page can present: at once when the worker is free, else
+    /// as soon as the frame it prepares is handed over.
     pub(super) fn schedule(self: &Arc<Self>) {
-        self.schedule_frame(false);
-    }
-
-    /// While an animation runs and a prepared frame waits for its vsync, prepare the
-    /// following one now so a worker frame longer than the display interval still keeps
-    /// pace. Never while input waits to dispatch: it needs no frame in flight.
-    pub(super) fn schedule_ahead(self: &Arc<Self>) {
-        let ready = {
-            let main = self.main();
-            #[cfg(test)]
-            if main.no_frames_ahead {
-                return;
-            }
-            main.visible
-                && main.animating
-                && main.prepared.is_some()
-                && !main.ahead
-                && main.next_prepared.is_none()
-                && main.deferred.is_none()
-                && !main.single_target
-                && !main.number_busy
-                && !main.disposed
-                && !main.interaction.waiting()
-        };
-        if ready {
-            self.schedule_frame(true);
-        }
-    }
-
-    fn schedule_frame(self: &Arc<Self>, ahead: bool) {
         let asked = self.adapter.now();
         self.main().demand_at.get_or_insert(asked);
         let environment = self.adapter.environment().map(|mut environment| {
@@ -135,7 +111,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 self.adapter.host_chrome(&chrome);
             }
         }
-        let (request, background) = {
+        let (request, background, flight) = {
             let mut main = self.main();
             main.animation_timer += 1;
             main.pending = true;
@@ -168,9 +144,15 @@ impl<A: PlatformAdapter> Inner<A> {
                     main.catch_up = true;
                 }
             }
-            if (main.busy && !ahead) || main.number_busy || (main.activating > 0 && !main.dirty) {
+            // One frame on the worker at a time, and at most one waiting behind the next vsync.
+            if main.in_flight.is_some()
+                || main.deferred.is_some()
+                || main.next_prepared.is_some()
+                || (main.prepared.is_some() && !main.ahead_allowed())
+            {
                 return;
             }
+            let ahead = main.prepared.is_some();
             let background = !main.visible;
             let surface = if main.visible {
                 self.lifecycle.frame()
@@ -206,21 +188,22 @@ impl<A: PlatformAdapter> Inner<A> {
             };
             main.dirty = false;
             main.pending = false;
-            main.busy = true;
-            main.ahead |= ahead;
-            (request, background)
+            main.next_flight += 1;
+            let flight = Flight {
+                id: main.next_flight,
+                ahead,
+                input: main.input_seq,
+            };
+            main.in_flight = Some(flight);
+            (request, background, flight)
         };
         let now = self.adapter.now();
         let mut request = request;
-        let epoch = {
-            let main = self.main();
-            if request.visible {
-                request.sample = main.expected_vsync(now, u32::from(ahead));
-            } else {
-                request.sample = now;
-            }
-            main.ahead_epoch
-        };
+        if request.visible {
+            request.sample = self.main().expected_vsync(now, u32::from(flight.ahead));
+        } else {
+            request.sample = now;
+        }
         let surface = request.surface;
         let page = request.page;
         let revision = request.revision;
@@ -228,17 +211,19 @@ impl<A: PlatformAdapter> Inner<A> {
         let environment = request.environment.clone();
         let pacing = request.pacing;
         let mut timing = FrameTiming {
-            rebuild: request.rebuild,
             caret_visible: request.caret,
             ..Default::default()
         };
         let queued = Instant::now();
-        let rebuild = request.rebuild;
         self.work_at(
             background,
             Guard::Page(page),
             move |inner, session| {
                 let started = Instant::now();
+                // Input the user made on the presented frame runs before this frame renders.
+                let input = inner.run_input(session);
+                request.rebuild |= input.changed;
+                let rebuild = request.rebuild;
                 let prepared = inner.prepare(session, request, now);
                 let reads = session.reads_host_context();
                 inner.main().host_environment.set_reads_host_context(reads);
@@ -249,25 +234,60 @@ impl<A: PlatformAdapter> Inner<A> {
                 {
                     inner.main().frame_measures.extend(measures);
                 }
-                prepared.map(|prepared| {
+                let prepared = prepared.map(|prepared| {
                     (
                         prepared,
                         micros(started - queued),
                         micros(started.elapsed()),
                     )
-                })
+                });
+                Ok((input, rebuild, prepared))
             },
             move |inner, result| {
                 let measures = std::mem::take(&mut inner.main().frame_measures);
                 for (token, ms) in measures {
                     inner.frame_measure(token, ms);
                 }
-                match result {
+                let (current, missed) = {
+                    let mut main = inner.main();
+                    let current = main.in_flight.is_some_and(|f| f.id == flight.id);
+                    if current {
+                        main.in_flight = None;
+                    }
+                    // Input came after it started while another frame still waits: drawing
+                    // that input now beats queueing this one behind it.
+                    let missed = main.prepared.is_some() && flight.input < main.input_seq;
+                    (current, missed)
+                };
+                let (input, rebuild, prepared) = match result {
+                    Some(Ok((input, rebuild, prepared))) => (Some(input), rebuild, Some(prepared)),
+                    Some(Err(error)) => (None, false, Some(Err(error))),
+                    None => (None, false, None),
+                };
+                // A frame that failed rendering the input reports that failure itself.
+                let rendered =
+                    current && matches!(&prepared, Some(Ok(((Some(_), _), ..))) | Some(Err(_)));
+                if let Some(input) = input {
+                    inner.input_ran(input, rendered);
+                }
+                match prepared {
                     Some(Ok(((Some((frame, snapshot)), update), queue_us, worker_us))) => {
+                        timing.rebuild = rebuild;
                         timing.queue_us = queue_us;
                         timing.worker_us = worker_us;
                         if let Some((connection, update)) = update {
                             inner.publish(connection, update);
+                        }
+                        if !current || missed {
+                            // Built on a frame that will not present, or both it and the frame
+                            // under it miss newer input: a fresh frame replaces them.
+                            let mut main = inner.main();
+                            if missed && current {
+                                main.prepared = None;
+                            }
+                            main.dirty = true;
+                            drop(main);
+                            return inner.schedule_more();
                         }
                         let prepared = Prepared {
                             frame,
@@ -280,35 +300,35 @@ impl<A: PlatformAdapter> Inner<A> {
                             timing,
                             prepared_at: Instant::now(),
                             pacing,
+                            flight: flight.id,
                         };
                         {
                             let mut main = inner.main();
-                            if ahead {
-                                if main.ahead_epoch != epoch {
-                                    // What it was built on did not present.
-                                    return;
-                                }
-                                main.ahead = false;
-                                if main.prepared.is_some() {
-                                    main.next_prepared = Some(prepared);
-                                    return;
-                                }
-                                main.busy = true;
+                            if main.prepared.is_some() {
+                                main.next_prepared = Some(prepared);
+                            } else {
+                                main.prepared = Some(prepared);
                             }
-                            main.prepared = Some(prepared);
                         }
                         inner.adapter.request_vsync();
-                        inner.schedule_ahead();
+                        inner.schedule_more();
                     }
                     Some(Ok(((None, update), ..))) => {
                         if let Some((connection, update)) = update {
                             inner.publish(connection, update);
                         }
-                        let retry = {
+                        if !current {
+                            return inner.schedule_more();
+                        }
+                        let (retry, pending) = {
                             let mut main = inner.main();
+                            main.dirty = true;
+                            // Presenting a held frame frees a target; the next vsync retries.
                             main.declined |= main.prepared.is_some() || main.deferred.is_some();
-                            // Nothing else will ask again while an animation waits on this frame.
-                            main.animating && !main.declined && !main.disposed
+                            let retry = (main.animating || flight.ahead)
+                                && !main.declined
+                                && !main.disposed;
+                            (retry, main.pending && !main.disposed)
                         };
                         if retry {
                             let host = inner.clone();
@@ -316,20 +336,39 @@ impl<A: PlatformAdapter> Inner<A> {
                                 Duration::from_millis(16),
                                 Box::new(move || host.schedule()),
                             );
-                        }
-                        if !inner.ahead_failed(ahead) {
-                            inner.unprepared(None, surface, page);
+                        } else if pending {
+                            inner.schedule();
                         }
                     }
-                    Some(Err(error)) if !inner.ahead_failed(ahead) => {
-                        inner.unprepared(Some(error), surface, page)
+                    Some(Err(error)) if current && error == crate::session::AHEAD_REFUSED => {
+                        // The session holds frames this host dropped: a fresh frame replaces them.
+                        {
+                            let mut main = inner.main();
+                            main.prepared = None;
+                            main.next_prepared = None;
+                            main.dirty = true;
+                        }
+                        inner.schedule_more();
                     }
-                    Some(Err(_)) => {}
-                    None if !inner.ahead_failed(ahead) => inner.unprepared(None, surface, page),
-                    None => {}
+                    Some(Err(error)) if current => inner.unprepared(Some(error), surface, page),
+                    Some(Err(_)) => inner.schedule_more(),
+                    None if current => inner.unprepared(None, surface, page),
+                    None => inner.schedule_more(),
                 }
             },
         );
+    }
+
+    /// Start the next frame while the last one waits for its vsync, when one is wanted: the
+    /// worker draws it while the main thread presents.
+    pub(super) fn schedule_more(self: &Arc<Self>) {
+        let wanted = {
+            let main = self.main();
+            (main.pending || main.animating || main.dirty) && !main.disposed
+        };
+        if wanted {
+            self.schedule();
+        }
     }
 
     /// Answer the View's `measureFrames` window `token` once `ms` passed.
@@ -511,16 +550,6 @@ impl<A: PlatformAdapter> Inner<A> {
         Ok((Some((frame, snapshot)), update))
     }
 
-    /// An ahead frame that will not present: the frame under it still waits for vsync.
-    fn ahead_failed(self: &Arc<Self>, ahead: bool) -> bool {
-        if ahead {
-            let mut main = self.main();
-            main.ahead = false;
-            main.dirty = true;
-        }
-        ahead
-    }
-
     /// A frame that will not present: the next one must rebuild.
     fn unprepared(
         self: &Arc<Self>,
@@ -535,7 +564,6 @@ impl<A: PlatformAdapter> Inner<A> {
             let current = self.lifecycle.is_current_page(page);
             {
                 let mut main = self.main();
-                main.busy = false;
                 main.dirty = true;
                 if current {
                     main.telemetry.budget_overrun();
@@ -549,7 +577,6 @@ impl<A: PlatformAdapter> Inner<A> {
         }
         let (pending, effects) = {
             let mut main = self.main();
-            main.busy = false;
             main.dirty = true;
             let effects =
                 if error.is_some() && !main.disposed && self.lifecycle.is_current_page(page) {
@@ -605,7 +632,6 @@ impl<A: PlatformAdapter> Inner<A> {
             });
             if prepared.is_some() {
                 main.prepared = main.next_prepared.take();
-                main.busy = main.ahead || main.prepared.is_some();
             }
             prepared
         }) else {
@@ -619,7 +645,6 @@ impl<A: PlatformAdapter> Inner<A> {
             let mut main = self.main();
             main.prepared = None;
             main.drop_ahead();
-            main.busy = main.deferred.is_some();
         }
         let mut retry = false;
         if current {
@@ -634,12 +659,13 @@ impl<A: PlatformAdapter> Inner<A> {
                 mut timing,
                 prepared_at,
                 pacing,
+                flight,
             } = prepared;
             timing.wait_us = micros(vsync.saturating_duration_since(prepared_at));
             let deferred = !hidden && self.adapter.deferred(&frame);
             let newer = {
                 let main = self.main();
-                main.prepared.is_some() || main.ahead
+                main.prepared.is_some() || main.in_flight.is_some_and(|f| f.ahead)
             };
             let shown = if hidden {
                 Ok(true)
@@ -651,9 +677,7 @@ impl<A: PlatformAdapter> Inner<A> {
             match shown {
                 Ok(true) if deferred => {
                     // Nothing else prepares until this frame is on screen.
-                    let mut main = self.main();
-                    main.busy = true;
-                    main.deferred = Some(Deferred {
+                    self.main().deferred = Some(Deferred {
                         environment,
                         snapshot,
                         surface,
@@ -663,6 +687,7 @@ impl<A: PlatformAdapter> Inner<A> {
                         timing,
                         vsync,
                         pacing,
+                        flight,
                     });
                 }
                 Ok(true) => {
@@ -673,7 +698,7 @@ impl<A: PlatformAdapter> Inner<A> {
                     main.catch_up = false;
                     drop(main);
                     self.presented(
-                        snapshot, surface, page, revision, offsets, timing, vsync, pacing,
+                        snapshot, surface, page, revision, offsets, timing, vsync, pacing, flight,
                     )
                 }
                 Ok(false) => {
@@ -691,7 +716,6 @@ impl<A: PlatformAdapter> Inner<A> {
                 let mut main = self.main();
                 main.prepared = None;
                 main.drop_ahead();
-                main.busy = false;
                 main.dirty = true;
             }
             // The target refused a frame; try again on a later display frame.
@@ -699,15 +723,14 @@ impl<A: PlatformAdapter> Inner<A> {
             self.adapter
                 .post_after(Duration::from_millis(16), Box::new(move || host.schedule()));
         }
-        let pending = {
-            let main = self.main();
-            main.pending && !main.disposed
+        let wanted = {
+            let mut main = self.main();
+            let declined = std::mem::take(&mut main.declined);
+            !main.disposed && (main.pending || declined || (main.animating && !retry))
         };
-        let retry_declined = std::mem::take(&mut self.main().declined);
-        if pending || retry_declined {
+        if wanted {
             self.schedule();
         }
-        self.schedule_ahead();
     }
 
     /// A presenter that keeps only the newest prepared frame refuses every frame with one
@@ -736,11 +759,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 .deferred
                 .as_ref()
                 .is_some_and(|d| d.snapshot.generation == generation);
-            let deferred = matches.then(|| main.deferred.take()).flatten();
-            if deferred.is_some() {
-                main.busy = main.prepared.is_some() || main.ahead;
-            }
-            deferred
+            matches.then(|| main.deferred.take()).flatten()
         }) else {
             return;
         };
@@ -756,6 +775,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 timing,
                 vsync,
                 mut pacing,
+                flight,
             } = deferred;
             pacing.done = self.adapter.now();
             {
@@ -764,14 +784,13 @@ impl<A: PlatformAdapter> Inner<A> {
                 main.catch_up = false;
             }
             self.presented(
-                snapshot, surface, page, revision, offsets, timing, vsync, pacing,
+                snapshot, surface, page, revision, offsets, timing, vsync, pacing, flight,
             );
         } else {
             // Frames built on the dropped one cannot present either.
             let mut main = self.main();
             main.prepared = None;
             main.drop_ahead();
-            main.busy = false;
             main.dirty = true;
             main.pending = true;
         }
@@ -798,11 +817,13 @@ impl<A: PlatformAdapter> Inner<A> {
         mut timing: FrameTiming,
         vsync: Instant,
         pacing: Pacing,
+        flight: u64,
     ) {
         let rebuild = timing.rebuild;
         let (presented, recovered) = {
             let mut main = self.main();
             main.snapshot = Some(snapshot.clone());
+            main.presented_flight = flight;
             // Repainting an old frame (caret, scroll) is not recovery.
             let recovered = rebuild && main.failure.take().is_some();
             let presented =
@@ -813,18 +834,13 @@ impl<A: PlatformAdapter> Inner<A> {
         if recovered {
             self.adapter.recovery(None);
         }
-        self.acknowledge_animation(surface, snapshot.generation);
+        self.acknowledge_animation(surface, snapshot.generation, flight);
         // A running animation's next frame queues right behind the acknowledgement on the
         // worker instead of waiting for its wakeup to come back through the main thread.
-        // Not while activations wait: they dispatch only when no frame is being prepared.
-        let waiting = presented
-            .effects
-            .iter()
-            .any(|effect| matches!(effect, Effect::Dispatch | Effect::Number));
         let now = self.adapter.now();
         let queue = {
             let mut main = self.main();
-            let queue = !waiting && main.animating && now > main.animation_queued_at;
+            let queue = main.animating && now > main.animation_queued_at;
             if queue {
                 main.animation_queued_at = now;
             }
@@ -870,7 +886,12 @@ impl<A: PlatformAdapter> Inner<A> {
     }
 
     /// Start the timeline's newly presented effects and wake for its next deadline.
-    fn acknowledge_animation(self: &Arc<Self>, surface: SurfaceTicket, generation: CommitTicket) {
+    fn acknowledge_animation(
+        self: &Arc<Self>,
+        surface: SurfaceTicket,
+        generation: CommitTicket,
+        flight: u64,
+    ) {
         let at = self.adapter.now();
         self.work(
             Guard::Page(self.lifecycle.page()),
@@ -889,6 +910,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 let settled = {
                     let mut main = inner.main();
                     main.animating = animating;
+                    main.acked_flight = main.acked_flight.max(flight);
                     if animating {
                         Vec::new()
                     } else {
@@ -909,7 +931,7 @@ impl<A: PlatformAdapter> Inner<A> {
                     if main.disposed
                         || !inner.lifecycle.is_current_surface(surface)
                         || main.snapshot.as_ref().map(|s| s.generation) != Some(generation)
-                        || main.busy
+                        || main.busy()
                         || main.pending
                     {
                         return;

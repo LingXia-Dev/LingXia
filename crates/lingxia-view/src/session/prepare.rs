@@ -233,7 +233,7 @@ impl ViewSession {
         let surface = self.animation_surface.ok_or("UI_ANIMATION: parked page")?;
         let base = if ahead {
             if self.presenting_animation.is_some() {
-                return Err("UI_ANIMATION: two frames already wait for presentation".into());
+                return Err(super::AHEAD_REFUSED.into());
             }
             self.pending_animation
                 .as_ref()
