@@ -46,6 +46,8 @@ pub struct ViewSession {
     /// Bumped whenever a frame commits a different retained layout.
     layout_revision: u64,
     /// The first commit of the current layout revision.
+    /// The last commit the host presented: the frame the user saw.
+    seen_commit: lifecycle::CommitTicket,
     layout_commit: lifecycle::CommitTicket,
     /// Clicks since the host last collected them.
     clicks: Vec<ClickRecord>,
@@ -180,6 +182,7 @@ impl ViewSession {
             bridge: None,
             retained: None,
             layout_revision: 0,
+            seen_commit: lifecycle::CommitTicket::new(0),
             layout_commit: lifecycle::CommitTicket::new(0),
             clicks: Vec::new(),
             retained_commit: lifecycle::CommitTicket::new(0),

@@ -52,7 +52,7 @@ impl ViewSession {
         identity: &str,
     ) -> Result<Option<crate::InputReply>, String> {
         self.check_input_active()?;
-        if !self.presented_layout_commit(generation) {
+        if self.input_commit(generation, identity, true).is_none() {
             return Ok(None);
         }
         self.focus_now(identity)
@@ -84,7 +84,7 @@ impl ViewSession {
         identity: &str,
     ) -> Result<bool, String> {
         self.check_input_active()?;
-        if !self.presented_layout_commit(generation) {
+        if self.input_commit(generation, identity, true).is_none() {
             return Ok(false);
         }
         self.open_picker_now(identity, None)
@@ -113,7 +113,7 @@ impl ViewSession {
         identity: &str,
     ) -> Result<bool, String> {
         self.check_input_active()?;
-        if !self.presented_layout_commit(generation) {
+        if self.input_commit(generation, identity, true).is_none() {
             return Ok(false);
         }
         self.open_select_now(identity)

@@ -212,7 +212,10 @@ impl ViewSession {
         selection: crate::PlotSelection,
     ) -> Result<bool, String> {
         self.check_input_active()?;
-        if !self.presented_commit(generation) || self.input_dirty || self.pending_inputs.is_some() {
+        let Some(generation) = self.input_commit(generation, identity, false) else {
+            return Ok(false);
+        };
+        if self.input_dirty || self.pending_inputs.is_some() {
             return Ok(false);
         }
         let Some(node) = self
@@ -244,6 +247,58 @@ impl ViewSession {
             return Ok(false);
         }
         self.number_event(generation, handle, index as f64)
+    }
+
+    /// A slider's value from the presented frame; one a newer render overtook goes to the
+    /// control's current callback.
+    pub fn number_control(
+        &mut self,
+        generation: lifecycle::CommitTicket,
+        handle: u64,
+        identity: &str,
+        value: f64,
+    ) -> Result<bool, String> {
+        if self.presented_commit(generation) || identity.is_empty() {
+            return self.number_event(generation, handle, value);
+        }
+        let current = self
+            .retained
+            .as_ref()
+            .and_then(|retained| retained.nodes.iter().find(|node| node.identity == identity))
+            .and_then(|node| node.range.as_ref())
+            .and_then(|range| range.on_change);
+        match current {
+            Some(handle) => self.number_event(self.generation, handle, value),
+            None => Ok(false),
+        }
+    }
+
+    /// A bound snapping scroll's resting index; one a newer render overtook goes to the
+    /// region's current callback.
+    pub fn snap_event(
+        &mut self,
+        generation: lifecycle::CommitTicket,
+        handle: u64,
+        region: &str,
+        index: usize,
+    ) -> Result<bool, String> {
+        if self.presented_commit(generation) || region.is_empty() {
+            return self.text_event(generation, handle, &index.to_string());
+        }
+        let current = self
+            .retained
+            .as_ref()
+            .and_then(|retained| {
+                retained
+                    .nodes
+                    .iter()
+                    .find_map(|node| node.scroll.as_ref().filter(|scroll| scroll.id == region))
+            })
+            .and_then(|scroll| scroll.on_snap);
+        match current {
+            Some(handle) => self.text_event(self.generation, handle, &index.to_string()),
+            None => Ok(false),
+        }
     }
 
     /// Propose a finite scalar to a numeric control from the displayed generation.

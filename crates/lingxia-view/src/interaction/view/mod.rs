@@ -158,6 +158,7 @@ impl ViewInteraction {
                 self.dispatches.push(Dispatch::SnapChange {
                     commit,
                     handle,
+                    region: id.to_owned(),
                     index,
                 });
                 vec![Effect::Dispatch]

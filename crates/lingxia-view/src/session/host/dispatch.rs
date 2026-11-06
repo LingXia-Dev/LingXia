@@ -280,11 +280,12 @@ impl<A: PlatformAdapter> Inner<A> {
                 Dispatch::SnapChange {
                     commit,
                     handle,
+                    region,
                     index,
                 } => self.activate(
                     page,
                     false,
-                    Box::new(move |session| session.text_event(commit, handle, &index.to_string())),
+                    Box::new(move |session| session.snap_event(commit, handle, &region, index)),
                 ),
                 Dispatch::DragEvent {
                     commit,
@@ -516,10 +517,11 @@ impl<A: PlatformAdapter> Inner<A> {
             return;
         };
         let page = proposal.page;
+        let identity = proposal.identity.clone();
         self.work(
             Guard::Page(page),
             move |inner, session| {
-                if !session.number_event(commit, handle, value)? {
+                if !session.number_control(commit, handle, &identity, value)? {
                     return Ok(None);
                 }
                 inner.drained(session).map(Some)

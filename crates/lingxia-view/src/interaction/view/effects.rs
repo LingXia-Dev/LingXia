@@ -122,6 +122,8 @@ pub enum Dispatch {
     SnapChange {
         commit: CommitTicket,
         handle: u64,
+        /// The scroll region's id, to find its callback in a newer View.
+        region: String,
         index: usize,
     },
     /// A `drag` element's `onDragEvent`: `{phase: start|end|settle, index, velocity}`.

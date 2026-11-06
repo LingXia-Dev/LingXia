@@ -83,6 +83,33 @@ impl ViewSession {
                 && generation.get() <= self.generation.get())
     }
 
+    /// The commit input made on `generation` applies to: itself while still current, else,
+    /// when it is the frame the user saw last, the current View if `identity` is still in it.
+    /// A frame prepared after that one must not cost the input; a control that is gone does.
+    pub(crate) fn input_commit(
+        &self,
+        generation: lifecycle::CommitTicket,
+        identity: &str,
+        layout: bool,
+    ) -> Option<lifecycle::CommitTicket> {
+        let current = if layout {
+            self.presented_layout_commit(generation)
+        } else {
+            self.presented_commit(generation)
+        };
+        if current {
+            return Some(generation);
+        }
+        let present = !identity.is_empty()
+            && generation.get() != 0
+            && generation == self.seen_commit
+            && self
+                .retained
+                .as_ref()
+                .is_some_and(|retained| retained.nodes.iter().any(|n| n.identity == identity));
+        present.then_some(self.generation)
+    }
+
     /// Clicks handled since the last call.
     pub fn take_clicks(&mut self) -> Vec<ClickRecord> {
         std::mem::take(&mut self.clicks)
@@ -282,6 +309,9 @@ impl ViewSession {
         generation: lifecycle::CommitTicket,
         now: Duration,
     ) -> Result<bool, String> {
+        if generation.get() > self.seen_commit.get() {
+            self.seen_commit = generation;
+        }
         let matches = |candidate: &Option<(
             lifecycle::CommitTicket,
             lifecycle::SurfaceTicket,
