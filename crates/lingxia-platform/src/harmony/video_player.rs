@@ -946,7 +946,7 @@ impl NativeVideoPlayer {
     }
 
     /// Rebind surface for fullscreen transitions (direct switch preferred, Stop/Prepare fallback)
-    pub fn rebind_surface_and_resume(
+    fn rebind_surface_and_resume(
         &mut self,
         window: *mut OHNativeWindow,
         position_ms: i32,
