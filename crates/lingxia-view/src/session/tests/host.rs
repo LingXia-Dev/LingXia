@@ -4591,6 +4591,17 @@ fn a_list_anchor_with_a_duration_glides_there_and_input_stops_it() {
             platform.settle(&[&host]);
             offsets.push(offset());
         }
+        // Every presented frame counts toward the stage medians automation reads.
+        let frame = host
+            .automation_request(&serde_json::json!({"op":"frame"}))
+            .unwrap();
+        let stages = &frame["stagesMs"];
+        assert!(stages["frames"].as_u64().unwrap() > 10, "{stages}");
+        assert!(stages["layoutPasses"].as_u64().is_some() && stages["build"].is_number());
+        assert!(
+            stages["worker"].is_number() && stages["main"].is_number(),
+            "{stages}"
+        );
         offsets
     };
     let offsets = glide(None);

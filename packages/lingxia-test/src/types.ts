@@ -20,6 +20,7 @@ import type {
   HostRunAutomation,
   PageBackdropCache,
   PageCompositeStats,
+  PageStageMedians,
   LxAppDriver,
   ModalAnswer,
   ModalRecord,
@@ -970,6 +971,8 @@ export interface TestMetrics extends PageFramePacing {
   /** The presented frame's composition work; `null` when it drew without composition. */
   composite: PageCompositeStats | null;
   backdropCache: PageBackdropCache | null;
+  /** Median preparation cost by stage of the frames in the window; `null` from an older host. */
+  stagesMs: PageStageMedians | null;
 }
 
 /** A checkpoint of the app's isolated data. */

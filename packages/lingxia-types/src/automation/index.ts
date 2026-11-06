@@ -436,6 +436,28 @@ export interface PageUiFrame {
   composite: PageCompositeStats | null;
   /** Backdrop images filtered so far and those held for later frames; `null` without composition. */
   backdropCache: PageBackdropCache | null;
+  /** Median preparation cost of the frames presented in `windowMs`; `null` when none presented. */
+  stagesMs: PageStageMedians | null;
+}
+
+/** Per-stage medians, ms, of presented frames: `build` is the presenter's scene encode. */
+export interface PageStageMedians {
+  frames: number;
+  total: number;
+  view: number;
+  viewEval: number;
+  layout: number;
+  text: number;
+  compose: number;
+  build: number;
+  viewPasses: number;
+  layoutPasses: number;
+  /** Scheduling to the worker starting, the worker's whole frame, prepared to vsync, and vsync
+   *  to the end of the main thread's present: where a frame's time goes outside its stages. */
+  queue: number;
+  worker: number;
+  wait: number;
+  main: number;
 }
 
 /** One composited frame's work: counts, device pixels and CPU microseconds. */

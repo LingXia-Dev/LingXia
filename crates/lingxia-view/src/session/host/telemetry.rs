@@ -6,6 +6,8 @@ use std::time::Duration;
 
 /// Worker-queue samples kept for the median.
 const SAMPLES: usize = 64;
+/// Per-stage samples of presented frames, enough for 5 s at 60 Hz.
+const STAGE_SAMPLES: usize = 512;
 
 #[derive(Debug, Default)]
 pub(super) struct Telemetry {
@@ -22,8 +24,14 @@ pub(super) struct Telemetry {
     wakeups: u64,
     /// Frames dropped for finishing past the View budget since the module loaded.
     overruns: u64,
+    /// When each presented frame showed and what its preparation cost, by stage.
+    stages: VecDeque<(Duration, Stages)>,
     pub(super) stats: super::frame_stats::FrameStats,
 }
+
+/// Total, view, view eval, layout, text, compose and build µs; view and layout passes; then the
+/// frame's queue, worker, vsync wait and main-thread µs.
+type Stages = [u64; 13];
 
 impl Telemetry {
     pub(super) fn opened(&mut self, at: Duration) {
@@ -56,6 +64,63 @@ impl Telemetry {
             self.eval_max_us = self.eval_max_us.max(self.eval_last_us);
         }
         self.animation_frames = snapshot.metrics.animation_frames;
+        if self.stages.len() == STAGE_SAMPLES {
+            self.stages.pop_front();
+        }
+        let m = &snapshot.metrics;
+        self.stages.push_back((
+            at,
+            [
+                m.total_us,
+                m.view_us,
+                m.view_eval_us,
+                m.layout_us,
+                m.text_us,
+                m.compose_us,
+                m.build_us,
+                u64::from(m.view_passes),
+                u64::from(m.layout_passes),
+                timing.queue_us,
+                timing.worker_us,
+                timing.wait_us,
+                timing.main_us,
+            ],
+        ));
+    }
+
+    /// Median preparation cost by stage of the frames presented since `since`, or `null`.
+    fn stage_medians(&self, since: Duration) -> serde_json::Value {
+        let samples: Vec<&Stages> = self
+            .stages
+            .iter()
+            .filter(|(at, _)| *at >= since)
+            .map(|(_, stages)| stages)
+            .collect();
+        if samples.is_empty() {
+            return serde_json::Value::Null;
+        }
+        let median = |i: usize| {
+            let mut values: Vec<u64> = samples.iter().map(|stages| stages[i]).collect();
+            values.sort_unstable();
+            values[values.len() / 2]
+        };
+        let ms = |i: usize| median(i) as f64 / 1000.0;
+        serde_json::json!({
+            "frames": samples.len(),
+            "total": ms(0),
+            "view": ms(1),
+            "viewEval": ms(2),
+            "layout": ms(3),
+            "text": ms(4),
+            "compose": ms(5),
+            "build": ms(6),
+            "viewPasses": median(7),
+            "layoutPasses": median(8),
+            "queue": ms(9),
+            "worker": ms(10),
+            "wait": ms(11),
+            "main": ms(12),
+        })
     }
 
     pub(super) fn budget_overrun(&mut self) {
@@ -124,6 +189,9 @@ impl<A: PlatformAdapter> Inner<A> {
             "pacing": telemetry
                 .stats
                 .summary(now, window.unwrap_or(super::frame_stats::DEFAULT_WINDOW)),
+            "stagesMs": telemetry.stage_medians(
+                now.saturating_sub(window.unwrap_or(super::frame_stats::DEFAULT_WINDOW)),
+            ),
         })
     }
 }
