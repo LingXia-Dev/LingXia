@@ -74,6 +74,59 @@ lto = true
 codegen-units = 1
 strip = true
 
+# The View's per-frame crates (layout, text, scene encode, image decode) at full speed; the rest
+# stays sized. QuickJS's C build sets its own -O2.
+[profile.release.package.rong_quickjs_sys]
+opt-level = 3
+[profile.release.package.rong_quickjs]
+opt-level = 3
+[profile.release.package.rong_core]
+opt-level = 3
+[profile.release.package.lingxia-view]
+opt-level = 3
+[profile.release.package.lingxia-view-android]
+opt-level = 3
+[profile.release.package.lingxia-view-harmony]
+opt-level = 3
+[profile.release.package.vello_common]
+opt-level = 3
+[profile.release.package.vello_cpu]
+opt-level = 3
+[profile.release.package.vello_gpu]
+opt-level = 3
+[profile.release.package.glifo]
+opt-level = 3
+[profile.release.package.taffy]
+opt-level = 3
+[profile.release.package.parley]
+opt-level = 3
+[profile.release.package.fontique]
+opt-level = 3
+[profile.release.package.skrifa]
+opt-level = 3
+[profile.release.package.read-fonts]
+opt-level = 3
+[profile.release.package.harfrust]
+opt-level = 3
+[profile.release.package.png]
+opt-level = 3
+[profile.release.package.fdeflate]
+opt-level = 3
+[profile.release.package.zune-inflate]
+opt-level = 3
+[profile.release.package.zune-jpeg]
+opt-level = 3
+[profile.release.package.kurbo]
+opt-level = 3
+[profile.release.package.peniko]
+opt-level = 3
+[profile.release.package.fearless_simd]
+opt-level = 3
+[profile.release.package.hashbrown]
+opt-level = 3
+[profile.release.package.serde_json]
+opt-level = 3
+
 [patch.crates-io]
 # taffy 0.14 with two flexbox fixes (third_party/taffy/LINGXIA-PATCHES.md), until upstream takes them.
 taffy = { path = "../../../third_party/taffy" }
