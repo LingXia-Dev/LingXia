@@ -885,8 +885,9 @@ pub async fn page_scroll_to_index(
         .map_err(|err| err.to_string())
 }
 
-/// Frames a GPU reveal waits through before it fails.
-const REVEAL_FRAMES: usize = 4;
+/// How long a GPU reveal keeps trying on new frames before it fails: an entering dialog's
+/// transition, not a count of frames, which pipelined pages present several times faster.
+const REVEAL_WAIT: std::time::Duration = std::time::Duration::from_millis(600);
 
 /// Reveal on a GPU page. A match the newest View just added (an expanded section) can still
 /// lie beyond the presented frame's scroll extent; the frames that follow carry it, so a
@@ -896,15 +897,16 @@ async fn gpu_reveal(
     selector: &str,
     index: Option<usize>,
 ) -> Result<(), String> {
+    let started = std::time::Instant::now();
     let mut attempt = 0;
     loop {
         match page
             .act(selector, index, gpu::GpuAction::ScrollIntoView)
             .await
         {
-            Err(error) if error.contains("no scroll brings") && attempt < REVEAL_FRAMES => {
+            Err(error) if error.contains("no scroll brings") && started.elapsed() < REVEAL_WAIT => {
                 attempt += 1;
-                debug!("page reveal retry {attempt}/{REVEAL_FRAMES} on the next frame: {error}");
+                debug!("page reveal retry {attempt} on the next frame: {error}");
                 next_presented_frame(page).await;
             }
             done => return done,
@@ -1198,13 +1200,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_reveal_that_never_lands_fails_after_a_few_frames() {
+    async fn a_reveal_that_never_lands_fails_once_its_wait_is_over() {
         let page = page(usize::MAX);
+        let started = std::time::Instant::now();
         let error = gpu_reveal(&page, "[data-testid=row]", None)
             .await
             .unwrap_err();
         assert!(error.contains("no scroll brings"));
-        assert_eq!(page.attempts.load(Ordering::SeqCst), REVEAL_FRAMES + 1);
+        assert!(started.elapsed() >= REVEAL_WAIT);
+        assert!(page.attempts.load(Ordering::SeqCst) > 1);
     }
 
     #[test]
