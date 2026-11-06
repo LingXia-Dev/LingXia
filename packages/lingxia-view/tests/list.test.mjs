@@ -74,6 +74,36 @@ test('a deferred render reports moved anchors and encodes once into their window
  discard();
 });
 
+test('a pure row is reused while its items and environment are unchanged',()=>{
+ reset();let built=[],env={theme:'light'},extra=0;
+ const items=Object.freeze(['a','b','c','d','e']);
+ const renderItem=Object.assign(item=>{built.push(item);return h('text',{'data-testid':item},item);},{__lxRow:'site'});
+ const page=()=>h('column',{},h('text',{},String(extra)),h(List,{items,getKey:String,renderItem}));
+ const view=()=>({data:{},env});
+ const id=records(prepare(page,view())).find(r=>r.tag==='list').fields.get('listId');commit();
+ const win=(s,e)=>({[id]:{start:s,end:e,leading:0,trailing:0}});
+ prepare(page,view(),win(0,3));commit();
+ built=[];extra=1;const again=records(prepare(page,view(),win(0,3)));commit();
+ assert.deepEqual(built,[],'same items, same rows');
+ assert.deepEqual(again.filter(r=>r.id).map(r=>r.text),['a','b','c']);
+ built=[];prepare(page,view(),win(1,4));commit();
+ assert.deepEqual(built,['d'],'only the row entering the window renders');
+ built=[];env={theme:'dark'};prepare(page,view(),win(1,4));commit();
+ assert.deepEqual(built,['b','c','d'],'a new environment renders them again');
+});
+
+test('rows with state or callbacks render on every full render',()=>{
+ reset();let built=[];
+ const items=Object.freeze(['x','y']);
+ const renderItem=Object.assign(item=>{built.push(item);return h('button',{onClick(){}},item);},{__lxRow:'site'});
+ const page=()=>h(List,{items,getKey:String,renderItem});
+ const id=records(prepare(page,{})).find(r=>r.tag==='list').fields.get('listId');commit();
+ const win={[id]:{start:0,end:2,leading:0,trailing:0}};
+ prepare(page,{},win);commit();
+ built=[];prepare(page,{},win);commit();
+ assert.deepEqual(built,['x','y']);
+});
+
 test('a gliding anchor keeps rendering the window it is in',()=>{
  reset();let anchor,visited=[];
  const page=()=>h(listTag,{count:1000,anchor,row:i=>{visited.push(i);return row(i);}});

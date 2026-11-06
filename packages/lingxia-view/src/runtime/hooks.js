@@ -55,6 +55,7 @@ export function hasLocalUpdates() { return page.updates.size > 0 || page.invalid
 
 export function useView() {
   if (!render.active) throw Error('UI_SCOPE: useView outside render');
+  render.readsView = true;
   return render.view;
 }
 

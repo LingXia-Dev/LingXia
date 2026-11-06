@@ -38,6 +38,8 @@ function componentId(tag) {
 }
 
 const handle = () => nextHandle++;
+/** Handles issued so far: a row that issued none holds no callback. */
+export const handlesIssued = () => nextHandle;
 const callbackOf = (callback, kind = 'void', isolated = false) => ({ callback, kind, isolated });
 
 const dataProp = /^data-[a-z][a-z0-9-]*$/;
@@ -636,8 +638,19 @@ function radioOptions(props, identity, fields, disabled) {
   });
 }
 
+/** The committed list's pure rows a full render may reuse, when nothing they were built from changed. */
+function reusableRows(old, props, rowEnv) {
+  const source = props.row?.__lxRows, before = old?.rowSource;
+  if (!source || !before || before.items !== source.items || before.site !== source.site || old.count !== props.count ||
+      old.rowEnv !== rowEnv || !old.pure?.size) return null;
+  const rows = new Map();
+  for (const i of old.pure) if (old.cache.has(i)) rows.set(i, old.cache.get(i));
+  return { rows, typography: old.typography };
+}
+
 function listState(props, identity) {
   const old = page.committed?.lists.get(identity);
+  const rowSource = props.row?.__lxRows, rowEnv = rowSource ? JSON.stringify(envOf(render.view) ?? null) : undefined;
   const anchor = props.anchor === undefined ? null : JSON.stringify(props.anchor);
   // Row state is remapped by key only when there is some; a fresh list needs no positions.
   const positions = props.itemKeys && old?.states?.size ? keyPositions(props.itemKeys) : null;
@@ -648,5 +661,6 @@ function listState(props, identity) {
   if (anchorChanged && !props.anchor.duration) render.candidate?.movedAnchors?.set(identity, anchor);
   return { count: props.count, previousCount: old?.count ?? props.count, anchor, anchorChanged,
     anchorCache: old?.cache ?? null,
-    states, cache: new Map(), window: old?.window ? { ...old.window, start: Math.min(old.window.start, props.count), end: Math.min(old.window.end, props.count) } : null };
+    states, cache: new Map(), pure: new Set(), reusable: reusableRows(old, props, rowEnv), rowSource, rowEnv,
+    window: old?.window ? { ...old.window, start: Math.min(old.window.start, props.count), end: Math.min(old.window.end, props.count) } : null };
 }

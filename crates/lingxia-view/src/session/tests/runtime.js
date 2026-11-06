@@ -2168,6 +2168,7 @@
   }
   function useView() {
     if (!render.active) throw Error("UI_SCOPE: useView outside render");
+    render.readsView = true;
     return render.view;
   }
   function pageAction(action, code, mode) {
@@ -2620,6 +2621,7 @@
     return id;
   }
   var handle = () => nextHandle++;
+  var handlesIssued = () => nextHandle;
   var callbackOf = (callback, kind = "void", isolated = false) => ({ callback, kind, isolated });
   var dataProp = /^data-[a-z][a-z0-9-]*$/;
   function dataOf(props) {
@@ -3210,8 +3212,16 @@
       return child;
     });
   }
+  function reusableRows(old, props, rowEnv) {
+    const source = props.row?.__lxRows, before = old?.rowSource;
+    if (!source || !before || before.items !== source.items || before.site !== source.site || old.count !== props.count || old.rowEnv !== rowEnv || !old.pure?.size) return null;
+    const rows = /* @__PURE__ */ new Map();
+    for (const i of old.pure) if (old.cache.has(i)) rows.set(i, old.cache.get(i));
+    return { rows, typography: old.typography };
+  }
   function listState(props, identity) {
     const old = page.committed?.lists.get(identity);
+    const rowSource = props.row?.__lxRows, rowEnv = rowSource ? JSON.stringify(envOf(render.view) ?? null) : void 0;
     const anchor = props.anchor === void 0 ? null : JSON.stringify(props.anchor);
     const positions2 = props.itemKeys && old?.states?.size ? keyPositions(props.itemKeys) : null;
     const states2 = positions2 ? new Map([...old?.states ?? []].flatMap(([, state]) => positions2.has(state.key) ? [[positions2.get(state.key), state]] : [])) : new Map([...old?.states ?? []].filter(([i]) => i < props.count));
@@ -3225,6 +3235,10 @@
       anchorCache: old?.cache ?? null,
       states: states2,
       cache: /* @__PURE__ */ new Map(),
+      pure: /* @__PURE__ */ new Set(),
+      reusable: reusableRows(old, props, rowEnv),
+      rowSource,
+      rowEnv,
       window: old?.window ? { ...old.window, start: Math.min(old.window.start, props.count), end: Math.min(old.window.end, props.count) } : null
     };
   }
@@ -3240,7 +3254,7 @@
       if (children === node.children) children = children.slice();
       children[i] = child;
     }
-    if (node.list) return { ...node, children, list: { ...node.list, states: new Map(node.list.states), cache: new Map(node.list.cache) } };
+    if (node.list) return { ...node, children, list: { ...node.list, states: new Map(node.list.states), cache: new Map(node.list.cache), pure: new Set(node.list.pure) } };
     return children === node.children ? node : { ...node, children };
   }
   function retainCells(cells) {
@@ -3297,6 +3311,13 @@
         window = windows[identity] ?? node.list.window ?? initialWindow(props.count);
         if (!Number.isSafeInteger(window.start) || !Number.isSafeInteger(window.end) || window.start < 0 || window.end < window.start || window.end > Math.max(props.count, node.list.previousCount) || ![window.leading, window.trailing].every((v) => Number.isFinite(v) && v >= 0 && v <= 16384e5)) throw Error("UI_LIST: invalid window");
         if (window.end > props.count) window = initialWindow(props.count);
+        const typography = node.list.rowSource ? JSON.stringify(node.typography ?? null) : void 0;
+        if (node.list.reusable && node.list.reusable.typography === typography) {
+          node.list.cache = new Map(node.list.reusable.rows);
+          node.list.pure = new Set(node.list.reusable.rows.keys());
+        }
+        node.list.reusable = null;
+        node.list.typography = typography;
         const target = props.anchor === "end" ? props.count - 1 : Math.min(props.anchor?.index ?? 0, props.count - 1);
         if (node.list.anchorChanged && !props.anchor?.duration && props.count > 0 && (target < window.start || target >= window.end)) {
           node.list.cache = new Map([...node.list.anchorCache].filter(([i, row]) => props.itemKeys === void 0 || row.props.key === `key:${JSON.stringify(props.itemKeys[i])}`));
@@ -3330,14 +3351,23 @@
   }
   function writeRows(node, window, index, depth, write) {
     const visibleKeys = /* @__PURE__ */ new Set();
-    for (const i of node.list.cache.keys()) if (i < window.start || i >= window.end) node.list.cache.delete(i);
+    for (const i of node.list.cache.keys()) if (i < window.start || i >= window.end) {
+      node.list.cache.delete(i);
+      node.list.pure.delete(i);
+    }
     for (let i = window.start; i < window.end; i++) {
       const cells = /* @__PURE__ */ new Map();
       render.collectors.push(cells);
       try {
         let row = node.list.cache.get(i), key = node.list.states.get(i)?.key;
-        if (!row) ({ row, key } = renderRow(node, i, cells, depth));
-        else {
+        if (!row) {
+          const { candidate } = render, handles = handlesIssued(), declarations = candidate.declarations.size, resources = candidate.resources.size;
+          render.readsView = false;
+          ({ row, key } = renderRow(node, i, cells, depth));
+          const pure = cells.size === 0 && !render.readsView && handlesIssued() === handles && candidate.declarations.size === declarations && candidate.resources.size === resources;
+          if (pure) node.list.pure.add(i);
+          else node.list.pure.delete(i);
+        } else {
           row = copyTree(row);
           retainCells(node.list.states.get(i).locals);
         }
@@ -4095,11 +4125,13 @@
   // src/runtime/tree.js
   function List({ items, getKey, renderItem, getItemHeight, ...props }) {
     const itemKeys2 = keysOf(items, getKey);
+    const row = (index) => renderItem(items[index], index);
+    if (typeof renderItem?.__lxRow === "string" && !getItemHeight && Object.isFrozen(items)) row.__lxRows = { items, site: renderItem.__lxRow };
     return h(listTag, {
       ...props,
       count: items.length,
       itemKeys: itemKeys2,
-      row: (index) => renderItem(items[index], index),
+      row,
       ...getItemHeight ? { height: (index) => getItemHeight(items[index], index) } : {}
     });
   }

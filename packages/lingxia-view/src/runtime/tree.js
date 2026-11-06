@@ -16,8 +16,11 @@ import { finishTopLayer, resetTopLayer } from './toplayer.js';
 // committed page; commit adopts the candidate, discard drops it.
 export function List({ items, getKey, renderItem, getItemHeight, ...props }) {
   const itemKeys = keysOf(items, getKey);
+  const row = index => renderItem(items[index], index);
+  // A renderItem the compiler proved pure builds the same rows from the same frozen items.
+  if (typeof renderItem?.__lxRow === 'string' && !getItemHeight && Object.isFrozen(items)) row.__lxRows = { items, site: renderItem.__lxRow };
   return h(listTag, { ...props, count: items.length,
-    itemKeys, row: index => renderItem(items[index], index),
+    itemKeys, row,
     ...(getItemHeight ? { height: index => getItemHeight(items[index], index) } : {}) });
 }
 List.__lxid = '@lingxia/view#List';

@@ -5,7 +5,7 @@ import { render } from './state.js';
 import { readNode, isNode } from './nodes.js';
 import { keyPayload } from './keys.js';
 
-import { resolveNode } from './elements.js';
+import { resolveNode, handlesIssued } from './elements.js';
 
 const structured = new Set(['backgroundGradient', 'boxShadow', 'animation']);
 const encodeValue = (key, value) => structured.has(key) && value !== 'none' ? JSON.stringify(value) : value;
@@ -19,7 +19,7 @@ export function copyTree(node) {
     if (children === node.children) children = children.slice();
     children[i] = child;
   }
-  if (node.list) return { ...node, children, list: { ...node.list, states: new Map(node.list.states), cache: new Map(node.list.cache) } };
+  if (node.list) return { ...node, children, list: { ...node.list, states: new Map(node.list.states), cache: new Map(node.list.cache), pure: new Set(node.list.pure) } };
   return children === node.children ? node : { ...node, children };
 }
 
@@ -82,6 +82,13 @@ export function encodeTree(tree, windows) {
           ![window.leading, window.trailing].every(v => Number.isFinite(v) && v >= 0 && v <= 1638400000)) throw Error('UI_LIST: invalid window');
       // A full render may shrink the list before native can reconcile its old window.
       if (window.end > props.count) window = initialWindow(props.count);
+      const typography = node.list.rowSource ? JSON.stringify(node.typography ?? null) : undefined;
+      if (node.list.reusable && node.list.reusable.typography === typography) {
+        node.list.cache = new Map(node.list.reusable.rows);
+        node.list.pure = new Set(node.list.reusable.rows.keys());
+      }
+      node.list.reusable = null;
+      node.list.typography = typography;
       const target = props.anchor === 'end' ? props.count - 1 : Math.min(props.anchor?.index ?? 0, props.count - 1);
       // A gliding anchor scrolls natively: the window follows the scroll, not the target.
       if (node.list.anchorChanged && !props.anchor?.duration && props.count > 0 && (target < window.start || target >= window.end)) {
@@ -117,13 +124,20 @@ export function encodeTree(tree, windows) {
 
 function writeRows(node, window, index, depth, write) {
   const visibleKeys = new Set();
-  for (const i of node.list.cache.keys()) if (i < window.start || i >= window.end) node.list.cache.delete(i);
+  for (const i of node.list.cache.keys()) if (i < window.start || i >= window.end) { node.list.cache.delete(i); node.list.pure.delete(i); }
   for (let i = window.start; i < window.end; i++) {
     const cells = new Map(); render.collectors.push(cells);
     try {
       let row = node.list.cache.get(i), key = node.list.states.get(i)?.key;
-      if (!row) ({ row, key } = renderRow(node, i, cells, depth));
-      else { row = copyTree(row); retainCells(node.list.states.get(i).locals); }
+      if (!row) {
+        const { candidate } = render, handles = handlesIssued(), declarations = candidate.declarations.size, resources = candidate.resources.size;
+        render.readsView = false;
+        ({ row, key } = renderRow(node, i, cells, depth));
+        // Reusable in a later render only if it holds no state, callback or resource and read no View.
+        const pure = cells.size === 0 && !render.readsView && handlesIssued() === handles &&
+          candidate.declarations.size === declarations && candidate.resources.size === resources;
+        if (pure) node.list.pure.add(i); else node.list.pure.delete(i);
+      } else { row = copyTree(row); retainCells(node.list.states.get(i).locals); }
       if (visibleKeys.has(key)) throw Error('UI_KEY: duplicate list row');
       visibleKeys.add(key);
       write(row, index, depth + 1);

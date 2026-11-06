@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { audit, buildPages, identify } from '../compiler/index.mjs';
 import { moduleBanner } from '../compiler/compatibility.mjs';
+import { markStableRows } from '../compiler/stable-rows.mjs';
 import { runInNewContext } from 'node:vm';
 import { maxField } from '../src/generated/wire.js';
 import { tree, decode } from './support/wire.mjs';
@@ -463,4 +464,22 @@ test('a pressable control around a single control fails the build; controls besi
   flags('export function render(){ return <button onClick={() => {}}><switch value={true} onChange={() => {}} aria-label="x" /></button>; }',
     /UI_BUTTON: <button> holds only a <switch>; put the action on that control/);
   clean('export function render(){ return <button onClick={() => {}}><row><text>Wi-Fi</text><switch value={true} onChange={() => {}} aria-label="Wi-Fi" /></row></button>; }');
+});
+
+test('a renderItem reading only its arguments and module constants is marked reusable', () => {
+  const source = `import { List } from '@lingxia/view';
+const label = (i: number) => String(i);
+let mutable = 1;
+export function render({ data }) {
+  const local = data.n;
+  return <column>
+    <List items={a} getKey={String} renderItem={i => <text>{label(i) + Math.max(i, 0)}</text>} />
+    <List items={a} getKey={String} renderItem={i => <text>{String(local)}</text>} />
+    <List items={a} getKey={String} renderItem={i => <text>{String(mutable)}</text>} />
+    <List items={a} getKey={String} renderItem={function (i) { return <text>{String(this)}</text>; }} />
+  </column>;
+}`;
+  const out = markStableRows(source, 'pages/a/index.tsx', 'pages/a/index.tsx');
+  assert.equal(out.match(/__lxRow/g)?.length, 1);
+  assert.match(out, /renderItem=\{Object\.assign\(i => <text>\{label\(i\)/);
 });

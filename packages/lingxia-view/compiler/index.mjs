@@ -2,6 +2,7 @@ import { build } from 'esbuild';
 import ts from 'typescript';
 import { collectClassUsage } from './class-usage.mjs';
 import { perfWarnings } from './perf.mjs';
+import { markStableRows } from './stable-rows.mjs';
 import { staticStyleWarnings } from './static-style.mjs';
 import { sourceChecker, moduleChecker, parseSource } from './source.mjs';
 import { moduleBanner } from './compatibility.mjs';
@@ -257,7 +258,7 @@ function analyse(path, contents, label, loader, literalColors) {
   collect(file);
   const analysed = {
     contents, file, names, problems: audit(contents, path, { literalColors }),
-    annotated: identify(loader.endsWith('x') ? annotate(contents, path, label) : contents, path, label),
+    annotated: identify(loader.endsWith('x') ? markStableRows(annotate(contents, path, label), path, label) : contents, path, label),
   };
   analyses.delete(key);
   if (analyses.size >= 512) analyses.delete(analyses.keys().next().value);
