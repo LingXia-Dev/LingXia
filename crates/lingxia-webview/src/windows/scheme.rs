@@ -89,8 +89,7 @@ pub(crate) fn build_webview2_response(
     response: WebResourceResponse,
 ) -> WinResult<ICoreWebView2WebResourceResponse> {
     let (parts, body) = response.into_parts();
-    let bytes = materialize_body(body);
-    let stream = body_to_stream(&bytes)?;
+    let stream = body_stream(body)?;
     let reason = CoTaskMemPWSTR::from(canonical_reason(parts.status).as_str());
     let headers = CoTaskMemPWSTR::from(format_headers(&parts.headers).as_str());
 
@@ -104,16 +103,187 @@ pub(crate) fn build_webview2_response(
     }
 }
 
-pub(crate) fn materialize_body(body: WebResourceBody) -> Vec<u8> {
-    match body {
-        WebResourceBody::Bytes(bytes) => bytes,
-        WebResourceBody::Path(path) => std::fs::read(path).unwrap_or_default(),
+/// Files are read lazily: WebView2 pulls from the stream as it needs data, so
+/// a media file is never loaded whole per request.
+fn body_stream(body: WebResourceBody) -> WinResult<IStream> {
+    let region = match body {
+        WebResourceBody::Bytes(bytes) => return body_to_stream(&bytes),
         WebResourceBody::Pipe(reader) => {
             let mut data = Vec::new();
             let mut file = pipe_reader_to_file(reader);
             let _ = file.as_mut().map(|file| file.read_to_end(&mut data));
-            data
+            return body_to_stream(&data);
         }
+        WebResourceBody::Path(path) => std::fs::File::open(&path).and_then(|file| {
+            let len = file.metadata()?.len();
+            Ok((file, 0, len))
+        }),
+        WebResourceBody::FileRange { path, offset, len } => {
+            std::fs::File::open(&path).map(|file| (file, offset, len))
+        }
+    };
+    match region {
+        Ok((file, start, len)) => Ok(FileRegionStream {
+            region: Mutex::new(FileRegion {
+                file,
+                start,
+                len,
+                pos: 0,
+            }),
+        }
+        .into()),
+        Err(err) => {
+            log::warn!("Failed to open response body file: {err}");
+            body_to_stream(&[])
+        }
+    }
+}
+
+struct FileRegion {
+    file: std::fs::File,
+    start: u64,
+    len: u64,
+    pos: u64,
+}
+
+/// Read-only `IStream` over `len` bytes of a file from `start`.
+#[windows::core::implement(IStream)]
+struct FileRegionStream {
+    region: Mutex<FileRegion>,
+}
+
+impl windows::Win32::System::Com::ISequentialStream_Impl for FileRegionStream_Impl {
+    fn Read(
+        &self,
+        pv: *mut core::ffi::c_void,
+        cb: u32,
+        pcbread: *mut u32,
+    ) -> windows::core::HRESULT {
+        use std::io::{Seek, SeekFrom};
+        let Ok(mut region) = self.region.lock() else {
+            return windows::Win32::Foundation::E_FAIL;
+        };
+        let want = (cb as u64).min(region.len.saturating_sub(region.pos)) as usize;
+        let mut read = 0usize;
+        if want > 0 && !pv.is_null() {
+            let buf = unsafe { std::slice::from_raw_parts_mut(pv as *mut u8, want) };
+            let at = region.start + region.pos;
+            if region.file.seek(SeekFrom::Start(at)).is_err() {
+                return windows::Win32::Foundation::STG_E_READFAULT;
+            }
+            while read < want {
+                match region.file.read(&mut buf[read..]) {
+                    Ok(0) => break,
+                    Ok(n) => read += n,
+                    Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                    Err(_) => return windows::Win32::Foundation::STG_E_READFAULT,
+                }
+            }
+            region.pos += read as u64;
+        }
+        if !pcbread.is_null() {
+            unsafe { *pcbread = read as u32 };
+        }
+        if read < cb as usize {
+            windows::Win32::Foundation::S_FALSE
+        } else {
+            windows::Win32::Foundation::S_OK
+        }
+    }
+
+    fn Write(
+        &self,
+        _pv: *const core::ffi::c_void,
+        _cb: u32,
+        _pcbwritten: *mut u32,
+    ) -> windows::core::HRESULT {
+        windows::Win32::Foundation::STG_E_ACCESSDENIED
+    }
+}
+
+impl windows::Win32::System::Com::IStream_Impl for FileRegionStream_Impl {
+    fn Seek(
+        &self,
+        dlibmove: i64,
+        dworigin: windows::Win32::System::Com::STREAM_SEEK,
+        plibnewposition: *mut u64,
+    ) -> WinResult<()> {
+        use windows::Win32::System::Com::{STREAM_SEEK_CUR, STREAM_SEEK_END, STREAM_SEEK_SET};
+        let invalid =
+            || windows::core::Error::from(windows::Win32::Foundation::STG_E_INVALIDFUNCTION);
+        let mut region = self.region.lock().map_err(|_| invalid())?;
+        let base = match dworigin {
+            STREAM_SEEK_SET => 0,
+            STREAM_SEEK_CUR => region.pos as i64,
+            STREAM_SEEK_END => region.len as i64,
+            _ => return Err(invalid()),
+        };
+        let target = base
+            .checked_add(dlibmove)
+            .filter(|p| *p >= 0)
+            .ok_or_else(invalid)?;
+        region.pos = target as u64;
+        if !plibnewposition.is_null() {
+            unsafe { *plibnewposition = region.pos };
+        }
+        Ok(())
+    }
+
+    fn SetSize(&self, _libnewsize: u64) -> WinResult<()> {
+        Err(windows::Win32::Foundation::E_NOTIMPL.into())
+    }
+
+    fn CopyTo(
+        &self,
+        _pstm: windows::core::Ref<IStream>,
+        _cb: u64,
+        _pcbread: *mut u64,
+        _pcbwritten: *mut u64,
+    ) -> WinResult<()> {
+        Err(windows::Win32::Foundation::E_NOTIMPL.into())
+    }
+
+    fn Commit(&self, _grfcommitflags: &windows::Win32::System::Com::STGC) -> WinResult<()> {
+        Ok(())
+    }
+
+    fn Revert(&self) -> WinResult<()> {
+        Ok(())
+    }
+
+    fn LockRegion(
+        &self,
+        _liboffset: u64,
+        _cb: u64,
+        _dwlocktype: &windows::Win32::System::Com::LOCKTYPE,
+    ) -> WinResult<()> {
+        Err(windows::Win32::Foundation::STG_E_INVALIDFUNCTION.into())
+    }
+
+    fn UnlockRegion(&self, _liboffset: u64, _cb: u64, _dwlocktype: u32) -> WinResult<()> {
+        Err(windows::Win32::Foundation::STG_E_INVALIDFUNCTION.into())
+    }
+
+    fn Stat(
+        &self,
+        pstatstg: *mut windows::Win32::System::Com::STATSTG,
+        _grfstatflag: &windows::Win32::System::Com::STATFLAG,
+    ) -> WinResult<()> {
+        let len = self.region.lock().map(|r| r.len).unwrap_or(0);
+        if !pstatstg.is_null() {
+            unsafe {
+                *pstatstg = windows::Win32::System::Com::STATSTG {
+                    r#type: windows::Win32::System::Com::STGTY_STREAM.0 as u32,
+                    cbSize: len,
+                    ..Default::default()
+                };
+            }
+        }
+        Ok(())
+    }
+
+    fn Clone(&self) -> WinResult<IStream> {
+        Err(windows::Win32::Foundation::E_NOTIMPL.into())
     }
 }
 

@@ -581,6 +581,12 @@ pub enum FileChooserResponse {
 pub enum WebResourceBody {
     /// Serve data from a regular file path on disk
     Path(PathBuf),
+    /// Serve `len` bytes of a file starting at `offset` (the body of a 206).
+    FileRange {
+        path: PathBuf,
+        offset: u64,
+        len: u64,
+    },
     /// Serve data from a system pipe (read end)
     Pipe(SystemPipeReader),
     /// Serve data directly from memory
@@ -1224,6 +1230,15 @@ impl From<(http::response::Parts, PathBuf)> for WebResourceResponse {
         WebResourceResponse {
             parts: value.0,
             body: WebResourceBody::Path(value.1),
+        }
+    }
+}
+
+impl From<(http::response::Parts, WebResourceBody)> for WebResourceResponse {
+    fn from(value: (http::response::Parts, WebResourceBody)) -> Self {
+        WebResourceResponse {
+            parts: value.0,
+            body: value.1,
         }
     }
 }

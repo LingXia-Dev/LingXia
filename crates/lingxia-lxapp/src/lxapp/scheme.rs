@@ -2,7 +2,7 @@ use super::uri as lx_uri;
 use crate::plugin;
 use http::{Request, Response, StatusCode, Uri};
 use lingxia_platform::traits::app_runtime::AppRuntime;
-use lingxia_webview::WebResourceResponse;
+use lingxia_webview::{WebResourceBody, WebResourceResponse};
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -56,7 +56,8 @@ impl LxApp {
 
         let asset_path = match self.resolve_lx_uri(page, uri) {
             Ok(ResolvedLxAsset::BuiltinAsset(relative)) => {
-                return self.handle_builtin_lxapp_asset(&relative);
+                return self
+                    .handle_builtin_lxapp_asset(&relative, req.headers().get(http::header::RANGE));
             }
             Ok(ResolvedLxAsset::FilePath(path)) => path,
             Err(e) => {
@@ -95,31 +96,70 @@ impl LxApp {
         // WebView2 honors the declared type strictly and refuses to render;
         // the resolved path keeps the real extension, so use it.
         let mime_type = Self::infer_mime_type(&asset_path.to_string_lossy());
+        self.touch_user_cache_access_time(&asset_path);
 
+        match parse_byte_range(req.headers().get(http::header::RANGE), file_len) {
+            ByteRange::Full => {
+                let parts = self.asset_response_parts(StatusCode::OK, mime_type, file_len, None);
+                Some((parts, asset_path).into())
+            }
+            ByteRange::Partial { start, end } => {
+                let len = end - start + 1;
+                let parts = self.asset_response_parts(
+                    StatusCode::PARTIAL_CONTENT,
+                    mime_type,
+                    len,
+                    Some(format!("bytes {start}-{end}/{file_len}")),
+                );
+                let body = WebResourceBody::FileRange {
+                    path: asset_path,
+                    offset: start,
+                    len,
+                };
+                Some((parts, body).into())
+            }
+            ByteRange::Unsatisfiable => {
+                let parts = self.asset_response_parts(
+                    StatusCode::RANGE_NOT_SATISFIABLE,
+                    mime_type,
+                    0,
+                    Some(format!("bytes */{file_len}")),
+                );
+                Some((parts, Vec::new()).into())
+            }
+        }
+    }
+
+    /// Headers shared by app-asset responses. Every one advertises byte ranges:
+    /// `<video>` / `<audio>` only seek a source that answers `Range` with 206.
+    fn asset_response_parts(
+        &self,
+        status: StatusCode,
+        mime_type: &str,
+        content_length: u64,
+        content_range: Option<String>,
+    ) -> http::response::Parts {
         let mut builder = Response::builder()
-            .status(StatusCode::OK)
+            .status(status)
             .header("Content-Type", mime_type)
+            .header("Content-Length", content_length)
+            .header("Accept-Ranges", "bytes")
             .header("Access-Control-Allow-Origin", "null");
+        if let Some(range) = content_range {
+            builder = builder.header("Content-Range", range);
+        }
         // A dev rebuild keeps file names such as `./view.js`. Without this,
         // WebView2 replays the module from the first load after a reload.
         if self.dev_bundle_root().is_some() {
             builder = builder.header("Cache-Control", "no-store");
         }
-
-        if let Ok(value) = http::HeaderValue::from_str(&file_len.to_string()) {
-            builder = builder.header("Content-Length", value);
-        }
-
         let response = builder.body(()).unwrap_or_else(|_| {
             Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .body(())
                 .expect("Failed to build fallback empty response")
         });
-
-        let (parts, _) = response.into_parts();
-        self.touch_user_cache_access_time(&asset_path);
-        Some((parts, asset_path).into())
+        response.into_parts().0
     }
 
     fn handle_sdk_asset(&self, uri: &Uri) -> Option<WebResourceResponse> {
@@ -222,7 +262,11 @@ impl LxApp {
         }
     }
 
-    fn handle_builtin_lxapp_asset(&self, relative_path: &str) -> Option<WebResourceResponse> {
+    fn handle_builtin_lxapp_asset(
+        &self,
+        relative_path: &str,
+        range: Option<&http::HeaderValue>,
+    ) -> Option<WebResourceResponse> {
         if !matches!(
             self.bundle_source,
             crate::lxapp::LxAppBundleSource::BuiltinAssets
@@ -263,24 +307,35 @@ impl LxApp {
         }
 
         let mime_type = Self::infer_mime_type(relative_path);
-        let mut builder = Response::builder()
-            .status(StatusCode::OK)
-            .header("Content-Type", mime_type)
-            .header("Access-Control-Allow-Origin", "null");
-
-        if let Ok(value) = http::HeaderValue::from_str(&data.len().to_string()) {
-            builder = builder.header("Content-Length", value);
-        }
-
-        let response = builder.body(()).unwrap_or_else(|_| {
-            Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body(())
-                .expect("Failed to build fallback empty response")
-        });
-
-        let (parts, _) = response.into_parts();
-        Some((parts, data).into())
+        let total = data.len() as u64;
+        let (parts, body) = match parse_byte_range(range, total) {
+            ByteRange::Full => (
+                self.asset_response_parts(StatusCode::OK, mime_type, total, None),
+                data,
+            ),
+            ByteRange::Partial { start, end } => {
+                let slice = data[start as usize..=end as usize].to_vec();
+                (
+                    self.asset_response_parts(
+                        StatusCode::PARTIAL_CONTENT,
+                        mime_type,
+                        slice.len() as u64,
+                        Some(format!("bytes {start}-{end}/{total}")),
+                    ),
+                    slice,
+                )
+            }
+            ByteRange::Unsatisfiable => (
+                self.asset_response_parts(
+                    StatusCode::RANGE_NOT_SATISFIABLE,
+                    mime_type,
+                    0,
+                    Some(format!("bytes */{total}")),
+                ),
+                Vec::new(),
+            ),
+        };
+        Some((parts, body).into())
     }
 
     fn resolve_user_dir_uri(&self, uri: &Uri, base_dir: &Path) -> Result<PathBuf, LxAppError> {
@@ -388,6 +443,8 @@ impl LxApp {
     /// non-ASCII string in it renders as mojibake — the localized strings in an
     /// lxapp's own JS being the obvious casualty.
     fn infer_mime_type(path: &str) -> &'static str {
+        // Camera files arrive upper-case (`IMG_0001.MOV`).
+        let path = path.to_ascii_lowercase();
         if path.ends_with(".js") {
             "application/javascript; charset=utf-8"
         } else if path.ends_with(".css") {
@@ -416,8 +473,22 @@ impl LxApp {
             "audio/mpeg"
         } else if path.ends_with(".wav") {
             "audio/wav"
-        } else if path.ends_with(".mp4") {
+        } else if path.ends_with(".m4a") {
+            "audio/mp4"
+        } else if path.ends_with(".aac") {
+            "audio/aac"
+        } else if path.ends_with(".ogg") || path.ends_with(".oga") || path.ends_with(".opus") {
+            "audio/ogg"
+        } else if path.ends_with(".flac") {
+            "audio/flac"
+        } else if path.ends_with(".mp4") || path.ends_with(".m4v") {
             "video/mp4"
+        } else if path.ends_with(".mov") {
+            "video/quicktime"
+        } else if path.ends_with(".webm") {
+            "video/webm"
+        } else if path.ends_with(".ogv") {
+            "video/ogg"
         } else {
             "application/octet-stream"
         }
@@ -483,5 +554,103 @@ impl LxApp {
 
         let (parts, _) = response.into_parts();
         (parts, body).into()
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum ByteRange {
+    Full,
+    Partial { start: u64, end: u64 },
+    Unsatisfiable,
+}
+
+/// Single `bytes=` range only; anything else (multi-range, malformed, other
+/// units) is ignored and served whole, which RFC 9110 permits.
+fn parse_byte_range(header: Option<&http::HeaderValue>, len: u64) -> ByteRange {
+    let Some(spec) = header
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.trim().strip_prefix("bytes="))
+    else {
+        return ByteRange::Full;
+    };
+    if len == 0 || spec.contains(',') {
+        return ByteRange::Full;
+    }
+    let Some((first, last)) = spec.split_once('-') else {
+        return ByteRange::Full;
+    };
+    let (first, last) = (first.trim(), last.trim());
+    let (start, end) = if first.is_empty() {
+        match last.parse::<u64>() {
+            Ok(0) => return ByteRange::Unsatisfiable,
+            Ok(suffix) => (len.saturating_sub(suffix), len - 1),
+            Err(_) => return ByteRange::Full,
+        }
+    } else {
+        let Ok(start) = first.parse::<u64>() else {
+            return ByteRange::Full;
+        };
+        if start >= len {
+            return ByteRange::Unsatisfiable;
+        }
+        let end = if last.is_empty() {
+            len - 1
+        } else {
+            match last.parse::<u64>() {
+                Ok(end) if end >= start => end.min(len - 1),
+                _ => return ByteRange::Full,
+            }
+        };
+        (start, end)
+    };
+    // Never shorten the range: WebView2 treats a short 206 as end of stream.
+    ByteRange::Partial { start, end }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn range(spec: &str, len: u64) -> ByteRange {
+        parse_byte_range(Some(&http::HeaderValue::from_str(spec).unwrap()), len)
+    }
+
+    #[test]
+    fn byte_range_forms() {
+        assert_eq!(
+            range("bytes=0-1", 100),
+            ByteRange::Partial { start: 0, end: 1 }
+        );
+        assert_eq!(
+            range("bytes=90-500", 100),
+            ByteRange::Partial { start: 90, end: 99 }
+        );
+        assert_eq!(
+            range("bytes=-10", 100),
+            ByteRange::Partial { start: 90, end: 99 }
+        );
+        assert_eq!(
+            range("bytes=-500", 100),
+            ByteRange::Partial { start: 0, end: 99 }
+        );
+        assert_eq!(range("bytes=100-", 100), ByteRange::Unsatisfiable);
+        assert_eq!(range("bytes=-0", 100), ByteRange::Unsatisfiable);
+        // Ignored, served whole.
+        assert_eq!(range("bytes=0-1,5-6", 100), ByteRange::Full);
+        assert_eq!(range("bytes=5-2", 100), ByteRange::Full);
+        assert_eq!(range("items=0-1", 100), ByteRange::Full);
+        assert_eq!(range("bytes=0-", 0), ByteRange::Full);
+    }
+
+    #[test]
+    fn open_range_runs_to_end_of_file() {
+        let len = 600 * 1024 * 1024;
+        assert_eq!(
+            range("bytes=0-", len),
+            ByteRange::Partial {
+                start: 0,
+                end: len - 1
+            }
+        );
     }
 }

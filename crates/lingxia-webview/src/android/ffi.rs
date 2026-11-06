@@ -1056,6 +1056,39 @@ fn create_java_response<'a>(
                     .unwrap_or(-1);
                 (file_path_str, 0, JObject::null(), content_length)
             }
+            WebResourceBody::FileRange { path, offset, len } => {
+                use std::io::{Read as _, Seek as _, SeekFrom};
+                use std::os::fd::IntoRawFd as _;
+                let empty_path = env.new_string("")?;
+                let opened = fs::File::open(&path).and_then(|mut file| {
+                    file.seek(SeekFrom::Start(offset))?;
+                    Ok(file)
+                });
+                match opened {
+                    // Java reads an fd from its current position to EOF, which is
+                    // exactly an open-ended range; a bounded one goes as bytes.
+                    Ok(file) if file.metadata().map(|m| m.len()).ok() == Some(offset + len) => (
+                        empty_path,
+                        file.into_raw_fd() as jint,
+                        JObject::null(),
+                        len as i64,
+                    ),
+                    Ok(file) => {
+                        let mut data = Vec::with_capacity(len as usize);
+                        let _ = file.take(len).read_to_end(&mut data);
+                        let data_array: JByteArray = env.byte_array_from_slice(&data)?;
+                        (empty_path, 0, JObject::from(data_array), data.len() as i64)
+                    }
+                    Err(e) => {
+                        log::error!(
+                            "Failed to open ranged response file {}: {e}",
+                            path.display()
+                        );
+                        let data_array: JByteArray = env.byte_array_from_slice(&[])?;
+                        (empty_path, 0, JObject::from(data_array), 0)
+                    }
+                }
+            }
             WebResourceBody::Pipe(reader) => {
                 let empty_path = env.new_string("")?;
                 let fd = reader.into_raw_fd();
