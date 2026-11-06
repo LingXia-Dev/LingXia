@@ -130,6 +130,8 @@ opt-level = 3
 [patch.crates-io]
 # taffy 0.14 with two flexbox fixes (third_party/taffy/LINGXIA-PATCHES.md), until upstream takes them.
 taffy = { path = "../../../third_party/taffy" }
+# glifo 0.4 decoding a bitmap glyph's PNG on every draw (third_party/glifo/LINGXIA-PATCHES.md).
+glifo = { path = "../../../third_party/glifo" }
 lingxia-view = { path = "../../../crates/lingxia-view" }
 portable-pty = { git = "https://github.com/LingXia-Dev/wezterm.git", rev = "59d0fb89c54a77c12afe2561dc6969d8dc55fc4f", package = "portable-pty" }
 lingxia = { path = "../../../crates/lingxia" }

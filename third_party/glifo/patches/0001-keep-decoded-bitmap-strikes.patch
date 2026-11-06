@@ -1,0 +1,76 @@
+--- a/src/glyph.rs
++++ b/src/glyph.rs
+@@ -615,17 +615,21 @@
+ 
+             // ── Bitmap Glyphs ────────────────────────────────────────────
+             let mut bitmap_unavailable_reason = None;
+-            let bitmap_data: Option<(skrifa::bitmap::BitmapGlyph<'_>, Pixmap)> = bitmaps
++            let bitmap_data: Option<(skrifa::bitmap::BitmapGlyph<'_>, Arc<Pixmap>)> = bitmaps
+                 .glyph_for_size(Size::new(draw_props.font_size), glyph_id)
+                 .and_then(|g| match g.data {
+                     #[cfg(feature = "png")]
+-                    BitmapData::Png(data) => match Pixmap::from_png(std::io::Cursor::new(data)) {
+-                        Ok(pixmap) => Some((g, pixmap)),
+-                        Err(_) => {
+-                            bitmap_unavailable_reason = Some(GlyphSkipReason::BitmapDecodeFailed);
+-                            None
++                    BitmapData::Png(data) => {
++                        let key = (font_info.id, font_info.index, glyph.id, g.ppem_x.to_bits());
++                        match decoded_png(key, data) {
++                            Some(pixmap) => Some((g, pixmap)),
++                            None => {
++                                bitmap_unavailable_reason =
++                                    Some(GlyphSkipReason::BitmapDecodeFailed);
++                                None
++                            }
+                         }
+-                    },
++                    }
+                     #[cfg(not(feature = "png"))]
+                     BitmapData::Png(_) => {
+                         bitmap_unavailable_reason = Some(GlyphSkipReason::PngSupportDisabled);
+@@ -1295,7 +1299,7 @@
+ ///
+ /// This wraps the pixmap in a `GlyphType::Bitmap` with its display area,
+ /// without any positioning information.
+-fn create_bitmap_glyph(pixmap: Pixmap) -> GlyphType<'static> {
++fn create_bitmap_glyph(pixmap: Arc<Pixmap>) -> GlyphType<'static> {
+     // Scale factor already accounts for ppem, so we can just draw in the size of the
+     // actual image
+     let area = Rect::new(
+@@ -1305,12 +1309,31 @@
+         f64::from(pixmap.height()),
+     );
+ 
+-    GlyphType::Bitmap(GlyphBitmap {
+-        pixmap: Arc::new(pixmap),
+-        area,
+-    })
++    GlyphType::Bitmap(GlyphBitmap { pixmap, area })
+ }
+ 
++/// Decoded PNG strikes by font id, font index, glyph id and strike ppem. A run reads a bitmap
++/// glyph's size before its atlas slot, so without this every draw decodes the PNG again.
++#[cfg(feature = "png")]
++fn decoded_png(key: (u64, u32, u32, u32), data: &[u8]) -> Option<Arc<Pixmap>> {
++    use std::sync::{Mutex, OnceLock};
++    /// Past this many strikes the cache starts over.
++    const ENTRIES: usize = 512;
++    type Strikes = std::collections::HashMap<(u64, u32, u32, u32), Arc<Pixmap>>;
++    static DECODED: OnceLock<Mutex<Strikes>> = OnceLock::new();
++    let decoded = DECODED.get_or_init(Default::default);
++    if let Some(pixmap) = decoded.lock().unwrap_or_else(|p| p.into_inner()).get(&key) {
++        return Some(Arc::clone(pixmap));
++    }
++    let pixmap = Arc::new(Pixmap::from_png(std::io::Cursor::new(data)).ok()?);
++    let mut decoded = decoded.lock().unwrap_or_else(|p| p.into_inner());
++    if decoded.len() >= ENTRIES {
++        decoded.clear();
++    }
++    decoded.insert(key, Arc::clone(&pixmap));
++    Some(pixmap)
++}
++
+ /// Calculate transform for bitmap glyphs.
+ ///
+ /// This computes the final positioning transform for a bitmap glyph, taking into account:
