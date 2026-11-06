@@ -83,11 +83,12 @@ pub(super) struct AndroidAdapter {
 }
 
 pub(super) enum Frame {
-    #[cfg_attr(not(all(feature = "gpu", target_os = "android")), allow(dead_code))]
+    /// Drawn on the render thread while the worker goes on; presented there too.
+    #[cfg(all(feature = "gpu", target_os = "android"))]
     Gpu {
         surface: u64,
         revision: u64,
-        metrics: serde_json::Value,
+        drawn: Arc<super::render::Drawn>,
     },
     /// Rasterized off the View worker when presented.
     Cpu(DisplayList, CommitTicket),
@@ -215,15 +216,11 @@ impl Presenter for AndroidAdapter {
             Route::Wait => return Ok(None),
             #[cfg(all(feature = "gpu", target_os = "android"))]
             Route::Gpu(surface) => {
-                return Ok(
-                    super::gpu_surface::prepare(surface, &display, generation.get())?.map(
-                        |metrics| Frame::Gpu {
-                            surface,
-                            revision: generation.get(),
-                            metrics,
-                        },
-                    ),
-                );
+                return Ok(Some(Frame::Gpu {
+                    surface,
+                    revision: generation.get(),
+                    drawn: super::render::draw(surface, generation.get(), display),
+                }));
             }
             #[cfg(not(all(feature = "gpu", target_os = "android")))]
             Route::Gpu(_) => return Ok(None),
@@ -234,7 +231,10 @@ impl Presenter for AndroidAdapter {
 
     fn metrics(&self, frame: &Frame) -> Option<serde_json::Value> {
         Some(match frame {
-            Frame::Gpu { metrics, .. } => metrics.clone(),
+            #[cfg(all(feature = "gpu", target_os = "android"))]
+            Frame::Gpu { .. } => {
+                serde_json::json!({"renderer": "sparse-strips", "renderThread": true})
+            }
             Frame::Cpu(..) => serde_json::json!({"backend": "vello-cpu"}),
         })
     }
@@ -243,23 +243,37 @@ impl Presenter for AndroidAdapter {
         match frame {
             #[cfg(all(feature = "gpu", target_os = "android"))]
             Frame::Gpu {
-                surface, revision, ..
+                surface,
+                revision,
+                drawn,
             } => {
-                let started = Instant::now();
-                let Some([acquire, encode, submit, present]) =
-                    super::gpu_surface::present(surface, revision)?
-                else {
+                let Some(host) = self.host.get().cloned() else {
                     return Ok(false);
                 };
-                // Diagnose host-thread stalls separately from the worker's render time.
-                info(&format!(
-                    "GPU_PRESENT surface={surface} generation={revision} lockUs={} acquireUs={acquire} encodeUs={encode} submitUs={submit} presentUs={present}",
-                    started.elapsed().as_micros()
-                ));
+                super::render::present(surface, revision, drawn, move |shown, metrics| {
+                    let Some(host) = host.upgrade() else { return };
+                    let us = |path: &[&str]| {
+                        path.iter()
+                            .fold(metrics.as_ref(), |value, key| value?.get(key))
+                            .and_then(serde_json::Value::as_u64)
+                            .unwrap_or(0)
+                    };
+                    let gpu = [
+                        us(&["prepare", "sceneUs"]),
+                        us(&["prepare", "encodeUs"]),
+                        us(&["prepare", "submitUs"]),
+                        us(&["presentUs"]),
+                    ];
+                    match shown {
+                        Ok(shown) => host.deferred_drawn(CommitTicket::new(revision), shown, gpu),
+                        Err(error) => {
+                            host.deferred_presented(CommitTicket::new(revision), false);
+                            host.fail(error);
+                        }
+                    }
+                });
                 Ok(true)
             }
-            #[cfg(not(all(feature = "gpu", target_os = "android")))]
-            Frame::Gpu { .. } => Ok(false),
             Frame::Cpu(display, generation) => {
                 let Some(host) = self.host.get().cloned() else {
                     return Ok(false);
@@ -276,13 +290,16 @@ impl Presenter for AndroidAdapter {
         }
     }
 
-    fn deferred(&self, frame: &Frame) -> bool {
-        matches!(frame, Frame::Cpu(..))
+    fn deferred(&self, _: &Frame) -> bool {
+        true
     }
 
     fn release_transient(&self) {
         #[cfg(all(feature = "gpu", target_os = "android"))]
-        super::gpu_surface::release_transient(self.gpu.load(Ordering::Acquire));
+        {
+            let surface = self.gpu.load(Ordering::Acquire);
+            super::render::run(move || super::gpu_surface::release_transient(surface));
+        }
     }
 }
 

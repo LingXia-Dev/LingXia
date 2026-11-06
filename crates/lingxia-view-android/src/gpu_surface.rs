@@ -1,5 +1,5 @@
-//! Vulkan presenters bound to Android `Surface`s. Prepare runs on the View
-//! worker, present on the main thread; one registry shares the device context.
+//! Vulkan presenters bound to Android `Surface`s. Everything but `describe` runs on the render
+//! thread; one registry shares the device context.
 use lingxia_view::renderer::gpu::Presenter;
 use raw_window_handle::{
     AndroidDisplayHandle, AndroidNdkWindowHandle, DisplayHandle, HandleError, HasDisplayHandle,
@@ -114,8 +114,6 @@ fn lock(presenter: &Shared) -> Result<std::sync::MutexGuard<'_, Presenter>, Stri
 }
 
 /// Bind `window` to the presenter `existing`, or to a new one; returns its id.
-/// Runs on a dedicated attach thread: wgpu's GLES adapter makes its EGL context
-/// current per call under its own lock, so the context is not tied to this thread.
 pub(super) fn attach(
     window: NativeWindow,
     width: u32,

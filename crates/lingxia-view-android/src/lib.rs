@@ -15,6 +15,8 @@ mod adapter;
 mod fonts;
 #[cfg(all(feature = "gpu", target_os = "android"))]
 mod gpu_surface;
+#[cfg(all(feature = "gpu", target_os = "android"))]
+mod render;
 
 use adapter::AndroidAdapter;
 pub use adapter::{ImageLoader, set_image_loader};
@@ -22,7 +24,7 @@ pub use adapter::{ImageLoader, set_image_loader};
 /// Memory pressure: GPU pages drop memory kept only to speed up coming frames.
 pub fn release_transient() {
     #[cfg(all(feature = "gpu", target_os = "android"))]
-    gpu_surface::release_transient_all();
+    render::run(gpu_surface::release_transient_all);
 }
 
 type Host = ViewHost<AndroidAdapter>;
@@ -250,7 +252,7 @@ extern "system" fn host_release<'a>(mut env: EnvUnowned<'a>, _: JClass<'a>, hand
                 .gpu
                 .swap(0, std::sync::atomic::Ordering::AcqRel);
             if surface != 0 {
-                gpu_surface::detach(surface);
+                render::run(move || gpu_surface::detach(surface));
             }
         }
         Ok(())
@@ -322,11 +324,14 @@ extern "system" fn surface_lost<'a>(mut env: EnvUnowned<'a>, _: JClass<'a>, hand
         let host = host(handle)?;
         host.surface_lost();
         #[cfg(all(feature = "gpu", target_os = "android"))]
-        gpu_surface::suspend(
-            host.adapter()
+        {
+            // Java destroys the Surface once this returns, so the presenter lets go of it first.
+            let surface = host
+                .adapter()
                 .gpu
-                .load(std::sync::atomic::Ordering::Acquire),
-        );
+                .load(std::sync::atomic::Ordering::Acquire);
+            render::run_now(move || gpu_surface::suspend(surface));
+        }
         Ok(())
     })
 }
@@ -1019,7 +1024,7 @@ extern "system" fn gpu_active(_: EnvUnowned<'_>, _: JClass<'_>, active: jboolean
     }
 }
 
-/// Bind the Surface to a GPU presenter on the View worker; Java hears back
+/// Bind the Surface to a GPU presenter on the render thread; Java hears back
 /// through `GpuPlatform.gpuAttached` and renders on the CPU until then.
 #[cfg(all(feature = "gpu", target_os = "android"))]
 extern "system" fn attach<'a>(
@@ -1039,59 +1044,51 @@ extern "system" fn attach<'a>(
         let existing = adapter.gpu.load(std::sync::atomic::Ordering::Acquire);
         adapter.set_target(adapter::Target::Waiting);
         let (width, height) = (width as u32, height as u32);
-        let fallback = host.clone();
-        // Off the shared View worker: an attach must never queue behind another page's frames.
-        std::thread::Builder::new()
-            .name("lingxia-gpu-attach".into())
-            .spawn(move || {
-                let attached = gpu_surface::attach(window, width, height, existing);
-                let main = host.clone();
-                lingxia_view::platform::MainThread::post(
-                    host.adapter(),
-                    Box::new(move || {
-                        let adapter = main.adapter();
-                        let ok = match attached {
-                            Ok(id) => {
-                                adapter.gpu.store(id, std::sync::atomic::Ordering::Release);
-                                adapter.set_target(adapter::Target::Ready);
-                                true
-                            }
-                            Err(error) => {
-                                adapter.set_target(adapter::Target::Unavailable);
-                                adapter::log(&format!(
-                                    "GPU unavailable; using CPU reference renderer: {error}"
-                                ));
-                                false
-                            }
-                        };
-                        let surface = adapter.gpu.load(std::sync::atomic::Ordering::Acquire);
-                        let (record, backend) = match gpu_surface::describe(surface) {
-                            Some(described) if ok => described,
-                            _ => (String::new(), "vello-cpu"),
-                        };
-                        let reason = match lingxia_view::renderer::sentinel::fallback() {
-                            Some(_) => " fallback=driver (refused by the GPU crash sentinel)",
-                            None => "",
-                        };
-                        adapter::info(&format!(
-                            "backend={backend} surface={surface} adapter={record}{reason}"
-                        ));
-                        adapter.java(|env, platform| {
-                            env.call_method(
-                                platform,
-                                jni_str!("gpuAttached"),
-                                jni_sig!("(Z)V"),
-                                &[JValue::Bool(ok)],
-                            )?;
-                            Ok(())
-                        });
-                    }),
-                );
-            })
-            .map_err(|error| {
-                fallback.adapter().set_target(adapter::Target::Unavailable);
-                Error::from(format!("UI_SURFACE: {error}"))
-            })?;
+        render::run(move || {
+            let attached = gpu_surface::attach(window, width, height, existing);
+            let main = host.clone();
+            lingxia_view::platform::MainThread::post(
+                host.adapter(),
+                Box::new(move || {
+                    let adapter = main.adapter();
+                    let ok = match attached {
+                        Ok(id) => {
+                            adapter.gpu.store(id, std::sync::atomic::Ordering::Release);
+                            adapter.set_target(adapter::Target::Ready);
+                            true
+                        }
+                        Err(error) => {
+                            adapter.set_target(adapter::Target::Unavailable);
+                            adapter::log(&format!(
+                                "GPU unavailable; using CPU reference renderer: {error}"
+                            ));
+                            false
+                        }
+                    };
+                    let surface = adapter.gpu.load(std::sync::atomic::Ordering::Acquire);
+                    let (record, backend) = match gpu_surface::describe(surface) {
+                        Some(described) if ok => described,
+                        _ => (String::new(), "vello-cpu"),
+                    };
+                    let reason = match lingxia_view::renderer::sentinel::fallback() {
+                        Some(_) => " fallback=driver (refused by the GPU crash sentinel)",
+                        None => "",
+                    };
+                    adapter::info(&format!(
+                        "backend={backend} surface={surface} adapter={record}{reason}"
+                    ));
+                    adapter.java(|env, platform| {
+                        env.call_method(
+                            platform,
+                            jni_str!("gpuAttached"),
+                            jni_sig!("(Z)V"),
+                            &[JValue::Bool(ok)],
+                        )?;
+                        Ok(())
+                    });
+                }),
+            );
+        });
         Ok(())
     })
 }
