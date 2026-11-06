@@ -117,8 +117,24 @@ impl Shell for Bridge {
         gpu_page::restart(token, connection)
     }
     fn recovery(&self, token: i64, failure: Option<&Failure>) {
+        use lingxia_view_harmony::lingxia_view::session::host::{RecoveryAction, RecoveryMessage};
+        // Message and action as indices into the shell's strings, as Android's panel reads them.
         let payload = failure
-            .map(|f| serde_json::json!({"error": f.error, "retained": f.retained}).to_string())
+            .map(|f| {
+                let message = match f.message {
+                    RecoveryMessage::UpdateRequired => 0,
+                    RecoveryMessage::SessionFailed => 1,
+                    RecoveryMessage::UpdateFailed => 2,
+                    RecoveryMessage::DisplayFailed => 3,
+                };
+                let action = match f.action {
+                    Some(RecoveryAction::Retry) => 0,
+                    Some(RecoveryAction::Reload) => 1,
+                    None => -1,
+                };
+                serde_json::json!({"error": f.error, "retained": f.retained, "message": message, "action": action})
+                    .to_string()
+            })
             .unwrap_or_default();
         arkts(token, "recovery", &payload);
     }
@@ -422,6 +438,12 @@ pub fn gpu_page_reveal(token: i64, surface_holds_frame: bool) {
     with_page(token, |page| {
         page.with_host(|host| host.reveal(surface_holds_frame))
     });
+}
+
+/// The recovery panel's button: the action the last failure offered.
+#[napi]
+pub fn gpu_page_retry(token: i64) {
+    with_page(token, |page| page.with_host(|host| host.retry()));
 }
 
 /// Back: true when the page closed its own top layer.

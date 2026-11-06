@@ -146,9 +146,10 @@ impl AppGesture for Platform {
         }
     }
 
-    // Touches go straight to the page, so ArkUI chrome and `Refresh` never see them.
+    // Touches go straight to the page, so ArkUI chrome and `Refresh` never see them. Chrome
+    // reads only the host's own overlays (toast, modal, recovery), at window scope.
     fn host_capabilities(&self) -> Vec<HostCapability> {
-        vec![HostCapability::RefreshIndicator]
+        vec![HostCapability::Chrome, HostCapability::RefreshIndicator]
     }
 
     // ArkWeb takes no injected touches.

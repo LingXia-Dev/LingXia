@@ -30,9 +30,13 @@ class GpuPageIdentity {
   webTag: string = '';
 }
 
-class GpuRecovery {
+export class GpuRecovery {
   error: string = '';
   retained: boolean = false;
+  /** Index into the panel's messages: update required, session failed, update failed, display failed. */
+  message: number = 3;
+  /** Index into its actions, retry or reload; -1 offers none. */
+  action: number = -1;
 }
 
 /** One GPU page as ArkTS sees it: the slot Rust mounts its XComponent node into, and chrome state. */

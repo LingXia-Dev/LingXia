@@ -628,6 +628,8 @@ declare module 'liblingxia.so' {
   export function gpuPageWindowVisible(token: number, visible: boolean): void;
   export function gpuPageWindowFocus(token: number, focused: boolean): void;
   export function gpuPageReveal(token: number, surfaceHoldsFrame: boolean): void;
+  /** The recovery panel's button: runs the action the page's last failure offered. */
+  export function gpuPageRetry(token: number): void;
   /** Back: true when the page closed its own top layer. */
   export function gpuPageCloseRequest(token: number): boolean;
   export function gpuPageCanScrollVertically(token: number, x: number, y: number, direction: number): boolean;
