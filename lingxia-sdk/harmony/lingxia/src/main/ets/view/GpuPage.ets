@@ -1,5 +1,5 @@
 import { window } from '@kit.ArkUI';
-import { common } from '@kit.AbilityKit';
+import { common, Configuration, EnvironmentCallback } from '@kit.AbilityKit';
 import { Lingxia } from '../app/Lingxia';
 import { GpuFeedback, GpuPageModel, GpuRecovery } from './GpuPages';
 import { HostOverlays } from '../lxapp/HostOverlays';
@@ -28,6 +28,9 @@ export struct GpuPage {
   @Prop floor: ResourceColor = Color.White;
   private rect: GpuRect = new GpuRect();
   private win: window.Window | null = null;
+  /** The newest system configuration (font size, appearance) and the subscription that brings it. */
+  private config: Configuration | null = null;
+  private environment: number = -1;
   /** The failure whose action was pressed: its button waits for the next report. */
   @State retried: GpuRecovery | null = null;
   private messages: Resource[] = [$r('app.string.lx_gpu_update_required'), $r('app.string.lx_gpu_session_failed'),
@@ -41,6 +44,15 @@ export struct GpuPage {
     // The host starts hidden; `@Watch` only reports later changes.
     gpuPageSetVisible(this.page.token, this.pageVisible);
     const context = Lingxia.context as common.UIAbilityContext;
+    // A system font size change reaches the page as new text-scale facts.
+    const callback: EnvironmentCallback = {
+      onConfigurationUpdated: (config: Configuration): void => {
+        this.config = config;
+        this.remeasure();
+      },
+      onMemoryLevel: (_level: number): void => {}
+    };
+    this.environment = context.getApplicationContext().on('environment', callback);
     window.getLastWindow(context).then((win: window.Window) => {
       this.win = win;
       win.on('avoidAreaChange', () => this.remeasure());
@@ -50,6 +62,10 @@ export struct GpuPage {
   }
 
   aboutToDisappear(): void {
+    if (this.environment >= 0) {
+      (Lingxia.context as common.UIAbilityContext).getApplicationContext().off('environment', this.environment);
+      this.environment = -1;
+    }
     this.win?.off('avoidAreaChange');
     this.win?.off('windowVisibilityChange');
   }
@@ -63,7 +79,7 @@ export struct GpuPage {
       return;
     }
     const context = Lingxia.context as common.UIAbilityContext;
-    const facts = sampleFacts(context, this.win, this.rect, this.chromeInsets, getDisplayLanguage());
+    const facts = sampleFacts(context, this.win, this.rect, this.chromeInsets, getDisplayLanguage(), this.config);
     gpuPageMeasured(this.page.token, JSON.stringify(facts), this.rect.x, this.rect.y);
   }
 

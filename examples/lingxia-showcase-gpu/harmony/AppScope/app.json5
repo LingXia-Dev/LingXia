@@ -5,6 +5,8 @@
     "versionCode": 1000000,
     "versionName": "1.0.0",
     "icon": "$media:layered_image",
-    "label": "$string:app_name"
+    "label": "$string:app_name",
+    // Text follows the system font size setting.
+    "configuration": "$profile:configuration"
   }
 }

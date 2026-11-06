@@ -54,14 +54,15 @@ function larger(a: number[], b: number[]): number[] {
 
 /** Samples the facts for a page at `rect` in `win`, with the host bars covering `chrome`. */
 export function sampleFacts(context: common.UIAbilityContext, win: window.Window, rect: GpuRect,
-  chrome: number[], locale: string): GpuFacts {
+  chrome: number[], locale: string, latest: Configuration | null = null): GpuFacts {
   const facts = new GpuFacts();
   const screen = display.getDefaultDisplaySync();
   facts.width = Math.round(rect.width);
   facts.height = Math.round(rect.height);
   facts.scale = screen.densityPixels;
   facts.smallest_width = Math.min(screen.width, screen.height) / screen.densityPixels;
-  const config: Configuration = context.config;
+  // A configuration update's own copy is newer than the ability's until the ability catches up.
+  const config: Configuration = latest ?? context.config;
   facts.dark = config.colorMode === 0;
   facts.locale = locale;
   const system = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
