@@ -120,6 +120,17 @@ fn a_reused_subtree_crosses_as_a_reference_and_decodes_the_same() {
 }
 
 #[test]
+fn an_isolate_outside_a_dev_session_has_no_clock() {
+    // Nothing in this test binary enables the dev globals, so every page here is a production one.
+    let page = ViewSession::new(&source("function render(){return h('text',{},'x')}")).unwrap();
+    let kind: String = page
+        .context
+        .eval(rong::Source::from_bytes("typeof __lingxiaClock"))
+        .unwrap();
+    assert_eq!(kind, "undefined");
+}
+
+#[test]
 fn frame_metrics_distinguish_reuse_and_preserve_the_last_success() {
     let module = source("function render(){return h('column',{},h('text',{},'Measured frame'))}");
     let mut page = ViewSession::new(&module).unwrap();

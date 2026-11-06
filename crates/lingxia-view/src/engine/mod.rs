@@ -109,6 +109,29 @@ pub(crate) fn decode_context_timed(
     decode_buffer(context, invoke, false, None)
 }
 
+static DEV_GLOBALS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Isolates created from now on carry the dev-session globals (`__lingxiaClock`).
+pub fn enable_dev_globals() {
+    DEV_GLOBALS.store(true, std::sync::atomic::Ordering::Release);
+}
+
+/// Installs the dev-session globals when a dev session asked for them before this isolate.
+pub(crate) fn install_dev_globals(context: &JSContext) -> Result<(), String> {
+    if !DEV_GLOBALS.load(std::sync::atomic::Ordering::Acquire) {
+        return Ok(());
+    }
+    static STARTED: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    let started = *STARTED.get_or_init(std::time::Instant::now);
+    let clock = rong::quickjs::JSFunc::new(context, move || started.elapsed().as_secs_f64() * 1e6)
+        .map_err(|e| e.to_string())?;
+    context
+        .global()
+        .set("__lingxiaClock", clock)
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
 /// `allow_empty`: an empty buffer is no records rather than an error (a deferred render).
 /// `wire`: the page's last decoded buffer, which the View may reference for subtrees it reuses;
 /// replaced by this buffer once it decodes.

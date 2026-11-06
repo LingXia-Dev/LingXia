@@ -25,3 +25,9 @@ decodable and its GPU memory bounded, and page code cannot act on them.
 | `layoutMotions` | 256 | Elements moving to a new layout position under `transition-layout` at once; past it further moves land at once. |
 
 Wire ABI: 1. Highest field id: 206.
+
+## Dev-session globals
+
+An isolate created while a `lingxia dev` session is attached also has `__lingxiaClock()`: microseconds
+since the process started, as a number, for timing View code on a device. It exists only there; a
+page must not depend on it, and production isolates are created without it.

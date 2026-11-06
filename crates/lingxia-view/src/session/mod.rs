@@ -164,6 +164,7 @@ impl ViewSession {
         let context = runtime.context();
         let (initialized, _) = budget.run(Duration::from_secs(1), Duration::from_secs(1), || {
             crate::engine::compatibility::install(&context)?;
+            crate::engine::install_dev_globals(&context)?;
             <crate::engine::Active as crate::engine::Engine>::evaluate_module(&context, source)?;
             let valid: bool = context.eval(Source::from_bytes(
                 "['Render','Prepare','Commit','Discard','Reset','Dispatch','CreateView'].every(name=>typeof globalThis['__lingxia'+name]==='function')"

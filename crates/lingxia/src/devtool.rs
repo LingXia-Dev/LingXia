@@ -58,6 +58,7 @@ pub fn install_lxapp_dev_config(config: LxAppDevConfig) -> bool {
 
     match LXAPP_DEV_CONFIG.set(config.clone()) {
         Ok(()) => {
+            enable_dev_view_globals();
             log::info!(
                 "Installed explicit lxapp dev config: appid={}, version={}, root={}",
                 config.identity.appid,
@@ -71,6 +72,16 @@ pub fn install_lxapp_dev_config(config: LxAppDevConfig) -> bool {
             false
         }
     }
+}
+
+/// GPU page isolates created from now on carry the dev-session globals.
+fn enable_dev_view_globals() {
+    #[cfg(target_os = "android")]
+    lingxia_view_android::lingxia_view::engine::enable_dev_globals();
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    lingxia_view_apple::lingxia_view::engine::enable_dev_globals();
+    #[cfg(target_env = "ohos")]
+    lingxia_view_harmony::lingxia_view::engine::enable_dev_globals();
 }
 
 pub(crate) fn lxapp_dev_config() -> Option<&'static LxAppDevConfig> {
@@ -404,6 +415,7 @@ static SYNCING: std::sync::Mutex<std::collections::BTreeSet<String>> =
 /// The dev session (re)connected: what it publishes, and whether it is
 /// reachable, may have changed.
 pub fn dev_session_connected() {
+    enable_dev_view_globals();
     lock(&UNPUBLISHED).clear();
     *lock(&UNREACHABLE_UNTIL) = None;
 }

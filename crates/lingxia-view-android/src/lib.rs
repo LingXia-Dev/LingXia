@@ -20,6 +20,7 @@ mod render;
 
 use adapter::AndroidAdapter;
 pub use adapter::{ImageLoader, set_image_loader};
+pub use lingxia_view;
 
 /// Memory pressure: GPU pages drop memory kept only to speed up coming frames.
 pub fn release_transient() {

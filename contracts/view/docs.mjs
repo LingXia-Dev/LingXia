@@ -350,7 +350,11 @@ function engineLimitsPage(schema) {
     'Wire and renderer bounds behind the public [limits](../view/reference/limits.md): they keep a frame',
     'decodable and its GPU memory bounded, and page code cannot act on them.', '',
     limitTable(schema, key => engineLimits.has(key)), '',
-    `Wire ABI: ${schema.uiAbi}. Highest field id: ${schema.fields.length - 1}.`, ''].join('\n');
+    `Wire ABI: ${schema.uiAbi}. Highest field id: ${schema.fields.length - 1}.`, '',
+    '## Dev-session globals', '',
+    'An isolate created while a `lingxia dev` session is attached also has `__lingxiaClock()`: microseconds',
+    'since the process started, as a number, for timing View code on a device. It exists only there; a',
+    'page must not depend on it, and production isolates are created without it.', ''].join('\n');
 }
 
 async function environment(schema) {
