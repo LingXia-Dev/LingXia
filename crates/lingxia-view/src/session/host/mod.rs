@@ -78,6 +78,8 @@ pub struct FrameTiming {
     pub wait_us: u64,
     /// Vsync to the end of the presented frame's main-thread work.
     pub main_us: u64,
+    /// An adapter that draws off the worker: scene, encode, submit and present µs.
+    pub gpu_us: [u64; 4],
 }
 
 /// Which host message recovery chrome shows.
@@ -625,9 +627,15 @@ impl<A: PlatformAdapter> ViewHost<A> {
     /// A deferred frame of `generation` reached the screen, or `shown: false` when the
     /// target dropped it. Any thread.
     pub fn deferred_presented(&self, generation: CommitTicket, shown: bool) {
+        self.deferred_drawn(generation, shown, [0; 4]);
+    }
+
+    /// [`Self::deferred_presented`] from an adapter that drew the frame itself, with its
+    /// scene, encode, submit and present µs.
+    pub fn deferred_drawn(&self, generation: CommitTicket, shown: bool, gpu_us: [u64; 4]) {
         let inner = self.inner.clone();
         self.inner.adapter.post(Box::new(move || {
-            inner.deferred_presented(generation, shown)
+            inner.deferred_presented(generation, shown, gpu_us)
         }));
     }
 

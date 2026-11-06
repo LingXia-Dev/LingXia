@@ -11,6 +11,7 @@ mod adapter;
 mod dispatch;
 mod fonts;
 mod ime;
+mod render;
 mod surface;
 mod sys;
 mod xcomponent;
@@ -290,7 +291,9 @@ impl Page {
         if id == 0 {
             return Ok(None);
         }
-        lingxia_view::renderer::surfaces::screenshot_png(id)
+        // GL work stays on the render thread.
+        crate::render::run_now(move || lingxia_view::renderer::surfaces::screenshot_png(id))
+            .unwrap_or(Ok(None))
     }
 }
 
@@ -307,7 +310,8 @@ impl Drop for Page {
             .gpu
             .swap(0, std::sync::atomic::Ordering::AcqRel);
         if surface != 0 {
-            lingxia_view::renderer::surfaces::detach(surface);
+            // Behind the frames already queued for it, on the thread that owns GL.
+            crate::render::run(move || lingxia_view::renderer::surfaces::detach(surface));
         }
     }
 }

@@ -888,6 +888,38 @@ fn only_an_accepted_frame_for_the_current_environment_is_current() {
 }
 
 #[test]
+fn a_frame_prepared_for_a_replaced_target_is_rebuilt_for_the_new_one() {
+    let worker = ViewWorker::shared("test:replaced-target").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source("function render(){return h('text',{},'A')}"),
+        false,
+    );
+    host.set_visible(true);
+    // The worker prepares a frame; its vsync has not come yet.
+    for _ in 0..50 {
+        let (done, wait) = channel();
+        worker.run_background(move |_| {
+            let _ = done.send(());
+        });
+        wait.recv_timeout(Duration::from_secs(30)).unwrap();
+        while let Ok(task) = platform.tasks.try_recv() {
+            task();
+        }
+        if host.adapter().log.lock().unwrap().vsync {
+            break;
+        }
+    }
+    assert_eq!(presents(&host), 0);
+    // The target is replaced before that vsync, as a surface attaching late does.
+    host.surface_changed();
+    platform.settle(&[&host]);
+    assert_eq!(presents(&host), 1, "a frame for the new target presents");
+    assert_eq!(last(&host), ["A"]);
+}
+
+#[test]
 fn a_declined_frame_leaves_the_session_as_it_was() {
     let worker = ViewWorker::shared("test:declined").unwrap();
     let platform = Platform::new(&[&worker]);

@@ -145,14 +145,16 @@ impl<A: PlatformAdapter> Inner<A> {
                 }
             }
             // One frame on the worker at a time, and at most one waiting behind the next vsync.
+            // A deferred frame on its way to the screen counts as the one waiting.
+            let waiting = main.prepared.is_some() || main.deferred.is_some();
             if main.in_flight.is_some()
-                || main.deferred.is_some()
                 || main.next_prepared.is_some()
-                || (main.prepared.is_some() && !main.ahead_allowed())
+                || (main.deferred.is_some() && main.prepared.is_some())
+                || (waiting && !main.ahead_allowed())
             {
                 return;
             }
-            let ahead = main.prepared.is_some();
+            let ahead = waiting;
             let background = !main.visible;
             let surface = if main.visible {
                 self.lifecycle.frame()
@@ -652,9 +654,12 @@ impl<A: PlatformAdapter> Inner<A> {
         }
         let current = !self.main().disposed && self.lifecycle.is_current_surface(prepared.surface);
         if !current {
+            // Built for a target that has since changed: the page still owes a frame.
             let mut main = self.main();
             main.prepared = None;
             main.drop_ahead();
+            main.dirty = true;
+            main.pending = true;
         }
         let mut retry = false;
         if current {
@@ -762,7 +767,12 @@ impl<A: PlatformAdapter> Inner<A> {
         }
     }
 
-    pub(super) fn deferred_presented(self: &Arc<Self>, generation: CommitTicket, shown: bool) {
+    pub(super) fn deferred_presented(
+        self: &Arc<Self>,
+        generation: CommitTicket,
+        shown: bool,
+        gpu_us: [u64; 4],
+    ) {
         let Some(deferred) = ({
             let mut main = self.main();
             let matches = main
@@ -782,11 +792,12 @@ impl<A: PlatformAdapter> Inner<A> {
                 page,
                 revision,
                 offsets,
-                timing,
+                mut timing,
                 vsync,
                 mut pacing,
                 flight,
             } = deferred;
+            timing.gpu_us = gpu_us;
             pacing.done = self.adapter.now();
             {
                 let mut main = self.main();

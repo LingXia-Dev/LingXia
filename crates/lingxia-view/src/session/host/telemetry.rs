@@ -30,8 +30,9 @@ pub(super) struct Telemetry {
 }
 
 /// Total, view, view eval, layout, text, compose and build µs; view and layout passes; then the
-/// frame's queue, worker, vsync wait and main-thread µs.
-type Stages = [u64; 13];
+/// frame's queue, worker, vsync wait and main-thread µs; then an off-worker draw's scene, encode,
+/// submit and present µs.
+type Stages = [u64; 17];
 
 impl Telemetry {
     pub(super) fn opened(&mut self, at: Duration) {
@@ -84,6 +85,10 @@ impl Telemetry {
                 timing.worker_us,
                 timing.wait_us,
                 timing.main_us,
+                timing.gpu_us[0],
+                timing.gpu_us[1],
+                timing.gpu_us[2],
+                timing.gpu_us[3],
             ],
         ));
     }
@@ -120,6 +125,10 @@ impl Telemetry {
             "worker": ms(10),
             "wait": ms(11),
             "main": ms(12),
+            "gpuScene": ms(13),
+            "gpuEncode": ms(14),
+            "gpuSubmit": ms(15),
+            "gpuPresent": ms(16),
         })
     }
 

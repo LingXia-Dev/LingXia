@@ -140,7 +140,9 @@ impl HarmonyAdapter {
     /// The window goes away; its size is kept, a recreated surface usually has the same.
     pub(crate) fn surface_destroyed(&self, host: &pages::Host) {
         log::debug!(target: "lingxia_view", "surface destroyed token={}", self.token);
-        surfaces::suspend(self.gpu.load(Ordering::Acquire));
+        let gpu = self.gpu.load(Ordering::Acquire);
+        // The window goes when this returns: release its surface on the thread that owns GL.
+        crate::render::run_now(move || surfaces::suspend(gpu));
         *lock(&self.window) = None;
         host.surface_lost();
     }
@@ -220,38 +222,33 @@ impl HarmonyAdapter {
     }
 }
 
-/// Bind `window` to a GLES presenter off the main thread; frames wait for it, then use
+/// Bind `window` to a GLES presenter on the render thread; frames wait for it, then use
 /// the CPU when it fails.
 fn attach(host: &pages::Host, window: Arc<NativeWindow>, width: u32, height: u32) {
     let adapter = host.adapter();
     let existing = adapter.gpu.load(Ordering::Acquire);
     *lock(&adapter.target) = Target::Waiting;
     let host = host.downgrade();
-    let spawned = std::thread::Builder::new()
-        .name("lingxia-gpu-attach".into())
-        .spawn(move || {
-            let attached = surfaces::attach(SharedWindow(window), width, height, existing);
-            dispatch::post_main(Box::new(move || {
-                let Some(host) = host.upgrade() else { return };
-                let adapter = host.adapter();
-                *lock(&adapter.target) = match &attached {
-                    Ok(id) => {
-                        adapter.gpu.store(*id, Ordering::Release);
-                        let (record, backend) = surfaces::describe(*id).unwrap_or_default();
-                        log::info!(target: "lingxia_view", "backend={backend} surface={id} adapter={record}");
-                        Target::Ready
-                    }
-                    Err(error) => {
-                        log::warn!(target: "lingxia_view", "GPU unavailable; using CPU renderer: {error}");
-                        Target::Unavailable
-                    }
-                };
-                host.surface_changed();
-            }));
-        });
-    if spawned.is_err() {
-        *lock(&adapter.target) = Target::Unavailable;
-    }
+    crate::render::run(move || {
+        let attached = surfaces::attach(SharedWindow(window), width, height, existing);
+        dispatch::post_main(Box::new(move || {
+            let Some(host) = host.upgrade() else { return };
+            let adapter = host.adapter();
+            *lock(&adapter.target) = match &attached {
+                Ok(id) => {
+                    adapter.gpu.store(*id, Ordering::Release);
+                    let (record, backend) = surfaces::describe(*id).unwrap_or_default();
+                    log::info!(target: "lingxia_view", "backend={backend} surface={id} adapter={record}");
+                    Target::Ready
+                }
+                Err(error) => {
+                    log::warn!(target: "lingxia_view", "GPU unavailable; using CPU renderer: {error}");
+                    Target::Unavailable
+                }
+            };
+            host.surface_changed();
+        }));
+    });
 }
 
 /// The retained window, shared between the CPU blit and the GLES surface.
@@ -274,10 +271,11 @@ impl raw_window_handle::HasDisplayHandle for SharedWindow {
 }
 
 pub enum Frame {
+    /// Drawn on the render thread while the worker goes on; presented there too.
     Gpu {
         surface: u64,
         revision: u64,
-        metrics: serde_json::Value,
+        drawn: Arc<crate::render::Drawn>,
     },
     /// Rasterized off the View worker when presented.
     Cpu(DisplayList, CommitTicket),
@@ -294,20 +292,20 @@ impl Presenter for HarmonyAdapter {
     ) -> Result<Option<Frame>, String> {
         match self.route() {
             Route::Wait => Ok(None),
-            Route::Gpu(surface) => Ok(surfaces::prepare(surface, &display, generation.get())?.map(
-                |metrics| Frame::Gpu {
-                    surface,
-                    revision: generation.get(),
-                    metrics,
-                },
-            )),
+            Route::Gpu(surface) => Ok(Some(Frame::Gpu {
+                surface,
+                revision: generation.get(),
+                drawn: crate::render::draw(surface, generation.get(), display),
+            })),
             Route::Cpu => Ok(Some(Frame::Cpu(display, generation))),
         }
     }
 
     fn metrics(&self, frame: &Frame) -> Option<serde_json::Value> {
         Some(match frame {
-            Frame::Gpu { metrics, .. } => metrics.clone(),
+            Frame::Gpu { .. } => {
+                serde_json::json!({"renderer": "sparse-strips", "renderThread": true})
+            }
             Frame::Cpu(..) => serde_json::json!({"backend": "vello-cpu"}),
         })
     }
@@ -315,8 +313,37 @@ impl Presenter for HarmonyAdapter {
     fn present(&self, frame: Frame) -> Result<bool, String> {
         match frame {
             Frame::Gpu {
-                surface, revision, ..
-            } => Ok(surfaces::present(surface, revision)?.is_some()),
+                surface,
+                revision,
+                drawn,
+            } => {
+                let Some(host) = self.host.get().cloned() else {
+                    return Ok(false);
+                };
+                crate::render::present(surface, revision, drawn, move |shown, metrics| {
+                    let Some(host) = host.upgrade() else { return };
+                    let us = |path: &[&str]| {
+                        path.iter()
+                            .fold(metrics.as_ref(), |value, key| value?.get(key))
+                            .and_then(serde_json::Value::as_u64)
+                            .unwrap_or(0)
+                    };
+                    let gpu = [
+                        us(&["prepare", "sceneUs"]),
+                        us(&["prepare", "encodeUs"]),
+                        us(&["prepare", "submitUs"]),
+                        us(&["presentUs"]),
+                    ];
+                    match shown {
+                        Ok(shown) => host.deferred_drawn(CommitTicket::new(revision), shown, gpu),
+                        Err(error) => {
+                            host.deferred_presented(CommitTicket::new(revision), false);
+                            host.fail(error);
+                        }
+                    }
+                });
+                Ok(true)
+            }
             Frame::Cpu(display, generation) => {
                 let Some(host) = self.host.get().cloned() else {
                     return Ok(false);
@@ -333,8 +360,8 @@ impl Presenter for HarmonyAdapter {
         }
     }
 
-    fn deferred(&self, frame: &Frame) -> bool {
-        matches!(frame, Frame::Cpu(..))
+    fn deferred(&self, _: &Frame) -> bool {
+        true
     }
 }
 
