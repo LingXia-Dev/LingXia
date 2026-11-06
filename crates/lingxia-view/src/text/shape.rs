@@ -123,7 +123,7 @@ impl Renderer {
         style: &TextStyle,
         text: &str,
         runs: &[(std::ops::Range<usize>, &TextStyle)],
-    ) -> Option<Layout<crate::text::RunBrush>> {
+    ) -> Option<crate::text::cache::ShapedText> {
         if !matches!(
             record.tag,
             tag::TEXT
@@ -172,10 +172,11 @@ impl Renderer {
             )
         })
         .flatten();
-        let cached = key.as_ref().and_then(|key| self.text_cache.get(key));
-        let mut layout = if let Some(layout) = cached {
-            layout
-        } else {
+        if let Some(cached) = key.as_ref().and_then(|key| self.text_cache.get(key)) {
+            self.text_time += started.elapsed();
+            return Some(cached);
+        }
+        let shaped = {
             let mut builder = self.text.ranged_builder(&mut self.fonts, text, 1.0, true);
             // `dir="auto"` editors follow their first strong character; others the box.
             builder.set_base_direction(if record.string(field::DIRECTION) == Some("auto") {
@@ -256,15 +257,15 @@ impl Renderer {
                 // The brush names the run, so glyph runs split where paint changes.
                 builder.push(StyleProperty::Brush(position as u16 + 1), range);
             }
-            let layout = builder.build(text);
-            if let Some(key) = key {
-                self.text_cache.insert(key, &layout);
+            let mut layout = builder.build(text);
+            layout.break_all_lines(None);
+            match key {
+                Some(key) => self.text_cache.insert(key, layout),
+                None => crate::text::cache::ShapedText::owned(layout),
             }
-            layout
         };
-        layout.break_all_lines(None);
         self.text_time += started.elapsed();
-        Some(layout)
+        Some(shaped)
     }
 
     /// The CSS `ch` unit: the advance of "0" in the node's (scaled) font.
@@ -288,7 +289,7 @@ impl Renderer {
         runs: &[(std::ops::Range<usize>, &TextStyle)],
         width: f32,
         lines: Option<usize>,
-    ) -> Option<Layout<crate::text::RunBrush>> {
+    ) -> Option<crate::text::cache::ShapedText> {
         // Runs keep their styles up to the cut; the ellipsis takes the last kept run's.
         let clipped = |end: usize, total: usize| -> Vec<(std::ops::Range<usize>, &TextStyle)> {
             let mut kept: Vec<_> = runs
@@ -301,12 +302,14 @@ impl Renderer {
             }
             kept
         };
-        let fits = |layout: &mut Layout<crate::text::RunBrush>| {
-            layout.break_all_lines(if style.nowrap { None } else { Some(width) });
+        let fits = |cache: &mut crate::text::cache::TextCache,
+                    layout: &mut crate::text::cache::ShapedText| {
+            cache.break_lines(layout, if style.nowrap { None } else { Some(width) }, None);
             lines.is_none_or(|limit| layout.len() <= limit)
                 && (!style.nowrap || layout.width() <= width + 0.5)
         };
-        if fits(&mut self.shape(record, style, text, runs)?) {
+        let mut whole = self.shape(record, style, text, runs)?;
+        if fits(&mut self.text_cache, &mut whole) {
             return None;
         }
         let ends: Vec<usize> = text.char_indices().map(|(at, _)| at).collect();
@@ -323,7 +326,7 @@ impl Renderer {
                 &candidate,
                 &clipped(prefix.len(), candidate.len()),
             )?;
-            if fits(&mut layout) {
+            if fits(&mut self.text_cache, &mut layout) {
                 best = layout;
                 low = middle;
             } else {

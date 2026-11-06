@@ -9,7 +9,7 @@ use crate::semantics::groups::ControlGroups;
 use crate::text::shape::glyph_ink;
 use crate::text::style::{Decoration, TextStyle};
 use lingxia_theme::Role;
-use parley::{AlignmentOptions, Layout, PositionedLayoutItem};
+use parley::PositionedLayoutItem;
 use std::hash::Hasher;
 use std::sync::Arc;
 use taffy::prelude::*;
@@ -51,7 +51,7 @@ impl Renderer {
             &[String],
             &[Option<crate::text::runs::Paragraph>],
         ),
-        layouts: &mut [Option<Layout<crate::text::RunBrush>>],
+        layouts: &mut [Option<crate::text::cache::ShapedText>],
         groups: &ControlGroups,
         (width, height, scale): (u16, u16, f32),
     ) -> Result<RetainedLayout, String> {
@@ -631,7 +631,6 @@ impl Renderer {
                 } else {
                     content_width
                 };
-                text.break_all_lines(Some(alignment_width));
                 if record.string(field::TEXT_OVERFLOW) == Some("ellipsis")
                     && let Some(short) = self.ellipsize(
                         record,
@@ -647,9 +646,9 @@ impl Renderer {
                     )
                 {
                     *text = short;
-                    text.break_all_lines(Some(alignment_width));
                 }
-                text.align(styles[index].align, AlignmentOptions::default());
+                self.text_cache
+                    .break_lines(text, Some(alignment_width), Some(styles[index].align));
                 let placeholder = matches!(
                     record.tag,
                     tag::INPUT | tag::TEXTAREA | tag::SEARCH | tag::SELECT
@@ -812,7 +811,7 @@ impl Renderer {
                     .map(|text| {
                         selectable_count += 1;
                         Arc::new(crate::scene::retained::SelectableText {
-                            layout: text.clone(),
+                            layout: (**text).clone(),
                             origin: [
                                 x + layout.padding.left,
                                 y + layout.padding.top + text_offset_y,
@@ -972,7 +971,7 @@ impl Renderer {
             input_layouts.push(
                 if matches!(record.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH) {
                     Some(InputLayout {
-                        layout: layouts[index].take().unwrap(),
+                        layout: layouts[index].take().unwrap().into_layout(),
                         padding: [layout.padding.left, layout.padding.top],
                         text_offset_y,
                         content_size: [

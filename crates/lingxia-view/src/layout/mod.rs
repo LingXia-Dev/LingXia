@@ -12,7 +12,7 @@ use crate::protocol::Record;
 use crate::scene::display::*;
 use crate::scene::node::*;
 use crate::text::shape::*;
-use parley::{FontContext, Layout, LayoutContext};
+use parley::{FontContext, LayoutContext};
 use std::{collections::HashMap, sync::Arc};
 use taffy::prelude::*;
 use taffy::util::ResolveOrZero;
@@ -129,7 +129,7 @@ impl Renderer {
         let styles = crate::text::style::computed(records, &directions);
         let mut texts = crate::text::style::display_texts(records, &styles);
         let paragraphs = crate::text::runs::paragraphs(records, &styles);
-        let mut layouts: Vec<Option<Layout<crate::text::RunBrush>>> =
+        let mut layouts: Vec<Option<crate::text::cache::ShapedText>> =
             Vec::with_capacity(records.len());
         for (index, record) in records.iter().enumerate() {
             let runs: Vec<_> = match &paragraphs[index] {
@@ -273,11 +273,15 @@ impl Renderer {
                             AvailableSpace::MaxContent => None,
                         };
                         let started = std::time::Instant::now();
-                        layout.break_all_lines(if single_line {
-                            None
-                        } else {
-                            max_width.map(|w| (w - check_reserve(tag)).max(0.0))
-                        });
+                        self.text_cache.break_lines(
+                            layout,
+                            if single_line {
+                                None
+                            } else {
+                                max_width.map(|w| (w - check_reserve(tag)).max(0.0))
+                            },
+                            None,
+                        );
                         self.text_time += started.elapsed();
                         let (width, mut height) = text_extent(layout, limit);
                         // An autosizing textarea grows with its lines between `rows` and `maxRows`.
@@ -314,7 +318,7 @@ impl Renderer {
                     // Known dimensions can bypass measurement. Reflow against
                     // the final content width so the reported baseline matches paint.
                     let started = std::time::Instant::now();
-                    text.break_all_lines(if matches!(record.tag, tag::INPUT | tag::SEARCH) {
+                    let width = if matches!(record.tag, tag::INPUT | tag::SEARCH) {
                         None
                     } else {
                         Some(
@@ -326,7 +330,8 @@ impl Renderer {
                                 - check_reserve(record.tag))
                             .max(0.0),
                         )
-                    });
+                    };
+                    self.text_cache.break_lines(text, width, None);
                     self.text_time += started.elapsed();
                     let label_y = if matches!(
                         record.tag,
