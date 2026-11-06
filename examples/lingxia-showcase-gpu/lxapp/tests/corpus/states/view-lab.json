@@ -1,0 +1,99 @@
+{
+  "plots": {
+    "hourly": [
+      20,
+      21,
+      22,
+      25,
+      29,
+      33,
+      38,
+      43,
+      47,
+      51,
+      54,
+      55,
+      56,
+      55,
+      53,
+      51,
+      47,
+      42,
+      38,
+      33,
+      29,
+      25,
+      22,
+      21
+    ],
+    "share": [
+      45,
+      25,
+      15,
+      10,
+      5
+    ],
+    "latency": [
+      10,
+      17,
+      15,
+      13,
+      11,
+      18,
+      16,
+      14,
+      12,
+      10,
+      17,
+      15,
+      13,
+      11,
+      18,
+      16,
+      14,
+      12,
+      10,
+      17,
+      15,
+      13,
+      11,
+      18,
+      16,
+      14,
+      12,
+      10,
+      17,
+      15
+    ]
+  },
+  "terms": {
+    "updated": "2026-10-01",
+    "clauses": [
+      {
+        "heading": "Clause 1",
+        "term": "Service",
+        "body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
+      },
+      {
+        "heading": "Clause 2",
+        "term": "Account",
+        "body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
+      },
+      {
+        "heading": "Clause 3",
+        "term": "Content",
+        "body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
+      },
+      {
+        "heading": "Clause 4",
+        "term": "Privacy",
+        "body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
+      },
+      {
+        "heading": "Clause 5",
+        "term": "Termination",
+        "body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
+      }
+    ]
+  }
+}

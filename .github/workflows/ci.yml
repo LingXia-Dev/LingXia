@@ -1719,8 +1719,9 @@ jobs:
   # The release scripts have their own tests but no change signal of their own:
   # they used to ride on the showcase automation job, which a release-plumbing
   # PR never triggers.
-  # Renders every GPU page of the showcase and the View corpus at phone and tablet size in both
-  # appearances, and fails on a UI_* error or any deterministic cost counter above budgets.json.
+  # Renders the View renderer fixtures (crates/lingxia-view/tests/fixtures) and every GPU page of
+  # the showcase at phone and tablet size in both appearances, and fails on a UI_* error or any
+  # deterministic cost counter above its lane's budgets.json.
   # Glyph counts follow the system fonts the budgets were recorded with, hence macOS; timings are
   # printed for information only.
   view-corpus:
@@ -1758,10 +1759,11 @@ jobs:
           path: target/corpus/report.json
           if-no-files-found: ignore
 
-  # The same renders on the CPU painter, compared block by block with the committed fingerprints
-  # in packages/lingxia-view/corpus/visual (re-record with `--update-visual`): counters miss a wrong
-  # corner, colour or glyph run, this does not. On a failure each frame is uploaded with its
-  # changed blocks outlined.
+  # The fixtures on the CPU painter, each frame's SHA-256 compared with the hashes recorded for
+  # this platform-arch in crates/lingxia-view/tests/fixtures/renders.json (re-record with
+  # `--update-visual`): counters miss a wrong corner, colour or glyph run, this does not. Showcase
+  # pages are not hashed; their pixels follow product edits. On a failure the changed frames and
+  # this host's hashes are uploaded, which is also how a new arch records its hashes once.
   view-corpus-visual:
     needs: changes
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.npm == 'true' }}
@@ -1786,15 +1788,17 @@ jobs:
         working-directory: examples/lingxia-showcase-gpu/lxapp
         run: npm ci
 
-      - name: Compare the corpus with its visual fingerprints
+      - name: Compare the fixture renders with their recorded hashes
         run: node packages/lingxia-view/corpus/run.mjs --visual
 
-      - name: Upload the changed frames
+      - name: Upload the changed frames and this host's hashes
         if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: view-corpus-visual-diff
-          path: target/corpus/visual-diff
+          name: view-corpus-changed
+          path: |
+            target/corpus/changed
+            target/corpus/renders.json
           if-no-files-found: ignore
 
   # libFuzzer smoke of the View wire decoder, layout, automation requests and strict JSON

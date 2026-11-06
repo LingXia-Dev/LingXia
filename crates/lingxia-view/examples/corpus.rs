@@ -1,6 +1,6 @@
 //! Renders compiled View pages headlessly for the corpus: deterministic cost counters per
-//! page and viewport, informative timings, optional PNGs, and a visual fingerprint compared with
-//! a committed one. Driven by packages/lingxia-view/corpus/run.mjs.
+//! page and viewport, informative timings, optional PNGs, and a hash of the CPU-rendered frame.
+//! Driven by packages/lingxia-view/corpus/run.mjs.
 //!   cargo run -p lingxia-view --example corpus -- jobs.json results.json
 
 use serde::Deserialize;
@@ -23,101 +23,26 @@ struct Job {
     /// Writes the frame's node snapshots, as adapters receive them.
     #[serde(default)]
     nodes: Option<String>,
+    /// Directory an `<image src>` resolves against.
     #[serde(default)]
-    visual: Option<Visual>,
-}
-
-/// The frame's fingerprint against `reference`, a committed thumbnail of `CELL`-pixel block
-/// means; `update` re-records it, a mismatch writes `diff`.
-#[derive(Deserialize)]
-struct Visual {
-    reference: String,
-    diff: String,
+    root: Option<String>,
+    /// Rasterizes the frame and reports its hash.
     #[serde(default)]
-    update: bool,
+    hash: bool,
 }
 
-/// Block size of the fingerprint, in device pixels, and the per-channel difference of a block
-/// mean that counts as a change: anti-aliasing moves a mean by a few levels, a changed corner,
-/// colour or line of text by more.
-const CELL: usize = 16;
-const TOLERANCE: u8 = 8;
-
-fn thumbnail(pixels: &[u8], width: usize, height: usize) -> (usize, usize, Vec<u8>) {
-    let (columns, rows) = (width.div_ceil(CELL), height.div_ceil(CELL));
-    let mut out = vec![0u8; columns * rows * 4];
-    for row in 0..rows {
-        for column in 0..columns {
-            let mut sum = [0u64; 4];
-            let mut count = 0u64;
-            for y in row * CELL..((row + 1) * CELL).min(height) {
-                for x in column * CELL..((column + 1) * CELL).min(width) {
-                    let at = (y * width + x) * 4;
-                    for (channel, total) in sum.iter_mut().enumerate() {
-                        *total += u64::from(pixels[at + channel]);
-                    }
-                    count += 1;
-                }
-            }
-            let at = (row * columns + column) * 4;
-            for channel in 0..4 {
-                out[at + channel] = (sum[channel] / count.max(1)) as u8;
-            }
-        }
-    }
-    (columns, rows, out)
-}
-
-fn compare(frame: &vello_cpu::Pixmap, visual: &Visual) -> Result<Value, String> {
-    let (width, height) = (usize::from(frame.width()), usize::from(frame.height()));
-    let (columns, rows, cells) = thumbnail(frame.data_as_u8_slice(), width, height);
-    let encode = |data: &[u8], width: usize, height: usize| {
-        let mut pixmap = vello_cpu::Pixmap::new(width as u16, height as u16);
-        pixmap.data_as_u8_slice_mut().copy_from_slice(data);
-        pixmap.into_png().map_err(|e| e.to_string())
-    };
-    if visual.update {
-        std::fs::write(&visual.reference, encode(&cells, columns, rows)?)
-            .map_err(|e| e.to_string())?;
-        return Ok(json!({"recorded": true}));
-    }
-    let Ok(file) = std::fs::read(&visual.reference) else {
-        return Ok(json!({"missing": true}));
-    };
-    let reference =
-        vello_cpu::Pixmap::from_png(std::io::Cursor::new(file)).map_err(|e| e.to_string())?;
-    if usize::from(reference.width()) != columns || usize::from(reference.height()) != rows {
-        return Ok(
-            json!({"changed": columns * rows, "size": [reference.width(), reference.height()]}),
-        );
-    }
-    let expected = reference.data_as_u8_slice();
-    let changed: Vec<usize> = (0..columns * rows)
-        .filter(|cell| {
-            (0..4).any(|c| cells[cell * 4 + c].abs_diff(expected[cell * 4 + c]) > TOLERANCE)
-        })
-        .collect();
-    if !changed.is_empty() {
-        // The frame with every changed block outlined in red.
-        let mut marked = frame.data_as_u8_slice().to_vec();
-        for cell in &changed {
-            let (x0, y0) = ((cell % columns) * CELL, (cell / columns) * CELL);
-            for y in y0..(y0 + CELL).min(height) {
-                for x in x0..(x0 + CELL).min(width) {
-                    if y == y0
-                        || x == x0
-                        || y + 1 == (y0 + CELL).min(height)
-                        || x + 1 == (x0 + CELL).min(width)
-                    {
-                        let at = (y * width + x) * 4;
-                        marked[at..at + 4].copy_from_slice(&[255, 0, 0, 255]);
-                    }
-                }
-            }
-        }
-        std::fs::write(&visual.diff, encode(&marked, width, height)?).map_err(|e| e.to_string())?;
-    }
-    Ok(json!({"changed": changed.len()}))
+/// The frame's identity: SHA-256 over its size and RGBA bytes.
+fn frame_hash(frame: &vello_cpu::Pixmap) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(frame.width().to_be_bytes());
+    hasher.update(frame.height().to_be_bytes());
+    hasher.update(frame.data_as_u8_slice());
+    hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn session(job: &Job, source: &str) -> Result<lingxia_view::ViewSession, String> {
@@ -144,21 +69,27 @@ fn session(job: &Job, source: &str) -> Result<lingxia_view::ViewSession, String>
     Ok(page)
 }
 
-/// A page with motion needs a presentation surface; its first frame samples time zero.
+/// A page with motion needs a presentation surface; its first frame samples time zero and a
+/// later frame samples `at`, so a state's `__time` (ms) pins an animation mid-flight.
 fn layout(
     page: &mut lingxia_view::ViewSession,
     width: u16,
     height: u16,
     scale: f32,
+    at: std::time::Duration,
 ) -> Result<lingxia_view::DisplayList, String> {
     match page.layout(width, height, scale) {
         Err(error) if error.contains("requires animation presentation scheduling") => {
             let zero = std::time::Duration::ZERO;
-            page.set_animation_surface(
-                Some(lingxia_view::session::lifecycle::SurfaceTicket::new(1)),
-                zero,
-            )?;
-            page.prepare_view_animated(width, height, scale, true, None, zero, Ok)
+            let surface = lingxia_view::session::lifecycle::SurfaceTicket::new(1);
+            page.set_animation_surface(Some(surface), zero)?;
+            let first = page.prepare_view_animated(width, height, scale, true, None, zero, Ok)?;
+            if at.is_zero() {
+                return Ok(first);
+            }
+            // Time runs from the first frame's presentation.
+            page.animation_presented(surface, page.generation(), zero)?;
+            page.prepare_view_animated(width, height, scale, false, None, at, Ok)
         }
         other => other,
     }
@@ -171,7 +102,13 @@ fn run(job: &Job) -> Result<Value, String> {
         (f32::from(job.height) * job.scale) as u16,
     );
     let mut page = session(job, &source)?;
-    let mut display = layout(&mut page, width, height, job.scale)?;
+    let at = std::time::Duration::from_millis(
+        job.state
+            .as_ref()
+            .and_then(|s| s["__time"].as_u64())
+            .unwrap_or(0),
+    );
+    let mut display = layout(&mut page, width, height, job.scale, at)?;
     // `__picker: "<data-testid>"` opens the View's picker on that editor, as a tap would.
     if let Some(test_id) = job.state.as_ref().and_then(|s| s["__picker"].as_str()) {
         let node = display
@@ -188,7 +125,19 @@ fn run(job: &Job) -> Result<Value, String> {
         if !opened {
             return Err(format!("__picker: {test_id} is no date or time editor"));
         }
-        display = layout(&mut page, width, height, job.scale)?;
+        display = layout(&mut page, width, height, job.scale, at)?;
+    }
+    // Sources load from disk, as an adapter's loader would deliver them.
+    if let Some(root) = &job.root {
+        let mut loaded = false;
+        for src in page.image_sources() {
+            let bytes = std::fs::read(std::path::Path::new(root).join(&src))
+                .map_err(|e| format!("{src}: {e}"))?;
+            loaded |= page.load_image(&src, &bytes)?;
+        }
+        if loaded {
+            display = layout(&mut page, width, height, job.scale, at)?;
+        }
     }
     let cost = display.cost();
     let metrics = page.metrics().clone();
@@ -196,11 +145,11 @@ fn run(job: &Job) -> Result<Value, String> {
         let json = serde_json::to_string_pretty(&display.nodes).map_err(|e| e.to_string())?;
         std::fs::write(path, json).map_err(|e| e.to_string())?;
     }
-    let mut visual = Value::Null;
-    if job.png.is_some() || job.visual.is_some() {
+    let mut hash = Value::Null;
+    if job.png.is_some() || job.hash {
         let frame = display.rasterize()?;
-        if let Some(job_visual) = &job.visual {
-            visual = compare(&frame.pixels, job_visual)?;
+        if job.hash {
+            hash = frame_hash(&frame.pixels).into();
         }
         if let Some(path) = &job.png {
             let png = frame.pixels.into_png().map_err(|e| e.to_string())?;
@@ -211,7 +160,7 @@ fn run(job: &Job) -> Result<Value, String> {
     let mut times = Vec::new();
     for _ in 0..5 {
         let mut cold = session(job, &source)?;
-        layout(&mut cold, width, height, job.scale)?;
+        layout(&mut cold, width, height, job.scale, at)?;
         times.push(cold.metrics().total_us);
     }
     times.sort_unstable();
@@ -221,7 +170,7 @@ fn run(job: &Job) -> Result<Value, String> {
         "viewPasses": metrics.view_passes,
         "wireValues": metrics.wire_values,
         "medianUs": times[2],
-        "visual": visual,
+        "hash": hash,
     }))
 }
 

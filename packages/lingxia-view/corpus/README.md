@@ -1,0 +1,4 @@
+`run.mjs` renders View pages headlessly in two lanes. Fixture lane: one renderer construct per page in `crates/lingxia-view/tests/fixtures/`, held to cost budgets and an exact SHA-256 of each CPU frame (`renders.json`). Showcase lane: every GPU page of `examples/lingxia-showcase-gpu` with its captured Logic state (`capture-states.mjs`), held to cost budgets and UI_* errors only, since its pixels follow product edits.
+After an intended change, look with `--diff <id>` (previous and current frames in `target/corpus/diff/`), then re-record with `--update-visual` or `--update-budgets`.
+Hashes are keyed by platform-arch, since the rasterizer picks SIMD paths at run time and glyphs come from host fonts.
+A new arch records once: take `target/corpus/renders.json` from the failed CI run's uploaded artifact and merge its hashes into `renders.json`.

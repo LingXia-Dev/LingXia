@@ -48,3 +48,5 @@ wgpu = { workspace = true, optional = true, features = ["gles"] }
 libc = { workspace = true }
 
 [dev-dependencies]
+# The corpus example hashes each rendered frame.
+sha2 = "0.10"
