@@ -52,14 +52,19 @@ spec('the controls take a tap, a drag, typing and a fling as a user gives them',
   await view.drag(view.testId('lab-controls-volume'), { dx: 200, dy: 0, durationMs: 400 });
   await expect.poll(async () => Number((await values.textContent()).match(/volume=(\d+)/)?.[1])).toBeGreaterThan(40);
 
-  await view.testId('lab-controls-search').type('Row 3');
+  const search = view.testId('lab-controls-search');
+  await search.type('Row 3');
   await expect(values).toContainText('query=Row 3');
+  // The keyboard can leave the list below the fold: scroll the page by the search field, as a user would.
+  const area = await view.viewport();
+  await view.swipe({ from: search, to: [area.left + area.width / 2, area.top + 60] });
   await expect(view.testId('lab-controls-row-2')).not.toBeAttached();
   await view.testId('lab-controls-row-31').click();
   await expect(values).toContainText('picked=Row 31');
 
-  await view.testId('lab-controls-search').fill('');
+  await search.fill('');
   const list = view.testId('lab-controls-list');
+  await expect(list).toBeInViewport();
   await view.fling('up', 3000, { at: list });
   await expect(view.testId('lab-controls-row-40')).toBeInViewport({ timeout: 3_000 });
 });
