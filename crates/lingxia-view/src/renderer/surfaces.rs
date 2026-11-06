@@ -5,7 +5,7 @@ use super::gpu::Presenter;
 use image::ImageEncoder;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
+use std::sync::{Arc, LazyLock, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 static NEXT: AtomicU64 = AtomicU64::new(1);
 type Shared = Arc<Mutex<Presenter>>;
@@ -18,6 +18,18 @@ fn registry() -> Result<MutexGuard<'static, HashMap<u64, Shared>>, String> {
     SURFACES
         .lock()
         .map_err(|_| "UI_SURFACE: poisoned presenters".into())
+}
+
+/// Presenters share one device: binding a surface (configure waits for the device to idle)
+/// must not overlap another page's draw or present, which run side by side otherwise.
+static GPU: RwLock<()> = RwLock::new(());
+
+fn gpu_work() -> RwLockReadGuard<'static, ()> {
+    GPU.read().unwrap_or_else(|p| p.into_inner())
+}
+
+fn gpu_binding() -> RwLockWriteGuard<'static, ()> {
+    GPU.write().unwrap_or_else(|p| p.into_inner())
 }
 
 fn presenter(id: u64) -> Result<Option<Shared>, String> {
@@ -64,6 +76,7 @@ where
     Arc<W>: Into<wgpu::SurfaceTarget<'static>>,
     W: Send + Sync + 'static,
 {
+    let _binding = gpu_binding();
     if existing != 0
         && let Some(presenter) = presenter(existing)?
     {
@@ -90,6 +103,7 @@ pub fn describe(id: u64) -> Option<(String, &'static str)> {
 }
 
 pub fn suspend(id: u64) {
+    let _binding = gpu_binding();
     if let Ok(Some(presenter)) = presenter(id)
         && let Ok(mut presenter) = lock(&presenter)
     {
@@ -98,9 +112,12 @@ pub fn suspend(id: u64) {
 }
 
 pub fn detach(id: u64) {
-    if let Ok(mut surfaces) = registry() {
-        surfaces.remove(&id);
-    }
+    let _binding = gpu_binding();
+    // The presenter's surface is destroyed with it, inside the binding.
+    let removed = registry()
+        .ok()
+        .and_then(|mut surfaces| surfaces.remove(&id));
+    drop(removed);
 }
 
 /// Encode `display`; `None` while the presenter is suspended or detached.
@@ -109,6 +126,7 @@ pub fn prepare(
     display: &crate::DisplayList,
     revision: u64,
 ) -> Result<Option<serde_json::Value>, String> {
+    let _work = gpu_work();
     let Some(presenter) = presenter(id)? else {
         return Ok(None);
     };
@@ -154,6 +172,7 @@ pub fn prepare(
 
 /// The presenter's timings when the frame reached the screen, `None` when it did not.
 pub fn present(id: u64, revision: u64) -> Result<Option<[u64; 4]>, String> {
+    let _work = gpu_work();
     let Some(presenter) = presenter(id)? else {
         return Ok(None);
     };
@@ -177,6 +196,7 @@ pub fn screenshot_png(id: u64) -> Result<Option<Vec<u8>>, String> {
 
 /// The newest frame presenter `id` holds: width, height and straight-alpha RGBA rows.
 pub fn readback(id: u64) -> Result<Option<(u32, u32, Vec<u8>)>, String> {
+    let _work = gpu_work();
     let Some(presenter) = presenter(id)? else {
         return Ok(None);
     };
