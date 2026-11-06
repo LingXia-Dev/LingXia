@@ -11,6 +11,8 @@ pub struct PresentedFrame {
     /// Frames with an equal key share one laid-out View: the same nodes at the same
     /// indices, differing only in presented (animated, scrolled, decorated) geometry.
     pub layout: Option<(u64, u64)>,
+    /// A hash of the serialized nodes: frames with equal content compare as one integer.
+    pub content: Option<u64>,
 }
 
 impl PresentedFrame {
@@ -20,6 +22,22 @@ impl PresentedFrame {
             scale,
             nodes,
             layout: None,
+            content: None,
+        }
+    }
+
+    pub fn with_content(mut self, content: u64) -> Self {
+        self.content = Some(content);
+        self
+    }
+
+    /// The same nodes with the same fields; a frame without a content hash compares in full.
+    pub(crate) fn same_content(&self, other: &Self) -> bool {
+        match (self.content, other.content) {
+            (Some(a), Some(b)) => a == b,
+            _ => {
+                serde_json::to_string(&self.nodes).ok() == serde_json::to_string(&other.nodes).ok()
+            }
         }
     }
 

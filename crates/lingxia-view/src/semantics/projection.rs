@@ -730,9 +730,7 @@ pub fn changes(
     ids: &SemanticIds,
 ) -> Vec<Event> {
     let mut events = semantic_changes(previous, next, ids);
-    let changed = previous.is_none_or(|previous| {
-        serde_json::to_string(&previous.nodes).ok() != serde_json::to_string(&next.nodes).ok()
-    });
+    let changed = previous.is_none_or(|previous| !previous.same_content(next));
     if changed {
         events.push(Event::ContentChanged);
     }

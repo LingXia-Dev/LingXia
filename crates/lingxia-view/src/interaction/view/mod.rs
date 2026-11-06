@@ -411,11 +411,10 @@ impl ViewInteraction {
                 .as_ref()
                 .is_some_and(|previous| previous.same_layout(&next));
         let same = !same_layout
-            && previous.as_ref().is_some_and(|previous| {
-                !scale_changed
-                    && serde_json::to_string(&previous.nodes).ok()
-                        == serde_json::to_string(&next.nodes).ok()
-            });
+            && !scale_changed
+            && previous
+                .as_ref()
+                .is_some_and(|previous| previous.same_content(&next));
         if same_layout {
             // Animation and scroll repaint one layout: indices still name the same nodes,
             // so press and focus stay, and moving bounds are reported at a quarter rate.

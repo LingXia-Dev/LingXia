@@ -523,14 +523,23 @@ impl<A: PlatformAdapter> Inner<A> {
             &session.renderer.palette,
             session.renderer.dark,
         );
-        let json = serde_json::json!({
+        // The nodes serialize once: for adapters that marshal the frame, and as the content
+        // the main thread compares as one integer instead of two trees.
+        let nodes_json = serde_json::to_string(&nodes).map_err(|e| e.to_string())?;
+        let content = {
+            use std::hash::{Hash, Hasher};
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            nodes_json.hash(&mut hasher);
+            hasher.finish()
+        };
+        let rest = serde_json::to_string(&serde_json::json!({
             "generation": generation,
-            "nodes": nodes,
             "images": images,
             "metrics": metrics,
             "feedback": feedback,
-        })
-        .to_string();
+        }))
+        .map_err(|e| e.to_string())?;
+        let json = format!("{{\"nodes\":{nodes_json},{}", &rest[1..]);
         let snapshot = Arc::new(FrameSnapshot {
             metrics: session.frame_metrics().clone(),
             generation,
@@ -540,7 +549,8 @@ impl<A: PlatformAdapter> Inner<A> {
             loaded_images,
             frame: Arc::new(
                 PresentedFrame::new(generation, scale, nodes)
-                    .with_layout((page.get(), session.layout_revision())),
+                    .with_layout((page.get(), session.layout_revision()))
+                    .with_content(content),
             ),
             images,
             image_buckets,
