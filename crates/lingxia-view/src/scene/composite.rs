@@ -97,9 +97,15 @@ pub enum Step {
     Pop,
 }
 
+/// A device-pixel box `[x0, y0, x1, y1]` within the frame.
+pub type Extent = [u16; 4];
+
 /// Preflighted program. Draw spans refer to the caller's immutable display list.
 pub struct Plan {
     steps: Vec<Step>,
+    /// Each push's surface box, in push order: all its group can paint, and every backdrop
+    /// region read from it.
+    extents: Vec<Extent>,
     width: u16,
     height: u16,
     draw_count: usize,
@@ -116,13 +122,25 @@ impl Plan {
         width: u16,
         height: u16,
         draw_count: usize,
+        steps: Vec<Step>,
+    ) -> Result<(Self, usize), String> {
+        let extents = vec![[0, 0, width, height]; pushes(&steps)];
+        Self::flattened_within(width, height, draw_count, steps, extents)
+    }
+
+    /// [`Plan::flattened`] with each push's content box.
+    pub fn flattened_within(
+        width: u16,
+        height: u16,
+        draw_count: usize,
         mut steps: Vec<Step>,
+        mut extents: Vec<Extent>,
     ) -> Result<(Self, usize), String> {
         let mut flattened = 0;
         loop {
-            match Self::new(width, height, draw_count, steps.clone()) {
+            match Self::bounded(width, height, draw_count, steps.clone(), extents.clone()) {
                 Err(error) if error == OVER_BUDGET => {
-                    if !flatten_deepest(&mut steps) {
+                    if !flatten_deepest(&mut steps, &mut extents) {
                         return Err(error);
                     }
                     flattened += 1;
@@ -135,6 +153,9 @@ impl Plan {
     pub fn steps(&self) -> &[Step] {
         &self.steps
     }
+    pub fn extents(&self) -> &[Extent] {
+        &self.extents
+    }
     pub fn dimensions(&self) -> (u16, u16) {
         (self.width, self.height)
     }
@@ -144,13 +165,32 @@ impl Plan {
         draw_count: usize,
         steps: Vec<Step>,
     ) -> Result<Self, String> {
+        let extents = vec![[0, 0, width, height]; pushes(&steps)];
+        Self::bounded(width, height, draw_count, steps, extents)
+    }
+
+    /// [`Plan::new`] with each push's content box, which backdrop regions then widen.
+    pub fn bounded(
+        width: u16,
+        height: u16,
+        draw_count: usize,
+        steps: Vec<Step>,
+        mut extents: Vec<Extent>,
+    ) -> Result<Self, String> {
+        if extents.len() != pushes(&steps) {
+            return Err("UI_COMPOSITE: extent count".into());
+        }
+        for extent in &mut extents {
+            *extent = within_frame(*extent, width, height);
+        }
         let pixels = u64::from(width) * u64::from(height);
         if width == 0 || height == 0 || width > 4096 || height > 4096 || steps.len() > 4096 {
             return Err("UI_COMPOSITE: frame or program limit exceeded".into());
         }
         let mut depth = 1u64;
         let mut peak = depth;
-        let mut layers: Vec<&Layer> = Vec::new();
+        let mut layers: Vec<(&Layer, usize)> = Vec::new();
+        let mut ordinal = 0;
         let frame_bytes = pixels * 4;
         let mut working_bytes = frame_bytes;
         let mut drawn = 0;
@@ -174,14 +214,32 @@ impl Plan {
                             let region = crate::scene::backdrop_region::Region::new(
                                 *clip, width, height, *blur,
                             )?;
-                            let region_bytes = region.map_or(0, |region| {
+                            let region_bytes = region.as_ref().map_or(0, |region| {
                                 u64::from(region.width) * u64::from(region.height) * 4
                             });
                             let merges = layers
                                 .iter()
                                 .rev()
-                                .take_while(|layer| !layer.is_root())
+                                .take_while(|(layer, _)| !layer.is_root())
                                 .count() as u64;
+                            // The capture reads the region from every surface back to the
+                            // backdrop root; the owner's surface holds the filtered image.
+                            let reads = layers
+                                .iter()
+                                .rposition(|(layer, _)| layer.is_root())
+                                .unwrap_or(0);
+                            if let Some(region) = &region {
+                                let read = [
+                                    region.x,
+                                    region.y,
+                                    region.x + region.width,
+                                    region.y + region.height,
+                                ];
+                                for (_, open) in &layers[reads..] {
+                                    extents[*open] = union(extents[*open], read);
+                                }
+                                extents[ordinal] = union(extents[ordinal], read);
+                            }
                             working_bytes =
                                 working_bytes.max((depth + 1) * frame_bytes + region_bytes);
                             if merges > 0 {
@@ -190,7 +248,8 @@ impl Plan {
                         }
                         _ => working_bytes = working_bytes.max((depth + 1) * frame_bytes),
                     }
-                    layers.push(layer);
+                    layers.push((layer, ordinal));
+                    ordinal += 1;
                     depth += 1;
                     peak = peak.max(depth);
                 }
@@ -219,6 +278,7 @@ impl Plan {
         }
         Ok(Self {
             steps,
+            extents,
             width,
             height,
             draw_count,
@@ -237,10 +297,11 @@ impl Plan {
         let mut flattened = 0;
         while plan.working_bytes > bytes {
             let mut steps = plan.steps.clone();
-            if !flatten_deepest(&mut steps) {
+            let mut extents = plan.extents.clone();
+            if !flatten_deepest(&mut steps, &mut extents) {
                 break;
             }
-            match Self::new(plan.width, plan.height, plan.draw_count, steps) {
+            match Self::bounded(plan.width, plan.height, plan.draw_count, steps, extents) {
                 Ok(next) => plan = next,
                 Err(_) => break,
             }
@@ -250,15 +311,24 @@ impl Plan {
     }
 
     pub fn render<B: Backend>(&self, backend: &mut B) -> Result<B::Surface, String> {
-        let mut stack = vec![(None, backend.blank(self.width, self.height)?)];
+        let frame = [0, 0, self.width, self.height];
+        let size = (self.width, self.height);
+        let mut extents = self.extents.iter();
+        let mut stack = vec![(None, backend.blank(frame)?, frame)];
         for step in &self.steps {
             match step {
                 Step::Draw(range) => {
-                    backend.draw(&mut stack.last_mut().unwrap().1, range.clone())?
+                    let (_, surface, extent) = stack.last_mut().unwrap();
+                    backend.draw(surface, *extent, range.clone())?
                 }
                 Step::Push(layer) => {
+                    let extent = if B::BOUNDED {
+                        *extents.next().unwrap()
+                    } else {
+                        frame
+                    };
                     let reused = if matches!(layer, Layer::Backdrop { .. }) {
-                        backend.reuse(layer, self.width, self.height)?
+                        backend.reuse(layer, size, extent)?
                     } else {
                         None
                     };
@@ -267,36 +337,43 @@ impl Plan {
                     } else if matches!(layer, Layer::Backdrop { .. }) {
                         let nearest = stack
                             .iter()
-                            .rposition(|(layer, _)| layer.as_ref().is_some_and(Layer::is_root))
+                            .rposition(|(layer, ..)| layer.as_ref().is_some_and(Layer::is_root))
                             .unwrap_or(0);
                         if nearest + 1 >= stack.len() {
                             // Nothing to merge: the backdrop is read straight from the live surface.
-                            backend.filter(&stack.last().unwrap().1, layer)?
+                            let (_, live, live_extent) = stack.last().unwrap();
+                            backend.filter(live, *live_extent, layer, size, extent)?
                         } else {
-                            let mut capture = backend.snapshot(&stack.last().unwrap().1)?;
+                            let (_, top, top_extent) = stack.last().unwrap();
+                            let mut capture = (backend.snapshot(top)?, *top_extent);
                             // Merge unfinished overflow clips from inner to outer.
                             // Each is composited once; never replay the display prefix.
                             for index in (nearest..stack.len() - 1).rev() {
                                 let mut parent = backend.snapshot(&stack[index].1)?;
                                 backend.composite(
                                     &mut parent,
-                                    &capture,
+                                    stack[index].2,
+                                    &capture.0,
+                                    capture.1,
                                     stack[index + 1].0.as_ref().unwrap(),
                                 )?;
-                                capture = parent;
+                                capture = (parent, stack[index].2);
                             }
-                            backend.filter(&capture, layer)?
+                            backend.filter(&capture.0, capture.1, layer, size, extent)?
                         }
                     } else {
-                        backend.blank(self.width, self.height)?
+                        backend.blank(extent)?
                     };
-                    stack.push((Some(layer.clone()), surface));
+                    stack.push((Some(layer.clone()), surface, extent));
                 }
                 Step::Pop => {
-                    let (layer, surface) = stack.pop().unwrap();
+                    let (layer, surface, extent) = stack.pop().unwrap();
+                    let (_, target, target_extent) = stack.last_mut().unwrap();
                     backend.composite(
-                        &mut stack.last_mut().unwrap().1,
+                        target,
+                        *target_extent,
                         &surface,
+                        extent,
                         layer.as_ref().unwrap(),
                     )?;
                 }
@@ -306,28 +383,68 @@ impl Plan {
     }
 }
 
+fn pushes(steps: &[Step]) -> usize {
+    steps
+        .iter()
+        .filter(|step| matches!(step, Step::Push(_)))
+        .count()
+}
+
+/// `extent` clamped to the frame, at least one pixel: a group that paints nothing still has
+/// a surface.
+fn within_frame([x0, y0, x1, y1]: Extent, width: u16, height: u16) -> Extent {
+    let (x1, y1) = (x1.clamp(1, width.max(1)), y1.clamp(1, height.max(1)));
+    [x0.min(x1 - 1), y0.min(y1 - 1), x1, y1]
+}
+
+fn union(a: Extent, b: Extent) -> Extent {
+    [
+        a[0].min(b[0]),
+        a[1].min(b[1]),
+        a[2].max(b[2]),
+        a[3].max(b[3]),
+    ]
+}
+
+/// Surfaces cover an [`Extent`] of the frame. A backend that is not `BOUNDED` gets the whole
+/// frame for every surface.
 pub trait Backend {
     type Surface;
-    fn blank(&mut self, width: u16, height: u16) -> Result<Self::Surface, String>;
-    fn draw(&mut self, target: &mut Self::Surface, span: Range<usize>) -> Result<(), String>;
+    const BOUNDED: bool = false;
+    fn blank(&mut self, extent: Extent) -> Result<Self::Surface, String>;
+    fn draw(
+        &mut self,
+        target: &mut Self::Surface,
+        extent: Extent,
+        span: Range<usize>,
+    ) -> Result<(), String>;
     /// Must remain unchanged by subsequent writes to the original surface.
     fn snapshot(&mut self, source: &Self::Surface) -> Result<Self::Surface, String>;
     fn composite(
         &mut self,
         target: &mut Self::Surface,
+        target_extent: Extent,
         source: &Self::Surface,
+        source_extent: Extent,
         layer: &Layer,
     ) -> Result<(), String>;
     /// Initializes the owner's surface with its filtered, border-box-clipped backdrop. Reads
     /// only the backdrop's region of `source`, before anything else writes to it.
-    fn filter(&mut self, source: &Self::Surface, layer: &Layer) -> Result<Self::Surface, String>;
+    fn filter(
+        &mut self,
+        source: &Self::Surface,
+        source_extent: Extent,
+        layer: &Layer,
+        frame: (u16, u16),
+        extent: Extent,
+    ) -> Result<Self::Surface, String>;
     /// The owner's surface for backdrop `layer` from an earlier frame's filtering, when nothing
     /// beneath it changed: no capture is needed.
     fn reuse(
         &mut self,
         _layer: &Layer,
-        _width: u16,
-        _height: u16,
+        _frame: (u16, u16),
+        _extent: Extent,
     ) -> Result<Option<Self::Surface>, String> {
         Ok(None)
     }
@@ -335,7 +452,7 @@ pub trait Backend {
 
 /// Removes the deepest group, preferring opacity and backdrop groups over clips, which keep
 /// content inside its box. False when no group is left.
-fn flatten_deepest(steps: &mut Vec<Step>) -> bool {
+fn flatten_deepest(steps: &mut Vec<Step>, extents: &mut Vec<Extent>) -> bool {
     let mut depth = 0usize;
     let mut best: Option<(bool, usize, usize)> = None;
     for (index, step) in steps.iter().enumerate() {
@@ -366,6 +483,7 @@ fn flatten_deepest(steps: &mut Vec<Step>) -> bool {
         return false;
     };
     steps.remove(push + pop);
+    extents.remove(pushes(&steps[..push]));
     steps.remove(push);
     true
 }

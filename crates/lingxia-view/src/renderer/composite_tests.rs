@@ -143,7 +143,7 @@ fn display_plan_preserves_gpu_text_images_clipping_opacity_and_retained_scroll()
                     })
                     .collect();
                 let flat = compositor
-                    .render(&plan, device, queue, |_, scene, bindings| {
+                    .render(&plan, device, queue, |_, _, scene, bindings| {
                         display.sparse_scene(
                             &mut glyph_cache,
                             scene,

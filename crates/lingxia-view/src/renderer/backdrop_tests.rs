@@ -600,8 +600,13 @@ fn shared_composite_plan_matches_cpu_for_nested_roots_clips_and_siblings() {
                 device,
                 queue,
                 |range: std::ops::Range<usize>,
+                 (x, y): (u16, u16),
                  scene: &mut vello_gpu::Scene,
                  _: &mut vello_gpu::TextureBindings| {
+                    scene.set_transform(vello_cpu::kurbo::Affine::translate((
+                        -f64::from(x),
+                        -f64::from(y),
+                    )));
                     for index in range {
                         visits[index] += 1;
                         scene.set_paint(paints[index].0);
@@ -672,7 +677,7 @@ fn compositor_pool_reuses_submitted_work_without_overwriting_live_outputs() {
     let mut compositor = crate::renderer::gpu::composite::Compositor::new(device);
     let render = |compositor: &mut crate::renderer::gpu::composite::Compositor, color| {
         compositor
-            .render(&plan, device, queue, |_, scene, _| {
+            .render(&plan, device, queue, |_, _, scene, _| {
                 scene.set_paint(color);
                 scene.fill_rect(&frame());
                 Ok(())
@@ -774,7 +779,7 @@ fn mirrored_backdrop_crop_preserves_gpu_card_edges() {
         )
         .unwrap();
         let output = compositor
-            .render(&plan, device, queue, |_, scene, _| {
+            .render(&plan, device, queue, |_, _, scene, _| {
                 scene.set_paint(css::RED);
                 for rect in [
                     Rect::new(0.0, 0.0, 96.0, 16.0),
@@ -836,7 +841,7 @@ fn mirrored_backdrop_crop_preserves_gpu_card_edges() {
     )
     .unwrap();
     let output = compositor
-        .render(&plan, device, queue, |_, scene, _| {
+        .render(&plan, device, queue, |_, _, scene, _| {
             scene.set_paint(css::LIME);
             scene.fill_rect(&frame());
             scene.set_paint(css::RED);

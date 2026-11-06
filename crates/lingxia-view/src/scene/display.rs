@@ -557,8 +557,168 @@ impl DisplayList {
         if start < self.commands.len() + 1 {
             steps.push(Step::Draw(start..self.commands.len() + 1));
         }
-        Plan::flattened(self.width, self.height, self.commands.len() + 1, steps)
-            .map(|(plan, _)| plan)
+        let extents = self.group_extents(&inline)?;
+        Plan::flattened_within(
+            self.width,
+            self.height,
+            self.commands.len() + 1,
+            steps,
+            extents,
+        )
+        .map(|(plan, _)| plan)
+    }
+
+    /// The device box each group surface needs, in push order: what its commands and nested
+    /// groups paint, cut to its own clip, spread by its blur and holding its backdrop.
+    fn group_extents(
+        &self,
+        inline: &[bool],
+    ) -> Result<Vec<crate::scene::composite::Extent>, String> {
+        // Per open group: its push ordinal (none for a clip that keeps the frame), what it
+        // paints, and how its box changes on the way out.
+        let mut open: Vec<(Option<usize>, [f32; 4], Exit)> = vec![(None, EMPTY, Exit::Keep)];
+        let mut extents = Vec::new();
+        let mut transform = Affine::IDENTITY;
+        let device = |b: [f32; 4]| -> [f32; 4] {
+            let [x, y, w, h] = b.map(|v| v * self.scale);
+            [x - 2.0, y - 2.0, x + w + 2.0, y + h + 2.0]
+        };
+        for (index, paint) in self.commands.iter().enumerate() {
+            let exit = match paint {
+                Paint::Transform(matrix) => {
+                    transform = checked_paint_transform(*matrix)?;
+                    continue;
+                }
+                _ if inline[index] => continue,
+                Paint::Clip(clip) => {
+                    let clip = transformed_clip(*clip, transform)?.scaled(self.scale);
+                    if self.covers_frame(&clip) {
+                        open.push((None, EMPTY, Exit::Keep));
+                        continue;
+                    }
+                    let [x, y, w, h] = clip.extent();
+                    Exit::Cut([x, y, x + w, y + h])
+                }
+                Paint::Opacity { .. } | Paint::Mask { .. } => Exit::Keep,
+                Paint::Backdrop { clip, .. } => {
+                    let [x, y, w, h] = transformed_clip(*clip, transform)?
+                        .scaled(self.scale)
+                        .extent();
+                    Exit::Hold([x, y, x + w, y + h])
+                }
+                Paint::Blur { radius, .. } => {
+                    let [sx, _, _, sy, _, _] = transform.as_coeffs();
+                    Exit::Spread(3.0 * radius * self.scale * ((sx * sy).abs().sqrt() as f32) + 2.0)
+                }
+                Paint::PopClip
+                | Paint::PopOpacity
+                | Paint::PopBackdrop
+                | Paint::PopMask(_)
+                | Paint::PopBlur => {
+                    let Some((ordinal, mut painted, exit)) = open.pop() else {
+                        return Err("UI_COMPOSITE: mismatched display-list group".into());
+                    };
+                    painted = match exit {
+                        Exit::Keep => painted,
+                        Exit::Cut(clip) => intersect(painted, clip),
+                        Exit::Hold(clip) => union(painted, clip),
+                        Exit::Spread(by) if painted[0] <= painted[2] => [
+                            painted[0] - by,
+                            painted[1] - by,
+                            painted[2] + by,
+                            painted[3] + by,
+                        ],
+                        Exit::Spread(_) => painted,
+                    };
+                    if let Some(ordinal) = ordinal {
+                        extents[ordinal] = self.extent(painted);
+                    }
+                    let parent = open
+                        .last_mut()
+                        .ok_or("UI_COMPOSITE: mismatched display-list group")?;
+                    parent.1 = union(parent.1, painted);
+                    continue;
+                }
+                _ => {
+                    let painted = match self.paint_box(paint, transform)? {
+                        Some(Some(b)) => device(b),
+                        Some(None) => EMPTY,
+                        None => [0.0, 0.0, f32::from(self.width), f32::from(self.height)],
+                    };
+                    let top = open.last_mut().unwrap();
+                    top.1 = union(top.1, painted);
+                    continue;
+                }
+            };
+            open.push((Some(extents.len()), EMPTY, exit));
+            extents.push([0, 0, self.width, self.height]);
+        }
+        Ok(extents)
+    }
+
+    /// The logical box `paint` can touch under `transform`: `Some(None)` when it paints nothing,
+    /// `None` when it is not bounded.
+    fn paint_box(
+        &self,
+        paint: &Paint,
+        transform: Affine,
+    ) -> Result<Option<Option<[f32; 4]>>, String> {
+        let local = match paint {
+            Paint::Rect { bounds, .. }
+            | Paint::Gradient { bounds, .. }
+            | Paint::Border { bounds, .. }
+            | Paint::Image { bounds, .. }
+            | Paint::Vector { bounds, .. } => *bounds,
+            Paint::RasterShadow { raster } => raster.bounds,
+            Paint::Shadow {
+                shadow,
+                bounds,
+                radius,
+                ..
+            } => match shadow.geometry(*bounds, *radius) {
+                Some(shape) => {
+                    let pad = 3.0 * shape.sigma + 1.0;
+                    let r = shape.rect;
+                    [
+                        r.x0 as f32 - pad,
+                        r.y0 as f32 - pad,
+                        r.width() as f32 + 2.0 * pad,
+                        r.height() as f32 + 2.0 * pad,
+                    ]
+                }
+                None => return Ok(Some(None)),
+            },
+            Paint::Stroke { points, width, .. } if !points.is_empty() => {
+                let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+                for [x, y] in points {
+                    (x0, y0, x1, y1) = (x0.min(*x), y0.min(*y), x1.max(*x), y1.max(*y));
+                }
+                let pad = width.max(0.0) + 1.0;
+                [x0 - pad, y0 - pad, x1 - x0 + 2.0 * pad, y1 - y0 + 2.0 * pad]
+            }
+            Paint::Text { ink: Some(ink), .. } if *ink == [0.0; 4] => return Ok(Some(None)),
+            Paint::Text { ink: Some(ink), .. } => *ink,
+            _ => return Ok(None),
+        };
+        if !local.iter().all(|v| v.is_finite()) {
+            return Ok(None);
+        }
+        Ok(Some(Some(transformed_bounds(local, transform)?)))
+    }
+
+    /// `painted` snapped outward to whole device pixels inside the frame.
+    fn extent(&self, [x0, y0, x1, y1]: [f32; 4]) -> crate::scene::composite::Extent {
+        let (width, height) = (f32::from(self.width), f32::from(self.height));
+        if !(x0 < x1 && y0 < y1) {
+            return [0, 0, 0, 0];
+        }
+        let clamp = |v: f32, max: f32| v.clamp(0.0, max) as u16;
+        [
+            clamp(x0.floor(), width),
+            clamp(y0.floor(), height),
+            clamp(x1.ceil(), width),
+            clamp(y1.ceil(), height),
+        ]
     }
 
     /// Opening and closing commands of groups that need no surface of their own: clips and
@@ -632,6 +792,38 @@ impl DisplayList {
             })
             .unwrap_or(Affine::IDENTITY)
     }
+}
+
+/// How a group's painted box changes as it composites into its parent.
+enum Exit {
+    Keep,
+    /// Its clip cuts it.
+    Cut([f32; 4]),
+    /// Its backdrop fills this box.
+    Hold([f32; 4]),
+    /// Its blur spreads it by this many device pixels.
+    Spread(f32),
+}
+
+/// Nothing painted, as `[x0, y0, x1, y1]`.
+const EMPTY: [f32; 4] = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
+
+fn union(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
+    [
+        a[0].min(b[0]),
+        a[1].min(b[1]),
+        a[2].max(b[2]),
+        a[3].max(b[3]),
+    ]
+}
+
+fn intersect(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
+    [
+        a[0].max(b[0]),
+        a[1].max(b[1]),
+        a[2].min(b[2]),
+        a[3].min(b[3]),
+    ]
 }
 
 #[cfg(test)]

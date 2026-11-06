@@ -23,6 +23,7 @@ impl DisplayList {
             image_ids,
             glyph_images,
             0..self.commands.len() + 1,
+            (0, 0),
         )
     }
 
@@ -34,6 +35,7 @@ impl DisplayList {
         image_ids: &HashMap<usize, vello_gpu::ImageSource>,
         glyph_images: &mut HashMap<usize, Arc<vello_gpu::Pixmap>>,
         span: Range<usize>,
+        origin: (u16, u16),
     ) -> Result<(), String> {
         let (background, paints) = self.composition_span(span)?;
         if background {
@@ -50,6 +52,8 @@ impl DisplayList {
             context,
             image_ids,
             glyph_images,
+            Affine::translate((-f64::from(origin.0), -f64::from(origin.1)))
+                * Affine::scale(self.scale as f64),
             self.transform_before(paints.start),
             &self.commands[paints],
         )
@@ -88,6 +92,7 @@ impl DisplayList {
             context,
             image_ids,
             glyph_images,
+            Affine::scale(self.scale as f64),
             segment.transform,
             &self.commands[segment.range.clone()],
         )?;
@@ -105,17 +110,16 @@ impl DisplayList {
         context: &mut vello_gpu::Scene,
         image_ids: &HashMap<usize, vello_gpu::ImageSource>,
         glyph_images: &mut HashMap<usize, Arc<vello_gpu::Pixmap>>,
+        device: Affine,
         initial_transform: Affine,
         commands: &[Paint],
     ) -> Result<(), String> {
-        let mut transform =
-            Affine::scale(self.scale as f64) * checked_paint_transform(initial_transform)?;
+        let mut transform = device * checked_paint_transform(initial_transform)?;
         context.set_transform(transform);
         for command in commands {
             match command {
                 Paint::Transform(matrix) => {
-                    transform =
-                        Affine::scale(self.scale as f64) * checked_paint_transform(*matrix)?;
+                    transform = device * checked_paint_transform(*matrix)?;
                     context.set_transform(transform);
                 }
                 Paint::Vector {
@@ -217,8 +221,7 @@ impl DisplayList {
                 ),
                 Paint::PopBlur => context.pop_layer(),
                 Paint::PopMask(mask) => {
-                    transform =
-                        Affine::scale(self.scale as f64) * checked_paint_transform(mask.transform)?;
+                    transform = device * checked_paint_transform(mask.transform)?;
                     context.set_transform(transform);
                     let [x, y, w, h] = mask.bounds.map(f64::from);
                     for layer in &mask.layers {

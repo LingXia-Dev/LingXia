@@ -2,7 +2,7 @@
 use crate::{
     renderer::gpu::color_filter::SaturationPass,
     renderer::gpu::pass::{SceneRenderer, Target},
-    scene::composite::{Backend, Layer},
+    scene::composite::{Backend, Extent, Layer},
 };
 use std::ops::Range;
 use vello_gpu::{Scene, TargetInit, TextureBindings, TextureId};
@@ -191,7 +191,7 @@ impl Compositor {
         draw: F,
     ) -> Result<Surface, String>
     where
-        F: FnMut(Range<usize>, &mut Scene, &mut TextureBindings) -> Result<(), String>,
+        F: FnMut(Range<usize>, (u16, u16), &mut Scene, &mut TextureBindings) -> Result<(), String>,
     {
         self.render_keyed(plan, device, queue, draw, Default::default())
     }
@@ -205,7 +205,7 @@ impl Compositor {
         backdrops: std::collections::VecDeque<crate::renderer::gpu::backdrop_cache::BackdropKey>,
     ) -> Result<Surface, String>
     where
-        F: FnMut(Range<usize>, &mut Scene, &mut TextureBindings) -> Result<(), String>,
+        F: FnMut(Range<usize>, (u16, u16), &mut Scene, &mut TextureBindings) -> Result<(), String>,
     {
         self.stats = CompositeStats::default();
         let mut gpu = Gpu {
@@ -263,13 +263,14 @@ impl Compositor {
             &plan,
             device,
             queue,
-            |span, scene, bindings| {
+            |span, origin, scene, bindings| {
                 display.sparse_span(
                     &mut glyph_cache,
                     scene,
                     &image_ids,
                     &mut glyph_images,
                     span,
+                    origin,
                 )?;
                 *bindings = images.bindings(
                     device,
@@ -380,16 +381,31 @@ impl<F> Gpu<'_, F> {
     }
 }
 
-fn image(scene: &mut Scene, source: &Surface) -> TextureBindings {
+/// `source` drawn 1:1 with its top-left corner at `at`.
+fn image(scene: &mut Scene, source: &Surface, at: (f64, f64)) -> TextureBindings {
     let bindings = image_brush(scene, source, Default::default());
     let size = source.size();
+    scene.set_paint_transform(vello_cpu::kurbo::Affine::translate(at));
     scene.fill_rect(&vello_cpu::kurbo::Rect::new(
-        0.0,
-        0.0,
-        size.width as f64,
-        size.height as f64,
+        at.0,
+        at.1,
+        at.0 + size.width as f64,
+        at.1 + size.height as f64,
     ));
+    scene.reset_paint_transform();
     bindings
+}
+
+fn size([x0, y0, x1, y1]: Extent) -> (u16, u16) {
+    (x1 - x0, y1 - y0)
+}
+
+/// Draws in frame coordinates onto a surface covering `extent`.
+fn origin(scene: &mut Scene, extent: Extent) {
+    scene.set_transform(vello_cpu::kurbo::Affine::translate((
+        -f64::from(extent[0]),
+        -f64::from(extent[1]),
+    )));
 }
 
 fn image_brush(
@@ -413,17 +429,25 @@ fn image_brush(
 
 impl<F> Backend for Gpu<'_, F>
 where
-    F: FnMut(Range<usize>, &mut Scene, &mut TextureBindings) -> Result<(), String>,
+    F: FnMut(Range<usize>, (u16, u16), &mut Scene, &mut TextureBindings) -> Result<(), String>,
 {
     type Surface = Surface;
 
-    fn blank(&mut self, width: u16, height: u16) -> Result<Surface, String> {
+    const BOUNDED: bool = true;
+
+    fn blank(&mut self, extent: Extent) -> Result<Surface, String> {
+        let (width, height) = size(extent);
         let surface = self.resources.pool.lease(self.device, width, height)?;
         self.uncleared.push(surface.clone());
         Ok(surface)
     }
 
-    fn draw(&mut self, target: &mut Surface, span: Range<usize>) -> Result<(), String> {
+    fn draw(
+        &mut self,
+        target: &mut Surface,
+        extent: Extent,
+        span: Range<usize>,
+    ) -> Result<(), String> {
         if span.is_empty() {
             return Ok(());
         }
@@ -431,7 +455,7 @@ where
         let started = std::time::Instant::now();
         let mut scene = Scene::new(size.width, size.height);
         let mut bindings = TextureBindings::new();
-        (self.draw)(span, &mut scene, &mut bindings)?;
+        (self.draw)(span, (extent[0], extent[1]), &mut scene, &mut bindings)?;
         self.resources.stats.content_scene_us += crate::session::metrics::micros(started);
         self.render(&scene, &bindings, target, TargetInit::SrcOver)
     }
@@ -457,13 +481,16 @@ where
     fn composite(
         &mut self,
         target: &mut Surface,
+        target_extent: Extent,
         source: &Surface,
+        source_extent: Extent,
         layer: &Layer,
     ) -> Result<(), String> {
         self.settle(source);
         let started = std::time::Instant::now();
         let size = target.size();
         let mut scene = Scene::new(size.width, size.height);
+        origin(&mut scene, target_extent);
         match layer {
             Layer::Clip(clip) => scene.push_clip_layer(&clip.path()),
             Layer::Opacity(alpha) | Layer::Backdrop { opacity: alpha, .. } => {
@@ -478,7 +505,8 @@ where
                 Some(crate::renderer::cpu_paint::blur_filter(*radius)),
             ),
         }
-        let bindings = image(&mut scene, source);
+        let at = (f64::from(source_extent[0]), f64::from(source_extent[1]));
+        let bindings = image(&mut scene, source, at);
         if let Layer::Mask(mask) = layer {
             for fade in &mask.layers {
                 scene.push_layer(None, Some(crate::scene::mask::blend()), None, None, None);
@@ -494,7 +522,14 @@ where
         self.render(&scene, &bindings, target, TargetInit::SrcOver)
     }
 
-    fn filter(&mut self, source: &Surface, layer: &Layer) -> Result<Surface, String> {
+    fn filter(
+        &mut self,
+        source: &Surface,
+        source_extent: Extent,
+        layer: &Layer,
+        frame: (u16, u16),
+        extent: Extent,
+    ) -> Result<Surface, String> {
         let Layer::Backdrop {
             clip,
             blur,
@@ -506,11 +541,10 @@ where
         };
         self.settle(source);
         let key = self.backdrops.pop_front();
-        let size = source.size();
         let Some(region) =
-            crate::scene::backdrop_region::Region::new(*clip, size.width, size.height, *blur)?
+            crate::scene::backdrop_region::Region::new(*clip, frame.0, frame.1, *blur)?
         else {
-            return self.blank(size.width, size.height);
+            return self.blank(extent);
         };
         let cached = key
             .as_ref()
@@ -523,14 +557,13 @@ where
             None => {
                 self.resources.backdrop_filters += 1;
                 self.resources.stats.backdrop_misses += 1;
-                let filtered = self.filtered(source, &region, *blur, *saturation)?;
+                let filtered = self.filtered(source, source_extent, &region, *blur, *saturation)?;
                 if let Some(key) = key {
                     let bytes =
                         u64::from(region.filtered_width) * u64::from(region.filtered_height) * 4;
                     // A quarter of the frame's lease budget, itself under `compositeBytes`;
                     // `fit` evicts them before a frame would flatten.
-                    let budget =
-                        crate::renderer::gpu::surface::lease_budget(size.width, size.height) / 4;
+                    let budget = crate::renderer::gpu::surface::lease_budget(frame.0, frame.1) / 4;
                     self.resources
                         .backdrops
                         .insert(key, filtered.clone(), bytes, budget);
@@ -538,10 +571,15 @@ where
                 filtered
             }
         };
-        self.place(&filtered, &region, clip, size.width, size.height)
+        self.place(&filtered, &region, clip, extent)
     }
 
-    fn reuse(&mut self, layer: &Layer, width: u16, height: u16) -> Result<Option<Surface>, String> {
+    fn reuse(
+        &mut self,
+        layer: &Layer,
+        (width, height): (u16, u16),
+        extent: Extent,
+    ) -> Result<Option<Surface>, String> {
         let Layer::Backdrop { clip, blur, .. } = layer else {
             return Ok(None);
         };
@@ -558,8 +596,7 @@ where
         };
         self.backdrops.pop_front();
         self.resources.stats.backdrop_hits += 1;
-        self.place(&filtered, &region, clip, width, height)
-            .map(Some)
+        self.place(&filtered, &region, clip, extent).map(Some)
     }
 }
 
@@ -570,12 +607,13 @@ impl<F> Gpu<'_, F> {
         filtered: &Surface,
         region: &crate::scene::backdrop_region::Region,
         clip: &crate::scene::node::ClipSnapshot,
-        width: u16,
-        height: u16,
+        extent: Extent,
     ) -> Result<Surface, String> {
+        let (width, height) = size(extent);
         let output = self.overwritten(width, height)?;
         let started = std::time::Instant::now();
         let mut scene = Scene::new(width, height);
+        origin(&mut scene, extent);
         scene.push_clip_layer(&clip.path());
         let bindings = image_brush(&mut scene, filtered, Default::default());
         scene.set_paint_transform(region.placement());
@@ -595,16 +633,28 @@ impl<F> Gpu<'_, F> {
     fn filtered(
         &mut self,
         source: &Surface,
+        source_extent: Extent,
         region: &crate::scene::backdrop_region::Region,
         blur: f32,
         saturation: crate::scene::color_filter::Saturation,
     ) -> Result<Surface, String> {
         let cropped = self.overwritten(region.width, region.height)?;
         let mut encoder = self.device.create_command_encoder(&Default::default());
+        let (x, y) = (
+            region.x.checked_sub(source_extent[0]),
+            region.y.checked_sub(source_extent[1]),
+        );
+        let (Some(x), Some(y)) = (x, y) else {
+            return Err("UI_COMPOSITE: backdrop region outside its source".into());
+        };
+        if region.x + region.width > source_extent[2] || region.y + region.height > source_extent[3]
+        {
+            return Err("UI_COMPOSITE: backdrop region outside its source".into());
+        }
         let mut input = source.texture().as_image_copy();
         input.origin = wgpu::Origin3d {
-            x: region.x as u32,
-            y: region.y as u32,
+            x: u32::from(x),
+            y: u32::from(y),
             z: 0,
         };
         encoder.copy_texture_to_texture(

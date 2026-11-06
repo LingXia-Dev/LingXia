@@ -325,6 +325,49 @@ fn groups_with_no_surface_inside_draw_in_their_span_and_a_frame_clip_is_dropped(
 }
 
 #[test]
+fn group_surfaces_cover_what_they_paint_and_the_backdrop_they_read() {
+    let rect = |bounds| Paint::Rect {
+        color: [255, 0, 0, 255],
+        bounds,
+        radius: 0.0,
+        corners: None,
+    };
+    let clip = ClipSnapshot {
+        bounds: [40.0, 40.0, 20.0, 20.0],
+        radius: 0.0,
+        radii: None,
+        transform: None,
+    };
+    let mut display = primitives(1.0);
+    display.commands = vec![
+        Paint::Blur {
+            node: 0,
+            radius: 2.0,
+        },
+        rect([10.0, 10.0, 8.0, 8.0]),
+        Paint::PopBlur,
+        Paint::Backdrop {
+            node: 1,
+            clip,
+            blur: 4.0,
+            saturation: 1.0,
+            opacity: 1.0,
+        },
+        rect([42.0, 42.0, 4.0, 4.0]),
+        Paint::PopBackdrop,
+    ];
+    let plan = display.composition_plan().unwrap();
+    // The blurred square plus its 3-sigma spread and a 2 px fringe.
+    assert_eq!(plan.extents()[0], [0, 0, 28, 28]);
+    let [x0, y0, x1, y1] = plan.extents()[1];
+    assert!(
+        x0 <= 40 && y0 <= 40 && x1 >= 60 && y1 >= 60,
+        "holds the glass"
+    );
+    assert!((x1 - x0) < 80 && (y1 - y0) < 80, "not the whole frame");
+}
+
+#[test]
 fn a_transitioning_background_is_painted_on_a_node_that_has_none() {
     use crate::animation::transition::Overrides;
     let mut page = crate::ViewSession::new(&crate::session::tests::source(

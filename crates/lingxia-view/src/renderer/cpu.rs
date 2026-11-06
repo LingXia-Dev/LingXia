@@ -1,5 +1,5 @@
 //! CPU reference backend for the shared compositor.
-use crate::scene::composite::{Backend, Layer};
+use crate::scene::composite::{Backend, Extent, Layer};
 use std::{ops::Range, sync::Arc};
 use vello_cpu::{Image, ImageSource, Pixmap, RenderContext, Resources, kurbo::Rect};
 
@@ -43,11 +43,16 @@ where
 {
     type Surface = Arc<Pixmap>;
 
-    fn blank(&mut self, width: u16, height: u16) -> Result<Self::Surface, String> {
-        Ok(Arc::new(Pixmap::new(width, height)))
+    fn blank(&mut self, [x0, y0, x1, y1]: Extent) -> Result<Self::Surface, String> {
+        Ok(Arc::new(Pixmap::new(x1 - x0, y1 - y0)))
     }
 
-    fn draw(&mut self, target: &mut Self::Surface, span: Range<usize>) -> Result<(), String> {
+    fn draw(
+        &mut self,
+        target: &mut Self::Surface,
+        _extent: Extent,
+        span: Range<usize>,
+    ) -> Result<(), String> {
         if span.is_empty() {
             return Ok(());
         }
@@ -65,7 +70,9 @@ where
     fn composite(
         &mut self,
         target: &mut Self::Surface,
+        _target_extent: Extent,
         source: &Self::Surface,
+        _source_extent: Extent,
         layer: &Layer,
     ) -> Result<(), String> {
         let mut context = RenderContext::new(target.width(), target.height());
@@ -100,7 +107,14 @@ where
         Ok(())
     }
 
-    fn filter(&mut self, source: &Self::Surface, layer: &Layer) -> Result<Self::Surface, String> {
+    fn filter(
+        &mut self,
+        source: &Self::Surface,
+        _source_extent: Extent,
+        layer: &Layer,
+        _frame: (u16, u16),
+        extent: Extent,
+    ) -> Result<Self::Surface, String> {
         let Layer::Backdrop {
             clip,
             blur,
@@ -113,7 +127,7 @@ where
         let (width, height) = (source.width(), source.height());
         let Some(region) = crate::scene::backdrop_region::Region::new(*clip, width, height, *blur)?
         else {
-            return self.blank(width, height);
+            return self.blank(extent);
         };
         let mut cropped = Pixmap::new(region.width, region.height);
         for (y, row) in cropped
@@ -213,6 +227,7 @@ mod tests {
             let output = backend
                 .filter(
                     &Arc::new(source),
+                    [0, 0, 96, 96],
                     &Layer::Backdrop {
                         clip: ClipSnapshot {
                             bounds: [16.0, 16.0, 64.0, 64.0],
@@ -224,6 +239,8 @@ mod tests {
                         saturation: Saturation::new(1.0).unwrap(),
                         opacity: 1.0,
                     },
+                    (96, 96),
+                    [0, 0, 96, 96],
                 )
                 .unwrap();
             for (x, y) in [
@@ -267,6 +284,7 @@ mod tests {
         let output = backend
             .filter(
                 &Arc::new(source),
+                [0, 0, 96, 96],
                 &Layer::Backdrop {
                     clip: ClipSnapshot {
                         bounds: [16.0, 16.0, 64.0, 64.0],
@@ -278,6 +296,8 @@ mod tests {
                     saturation: Saturation::new(1.0).unwrap(),
                     opacity: 1.0,
                 },
+                (96, 96),
+                [0, 0, 96, 96],
             )
             .unwrap();
         let edge = pixel(&output, 16, 48);
