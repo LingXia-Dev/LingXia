@@ -178,6 +178,9 @@ impl Inputs {
     }
 
     pub fn apply_values(&self, records: &mut [Record]) {
+        if self.entries.is_empty() {
+            return;
+        }
         let ids = identities(records);
         for (record, id) in records.iter_mut().zip(ids) {
             if let Some(entry) = self.entries.get(&id) {

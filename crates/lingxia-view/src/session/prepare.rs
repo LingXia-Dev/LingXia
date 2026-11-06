@@ -553,14 +553,8 @@ impl ViewSession {
                 {
                     self.retained
                         .as_ref()
-                        .zip(self.input_records.as_ref())
-                        .and_then(|(retained, previous)| {
-                            let mut previous = previous.to_vec();
-                            strip_record_animations(&mut previous);
-                            self.inputs.apply_values(&mut previous);
-                            self.inputs.apply_styles(&mut previous).ok()?;
-                            retained.rebind(&previous, &render_records)
-                        })
+                        .zip(self.paint_records.as_deref())
+                        .and_then(|(retained, previous)| retained.rebind(previous, &render_records))
                 } else {
                     None
                 };
@@ -651,6 +645,7 @@ impl ViewSession {
                             wanted,
                             inputs,
                             records,
+                            render_records,
                             input_dirty,
                             input_hits,
                         )
@@ -676,10 +671,12 @@ impl ViewSession {
                 wanted,
                 inputs,
                 records,
+                render_records,
                 input_dirty,
                 input_hits,
             )) => {
                 self.input_hits = Some(input_hits);
+                self.paint_records = Some(render_records);
                 self.inputs = inputs;
                 let same_view = self
                     .input_records

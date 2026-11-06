@@ -63,6 +63,9 @@ pub struct ViewSession {
     image_notified: std::collections::HashSet<(String, crate::ImageSource)>,
     inputs: crate::interaction::input_state::Inputs,
     input_records: Option<std::sync::Arc<[crate::protocol::Record]>>,
+    /// The records `retained` was laid out from: `input_records` as painted, with input values
+    /// and state styles applied.
+    paint_records: Option<Vec<crate::protocol::Record>>,
     /// The last buffer the View encoded and the host decoded; the next may reference it.
     wire: std::cell::RefCell<crate::protocol::Wire>,
     input_dirty: bool,
@@ -200,6 +203,7 @@ impl ViewSession {
             image_notified: Default::default(),
             inputs: Default::default(),
             input_records: None,
+            paint_records: None,
             wire: Default::default(),
             animation_inventory: Default::default(),
             animation_visible: Default::default(),
@@ -255,6 +259,7 @@ impl ViewSession {
         self.lists.clear();
         self.inputs.clear();
         self.input_records = None;
+        self.paint_records = None;
         self.animation_inventory = Default::default();
         self.animation_visible.clear();
         self.input_dirty = false;
