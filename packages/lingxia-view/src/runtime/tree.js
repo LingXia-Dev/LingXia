@@ -34,8 +34,14 @@ function runCandidate(view, lookup, build) {
   finally { clearArena(); Object.assign(render, { active: false, scope: null, view: null, lookupLocals: null, collectors: [] }); }
 }
 
-export function prepare(renderPage, view, windows = {}) {
+// With `deferAnchors`, a render whose list anchors moved returns no buffer: native picks their
+// destination windows first (`takeMovedAnchors`), then encodes once through `prepareWindows`.
+let movedAnchors = '';
+export function takeMovedAnchors() { const moved = movedAnchors; movedAnchors = ''; return moved; }
+
+export function prepare(renderPage, view, windows = {}, deferAnchors = false) {
   return runCandidate(view, null, candidate => {
+    if (deferAnchors) candidate.movedAnchors = new Map();
     candidate.tree = resolveNode(renderPage(view), 'root');
     render.site = null;
     if (!candidate.tree || candidate.tree.fragment) throw Error('UI_ROOT: page must return one layout node');
@@ -56,6 +62,10 @@ export function prepare(renderPage, view, windows = {}) {
     }
     finishTopLayer(candidate.tree);
     candidate.baseLocals = new Map(candidate.locals);
+    if (candidate.movedAnchors?.size) {
+      movedAnchors = JSON.stringify(Object.fromEntries(candidate.movedAnchors));
+      return [];
+    }
     return encodeTree(candidate.tree, windows);
   });
 }

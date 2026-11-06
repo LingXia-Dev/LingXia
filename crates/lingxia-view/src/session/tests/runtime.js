@@ -35,6 +35,7 @@
     reset: () => reset,
     takeActionErrors: () => takeActionErrors,
     takeActionRequests: () => takeActionRequests,
+    takeMovedAnchors: () => takeMovedAnchors,
     useChannel: () => useChannel,
     useLeaveGuard: () => useLeaveGuard,
     useLocal: () => useLocal,
@@ -3214,11 +3215,13 @@
     const anchor = props.anchor === void 0 ? null : JSON.stringify(props.anchor);
     const positions2 = props.itemKeys && old?.states?.size ? keyPositions(props.itemKeys) : null;
     const states2 = positions2 ? new Map([...old?.states ?? []].flatMap(([, state]) => positions2.has(state.key) ? [[positions2.get(state.key), state]] : [])) : new Map([...old?.states ?? []].filter(([i]) => i < props.count));
+    const anchorChanged = Boolean(old && old.count === props.count && anchor !== null && anchor !== old.anchor);
+    if (anchorChanged && !props.anchor.duration) render.candidate?.movedAnchors?.set(identity, anchor);
     return {
       count: props.count,
       previousCount: old?.count ?? props.count,
       anchor,
-      anchorChanged: Boolean(old && old.count === props.count && anchor !== null && anchor !== old.anchor),
+      anchorChanged,
       anchorCache: old?.cache ?? null,
       states: states2,
       cache: /* @__PURE__ */ new Map(),
@@ -4117,8 +4120,15 @@
       Object.assign(render, { active: false, scope: null, view: null, lookupLocals: null, collectors: [] });
     }
   }
-  function prepare(renderPage, view, windows = {}) {
+  var movedAnchors = "";
+  function takeMovedAnchors() {
+    const moved = movedAnchors;
+    movedAnchors = "";
+    return moved;
+  }
+  function prepare(renderPage, view, windows = {}, deferAnchors = false) {
     return runCandidate(view, null, (candidate) => {
+      if (deferAnchors) candidate.movedAnchors = /* @__PURE__ */ new Map();
       candidate.tree = resolveNode(renderPage(view), "root");
       render.site = null;
       if (!candidate.tree || candidate.tree.fragment) throw Error("UI_ROOT: page must return one layout node");
@@ -4144,6 +4154,10 @@
       }
       finishTopLayer(candidate.tree);
       candidate.baseLocals = new Map(candidate.locals);
+      if (candidate.movedAnchors?.size) {
+        movedAnchors = JSON.stringify(Object.fromEntries(candidate.movedAnchors));
+        return [];
+      }
       return encodeTree(candidate.tree, windows);
     });
   }
@@ -4287,6 +4301,7 @@
       __lingxiaDescribe: describe,
       __lingxiaPrepare: prepare,
       __lingxiaPrepareWindows: prepareWindows,
+      __lingxiaTakeMovedAnchors: takeMovedAnchors,
       __lingxiaCommit: commit,
       __lingxiaDiscard: discard,
       __lingxiaReset: reset,

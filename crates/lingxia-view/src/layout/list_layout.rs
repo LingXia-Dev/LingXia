@@ -61,6 +61,71 @@ pub(crate) fn row_offset(lists: &Lists, id: &str, index: usize, viewport: f32) -
     Some(offset as f32 + state.padding)
 }
 
+/// The scroll offset anchor `value` puts list `node` at, from its measured and estimated rows.
+fn anchor_target(
+    state: &ListState,
+    node: &crate::scene::node::NodeSnapshot,
+    value: &serde_json::Value,
+) -> Result<f32, String> {
+    let scroll = node
+        .scroll
+        .as_ref()
+        .ok_or("UI_LIST: missing scroll geometry")?;
+    let [padding, _, bottom, _] = scroll.content_insets;
+    if value == "end" {
+        return Ok(
+            (state.metrics.total() + (padding + bottom) as f64 - node.bounds[3] as f64).max(0.0)
+                as f32,
+        );
+    }
+    let row = value["index"]
+        .as_u64()
+        .ok_or("UI_LIST: invalid anchor index")? as usize;
+    let align = if value["align"] == "end" {
+        Align::End
+    } else {
+        Align::Start
+    };
+    Ok(state.metrics.anchor_offset(
+        Anchor::Row { index: row, align },
+        scroll.content_size[1] as f64,
+    )? as f32)
+}
+
+/// Before a render is encoded: the windows and offsets its moved anchors land on, from the
+/// committed lists and their last layout. A list either does not know stays where it is, and
+/// `reconcile` moves it after layout.
+pub(crate) fn anchor_windows(
+    lists: &Lists,
+    nodes: &[crate::scene::node::NodeSnapshot],
+    moved: &HashMap<String, String>,
+    windows: &mut Windows,
+    offsets: &mut HashMap<String, f32>,
+) -> Result<(), String> {
+    for (id, encoded) in moved {
+        let (Some(state), Some(node)) = (
+            lists.get(id),
+            nodes
+                .iter()
+                .find(|node| node.scroll.as_ref().is_some_and(|scroll| &scroll.id == id)),
+        ) else {
+            continue;
+        };
+        if state.metrics.is_empty() {
+            continue;
+        }
+        let value: serde_json::Value =
+            serde_json::from_str(encoded).map_err(|_| "UI_LIST: invalid anchor")?;
+        // An index past a shrunk list is the render's error to report, after layout.
+        let Ok(target) = anchor_target(state, node, &value) else {
+            continue;
+        };
+        windows.insert(id.clone(), request(state, node, target)?);
+        offsets.insert(id.clone(), target);
+    }
+    Ok(())
+}
+
 pub(crate) fn current(lists: &Lists) -> Windows {
     lists
         .iter()
@@ -136,7 +201,7 @@ pub(crate) fn reconcile(
             .as_ref()
             .ok_or("UI_LIST: missing scroll geometry")?;
         let count = record.number(field::LIST_COUNT).unwrap_or(0.0) as usize;
-        let [padding, _, bottom, _] = scroll.content_insets;
+        let padding = scroll.content_insets[0];
         let gap = record.number(field::GAP).unwrap_or(0.0);
         let width = scroll.content_size[0];
         // Measurement restoration must use the same content box as row anchors;
@@ -193,23 +258,7 @@ pub(crate) fn reconcile(
         {
             let value: serde_json::Value =
                 serde_json::from_str(encoded).map_err(|_| "UI_LIST: invalid anchor")?;
-            let to = if value == "end" {
-                (state.metrics.total() + (padding + bottom) as f64 - node.bounds[3] as f64).max(0.0)
-                    as f32
-            } else {
-                let row = value["index"]
-                    .as_u64()
-                    .ok_or("UI_LIST: invalid anchor index")? as usize;
-                let align = if value["align"] == "end" {
-                    Align::End
-                } else {
-                    Align::Start
-                };
-                state.metrics.anchor_offset(
-                    Anchor::Row { index: row, align },
-                    scroll.content_size[1] as f64,
-                )? as f32
-            };
+            let to = anchor_target(state, node, &value)?;
             match value["duration"].as_f64().filter(|d| *d > 0.0) {
                 // The host scrolls there; each frame re-aims it as rows are measured.
                 Some(duration) => glide = Some((encoded.clone(), to, duration as f32)),

@@ -644,8 +644,9 @@ function listState(props, identity) {
   const states = positions
     ? new Map([...(old?.states ?? [])].flatMap(([, state]) => positions.has(state.key) ? [[positions.get(state.key), state]] : []))
     : new Map([...(old?.states ?? [])].filter(([i]) => i < props.count));
-  return { count: props.count, previousCount: old?.count ?? props.count, anchor,
-    anchorChanged: Boolean(old && old.count === props.count && anchor !== null && anchor !== old.anchor),
+  const anchorChanged = Boolean(old && old.count === props.count && anchor !== null && anchor !== old.anchor);
+  if (anchorChanged && !props.anchor.duration) render.candidate?.movedAnchors?.set(identity, anchor);
+  return { count: props.count, previousCount: old?.count ?? props.count, anchor, anchorChanged,
     anchorCache: old?.cache ?? null,
     states, cache: new Map(), window: old?.window ? { ...old.window, start: Math.min(old.window.start, props.count), end: Math.min(old.window.end, props.count) } : null };
 }

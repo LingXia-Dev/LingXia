@@ -1,5 +1,5 @@
 import { render as rendering } from './runtime/state.js';
-import { describe, prepare, prepareWindows, commit, discard, reset, dispatch, probeListRow } from './runtime/tree.js';
+import { describe, prepare, prepareWindows, takeMovedAnchors, commit, discard, reset, dispatch, probeListRow } from './runtime/tree.js';
 import { createView, hasLocalUpdates, readsHostContext } from './runtime/hooks.js';
 import { configureActions, takeActionRequests, receiveActionResponse, takeActionErrors, requestLeave, automationAction, takeAutomationResults } from './runtime/actions.js';
 import { viewRequest, overlayTimer, takeOverlayTimers, escapeOverlay } from './runtime/overlay.js';
@@ -11,7 +11,7 @@ import { takeFrameMeasures, frameMeasured } from './runtime/frames.js';
 export function publishHost(render, catalog) {
   Object.assign(globalThis, {
     __lingxiaRender: render, __lingxiaDescribe: describe, __lingxiaPrepare: prepare,
-    __lingxiaPrepareWindows: prepareWindows, __lingxiaCommit: commit, __lingxiaDiscard: discard,
+    __lingxiaPrepareWindows: prepareWindows, __lingxiaTakeMovedAnchors: takeMovedAnchors, __lingxiaCommit: commit, __lingxiaDiscard: discard,
     __lingxiaReset: reset, __lingxiaDispatch: dispatch, __lingxiaCreateView: createView,
     __lingxiaConfigureActions: configureActions, __lingxiaTakeActionRequests: takeActionRequests,
     __lingxiaReceiveActionResponse: receiveActionResponse, __lingxiaTakeActionErrors: takeActionErrors,

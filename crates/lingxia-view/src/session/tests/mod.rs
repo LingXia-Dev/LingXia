@@ -333,6 +333,44 @@ fn text_scaling_discards_offscreen_list_measurements() {
 }
 
 #[test]
+fn a_moved_anchor_on_a_measured_list_takes_one_layout() {
+    let module = source(
+        "globalThis.anchor={index:0,align:'start',seq:0};function render(){return h('column',{},h('text',{},String(globalThis.anchor.seq)),h(listTag,{count:1000,anchor:globalThis.anchor,style:{height:300},row:i=>h('text',{'data-testid':'row-'+i,style:{height:40+(i%3)*10}},String(i))}))}",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    page.layout(200, 400, 1.0).unwrap();
+    for (seq, index) in [(1, 2), (2, 4), (3, 600), (4, 602)] {
+        page.eval(&format!(
+            "globalThis.anchor={{index:{index},align:'start',seq:{seq}}}"
+        ))
+        .unwrap();
+        let frame = page.layout(200, 400, 1.0).unwrap();
+        let row = frame
+            .nodes
+            .iter()
+            .find(|node| node.test_id == format!("row-{index}"))
+            .unwrap();
+        let list = frame
+            .nodes
+            .iter()
+            .find(|node| node.scroll.is_some())
+            .unwrap();
+        assert!(
+            (row.bounds[1] - list.bounds[1]).abs() < 0.1,
+            "row {index} at the top"
+        );
+        let metrics = page.frame_metrics();
+        let passes = (metrics.view_passes, metrics.layout_passes);
+        if index == 600 {
+            // Far past measured rows, it lands on estimates and measures again.
+            assert!(passes.0 <= 3 && passes.1 <= 3, "anchor {index}: {passes:?}");
+        } else {
+            assert_eq!(passes, (1, 1), "anchor {index}");
+        }
+    }
+}
+
+#[test]
 fn distant_list_anchor_skips_old_rows_and_preserves_failed_frame() {
     let module = source(
         "globalThis.anchor=undefined;globalThis.visited=[];function render(){return h(listTag,{count:1000,anchor:globalThis.anchor,row:i=>{globalThis.visited.push(i);return h('button',{'data-testid':'row-'+i,onClick(){},style:{height:40+(i%3)*20}},String(i))}})}",

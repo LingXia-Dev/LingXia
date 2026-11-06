@@ -7,7 +7,7 @@ pub mod lifecycle;
 pub mod metrics;
 pub mod state;
 
-use crate::engine::{RongJS, decode_context_timed};
+use crate::engine::{RongJS, decode_buffer, decode_context_timed};
 use crate::{DisplayList, Frame, Renderer};
 use rong::{JSEngine, Source};
 use std::{cell::Cell, collections::HashMap, sync::Arc, time::Duration};

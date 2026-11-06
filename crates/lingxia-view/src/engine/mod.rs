@@ -106,6 +106,21 @@ pub(crate) fn decode_context_timed(
     ),
     String,
 > {
+    decode_buffer(context, invoke, false)
+}
+
+/// `allow_empty`: an empty buffer is no records rather than an error (a deferred render).
+pub(crate) fn decode_buffer(
+    context: &JSContext,
+    invoke: &str,
+    allow_empty: bool,
+) -> Result<
+    (
+        Vec<crate::protocol::Record>,
+        crate::session::metrics::ViewTimings,
+    ),
+    String,
+> {
     let started = std::time::Instant::now();
     let values: JSArray = context
         .eval(Source::from_bytes(invoke.as_bytes()))
@@ -113,6 +128,15 @@ pub(crate) fn decode_context_timed(
     let eval_us = crate::session::metrics::micros(started);
     let started = std::time::Instant::now();
     let count = values.len().map_err(|e| e.to_string())?;
+    if allow_empty && count == 0 {
+        let timings = crate::session::metrics::ViewTimings {
+            eval_us,
+            transfer_us: 0,
+            decode_us: 0,
+            values: 0,
+        };
+        return Ok((Vec::new(), timings));
+    }
     if count as usize > crate::protocol::limits::WIRE_VALUES {
         return Err("UI_LIMIT: buffer too large".into());
     }

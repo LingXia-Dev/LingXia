@@ -444,7 +444,7 @@ impl ViewSession {
             let environment =
                 serde_json::to_string(&environment.to_string()).map_err(|e| e.to_string())?;
             format!(
-                "__lingxiaPrepare(__lingxiaRender, __lingxiaCreateView(JSON.parse({data}), JSON.parse({environment})), JSON.parse({encoded_windows}))"
+                "__lingxiaPrepare(__lingxiaRender, __lingxiaCreateView(JSON.parse({data}), JSON.parse({environment})), JSON.parse({encoded_windows}), true)"
             )
         };
         let mut prepared_js = !native_input;
@@ -453,9 +453,42 @@ impl ViewSession {
                 self.input_records.as_ref().unwrap().clone()
             } else {
                 let started = std::time::Instant::now();
-                let (records, timings) =
-                    self.execute_frame(|| decode_context_timed(&self.context, &invoke))?;
+                let full = window_only.is_none();
+                let (mut records, timings) =
+                    self.execute_frame(|| decode_buffer(&self.context, &invoke, full))?;
                 metrics.add_view(timings);
+                if full && records.is_empty() {
+                    // Anchors moved: encode once, into the windows they land in.
+                    let moved: String = self.execute(|| {
+                        self.context
+                            .eval(Source::from_bytes("__lingxiaTakeMovedAnchors()"))
+                            .map_err(|e| e.to_string())
+                    })?;
+                    let moved: HashMap<String, String> =
+                        serde_json::from_str(&moved).map_err(|e| e.to_string())?;
+                    let mut windows = windows.clone();
+                    if let Some(retained) = &self.retained {
+                        crate::layout::list_layout::anchor_windows(
+                            &self.lists,
+                            &retained.nodes,
+                            &moved,
+                            &mut windows,
+                            &mut offsets,
+                        )?;
+                    }
+                    let encoded = serde_json::to_string(
+                        &serde_json::to_string(&windows).map_err(|e| e.to_string())?,
+                    )
+                    .map_err(|e| e.to_string())?;
+                    let (refined, timings) = self.execute_frame(|| {
+                        decode_context_timed(
+                            &self.context,
+                            &format!("__lingxiaPrepareWindows(JSON.parse({encoded}))"),
+                        )
+                    })?;
+                    metrics.add_view(timings);
+                    records = refined;
+                }
                 metrics.view_us += crate::session::metrics::micros(started);
                 metrics.view_passes += 1;
                 self.reads_host_context = self.execute(|| {

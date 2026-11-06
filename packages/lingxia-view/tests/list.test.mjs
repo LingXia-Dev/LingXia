@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {h, listTag, List, prepare, prepareWindows, commit, discard, dispatch, useLocal, reset} from '../src/internal.js';
+import {h, listTag, List, prepare, prepareWindows, takeMovedAnchors, commit, discard, dispatch, useLocal, reset} from '../src/internal.js';
 import {decode} from './support/wire.mjs';
 const records=buffer=>decode(buffer).map(node=>({tag:node.tag,id:node.testId,text:node.text,fields:new Map(Object.entries(node.props))}));
 function window(start,end) { return {root:{start,end,leading:start*100,trailing:(1000-end)*100}}; }
@@ -52,6 +52,26 @@ test('cross-window anchors reuse old geometry until native refines the destinati
  output=records(prepareWindows(window(0,3)));commit();
  assert.deepEqual(visited,[0,1,2]);
  assert.equal(output.find(r=>r.id==='row-1').text,'1:1','offscreen row locals survive the jump');
+});
+
+test('a deferred render reports moved anchors and encodes once into their windows',()=>{
+ reset();let anchor,visited=[],renders=0;
+ const page=()=>{renders++;return h(listTag,{count:1000,anchor,row:i=>{visited.push(i);return row(i);}});};
+ prepare(page,{},window(0,3),true);commit();
+ assert.equal(takeMovedAnchors(),'','a first render moves nothing');
+ anchor={index:500,align:'start',seq:1};visited=[];renders=0;
+ assert.deepEqual(prepare(page,{},window(0,3),true),[]);
+ assert.deepEqual(JSON.parse(takeMovedAnchors()),{root:JSON.stringify(anchor)});
+ const output=records(prepareWindows(window(500,503)));commit();
+ assert.equal(renders,1);
+ assert.deepEqual(visited,[500,501,502],'no row of the old window is rendered');
+ assert.ok(output.find(r=>r.id==='row-500'));
+ visited=[];
+ assert.notDeepEqual(prepare(page,{},window(500,503),true),[],'an unchanged anchor encodes at once');
+ discard();
+ anchor={index:600,align:'start',duration:300};
+ assert.notDeepEqual(prepare(page,{},window(500,503),true),[],'a gliding anchor is not deferred');
+ discard();
 });
 
 test('a gliding anchor keeps rendering the window it is in',()=>{
