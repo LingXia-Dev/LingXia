@@ -1,7 +1,6 @@
 import type { DriveRequest, PerfData } from '../../shared/perf-types';
 
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
-const TICK_MS = 16;
 
 // Drivers for the workloads; the View measures the frames they cause. `drive` returns at
 // once so the caller can measure while the scene runs.
@@ -27,9 +26,11 @@ Page({
           await sleep(600);
         }
       } else if (scene === 'data' || scene === 'images' || scene === 'text') {
+        // A GPU page acknowledges a write once the frame showing it is on screen, so the
+        // loop writes once per presented frame.
         for (let tick = 1; Date.now() < until; tick++) {
           this.setData({ tick });
-          await sleep(TICK_MS);
+          await this.flush();
         }
       } else {
         // List glides natively, fill animates on its own and touch waits for a finger.

@@ -291,6 +291,9 @@ impl<A: PlatformAdapter> Inner<A> {
                             drop(main);
                             return inner.schedule_more();
                         }
+                        // The frame showing these writes is built and queued for the display:
+                        // Logic may write the next one while this one draws and presents.
+                        inner.release_acks(snapshot.data_revision);
                         let prepared = Prepared {
                             frame,
                             environment,
@@ -544,6 +547,7 @@ impl<A: PlatformAdapter> Inner<A> {
         let json = format!("{{\"nodes\":{nodes_json},{}", &rest[1..]);
         let snapshot = Arc::new(FrameSnapshot {
             metrics: session.frame_metrics().clone(),
+            data_revision: session.state.revision(),
             generation,
             width,
             height,

@@ -1311,6 +1311,76 @@ fn connections_say_hello_and_report_an_overdue_bootstrap() {
     }
 }
 
+#[test]
+fn a_state_write_is_acknowledged_once_a_frame_showing_it_is_built() {
+    if !bounded_jobs() {
+        return;
+    }
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &(source("function render({data}){return h('text',{},`count ${data.count}`)}")
+            + "\nglobalThis.__lingxiaActionCatalog={__names:[],__modes:{}};"),
+        true,
+    );
+    host.set_visible(true);
+    let connection = ConnectionTicket::new(1);
+    host.connect(connection, "nonce".into());
+    for frame in [
+        serde_json::json!({"v":2,"kind":"helloAck","nonce":"nonce","protocol":2,"sessionId":"s"}),
+        serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"count":3}}),
+        serde_json::json!({"v":2,"kind":"ready","sessionId":"s"}),
+    ] {
+        host.receive(connection, frame.to_string());
+    }
+    platform.settle(&[&host]);
+    assert_eq!(last(&host), ["count 3"]);
+    let acks = |host: &ViewHost<Fake>| {
+        host.adapter()
+            .log
+            .lock()
+            .unwrap()
+            .messages
+            .iter()
+            .filter(|(_, m)| m.contains("state.ack"))
+            .count()
+    };
+    // A target that declines frames: the write reaches the View but no frame shows it.
+    host.adapter()
+        .pending
+        .store(true, std::sync::atomic::Ordering::Release);
+    host.receive(
+        connection,
+        serde_json::json!({"v":2,"kind":"state.patch","baseRev":0,"rev":1,"ack":true,
+            "ops":[{"op":"replace","path":"/count","value":4}]})
+        .to_string(),
+    );
+    platform.settle(&[&host]);
+    assert_eq!(acks(&host), 0, "held until a frame showing it is built");
+    host.adapter()
+        .pending
+        .store(false, std::sync::atomic::Ordering::Release);
+    host.surface_changed();
+    platform.settle(&[&host]);
+    assert_eq!(last(&host), ["count 4"]);
+    assert_eq!(acks(&host), 1);
+    // With no frame to show it, a write is acknowledged at the deadline.
+    host.adapter()
+        .pending
+        .store(true, std::sync::atomic::Ordering::Release);
+    host.receive(
+        connection,
+        serde_json::json!({"v":2,"kind":"state.patch","baseRev":1,"rev":2,"ack":true,
+            "ops":[{"op":"replace","path":"/count","value":5}]})
+        .to_string(),
+    );
+    platform.settle(&[&host]);
+    assert_eq!(acks(&host), 1);
+    platform.advance(Duration::from_millis(250));
+    assert_eq!(acks(&host), 2);
+}
+
 // Motion: wakeups, hidden silence and the animation frame counter.
 
 const SPIN: &str = r#"{"name":"spin","durationMs":1000,"delayMs":0,"iterations":null,"whenReduced":"base","easing":"linear","opacity":null,"transforms":[{"kind":"rotate","angle":[{"offset":0,"value":0},{"offset":1,"value":360}]}]}"#;

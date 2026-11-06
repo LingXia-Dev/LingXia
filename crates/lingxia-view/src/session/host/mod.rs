@@ -60,6 +60,8 @@ pub struct FrameSnapshot {
     /// Each source's decode size in this frame.
     pub image_buckets: std::collections::HashMap<String, crate::scene::image::Bucket>,
     pub metrics: crate::session::metrics::FrameMetrics,
+    /// The Logic state revision the frame was built from.
+    pub data_revision: u64,
     pub feedback: crate::interaction::chrome::FeedbackStyle,
     /// `{generation, nodes, images, metrics, feedback}` for adapters that marshal the
     /// frame; `feedback` is the [`crate::interaction::chrome::FeedbackStyle`] to draw.
@@ -241,6 +243,8 @@ struct Main<F> {
     presented_environment: Option<FrameEnvironment>,
     host_environment: environment::HostEnvironment,
     snapshot: Option<Arc<FrameSnapshot>>,
+    /// State acknowledgements held until a frame built from their revision is queued to present.
+    acks: Vec<(ConnectionTicket, u64, String)>,
     prepared: Option<pump::Prepared<F>>,
     /// A frame handed to the adapter that is not on screen yet.
     deferred: Option<pump::Deferred>,
@@ -413,6 +417,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     presented_environment: None,
                     host_environment,
                     snapshot: None,
+                    acks: Vec::new(),
                     prepared: None,
                     deferred: None,
                     in_flight: None,
@@ -1541,6 +1546,8 @@ impl<A: PlatformAdapter> Inner<A> {
             self.pump_images();
             self.schedule();
         } else {
+            // Nothing presents while hidden: held writes are acknowledged now.
+            self.release_acks(u64::MAX);
             self.park_animations();
             self.clear_text_selection();
             self.adapter.release_transient();

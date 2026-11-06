@@ -166,7 +166,12 @@ export interface PageInstance<TData extends object = Record<string, unknown>> {
   ): void;
   /** Nested write by a runtime-resolved string path. JSON shape is checked; the path/value relationship is not. */
   setDataPath(path: string, value: JsonValue | undefined): void;
-  /** Drain pending state writes; an attached View acknowledges application, not paint. Rejects on unload. */
+  /**
+   * Drain pending state writes. A WebView acknowledges application, not paint. A GPU page resolves
+   * once the frame carrying the writes is committed for display (one refresh before it shows),
+   * never before they are in a frame and in write order; a hidden page resolves at once, and a
+   * write no frame can show resolves after 250 ms. Rejects on unload.
+   */
   flush(): Promise<void>;
   /**
    * Aborted as the page unloads, before `onUnload` runs, however the page

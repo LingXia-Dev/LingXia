@@ -1,6 +1,9 @@
 //! The Logic bridge: connection handshake, inbound frames, Logic actions and
 //! the bootstrap deadline.
 use super::{BOOTSTRAP, Guard, Inner};
+
+/// The longest a state write waits for a frame to show it before it is acknowledged anyway.
+const ACK_DEADLINE: std::time::Duration = std::time::Duration::from_millis(250);
 use crate::platform::PlatformAdapter;
 use crate::session::ViewSession;
 use crate::session::lifecycle::ConnectionTicket;
@@ -15,6 +18,8 @@ pub struct BridgeUpdate {
     pub changed: bool,
     pub local_changed: bool,
     pub outbound: Vec<String>,
+    /// State acknowledgements by revision; sent once a frame from that state is built.
+    pub acks: Vec<(u64, String)>,
     pub errors: Vec<String>,
     /// Settled automation action calls.
     pub automation: Vec<crate::session::bridge::AutomationOutcome>,
@@ -27,13 +32,21 @@ pub(super) fn update(
     session: &mut ViewSession,
     update: StateUpdate,
 ) -> Result<BridgeUpdate, String> {
-    let mut outbound: Vec<String> = update.outbound.iter().map(|m| m.to_string()).collect();
+    let (acks, rest): (Vec<_>, Vec<_>) = update
+        .outbound
+        .iter()
+        .partition(|m| m["kind"] == "state.ack" && m["rev"].is_u64());
+    let mut outbound: Vec<String> = rest.iter().map(|m| m.to_string()).collect();
     outbound.extend(session.take_action_requests()?);
     Ok(BridgeUpdate {
         ready: session.ready_to_render(),
         changed: update.changed,
         local_changed: session.has_local_updates()?,
         outbound,
+        acks: acks
+            .iter()
+            .map(|m| (m["rev"].as_u64().unwrap_or(0), m.to_string()))
+            .collect(),
         errors: session.take_action_errors()?,
         automation: session.take_automation_results()?,
         overlay_timers: session.take_overlay_timers()?,
@@ -77,6 +90,27 @@ impl<A: PlatformAdapter> Inner<A> {
         for message in &update.outbound {
             self.adapter.message(connection, message);
         }
+        if !update.acks.is_empty() {
+            // A write is acknowledged once the frame that shows it is built and queued for the
+            // display, so a Logic loop that awaits its writes runs once per frame. A page that is
+            // not shown, or a write that never reaches a frame, is not held past the deadline.
+            let showing = {
+                let main = self.main();
+                main.visible && !main.disposed
+            };
+            if showing && !self.window_hidden() {
+                self.main()
+                    .acks
+                    .extend(update.acks.into_iter().map(|(rev, m)| (connection, rev, m)));
+                let inner = self.clone();
+                self.adapter
+                    .post_after(ACK_DEADLINE, Box::new(move || inner.release_acks(u64::MAX)));
+            } else {
+                for (_, message) in &update.acks {
+                    self.adapter.message(connection, message);
+                }
+            }
+        }
         for (token, ms) in update.overlay_timers {
             self.overlay_deadline(token, ms);
         }
@@ -88,6 +122,25 @@ impl<A: PlatformAdapter> Inner<A> {
         if update.changed {
             self.main().dirty = true;
             self.schedule();
+        }
+    }
+
+    /// Send the held acknowledgements up to revision `shown`, for the current connection.
+    pub(super) fn release_acks(self: &Arc<Self>, shown: u64) {
+        let due: Vec<(ConnectionTicket, String)> = {
+            let mut main = self.main();
+            let (due, held) = std::mem::take(&mut main.acks)
+                .into_iter()
+                .partition(|(_, rev, _)| *rev <= shown);
+            main.acks = held;
+            due.into_iter()
+                .map(|(connection, _, m)| (connection, m))
+                .collect()
+        };
+        for (connection, message) in due {
+            if self.lifecycle.is_current_connection(connection) {
+                self.adapter.message(connection, &message);
+            }
         }
     }
 
