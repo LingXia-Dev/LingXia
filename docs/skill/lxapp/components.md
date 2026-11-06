@@ -1,30 +1,16 @@
 # Native components
 
-Two native-backed families, plus plain web text inputs:
-
-- **Inline native island**: `LxNativeRoot` with `LxVideo`, `LxNativeView`,
-  `LxNativeCover`, `LxNativeText`, `LxNativeButton`.
-- **Presenters**: `LxPicker`, `LxMediaSwiper`, `LxNavigator`.
-- **Text input** is plain `<input>` / `<textarea>`; there is no `LxInput`.
+Native-backed presenters: `LxPicker`, `LxMediaSwiper`, `LxNavigator`. Text input is plain `<input>` / `<textarea>`; there is no `LxInput`. In WebView pages, play video and audio with plain HTML `<video>` / `<audio>`.
 
 Attribute and event types are exported from `@lingxia/elements`
-(`LxPickerAttributes`, `LxVideoAttributes`, `LxMediaSwiperAttributes`,
+(`LxPickerAttributes`, `LxMediaSwiperAttributes`,
 `LxNavigatorAttributes`, `*EventDetail`).
 
 ## Import
 
 ```ts
 // React
-import {
-  LxNativeRoot, LxNativeCover, LxNativeView, LxNativeText,
-  LxNativeButton, LxVideo,
-  LxPicker, LxMediaSwiper, LxNavigator,
-} from '@lingxia/react';
-
-// HTML — register once, then use the raw tags:
-// <lx-native-root>, <lx-video>, <lx-native-cover>, …
-import { registerInlineNativeComponents } from '@lingxia/html';
-registerInlineNativeComponents();
+import { LxPicker, LxMediaSwiper, LxNavigator } from '@lingxia/react';
 ```
 
 Wrappers take the element attributes plus `className` / `class` / `style` /
@@ -35,7 +21,6 @@ View event.
 
 | Component | What the handler receives | Example |
 |---|---|---|
-| Island nodes (`LxNativeButton`, `LxVideo`, Root) | **Payload first** in React; HTML still reads `CustomEvent.detail` | `onPress(({ source }) => …)`, `onTimeUpdate(({ currentTime }) => …)` |
 | `LxPicker` | **Resolved value directly** — `string \| string[]` | `onConfirm(value)`, `onColumnChange(value)` |
 | `LxMediaSwiper` | **Payload first** in React; HTML reads `CustomEvent.detail` | `onChange(({ index }) => …)` |
 | `LxNavigator` | Raw DOM `CustomEvent` | `onSuccess(event)` → `event.detail.success` |
@@ -81,90 +66,6 @@ The wrapper props (`LxPickerProps`) are the contract. Column mode comes from
   onConfirm={(value) => actions.setCity({ value })}
   onColumnChange={(value) => console.log('scrolling', value)}
 />
-```
-
-## Inline native island
-
-One native composition tree laid out by CSS, inside the page's single WebView:
-
-```tsx
-<LxNativeRoot className="player">
-  <LxVideo src={data.src} aria-label={data.title} controls />
-</LxNativeRoot>
-```
-
-- `LxVideo` is a **direct** child of an explicit `LxNativeRoot`. A bare
-  `LxVideo`, nested Root, DOM inside Root, or Video inside View/Cover is
-  `NATIVE_ROOT_INVALID_STRUCTURE`.
-- Use the island for UI on native surfaces (a video menu); ordinary page UI
-  stays HTML. Web component libraries cannot go inside a Root.
-- `LxNativeButton` fires `onPress`. `icon` is one of `close`,
-  `play`, `pause`, `mute`, `unmute`, `fullscreen`, `more`: a symbol, not a
-  command. Other values reject with `NATIVE_COMPONENT_INVALID_PROPS`.
-- Give nodes stable `id`s to keep identity across a parent change. React Root
-  refs expose `{ retry, getLayout }`.
-- Root `onReady` fires once, when the Root becomes active. The React `fallback`
-  prop shows DOM during setup or failure. HTML uses the element's fallback slot.
-- Fullscreen belongs to `LxVideo`; Root siblings do not follow it into the
-  fullscreen window.
-
-### Style limits
-
-`style` and classes follow the native rendering limits:
-
-| Area | Supported contract |
-|---|---|
-| Layout | DOM-measured flex/grid, sizing, positioning, spacing, aspect ratio and overflow clipping |
-| Paint | Solid background color, opacity, uniform solid border and a uniform circular corner radius in CSS pixels |
-| Text | Font size/weight, line height, text alignment and color; `LxNativeText` also exposes these as props |
-| Unsupported | Transforms, shadows, gradients, filters, masks, CSS animation/transitions, per-side borders and unequal/elliptical/percentage corner radii |
-
-Unsupported styles report `NATIVE_ROOT_UNSUPPORTED_STYLE` /
-`NATIVE_ROOT_UNSUPPORTED_LAYOUT` through Root `onError` and the console; the
-Root keeps rendering the supported subset.
-
-## `LxVideo`
-
-Native video with quality/rate switching, fullscreen, and live mode, always
-inside `LxNativeRoot`.
-
-- `lingxia build` rejects `<video>`, `<audio>`, and `new Audio()`;
-  `video.srcObject` is unsupported. Live streams use
-  `lx.createVideoContext(id).setStreamSource(...)`. Audio playback is not
-  available.
-- Remote URLs (`src`, `poster`, quality/watermark URLs, stream sources) follow
-  the host [network grant](../native/permissions.md); protocol-relative URLs
-  are rejected.
-- React handlers get payloads: `onTimeUpdate` → `{ currentTime }`,
-  `onError` → `{ code, message, recoverable? }`, `onLoadedMetadata` →
-  `{ duration, width?, height? }`, `onVolumeChange` → `{ volume, muted? }`,
-  `onFullscreenChange` → `{ fullscreen }`. `onPlayRequest`, `onPlay`,
-  `onPlaying`, `onPause`, `onStop`, `onEnded`, `onWaiting` carry `{}`. Type
-  handlers with `LxVideoEventPayloads`.
-
-```tsx
-<LxNativeRoot>
-  <LxVideo
-    id="hero"
-    src="https://cdn.example.com/intro.mp4"
-    controls
-    onTimeUpdate={actions.onProgress}     // ({ currentTime }) => …
-    onError={actions.onVideoError}
-  />
-</LxNativeRoot>
-```
-
-Drive it from Logic by `id`:
-
-```ts
-const ctx = lx.createVideoContext('hero');
-ctx.play();
-ctx.pause();
-ctx.stop();
-ctx.seek(30);            // seconds
-ctx.requestFullScreen();
-ctx.exitFullScreen();
-ctx.setStreamSource({ /* … */ });
 ```
 
 ## `LxMediaSwiper`

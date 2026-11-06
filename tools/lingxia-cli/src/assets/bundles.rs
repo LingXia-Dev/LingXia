@@ -407,16 +407,6 @@ fn prepare_lxapp_plan(
         ));
     }
 
-    // Host builds of a prebuilt package (or a cached dist) never re-enter
-    // `lxapp::build`, so scan here too. A just-built tree is scanned twice;
-    // the walk is cheap next to Vite.
-    crate::lxapp::audit_output_media(&plan.output_dir).with_context(|| {
-        format!(
-            "LxApp bundle {} rejected Web media in {}",
-            plan.asset_name,
-            plan.output_dir.display()
-        )
-    })?;
     crate::lxapp::stamp_output_html(&plan.output_dir).with_context(|| {
         format!(
             "LxApp bundle {} failed to hide CSS scrollbars in {}",
@@ -909,41 +899,5 @@ mod tests {
 
         assert_eq!(prepared.asset_name, "pkg-app");
         assert_eq!(prepared.version, "1.2.3");
-    }
-
-    #[test]
-    fn prebuilt_package_bundle_rejects_html_video() {
-        let temp = tempfile::tempdir().unwrap();
-        let bundle_dir = temp.path().join("pkg");
-        fs::create_dir_all(bundle_dir.join("dist")).unwrap();
-        fs::write(
-            bundle_dir.join("lxapp.json"),
-            r#"{"appId":"pkg-app","version":"1.2.3","logic":false,"pages":[]}"#,
-        )
-        .unwrap();
-        fs::write(
-            bundle_dir.join("dist").join("index.html"),
-            "<video src=\"./clip.mp4\"></video>\n",
-        )
-        .unwrap();
-
-        let mut cache = HostAssetsCache::default();
-        let err = match prepare_lxapp_bundle_dir(
-            bundle_dir,
-            "pkg-app",
-            "resources.bundles[pkg-app]",
-            "resource-lxapp",
-            BuildProfile::Debug,
-            None,
-            false,
-            false,
-            &mut cache,
-        ) {
-            Ok(_) => panic!("expected prebuilt bundle with <video> to be rejected"),
-            Err(err) => format!("{err:#}"),
-        };
-
-        assert!(err.contains("`<video>`"), "{err}");
-        assert!(err.contains("<lx-video>"), "{err}");
     }
 }

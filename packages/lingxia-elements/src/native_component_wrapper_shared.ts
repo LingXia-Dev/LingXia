@@ -12,7 +12,6 @@ import type {
 } from "./navigator.js";
 import type { NavigatorQuery } from "./navigator.js";
 import type { LxMediaSwiperItem } from "./media_swiper.js";
-import type { LxVideoQuality, LxVideoEventPayloads } from "./video.js";
 
 export function appendDataAttrs(
   attrs: Record<string, unknown>,
@@ -214,64 +213,6 @@ export function buildPickerNativeAttrs(
 
   appendPassthroughAttrs(extraAttrs, result);
   return result;
-}
-
-export const VIDEO_DOM_EVENT_MAP = {
-  onPlayRequest: "playrequest",
-  onPlay: "play",
-  onPlaying: "playing",
-  onPause: "pause",
-  onStop: "stop",
-  onEnded: "ended",
-  onTimeUpdate: "timeupdate",
-  onError: "error",
-  onLoadedMetadata: "loadedmetadata",
-  onFullscreenChange: "fullscreenchange",
-  onWaiting: "waiting",
-  onQualityChange: "qualitychange",
-  onRateChange: "ratechange",
-  onVolumeChange: "volumechange",
-} as const satisfies Record<keyof LxVideoEventPayloads, string>;
-
-export interface VideoNativeAttrOptions {
-  id?: string;
-  src?: string;
-  poster?: string;
-  autoplay?: boolean;
-  loop?: boolean;
-  muted?: boolean;
-  controls?: boolean;
-  progressBar?: boolean;
-  live?: boolean;
-  volume?: string | number;
-  qualities?: readonly LxVideoQuality[];
-  playbackRates?: readonly number[];
-}
-
-export function buildVideoNativeAttrs(
-  options: VideoNativeAttrOptions,
-  extraAttrs: Record<string, unknown> = {}
-): Record<string, string | number> {
-  const result: Record<string, string | number> = {};
-  const explicitId = typeof options.id === "string" ? options.id.trim() : "";
-
-  if (explicitId.length > 0) result.id = explicitId;
-  if (options.src) result.src = options.src;
-  if (options.poster) result.poster = options.poster;
-  if (options.autoplay) result.autoplay = "";
-  if (options.loop) result.loop = "";
-  if (options.muted) result.muted = "";
-  if (options.controls === false) result.controls = "false";
-  else if (options.controls) result.controls = "";
-  if (options.progressBar === false) result["progress-bar"] = "false";
-  if (options.live) result.live = "";
-  if (options.volume !== undefined) result.volume = options.volume;
-  if (options.qualities?.length) result.qualities = JSON.stringify(options.qualities);
-  if (options.playbackRates?.length) result["playback-rates"] = JSON.stringify(options.playbackRates);
-
-  const extraNativeAttrs: Record<string, string> = {};
-  appendPassthroughAttrs(extraAttrs, extraNativeAttrs);
-  return { ...result, ...extraNativeAttrs };
 }
 
 export const MEDIA_SWIPER_DOM_EVENT_MAP = {

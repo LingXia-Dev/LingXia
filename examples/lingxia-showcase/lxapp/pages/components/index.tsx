@@ -42,7 +42,7 @@ export default function ComponentsPage() {
               </div>
               <div>
                 <div className="text-sm font-medium text-gray-900">Video Player</div>
-                <div className="text-xs text-gray-500">Native video with controls</div>
+                <div className="text-xs text-gray-500">HTML video with controls</div>
               </div>
             </div>
             <div className="w-5 h-5 text-gray-400 group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors">

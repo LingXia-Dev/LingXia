@@ -196,68 +196,7 @@ test('publish every public runtime and returned-object member', {
       }
       continue;
     }
-    if (fixtureName !== 'VideoContext') {
-      throw new Error(`No runtime-safe fixture resolver for ${fixtureName}`);
-    }
-    await app.nav.relaunch({
-      page: 'video',
-      query: { automationFixture: 'video-context-shape' },
-    });
-    defer(async () => {
-      await app.nav.relaunch({ page: 'home' });
-      await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
-    });
-    const video = await app.page({ name: 'video' }, { timeout: 30_000 });
-    await video.view.css('#lx-video-shape-fixture').first().waitFor({ state: 'attached', timeout: 30_000 });
-    let stableRectSamples = 0;
-    let previousRect = '';
-    await eventually(
-      () => video.view.eval(({ document }) => {
-        const rect = document.querySelector('#lx-video-shape-fixture')?.getBoundingClientRect();
-        return rect && rect.width > 1 && rect.height > 1
-          ? [rect.left, rect.top, rect.width, rect.height].map(Math.round).join(',')
-          : '';
-      }),
-      (rect) => {
-        if (typeof rect !== 'string' || rect.length === 0) {
-          previousRect = '';
-          stableRectSamples = 0;
-          return false;
-        }
-        stableRectSamples = rect === previousRect ? stableRectSamples + 1 : 1;
-        previousRect = rect;
-        return stableRectSamples >= 2;
-      },
-      { timeoutMs: 5_000, describe: 'native video fixture layout to settle' });
-    const result = await eventually(
-      () => app.logic.eval(({ lx }, members, properties, optionalProperties) => {
-          const target = lx.createVideoContext('lx-video-shape-fixture') as unknown as Record<string, unknown> | null | undefined;
-          return {
-            available: target !== null && typeof target !== 'undefined',
-            missing: target == null
-              ? members
-              : members.filter((name) => (
-                typeof target[name] === 'undefined' && !optionalProperties.includes(name)
-              )),
-            wrongKinds: target == null
-              ? []
-              : members.filter((name) => properties.includes(name)
-                ? target[name] === null
-                  || (typeof target[name] === 'undefined' && !optionalProperties.includes(name))
-                : typeof target[name] !== 'function'),
-          };
-        }, Array.from<string>(surface.members), Array.from<string>(surface.properties), Array.from<string>(surface.optionalProperties)),
-      () => true,
-      {
-        timeoutMs: 5_000,
-        describe: 'native video context to bind after fixture mount',
-        retryIf: () => true,
-      },
-    );
-
-    if (!result.available || result.missing.length > 0 || result.wrongKinds.length > 0) {
-      failures.push(`VideoContext: available=${result.available} missing=${result.missing.join(',')} wrong=${result.wrongKinds.join(',')}`);
-    }
+    throw new Error(`No runtime-safe fixture resolver for ${fixtureName}`);
   }
 
   expect(failures).toEqual([]);

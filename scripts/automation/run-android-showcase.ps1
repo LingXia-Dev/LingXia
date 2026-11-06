@@ -129,54 +129,6 @@ function Stop-AndroidFixture {
   }
 }
 
-function Invoke-NativeVideoLifecycleProbe {
-  param([string]$ResultDirectory)
-
-  Invoke-Checked $lxdev @('lxapp', 'nav', 'relaunch', 'components', '--json')
-  Invoke-Checked $lxdev @(
-    'lxapp', 'nav', 'to', 'video',
-    '--query', 'automationFixture=video-context-shape',
-    '--json'
-  )
-  Invoke-Checked $lxdev @(
-    'lxapp', 'page', 'wait', '--page', 'video',
-    '#lx-video-shape-fixture', '--state', 'visible', '--timeout-ms', '10000'
-  )
-
-  $description = 'LingXia native component video.native lx-video-shape-fixture'
-  $nativeVideoXPath = "//node[@content-desc='$description' or @resource-id='lx-video-shape-fixture']"
-  $beforePath = Join-Path $ResultDirectory 'native-video-before-back.xml'
-  $before = $null
-  $beforeDeadline = [DateTime]::UtcNow.AddSeconds(5)
-  do {
-    $before = Get-AndroidUiHierarchy $beforePath
-    if ($before.SelectNodes($nativeVideoXPath).Count -ge 1) { break }
-    Start-Sleep -Milliseconds 100
-  } while ([DateTime]::UtcNow -lt $beforeDeadline)
-  if ($null -eq $before -or $before.SelectNodes($nativeVideoXPath).Count -lt 1) {
-    throw "Android native video was not visible in the OS view hierarchy: $description"
-  }
-
-  & $adb @adbTarget shell input keyevent 4
-  if ($LASTEXITCODE -ne 0) { throw 'Could not send a physical Android Back key event.' }
-  Invoke-Checked $lxdev @(
-    'lxapp', 'page', 'wait', '--page', 'components',
-    '[data-testid="components-page"]', '--state', 'visible', '--timeout-ms', '5000'
-  )
-
-  $deadline = [DateTime]::UtcNow.AddSeconds(5)
-  $afterPath = Join-Path $ResultDirectory 'native-video-after-back.xml'
-  do {
-    $after = Get-AndroidUiHierarchy $afterPath
-    if ($after.SelectNodes($nativeVideoXPath).Count -eq 0) {
-      return
-    }
-    Start-Sleep -Milliseconds 100
-  } while ([DateTime]::UtcNow -lt $deadline)
-
-  throw 'Android native video remained visible in the OS view hierarchy for more than 5 seconds after Back.'
-}
-
 function Invoke-SameRouteRelaunchStress {
   for ($iteration = 1; $iteration -le 10; $iteration += 1) {
     Invoke-Checked $lxdev @('lxapp', 'nav', 'relaunch', 'home', '--json')
@@ -273,10 +225,6 @@ function Test-BenignAndroidSessionError {
   # The image contract deliberately probes a missing file and reports ENOENT
   # through the host log; the test asserts that rejection separately.
   if ($Message -match 'readInfo failed.*missing\.png.*ENOENT') { return $true }
-  # Releasing the native video fixture while its decoder callback is queued can
-  # race the final stream notification. The fixture has already been removed
-  # and the lifecycle probe verifies the observable native view state.
-  if ($Message -match 'createStreamDecoder: component not found: lx-video-shape-fixture') { return $true }
   # A relaunch tears down the outgoing WebView before its asynchronous create
   # callback returns. This is expected during navigation/session shutdown.
   if ($Message -match 'Failed to create WebView:.*webview destroyed before ready') { return $true }
@@ -369,7 +317,6 @@ try {
   $fixtureSerial = (& $adb @adbTarget get-serialno | Out-String).Trim()
   if ($LASTEXITCODE -ne 0 -or -not $fixtureSerial) { throw 'Could not identify the Android fixture device.' }
   $deviceFixture = Start-AndroidFixture 'android-device-fixture' @('--adb', $adb, '--device', $fixtureSerial)
-  $nativeVideoProbeRan = $false
   $started = $false
   try {
     $devArguments = @(
@@ -403,9 +350,7 @@ try {
         New-Item -ItemType Directory -Force -Path $resultDirectory | Out-Null
         if ($testExitCode -eq 0) {
           Invoke-SameRouteRelaunchStress
-          Invoke-NativeVideoLifecycleProbe $resultDirectory
           Invoke-ProcessRestoreProbe $resultDirectory
-          $nativeVideoProbeRan = $true
         }
         & $lxdev logs --jsonl --limit 5000 |
           Set-Content -LiteralPath (Join-Path $resultDirectory 'session.jsonl') -Encoding utf8
@@ -434,8 +379,4 @@ try {
   Pop-Location
 }
 
-if ($nativeVideoProbeRan) {
-  Write-Host 'Portable Android automation and the OS-level native video lifecycle probe passed.'
-} else {
-  Write-Host 'Portable Android automation passed without the OS-level native video lifecycle probe.'
-}
+Write-Host 'Portable Android automation passed.'

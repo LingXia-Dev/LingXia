@@ -3241,7 +3241,7 @@ declare global {
      * when scanning fails or the host returns an invalid payload.
      */
     scanCode(options?: ScanCodeOptions): Promise<ScanCodeResult>;
-    /** Take a control handle for the `<lx-video>` component with this id. */
+    /** Take a control handle for the native video component with this id. */
     createVideoContext(componentId: string): VideoContext;
     /**
      * Reads local video metadata for upload preflight and presentation.

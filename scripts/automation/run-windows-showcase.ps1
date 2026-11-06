@@ -215,10 +215,7 @@ function Test-BenignWindowsSessionError {
   if ($Message -match '\[network\] Failed to load resource: the server responded with a status of 404 \(Not Found\) \(lx://') {
     return $true
   }
-  # Showcase video view notifies play/pause/stop while the island player is
-  # still being rematerialized (or another page is presenting). The throw is
-  # a leftover first-run error; the retry suite can still be green.
-  $Message -match "notify '(play|pause|stop)' failed: JavaScript threw a value"
+  $false
 }
 
 function Get-UnexpectedWindowsSessionErrors {

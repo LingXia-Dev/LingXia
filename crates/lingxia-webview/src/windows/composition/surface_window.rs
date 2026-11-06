@@ -425,35 +425,6 @@ fn forward_mouse_message(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -
         ((wparam.0 & 0xffff) as u32, mouse_data, point)
     };
 
-    // Native islands own their pointer sequence. Do this before WebView2
-    // focus/capture bookkeeping: MoveFocus may transfer capture to an engine
-    // input window, which would cancel a button between its down and
-    // up messages. Physical island input keeps capture on the composition
-    // surface until its sequence completes; deterministic injected input is
-    // already directed to this HWND and must not mix in physical-cursor moves.
-    // Non-island points continue through the regular WebView2 path below.
-    let island_phase = match msg {
-        WM::WM_LBUTTONDOWN => Some(super::IslandPointerPhase::Down),
-        WM::WM_MOUSEMOVE => Some(super::IslandPointerPhase::Move),
-        WM::WM_LBUTTONUP => Some(super::IslandPointerPhase::Up),
-        WM_MOUSELEAVE => Some(super::IslandPointerPhase::Cancel),
-        _ => None,
-    };
-    if let Some(phase) = island_phase
-        && super::consume_island_pointer(hwnd, phase, point.x as f32, point.y as f32)
-    {
-        match phase {
-            super::IslandPointerPhase::Down if !synthetic => unsafe {
-                SetCapture(hwnd);
-            },
-            super::IslandPointerPhase::Up | super::IslandPointerPhase::Cancel if !synthetic => unsafe {
-                let _ = ReleaseCapture();
-            },
-            _ => {}
-        }
-        return LRESULT(0);
-    }
-
     // Bookkeeping under a scoped borrow; message-dispatching calls run after
     // it ends (module-level re-entrancy contract).
     let Some((controller, actions)) = with_state(hwnd, |state| {

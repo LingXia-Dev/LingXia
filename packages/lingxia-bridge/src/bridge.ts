@@ -23,7 +23,6 @@ import type {
 } from "./types";
 import { BRIDGE_ERROR } from "./types";
 import { toBridgeError, toNativeError } from "./invocation";
-import { installNativeComponentCoverageMonitor } from "./nativecomponents/coverage-monitor";
 import {
   consumeV3Bootstrap,
   type V3DocumentCodec,
@@ -1896,7 +1895,7 @@ function postNativeComponentMessage(message: NativeComponentMessage): void {
     }
     const update = window.LingXiaProxy?.nativeComponentUpdate;
     if (typeof update === "function") {
-      const componentId = message.id || "island";
+      const componentId = message.id || "component";
       const payload = stringifyForNative({ ...message, componentId });
       try {
         (update as (payload: string) => void).call(window.LingXiaProxy, payload);
@@ -2464,10 +2463,6 @@ export function initBridge(): void {
     // Dev hook so repro/test pages can simulate a WebKit stream replacement.
     (window as unknown as Record<string, unknown>).__lxForceDownstreamReconnect =
       forceDownstreamReconnect;
-    installNativeComponentCoverageMonitor({
-      os: getPlatformOS(),
-      send: sendNativeComponentMessage,
-    });
     window.__LX_BRIDGE_INIT_STATE = "initialized";
     log("Init complete");
   } catch (e) {

@@ -260,16 +260,6 @@ pub(crate) enum UiCommand {
         scale: f64,
         resp: Sender<StdResult<()>>,
     },
-    /// Re-runs the last content geometry so queued island visuals ride the
-    /// same DComp commit as the corner wedges.
-    ReplayContentGeometry {
-        resp: Sender<StdResult<()>>,
-    },
-    /// Uploads a decoded island video frame. Must not Commit the DComp device.
-    PresentIslandVideoFrame {
-        frame: super::composition::IslandVideoFrame,
-        resp: Sender<StdResult<()>>,
-    },
     /// Phase one of teardown: the message loop starts retiring the parent
     /// HWND off-thread and keeps pumping; it never reaches `handle_command`.
     Shutdown,
@@ -644,24 +634,6 @@ impl WebViewInner {
         self.wake_ui_thread();
         recv_reply_pumping(&reply, Some(UI_COMMAND_TIMEOUT))
             .map_err(|err| WebViewError::WebView(format!("Park WebView command: {err}")))?
-    }
-
-    pub(crate) fn sync_island_visuals(
-        &self,
-        visuals: Vec<super::composition::IslandVisualSpec>,
-    ) -> StdResult<()> {
-        super::composition::queue_island_visuals(self.webtag.key(), visuals);
-        self.dispatch_command_same_thread_safe(|resp| UiCommand::ReplayContentGeometry { resp })
-    }
-
-    pub(crate) fn present_island_video_frame(
-        &self,
-        frame: super::composition::IslandVideoFrame,
-    ) -> StdResult<()> {
-        self.dispatch_command_same_thread_safe(|resp| UiCommand::PresentIslandVideoFrame {
-            frame,
-            resp,
-        })
     }
 
     pub(crate) fn dispatch_screenshot_command(&self) -> StdResult<Vec<u8>> {
@@ -2064,24 +2036,6 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             state.notify_parent_position_changed();
             let _ = resp.send(Ok(()));
         }
-        UiCommand::ReplayContentGeometry { resp } => {
-            let bounds = match &state.hosting {
-                HostingMode::Composition(surface) => Some(surface.bounds),
-                HostingMode::Windowed => None,
-            };
-            let result = match bounds {
-                Some(bounds) => set_content_geometry(state, bounds, None),
-                None => Ok(()),
-            };
-            let _ = resp.send(result);
-        }
-        UiCommand::PresentIslandVideoFrame { frame, resp } => {
-            let result = match &mut state.hosting {
-                HostingMode::Composition(surface) => surface.present_island_video_frame(&frame),
-                HostingMode::Windowed => Ok(()),
-            };
-            let _ = resp.send(result);
-        }
         UiCommand::SetRasterizationScale { scale, resp } => {
             let result = state
                 .controller
@@ -2181,7 +2135,7 @@ fn set_content_geometry(
                 .map_err(|err| WebViewError::WebView(format!("SetBounds failed: {err}")))
         },
         HostingMode::Composition(surface) => {
-            surface.set_geometry(&state.controller, bounds, corners, &state.webtag_key)
+            surface.set_geometry(&state.controller, bounds, corners)
         }
     }
 }

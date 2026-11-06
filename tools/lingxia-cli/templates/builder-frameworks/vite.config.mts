@@ -51,10 +51,6 @@ const manualChunks = (rawId) => {
     hasLingxiaPackageModule(id, '@lingxia/page-runtime', 'lingxia-page-runtime', ['index', 'runtime'])
   ) return 'lingxia-page-runtime';
   if (
-    hasLingxiaPackageModule(id, '@lingxia/react', 'lingxia-react', ['LxVideo']) ||
-    hasLingxiaPackageModule(id, '@lingxia/elements', 'lingxia-elements', ['video'])
-  ) return 'lingxia-video-runtime';
-  if (
     hasLingxiaPackageModule(id, '@lingxia/react', 'lingxia-react', ['LxPicker']) ||
     hasLingxiaPackageModule(id, '@lingxia/elements', 'lingxia-elements', ['picker', 'picker-web'])
   ) return 'lingxia-picker-runtime';

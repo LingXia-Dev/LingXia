@@ -1,6 +1,5 @@
 import React from 'react';
 import { useLxPage } from '@lingxia/react';
-import { LxNativeRoot, LxVideo } from '@lingxia/react';
 import '../../tailwind.css';
 
 const SOURCE_OPTIONS = [
@@ -171,7 +170,6 @@ type PageData = {
   previewSessionBusy?: boolean;
   previewSessionResult?: PreviewSessionResult | null;
   previewSessionError?: string;
-  componentRotateKey?: string;
   componentObjectFitKey?: string;
 };
 
@@ -189,7 +187,6 @@ type PageActions = {
   togglePreviewIndexIndicator?(): void;
   onPreviewImageDurationInput?(event: any): void;
   cancelPreviewSession?(): void;
-  openComponentRotatePicker?(): void;
   openComponentObjectFitPicker?(): void;
   openScanSourcePicker?(): void;
   openScanTypePicker?(): void;
@@ -404,7 +401,6 @@ export default function MediaPage() {
     togglePreviewIndexIndicator,
     onPreviewImageDurationInput,
     cancelPreviewSession,
-    openComponentRotatePicker,
     openComponentObjectFitPicker,
     openScanSourcePicker,
     openScanTypePicker,
@@ -549,15 +545,13 @@ export default function MediaPage() {
   const previewSessionBusy = Boolean(data?.previewSessionBusy);
   const previewSessionResult = data?.previewSessionResult || null;
   const previewSessionError = data?.previewSessionError || '';
-  const componentRotateKey = data?.componentRotateKey || ROTATE_OPTIONS[0].key;
   const componentObjectFitKey = data?.componentObjectFitKey || 'cover';
   const previewRotateOption = ROTATE_OPTIONS.find((option) => option.key === previewRotateKey) || ROTATE_OPTIONS[0];
   const previewObjectFitOption = OBJECT_FIT_OPTIONS.find((option) => option.key === previewObjectFitKey) || OBJECT_FIT_OPTIONS[0];
   const previewBehaviorOption = PREVIEW_BEHAVIOR_OPTIONS.find((option) => option.key === previewBehaviorKey) || PREVIEW_BEHAVIOR_OPTIONS[0];
-  const componentRotateOption = ROTATE_OPTIONS.find((option) => option.key === componentRotateKey) || ROTATE_OPTIONS[0];
   const componentObjectFitOption = OBJECT_FIT_OPTIONS.find((option) => option.key === componentObjectFitKey) || OBJECT_FIT_OPTIONS[0];
-  const componentRotateValue = componentRotateOption.value;
-  const componentObjectFitValue = componentObjectFitOption.value;
+  // The HTML element has no `fit` keyword; `contain` is the same behavior.
+  const componentObjectFitValue = componentObjectFitOption.value === 'fit' ? 'contain' : componentObjectFitOption.value;
 
   const handleChoose = React.useCallback(() => {
     if (!isRunning && canAddMore) {
@@ -638,32 +632,25 @@ export default function MediaPage() {
                 </div>
               </div>
             </div>
-            <LxNativeRoot
+            <video
+              id={`media-video-${index}`}
+              src={item.path}
+              controls
+              autoPlay
+              muted
+              loop
+              playsInline
               style={{
                 width: '100%',
+                display: 'block',
+                backgroundColor: 'black',
+                objectFit: componentObjectFitValue,
                 height:
                   item.displayWidth && item.displayHeight && item.displayHeight > item.displayWidth
                     ? '300px'
                     : '220px',
               }}
-            >
-              <LxVideo
-                id={`media-video-${index}`}
-                src={item.path}
-                contentRotate={componentRotateValue}
-                objectFit={componentObjectFitValue}
-                controls
-                autoplay
-                muted
-                loop
-                style={{
-                  width: '100%',
-                  display: 'block',
-                  backgroundColor: 'black',
-                  height: '100%',
-                }}
-              />
-            </LxNativeRoot>
+            />
           </Card>
         ))}
         {canAddMore ? renderAddTile() : null}
@@ -1270,15 +1257,6 @@ export default function MediaPage() {
                     >
                       Index Indicator: {previewIndicatorLabel}
                     </button>
-                    {!isPictureMode && (
-                      <button
-                        type="button"
-                        className="rounded-xl border border-line-200 bg-surface px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600 dark:hover:text-blue-400"
-                        onClick={() => openComponentRotatePicker?.()}
-                      >
-                        Video Rotate: {componentRotateOption.label}
-                      </button>
-                    )}
                     {!isPictureMode && (
                       <button
                         type="button"

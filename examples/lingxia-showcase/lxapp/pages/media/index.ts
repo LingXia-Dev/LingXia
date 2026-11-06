@@ -413,7 +413,6 @@ function createState(modeKey: unknown) {
     previewSessionBusy: false,
     previewSessionResult: null as PreviewMediaResult | null,
     previewSessionError: "",
-    componentRotateKey: "meta",
     componentObjectFitKey: "cover",
   };
 }
@@ -552,12 +551,6 @@ Page({
     this.setData({
       previewImageDurationMs: extractInputValue(event),
     });
-  },
-
-  openComponentRotatePicker: async function () {
-    const choice = await pickOption(ROTATE_OPTIONS, this.data.componentRotateKey || "meta");
-    if (!choice) return;
-    this.setData({ componentRotateKey: choice.key });
   },
 
   openComponentObjectFitPicker: async function () {

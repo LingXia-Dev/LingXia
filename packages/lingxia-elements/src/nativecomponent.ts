@@ -8,7 +8,7 @@ let pendingLayoutInvalidationFrame: number | null = null;
 const pendingLayoutInvalidationTimers = new Map<number, number>();
 
 /// Returns false when the native channel is not up yet and the message was
-/// dropped, so callers that carry state (an island's first commit) can retry.
+/// dropped, so callers that carry state can retry.
 export function sendNativeComponentMessage(message: NativeComponentMessage): boolean {
   const sender =
     typeof window !== "undefined"
@@ -37,8 +37,7 @@ export function registerNativeComponentHandler(
   if (typeof registerFn === "function") {
     const unregister = registerFn(id, handler as Parameters<typeof registerFn>[1]);
     const send = nativeComponents?.send;
-    // Always announce ready after the leaf handler is registered, including
-    // Windows: island video queues play/playing until this id's handshake.
+    // Announce ready once the handler is registered; hosts queue events until then.
     if (typeof send === "function") {
       send({ action: "component.ready", id });
     }

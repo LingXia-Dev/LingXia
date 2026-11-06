@@ -1,9 +1,8 @@
 /**
  * Payload-first unwrap used by React wrappers. HTML keeps CustomEvent.
  *
- * A real DOM Event (or an event-like `{ type, detail }` used by unit tests)
- * yields `detail`. A bare payload object is returned as-is so wrappers can
- * also be called with already-unwrapped values.
+ * A DOM Event (or an event-like `{ type, detail }`) yields `detail`; a bare
+ * payload object is returned as-is.
  */
 export function unwrapNativeEventPayload<TPayload>(event: unknown): TPayload {
   if (isDomEvent(event) || isEventLike(event)) {
@@ -13,7 +12,7 @@ export function unwrapNativeEventPayload<TPayload>(event: unknown): TPayload {
   return event as TPayload;
 }
 
-export function isDomEvent(value: unknown): value is Event {
+function isDomEvent(value: unknown): value is Event {
   return typeof Event !== "undefined" && value instanceof Event;
 }
 
@@ -22,13 +21,4 @@ function isEventLike(value: unknown): value is { detail?: unknown; type?: unknow
   const record = value as { detail?: unknown; type?: unknown; target?: unknown };
   if (!("detail" in record)) return false;
   return "type" in record || "target" in record || "currentTarget" in record;
-}
-
-export function bindPayloadHandler<TPayload>(
-  handler: ((payload: TPayload) => void) | undefined
-): EventListener {
-  return (event: Event) => {
-    if (typeof handler !== "function") return;
-    handler(unwrapNativeEventPayload<TPayload>(event));
-  };
 }

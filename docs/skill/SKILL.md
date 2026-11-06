@@ -105,9 +105,9 @@ A JS-Logic lxapp that calls Rust routes is still B. B's id rule:
 
 | Package | What it is | Imported by | Typical import |
 |---|---|---|---|
-| `@lingxia/react` | React hooks + framework-wrapped native components | lxapp View (React) | `useLxPage`, `useLxHost`, `useLxStream`, `LxNativeRoot`, `LxVideo`, … |
+| `@lingxia/react` | React hooks + framework-wrapped native components | lxapp View (React) | `useLxPage`, `useLxHost`, `useLxStream`, `LxPicker`, `LxMediaSwiper`, … |
 | `@lingxia/html` | DOM helpers for HTML-only views | lxapp View (HTML) | `pageReady`, `getPage`, `subscribePage`, `getHost`, `subscribeHost` |
-| `@lingxia/elements` | Pure-JS custom elements (`<lx-video>`, …) | rarely direct — react re-exports wrappers | `registerVideoComponent`, `LxVideoElement` |
+| `@lingxia/elements` | Pure-JS custom elements (`<lx-picker>`, …) | rarely direct — react re-exports wrappers | `registerPickerComponent`, `LxPickerElement` |
 | `@lingxia/types` | Declarations for Logic `lx.*`, `Page({})`, `App({})` | lxapp Logic (devDependency, global) | [Install typing](./lxapp/lx-api.md#install-typing) |
 | `@lingxia/test` | Test authoring SDK for `lxdev test` | lxapp tests | `import { test } from '@lingxia/test'` |
 | `@lingxia/bridge` | Bridge runtime + low-level helpers | rarely direct | types such as `LxStream`, `LxChannel` |
@@ -131,7 +131,7 @@ never add them to a project.
 | Pages: `Page({})`, View hooks, lifecycle, events, `App({})`, tab bar, page chrome | [lxapp/guide.md](./lxapp/guide.md) |
 | Hook order, `App`/`Page` triggers, what each navigation or restart fires | [lxapp/lifecycle.md](./lxapp/lifecycle.md) |
 | `setData`, streams, channels | [lxapp/bridge.md](./lxapp/bridge.md) |
-| Native components: `LxNativeRoot` + `LxVideo`, `LxPicker`, `LxMediaSwiper`, `LxNavigator`; text inputs | [lxapp/components.md](./lxapp/components.md) |
+| Native components: `LxPicker`, `LxMediaSwiper`, `LxNavigator`; text inputs. In WebView pages, use HTML `<video>` / `<audio>` | [lxapp/components.md](./lxapp/components.md) |
 | Logic runtime: typing, Web globals, product settings, `lx.supports`, badges, notifications, errors | [lxapp/lx-api.md](./lxapp/lx-api.md) |
 | Size classes and per-size Views | [lxapp/adaptive-ui.md](./lxapp/adaptive-ui.md) |
 | Files: `lx://` storage, `downloadFile`, `lx.fs`, `uploadFile`, quotas | [lxapp/files.md](./lxapp/files.md) |
@@ -179,8 +179,6 @@ never add them to a project.
 | iOS dev app can't reach the Mac | [`lingxia dev`](./cli/lingxia.md#lingxia-dev) |
 | A save did not update the running lxapp | [dev-reload.md](./cli/dev-reload.md) |
 | TS doesn't know `lx.foo()` / `Page({})` | [Install typing](./lxapp/lx-api.md#install-typing) |
-| `<LxVideo>` / `<LxPicker>` prop not recognized | [components.md](./lxapp/components.md) |
-| Build rejects `<video>` / `<audio>` / `new Audio()` | [components.md → LxVideo](./lxapp/components.md#lxvideo) |
+| `<LxPicker>` / `<LxMediaSwiper>` prop not recognized | [components.md](./lxapp/components.md) |
 | Handler gets an event instead of a payload (or vice versa) | [Callback shapes](./lxapp/components.md#callback-shapes) |
-| `NATIVE_ROOT_INVALID_STRUCTURE` | [Inline native island](./lxapp/components.md#inline-native-island) |
 | `E_PERMISSION_DENIED` naming a class | [control-app.md → Refusal](./app/control-app.md#refusal) |

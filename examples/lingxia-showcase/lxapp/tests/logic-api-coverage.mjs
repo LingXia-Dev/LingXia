@@ -82,7 +82,6 @@ export default {
     { "api": "lx.redirectTo", "mode": "automated", "owner": "UI-NAV-001" },
     { "api": "lx.hideToast", "mode": "automated", "owner": "UI-FEEDBACK-001" },
     { "api": "lx.tabBar.update", "mode": "automated", "owner": "UI-TABBAR-001" },
-    { "api": "lx.createVideoContext", "mode": "automated", "owner": "NATIVE-VIDEO-001" },
     { "api": "lx.onWifiConnected", "mode": "automated", "owner": "ANDROID-WIFI-001", "targets": ["android"] },
     { "api": "lx.startWifi", "mode": "automated", "owner": "ANDROID-WIFI-001", "targets": ["android"] },
     { "api": "lx.stopWifi", "mode": "automated", "owner": "ANDROID-WIFI-001", "targets": ["android"] },
@@ -117,11 +116,6 @@ export default {
     { "api": "PageSurface.onClose", "mode": "automated", "owner": "DESKTOP-DYNAMIC-MAIN-001", "targets": ["windows", "macos"] },
     { "api": "PageSurface.show", "mode": "automated", "owner": "DESKTOP-SURFACE-DECLARED-001", "targets": ["windows", "macos"] },
     { "api": "PageSurface.hide", "mode": "automated", "owner": "DESKTOP-SURFACE-DECLARED-001", "targets": ["windows", "macos"] },
-    { "api": "PageSurface.onMessage", "mode": "automated", "owner": "DESKTOP-SURFACE-MESSAGE-001", "targets": ["windows", "macos"] },
-    { "api": "VideoContext.play", "mode": "automated", "owner": "NATIVE-VIDEO-PLAYBACK-001" },
-    { "api": "VideoContext.pause", "mode": "automated", "owner": "NATIVE-VIDEO-001" },
-    { "api": "VideoContext.stop", "mode": "automated", "owner": "NATIVE-VIDEO-PLAYBACK-001" },
-    { "api": "VideoContext.seek", "mode": "automated", "owner": "NATIVE-VIDEO-PLAYBACK-001" },
-    { "api": "VideoContext.requestFullScreen", "mode": "automated", "owner": "DESKTOP-VIDEO-FULLSCREEN-001", "targets": ["macos"] }
+    { "api": "PageSurface.onMessage", "mode": "automated", "owner": "DESKTOP-SURFACE-MESSAGE-001", "targets": ["windows", "macos"] }
   ]
 };

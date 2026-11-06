@@ -268,36 +268,6 @@ fn composite_supersampled_text_mask(
     }
 }
 
-/// Draws the same antialiased system-font mask over an existing premultiplied
-/// surface. Inline native controls use this instead of the diagnostic 5x7
-/// raster font so labels match the rest of the Windows UI.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn draw_supersampled_text_mask_over(
-    reference_dc: HDC,
-    pixels: &mut [u32],
-    canvas_width: i32,
-    canvas_height: i32,
-    text: &str,
-    rect: RECT,
-    foreground: u32,
-    font_height: i32,
-    font_weight: i32,
-    centered: bool,
-) {
-    blend_supersampled_text_mask(
-        reference_dc,
-        pixels,
-        canvas_width,
-        canvas_height,
-        text,
-        rect,
-        foreground,
-        font_height,
-        font_weight,
-        centered,
-    );
-}
-
 #[allow(clippy::too_many_arguments)]
 fn fallback_fill_transparent(
     composite: TextComposite,
