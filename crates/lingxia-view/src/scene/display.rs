@@ -696,8 +696,26 @@ impl DisplayList {
                 let pad = width.max(0.0) + 1.0;
                 [x0 - pad, y0 - pad, x1 - x0 + 2.0 * pad, y1 - y0 + 2.0 * pad]
             }
-            Paint::Text { ink: Some(ink), .. } if *ink == [0.0; 4] => return Ok(Some(None)),
-            Paint::Text { ink: Some(ink), .. } => *ink,
+            Paint::Text { glyphs, .. } if glyphs.is_empty() => return Ok(Some(None)),
+            Paint::Text { ink: Some(ink), .. } if *ink != [0.0; 4] => *ink,
+            // No ink from the face (platform-outlined fonts): a box around the glyph origins
+            // wide enough for any glyph of this size, its slant included.
+            Paint::Text {
+                glyphs, size, skew, ..
+            } => {
+                let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+                for glyph in glyphs {
+                    (x0, y0) = (x0.min(glyph.x), y0.min(glyph.y));
+                    (x1, y1) = (x1.max(glyph.x), y1.max(glyph.y));
+                }
+                let em = size.abs() * (1.0 + skew.abs() as f32);
+                [
+                    x0 - em,
+                    y0 - 1.5 * em,
+                    x1 - x0 + 3.0 * em,
+                    y1 - y0 + 2.5 * em,
+                ]
+            }
             _ => return Ok(None),
         };
         if !local.iter().all(|v| v.is_finite()) {

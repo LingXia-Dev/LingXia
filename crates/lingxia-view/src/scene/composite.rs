@@ -221,9 +221,10 @@ impl Plan {
                                 .iter()
                                 .rev()
                                 .take_while(|(layer, _)| !layer.is_root())
+                                .filter(|(layer, _)| !matches!(layer, Layer::Clip(_)))
                                 .count() as u64;
                             // The capture reads the region from every surface back to the
-                            // backdrop root; the owner's surface holds the filtered image.
+                            // backdrop root.
                             let reads = layers
                                 .iter()
                                 .rposition(|(layer, _)| layer.is_root())
@@ -238,7 +239,6 @@ impl Plan {
                                 for (_, open) in &layers[reads..] {
                                     extents[*open] = union(extents[*open], read);
                                 }
-                                extents[ordinal] = union(extents[ordinal], read);
                             }
                             working_bytes =
                                 working_bytes.max((depth + 1) * frame_bytes + region_bytes);
@@ -246,22 +246,29 @@ impl Plan {
                                 working_bytes = working_bytes.max((depth + 2) * frame_bytes);
                             }
                         }
+                        // A clip draws as a clip path into the surface it sits in.
+                        Layer::Clip(_) => {}
                         _ => working_bytes = working_bytes.max((depth + 1) * frame_bytes),
                     }
                     layers.push((layer, ordinal));
                     ordinal += 1;
-                    depth += 1;
-                    peak = peak.max(depth);
+                    if !matches!(layer, Layer::Clip(_)) {
+                        depth += 1;
+                        peak = peak.max(depth);
+                    }
                 }
-                Step::Pop if depth == 1 => return Err("UI_COMPOSITE: unmatched pop".into()),
+                Step::Pop if layers.is_empty() => {
+                    return Err("UI_COMPOSITE: unmatched pop".into());
+                }
                 Step::Pop => {
-                    working_bytes = working_bytes.max((depth + 1) * frame_bytes);
-                    layers.pop();
-                    depth -= 1;
+                    if !matches!(layers.pop(), Some((Layer::Clip(_), _))) {
+                        working_bytes = working_bytes.max((depth + 1) * frame_bytes);
+                        depth -= 1;
+                    }
                 }
             }
         }
-        if depth != 1 {
+        if !layers.is_empty() {
             return Err("UI_COMPOSITE: unclosed layer".into());
         }
         // GPU surfaces return to a bounded pool after their last use is submitted;
@@ -314,19 +321,57 @@ impl Plan {
         let frame = [0, 0, self.width, self.height];
         let size = (self.width, self.height);
         let mut extents = self.extents.iter();
-        let mut stack = vec![(None, backend.blank(frame)?, frame)];
-        for step in &self.steps {
+        let mut stack = vec![Level {
+            layer: None,
+            surface: backend.blank(frame)?,
+            extent: frame,
+            clips: Vec::new(),
+        }];
+        let mut opened: Vec<Opened> = Vec::new();
+        let in_place = if B::INLINE_BACKDROPS {
+            self.backdrops_in_place()
+        } else {
+            vec![false; self.steps.len()]
+        };
+        for (index, step) in self.steps.iter().enumerate() {
             match step {
                 Step::Draw(range) => {
-                    let (_, surface, extent) = stack.last_mut().unwrap();
-                    backend.draw(surface, *extent, range.clone())?
+                    let level = stack.last_mut().unwrap();
+                    backend.draw(
+                        &mut level.surface,
+                        level.extent,
+                        range.clone(),
+                        &level.clips,
+                    )?
+                }
+                Step::Push(Layer::Clip(clip)) => {
+                    extents.next();
+                    stack.last_mut().unwrap().clips.push(*clip);
+                    opened.push(Opened::Clip);
+                }
+                Step::Push(layer)
+                    if in_place[index]
+                        && stack
+                            .iter()
+                            .rposition(|level| level.layer.as_ref().is_some_and(Layer::is_root))
+                            .unwrap_or(0)
+                            + 1
+                            >= stack.len() =>
+                {
+                    extents.next();
+                    let live = stack.last_mut().unwrap();
+                    backend.backdrop_into(
+                        &mut live.surface,
+                        live.extent,
+                        layer,
+                        size,
+                        &live.clips,
+                    )?;
+                    opened.push(Opened::InPlace);
                 }
                 Step::Push(layer) => {
-                    let extent = if B::BOUNDED {
-                        *extents.next().unwrap()
-                    } else {
-                        frame
-                    };
+                    let pushed = *extents.next().unwrap();
+                    let extent = if B::BOUNDED { pushed } else { frame };
                     let reused = if matches!(layer, Layer::Backdrop { .. }) {
                         backend.reuse(layer, size, extent)?
                     } else {
@@ -337,49 +382,116 @@ impl Plan {
                     } else if matches!(layer, Layer::Backdrop { .. }) {
                         let nearest = stack
                             .iter()
-                            .rposition(|(layer, ..)| layer.as_ref().is_some_and(Layer::is_root))
+                            .rposition(|level| level.layer.as_ref().is_some_and(Layer::is_root))
                             .unwrap_or(0);
                         if nearest + 1 >= stack.len() {
                             // Nothing to merge: the backdrop is read straight from the live surface.
-                            let (_, live, live_extent) = stack.last().unwrap();
-                            backend.filter(live, *live_extent, layer, size, extent)?
+                            let live = stack.last().unwrap();
+                            backend.filter(&live.surface, live.extent, layer, size, extent)?
                         } else {
-                            let (_, top, top_extent) = stack.last().unwrap();
-                            let mut capture = (backend.snapshot(top)?, *top_extent);
-                            // Merge unfinished overflow clips from inner to outer.
-                            // Each is composited once; never replay the display prefix.
+                            let top = stack.last().unwrap();
+                            let mut capture = (backend.snapshot(&top.surface)?, top.extent);
+                            // Merge unfinished groups from inner to outer. Each is composited
+                            // once; never replay the display prefix.
                             for index in (nearest..stack.len() - 1).rev() {
-                                let mut parent = backend.snapshot(&stack[index].1)?;
+                                let parent = &stack[index];
+                                let mut merged = backend.snapshot(&parent.surface)?;
                                 backend.composite(
-                                    &mut parent,
-                                    stack[index].2,
+                                    &mut merged,
+                                    parent.extent,
                                     &capture.0,
                                     capture.1,
-                                    stack[index + 1].0.as_ref().unwrap(),
+                                    stack[index + 1].layer.as_ref().unwrap(),
+                                    &parent.clips,
                                 )?;
-                                capture = (parent, stack[index].2);
+                                capture = (merged, parent.extent);
                             }
                             backend.filter(&capture.0, capture.1, layer, size, extent)?
                         }
                     } else {
                         backend.blank(extent)?
                     };
-                    stack.push((Some(layer.clone()), surface, extent));
+                    stack.push(Level {
+                        layer: Some(layer.clone()),
+                        surface,
+                        extent,
+                        clips: Vec::new(),
+                    });
+                    opened.push(Opened::Surface);
                 }
                 Step::Pop => {
-                    let (layer, surface, extent) = stack.pop().unwrap();
-                    let (_, target, target_extent) = stack.last_mut().unwrap();
+                    match opened.pop().unwrap() {
+                        Opened::Clip => {
+                            stack.last_mut().unwrap().clips.pop();
+                            continue;
+                        }
+                        Opened::InPlace => continue,
+                        Opened::Surface => {}
+                    }
+                    let level = stack.pop().unwrap();
+                    let parent = stack.last_mut().unwrap();
                     backend.composite(
-                        target,
-                        *target_extent,
-                        &surface,
-                        extent,
-                        layer.as_ref().unwrap(),
+                        &mut parent.surface,
+                        parent.extent,
+                        &level.surface,
+                        level.extent,
+                        level.layer.as_ref().unwrap(),
+                        &parent.clips,
                     )?;
                 }
             }
         }
-        Ok(stack.pop().unwrap().1)
+        Ok(stack.pop().unwrap().surface)
+    }
+}
+
+/// What an open push made.
+enum Opened {
+    Surface,
+    /// A clip on the surface it sits in.
+    Clip,
+    /// A backdrop drawn into the surface it sits in, its content after it.
+    InPlace,
+}
+
+/// One surface of the composition stack and the clips open on it.
+struct Level<S> {
+    layer: Option<Layer>,
+    surface: S,
+    extent: Extent,
+    /// Clip groups opened since this surface: they cut what is drawn or composited into it.
+    clips: Vec<ClipSnapshot>,
+}
+
+impl Plan {
+    /// Per step: a backdrop group at full opacity with no backdrop inside it. Its filtered image
+    /// and content can draw straight into the surface it sits in.
+    fn backdrops_in_place(&self) -> Vec<bool> {
+        let mut result = vec![false; self.steps.len()];
+        for (index, step) in self.steps.iter().enumerate() {
+            let Step::Push(Layer::Backdrop { opacity, .. }) = step else {
+                continue;
+            };
+            if *opacity < 1.0 {
+                continue;
+            }
+            let mut depth = 0usize;
+            let mut nested = false;
+            for inner in &self.steps[index + 1..] {
+                match inner {
+                    Step::Push(Layer::Backdrop { .. }) => {
+                        nested = true;
+                        break;
+                    }
+                    Step::Push(_) => depth += 1,
+                    Step::Pop if depth == 0 => break,
+                    Step::Pop => depth -= 1,
+                    Step::Draw(_) => {}
+                }
+            }
+            result[index] = !nested;
+        }
+        result
     }
 }
 
@@ -412,11 +524,13 @@ pub trait Backend {
     type Surface;
     const BOUNDED: bool = false;
     fn blank(&mut self, extent: Extent) -> Result<Self::Surface, String>;
+    /// Draws `span` into `target`, cut by `clips` (device pixels, outermost first).
     fn draw(
         &mut self,
         target: &mut Self::Surface,
         extent: Extent,
         span: Range<usize>,
+        clips: &[ClipSnapshot],
     ) -> Result<(), String>;
     /// Must remain unchanged by subsequent writes to the original surface.
     fn snapshot(&mut self, source: &Self::Surface) -> Result<Self::Surface, String>;
@@ -427,6 +541,7 @@ pub trait Backend {
         source: &Self::Surface,
         source_extent: Extent,
         layer: &Layer,
+        clips: &[ClipSnapshot],
     ) -> Result<(), String>;
     /// Initializes the owner's surface with its filtered, border-box-clipped backdrop. Reads
     /// only the backdrop's region of `source`, before anything else writes to it.
@@ -438,6 +553,20 @@ pub trait Backend {
         frame: (u16, u16),
         extent: Extent,
     ) -> Result<Self::Surface, String>;
+    /// Whether [`Self::backdrop_into`] draws opaque-group backdrops straight into their parent.
+    const INLINE_BACKDROPS: bool = false;
+    /// Draws backdrop `layer`'s filtered image into `target`, read from `target` itself first,
+    /// for a group that needs no surface of its own.
+    fn backdrop_into(
+        &mut self,
+        _target: &mut Self::Surface,
+        _target_extent: Extent,
+        _layer: &Layer,
+        _frame: (u16, u16),
+        _clips: &[ClipSnapshot],
+    ) -> Result<(), String> {
+        Err("UI_COMPOSITE: backdrops need a surface on this backend".into())
+    }
     /// The owner's surface for backdrop `layer` from an earlier frame's filtering, when nothing
     /// beneath it changed: no capture is needed.
     fn reuse(

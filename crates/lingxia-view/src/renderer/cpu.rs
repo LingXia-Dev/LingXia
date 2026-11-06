@@ -1,5 +1,6 @@
 //! CPU reference backend for the shared compositor.
 use crate::scene::composite::{Backend, Extent, Layer};
+use crate::scene::node::ClipSnapshot;
 use std::{ops::Range, sync::Arc};
 use vello_cpu::{Image, ImageSource, Pixmap, RenderContext, Resources, kurbo::Rect};
 
@@ -52,13 +53,20 @@ where
         target: &mut Self::Surface,
         _extent: Extent,
         span: Range<usize>,
+        clips: &[ClipSnapshot],
     ) -> Result<(), String> {
         if span.is_empty() {
             return Ok(());
         }
         let mut context = RenderContext::new(target.width(), target.height());
         image(&mut context, target);
+        for clip in clips {
+            context.push_clip_layer(&clip.path());
+        }
         (self.draw)(span, &mut context, &mut self.resources)?;
+        for _ in clips {
+            context.pop_layer();
+        }
         *target = self.finish(context, target.width(), target.height());
         Ok(())
     }
@@ -74,9 +82,13 @@ where
         source: &Self::Surface,
         _source_extent: Extent,
         layer: &Layer,
+        clips: &[ClipSnapshot],
     ) -> Result<(), String> {
         let mut context = RenderContext::new(target.width(), target.height());
         image(&mut context, target);
+        for clip in clips {
+            context.push_clip_layer(&clip.path());
+        }
         match layer {
             Layer::Clip(clip) => context.push_clip_layer(&clip.path()),
             Layer::Opacity(alpha) | Layer::Backdrop { opacity: alpha, .. } => {
@@ -103,6 +115,9 @@ where
             }
         }
         context.pop_layer();
+        for _ in clips {
+            context.pop_layer();
+        }
         *target = self.finish(context, target.width(), target.height());
         Ok(())
     }
