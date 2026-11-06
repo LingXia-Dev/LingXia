@@ -251,6 +251,7 @@ impl Compositor {
         let mut images = std::mem::take(&mut self.images);
         let mut glyph_cache = std::mem::take(&mut self.glyph_cache);
         let mut glyph_images = std::collections::HashMap::new();
+        let renderer = self.renderer.clone();
         let image_ids = display
             .bitmaps()
             .map(|bitmap| {
@@ -266,14 +267,19 @@ impl Compositor {
             device,
             queue,
             |span, origin, scene, bindings| {
-                display.sparse_span(
-                    &mut glyph_cache,
-                    scene,
-                    &image_ids,
-                    &mut glyph_images,
-                    span,
-                    origin,
-                )?;
+                renderer.with_resources(device, scene.width(), scene.height(), |resources| {
+                    display.sparse_span(
+                        &mut crate::renderer::gpu::text::Glyphs {
+                            prep: &mut glyph_cache,
+                            atlas: Some(resources),
+                        },
+                        scene,
+                        &image_ids,
+                        &mut glyph_images,
+                        span,
+                        origin,
+                    )
+                })??;
                 *bindings = images.bindings(
                     device,
                     queue,

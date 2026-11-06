@@ -145,7 +145,10 @@ fn display_plan_preserves_gpu_text_images_clipping_opacity_and_retained_scroll()
                 let flat = compositor
                     .render(&plan, device, queue, |_, _, scene, bindings| {
                         display.sparse_scene(
-                            &mut glyph_cache,
+                            &mut crate::renderer::gpu::text::Glyphs {
+                                prep: &mut glyph_cache,
+                                atlas: None,
+                            },
                             scene,
                             &image_ids,
                             &mut glyph_images,

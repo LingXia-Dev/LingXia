@@ -167,6 +167,9 @@ pub(crate) struct PrepareJob {
     scene_cache_hit: bool,
 }
 
+/// Renders after which kept scenes are encoded again, under the atlas's 64-render entry age.
+const ATLAS_REFRESH: u64 = 32;
+
 impl PrepareJob {
     /// Draws `display`; holds no presenter or context lock.
     pub(crate) fn run(&mut self, display: &crate::DisplayList) -> Result<(), String> {
@@ -193,7 +196,28 @@ impl PrepareJob {
             height: height as u16,
         };
         let started = Instant::now();
-        let scene_cache_hit = self.scenes.prepare(display, &mut self.glyph_cache)?;
+        // A kept scene draws glyphs from the atlas, which drops those no render touched for 64
+        // renders: well before that, every scene is encoded again.
+        let renders = self.renderer.renders();
+        if renders.saturating_sub(self.scenes.encoded_at) > ATLAS_REFRESH {
+            self.scenes.clear();
+            self.scenes.encoded_at = renders;
+        }
+        let (scenes, prep) = (&mut self.scenes, &mut self.glyph_cache);
+        let scene_cache_hit = self.renderer.with_resources(
+            &self.device,
+            width as u16,
+            height as u16,
+            |resources| {
+                scenes.prepare(
+                    display,
+                    &mut crate::renderer::gpu::text::Glyphs {
+                        prep,
+                        atlas: Some(resources),
+                    },
+                )
+            },
+        )??;
         self.glyph_cache.maintain();
         let scene_us = crate::session::metrics::micros(started);
         let started = Instant::now();

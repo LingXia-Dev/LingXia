@@ -11,7 +11,7 @@ impl DisplayList {
     #[cfg(feature = "gpu")]
     pub(crate) fn sparse_scene(
         &self,
-        cache: &mut glifo::GlyphPrepCache,
+        cache: &mut crate::renderer::gpu::text::Glyphs<'_>,
         context: &mut vello_gpu::Scene,
         image_ids: &HashMap<usize, vello_gpu::ImageSource>,
         glyph_images: &mut HashMap<usize, Arc<vello_gpu::Pixmap>>,
@@ -30,7 +30,7 @@ impl DisplayList {
     #[cfg(feature = "gpu")]
     pub(crate) fn sparse_span(
         &self,
-        cache: &mut glifo::GlyphPrepCache,
+        cache: &mut crate::renderer::gpu::text::Glyphs<'_>,
         context: &mut vello_gpu::Scene,
         image_ids: &HashMap<usize, vello_gpu::ImageSource>,
         glyph_images: &mut HashMap<usize, Arc<vello_gpu::Pixmap>>,
@@ -65,7 +65,7 @@ impl DisplayList {
     #[cfg(feature = "gpu")]
     pub(crate) fn sparse_segment(
         &self,
-        cache: &mut glifo::GlyphPrepCache,
+        cache: &mut crate::renderer::gpu::text::Glyphs<'_>,
         context: &mut vello_gpu::Scene,
         image_ids: &HashMap<usize, vello_gpu::ImageSource>,
         glyph_images: &mut HashMap<usize, Arc<vello_gpu::Pixmap>>,
@@ -106,7 +106,7 @@ impl DisplayList {
     #[allow(clippy::too_many_arguments)]
     fn sparse_paints(
         &self,
-        cache: &mut glifo::GlyphPrepCache,
+        cache: &mut crate::renderer::gpu::text::Glyphs<'_>,
         context: &mut vello_gpu::Scene,
         image_ids: &HashMap<usize, vello_gpu::ImageSource>,
         glyph_images: &mut HashMap<usize, Arc<vello_gpu::Pixmap>>,
@@ -347,6 +347,15 @@ impl DisplayList {
                         {
                             context.fill_path(&path);
                         }
+                    } else if let Some(resources) = cache.atlas.as_deref_mut() {
+                        context
+                            .glyph_run(resources, font)
+                            .atlas_cache(true)
+                            .font_size(*size)
+                            .glyph_transform(Affine::new([1.0, 0.0, -*skew, 1.0, 0.0, 0.0]))
+                            .normalized_coords(coordinates)
+                            .fill_glyphs(glyphs.iter().copied())
+                            .map_err(|e| e.to_string())?;
                     } else {
                         glifo::GlyphRunBuilder::new(
                             font.clone(),
@@ -357,7 +366,7 @@ impl DisplayList {
                                     scene: context,
                                     images: glyph_images,
                                 },
-                                cache,
+                                cache: cache.prep,
                             },
                         )
                         .font_size(*size)

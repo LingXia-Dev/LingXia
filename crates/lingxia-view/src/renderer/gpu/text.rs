@@ -92,6 +92,13 @@ impl GlyphRenderer for GlyphSink<'_> {
     }
 }
 
+/// What one encode draws text with: prepared outlines, and the renderer's glyph atlas when the
+/// scene renders on the GPU (each cached glyph is then one image rect, not its outline).
+pub(crate) struct Glyphs<'a> {
+    pub prep: &'a mut glifo::GlyphPrepCache,
+    pub atlas: Option<&'a mut vello_gpu::Resources>,
+}
+
 pub(crate) struct Backend<'a> {
     pub sink: GlyphSink<'a>,
     pub cache: &'a mut glifo::GlyphPrepCache,

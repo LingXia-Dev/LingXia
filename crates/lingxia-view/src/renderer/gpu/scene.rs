@@ -27,7 +27,7 @@ impl Entry {
     fn build(
         &mut self,
         display: &DisplayList,
-        glyphs: &mut glifo::GlyphPrepCache,
+        glyphs: &mut crate::renderer::gpu::text::Glyphs<'_>,
     ) -> Result<(), String> {
         self.key = None;
         self.glyph_images.clear();
@@ -224,6 +224,8 @@ pub(crate) struct SceneCache {
     segments: Vec<SegmentEntry>,
     /// Identifies the bottom static segment's content while it stays unchanged.
     base: Option<u64>,
+    /// The renderer's render count when these scenes were last all encoded.
+    pub(crate) encoded_at: u64,
 }
 
 static BASES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
@@ -237,6 +239,7 @@ impl Default for SceneCache {
             frame: None,
             segments: Vec::new(),
             base: None,
+            encoded_at: 0,
         }
     }
 }
@@ -250,7 +253,7 @@ impl SceneCache {
     pub(crate) fn prepare(
         &mut self,
         display: &DisplayList,
-        glyphs: &mut glifo::GlyphPrepCache,
+        glyphs: &mut crate::renderer::gpu::text::Glyphs<'_>,
     ) -> Result<bool, String> {
         if let Some(plan) = segments(display) {
             return self.prepare_segments(display, &plan, glyphs);
@@ -295,7 +298,7 @@ impl SceneCache {
         &mut self,
         display: &DisplayList,
         plan: &[Segment],
-        glyphs: &mut glifo::GlyphPrepCache,
+        glyphs: &mut crate::renderer::gpu::text::Glyphs<'_>,
     ) -> Result<bool, String> {
         self.segmented = true;
         let frame = FrameKey::of(display);
@@ -452,7 +455,11 @@ mod tests {
     fn animation_frames_reencode_only_their_spans() {
         let (_page, display) = spin_page(false);
         let mut cache = SceneCache::default();
-        let mut glyphs = glifo::GlyphPrepCache::default();
+        let mut prep = glifo::GlyphPrepCache::default();
+        let mut glyphs = crate::renderer::gpu::text::Glyphs {
+            prep: &mut prep,
+            atlas: None,
+        };
         assert!(!cache.prepare(&spun(&display, 0.0), &mut glyphs).unwrap());
         let plan = segments(&spun(&display, 0.0)).unwrap();
         assert_eq!(
@@ -602,7 +609,11 @@ mod tests {
         for faded in [false, true] {
             let (_page, display) = spin_page(faded);
             let mut cache = SceneCache::default();
-            let mut glyphs = glifo::GlyphPrepCache::default();
+            let mut prep = glifo::GlyphPrepCache::default();
+            let mut glyphs = crate::renderer::gpu::text::Glyphs {
+                prep: &mut prep,
+                atlas: None,
+            };
             for angle in [0.0, 25.0, 50.0] {
                 let frame = spun(&display, angle);
                 cache.prepare(&frame, &mut glyphs).unwrap();
@@ -637,7 +648,11 @@ mod tests {
         let mut hidden = page.prepare_native(300, 100, 1.0, false, None, Ok).unwrap();
         hidden.hide_caret();
         let mut cache = SceneCache::default();
-        let mut glyphs = glifo::GlyphPrepCache::default();
+        let mut prep = glifo::GlyphPrepCache::default();
+        let mut glyphs = crate::renderer::gpu::text::Glyphs {
+            prep: &mut prep,
+            atlas: None,
+        };
         assert!(!cache.prepare(&visible, &mut glyphs).unwrap());
         assert!(!cache.prepare(&hidden, &mut glyphs).unwrap());
         for _ in 0..4 {
@@ -664,7 +679,11 @@ mod tests {
         let small = page.layout(200, 100, 1.0).unwrap();
         let large = page.layout(4096, 2048, 1.0).unwrap();
         let mut cache = SceneCache::default();
-        let mut glyphs = glifo::GlyphPrepCache::default();
+        let mut prep = glifo::GlyphPrepCache::default();
+        let mut glyphs = crate::renderer::gpu::text::Glyphs {
+            prep: &mut prep,
+            atlas: None,
+        };
         assert!(!cache.prepare(&small, &mut glyphs).unwrap());
         assert!(cache.prepare(&small, &mut glyphs).unwrap());
         for _ in 0..2 {
@@ -686,7 +705,11 @@ mod tests {
         let id = frame.nodes[0].identity.clone();
         let token = frame.nodes[0].input.as_ref().unwrap().edit_token.unwrap();
         let mut cache = SceneCache::default();
-        let mut glyphs = glifo::GlyphPrepCache::default();
+        let mut prep = glifo::GlyphPrepCache::default();
+        let mut glyphs = crate::renderer::gpu::text::Glyphs {
+            prep: &mut prep,
+            atlas: None,
+        };
         assert!(!cache.prepare(&frame, &mut glyphs).unwrap());
         for anchor in [0, 1] {
             page.edit_input(
