@@ -111,6 +111,15 @@ impl ListMetrics {
         })
     }
 
+    /// The spacer heights before and after `rows`.
+    pub(crate) fn spacers(&self, rows: Range<usize>) -> (f64, f64) {
+        let end = rows.end.min(self.len());
+        (
+            self.prefix(rows.start.min(end)),
+            (self.total() - self.prefix(end)).max(0.0),
+        )
+    }
+
     /// Apply a measured batch atomically, keeping the first visible row at the same pixel.
     pub fn measure(
         &mut self,

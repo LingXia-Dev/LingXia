@@ -36,6 +36,9 @@ pub(crate) struct ListState {
 }
 
 pub(crate) type Lists = HashMap<String, ListState>;
+
+/// Rows past the needed window a rendered window may hold and still be kept.
+const SPARE_ROWS: usize = 2;
 pub(crate) type Windows = HashMap<String, Request>;
 
 pub(crate) fn invalidate_measurements(lists: &mut Lists) {
@@ -278,11 +281,12 @@ pub(crate) fn reconcile(
                 },
             ));
         }
-        if (target - scroll.offset).abs() > 0.01 {
+        let moved = (target - scroll.offset).abs() > 0.01;
+        if moved {
             offsets.insert(id.clone(), target);
             changed = true;
         }
-        let desired = request(state, node, target)?;
+        let mut desired = request(state, node, target)?;
         let start = rows.first().map(|r| r.0).unwrap_or(desired.start);
         let end = rows.last().map(|r| r.0 + 1).unwrap_or(start);
         let actual = Request {
@@ -291,6 +295,18 @@ pub(crate) fn reconcile(
             leading: record.number(field::LIST_LEADING).unwrap_or(0.0) as f64,
             trailing: record.number(field::LIST_TRAILING).unwrap_or(0.0) as f64,
         };
+        // A rendered window a few rows wider than needed, with spacers that still fit the
+        // measurements, is kept: rendering it again would only drop those rows.
+        let (leading, trailing) = state.metrics.spacers(actual.start..actual.end);
+        if !moved
+            && actual.start <= desired.start
+            && actual.end >= desired.end
+            && (desired.start - actual.start) + (actual.end - desired.end) <= SPARE_ROWS
+            && (leading - actual.leading).abs() < 0.01
+            && (trailing - actual.trailing).abs() < 0.01
+        {
+            desired = actual.clone();
+        }
         changed |= !desired.matches(&actual);
         state.window = desired.clone();
         windows.insert(id, desired);
