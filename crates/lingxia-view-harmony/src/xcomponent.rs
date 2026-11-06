@@ -182,12 +182,18 @@ mod vsync {
         (vsync != 0).then_some(vsync as *mut sys::OH_NativeVSync)
     }
 
-    unsafe extern "C" fn fired(_timestamp: i64, _data: *mut c_void) {
+    unsafe extern "C" fn fired(timestamp: i64, _data: *mut c_void) {
         PENDING.store(false, Ordering::Release);
-        crate::dispatch::post_main(Box::new(|| {
+        let mut period = 0i64;
+        // SAFETY: the process-lifetime source and a live out-pointer.
+        let known = source()
+            .is_some_and(|vsync| unsafe { sys::OH_NativeVSync_GetPeriod(vsync, &mut period) == 0 });
+        // The frame drawn for this vsync shows on the next one.
+        let display = (known && period > 0).then_some((timestamp + period, period));
+        crate::dispatch::post_main(Box::new(move || {
             let tokens = std::mem::take(&mut *WANTED.lock().unwrap_or_else(|p| p.into_inner()));
             for token in tokens {
-                pages::with(token, |host| host.adapter().display_frame(host));
+                pages::with(token, |host| host.adapter().display_frame(host, display));
             }
         }));
     }
@@ -297,6 +303,17 @@ unsafe extern "C" fn on_event(event: *mut sys::ArkUI_NodeEvent) {
     });
 }
 
+/// The clock vsync timestamps and input event times use.
+pub(crate) fn monotonic_ns() -> i64 {
+    let mut now = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    // SAFETY: a live out-pointer.
+    unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut now) };
+    now.tv_sec * 1_000_000_000 + now.tv_nsec
+}
+
 fn touch(host: &pages::Host, input: *mut sys::ArkUI_UIInputEvent) {
     let adapter = host.adapter();
     // SAFETY: the live input event of this callback.
@@ -339,6 +356,7 @@ fn touch(host: &pages::Host, input: *mut sys::ArkUI_UIInputEvent) {
             [0.0; 2]
         }
     };
+    host.input_age(u64::try_from((monotonic_ns() - time) / 1000).unwrap_or(0));
     let consumed = host.pointer(Pointer {
         phase,
         x,

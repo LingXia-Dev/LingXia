@@ -158,13 +158,20 @@ impl HarmonyAdapter {
         host.window_visible(false);
     }
 
-    /// A display frame: step any fling, run the requested vsync.
-    pub(crate) fn display_frame(&self, host: &pages::Host) {
+    /// A display frame: step any fling, run the requested vsync. `display` is the refresh
+    /// this frame shows on and the refresh period, in monotonic nanoseconds.
+    pub(crate) fn display_frame(&self, host: &pages::Host, display: Option<(i64, i64)>) {
         if self.step_fling(host) {
             crate::xcomponent::request_frame(self.token);
         }
         if self.vsync.swap(false, Ordering::AcqRel) {
-            host.vsync();
+            match display {
+                Some((present, period)) => host.vsync_at(
+                    (present - crate::xcomponent::monotonic_ns()) / 1000,
+                    (period / 1000) as u64,
+                ),
+                None => host.vsync(),
+            }
         }
     }
 

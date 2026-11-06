@@ -8,14 +8,8 @@ type PerfLab = PageContract<PerfData, PerfActions>;
 // Perf lab: one workload per pipeline stage, judged with the bar the page's "Run budget" uses
 // (shared/perf-judge.ts). A scene that misses it fails here too; each spec attaches what it
 // measured before it judges, so a red run still reports its numbers.
-// Harmony is skipped until its adapter feeds display and input times.
 
 spec.configure({ start: { page: 'perf-lab' }, timeout: 90_000 });
-
-async function measurable(t: Fixture) {
-  const os = await t.app.logic.eval(({ lx }) => String(lx.host.getBaseInfo().os || '').toLowerCase());
-  if (os === 'harmony') t.skip('Harmony does not feed display or input times to frame statistics yet');
-}
 
 async function scene(t: Fixture, name: string, count: number) {
   await t.app.view.testId(`perf-tab-${name}`).click();
@@ -49,7 +43,6 @@ async function expectFrames(t: Fixture, metrics: TestMetrics) {
 }
 
 spec('a 1000-row list keeps pace through flings', { id: 'PERF-LIST-001', covers: ['view:list'] }, async (t) => {
-  await measurable(t);
   await scene(t, 'list', 1000);
   const list = t.app.view.testId('perf-list');
   const started = Date.now();
@@ -62,37 +55,31 @@ spec('a 1000-row list keeps pace through flings', { id: 'PERF-LIST-001', covers:
 });
 
 spec('a 1000-row list keeps pace while Logic moves its anchor every tick', { id: 'PERF-DATA-001', covers: ['view:list'] }, async (t) => {
-  await measurable(t);
   await scene(t, 'data', 1000);
   await expectFrames(t, await runBudget(t, 'data', 1000));
 });
 
 spec('250 springs at once keep pace', { id: 'PERF-ANIM-001' }, async (t) => {
-  await measurable(t);
   await scene(t, 'animation', 250);
   await expectFrames(t, await runBudget(t, 'animation', 250));
 });
 
 spec('eight translucent, blurred and shadowed layers keep pace', { id: 'PERF-FILL-001' }, async (t) => {
-  await measurable(t);
   await scene(t, 'fill', 8);
   await expectFrames(t, await runBudget(t, 'fill', 8));
 });
 
 spec('a mixed-script paragraph relayouts while it grows', { id: 'PERF-TEXT-001' }, async (t) => {
-  await measurable(t);
   await scene(t, 'text', 4);
   await expectFrames(t, await runBudget(t, 'text', 4));
 });
 
 spec('images decoding while a list scrolls keep pace', { id: 'PERF-IMAGE-001' }, async (t) => {
-  await measurable(t);
   await scene(t, 'images', 96);
   await expectFrames(t, await runBudget(t, 'images', 96));
 });
 
 spec('a dragged box shows the finger within the input budget', { id: 'PERF-TOUCH-001' }, async (t) => {
-  await measurable(t);
   await scene(t, 'touch', 48);
   const box = t.app.view.testId('perf-box');
   const started = Date.now();
@@ -107,7 +94,6 @@ spec('a dragged box shows the finger within the input budget', { id: 'PERF-TOUCH
 });
 
 spec('pushed and popped pages show their first frame within budget', { id: 'PERF-NAV-001', covers: ['lx.navigateTo', 'lx.navigateBack'] }, async (t) => {
-  await measurable(t);
   await scene(t, 'transition', 100);
   const back = await runBudget(t, 'transition', 100);
   await t.attach('pop-metrics', back);
@@ -130,7 +116,6 @@ spec('pushed and popped pages show their first frame within budget', { id: 'PERF
 });
 
 spec('the list at its largest row count stays windowed and the page responsive', { id: 'PERF-LIST-MAX-001', covers: ['view:list'] }, async (t) => {
-  await measurable(t);
   await scene(t, 'list', 20000);
   const metrics = await t.app.metrics();
   await t.attach('metrics', metrics);
@@ -151,7 +136,6 @@ const RELOAD = /^(Reload page|重新载入页面)$/;
 const HOME = /^(Home|首页)$/;
 
 spec('a page past its View budget shows recovery chrome while the rest of the app works', { id: 'PERF-FAIL-001', requires: { chrome: true, hostInput: true } }, async (t) => {
-  await measurable(t);
   // The act fails with the page it was acting on; the chrome is what counts.
   await t.app.view.testId('perf-stall').click().catch(() => undefined);
   const chrome = await t.waitFor(() => t.app.chrome.elements(), { until: elements => elements.some(e => RELOAD.test(e.label)) });
@@ -168,7 +152,6 @@ spec('a page past its View budget shows recovery chrome while the rest of the ap
 });
 
 spec('state set from an awaited Logic loop keeps reaching the View', { id: 'PERF-BRIDGE-001' }, async (t) => {
-  await measurable(t);
   // The touch scene draws only the tick counter per update, so the View is not the limit.
   await scene(t, 'touch', 48);
   const page = await t.app.page<PerfLab>({ name: 'perf-lab' });

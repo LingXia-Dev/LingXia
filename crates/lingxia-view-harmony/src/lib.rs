@@ -173,11 +173,14 @@ pub fn inject_touch(
         } else {
             [0.0; 2]
         };
+        let planned = started + due;
         dispatch::run_on_main(move || {
             pages::with(token, |host| {
                 if phase == PointerPhase::Down {
                     host.adapter().begin_gesture();
                 }
+                // Planned, not delivered: a busy main thread counts against input latency.
+                host.input_age(planned.elapsed().as_micros() as u64);
                 host.pointer(Pointer {
                     phase,
                     x,

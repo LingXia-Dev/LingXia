@@ -464,6 +464,7 @@ unsafe extern "C" {
         callback: unsafe extern "C" fn(timestamp: i64, data: *mut c_void),
         data: *mut c_void,
     ) -> i32;
+    pub fn OH_NativeVSync_GetPeriod(vsync: *mut OH_NativeVSync, period: *mut i64) -> i32;
 }
 
 // ---- Native window --------------------------------------------------------------------------
