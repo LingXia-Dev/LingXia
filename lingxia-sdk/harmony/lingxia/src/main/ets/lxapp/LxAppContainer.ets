@@ -298,6 +298,9 @@ export struct LxAppContainer {
 
   // Webtag of the page instance to present, as the runtime named it
   @Watch('onTargetWebTagChange') @Prop targetWebTag: string = ''
+  // Presented through `present` already, oldest first: the prop catching up must not
+  // present them again.
+  private presentedTags: string[] = []
 
   // Listen for navigation trigger changes (unified method for all LxApps)
   @Watch('onNavigationTriggerChange') @Prop navigationTrigger: number = 0
@@ -748,7 +751,27 @@ export struct LxAppContainer {
   /**
    * Handle target page changes from LxApp.navigate API
    */
+  /**
+   * Present `webtag` in `appId`'s live container now. A pop and a push in one frame would
+   * otherwise reach the container as one unchanged prop, and the push would be lost.
+   */
+  public static present(appId: string, webtag: string): boolean {
+    const container = LxAppContainer.activeContainers.get(appId);
+    if (!container) {
+      return false;
+    }
+    // A coalesced prop never catches up for some of these; keep only the recent ones.
+    container.presentedTags = container.presentedTags.slice(-7).concat([webtag]);
+    container.navigateToPage(webtag);
+    return true;
+  }
+
   onTargetWebTagChange() {
+    const presented: number = this.presentedTags.indexOf(this.targetWebTag);
+    if (presented >= 0) {
+      this.presentedTags.splice(0, presented + 1);
+      return;
+    }
     if (this.targetWebTag) {
       hilog.info(DOMAIN, TAG, `Target page change: ${this.targetWebTag}`);
       this.navigateToPage(this.targetWebTag);

@@ -455,10 +455,11 @@ export struct LxAppNavigation {
 
   /** Point the home container at `webtag`; the trigger re-presents a page it already targets. */
   private presentHomePage(webtag: string): void {
-    if (this.homeWebTag === webtag) {
-      this.navigationTrigger++;
-    } else {
+    const presented: boolean = this.homeAppId.length > 0 && LxAppContainer.present(this.homeAppId, webtag);
+    if (this.homeWebTag !== webtag) {
       this.homeWebTag = webtag;
+    } else if (!presented) {
+      this.navigationTrigger++;
     }
   }
 
