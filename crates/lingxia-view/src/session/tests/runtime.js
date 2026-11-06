@@ -3070,8 +3070,19 @@
   var initialWindow = (count) => ({ start: 0, end: Math.min(1, count), leading: 0, trailing: Math.max(0, count - 1) * 64 });
   var slices = /* @__PURE__ */ new WeakMap();
   var sliceable = /* @__PURE__ */ new WeakSet();
+  var WIRE_SERIAL = -3;
+  var WIRE_REUSE = -2;
+  var wireSerial = 0;
+  var wireHeld = 0;
+  function wireAck(serial) {
+    wireHeld = serial;
+  }
+  function wireReset() {
+    wireHeld = 0;
+  }
   function encodeTree(tree, windows) {
     const { candidate } = render;
+    const serial = ++wireSerial;
     const output = [];
     let count = 0, plotWork = 0, animationBytes = 0, itemKeyBytes = 0, dataBytes = 0;
     const heads = [], handled = [];
@@ -3087,6 +3098,16 @@
         handled.push(entry);
       }
       const base = output.length, values = slice.values;
+      deepest = Math.max(deepest, depth + slice.depth);
+      if (slice.serial === wireHeld && wireHeld) {
+        output.push(WIRE_REUSE, parent, slice.serial, slice.offset, slice.nodes, 0);
+        slice.serial = serial;
+        slice.offset = base;
+        heads.push(-1);
+        return;
+      }
+      slice.serial = serial;
+      slice.offset = base;
       for (let i = 0; i < values.length; i++) output.push(values[i]);
       output[base + 1] = parent;
       for (let i = 0; i < slice.heads.length; i++) {
@@ -3094,7 +3115,6 @@
         if (at) output[base + at + 1] += base;
         heads.push(base + at);
       }
-      deepest = Math.max(deepest, depth + slice.depth);
     };
     const write = (node, parent, depth) => {
       const slice = slices.get(node);
@@ -3103,8 +3123,9 @@
       const index = output.length, mark = { heads: heads.length, handled: handled.length, lists, deepest, count, plotWork, animationBytes, dataBytes };
       deepest = depth;
       writeNode(node, parent, depth);
-      if (lists === mark.lists) {
-        const values = output.slice(index), at = heads.slice(mark.heads).map((head) => head - index);
+      const heads2 = heads.slice(mark.heads);
+      if (lists === mark.lists && !heads2.includes(-1)) {
+        const values = output.slice(index), at = heads2.map((head) => head - index);
         for (let i = 1; i < at.length; i++) values[at[i] + 1] -= index;
         slices.set(node, {
           values,
@@ -3114,7 +3135,9 @@
           nodes: count - mark.count,
           plotWork: plotWork - mark.plotWork,
           animationBytes: animationBytes - mark.animationBytes,
-          dataBytes: dataBytes - mark.dataBytes
+          dataBytes: dataBytes - mark.dataBytes,
+          serial,
+          offset: index
         });
       }
       deepest = Math.max(deepest, mark.deepest);
@@ -3202,6 +3225,7 @@
       if (seededAnchor) node.list.cache.clear();
     };
     write(tree, -1, 0);
+    output.push(WIRE_SERIAL, serial, "", "", "", 0);
     return output;
   }
   function writeRows(node, window, index, depth, write) {
@@ -4551,6 +4575,7 @@
     resetPicker();
     resetTopLayer();
     resetFrameMeasures();
+    wireReset();
   }
   var accepts2 = (kind, value) => kind === "number" ? typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= 1e9 : kind === "text" ? validInputText(value) : value === void 0;
   function dispatch(handle2, value) {
@@ -4629,6 +4654,7 @@
       __lingxiaPickerIdentity: pickerIdentity,
       __lingxiaTakeFrameMeasures: takeFrameMeasures,
       __lingxiaFrameMeasured: frameMeasured,
+      __lingxiaWireAck: wireAck,
       // Cleared when a render completes, so it names only a render that never returned.
       __lingxiaSite: () => render.site || ""
     });

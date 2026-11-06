@@ -106,14 +106,17 @@ pub(crate) fn decode_context_timed(
     ),
     String,
 > {
-    decode_buffer(context, invoke, false)
+    decode_buffer(context, invoke, false, None)
 }
 
 /// `allow_empty`: an empty buffer is no records rather than an error (a deferred render).
+/// `wire`: the page's last decoded buffer, which the View may reference for subtrees it reuses;
+/// replaced by this buffer once it decodes.
 pub(crate) fn decode_buffer(
     context: &JSContext,
     invoke: &str,
     allow_empty: bool,
+    wire: Option<&mut crate::protocol::Wire>,
 ) -> Result<
     (
         Vec<crate::protocol::Record>,
@@ -122,9 +125,17 @@ pub(crate) fn decode_buffer(
     String,
 > {
     let started = std::time::Instant::now();
-    let values: JSArray = context
-        .eval(Source::from_bytes(invoke.as_bytes()))
-        .map_err(|e| js_error(context, e))?;
+    let held = wire.as_ref().map_or(0, |wire| wire.serial());
+    let values: JSArray = if held > 0 {
+        // The View learns which buffer the host holds just before it encodes the next one.
+        let invoke = format!(
+            "(typeof __lingxiaWireAck === 'function' && __lingxiaWireAck({held}), {invoke})"
+        );
+        context.eval(Source::from_bytes(invoke.as_bytes()))
+    } else {
+        context.eval(Source::from_bytes(invoke.as_bytes()))
+    }
+    .map_err(|e| js_error(context, e))?;
     let eval_us = crate::session::metrics::micros(started);
     let started = std::time::Instant::now();
     let count = values.len().map_err(|e| e.to_string())?;
@@ -164,7 +175,14 @@ pub(crate) fn decode_buffer(
     drop(values);
     let transfer_us = crate::session::metrics::micros(started);
     let started = std::time::Instant::now();
-    let records = crate::protocol::decode(&buffer)?;
+    let records = match wire {
+        Some(wire) => {
+            let (records, next) = crate::protocol::decode_wire(&buffer, Some(wire))?;
+            *wire = next;
+            records
+        }
+        None => crate::protocol::decode(&buffer)?,
+    };
     let decode_us = crate::session::metrics::micros(started);
     Ok((
         records,

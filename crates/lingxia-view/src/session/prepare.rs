@@ -484,8 +484,14 @@ impl ViewSession {
             } else {
                 let started = std::time::Instant::now();
                 let full = window_only.is_none();
-                let (mut records, timings) =
-                    self.execute_frame(|| decode_buffer(&self.context, &invoke, full))?;
+                let (mut records, timings) = self.execute_frame(|| {
+                    decode_buffer(
+                        &self.context,
+                        &invoke,
+                        full,
+                        Some(&mut self.wire.borrow_mut()),
+                    )
+                })?;
                 metrics.add_view(timings);
                 if full && records.is_empty() {
                     // Anchors moved: encode once, into the windows they land in.
@@ -511,9 +517,11 @@ impl ViewSession {
                     )
                     .map_err(|e| e.to_string())?;
                     let (refined, timings) = self.execute_frame(|| {
-                        decode_context_timed(
+                        decode_buffer(
                             &self.context,
                             &format!("__lingxiaPrepareWindows(JSON.parse({encoded}))"),
+                            false,
+                            Some(&mut self.wire.borrow_mut()),
                         )
                     })?;
                     metrics.add_view(timings);
@@ -601,9 +609,11 @@ impl ViewSession {
                     prepared_js = true;
                     let started = std::time::Instant::now();
                     let (refined, timings) = self.execute_frame(|| {
-                        decode_context_timed(
+                        decode_buffer(
                             &self.context,
                             &format!("__lingxiaPrepareWindows(JSON.parse({encoded}))"),
+                            false,
+                            Some(&mut self.wire.borrow_mut()),
                         )
                     })?;
                     records = refined;

@@ -11,7 +11,7 @@ pub use generated::{
     TagAdmission, UI_ABI, check_environment, field, limits, options, tag,
 };
 
-pub use decode::decode;
+pub use decode::{Wire, decode, decode_wire};
 pub use values::color;
 pub(crate) use values::{flex_basis, focus_style, image_position, length_or_percent};
 

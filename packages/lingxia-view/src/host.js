@@ -6,6 +6,7 @@ import { viewRequest, overlayTimer, takeOverlayTimers, escapeOverlay } from './r
 import { openPicker, pickerKey, closePicker, takePickerResults, pickerIdentity } from './runtime/picker.js';
 import { takeFonts } from './runtime/fonts.js';
 import { takeFrameMeasures, frameMeasured } from './runtime/frames.js';
+import { wireAck } from './runtime/encode.js';
 
 // The native session calls only these globals; module code stays unreachable from the host.
 export function publishHost(render, catalog) {
@@ -22,7 +23,7 @@ export function publishHost(render, catalog) {
     __lingxiaEscape: escapeOverlay, __lingxiaFonts: takeFonts, __lingxiaProbeListRow: probeListRow,
     __lingxiaOpenPicker: openPicker, __lingxiaPickerKey: pickerKey, __lingxiaClosePicker: closePicker,
     __lingxiaTakePickerResults: takePickerResults, __lingxiaPickerIdentity: pickerIdentity,
-    __lingxiaTakeFrameMeasures: takeFrameMeasures, __lingxiaFrameMeasured: frameMeasured,
+    __lingxiaTakeFrameMeasures: takeFrameMeasures, __lingxiaFrameMeasured: frameMeasured, __lingxiaWireAck: wireAck,
     // Cleared when a render completes, so it names only a render that never returned.
     __lingxiaSite: () => rendering.site || '',
   });

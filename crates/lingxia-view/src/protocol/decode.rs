@@ -12,8 +12,39 @@ struct Page {
     lists: HashSet<String>,
 }
 
+/// A decoded buffer the next one may reference: its serial, records, and for each wire offset of
+/// a node header the record it became, with each record's depth.
+#[derive(Default)]
+pub struct Wire {
+    serial: u64,
+    records: Vec<Record>,
+    offsets: HashMap<i64, usize>,
+    depths: Vec<usize>,
+}
+
+impl Wire {
+    /// The buffer's serial; 0 when nothing may reference it.
+    pub fn serial(&self) -> u64 {
+        self.serial
+    }
+}
+
+/// A buffer's trailing serial header, and a header standing for nodes of the previous buffer.
+const WIRE_SERIAL: i64 = -3;
+const WIRE_REUSE: i64 = -2;
+
 pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
+    decode_wire(buffer, None).map(|(records, _)| records)
+}
+
+/// Decodes `buffer`, whose reused subtrees may stand as references into `previous`; also
+/// returns what the next buffer may reference.
+pub fn decode_wire(
+    buffer: &[Value],
+    previous: Option<&Wire>,
+) -> Result<(Vec<Record>, Wire), String> {
     let mut page = Page::default();
+    let mut serial = 0;
     let mut records: Vec<Record> = Vec::new();
     let mut offsets: HashMap<i64, usize> = HashMap::new();
     let mut keys = HashSet::new();
@@ -30,6 +61,28 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
         let header = buffer
             .get(cursor..cursor + 6)
             .ok_or("UI_BUFFER: truncated header")?;
+        match header[0].as_i64() {
+            Some(WIRE_SERIAL) => {
+                serial = header[1].as_u64().ok_or("UI_BUFFER: invalid serial")?;
+                cursor += 6;
+                continue;
+            }
+            Some(WIRE_REUSE) => {
+                reuse(
+                    header,
+                    start,
+                    previous,
+                    &mut page,
+                    &mut records,
+                    &mut offsets,
+                    &mut keys,
+                    &mut depths,
+                )?;
+                cursor += 6;
+                continue;
+            }
+            _ => {}
+        }
         let tag = header[0]
             .as_u64()
             .filter(|v| *v < TAGS.len() as u64)
@@ -127,7 +180,105 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
         return Err("UI_ROOT: empty buffer".into());
     }
     budgets(&records)?;
-    Ok(records)
+    let wire = Wire {
+        serial,
+        records: if serial == 0 {
+            Vec::new()
+        } else {
+            records.clone()
+        },
+        offsets,
+        depths,
+    };
+    Ok((records, wire))
+}
+
+/// Copies the subtree a reuse header names from the previous buffer, checking what its new place
+/// changes: the root's admission under its parent, sibling keys, depth and page budgets.
+#[allow(clippy::too_many_arguments)]
+fn reuse(
+    header: &[Value],
+    start: usize,
+    previous: Option<&Wire>,
+    page: &mut Page,
+    records: &mut Vec<Record>,
+    offsets: &mut HashMap<i64, usize>,
+    keys: &mut HashSet<(Option<usize>, String)>,
+    depths: &mut Vec<usize>,
+) -> Result<(), String> {
+    let stale = || String::from("UI_BUFFER: reference to a buffer the host does not hold");
+    let previous = previous.ok_or_else(stale)?;
+    if header[2].as_u64() != Some(previous.serial) || previous.serial == 0 {
+        return Err(stale());
+    }
+    let from = header[3]
+        .as_i64()
+        .and_then(|offset| previous.offsets.get(&offset))
+        .copied()
+        .ok_or_else(stale)?;
+    let count = header[4].as_u64().filter(|n| *n > 0).ok_or_else(stale)? as usize;
+    let nodes = previous.records.get(from..from + count).ok_or_else(stale)?;
+    if records.len() + count > limits::NODES {
+        return Err("UI_LIMIT: too many nodes".into());
+    }
+    let parent_offset = header[1]
+        .as_i64()
+        .ok_or("UI_PARENT: expected a parent offset")?;
+    let parent = *offsets
+        .get(&parent_offset)
+        .ok_or("UI_PARENT: must precede child")?;
+    let root = &nodes[0];
+    // Inside the subtree every record keeps its parent; only the root moves.
+    if nodes[1..]
+        .iter()
+        .any(|r| r.parent.is_none_or(|p| p < from || p >= from + count))
+    {
+        return Err(stale());
+    }
+    admission::child(records, parent, root.tag)?;
+    let parent_tag = Some(records[parent].tag);
+    for (id, value) in &root.fields {
+        admission::field(root.tag, parent_tag, *id)?;
+        if *id == field::LIST_ROW_INDEX {
+            let rows = records[parent].number(field::LIST_COUNT).unwrap_or(0.0) as u64;
+            value
+                .as_u64()
+                .filter(|n| *n < rows)
+                .ok_or("UI_LIST: invalid row index")?;
+        }
+    }
+    admission::record(root.tag, parent_tag, &root.key, &root.fields)?;
+    let base = records.len();
+    page.rows(base, Some(parent), &root.key, &root.fields)?;
+    if !root.key.is_empty() && !keys.insert((Some(parent), root.key.clone())) {
+        return Err("UI_KEY: duplicate sibling".into());
+    }
+    let shift = depths[parent] + 1;
+    let first = previous.depths[from];
+    for (i, record) in nodes.iter().enumerate() {
+        let depth = previous.depths[from + i] - first + shift;
+        if depth > limits::DEPTH {
+            return Err("UI_LIMIT: tree too deep".into());
+        }
+        depths.push(depth);
+        for (id, value) in &record.fields {
+            if *id == field::ANIMATION {
+                page.animation(value)?;
+            }
+        }
+        let mut copy = record.clone();
+        copy.parent = Some(if i == 0 {
+            parent
+        } else {
+            record.parent.unwrap() - from + base
+        });
+        if i > 0 && !copy.key.is_empty() {
+            keys.insert((copy.parent, copy.key.clone()));
+        }
+        records.push(copy);
+    }
+    offsets.insert(start as i64, base);
+    Ok(())
 }
 
 impl Page {

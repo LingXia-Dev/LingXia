@@ -81,6 +81,45 @@ fn unchanged_plots_rebind_selection_without_layout_or_leaking_failed_callbacks()
 }
 
 #[test]
+fn a_reused_subtree_crosses_as_a_reference_and_decodes_the_same() {
+    let module = source(
+        "function Card(){return h('column',{},h('text',{},'a'),h('text',{},'b'),h('text',{},'c'))}\
+         function render(){return h('column',{},h(Card),h('text',{},String(globalThis.n)))}",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    let texts = |display: &crate::DisplayList| -> Vec<String> {
+        display
+            .nodes
+            .iter()
+            .map(|n| n.text.clone())
+            .filter(|t| !t.is_empty())
+            .collect()
+    };
+    page.eval("globalThis.n=1").unwrap();
+    assert_eq!(
+        texts(&page.layout(300, 200, 1.0).unwrap()),
+        ["a", "b", "c", "1"]
+    );
+    let full = page.frame_metrics().wire_values;
+    for n in 2..4 {
+        page.eval(&format!("globalThis.n={n}")).unwrap();
+        let display = page.layout(300, 200, 1.0).unwrap();
+        assert_eq!(texts(&display), ["a", "b", "c", &n.to_string()]);
+    }
+    assert!(
+        page.frame_metrics().wire_values < full,
+        "the unchanged card goes as a reference"
+    );
+    // A host that lost the buffer it held starts again from full buffers.
+    page.reset().unwrap();
+    page.eval("globalThis.n=9").unwrap();
+    assert_eq!(
+        texts(&page.layout(300, 200, 1.0).unwrap()),
+        ["a", "b", "c", "9"]
+    );
+}
+
+#[test]
 fn frame_metrics_distinguish_reuse_and_preserve_the_last_success() {
     let module = source("function render(){return h('column',{},h('text',{},'Measured frame'))}");
     let mut page = ViewSession::new(&module).unwrap();
@@ -92,7 +131,8 @@ fn frame_metrics_distinguish_reuse_and_preserve_the_last_success() {
     assert_eq!(measured.paints, display.paint_count());
     assert_eq!(measured.view_passes, 1);
     assert_eq!(measured.layout_passes, 1);
-    assert_eq!(measured.wire_values, 12);
+    // Two nodes of six values, then the buffer's serial header.
+    assert_eq!(measured.wire_values, 18);
     assert!(
         measured.view_eval_us + measured.view_transfer_us + measured.view_decode_us
             <= measured.view_us

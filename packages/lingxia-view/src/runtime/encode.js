@@ -38,9 +38,19 @@ const slices = new WeakMap();
 /** Nodes worth keeping an encoding for: what a later render is likely to reuse whole. */
 export const sliceable = new WeakSet();
 
+// Buffers are numbered (a trailing header); the host decodes each and acknowledges the last one it
+// holds. A reused subtree written in that buffer goes as a reference to its nodes there.
+const WIRE_SERIAL = -3, WIRE_REUSE = -2;
+let wireSerial = 0, wireHeld = 0;
+/** The host decoded buffer `serial` and keeps its nodes for the next one to reference. */
+export function wireAck(serial) { wireHeld = serial; }
+/** The host keeps no earlier buffer (a reset page): write every subtree in full. */
+export function wireReset() { wireHeld = 0; }
+
 /** The flat wire buffer of a resolved tree; list rows render for the requested windows. */
 export function encodeTree(tree, windows) {
   const { candidate } = render;
+  const serial = ++wireSerial;
   const output = []; let count = 0, plotWork = 0, animationBytes = 0, itemKeyBytes = 0, dataBytes = 0;
   // Header offsets, registered callbacks, lists written and the deepest level, for cutting slices.
   const heads = [], handled = []; let lists = 0, deepest = 0;
@@ -51,6 +61,15 @@ export function encodeTree(tree, windows) {
     if ((dataBytes += slice.dataBytes) > limits.dataAttributeBytes) throw Error('UI_PROP: data-* page budget exceeded');
     for (let i = 0; i < slice.handlers.length; i++) { const entry = slice.handlers[i]; candidate.callbacks.set(entry[0], entry[1]); handled.push(entry); }
     const base = output.length, values = slice.values;
+    deepest = Math.max(deepest, depth + slice.depth);
+    if (slice.serial === wireHeld && wireHeld) {
+      output.push(WIRE_REUSE, parent, slice.serial, slice.offset, slice.nodes, 0);
+      slice.serial = serial; slice.offset = base;
+      // Its nodes are not in this buffer, so no slice cut around it can stand alone.
+      heads.push(-1);
+      return;
+    }
+    slice.serial = serial; slice.offset = base;
     for (let i = 0; i < values.length; i++) output.push(values[i]);
     output[base + 1] = parent;
     for (let i = 0; i < slice.heads.length; i++) {
@@ -58,7 +77,6 @@ export function encodeTree(tree, windows) {
       if (at) output[base + at + 1] += base;
       heads.push(base + at);
     }
-    deepest = Math.max(deepest, depth + slice.depth);
   };
   const write = (node, parent, depth) => {
     const slice = slices.get(node);
@@ -67,11 +85,13 @@ export function encodeTree(tree, windows) {
     const index = output.length, mark = { heads: heads.length, handled: handled.length, lists, deepest, count, plotWork, animationBytes, dataBytes };
     deepest = depth;
     writeNode(node, parent, depth);
-    if (lists === mark.lists) {
-      const values = output.slice(index), at = heads.slice(mark.heads).map(head => head - index);
+    const heads2 = heads.slice(mark.heads);
+    if (lists === mark.lists && !heads2.includes(-1)) {
+      const values = output.slice(index), at = heads2.map(head => head - index);
       for (let i = 1; i < at.length; i++) values[at[i] + 1] -= index;
       slices.set(node, { values, heads: at, handlers: handled.slice(mark.handled), depth: deepest - depth, nodes: count - mark.count,
-        plotWork: plotWork - mark.plotWork, animationBytes: animationBytes - mark.animationBytes, dataBytes: dataBytes - mark.dataBytes });
+        plotWork: plotWork - mark.plotWork, animationBytes: animationBytes - mark.animationBytes, dataBytes: dataBytes - mark.dataBytes,
+        serial, offset: index });
     }
     deepest = Math.max(deepest, mark.deepest);
   };
@@ -161,6 +181,7 @@ export function encodeTree(tree, windows) {
     if (seededAnchor) node.list.cache.clear();
   };
   write(tree, -1, 0);
+  output.push(WIRE_SERIAL, serial, '', '', '', 0);
   return output;
 }
 

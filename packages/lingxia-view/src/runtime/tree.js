@@ -1,7 +1,7 @@
 import { render, page, outsideRender } from './state.js';
 import { h, resetArena, clearArena } from './nodes.js';
 import { resolveNode, listTag } from './elements.js';
-import { encodeTree, copyTree, retainCells, renderRow } from './encode.js';
+import { encodeTree, copyTree, retainCells, renderRow, wireReset } from './encode.js';
 import { validInputText } from './data.js';
 import { report, resetActions, actionEpochNow, hasActionEpoch } from './actions.js';
 import { sited } from './errors.js';
@@ -160,6 +160,7 @@ export function reset() {
   page.resources.clear();
   resetActions();
   resetOverlays(); resetPicker(); resetTopLayer(); resetFrameMeasures();
+  wireReset();
 }
 
 const accepts = (kind, value) => kind === 'number' ? typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1e9

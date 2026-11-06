@@ -41,6 +41,8 @@ impl ViewSession {
         std::mem::swap(&mut self.context, &mut other.context);
         std::mem::swap(&mut self._runtime, &mut other._runtime);
         std::mem::swap(&mut self.budget, &mut other.budget);
+        // The buffers each isolate referenced are its own.
+        self.wire.swap(&other.wire);
         // A swapped-in module's first frame warms the engine, as a loaded one's does.
         self.warm.swap(&other.warm);
         self.overruns.swap(&other.overruns);

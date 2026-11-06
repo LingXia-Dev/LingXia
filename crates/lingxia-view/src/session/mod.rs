@@ -7,7 +7,7 @@ pub mod lifecycle;
 pub mod metrics;
 pub mod state;
 
-use crate::engine::{RongJS, decode_buffer, decode_context_timed};
+use crate::engine::{RongJS, decode_buffer};
 use crate::{DisplayList, Frame, Renderer};
 use rong::{JSEngine, Source};
 use std::{cell::Cell, collections::HashMap, sync::Arc, time::Duration};
@@ -63,6 +63,8 @@ pub struct ViewSession {
     image_notified: std::collections::HashSet<(String, crate::ImageSource)>,
     inputs: crate::interaction::input_state::Inputs,
     input_records: Option<Vec<crate::protocol::Record>>,
+    /// The last buffer the View encoded and the host decoded; the next may reference it.
+    wire: std::cell::RefCell<crate::protocol::Wire>,
     input_dirty: bool,
     /// The View's last run read a host-context key (`env.sizeClass`, `env.canDock`).
     reads_host_context: bool,
@@ -198,6 +200,7 @@ impl ViewSession {
             image_notified: Default::default(),
             inputs: Default::default(),
             input_records: None,
+            wire: Default::default(),
             animation_inventory: Default::default(),
             animation_visible: Default::default(),
             input_dirty: false,
@@ -236,6 +239,7 @@ impl ViewSession {
     /// Keep module globals and replicated Logic data, but release local state and input handles.
     pub fn reset(&mut self) -> Result<(), String> {
         self.eval("__lingxiaReset()")?;
+        *self.wire.borrow_mut() = Default::default();
         self.animations.clear()?;
         self.pending_animation = None;
         self.presenting_animation = None;

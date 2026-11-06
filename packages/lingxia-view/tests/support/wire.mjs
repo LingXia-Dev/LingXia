@@ -10,6 +10,8 @@ export function decode(buffer) {
   const nodes = [], offsets = new Map();
   for (let cursor = 0; cursor < buffer.length;) {
     const [tag, parent, key, testId, text, count] = buffer.slice(cursor, cursor + 6);
+    // The buffer's serial number heads it; tests never acknowledge, so no reference follows.
+    if (tag === -3) { cursor += 6; continue; }
     const props = {};
     for (let i = 0; i < count; i++) {
       const name = fieldNames[buffer[cursor + 6 + i * 2]], value = buffer[cursor + 7 + i * 2];
