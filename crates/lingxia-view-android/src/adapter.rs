@@ -706,14 +706,6 @@ impl HostEvents for AndroidAdapter {
         self.void(jni_str!("loaded"));
     }
     fn presented(&self, frame: &FrameSnapshot, timing: &FrameTiming) {
-        let started = Instant::now();
-        // Borrow the metrics text instead of building the whole frame as a value.
-        let metrics =
-            serde_json::from_str::<HashMap<&str, &serde_json::value::RawValue>>(&frame.json)
-                .ok()
-                .and_then(|snapshot| snapshot.get("metrics").map(|raw| raw.get().to_owned()))
-                .unwrap_or_default();
-        let metrics_us = started.elapsed().as_micros();
         // An exiting dialog still covers the bars until its exit ends.
         let open = frame.frame.nodes.iter().any(|node| {
             node.role.as_deref() == Some("dialog")
@@ -725,23 +717,29 @@ impl HostEvents for AndroidAdapter {
         }
         let started = Instant::now();
         self.void(jni_str!("presented"));
-        info(&format!(
-            "present generation={} surface={} size={}x{} workerMs={} workerQueueUs={} uiWaitUs={} uiUs={} reconcileUs={} metricsUs={metrics_us} presentedUs={} rebuild={} caretVisible={} nodes={} images={} metrics={metrics}",
-            frame.generation.get(),
-            self.gpu.load(Ordering::Acquire),
-            frame.width,
-            frame.height,
-            timing.worker_us / 1000,
-            timing.queue_us,
-            timing.wait_us,
-            timing.main_us,
-            self.reconcile_us.load(Ordering::Relaxed),
-            started.elapsed().as_micros(),
-            timing.rebuild,
-            timing.caret_visible,
-            frame.frame.nodes.len(),
-            frame.loaded_images,
-        ));
+        if log::log_enabled!(target: "lingxia_view", log::Level::Debug) {
+            let metrics = serde_json::to_string(&frame.metrics).unwrap_or_default();
+            write(
+                3,
+                &format!(
+                    "present generation={} surface={} size={}x{} workerMs={} workerQueueUs={} uiWaitUs={} uiUs={} reconcileUs={} presentedUs={} rebuild={} caretVisible={} nodes={} images={} metrics={metrics}",
+                    frame.generation.get(),
+                    self.gpu.load(Ordering::Acquire),
+                    frame.width,
+                    frame.height,
+                    timing.worker_us / 1000,
+                    timing.queue_us,
+                    timing.wait_us,
+                    timing.main_us,
+                    self.reconcile_us.load(Ordering::Relaxed),
+                    started.elapsed().as_micros(),
+                    timing.rebuild,
+                    timing.caret_visible,
+                    frame.frame.nodes.len(),
+                    frame.loaded_images,
+                ),
+            );
+        }
     }
     fn message(&self, connection: ConnectionTicket, message: &str) {
         self.java(|env, platform| {

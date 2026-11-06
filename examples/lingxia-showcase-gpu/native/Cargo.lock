@@ -3342,6 +3342,7 @@ version = "0.28.0"
 dependencies = [
  "jni",
  "lingxia-view",
+ "log",
  "raw-window-handle",
  "roxmltree",
  "serde_json",
