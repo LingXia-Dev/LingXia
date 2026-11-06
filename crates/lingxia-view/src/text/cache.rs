@@ -86,6 +86,11 @@ impl ShapedText {
         }
     }
 
+    /// The cache entry this text was shaped as; equal entries measure the same.
+    pub(crate) fn shape_id(&self) -> Option<u64> {
+        self.shape
+    }
+
     pub(crate) fn into_layout(self) -> TextLayout {
         Arc::unwrap_or_clone(self.layout)
     }

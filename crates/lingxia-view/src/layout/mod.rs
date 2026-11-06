@@ -3,6 +3,7 @@ use crate::protocol::{field, tag};
 pub(crate) mod grid;
 pub mod list;
 pub(crate) mod list_layout;
+pub(crate) mod persistent;
 pub(crate) mod style;
 #[cfg(test)]
 mod tests;
@@ -33,6 +34,8 @@ pub struct Renderer {
     pub(crate) palette: crate::theme::Palette,
     /// `@font-face` names this page declared, to the families their loaded files registered.
     pub(crate) font_faces: std::collections::HashMap<String, Vec<String>>,
+    /// The layout tree of the last frame, whose cached boxes the next one starts from.
+    pub(crate) layout_tree: Option<persistent::LayoutTree>,
 }
 
 #[cfg(test)]
@@ -55,12 +58,15 @@ impl Default for Renderer {
             dark: false,
             palette: crate::theme::Palette::builtin(false),
             font_faces: Default::default(),
+            layout_tree: None,
         }
     }
 }
 
 impl Renderer {
     pub(crate) fn clear_text_cache(&mut self) {
+        // Measured text sizes in the kept layout tree came from the cleared shapes.
+        self.layout_tree = None;
         self.text_cache.clear();
         self.shadow_cache.clear();
     }
@@ -146,8 +152,21 @@ impl Renderer {
             layouts.push(self.shape(record, &styles[index], &texts[index], &runs));
         }
         let parents = style::layout_parents(records);
-        let mut tree: TaffyTree<usize> = TaffyTree::new();
-        let mut ids = Vec::new();
+        let identities = crate::protocol::identities(records);
+        let needs_baselines = records.iter().any(|record| {
+            record.string(field::ALIGN) == Some("baseline")
+                || record.string(field::ALIGN_SELF) == Some("baseline")
+        });
+        let mut kept = persistent::LayoutTree::reuse(
+            self.layout_tree.take(),
+            persistent::FrameKey {
+                width,
+                height,
+                scale: scale.to_bits(),
+                baselines: needs_baselines,
+            },
+        );
+        let mut ids = Vec::with_capacity(records.len());
         let mut children: Vec<Vec<usize>> = vec![Vec::new(); records.len()];
         for (index, record) in records.iter().enumerate() {
             let mut style = style::node_style(
@@ -165,65 +184,47 @@ impl Renderer {
             if let Some(ch) = record.number(field::MAX_WIDTH_CH) {
                 style.max_size.width = length(ch * self.zero_advance(&styles[index]));
             }
-            let id = tree
-                .new_leaf_with_context(style, index)
-                .map_err(|e| e.to_string())?;
+            let measure = match &layouts[index] {
+                Some(text) => text.shape_id().map(|shape| {
+                    use std::hash::{Hash, Hasher};
+                    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                    shape.hash(&mut hasher);
+                    record.tag.hash(&mut hasher);
+                    styles[index].nowrap.hash(&mut hasher);
+                    for id in [field::TEXT_LINES, field::ROWS, field::MAX_ROWS] {
+                        record.number(id).map(f32::to_bits).hash(&mut hasher);
+                    }
+                    hasher.finish()
+                }),
+                None => Some(0),
+            };
+            ids.push(kept.node(&identities[index], style, index, measure)?);
             if let Some(parent) = parents[index].filter(|_| !run) {
-                if records[parent].tag == tag::LIST {
-                    tree.add_child(ids[parent], id).map_err(|e| e.to_string())?;
-                } else {
-                    children[parent].push(index);
-                }
+                children[parent].push(index);
             }
-            if record.tag == tag::LIST {
-                // Zero-width spacers do not contribute to Taffy's scroll overflow.
-                let spacer = tree
-                    .new_leaf(Style {
-                        size: Size {
-                            width: Dimension::AUTO,
-                            height: length(record.number(field::LIST_LEADING).unwrap_or(0.0)),
-                        },
-                        flex_shrink: 0.0,
-                        ..Default::default()
-                    })
-                    .map_err(|e| e.to_string())?;
-                tree.add_child(id, spacer).map_err(|e| e.to_string())?;
-            }
-            ids.push(id);
         }
         // CSS `order` reorders flex and grid items for layout; reading order keeps the source.
         for (parent, mut items) in children.into_iter().enumerate() {
-            if items.is_empty() {
+            let record = &records[parent];
+            if matches!(record.tag, tag::SPAN | tag::LINK) {
                 continue;
             }
-            items.sort_by_key(|item| records[*item].number(field::ORDER).unwrap_or(0.0) as i32);
-            let items: Vec<_> = items.into_iter().map(|item| ids[item]).collect();
-            tree.set_children(ids[parent], &items)
-                .map_err(|e| e.to_string())?;
+            let mut nodes = Vec::with_capacity(items.len() + 2);
+            if record.tag == tag::LIST {
+                let leading = record.number(field::LIST_LEADING).unwrap_or(0.0);
+                nodes.push(kept.spacer(&identities[parent], 0, leading)?);
+                nodes.extend(items.iter().map(|item| ids[*item]));
+                let trailing = record.number(field::LIST_TRAILING).unwrap_or(0.0);
+                nodes.push(kept.spacer(&identities[parent], 1, trailing)?);
+            } else {
+                items.sort_by_key(|item| records[*item].number(field::ORDER).unwrap_or(0.0) as i32);
+                nodes.extend(items.iter().map(|item| ids[*item]));
+            }
+            kept.set_children(ids[parent], &nodes)?;
         }
-        for (index, record) in records
-            .iter()
-            .enumerate()
-            .filter(|(_, r)| r.tag == tag::LIST)
-        {
-            let spacer = tree
-                .new_leaf(Style {
-                    size: Size {
-                        width: Dimension::AUTO,
-                        height: length(record.number(field::LIST_TRAILING).unwrap_or(0.0)),
-                    },
-                    flex_shrink: 0.0,
-                    ..Default::default()
-                })
-                .map_err(|e| e.to_string())?;
-            tree.add_child(ids[index], spacer)
-                .map_err(|e| e.to_string())?;
-        }
+        kept.prune()?;
         let root = *ids.first().ok_or("UI_ROOT: missing")?;
-        let needs_baselines = records.iter().any(|record| {
-            record.string(field::ALIGN) == Some("baseline")
-                || record.string(field::ALIGN_SELF) == Some("baseline")
-        });
+        let tree = &mut kept.tree;
         tree.compute_layout_with_measure(
             root,
             Size {
@@ -358,13 +359,14 @@ impl Renderer {
         .map_err(|e| e.to_string())?;
         let retained = self.build_scene(
             records,
-            &tree,
+            &*tree,
             &ids,
             (&styles, &texts, &paragraphs),
             &mut layouts,
             &groups,
             (width, height, scale),
         )?;
+        self.layout_tree = Some(kept);
         Arc::new(retained).compose(offsets)
     }
 }
