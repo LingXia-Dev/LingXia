@@ -719,7 +719,7 @@ export const LX_RETURNED_OBJECT_SURFACES = [
     members: VIDEO_CONTEXT_API,
     properties: [],
     optionalProperties: [],
-    fixture: 'runtime-safe',
+    fixture: 'native-component',
     factory: 'lx.createVideoContext',
   },
   {

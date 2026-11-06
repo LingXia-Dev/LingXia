@@ -171,27 +171,8 @@ impl WindowsWebViewHandler {
         super::composition::find_composition_surface_hwnd(self.native_view().window)
     }
 
-    /// Queues island visuals and replays the last content geometry so they
-    /// are staged inside WebView2's existing DComp commit. Must not be
-    /// paired with HWND z-order.
-    pub fn sync_island_visuals(
-        &self,
-        visuals: Vec<super::composition::IslandVisualSpec>,
-    ) -> StdResult<()> {
-        self.webview.inner.sync_island_visuals(visuals)
-    }
-
-    /// Uploads a decoded MFPlay frame onto the island video visual. Does not
-    /// commit the shared DComp device (WebView2 presents it).
-    pub fn present_island_video_frame(
-        &self,
-        frame: super::composition::IslandVideoFrame,
-    ) -> StdResult<()> {
-        self.webview.inner.present_island_video_frame(frame)
-    }
-
-    /// `PrintWindow` of the DComp target, including island visuals above the
-    /// webview visual. Not `CapturePreview` (that sees only WebView2).
+    /// `PrintWindow` of the DComp target (including the corner wedges). Not
+    /// `CapturePreview`, which sees only WebView2.
     pub fn capture_composition_surface(
         &self,
     ) -> StdResult<super::composition::CompositionSurfacePixels> {

@@ -4,7 +4,6 @@ import '../platform/desktop/browser-cover-restore.test.js';
 import '../platform/desktop/surface-workspace.test.js';
 import '../platform/desktop/surface-window.test.js';
 import '../platform/desktop/surface-tab.test.js';
-import '../platform/desktop/video-fullscreen.test.js';
 // Same order as macOS: overlay preview after in-page video fullscreen.
 import '../pages/preview-https.test.js';
 import '../platform/desktop/terminal-api.test.js';

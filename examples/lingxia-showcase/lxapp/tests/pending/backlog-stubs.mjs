@@ -92,11 +92,25 @@ export default [
     reason: "OS file picker and viewer stay external-ui",
   },
   {
+    id: "PEND-VIDEO-CONTEXT-001",
+    title: "VideoContext commands against a mounted native video component",
+    mode: "external-fixture",
+    covers: [
+      "lx.createVideoContext",
+      "VideoContext.play",
+      "VideoContext.pause",
+      "VideoContext.stop",
+      "VideoContext.seek",
+      "VideoContext.requestFullScreen",
+    ],
+    reason: "the Showcase ships no native video component; a host app that mounts one owns this check",
+  },
+  {
     id: "PEND-VIDEO-STREAM-001",
     title: "VideoContext setStreamSource against a stream provider",
     mode: "external-fixture",
     covers: ["VideoContext.setStreamSource"],
-    reason: "needs a host stream provider addon; the Showcase has none",
+    reason: "needs a native video component and a host stream provider addon; the Showcase has neither",
   },
   {
     id: "PEND-NET-FIRE-001",
@@ -141,13 +155,6 @@ export default [
     mode: "planned",
     covers: ["lx.navigateToApp", "lx.navigateBackApp"],
     reason: "Windows leaves the target current after navigateBackApp instead of returning to the caller, and on both desktops the hop leaves the bundled chat lxapp in a state the workspace cases cannot reuse; NAV-APP-001 proves the contract on Android",
-  },
-  {
-    id: "PEND-VIDEO-FS-WINDOWS-001",
-    title: "native video fullscreen on Windows",
-    mode: "planned",
-    covers: ["VideoContext.requestFullScreen"],
-    reason: "requestFullScreen rejects with an internal error on Windows while playback itself works; DESKTOP-VIDEO-FULLSCREEN-001 proves the contract on macOS",
   },
   {
     id: "PEND-PREVIEW-DISMISS-001",

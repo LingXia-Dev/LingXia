@@ -24,7 +24,6 @@ pub mod lifecycle;
 pub mod log {
     pub use lingxia_log::{LogLevel, LogMessage, LogProvider};
 }
-pub mod inline_native;
 #[cfg(feature = "js-appservice")]
 pub mod lx;
 mod lxapp;

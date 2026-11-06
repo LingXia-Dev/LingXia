@@ -3209,7 +3209,7 @@ impl LxApp {
             .unwrap_or_default()
     }
 
-    /// Hosts apply this list to island media URLs (`src` / `poster` / quality / commands).
+    /// Network domains the host granted this lxapp (`security.network.trustedDomains`).
     pub fn trusted_network_domains(&self) -> Vec<String> {
         self.host_permissions.domains()
     }

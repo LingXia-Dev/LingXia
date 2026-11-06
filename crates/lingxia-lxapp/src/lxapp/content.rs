@@ -351,15 +351,11 @@ fn find_bridge_runtime_script_start(html: &str, require_trusted_sentinel: bool) 
 fn build_content_security_policy() -> String {
     [
         "default-src 'self' lx: lingxia:".to_string(),
-        // Images are passive, non-executing content: restricting their
-        // origins buys little (worst case a tracking pixel) but breaks any
-        // runtime-provided asset — e.g. tenant logos / user avatars from
-        // `lx.auth` identities live on arbitrary CDNs an app cannot
-        // predeclare in a host network grant. All https images are therefore
-        // allowed; network *requests* (fetch) remain gated by
-        // the host-granted network policy in the Logic runtime.
-        // no media-src: View media is rejected by lingxia build; leftovers use default-src.
+        // View passive content (images, media) loads over any https origin;
+        // active network (connect, script, worker, frame) stays closed and
+        // Logic network is gated by host trustedDomains.
         "img-src 'self' lx: lingxia: data: blob: https:".to_string(),
+        "media-src 'self' lx: lingxia: data: blob: https:".to_string(),
         build_connect_src_policy(),
         "script-src 'self' lx: lingxia: 'unsafe-inline'".to_string(),
         "style-src 'self' lx: lingxia: 'unsafe-inline'".to_string(),
@@ -527,8 +523,6 @@ mod tests {
     fn csp_allows_all_https_images() {
         let csp = build_content_security_policy();
 
-        // Images are passive content: https: is always allowed. Fetch stays
-        // gated by the host's network grant in the Logic runtime, not by CSP.
         assert!(csp.contains("img-src 'self' lx: lingxia: data: blob: https:"));
         #[cfg(any(target_os = "ios", target_os = "macos"))]
         assert!(csp.contains("connect-src lx-apple:"));
@@ -544,9 +538,9 @@ mod tests {
     }
 
     #[test]
-    fn csp_does_not_set_media_src() {
+    fn csp_allows_https_media() {
         let csp = build_content_security_policy();
-        assert!(!csp.contains("media-src"));
+        assert!(csp.contains("media-src 'self' lx: lingxia: data: blob: https:"));
         assert!(csp.contains("default-src 'self' lx: lingxia:"));
     }
 

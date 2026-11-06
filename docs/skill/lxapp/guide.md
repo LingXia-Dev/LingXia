@@ -612,6 +612,4 @@ capsule, use the CSS variables; never hard-code platform heights:
 - Expecting `App({}).globalData` changes to re-render.
 - `navigateTo` / `redirectTo` on a tab page.
 - Dropping the function an `lx.on*` call returns.
-- Using `<video>`, `<audio>`, or `new Audio()`: see
-  [LxVideo](./components.md#lxvideo).
 - Missing `@lingxia/types`: see [Install typing](./lx-api.md#install-typing).

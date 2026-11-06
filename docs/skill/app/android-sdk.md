@@ -4,8 +4,8 @@ Android host hooks beyond `Lingxia.quickStart(activity)`.
 
 ## URL player engine
 
-Replace the default ExoPlayer URL backend of `lx.previewMedia` (and, opt-in,
-`<LxVideo>`) with an engine the host APK ships, such as libmpv. Register on the
+Replace the default ExoPlayer URL backend of `lx.previewMedia` and media
+swiper video with an engine the host APK ships, such as libmpv. Register on the
 main thread before `quickStart`; load native `.so` files earlier, in
 `Application.onCreate`.
 
@@ -22,8 +22,8 @@ Lingxia.setUrlPlayerEngineFactory(object : UrlPlayerEngineFactory {
 Lingxia.quickStart(this) { registerHostAddon() }
 ```
 
-- `create() == null` keeps ExoPlayer for that surface. `INLINE` (`<LxVideo>`,
-  media swiper) output is always `TextureView`.
+- `create() == null` keeps ExoPlayer for that surface. `INLINE` (media swiper)
+  output is always `TextureView`.
 - Each player snapshots the factory when constructed; a later call does not
   swap live players.
 - Emit `FirstFrameRendered` only once a frame reached the surface. No HTTP

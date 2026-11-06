@@ -114,8 +114,8 @@ export struct LingXiaWebView {
     // Stack's default Center alignment splits the reserved space across
     // top and bottom, opening a band under the navbar.
     .alignContent(Alignment.TopStart)
-    // Native islands are Stack siblings of ArkWeb. Keep offscreen and partially
-    // visible islands inside the same viewport contract as the page itself.
+    // Native components are Stack siblings of ArkWeb. Keep offscreen and partially
+    // visible ones inside the same viewport contract as the page itself.
     .clip(true)
     .translate(this.renderTranslate)
   }
