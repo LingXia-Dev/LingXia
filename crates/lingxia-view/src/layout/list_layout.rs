@@ -249,6 +249,7 @@ pub(crate) fn reconcile(
             })
             .collect();
         let measured = state.metrics.measure(&rows, position, viewport)?;
+        let measured = state.metrics.adapt_estimate(measured, viewport)?;
         let mut target = scroll.offset + (measured - original_position) as f32;
         let mut glide = None;
         let next_anchor = record.string(field::LIST_ANCHOR).map(str::to_owned);

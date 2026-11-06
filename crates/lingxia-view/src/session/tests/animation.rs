@@ -456,8 +456,10 @@ fn keyed_virtual_row_animation_survives_reorder_and_window_eviction() {
     );
     let mut page = ViewSession::new(&source).unwrap();
     let initial = page.layout(200, 120, 1.0).unwrap();
-    assert!(
-        initial.nodes[0].scroll.as_ref().unwrap().max_offset > 5000.0,
+    // Unrealized rows are estimated at the measured rows' 40 px.
+    assert_eq!(
+        initial.nodes[0].scroll.as_ref().unwrap().max_offset,
+        100.0 * 40.0 - 120.0,
         "unrealized rows must contribute their estimated scroll extent"
     );
     let item = initial

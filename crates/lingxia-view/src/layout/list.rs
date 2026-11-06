@@ -3,6 +3,8 @@ use std::{collections::HashSet, ops::Range};
 
 pub const MAX_ROWS: usize = crate::protocol::limits::LIST_ROWS;
 const MAX_HEIGHT: f64 = 16_384.0;
+/// How far the measured mean may drift from the estimate before unmeasured rows move.
+const ESTIMATE_SLACK: f64 = 1.0;
 
 pub(crate) fn item_key(value: &str) -> String {
     format!("key:{}", serde_json::to_string(value).unwrap())
@@ -31,6 +33,9 @@ pub struct ListMetrics {
     estimate: f64,
     measured: Vec<Option<f64>>,
     sums: Vec<f64>,
+    /// Sum and count of measured heights: unmeasured rows are estimated at their mean.
+    measured_total: f64,
+    measured_rows: usize,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -62,6 +67,8 @@ impl ListMetrics {
             estimate,
             measured: vec![None; count],
             sums: Vec::new(),
+            measured_total: 0.0,
+            measured_rows: 0,
         };
         result.rebuild();
         Ok(result)
@@ -128,7 +135,13 @@ impl ListMetrics {
         let position = self.position(offset, viewport);
         for &(index, height) in rows {
             let previous = self.height(index);
-            self.measured[index] = Some(height);
+            match self.measured[index].replace(height) {
+                Some(old) => self.measured_total += height - old,
+                None => {
+                    self.measured_total += height;
+                    self.measured_rows += 1;
+                }
+            }
             if previous == height {
                 continue;
             }
@@ -141,6 +154,24 @@ impl ListMetrics {
         Ok(self.restore(position, viewport))
     }
 
+    /// Estimates unmeasured rows at the measured mean, keeping the first visible row in place:
+    /// a window predicted from a stale estimate misses rows and costs a second render.
+    pub fn adapt_estimate(&mut self, offset: f64, viewport: f64) -> Result<f64, String> {
+        validate_viewport(offset, viewport)?;
+        // Whole pixels, as layout rounds boxes: a fractional estimate would shift the spacers.
+        let mean = (self.measured_total / self.measured_rows.max(1) as f64).round();
+        if self.measured_rows == 0
+            || (mean - self.estimate).abs() <= ESTIMATE_SLACK
+            || !(mean > 0.0 && mean <= MAX_HEIGHT)
+        {
+            return Ok(self.clamp_offset(offset, viewport));
+        }
+        let position = self.position(offset, viewport);
+        self.estimate = mean;
+        self.rebuild();
+        Ok(self.restore(position, viewport))
+    }
+
     /// Existing row indices retain measurements; removed rows cannot revive on growth.
     pub fn resize(&mut self, count: usize, offset: f64, viewport: f64) -> Result<f64, String> {
         validate_count(count)?;
@@ -149,6 +180,10 @@ impl ListMetrics {
             return Ok(self.clamp_offset(offset, viewport));
         }
         let position = self.position(offset, viewport);
+        for height in self.measured.iter().skip(count).flatten() {
+            self.measured_total -= height;
+            self.measured_rows -= 1;
+        }
         self.measured.resize(count, None);
         self.rebuild();
         Ok(self.restore(position, viewport))
@@ -161,6 +196,8 @@ impl ListMetrics {
         let position = self.position(offset, viewport);
         self.estimate = estimate;
         self.measured.fill(None);
+        self.measured_total = 0.0;
+        self.measured_rows = 0;
         self.rebuild();
         Ok(self.restore(position, viewport))
     }
@@ -385,6 +422,19 @@ mod tests {
         assert!(ListMetrics::new(1, f64::INFINITY).is_err());
         assert!(list.window(0.0, f64::NAN, 0.0).is_err());
         assert!(list.window(0.0, 100.0, -1.0).is_err());
+    }
+
+    #[test]
+    fn unmeasured_rows_take_the_measured_mean_and_keep_the_visible_row() {
+        let mut list = ListMetrics::new(100, 64.0).unwrap();
+        let offset = list
+            .measure(&[(10, 57.0), (11, 57.0), (12, 58.0)], 640.0, 200.0)
+            .unwrap();
+        let offset = list.adapt_estimate(offset, 200.0).unwrap();
+        assert_eq!(list.total(), 99.0 * 57.0 + 58.0);
+        assert_eq!(list.position(offset, 200.0), (10, 0.0));
+        let unchanged = list.adapt_estimate(offset, 200.0).unwrap();
+        assert_eq!(unchanged, offset);
     }
 
     #[test]
