@@ -62,7 +62,7 @@ pub struct ViewSession {
     image_status: HashMap<crate::ImageSource, bool>,
     image_notified: std::collections::HashSet<(String, crate::ImageSource)>,
     inputs: crate::interaction::input_state::Inputs,
-    input_records: Option<Vec<crate::protocol::Record>>,
+    input_records: Option<std::sync::Arc<[crate::protocol::Record]>>,
     /// The last buffer the View encoded and the host decoded; the next may reference it.
     wire: std::cell::RefCell<crate::protocol::Wire>,
     input_dirty: bool,

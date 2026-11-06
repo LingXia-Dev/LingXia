@@ -74,13 +74,13 @@ pub fn evaluate(
     let invoke = format!(
         "__lingxiaDescribe(__lingxiaRender, {{data: Object.freeze({{}}), actions: Object.freeze({{}}), env: Object.freeze({env})}})"
     );
-    decode_context(&context, &invoke)
+    decode_context(&context, &invoke).map(|records| records.to_vec())
 }
 
 pub(crate) fn decode_context(
     context: &JSContext,
     invoke: &str,
-) -> Result<Vec<crate::protocol::Record>, String> {
+) -> Result<std::sync::Arc<[crate::protocol::Record]>, String> {
     decode_context_timed(context, invoke).map(|(records, _)| records)
 }
 
@@ -101,7 +101,7 @@ pub(crate) fn decode_context_timed(
     invoke: &str,
 ) -> Result<
     (
-        Vec<crate::protocol::Record>,
+        std::sync::Arc<[crate::protocol::Record]>,
         crate::session::metrics::ViewTimings,
     ),
     String,
@@ -119,7 +119,7 @@ pub(crate) fn decode_buffer(
     wire: Option<&mut crate::protocol::Wire>,
 ) -> Result<
     (
-        Vec<crate::protocol::Record>,
+        std::sync::Arc<[crate::protocol::Record]>,
         crate::session::metrics::ViewTimings,
     ),
     String,
@@ -146,7 +146,7 @@ pub(crate) fn decode_buffer(
             decode_us: 0,
             values: 0,
         };
-        return Ok((Vec::new(), timings));
+        return Ok((Default::default(), timings));
     }
     if count as usize > crate::protocol::limits::WIRE_VALUES {
         return Err("UI_LIMIT: buffer too large".into());
@@ -181,7 +181,7 @@ pub(crate) fn decode_buffer(
             *wire = next;
             records
         }
-        None => crate::protocol::decode(&buffer)?,
+        None => crate::protocol::decode(&buffer)?.into(),
     };
     let decode_us = crate::session::metrics::micros(started);
     Ok((

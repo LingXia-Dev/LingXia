@@ -543,7 +543,7 @@ impl ViewSession {
             for _ in 0..8 {
                 animation.validate(&records)?;
                 inputs.reconcile(&records, &mut self.renderer)?;
-                let mut render_records = records.clone();
+                let mut render_records = records.to_vec();
                 strip_record_animations(&mut render_records);
                 inputs.apply_values(&mut render_records);
                 inputs.apply_styles(&mut render_records)?;
@@ -555,7 +555,7 @@ impl ViewSession {
                         .as_ref()
                         .zip(self.input_records.as_ref())
                         .and_then(|(retained, previous)| {
-                            let mut previous = previous.clone();
+                            let mut previous = previous.to_vec();
                             strip_record_animations(&mut previous);
                             self.inputs.apply_values(&mut previous);
                             self.inputs.apply_styles(&mut previous).ok()?;

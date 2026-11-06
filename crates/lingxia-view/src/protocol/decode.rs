@@ -17,7 +17,7 @@ struct Page {
 #[derive(Default)]
 pub struct Wire {
     serial: u64,
-    records: Vec<Record>,
+    records: std::sync::Arc<[Record]>,
     offsets: HashMap<i64, usize>,
     depths: Vec<usize>,
 }
@@ -34,7 +34,7 @@ const WIRE_SERIAL: i64 = -3;
 const WIRE_REUSE: i64 = -2;
 
 pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
-    decode_wire(buffer, None).map(|(records, _)| records)
+    walk(buffer, None).map(|(records, _)| records)
 }
 
 /// Decodes `buffer`, whose reused subtrees may stand as references into `previous`; also
@@ -42,7 +42,17 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
 pub fn decode_wire(
     buffer: &[Value],
     previous: Option<&Wire>,
-) -> Result<(Vec<Record>, Wire), String> {
+) -> Result<(std::sync::Arc<[Record]>, Wire), String> {
+    let (records, mut wire) = walk(buffer, previous)?;
+    let records: std::sync::Arc<[Record]> = records.into();
+    if wire.serial != 0 {
+        wire.records = records.clone();
+    }
+    Ok((records, wire))
+}
+
+/// The records of `buffer`, and its wire without the records.
+fn walk(buffer: &[Value], previous: Option<&Wire>) -> Result<(Vec<Record>, Wire), String> {
     let mut page = Page::default();
     let mut serial = 0;
     let mut records: Vec<Record> = Vec::new();
@@ -182,11 +192,7 @@ pub fn decode_wire(
     budgets(&records)?;
     let wire = Wire {
         serial,
-        records: if serial == 0 {
-            Vec::new()
-        } else {
-            records.clone()
-        },
+        records: Default::default(),
         offsets,
         depths,
     };
