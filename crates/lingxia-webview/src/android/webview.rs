@@ -472,7 +472,7 @@ impl WebViewInner {
         let device_y = (result.cy * dpr) as f32;
         with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
             env.call_method(
-                &*self.get_java_webview(),
+                self.get_java_webview(),
                 jni_str!("dispatchClickAt"),
                 jni_sig!("(FF)V"),
                 &[device_x.into(), device_y.into()],
@@ -504,7 +504,7 @@ impl WebViewInner {
         let device_dy = (dy * dpr).round() as i32;
         with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
             env.call_method(
-                &*self.get_java_webview(),
+                self.get_java_webview(),
                 jni_str!("scrollByPixels"),
                 jni_sig!("(II)V"),
                 &[device_dx.into(), device_dy.into()],
@@ -558,7 +558,7 @@ impl WebViewInner {
             let device_dy = ((top - 40.0) * dpr).round() as i32;
             with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
                 env.call_method(
-                    &*self.get_java_webview(),
+                    self.get_java_webview(),
                     jni_str!("scrollByPixels"),
                     jni_sig!("(II)V"),
                     &[0i32.into(), device_dy.into()],
@@ -577,9 +577,9 @@ impl WebViewInner {
 impl WebViewController for WebViewInner {
     fn load_url(&self, url: &str) -> Result<(), WebViewError> {
         with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
-            let url_string = env.new_string(&url)?;
+            let url_string = env.new_string(url)?;
             env.call_method(
-                &*self.get_java_webview(),
+                self.get_java_webview(),
                 jni_str!("loadUrl"),
                 jni_sig!("(Ljava/lang/String;)V"),
                 &[(&url_string).into()],
@@ -594,12 +594,12 @@ impl WebViewController for WebViewInner {
             let data_string = env.new_string(request.data)?;
             let base_url_string = env.new_string(request.base_url)?;
             let history_url_string = match request.history_url {
-                Some(url) => env.new_string(&url)?,
+                Some(url) => env.new_string(url)?,
                 None => env.new_string(request.base_url)?,
             };
 
             env.call_method(
-                &*self.get_java_webview(),
+                self.get_java_webview(),
                 jni_str!("loadHtmlData"),
                 jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V"),
                 &[
@@ -617,7 +617,7 @@ impl WebViewController for WebViewInner {
         with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
             let script_string = env.new_string(js)?;
             env.call_method(
-                &*self.get_java_webview(),
+                self.get_java_webview(),
                 jni_str!("evaluateJavascript"),
                 jni_sig!("(Ljava/lang/String;Landroid/webkit/ValueCallback;)V"),
                 &[(&script_string).into(), (&JObject::null()).into()],
@@ -692,14 +692,14 @@ impl WebViewController for WebViewInner {
             let dispatch_result = with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
                 let parse_guard_string = env.new_string(&parse_guard_script)?;
                 env.call_method(
-                    &*self.get_java_webview(),
+                    self.get_java_webview(),
                     jni_str!("evaluateJavascript"),
                     jni_sig!("(Ljava/lang/String;Landroid/webkit/ValueCallback;)V"),
                     &[(&parse_guard_string).into(), (&JObject::null()).into()],
                 )?;
                 let script_string = env.new_string(&script)?;
                 env.call_method(
-                    &*self.get_java_webview(),
+                    self.get_java_webview(),
                     jni_str!("evaluateJavascript"),
                     jni_sig!("(Ljava/lang/String;Landroid/webkit/ValueCallback;)V"),
                     &[(&script_string).into(), (&JObject::null()).into()],
@@ -735,7 +735,7 @@ impl WebViewController for WebViewInner {
     fn clear_browsing_data(&self) -> Result<(), WebViewError> {
         with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
             env.call_method(
-                &*self.get_java_webview(),
+                self.get_java_webview(),
                 jni_str!("clearBrowsingData"),
                 jni_sig!("()V"),
                 &[],
@@ -747,10 +747,10 @@ impl WebViewController for WebViewInner {
 
     fn post_message(&self, message: &str) -> Result<(), WebViewError> {
         with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
-            let msg_string = env.new_string(&message)?;
+            let msg_string = env.new_string(message)?;
 
             env.call_method(
-                &*self.get_java_webview(),
+                self.get_java_webview(),
                 jni_str!("postMessageToWebView"),
                 jni_sig!("(Ljava/lang/String;)V"),
                 &[(&msg_string).into()],
@@ -809,7 +809,7 @@ impl WebViewController for WebViewInner {
             let user_agent = env.new_string(user_agent)?;
 
             env.call_method(
-                &*self.get_java_webview(),
+                self.get_java_webview(),
                 jni_str!("setUserAgentOverride"),
                 jni_sig!("(ZLjava/lang/String;)V"),
                 &[JValue::Bool(use_default), (&user_agent).into()],
@@ -839,7 +839,7 @@ impl WebViewController for WebViewInner {
         {
             let dispatch_result = with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
                 env.call_method(
-                    &*self.get_java_webview(),
+                    self.get_java_webview(),
                     jni_str!("captureScreenshot"),
                     jni_sig!("(J)V"),
                     &[(request_id as i64).into()],

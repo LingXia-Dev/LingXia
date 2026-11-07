@@ -46,16 +46,13 @@ fn extract_exception_message(env: &mut Env) -> Option<String> {
                 jni_str!("toString"),
                 jni_sig!(() -> java.lang.String),
                 &[],
-            ) {
-                if let Ok(msg_jstring) = msg_obj.l() {
-                    if !msg_jstring.is_null() {
-                        let msg_jstring = unsafe {
-                            jni::objects::JString::from_raw(env, msg_jstring.into_raw() as _)
-                        };
-                        if let Ok(msg) = msg_jstring.try_to_string(env) {
-                            return Some(msg);
-                        }
-                    }
+            ) && let Ok(msg_jstring) = msg_obj.l()
+                && !msg_jstring.is_null()
+            {
+                let msg_jstring =
+                    unsafe { jni::objects::JString::from_raw(env, msg_jstring.into_raw() as _) };
+                if let Ok(msg) = msg_jstring.try_to_string(env) {
+                    return Some(msg);
                 }
             }
         }

@@ -47,6 +47,7 @@ pub(crate) trait NativePage: Send + Sync + 'static {
     fn reload(&self, source: &str) -> Result<(), LxAppError>;
     /// Dev sessions: replace the module keeping page state (`ViewHost::swap_module`);
     /// a shell without it reloads.
+    #[cfg_attr(not(feature = "devtool"), allow(dead_code))]
     fn swap_module(&self, source: &str) -> Result<(), LxAppError> {
         self.reload(source)
     }
@@ -54,6 +55,7 @@ pub(crate) trait NativePage: Send + Sync + 'static {
     fn retain_surface(&self, retained: bool) -> Result<(), LxAppError>;
     /// `{op: query|act|screenshot, css, index, all, maxText, action: {kind, text, force}}`,
     /// answered after the presented frame.
+    #[cfg_attr(not(feature = "automation"), allow(dead_code))]
     fn automation(&self, request: serde_json::Value, reply: AutomationReply);
     fn as_any(&self) -> &dyn std::any::Any;
 }
@@ -314,6 +316,7 @@ fn register(lease: Lease, native: Arc<dyn NativePage>) -> Arc<Endpoint> {
 
 /// Dev sessions: swap the module of every live GPU page `select` returns a
 /// source for (by page instance id). Returns how many pages took it.
+#[cfg_attr(not(feature = "devtool"), allow(dead_code))]
 fn swap_pages(select: impl Fn(&str) -> Option<String>) -> Result<usize, LxAppError> {
     let pages: Vec<(String, Token)> = registry()
         .pages
@@ -332,6 +335,7 @@ fn swap_pages(select: impl Fn(&str) -> Option<String>) -> Result<usize, LxAppErr
 }
 
 /// Dev sessions: the pages of `appid` at `path` take the module now in the bundle.
+#[cfg_attr(not(feature = "devtool"), allow(dead_code))]
 pub(crate) fn hot_swap(appid: &str, path: &str) -> Result<usize, LxAppError> {
     swap_pages(|id| {
         let page = lxapp::find_page_by_instance_id(id)?;
@@ -343,6 +347,7 @@ pub(crate) fn hot_swap(appid: &str, path: &str) -> Result<usize, LxAppError> {
 
 /// A page route without query, leading slash or module extension: the runtime knows
 /// `pages/a/index.js`, the dev CLI names the source `pages/a/index`.
+#[cfg_attr(not(feature = "devtool"), allow(dead_code))]
 fn page_key(path: &str) -> &str {
     let path = path.split('?').next().unwrap_or("").trim_start_matches('/');
     match path.rsplit_once('.') {

@@ -40,7 +40,7 @@ fn call_pull_to_refresh(method: &str, app_id: &str, webtag: &str) -> Result<(), 
                 JValue::Object(&webtag_jstring),
             ],
         ) {
-            let _ = env.exception_clear();
+            env.exception_clear();
             return Err(PlatformError::Platform(format!(
                 "Failed to call {}: {:?}",
                 method_name, e

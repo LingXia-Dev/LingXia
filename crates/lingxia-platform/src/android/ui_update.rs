@@ -52,7 +52,7 @@ impl Appearance for Platform {
                 lxapp_class,
                 jni_str!("applyAppearance"),
                 jni_sig!("(Ljava/lang/String;Z)Z"),
-                &[JValue::Object(&appid), JValue::Bool(dark.into())],
+                &[JValue::Object(&appid), JValue::Bool(dark)],
             )?;
             if applied.z()? {
                 Ok(())

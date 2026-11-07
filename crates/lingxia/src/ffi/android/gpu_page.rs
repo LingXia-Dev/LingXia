@@ -186,6 +186,7 @@ impl NativePage for AndroidPage {
     }
 }
 
+#[cfg_attr(not(feature = "automation"), allow(dead_code))]
 static NEXT_REPLY: AtomicI64 = AtomicI64::new(1);
 
 /// Automation replies awaiting their page's UI thread.

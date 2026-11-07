@@ -1221,7 +1221,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getTabBarState<'a>(
             } else {
                 log::warn!(
                     "[Android] Failed to create TabBar item in getTabBarState for {}",
-                    &item.page_path
+                    item.page_path
                 );
             }
         }

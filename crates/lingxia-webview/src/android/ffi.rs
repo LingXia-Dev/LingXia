@@ -836,8 +836,8 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onFileChooserRequ
 
         let request = FileChooserRequest {
             accept_types: accepted,
-            allow_multiple: allow_multiple,
-            allow_directories: allow_directories,
+            allow_multiple,
+            allow_directories,
             capture,
             source_page_url: (!source_url.trim().is_empty()).then_some(source_url),
         };
@@ -863,7 +863,6 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onFileChooserRequ
                 );
             }
         } else {
-            let request_id = request_id as i64;
             let selected_paths = JObject::null();
             let _ = env.call_method(
                 &this,
@@ -919,8 +918,8 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleRequest<'a>
                         if i + 1 < array_len {
                             // Get key and value from array
                             if let (Ok(key_obj), Ok(value_obj)) = (
-                                headers_array.get_element(env, i as usize),
-                                headers_array.get_element(env, (i + 1) as usize),
+                                headers_array.get_element(env, i),
+                                headers_array.get_element(env, i + 1),
                             ) {
                                 let key_jstring = key_obj;
                                 let value_jstring = value_obj;
@@ -928,13 +927,11 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleRequest<'a>
                                 if let (Ok(key_str), Ok(value_str)) = (
                                     key_jstring.try_to_string(env),
                                     value_jstring.try_to_string(env),
+                                ) && let (Ok(name), Ok(val)) = (
+                                    HeaderName::from_bytes(key_str.as_bytes()),
+                                    HeaderValue::from_str(&value_str),
                                 ) {
-                                    if let (Ok(name), Ok(val)) = (
-                                        HeaderName::from_bytes(key_str.as_bytes()),
-                                        HeaderValue::from_str(&value_str),
-                                    ) {
-                                        http_headers.insert(name, val);
-                                    }
+                                    http_headers.insert(name, val);
                                 }
                             }
                         }

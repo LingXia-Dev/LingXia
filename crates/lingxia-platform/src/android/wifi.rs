@@ -89,9 +89,9 @@ impl Wifi for Platform {
                     PlatformError::Platform(format!("Failed to check WiFi status: {}", e))
                 })?;
 
-            Ok(result.z().map_err(|e| {
-                PlatformError::Platform(format!("Failed to parse WiFi status: {}", e))
-            })?)
+            result
+                .z()
+                .map_err(|e| PlatformError::Platform(format!("Failed to parse WiFi status: {}", e)))
         })
     }
 

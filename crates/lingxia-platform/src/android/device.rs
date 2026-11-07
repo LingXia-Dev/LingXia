@@ -273,10 +273,10 @@ impl DeviceHardware for Platform {
                 if line.starts_with("MemTotal:") {
                     // Example: MemTotal:        3942548 kB
                     let parts: Vec<&str> = line.split_whitespace().collect();
-                    if parts.len() >= 2 {
-                        if let Ok(kb) = parts[1].parse::<u64>() {
-                            return Ok(kb * 1024);
-                        }
+                    if parts.len() >= 2
+                        && let Ok(kb) = parts[1].parse::<u64>()
+                    {
+                        return Ok(kb * 1024);
                     }
                 }
             }
@@ -298,15 +298,12 @@ impl DeviceHardware for Platform {
                     if parts.len() == 2 {
                         if let (Ok(start), Ok(end)) =
                             (parts[0].parse::<usize>(), parts[1].parse::<usize>())
+                            && end >= start
                         {
-                            if end >= start {
-                                return end - start + 1;
-                            }
+                            return end - start + 1;
                         }
-                    } else if parts.len() == 1 {
-                        if parts[0].parse::<usize>().is_ok() {
-                            return 1;
-                        }
+                    } else if parts.len() == 1 && parts[0].parse::<usize>().is_ok() {
+                        return 1;
                     }
                     0
                 })

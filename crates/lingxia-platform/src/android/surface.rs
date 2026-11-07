@@ -81,15 +81,14 @@ impl SurfacePresenter for Platform {
                         JValue::Double(request.height_ratio),
                         JValue::Int(request.position as i32),
                         JValue::Int(request.role as i32),
-                        JValue::Bool(request.interaction.close_button.into()),
+                        JValue::Bool(request.interaction.close_button),
                         JValue::Bool(
-                            (request.interaction.dismiss
-                                == lingxia_surface::FloatDismiss::TapOutside)
-                                .into(),
+                            request.interaction.dismiss
+                                == lingxia_surface::FloatDismiss::TapOutside,
                         ),
-                        JValue::Bool(request.interaction.modal.into()),
-                        JValue::Bool(request.ephemeral_web_data.into()),
-                        JValue::Bool(request.url_callback.into()),
+                        JValue::Bool(request.interaction.modal),
+                        JValue::Bool(request.ephemeral_web_data),
+                        JValue::Bool(request.url_callback),
                     ],
                 )?
                 .z()?;

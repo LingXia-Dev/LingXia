@@ -280,7 +280,8 @@ impl<'a> Iterator for RecursiveAssetIterator<'a> {
                 }
             }
 
-            if let Some(dir_to_scan) = self.dir_stack.pop() {
+            {
+                let dir_to_scan = self.dir_stack.pop()?;
                 match self.list_via_jni(&dir_to_scan) {
                     Ok(Some(child_entry_names)) => {
                         let mut discovered_files_in_this_scan = Vec::new();
@@ -317,8 +318,6 @@ impl<'a> Iterator for RecursiveAssetIterator<'a> {
                     Ok(None) => continue,
                     Err(e) => return Some(Err(e)),
                 }
-            } else {
-                return None;
             }
         }
     }
