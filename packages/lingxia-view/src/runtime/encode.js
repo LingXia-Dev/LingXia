@@ -1,6 +1,7 @@
 import { tags, field } from '../generated/wire.js';
 import { limits } from '../generated/contract.js';
 import { utf8Bytes } from './data.js';
+import { now, spent } from './profile.js';
 import { render } from './state.js';
 import { readNode, isNode } from './nodes.js';
 import { keyPayload } from './keys.js';
@@ -218,6 +219,11 @@ function writeRows(node, window, index, depth, write) {
 }
 
 export function renderRow(node, i, cells, depth) {
+  const since = now();
+  try { return renderRowTimed(node, i, cells, depth); } finally { spent('rows', since); }
+}
+
+function renderRowTimed(node, i, cells, depth) {
   const { props, identity } = node;
   const suppliedKey = props.itemKeys?.[i];
   const previous = render.scope;

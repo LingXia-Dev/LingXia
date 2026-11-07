@@ -28,6 +28,24 @@ pub struct FrameMetrics {
     pub layout_motions: usize,
     /// Deterministic counters of the frame, compared against the page limits.
     pub cost: crate::FrameCost,
+    /// Where View eval went, when the page opted its dev clock into phases.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub view_phases: Option<ViewPhases>,
+}
+
+/// Eval time by runtime phase in µs; spans nest (recall in resolve, rows in encode).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ViewPhases {
+    pub render: u64,
+    pub resolve: u64,
+    pub recall: u64,
+    pub rows: u64,
+    pub encode: u64,
+    pub windows: u64,
+    pub commit: u64,
+    /// Vnodes created.
+    pub h: u64,
 }
 
 fn is_zero(value: &usize) -> bool {

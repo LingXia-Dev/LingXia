@@ -23,4 +23,4 @@ pub use scene::slider::SliderSnapshot;
 pub use session::ViewSession;
 pub use session::app::{ViewApp, ViewPageId};
 pub use session::image_requests::{ImageRequest, ImageRequests, ImageSource};
-pub use session::metrics::FrameMetrics;
+pub use session::metrics::{FrameMetrics, ViewPhases};

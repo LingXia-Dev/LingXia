@@ -1,4 +1,5 @@
 import { render } from './state.js';
+import { counted } from './profile.js';
 
 // JSX produces handles into a per-render arena; a handle from another render is stale.
 let arena = [], epoch = 0;
@@ -22,6 +23,7 @@ export const nodeKey = value => isNode(value) ? readNode(value)[1].key : undefin
 export function h(tag, props, ...children) {
   if (!render.active) throw Error('UI_SCOPE: JSX outside render');
   if (arena.length >= 16384) throw Error('UI_LIMIT: candidate arena too large');
+  counted('h');
   const handle = { [brand]: [epoch, arena.length] };
   const { children: supplied, __loc: location, ...attributes } = props ?? {};
   arena.push([tag, attributes, children.length ? children : supplied === undefined ? [] : [supplied], location]);

@@ -69,6 +69,9 @@ impl ViewSession {
         )?;
         metrics.total_us = crate::session::metrics::micros(started);
         metrics.generation = self.generation.get();
+        if self.eval_phases {
+            metrics.view_phases = self.take_eval_phases()?;
+        }
         self.metrics = metrics;
         self.check_budgets();
         Ok(result)

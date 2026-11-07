@@ -64,6 +64,32 @@
     if (render.active) throw Error(`UI_RENDER: ${what} during render`);
   }
 
+  // src/runtime/profile.js
+  var spans = null;
+  function clock() {
+    const read = globalThis.__lingxiaClock;
+    return read && read.phases === true ? read : null;
+  }
+  function now() {
+    const read = clock();
+    if (!read) return 0;
+    spans ?? (spans = {});
+    return read();
+  }
+  function spent(name, since) {
+    if (spans && since) spans[name] = (spans[name] ?? 0) + globalThis.__lingxiaClock() - since;
+  }
+  function counted(name) {
+    if (spans) spans[name] = (spans[name] ?? 0) + 1;
+  }
+  function takeSpans() {
+    if (!spans) return "";
+    for (const name in spans) spans[name] = Math.round(spans[name]);
+    const out = JSON.stringify(spans);
+    spans = {};
+    return out;
+  }
+
   // src/runtime/nodes.js
   var arena = [];
   var epoch = 0;
@@ -86,6 +112,7 @@
   function h(tag, props, ...children) {
     if (!render.active) throw Error("UI_SCOPE: JSX outside render");
     if (arena.length >= 16384) throw Error("UI_LIMIT: candidate arena too large");
+    counted("h");
     const handle2 = { [brand]: [epoch, arena.length] };
     const { children: supplied, __loc: location, ...attributes } = props ?? {};
     arena.push([tag, attributes, children.length ? children : supplied === void 0 ? [] : [supplied], location]);
@@ -3267,6 +3294,14 @@
     }
   }
   function renderRow(node, i, cells, depth) {
+    const since = now();
+    try {
+      return renderRowTimed(node, i, cells, depth);
+    } finally {
+      spent("rows", since);
+    }
+  }
+  function renderRowTimed(node, i, cells, depth) {
     const { props, identity } = node;
     const suppliedKey = props.itemKeys?.[i];
     const previous = render.scope;
@@ -3354,6 +3389,14 @@
     return top ? top.entries.length + top.popovers.size + top.invokers.length : 0;
   };
   function recall(scope, tag, props, children, parent) {
+    const since = now();
+    try {
+      return recallTimed(scope, tag, props, children, parent);
+    } finally {
+      spent("recall", since);
+    }
+  }
+  function recallTimed(scope, tag, props, children, parent) {
     const record = render.recall?.get(scope);
     if (!record || record.tag !== tag || tag.__lxVolatile || !sameView(record.view, viewStamp(render.view))) return void 0;
     for (const cell of record.reads) if (page.updates.has(cell)) return void 0;
@@ -3989,8 +4032,8 @@
   var fixedToday = null;
   var today = () => {
     if (fixedToday) return fixedToday;
-    const now = /* @__PURE__ */ new Date();
-    return { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() };
+    const now2 = /* @__PURE__ */ new Date();
+    return { year: now2.getFullYear(), month: now2.getMonth() + 1, day: now2.getDate() };
   };
   function openPicker({ identity, kind, value, min, max, step, today: day, options: options2, selected, label: label2, anchorWidth } = {}) {
     if (typeof identity !== "string" || !["date", "time", "select"].includes(kind)) return false;
@@ -4068,9 +4111,9 @@
       return true;
     }
     if (key.length === 1) {
-      const now = Date.now();
-      picker.typed = (now - picker.typedAt < 1e3 ? picker.typed : "") + key.toLowerCase();
-      picker.typedAt = now;
+      const now2 = Date.now();
+      picker.typed = (now2 - picker.typedAt < 1e3 ? picker.typed : "") + key.toLowerCase();
+      picker.typedAt = now2;
       const found = options2.findIndex((o) => o.enabled && o.label.toLowerCase().startsWith(picker.typed));
       if (found >= 0) picker.focus = found;
       return true;
@@ -4117,7 +4160,7 @@
   }
   function dateBody(words, env, titled) {
     const { focus, value, min, max } = picker;
-    const first = env?.firstWeekday ?? 1, now = today();
+    const first = env?.firstWeekday ?? 1, now2 = today();
     const shift = (months) => {
       picker.focus = clampDate(addMonths(picker.focus, months), min, max);
     };
@@ -4141,7 +4184,7 @@
     const cell = ({ date, inMonth }) => {
       const id = iso2(date), enabled = within(date, min, max);
       const selected = titled ? value && compare(date, value) === 0 : compare(date, focus) === 0;
-      const focused = compare(date, focus) === 0, isToday = compare(date, now) === 0;
+      const focused = compare(date, focus) === 0, isToday = compare(date, now2) === 0;
       const name = words.full(date.day, words.months[date.month - 1], date.year, words.longDays[weekday(date.year, date.month, date.day)]);
       return h(
         "button",
@@ -4313,7 +4356,7 @@
   }
   var pickerAnchor = (env) => picker && (env?.pointer ?? "coarse") !== "coarse" ? picker.identity : null;
   var sheetStyle = ({ borderRadius, ...rest }) => rest;
-  var clock = ({ hour, minute }, words, env) => {
+  var clock2 = ({ hour, minute }, words, env) => {
     const mm = String(minute).padStart(2, "0");
     if (env?.hourCycle !== "h12") return `${String(hour).padStart(2, "0")}:${mm}`;
     return `${hour % 12 || 12}:${mm} ${hour < 12 ? words.am : words.pm}`;
@@ -4339,7 +4382,7 @@
           "aria-live": "polite",
           style: { flexGrow: 1, flexBasis: 0, minWidth: 0, textAlign: "center", fontSize: 16, fontWeight: 600, color: "text", lineClamp: 1 }
         },
-        monthTitle || (picker.kind === "time" ? clock(picker.value, words, env) : picker.label || "")
+        monthTitle || (picker.kind === "time" ? clock2(picker.value, words, env) : picker.label || "")
       ),
       done({ ...text2, color: "accent", fontWeight: 600 })
     );
@@ -4450,7 +4493,12 @@
   function prepare(renderPage, view, windows = {}, deferAnchors = false) {
     return runCandidate(view, null, (candidate) => {
       if (deferAnchors) candidate.movedAnchors = /* @__PURE__ */ new Map();
-      candidate.tree = resolveNode(renderPage(view), "root");
+      let since = now();
+      const root = renderPage(view);
+      spent("render", since);
+      since = now();
+      candidate.tree = resolveNode(root, "root");
+      spent("resolve", since);
       render.site = null;
       if (!candidate.tree || candidate.tree.fragment) throw Error("UI_ROOT: page must return one layout node");
       candidate.tree = { ...candidate.tree, children: [...candidate.tree.children] };
@@ -4480,7 +4528,12 @@
         movedAnchors = JSON.stringify(Object.fromEntries(candidate.movedAnchors));
         return [];
       }
-      return encodeTree(candidate.tree, windows);
+      const encoding = now();
+      try {
+        return encodeTree(candidate.tree, windows);
+      } finally {
+        spent("encode", encoding);
+      }
     }, page.committed ?? { memo: /* @__PURE__ */ new Map(), closures: /* @__PURE__ */ new Map() });
   }
   function prepareWindows(windows) {
@@ -4494,10 +4547,23 @@
       candidate.closures = new Map(base.closures);
       candidate.baseLocals = new Map(base.baseLocals);
       retainCells(candidate.baseLocals);
-      return encodeTree(candidate.tree, windows);
+      const encoding = now();
+      try {
+        return encodeTree(candidate.tree, windows);
+      } finally {
+        spent("windows", encoding);
+      }
     }, base);
   }
   function commit() {
+    const since = now();
+    try {
+      commitCandidate();
+    } finally {
+      spent("commit", since);
+    }
+  }
+  function commitCandidate() {
     const { candidate } = render;
     if (!candidate) throw Error("UI_COMMIT: no candidate");
     const previous = page.committed;
@@ -4655,6 +4721,7 @@
       __lingxiaTakeFrameMeasures: takeFrameMeasures,
       __lingxiaFrameMeasured: frameMeasured,
       __lingxiaWireAck: wireAck,
+      __lingxiaEvalSpans: takeSpans,
       // Cleared when a render completes, so it names only a render that never returned.
       __lingxiaSite: () => render.site || ""
     });

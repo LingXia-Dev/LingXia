@@ -40,6 +40,8 @@ pub struct ViewSession {
     warm: Cell<bool>,
     /// Frames prepared since this isolate last collected garbage.
     uncollected: Cell<u32>,
+    /// The page opted its dev clock into eval phases (`__lingxiaClock.phases = true`).
+    eval_phases: bool,
     /// Frames in a row that finished past their budget; each was dropped.
     overruns: Cell<u32>,
     environment: serde_json::Value,
@@ -147,7 +149,7 @@ impl ViewSession {
     /// Timings and counters of the last prepared frame.
     /// Collects garbage when enough frames have built up since the last collection; returns
     /// whether it did. The host calls it on the worker between frames.
-    pub(crate) fn collect_between_frames(&self) -> bool {
+    pub fn collect_between_frames(&self) -> bool {
         if self.uncollected.get() < FRAMES_PER_COLLECTION {
             return false;
         }
@@ -189,12 +191,20 @@ impl ViewSession {
             if !valid {
                 return Err("UI_MODULE: missing render or compiled UI runtime exports".into());
             }
-            <crate::engine::Active as crate::engine::Engine>::drain_jobs(&context)
+            <crate::engine::Active as crate::engine::Engine>::drain_jobs(&context)?;
+            context
+                .eval::<bool>(Source::from_bytes(
+                    "globalThis.__lingxiaClock?.phases === true",
+                ))
+                .map_err(|e| e.to_string())
         });
-        if let Err(error) = initialized {
-            <crate::engine::Active as crate::engine::Engine>::discard_jobs(&context);
-            return Err(error);
-        }
+        let eval_phases = match initialized {
+            Ok(phases) => phases,
+            Err(error) => {
+                <crate::engine::Active as crate::engine::Engine>::discard_jobs(&context);
+                return Err(error);
+            }
+        };
         Ok(Self {
             context,
             _runtime: runtime,
@@ -204,6 +214,7 @@ impl ViewSession {
             poisoned: Cell::new(false),
             warm: Cell::new(true),
             uncollected: Cell::new(0),
+            eval_phases,
             overruns: Cell::new(0),
             bridge: None,
             retained: None,
@@ -290,6 +301,37 @@ impl ViewSession {
         self.layout_commit = self.generation;
         self.retained_commit = self.generation;
         Ok(())
+    }
+
+    /// Opts this page's dev clock into eval phases, as a page can itself; needs dev globals.
+    pub fn enable_eval_phases(&mut self) -> Result<(), String> {
+        self.eval_phases = self.execute(|| {
+            self.context
+                .eval::<bool>(Source::from_bytes(
+                    "!!globalThis.__lingxiaClock && (globalThis.__lingxiaClock.phases = true)",
+                ))
+                .map_err(|e| crate::engine::js_error(&self.context, e))
+        })?;
+        Ok(())
+    }
+
+    /// Eval phase totals since the last take; `None` without the runtime's phase export.
+    pub(crate) fn take_eval_phases(
+        &self,
+    ) -> Result<Option<crate::session::metrics::ViewPhases>, String> {
+        let spans: String = self.execute(|| {
+            self.context
+                .eval(Source::from_bytes(
+                    "typeof __lingxiaEvalSpans === 'function' ? __lingxiaEvalSpans() : ''",
+                ))
+                .map_err(|e| crate::engine::js_error(&self.context, e))
+        })?;
+        if spans.is_empty() {
+            return Ok(None);
+        }
+        serde_json::from_str(&spans)
+            .map(Some)
+            .map_err(|e| e.to_string())
     }
 
     fn eval(&self, source: &str) -> Result<(), String> {

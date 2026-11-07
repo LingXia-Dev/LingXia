@@ -11,6 +11,7 @@ import { pickerNode, pickerAnchor, resetPicker } from './picker.js';
 import { envOf } from './hooks.js';
 import { keysOf } from './keys.js';
 import { finishTopLayer, resetTopLayer } from './toplayer.js';
+import { now, spent } from './profile.js';
 
 // Candidate transactions: prepare renders and encodes without touching the
 // committed page; commit adopts the candidate, discard drops it.
@@ -46,7 +47,12 @@ export function takeMovedAnchors() { const moved = movedAnchors; movedAnchors = 
 export function prepare(renderPage, view, windows = {}, deferAnchors = false) {
   return runCandidate(view, null, candidate => {
     if (deferAnchors) candidate.movedAnchors = new Map();
-    candidate.tree = resolveNode(renderPage(view), 'root');
+    let since = now();
+    const root = renderPage(view);
+    spent('render', since);
+    since = now();
+    candidate.tree = resolveNode(root, 'root');
+    spent('resolve', since);
     render.site = null;
     if (!candidate.tree || candidate.tree.fragment) throw Error('UI_ROOT: page must return one layout node');
     // The root may be a recalled subtree the committed page shares; layers go into a copy.
@@ -72,7 +78,8 @@ export function prepare(renderPage, view, windows = {}, deferAnchors = false) {
       movedAnchors = JSON.stringify(Object.fromEntries(candidate.movedAnchors));
       return [];
     }
-    return encodeTree(candidate.tree, windows);
+    const encoding = now();
+    try { return encodeTree(candidate.tree, windows); } finally { spent('encode', encoding); }
   }, page.committed ?? { memo: new Map(), closures: new Map() });
 }
 
@@ -89,11 +96,17 @@ export function prepareWindows(windows) {
     candidate.closures = new Map(base.closures);
     candidate.baseLocals = new Map(base.baseLocals);
     retainCells(candidate.baseLocals);
-    return encodeTree(candidate.tree, windows);
+    const encoding = now();
+    try { return encodeTree(candidate.tree, windows); } finally { spent('windows', encoding); }
   }, base);
 }
 
 export function commit() {
+  const since = now();
+  try { commitCandidate(); } finally { spent('commit', since); }
+}
+
+function commitCandidate() {
   const { candidate } = render;
   if (!candidate) throw Error('UI_COMMIT: no candidate');
   const previous = page.committed;

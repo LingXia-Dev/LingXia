@@ -1,6 +1,7 @@
 // A component re-runs only when something it was built from changed: its props, its place, the
 // cells it declared or read, or the environment. Otherwise the subtree it resolved last time stands.
 import { render, page } from './state.js';
+import { now, spent } from './profile.js';
 import { brand, currentArena } from './nodes.js';
 import { envOf } from './hooks.js';
 import { handlesIssued, skipHandle } from './elements.js';
@@ -61,6 +62,11 @@ const topLayerSize = () => {
 
 /** The subtree `scope` resolved last time, when nothing it was built from changed; else undefined. */
 export function recall(scope, tag, props, children, parent) {
+  const since = now();
+  try { return recallTimed(scope, tag, props, children, parent); } finally { spent('recall', since); }
+}
+
+function recallTimed(scope, tag, props, children, parent) {
   const record = render.recall?.get(scope);
   if (!record || record.tag !== tag || tag.__lxVolatile || !sameView(record.view, viewStamp(render.view))) return undefined;
   for (const cell of record.reads) if (page.updates.has(cell)) return undefined;

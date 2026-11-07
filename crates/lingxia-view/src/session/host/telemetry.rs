@@ -31,8 +31,9 @@ pub(super) struct Telemetry {
 
 /// Total, view, view eval, layout, text, compose and build µs; view and layout passes; then the
 /// frame's queue, worker, vsync wait and main-thread µs; then an off-worker draw's scene, encode,
-/// submit and present µs.
-type Stages = [u64; 18];
+/// submit and present µs; then eval phases (render, resolve, recall, rows, encode, vnodes) when
+/// the page opted into them.
+type Stages = [u64; 24];
 
 impl Telemetry {
     pub(super) fn opened(&mut self, at: Duration) {
@@ -69,6 +70,7 @@ impl Telemetry {
             self.stages.pop_front();
         }
         let m = &snapshot.metrics;
+        let p = m.view_phases.unwrap_or_default();
         self.stages.push_back((
             at,
             [
@@ -90,6 +92,12 @@ impl Telemetry {
                 timing.gpu_us[2],
                 timing.gpu_us[3],
                 timing.main_work_us,
+                p.render,
+                p.resolve,
+                p.recall,
+                p.rows,
+                p.encode + p.windows,
+                p.h,
             ],
         ));
     }
@@ -131,6 +139,31 @@ impl Telemetry {
             "gpuSubmit": ms(15),
             "gpuPresent": ms(16),
             "mainWork": ms(17),
+            "viewPhases": self.phase_medians(&samples),
+        })
+    }
+
+    /// Eval phase medians over the frames that ran the View, or `null` without phases.
+    fn phase_medians(&self, samples: &[&Stages]) -> serde_json::Value {
+        let evaluated: Vec<&Stages> = samples.iter().copied().filter(|s| s[2] > 0).collect();
+        if evaluated.iter().all(|s| s[18..].iter().all(|v| *v == 0)) {
+            return serde_json::Value::Null;
+        }
+        let median = |i: usize| {
+            let mut values: Vec<u64> = evaluated.iter().map(|s| s[i]).collect();
+            values.sort_unstable();
+            values[values.len() / 2]
+        };
+        let ms = |i: usize| median(i) as f64 / 1000.0;
+        serde_json::json!({
+            "frames": evaluated.len(),
+            "eval": ms(2),
+            "render": ms(18),
+            "resolve": ms(19),
+            "recall": ms(20),
+            "rows": ms(21),
+            "encode": ms(22),
+            "vnodes": median(23),
         })
     }
 
