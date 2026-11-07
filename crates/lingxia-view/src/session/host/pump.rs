@@ -317,6 +317,7 @@ impl<A: PlatformAdapter> Inner<A> {
                         }
                         inner.adapter.request_vsync();
                         inner.schedule_more();
+                        inner.collect_between_frames(page);
                     }
                     Some(Ok(((None, update), ..))) => {
                         if let Some((connection, update)) = update {
@@ -361,6 +362,24 @@ impl<A: PlatformAdapter> Inner<A> {
                     None => inner.schedule_more(),
                 }
             },
+        );
+    }
+
+    /// With a frame queued for the display and nothing else for the worker, collect the
+    /// page's garbage now rather than inside a later frame's View step.
+    fn collect_between_frames(self: &Arc<Self>, page: PageTicket) {
+        let idle = |inner: &Arc<Self>| {
+            let main = inner.main();
+            main.in_flight.is_none() && !main.pending && !main.disposed
+        };
+        if !idle(self) {
+            return;
+        }
+        self.work_at(
+            true,
+            Guard::Page(page),
+            move |inner, session| Ok(idle(inner) && session.collect_between_frames()),
+            |_, _| {},
         );
     }
 

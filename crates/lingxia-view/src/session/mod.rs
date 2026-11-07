@@ -38,6 +38,8 @@ pub struct ViewSession {
     /// The next frame is the module's first since it loaded or was swapped in: it also warms
     /// the engine, so it gets the warm-up budget.
     warm: Cell<bool>,
+    /// Frames prepared since this isolate last collected garbage.
+    uncollected: Cell<u32>,
     /// Frames in a row that finished past their budget; each was dropped.
     overruns: Cell<u32>,
     environment: serde_json::Value,
@@ -138,8 +140,22 @@ pub(crate) fn eval_budget() -> Duration {
     Duration::from_millis((EVAL_BUDGET_MS * scale) as u64)
 }
 
+/// Frames of garbage a page builds before the host collects it between frames.
+const FRAMES_PER_COLLECTION: u32 = 8;
+
 impl ViewSession {
     /// Timings and counters of the last prepared frame.
+    /// Collects garbage when enough frames have built up since the last collection; returns
+    /// whether it did. The host calls it on the worker between frames.
+    pub(crate) fn collect_between_frames(&self) -> bool {
+        if self.uncollected.get() < FRAMES_PER_COLLECTION {
+            return false;
+        }
+        self.uncollected.set(0);
+        crate::engine::collect_between_frames(&self.context);
+        true
+    }
+
     pub fn metrics(&self) -> &crate::FrameMetrics {
         &self.metrics
     }
@@ -165,6 +181,7 @@ impl ViewSession {
         let (initialized, _) = budget.run(Duration::from_secs(1), Duration::from_secs(1), || {
             crate::engine::compatibility::install(&context)?;
             crate::engine::install_dev_globals(&context)?;
+            crate::engine::defer_collections(&context);
             <crate::engine::Active as crate::engine::Engine>::evaluate_module(&context, source)?;
             let valid: bool = context.eval(Source::from_bytes(
                 "['Render','Prepare','Commit','Discard','Reset','Dispatch','CreateView'].every(name=>typeof globalThis['__lingxia'+name]==='function')"
@@ -186,6 +203,7 @@ impl ViewSession {
             budget,
             poisoned: Cell::new(false),
             warm: Cell::new(true),
+            uncollected: Cell::new(0),
             overruns: Cell::new(0),
             bridge: None,
             retained: None,

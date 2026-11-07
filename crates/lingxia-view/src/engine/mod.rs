@@ -109,6 +109,29 @@ pub(crate) fn decode_context_timed(
     decode_buffer(context, invoke, false, None)
 }
 
+/// Heap growth at which QuickJS collects inside an allocation, as a backstop: View isolates
+/// collect between frames instead (`collect_between_frames`).
+const GC_BACKSTOP: usize = 16 << 20;
+
+/// Hands this isolate's collections to the host: an allocation collects only past the backstop.
+pub(crate) fn defer_collections(context: &JSContext) {
+    use rong_core::engine::JSContextImpl;
+    use rong_quickjs_sys as qjs;
+    unsafe { qjs::JS_SetGCThreshold(qjs::JS_GetRuntime(*context.as_ref().as_raw()), GC_BACKSTOP) };
+}
+
+/// A full collection now, between frames; an allocation-triggered one lowers the threshold
+/// below the backstop again, so it is restored.
+pub(crate) fn collect_between_frames(context: &JSContext) {
+    use rong_core::engine::JSContextImpl;
+    use rong_quickjs_sys as qjs;
+    unsafe {
+        let runtime = qjs::JS_GetRuntime(*context.as_ref().as_raw());
+        qjs::JS_RunGC(runtime);
+        qjs::JS_SetGCThreshold(runtime, GC_BACKSTOP);
+    }
+}
+
 static DEV_GLOBALS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Isolates created from now on carry the dev-session globals (`__lingxiaClock`).

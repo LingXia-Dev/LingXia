@@ -709,6 +709,9 @@ impl ViewSession {
                 if retained_changed {
                     self.retained_commit = self.generation;
                 }
+                if prepared_js {
+                    self.uncollected.set(self.uncollected.get() + 1);
+                }
                 Ok(frame)
             }
             Err(error) => {
