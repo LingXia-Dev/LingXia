@@ -5,6 +5,7 @@ use crate::{Shell, accessibility, dispatch, ime, pages, surface::NativeWindow};
 use lingxia_view::DisplayList;
 use lingxia_view::interaction::view::{AccessibilityEffect, Dispatch, Effect};
 use lingxia_view::platform::*;
+use lingxia_view::renderer::gpu::SurfaceSource;
 use lingxia_view::renderer::pool::Mailbox;
 use lingxia_view::renderer::surfaces::{self, Route, Target};
 use lingxia_view::session::host::{Failure, FrameSnapshot, FrameTiming, WeakViewHost};
@@ -232,7 +233,12 @@ fn attach(host: &pages::Host, window: Arc<NativeWindow>, width: u32, height: u32
     *lock(&adapter.target) = Target::Waiting;
     let host = host.downgrade();
     crate::render::run(move || {
-        let attached = surfaces::attach(SharedWindow(window), width, height, existing);
+        let attached = surfaces::attach(
+            SurfaceSource::window(Arc::new(SharedWindow(window))),
+            width,
+            height,
+            existing,
+        );
         dispatch::post_main(Box::new(move || {
             let Some(host) = host.upgrade() else { return };
             let adapter = host.adapter();
@@ -297,7 +303,12 @@ impl Presenter for HarmonyAdapter {
             Route::Gpu(surface) => Ok(Some(Frame::Gpu {
                 surface,
                 revision: generation.get(),
-                drawn: crate::render::draw(surface, generation.get(), display),
+                drawn: crate::render::draw(
+                    crate::render::SURFACES,
+                    surface,
+                    generation.get(),
+                    display,
+                ),
             })),
             Route::Cpu => Ok(Some(Frame::Cpu(display, generation))),
         }
@@ -322,20 +333,8 @@ impl Presenter for HarmonyAdapter {
                 let Some(host) = self.host.get().cloned() else {
                     return Ok(false);
                 };
-                crate::render::present(surface, revision, drawn, move |shown, metrics| {
+                crate::render::present(surface, revision, drawn, move |shown, gpu| {
                     let Some(host) = host.upgrade() else { return };
-                    let us = |path: &[&str]| {
-                        path.iter()
-                            .fold(metrics.as_ref(), |value, key| value?.get(key))
-                            .and_then(serde_json::Value::as_u64)
-                            .unwrap_or(0)
-                    };
-                    let gpu = [
-                        us(&["prepare", "sceneUs"]),
-                        us(&["prepare", "encodeUs"]),
-                        us(&["prepare", "submitUs"]),
-                        us(&["presentUs"]),
-                    ];
                     match shown {
                         Ok(shown) => host.deferred_drawn(CommitTicket::new(revision), shown, gpu),
                         Err(error) => {

@@ -90,11 +90,12 @@ pub(crate) fn log(message: &str) {
 }
 
 pub enum Frame {
-    #[cfg_attr(not(feature = "gpu"), allow(dead_code))]
+    /// Drawn on the render thread while the worker goes on; presented there too.
+    #[cfg(feature = "gpu")]
     Gpu {
         surface: u64,
         revision: u64,
-        metrics: serde_json::Value,
+        drawn: Arc<lingxia_view::renderer::render_thread::Drawn>,
     },
     /// Rasterized off the View worker when presented.
     Cpu(DisplayList, CommitTicket),
@@ -119,17 +120,21 @@ impl Presenter for AppleAdapter {
     ) -> Result<Option<Frame>, String> {
         #[cfg(feature = "gpu")]
         {
-            use lingxia_view::renderer::surfaces::{self, Route};
+            use lingxia_view::renderer::render_thread;
+            use lingxia_view::renderer::surfaces::Route;
             match self.route() {
                 Route::Wait => return Ok(None),
                 Route::Gpu(surface) => {
-                    return Ok(surfaces::prepare(surface, &display, generation.get())?.map(
-                        |metrics| Frame::Gpu {
+                    return Ok(Some(Frame::Gpu {
+                        surface,
+                        revision: generation.get(),
+                        drawn: render_thread::draw(
+                            render_thread::SURFACES,
                             surface,
-                            revision: generation.get(),
-                            metrics,
-                        },
-                    ));
+                            generation.get(),
+                            display,
+                        ),
+                    }));
                 }
                 Route::Cpu => {}
             }
@@ -139,7 +144,10 @@ impl Presenter for AppleAdapter {
 
     fn metrics(&self, frame: &Frame) -> Option<serde_json::Value> {
         Some(match frame {
-            Frame::Gpu { metrics, .. } => metrics.clone(),
+            #[cfg(feature = "gpu")]
+            Frame::Gpu { .. } => {
+                serde_json::json!({"renderer": "sparse-strips", "renderThread": true})
+            }
             Frame::Cpu(..) => serde_json::json!({"backend": "vello-cpu"}),
         })
     }
@@ -148,10 +156,32 @@ impl Presenter for AppleAdapter {
         match frame {
             #[cfg(feature = "gpu")]
             Frame::Gpu {
-                surface, revision, ..
-            } => Ok(lingxia_view::renderer::surfaces::present(surface, revision)?.is_some()),
-            #[cfg(not(feature = "gpu"))]
-            Frame::Gpu { .. } => Ok(false),
+                surface,
+                revision,
+                drawn,
+            } => {
+                let Some(host) = self.host.get().cloned() else {
+                    return Ok(false);
+                };
+                lingxia_view::renderer::render_thread::present(
+                    surface,
+                    revision,
+                    drawn,
+                    move |shown, gpu| {
+                        let Some(host) = host.upgrade() else { return };
+                        match shown {
+                            Ok(shown) => {
+                                host.deferred_drawn(CommitTicket::new(revision), shown, gpu)
+                            }
+                            Err(error) => {
+                                host.deferred_presented(CommitTicket::new(revision), false);
+                                host.fail(error);
+                            }
+                        }
+                    },
+                );
+                Ok(true)
+            }
             Frame::Cpu(display, generation) => {
                 let Some(host) = self.host.get().cloned() else {
                     return Ok(false);
@@ -168,8 +198,8 @@ impl Presenter for AppleAdapter {
         }
     }
 
-    fn deferred(&self, frame: &Frame) -> bool {
-        matches!(frame, Frame::Cpu(..))
+    fn deferred(&self, _: &Frame) -> bool {
+        true
     }
 }
 

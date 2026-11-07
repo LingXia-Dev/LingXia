@@ -219,7 +219,12 @@ impl Presenter for AndroidAdapter {
                 return Ok(Some(Frame::Gpu {
                     surface,
                     revision: generation.get(),
-                    drawn: super::render::draw(surface, generation.get(), display),
+                    drawn: super::render::draw(
+                        super::gpu_surface::BACKEND,
+                        surface,
+                        generation.get(),
+                        display,
+                    ),
                 }));
             }
             #[cfg(not(all(feature = "gpu", target_os = "android")))]
@@ -250,20 +255,8 @@ impl Presenter for AndroidAdapter {
                 let Some(host) = self.host.get().cloned() else {
                     return Ok(false);
                 };
-                super::render::present(surface, revision, drawn, move |shown, metrics| {
+                super::render::present(surface, revision, drawn, move |shown, gpu| {
                     let Some(host) = host.upgrade() else { return };
-                    let us = |path: &[&str]| {
-                        path.iter()
-                            .fold(metrics.as_ref(), |value, key| value?.get(key))
-                            .and_then(serde_json::Value::as_u64)
-                            .unwrap_or(0)
-                    };
-                    let gpu = [
-                        us(&["prepare", "sceneUs"]),
-                        us(&["prepare", "encodeUs"]),
-                        us(&["prepare", "submitUs"]),
-                        us(&["presentUs"]),
-                    ];
                     match shown {
                         Ok(shown) => host.deferred_drawn(CommitTicket::new(revision), shown, gpu),
                         Err(error) => {

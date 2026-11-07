@@ -1,41 +1,61 @@
-//! The page view as a wgpu surface target. The view's backing layer is a
-//! CAMetalLayer, so wgpu presents into it without touching the view hierarchy.
-use raw_window_handle::{
-    DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle,
-    RawWindowHandle, WindowHandle,
-};
-use std::ffi::c_void;
+//! The page view's CAMetalLayer, taken from the view on the main thread: wgpu binds a view only
+//! there, while the render thread may bind and present into its layer.
+use lingxia_view::renderer::gpu::MetalLayer;
+use std::ffi::{c_char, c_void};
 use std::ptr::NonNull;
 
-pub(crate) struct AppleView(NonNull<c_void>);
+#[link(name = "objc")]
+unsafe extern "C" {
+    fn objc_msgSend();
+    fn sel_registerName(name: *const c_char) -> *const c_void;
+    fn objc_getClass(name: *const c_char) -> *const c_void;
+    fn objc_retain(object: *mut c_void) -> *mut c_void;
+    fn objc_release(object: *mut c_void);
+}
 
-// The Swift registry keeps the view alive until its page detaches the presenter.
-unsafe impl Send for AppleView {}
-unsafe impl Sync for AppleView {}
+/// A retained CAMetalLayer.
+pub(crate) struct AppleLayer(NonNull<c_void>);
 
-impl AppleView {
-    pub(crate) fn new(view: usize) -> Option<Self> {
-        NonNull::new(view as *mut c_void).map(Self)
+// CAMetalLayer may be configured and draw drawables from any thread.
+unsafe impl Send for AppleLayer {}
+unsafe impl Sync for AppleLayer {}
+
+impl AppleLayer {
+    /// The layer backing `view` (an NSView or UIView), when it is a CAMetalLayer. Main thread.
+    pub(crate) fn of_view(view: usize) -> Option<Self> {
+        let view = NonNull::new(view as *mut c_void)?;
+        // SAFETY: `view` is a live view handed over by Swift on the main thread; the selectors
+        // take no arguments but the class, and return objects or BOOL as declared here.
+        unsafe {
+            let send: unsafe extern "C" fn(*mut c_void, *const c_void) -> *mut c_void =
+                std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+            let layer = NonNull::new(send(view.as_ptr(), sel_registerName(c"layer".as_ptr())))?;
+            let is_kind: unsafe extern "C" fn(*mut c_void, *const c_void, *const c_void) -> bool =
+                std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+            let metal = objc_getClass(c"CAMetalLayer".as_ptr());
+            if metal.is_null()
+                || !is_kind(
+                    layer.as_ptr(),
+                    sel_registerName(c"isKindOfClass:".as_ptr()),
+                    metal,
+                )
+            {
+                return None;
+            }
+            NonNull::new(objc_retain(layer.as_ptr())).map(Self)
+        }
     }
 }
 
-impl HasWindowHandle for AppleView {
-    fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
-        #[cfg(target_os = "macos")]
-        let raw = RawWindowHandle::AppKit(raw_window_handle::AppKitWindowHandle::new(self.0));
-        #[cfg(not(target_os = "macos"))]
-        let raw = RawWindowHandle::UiKit(raw_window_handle::UiKitWindowHandle::new(self.0));
-        // SAFETY: the view outlives every borrowed handle and the wgpu surface.
-        Ok(unsafe { WindowHandle::borrow_raw(raw) })
+impl MetalLayer for AppleLayer {
+    fn layer(&self) -> NonNull<c_void> {
+        self.0
     }
 }
 
-impl HasDisplayHandle for AppleView {
-    fn display_handle(&self) -> Result<DisplayHandle<'_>, HandleError> {
-        #[cfg(target_os = "macos")]
-        let raw = RawDisplayHandle::AppKit(raw_window_handle::AppKitDisplayHandle::new());
-        #[cfg(not(target_os = "macos"))]
-        let raw = RawDisplayHandle::UiKit(raw_window_handle::UiKitDisplayHandle::new());
-        Ok(unsafe { DisplayHandle::borrow_raw(raw) })
+impl Drop for AppleLayer {
+    fn drop(&mut self) {
+        // SAFETY: retained in `of_view`, released once.
+        unsafe { objc_release(self.0.as_ptr()) }
     }
 }

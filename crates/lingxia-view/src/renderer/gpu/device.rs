@@ -57,16 +57,13 @@ impl Devices {
         }
     }
 
-    pub async fn create_surface<'w>(
+    pub async fn create_surface(
         &mut self,
-        target: impl Into<wgpu::SurfaceTarget<'w>>,
+        source: &super::SurfaceSource,
         width: u32,
         height: u32,
-    ) -> Result<RenderSurface<'w>, String> {
-        let surface = self
-            .instance
-            .create_surface(target.into())
-            .map_err(|e| e.to_string())?;
+    ) -> Result<RenderSurface<'static>, String> {
+        let surface = source.create(&self.instance)?;
         let dev_id = self
             .device(Some(&surface))
             .await

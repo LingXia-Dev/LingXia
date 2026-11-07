@@ -3355,7 +3355,6 @@ dependencies = [
  "objc2-core-foundation",
  "objc2-core-graphics",
  "objc2-core-text",
- "raw-window-handle",
  "serde_json",
  "skrifa",
  "vello_cpu",

@@ -329,7 +329,47 @@ pub struct Presenter {
     adapter: String,
     backend: &'static str,
     /// Rebuilds the surface target: a GLES window surface keeps its creation size.
-    target: Option<Box<dyn Fn() -> wgpu::SurfaceTarget<'static> + Send + Sync>>,
+    target: Option<SurfaceSource>,
+}
+
+/// What a presenter binds its wgpu surface to.
+#[derive(Clone)]
+pub enum SurfaceSource {
+    Window(Arc<dyn Fn() -> wgpu::SurfaceTarget<'static> + Send + Sync>),
+    /// A CAMetalLayer taken from its view on the main thread: wgpu binds a view only there,
+    /// a layer from any thread.
+    #[cfg(target_vendor = "apple")]
+    Layer(Arc<dyn MetalLayer>),
+}
+
+/// Keeps a CAMetalLayer retained for as long as it lives.
+#[cfg(target_vendor = "apple")]
+pub trait MetalLayer: Send + Sync {
+    fn layer(&self) -> std::ptr::NonNull<std::ffi::c_void>;
+}
+
+impl SurfaceSource {
+    pub fn window<W>(window: Arc<W>) -> Self
+    where
+        Arc<W>: Into<wgpu::SurfaceTarget<'static>>,
+        W: Send + Sync + 'static,
+    {
+        Self::Window(Arc::new(move || window.clone().into()))
+    }
+
+    fn create(&self, instance: &wgpu::Instance) -> Result<wgpu::Surface<'static>, String> {
+        match self {
+            Self::Window(target) => instance.create_surface(target()),
+            // SAFETY: the source retains the layer, and the surface retains it too.
+            #[cfg(target_vendor = "apple")]
+            Self::Layer(layer) => unsafe {
+                instance.create_surface_unsafe(wgpu::SurfaceTargetUnsafe::CoreAnimationLayer(
+                    layer.layer().as_ptr(),
+                ))
+            },
+        }
+        .map_err(|e| e.to_string())
+    }
 }
 
 impl Presenter {
@@ -347,74 +387,57 @@ impl Presenter {
         &self.adapter
     }
 
-    pub fn new(
-        target: impl Into<wgpu::SurfaceTarget<'static>>,
-        width: u32,
-        height: u32,
-    ) -> Result<Self, String> {
-        Self::with_context(Context::default(), target, width, height)
+    pub fn new(source: SurfaceSource, width: u32, height: u32) -> Result<Self, String> {
+        Self::with_context(Context::default(), source, width, height)
     }
 
     /// On `context`'s adapter, or on GLES when the crash sentinel blocks it.
-    pub fn with_fallback<W>(
+    pub fn with_fallback(
         context: Context,
-        window: Arc<W>,
+        source: SurfaceSource,
         width: u32,
         height: u32,
-    ) -> Result<Self, String>
-    where
-        Arc<W>: Into<wgpu::SurfaceTarget<'static>>,
-        W: Send + Sync + 'static,
-    {
-        let rebind = window.clone();
+    ) -> Result<Self, String> {
         // A surface binds the window to its backend; a backend that is going to be
         // refused must not touch the window, or the fallback cannot bind it (Adreno:
         // GLES then finds no compatible device).
-        if context.probes_adapters()?
+        let presenter = if context.probes_adapters()?
             && context.blocked_backends()?.contains(wgpu::Backends::VULKAN)
         {
-            return Self::gles_fallback(BLOCKED.to_string(), window, width, height).map(
-                |mut presenter| {
-                    presenter.target = Some(Box::new(move || rebind.clone().into()));
-                    presenter
-                },
-            );
-        }
-        let presenter = match Self::with_context(context, window.clone(), width, height) {
-            Err(error) if error.starts_with(BLOCKED) => {
-                Self::gles_fallback(error, window, width, height)
+            Self::gles_fallback(BLOCKED.to_string(), source.clone(), width, height)
+        } else {
+            match Self::with_context(context, source.clone(), width, height) {
+                Err(error) if error.starts_with(BLOCKED) => {
+                    Self::gles_fallback(error, source.clone(), width, height)
+                }
+                result => result,
             }
-            result => result,
         };
         presenter.map(|mut presenter| {
-            presenter.target = Some(Box::new(move || rebind.clone().into()));
+            presenter.target = Some(source);
             presenter
         })
     }
 
     /// GLES once the Vulkan driver is refused. An adapter below the renderer's limits is
     /// not attempted, so the page goes to the CPU renderer without a failed device request.
-    fn gles_fallback<W>(
+    fn gles_fallback(
         error: String,
-        window: Arc<W>,
+        source: SurfaceSource,
         width: u32,
         height: u32,
-    ) -> Result<Self, String>
-    where
-        Arc<W>: Into<wgpu::SurfaceTarget<'static>>,
-        W: Send + Sync + 'static,
-    {
+    ) -> Result<Self, String> {
         let context = Context::with_backends(wgpu::Backends::GL);
         context
             .meets_renderer_limits()
             .map_err(|short| format!("{error}; GLES: {short}"))?;
-        Self::with_context(context, window, width, height)
+        Self::with_context(context, source, width, height)
             .map_err(|fallback| format!("{error}; GLES: {fallback}"))
     }
 
     pub fn with_context(
         context: Context,
-        target: impl Into<wgpu::SurfaceTarget<'static>>,
+        source: SurfaceSource,
         width: u32,
         height: u32,
     ) -> Result<Self, String> {
@@ -422,7 +445,7 @@ impl Presenter {
             return Err("UI_SURFACE: empty size".into());
         }
         let mut shared = context.lock()?;
-        let surface = pollster::block_on(shared.create_surface(target, width, height))?;
+        let surface = pollster::block_on(shared.create_surface(&source, width, height))?;
         let info = shared.devices[surface.dev_id].adapter().get_info();
         let adapter = adapter_record(&info);
         let backend = match info.backend {
@@ -483,12 +506,8 @@ impl Presenter {
     }
 
     /// Bind to `window` again, e.g. after its `Surface` was recreated.
-    pub fn resume<W>(&mut self, window: Arc<W>, width: u32, height: u32) -> Result<(), String>
-    where
-        Arc<W>: Into<wgpu::SurfaceTarget<'static>>,
-        W: Send + Sync + 'static,
-    {
-        self.target = Some(Box::new(move || window.clone().into()));
+    pub fn resume(&mut self, source: SurfaceSource, width: u32, height: u32) -> Result<(), String> {
+        self.target = Some(source);
         self.bind(width, height)
     }
 
@@ -496,12 +515,12 @@ impl Presenter {
         if width == 0 || height == 0 || width > 4096 || height > 4096 {
             return Err("UI_SURFACE: empty size".into());
         }
-        let target = self.target.as_ref().ok_or("UI_SURFACE: no target")?();
+        let source = self.target.clone().ok_or("UI_SURFACE: no target")?;
         // A window carries one EGL surface at a time; release the old one, and everything drawn
         // for it, before binding anew.
         self.suspend();
         let mut context = self.context.lock()?;
-        let surface = pollster::block_on(context.create_surface(target, width, height))?;
+        let surface = pollster::block_on(context.create_surface(&source, width, height))?;
         if surface.dev_id != self.device_id {
             return Err("UI_SURFACE: device changed".into());
         }

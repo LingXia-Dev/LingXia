@@ -16,7 +16,7 @@ mod fonts;
 #[cfg(all(feature = "gpu", target_os = "android"))]
 mod gpu_surface;
 #[cfg(all(feature = "gpu", target_os = "android"))]
-mod render;
+use lingxia_view::renderer::render_thread as render;
 
 use adapter::AndroidAdapter;
 pub use adapter::{ImageLoader, set_image_loader};

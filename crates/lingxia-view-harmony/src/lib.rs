@@ -11,7 +11,7 @@ mod adapter;
 mod dispatch;
 mod fonts;
 mod ime;
-mod render;
+use lingxia_view::renderer::render_thread as render;
 mod surface;
 mod sys;
 mod xcomponent;

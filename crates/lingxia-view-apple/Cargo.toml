@@ -8,7 +8,7 @@ description = "iOS adapter for the LingXia GPU View host: presentation and platf
 [features]
 default = []
 # Metal presentation through wgpu; without it frames rasterize on the CPU.
-gpu = ["lingxia-view/gpu", "dep:raw-window-handle"]
+gpu = ["lingxia-view/gpu"]
 hot-swap = ["lingxia-view/hot-swap"]
 
 [dependencies]
@@ -20,4 +20,3 @@ objc2-core-graphics = { version = "0.3.2", default-features = false, features = 
 skrifa = { workspace = true }
 vello_cpu = { workspace = true }
 serde_json = { workspace = true }
-raw-window-handle = { workspace = true, optional = true }

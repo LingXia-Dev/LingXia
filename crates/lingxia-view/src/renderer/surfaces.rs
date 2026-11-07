@@ -1,7 +1,7 @@
-//! GPU presenters bound to platform windows, shared by every adapter. Prepare
-//! runs on the View worker, present on the main thread; one registry shares the
-//! device context between pages.
-use super::gpu::Presenter;
+//! GPU presenters bound to platform windows, shared by the Apple and Harmony adapters. Every
+//! call but `route` and `describe` runs on the render thread; one registry shares the device
+//! context between pages.
+use super::gpu::{Presenter, SurfaceSource};
 use image::ImageEncoder;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -70,17 +70,18 @@ pub fn route(surface: u64, target: Target) -> Route {
     }
 }
 
-/// Bind `window` to the presenter `existing`, or to a new one; returns its id.
-pub fn attach<W>(window: W, width: u32, height: u32, existing: u64) -> Result<u64, String>
-where
-    Arc<W>: Into<wgpu::SurfaceTarget<'static>>,
-    W: Send + Sync + 'static,
-{
+/// Bind `source` to the presenter `existing`, or to a new one; returns its id.
+pub fn attach(
+    source: SurfaceSource,
+    width: u32,
+    height: u32,
+    existing: u64,
+) -> Result<u64, String> {
     let _binding = gpu_binding();
     if existing != 0
         && let Some(presenter) = presenter(existing)?
     {
-        lock(&presenter)?.resume(Arc::new(window), width, height)?;
+        lock(&presenter)?.resume(source, width, height)?;
         return Ok(existing);
     }
     // The registry retains the device domain only while a presenter exists.
@@ -89,7 +90,7 @@ where
         Some(presenter) => lock(&presenter)?.context(),
         None => Default::default(),
     };
-    let presenter = Presenter::with_fallback(context, Arc::new(window), width, height)?;
+    let presenter = Presenter::with_fallback(context, source, width, height)?;
     let id = NEXT.fetch_add(1, Ordering::Relaxed);
     registry()?.insert(id, Arc::new(Mutex::new(presenter)));
     Ok(id)

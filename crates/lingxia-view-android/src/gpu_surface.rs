@@ -1,6 +1,6 @@
 //! Vulkan presenters bound to Android `Surface`s. Everything but `describe` runs on the render
 //! thread; one registry shares the device context.
-use lingxia_view::renderer::gpu::Presenter;
+use lingxia_view::renderer::gpu::{Presenter, SurfaceSource};
 use raw_window_handle::{
     AndroidDisplayHandle, AndroidNdkWindowHandle, DisplayHandle, HandleError, HasDisplayHandle,
     HasWindowHandle, WindowHandle,
@@ -113,6 +113,10 @@ fn lock(presenter: &Shared) -> Result<std::sync::MutexGuard<'_, Presenter>, Stri
         .map_err(|_| "UI_SURFACE: poisoned presenter".into())
 }
 
+/// The registry the render thread draws Android pages through.
+pub(super) const BACKEND: lingxia_view::renderer::render_thread::Backend =
+    lingxia_view::renderer::render_thread::Backend { prepare, present };
+
 /// Bind `window` to the presenter `existing`, or to a new one; returns its id.
 pub(super) fn attach(
     window: NativeWindow,
@@ -123,11 +127,16 @@ pub(super) fn attach(
     if existing != 0
         && let Some(presenter) = presenter(existing)?
     {
-        lock(&presenter)?.resume(Arc::new(window), width, height)?;
+        lock(&presenter)?.resume(SurfaceSource::window(Arc::new(window)), width, height)?;
         return Ok(existing);
     }
     let context = shared_context()?.clone().unwrap_or_default();
-    let presenter = Presenter::with_fallback(context, Arc::new(window), width, height)?;
+    let presenter = Presenter::with_fallback(
+        context,
+        SurfaceSource::window(Arc::new(window)),
+        width,
+        height,
+    )?;
     // The context the presenter settled on, GLES when the Vulkan driver was refused.
     shared_context()?.get_or_insert_with(|| presenter.context());
     let id = NEXT.fetch_add(1, Ordering::Relaxed);
