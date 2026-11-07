@@ -93,8 +93,13 @@ impl FrameAnimations<'_> {
                         visible.iter().map(|id| &**id),
                         base.as_deref(),
                     )?;
-                    let rendered = compose(rendered, offsets, &prepared)?;
-                    (prepared, rendered)
+                    // Dropping off-screen leaves changes no pixel and moves no other node.
+                    if dropped_leaves(&rendered, &realized, visible) {
+                        (prepared, rendered)
+                    } else {
+                        let rendered = compose(rendered, offsets, &prepared)?;
+                        (prepared, rendered)
+                    }
                 };
                 *inventory = candidate;
                 *frame = Some(Box::new(prepared));
@@ -144,6 +149,24 @@ fn transition_inputs(
         });
     }
     Ok(inputs)
+}
+
+/// Every animated node left out of `visible` is a leaf of `display`.
+fn dropped_leaves(
+    display: &DisplayList,
+    realized: &BTreeSet<crate::scene::node::Identity>,
+    visible: &BTreeSet<crate::scene::node::Identity>,
+) -> bool {
+    let retained = &display.retained;
+    let mut parents = vec![false; retained.nodes.len()];
+    for parent in retained.parents.iter().flatten() {
+        if let Some(seen) = parents.get_mut(*parent) {
+            *seen = true;
+        }
+    }
+    retained.nodes.iter().zip(parents).all(|(node, parent)| {
+        !parent || !realized.contains(&*node.identity) || visible.contains(&*node.identity)
+    })
 }
 
 fn visible_nodes(
