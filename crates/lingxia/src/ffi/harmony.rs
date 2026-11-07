@@ -1158,7 +1158,7 @@ pub fn is_pull_down_refresh_enabled(appid: String, path: String) -> bool {
 #[napi]
 pub fn report_pull_refresh_indicator(appid: String, webtag: String, phase: String, offset: f64) {
     let indicator = (!phase.is_empty())
-        .then(|| lingxia_platform::traits::gesture::PullRefreshIndicator { phase, offset });
+        .then_some(lingxia_platform::traits::gesture::PullRefreshIndicator { phase, offset });
     lingxia_platform::harmony::set_refresh_indicator(&appid, &webtag, indicator);
 }
 
@@ -1178,7 +1178,7 @@ pub fn report_host_overlays(elements: String) {
 pub fn video_player_create(component_id: String, callback_id: i64) -> i64 {
     match lingxia_platform::harmony::video_player::create_player(&component_id, callback_id as u64)
     {
-        Ok(ptr) => ptr as i64,
+        Ok(ptr) => ptr,
         Err(e) => {
             log::error!("[Harmony.VideoPlayer] Failed to create player: {}", e);
             0
@@ -1189,14 +1189,14 @@ pub fn video_player_create(component_id: String, callback_id: i64) -> i64 {
 /// Set media source for the video player (URL or file path)
 #[napi]
 pub fn video_player_set_url(component_id: String, url: String) -> bool {
-    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id) {
-        if let Ok(mut p) = player.lock() {
-            match p.set_source(&url) {
-                Ok(_) => return true,
-                Err(e) => {
-                    log::error!("[Harmony.VideoPlayer] set_source failed: {:?}", e);
-                    return false;
-                }
+    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id)
+        && let Ok(mut p) = player.lock()
+    {
+        match p.set_source(&url) {
+            Ok(_) => return true,
+            Err(e) => {
+                log::error!("[Harmony.VideoPlayer] set_source failed: {:?}", e);
+                return false;
             }
         }
     }
@@ -1302,10 +1302,10 @@ pub fn video_player_prepare(component_id: String) -> bool {
         "[Harmony.VideoPlayer] video_player_prepare: component_id={}",
         component_id
     );
-    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id) {
-        if let Ok(mut p) = player.lock() {
-            return p.prepare().is_ok();
-        }
+    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id)
+        && let Ok(mut p) = player.lock()
+    {
+        return p.prepare().is_ok();
     }
     false
 }
@@ -1348,7 +1348,7 @@ pub fn video_player_seek(component_id: String, position_ms: f64) -> bool {
     const MAX_SEEK_MS: f64 = 3_000_000_000_000.0;
 
     // Prevent NaN, Infinite, negative, or massive values
-    if !position_ms.is_finite() || position_ms < 0.0 || position_ms > MAX_SEEK_MS {
+    if !position_ms.is_finite() || !(0.0..=MAX_SEEK_MS).contains(&position_ms) {
         log::error!(
             "[Harmony.VideoPlayer] video_player_seek: invalid/out-of-range position_ms={} for component_id={}",
             position_ms,
@@ -1385,19 +1385,19 @@ pub fn video_player_seek(component_id: String, position_ms: f64) -> bool {
 
         return seek_result;
     }
-    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id) {
-        if let Ok(mut p) = player.lock() {
-            // Use PreviousSync for better compatibility - seeks to nearest keyframe before target
-            // Closest mode might have issues on some devices/video formats
-            // Clamp to i32 range for AVPlayer
-            let pos_i32 = position_ms.clamp(i32::MIN as f64, i32::MAX as f64) as i32;
-            return p
-                .seek(
-                    pos_i32,
-                    lingxia_platform::harmony::video_player::AVPlayerSeekMode::PreviousSync,
-                )
-                .is_ok();
-        }
+    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id)
+        && let Ok(mut p) = player.lock()
+    {
+        // Use PreviousSync for better compatibility - seeks to nearest keyframe before target
+        // Closest mode might have issues on some devices/video formats
+        // Clamp to i32 range for AVPlayer
+        let pos_i32 = position_ms.clamp(i32::MIN as f64, i32::MAX as f64) as i32;
+        return p
+            .seek(
+                pos_i32,
+                lingxia_platform::harmony::video_player::AVPlayerSeekMode::PreviousSync,
+            )
+            .is_ok();
     }
     false
 }
@@ -1417,10 +1417,10 @@ pub fn video_player_set_volume(component_id: String, volume: f64) -> bool {
         )
         .is_ok();
     }
-    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id) {
-        if let Ok(mut p) = player.lock() {
-            return p.set_volume(volume as f32).is_ok();
-        }
+    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id)
+        && let Ok(mut p) = player.lock()
+    {
+        return p.set_volume(volume as f32).is_ok();
     }
     false
 }
@@ -1433,10 +1433,10 @@ pub fn video_player_set_loop(component_id: String, looping: bool) -> bool {
         component_id,
         looping
     );
-    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id) {
-        if let Ok(mut p) = player.lock() {
-            return p.set_looping(looping).is_ok();
-        }
+    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id)
+        && let Ok(mut p) = player.lock()
+    {
+        return p.set_looping(looping).is_ok();
     }
     false
 }
@@ -1451,13 +1451,12 @@ pub fn video_player_set_speed(component_id: String, rate: f64) -> bool {
 #[napi]
 pub fn video_player_get_current_time(component_id: String) -> i32 {
     // Try native AVPlayer first (for URL/file playback)
-    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id) {
-        if let Ok(mut p) = player.lock() {
-            if let Ok(position) = p.get_current_time() {
-                // Return AVPlayer position if valid (>= 0), including 0 which is a valid time
-                return position;
-            }
-        }
+    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id)
+        && let Ok(mut p) = player.lock()
+        && let Ok(position) = p.get_current_time()
+    {
+        // Return AVPlayer position if valid (>= 0), including 0 which is a valid time
+        return position;
     }
     // Fallback to stream decoder position (for stream mode)
     lingxia_platform::harmony::video_player::get_stream_decoder_position_ms(&component_id)
@@ -1467,12 +1466,12 @@ pub fn video_player_get_current_time(component_id: String) -> i32 {
 /// Get duration in milliseconds
 #[napi]
 pub fn video_player_get_duration(component_id: String) -> i32 {
-    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id) {
-        if let Ok(p) = player.lock() {
-            let duration = p.get_duration().unwrap_or(0);
-            if duration > 0 {
-                return duration;
-            }
+    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id)
+        && let Ok(p) = player.lock()
+    {
+        let duration = p.get_duration().unwrap_or(0);
+        if duration > 0 {
+            return duration;
         }
     }
     0
@@ -1481,10 +1480,10 @@ pub fn video_player_get_duration(component_id: String) -> i32 {
 /// Get video width in pixels
 #[napi]
 pub fn video_player_get_video_width(component_id: String) -> i32 {
-    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id) {
-        if let Ok(p) = player.lock() {
-            return p.get_video_size().map(|(w, _)| w).unwrap_or(0);
-        }
+    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id)
+        && let Ok(p) = player.lock()
+    {
+        return p.get_video_size().map(|(w, _)| w).unwrap_or(0);
     }
     0
 }
@@ -1492,10 +1491,10 @@ pub fn video_player_get_video_width(component_id: String) -> i32 {
 /// Get video height in pixels
 #[napi]
 pub fn video_player_get_video_height(component_id: String) -> i32 {
-    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id) {
-        if let Ok(p) = player.lock() {
-            return p.get_video_size().map(|(_, h)| h).unwrap_or(0);
-        }
+    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id)
+        && let Ok(p) = player.lock()
+    {
+        return p.get_video_size().map(|(_, h)| h).unwrap_or(0);
     }
     0
 }

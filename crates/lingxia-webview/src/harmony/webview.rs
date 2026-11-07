@@ -742,12 +742,12 @@ unsafe extern "C" fn native_component_update_callback(
             extract_string_from_bridge_data(payload_data).unwrap_or_default()
         };
 
-        if component_id.is_empty() && !props_json.is_empty() {
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&props_json) {
-                if let Some(id) = json.get("componentId").and_then(|v| v.as_str()) {
-                    component_id = id.trim().to_string();
-                }
-            }
+        if component_id.is_empty()
+            && !props_json.is_empty()
+            && let Ok(json) = serde_json::from_str::<serde_json::Value>(&props_json)
+            && let Some(id) = json.get("componentId").and_then(|v| v.as_str())
+        {
+            component_id = id.trim().to_string();
         }
 
         if component_id.is_empty() || props_json.is_empty() {
@@ -1331,7 +1331,7 @@ impl WebViewController for WebViewInner {
     fn load_url(&self, url: &str) -> Result<(), WebViewError> {
         record_map(&RECENT_NAV_URLS, &self.webtag, url);
         let ark_tag = self.ark_webtag_string();
-        call_arkts("loadUrl", &[&ark_tag, &url])
+        call_arkts("loadUrl", &[&ark_tag, url])
     }
 
     fn load_data(&self, request: LoadDataRequest<'_>) -> Result<(), WebViewError> {
@@ -1850,7 +1850,7 @@ impl WebViewInner {
             let controller = &*(controller_api as *const ArkWeb_ControllerAPI);
             let js_cstr = cstring_from_str("evaluate_javascript.js", js)?;
             let js_object = ArkWeb_JavaScriptObject {
-                buffer: js_cstr.as_ptr() as *const u8,
+                buffer: js_cstr.as_ptr().cast(),
                 size: js.len(),
                 callback: None,
                 userData: std::ptr::null_mut(),
@@ -1923,15 +1923,14 @@ fn register_webview_callbacks(webview: &Arc<crate::WebView>) -> Result<(), WebVi
 
         let lifecycle_token = (api.onControllerAttached.is_some() || api.onDestroy.is_some())
             .then(|| bind_lifecycle_callback(webview.native_view_id()));
-        if let Some(token) = lifecycle_token {
-            if let Some(previous) = webview
+        if let Some(token) = lifecycle_token
+            && let Some(previous) = webview
                 .inner
                 .lifecycle_callback_token
                 .borrow_mut()
                 .replace(token)
-            {
-                unbind_lifecycle_callback(previous);
-            }
+        {
+            unbind_lifecycle_callback(previous);
         }
         let lifecycle_user_data = lifecycle_token
             .map(|token| token as usize as *mut c_void)
@@ -2195,10 +2194,9 @@ pub fn on_document_commit(
         webview.effective_options().profile,
         crate::webview::PlatformConsoleBackend::Harmony,
     ) == crate::webview::PlatformConsoleDelivery::DirectDelegate
+        && let Err(error) = inject_console_script(&webtag, webview.native_view_id())
     {
-        if let Err(error) = inject_console_script(&webtag, webview.native_view_id()) {
-            log::debug!("Harmony console injection at commit failed for {webtag}: {error}");
-        }
+        log::debug!("Harmony console injection at commit failed for {webtag}: {error}");
     }
     true
 }

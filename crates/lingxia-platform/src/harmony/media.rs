@@ -1029,20 +1029,20 @@ mod video_native {
         }
 
         fn mark_completed(&self) {
-            if let Ok(mut state) = self.state.lock() {
-                if matches!(*state, TranscodeState::Pending) {
-                    *state = TranscodeState::Completed;
-                    self.cv.notify_all();
-                }
+            if let Ok(mut state) = self.state.lock()
+                && matches!(*state, TranscodeState::Pending)
+            {
+                *state = TranscodeState::Completed;
+                self.cv.notify_all();
             }
         }
 
         fn mark_error(&self, message: String) {
-            if let Ok(mut state) = self.state.lock() {
-                if matches!(*state, TranscodeState::Pending) {
-                    *state = TranscodeState::Error(message);
-                    self.cv.notify_all();
-                }
+            if let Ok(mut state) = self.state.lock()
+                && matches!(*state, TranscodeState::Pending)
+            {
+                *state = TranscodeState::Error(message);
+                self.cv.notify_all();
             }
         }
 
@@ -1386,10 +1386,10 @@ mod video_native {
             .and_then(|mut reg| reg.remove(&callback_id));
         if let Some(token) = token {
             token.cancelled.store(true, Ordering::SeqCst);
-            if let Ok(signal) = token.active_signal.lock() {
-                if let Some(signal) = signal.as_ref() {
-                    signal.mark_error("compressVideo cancelled".to_string());
-                }
+            if let Ok(signal) = token.active_signal.lock()
+                && let Some(signal) = signal.as_ref()
+            {
+                signal.mark_error("compressVideo cancelled".to_string());
             }
         }
         Ok(())
@@ -1649,22 +1649,22 @@ mod video_native {
         source_info: Option<&VideoInfo>,
         source_path: &str,
     ) -> Option<(i32, i32)> {
-        if let Some(info) = source_info {
-            if let Some(size) = sanitize_resolution(info.width as i32, info.height as i32) {
-                return Some(size);
-            }
+        if let Some(info) = source_info
+            && let Some(size) = sanitize_resolution(info.width as i32, info.height as i32)
+        {
+            return Some(size);
         }
 
-        if let Ok((width, height)) = read_video_dimensions_with_generator(source_path) {
-            if let Some(size) = sanitize_resolution(width as i32, height as i32) {
-                return Some(size);
-            }
+        if let Ok((width, height)) = read_video_dimensions_with_generator(source_path)
+            && let Some(size) = sanitize_resolution(width as i32, height as i32)
+        {
+            return Some(size);
         }
 
-        if let Ok((width, height, _duration_ms)) = read_basic_video_info_with_player(source_path) {
-            if let Some(size) = sanitize_resolution(width as i32, height as i32) {
-                return Some(size);
-            }
+        if let Ok((width, height, _duration_ms)) = read_basic_video_info_with_player(source_path)
+            && let Some(size) = sanitize_resolution(width as i32, height as i32)
+        {
+            return Some(size);
         }
 
         None
@@ -2075,7 +2075,7 @@ mod video_native {
         }
 
         if metadata_duration_ms > player_duration_ms.saturating_mul(100)
-            && metadata_duration_ms % 1000 == 0
+            && metadata_duration_ms.is_multiple_of(1000)
         {
             let us_to_ms = metadata_duration_ms / 1000;
             if us_to_ms > 0 {
@@ -2159,12 +2159,12 @@ mod video_native {
     ) -> Result<(u32, u32), PlatformError> {
         let (source_width, source_height) = pixelmap.dimensions()?;
         let mut scaled_pixelmap = None;
-        if let Some(size) = desired_size {
-            if size.width != source_width || size.height != source_height {
-                let scale_x = size.width as f32 / source_width as f32;
-                let scale_y = size.height as f32 / source_height as f32;
-                scaled_pixelmap = Some(pixelmap.create_scaled(scale_x, scale_y)?);
-            }
+        if let Some(size) = desired_size
+            && (size.width != source_width || size.height != source_height)
+        {
+            let scale_x = size.width as f32 / source_width as f32;
+            let scale_y = size.height as f32 / source_height as f32;
+            scaled_pixelmap = Some(pixelmap.create_scaled(scale_x, scale_y)?);
         }
         let pixelmap_for_pack = scaled_pixelmap.as_ref().unwrap_or(pixelmap);
         let (final_width, final_height) = pixelmap_for_pack.dimensions()?;
@@ -2198,8 +2198,7 @@ mod video_native {
                 ))
             })?;
 
-        if let Err(err) =
-            packer.pack_to_file(&pixelmap_for_pack, &packing_options, file.as_raw_fd())
+        if let Err(err) = packer.pack_to_file(pixelmap_for_pack, &packing_options, file.as_raw_fd())
         {
             drop(file);
             let _ = fs::remove_file(output_path);

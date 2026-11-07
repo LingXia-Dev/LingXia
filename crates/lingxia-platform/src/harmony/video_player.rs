@@ -894,8 +894,8 @@ impl NativeVideoPlayer {
 
         let result = if source.starts_with("http://") || source.starts_with("https://") {
             self.set_url_source(source)
-        } else if source.starts_with("file://") {
-            self.set_file_source(&source[7..])
+        } else if let Some(path) = source.strip_prefix("file://") {
+            self.set_file_source(path)
         } else if source.starts_with("fd://") {
             self.set_url_source(source)
         } else if source.starts_with("/") {
@@ -1081,7 +1081,7 @@ impl NativeVideoPlayer {
                         }
                     }
                 }
-                return result;
+                result
             }
             AVPlayerState::Prepared | AVPlayerState::Paused | AVPlayerState::Completed => {
                 // These states can transition to Playing directly
@@ -1096,7 +1096,7 @@ impl NativeVideoPlayer {
                 let result =
                     check_av_result(unsafe { OH_AVPlayer_Play(self.player) }, "OH_AVPlayer_Play");
                 // Don't manually set state - let the callback do it
-                return result;
+                result
             }
             AVPlayerState::Playing => {
                 self.pending_play = false;
@@ -1108,14 +1108,12 @@ impl NativeVideoPlayer {
                     }
                 }
                 // Already playing
-                return Ok(());
+                Ok(())
             }
-            _ => {
-                return Err(PlatformError::Platform(format!(
-                    "Cannot play from state: {:?}",
-                    self.state
-                )));
-            }
+            _ => Err(PlatformError::Platform(format!(
+                "Cannot play from state: {:?}",
+                self.state
+            ))),
         }
     }
 
@@ -1344,13 +1342,12 @@ fn remove_stream_decoder_if_current(
     component_id: &str,
     wrapper: &Arc<StreamDecoderWrapper>,
 ) -> bool {
-    if let Ok(mut guard) = get_stream_decoder_registry().lock() {
-        if let Some(current) = guard.get(component_id) {
-            if Arc::ptr_eq(current, wrapper) {
-                guard.remove(component_id);
-                return true;
-            }
-        }
+    if let Ok(mut guard) = get_stream_decoder_registry().lock()
+        && let Some(current) = guard.get(component_id)
+        && Arc::ptr_eq(current, wrapper)
+    {
+        guard.remove(component_id);
+        return true;
     }
     false
 }
@@ -1617,15 +1614,15 @@ impl StreamDecoderState {
     fn set_volume(&mut self, volume: f32) -> Result<(), PlatformError> {
         let volume = volume.clamp(0.0, 1.0);
         self.volume = volume;
-        if let Some(audio_state) = self.audio.as_mut() {
-            if !audio_state.renderer.is_null() {
-                let result = unsafe { OH_AudioRenderer_SetVolume(audio_state.renderer, volume) };
-                if result != AUDIOSTREAM_SUCCESS {
-                    return Err(PlatformError::Platform(format!(
-                        "OH_AudioRenderer_SetVolume failed: {}",
-                        result
-                    )));
-                }
+        if let Some(audio_state) = self.audio.as_mut()
+            && !audio_state.renderer.is_null()
+        {
+            let result = unsafe { OH_AudioRenderer_SetVolume(audio_state.renderer, volume) };
+            if result != AUDIOSTREAM_SUCCESS {
+                return Err(PlatformError::Platform(format!(
+                    "OH_AudioRenderer_SetVolume failed: {}",
+                    result
+                )));
             }
         }
         Ok(())
@@ -2189,10 +2186,8 @@ impl StreamDecoderState {
             return Ok(None);
         }
         let mut is_keyframe = frame.keyframe;
-        if !is_keyframe {
-            if let Some(config) = self.last_video_config.as_ref() {
-                is_keyframe = detect_keyframe(config, &frame.data);
-            }
+        if !is_keyframe && let Some(config) = self.last_video_config.as_ref() {
+            is_keyframe = detect_keyframe(config, &frame.data);
         }
         let wrapper_ptr = self.user_data as *const StreamDecoderWrapper;
         if wrapper_ptr.is_null() {
@@ -2238,29 +2233,27 @@ impl StreamDecoderState {
         let mut data = frame.data;
         let mut data_is_annexb = looks_like_annexb(&data);
         let force_annexb = wrapper.video_force_annexb.load(Ordering::Acquire);
-        if force_annexb {
-            if let Some(config) = self.last_video_config.as_ref() {
-                if matches!(
-                    config.format,
-                    crate::traits::stream_decoder::VideoFormat::Avcc
-                ) && !data_is_annexb
-                {
-                    let nal_length_size = config.nal_length_size.unwrap_or(4);
-                    if let Some(converted) = avcc_to_annexb(nal_length_size, &data) {
-                        data = converted;
-                        data_is_annexb = true;
-                    }
+        if force_annexb && let Some(config) = self.last_video_config.as_ref() {
+            if matches!(
+                config.format,
+                crate::traits::stream_decoder::VideoFormat::Avcc
+            ) && !data_is_annexb
+            {
+                let nal_length_size = config.nal_length_size.unwrap_or(4);
+                if let Some(converted) = avcc_to_annexb(nal_length_size, &data) {
+                    data = converted;
+                    data_is_annexb = true;
                 }
-                if is_keyframe && !self.video_codec_prefix_sent && data_is_annexb {
-                    let prefix = build_codec_config(config);
-                    if !prefix.is_empty() {
-                        let mut combined = Vec::with_capacity(prefix.len() + data.len());
-                        combined.extend_from_slice(&prefix);
-                        combined.extend_from_slice(&data);
-                        data = combined;
-                    }
-                    self.video_codec_prefix_sent = true;
+            }
+            if is_keyframe && !self.video_codec_prefix_sent && data_is_annexb {
+                let prefix = build_codec_config(config);
+                if !prefix.is_empty() {
+                    let mut combined = Vec::with_capacity(prefix.len() + data.len());
+                    combined.extend_from_slice(&prefix);
+                    combined.extend_from_slice(&data);
+                    data = combined;
                 }
+                self.video_codec_prefix_sent = true;
             }
         }
 
@@ -2425,16 +2418,16 @@ impl StreamDecoderState {
     }
 
     fn on_new_output_buffer(&mut self, index: u32, render_result: i32) {
-        if let Some(video_state) = self.video.as_mut() {
-            if !video_state.logged_output {
-                video_state.logged_output = true;
-                log::info!(
-                    "[Harmony.StreamDecoder] first video output buffer: index={} for {} (result={})",
-                    index,
-                    self.component_id,
-                    render_result
-                );
-            }
+        if let Some(video_state) = self.video.as_mut()
+            && !video_state.logged_output
+        {
+            video_state.logged_output = true;
+            log::info!(
+                "[Harmony.StreamDecoder] first video output buffer: index={} for {} (result={})",
+                index,
+                self.component_id,
+                render_result
+            );
         }
         if render_result != AV_ERR_OK {
             log::warn!(
@@ -2624,7 +2617,7 @@ fn detect_keyframe_avcc(
     data: &[u8],
 ) -> bool {
     let len_size = match nal_length_size {
-        1 | 2 | 3 | 4 => nal_length_size as usize,
+        1..=4 => nal_length_size as usize,
         _ => 4,
     };
     let mut pos = 0usize;
@@ -2650,7 +2643,7 @@ fn detect_keyframe_avcc(
 
 fn avcc_to_annexb(nal_length_size: u8, data: &[u8]) -> Option<Vec<u8>> {
     let len_size = match nal_length_size {
-        1 | 2 | 3 | 4 => nal_length_size as usize,
+        1..=4 => nal_length_size as usize,
         _ => 4,
     };
     let mut pos = 0usize;
@@ -2679,7 +2672,7 @@ fn is_keyframe_nal(codec: crate::traits::stream_decoder::VideoCodec, nal_header:
         crate::traits::stream_decoder::VideoCodec::H264 => (nal_header & 0x1F) == 5,
         crate::traits::stream_decoder::VideoCodec::H265 => {
             let nal_type = (nal_header >> 1) & 0x3F;
-            matches!(nal_type, 16 | 17 | 18 | 19 | 20 | 21)
+            matches!(nal_type, 16..=21)
         }
     }
 }
@@ -2895,11 +2888,12 @@ fn build_avcc_config(config: &VideoStreamConfig) -> Vec<u8> {
         return Vec::new();
     }
     let nal_length_size = config.nal_length_size.unwrap_or(4).clamp(1, 4);
-    let mut data = Vec::new();
-    data.push(1); // configurationVersion
-    data.push(config.sps[1]); // AVCProfileIndication
-    data.push(config.sps[2]); // profile_compatibility
-    data.push(config.sps[3]); // AVCLevelIndication
+    let mut data = vec![
+        1,             // configurationVersion
+        config.sps[1], // AVCProfileIndication
+        config.sps[2], // profile_compatibility
+        config.sps[3], // AVCLevelIndication
+    ];
     data.push(0xFC | (nal_length_size - 1)); // lengthSizeMinusOne
     data.push(0xE1); // numOfSequenceParameterSets (1)
     data.extend_from_slice(&(config.sps.len() as u16).to_be_bytes());
@@ -2921,10 +2915,10 @@ fn video_mime(codec: crate::traits::stream_decoder::VideoCodec) -> *const c_char
 
 pub fn create_player(component_id: &str, callback_id: u64) -> Result<i64, PlatformError> {
     // Check if player already exists (created by native component)
-    if let Some(existing) = get_player(component_id) {
-        if let Ok(p) = existing.lock() {
-            return Ok(p.as_ptr() as i64);
-        }
+    if let Some(existing) = get_player(component_id)
+        && let Ok(p) = existing.lock()
+    {
+        return Ok(p.as_ptr() as i64);
     }
 
     // Create new player if not exists
@@ -2970,10 +2964,10 @@ pub fn destroy_player(component_id: &str) -> Result<(), PlatformError> {
     let mut players = manager.write().map_err(|_| {
         PlatformError::Platform("Failed to acquire player manager lock".to_string())
     })?;
-    if let Some(player) = players.remove(component_id) {
-        if let Ok(mut p) = player.lock() {
-            p.release()?;
-        }
+    if let Some(player) = players.remove(component_id)
+        && let Ok(mut p) = player.lock()
+    {
+        p.release()?;
     }
     remove_surface_id(component_id);
     Ok(())
@@ -3406,18 +3400,17 @@ pub fn set_video_surface_from_id(
         let component_id = component_id.to_string();
         let wrapper_clone = wrapper.clone();
         let _ = crate::rt::spawn_blocking(move || {
-            let user_data =
-                Arc::as_ptr(&wrapper_clone) as *const StreamDecoderWrapper as *mut c_void;
+            let user_data = Arc::as_ptr(&wrapper_clone) as *mut c_void;
             match wrapper_clone.state.lock() {
                 Ok(mut state) => {
-                    if let Some(config) = state.last_video_config.clone() {
-                        if let Err(err) = state.configure_video(config, user_data) {
-                            log::warn!(
-                                "[Harmony.StreamDecoder] delayed surface configure failed for {}: {}",
-                                component_id,
-                                err
-                            );
-                        }
+                    if let Some(config) = state.last_video_config.clone()
+                        && let Err(err) = state.configure_video(config, user_data)
+                    {
+                        log::warn!(
+                            "[Harmony.StreamDecoder] delayed surface configure failed for {}: {}",
+                            component_id,
+                            err
+                        );
                     }
                 }
                 Err(_) => {
@@ -3464,10 +3457,10 @@ pub fn rebind_surface_from_id(
 ) -> Result<(), PlatformError> {
     store_surface_id(component_id, surface_id);
     let window = create_native_window_from_surface_id(surface_id)?;
-    if let Some(player) = get_player(component_id) {
-        if let Ok(mut p) = player.lock() {
-            return p.rebind_surface_and_resume(window, position_ms.max(0), should_play);
-        }
+    if let Some(player) = get_player(component_id)
+        && let Ok(mut p) = player.lock()
+    {
+        return p.rebind_surface_and_resume(window, position_ms.max(0), should_play);
     }
     Err(PlatformError::Platform(format!(
         "Player not found: {}",
@@ -3510,11 +3503,11 @@ pub fn rebind_stream_surface(component_id: &str, surface_id: &str) -> Result<(),
 
         // If we received stream config before the surface existed, configure_video() would have stored
         // last_video_config and returned Ok(()). Now that we have a surface, retry configuration.
-        if state.video.is_none() {
-            if let Some(config) = state.last_video_config.clone() {
-                let user_data = Arc::as_ptr(&wrapper) as *const StreamDecoderWrapper as *mut c_void;
-                let _ = state.configure_video(config, user_data);
-            }
+        if state.video.is_none()
+            && let Some(config) = state.last_video_config.clone()
+        {
+            let user_data = Arc::as_ptr(&wrapper) as *mut c_void;
+            let _ = state.configure_video(config, user_data);
         }
     }
 
@@ -3562,10 +3555,10 @@ fn rate_to_speed(rate: f64) -> AVPlaybackSpeed {
 
 pub fn set_speed_from_rate(component_id: &str, rate: f64) -> Result<(), PlatformError> {
     let speed = rate_to_speed(rate);
-    if let Some(player) = get_player(component_id) {
-        if let Ok(mut p) = player.lock() {
-            return p.set_speed(speed);
-        }
+    if let Some(player) = get_player(component_id)
+        && let Ok(mut p) = player.lock()
+    {
+        return p.set_speed(speed);
     }
     Err(PlatformError::Platform(format!(
         "Player not found: {}",
@@ -3746,8 +3739,6 @@ fn dispatch_command_harmony(
             Err(std::sync::TryLockError::WouldBlock) => {
                 let wrapper_clone = decoder.clone();
                 let component_id = component_id.to_string();
-                let callback_id = callback_id;
-                let control_event = control_event;
                 let _ = crate::rt::spawn_blocking(move || {
                     apply_stream_decoder_command_blocking(
                         component_id,
@@ -3985,7 +3976,7 @@ impl VideoStreamDecoderHandle for HarmonyStreamDecoderHandle {
     }
 
     fn configure_video(&self, config: VideoStreamConfig) -> Result<(), PlatformError> {
-        let user_data = Arc::as_ptr(&self.wrapper) as *const StreamDecoderWrapper as *mut c_void;
+        let user_data = Arc::as_ptr(&self.wrapper) as *mut c_void;
         let mut state = self
             .wrapper
             .state
@@ -3996,7 +3987,7 @@ impl VideoStreamDecoderHandle for HarmonyStreamDecoderHandle {
     }
 
     fn configure_audio(&self, config: AudioStreamConfig) -> Result<(), PlatformError> {
-        let user_data = Arc::as_ptr(&self.wrapper) as *const StreamDecoderWrapper as *mut c_void;
+        let user_data = Arc::as_ptr(&self.wrapper) as *mut c_void;
         let mut state = self
             .wrapper
             .state

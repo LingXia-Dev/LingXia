@@ -25,7 +25,7 @@ use std::time::Duration;
 /// According to HarmonyOS documentation:
 /// - The NativeResourceManager is owned by the JS layer
 /// - `OH_ResourceManager_InitNativeResourceManager` only creates a native wrapper
-/// around the existing JS ResourceManager object
+///   around the existing JS ResourceManager object
 /// - There is NO corresponding `OH_ResourceManager_Release` function
 /// - The JS garbage collector handles the actual cleanup
 ///
