@@ -36,3 +36,14 @@ the drivers here locate controls without coordinates:
 - `verify-pages.mjs <adb> <serial>` — two pages on one executor, switched surfaces.
 - `verify-feedback.mjs <adb> <serial> <package> <testId>` — press/release pixels
   (Python with Pillow).
+
+`ControlActivity` runs plain Android versions of the GPU perf-lab scenes (`list`, `data`,
+`anim`, `text`, `touch`) and judges them by the same bar, for comparing the View with the
+platform's own UI on one device:
+
+```sh
+./gradlew -p lingxia-sdk/android/tests/gpu/smoke assembleRelease
+adb install -r lingxia-sdk/android/tests/gpu/smoke/build/outputs/apk/release/LingXiaViewSmoke-release.apk
+adb shell am start -n com.lingxia.view.smoke/com.lingxia.view.ControlActivity --es scene list
+adb logcat -s PerfControl:I
+```

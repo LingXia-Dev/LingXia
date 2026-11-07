@@ -1,6 +1,6 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android) apply false
+    alias(libs.plugins.kotlin.android)
 }
 android {
     namespace = "com.lingxia.view"
@@ -13,6 +13,13 @@ android {
         versionName = "0.1"
         ndk { abiFilters += "arm64-v8a" }
     }
+    // The perf controls (ControlActivity) run in release, signed with the debug key.
+    buildTypes { getByName("release") { signingConfig = signingConfigs.getByName("debug") } }
+    compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     sourceSets["main"].assets.srcDir(providers.gradleProperty("viewAssets").getOrElse("../../../../fixtures/hello-view/dist"))
 }
-dependencies { implementation(project(":lingxia-core")) }
+dependencies {
+    implementation(project(":lingxia-core"))
+    implementation("androidx.recyclerview:recyclerview:1.3.1")
+}
+kotlin { jvmToolchain(17) }
