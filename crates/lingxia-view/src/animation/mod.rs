@@ -197,6 +197,8 @@ pub struct Timeline {
     visuals: BTreeMap<crate::scene::node::Identity, Visual>,
     /// Host times of visible presentations that showed or cleared animated values.
     presents: std::collections::VecDeque<Duration>,
+    /// The window is covered: looping keyframes wake no frames.
+    covered: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -232,7 +234,14 @@ impl Timeline {
             motion: self.motion,
             visuals: self.visuals.clone(),
             presents: self.presents.clone(),
+            covered: self.covered,
         }
+    }
+
+    /// A looping keyframe animation shows nothing behind other windows and would run
+    /// forever, so it parks while the window is covered; finite ones run to completion.
+    pub fn set_covered(&mut self, covered: bool) {
+        self.covered = covered;
     }
 
     /// Animated presentations in the second up to `now`; parked frames never count.
@@ -312,6 +321,10 @@ impl Timeline {
             .collect();
         for identity in identities.iter().map(String::as_str) {
             let instance = self.instances.get(identity);
+            if self.covered && instance.is_some_and(|i| i.definition.timing.iterations.is_none()) {
+                next = next.earliest(self.transitions.wakeup(identity, active_time));
+                continue;
+            }
             let mut current = match instance {
                 Some(instance) => self.keyframe_visual(instance, active_time)?,
                 None => None,

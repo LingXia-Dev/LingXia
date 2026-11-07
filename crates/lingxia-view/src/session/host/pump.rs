@@ -315,7 +315,7 @@ impl<A: PlatformAdapter> Inner<A> {
                                 main.prepared = Some(prepared);
                             }
                         }
-                        inner.adapter.request_vsync();
+                        inner.request_frame();
                         inner.schedule_more();
                         inner.collect_between_frames(page);
                     }
@@ -633,6 +633,39 @@ impl<A: PlatformAdapter> Inner<A> {
         }
     }
 
+    /// Ask for the next display frame. A covered window has no display link, so its frames
+    /// tick at the refresh interval: pacing and frame statistics keep their meaning.
+    pub(super) fn request_frame(self: &Arc<Self>) {
+        if !self.window_hidden() {
+            return self.adapter.request_vsync();
+        }
+        let (tick, interval, delay) = {
+            let mut main = self.main();
+            if std::mem::replace(&mut main.covered_tick, true) {
+                return;
+            }
+            let now = self.adapter.now();
+            let tick = main.expected_vsync(now, 0);
+            (tick, main.vsync_interval, tick.saturating_sub(now))
+        };
+        let host = Arc::downgrade(self);
+        self.adapter.post_after(
+            delay,
+            Box::new(move || {
+                if let Some(host) = host.upgrade() {
+                    {
+                        // The frame stands for the refresh after its tick, as a display
+                        // link's does; a late timer must not stretch the next tick.
+                        let mut main = host.main();
+                        main.covered_tick = false;
+                        main.display = Some((tick + interval, interval));
+                    }
+                    host.vsync();
+                }
+            }),
+        );
+    }
+
     pub(super) fn vsync(self: &Arc<Self>) {
         // A window nothing of which shows still completes its frames, so the page's lifecycle,
         // hit-testing and readback advance, but nothing reaches a drawable that may not return.
@@ -646,15 +679,20 @@ impl<A: PlatformAdapter> Inner<A> {
             if main.deferred.is_some() {
                 return;
             }
-            if let Some(last) = main.last_vsync
+            if !hidden
+                && let Some(last) = main.last_vsync
                 && let Some(delta) = at.checked_sub(last)
                 && delta > Duration::from_millis(4)
                 && delta < Duration::from_millis(50)
             {
                 main.vsync_interval = (main.vsync_interval * 7 + delta) / 8;
             }
-            main.last_vsync = Some(at);
             let platform = main.display.take();
+            // A covered window's ticks keep to their grid however late the timer runs.
+            main.last_vsync = Some(match platform {
+                Some((shows, interval)) if hidden => shows.saturating_sub(interval),
+                _ => at,
+            });
             if let Some((_, interval)) = platform.filter(|(_, i)| !i.is_zero()) {
                 main.vsync_interval = interval;
             }
@@ -673,7 +711,7 @@ impl<A: PlatformAdapter> Inner<A> {
             return;
         };
         if self.main().prepared.is_some() {
-            self.adapter.request_vsync();
+            self.request_frame();
         }
         let current = !self.main().disposed && self.lifecycle.is_current_surface(prepared.surface);
         if !current {
@@ -840,7 +878,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.pending = true;
         }
         if self.main().prepared.is_some() {
-            self.adapter.request_vsync();
+            self.request_frame();
         }
         let pending = {
             let main = self.main();
@@ -906,11 +944,11 @@ impl<A: PlatformAdapter> Inner<A> {
         timing.main_us = micros(vsync.elapsed());
         timing.main_work_us += micros(entered.elapsed());
         let now = self.adapter.now();
-        let shown = !self.window_hidden();
         {
             let mut main = self.main();
             main.telemetry.presented(now, &snapshot, &timing);
-            if shown && main.visible {
+            // A covered window's frames count: they complete on the refresh tick, unpresented.
+            if main.visible {
                 main.telemetry.stats.record(
                     super::frame_stats::Presented {
                         demand: pacing.demand,

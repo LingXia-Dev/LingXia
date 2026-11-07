@@ -267,6 +267,8 @@ struct Main<F> {
     /// Host time of the last vsync and the display interval estimate.
     last_vsync: Option<Duration>,
     vsync_interval: Duration,
+    /// A covered window's next frame tick is posted.
+    covered_tick: bool,
     /// The platform's timing for the display frame being served: `(shows at, interval)`.
     display: Option<(Duration, Duration)>,
     /// When a frame was first asked for since the last request took the demand.
@@ -432,6 +434,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     next_prepared: None,
                     last_vsync: None,
                     vsync_interval: Duration::from_micros(16_667),
+                    covered_tick: false,
                     display: None,
                     demand_at: None,
                     hud: false,

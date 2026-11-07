@@ -1838,6 +1838,33 @@ fn a_window_nothing_of_which_shows_holds_its_frame_until_it_returns() {
 }
 
 #[test]
+fn a_covered_window_completes_frames_on_the_refresh_tick_and_counts_them() {
+    let worker = ViewWorker::spawn("test-window-covered").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = revealing_page(&platform, &worker);
+    platform.settle(&[&host]);
+    let frames = || {
+        host.automation_request(&serde_json::json!({"op": "frame"}))
+            .unwrap()["pacing"]["frames"]
+            .as_u64()
+            .unwrap()
+    };
+    let before = frames();
+    host.window_visible(false);
+    resize(&host, 180);
+    host.surface_changed();
+    platform.settle(&[&host]);
+    assert!(
+        !host.adapter().log.lock().unwrap().vsync,
+        "a covered window has no display link to ask"
+    );
+    assert_eq!(frames(), before, "the frame waits for the refresh tick");
+    assert_eq!(platform.advance(Duration::from_millis(17)), 1);
+    platform.settle(&[&host]);
+    assert_eq!(frames(), before + 1, "a covered frame completes and counts");
+}
+
+#[test]
 fn a_page_that_never_presents_is_revealed_held_by_the_watchdog() {
     let worker = ViewWorker::spawn("test-reveal-watchdog").unwrap();
     let platform = Platform::new(&[&worker]);

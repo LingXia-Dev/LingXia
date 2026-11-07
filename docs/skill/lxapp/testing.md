@@ -531,7 +531,8 @@ lxdev test args --preset ci                 # show the effective arguments
 - **`force` is a last resort.** `click({ force: true })` / `fill(text, {
   force: true })` dispatch DOM events directly; use only after
   `element is obscured`.
-- **Runs leave the window where it is.** A GPU lxapp runs covered or behind other apps. With a
+- **Runs leave the window where it is.** A GPU lxapp runs covered or behind other apps: frames
+  complete and count in `t.app.metrics`, finite animations finish, looping ones park. With a
   WebView lxapp open, a run orders a minimized or fully covered window in front at its start,
   without taking focus, and logs why; keep it uncovered after that (`lxdev host focus`).
 - **A locked screen stops the run** on macOS: pages are hidden, so the rest

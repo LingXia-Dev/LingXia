@@ -1056,6 +1056,10 @@ name is still in the binary. What that rules out, and what replaces it:
   a spec waits on only advances while the window is at least partly visible.
   On macOS 12 and 13 the scheduling policy does not exist, so a covered or
   hidden WebView may also be throttled; keep the Runner visible there.
+- Covered GPU pages: a fully covered window completes its frames unpresented
+  on a refresh-interval tick and counts them in frame statistics. Finite
+  animations (transitions, springs, glides, Logic updates) run to completion;
+  looping keyframe animations park until the window shows again.
 - JavaScriptCore preemption: the execution-time-limit API is private, so on
   Apple JavaScript that never yields cannot be interrupted, in an automation
   program or in an lxapp's Logic. Timeouts are cooperative: the run times out

@@ -1,7 +1,7 @@
 //! When a page being shown replaces the one on screen. The outgoing page stays,
 //! frozen, until the incoming one presents, fails or runs out of time; adapters
 //! only execute [`crate::platform::HostEvents::revealed`].
-use super::Inner;
+use super::{Guard, Inner};
 use crate::platform::PlatformAdapter;
 use std::sync::Arc;
 use std::time::Duration;
@@ -118,7 +118,8 @@ impl<A: PlatformAdapter> Inner<A> {
     }
 
     /// A window nothing of which can be seen completes frames without presenting them (a
-    /// drawable for it may never come back) and redraws when it shows again.
+    /// drawable for it may never come back) and redraws when it shows again. Finite
+    /// animations run to completion meanwhile; looping keyframe ones park.
     pub(super) fn window_visible(self: &Arc<Self>, visible: bool) {
         let changed = {
             let mut main = self.main();
@@ -129,13 +130,19 @@ impl<A: PlatformAdapter> Inner<A> {
         if !changed {
             return;
         }
+        self.work(
+            Guard::Page(self.lifecycle.page()),
+            move |_, session| {
+                session.set_animation_covered(!visible);
+                Ok(())
+            },
+            |_, _| {},
+        );
         if visible {
             // Frames completed while hidden never reached the screen.
             self.main().dirty = true;
-            self.adapter.request_vsync();
+            self.request_frame();
             self.schedule();
-        } else {
-            self.park_animations();
         }
     }
 

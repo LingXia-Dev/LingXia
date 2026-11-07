@@ -628,3 +628,38 @@ fn view_wire_requires_matching_definition_and_presentation_aware_rendering() {
             .contains("requires animation presentation scheduling")
     );
 }
+
+#[test]
+fn a_covered_window_runs_finite_animations_to_completion_and_parks_looping_ones() {
+    let fade = authored_effect();
+    let pulse = serde_json::json!({"name":"pulse","durationMs":100,"delayMs":0,"iterations":null,"whenReduced":"base",
+        "easing":"linear","opacity":[{"offset":0,"value":0},{"offset":1,"value":1}],"transforms":[]});
+    let source = tests::source(&format!(
+        "function render(){{return h('column',{{}},h('column',{{style:{{height:20,animation:{fade}}}}}),h('column',{{style:{{height:20,animation:{pulse}}}}}));}}"
+    ));
+    let mut page = ViewSession::new(&source).unwrap();
+    page.set_animation_surface(Some(SurfaceTicket::new(1)), ms(0))
+        .unwrap();
+    automatic(&mut page, 0, true, 0.0);
+    page.animation_presented(SurfaceTicket::new(1), page.generation(), ms(0))
+        .unwrap();
+    page.set_animation_covered(true);
+    assert_eq!(
+        page.view_animation_wakeup(ms(10)).unwrap(),
+        Wakeup::NextFrame,
+        "the fade runs on behind other windows"
+    );
+    automatic(&mut page, 110, false, 0.0);
+    page.animation_presented(SurfaceTicket::new(1), page.generation(), ms(110))
+        .unwrap();
+    assert_eq!(
+        page.view_animation_wakeup(ms(120)).unwrap(),
+        Wakeup::None,
+        "only the pulse is left, and it parks"
+    );
+    page.set_animation_covered(false);
+    assert_eq!(
+        page.view_animation_wakeup(ms(120)).unwrap(),
+        Wakeup::NextFrame
+    );
+}

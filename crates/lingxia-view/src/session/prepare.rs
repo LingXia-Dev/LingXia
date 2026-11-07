@@ -299,6 +299,10 @@ impl ViewSession {
         Ok(result)
     }
 
+    pub fn set_animation_covered(&mut self, covered: bool) {
+        self.animations.set_covered(covered);
+    }
+
     pub fn view_animation_wakeup(&self, now: Duration) -> Result<crate::animation::Wakeup, String> {
         self.animations
             .next_wakeup(now, self.animation_visible.iter().map(|id| &**id))
