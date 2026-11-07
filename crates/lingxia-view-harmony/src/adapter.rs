@@ -20,8 +20,10 @@ const LONG_PRESS: Duration = Duration::from_millis(500);
 /// where a faster flick travels disproportionately further.
 const FLING_LINEAR: f32 = 0.184;
 const FLING_QUADRATIC: f32 = 1.49e-4;
-/// A fling below this speed stops, in device pixels per second.
-const FLING_STOP: f32 = 20.0;
+/// A fling that would move less than this many device pixels in a frame stops.
+const FLING_STOP: f32 = 0.5;
+/// The shortest frame a fling step assumes, so a quick step does not end a fling early.
+const FLING_FRAME: f32 = 1.0 / 120.0;
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|p| p.into_inner())
@@ -188,7 +190,7 @@ impl HarmonyAdapter {
         let delta = state.velocity * dt;
         state.velocity *= (-state.decay * dt).exp();
         let moved = host.scroll_by(&state.region, delta);
-        if !moved || state.velocity.abs() < FLING_STOP {
+        if !moved || state.velocity.abs() * dt.max(FLING_FRAME) < FLING_STOP {
             *fling = None;
             return false;
         }
