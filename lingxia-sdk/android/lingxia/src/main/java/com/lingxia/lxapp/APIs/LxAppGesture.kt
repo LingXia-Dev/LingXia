@@ -1,6 +1,5 @@
 package com.lingxia.lxapp.APIs
 
-import android.app.Instrumentation
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -20,15 +19,13 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Real touch gestures for test automation (JNI). Events go through the
- * system input dispatcher into the window when the platform lets the app
- * inject into its own window ("window"), else through the activity's
- * dispatch ("view"); either way every interceptor on the way sees them.
+ * Real touch gestures for test automation (JNI). Events reach the presenting
+ * activity's window at their planned times, so every interceptor on the way
+ * sees them.
  */
 internal object LxAppGesture {
     private class Finger(
         val downTime: Long,
-        val window: Boolean,
         val origin: Triple<Float, Float, Float>,
         var x: Float,
         var y: Float,
@@ -36,7 +33,7 @@ internal object LxAppGesture {
 
     private val fingers = ConcurrentHashMap<Long, Finger>()
     private val nextFinger = AtomicLong(1)
-    private val instrumentation = Instrumentation()
+    private val main = Handler(Looper.getMainLooper())
 
     /**
      * Runs one gesture segment on the calling (non-main) thread and returns
@@ -199,7 +196,6 @@ internal object LxAppGesture {
         val (originX, originY, scale) = origin
         val startedAt = SystemClock.uptimeMillis()
         var events = 0
-        var window = finger?.window ?: true
         // Each event carries its planned time, as a touchscreen stamps its samples: a busy main
         // thread delays delivery, and real-time stamps would slow the gesture velocity sees.
         var stamp = startedAt
@@ -213,10 +209,10 @@ internal object LxAppGesture {
             stamp = due
             if (finger == null) {
                 val downTime = due
-                window = inject(MotionEvent.ACTION_DOWN, downTime, x, y, preferWindow = true, at = due)
-                finger = Finger(downTime, window, origin, x, y)
+                inject(MotionEvent.ACTION_DOWN, downTime, x, y, at = due)
+                finger = Finger(downTime, origin, x, y)
             } else {
-                inject(MotionEvent.ACTION_MOVE, finger.downTime, x, y, preferWindow = finger.window, at = due)
+                inject(MotionEvent.ACTION_MOVE, finger.downTime, x, y, at = due)
                 finger.x = x
                 finger.y = y
             }
@@ -225,42 +221,39 @@ internal object LxAppGesture {
         val held = finger!!
         val id = when (end) {
             "hold" -> nextFinger.getAndIncrement().also { fingers[it] = held }
-            "cancel" -> { inject(MotionEvent.ACTION_CANCEL, held.downTime, held.x, held.y, held.window, stamp); events++; 0L }
-            else -> { inject(MotionEvent.ACTION_UP, held.downTime, held.x, held.y, held.window, stamp); events++; 0L }
+            "cancel" -> { inject(MotionEvent.ACTION_CANCEL, held.downTime, held.x, held.y, stamp); events++; 0L }
+            else -> { inject(MotionEvent.ACTION_UP, held.downTime, held.x, held.y, stamp); events++; 0L }
         }
+        // Every posted event has been delivered once the main thread answers.
+        onMain { }
         val result = JSONObject()
-            .put("delivered", if (window) "window" else "view")
+            .put("delivered", "window")
             .put("events", events)
             .put("durationMs", (SystemClock.uptimeMillis() - startedAt).toDouble())
         if (id != 0L) result.put("finger", id)
         return result
     }
 
-    /** True when the event went through the input dispatcher. */
-    private fun inject(action: Int, downTime: Long, x: Float, y: Float, preferWindow: Boolean, at: Long): Boolean {
+    /**
+     * Delivers the event to the presenting activity's window at its planned uptime [at], so its
+     * stamp is when it arrives and velocity stays exact. Latency measured from it is the app's
+     * pipeline from the window down: the system input dispatcher, about one frame for a real
+     * finger, is not in it. The window routes it, so host chrome receives it too.
+     */
+    private fun inject(action: Int, downTime: Long, x: Float, y: Float, at: Long) {
+        LxApp.getCurrentActivity() ?: throw IllegalStateException("no activity presents an lxapp")
         val event = MotionEvent.obtain(downTime, at, action, x, y, 0)
         event.source = InputDevice.SOURCE_TOUCHSCREEN
-        try {
-            if (preferWindow) {
-                try {
-                    instrumentation.sendPointerSync(event)
-                    return true
-                } catch (_: SecurityException) {
-                    // Injection refused: dispatch through the activity instead.
-                }
+        main.postAtTime({
+            try {
+                val decor = LxApp.getCurrentActivity()?.window?.decorView ?: return@postAtTime
+                val origin = IntArray(2).also { decor.getLocationOnScreen(it) }
+                event.offsetLocation(-origin[0].toFloat(), -origin[1].toFloat())
+                decor.dispatchTouchEvent(event)
+            } finally {
+                event.recycle()
             }
-            onMain {
-                val activity = LxApp.getCurrentActivity()
-                    ?: throw IllegalStateException("no activity presents an lxapp")
-                val decor = activity.window.decorView
-                val at = IntArray(2).also { decor.getLocationOnScreen(it) }
-                event.offsetLocation(-at[0].toFloat(), -at[1].toFloat())
-                activity.dispatchTouchEvent(event)
-            }
-            return false
-        } finally {
-            event.recycle()
-        }
+        }, at)
     }
 
     private fun presenting(appId: String): LxAppActivity {

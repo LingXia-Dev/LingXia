@@ -42,13 +42,25 @@ async function expectFrames(t: Fixture, metrics: TestMetrics) {
   expect(verdict.pass, verdict.line).toBe(true);
 }
 
+/** Waits until a glide has stopped: frames present only while content changes, so none for
+ *  100 ms means the list holds still. A user flings again after watching it settle. */
+async function glideSettled(t: Fixture, timeoutMs = 8000) {
+  const until = Date.now() + timeoutMs;
+  while (Date.now() < until) {
+    const recent = await t.app.metrics({ windowMs: 100 });
+    if (recent.samples + recent.dropped === 0) return;
+    await new Promise<void>(resolve => setTimeout(resolve, 50));
+  }
+  throw new Error(`the list was still gliding after ${timeoutMs} ms`);
+}
+
 spec('a 1000-row list keeps pace through flings', { id: 'PERF-LIST-001', covers: ['view:list'] }, async (t) => {
   await scene(t, 'list', 1000);
   const list = t.app.view.testId('perf-list');
   const started = Date.now();
   for (const direction of ['up', 'up', 'down', 'up'] as const) {
     await t.app.view.fling(direction, 4000, { at: list });
-    await t.app.view.testId('perf-list').waitFor({ state: 'visible' });
+    await glideSettled(t);
   }
   await new Promise<void>(resolve => setTimeout(resolve, 1000));
   await expectFrames(t, await t.app.metrics({ windowMs: Date.now() - started }));
