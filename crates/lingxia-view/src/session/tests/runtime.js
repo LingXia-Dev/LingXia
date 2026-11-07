@@ -4481,7 +4481,7 @@
       throw error;
     } finally {
       clearArena();
-      Object.assign(render, { active: false, scope: null, view: null, lookupLocals: null, collectors: [], recall: null, recallClosures: null, frames: [] });
+      Object.assign(render, { active: false, scope: null, view: null, lookupLocals: null, collectors: [], recall: null, recallClosures: null, frames: [], site: null });
     }
   }
   var movedAnchors = "";

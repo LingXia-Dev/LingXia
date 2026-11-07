@@ -36,7 +36,7 @@ function runCandidate(view, lookup, build, recall = null) {
   // A render that throws reverts to the committed page: every pending update is dropped,
   // not only the one that threw, so state that makes render fail cannot wedge each retry.
   catch (error) { discard(); throw error; }
-  finally { clearArena(); Object.assign(render, { active: false, scope: null, view: null, lookupLocals: null, collectors: [], recall: null, recallClosures: null, frames: [] }); }
+  finally { clearArena(); Object.assign(render, { active: false, scope: null, view: null, lookupLocals: null, collectors: [], recall: null, recallClosures: null, frames: [], site: null }); }
 }
 
 // With `deferAnchors`, a render whose list anchors moved returns no buffer: native picks their

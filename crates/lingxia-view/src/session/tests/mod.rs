@@ -1758,6 +1758,24 @@ fn a_render_that_runs_out_of_time_names_the_element_it_was_building() {
 }
 
 #[test]
+fn a_handler_that_runs_out_of_time_names_no_element() {
+    if !bounded_jobs() {
+        return;
+    }
+    // List rows resolve while encoding, after the page's own elements: the last of them must
+    // not be blamed for a handler that spins later.
+    let module = source(
+        "function render(){return h('column',{},h('button',{onClick:()=>{for(;;){}},style:{height:40}},'spin'),h(List,{style:{height:120},items:[1,2,3],getKey:i=>String(i),renderItem:i=>h('text',{__loc:'page.tsx:4:7',style:{height:40}},String(i))}))}",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    let frame = page.layout(200, 200, 1.0).unwrap();
+    let spin = frame.nodes.iter().find_map(|n| n.on_click).unwrap();
+    let error = page.click(page.generation(), spin).unwrap_err();
+    assert!(error.starts_with("UI_TIMEOUT"), "{error}");
+    assert!(!error.contains("while rendering"), "{error}");
+}
+
+#[test]
 fn a_focused_select_paints_its_focus_classes_without_the_view() {
     let module = source(
         "configureClasses([{name:'base',when:{},style:{backgroundColor:'#ffffff'}},{name:'focused',when:{state:'focus'},style:{backgroundColor:'#0000ff'}}]);function render(){return h('select',{className:'base focused','aria-label':'Plan',options:[{value:'a',label:'A'}],value:'a',onChange(){},style:{width:100,height:40,borderRadius:0}})}",
