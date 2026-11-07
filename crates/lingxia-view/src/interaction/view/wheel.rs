@@ -83,7 +83,14 @@ impl ViewInteraction {
         if fresh {
             self.scroll.wheel_began(&target);
         }
-        let moved = distance != 0.0 && self.scroll.drag_by(&target, -distance);
+        // Momentum stays on the latched region, as a platform scroll view's does: a list
+        // that reaches its end stops there instead of handing the glide to the page.
+        let moved = distance != 0.0
+            && if event.phase == WheelPhase::Momentum {
+                self.scroll.drag_region(&target, -distance) != 0.0
+            } else {
+                self.scroll.drag_by(&target, -distance)
+            };
         let mut effects = Vec::new();
         if moved {
             effects.push(Effect::Redraw);

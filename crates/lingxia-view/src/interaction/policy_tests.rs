@@ -712,6 +712,35 @@ fn a_wheel_gesture_stays_on_its_region_through_momentum() {
 }
 
 #[test]
+fn wheel_momentum_stops_at_the_end_of_a_nested_list() {
+    use crate::interaction::view::{Wheel, WheelPhase};
+    let mut page = node("page", "scroll", [0.0, 0.0, 200.0, 200.0]);
+    page.scroll = Some(region("page", None, 0.0, 500.0));
+    let mut list = node("list", "scroll", [0.0, 0.0, 100.0, 100.0]);
+    list.scroll = Some(region("list", Some("page"), 0.0, 20.0));
+    list.scroll_parent = Some("page".into());
+    let mut interaction = ViewInteraction::default();
+    presented(&mut interaction, vec![page, list], 1);
+    let wheel = |phase, dy| Wheel {
+        x: 50.0,
+        y: 50.0,
+        dx: 0.0,
+        dy,
+        precise: true,
+        phase,
+    };
+    interaction.wheel(wheel(WheelPhase::Began, -10.0));
+    interaction.wheel(wheel(WheelPhase::Ended, 0.0));
+    assert!(interaction.wheel(wheel(WheelPhase::Momentum, -100.0)).0);
+    assert_eq!(interaction.scroll().offset("list"), 20.0);
+    assert!(!interaction.wheel(wheel(WheelPhase::Momentum, -100.0)).0);
+    assert_eq!(interaction.scroll().offset("page"), 0.0);
+    // The fingers' own scroll still chains once the list is spent.
+    interaction.wheel(wheel(WheelPhase::Began, -10.0));
+    assert_eq!(interaction.scroll().offset("page"), 5.0);
+}
+
+#[test]
 fn a_wheel_pull_below_the_top_of_a_nested_list_can_still_scroll_up() {
     use crate::interaction::view::{Wheel, WheelPhase};
     let mut list = node("list", "scroll", [0.0, 0.0, 100.0, 100.0]);
