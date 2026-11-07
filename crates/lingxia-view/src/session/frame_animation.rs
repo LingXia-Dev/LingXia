@@ -21,7 +21,7 @@ pub(super) enum FrameAnimations<'a> {
         /// The unpresented frame this one is prepared ahead of.
         base: Option<Box<Prepared>>,
         frame: Option<Box<Prepared>>,
-        visible: BTreeSet<String>,
+        visible: BTreeSet<crate::scene::node::Identity>,
     },
 }
 
@@ -70,7 +70,7 @@ impl FrameAnimations<'_> {
                     *sample,
                     candidate.definitions(),
                     transitions.clone(),
-                    realized.iter().map(String::as_str),
+                    realized.iter().map(|id| &**id),
                     base.as_deref(),
                 )?;
                 let mut recomposed = !preview.visuals().is_empty();
@@ -90,7 +90,7 @@ impl FrameAnimations<'_> {
                         *sample,
                         candidate.definitions(),
                         transitions,
-                        visible.iter().map(String::as_str),
+                        visible.iter().map(|id| &**id),
                         base.as_deref(),
                     )?;
                     let rendered = compose(rendered, offsets, &prepared)?;
@@ -133,7 +133,7 @@ fn transition_inputs(
             presence(field::EXIT_STYLE)?,
         );
         inputs.push(transition::Input {
-            identity: retained.nodes[index].identity.clone(),
+            identity: retained.nodes[index].identity.to_string().into(),
             definition: transition::TransitionDef::decode(source)?,
             origin: exit
                 .is_some()
@@ -146,12 +146,15 @@ fn transition_inputs(
     Ok(inputs)
 }
 
-fn visible_nodes(display: &DisplayList, realized: &BTreeSet<String>) -> BTreeSet<String> {
+fn visible_nodes(
+    display: &DisplayList,
+    realized: &BTreeSet<crate::scene::node::Identity>,
+) -> BTreeSet<crate::scene::node::Identity> {
     display
         .nodes
         .iter()
         .filter(|node| {
-            realized.contains(&node.identity)
+            realized.contains(&*node.identity)
                 && node.visible_bounds[2] > 0.0
                 && node.visible_bounds[3] > 0.0
         })

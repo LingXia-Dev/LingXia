@@ -89,7 +89,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 };
                 if let Some(node) = snapshot.frame.nodes.get(*node) {
                     main.edits.waiting.push_back(Edit {
-                        identity: node.identity.clone(),
+                        identity: node.identity.to_string(),
                         text: text.clone(),
                         start: *start,
                         end: *end,

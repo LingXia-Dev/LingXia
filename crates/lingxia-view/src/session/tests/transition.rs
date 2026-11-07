@@ -88,7 +88,7 @@ fn press(page: &mut ViewSession, display: &Shot, pressed: bool) {
         .unwrap()
         .identity
         .clone();
-    page.set_pointer_state(pressed.then_some(identity.as_str()), None);
+    page.set_pointer_state(pressed.then_some(&*identity), None);
 }
 
 fn pixel(display: &Shot, x: usize, y: usize) -> [u8; 4] {

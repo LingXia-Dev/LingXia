@@ -517,7 +517,7 @@ impl PartialEq for Origin {
 /// One realized node with a transition, its resolved paint and its presence values.
 #[derive(Clone, Debug)]
 pub(crate) struct Input {
-    pub identity: String,
+    pub identity: crate::scene::node::Identity,
     pub definition: TransitionDef,
     pub target: Resolved,
     /// `starting:` values: a node seen for the first time enters from them.
@@ -530,7 +530,7 @@ pub(crate) struct Input {
 impl From<(String, TransitionDef, Resolved)> for Input {
     fn from((identity, definition, target): (String, TransitionDef, Resolved)) -> Self {
         Self {
-            identity,
+            identity: identity.into(),
             definition,
             target,
             starting: None,
@@ -629,7 +629,7 @@ pub(crate) struct Policy {
 
 /// Per-identity transition state of one page; identities absent from a frame are dropped.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct Transitions(BTreeMap<String, Node>);
+pub(crate) struct Transitions(BTreeMap<crate::scene::node::Identity, Node>);
 
 impl Transitions {
     /// `now` is the timeline's active time. Inputs are the frame's nodes with a transition.
@@ -654,7 +654,7 @@ impl Transitions {
                 return Err("UI_TRANSITION: instance budget exceeded".into());
             }
             let mut instances = BTreeMap::new();
-            let old = self.0.get(&identity);
+            let old = self.0.get(&*identity);
             let entering = old.is_none_or(|old| old.ghost);
             if entering {
                 // Enters from its `starting:` values, or from where its exit ghost had got to.
@@ -738,7 +738,7 @@ impl Transitions {
         // Removed nodes: a running ghost carries on; one with `exit:` values starts one.
         let mut ghosts = next.values().filter(|node| node.ghost).count();
         for (identity, old) in &self.0 {
-            if next.contains_key(identity) || !policy.start {
+            if next.contains_key(&**identity) || !policy.start {
                 continue;
             }
             if old.ghost {
@@ -780,7 +780,7 @@ impl Transitions {
             }
             if !instances.is_empty() {
                 next.insert(
-                    identity.clone(),
+                    identity.to_string().into(),
                     Node {
                         target: exit.clone(),
                         instances,
@@ -797,17 +797,21 @@ impl Transitions {
     }
 
     /// Only the outermost removed node ghosts: one inside an exiting ancestor is part of it.
-    fn removed_within(&self, identity: &str, next: &BTreeMap<String, Node>) -> bool {
+    fn removed_within(
+        &self,
+        identity: &str,
+        next: &BTreeMap<crate::scene::node::Identity, Node>,
+    ) -> bool {
         self.0.iter().any(|(other, node)| {
             other.len() < identity.len()
-                && identity.starts_with(other.as_str())
+                && identity.starts_with(&**other)
                 && identity.as_bytes()[other.len()] == b'/'
                 && (node.ghost || (node.exit.is_some() && !next.contains_key(other)))
         })
     }
 
     /// The exit ghosts still drawing, with the frame each was laid out in.
-    pub(crate) fn ghosts(&self, now: Duration) -> Vec<(String, Origin)> {
+    pub(crate) fn ghosts(&self, now: Duration) -> Vec<(crate::scene::node::Identity, Origin)> {
         self.0
             .iter()
             .filter(|(_, node)| node.ghost && node.instances.values().any(|i| !i.finished(now)))
@@ -835,7 +839,7 @@ impl Transitions {
         }
     }
 
-    pub(crate) fn identities(&self) -> impl Iterator<Item = &String> {
+    pub(crate) fn identities(&self) -> impl Iterator<Item = &crate::scene::node::Identity> {
         self.0.keys()
     }
 

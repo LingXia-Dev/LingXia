@@ -12,7 +12,7 @@ gpu = ["dep:vello_gpu", "dep:glifo", "dep:wgpu", "dep:pollster"]
 hot-swap = []
 
 [dependencies]
-serde = { workspace = true }
+serde = { workspace = true, features = ["rc"] }
 serde_json = { workspace = true }
 lingxia-theme = { workspace = true }
 log = { workspace = true }

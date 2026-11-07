@@ -123,7 +123,7 @@ impl ViewInteraction {
                     }
                     self.dispatches.push(Dispatch::DragSelectText {
                         commit,
-                        identity: frame.nodes[index].identity.clone(),
+                        identity: frame.nodes[index].identity.to_string(),
                         from: self.logical(self.gesture.down[0], self.gesture.down[1]),
                         to: point,
                     });
@@ -388,7 +388,7 @@ impl ViewInteraction {
             let point = self.logical(self.gesture.down[0], self.gesture.down[1]);
             self.dispatches.push(Dispatch::SelectText {
                 commit,
-                identity: frame.nodes[index].identity.clone(),
+                identity: frame.nodes[index].identity.to_string(),
                 point,
             });
             effects.extend([Effect::Haptic, Effect::Dispatch]);

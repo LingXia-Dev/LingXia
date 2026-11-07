@@ -252,13 +252,13 @@ impl Projection<'_> {
         if node.tag == "radio-option" {
             let group = node.radio_group.as_deref();
             return self.frame.nodes.iter().position(|candidate| {
-                candidate.tag == "radio" && Some(candidate.identity.as_str()) == group
+                candidate.tag == "radio" && Some(candidate.identity.as_ref()) == group
             });
         }
         (0..index).rev().find(|&candidate| {
             let ancestor = &self.frame.nodes[candidate].identity;
             node.identity.len() > ancestor.len()
-                && node.identity.starts_with(ancestor.as_str())
+                && node.identity.starts_with(&**ancestor)
                 && node.identity.as_bytes()[ancestor.len()] == b'/'
                 && self.is_container(candidate)
         })
@@ -268,7 +268,7 @@ impl Projection<'_> {
         let identity = &self.frame.nodes[index].identity;
         let subtree = |other: &NodeSnapshot| {
             other.identity.len() > identity.len()
-                && other.identity.starts_with(identity.as_str())
+                && other.identity.starts_with(&**identity)
                 && other.identity.as_bytes()[identity.len()] == b'/'
         };
         (index + 1..self.frame.nodes.len())
@@ -296,7 +296,7 @@ impl Projection<'_> {
             .iter()
             .enumerate()
             .filter(move |(_, node)| {
-                node.tag == "radio-option" && node.radio_group.as_deref() == Some(&group.identity)
+                node.tag == "radio-option" && node.radio_group.as_deref() == Some(&*group.identity)
             })
     }
 
@@ -748,7 +748,7 @@ pub fn semantic_changes(
             frame
                 .nodes
                 .iter()
-                .map(|node| (node.identity.as_str(), node))
+                .map(|node| (node.identity.as_ref(), node))
                 .collect()
         })
         .unwrap_or_default();
@@ -756,7 +756,7 @@ pub fn semantic_changes(
     for (index, node) in next.nodes.iter().enumerate() {
         // An alert speaks when it appears, not only when it changes; a status waits for a change.
         if previous.is_some()
-            && !before.contains_key(node.identity.as_str())
+            && !before.contains_key(node.identity.as_ref())
             && node.role.as_deref() == Some("alert")
             && let Some(kind) = &node.live_region
             && !node.accessibility_hidden.unwrap_or(false)
@@ -771,7 +771,7 @@ pub fn semantic_changes(
                 });
             }
         }
-        let (Some(id), Some(prior)) = (ids.id(index), before.get(node.identity.as_str())) else {
+        let (Some(id), Some(prior)) = (ids.id(index), before.get(node.identity.as_ref())) else {
             continue;
         };
         if let (Some(input), Some(old)) = (&node.input, &prior.input) {

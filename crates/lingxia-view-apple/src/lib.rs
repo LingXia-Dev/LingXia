@@ -249,7 +249,7 @@ impl Page {
             .find(|n| n.input.is_none() && n.text_selection.is_some())?;
         let json = serde_json::to_string(node).ok()?;
         let chrome = lingxia_view::interaction::chrome::ChromeNode::parse(&json).ok()?;
-        Some((node.identity.clone(), chrome))
+        Some((node.identity.to_string(), chrome))
     }
 
     /// The handles' ARGB colour, then the visible ends in logical pixels:

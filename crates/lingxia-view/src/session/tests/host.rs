@@ -2505,13 +2505,13 @@ fn a_static_selection_shows_its_menu_which_hides_while_dragging_and_clears_on_di
     platform.settle(&[&host]);
     assert!(menu(&host).is_none());
     let identity = host.snapshot().unwrap().frame.nodes[0].identity.clone();
-    host.set_text_selection(identity.clone(), 0, 5);
+    host.set_text_selection(identity.to_string(), 0, 5);
     platform.settle(&[&host]);
     let shown = menu(&host).unwrap();
     assert_eq!(
         shown.target,
         MenuTarget::Text {
-            identity: identity.clone()
+            identity: identity.to_string()
         }
     );
     assert_eq!(shown.actions, [MenuAction::Copy, MenuAction::SelectAll]);
@@ -2637,7 +2637,7 @@ fn an_editor_menu_offers_what_the_editor_allows_and_goes_when_its_text_changes()
     assert_eq!(
         shown.target,
         MenuTarget::Editor {
-            identity: identity.clone()
+            identity: identity.to_string()
         }
     );
     assert_eq!(

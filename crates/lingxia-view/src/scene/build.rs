@@ -1179,7 +1179,7 @@ impl Renderer {
                 button_content: button_hashes
                     .get(&index)
                     .map(|hash| format!("{:016x}", hash.finish())),
-                identity,
+                identity: identity.into(),
                 checked: matches!(record.tag, tag::CHECKBOX | tag::SWITCH | tag::RADIO_OPTION)
                     .then(|| record.number(field::CHECKED) == Some(1.0)),
                 range,

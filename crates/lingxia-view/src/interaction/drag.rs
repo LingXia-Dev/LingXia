@@ -44,38 +44,38 @@ impl DragModel {
         let previous = std::mem::take(&mut self.regions);
         for node in &frame.nodes {
             let Some(drag) = &node.drag else { continue };
-            match previous.get(&node.identity) {
+            match previous.get(&*node.identity) {
                 None => {
-                    if !self.moving.contains(&node.identity) {
-                        self.offsets.insert(node.identity.clone(), drag.rest());
-                        self.targets.remove(&node.identity);
+                    if !self.moving.contains(&*node.identity) {
+                        self.offsets.insert(node.identity.to_string(), drag.rest());
+                        self.targets.remove(&*node.identity);
                     }
                 }
                 Some(before)
                     if before.index != drag.index
-                        && !self.held.contains(&node.identity)
-                        && self.targets.get(&node.identity) != Some(&drag.index) =>
+                        && !self.held.contains(&*node.identity)
+                        && self.targets.get(&*node.identity) != Some(&drag.index) =>
                 {
                     let from = self.offset(&node.identity);
-                    self.regions.insert(node.identity.clone(), drag.clone());
+                    self.regions.insert(node.identity.to_string(), drag.clone());
                     self.spring_to(&node.identity, from, drag.index, 0.0);
                 }
                 // Points that moved (a resize resolving `%` anew) carry an element at rest along.
                 Some(before)
-                    if before.points != drag.points && !self.moving.contains(&node.identity) =>
+                    if before.points != drag.points && !self.moving.contains(&*node.identity) =>
                 {
                     let index = self
                         .targets
-                        .get(&node.identity)
+                        .get(&*node.identity)
                         .copied()
                         .filter(|index| *index < drag.points.len())
                         .unwrap_or(drag.index);
                     self.offsets
-                        .insert(node.identity.clone(), drag.points[index]);
+                        .insert(node.identity.to_string(), drag.points[index]);
                 }
                 Some(_) => {}
             }
-            self.regions.insert(node.identity.clone(), drag.clone());
+            self.regions.insert(node.identity.to_string(), drag.clone());
         }
         if self.offsets.len() > KEPT {
             let regions = &self.regions;
@@ -115,7 +115,7 @@ impl DragModel {
                     && point[1] >= node.bounds[1]
                     && point[1] <= node.bounds[1] + node.bounds[3]
             })
-            .map(|(_, node)| node.identity.clone())
+            .map(|(_, node)| node.identity.to_string())
     }
 
     pub fn axis(&self, identity: &str) -> Option<ScrollAxis> {

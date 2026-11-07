@@ -97,7 +97,7 @@ fn wrapped_links_hit_only_their_line_pieces_and_project_as_links() {
         display.nodes.clone(),
     );
     let mut ids = SemanticIds::default();
-    ids.update(frame.nodes.iter().map(|n| n.identity.as_str()));
+    ids.update(frame.nodes.iter().map(|n| n.identity.as_ref()));
     let projection = Projection {
         frame: &frame,
         ids: &ids,

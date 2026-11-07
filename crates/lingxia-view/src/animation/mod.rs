@@ -134,8 +134,8 @@ pub struct Prepared {
     visible: bool,
     instances: BTreeMap<String, Instance>,
     transitions: transition::Transitions,
-    samples: BTreeMap<String, Sample>,
-    visuals: BTreeMap<String, Visual>,
+    samples: BTreeMap<crate::scene::node::Identity, Sample>,
+    visuals: BTreeMap<crate::scene::node::Identity, Visual>,
 }
 
 impl Prepared {
@@ -145,7 +145,7 @@ impl Prepared {
             .is_some_and(|instance| &instance.definition == definition)
     }
     /// Exit ghosts this frame draws, with the layout each was last committed in.
-    pub(crate) fn ghosts(&self) -> Vec<(String, transition::Origin)> {
+    pub(crate) fn ghosts(&self) -> Vec<(crate::scene::node::Identity, transition::Origin)> {
         self.transitions.ghosts(self.elapsed)
     }
     /// Nodes this frame moves toward a new layout position (`transition-layout`).
@@ -154,10 +154,10 @@ impl Prepared {
     }
 
     /// Only active effects; absent entries use the node's unanimated base style.
-    pub fn visuals(&self) -> &BTreeMap<String, Visual> {
+    pub fn visuals(&self) -> &BTreeMap<crate::scene::node::Identity, Visual> {
         &self.visuals
     }
-    pub fn samples(&self) -> &BTreeMap<String, Sample> {
+    pub fn samples(&self) -> &BTreeMap<crate::scene::node::Identity, Sample> {
         &self.samples
     }
 }
@@ -194,7 +194,7 @@ pub struct Timeline {
     instances: BTreeMap<String, Instance>,
     transitions: transition::Transitions,
     motion: Motion,
-    visuals: BTreeMap<String, Visual>,
+    visuals: BTreeMap<crate::scene::node::Identity, Visual>,
     /// Host times of visible presentations that showed or cleared animated values.
     presents: std::collections::VecDeque<Duration>,
 }
@@ -303,7 +303,7 @@ impl Timeline {
             .transitions
             .ghosts(active_time)
             .into_iter()
-            .map(|(identity, _)| identity)
+            .map(|(identity, _)| identity.to_string())
             .collect();
         let identities: Vec<String> = visible_identities
             .into_iter()
@@ -470,7 +470,7 @@ impl Timeline {
             {
                 let mut assumed = base.clone();
                 for (identity, instance) in &mut assumed.instances {
-                    if assumed.samples.contains_key(identity) {
+                    if assumed.samples.contains_key(identity.as_str()) {
                         instance.started.get_or_insert(assumed.elapsed);
                     }
                 }
@@ -526,12 +526,13 @@ impl Timeline {
                             .unwrap_or_default(),
                     ),
                 );
+                let key = crate::scene::node::Identity::from(identity.as_str());
                 if let Some(progress) = definition.timing.shown(&sample)
                     && (!self.motion.reduced || definition.keep_reduced)
                 {
-                    visuals.insert(identity.clone(), definition.effect.sample(progress)?);
+                    visuals.insert(key.clone(), definition.effect.sample(progress)?);
                 }
-                samples.insert(identity.clone(), sample);
+                samples.insert(key, sample);
             }
             instances.insert(
                 identity,
@@ -606,7 +607,7 @@ impl Timeline {
         // A parked frame shows state without starting entrances or transitions.
         if frame.visible {
             for (identity, instance) in &mut frame.instances {
-                if frame.samples.contains_key(identity) {
+                if frame.samples.contains_key(identity.as_str()) {
                     instance.started.get_or_insert(elapsed);
                 }
             }

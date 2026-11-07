@@ -298,7 +298,7 @@ impl ViewSession {
 
     pub fn view_animation_wakeup(&self, now: Duration) -> Result<crate::animation::Wakeup, String> {
         self.animations
-            .next_wakeup(now, self.animation_visible.iter().map(String::as_str))
+            .next_wakeup(now, self.animation_visible.iter().map(|id| &**id))
     }
 
     /// Acknowledge on the owning View thread after native presentation succeeds.

@@ -91,7 +91,7 @@ pub struct ViewSession {
         crate::animation::Prepared,
     )>,
     animation_inventory: crate::animation::records::Inventory,
-    animation_visible: std::collections::BTreeSet<String>,
+    animation_visible: std::collections::BTreeSet<crate::scene::node::Identity>,
     /// Native pointer state selecting `active:`/`hover:` paint deltas.
     pressed: Option<String>,
     hovered: Option<String>,

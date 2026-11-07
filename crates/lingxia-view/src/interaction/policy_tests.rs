@@ -417,7 +417,7 @@ fn radio_groups_take_one_tab_stop_and_arrows_wrap_inside_the_group() {
     assert_eq!(keyboard::adjacent_option(&presented, 5, 1), Some(5));
     assert_eq!(keyboard::adjacent_option(&presented, 0, 1), None);
     let mut ids = SemanticIds::default();
-    ids.update(presented.nodes.iter().map(|n| n.identity.as_str()));
+    ids.update(presented.nodes.iter().map(|n| n.identity.as_ref()));
     let semantics = Projection {
         frame: &presented,
         ids: &ids,
@@ -470,7 +470,7 @@ fn projection_exposes_roles_ranges_masked_text_and_only_enabled_actions() {
     });
     let presented = frame(vec![volume.clone(), editor.clone()]);
     let mut ids = SemanticIds::default();
-    ids.update(presented.nodes.iter().map(|n| n.identity.as_str()));
+    ids.update(presented.nodes.iter().map(|n| n.identity.as_ref()));
     let semantics = Projection {
         frame: &presented,
         ids: &ids,
@@ -521,7 +521,7 @@ fn projection_exposes_roles_ranges_masked_text_and_only_enabled_actions() {
     let before = frame(vec![node("x", "text", [0.0; 4]), editor]);
     let mut ids = SemanticIds::default();
     let after = frame(vec![node("x", "text", [0.0; 4]), changed]);
-    ids.update(after.nodes.iter().map(|n| n.identity.as_str()));
+    ids.update(after.nodes.iter().map(|n| n.identity.as_ref()));
     let events = projection::changes(Some(&before), &after, &ids);
     assert!(
         matches!(&events[0], Event::TextChanged { before, after, secure: true, .. } if before == "••••" && after == "••••••")

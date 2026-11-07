@@ -22,7 +22,7 @@ fn next_and_previous_walk_enabled_editors_in_reading_order_and_the_last_submits(
     let token = frame.nodes[1].input.as_ref().unwrap().edit_token.unwrap();
     // `next` skips the disabled editor and does not submit.
     let reply = page.edit_input(token, &a, &[], true).unwrap().unwrap();
-    assert_eq!(reply.moved_to.as_deref(), Some(b.as_str()));
+    assert_eq!(reply.moved_to.as_deref(), Some(&*b));
     let frame = page.prepare_native(300, 400, 1.0, false, None, Ok).unwrap();
     assert_eq!(focused(&frame), [3]);
     assert_eq!(frame.nodes[5].text, "[]");
@@ -32,7 +32,7 @@ fn next_and_previous_walk_enabled_editors_in_reading_order_and_the_last_submits(
         .edit_input(reply.token, &b, &[], true)
         .unwrap()
         .unwrap();
-    assert_eq!(reply.moved_to.as_deref(), Some(a.as_str()));
+    assert_eq!(reply.moved_to.as_deref(), Some(&*a));
     // The last editor in its direction submits, and that callback may focus by binding.
     let token = page
         .focus_input(page.generation(), &c)

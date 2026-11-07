@@ -128,7 +128,7 @@ impl ViewInteraction {
     pub fn styled_focus(&self, node: usize) -> Option<String> {
         let frame = self.frame.as_ref()?;
         let snapshot = frame.nodes.get(node)?;
-        snapshot.focus_style.then(|| snapshot.identity.clone())
+        (snapshot.focus_style.then(|| snapshot.identity.clone())).map(String::from)
     }
 
     /// Scroll and drag offsets to request with the next frame.
@@ -313,7 +313,7 @@ impl ViewInteraction {
         };
         self.dispatches.push(Dispatch::SelectText {
             commit: frame.commit,
-            identity: frame.nodes[index].identity.clone(),
+            identity: frame.nodes[index].identity.to_string(),
             point,
         });
         vec![Effect::Dispatch]
@@ -478,7 +478,7 @@ impl ViewInteraction {
             effects.push(Effect::ClearFocusRing);
             self.keyboard_focus = None;
             self.ids
-                .update(next.nodes.iter().map(|node| node.identity.as_str()));
+                .update(next.nodes.iter().map(|node| node.identity.as_ref()));
             if let Some(rebound) = rebound {
                 self.gesture.pressed = Some(rebound);
                 self.gesture.pressed_commit = Some(next.commit);
@@ -574,7 +574,7 @@ impl ViewInteraction {
         {
             self.dispatches.push(Dispatch::OpenSelect {
                 commit: frame.commit,
-                identity: node.identity.clone(),
+                identity: node.identity.to_string(),
             });
             return vec![Effect::Dispatch];
         }
@@ -662,7 +662,7 @@ impl ViewInteraction {
                     };
                     dispatches.push(Dispatch::Plot {
                         commit: frame.commit,
-                        identity: node.identity.clone(),
+                        identity: node.identity.to_string(),
                         mode,
                         point: activation.point.unwrap_or([0.0; 2]),
                         index,
@@ -674,7 +674,7 @@ impl ViewInteraction {
                     });
                 } else {
                     self.dropped.push(DroppedActivation {
-                        identity: activation.node.identity.clone(),
+                        identity: activation.node.identity.to_string(),
                         reason: "no longer clickable",
                         commit: activation.commit,
                         frame: frame.commit,
@@ -682,7 +682,7 @@ impl ViewInteraction {
                 }
             } else {
                 self.dropped.push(DroppedActivation {
-                    identity: activation.node.identity.clone(),
+                    identity: activation.node.identity.to_string(),
                     reason: if activation.scale != frame.scale {
                         "display scale changed"
                     } else {

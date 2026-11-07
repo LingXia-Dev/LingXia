@@ -113,7 +113,7 @@ impl PresentedFrame {
             .iter()
             .filter(|node| plot_can_clear(node) && visible(node))
             .filter(|node| !contains(node, point, false) || !contains_content(node, point))
-            .map(|node| node.identity.clone())
+            .map(|node| node.identity.to_string())
             .collect()
     }
 

@@ -31,7 +31,7 @@ fn authored_transform_can_bring_an_offscreen_node_into_the_animation_visible_set
         .find(|n| n.test_id == "incoming")
         .unwrap();
     assert_eq!(node.bounds[1], 90.0);
-    assert!(page.animation_visible.contains(&node.identity));
+    assert!(page.animation_visible.contains(&*node.identity));
     let pixels = first.rasterize().unwrap();
     assert_eq!(
         &pixels.pixels.data_as_u8_slice()[(95 * 200 + 10) * 4..(95 * 200 + 10) * 4 + 4],
@@ -481,12 +481,8 @@ fn keyed_virtual_row_animation_survives_reorder_and_window_eviction() {
             rebuild,
             Some(&HashMap::from([(scroll.clone(), offset)])),
             ms(now),
-            [(identity.clone(), definition.clone())],
-            if visible {
-                vec![identity.as_str()]
-            } else {
-                vec![]
-            },
+            [(identity.to_string(), definition.clone())],
+            if visible { vec![&*identity] } else { vec![] },
             Ok,
         )
         .unwrap_or_else(|error| panic!("frame at {now}ms: {error}"))

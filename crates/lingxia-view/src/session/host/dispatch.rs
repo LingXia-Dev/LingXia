@@ -198,7 +198,7 @@ impl<A: PlatformAdapter> Inner<A> {
                         self.adapter.focus(&dispatch, snapshot);
                         // A long-press word selection offers the editor's menu.
                         if word && let Some(node) = snapshot.frame.nodes.get(node) {
-                            self.request_editor_menu(node.identity.clone());
+                            self.request_editor_menu(node.identity.to_string());
                         }
                     }
                 }
@@ -218,7 +218,7 @@ impl<A: PlatformAdapter> Inner<A> {
                     self.activate_reporting(
                         page,
                         true,
-                        identity.clone(),
+                        identity.to_string(),
                         Box::new(move |session| session.click_control(commit, handle, &identity)),
                     );
                 }

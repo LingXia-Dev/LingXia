@@ -265,7 +265,7 @@ impl ViewInteraction {
         node.selectable?;
         self.dispatches.push(super::Dispatch::SelectText {
             commit: frame.commit,
-            identity: node.identity.clone(),
+            identity: node.identity.to_string(),
             point: center,
         });
         Some(vec![Effect::Dispatch])
@@ -305,7 +305,7 @@ impl ViewInteraction {
                 // Enter in an editor is its input method action: submit, or move on for next/previous.
                 self.dispatches.push(super::Dispatch::SubmitEditor {
                     commit: frame.commit,
-                    identity: target.identity.clone(),
+                    identity: target.identity.to_string(),
                 });
                 return Ok(vec![Effect::Dispatch]);
             }
@@ -367,7 +367,7 @@ impl ViewInteraction {
         }
         self.dispatches.push(super::Dispatch::Select {
             commit: frame.commit,
-            identity: target.identity.clone(),
+            identity: target.identity.to_string(),
             index: option,
             value: select.options[option].value.clone(),
         });

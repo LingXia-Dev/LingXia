@@ -76,7 +76,7 @@ impl ViewInteraction {
             return Vec::new();
         }
         self.pending_focus = Some(PendingFocus {
-            identity: frame.nodes[index].identity.clone(),
+            identity: frame.nodes[index].identity.to_string(),
             activate,
             page,
         });
@@ -119,7 +119,8 @@ impl ViewInteraction {
             let before = self
                 .keyboard_origin()
                 .map(|index| frame.nodes[index].identity.clone());
-            self.dialogs.push((dialog, before));
+            self.dialogs
+                .push((dialog.to_string(), before.map(String::from)));
             if keyboard
                 && let Some(first) = navigation::next(&frame, None, 1, self.revealable(&frame))
             {
@@ -304,7 +305,7 @@ impl ViewInteraction {
             if let Some(next) = next {
                 self.dispatches.push(Dispatch::Select {
                     commit: frame.commit,
-                    identity: frame.nodes[index].identity.clone(),
+                    identity: frame.nodes[index].identity.to_string(),
                     index: next,
                     value: select.options[next].value.clone(),
                 });

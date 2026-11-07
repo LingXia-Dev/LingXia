@@ -100,7 +100,7 @@ impl SliderInput {
             return false;
         }
         self.pending = Some(Proposal {
-            identity: node.identity.clone(),
+            identity: node.identity.to_string(),
             definition: definition(range),
             value: normalize(range, value),
             page,

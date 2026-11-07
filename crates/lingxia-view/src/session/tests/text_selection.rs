@@ -94,7 +94,7 @@ fn selectable_text_projects_selection_actions() {
         display.nodes,
     );
     let mut ids = SemanticIds::default();
-    ids.update(frame.nodes.iter().map(|n| n.identity.as_str()));
+    ids.update(frame.nodes.iter().map(|n| n.identity.as_ref()));
     let semantic = Projection {
         frame: &frame,
         ids: &ids,

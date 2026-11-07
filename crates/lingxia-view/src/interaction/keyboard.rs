@@ -75,7 +75,7 @@ fn inside(frame: &PresentedFrame, scope: Option<usize>, index: usize) -> bool {
         let container = &frame.nodes[scope].identity;
         let node = &frame.nodes[index].identity;
         node.len() > container.len()
-            && node.starts_with(container.as_str())
+            && node.starts_with(&**container)
             && node.as_bytes()[container.len()] == b'/'
     })
 }

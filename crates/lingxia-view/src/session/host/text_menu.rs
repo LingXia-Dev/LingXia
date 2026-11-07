@@ -82,7 +82,7 @@ impl MenuState {
         let selected = nodes
             .iter()
             .find(|node| node.input.is_none() && node.text_selection.is_some());
-        if selected.is_none_or(|node| self.requested.as_ref() != Some(&node.identity)) {
+        if selected.is_none_or(|node| self.requested.as_deref() != Some(&*node.identity)) {
             self.requested = None;
         }
         if let Some(node) = selected.filter(|_| !self.fine || self.requested.is_some()) {
@@ -94,7 +94,7 @@ impl MenuState {
             actions.push(MenuAction::SelectAll);
             return Some(TextMenu {
                 target: MenuTarget::Text {
-                    identity: node.identity.clone(),
+                    identity: node.identity.to_string(),
                 },
                 anchor: union(&selection.selection).unwrap_or(node.bounds),
                 actions,
@@ -136,7 +136,7 @@ impl MenuState {
         }
         Some(TextMenu {
             target: MenuTarget::Editor {
-                identity: node.identity.clone(),
+                identity: node.identity.to_string(),
             },
             anchor: node.bounds,
             actions,
@@ -200,7 +200,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 .flatten()
         };
         match editor {
-            Some(identity) => self.request_editor_menu(identity),
+            Some(identity) => self.request_editor_menu(identity.to_string()),
             None => self.update_text_menu(),
         }
     }
@@ -256,12 +256,12 @@ impl<A: PlatformAdapter> Inner<A> {
             (text, editor)
         };
         if let Some(identity) = text {
-            self.main().text_menu.requested = Some(identity);
+            self.main().text_menu.requested = Some(identity.to_string());
             self.update_text_menu();
             return true;
         }
         if let Some(identity) = editor {
-            self.request_editor_menu(identity);
+            self.request_editor_menu(identity.to_string());
             return true;
         }
         false

@@ -59,7 +59,7 @@ impl<A: PlatformAdapter> Inner<A> {
             .is_none_or(|spring| elapsed >= spring.settle(from - to, velocity, 2.0));
         let effects = {
             let mut main = self.main();
-            if main.drags.serials.get(&release.identity) != Some(&serial)
+            if main.drags.serials.get(&*release.identity) != Some(&serial)
                 || main.interaction.drag_held(&release.identity)
             {
                 return;
@@ -72,7 +72,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 .set_drag_offset(&release.identity, at, done);
             let mut effects = vec![crate::interaction::view::Effect::Redraw];
             if done {
-                main.drags.serials.remove(&release.identity);
+                main.drags.serials.remove(&*release.identity);
                 effects.extend(
                     main.interaction
                         .drag_settled(&release.identity, release.index),

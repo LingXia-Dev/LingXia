@@ -217,7 +217,7 @@ impl Inputs {
             entry.visible = false;
         }
         for node in &display.nodes {
-            if let Some(entry) = self.entries.get_mut(&node.identity) {
+            if let Some(entry) = self.entries.get_mut(&*node.identity) {
                 entry.visible = node.visible_bounds[2] > 0.0 && node.visible_bounds[3] > 0.0;
             }
         }
@@ -229,7 +229,7 @@ impl Inputs {
             self.blur(renderer)?;
         }
         for node in &display.nodes {
-            if let Some(entry) = self.entries.get_mut(&node.identity)
+            if let Some(entry) = self.entries.get_mut(&*node.identity)
                 && entry.autofocus
                 && entry.visible
             {
@@ -241,7 +241,7 @@ impl Inputs {
         }
         let requested = display.nodes.iter().find(|node| {
             self.entries
-                .get(&node.identity)
+                .get(&*node.identity)
                 .is_some_and(|e| e.refocus && e.visible)
         });
         if let Some(node) = requested {
@@ -252,7 +252,7 @@ impl Inputs {
             entry.refocus &= !entry.visible;
         }
         for node in &mut display.nodes {
-            if let (Some(input), Some(entry)) = (&mut node.input, self.entries.get(&node.identity))
+            if let (Some(input), Some(entry)) = (&mut node.input, self.entries.get(&*node.identity))
             {
                 let snapshot = entry.editor.snapshot();
                 input.scroll_offset = if snapshot.focused {
@@ -262,7 +262,7 @@ impl Inputs {
                 };
                 input.edit = Some(snapshot);
                 input.edit_token =
-                    (self.focused.as_deref() == Some(&node.identity)).then_some(self.token);
+                    (self.focused.as_deref() == Some(&*node.identity)).then_some(self.token);
                 input.raise_keyboard = input.edit_token.is_some() && !self.keyboard_held;
             }
         }
@@ -273,7 +273,7 @@ impl Inputs {
             self.text_selection = None;
         }
         for node in &display.nodes {
-            if let (Some(input), Some(entry)) = (&node.input, self.entries.get_mut(&node.identity))
+            if let (Some(input), Some(entry)) = (&node.input, self.entries.get_mut(&*node.identity))
             {
                 entry.scroll_offset = if input.geometry.is_some() {
                     input.scroll_offset
@@ -289,7 +289,7 @@ impl Inputs {
         display.nodes.iter().any(|node| {
             node.input.as_ref().is_some_and(|input| {
                 self.entries
-                    .get(&node.identity)
+                    .get(&*node.identity)
                     .is_some_and(|entry| entry.editor.snapshot().text != input.value)
             })
         })

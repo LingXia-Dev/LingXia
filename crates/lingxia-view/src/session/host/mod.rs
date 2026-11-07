@@ -712,7 +712,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                 frame.nodes.get(index).map(|node| node.identity.clone())
             })
         };
-        self.inner.set_hovered(identity);
+        self.inner.set_hovered(identity.map(String::from));
     }
 
     /// A wheel or trackpad scroll; returns whether a region moved.
@@ -923,7 +923,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     .identity
                     .clone();
                 let offset = |n: i32| u32::try_from(n).unwrap_or(0);
-                self.set_text_selection(identity, offset(start), offset(end));
+                self.set_text_selection(identity.to_string(), offset(start), offset(end));
                 Some(true)
             }
             AccessibilityAction::Copy if node.text_selection.is_some() => {

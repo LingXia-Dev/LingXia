@@ -18,7 +18,7 @@ fn page(props: &str) -> (ViewSession, String, u64) {
     let first = page.layout(300, 300, 1.0).unwrap();
     let id = first.nodes[1].identity.clone();
     let token = first.nodes[1].input.as_ref().unwrap().edit_token.unwrap();
-    (page, id, token)
+    (page, id.to_string(), token)
 }
 
 fn shown(page: &mut ViewSession) -> String {

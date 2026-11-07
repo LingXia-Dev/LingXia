@@ -186,7 +186,10 @@ impl RetainedLayout {
     /// scrollers and is clipped by its clip chain. Ghosts take no input and no semantics.
     pub(crate) fn with_ghosts(
         self: &Arc<Self>,
-        ghosts: &[(String, crate::animation::transition::Origin)],
+        ghosts: &[(
+            crate::scene::node::Identity,
+            crate::animation::transition::Origin,
+        )],
     ) -> Arc<Self> {
         let mut next = (**self).clone();
         for (identity, crate::animation::transition::Origin(old, root)) in ghosts {
@@ -358,7 +361,10 @@ impl RetainedLayout {
     pub(crate) fn compose_animated(
         self: &Arc<Self>,
         offsets: &HashMap<String, f32>,
-        visuals: &std::collections::BTreeMap<String, crate::animation::Visual>,
+        visuals: &std::collections::BTreeMap<
+            crate::scene::node::Identity,
+            crate::animation::Visual,
+        >,
     ) -> Result<DisplayList, String> {
         if offsets.values().any(|offset| !offset.is_finite()) {
             return Err("UI_SCROLL: non-finite offset".into());
@@ -401,7 +407,7 @@ impl RetainedLayout {
         if !visuals.is_empty() {
             for index in 0..count {
                 let own = visuals
-                    .get(&self.nodes[index].identity)
+                    .get(&*self.nodes[index].identity)
                     .and_then(|v| v.transition.foreground);
                 foregrounds[index] = own.or_else(|| {
                     if self.paint_styles[index].own_color {
@@ -442,7 +448,7 @@ impl RetainedLayout {
             sync_layers(commands, active_layers, parent_layers.clone());
             if commands.len() > start {
                 spans.push(AnimatedSpan {
-                    identity: self.nodes[root].identity.clone(),
+                    identity: self.nodes[root].identity.to_string(),
                     commands: start..commands.len(),
                 });
             }
@@ -460,7 +466,7 @@ impl RetainedLayout {
                 open = None;
             }
             let parent = self.parents[index];
-            if open.is_none() && visuals.contains_key(&self.nodes[index].identity) {
+            if open.is_none() && visuals.contains_key(&*self.nodes[index].identity) {
                 let parent_layers = parent.map(|p| child_layers[p].clone()).unwrap_or_default();
                 sync_layers(&mut commands, &mut active_layers, parent_layers);
                 open = Some((index, commands.len(), subtree_end[index]));
@@ -531,7 +537,7 @@ impl RetainedLayout {
             let composed = blocked.as_ref().is_some_and(|blocked| blocked[index]);
             if composed
                 && let Some(moved) = visuals
-                    .get(&self.nodes[index].identity)
+                    .get(&*self.nodes[index].identity)
                     .and_then(|visual| visual.transition.transform)
             {
                 let [_, _, w, h] = self.nodes[index].bounds;
@@ -566,7 +572,7 @@ impl RetainedLayout {
                 rect[1] -= translation[1];
             }
             let inherited = parent.map(|p| transforms[p]).unwrap_or(Affine::IDENTITY);
-            let visual = visuals.get(&node.identity);
+            let visual = visuals.get(&*node.identity);
             let paint_style = &self.paint_styles[index];
             let overrides = visual.map(|v| &v.transition);
             let inherited = match (

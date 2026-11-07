@@ -167,7 +167,7 @@ fn radio_options_share_group_identity_and_render_selection_at_each_scale() {
         assert_eq!(first.nodes[0].accessibility_label.as_deref(), Some("Pace"));
         assert_eq!(
             first.nodes[1].radio_group.as_deref(),
-            Some(first.nodes[0].identity.as_str())
+            Some(first.nodes[0].identity.as_ref())
         );
         assert_eq!(first.nodes[1].radio_group, first.nodes[2].radio_group);
         assert_eq!(first.nodes[1].checked, Some(true));

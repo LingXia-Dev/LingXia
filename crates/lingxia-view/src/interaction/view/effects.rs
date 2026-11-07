@@ -63,7 +63,7 @@ pub enum AccessibilityEffect {
 pub(super) fn press(frame: &PresentedFrame, node: usize) -> Effect {
     Effect::Press {
         node,
-        identity: frame.nodes[node].identity.clone(),
+        identity: frame.nodes[node].identity.to_string(),
         styled: frame.nodes[node].pressed_style,
     }
 }

@@ -3,6 +3,88 @@ use serde::Serialize;
 use vello_cpu::Pixmap;
 use vello_cpu::kurbo::{Affine, RoundedRect, Shape};
 
+/// A node's stable identity: shared, since every frame carries it for every node.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize)]
+#[serde(transparent)]
+pub struct Identity(std::sync::Arc<str>);
+
+impl std::ops::Deref for Identity {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+impl std::borrow::Borrow<str> for Identity {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+impl AsRef<str> for Identity {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+impl std::fmt::Display for Identity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+impl std::fmt::Debug for Identity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&*self.0, f)
+    }
+}
+impl From<String> for Identity {
+    fn from(value: String) -> Self {
+        Self(value.into())
+    }
+}
+impl From<&str> for Identity {
+    fn from(value: &str) -> Self {
+        Self(value.into())
+    }
+}
+impl From<&String> for Identity {
+    fn from(value: &String) -> Self {
+        Self(value.as_str().into())
+    }
+}
+impl From<Identity> for String {
+    fn from(value: Identity) -> Self {
+        value.0.to_string()
+    }
+}
+impl PartialEq<str> for Identity {
+    fn eq(&self, other: &str) -> bool {
+        &*self.0 == other
+    }
+}
+impl PartialEq<&str> for Identity {
+    fn eq(&self, other: &&str) -> bool {
+        &*self.0 == *other
+    }
+}
+impl PartialEq<String> for Identity {
+    fn eq(&self, other: &String) -> bool {
+        *self.0 == **other
+    }
+}
+impl PartialEq<Identity> for str {
+    fn eq(&self, other: &Identity) -> bool {
+        self == &*other.0
+    }
+}
+impl PartialEq<Identity> for &str {
+    fn eq(&self, other: &Identity) -> bool {
+        *self == &*other.0
+    }
+}
+impl PartialEq<Identity> for String {
+    fn eq(&self, other: &Identity) -> bool {
+        **self == *other.0
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct SelectOption {
     pub value: String,
@@ -32,7 +114,7 @@ pub struct NodeSnapshot {
     /// The ids of the controls behind a swipe row, offered as its own actions.
     #[serde(skip)]
     pub aria_actions: Vec<String>,
-    pub identity: String,
+    pub identity: Identity,
     pub tag: &'static str,
     pub test_id: String,
     pub text: String,

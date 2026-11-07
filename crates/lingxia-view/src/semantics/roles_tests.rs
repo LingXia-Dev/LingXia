@@ -20,7 +20,7 @@ fn frame(render: &str) -> PresentedFrame {
 
 fn semantic(frame: &PresentedFrame, test_id: &str) -> Option<SemanticNode> {
     let mut ids = SemanticIds::default();
-    ids.update(frame.nodes.iter().map(|n| n.identity.as_str()));
+    ids.update(frame.nodes.iter().map(|n| n.identity.as_ref()));
     let index = frame.nodes.iter().position(|n| n.test_id == test_id)?;
     Projection {
         frame,
@@ -77,7 +77,7 @@ fn live_regions_announce_changed_text_with_their_politeness() {
     };
     let (before, after) = (render("Saved"), render("Failed"));
     let mut ids = SemanticIds::default();
-    ids.update(after.nodes.iter().map(|n| n.identity.as_str()));
+    ids.update(after.nodes.iter().map(|n| n.identity.as_ref()));
     let announced: Vec<_> = projection::changes(Some(&before), &after, &ids)
         .into_iter()
         .filter_map(|event| match event {
@@ -108,7 +108,7 @@ fn an_alert_speaks_when_it_appears_and_a_status_only_when_it_changes() {
         "h('column',{},h('text',{},'Form'),h('text',{role:'alert'},'Card declined'),h('text',{role:'status'},'Saved'),h('text',{role:'alert','aria-live':'off'},'Quiet'))",
     );
     let mut ids = SemanticIds::default();
-    ids.update(after.nodes.iter().map(|n| n.identity.as_str()));
+    ids.update(after.nodes.iter().map(|n| n.identity.as_ref()));
     let announced = |previous: Option<&PresentedFrame>| -> Vec<_> {
         projection::changes(previous, &after, &ids)
             .into_iter()
