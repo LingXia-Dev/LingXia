@@ -229,18 +229,27 @@ page stays on screen, frozen, until the incoming one presents: at most 300 ms wh
 surface still holds a stale frame; a first visit or a recreated surface waits for its first
 frame (a 2 s watchdog, paused while the window is hidden, logs one that never does).
 
+Windows runs each GPU page on its own UI thread, as a WebView2 page runs, with a parent
+window from the host's native-view host and a child content window inside it
+(`crates/lingxia-view-windows`). The page registers under its webtag as
+`WindowsNativeContent`, so `find_webview_handler` returns it and the host presents,
+moves, hides and reparents it exactly as a WebView; a call that only a WebView2 controller
+supports is a no-op for it. The swap chain is bound to the content window: release the
+presenter before that window is destroyed, including when a host destroys the window
+holding it (`WM_DESTROY`).
+
 New platform: adapter traits, text scaling and insets in the environment, `renderer` frames.
 
 ## Capability matrix
 
 | Capability | Android | iOS | macOS | HarmonyOS | Windows |
 | --- | --- | --- | --- | --- | --- |
-| GPU page adapter | yes | no | no | no | no |
+| GPU page adapter | yes | no | no | no | yes (no IME, accessibility or press chrome yet) |
 | Bounded JS jobs | yes | no (JSC) | no (JSC) | no (ArkJS) | yes |
 | CPU raster (tests, previews) | yes | yes | yes | yes | yes |
 | System text scaling | yes | — | — | — | — |
 | Accessibility projection | yes | — | — | — | — |
-| Hover state styles | no (reports a coarse pointer) | — | — | — | — |
+| Hover state styles | no (reports a coarse pointer) | — | — | — | yes |
 | GPU driver crash sentinel | yes (Maleoon Vulkan → GLES) | — | — | — | — |
 | GPU device limits | WebGL2 downlevel + 4096 px textures (pipelines bind ≤5 sampled textures, 1 sampler and 1 uniform per stage, 4 bind groups; no storage buffers or compute), else CPU | — | — | — | — |
 

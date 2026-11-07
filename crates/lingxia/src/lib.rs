@@ -201,6 +201,7 @@ pub mod file;
     target_os = "ios",
     target_os = "macos",
     target_env = "ohos",
+    target_os = "windows",
     test
 ))]
 mod gpu_page;

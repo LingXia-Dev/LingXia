@@ -504,6 +504,7 @@ pub fn hot_swap_gpu_page(appid: &str, path: &str) -> Result<usize, String> {
         target_os = "ios",
         target_os = "macos",
         target_env = "ohos",
+        target_os = "windows",
         test
     ))]
     // The dev terminal prints this beside the page path: say what happened, not its category.
@@ -516,6 +517,7 @@ pub fn hot_swap_gpu_page(appid: &str, path: &str) -> Result<usize, String> {
         target_os = "ios",
         target_os = "macos",
         target_env = "ohos",
+        target_os = "windows",
         test
     )))]
     {

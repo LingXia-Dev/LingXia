@@ -10,6 +10,9 @@ use lingxia_webview::{
     NavigationPolicy, NewWindowPolicy, WebTag, WebViewController, WebViewDataMode,
 };
 
+#[path = "ffi/windows/gpu_page.rs"]
+mod gpu_page;
+
 type AppVisibilityKey = (String, Option<u64>);
 static WINDOWS_APP_VISIBLE_WEBTAGS: LazyLock<Mutex<HashMap<AppVisibilityKey, HashSet<String>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -34,6 +37,7 @@ pub fn init(platform: Platform) -> crate::Result<crate::RuntimeInfo> {
     install_lifecycle_bridge();
     install_url_surface_bridge();
     install_aside_panel_bridge();
+    gpu_page::install();
     lingxia_platform::set_toast_activate_handler(|token| {
         let _ = crate::navigation::activate_notification(token);
     });
