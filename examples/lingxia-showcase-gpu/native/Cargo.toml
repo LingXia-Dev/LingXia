@@ -199,3 +199,19 @@ opt-level = 2
 opt-level = 2
 [profile.dev.package.fontique]
 opt-level = 2
+[profile.dev.package.peniko]
+opt-level = 2
+[profile.dev.package.fearless_simd]
+opt-level = 2
+[profile.dev.package.png]
+opt-level = 2
+[profile.dev.package.fdeflate]
+opt-level = 2
+[profile.dev.package.zune-inflate]
+opt-level = 2
+[profile.dev.package.zune-jpeg]
+opt-level = 2
+[profile.dev.package.hashbrown]
+opt-level = 2
+[profile.dev.package.serde_json]
+opt-level = 2
