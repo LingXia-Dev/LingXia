@@ -1067,7 +1067,7 @@ fn apply_windows_host_color_mode() {
     // and a hidden WebView can hold the reply for the whole command timeout
     // after the preference is already on disk. The settings page then reports
     // a failed save for a choice that did take effect.
-    for webtag in lingxia_webview::runtime::list_webviews() {
+    for webtag in lingxia_webview::platform::windows::list_content_webtags() {
         if let Some(handler) = lingxia_webview::platform::windows::find_webview_handler(&webtag) {
             handler.post_preferred_color_scheme(scheme);
         }

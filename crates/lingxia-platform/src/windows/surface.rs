@@ -282,7 +282,7 @@ pub(super) fn hide_lxapp_window(appid: &str, session_id: u64) {
     for panel_id in removed_panel_ids {
         invalidate_show_request(&format!("panel:{panel_id}"));
     }
-    for webtag in webview_runtime::list_webviews() {
+    for webtag in lingxia_webview::platform::windows::list_content_webtags() {
         if webtag.extract_appid() == appid && webtag.session_id() == Some(session_id) {
             let _ = hide_webview_window(&webtag);
         }

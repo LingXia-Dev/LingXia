@@ -32,7 +32,6 @@ use lingxia_webview::platform::windows::{
     ParentRetirement, ParkOutcome, WindowsWebViewHandler, WindowsWebViewNativeView,
     WindowsWebViewNativeViewHost, find_webview_handler, set_webview_native_view_host,
 };
-use lingxia_webview::runtime as webview_runtime;
 use lingxia_webview::{WebTag, WebViewError};
 // Contract types/handlers are consumed straight from the contract crate. This
 // module is the host-window *implementation*; it does not re-export the
@@ -5297,7 +5296,7 @@ fn reconcile_host_webview_visibility(
     let mut to_show = Vec::new();
     let mut to_hide = Vec::new();
 
-    for webtag in lingxia_webview::runtime::list_webviews() {
+    for webtag in lingxia_webview::platform::windows::list_content_webtags() {
         let key = webtag.key().to_string();
         let Some(window) = window_handle_for_key(&key) else {
             continue;
@@ -5410,7 +5409,7 @@ fn handle_window_position_changed(hwnd: HWND, lparam: LPARAM) {
 }
 
 fn webtag_for_key(webtag_key: &str) -> Option<WebTag> {
-    lingxia_webview::runtime::list_webviews()
+    lingxia_webview::platform::windows::list_content_webtags()
         .into_iter()
         .find(|webtag| webtag.key() == webtag_key)
 }
@@ -8973,7 +8972,7 @@ fn show_webview_window_replacing(
 /// unconditionally. Attached asides are deliberately excluded.
 fn retire_other_group_main_controllers(host: HWND, active_key: &str, explicitly_hidden: &[WebTag]) {
     let mut candidates = explicitly_hidden.to_vec();
-    for candidate in webview_runtime::list_webviews() {
+    for candidate in lingxia_webview::platform::windows::list_content_webtags() {
         if candidate.key() == active_key
             || webtag_is_registered_panel(candidate.key())
             || window_handle_for_key(candidate.key()) != Some(host)
@@ -9628,7 +9627,7 @@ fn finish_nav_snapshot_slide(host: HWND) {
 fn normal_group_webtags(active: &WebTag) -> Vec<WebTag> {
     let appid = active.extract_appid();
     let session_id = active.session_id();
-    webview_runtime::list_webviews()
+    lingxia_webview::platform::windows::list_content_webtags()
         .into_iter()
         .filter(|webtag| {
             webtag.key() != active.key()
@@ -11432,7 +11431,7 @@ pub(crate) fn webtag_is_visible(webtag_key: &str) -> bool {
 fn park_foreign_webview_controllers(host: HWND) -> StdResult<ParentRetirement> {
     // Snapshot before marshaling to controller threads. Never hold a registry
     // lock across those calls, and include panels as well as parked group mains.
-    let children = webview_runtime::list_webviews();
+    let children = lingxia_webview::platform::windows::list_content_webtags();
     let mut retirement = ParentRetirement::Ready;
     for tag in children {
         let Some(handler) = find_webview_handler(&tag) else {
