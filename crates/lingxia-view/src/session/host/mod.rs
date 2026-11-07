@@ -554,9 +554,15 @@ impl<A: PlatformAdapter> ViewHost<A> {
         self.inner.begin_reveal(surface_holds_frame);
     }
 
-    /// The window was stopped or started; a pending reveal waits while it is stopped.
+    /// The window was stopped or started (app backgrounded, screen locked); a pending
+    /// reveal waits while it is stopped.
     pub fn window_visible(&self, visible: bool) {
         self.inner.window_visible(visible);
+    }
+
+    /// Other windows cover this one completely, or no longer do; its surface stays live.
+    pub fn window_covered(&self, covered: bool) {
+        self.inner.window_covered(covered);
     }
 
     /// The presentation target is gone; nothing presents until it returns.

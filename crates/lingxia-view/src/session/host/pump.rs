@@ -636,7 +636,7 @@ impl<A: PlatformAdapter> Inner<A> {
     /// Ask for the next display frame. A covered window has no display link, so its frames
     /// tick at the refresh interval: pacing and frame statistics keep their meaning.
     pub(super) fn request_frame(self: &Arc<Self>) {
-        if !self.window_hidden() {
+        if !self.paced_hidden() {
             return self.adapter.request_vsync();
         }
         let (tick, interval, delay) = {
@@ -670,6 +670,7 @@ impl<A: PlatformAdapter> Inner<A> {
         // A window nothing of which shows still completes its frames, so the page's lifecycle,
         // hit-testing and readback advance, but nothing reaches a drawable that may not return.
         let hidden = self.window_hidden();
+        let paced = self.paced_hidden();
         let vsync = Instant::now();
         let at = self.adapter.now();
         let Some(prepared) = ({
@@ -679,7 +680,7 @@ impl<A: PlatformAdapter> Inner<A> {
             if main.deferred.is_some() {
                 return;
             }
-            if !hidden
+            if !paced
                 && let Some(last) = main.last_vsync
                 && let Some(delta) = at.checked_sub(last)
                 && delta > Duration::from_millis(4)
@@ -690,7 +691,7 @@ impl<A: PlatformAdapter> Inner<A> {
             let platform = main.display.take();
             // A covered window's ticks keep to their grid however late the timer runs.
             main.last_vsync = Some(match platform {
-                Some((shows, interval)) if hidden => shows.saturating_sub(interval),
+                Some((shows, interval)) if paced => shows.saturating_sub(interval),
                 _ => at,
             });
             if let Some((_, interval)) = platform.filter(|(_, i)| !i.is_zero()) {
@@ -948,7 +949,7 @@ impl<A: PlatformAdapter> Inner<A> {
             let mut main = self.main();
             main.telemetry.presented(now, &snapshot, &timing);
             // A covered window's frames count: they complete on the refresh tick, unpresented.
-            if main.visible {
+            if main.visible && main.reveal.counts_frames() {
                 main.telemetry.stats.record(
                     super::frame_stats::Presented {
                         demand: pacing.demand,

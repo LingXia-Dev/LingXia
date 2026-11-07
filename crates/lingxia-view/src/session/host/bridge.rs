@@ -93,13 +93,13 @@ impl<A: PlatformAdapter> Inner<A> {
         if !update.acks.is_empty() {
             // A write is acknowledged once the frame that shows it is built and queued for the
             // display, so a Logic loop that awaits its writes runs once per frame, covered window
-            // included. A page that is not shown, or a write that never reaches a frame, is not
-            // held past the deadline.
+            // included. A page that is not shown or a stopped window acknowledges at once; a
+            // write that never reaches a frame is not held past the deadline.
             let showing = {
                 let main = self.main();
                 main.visible && !main.disposed
             };
-            if showing {
+            if showing && (!self.window_hidden() || self.paced_hidden()) {
                 self.main()
                     .acks
                     .extend(update.acks.into_iter().map(|(rev, m)| (connection, rev, m)));

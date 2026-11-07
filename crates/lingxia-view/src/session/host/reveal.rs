@@ -22,6 +22,8 @@ pub(super) struct Reveal {
     /// Revealed without a current frame; showing the surface waits for one.
     holding: bool,
     window_hidden: bool,
+    /// Hidden only by other windows: the surface stays live, so frames keep their pace.
+    window_covered: bool,
     deadlines: u64,
     watchdogs: u64,
     /// Why and when (since the platform clock's origin) the page was last revealed.
@@ -117,37 +119,59 @@ impl<A: PlatformAdapter> Inner<A> {
         self.adapter.revealed(hold);
     }
 
-    /// A window nothing of which can be seen completes frames without presenting them (a
-    /// drawable for it may never come back) and redraws when it shows again. Finite
-    /// animations run to completion meanwhile; looping keyframe ones park.
+    /// A stopped window (app in the background, screen locked) completes frames without
+    /// presenting them (a drawable for it may never come back), parks its animations and
+    /// waits for the platform's frame requests; it redraws when it shows again.
     pub(super) fn window_visible(self: &Arc<Self>, visible: bool) {
-        let changed = {
+        self.set_window(!visible, false);
+    }
+
+    /// A window other windows cover still has a live surface: its frames tick at the refresh
+    /// interval and count, finite animations run to completion and looping keyframe ones park.
+    pub(super) fn window_covered(self: &Arc<Self>, covered: bool) {
+        self.set_window(covered, covered);
+    }
+
+    fn set_window(self: &Arc<Self>, hidden: bool, covered: bool) {
+        let (changed, was_covered) = {
             let mut main = self.main();
-            let changed = main.reveal.window_hidden == visible;
-            main.reveal.window_hidden = !visible;
-            changed
+            let reveal = &mut main.reveal;
+            let changed = reveal.window_hidden != hidden || reveal.window_covered != covered;
+            let was_covered = reveal.window_covered;
+            reveal.window_hidden = hidden;
+            reveal.window_covered = covered;
+            (changed, was_covered)
         };
         if !changed {
             return;
         }
-        self.work(
-            Guard::Page(self.lifecycle.page()),
-            move |_, session| {
-                session.set_animation_covered(!visible);
-                Ok(())
-            },
-            |_, _| {},
-        );
-        if visible {
+        if covered != was_covered {
+            self.work(
+                Guard::Page(self.lifecycle.page()),
+                move |_, session| {
+                    session.set_animation_covered(covered);
+                    Ok(())
+                },
+                |_, _| {},
+            );
+        }
+        if !hidden {
             // Frames completed while hidden never reached the screen.
             self.main().dirty = true;
             self.request_frame();
             self.schedule();
+        } else if !covered {
+            self.park_animations();
         }
     }
 
     pub(super) fn window_hidden(&self) -> bool {
         self.main().reveal.window_hidden
+    }
+
+    /// Hidden by other windows only: frames keep their pace and count.
+    pub(super) fn paced_hidden(&self) -> bool {
+        self.main().reveal.window_covered
     }
 
     /// A frame reached the screen: a waiting or held reveal completes.
@@ -170,5 +194,12 @@ impl<A: PlatformAdapter> Inner<A> {
         if self.main().reveal.pending.take().is_some() {
             self.finish_reveal(false, "failure");
         }
+    }
+}
+
+impl Reveal {
+    /// Frames this window completes count in the statistics: shown, or only covered.
+    pub(super) fn counts_frames(&self) -> bool {
+        !self.window_hidden || self.window_covered
     }
 }

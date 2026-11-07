@@ -1850,7 +1850,7 @@ fn a_covered_window_completes_frames_on_the_refresh_tick_and_counts_them() {
             .unwrap()
     };
     let before = frames();
-    host.window_visible(false);
+    host.window_covered(true);
     resize(&host, 180);
     host.surface_changed();
     platform.settle(&[&host]);
@@ -1862,6 +1862,31 @@ fn a_covered_window_completes_frames_on_the_refresh_tick_and_counts_them() {
     assert_eq!(platform.advance(Duration::from_millis(17)), 1);
     platform.settle(&[&host]);
     assert_eq!(frames(), before + 1, "a covered frame completes and counts");
+}
+
+#[test]
+fn a_stopped_window_ticks_no_frames_of_its_own_and_counts_none() {
+    let worker = ViewWorker::spawn("test-window-stopped").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = revealing_page(&platform, &worker);
+    platform.settle(&[&host]);
+    let frames = || {
+        host.automation_request(&serde_json::json!({"op": "frame"}))
+            .unwrap()["pacing"]["frames"]
+            .as_u64()
+            .unwrap()
+    };
+    let before = frames();
+    host.window_visible(false);
+    resize(&host, 180);
+    host.surface_changed();
+    platform.settle(&[&host]);
+    assert_eq!(
+        platform.advance(Duration::from_secs(20)),
+        0,
+        "a backgrounded app keeps no frame timer"
+    );
+    assert_eq!(frames(), before, "nothing it completes counts");
 }
 
 #[test]

@@ -735,7 +735,9 @@ fn gpu_page_retry(token: i64) {
 
 fn gpu_page_window_visible(token: i64, visible: bool) {
     log::debug!(target: "lingxia_view", "window token={token} visible={visible}");
-    with_page(token, |page| page.host().window_visible(visible));
+    // AppKit reports occlusion: a covered window's surface stays live (minimized and hidden
+    // windows suspend their presenter separately).
+    with_page(token, |page| page.host().window_covered(!visible));
 }
 
 pub(super) use live::{install, token_of};
