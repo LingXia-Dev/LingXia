@@ -66,6 +66,19 @@ spec('a 1000-row list keeps pace through flings', { id: 'PERF-LIST-001', covers:
   await expectFrames(t, await t.app.metrics({ windowMs: Date.now() - started }));
 });
 
+// Each fling lands while the last one still glides, so the list window keeps shifting under input.
+spec('a 1000-row list keeps pace through chained flings', { id: 'PERF-LIST-002', covers: ['view:list'] }, async (t) => {
+  await scene(t, 'list', 1000);
+  const list = t.app.view.testId('perf-list');
+  const started = Date.now();
+  for (const direction of ['up', 'up', 'up', 'down', 'down', 'up'] as const) {
+    await t.app.view.fling(direction, 4000, { at: list });
+    await new Promise<void>(resolve => setTimeout(resolve, 250));
+  }
+  await glideSettled(t);
+  await expectFrames(t, await t.app.metrics({ windowMs: Date.now() - started }));
+});
+
 spec('a 1000-row list keeps pace while Logic moves its anchor every tick', { id: 'PERF-DATA-001', covers: ['view:list'] }, async (t) => {
   await scene(t, 'data', 1000);
   await expectFrames(t, await runBudget(t, 'data', 1000));
