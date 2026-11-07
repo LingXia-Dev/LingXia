@@ -548,7 +548,7 @@ where
         let pending = &mut self.pending[index];
         origin(&mut pending.scene, extent);
         for clip in clips {
-            pending.scene.push_clip_layer(&clip.path());
+            pending.scene.push_clip_path(&clip.path());
         }
         (self.draw)(
             span,
@@ -557,7 +557,7 @@ where
             pending.content.get_or_insert_default(),
         )?;
         for _ in clips {
-            pending.scene.pop_layer();
+            pending.scene.pop_clip();
         }
         self.resources.stats.content_scene_us += crate::session::metrics::micros(started);
         Ok(())
@@ -604,7 +604,7 @@ where
             let scene = &mut pending.scene;
             origin(scene, target_extent);
             for clip in clips {
-                scene.push_clip_layer(&clip.path());
+                scene.push_clip_path(&clip.path());
             }
             image_paint(scene, blurred, Default::default(), id);
             scene.set_paint_transform(
@@ -619,7 +619,7 @@ where
             ));
             scene.reset_paint_transform();
             for _ in clips {
-                scene.pop_layer();
+                scene.pop_clip();
             }
             self.resources.stats.composite_scene_us += crate::session::metrics::micros(started);
             return Ok(());
@@ -628,10 +628,10 @@ where
         let scene = &mut pending.scene;
         origin(scene, target_extent);
         for clip in clips {
-            scene.push_clip_layer(&clip.path());
+            scene.push_clip_path(&clip.path());
         }
         match layer {
-            Layer::Clip(clip) => scene.push_clip_layer(&clip.path()),
+            Layer::Clip(clip) => scene.push_clip_path(&clip.path()),
             Layer::Opacity(alpha) | Layer::Backdrop { opacity: alpha, .. } => {
                 scene.push_opacity_layer(*alpha)
             }
@@ -648,9 +648,13 @@ where
                 scene.pop_layer();
             }
         }
-        scene.pop_layer();
-        for _ in clips {
+        if matches!(layer, Layer::Clip(_)) {
+            scene.pop_clip();
+        } else {
             scene.pop_layer();
+        }
+        for _ in clips {
+            scene.pop_clip();
         }
         self.resources.stats.composite_scene_us += crate::session::metrics::micros(started);
         Ok(())
@@ -695,16 +699,16 @@ where
         let scene = &mut pending.scene;
         origin(scene, target_extent);
         for clip in clips {
-            scene.push_clip_layer(&clip.path());
+            scene.push_clip_path(&clip.path());
         }
-        scene.push_clip_layer(&clip.path());
+        scene.push_clip_path(&clip.path());
         image_paint(scene, &filtered, Default::default(), id);
         scene.set_paint_transform(region.placement());
         scene.fill_rect(&region.bounds());
         scene.reset_paint_transform();
-        scene.pop_layer();
+        scene.pop_clip();
         for _ in clips {
-            scene.pop_layer();
+            scene.pop_clip();
         }
         Ok(())
     }
@@ -796,11 +800,11 @@ impl<F> Gpu<'_, F> {
         let started = std::time::Instant::now();
         let mut scene = Scene::new(width, height);
         origin(&mut scene, extent);
-        scene.push_clip_layer(&clip.path());
+        scene.push_clip_path(&clip.path());
         let bindings = image_brush(&mut scene, filtered, Default::default());
         scene.set_paint_transform(region.placement());
         scene.fill_rect(&region.bounds());
-        scene.pop_layer();
+        scene.pop_clip();
         self.resources.stats.composite_scene_us += crate::session::metrics::micros(started);
         self.render(
             &scene,

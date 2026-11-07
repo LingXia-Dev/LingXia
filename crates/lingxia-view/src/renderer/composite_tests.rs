@@ -255,20 +255,53 @@ fn authored_backdrop_gpu_matches_cpu_across_retained_scroll() {
             let output = compositor.render_display(&display, device, queue).unwrap();
             let actual = crate::renderer::backdrop_tests::readback(device, queue, output.texture());
             let expected = display.rasterize().unwrap();
-            for (index, (a, b)) in actual
-                .chunks_exact(512)
-                .flat_map(|row| row[..96 * 4].iter())
-                .zip(expected.pixels.data_as_u8_slice())
-                .enumerate()
-            {
-                // A wide blur is filtered small and stretched back. The GPU averages the area
-                // it reduces where the CPU samples it bilinearly, so edges differ a little more.
-                assert!(
-                    a.abs_diff(*b) <= 6,
-                    "scale={scale} offset={offset} byte={index}: {a} vs {b}"
-                );
-            }
+            matches_backdrop_cpu(
+                &actual,
+                &expected,
+                scale,
+                &format!("scale={scale} offset={offset}"),
+            );
         }
+    }
+}
+
+/// The GPU frame of [`backdrop_display`] against the CPU's. A wide blur is filtered small and
+/// stretched back; the GPU averages the area it reduces where the CPU samples it bilinearly,
+/// so blurred edges differ a little more. On the scroll's rounded corners the GPU clips each
+/// overlapping fill on its own, as the flat path does, where the CPU clips the group once.
+#[cfg(feature = "gpu")]
+fn matches_backdrop_cpu(actual: &[u8], expected: &crate::Frame, scale: f32, what: &str) {
+    let radius = 6.0 * scale;
+    let bottom = 72.0 * scale;
+    let on_corner = |x: usize, y: usize| {
+        let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
+        let cx = if px < radius {
+            radius
+        } else if px > 96.0 - radius {
+            96.0 - radius
+        } else {
+            return false;
+        };
+        let cy = if py < radius {
+            radius
+        } else if py > bottom - radius && py < bottom {
+            bottom - radius
+        } else {
+            return false;
+        };
+        ((px - cx).hypot(py - cy) - radius).abs() < 1.0
+    };
+    for (index, (a, b)) in actual
+        .chunks_exact(512)
+        .flat_map(|row| row[..96 * 4].iter())
+        .zip(expected.pixels.data_as_u8_slice())
+        .enumerate()
+    {
+        let pixel = index / 4;
+        if on_corner(pixel % 96, pixel / 96) {
+            continue;
+        }
+        assert!(a.abs_diff(*b) <= 6, "{what} byte={index}: {a} vs {b}");
     }
 }
 
@@ -355,13 +388,7 @@ fn a_backdrop_is_filtered_again_only_when_what_lies_beneath_changes() {
         let output = compositor.render_display(&display, device, queue).unwrap();
         let actual = crate::renderer::backdrop_tests::readback(device, queue, output.texture());
         let expected = display.rasterize().unwrap();
-        for (a, b) in actual
-            .chunks_exact(512)
-            .flat_map(|row| row[..96 * 4].iter())
-            .zip(expected.pixels.data_as_u8_slice())
-        {
-            assert!(a.abs_diff(*b) <= 6, "offset {offset}: {a} vs {b}");
-        }
+        matches_backdrop_cpu(&actual, &expected, 2.0, &format!("offset {offset}"));
         compositor.backdrop_filters()
     };
     assert_eq!(frame(0.0), 1);

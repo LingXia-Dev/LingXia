@@ -128,15 +128,8 @@ impl DisplayList {
                     gradient,
                     bounds,
                 } => {
-                    context.push_clip_layer(
-                        &ClipSnapshot {
-                            bounds: *bounds,
-                            radius: 0.0,
-                            radii: None,
-                            transform: None,
-                        }
-                        .path(),
-                    );
+                    let [x, y, w, h] = bounds.map(f64::from);
+                    context.push_clip_rect(&PaintRect::new(x, y, x + w, y + h));
                     if let Some(brush) = gradient {
                         context.set_paint(brush.gradient.clone());
                         context.set_paint_transform(brush.transform);
@@ -145,7 +138,7 @@ impl DisplayList {
                     }
                     context.fill_path(path);
                     context.reset_paint_transform();
-                    context.pop_layer();
+                    context.pop_clip();
                 }
                 Paint::RasterShadow { raster } => {
                     let (rect, transform, clip) = image_geometry(
@@ -175,7 +168,7 @@ impl DisplayList {
                     radius,
                 } => {
                     if let Some(shape) = shadow.geometry(*bounds, *radius) {
-                        context.push_clip_layer(&shape.knockout());
+                        context.push_clip_path(&shape.knockout());
                         context.set_paint(AlphaColor::<Srgb>::from_rgba8(*r, *g, *b, *a));
                         if shape.sigma == 0.0 {
                             context.fill_path(&shape.shape().to_path(0.1));
@@ -187,7 +180,7 @@ impl DisplayList {
                                 false,
                             );
                         }
-                        context.pop_layer();
+                        context.pop_clip();
                     }
                 }
                 Paint::Area {
