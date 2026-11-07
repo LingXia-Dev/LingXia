@@ -1,5 +1,6 @@
 //! GPU implementation of the shared composition order; no CPU pixel readback.
 use crate::{
+    renderer::gpu::blur::{BlurPass, Edge, Source},
     renderer::gpu::color_filter::SaturationPass,
     renderer::gpu::pass::{SceneRenderer, Target},
     scene::composite::{Backend, Extent, Layer},
@@ -45,6 +46,7 @@ pub struct Compositor {
     renderer: SceneRenderer,
     pool: crate::renderer::gpu::surface::Pool,
     saturation: Option<SaturationPass>,
+    blur: Option<BlurPass>,
     depth: Vec<(u16, u16, wgpu::TextureView)>,
     depth_allocations: u64,
     images: crate::renderer::gpu::images::ImageTextures,
@@ -89,6 +91,7 @@ impl Compositor {
             renderer,
             pool: Default::default(),
             saturation: None,
+            blur: None,
             depth: Vec::new(),
             depth_allocations: 0,
             images: Default::default(),
@@ -588,9 +591,39 @@ where
         clips: &[ClipSnapshot],
     ) -> Result<(), String> {
         self.settle(source)?;
+        let blurred = match layer {
+            Layer::Blur(radius) if *radius > 0.0 => Some(self.blurred(source, *radius)?),
+            _ => None,
+        };
         let started = std::time::Instant::now();
         let index = self.pending_beside(target, source)?;
         let pending = &mut self.pending[index];
+        let at = (f64::from(source_extent[0]), f64::from(source_extent[1]));
+        if let Some((blurred, scale)) = &blurred {
+            let id = pending.place(blurred);
+            let scene = &mut pending.scene;
+            origin(scene, target_extent);
+            for clip in clips {
+                scene.push_clip_layer(&clip.path());
+            }
+            image_paint(scene, blurred, Default::default(), id);
+            scene.set_paint_transform(
+                vello_cpu::kurbo::Affine::translate(at) * vello_cpu::kurbo::Affine::scale(*scale),
+            );
+            let (width, height) = size(source_extent);
+            scene.fill_rect(&vello_cpu::kurbo::Rect::new(
+                at.0,
+                at.1,
+                at.0 + f64::from(width),
+                at.1 + f64::from(height),
+            ));
+            scene.reset_paint_transform();
+            for _ in clips {
+                scene.pop_layer();
+            }
+            self.resources.stats.composite_scene_us += crate::session::metrics::micros(started);
+            return Ok(());
+        }
         let id = pending.place(source);
         let scene = &mut pending.scene;
         origin(scene, target_extent);
@@ -602,16 +635,8 @@ where
             Layer::Opacity(alpha) | Layer::Backdrop { opacity: alpha, .. } => {
                 scene.push_opacity_layer(*alpha)
             }
-            Layer::Mask(_) => scene.push_layer(None, None, None, None, None),
-            Layer::Blur(radius) => scene.push_layer(
-                None,
-                None,
-                None,
-                None,
-                Some(crate::renderer::cpu_paint::blur_filter(*radius)),
-            ),
+            Layer::Mask(_) | Layer::Blur(_) => scene.push_layer(None, None, None, None, None),
         }
-        let at = (f64::from(source_extent[0]), f64::from(source_extent[1]));
         image(scene, source, id, at);
         if let Layer::Mask(mask) = layer {
             for fade in &mask.layers {
@@ -795,8 +820,6 @@ impl<F> Gpu<'_, F> {
         blur: f32,
         saturation: crate::scene::color_filter::Saturation,
     ) -> Result<Surface, String> {
-        let cropped = self.overwritten(region.width, region.height)?;
-        let mut encoder = self.device.create_command_encoder(&Default::default());
         let (x, y) = (
             region.x.checked_sub(source_extent[0]),
             region.y.checked_sub(source_extent[1]),
@@ -808,67 +831,83 @@ impl<F> Gpu<'_, F> {
         {
             return Err("UI_COMPOSITE: backdrop region outside its source".into());
         }
-        let mut input = source.texture().as_image_copy();
-        input.origin = wgpu::Origin3d {
-            x: u32::from(x),
-            y: u32::from(y),
-            z: 0,
+        let (width, height) = (region.filtered_width, region.filtered_height);
+        let filtered = self.overwritten(width, height)?;
+        let scratch = self.overwritten(width, height)?;
+        let colored = if saturation.amount() != 1.0 {
+            Some(self.overwritten(width, height)?)
+        } else {
+            None
         };
-        encoder.copy_texture_to_texture(
-            input,
-            cropped.texture().as_image_copy(),
-            cropped.texture().size(),
-        );
-        self.queue.submit([encoder.finish()]);
-        let captured = u64::from(region.width) * u64::from(region.height);
-        let stats = &mut self.resources.stats;
-        stats.copies += 1;
-        stats.submits += 1;
-        stats.copy_pixels += captured;
-        stats.capture_pixels += captured;
-        stats.filter_pixels += u64::from(region.filtered_width) * u64::from(region.filtered_height);
-        let mut filtered = self.overwritten(region.filtered_width, region.filtered_height)?;
-        let started = std::time::Instant::now();
-        let mut scene = Scene::new(region.filtered_width, region.filtered_height);
-        if blur > 0.0 {
-            scene.push_filter_layer(region.filter.clone());
-        }
-        let bindings = image_brush(
-            &mut scene,
-            &cropped,
-            vello_cpu::peniko::ImageSampler::new().with_extend(vello_cpu::peniko::Extend::Reflect),
-        );
-        scene.set_paint_transform(region.downscale());
-        scene.fill_rect(&region.sampling_bounds);
-        if blur > 0.0 {
-            scene.pop_layer();
-        }
-        self.resources.stats.composite_scene_us += crate::session::metrics::micros(started);
-        self.render(
-            &scene,
-            &bindings,
-            &filtered,
-            TargetInit::Clear(Default::default()),
-        )?;
-        drop(cropped);
-        if saturation.amount() != 1.0 {
-            let colored = self.overwritten(region.filtered_width, region.filtered_height)?;
-            let pass = self
-                .resources
-                .saturation
-                .get_or_insert_with(|| SaturationPass::new(self.device));
-            let mut encoder = self.device.create_command_encoder(&Default::default());
-            pass.apply(
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        self.resources
+            .blur
+            .get_or_insert_with(|| BlurPass::new(self.device))
+            .apply(
                 self.device,
                 &mut encoder,
+                Source {
+                    texture: source.texture(),
+                    origin: (x, y),
+                    size: (region.width, region.height),
+                },
+                scratch.texture(),
                 filtered.texture(),
-                colored.texture(),
-                saturation,
+                region.scale,
+                blur / region.scale,
+                Edge::Mirror,
             )?;
-            self.queue.submit([encoder.finish()]);
-            self.resources.stats.submits += 1;
-            filtered = colored;
+        if let Some(colored) = &colored {
+            self.resources
+                .saturation
+                .get_or_insert_with(|| SaturationPass::new(self.device))
+                .apply(
+                    self.device,
+                    &mut encoder,
+                    filtered.texture(),
+                    colored.texture(),
+                    saturation,
+                )?;
         }
-        Ok(filtered)
+        self.queue.submit([encoder.finish()]);
+        let stats = &mut self.resources.stats;
+        stats.submits += 1;
+        stats.capture_pixels += u64::from(region.width) * u64::from(region.height);
+        stats.filter_pixels += u64::from(width) * u64::from(height);
+        Ok(colored.unwrap_or(filtered))
+    }
+
+    /// A `blur-*` group's surface blurred by `radius` device pixels, at a fraction of its
+    /// resolution, and that fraction's scale.
+    fn blurred(&mut self, source: &Surface, radius: f32) -> Result<(Surface, f64), String> {
+        let scale = crate::scene::backdrop_region::filter_scale(radius);
+        let size = source.size();
+        let reduce = |n: u16| (f32::from(n) / scale).ceil().max(1.0) as u16;
+        let (width, height) = (reduce(size.width), reduce(size.height));
+        let blurred = self.overwritten(width, height)?;
+        let scratch = self.overwritten(width, height)?;
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        self.resources
+            .blur
+            .get_or_insert_with(|| BlurPass::new(self.device))
+            .apply(
+                self.device,
+                &mut encoder,
+                Source {
+                    texture: source.texture(),
+                    origin: (0, 0),
+                    size: (size.width, size.height),
+                },
+                scratch.texture(),
+                blurred.texture(),
+                scale,
+                radius / scale,
+                Edge::Transparent,
+            )?;
+        self.queue.submit([encoder.finish()]);
+        let stats = &mut self.resources.stats;
+        stats.submits += 1;
+        stats.filter_pixels += u64::from(width) * u64::from(height);
+        Ok((blurred, f64::from(scale)))
     }
 }

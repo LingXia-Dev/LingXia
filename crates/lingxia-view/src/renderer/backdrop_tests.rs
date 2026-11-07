@@ -702,7 +702,7 @@ fn compositor_pool_reuses_submitted_work_without_overwriting_live_outputs() {
         compositor.texture_stats().depth_allocations,
         warm.depth_allocations
     );
-    assert_eq!(compositor.texture_stats().depth_textures, 2);
+    assert_eq!(compositor.texture_stats().depth_textures, 1);
     let last = render(&mut compositor, css::LIME);
     // A second page shares the queue, but its scratch and output stay independent.
     let mut other = crate::renderer::gpu::composite::Compositor::new(device);

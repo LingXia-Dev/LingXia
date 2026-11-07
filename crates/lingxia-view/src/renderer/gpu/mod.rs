@@ -1,4 +1,5 @@
 pub(crate) mod backdrop_cache;
+pub(crate) mod blur;
 pub mod color_filter;
 pub mod composite;
 mod device;

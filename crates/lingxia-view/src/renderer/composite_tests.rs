@@ -261,10 +261,10 @@ fn authored_backdrop_gpu_matches_cpu_across_retained_scroll() {
                 .zip(expected.pixels.data_as_u8_slice())
                 .enumerate()
             {
-                // A wide blur is filtered small and stretched back; the two rasterizers'
-                // bilinear stretches differ by up to one more level than their blurs.
+                // A wide blur is filtered small and stretched back. The GPU averages the area
+                // it reduces where the CPU samples it bilinearly, so edges differ a little more.
                 assert!(
-                    a.abs_diff(*b) <= 4,
+                    a.abs_diff(*b) <= 6,
                     "scale={scale} offset={offset} byte={index}: {a} vs {b}"
                 );
             }
@@ -360,7 +360,7 @@ fn a_backdrop_is_filtered_again_only_when_what_lies_beneath_changes() {
             .flat_map(|row| row[..96 * 4].iter())
             .zip(expected.pixels.data_as_u8_slice())
         {
-            assert!(a.abs_diff(*b) <= 4, "offset {offset}: {a} vs {b}");
+            assert!(a.abs_diff(*b) <= 6, "offset {offset}: {a} vs {b}");
         }
         compositor.backdrop_filters()
     };
@@ -398,8 +398,8 @@ fn sibling_groups_share_one_pass_into_the_surface_they_sit_in() {
     let queue = &context.devices[id].queue;
     let mut compositor = crate::renderer::gpu::composite::Compositor::new(device);
     // Each group draws its own pass; the root's spans and the three composites share one,
-    // and a backdrop capture splits the root once more and adds its filter pass.
-    for (backdrop, draws) in [(false, 4), (true, 6)] {
+    // and a backdrop capture splits the root once more. Blurs are not scene draws.
+    for (backdrop, draws) in [(false, 4), (true, 5)] {
         let display = sibling_groups(backdrop);
         let output = compositor.render_display(&display, device, queue).unwrap();
         assert_eq!(compositor.stats().draws, draws, "backdrop={backdrop}");
@@ -412,7 +412,7 @@ fn sibling_groups_share_one_pass_into_the_surface_they_sit_in() {
             .enumerate()
         {
             assert!(
-                a.abs_diff(*b) <= 4,
+                a.abs_diff(*b) <= 6,
                 "backdrop={backdrop} byte={index}: {a} vs {b}"
             );
         }
