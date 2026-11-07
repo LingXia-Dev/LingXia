@@ -7,6 +7,10 @@ use super::thread_clock::ThreadClock;
 /// A hang that burns no CPU (a blocked host call) is caught by wall time at this multiple.
 const WALL_MULTIPLE: u32 = 10;
 
+/// A watchdog that wakes this late was not running: the OS froze the process (Harmony does
+/// once an app is backgrounded), and the frozen span is no hang.
+const FROZEN: Duration = Duration::from_secs(1);
+
 /// One evaluation: its budget is CPU time on the worker; wall time only catches hangs.
 #[derive(Clone, Copy)]
 struct Evaluating {
@@ -28,6 +32,14 @@ impl Evaluating {
         match self.used() {
             (Some(cpu), wall) => cpu >= self.budget || wall >= self.budget * WALL_MULTIPLE,
             (None, wall) => wall >= self.budget,
+        }
+    }
+
+    /// Stop charging wall time the process spent frozen, from a wait due at `deadline`.
+    fn thaw(&mut self, waited_from: Instant, deadline: Instant, now: Instant) {
+        let late = now.saturating_duration_since(deadline);
+        if late >= FROZEN && self.started <= waited_from {
+            self.started += late;
         }
     }
 
@@ -78,7 +90,15 @@ impl Budget {
                                 } else {
                                     let remaining =
                                         evaluating.remaining().max(Duration::from_millis(1));
+                                    let waited_from = Instant::now();
                                     state = wake.wait_timeout(state, remaining).unwrap().0;
+                                    if let Some(evaluating) = state.evaluating.as_mut() {
+                                        evaluating.thaw(
+                                            waited_from,
+                                            waited_from + remaining,
+                                            Instant::now(),
+                                        );
+                                    }
                                 }
                             }
                             _ => state = wake.wait(state).unwrap(),
@@ -118,8 +138,20 @@ impl Budget {
         }
         let guard = Evaluation { budget: self };
         let result = work();
-        let expired = evaluating.expired();
+        // Wall time alone fails only through the watchdog, which leaves out a frozen process.
+        let (interrupted, evaluating) = {
+            let state = self.shared.0.lock().unwrap();
+            (
+                state.interrupt.is_some(),
+                state.evaluating.unwrap_or(evaluating),
+            )
+        };
         let (cpu, wall) = evaluating.used();
+        let expired = interrupted
+            || match cpu {
+                Some(cpu) => cpu >= limit,
+                None => wall >= limit,
+            };
         drop(guard);
         let used = cpu.map_or("n/a".to_owned(), |cpu| format!("{}ms", cpu.as_millis()));
         if expired {
@@ -243,5 +275,37 @@ mod tests {
             Ok(())
         });
         assert!(hung.is_err());
+    }
+
+    #[test]
+    fn a_frozen_process_is_not_charged_as_a_hang() {
+        let now = Instant::now();
+        let limit = Duration::from_millis(400);
+        let mut evaluating = Evaluating {
+            started: now,
+            budget: limit,
+            clock: None,
+        };
+        // The watchdog slept 4 s due and woke after a 120 s freeze.
+        let deadline = now + limit * WALL_MULTIPLE;
+        let woke = deadline + Duration::from_secs(120);
+        evaluating.thaw(now, deadline, woke);
+        assert_eq!(evaluating.started, now + Duration::from_secs(120));
+        // A wake within the slack is an ordinary late timer and charges everything.
+        let mut ordinary = Evaluating {
+            started: now,
+            budget: limit,
+            clock: None,
+        };
+        ordinary.thaw(now, deadline, deadline + Duration::from_millis(200));
+        assert_eq!(ordinary.started, now);
+        // An evaluation that began after the wait started is not credited.
+        let mut later = Evaluating {
+            started: now + Duration::from_secs(1),
+            budget: limit,
+            clock: None,
+        };
+        later.thaw(now, deadline, woke);
+        assert_eq!(later.started, now + Duration::from_secs(1));
     }
 }
