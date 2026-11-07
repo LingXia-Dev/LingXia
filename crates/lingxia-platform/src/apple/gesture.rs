@@ -112,6 +112,7 @@ mod mac {
         window: i64,
         origin: (f64, f64),
         last: (f64, f64),
+        cursor: Option<(f64, f64)>,
     }
 
     type Point = (f64, f64);
@@ -419,11 +420,15 @@ mod mac {
         let started = Instant::now();
         let mut events = 0u32;
         let mut last = continued.map(|held| held.last);
+        // Fingers on a trackpad scroll without moving the cursor, so the whole gesture
+        // reaches the view under its first point.
+        let mut cursor = continued.and_then(|held| held.cursor);
         for GesturePoint { x, y, at_ms } in points {
             let due = started + Duration::from_secs_f64(at_ms / 1000.0);
             tokio::time::sleep_until(due.into()).await;
             let (x, y) = (origin.0 + x, origin.1 + y);
             let previous = last.replace((x, y));
+            let (cx, cy) = *cursor.get_or_insert((x, y));
             let sent = on_main(move || match (input, previous) {
                 (GestureInput::Mouse, None) => post_mouse(window, x, y, Mouse::Down).map(|_| true),
                 (GestureInput::Mouse, Some(_)) => {
@@ -438,7 +443,7 @@ mod mac {
                     } else {
                         CHANGED
                     };
-                    post_scroll(window, x, y, x - px, y - py, Scroll::Phase(phase)).map(|_| true)
+                    post_scroll(window, cx, cy, x - px, y - py, Scroll::Phase(phase)).map(|_| true)
                 }
             })
             .await?;
@@ -457,12 +462,14 @@ mod mac {
                         window,
                         origin,
                         last: (x, y),
+                        cursor,
                     },
                 );
                 Some(id)
             }
             end => {
                 let velocity = fling_velocity(&request.shape);
+                let (cx, cy) = cursor.unwrap_or((x, y));
                 on_main(move || match input {
                     GestureInput::Mouse => post_mouse(window, x, y, Mouse::Up),
                     _ => {
@@ -471,13 +478,13 @@ mod mac {
                         } else {
                             ENDED
                         };
-                        post_scroll(window, x, y, 0.0, 0.0, Scroll::Phase(phase))
+                        post_scroll(window, cx, cy, 0.0, 0.0, Scroll::Phase(phase))
                     }
                 })
                 .await?;
                 events += 1;
                 if fling && input == GestureInput::Trackpad && end == GestureEnd::Up {
-                    events += momentum(window, (x, y), velocity).await?;
+                    events += momentum(window, (cx, cy), velocity).await?;
                 }
                 None
             }
@@ -510,6 +517,8 @@ mod mac {
         velocity: (f64, f64),
     ) -> Result<u32, PlatformError> {
         const FRAME: f64 = 1.0 / 60.0;
+        // AppKit's normal deceleration: velocity keeps 0.998 of itself per millisecond.
+        let decay = 0.998f64.powf(FRAME * 1000.0);
         let (mut vx, mut vy) = velocity;
         let mut events = 0;
         let mut phase = 1;
@@ -520,8 +529,8 @@ mod mac {
                 .await?;
             phase = 2;
             events += 1;
-            vx *= 0.95;
-            vy *= 0.95;
+            vx *= decay;
+            vy *= decay;
             tokio::time::sleep(Duration::from_secs_f64(FRAME)).await;
         }
         on_main(move || post_scroll(window, at.0, at.1, 0.0, 0.0, Scroll::Momentum(3))).await?;
@@ -716,13 +725,19 @@ mod mac {
         unsafe fn swiftui_elements(view: *mut AnyObject) -> *mut AnyObject {
             unsafe {
                 let children: *mut AnyObject = msg_send![view, accessibilityChildren];
-                let count: usize = if children.is_null() { 0 } else { msg_send![children, count] };
+                let count: usize = if children.is_null() {
+                    0
+                } else {
+                    msg_send![children, count]
+                };
                 if count > 0 {
                     return children;
                 }
-                let app: *mut AnyObject = msg_send![objc2::class!(NSApplication), sharedApplication];
+                let app: *mut AnyObject =
+                    msg_send![objc2::class!(NSApplication), sharedApplication];
                 let attribute = objc2_foundation::NSString::from_str("AXEnhancedUserInterface");
-                let previous: *mut AnyObject = msg_send![app, accessibilityAttributeValue: &*attribute];
+                let previous: *mut AnyObject =
+                    msg_send![app, accessibilityAttributeValue: &*attribute];
                 let on = objc2_foundation::NSNumber::new_bool(true);
                 let _: () = msg_send![app, accessibilitySetValue: &*on, forAttribute: &*attribute];
                 let children: *mut AnyObject = msg_send![view, accessibilityChildren];
@@ -732,7 +747,8 @@ mod mac {
                     let was: bool = msg_send![previous, boolValue];
                     objc2_foundation::NSNumber::new_bool(was)
                 };
-                let _: () = msg_send![app, accessibilitySetValue: &*restore, forAttribute: &*attribute];
+                let _: () =
+                    msg_send![app, accessibilitySetValue: &*restore, forAttribute: &*attribute];
                 children
             }
         }
@@ -761,7 +777,8 @@ mod mac {
                         if !label.trim().is_empty() {
                             let screen: NSRect = msg_send![element, accessibilityFrame];
                             let window: *mut AnyObject = msg_send![content, window];
-                            let in_window: NSRect = msg_send![window, convertRectFromScreen: screen];
+                            let in_window: NSRect =
+                                msg_send![window, convertRectFromScreen: screen];
                             let rect: NSRect = msg_send![content, convertRect: in_window, fromView: std::ptr::null_mut::<AnyObject>()];
                             let bounds: NSRect = msg_send![content, bounds];
                             let top = if flipped {
@@ -772,7 +789,11 @@ mod mac {
                             let selected: bool = msg_send![element, isAccessibilitySelected];
                             out.push(ChromeElement {
                                 label: label.trim().to_owned(),
-                                role: if area == "tabBar" { "tab".into() } else { "button".into() },
+                                role: if area == "tabBar" {
+                                    "tab".into()
+                                } else {
+                                    "button".into()
+                                },
                                 scope: area.into(),
                                 selected,
                                 bounds: [rect.origin.x, top, rect.size.width, rect.size.height],
