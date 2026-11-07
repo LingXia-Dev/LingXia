@@ -80,7 +80,11 @@ impl FrameAnimations<'_> {
                     .union(&visible_nodes(&rendered, &realized))
                     .cloned()
                     .collect();
-                let (prepared, rendered) = if *visible == realized {
+                // Visibility gates keyframe animations only; transitions sample regardless.
+                let (prepared, rendered) = if realized
+                    .difference(visible)
+                    .all(|identity| !candidate.contains(identity))
+                {
                     (preview, rendered)
                 } else {
                     recomposed = true;

@@ -24,6 +24,10 @@ struct List {
 }
 
 impl Inventory {
+    pub(crate) fn contains(&self, identity: &str) -> bool {
+        self.0.contains_key(identity)
+    }
+
     pub(crate) fn definitions(&self) -> impl Iterator<Item = (String, Definition)> + '_ {
         self.0
             .iter()
