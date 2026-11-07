@@ -216,10 +216,10 @@ impl Compositor {
             draw,
             backdrops,
             uncleared: Vec::new(),
-            underlays: Vec::new(),
+            pending: Vec::new(),
         };
         let surface = plan.render(&mut gpu)?;
-        gpu.settle(&surface);
+        gpu.settle(&surface)?;
         Ok(surface)
     }
 
@@ -309,36 +309,33 @@ struct Gpu<'a, F> {
     backdrops: std::collections::VecDeque<crate::renderer::gpu::backdrop_cache::BackdropKey>,
     /// Blank surfaces not yet cleared: the first draw into one clears it in the same pass.
     uncleared: Vec<Surface>,
-    /// Backdrop images placed into a surface but not drawn yet: the next draw into it paints
-    /// them first, in the same pass.
-    underlays: Vec<Underlay>,
+    /// Work recorded for a surface and not drawn yet: one pass draws it when the surface is read.
+    pending: Vec<Pending>,
 }
 
-struct Underlay {
+/// A surface's recorded work. Each pass loads and stores the whole surface, so content spans,
+/// composited groups and placed backdrops share one pass until something reads the surface.
+struct Pending {
     target: Surface,
-    extent: Extent,
-    filtered: Surface,
-    region: crate::scene::backdrop_region::Region,
-    clip: ClipSnapshot,
-    clips: Vec<ClipSnapshot>,
+    scene: Scene,
+    /// Content draws' image bindings; compositor images bind apart, so a draw that replaces
+    /// the set keeps them.
+    content: Option<TextureBindings>,
+    placed: Vec<(TextureId, wgpu::TextureView)>,
+    /// Surfaces the scene samples, held so the pool cannot lease them out before the pass.
+    sources: Vec<Surface>,
+    held_bytes: u64,
 }
 
-impl Underlay {
-    /// Paints the placed image, bound as `id`.
-    fn paint(&self, scene: &mut Scene, id: TextureId) {
-        origin(scene, self.extent);
-        for clip in &self.clips {
-            scene.push_clip_layer(&clip.path());
-        }
-        scene.push_clip_layer(&self.clip.path());
-        image_brush_as(scene, &self.filtered, Default::default(), id);
-        scene.set_paint_transform(self.region.placement());
-        scene.fill_rect(&self.region.bounds());
-        scene.reset_paint_transform();
-        scene.pop_layer();
-        for _ in &self.clips {
-            scene.pop_layer();
-        }
+impl Pending {
+    /// Binds `source` under a new id; the scene's image paints use it.
+    fn place(&mut self, source: &Surface) -> TextureId {
+        let id = TextureId(1 + self.placed.len() as u64);
+        let size = source.size();
+        self.held_bytes += u64::from(size.width) * u64::from(size.height) * 4;
+        self.placed.push((id, source.view().clone()));
+        self.sources.push(source.clone());
+        id
     }
 }
 
@@ -348,22 +345,52 @@ impl<F> Gpu<'_, F> {
         self.resources.pool.lease(self.device, width, height)
     }
 
-    /// Clear `surface` now if it is still blank and about to be read.
-    fn settle(&mut self, surface: &Surface) {
-        if self.underlays.iter().any(|u| u.target.same(surface)) {
-            // Drawn on their own: something reads or composites onto the surface first.
-            let mut scene = Scene::new(surface.size().width, surface.size().height);
-            let mut bindings = TextureBindings::new();
-            for (id, view) in self.take_underlays(surface, &mut scene) {
+    /// The recording for `target`, started if there is none.
+    fn pending(&mut self, target: &Surface) -> usize {
+        if let Some(index) = self.pending.iter().position(|p| p.target.same(target)) {
+            return index;
+        }
+        let size = target.size();
+        self.pending.push(Pending {
+            target: target.clone(),
+            scene: Scene::new(size.width, size.height),
+            content: None,
+            placed: Vec::new(),
+            sources: Vec::new(),
+            held_bytes: 0,
+        });
+        self.pending.len() - 1
+    }
+
+    /// The recording for `target`, drawn first if holding `source` too would keep more than a
+    /// frame's worth of finished groups out of the pool.
+    fn pending_beside(&mut self, target: &Surface, source: &Surface) -> Result<usize, String> {
+        let size = source.size();
+        let bytes = u64::from(size.width) * u64::from(size.height) * 4;
+        let target_size = target.size();
+        let frame = u64::from(target_size.width) * u64::from(target_size.height) * 4;
+        if self
+            .pending
+            .iter()
+            .any(|p| p.target.same(target) && p.held_bytes > 0 && p.held_bytes + bytes > frame)
+        {
+            self.settle(target)?;
+        }
+        Ok(self.pending(target))
+    }
+
+    /// Draw `surface`'s recorded work, or clear it if it is still blank, before it is read.
+    fn settle(&mut self, surface: &Surface) -> Result<(), String> {
+        if let Some(index) = self.pending.iter().position(|p| p.target.same(surface)) {
+            let pending = self.pending.swap_remove(index);
+            let mut bindings = pending.content.unwrap_or_default();
+            for (id, view) in pending.placed {
                 bindings.insert(id, view);
             }
-            if let Err(error) = self.render(&scene, &bindings, surface, TargetInit::SrcOver) {
-                log::warn!(target: "lingxia_view", "UI_COMPOSITE: backdrop placement: {error}");
-            }
-            return;
+            return self.render(&pending.scene, &bindings, surface, TargetInit::SrcOver);
         }
         if !self.take_uncleared(surface) {
-            return;
+            return Ok(());
         }
         let mut encoder = self.device.create_command_encoder(&Default::default());
         drop(encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -385,25 +412,7 @@ impl<F> Gpu<'_, F> {
         self.queue.submit([encoder.finish()]);
         self.resources.stats.clears += 1;
         self.resources.stats.submits += 1;
-    }
-
-    /// Paints `surface`'s pending backdrop images into `scene`, oldest first; their bindings.
-    fn take_underlays(
-        &mut self,
-        surface: &Surface,
-        scene: &mut Scene,
-    ) -> Vec<(TextureId, wgpu::TextureView)> {
-        let mut bindings = Vec::new();
-        let (mine, rest): (Vec<_>, Vec<_>) = std::mem::take(&mut self.underlays)
-            .into_iter()
-            .partition(|u| u.target.same(surface));
-        self.underlays = rest;
-        for (index, underlay) in mine.iter().enumerate() {
-            let id = TextureId(2 + index as u64);
-            underlay.paint(scene, id);
-            bindings.push((id, underlay.filtered.view().clone()));
-        }
-        bindings
+        Ok(())
     }
 
     fn take_uncleared(&mut self, surface: &Surface) -> bool {
@@ -451,9 +460,9 @@ impl<F> Gpu<'_, F> {
     }
 }
 
-/// `source` drawn 1:1 with its top-left corner at `at`.
-fn image(scene: &mut Scene, source: &Surface, at: (f64, f64)) -> TextureBindings {
-    let bindings = image_brush(scene, source, Default::default());
+/// `source`, bound as `id`, drawn 1:1 with its top-left corner at `at`.
+fn image(scene: &mut Scene, source: &Surface, id: TextureId, at: (f64, f64)) {
+    image_paint(scene, source, Default::default(), id);
     let size = source.size();
     scene.set_paint_transform(vello_cpu::kurbo::Affine::translate(at));
     scene.fill_rect(&vello_cpu::kurbo::Rect::new(
@@ -463,7 +472,6 @@ fn image(scene: &mut Scene, source: &Surface, at: (f64, f64)) -> TextureBindings
         at.1 + size.height as f64,
     ));
     scene.reset_paint_transform();
-    bindings
 }
 
 fn size([x0, y0, x1, y1]: Extent) -> (u16, u16) {
@@ -483,19 +491,20 @@ fn image_brush(
     source: &Surface,
     sampler: vello_cpu::peniko::ImageSampler,
 ) -> TextureBindings {
-    image_brush_as(scene, source, sampler, TextureId(1))
+    let mut bindings = TextureBindings::new();
+    bindings.insert(TextureId(1), source.view().clone());
+    image_paint(scene, source, sampler, TextureId(1));
+    bindings
 }
 
-/// [`image_brush`] bound as `id`, for several images in one scene.
-fn image_brush_as(
+/// Sets `source`, bound as `id`, as the paint.
+fn image_paint(
     scene: &mut Scene,
     source: &Surface,
     sampler: vello_cpu::peniko::ImageSampler,
     id: TextureId,
-) -> TextureBindings {
+) {
     let size = source.size();
-    let mut bindings = TextureBindings::new();
-    bindings.insert(id, source.view().clone());
     scene.set_paint(vello_gpu::Image {
         image: vello_gpu::ImageSource::external_texture(
             id,
@@ -504,7 +513,6 @@ fn image_brush_as(
         ),
         sampler,
     });
-    bindings
 }
 
 impl<F> Backend for Gpu<'_, F>
@@ -532,28 +540,28 @@ where
         if span.is_empty() {
             return Ok(());
         }
-        let size = target.size();
         let started = std::time::Instant::now();
-        let mut scene = Scene::new(size.width, size.height);
-        let placed = self.take_underlays(target, &mut scene);
-        origin(&mut scene, extent);
+        let index = self.pending(target);
+        let pending = &mut self.pending[index];
+        origin(&mut pending.scene, extent);
         for clip in clips {
-            scene.push_clip_layer(&clip.path());
+            pending.scene.push_clip_layer(&clip.path());
         }
-        let mut bindings = TextureBindings::new();
-        (self.draw)(span, (extent[0], extent[1]), &mut scene, &mut bindings)?;
+        (self.draw)(
+            span,
+            (extent[0], extent[1]),
+            &mut pending.scene,
+            pending.content.get_or_insert_default(),
+        )?;
         for _ in clips {
-            scene.pop_layer();
-        }
-        for (id, view) in placed {
-            bindings.insert(id, view);
+            pending.scene.pop_layer();
         }
         self.resources.stats.content_scene_us += crate::session::metrics::micros(started);
-        self.render(&scene, &bindings, target, TargetInit::SrcOver)
+        Ok(())
     }
 
     fn snapshot(&mut self, source: &Surface) -> Result<Surface, String> {
-        self.settle(source);
+        self.settle(source)?;
         let size = source.size();
         let target = self.overwritten(size.width, size.height)?;
         let mut encoder = self.device.create_command_encoder(&Default::default());
@@ -579,12 +587,13 @@ where
         layer: &Layer,
         clips: &[ClipSnapshot],
     ) -> Result<(), String> {
-        self.settle(source);
-        self.settle(target);
+        self.settle(source)?;
         let started = std::time::Instant::now();
-        let size = target.size();
-        let mut scene = Scene::new(size.width, size.height);
-        origin(&mut scene, target_extent);
+        let index = self.pending_beside(target, source)?;
+        let pending = &mut self.pending[index];
+        let id = pending.place(source);
+        let scene = &mut pending.scene;
+        origin(scene, target_extent);
         for clip in clips {
             scene.push_clip_layer(&clip.path());
         }
@@ -603,7 +612,7 @@ where
             ),
         }
         let at = (f64::from(source_extent[0]), f64::from(source_extent[1]));
-        let bindings = image(&mut scene, source, at);
+        image(scene, source, id, at);
         if let Layer::Mask(mask) = layer {
             for fade in &mask.layers {
                 scene.push_layer(None, Some(crate::scene::mask::blend()), None, None, None);
@@ -619,7 +628,7 @@ where
             scene.pop_layer();
         }
         self.resources.stats.composite_scene_us += crate::session::metrics::micros(started);
-        self.render(&scene, &bindings, target, TargetInit::SrcOver)
+        Ok(())
     }
 
     fn filter(
@@ -655,14 +664,23 @@ where
         let Some((filtered, region)) = self.backdrop(target, target_extent, layer, frame)? else {
             return Ok(());
         };
-        self.underlays.push(Underlay {
-            target: target.clone(),
-            extent: target_extent,
-            filtered,
-            region,
-            clip: *clip,
-            clips: clips.to_vec(),
-        });
+        let index = self.pending_beside(target, &filtered)?;
+        let pending = &mut self.pending[index];
+        let id = pending.place(&filtered);
+        let scene = &mut pending.scene;
+        origin(scene, target_extent);
+        for clip in clips {
+            scene.push_clip_layer(&clip.path());
+        }
+        scene.push_clip_layer(&clip.path());
+        image_paint(scene, &filtered, Default::default(), id);
+        scene.set_paint_transform(region.placement());
+        scene.fill_rect(&region.bounds());
+        scene.reset_paint_transform();
+        scene.pop_layer();
+        for _ in clips {
+            scene.pop_layer();
+        }
         Ok(())
     }
 
@@ -711,7 +729,7 @@ impl<F> Gpu<'_, F> {
         else {
             return Err("UI_COMPOSITE: expected backdrop".into());
         };
-        self.settle(source);
+        self.settle(source)?;
         let key = self.backdrops.pop_front();
         let Some(region) =
             crate::scene::backdrop_region::Region::new(*clip, frame.0, frame.1, *blur)?

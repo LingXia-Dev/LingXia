@@ -373,3 +373,48 @@ fn a_backdrop_is_filtered_again_only_when_what_lies_beneath_changes() {
     compositor.clear();
     assert_eq!(compositor.cached_backdrops(), (0, 0));
 }
+
+fn sibling_groups(backdrop: bool) -> DisplayList {
+    let glass = if backdrop {
+        ",h('column',{style:{position:'absolute',left:8,top:30,width:60,height:30,backdropFilter:'blur(3px)'}})"
+    } else {
+        ""
+    };
+    let module = crate::session::tests::source(&format!(
+        "function render(){{return h('column',{{style:{{height:96,backgroundColor:'#ffffff'}}}},h('column',{{style:{{height:10,backgroundColor:'#ff0000'}}}}),h('column',{{style:{{filter:'blur(1px)',height:10,backgroundColor:'#0000ff',borderWidth:2,borderColor:'#000000'}}}},h('column',{{style:{{height:4,backgroundColor:'#ff00ff'}}}})),h('column',{{style:{{height:10,backgroundColor:'#00ff00'}}}}),h('column',{{style:{{filter:'blur(1px)',height:10,backgroundColor:'#ffff00',borderWidth:2,borderColor:'#000000'}}}},h('column',{{style:{{height:4,backgroundColor:'#ff00ff'}}}})){glass},h('column',{{style:{{height:10,backgroundColor:'#ff0000'}}}}),h('column',{{style:{{filter:'blur(1px)',height:10,backgroundColor:'#00ffff',borderWidth:2,borderColor:'#000000'}}}},h('column',{{style:{{height:4,backgroundColor:'#ff00ff'}}}})))}}"
+    ));
+    let mut page = ViewSession::new(&module).unwrap();
+    page.layout(96, 96, 1.0).unwrap()
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+#[ignore = "requires a GPU adapter"]
+fn sibling_groups_share_one_pass_into_the_surface_they_sit_in() {
+    let domain = crate::renderer::gpu::Context::default();
+    let mut context = domain.lock().unwrap();
+    let id = pollster::block_on(context.device(None)).expect("GPU adapter required");
+    let device = &context.devices[id].device;
+    let queue = &context.devices[id].queue;
+    let mut compositor = crate::renderer::gpu::composite::Compositor::new(device);
+    // Each group draws its own pass; the root's spans and the three composites share one,
+    // and a backdrop capture splits the root once more and adds its filter pass.
+    for (backdrop, draws) in [(false, 4), (true, 6)] {
+        let display = sibling_groups(backdrop);
+        let output = compositor.render_display(&display, device, queue).unwrap();
+        assert_eq!(compositor.stats().draws, draws, "backdrop={backdrop}");
+        let actual = crate::renderer::backdrop_tests::readback(device, queue, output.texture());
+        let expected = display.rasterize().unwrap();
+        for (index, (a, b)) in actual
+            .chunks_exact(512)
+            .flat_map(|row| row[..96 * 4].iter())
+            .zip(expected.pixels.data_as_u8_slice())
+            .enumerate()
+        {
+            assert!(
+                a.abs_diff(*b) <= 4,
+                "backdrop={backdrop} byte={index}: {a} vs {b}"
+            );
+        }
+    }
+}
