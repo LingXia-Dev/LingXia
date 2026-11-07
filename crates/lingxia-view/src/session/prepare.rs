@@ -154,12 +154,16 @@ impl ViewSession {
         now: Duration,
     ) -> Result<(), String> {
         let mut candidate = self.animations.fork();
-        if surface != self.animation_surface {
+        let visible = visible && surface.is_some();
+        let retarget = surface != self.animation_surface;
+        if retarget {
             candidate.set_visible(false, now)?;
         }
-        candidate.set_visible(visible && surface.is_some(), now)?;
+        // A visibility flip invalidates every waiting frame, so none may be built on.
+        let flipped = candidate.visible() != visible;
+        candidate.set_visible(visible, now)?;
         self.animations = candidate;
-        if surface != self.animation_surface {
+        if retarget || flipped {
             self.pending_animation = None;
             self.presenting_animation = None;
         }
@@ -238,9 +242,10 @@ impl ViewSession {
             if self.presenting_animation.is_some() {
                 return Err(super::AHEAD_REFUSED.into());
             }
+            // A hidden page's frames park time: nothing carries over, so it starts fresh.
             self.pending_animation
                 .as_ref()
-                .filter(|(_, s, _)| *s == surface)
+                .filter(|(_, s, _)| *s == surface && self.animations.visible())
                 .map(|(_, _, frame)| Box::new(frame.clone()))
         } else {
             None

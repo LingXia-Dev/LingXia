@@ -545,3 +545,86 @@ fn a_transition_continues_evenly_through_frames_prepared_ahead() {
         assert!((18..=25).contains(&(b - a)), "{n} {n1} {n2} {n3}");
     }
 }
+
+#[test]
+fn a_visibility_flip_drops_the_waiting_frame_a_frame_ahead_would_build_on() {
+    let mut page = page(
+        transition(&["opacity"], 200),
+        "backgroundColor:'#000000'",
+        "opacity:0",
+        "''",
+    );
+    let (display, _) = present(&mut page, frame_time(0));
+    press(&mut page, &display, true);
+    let sampled = |page: &mut ViewSession, now: u64, ahead: bool| {
+        page.prepare_view_sampled(
+            200,
+            100,
+            1.0,
+            false,
+            None,
+            frame_time(now),
+            frame_time(now + 1),
+            ahead,
+            |display| Ok(shoot(display, false)),
+        )
+        .map(|_| page.generation())
+    };
+    let waiting = sampled(&mut page, 1, false).unwrap();
+    page.set_animation_target(Some(SURFACE), false, frame_time(2))
+        .unwrap();
+    page.set_animation_target(Some(SURFACE), true, frame_time(3))
+        .unwrap();
+    // The flip invalidated the waiting frame: a frame ahead starts fresh instead of failing.
+    let fresh = sampled(&mut page, 3, true).unwrap();
+    assert!(
+        !page
+            .animation_presented(SURFACE, waiting, frame_time(4))
+            .unwrap()
+    );
+    assert!(
+        page.animation_presented(SURFACE, fresh, frame_time(4))
+            .unwrap()
+    );
+    // A hidden page's catch-up frames park time, so a frame ahead of one starts fresh too.
+    page.set_animation_target(Some(SURFACE), false, frame_time(5))
+        .unwrap();
+    sampled(&mut page, 5, false).unwrap();
+    sampled(&mut page, 5, true).unwrap();
+}
+
+#[test]
+fn a_focus_change_on_the_scroll_path_composes_a_frame_ahead_once() {
+    use std::collections::HashMap;
+    let spin = r#"{"name":"spin","durationMs":1000,"delayMs":0,"iterations":null,"whenReduced":"base","easing":"linear","opacity":null,"transforms":[{"kind":"rotate","angle":[{"offset":0,"value":0},{"offset":1,"value":360}]}]}"#;
+    let module = super::source(&format!(
+        "configureClasses([{{name:'base',when:{{}},style:{{backgroundColor:'#ffffff'}}}},{{name:'focused',when:{{state:'focus'}},style:{{backgroundColor:'#0000ff'}}}}]);function render(){{const draft=useLocal('draft','typed');return h('scroll',{{style:{{height:100}}}},h('column',{{style:{{width:20,height:20,backgroundColor:'#00ff00',animation:{spin}}}}}),h('view',{{style:{{height:300}}}}),h('input',{{'data-testid':'i',className:'base focused',autoFocus:true,bind:draft,style:{{width:150}}}}))}}"
+    ));
+    let mut page = ViewSession::new(&module).unwrap();
+    page.set_animation_surface(Some(SURFACE), Duration::ZERO)
+        .unwrap();
+    let sampled = |page: &mut ViewSession,
+                   at: u64,
+                   rebuild: bool,
+                   offsets: Option<&HashMap<String, f32>>,
+                   ahead: bool| {
+        page.prepare_view_sampled(
+            200,
+            100,
+            1.0,
+            rebuild,
+            offsets,
+            frame_time(at),
+            frame_time(at + 1),
+            ahead,
+            |display| Ok(display.nodes.clone()),
+        )
+    };
+    let nodes = sampled(&mut page, 0, true, None, false).unwrap();
+    let scroll = nodes[0].scroll.as_ref().unwrap().id.clone();
+    // A scroll-only frame waits; the next, prepared ahead of it, scrolls the autofocus input
+    // into view, so focus moves while it composes and it composes again on the full path.
+    sampled(&mut page, 1, false, None, false).unwrap();
+    let down = HashMap::from([(scroll, 400.0)]);
+    sampled(&mut page, 1, false, Some(&down), true).unwrap();
+}

@@ -240,6 +240,10 @@ impl Timeline {
 
     /// A looping keyframe animation shows nothing behind other windows and would run
     /// forever, so it parks while the window is covered; finite ones run to completion.
+    pub(crate) fn visible(&self) -> bool {
+        self.visible
+    }
+
     pub fn set_covered(&mut self, covered: bool) {
         self.covered = covered;
     }
@@ -794,6 +798,41 @@ mod tests {
             .prepare_visible(ms(1300), definitions(), ["chart"])
             .unwrap();
         assert_eq!(reinserted.samples()["chart"].phase, Phase::Delayed);
+    }
+
+    #[test]
+    fn a_frame_builds_only_on_the_newest_pending_frame_of_a_visible_timeline() {
+        let mut t = Timeline::default();
+        t.set_visible(true, ms(0)).unwrap();
+        let frame = |t: &mut Timeline, at: u64, base: Option<&Prepared>| {
+            t.prepare_frame(
+                ms(at),
+                ms(at + 16),
+                [("chart".into(), effect())],
+                vec![],
+                ["chart"],
+                base,
+            )
+        };
+        let stale = |result: Result<Prepared, String>| {
+            assert_eq!(result.unwrap_err(), "UI_ANIMATION: stale frame to build on");
+        };
+        let a = frame(&mut t, 0, None).unwrap();
+        let b = frame(&mut t, 0, Some(&a)).unwrap();
+        assert!(b.ticket > a.ticket);
+        // Only the newest waiting frame is a base; an older one would fork the queue.
+        stale(frame(&mut t, 0, Some(&a)));
+        let c = frame(&mut t, 0, Some(&b)).unwrap();
+        t.presented(b, ms(16)).unwrap();
+        let d = frame(&mut t, 16, Some(&c)).unwrap();
+        // A visibility flip drops every waiting frame, even after it flips back.
+        t.set_visible(false, ms(20)).unwrap();
+        stale(frame(&mut t, 20, Some(&d)));
+        t.set_visible(true, ms(30)).unwrap();
+        stale(frame(&mut t, 30, Some(&d)));
+        assert!(t.presented(d, ms(40)).is_err());
+        let e = frame(&mut t, 40, None).unwrap();
+        frame(&mut t, 40, Some(&e)).unwrap();
     }
 
     #[test]

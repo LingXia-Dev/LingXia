@@ -54,6 +54,10 @@ impl FrameAnimations<'_> {
                 frame,
                 visible,
             } => {
+                // A pass that composed and then fell back to the full path composes again.
+                if let Some(earlier) = frame.take() {
+                    timeline.discard(&earlier);
+                }
                 let candidate = inventory.reconcile(records)?;
                 let transitions = transition_inputs(records, &display, palette)?;
                 let realized: BTreeSet<_> = records
