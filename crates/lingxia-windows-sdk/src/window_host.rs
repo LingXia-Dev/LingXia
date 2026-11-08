@@ -7933,6 +7933,36 @@ pub fn center_host_window_on_work_area(window: isize) {
 /// for the resize cursor.
 #[cfg(feature = "shell-chrome")]
 static DIVIDER_DRAG: AtomicBool = AtomicBool::new(false);
+/// A sidebar width drag: the sidebar's fixed edge x and whether it sits on the left.
+#[cfg(feature = "shell-chrome")]
+static SIDEBAR_DRAG: Mutex<Option<(i32, bool)>> = Mutex::new(None);
+
+#[cfg(feature = "shell-chrome")]
+fn sidebar_resize_anchor_at(hwnd: HWND, point: (i32, i32)) -> Option<(i32, bool)> {
+    crate::shell::sidebar_resize_anchor(&chrome_state_for_window(hwnd)?, point)
+}
+
+/// Apply a sidebar width drag at `point`; `done` ends it. False when none is running.
+#[cfg(feature = "shell-chrome")]
+fn drive_sidebar_drag(hwnd: HWND, point: Option<(i32, i32)>, done: bool) -> bool {
+    let mut drag = SIDEBAR_DRAG.lock().unwrap_or_else(|p| p.into_inner());
+    let Some((anchor, left)) = *drag else {
+        return false;
+    };
+    if done {
+        *drag = None;
+    }
+    drop(drag);
+    let width = point.map(|point| {
+        f64::from(if left {
+            point.0 - anchor
+        } else {
+            anchor - point.0
+        }) / crate::dpi::window_scale(hwnd)
+    });
+    crate::shell::resize_sidebar(width, done);
+    true
+}
 #[cfg(feature = "shell-chrome")]
 static DIVIDER_DRAG_VERTICAL: AtomicBool = AtomicBool::new(false);
 #[cfg(feature = "shell-chrome")]
@@ -8203,6 +8233,18 @@ fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32), from_host: bool) -> b
     }
     #[cfg(feature = "shell-chrome")]
     {
+        if drive_sidebar_drag(hwnd, Some(point), false) {
+            set_divider_cursor(true);
+            return true;
+        }
+        if sidebar_resize_anchor_at(hwnd, point).is_some() {
+            clear_chrome_hover(hwnd);
+            set_divider_cursor(true);
+            return true;
+        }
+    }
+    #[cfg(feature = "shell-chrome")]
+    {
         if DIVIDER_DRAG.load(Ordering::Acquire) {
             crate::shell::update_divider_drag(point.0, point.1);
             set_divider_cursor(DIVIDER_DRAG_VERTICAL.load(Ordering::Acquire));
@@ -8376,6 +8418,15 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
         set_divider_cursor(vertical);
         return true;
     }
+    #[cfg(feature = "shell-chrome")]
+    if let Some(anchor) = sidebar_resize_anchor_at(hwnd, point) {
+        *SIDEBAR_DRAG.lock().unwrap_or_else(|p| p.into_inner()) = Some(anchor);
+        unsafe {
+            let _ = SetCapture(hwnd);
+        }
+        set_divider_cursor(true);
+        return true;
+    }
     let Some(hit) = chrome_hit_for_window(hwnd, point) else {
         return false;
     };
@@ -8539,6 +8590,13 @@ fn handle_chrome_left_up(hwnd: HWND, point: (i32, i32)) -> bool {
             let _ = ReleaseCapture();
         }
         crate::shell::end_divider_drag();
+        return true;
+    }
+    #[cfg(feature = "shell-chrome")]
+    if drive_sidebar_drag(hwnd, Some(point), true) {
+        unsafe {
+            let _ = ReleaseCapture();
+        }
         return true;
     }
     let webtag_key = active_webtag_key_for_window(hwnd);
@@ -10378,6 +10436,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                     if DIVIDER_DRAG.swap(false, Ordering::AcqRel) {
                         crate::shell::end_divider_drag();
                     }
+                    let _ = drive_sidebar_drag(hwnd, None, true);
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }

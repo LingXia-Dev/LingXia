@@ -2966,6 +2966,36 @@ pub(super) fn sidebar_hit_test(
     None
 }
 
+/// The expanded sidebar's width handle under `point`: the x of the sidebar's fixed
+/// edge, and whether the sidebar is on the left (its width grows with x).
+pub(crate) fn sidebar_resize_anchor(
+    state: &WindowsChromeState,
+    point: (i32, i32),
+) -> Option<(i32, bool)> {
+    let layout = shell_layout(&state.layout)?;
+    let tabbar = layout.tab_bar.as_ref()?;
+    let left = match tabbar.position {
+        WindowsShellTabBarPosition::Left => true,
+        WindowsShellTabBarPosition::Right => false,
+        _ => return None,
+    };
+    if tabbar.collapsed || tabbar.icon_rail || tabbar.rail_expand_disabled {
+        return None;
+    }
+    let rects = chrome_rects_for_state(state, layout);
+    let bar = rects.tab_bar?;
+    let edge = if left { bar.right } else { bar.left };
+    // Mostly in the gutter beside the sidebar, which no page covers.
+    let (inside, outside) = (crate::dpi::px(3), crate::dpi::px(6));
+    let near = if left {
+        point.0 >= edge - inside && point.0 < edge + outside
+    } else {
+        point.0 > edge - outside && point.0 <= edge + inside
+    };
+    let beside_workspace = point.1 >= rects.workspace.top && point.1 < rects.workspace.bottom;
+    (near && beside_workspace).then_some((if left { bar.left } else { bar.right }, left))
+}
+
 fn sidebar_caption_contains(rect: RECT, point: (i32, i32)) -> bool {
     rect_contains(
         &RECT {

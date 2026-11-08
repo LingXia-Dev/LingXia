@@ -592,8 +592,42 @@ fn persist_sidebar_chrome(rail: bool) {
     }
 }
 
+/// A sidebar width drag's current 96-DPI width, or 0.
+static LIVE_SIDEBAR_WIDTH: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+
+/// Drag the expanded sidebar to `width` (96-DPI, `None` keeps the dragged one);
+/// `done` ends the drag and remembers the width.
+pub(crate) fn resize_sidebar(width: Option<f64>, done: bool) {
+    let live = LIVE_SIDEBAR_WIDTH.load(Ordering::Acquire);
+    let width = match width {
+        Some(width) => width
+            .round()
+            .clamp(f64::from(MIN_SIDEBAR_WIDTH), f64::from(MAX_SIDEBAR_WIDTH))
+            as i32,
+        None if live > 0 => live,
+        None => return,
+    };
+    LIVE_SIDEBAR_WIDTH.store(if done { 0 } else { width }, Ordering::Release);
+    if done
+        && let Err(error) = lingxia_shell::set_sidebar_chrome(
+            lingxia_shell::SidebarChrome::with_expanded(true, f64::from(width)),
+        )
+    {
+        log::warn!("could not persist the sidebar width: {error}");
+    }
+    if (done || width != live)
+        && let Some(owner) = shell_owner_appid()
+    {
+        sync_shell_layout(&owner);
+    }
+}
+
 /// The persisted width is a 96-DPI value; the layout it feeds is physical.
 fn persisted_expanded_sidebar_width() -> i32 {
+    let live = LIVE_SIDEBAR_WIDTH.load(Ordering::Acquire);
+    if live > 0 {
+        return crate::dpi::px(live);
+    }
     let logical = lingxia_shell::sidebar_chrome()
         .expanded_width
         .round()
