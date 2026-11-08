@@ -6,10 +6,11 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 use std::sync::atomic::Ordering;
-use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BeginPaint, DIB_RGB_COLORS, EndPaint, InvalidateRect,
-    PAINTSTRUCT, ScreenToClient, SetDIBitsToDevice, UpdateWindow,
+    BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BeginPaint, CreateSolidBrush, DIB_RGB_COLORS,
+    DeleteObject, EndPaint, FillRect, InvalidateRect, PAINTSTRUCT, ScreenToClient,
+    SetDIBitsToDevice, UpdateWindow,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::Ime::{
@@ -520,6 +521,27 @@ fn paint(page: &Page, hwnd: HWND) {
     unsafe {
         let dc = BeginPaint(hwnd, &mut paint);
         let gpu = page.host().adapter().gpu.load(Ordering::Acquire) != 0;
+        let drawn = if gpu {
+            page.host().snapshot().is_some()
+        } else {
+            page.host()
+                .adapter()
+                .cpu_frame
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .is_some()
+        };
+        if !drawn {
+            // Nothing presented yet: an unpainted window shows whatever lies behind it.
+            let color = if page.dark() {
+                0x0020_2020
+            } else {
+                0x00FF_FFFF
+            };
+            let brush = CreateSolidBrush(COLORREF(color));
+            FillRect(dc, &paint.rcPaint, brush);
+            let _ = DeleteObject(brush.into());
+        }
         if !gpu
             && let Some(frame) = page
                 .host()

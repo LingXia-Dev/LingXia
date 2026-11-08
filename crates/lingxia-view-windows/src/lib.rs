@@ -249,6 +249,14 @@ impl Page {
         self.report();
     }
 
+    pub(crate) fn dark(&self) -> bool {
+        match self.scheme.get() {
+            Scheme::Auto => environment::system_dark(),
+            Scheme::Light => false,
+            Scheme::Dark => true,
+        }
+    }
+
     /// Measure the window and tell the host; binds a presenter once it can.
     pub(crate) fn report(&self) {
         let (width, height) = view::client_size(self.hwnd);
@@ -256,11 +264,7 @@ impl Page {
             return;
         }
         let scale = self.scale();
-        let dark = match self.scheme.get() {
-            Scheme::Auto => environment::system_dark(),
-            Scheme::Light => false,
-            Scheme::Dark => true,
-        };
+        let dark = self.dark();
         let facts = DeviceFacts {
             width,
             height,
