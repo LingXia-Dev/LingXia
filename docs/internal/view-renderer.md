@@ -236,7 +236,10 @@ window from the host's native-view host and a child content window inside it
 moves, hides and reparents it exactly as a WebView; a call that only a WebView2 controller
 supports is a no-op for it. The swap chain is bound to the content window: release the
 presenter before that window is destroyed, including when a host destroys the window
-holding it (`WM_DESTROY`).
+holding it (`WM_DESTROY`), and wait out an attach still running on the render thread —
+a swap chain made for a window that is gone poisons the shared GPU context for every page.
+Touch arrives as `WM_POINTER` (and the registered `LingXiaViewTouch` message automation
+posts); text input runs through IMM32 against the page's editor mirror.
 
 New platform: adapter traits, text scaling and insets in the environment, `renderer` frames.
 
@@ -244,7 +247,7 @@ New platform: adapter traits, text scaling and insets in the environment, `rende
 
 | Capability | Android | iOS | macOS | HarmonyOS | Windows |
 | --- | --- | --- | --- | --- | --- |
-| GPU page adapter | yes | no | no | no | yes (no IME, accessibility or press chrome yet) |
+| GPU page adapter | yes | no | no | no | yes (no accessibility or press chrome yet) |
 | Bounded JS jobs | yes | no (JSC) | no (JSC) | no (ArkJS) | yes |
 | CPU raster (tests, previews) | yes | yes | yes | yes | yes |
 | System text scaling | yes | — | — | — | — |

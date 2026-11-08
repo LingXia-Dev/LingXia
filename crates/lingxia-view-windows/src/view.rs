@@ -12,18 +12,26 @@ use windows::Win32::Graphics::Gdi::{
     PAINTSTRUCT, ScreenToClient, SetDIBitsToDevice, UpdateWindow,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::UI::Input::Ime::{
+    GCS_COMPSTR, GCS_RESULTSTR, IME_COMPOSITION_STRING, ISC_SHOWUICOMPOSITIONWINDOW,
+    ImmGetCompositionStringW, ImmGetContext, ImmReleaseContext,
+};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetKeyState, ReleaseCapture, SetCapture, SetFocus, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent,
     VIRTUAL_KEY, VK_CONTROL, VK_DOWN, VK_END, VK_ESCAPE, VK_HOME, VK_LEFT, VK_MENU, VK_NEXT,
     VK_PRIOR, VK_RETURN, VK_RIGHT, VK_SHIFT, VK_SPACE, VK_TAB, VK_UP,
 };
+use windows::Win32::UI::Input::Pointer::GetPointerType;
 use windows::Win32::UI::WindowsAndMessaging::{
     CS_DBLCLKS, CreateWindowExW, DLGC_WANTALLKEYS, DefWindowProcW, GetClientRect, GetMessageTime,
-    GetSystemMetrics, IDC_ARROW, IsWindowVisible, LoadCursorW, RegisterClassW, SM_CXDRAG,
-    WINDOW_EX_STYLE, WM_CAPTURECHANGED, WM_CHAR, WM_DESTROY, WM_DPICHANGED_AFTERPARENT,
-    WM_ERASEBKGND, WM_GETDLGCODE, WM_KEYDOWN, WM_KILLFOCUS, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN,
-    WM_LBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_RBUTTONUP, WM_SETFOCUS,
-    WM_SIZE, WNDCLASSW, WS_CHILD, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_VISIBLE,
+    GetSystemMetrics, IDC_ARROW, IsWindowVisible, LoadCursorW, PT_PEN, PT_TOUCH, RegisterClassW,
+    RegisterWindowMessageW, SM_CXDRAG, WINDOW_EX_STYLE, WM_CAPTURECHANGED, WM_CHAR, WM_DESTROY,
+    WM_DPICHANGED_AFTERPARENT, WM_ERASEBKGND, WM_GETDLGCODE, WM_IME_COMPOSITION,
+    WM_IME_ENDCOMPOSITION, WM_IME_SETCONTEXT, WM_IME_STARTCOMPOSITION, WM_KEYDOWN, WM_KILLFOCUS,
+    WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL,
+    WM_PAINT, WM_POINTERCAPTURECHANGED, WM_POINTERDOWN, WM_POINTERUP, WM_POINTERUPDATE,
+    WM_RBUTTONUP, WM_SETFOCUS, WM_SIZE, WNDCLASSW, WS_CHILD, WS_CLIPCHILDREN, WS_CLIPSIBLINGS,
+    WS_VISIBLE,
 };
 use windows::core::w;
 
@@ -42,6 +50,21 @@ pub(crate) struct InputState {
     tracking: bool,
     /// A `WM_KEYDOWN` the page took: its `WM_CHAR` is not a second key.
     swallow_char: bool,
+    /// The finger (pointer id) the page follows; one at a time.
+    finger: Option<u32>,
+    velocity: crate::touch::Velocity,
+}
+
+/// The finger id synthetic touch uses; real pointer ids are small.
+const SYNTHETIC_FINGER: u32 = u32::MAX;
+
+/// The registered message automation posts to inject touch (the platform crate registers
+/// the same name): `wparam` is the phase (0 down, 1 move, 2 up, 3 cancel), `lparam` the
+/// client point packed as for mouse messages.
+fn touch_message() -> u32 {
+    static MESSAGE: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
+    // SAFETY: a constant name.
+    *MESSAGE.get_or_init(|| unsafe { RegisterWindowMessageW(w!("LingXiaViewTouch")) })
 }
 
 thread_local! {
@@ -161,7 +184,42 @@ fn handle(
     lparam: LPARAM,
 ) -> Option<LRESULT> {
     let host = page.host();
+    if msg == touch_message() && msg != 0 {
+        let phase = match wparam.0 {
+            0 => PointerPhase::Down,
+            1 => PointerPhase::Move,
+            2 => PointerPhase::Up,
+            _ => PointerPhase::Cancel,
+        };
+        touch(page, hwnd, SYNTHETIC_FINGER, phase, point(lparam));
+        return Some(LRESULT(0));
+    }
     match msg {
+        WM_POINTERDOWN | WM_POINTERUPDATE | WM_POINTERUP | WM_POINTERCAPTURECHANGED => {
+            let id = (wparam.0 & 0xffff) as u32;
+            let mut kind = Default::default();
+            // SAFETY: an out-parameter for this message's pointer.
+            let finger = unsafe { GetPointerType(id, &mut kind) }.is_ok()
+                && (kind == PT_TOUCH || kind == PT_PEN);
+            if !finger {
+                return None;
+            }
+            let phase = match msg {
+                WM_POINTERDOWN => PointerPhase::Down,
+                WM_POINTERUPDATE => PointerPhase::Move,
+                WM_POINTERUP => PointerPhase::Up,
+                _ => PointerPhase::Cancel,
+            };
+            let mut at = POINT {
+                x: i32::from((lparam.0 & 0xffff) as u16 as i16),
+                y: i32::from(((lparam.0 >> 16) & 0xffff) as u16 as i16),
+            };
+            // SAFETY: converts in place for this thread's window.
+            let _ = unsafe { ScreenToClient(hwnd, &mut at) };
+            touch(page, hwnd, id, phase, (at.x as f32, at.y as f32));
+            // Handled pointer messages are not promoted to mouse messages.
+            Some(LRESULT(0))
+        }
         WM_SIZE | WM_DPICHANGED_AFTERPARENT => {
             page.report();
             None
@@ -279,6 +337,14 @@ fn handle(
         }
         WM_KEYDOWN => {
             page.input.borrow_mut().swallow_char = false;
+            match crate::ime::key(host, wparam.0 as u16, held(VK_SHIFT), held(VK_CONTROL)) {
+                crate::ime::KeyUse::Taken => {
+                    page.input.borrow_mut().swallow_char = true;
+                    return Some(LRESULT(0));
+                }
+                crate::ime::KeyUse::Character => return Some(LRESULT(0)),
+                crate::ime::KeyUse::Page => {}
+            }
             let code = match VIRTUAL_KEY(wparam.0 as u16) {
                 VK_TAB => 0,
                 VK_UP => 1,
@@ -301,6 +367,9 @@ fn handle(
             if std::mem::take(&mut page.input.borrow_mut().swallow_char) {
                 return Some(LRESULT(0));
             }
+            if crate::ime::character(host, wparam.0 as u16) {
+                return Some(LRESULT(0));
+            }
             // A printable character reaches the View's pickers (time digits, type-ahead).
             let unit = wparam.0 as u32;
             let printable = char::from_u32(unit).filter(|c| !c.is_control());
@@ -308,8 +377,33 @@ fn handle(
                 printable.is_some_and(|c| key(page, CHAR_BASE + i64::from(u32::from(c)), lparam));
             handled.then_some(LRESULT(0))
         }
+        // The page draws the composition in the editor; the system draws only candidates.
+        WM_IME_SETCONTEXT => {
+            let lparam = LPARAM(lparam.0 & !(ISC_SHOWUICOMPOSITIONWINDOW as isize));
+            // SAFETY: forwards this window's message.
+            Some(unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) })
+        }
+        WM_IME_STARTCOMPOSITION => host.adapter().ime.connected().then_some(LRESULT(0)),
+        WM_IME_COMPOSITION => {
+            let flags = lparam.0 as u32;
+            let read = |kind: IME_COMPOSITION_STRING| composition_text(hwnd, kind);
+            let result = (flags & GCS_RESULTSTR.0 != 0)
+                .then(|| read(GCS_RESULTSTR))
+                .flatten();
+            let composing =
+                (flags & GCS_COMPSTR.0 != 0).then(|| read(GCS_COMPSTR).unwrap_or_default());
+            crate::ime::composition(host, result, composing).then_some(LRESULT(0))
+        }
+        WM_IME_ENDCOMPOSITION => {
+            crate::ime::end_composition(host);
+            host.adapter().ime.connected().then_some(LRESULT(0))
+        }
+        // Focus that arrives by Tab walks into the page; a click only takes it, so the page
+        // does not move a focus ring (and scroll) under the pointer.
         WM_SETFOCUS => {
-            host.focus_entered(held(VK_TAB) && held(VK_SHIFT));
+            if held(VK_TAB) {
+                host.focus_entered(held(VK_SHIFT));
+            }
             None
         }
         WM_KILLFOCUS => {
@@ -317,6 +411,25 @@ fn handle(
             None
         }
         _ => None,
+    }
+}
+
+/// The input method's `kind` string for this window.
+fn composition_text(hwnd: HWND, kind: IME_COMPOSITION_STRING) -> Option<String> {
+    // SAFETY: the window's context, read into a buffer of the size it reports, then released.
+    unsafe {
+        let himc = ImmGetContext(hwnd);
+        if himc.is_invalid() {
+            return None;
+        }
+        let bytes = ImmGetCompositionStringW(himc, kind, None, 0);
+        let text = (bytes >= 0).then(|| {
+            let mut units = vec![0u16; bytes as usize / 2];
+            ImmGetCompositionStringW(himc, kind, Some(units.as_mut_ptr().cast()), bytes as u32);
+            String::from_utf16_lossy(&units)
+        });
+        let _ = ImmReleaseContext(hwnd, himc);
+        text
     }
 }
 
@@ -332,6 +445,61 @@ fn pointer(page: &Page, phase: PointerPhase, lparam: LPARAM) {
         slop,
         velocity: [0.0, 0.0],
         min_fling: f32::MAX,
+    });
+}
+
+/// A finger on the page: one at a time, as Android takes it; a second one cancels.
+fn touch(page: &Page, hwnd: HWND, id: u32, phase: PointerPhase, (x, y): (f32, f32)) {
+    let host = page.host();
+    if host.input_blocked() {
+        return;
+    }
+    // SAFETY: no arguments.
+    let ms = f64::from(unsafe { GetMessageTime() } as u32);
+    let scale = page.scale();
+    let velocity = {
+        let mut input = page.input.borrow_mut();
+        match (phase, input.finger) {
+            (PointerPhase::Down, None) => {
+                input.finger = Some(id);
+                input.velocity.reset();
+            }
+            (PointerPhase::Down, Some(_)) => {
+                input.finger = None;
+                drop(input);
+                send_touch(page, PointerPhase::Cancel, x, y, [0.0, 0.0], scale);
+                return;
+            }
+            (_, Some(current)) if current == id => {}
+            _ => return,
+        }
+        input.velocity.add(ms, x, y);
+        if matches!(phase, PointerPhase::Up | PointerPhase::Cancel) {
+            input.finger = None;
+        }
+        if phase == PointerPhase::Up {
+            let max = 8000.0 * scale;
+            input.velocity.release(ms).map(|v| v.clamp(-max, max))
+        } else {
+            [0.0, 0.0]
+        }
+    };
+    if phase == PointerPhase::Down {
+        // SAFETY: this thread's window.
+        let _ = unsafe { SetFocus(Some(hwnd)) };
+    }
+    send_touch(page, phase, x, y, velocity, scale);
+}
+
+fn send_touch(page: &Page, phase: PointerPhase, x: f32, y: f32, velocity: [f32; 2], scale: f32) {
+    page.host().input_age(input_age());
+    page.host().pointer(Pointer {
+        phase,
+        x,
+        y,
+        slop: 8.0 * scale,
+        velocity,
+        min_fling: 50.0 * scale,
     });
 }
 

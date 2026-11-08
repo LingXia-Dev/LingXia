@@ -1,5 +1,5 @@
-//! The text menu the core asks for, as a popup menu at its anchor. Editor items need the
-//! input method, which is not connected yet, so only static text's menu shows.
+//! The text menu the core asks for, as a popup menu at its anchor. Static text's items run
+//! in the core, an editor's through its input connection.
 use lingxia_view::session::host::{MenuAction, MenuTarget, TextMenu, WeakViewHost};
 use std::sync::atomic::Ordering;
 use windows::Win32::Foundation::{HWND, POINT};
@@ -44,9 +44,10 @@ pub(crate) fn show(adapter: &WindowsAdapter, menu: Option<&TextMenu>) {
     let id = adapter.menu.fetch_add(1, Ordering::AcqRel) + 1;
     // SAFETY: ends a popup this thread is tracking, if any.
     let _ = unsafe { EndMenu() };
-    let Some(menu) = menu.filter(|m| matches!(m.target, MenuTarget::Text { .. })) else {
+    let Some(menu) = menu else {
         return;
     };
+    let editor = matches!(menu.target, MenuTarget::Editor { .. });
     let Some(host) = adapter.host.get().cloned() else {
         return;
     };
@@ -65,14 +66,17 @@ pub(crate) fn show(adapter: &WindowsAdapter, menu: Option<&TextMenu>) {
         }
         let chosen = popup(hwnd, anchor, &actions, locale.starts_with("zh"));
         if current(&host) {
-            run(&host, chosen);
+            run(&host, chosen, editor);
         }
     }));
 }
 
-fn run(host: &WeakViewHost<WindowsAdapter>, chosen: Option<MenuAction>) {
+fn run(host: &WeakViewHost<WindowsAdapter>, chosen: Option<MenuAction>, editor: bool) {
     let Some(host) = host.upgrade() else { return };
     match chosen {
+        Some(action) if editor => {
+            crate::ime::menu_action(&host, action);
+        }
         Some(action) => {
             host.text_menu_action(action);
         }

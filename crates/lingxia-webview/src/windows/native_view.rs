@@ -90,6 +90,10 @@ pub trait WindowsNativeContent: Send + Sync {
     fn set_rasterization_scale(&self, scale: f64) -> StdResult<()>;
     fn set_preferred_color_scheme(&self, scheme: WindowsPreferredColorScheme);
     fn capture_png(&self) -> StdResult<Vec<u8>>;
+    /// The window that draws the content and takes its input, wherever it is parented.
+    fn content_window(&self) -> Option<isize> {
+        None
+    }
 }
 
 #[derive(Clone)]
@@ -130,6 +134,14 @@ impl WindowsWebViewHandler {
     /// Native content (a GPU page) rather than a WebView2 controller.
     pub fn is_native_content(&self) -> bool {
         self.webview().is_none()
+    }
+
+    /// Native content's own window (not its parent); `None` for a WebView.
+    pub fn content_window(&self) -> Option<isize> {
+        match &self.content {
+            Content::WebView(_) => None,
+            Content::Native(_, native) => native.content_window(),
+        }
     }
 
     pub fn native_view(&self) -> WindowsWebViewNativeView {

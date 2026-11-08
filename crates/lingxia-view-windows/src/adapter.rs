@@ -16,6 +16,22 @@ use std::time::{Duration, Instant};
 
 /// Windows' default long-press delay for a held mouse button.
 const LONG_PRESS: Duration = Duration::from_millis(500);
+/// Fling travel `LINEAR·v + QUADRATIC·v²` (logical px, px/s), the curve the HarmonyOS adapter
+/// fitted: a faster flick travels disproportionately further.
+const FLING_LINEAR: f32 = 0.184;
+const FLING_QUADRATIC: f32 = 1.49e-4;
+/// A fling that would move less than this many device pixels in a frame stops.
+const FLING_STOP: f32 = 0.5;
+/// The shortest frame a fling step assumes, so a quick step does not end a fling early.
+const FLING_FRAME: f32 = 1.0 / 120.0;
+
+struct Fling {
+    region: String,
+    velocity: f32,
+    /// Exponential decay per second, chosen so the whole fling covers the fitted travel.
+    decay: f32,
+    last: Instant,
+}
 
 /// A CPU frame for `WM_PAINT`: BGRA rows, top-down.
 pub(crate) struct CpuFrame {
@@ -46,6 +62,8 @@ pub struct WindowsAdapter {
     modal: AtomicBool,
     /// Bumped for every text menu shown or closed: a popup returning for an older one is stale.
     pub(crate) menu: AtomicU64,
+    pub(crate) ime: crate::ime::Ime,
+    fling: Mutex<Option<Fling>>,
 }
 
 impl WindowsAdapter {
@@ -67,6 +85,8 @@ impl WindowsAdapter {
             long_press: AtomicU64::new(0),
             modal: AtomicBool::new(false),
             menu: AtomicU64::new(0),
+            ime: Default::default(),
+            fling: Mutex::new(None),
         }
     }
 
@@ -77,6 +97,63 @@ impl WindowsAdapter {
 
     fn images(&self) -> std::sync::MutexGuard<'_, HashMap<u64, Box<dyn Send>>> {
         self.images.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    fn scale(&self) -> f32 {
+        self.facts
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .as_ref()
+            .map_or(1.0, |facts| facts.scale)
+    }
+
+    /// The vsync key fling steps use, apart from the host's own frame requests.
+    pub(crate) fn fling_key(&self) -> i64 {
+        !self.token
+    }
+
+    /// Step the fling at the next display refresh.
+    fn fling_frame(&self) {
+        let Some(host) = self.weak() else {
+            return;
+        };
+        crate::vsync::request(
+            self.fling_key(),
+            self.dispatcher,
+            Box::new(move |_, _| {
+                if let Some(host) = host.upgrade()
+                    && host.adapter().step_fling(&host)
+                {
+                    host.adapter().fling_frame();
+                }
+            }),
+        );
+    }
+
+    /// Move the flung region by one frame of its decaying velocity; false once it stops.
+    fn step_fling(&self, host: &lingxia_view::session::host::ViewHost<WindowsAdapter>) -> bool {
+        let (region, delta) = {
+            let mut fling = self.fling.lock().unwrap_or_else(|p| p.into_inner());
+            let Some(state) = fling.as_mut() else {
+                return false;
+            };
+            let now = Instant::now();
+            let dt = now.duration_since(state.last).as_secs_f32();
+            state.last = now;
+            let delta = state.velocity * dt;
+            state.velocity *= (-state.decay * dt).exp();
+            let region = state.region.clone();
+            if state.velocity.abs() * dt.max(FLING_FRAME) < FLING_STOP {
+                *fling = None;
+            }
+            (region, delta)
+        };
+        let moved = host.scroll_by(&region, delta);
+        let mut fling = self.fling.lock().unwrap_or_else(|p| p.into_inner());
+        if !moved {
+            *fling = None;
+        }
+        fling.is_some()
     }
 
     fn weak(&self) -> Option<WeakViewHost<WindowsAdapter>> {
@@ -289,14 +366,34 @@ impl AccessibilitySink for WindowsAdapter {
     fn clicked(&self) {}
 }
 
-// No input method is connected yet: editors take no text.
 impl InputMethod for WindowsAdapter {
-    fn reconcile(&self, _: &FrameSnapshot) {}
-    fn focus(&self, _: &Dispatch, _: &FrameSnapshot) {}
-    fn activation(&self) {}
-    fn reset(&self) {}
-    fn edit_text(&self, _: usize, _: Option<&str>, _: i32, _: i32) -> EditOutcome {
-        EditOutcome::Failed
+    fn reconcile(&self, frame: &FrameSnapshot) {
+        crate::ime::reconcile(self, frame);
+    }
+    fn focus(&self, editor: &Dispatch, frame: &FrameSnapshot) {
+        let Dispatch::Editor { node, commit, .. } = editor else {
+            return;
+        };
+        if let Some(node) = frame.frame.nodes.get(*node) {
+            crate::ime::focus(self, &node.identity, commit.get(), None);
+        }
+    }
+    fn activation(&self) {
+        crate::ime::disconnect(self);
+    }
+    fn reset(&self) {
+        crate::ime::reset(self);
+    }
+    fn edit_text(&self, node: usize, text: Option<&str>, start: i32, end: i32) -> EditOutcome {
+        let Some(frame) = self
+            .host
+            .get()
+            .and_then(|h| h.upgrade())
+            .and_then(|h| h.snapshot())
+        else {
+            return EditOutcome::NotReady;
+        };
+        crate::ime::edit_text(self, &frame, node, text, start, end)
     }
 }
 
@@ -320,8 +417,23 @@ impl Feedback for WindowsAdapter {
                 Effect::CancelLongPress => {
                     self.long_press.fetch_add(1, Ordering::AcqRel);
                 }
-                // A mouse release carries no velocity, so the core never flings here; press
-                // and focus-ring chrome is not drawn over the swap chain yet.
+                Effect::Fling {
+                    region, velocity, ..
+                } => {
+                    let scale = self.scale();
+                    let speed = velocity.abs() / scale;
+                    *self.fling.lock().unwrap_or_else(|p| p.into_inner()) = Some(Fling {
+                        region: region.clone(),
+                        velocity: *velocity,
+                        decay: 1.0 / (FLING_LINEAR + FLING_QUADRATIC * speed),
+                        last: Instant::now(),
+                    });
+                    self.fling_frame();
+                }
+                Effect::StopFling => {
+                    *self.fling.lock().unwrap_or_else(|p| p.into_inner()) = None;
+                }
+                // Press and focus-ring chrome is not drawn over the swap chain yet.
                 _ => {}
             }
         }

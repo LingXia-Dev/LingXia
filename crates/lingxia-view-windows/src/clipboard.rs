@@ -1,9 +1,11 @@
-//! Text onto the system clipboard.
+//! Text on the system clipboard.
 use windows::Win32::Foundation::{GlobalFree, HANDLE, HGLOBAL};
 use windows::Win32::System::DataExchange::{
-    CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
+    CloseClipboard, EmptyClipboard, GetClipboardData, OpenClipboard, SetClipboardData,
 };
-use windows::Win32::System::Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalUnlock};
+use windows::Win32::System::Memory::{
+    GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock,
+};
 use windows::Win32::System::Ole::CF_UNICODETEXT;
 
 pub(crate) fn set_text(text: &str) -> Result<(), String> {
@@ -27,6 +29,29 @@ pub(crate) fn set_text(text: &str) -> Result<(), String> {
                 return Err(error.to_string());
             }
             Ok(())
+        })();
+        let _ = CloseClipboard();
+        result
+    }
+}
+
+pub(crate) fn text() -> Option<String> {
+    // SAFETY: reads a locked clipboard global up to its terminating NUL, then releases both.
+    unsafe {
+        OpenClipboard(None).ok()?;
+        let result = (|| {
+            let handle = GetClipboardData(CF_UNICODETEXT.0 as u32).ok()?;
+            let global = HGLOBAL(handle.0);
+            let source = GlobalLock(global).cast::<u16>();
+            if source.is_null() {
+                return None;
+            }
+            let units = GlobalSize(global) / 2;
+            let slice = std::slice::from_raw_parts(source, units);
+            let end = slice.iter().position(|&unit| unit == 0).unwrap_or(units);
+            let text = String::from_utf16_lossy(&slice[..end]);
+            let _ = GlobalUnlock(global);
+            Some(text)
         })();
         let _ = CloseClipboard();
         result

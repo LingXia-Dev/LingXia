@@ -25,8 +25,10 @@ mod clipboard;
 mod dispatch;
 mod environment;
 mod fonts;
+mod ime;
 mod surface;
 mod text_menu;
+mod touch;
 mod view;
 mod vsync;
 
@@ -99,6 +101,18 @@ pub struct Page {
     visible: Cell<bool>,
     /// The window is gone (its host destroyed it).
     destroyed: Cell<bool>,
+    presenter: Arc<Presenter>,
+}
+
+/// A presenter attach running on the render thread, which must never touch a destroyed window.
+#[derive(Default)]
+struct Presenter {
+    /// Cleared before the window goes: an attach not yet started skips, one that finishes
+    /// detaches what it made.
+    alive: std::sync::atomic::AtomicBool,
+    running: std::sync::atomic::AtomicBool,
+    /// The surface the last attach made, for a teardown its completion never reached.
+    surface: std::sync::atomic::AtomicU64,
 }
 
 impl Page {
@@ -128,6 +142,10 @@ impl Page {
             attached: Cell::new(false),
             visible: Cell::new(true),
             destroyed: Cell::new(false),
+            presenter: Arc::new(Presenter {
+                alive: true.into(),
+                ..Default::default()
+            }),
         });
         view::register(hwnd, &page);
         page.host.set_visible(true);
@@ -237,12 +255,7 @@ impl Page {
         if width == 0 || height == 0 {
             return;
         }
-        // SAFETY: this thread's window.
-        let dpi = unsafe { GetDpiForWindow(self.window()) };
-        let scale = self
-            .scale
-            .get()
-            .unwrap_or(if dpi == 0 { 1.0 } else { dpi as f32 / 96.0 });
+        let scale = self.scale();
         let dark = match self.scheme.get() {
             Scheme::Auto => environment::system_dark(),
             Scheme::Light => false,
@@ -272,6 +285,15 @@ impl Page {
             self.attached.set(true);
             self.attach(width, height);
         }
+    }
+
+    /// Device pixels per logical pixel.
+    pub(crate) fn scale(&self) -> f32 {
+        // SAFETY: this thread's window.
+        let dpi = unsafe { GetDpiForWindow(self.window()) };
+        self.scale
+            .get()
+            .unwrap_or(if dpi == 0 { 1.0 } else { dpi as f32 / 96.0 })
     }
 
     /// The monitor's shorter side, logical pixels.
@@ -330,12 +352,29 @@ impl Page {
         let host = self.host.downgrade();
         let dispatcher = adapter.dispatcher;
         let started = std::time::Instant::now();
+        let presenter = self.presenter.clone();
+        presenter.running.store(true, Ordering::Release);
         render::run(move || {
+            if !presenter.alive.load(Ordering::Acquire) {
+                presenter.running.store(false, Ordering::Release);
+                return;
+            }
             let source = SurfaceSource::window(Arc::new(window));
             let attached = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 surfaces::attach(source, width, height, existing)
-            }))
-            .unwrap_or_else(|panic| {
+            }));
+            if let Ok(Ok(id)) = attached
+                && !presenter.alive.load(Ordering::Acquire)
+            {
+                surfaces::detach(id);
+                presenter.running.store(false, Ordering::Release);
+                return;
+            }
+            if let Ok(Ok(id)) = attached {
+                presenter.surface.store(id, Ordering::Release);
+            }
+            presenter.running.store(false, Ordering::Release);
+            let attached = attached.unwrap_or_else(|panic| {
                 Err(panic
                     .downcast_ref::<&str>()
                     .map(|s| s.to_string())
@@ -380,11 +419,47 @@ impl Page {
             .ok_or("UI_SURFACE: render thread gone")?
     }
 
+    /// No attach runs against the window from now on. Pumps this thread's messages while one
+    /// finishes, since creating a swap chain can wait on the window's thread.
+    fn retire_presenter(&self) {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            DispatchMessageW, MSG, PM_REMOVE, PeekMessageW, PostQuitMessage, TranslateMessage,
+            WM_QUIT,
+        };
+        self.presenter.alive.store(false, Ordering::Release);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut quit = None;
+        while self.presenter.running.load(Ordering::Acquire) && std::time::Instant::now() < deadline
+        {
+            let mut msg = MSG::default();
+            // SAFETY: drains this thread's queue; a WM_QUIT seen here is posted again after.
+            unsafe {
+                while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() {
+                    if msg.message == WM_QUIT {
+                        quit = Some(msg.wParam.0 as i32);
+                        continue;
+                    }
+                    let _ = TranslateMessage(&msg);
+                    DispatchMessageW(&msg);
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        if let Some(code) = quit {
+            // SAFETY: re-posts the quit this loop took.
+            unsafe { PostQuitMessage(code) };
+        }
+    }
+
     /// Release the presenter bound to the window; the window must still exist.
     fn release_surface(&self) {
-        let surface = self.host.adapter().gpu.swap(0, Ordering::AcqRel);
-        if surface != 0 {
-            render::run_now(move || lingxia_view::renderer::surfaces::detach(surface));
+        let current = self.host.adapter().gpu.swap(0, Ordering::AcqRel);
+        let last = self.presenter.surface.swap(0, Ordering::AcqRel);
+        let stale = (last != current).then_some(last);
+        for surface in [Some(current), stale].into_iter().flatten() {
+            if surface != 0 {
+                render::run_now(move || lingxia_view::renderer::surfaces::detach(surface));
+            }
         }
     }
 
@@ -395,6 +470,7 @@ impl Page {
         }
         log::warn!(target: "lingxia_view", "GPU page window destroyed by its host");
         view::unregister(self.hwnd);
+        self.retire_presenter();
         *self
             .host
             .adapter()
@@ -410,8 +486,10 @@ impl Drop for Page {
     fn drop(&mut self) {
         view::unregister(self.hwnd);
         vsync::cancel(self.host.adapter().token);
+        vsync::cancel(self.host.adapter().fling_key());
         self.host.dispose();
         // The presenter's swap chain is bound to the window: release it first.
+        self.retire_presenter();
         self.release_surface();
         if !self.destroyed.get() {
             // SAFETY: this thread's window, destroyed once.

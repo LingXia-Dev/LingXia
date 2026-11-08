@@ -100,6 +100,7 @@ fn run(token: Token, webtag: WebTag, request: Creation) {
         page.host().load(request.source);
         let content: Arc<dyn WindowsNativeContent> = Arc::new(Content {
             token,
+            window: page.hwnd(),
             parent: parent.window,
             current: AtomicIsize::new(parent.window),
         });
@@ -149,6 +150,8 @@ fn teardown() {
 /// The host's handle on a page: every call lands on the page thread.
 struct Content {
     token: Token,
+    /// The page's own window, which takes its input.
+    window: isize,
     parent: isize,
     /// The window the content sits in now, or is moving to.
     current: AtomicIsize,
@@ -171,6 +174,10 @@ impl WindowsNativeContent for Content {
 
     fn has_parent_window(&self, window: isize) -> bool {
         self.current.load(Ordering::Acquire) == window
+    }
+
+    fn content_window(&self) -> Option<isize> {
+        Some(self.window)
     }
 
     fn set_content_geometry(
