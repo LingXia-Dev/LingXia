@@ -1,3 +1,4 @@
+import type { PageInfo } from '@lingxia/types/automation';
 import { expect, type Fixture, type TestApp } from '@lingxia/test';
 
 export interface EventuallyOptions<T> {
@@ -62,16 +63,40 @@ export type Caught<T = unknown> =
   | { ok: true; value?: T; code?: undefined; message?: undefined; data?: undefined }
   | { ok: false; value?: undefined; code?: string; message: string; data?: unknown };
 
-/** Schedule `lx.reLaunch` without awaiting the torn-down eval context. */
+/**
+ * Schedule `lx.reLaunch` without awaiting the torn-down eval context, and resolve
+ * once its new page instance is current and ready.
+ */
 export async function relaunchFromLogic(
   app: TestApp,
   page: string,
   query?: Record<string, string>,
-): Promise<void> {
+  timeoutMs = 30_000,
+): Promise<PageInfo> {
+  // The page shown before the relaunch may already be `page` and ready: only a new
+  // instance proves the relaunch landed, so a page bound afterwards is the one that stays.
+  const before = (await currentOrNull(app))?.instanceId ?? null;
   await app.logic.eval(({ lx }, page, query) => {
     void lx.reLaunch(query === null ? { page } : { page, query });
     return 'scheduled';
   }, page, query ?? null);
+  const landed = await eventually(
+    () => currentOrNull(app),
+    (current) => current !== null && current.name === page && current.ready
+      && current.instanceId !== null && current.instanceId !== before,
+    { timeoutMs, describe: `a new '${page}' instance from lx.reLaunch to become current and ready` },
+  );
+  return landed!;
+}
+
+/** The current page, or null while a relaunch has emptied the stack. */
+async function currentOrNull(app: TestApp): Promise<PageInfo | null> {
+  try {
+    return await app.nav.current();
+  } catch (error) {
+    if (String(error).includes('current page')) return null;
+    throw error;
+  }
 }
 
 export async function expectReject(

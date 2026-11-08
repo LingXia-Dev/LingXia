@@ -222,7 +222,6 @@ spec("round-trip appearance preference through the ui controls", {
       describe: 'dark preference before relaunch',
     });
     await relaunchFromLogic(app, 'ui', { type: 'appearance' });
-    await waitForCurrentPage(app, 'ui', 30_000);
     const relaunched = await app.page({ name: 'ui' });
     await relaunched.view.testId('ui-appearance-dark').waitFor({ state: 'visible', timeout: 30_000 });
     const after = await appearanceOf(app);
