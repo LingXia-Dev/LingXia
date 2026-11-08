@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Gdi::{
-    CreateRoundRectRgn, GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
+    DeleteObject, GetMonitorInfoW, HRGN, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
     SetWindowRgn,
 };
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
@@ -166,7 +166,8 @@ impl Page {
         HWND(self.hwnd as *mut _)
     }
 
-    /// Position in the parent's client area, device pixels; equal corner radii clip it.
+    /// Position in the parent's client area, device pixels, clipped to corner radii
+    /// `[top-left, top-right, bottom-right, bottom-left]`.
     pub fn set_bounds(&self, left: i32, top: i32, width: i32, height: i32, radii: [i32; 4]) {
         // SAFETY: this thread's window.
         unsafe {
@@ -179,11 +180,8 @@ impl Page {
                 height.max(0),
                 SWP_NOZORDER | SWP_NOACTIVATE,
             );
-            let radius = radii[0];
-            let region = (radius > 0 && radii.iter().all(|r| *r == radius))
-                .then(|| CreateRoundRectRgn(0, 0, width + 1, height + 1, radius * 2, radius * 2));
             // The window owns a region it is given.
-            let _ = SetWindowRgn(self.window(), region, true);
+            let _ = SetWindowRgn(self.window(), corner_region(width, height, radii), true);
         }
         self.report();
     }
@@ -499,5 +497,44 @@ impl Drop for Page {
             // SAFETY: this thread's window, destroyed once.
             let _ = unsafe { DestroyWindow(self.window()) };
         }
+    }
+}
+
+/// `width`×`height` with each corner cut to its radius; `None` when no corner is round.
+fn corner_region(width: i32, height: i32, radii: [i32; 4]) -> Option<HRGN> {
+    use windows::Win32::Graphics::Gdi::{CombineRgn, CreateEllipticRgn, CreateRectRgn, RGN_DIFF};
+    if radii.iter().all(|r| *r <= 0) || width <= 0 || height <= 0 {
+        return None;
+    }
+    // SAFETY: GDI regions this function owns until it hands the result back.
+    unsafe {
+        let region = CreateRectRgn(0, 0, width, height);
+        for (corner, radius) in radii.into_iter().enumerate() {
+            let r = radius.min(width / 2).min(height / 2);
+            if r <= 0 {
+                continue;
+            }
+            let x = if corner == 1 || corner == 2 {
+                width - r
+            } else {
+                0
+            };
+            let y = if corner >= 2 { height - r } else { 0 };
+            let cx = if corner == 1 || corner == 2 {
+                width - 2 * r
+            } else {
+                0
+            };
+            let cy = if corner >= 2 { height - 2 * r } else { 0 };
+            let square = CreateRectRgn(x, y, x + r, y + r);
+            // A pixel past the arc on each side: GDI drops the arc's partly covered pixels,
+            // which a host's anti-aliased corner overlay blends over the parent window.
+            let arc = CreateEllipticRgn(cx - 1, cy - 1, cx + 2 * r + 2, cy + 2 * r + 2);
+            CombineRgn(Some(square), Some(square), Some(arc), RGN_DIFF);
+            CombineRgn(Some(region), Some(region), Some(square), RGN_DIFF);
+            let _ = DeleteObject(square.into());
+            let _ = DeleteObject(arc.into());
+        }
+        Some(region)
     }
 }
