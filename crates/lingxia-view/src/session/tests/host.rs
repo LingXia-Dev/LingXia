@@ -3100,6 +3100,7 @@ fn costly_spinner(platform: &Platform, worker: &Arc<ViewWorker>, ahead: bool) ->
         worker_free: *host.adapter().clock.lock().unwrap(),
         ..Default::default()
     });
+    host.model_build_time(Duration::from_millis(11));
     host
 }
 

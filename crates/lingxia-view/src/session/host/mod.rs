@@ -336,8 +336,15 @@ struct Main<F> {
     stale_declines: u32,
     /// The presenter keeps only its newest frame; nothing is prepared ahead any more.
     single_target: bool,
+    /// A pointer is pressed on the page.
+    pointer_down: bool,
+    /// The worker time of the last frame built.
+    last_build: Duration,
     #[cfg(test)]
     no_frames_ahead: bool,
+    /// A fake presenter's modelled build time, which the worker clock does not see.
+    #[cfg(test)]
+    modelled_build: Option<Duration>,
     failure: Option<Failure>,
     styled_press: Option<String>,
     styled_hover: Option<String>,
@@ -418,6 +425,20 @@ impl<F> Main<F> {
             return false;
         }
         self.visible && !self.single_target
+    }
+
+    /// Under a finger a frame queued behind one waiting for vsync shows input a refresh
+    /// late; only a build too slow to start after vsync and make the next one needs it.
+    fn finger_holds_ahead(&self) -> bool {
+        self.prepared.is_some() && self.pointer_down && self.build_time() * 2 <= self.vsync_interval
+    }
+
+    fn build_time(&self) -> Duration {
+        #[cfg(test)]
+        if let Some(build) = self.modelled_build {
+            return build;
+        }
+        self.last_build
     }
 
     /// When a frame queued behind `queued` others should show: sampling there keeps
@@ -509,8 +530,12 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     declined: false,
                     stale_declines: 0,
                     single_target: false,
+                    pointer_down: false,
+                    last_build: Duration::ZERO,
                     #[cfg(test)]
                     no_frames_ahead: false,
+                    #[cfg(test)]
+                    modelled_build: None,
                     failure: None,
                     styled_press: None,
                     styled_hover: None,
@@ -655,6 +680,12 @@ impl<A: PlatformAdapter> ViewHost<A> {
         self.inner.main().no_frames_ahead = true;
     }
 
+    /// Every build takes `build`, as a device's worker would report it.
+    #[cfg(test)]
+    pub(crate) fn model_build_time(&self, build: Duration) {
+        self.inner.main().modelled_build = Some(build);
+    }
+
     /// The display frame requested through `FrameScheduler::request_vsync`.
     pub fn vsync(&self) {
         self.tick();
@@ -781,17 +812,18 @@ impl<A: PlatformAdapter> ViewHost<A> {
             self.inner.dismiss_editor_menu();
         }
         self.inner.input_now();
-        if matches!(
+        let pressed = matches!(
             event.phase,
             crate::interaction::view::PointerPhase::Down
                 | crate::interaction::view::PointerPhase::Move
-        ) {
-            let at = self.inner.adapter.now();
-            self.inner
-                .main()
-                .telemetry
-                .stats
-                .pointer(at, [event.x, event.y]);
+        );
+        let at = self.inner.adapter.now();
+        {
+            let mut main = self.inner.main();
+            main.pointer_down = pressed;
+            if pressed {
+                main.telemetry.stats.pointer(at, [event.x, event.y]);
+            }
         }
         let page = self.inner.lifecycle.page();
         let (handled, effects) = self.inner.main().interaction.pointer(event, page);

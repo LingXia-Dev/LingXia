@@ -183,6 +183,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 || main.next_prepared.is_some()
                 || (main.deferred.is_some() && main.prepared.is_some())
                 || (waiting && !main.ahead_allowed())
+                || main.finger_holds_ahead()
             {
                 return;
             }
@@ -310,6 +311,7 @@ impl<A: PlatformAdapter> Inner<A> {
                         timing.rebuild = rebuild;
                         timing.queue_us = queue_us;
                         timing.worker_us = worker_us;
+                        inner.main().last_build = Duration::from_micros(worker_us);
                         if let Some((connection, update)) = update {
                             inner.publish(connection, update);
                         }
