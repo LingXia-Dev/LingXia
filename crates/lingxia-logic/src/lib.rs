@@ -133,6 +133,12 @@ fn register_platform_i18n() {
             "gpu.retry" => I18nKey::GpuRetry,
             "gpu.reload" => I18nKey::GpuReload,
             "gpu.retrying" => I18nKey::GpuRetrying,
+            "text_menu.cut" => I18nKey::TextMenuCut,
+            "text_menu.copy" => I18nKey::TextMenuCopy,
+            "text_menu.paste" => I18nKey::TextMenuPaste,
+            "text_menu.select_all" => I18nKey::TextMenuSelectAll,
+            "text_menu.undo" => I18nKey::TextMenuUndo,
+            "text_menu.redo" => I18nKey::TextMenuRedo,
             _ => return None,
         };
         Some(i18n::t(i18n_key))

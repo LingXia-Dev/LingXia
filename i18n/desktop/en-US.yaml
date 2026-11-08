@@ -40,6 +40,15 @@ terminal:
   reset: "Reset Terminal"
   read_only: "Terminal Read-only"
 
+# Text menu of a native GPU page's text and editors
+text_menu:
+  cut: "Cut"
+  copy: "Copy"
+  paste: "Paste"
+  select_all: "Select All"
+  undo: "Undo"
+  redo: "Redo"
+
 sidebar:
   expand: "Expand sidebar"
   collapse: "Collapse sidebar"

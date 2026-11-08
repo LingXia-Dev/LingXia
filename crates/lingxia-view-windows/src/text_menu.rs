@@ -21,20 +21,15 @@ const ACTIONS: [MenuAction; 6] = [
     MenuAction::Redo,
 ];
 
-fn title(action: MenuAction, chinese: bool) -> &'static str {
-    match (action, chinese) {
-        (MenuAction::Cut, false) => "Cut",
-        (MenuAction::Copy, false) => "Copy",
-        (MenuAction::Paste, false) => "Paste",
-        (MenuAction::SelectAll, false) => "Select All",
-        (MenuAction::Undo, false) => "Undo",
-        (MenuAction::Redo, false) => "Redo",
-        (MenuAction::Cut, true) => "剪切",
-        (MenuAction::Copy, true) => "复制",
-        (MenuAction::Paste, true) => "粘贴",
-        (MenuAction::SelectAll, true) => "全选",
-        (MenuAction::Undo, true) => "撤销",
-        (MenuAction::Redo, true) => "重做",
+/// The localizer key and fallback title of `action`.
+fn title(action: MenuAction) -> (&'static str, &'static str) {
+    match action {
+        MenuAction::Cut => ("text_menu.cut", "Cut"),
+        MenuAction::Copy => ("text_menu.copy", "Copy"),
+        MenuAction::Paste => ("text_menu.paste", "Paste"),
+        MenuAction::SelectAll => ("text_menu.select_all", "Select All"),
+        MenuAction::Undo => ("text_menu.undo", "Undo"),
+        MenuAction::Redo => ("text_menu.redo", "Redo"),
     }
 }
 
@@ -51,9 +46,16 @@ pub(crate) fn show(adapter: &WindowsAdapter, menu: Option<&TextMenu>) {
     let Some(host) = adapter.host.get().cloned() else {
         return;
     };
-    let (scale, locale) = (scale(adapter), locale(adapter));
+    let scale = scale(adapter);
     let hwnd = adapter.hwnd.load(Ordering::Acquire);
-    let actions = menu.actions.clone();
+    let items: Vec<(MenuAction, String)> = menu
+        .actions
+        .iter()
+        .map(|action| {
+            let (key, fallback) = title(*action);
+            (*action, adapter.shell.text(key, fallback))
+        })
+        .collect();
     let [x, y, _, height] = menu.anchor;
     let anchor = ((x * scale) as i32, ((y + height) * scale) as i32);
     adapter.dispatcher.post(Box::new(move || {
@@ -64,7 +66,7 @@ pub(crate) fn show(adapter: &WindowsAdapter, menu: Option<&TextMenu>) {
         if !current(&host) {
             return;
         }
-        let chosen = popup(hwnd, anchor, &actions, locale.starts_with("zh"));
+        let chosen = popup(hwnd, anchor, &items);
         if current(&host) {
             run(&host, chosen, editor);
         }
@@ -84,26 +86,16 @@ fn run(host: &WeakViewHost<WindowsAdapter>, chosen: Option<MenuAction>, editor: 
     }
 }
 
-fn popup(
-    hwnd: isize,
-    (x, y): (i32, i32),
-    actions: &[MenuAction],
-    chinese: bool,
-) -> Option<MenuAction> {
+fn popup(hwnd: isize, (x, y): (i32, i32), items: &[(MenuAction, String)]) -> Option<MenuAction> {
     let owner = HWND(hwnd as *mut _);
     // SAFETY: a menu made, tracked and destroyed on this thread, owned by its window.
     unsafe {
         let menu = CreatePopupMenu().ok()?;
-        for action in actions {
+        for (action, title) in items {
             let Some(index) = ACTIONS.iter().position(|a| a == action) else {
                 continue;
             };
-            let _ = AppendMenuW(
-                menu,
-                MF_STRING,
-                index + 1,
-                &HSTRING::from(title(*action, chinese)),
-            );
+            let _ = AppendMenuW(menu, MF_STRING, index + 1, &HSTRING::from(title.as_str()));
         }
         let mut at = POINT { x, y };
         let _ = ClientToScreen(owner, &mut at);
@@ -131,14 +123,4 @@ fn scale(adapter: &WindowsAdapter) -> f32 {
         .unwrap_or_else(|p| p.into_inner())
         .as_ref()
         .map_or(1.0, |facts| facts.scale)
-}
-
-fn locale(adapter: &WindowsAdapter) -> String {
-    adapter
-        .facts
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .as_ref()
-        .map(|facts| facts.locale.clone())
-        .unwrap_or_default()
 }
