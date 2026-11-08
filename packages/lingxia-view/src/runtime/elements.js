@@ -423,6 +423,11 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       if (props.onLoad) on('onImageLoad', props.onLoad, 'void', true);
       if (props.onError) on('onImageError', props.onError, 'void', true);
       break;
+    case 'video':
+      check.video(props);
+      wire('videoSrc', props.src);
+      if (props.accessibilityLabel !== undefined) { check.label(props.accessibilityLabel, 'UI_VIDEO'); wire('accessibilityLabel', props.accessibilityLabel); }
+      break;
     case 'vector': {
       const fit = result.fields.imageFit; delete result.fields.imageFit;
       wire('vectorSource', check.vector(props, fit));

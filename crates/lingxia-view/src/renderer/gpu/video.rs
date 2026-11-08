@@ -100,7 +100,7 @@ static OPENER: LazyLock<Mutex<mpsc::Sender<String>>> = LazyLock::new(|| {
                         let state = match open(&key) {
                             Ok(player) => State::Ready(player),
                             Err(error) => {
-                                log::warn!(target: "lingxia_view", "UI_VIDEO: {key}: {error}");
+                                log::warn!(target: "lingxia_view", "video {key}: {error}");
                                 State::Failed
                             }
                         };
@@ -256,7 +256,7 @@ pub(crate) fn import_frames(device: &wgpu::Device, display: &crate::DisplayList)
                 entry.import_us = [entry.import_us[0] + us, entry.import_us[1].max(us)];
             }
             Ok(None) => {}
-            Err(error) => log::warn!(target: "lingxia_view", "UI_VIDEO: {key}: {error}"),
+            Err(error) => log::warn!(target: "lingxia_view", "video {key}: {error}"),
         }
     }
     (!keys.is_empty(), imported)

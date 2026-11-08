@@ -772,7 +772,30 @@ impl Presenter {
         self.page_drawn = Some(Instant::now());
         self.retained =
             (self.surface.is_some() && video::draws_video(&display)).then_some((revision, display));
+        // The quad pipelines compile while the first video frames decode.
+        if self.retained.is_some()
+            && let Some(surface) = &self.surface
+        {
+            let format = surface.target_views[0].texture().format();
+            self.warm_video_pipelines(format);
+        }
         self.retained.is_some()
+    }
+
+    fn warm_video_pipelines(&mut self, format: wgpu::TextureFormat) {
+        if self.video_pipelines_started {
+            return;
+        }
+        let Ok((device, _)) = self.device_queue() else {
+            return;
+        };
+        self.video_pipelines_started = true;
+        let cell = self.video_pipelines.clone();
+        let _ = std::thread::Builder::new()
+            .name("lingxia-video-pipelines".into())
+            .spawn(move || {
+                let _ = cell.set(video_quad::Pipelines::new(&device, format));
+            });
     }
 
     /// The kept frame, once shown and a player in it has a newer frame: it is lent out to be
@@ -827,15 +850,7 @@ impl Presenter {
         let (device, queue) = self.device_queue()?;
         let format = target.texture().format();
         let Some(pipelines) = self.video_pipelines.get().filter(|p| p.format() == format) else {
-            if !self.video_pipelines_started {
-                self.video_pipelines_started = true;
-                let (cell, device) = (self.video_pipelines.clone(), device.clone());
-                let _ = std::thread::Builder::new()
-                    .name("lingxia-video-pipelines".into())
-                    .spawn(move || {
-                        let _ = cell.set(video_quad::Pipelines::new(&device, format));
-                    });
-            }
+            self.warm_video_pipelines(format);
             return Ok(None);
         };
         let started = Instant::now();

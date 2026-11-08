@@ -3313,6 +3313,7 @@ dependencies = [
 name = "lingxia-view"
 version = "0.28.0"
 dependencies = [
+ "ash",
  "glifo",
  "image",
  "libc",

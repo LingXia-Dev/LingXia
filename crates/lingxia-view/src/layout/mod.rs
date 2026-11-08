@@ -45,6 +45,7 @@ pub struct Renderer {
     pub(crate) layout_tree: Option<persistent::LayoutTree>,
     /// Ink boxes of laid-out glyph runs, relative to the run origin.
     pub(crate) ink_cache: HashMap<InkKey, Option<[f32; 4]>>,
+    pub(crate) videos: crate::scene::video::Sources,
 }
 
 #[cfg(test)]
@@ -71,6 +72,7 @@ impl Default for Renderer {
             font_faces: Default::default(),
             layout_tree: None,
             ink_cache: HashMap::new(),
+            videos: Default::default(),
         }
     }
 }

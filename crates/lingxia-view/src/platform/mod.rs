@@ -87,6 +87,10 @@ pub trait ImageProvider {
     fn fetch(&self, id: u64, source: &str);
     /// The request became obsolete; drop its transport.
     fn cancel(&self, id: u64);
+    /// Resolves `<video src>` under the page's authority; `None` plays sources as given.
+    fn video_resolver(&self) -> Option<crate::scene::video::VideoResolver> {
+        None
+    }
 }
 
 /// Publishes accessibility events; the OS pulls nodes through

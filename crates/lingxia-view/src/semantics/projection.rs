@@ -158,7 +158,7 @@ pub fn meaningful(node: &NodeSnapshot) -> bool {
             || node.checked.is_some()
             || node.range.is_some()
             || node.input.is_some()
-            || node.tag == "image"
+            || matches!(node.tag, "image" | "video")
             || node.drag.is_some()
             || (node.tag == "plot"
                 && node
@@ -384,7 +384,7 @@ impl Projection<'_> {
         } else if node.drag.is_some() {
             // Moved between its snap points, a drag element adjusts like a slider.
             Role::Slider
-        } else if matches!(node.tag, "image" | "plot") {
+        } else if matches!(node.tag, "image" | "plot" | "video") {
             Role::Image
         } else {
             Role::Text

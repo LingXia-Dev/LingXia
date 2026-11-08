@@ -358,3 +358,12 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onChang
 | `placeholder` | `string` |  |
 | `aria-label` | `string` |  |
 | `disabled` | `boolean` |  |
+
+## `<video>`
+
+Children: none. May sit inside a composed `<button>` or `<checkbox>`.
+
+| Prop | Type | Required |
+| --- | --- | --- |
+| `src` | `string` | yes |
+| `aria-label` | `string` |  |

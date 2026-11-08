@@ -329,6 +329,12 @@ impl ImageProvider for AppleAdapter {
         let handle = self.images().remove(&id);
         drop(handle);
     }
+    fn video_resolver(&self) -> Option<lingxia_view::scene::video::VideoResolver> {
+        let (shell, token) = (self.shell.clone(), self.token);
+        Some(std::sync::Arc::new(move |source: &str| {
+            shell.video_url(token, source)
+        }))
+    }
 }
 
 impl AccessibilitySink for AppleAdapter {

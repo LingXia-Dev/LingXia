@@ -36,3 +36,10 @@ pub(crate) fn load_image(
         _cancel: Some(cancel),
     }
 }
+
+/// The player URL for a page's `<video src>`, resolved under the owning app's authority.
+pub(crate) fn video_url(token: Token, source: &str) -> Result<String, String> {
+    let page = page_of(token).ok_or("VIDEO_SOURCE: page closed")?;
+    page.gpu_video_url(source)
+        .map_err(|error| error.to_string())
+}

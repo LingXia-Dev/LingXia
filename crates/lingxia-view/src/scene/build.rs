@@ -1072,6 +1072,26 @@ impl Renderer {
                     position,
                 });
             }
+            if record.tag == tag::VIDEO
+                && let Some(player) = record
+                    .string(field::VIDEO_SRC)
+                    .and_then(|src| self.videos.url(src))
+            {
+                commands.push(Paint::Video {
+                    player,
+                    bounds: control_bounds,
+                    radius: if content_clip.is_some() { 0.0 } else { radius },
+                    fit: match record.string(field::IMAGE_FIT) {
+                        Some("contain") => crate::scene::image::Fit::Contain,
+                        Some("fill") => crate::scene::image::Fit::Fill,
+                        _ => crate::scene::image::Fit::Cover,
+                    },
+                    position: record
+                        .string(field::IMAGE_POSITION)
+                        .and_then(crate::protocol::image_position)
+                        .unwrap_or([0.5, 0.5]),
+                });
+            }
             input_layouts.push(
                 if matches!(record.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH) {
                     Some(InputLayout {
@@ -1183,7 +1203,10 @@ impl Renderer {
                 plot: plot_snapshot,
                 content_clip,
                 control_bounds: (border.is_some()
-                    && matches!(record.tag, tag::IMAGE | tag::SLIDER | tag::PLOT))
+                    && matches!(
+                        record.tag,
+                        tag::IMAGE | tag::SLIDER | tag::PLOT | tag::VIDEO
+                    ))
                 .then_some(control_bounds),
                 scroll_parent,
                 radio_group: (record.tag == tag::RADIO_OPTION)

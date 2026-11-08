@@ -421,7 +421,7 @@ pub(crate) fn plan(
     let mut quads = Vec::new();
     let mut row = 0u16;
     for placement in &placements {
-        let layers = layers.as_ref().ok_or("UI_VIDEO: no layers")?;
+        let layers = layers.as_ref().ok_or("video quad: no layers")?;
         let mut uniforms = Uniforms {
             target,
             count: placement.clips.len() as u32,

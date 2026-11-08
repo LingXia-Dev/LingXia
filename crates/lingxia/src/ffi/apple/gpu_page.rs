@@ -959,6 +959,9 @@ mod live {
         ) -> Box<dyn Send> {
             Box::new(gpu_page::load_image(token, source, done))
         }
+        fn video_url(&self, token: i64, source: &str) -> Result<String, String> {
+            gpu_page::video_url(token, source)
+        }
     }
 
     struct ApplePage {

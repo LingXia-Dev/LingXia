@@ -133,6 +133,10 @@ export function image(props) {
   for (const name of ['onLoad', 'onError']) if (props[name] !== undefined && typeof props[name] !== 'function') throw Error('UI_IMAGE: invalid callback');
 }
 
+export function video(props) {
+  if (typeof props.src !== 'string' || !props.src.length || props.src.length > limits.sourceBytes || props.src.includes('\0')) throw Error('UI_VIDEO: invalid source');
+}
+
 // `key:"…"` of a key this long is at most 6 bytes per character plus 6, within the limit.
 const SHORT_KEY = Math.floor((limits.identifierBytes - 6) / 6);
 // Surrogates are checked in full: a lone one is not UTF-8.

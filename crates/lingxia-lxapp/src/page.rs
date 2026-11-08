@@ -2212,6 +2212,50 @@ impl PageInstance {
         Ok(bytes.to_vec())
     }
 
+    /// The URL the platform player opens for `<video src>`: a granted http(s) URL as is, a
+    /// package path or managed lx:// URI as a file URL.
+    pub fn gpu_video_url(&self, source: &str) -> Result<String, LxAppError> {
+        if self.renderer() != PageRenderer::Gpu
+            || source.is_empty()
+            || source.len() > view_limits::SOURCE_BYTES
+            || source.contains('\0')
+        {
+            return Err(LxAppError::InvalidParameter(
+                "VIDEO_SOURCE: invalid src".into(),
+            ));
+        }
+        let app = self.owning_lxapp();
+        if source.starts_with("https://") || source.starts_with("http://") {
+            let uri: rong_rt::http::Uri = source
+                .parse()
+                .map_err(|_| LxAppError::InvalidParameter("VIDEO_SOURCE: invalid URL".into()))?;
+            let host = uri.host().unwrap_or_default();
+            if !app.is_domain_allowed(host) {
+                return Err(LxAppError::InvalidParameter(format!(
+                    "VIDEO_NOT_GRANTED: {host} is not in the app's network grant"
+                )));
+            }
+            return Ok(source.to_owned());
+        }
+        if !source.starts_with("lx://") && (source.starts_with('/') || source.contains(':')) {
+            return Err(LxAppError::InvalidParameter(
+                "VIDEO_SOURCE: src is a package path, an lx:// URI or an http(s) URL".into(),
+            ));
+        }
+        let path = app.resolve_accessible_path(source)?;
+        if !path.is_file() {
+            return Err(LxAppError::ResourceNotFound(format!(
+                "VIDEO_NOT_FOUND: {source}"
+            )));
+        }
+        let encoded: Vec<String> = path
+            .to_string_lossy()
+            .split('/')
+            .map(|segment| urlencoding::encode(segment).into_owned())
+            .collect();
+        Ok(format!("file://{}", encoded.join("/")))
+    }
+
     pub fn app_session_id(&self) -> u64 {
         self.owning_lxapp().session_id()
     }

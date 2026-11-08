@@ -196,7 +196,6 @@ pub(crate) enum Paint {
     },
     /// A player's current frame, bound by the renderer at draw time: the scene holds no pixels,
     /// so a new frame redraws the kept scenes without the View worker.
-    #[allow(dead_code, reason = "no schema element paints a video yet")]
     Video {
         /// The renderer's player key; paints with one key share a decoder.
         player: String,

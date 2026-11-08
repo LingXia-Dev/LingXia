@@ -422,6 +422,7 @@ const errorNotes = {
   UI_GRADIENT: 'A gradient with geometry its kind does not take, or invalid stops.',
   UI_GRID: 'An invalid grid track list or line.',
   UI_IMAGE: 'Invalid image source, alt, retry key or callback, or a failed load.',
+  UI_VIDEO: 'Invalid `<video>` source.',
   UI_INPUT: 'Invalid editor prop, binding or text.',
   UI_KEY: 'A non-string or duplicate sibling key, or a component keyed by its own function name.',
   UI_LEAVE: 'Invalid `useLeaveGuard` call or answer.',

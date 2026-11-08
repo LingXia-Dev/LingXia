@@ -26,3 +26,4 @@ pub(crate) mod test_prelude;
 mod tests;
 pub(crate) mod transform;
 pub(crate) mod vector;
+pub mod video;

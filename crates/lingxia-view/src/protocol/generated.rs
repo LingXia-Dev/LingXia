@@ -29,6 +29,7 @@ pub mod tag {
     pub const SPAN: usize = 21;
     pub const LINK: usize = 22;
     pub const SELECT: usize = 23;
+    pub const VIDEO: usize = 24;
 }
 
 /// Wire field ids.
@@ -240,9 +241,10 @@ pub mod field {
     pub const SNAP_STOP: usize = 204;
     pub const SNAP_INDEX: usize = 205;
     pub const ON_SNAP_CHANGE: usize = 206;
+    pub const VIDEO_SRC: usize = 207;
 }
 
-pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page", "span", "link", "select"];
+pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page", "span", "link", "select", "video"];
 
 /// Wire name and value kind, indexed by field id.
 pub const FIELDS: &[(&str, &str)] = &[
@@ -453,6 +455,7 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("snapStop", "snap-stop"),
     ("snapIndex", "snap-index"),
     ("onSnapChange", "handle"),
+    ("src", "video-source"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -643,6 +646,7 @@ pub const TAG_ADMISSION: &[TagAdmission] = &[
     TagAdmission { children: Children::Text, content: true, parent: Some(tag::TEXT), root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::Text, content: false, parent: Some(tag::TEXT), root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::Text, content: false, parent: None, root: false, keyed: false, requires: &[] },
+    TagAdmission { children: Children::None, content: true, parent: None, root: false, keyed: false, requires: &[field::VIDEO_SRC] },
 ];
 
 /// The tags a field applies to (`None`: every tag) and the parent tag it requires.
@@ -674,7 +678,7 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::SCROLL, tag::LIST]), parent: None },
     FieldAdmission { tags: Some(&[tag::SCROLL, tag::LIST]), parent: None },
     FieldAdmission { tags: Some(&[tag::IMAGE]), parent: None },
-    FieldAdmission { tags: Some(&[tag::IMAGE]), parent: None },
+    FieldAdmission { tags: Some(&[tag::IMAGE, tag::VIDEO]), parent: None },
     FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH, tag::SELECT]), parent: None },
     FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH, tag::SELECT]), parent: None },
     FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA]), parent: None },
@@ -695,7 +699,7 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::CHECKBOX, tag::SWITCH, tag::RADIO_OPTION]), parent: None },
     FieldAdmission { tags: Some(&[tag::CHECKBOX, tag::SWITCH, tag::RADIO_OPTION]), parent: None },
-    FieldAdmission { tags: Some(&[tag::BUTTON, tag::INPUT, tag::TEXTAREA, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::SEARCH, tag::SLIDER, tag::PLOT, tag::LINK, tag::COLUMN, tag::ROW, tag::PAGE, tag::TEXT, tag::SELECT]), parent: None },
+    FieldAdmission { tags: Some(&[tag::BUTTON, tag::INPUT, tag::TEXTAREA, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::SEARCH, tag::SLIDER, tag::PLOT, tag::LINK, tag::COLUMN, tag::ROW, tag::PAGE, tag::TEXT, tag::SELECT, tag::VIDEO]), parent: None },
     FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
     FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
     FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
@@ -837,7 +841,7 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::TEXTAREA]), parent: None },
     FieldAdmission { tags: Some(&[tag::TEXTAREA]), parent: None },
     FieldAdmission { tags: Some(&[tag::IMAGE]), parent: None },
-    FieldAdmission { tags: Some(&[tag::IMAGE]), parent: None },
+    FieldAdmission { tags: Some(&[tag::IMAGE, tag::VIDEO]), parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
@@ -861,4 +865,5 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::SCROLL, tag::LIST]), parent: None },
     FieldAdmission { tags: Some(&[tag::SCROLL]), parent: None },
     FieldAdmission { tags: Some(&[tag::SCROLL]), parent: None },
+    FieldAdmission { tags: Some(&[tag::VIDEO]), parent: None },
 ];

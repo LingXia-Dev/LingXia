@@ -38,6 +38,10 @@
       "path": "pages/todo/index"
     },
     {
+      "name": "video",
+      "path": "pages/video/index"
+    },
+    {
       "name": "clipboard",
       "path": "pages/clipboard/index"
     },

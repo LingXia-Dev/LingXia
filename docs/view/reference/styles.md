@@ -73,13 +73,13 @@ Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:`
 | `scale` | `number \| readonly [number, number]` |  | yes | all but `<span>` `<link>` |
 | `transformOrigin` | `readonly [number, number]` |  | yes | all but `<span>` `<link>` |
 | `filter` | `string` |  |  | all but `<span>` `<link>` |
-| `padding` | `number` |  |  | all but `<spacer>` `<image>` `<plot>` `<span>` `<link>` |
-| `paddingTop` | `number` | `padding-top`, `padding-block-start` |  | all but `<spacer>` `<image>` `<plot>` `<span>` `<link>` |
-| `paddingRight` | `number` | `padding-right` |  | all but `<spacer>` `<image>` `<plot>` `<span>` `<link>` |
-| `paddingBottom` | `number` | `padding-bottom`, `padding-block-end` |  | all but `<spacer>` `<image>` `<plot>` `<span>` `<link>` |
-| `paddingLeft` | `number` | `padding-left` |  | all but `<spacer>` `<image>` `<plot>` `<span>` `<link>` |
-| `paddingInlineStart` | `number` | `padding-inline-start` |  | all but `<spacer>` `<image>` `<plot>` `<span>` `<link>` |
-| `paddingInlineEnd` | `number` | `padding-inline-end` |  | all but `<spacer>` `<image>` `<plot>` `<span>` `<link>` |
+| `padding` | `number` |  |  | all but `<spacer>` `<image>` `<plot>` `<span>` `<link>` `<video>` |
+| `paddingTop` | `number` | `padding-top`, `padding-block-start` |  | all but `<spacer>` `<image>` `<plot>` `<span>` `<link>` `<video>` |
+| `paddingRight` | `number` | `padding-right` |  | all but `<spacer>` `<image>` `<plot>` `<span>` `<link>` `<video>` |
+| `paddingBottom` | `number` | `padding-bottom`, `padding-block-end` |  | all but `<spacer>` `<image>` `<plot>` `<span>` `<link>` `<video>` |
+| `paddingLeft` | `number` | `padding-left` |  | all but `<spacer>` `<image>` `<plot>` `<span>` `<link>` `<video>` |
+| `paddingInlineStart` | `number` | `padding-inline-start` |  | all but `<spacer>` `<image>` `<plot>` `<span>` `<link>` `<video>` |
+| `paddingInlineEnd` | `number` | `padding-inline-end` |  | all but `<spacer>` `<image>` `<plot>` `<span>` `<link>` `<video>` |
 | `display` | `"flex" \| "grid" \| "none" \| "block" \| "inline-flex" \| "inline-block"` | `display` |  | all but `<span>` `<link>` |
 | `flexDirection` | `"row" \| "column" \| "row-reverse" \| "column-reverse"` | `flex-direction` |  | `<view>` `<column>` `<row>` `<page>` `<button>` `<dialog>` |
 | `alignItems` | `"flex-start" \| "start" \| "center" \| "flex-end" \| "end" \| "stretch" \| "baseline"` | `align-items` |  | `<view>` `<column>` `<row>` `<page>` `<button>` `<scroll>` `<checkbox>` `<grid>` `<dialog>` |
@@ -95,22 +95,22 @@ Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:`
 | `gridAutoRows` | `string` | `grid-auto-rows` |  | `<view>` `<column>` `<row>` `<page>` `<button>` `<grid>` `<dialog>` |
 | `gridAutoFlow` | `"row" \| "column" \| "row dense" \| "column dense"` | `grid-auto-flow` |  | `<view>` `<column>` `<row>` `<page>` `<button>` `<grid>` `<dialog>` |
 | `justifyItems` | `"start" \| "center" \| "end" \| "stretch" \| "baseline"` | `justify-items` |  | `<view>` `<column>` `<row>` `<page>` `<button>` `<grid>` `<dialog>` |
-| `color` | `string` | `color` | yes | all but `<spacer>` `<image>` `<plot>` |
-| `fontSize` | `number` | `font-size` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` |
-| `fontWeight` | `number` | `font-weight` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` |
-| `fontFamily` | `"sans-serif" \| "monospace" \| "serif" \| (string & {})` | `font-family` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` |
-| `fontStyle` | `"normal" \| "italic"` | `font-style` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` |
-| `lineHeight` | `` number \| `${number}px` `` | `line-height` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` |
-| `letterSpacing` | `` number \| `${number}em` `` | `letter-spacing` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` |
-| `fontVariantNumeric` | `string` |  |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` |
-| `userSelect` | `"none" \| "text" \| "all"` | `user-select` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` |
-| `textAlign` | `"start" \| "end" \| "left" \| "center" \| "right" \| "justify"` | `text-align` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` |
-| `textDecorationLine` | `"none" \| "line-through" \| "underline"` | `text-decoration-line` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` |
-| `textTransform` | `"none" \| "uppercase" \| "lowercase" \| "capitalize"` | `text-transform` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` |
+| `color` | `string` | `color` | yes | all but `<spacer>` `<image>` `<plot>` `<video>` |
+| `fontSize` | `number` | `font-size` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` `<video>` |
+| `fontWeight` | `number` | `font-weight` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` `<video>` |
+| `fontFamily` | `"sans-serif" \| "monospace" \| "serif" \| (string & {})` | `font-family` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` `<video>` |
+| `fontStyle` | `"normal" \| "italic"` | `font-style` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` `<video>` |
+| `lineHeight` | `` number \| `${number}px` `` | `line-height` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` |
+| `letterSpacing` | `` number \| `${number}em` `` | `letter-spacing` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` `<video>` |
+| `fontVariantNumeric` | `string` |  |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` `<video>` |
+| `userSelect` | `"none" \| "text" \| "all"` | `user-select` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` |
+| `textAlign` | `"start" \| "end" \| "left" \| "center" \| "right" \| "justify"` | `text-align` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` |
+| `textDecorationLine` | `"none" \| "line-through" \| "underline"` | `text-decoration-line` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` `<video>` |
+| `textTransform` | `"none" \| "uppercase" \| "lowercase" \| "capitalize"` | `text-transform` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` |
 | `backgroundClip` | `"border-box" \| "text"` | `background-clip` |  | `<text>` |
-| `whiteSpace` | `"normal" \| "nowrap" \| "pre" \| "pre-wrap" \| "pre-line"` | `white-space` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` |
-| `wordBreak` | `"normal" \| "break-all" \| "keep-all"` | `word-break` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` |
-| `overflowWrap` | `"normal" \| "break-word" \| "anywhere"` | `overflow-wrap` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` |
+| `whiteSpace` | `"normal" \| "nowrap" \| "pre" \| "pre-wrap" \| "pre-line"` | `white-space` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` |
+| `wordBreak` | `"normal" \| "break-all" \| "keep-all"` | `word-break` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` |
+| `overflowWrap` | `"normal" \| "break-word" \| "anywhere"` | `overflow-wrap` |  | all but `<spacer>` `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` |
 | `lineClamp` | `number` | `-webkit-line-clamp` |  | `<text>` |
 | `textOverflow` | `"clip" \| "ellipsis"` | `text-overflow` |  | `<text>` |
 | `overflowX` | `"auto"` | `overflow-x` |  | `<scroll>` |
@@ -120,8 +120,8 @@ Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:`
 | `scrollSnapType` | `"none" \| "x" \| "y"` | `scroll-snap-type` |  | `<scroll>` `<List>` |
 | `scrollSnapAlign` | `"none" \| "start" \| "center" \| "end"` | `scroll-snap-align` |  | all but `<span>` `<link>` |
 | `placeholderColor` | `string` |  | yes | `<input>` `<textarea>` |
-| `objectFit` | `"cover" \| "contain" \| "fill"` | `object-fit` |  | `<image>` `<vector>` |
-| `objectPosition` | `string` | `object-position` |  | `<image>` |
+| `objectFit` | `"cover" \| "contain" \| "fill"` | `object-fit` |  | `<image>` `<vector>` `<video>` |
+| `objectPosition` | `string` | `object-position` |  | `<image>` `<video>` |
 
 `transition` and `animation` are set only by the motion utilities (`transition-*`, `animate-*`).
 
@@ -222,6 +222,10 @@ Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:`
 ### `<select>`
 
 `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `aspectRatio`, `maxHeight`, `margin`, `marginTop`, `marginRight`, `marginBottom`, `marginLeft`, `marginInlineStart`, `marginInlineEnd`, `position`, `inset`, `top`, `right`, `bottom`, `left`, `insetInlineStart`, `insetInlineEnd`, `zIndex`, `positionArea`, `flexGrow`, `flexShrink`, `flexBasis`, `alignSelf`, `gridColumn`, `gridColumnStart`, `gridColumnEnd`, `gridRow`, `gridRowStart`, `gridRowEnd`, `justifySelf`, `order`, `opacity`, `overflow`, `backgroundColor`, `backgroundImage`, `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomRightRadius`, `borderBottomLeftRadius`, `borderStartStartRadius`, `borderStartEndRadius`, `borderEndStartRadius`, `borderEndEndRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderInlineStartWidth`, `borderInlineEndWidth`, `borderStyle`, `borderColor`, `boxShadow`, `backdropFilter`, `translate`, `rotate`, `scale`, `transformOrigin`, `filter`, `display`, `scrollSnapAlign`, `padding`, `paddingTop`, `paddingRight`, `paddingBottom`, `paddingLeft`, `paddingInlineStart`, `paddingInlineEnd`, `color`, `fontSize`, `fontWeight`, `fontFamily`, `fontStyle`, `lineHeight`, `letterSpacing`, `fontVariantNumeric`, `userSelect`, `textAlign`, `textDecorationLine`, `textTransform`, `whiteSpace`, `wordBreak`, `overflowWrap`
+
+### `<video>`
+
+`width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `aspectRatio`, `maxHeight`, `margin`, `marginTop`, `marginRight`, `marginBottom`, `marginLeft`, `marginInlineStart`, `marginInlineEnd`, `position`, `inset`, `top`, `right`, `bottom`, `left`, `insetInlineStart`, `insetInlineEnd`, `zIndex`, `positionArea`, `flexGrow`, `flexShrink`, `flexBasis`, `alignSelf`, `gridColumn`, `gridColumnStart`, `gridColumnEnd`, `gridRow`, `gridRowStart`, `gridRowEnd`, `justifySelf`, `order`, `opacity`, `overflow`, `backgroundColor`, `backgroundImage`, `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomRightRadius`, `borderBottomLeftRadius`, `borderStartStartRadius`, `borderStartEndRadius`, `borderEndStartRadius`, `borderEndEndRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderInlineStartWidth`, `borderInlineEndWidth`, `borderStyle`, `borderColor`, `boxShadow`, `backdropFilter`, `translate`, `rotate`, `scale`, `transformOrigin`, `filter`, `display`, `scrollSnapAlign`, `objectFit`, `objectPosition`
 
 ## Colour roles
 

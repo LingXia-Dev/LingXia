@@ -34,6 +34,14 @@ test('image sources and fits are validated; objectFit is image and vector style'
   throwsOn(() => h('text', { style: { objectFit: 'cover' } }, 'x'), /UI_STYLE: objectFit is not supported on <text>; it applies to <image>/);
 });
 
+test('video takes one source and the image placement styles', () => {
+  const video = rendered(() => h('video', { src: 'public/clip.mp4', 'aria-label': 'Trailer', style: { objectFit: 'contain', objectPosition: 'top' } }));
+  assert.deepEqual([video.tag, video.props.videoSrc, video.props.imageFit, video.props.accessibilityLabel], ['video', 'public/clip.mp4', 'contain', 'Trailer']);
+  assert.ok(video.props.imagePosition);
+  for (const props of [{}, { src: 42 }, { src: '' }, { src: 'a\0b' }, { src: 'a', 'aria-label': ' ' }]) throwsOn(() => h('video', props), /UI_VIDEO/);
+  throwsOn(() => h('video', { src: 'a' }, h('text', {}, 'x')), /UI_CHILD/);
+});
+
 test('objectPosition lowers CSS keywords and percentages to box fractions on images only', () => {
   const at = position => rendered(() => h('image', { src: 'a', style: { objectPosition: position } })).props.imagePosition;
   assert.equal(at('center'), '[0.5,0.5]');

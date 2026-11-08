@@ -390,6 +390,12 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             }),
             "UI_IMAGE: invalid source",
         ),
+        field::VIDEO_SRC => ensure(
+            value.as_str().is_some_and(|s| {
+                !s.is_empty() && s.len() <= limits::SOURCE_BYTES && !s.contains('\0')
+            }),
+            "UI_VIDEO: invalid source",
+        ),
         field::IMAGE_FIT => ensure(
             matches!(value.as_str(), Some("cover" | "contain" | "fill")),
             "UI_IMAGE: invalid fit",

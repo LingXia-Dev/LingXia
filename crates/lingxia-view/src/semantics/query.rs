@@ -151,6 +151,7 @@ fn virtual_element(node: &NodeSnapshot, semantic: Option<&SemanticNode>) -> Virt
         "radio-option" => ("input", Some("radio")),
         "slider" => ("input", Some("range")),
         "image" => ("img", None),
+        "video" => ("video", None),
         "select" => ("select", None),
         _ => match role {
             Some(Role::Heading) => ("h", None),

@@ -78,5 +78,6 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_TRANSFORM` | native | A transform the element cannot take (rotate/scale on editors, scrolls, sliders). |
 | `UI_TRANSITION` | native | An invalid transition definition. |
 | `UI_VECTOR` | runtime, native | Invalid vector paths, gradients or viewBox. |
+| `UI_VIDEO` | runtime, native | Invalid `<video>` source. |
 | `UI_VIEWPORT` | native | The host reported an invalid viewport. |
 | `UI_WORKER` | native | The View worker thread failed to start. |

@@ -20,7 +20,7 @@ use tokio::sync::oneshot;
 #[cfg(feature = "automation")]
 mod automation;
 mod images;
-pub(crate) use images::load_image;
+pub(crate) use images::{load_image, video_url};
 #[cfg(any(
     target_os = "android",
     target_os = "ios",
