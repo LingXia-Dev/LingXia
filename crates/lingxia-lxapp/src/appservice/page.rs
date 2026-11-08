@@ -1154,6 +1154,16 @@ impl PageSvc {
                 cb.callback.call_async::<_, ()>(None, (STATE_ACKED,)).await
             })
             .await;
+            // The ack resolves `flush()`. QuickJS runs promise reactions only when asked, and
+            // the worker otherwise asks every 50 ms, so a Logic loop awaiting each write would
+            // resume that late. Run them from a task of their own, as the worker's periodic
+            // drain does: inside this message's handler, a reaction that waits on the worker's
+            // message pump would never be answered.
+            if let Some(ctx) = self.get_ctx() {
+                super::context_lifecycle::spawn(&ctx, move |ctx| async move {
+                    let _ = ctx.runtime().run_pending_jobs();
+                });
+            }
         }
     }
 
