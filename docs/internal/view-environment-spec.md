@@ -744,6 +744,22 @@ the content area. A design that requires arbitrary HTML to render physically
 above native chrome must use a native presentation or a separate host-managed
 surface; ordinary WebView z-index cannot provide that guarantee.
 
+### 8.4 GPU View pages and the host bars
+
+A GPU page spans the window under the navigation bar and tab bar, which reach
+it as `env.insets`. One rule on every page and platform:
+
+- Below the bars: page content. A `scroll` or `list` that is the page's last
+  in-flow child runs to the bottom edge; the bottom inset becomes its end
+  padding, which also bounds reveals, so its last row scrolls clear. A keyboard
+  taller than the inset still ends it. Any other last child keeps the inset as
+  page padding. Whether content shows through is the bar's own paint
+  (`immersive` is see-through).
+- Above the bars: the top layer. While a `<dialog>` (sheet, picker, modal,
+  action sheet, with its scrim) is open or exiting, the host raises the whole
+  page above both bars and hides them from assistive tech and chrome
+  automation. Popovers stay below. Tab bar visibility is never changed.
+
 ---
 
 ## 9. Platform rendering contract
