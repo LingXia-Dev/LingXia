@@ -905,6 +905,14 @@ mod live {
         fn message(&self, token: i64, connection: u64, message: &str) {
             gpu_page::message(token, connection, message);
         }
+        fn state(
+            &self,
+            token: i64,
+            connection: u64,
+            signal: lingxia_view_apple::lingxia_view::session::state::StateSignal,
+        ) {
+            gpu_page::state_signal(token, connection, gpu_page::state::from_view(signal));
+        }
         fn restart(&self, token: i64, connection: u64) -> bool {
             gpu_page::restart(token, connection)
         }
@@ -950,6 +958,7 @@ mod live {
 
     struct ApplePage {
         token: Token,
+        writer: lingxia_view_apple::lingxia_view::session::host::StateWriter,
     }
 
     impl NativePage for ApplePage {
@@ -967,6 +976,17 @@ mod live {
                 page.host()
                     .receive(ConnectionTicket::new(generation.get()), frame)
             });
+            Ok(())
+        }
+        fn write_state(
+            &self,
+            generation: GpuViewGeneration,
+            write: lxapp::GpuStateWrite,
+        ) -> Result<(), LxAppError> {
+            self.writer.write(
+                ConnectionTicket::new(generation.get()),
+                gpu_page::state::to_view(write),
+            );
             Ok(())
         }
         fn request_leave(
@@ -1047,8 +1067,9 @@ mod live {
                 let created = Page::new(token, Arc::new(Bridge), &request.worker, request.logic)
                     .map(|page| {
                         page.host().load(request.source);
+                        let writer = page.host().state_writer();
                         PAGES.with(|pages| pages.borrow_mut().insert(token, page));
-                        Arc::new(ApplePage { token }) as Arc<dyn NativePage>
+                        Arc::new(ApplePage { token, writer }) as Arc<dyn NativePage>
                     });
                 gpu_page::created(token, created);
             }));

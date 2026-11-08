@@ -510,6 +510,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 crate::session::state::StateUpdate {
                     changed: true,
                     outbound: Vec::new(),
+                    ..Default::default()
                 },
             )?;
             update.changed = update.local_changed;

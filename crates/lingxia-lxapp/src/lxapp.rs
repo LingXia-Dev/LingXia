@@ -5083,6 +5083,17 @@ mod manifest_reload_tests {
             self.1.lock().unwrap().push((generation, message.into()));
             Ok(())
         }
+        fn write_state(
+            &self,
+            generation: crate::GpuViewGeneration,
+            write: crate::GpuStateWrite,
+        ) -> Result<(), LxAppError> {
+            self.1
+                .lock()
+                .unwrap()
+                .push((generation, format!("{write:?}")));
+            Ok(())
+        }
         fn update_environment(&self, _: crate::PageViewEnvironment) -> Result<(), LxAppError> {
             Ok(())
         }
@@ -5507,6 +5518,13 @@ mod manifest_reload_tests {
                     message: &str,
                 ) -> Result<(), LxAppError> {
                     self.post_message(message)
+                }
+                fn write_state(
+                    &self,
+                    _: crate::GpuViewGeneration,
+                    _: crate::GpuStateWrite,
+                ) -> Result<(), LxAppError> {
+                    Ok(())
                 }
                 fn connect(&self, _: crate::GpuViewGeneration, _: &str) -> Result<(), LxAppError> {
                     Ok(())

@@ -53,6 +53,7 @@ pub(super) fn initialize(env: &mut Env) -> Result<(), jni::errors::Error> {
         lxapp::register_gpu_page_view_factory(Arc::new(gpu_page::Binding(Arc::new(Factory))))
             .map_err(|_| jni::errors::Error::JniCall(jni::errors::JniError::Unknown))?;
         lingxia_view_android::set_image_loader(Arc::new(Images));
+        lingxia_view_android::set_state_listener(Arc::new(States));
     }
     Ok(())
 }
@@ -128,6 +129,18 @@ impl NativePage for AndroidPage {
     }
     fn receive(&self, generation: GpuViewGeneration, frame: &str) -> Result<(), LxAppError> {
         bridge_operation(self.token, generation, frame, jni_str!("receive"))
+    }
+    fn write_state(
+        &self,
+        generation: GpuViewGeneration,
+        write: lxapp::GpuStateWrite,
+    ) -> Result<(), LxAppError> {
+        lingxia_view_android::write_state(
+            self.token,
+            generation.get(),
+            gpu_page::state::to_view(write),
+        );
+        Ok(())
     }
     fn request_leave(&self, generation: GpuViewGeneration, reason: &str) -> Result<(), LxAppError> {
         bridge_operation(self.token, generation, reason, jni_str!("requestLeave"))
@@ -212,6 +225,20 @@ extern "system" fn automation_reply<'a>(
         Ok(())
     })
     .resolve::<ThrowRuntimeExAndDefault>();
+}
+
+/// Hears the View's reports on typed Logic state, by page token.
+struct States;
+
+impl lingxia_view_android::StateListener for States {
+    fn state(
+        &self,
+        owner: i64,
+        connection: u64,
+        signal: lingxia_view_android::lingxia_view::session::state::StateSignal,
+    ) {
+        gpu_page::state_signal(owner, connection, gpu_page::state::from_view(signal));
+    }
 }
 
 struct Factory;

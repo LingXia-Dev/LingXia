@@ -637,6 +637,37 @@ fn failed_scroll_candidate_does_not_commit_offsets_or_generation() {
 }
 
 /// Action tests need an engine that can interrupt runaway continuations.
+/// The typed write for the frame Logic once sent for it.
+pub(crate) fn state_write(frame: &serde_json::Value) -> crate::session::state::StateWrite {
+    use crate::session::state::{PatchOp, StateWrite};
+    let rev = frame["rev"].as_u64().unwrap();
+    if frame["kind"] == "state.snapshot" {
+        return StateWrite::Snapshot {
+            rev,
+            state: frame["state"].clone(),
+        };
+    }
+    let ops = frame["ops"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|op| {
+            let path = op["path"].as_str().unwrap().to_owned();
+            let value = op.get("value").cloned().unwrap_or_default();
+            match op["op"].as_str().unwrap() {
+                "add" => PatchOp::Add { path, value },
+                "replace" => PatchOp::Replace { path, value },
+                _ => PatchOp::Remove { path },
+            }
+        })
+        .collect();
+    StateWrite::Patch {
+        rev,
+        ops,
+        ack: frame["ack"] == true,
+    }
+}
+
 pub(crate) fn bounded_jobs() -> bool {
     crate::engine::supports(crate::engine::Feature::BoundedJobs)
 }
@@ -687,8 +718,10 @@ fn committed_channel_resource_opens_without_input_and_quiesces_after_redraw() {
         &json!({"v":2,"kind":"helloAck","nonce":"nonce","protocol":2,"sessionId":"session"}),
     )
     .unwrap();
-    page.receive_bridge(&json!({"v":2,"kind":"state.snapshot","rev":0,"state":{}}))
-        .unwrap();
+    page.write_state(state_write(
+        &json!({"v":2,"kind":"state.snapshot","rev":0,"state":{}}),
+    ))
+    .unwrap();
     page.receive_bridge(&json!({"v":2,"kind":"ready","sessionId":"session"}))
         .unwrap();
     assert!(page.take_action_requests().unwrap().is_empty());
@@ -728,8 +761,10 @@ fn stream_bridge_events_render_and_cancel_through_the_page_endpoint() {
         &json!({"v":2,"kind":"helloAck","nonce":"nonce","protocol":2,"sessionId":"session"}),
     )
     .unwrap();
-    page.receive_bridge(&json!({"v":2,"kind":"state.snapshot","rev":0,"state":{}}))
-        .unwrap();
+    page.write_state(state_write(
+        &json!({"v":2,"kind":"state.snapshot","rev":0,"state":{}}),
+    ))
+    .unwrap();
     page.receive_bridge(&json!({"v":2,"kind":"ready","sessionId":"session"}))
         .unwrap();
     let frame = page.layout(300, 500, 1.0).unwrap();
@@ -764,8 +799,10 @@ fn channel_bridge_opens_delivers_and_sends_on_the_bound_endpoint() {
         &json!({"v":2,"kind":"helloAck","nonce":"nonce","protocol":2,"sessionId":"session"}),
     )
     .unwrap();
-    page.receive_bridge(&json!({"v":2,"kind":"state.snapshot","rev":0,"state":{}}))
-        .unwrap();
+    page.write_state(state_write(
+        &json!({"v":2,"kind":"state.snapshot","rev":0,"state":{}}),
+    ))
+    .unwrap();
     page.receive_bridge(&json!({"v":2,"kind":"ready","sessionId":"session"}))
         .unwrap();
     let frame = page.layout(300, 500, 1.0).unwrap();
@@ -1468,7 +1505,9 @@ fn bridge_requires_ack_ready_and_state_then_roundtrips_actions() {
     assert!(page.receive_bridge(&json!({"v":2,"kind":"helloAck","nonce":"wrong","protocol":2,"sessionId":"native-session"})).is_err());
     page.receive_bridge(&json!({"v":2,"kind":"helloAck","nonce":"native-nonce","protocol":2,"sessionId":"native-session"})).unwrap();
     let update = page
-        .receive_bridge(&json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"count":0}}))
+        .write_state(state_write(
+            &json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"count":0}}),
+        ))
         .unwrap();
     assert!(!update.changed);
     assert!(page.layout(300, 500, 1.0).is_err());
@@ -1481,10 +1520,7 @@ fn bridge_requires_ack_ready_and_state_then_roundtrips_actions() {
     let response = json!({"v":2,"kind":"res","id":request["id"],"ok":true,"result":"done"});
     assert!(page.receive_bridge(&response).unwrap().changed);
     let patch = json!({"v":2,"kind":"state.patch","baseRev":0,"rev":1,"ack":true,"ops":[{"op":"replace","path":"/count","value":1}]});
-    assert_eq!(
-        page.receive_bridge(&patch).unwrap().outbound,
-        vec![json!({"v":2,"kind":"state.ack","rev":1})]
-    );
+    assert_eq!(page.write_state(state_write(&patch)).unwrap().ack, Some(1));
     assert_eq!(page.layout(300, 500, 1.0).unwrap().nodes[0].text, "1/done");
     page.begin_bridge("replacement").unwrap();
     assert!(!page.ready_to_render());
@@ -1681,14 +1717,16 @@ fn snapshot_gates_first_render_and_ack_does_not_depend_on_render_success() {
             .contains("waiting for first snapshot")
     );
     session
-        .receive_state(&json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"count":0}}))
+        .write_state(state_write(
+            &json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"count":0}}),
+        ))
         .unwrap();
     assert_eq!(session.render(300, 500, 1.0).unwrap().nodes[0].text, "0");
-    let update=session.receive_state(&json!({"v":2,"kind":"state.patch","baseRev":0,"rev":1,"ack":true,"ops":[{"op":"add","path":"/fail","value":true}]})).unwrap();
-    assert_eq!(update.outbound[0]["kind"], "state.ack");
+    let update=session.write_state(state_write(&json!({"v":2,"kind":"state.patch","baseRev":0,"rev":1,"ack":true,"ops":[{"op":"add","path":"/fail","value":true}]}))).unwrap();
+    assert_eq!(update.ack, Some(1));
     assert!(session.render(300, 500, 1.0).is_err());
     assert_eq!(session.generation().get(), 1);
-    session.receive_state(&json!({"v":2,"kind":"state.patch","baseRev":1,"rev":2,"ops":[{"op":"remove","path":"/fail"},{"op":"replace","path":"/count","value":2}]})).unwrap();
+    session.write_state(state_write(&json!({"v":2,"kind":"state.patch","baseRev":1,"rev":2,"ops":[{"op":"remove","path":"/fail"},{"op":"replace","path":"/count","value":2}]}))).unwrap();
     assert_eq!(session.render(300, 500, 1.0).unwrap().nodes[0].text, "2");
 }
 
@@ -1954,7 +1992,7 @@ fn spinning_page() -> Option<(ViewSession, f64)> {
     let mut session = ViewSession::new_with_logic(&module, true).ok()?;
     let probe = 2_000_000u64;
     session
-        .receive_state(&serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"spin":probe,"label":"probe"}}))
+        .write_state(state_write(&serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"spin":probe,"label":"probe"}})))
         .ok()?;
     let before = clock.elapsed()?;
     session.render(300, 500, 1.0).ok()?;
@@ -1974,11 +2012,11 @@ fn spin_for(
     let clock = crate::engine::thread_clock::ThreadClock::current().unwrap();
     let ms = super::eval_budget().as_secs_f64() * 1000.0 * budgets;
     let spin = (*per_ms * ms) as u64;
-    session.receive_state(
+    session.write_state(state_write(
         &serde_json::json!({"v":2,"kind":"state.patch","baseRev":rev-1,"rev":rev,"ops":[
         {"op":"replace","path":"/spin","value":spin},
         {"op":"replace","path":"/label","value":label}]}),
-    )?;
+    ))?;
     let before = clock.elapsed().unwrap();
     let result = session
         .render(300, 500, 1.0)
@@ -2073,7 +2111,7 @@ fn a_run_past_the_limit_is_interrupted_at_once_and_a_first_render_gets_the_warm_
     );
     let mut fresh = ViewSession::new_with_logic(&module, true).unwrap();
     let ms = super::eval_budget().as_secs_f64() * 1000.0 * 1.3;
-    fresh.receive_state(&serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"spin":(per_ms*ms) as u64,"label":"warm"}})).unwrap();
+    fresh.write_state(state_write(&serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"spin":(per_ms*ms) as u64,"label":"warm"}}))).unwrap();
     assert_eq!(fresh.render(300, 500, 1.0).unwrap().nodes[0].text, "warm");
     // Steady state, one run past four budgets: interrupted, no second chance.
     let error = spin_for(&mut fresh, &mut per_ms, 6.0, 1, "hang").unwrap_err();

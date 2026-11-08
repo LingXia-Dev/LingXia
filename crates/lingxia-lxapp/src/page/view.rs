@@ -56,6 +56,45 @@ impl GpuViewGeneration {
     }
 }
 
+/// One JSON Patch operation on GPU page data; `path` is a JSON Pointer.
+#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+#[serde(tag = "op", rename_all = "lowercase")]
+pub enum GpuPatchOp {
+    Add {
+        path: String,
+        value: serde_json::Value,
+    },
+    Replace {
+        path: String,
+        value: serde_json::Value,
+    },
+    Remove {
+        path: String,
+    },
+}
+
+/// Logic state for a GPU View, delivered in process and in write order.
+#[derive(Debug)]
+pub enum GpuStateWrite {
+    /// The whole page data, an object.
+    Snapshot { rev: u64, state: serde_json::Value },
+    /// `ack`: a `setData` callback waits for [`GpuStateSignal::Acked`] of this revision.
+    Patch {
+        rev: u64,
+        ops: Vec<GpuPatchOp>,
+        ack: bool,
+    },
+}
+
+/// What a GPU View reports about its state writes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GpuStateSignal {
+    /// The revision is in a frame committed for display, or will never be.
+    Acked(u64),
+    /// A patch did not apply; the View drops writes until a snapshot arrives.
+    Resync,
+}
+
 /// Native-owned GPU endpoint. Methods must enqueue without blocking the caller.
 pub trait GpuPageView: Send + Sync {
     fn post_message(&self, message: &str) -> Result<(), LxAppError>;
@@ -64,6 +103,12 @@ pub trait GpuPageView: Send + Sync {
         &self,
         generation: GpuViewGeneration,
         message: &str,
+    ) -> Result<(), LxAppError>;
+    /// Typed Logic state; like messages, rechecked for this generation at delivery.
+    fn write_state(
+        &self,
+        generation: GpuViewGeneration,
+        write: GpuStateWrite,
     ) -> Result<(), LxAppError>;
     fn connect(&self, generation: GpuViewGeneration, nonce: &str) -> Result<(), LxAppError>;
     fn request_leave(&self, reason: super::LeaveReason) -> Result<(), LxAppError>;

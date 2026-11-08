@@ -6,8 +6,8 @@ pub(crate) mod view_limits;
 mod view;
 pub(crate) use view::PageView;
 pub use view::{
-    GpuPageView, GpuPageViewFactory, GpuViewCreation, GpuViewGeneration, PageViewEnvironment,
-    register_gpu_page_view_factory,
+    GpuPageView, GpuPageViewFactory, GpuPatchOp, GpuStateSignal, GpuStateWrite, GpuViewCreation,
+    GpuViewGeneration, PageViewEnvironment, register_gpu_page_view_factory,
 };
 #[cfg(all(test, feature = "js-appservice"))]
 pub(crate) mod startup_test_host;
@@ -1259,6 +1259,23 @@ impl PageInstance {
         self.inner
             .bridge
             .handle_gpu_incoming(self, endpoint, generation, message)
+    }
+
+    /// What the current GPU View made of its typed state writes.
+    pub fn gpu_state_signal(
+        &self,
+        endpoint: &Arc<dyn GpuPageView>,
+        generation: GpuViewGeneration,
+        signal: GpuStateSignal,
+    ) -> Result<(), LxAppError> {
+        if !self.is_current_gpu_endpoint(endpoint) {
+            return Err(LxAppError::Bridge(
+                "GPU endpoint is no longer attached".into(),
+            ));
+        }
+        self.inner
+            .bridge
+            .handle_gpu_state_signal(self, endpoint, generation, signal)
     }
 
     pub(crate) fn is_current_gpu_endpoint(&self, endpoint: &Arc<dyn GpuPageView>) -> bool {

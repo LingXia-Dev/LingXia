@@ -34,6 +34,19 @@ pub fn set_image_loader(loader: Arc<dyn ImageLoader>) {
     let _ = IMAGE_LOADER.set(loader);
 }
 
+/// Hears what became of Logic's typed state writes, for the page an owner token names. The
+/// embedding host installs it; state never crosses JNI.
+pub trait StateListener: Send + Sync + 'static {
+    fn state(&self, owner: i64, connection: u64, signal: lingxia_view::session::state::StateSignal);
+}
+
+static STATE_LISTENER: OnceLock<Arc<dyn StateListener>> = OnceLock::new();
+
+/// Install the process state listener; the first call wins.
+pub fn set_state_listener(listener: Arc<dyn StateListener>) {
+    let _ = STATE_LISTENER.set(listener);
+}
+
 /// Where this page's GPU target stands; see [`route`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
@@ -69,8 +82,8 @@ pub(super) struct AndroidAdapter {
     pub(super) gpu: AtomicU64,
     target: AtomicU8,
     started: Instant,
-    /// Names this page to the image loader; 0 has no image source.
-    owner: i64,
+    /// Names this page to the image loader and the state listener; 0 has neither.
+    pub(super) owner: i64,
     pub(super) host: OnceLock<WeakViewHost<AndroidAdapter>>,
     /// In-flight loads; dropping a handle cancels its transport.
     images: Mutex<HashMap<u64, Box<dyn Send>>>,
@@ -748,6 +761,15 @@ impl HostEvents for AndroidAdapter {
             )?;
             Ok(())
         })
+    }
+    fn state(
+        &self,
+        connection: ConnectionTicket,
+        signal: lingxia_view::session::state::StateSignal,
+    ) {
+        if let Some(listener) = STATE_LISTENER.get().filter(|_| self.owner != 0) {
+            listener.state(self.owner, connection.get(), signal);
+        }
     }
     fn restart(&self, connection: ConnectionTicket) -> bool {
         self.java(|env, platform| {

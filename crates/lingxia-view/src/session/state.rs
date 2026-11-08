@@ -1,18 +1,50 @@
 use serde_json::{Value, json};
 
+/// One JSON Patch operation on page data; `path` is a JSON Pointer.
+#[derive(Clone, Debug, PartialEq)]
+pub enum PatchOp {
+    Add { path: String, value: Value },
+    Replace { path: String, value: Value },
+    Remove { path: String },
+}
+
+/// A Logic state write, delivered in process and in write order.
+#[derive(Debug)]
+pub enum StateWrite {
+    /// The whole page data, an object.
+    Snapshot { rev: u64, state: Value },
+    /// `ack`: Logic waits to hear that this revision reached a frame.
+    Patch {
+        rev: u64,
+        ops: Vec<PatchOp>,
+        ack: bool,
+    },
+}
+
+/// What the View tells Logic about its state writes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StateSignal {
+    /// Revision `rev` is in a frame committed for display, or will never be.
+    Acked(u64),
+    /// A patch did not apply; send a snapshot. Writes before it are dropped.
+    Resync,
+}
+
 #[derive(Default)]
 pub struct StateReplica {
     data: Option<Value>,
     revision: u64,
-    recovery: Option<String>,
-    next_request: u64,
+    resyncing: bool,
 }
 
 #[derive(Default, Debug)]
 pub struct StateUpdate {
     pub changed: bool,
-    /// Send these before attempting a render: flush completion depends on state application.
+    /// Bridge frames to send before attempting a render.
     pub outbound: Vec<Value>,
+    /// The revision to acknowledge once a frame shows it.
+    pub ack: Option<u64>,
+    pub resync: bool,
 }
 
 impl StateReplica {
@@ -29,111 +61,63 @@ impl StateReplica {
         self.revision
     }
 
-    pub fn receive(&mut self, frame: &Value) -> Result<StateUpdate, String> {
-        if frame["v"] != 2 {
-            return Err("UI_STATE: expected LegacyV2".into());
-        }
-        match frame["kind"].as_str() {
-            Some("state.snapshot") => self.snapshot(frame),
-            Some("res")
-                if self
-                    .recovery
-                    .as_deref()
-                    .is_some_and(|id| frame["id"].as_str() == Some(id)) =>
-            {
-                if frame["ok"] == true {
-                    self.snapshot(&frame["result"])
-                } else {
-                    Err("UI_STATE: snapshot recovery failed".into())
+    pub fn write(&mut self, write: StateWrite) -> Result<StateUpdate, String> {
+        match write {
+            StateWrite::Snapshot { rev, state } => {
+                if !state.is_object() {
+                    return Err("UI_STATE: expected state object".into());
                 }
+                self.data = Some(state);
+                self.revision = rev;
+                self.resyncing = false;
+                Ok(StateUpdate {
+                    changed: true,
+                    ..StateUpdate::default()
+                })
             }
-            Some("state.patch") => {
-                if self.recovery.is_some() {
+            StateWrite::Patch { rev, ops, ack } => {
+                if self.resyncing {
                     return Ok(StateUpdate::default());
                 }
-                let base = revision(&frame["baseRev"])?;
-                let next = revision(&frame["rev"])?;
-                if self.data.is_none() || base != self.revision || next <= base {
-                    return Ok(self.recover(frame));
-                }
-                let mut candidate = self.data.clone().unwrap();
-                if apply_patch(&mut candidate, &frame["ops"]).is_err() {
-                    return Ok(self.recover(frame));
-                }
-                self.data = Some(candidate);
-                self.revision = next;
-                let mut update = StateUpdate {
-                    changed: true,
-                    outbound: Vec::new(),
+                let Some(data) = self.data.as_mut().filter(|_| rev > self.revision) else {
+                    return Ok(self.resync());
                 };
-                if frame["ack"] == true {
-                    let mut ack = json!({"v":2,"kind":"state.ack","rev":next});
-                    if let Some(scope) = frame.get("scope") {
-                        ack["scope"] = scope.clone();
-                    }
-                    update.outbound.push(ack);
+                // In place: a failed op may leave earlier ones applied until the snapshot
+                // it asks for replaces the whole tree.
+                if apply_patch(data, ops).is_err() {
+                    return Ok(self.resync());
                 }
-                Ok(update)
+                self.revision = rev;
+                Ok(StateUpdate {
+                    changed: true,
+                    ack: ack.then_some(rev),
+                    ..StateUpdate::default()
+                })
             }
-            _ => Err("UI_STATE: unsupported frame".into()),
         }
     }
 
-    fn snapshot(&mut self, frame: &Value) -> Result<StateUpdate, String> {
-        let revision = revision(&frame["rev"])?;
-        if !frame["state"].is_object() {
-            return Err("UI_STATE: expected state object".into());
-        }
-        self.data = Some(frame["state"].clone());
-        self.revision = revision;
-        self.recovery = None;
-        Ok(StateUpdate {
-            changed: true,
-            outbound: Vec::new(),
-        })
-    }
-
-    fn recover(&mut self, frame: &Value) -> StateUpdate {
-        self.next_request += 1;
-        let id = format!("ui-state-{}", self.next_request);
-        self.recovery = Some(id.clone());
-        let mut request = json!({"v":2,"kind":"req","id":id,"method":"state.getSnapshot","cap":"state","params":{}});
-        if let Some(scope) = frame.get("scope") {
-            request["params"]["scope"] = scope.clone();
-        }
+    fn resync(&mut self) -> StateUpdate {
+        self.resyncing = true;
         StateUpdate {
-            changed: false,
-            outbound: vec![request],
+            resync: true,
+            ..StateUpdate::default()
         }
     }
 }
 
-fn revision(value: &Value) -> Result<u64, String> {
-    value
-        .as_u64()
-        .filter(|value| *value <= 9_007_199_254_740_991)
-        .ok_or_else(|| "UI_STATE: invalid revision".into())
-}
-
-fn apply_patch(root: &mut Value, ops: &Value) -> Result<(), String> {
-    for op in ops.as_array().ok_or("UI_PATCH: expected operations")? {
-        let kind = op["op"].as_str().ok_or("UI_PATCH: missing operation")?;
-        if !matches!(kind, "add" | "replace" | "remove") {
-            return Err("UI_PATCH: unsupported operation".into());
-        }
-        let path = op["path"].as_str().ok_or("UI_PATCH: missing pointer")?;
-        let value = if kind == "remove" {
-            Value::Null
-        } else {
-            op.get("value").ok_or("UI_PATCH: missing value")?.clone()
+fn apply_patch(root: &mut Value, ops: Vec<PatchOp>) -> Result<(), String> {
+    for op in ops {
+        let (remove, path, value) = match op {
+            PatchOp::Add { path, value } => (false, path, Some((false, value))),
+            PatchOp::Replace { path, value } => (false, path, Some((true, value))),
+            PatchOp::Remove { path } => (true, path, None),
         };
         if path.is_empty() {
-            *root = if kind == "remove" {
-                json!({})
-            } else if value.is_object() {
-                value
-            } else {
-                return Err("UI_PATCH: root must be object".into());
+            *root = match value {
+                None => json!({}),
+                Some((_, value)) if value.is_object() => value,
+                Some(_) => return Err("UI_PATCH: root must be object".into()),
             };
             continue;
         }
@@ -151,7 +135,7 @@ fn apply_patch(root: &mut Value, ops: &Value) -> Result<(), String> {
         for (index, segment) in segments[..segments.len() - 1].iter().enumerate() {
             current = match current {
                 Value::Object(object) => {
-                    if kind != "remove" && !object.contains_key(segment) {
+                    if !remove && !object.contains_key(segment) {
                         let next = &segments[index + 1];
                         object.insert(
                             segment.clone(),
@@ -174,27 +158,28 @@ fn apply_patch(root: &mut Value, ops: &Value) -> Result<(), String> {
         }
         let key = segments.last().unwrap();
         match current {
-            Value::Object(object) => {
-                if kind == "remove" {
+            Value::Object(object) => match value {
+                None => {
                     object.remove(key);
-                } else {
+                }
+                Some((_, value)) => {
                     object.insert(key.clone(), value);
                 }
-            }
+            },
             Value::Array(array) => {
                 let index = if key == "-" {
                     array.len()
                 } else {
                     array_index(key)?
                 };
-                match kind {
-                    "add" => array.insert(index.min(array.len()), value),
-                    "remove" => {
+                match value {
+                    None => {
                         if index < array.len() {
                             array.remove(index);
                         }
                     }
-                    "replace" => {
+                    Some((false, value)) => array.insert(index.min(array.len()), value),
+                    Some((true, value)) => {
                         // Native state patches use dense arrays; cap sparse expansion before allocating.
                         if index > 65535 {
                             return Err("UI_PATCH: array index too large".into());
@@ -204,7 +189,6 @@ fn apply_patch(root: &mut Value, ops: &Value) -> Result<(), String> {
                         }
                         array[index] = value;
                     }
-                    _ => unreachable!(),
                 }
             }
             _ => return Err("UI_PATCH: invalid container".into()),
@@ -226,16 +210,26 @@ fn array_index(value: &str) -> Result<usize, String> {
 mod tests {
     use super::*;
 
+    fn replace(path: &str, value: Value) -> PatchOp {
+        PatchOp::Replace {
+            path: path.into(),
+            value,
+        }
+    }
+
     #[test]
     fn malformed_patch_operations_are_ui_patch() {
-        let mut root = json!({});
+        let mut root = json!({"n": 1});
         for ops in [
-            json!({}),
-            json!([{"op": "move", "path": "/a"}]),
-            json!([{"op": "add"}]),
+            vec![PatchOp::Add {
+                path: "a".into(),
+                value: json!(1),
+            }],
+            vec![replace("", json!(3))],
+            vec![replace("/n/x", json!(1))],
         ] {
             assert!(
-                apply_patch(&mut root, &ops)
+                apply_patch(&mut root, ops)
                     .unwrap_err()
                     .starts_with("UI_PATCH:")
             );
@@ -243,38 +237,98 @@ mod tests {
     }
 
     #[test]
-    fn patch_ack_follows_atomic_application_and_pointer_rules() {
+    fn patches_apply_in_place_and_acknowledge_their_revision() {
         let mut state = StateReplica::default();
         assert!(state.data().is_none());
         state
-            .receive(
-                &json!({"v":2,"kind":"state.snapshot","rev":7,"state":{"items":[1,2],"a/b":0}}),
-            )
+            .write(StateWrite::Snapshot {
+                rev: 7,
+                state: json!({"items":[1,2],"a/b":0}),
+            })
             .unwrap();
-        let result=state.receive(&json!({"v":2,"kind":"state.patch","baseRev":7,"rev":8,"ack":true,"scope":"page","ops":[{"op":"add","path":"/items/1","value":3},{"op":"replace","path":"/a~1b","value":4},{"op":"replace","path":"/nested/name","value":"hello"}]})).unwrap();
+        let result = state
+            .write(StateWrite::Patch {
+                rev: 8,
+                ack: true,
+                ops: vec![
+                    PatchOp::Add {
+                        path: "/items/1".into(),
+                        value: json!(3),
+                    },
+                    replace("/a~1b", json!(4)),
+                    replace("/nested/name", json!("hello")),
+                ],
+            })
+            .unwrap();
         assert_eq!(
             state.data(),
             Some(&json!({"items":[1,3,2],"a/b":4,"nested":{"name":"hello"}}))
         );
         assert_eq!(
-            result.outbound,
-            vec![json!({"v":2,"kind":"state.ack","rev":8,"scope":"page"})]
+            (result.changed, result.ack, result.resync),
+            (true, Some(8), false)
         );
     }
 
     #[test]
-    fn failed_patch_recovers_once_and_never_acknowledges_queued_revisions() {
+    fn a_failed_patch_resyncs_once_and_never_acknowledges_dropped_revisions() {
         let mut state = StateReplica::static_page();
-        let result=state.receive(&json!({"v":2,"kind":"state.patch","baseRev":0,"rev":1,"ack":true,"ops":[{"op":"add","path":"/value","value":3},{"op":"remove","path":"/missing/child"}]})).unwrap();
-        assert_eq!(state.data(), Some(&json!({})));
-        assert_eq!(state.revision(), 0);
-        assert_eq!(result.outbound[0]["method"], "state.getSnapshot");
-        let ignored = state
-            .receive(&json!({"v":2,"kind":"state.patch","baseRev":1,"rev":2,"ack":true,"ops":[]}))
+        let result = state
+            .write(StateWrite::Patch {
+                rev: 1,
+                ack: true,
+                ops: vec![PatchOp::Remove {
+                    path: "/missing/child".into(),
+                }],
+            })
             .unwrap();
-        assert!(ignored.outbound.is_empty());
-        state.receive(&json!({"v":2,"kind":"res","id":result.outbound[0]["id"],"ok":true,"result":{"rev":2,"state":{"value":9}}})).unwrap();
+        assert_eq!(state.revision(), 0);
+        assert!(result.resync && result.ack.is_none() && !result.changed);
+        let ignored = state
+            .write(StateWrite::Patch {
+                rev: 2,
+                ack: true,
+                ops: vec![],
+            })
+            .unwrap();
+        assert!(!ignored.resync && ignored.ack.is_none());
+        state
+            .write(StateWrite::Snapshot {
+                rev: 2,
+                state: json!({"value":9}),
+            })
+            .unwrap();
         assert_eq!(state.data(), Some(&json!({"value":9})));
-        assert_eq!(state.revision(), 2);
+        let result = state
+            .write(StateWrite::Patch {
+                rev: 3,
+                ack: true,
+                ops: vec![replace("/value", json!(10))],
+            })
+            .unwrap();
+        assert_eq!(result.ack, Some(3));
+    }
+
+    #[test]
+    fn a_patch_before_the_first_snapshot_or_out_of_order_resyncs() {
+        let mut state = StateReplica::default();
+        let early = StateWrite::Patch {
+            rev: 1,
+            ack: false,
+            ops: vec![],
+        };
+        assert!(state.write(early).unwrap().resync);
+        state
+            .write(StateWrite::Snapshot {
+                rev: 4,
+                state: json!({}),
+            })
+            .unwrap();
+        let stale = StateWrite::Patch {
+            rev: 4,
+            ack: false,
+            ops: vec![],
+        };
+        assert!(state.write(stale).unwrap().resync);
     }
 }

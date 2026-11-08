@@ -7,7 +7,7 @@ const ACK_DEADLINE: std::time::Duration = std::time::Duration::from_millis(250);
 use crate::platform::PlatformAdapter;
 use crate::session::ViewSession;
 use crate::session::lifecycle::ConnectionTicket;
-use crate::session::state::StateUpdate;
+use crate::session::state::{StateSignal, StateUpdate, StateWrite};
 use std::sync::Arc;
 
 /// What a bridge step produced for the main thread.
@@ -18,8 +18,10 @@ pub struct BridgeUpdate {
     pub changed: bool,
     pub local_changed: bool,
     pub outbound: Vec<String>,
-    /// State acknowledgements by revision; sent once a frame from that state is built.
-    pub acks: Vec<(u64, String)>,
+    /// Revisions to acknowledge once a frame from that state is built.
+    pub acks: Vec<u64>,
+    /// Ask Logic for a state snapshot.
+    pub resync: bool,
     pub errors: Vec<String>,
     /// Settled automation action calls.
     pub automation: Vec<crate::session::bridge::AutomationOutcome>,
@@ -32,21 +34,15 @@ pub(super) fn update(
     session: &mut ViewSession,
     update: StateUpdate,
 ) -> Result<BridgeUpdate, String> {
-    let (acks, rest): (Vec<_>, Vec<_>) = update
-        .outbound
-        .iter()
-        .partition(|m| m["kind"] == "state.ack" && m["rev"].is_u64());
-    let mut outbound: Vec<String> = rest.iter().map(|m| m.to_string()).collect();
+    let mut outbound: Vec<String> = update.outbound.iter().map(|m| m.to_string()).collect();
     outbound.extend(session.take_action_requests()?);
     Ok(BridgeUpdate {
         ready: session.ready_to_render(),
         changed: update.changed,
         local_changed: session.has_local_updates()?,
         outbound,
-        acks: acks
-            .iter()
-            .map(|m| (m["rev"].as_u64().unwrap_or(0), m.to_string()))
-            .collect(),
+        acks: update.ack.into_iter().collect(),
+        resync: update.resync,
         errors: session.take_action_errors()?,
         automation: session.take_automation_results()?,
         overlay_timers: session.take_overlay_timers()?,
@@ -66,6 +62,7 @@ impl<A: PlatformAdapter> Inner<A> {
             StateUpdate {
                 changed: true,
                 outbound: Vec::new(),
+                ..Default::default()
             },
         )?;
         Ok(Some((self.lifecycle.connection(), update)))
@@ -90,6 +87,9 @@ impl<A: PlatformAdapter> Inner<A> {
         for message in &update.outbound {
             self.adapter.message(connection, message);
         }
+        if update.resync {
+            self.adapter.state(connection, StateSignal::Resync);
+        }
         if !update.acks.is_empty() {
             // A write is acknowledged once the frame that shows it is built and queued for the
             // display, so a Logic loop that awaits its writes runs once per frame, covered window
@@ -102,13 +102,13 @@ impl<A: PlatformAdapter> Inner<A> {
             if showing && (!self.window_hidden() || self.paced_hidden()) {
                 self.main()
                     .acks
-                    .extend(update.acks.into_iter().map(|(rev, m)| (connection, rev, m)));
+                    .extend(update.acks.into_iter().map(|rev| (connection, rev)));
                 let inner = self.clone();
                 self.adapter
                     .post_after(ACK_DEADLINE, Box::new(move || inner.release_acks(u64::MAX)));
             } else {
-                for (_, message) in &update.acks {
-                    self.adapter.message(connection, message);
+                for rev in update.acks {
+                    self.adapter.state(connection, StateSignal::Acked(rev));
                 }
             }
         }
@@ -128,19 +128,17 @@ impl<A: PlatformAdapter> Inner<A> {
 
     /// Send the held acknowledgements up to revision `shown`, for the current connection.
     pub(super) fn release_acks(self: &Arc<Self>, shown: u64) {
-        let due: Vec<(ConnectionTicket, String)> = {
+        let due: Vec<(ConnectionTicket, u64)> = {
             let mut main = self.main();
             let (due, held) = std::mem::take(&mut main.acks)
                 .into_iter()
-                .partition(|(_, rev, _)| *rev <= shown);
+                .partition(|(_, rev)| *rev <= shown);
             main.acks = held;
-            due.into_iter()
-                .map(|(connection, _, m)| (connection, m))
-                .collect()
+            due
         };
-        for (connection, message) in due {
+        for (connection, rev) in due {
             if self.lifecycle.is_current_connection(connection) {
-                self.adapter.message(connection, &message);
+                self.adapter.state(connection, StateSignal::Acked(rev));
             }
         }
     }
@@ -218,6 +216,20 @@ impl<A: PlatformAdapter> Inner<A> {
         });
     }
 
+    /// A state write skips the action queues: it runs no View code.
+    pub(super) fn write_state(self: &Arc<Self>, connection: ConnectionTicket, write: StateWrite) {
+        self.bridge_step(connection, move |session| {
+            let state = session.write_state(write)?;
+            Ok(BridgeUpdate {
+                ready: session.ready_to_render(),
+                changed: state.changed,
+                acks: state.ack.into_iter().collect(),
+                resync: state.resync,
+                ..BridgeUpdate::default()
+            })
+        });
+    }
+
     pub(super) fn request_leave(self: &Arc<Self>, connection: ConnectionTicket, reason: String) {
         self.bridge_step(connection, move |session| {
             session.request_leave(&reason)?;
@@ -226,6 +238,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 StateUpdate {
                     changed: true,
                     outbound: Vec::new(),
+                    ..Default::default()
                 },
             )
         });

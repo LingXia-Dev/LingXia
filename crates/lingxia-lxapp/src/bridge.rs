@@ -106,6 +106,11 @@ pub(crate) enum AppServiceCommand {
         scope: Option<String>,
         rev: u64,
     },
+    /// A GPU View dropped a patch it could not apply and waits for a snapshot.
+    StateResync {
+        work_id: Option<SessionWorkId>,
+        outbound: Option<OutboundContext>,
+    },
     /// Internal lifecycle transitions, never decoded from a document frame.
     BeginSessionWork {
         work_id: SessionWorkId,
@@ -287,6 +292,27 @@ pub(crate) enum OutboundContext {
 }
 
 impl OutboundContext {
+    pub(crate) fn is_gpu(&self) -> bool {
+        matches!(self, Self::Gpu { .. })
+    }
+
+    /// Typed state for a GPU View; a document takes state only as frames.
+    fn post_state(&self, write: crate::GpuStateWrite) -> Result<(), LxAppError> {
+        let Self::Gpu {
+            endpoint,
+            generation,
+        } = self
+        else {
+            return Err(LxAppError::Bridge(
+                "typed state is only for GPU pages".into(),
+            ));
+        };
+        let endpoint = endpoint
+            .upgrade()
+            .ok_or_else(|| LxAppError::Bridge("GPU endpoint was disposed".into()))?;
+        endpoint.write_state(*generation, write)
+    }
+
     fn binding(&self) -> Option<&V3OutboundBinding> {
         match self {
             Self::Document { binding, .. } => binding.as_ref(),
@@ -1031,6 +1057,43 @@ impl PageBridge {
         if let Some(connection) = connection {
             self.cancel_work(page, connection, "GPU setup cancelled");
         }
+    }
+
+    /// A GPU View's report on its typed state writes, admitted like its frames.
+    pub(crate) fn handle_gpu_state_signal(
+        &self,
+        page: &PageInstance,
+        endpoint: &Arc<dyn crate::GpuPageView>,
+        generation: crate::GpuViewGeneration,
+        signal: crate::GpuStateSignal,
+    ) -> Result<(), LxAppError> {
+        let outbound = {
+            let handshake = self.inner.handshake.lock().unwrap();
+            handshake
+                .connection
+                .as_ref()
+                .and_then(|connection| connection.outbound.clone())
+                .filter(|outbound| {
+                    matches!(outbound, OutboundContext::Gpu { endpoint: expected, generation: current }
+                        if *current == generation && expected.upgrade().is_some_and(|expected| Arc::ptr_eq(&expected, endpoint)))
+                })
+                .ok_or_else(|| LxAppError::Bridge("stale GPU connection".into()))?
+        };
+        let work_id = Some(SessionWorkId(generation.0));
+        self.forward_js_message(
+            page,
+            match signal {
+                crate::GpuStateSignal::Acked(rev) => AppServiceCommand::StateAck {
+                    work_id,
+                    scope: None,
+                    rev,
+                },
+                crate::GpuStateSignal::Resync => AppServiceCommand::StateResync {
+                    work_id,
+                    outbound: Some(outbound),
+                },
+            },
+        )
     }
 
     pub(crate) fn handle_gpu_incoming(
@@ -2018,6 +2081,13 @@ impl PageBridge {
         rev: u64,
         state_json: String,
     ) -> Result<(), LxAppError> {
+        if let Some(outbound) = outbound.filter(|outbound| outbound.is_gpu()) {
+            if !self.is_current_work(work_id) {
+                return Ok(());
+            }
+            let state = serde_json::from_str(&state_json)?;
+            return outbound.post_state(crate::GpuStateWrite::Snapshot { rev, state });
+        }
         let state =
             RawValue::from_string(state_json).map_err(|e| LxAppError::Bridge(e.to_string()))?;
         let msg = StateSnapshotOut {
@@ -2034,6 +2104,23 @@ impl PageBridge {
             V3OutboundKind::StateSnapshot,
             &msg,
         )
+    }
+
+    /// A GPU page's state patch, typed and in process.
+    pub(crate) fn send_gpu_state_patch(
+        &self,
+        work_id: Option<SessionWorkId>,
+        outbound: Option<&OutboundContext>,
+        rev: u64,
+        ops: Vec<crate::GpuPatchOp>,
+        ack: bool,
+    ) -> Result<(), LxAppError> {
+        if !self.is_current_work(work_id) {
+            return Ok(());
+        }
+        let outbound =
+            outbound.ok_or_else(|| LxAppError::Bridge("GPU state has no connection".into()))?;
+        outbound.post_state(crate::GpuStateWrite::Patch { rev, ops, ack })
     }
 
     pub(crate) fn send_state_patch_for_context<T: ViewTransport>(
@@ -3020,6 +3107,17 @@ mod tests {
             fn post_message(&self, _: &str) -> Result<(), LxAppError> {
                 panic!("unbound delivery")
             }
+            fn write_state(
+                &self,
+                generation: crate::GpuViewGeneration,
+                write: crate::GpuStateWrite,
+            ) -> Result<(), LxAppError> {
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push((generation.get(), format!("{write:?}")));
+                Ok(())
+            }
             fn post_message_for_generation(
                 &self,
                 generation: crate::GpuViewGeneration,
@@ -3066,6 +3164,29 @@ mod tests {
         assert!(outbound.binding().is_none());
         outbound.post(&OtherTransport, "reply".into()).unwrap();
         assert_eq!(*target.0.lock().unwrap(), vec![(42, "reply".into())]);
+        let ops: Vec<crate::GpuPatchOp> = serde_json::from_str(
+            r#"[{"op":"replace","path":"/n","value":1},{"op":"remove","path":"/m"}]"#,
+        )
+        .unwrap();
+        assert_eq!(ops[1], crate::GpuPatchOp::Remove { path: "/m".into() });
+        assert!(
+            serde_json::from_str::<Vec<crate::GpuPatchOp>>(
+                r#"[{"op":"move","from":"/a","path":"/b"}]"#
+            )
+            .is_err()
+        );
+        outbound
+            .post_state(crate::GpuStateWrite::Patch {
+                rev: 3,
+                ops,
+                ack: true,
+            })
+            .unwrap();
+        let state = target.0.lock().unwrap()[1].clone();
+        assert!(
+            state.0 == 42 && state.1.starts_with("Patch { rev: 3"),
+            "{state:?}"
+        );
         drop(endpoint);
         drop(target);
         assert!(outbound.post(&OtherTransport, "late".into()).is_err());

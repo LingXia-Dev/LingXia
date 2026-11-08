@@ -113,6 +113,14 @@ impl Shell for Bridge {
     fn message(&self, token: i64, connection: u64, message: &str) {
         gpu_page::message(token, connection, message);
     }
+    fn state(
+        &self,
+        token: i64,
+        connection: u64,
+        signal: lingxia_view_harmony::lingxia_view::session::state::StateSignal,
+    ) {
+        gpu_page::state_signal(token, connection, gpu_page::state::from_view(signal));
+    }
     fn restart(&self, token: i64, connection: u64) -> bool {
         gpu_page::restart(token, connection)
     }
@@ -194,6 +202,7 @@ impl Shell for Bridge {
 
 struct HarmonyPage {
     token: Token,
+    writer: lingxia_view_harmony::lingxia_view::session::host::StateWriter,
 }
 
 impl NativePage for HarmonyPage {
@@ -217,6 +226,17 @@ impl NativePage for HarmonyPage {
         on_page(self.token, move |page| {
             page.with_host(|host| host.receive(ConnectionTicket::new(generation.get()), frame));
         });
+        Ok(())
+    }
+    fn write_state(
+        &self,
+        generation: GpuViewGeneration,
+        write: lxapp::GpuStateWrite,
+    ) -> std::result::Result<(), LxAppError> {
+        self.writer.write(
+            ConnectionTicket::new(generation.get()),
+            gpu_page::state::to_view(write),
+        );
         Ok(())
     }
     fn request_leave(
@@ -316,11 +336,16 @@ impl NativeFactory for Factory {
             // ArkTS must know the token before the host's first events, sent during creation;
             // it builds the page's ContentSlot, then mounts it with `gpuPageMount`.
             arkts(token, "create", &describe);
-            let created =
-                Page::new(token, Arc::new(Bridge), &request.worker, request.logic).map(|page| {
-                    page.with_host(|host| host.load(request.source));
+            let created = Page::new(token, Arc::new(Bridge), &request.worker, request.logic)
+                .and_then(|page| {
+                    let writer = page
+                        .with_host(|host| {
+                            host.load(request.source);
+                            host.state_writer()
+                        })
+                        .ok_or_else(|| "GPU page has no host".to_string())?;
                     PAGES.with(|pages| pages.borrow_mut().insert(token, page));
-                    Arc::new(HarmonyPage { token }) as Arc<dyn NativePage>
+                    Ok(Arc::new(HarmonyPage { token, writer }) as Arc<dyn NativePage>)
                 });
             if created.is_err() {
                 arkts(token, "dispose", "");

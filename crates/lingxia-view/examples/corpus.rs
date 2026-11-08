@@ -64,7 +64,10 @@ fn session(job: &Job, source: &str) -> Result<lingxia_view::ViewSession, String>
     env["canDock"] = false.into();
     page.set_environment(env)?;
     if let Some(state) = &job.state {
-        page.receive_state(&json!({"v":2,"kind":"state.snapshot","rev":0,"state":state}))?;
+        page.write_state(lingxia_view::session::state::StateWrite::Snapshot {
+            rev: 0,
+            state: state.clone(),
+        })?;
     }
     Ok(page)
 }

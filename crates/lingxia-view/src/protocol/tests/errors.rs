@@ -33,7 +33,15 @@ fn host_inputs_outside_their_contract_fail_by_code() {
     );
     assert_eq!(code(page.begin_bridge("")), "UI_BRIDGE");
     assert_eq!(code(page.receive_bridge(&json!({"v": 3}))), "UI_BRIDGE");
-    assert_eq!(code(page.receive_state(&json!({"v": 1}))), "UI_STATE");
+    assert_eq!(
+        code(
+            page.write_state(crate::session::state::StateWrite::Snapshot {
+                rev: 1,
+                state: json!([]),
+            })
+        ),
+        "UI_STATE"
+    );
     assert_eq!(code(page.request_leave("sideways")), "UI_LEAVE");
     assert_eq!(
         code(crate::interaction::chrome::ChromeNode::parse("[")),

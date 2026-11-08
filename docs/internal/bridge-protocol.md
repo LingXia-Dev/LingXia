@@ -622,6 +622,11 @@ Acknowledges a replicated revision.
 
 Use state replication for durable, recoverable UI state. Use `event` and `ch.data` for transient or high-frequency payloads.
 
+A GPU page's View is the exception: it keeps `LegacyV2` for the handshake, requests, events and
+channels, but takes state as typed in-process writes through the facade (snapshot, patch with
+its revision, acknowledgement, resync after a patch that fails), never as `state.*` frames; there
+is no `baseRev` and no `state.getSnapshot` on that path.
+
 ## 7. Reference Exchanges
 
 This section is illustrative. It describes protocol shapes, not business-level contracts.

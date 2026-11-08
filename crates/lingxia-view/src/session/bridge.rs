@@ -1,11 +1,15 @@
 use super::*;
 
 impl ViewSession {
-    pub fn receive_state(
+    /// A typed Logic state write. It needs no acknowledged session: it arrives in process,
+    /// guarded by its connection, and may overtake the handshake frames.
+    pub fn write_state(
         &mut self,
-        frame: &serde_json::Value,
+        write: crate::session::state::StateWrite,
     ) -> Result<crate::session::state::StateUpdate, String> {
-        self.state.receive(frame)
+        let mut update = self.state.write(write)?;
+        update.changed &= self.ready_to_render();
+        Ok(update)
     }
 
     /// Called by native after attaching this context to its owning page endpoint.
@@ -71,24 +75,11 @@ impl ViewSession {
                 Ok(crate::session::state::StateUpdate {
                     changed: self.ready_to_render(),
                     outbound: Vec::new(),
+                    ..Default::default()
                 })
             }
             _ if bridge.session.is_none() || frame.get("sessionId").is_some() => {
                 Err("UI_BRIDGE: frame outside acknowledged LegacyV2 connection".into())
-            }
-            "state.snapshot" | "state.patch" => {
-                let mut update = self.receive_state(frame)?;
-                update.changed &= self.ready_to_render();
-                Ok(update)
-            }
-            "res"
-                if frame["id"]
-                    .as_str()
-                    .is_some_and(|id| id.starts_with("ui-state-")) =>
-            {
-                let mut update = self.receive_state(frame)?;
-                update.changed &= self.ready_to_render();
-                Ok(update)
             }
             "res" | "event" | "ch.ack" | "ch.data" | "ch.close" => {
                 let changed = self.receive_action_response(frame)?;
@@ -100,6 +91,7 @@ impl ViewSession {
                 Ok(crate::session::state::StateUpdate {
                     changed: changed && self.ready_to_render(),
                     outbound,
+                    ..Default::default()
                 })
             }
             // A Logic call into the View (`call_view`): the overlays answer `ui.*`; any other
@@ -124,6 +116,7 @@ impl ViewSession {
                 Ok(crate::session::state::StateUpdate {
                     changed: answer["changed"] == true && self.ready_to_render(),
                     outbound,
+                    ..Default::default()
                 })
             }
             _ => Err("UI_BRIDGE: unsupported frame".into()),

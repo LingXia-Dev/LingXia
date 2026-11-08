@@ -206,8 +206,11 @@ fn letter_spacing_changes_wrapping_without_stale_cached_layouts() {
     let mut page = crate::ViewSession::new(&module).unwrap();
     let mut heights = Vec::new();
     for spacing in [0, 8, 0] {
-        page.receive_state(&serde_json::json!({"v":2,"kind":"state.snapshot","rev":heights.len(),"state":{"spacing":spacing}}))
-            .unwrap();
+        page.write_state(crate::session::state::StateWrite::Snapshot {
+            rev: heights.len() as u64,
+            state: serde_json::json!({"spacing":spacing}),
+        })
+        .unwrap();
         let frame = page.layout(200, 200, 1.0).unwrap();
         heights.push(frame.nodes[1].bounds[3]);
     }
@@ -304,8 +307,11 @@ fn italic_inherits_resets_and_does_not_reuse_upright_shaping() {
         ("normal", "italic"),
         ("normal", ""),
     ] {
-        page.receive_state(&serde_json::json!({"v":2,"kind":"state.snapshot","rev":pixels.len(),"state":{"parent":parent,"child":child}}))
-            .unwrap();
+        page.write_state(crate::session::state::StateWrite::Snapshot {
+            rev: pixels.len() as u64,
+            state: serde_json::json!({"parent":parent,"child":child}),
+        })
+        .unwrap();
         pixels.push(
             page.layout(320, 100, 1.0)
                 .unwrap()

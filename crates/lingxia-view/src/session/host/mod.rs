@@ -192,6 +192,23 @@ pub struct ViewHost<A: PlatformAdapter> {
     inner: Arc<Inner<A>>,
 }
 
+/// Writes Logic state into one host from any thread; see [`ViewHost::state_writer`].
+#[derive(Clone)]
+pub struct StateWriter(
+    Arc<dyn Fn(ConnectionTicket, crate::session::state::StateWrite) -> bool + Send + Sync>,
+);
+
+impl StateWriter {
+    /// False once the page is gone.
+    pub fn write(
+        &self,
+        connection: ConnectionTicket,
+        write: crate::session::state::StateWrite,
+    ) -> bool {
+        (self.0)(connection, write)
+    }
+}
+
 /// A host handle that does not keep the page alive, e.g. for an adapter's
 /// completion callbacks.
 pub struct WeakViewHost<A: PlatformAdapter> {
@@ -247,7 +264,7 @@ struct Main<F> {
     host_environment: environment::HostEnvironment,
     snapshot: Option<Arc<FrameSnapshot>>,
     /// State acknowledgements held until a frame built from their revision is queued to present.
-    acks: Vec<(ConnectionTicket, u64, String)>,
+    acks: Vec<(ConnectionTicket, u64)>,
     prepared: Option<pump::Prepared<F>>,
     /// A frame handed to the adapter that is not on screen yet.
     deferred: Option<pump::Deferred>,
@@ -672,6 +689,25 @@ impl<A: PlatformAdapter> ViewHost<A> {
 
     pub fn receive(&self, connection: ConnectionTicket, frame: String) {
         self.inner.receive(connection, frame);
+    }
+
+    /// Any thread: a typed Logic state write, applied in write order with the others.
+    pub fn write_state(
+        &self,
+        connection: ConnectionTicket,
+        write: crate::session::state::StateWrite,
+    ) {
+        self.inner.write_state(connection, write);
+    }
+
+    /// A handle for [`Self::write_state`] that does not keep the page alive.
+    pub fn state_writer(&self) -> StateWriter {
+        let host = self.downgrade();
+        StateWriter(Arc::new(move |connection, write| {
+            host.upgrade()
+                .map(|host| host.write_state(connection, write))
+                .is_some()
+        }))
     }
 
     pub fn request_leave(&self, connection: ConnectionTicket, reason: String) {

@@ -139,6 +139,12 @@ const STATE_DEFERRED: &str = "deferred";
 /// Terminated, departing, superseded, cancelled, or refused by the view.
 const STATE_DROPPED: &str = "dropped";
 
+/// A `setData` batch as its View takes it.
+enum PatchOps {
+    Typed(Vec<crate::GpuPatchOp>),
+    Frame(Box<RawValue>),
+}
+
 struct StateCallback {
     callback: JSFunc,
     work_id: Option<SessionWorkId>,
@@ -420,6 +426,12 @@ impl PageSvc {
         &self,
         _scope: Option<&str>,
     ) -> Result<String, LxAppError> {
+        let (rev, data_json) = self.state_snapshot_parts().await?;
+        Ok(format!(r#"{{"rev":{},"state":{}}}"#, rev, data_json))
+    }
+
+    /// The current revision and the live page data as JSON.
+    pub(crate) async fn state_snapshot_parts(&self) -> Result<(u64, String), LxAppError> {
         let data_obj = self
             .this
             .require()
@@ -429,7 +441,7 @@ impl PageSvc {
             .to_json_string()
             .map_err(|e| LxAppError::Bridge(e.to_string()))?;
         let rev = self.state.lock().await.state_rev;
-        Ok(format!(r#"{{"rev":{},"state":{}}}"#, rev, data_json))
+        Ok((rev, data_json))
     }
 
     pub(crate) async fn handle_req(
@@ -1251,12 +1263,17 @@ impl PageSvc {
         let new_rev = base_rev + 1;
         state.state_rev = new_rev;
 
-        let ops = RawValue::from_string(ops_json).map_err(|e| {
+        let internal = |e: serde_json::Error| {
             RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))
-        })?;
-        serde_json::from_str::<Vec<crate::bridge::JsonPatchOp>>(ops.get()).map_err(|e| {
-            RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))
-        })?;
+        };
+        // A GPU View takes the ops typed and in process; a WebView takes the frame.
+        let ops = if outbound.as_ref().is_some_and(OutboundContext::is_gpu) {
+            PatchOps::Typed(serde_json::from_str(&ops_json).map_err(internal)?)
+        } else {
+            let ops = RawValue::from_string(ops_json).map_err(internal)?;
+            serde_json::from_str::<Vec<crate::bridge::JsonPatchOp>>(ops.get()).map_err(internal)?;
+            PatchOps::Frame(ops)
+        };
 
         let ack = if let Some(cb) = callback {
             state.state_callback.insert(
@@ -1279,16 +1296,25 @@ impl PageSvc {
             if self.terminated.get() || !self.page.accepts_view_state_patches() {
                 None
             } else {
-                Some(bridge.send_state_patch_for_context(
-                    self,
-                    work_id,
-                    outbound.as_ref(),
-                    None,
-                    base_rev,
-                    new_rev,
-                    ops,
-                    ack,
-                ))
+                Some(match ops {
+                    PatchOps::Typed(ops) => bridge.send_gpu_state_patch(
+                        work_id,
+                        outbound.as_ref(),
+                        new_rev,
+                        ops,
+                        ack.is_some(),
+                    ),
+                    PatchOps::Frame(ops) => bridge.send_state_patch_for_context(
+                        self,
+                        work_id,
+                        outbound.as_ref(),
+                        None,
+                        base_rev,
+                        new_rev,
+                        ops,
+                        ack,
+                    ),
+                })
             }
         };
 

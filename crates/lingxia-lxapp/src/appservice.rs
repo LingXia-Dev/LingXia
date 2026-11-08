@@ -223,7 +223,8 @@ mod no_js_runtime {
                 | crate::bridge::AppServiceCommand::CancelSessionWork { .. }
                 | crate::bridge::AppServiceCommand::Ready { .. }
                 | crate::bridge::AppServiceCommand::StateSnapshot { .. }
-                | crate::bridge::AppServiceCommand::StateAck { .. } => Ok(()),
+                | crate::bridge::AppServiceCommand::StateAck { .. }
+                | crate::bridge::AppServiceCommand::StateResync { .. } => Ok(()),
                 // Real AppService traffic is unavailable in native-only mode.
                 _ => Err(LxAppError::UnsupportedOperation(
                     "AppService is unavailable for logic:false page".to_string(),

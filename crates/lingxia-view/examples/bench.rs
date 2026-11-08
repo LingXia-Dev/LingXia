@@ -51,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for tick in 0..ticks + warm {
         let mut state = extra.clone();
         state["tick"] = tick.into();
-        page.receive_state(&json!({"v":2,"kind":"state.snapshot","rev":tick,"state":state}))?;
+        page.write_state(lingxia_view::session::state::StateWrite::Snapshot { rev: tick, state })?;
         page.layout(pw, ph, scale)?;
         // The host collects between frames, as a device worker does when idle.
         let started = std::time::Instant::now();

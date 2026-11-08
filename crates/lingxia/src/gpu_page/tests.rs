@@ -24,6 +24,17 @@ impl NativePage for Shell {
             .push(format!("receive {} {frame}", generation.get()));
         Ok(())
     }
+    fn write_state(
+        &self,
+        generation: GpuViewGeneration,
+        write: GpuStateWrite,
+    ) -> Result<(), LxAppError> {
+        self.0
+            .lock()
+            .unwrap()
+            .push(format!("state {} {write:?}", generation.get()));
+        Ok(())
+    }
     fn request_leave(&self, generation: GpuViewGeneration, reason: &str) -> Result<(), LxAppError> {
         self.0
             .lock()
@@ -94,7 +105,7 @@ fn generation(value: u64) -> GpuViewGeneration {
 }
 
 #[test]
-fn messages_reach_the_shell_only_for_the_current_connection() {
+fn messages_and_state_reach_the_shell_only_for_the_current_connection() {
     let factory = Arc::new(Factory::default());
     let (endpoint, shell, _) = endpoint(&factory, "gate");
     endpoint
@@ -107,6 +118,12 @@ fn messages_reach_the_shell_only_for_the_current_connection() {
     endpoint
         .post_message_for_generation(generation(2), "state")
         .unwrap();
+    let snapshot = |rev| GpuStateWrite::Snapshot {
+        rev,
+        state: serde_json::json!({}),
+    };
+    endpoint.write_state(generation(1), snapshot(1)).unwrap();
+    endpoint.write_state(generation(2), snapshot(2)).unwrap();
     assert!(
         endpoint.connect(generation(1), "old").is_err(),
         "superseded"
@@ -119,7 +136,13 @@ fn messages_reach_the_shell_only_for_the_current_connection() {
         .unwrap();
     assert_eq!(
         shell.calls(),
-        ["connect 2 nonce", "receive 2 state", "leave 2 back", "park"]
+        [
+            "connect 2 nonce",
+            "receive 2 state",
+            "state 2 Snapshot { rev: 2, state: Object {} }",
+            "leave 2 back",
+            "park"
+        ]
     );
 }
 
@@ -229,6 +252,9 @@ impl NativePage for Acting {
         Ok(())
     }
     fn receive(&self, _: GpuViewGeneration, _: &str) -> Result<(), LxAppError> {
+        Ok(())
+    }
+    fn write_state(&self, _: GpuViewGeneration, _: GpuStateWrite) -> Result<(), LxAppError> {
         Ok(())
     }
     fn request_leave(&self, _: GpuViewGeneration, _: &str) -> Result<(), LxAppError> {

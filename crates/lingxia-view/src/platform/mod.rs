@@ -129,6 +129,8 @@ pub trait HostEvents {
     fn presented(&self, frame: &FrameSnapshot, timing: &FrameTiming);
     /// An outbound Logic bridge message for `connection`.
     fn message(&self, connection: ConnectionTicket, message: &str);
+    /// What became of Logic's typed state writes for `connection`.
+    fn state(&self, connection: ConnectionTicket, signal: crate::session::state::StateSignal);
     /// Restart the Logic connection after a session failure; false when it cannot.
     fn restart(&self, connection: ConnectionTicket) -> bool;
     /// Show host recovery chrome, or clear it with `None`.

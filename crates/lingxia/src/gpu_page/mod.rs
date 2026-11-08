@@ -5,8 +5,8 @@
 // Off Android it is compiled only for its tests, which exercise part of it.
 #![cfg_attr(not(target_os = "android"), allow(dead_code, unused_imports))]
 use lxapp::{
-    GpuPageView, GpuPageViewFactory, GpuViewCreation, GpuViewGeneration, LeaveReason, LxAppError,
-    PageInstance, PageViewEnvironment,
+    GpuPageView, GpuPageViewFactory, GpuStateSignal, GpuStateWrite, GpuViewCreation,
+    GpuViewGeneration, LeaveReason, LxAppError, PageInstance, PageViewEnvironment,
 };
 use std::{
     collections::HashMap,
@@ -21,6 +21,13 @@ use tokio::sync::oneshot;
 mod automation;
 mod images;
 pub(crate) use images::load_image;
+#[cfg(any(
+    target_os = "android",
+    target_os = "ios",
+    target_os = "macos",
+    target_env = "ohos"
+))]
+pub(crate) mod state;
 
 /// Identifies one native page shell from creation to disposal.
 pub(crate) type Token = i64;
@@ -42,6 +49,12 @@ pub(crate) fn decode_reply(reply: &str) -> Result<serde_json::Value, String> {
 pub(crate) trait NativePage: Send + Sync + 'static {
     fn connect(&self, generation: GpuViewGeneration, nonce: &str) -> Result<(), LxAppError>;
     fn receive(&self, generation: GpuViewGeneration, frame: &str) -> Result<(), LxAppError>;
+    /// Any thread: typed Logic state, straight into the View host.
+    fn write_state(
+        &self,
+        generation: GpuViewGeneration,
+        write: GpuStateWrite,
+    ) -> Result<(), LxAppError>;
     fn request_leave(&self, generation: GpuViewGeneration, reason: &str) -> Result<(), LxAppError>;
     fn update_environment(&self, update: &serde_json::Value) -> Result<(), LxAppError>;
     fn reload(&self, source: &str) -> Result<(), LxAppError>;
@@ -175,6 +188,17 @@ impl GpuPageView for Endpoint {
             return Ok(());
         }
         self.native.receive(generation, message)
+    }
+
+    fn write_state(
+        &self,
+        generation: GpuViewGeneration,
+        write: GpuStateWrite,
+    ) -> Result<(), LxAppError> {
+        if self.current(generation.get()).is_none() {
+            return Ok(());
+        }
+        self.native.write_state(generation, write)
     }
 
     fn connect(&self, generation: GpuViewGeneration, nonce: &str) -> Result<(), LxAppError> {
@@ -387,6 +411,23 @@ pub(crate) fn message(token: Token, generation: u64, body: &str) {
         page.handle_incoming_gpu_message(&(endpoint as Arc<dyn GpuPageView>), current, body)
     {
         log::warn!("GPU bridge ingress rejected: {error}");
+    }
+}
+
+/// What the View made of Logic's typed state writes for its connection generation.
+pub(crate) fn state_signal(token: Token, generation: u64, signal: GpuStateSignal) {
+    let Some(endpoint) = live(token) else {
+        return;
+    };
+    let Some(current) = endpoint.current(generation) else {
+        return;
+    };
+    let Some(page) = lxapp::find_page_by_instance_id(&endpoint.lease.page) else {
+        return;
+    };
+    if let Err(error) = page.gpu_state_signal(&(endpoint as Arc<dyn GpuPageView>), current, signal)
+    {
+        log::warn!("GPU state signal rejected: {error}");
     }
 }
 

@@ -10,7 +10,8 @@ use crate::session::host::{
 use crate::session::lifecycle::{
     CommitTicket, ConnectionTicket, FailureKind, Retry, SurfaceTicket,
 };
-use crate::session::tests::{bounded_jobs, source};
+use crate::session::state::StateSignal;
+use crate::session::tests::{bounded_jobs, source, state_write};
 use image::ImageEncoder;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
@@ -30,6 +31,7 @@ struct Log {
     effects: Vec<Effect>,
     editors: Vec<Dispatch>,
     messages: Vec<(u64, String)>,
+    signals: Vec<(u64, StateSignal)>,
     recovery: Vec<Option<Failure>>,
     overdue: Vec<bool>,
     warnings: Vec<String>,
@@ -305,6 +307,9 @@ impl HostEvents for Fake {
             .messages
             .push((connection.get(), message.into()));
     }
+    fn state(&self, connection: ConnectionTicket, signal: StateSignal) {
+        self.main().signals.push((connection.get(), signal));
+    }
     fn restart(&self, _: ConnectionTicket) -> bool {
         self.restart
     }
@@ -498,6 +503,18 @@ fn png_of(seed: u8) -> Vec<u8> {
 
 fn loaded_images(host: &ViewHost<Fake>) -> usize {
     host.snapshot().map_or(0, |snapshot| snapshot.loaded_images)
+}
+
+/// A Logic frame as it now reaches the host: state as a typed write, the rest as a frame.
+fn deliver(host: &ViewHost<Fake>, connection: ConnectionTicket, frame: serde_json::Value) {
+    if frame["kind"]
+        .as_str()
+        .is_some_and(|kind| kind.starts_with("state."))
+    {
+        host.write_state(connection, state_write(&frame));
+    } else {
+        host.receive(connection, frame.to_string());
+    }
 }
 
 #[test]
@@ -1280,9 +1297,10 @@ fn connections_say_hello_and_report_an_overdue_bootstrap() {
         serde_json::json!({"v":2,"kind":"helloAck","nonce":"nonce","protocol":2,"sessionId":"s"})
             .to_string(),
     );
-    host.receive(
+    deliver(
+        &host,
         connection,
-        serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"count":3}}).to_string(),
+        serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"count":3}}),
     );
     host.receive(
         connection,
@@ -1297,10 +1315,10 @@ fn connections_say_hello_and_report_an_overdue_bootstrap() {
         );
         // A superseded connection's frames are ignored.
         host.connect(ConnectionTicket::new(2), "next".into());
-        host.receive(
+        deliver(
+            &host,
             connection,
-            serde_json::json!({"v":2,"kind":"state.snapshot","rev":1,"state":{"count":4}})
-                .to_string(),
+            serde_json::json!({"v":2,"kind":"state.snapshot","rev":1,"state":{"count":4}}),
         );
         platform.settle(&[&host]);
         assert_eq!(last(&host), ["count 3"]);
@@ -1332,7 +1350,7 @@ fn a_state_write_is_acknowledged_once_a_frame_showing_it_is_built() {
         serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"count":3}}),
         serde_json::json!({"v":2,"kind":"ready","sessionId":"s"}),
     ] {
-        host.receive(connection, frame.to_string());
+        deliver(&host, connection, frame);
     }
     platform.settle(&[&host]);
     assert_eq!(last(&host), ["count 3"]);
@@ -1341,20 +1359,20 @@ fn a_state_write_is_acknowledged_once_a_frame_showing_it_is_built() {
             .log
             .lock()
             .unwrap()
-            .messages
+            .signals
             .iter()
-            .filter(|(_, m)| m.contains("state.ack"))
+            .filter(|(_, s)| matches!(s, StateSignal::Acked(_)))
             .count()
     };
     // A target that declines frames: the write reaches the View but no frame shows it.
     host.adapter()
         .pending
         .store(true, std::sync::atomic::Ordering::Release);
-    host.receive(
+    deliver(
+        &host,
         connection,
         serde_json::json!({"v":2,"kind":"state.patch","baseRev":0,"rev":1,"ack":true,
-            "ops":[{"op":"replace","path":"/count","value":4}]})
-        .to_string(),
+            "ops":[{"op":"replace","path":"/count","value":4}]}),
     );
     platform.settle(&[&host]);
     assert_eq!(acks(&host), 0, "held until a frame showing it is built");
@@ -1369,11 +1387,11 @@ fn a_state_write_is_acknowledged_once_a_frame_showing_it_is_built() {
     host.adapter()
         .pending
         .store(true, std::sync::atomic::Ordering::Release);
-    host.receive(
+    deliver(
+        &host,
         connection,
         serde_json::json!({"v":2,"kind":"state.patch","baseRev":1,"rev":2,"ack":true,
-            "ops":[{"op":"replace","path":"/count","value":5}]})
-        .to_string(),
+            "ops":[{"op":"replace","path":"/count","value":5}]}),
     );
     platform.settle(&[&host]);
     assert_eq!(acks(&host), 1);
@@ -1995,7 +2013,7 @@ fn automation_calls_page_actions_and_reads_data_once_the_frame_commits() {
         serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"count":1}}),
         serde_json::json!({"v":2,"kind":"ready","sessionId":"s"}),
     ] {
-        host.receive(connection, frame.to_string());
+        deliver(&host, connection, frame);
     }
     platform.settle(&[&host]);
     let ask = |request: serde_json::Value| host.automation_request(&request);
@@ -2025,9 +2043,10 @@ fn automation_calls_page_actions_and_reads_data_once_the_frame_commits() {
         serde_json::json!({"done": false})
     );
     // Logic sets data, then answers; the result waits for the frame that shows it.
-    host.receive(
+    deliver(
+        &host,
         connection,
-        serde_json::json!({"v":2,"kind":"state.snapshot","rev":1,"state":{"count":3}}).to_string(),
+        serde_json::json!({"v":2,"kind":"state.snapshot","rev":1,"state":{"count":3}}),
     );
     host.receive(
         connection,
@@ -2113,7 +2132,7 @@ fn fill_and_pick(dev: bool, swap: bool, logic: bool) {
             serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"n":0}}),
             serde_json::json!({"v":2,"kind":"ready","sessionId":"s"}),
         ] {
-            host.receive(connection, frame.to_string());
+            deliver(&host, connection, frame);
         }
     }
     platform.settle(&[&host]);
@@ -2202,7 +2221,7 @@ fn logic_feedback_calls_draw_in_the_view_and_answer_like_the_webview() {
         serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"n":0}}),
         serde_json::json!({"v":2,"kind":"ready","sessionId":"s"}),
     ] {
-        host.receive(connection, frame.to_string());
+        deliver(&host, connection, frame);
     }
     platform.settle(&[&host]);
     let replies = || -> Vec<serde_json::Value> {
@@ -2368,7 +2387,7 @@ fn abandoned_automation_calls_expire_instead_of_exhausting_the_slots() {
         serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"n":0}}),
         serde_json::json!({"v":2,"kind":"ready","sessionId":"s"}),
     ] {
-        host.receive(connection, frame.to_string());
+        deliver(&host, connection, frame);
     }
     platform.settle(&[&host]);
     // Logic never answers and no caller polls: 100 timed-out calls in a row.

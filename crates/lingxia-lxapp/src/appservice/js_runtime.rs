@@ -690,6 +690,21 @@ async fn handle_bridge_source(
             page_svc.handle_state_ack(work_id, scope, rev).await;
             Ok(())
         }
+        AppServiceCommand::StateResync { work_id, outbound } => {
+            if !page_svc.session_work_is_active(work_id).await {
+                return Ok(());
+            }
+            let (rev, state) = page_svc.state_snapshot_parts().await?;
+            page_svc.bridge().send_state_snapshot_for_context(
+                page_svc,
+                work_id,
+                outbound.as_ref(),
+                None,
+                rev,
+                state,
+            )?;
+            Ok(())
+        }
     }
 }
 

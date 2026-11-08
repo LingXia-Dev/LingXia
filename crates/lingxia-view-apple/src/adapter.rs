@@ -452,6 +452,13 @@ impl HostEvents for AppleAdapter {
     fn message(&self, connection: ConnectionTicket, message: &str) {
         self.shell.message(self.token, connection.get(), message);
     }
+    fn state(
+        &self,
+        connection: ConnectionTicket,
+        signal: lingxia_view::session::state::StateSignal,
+    ) {
+        self.shell.state(self.token, connection.get(), signal);
+    }
     fn restart(&self, connection: ConnectionTicket) -> bool {
         self.shell.restart(self.token, connection.get())
     }
