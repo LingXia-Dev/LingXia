@@ -94,6 +94,10 @@ pub trait WindowsNativeContent: Send + Sync {
     fn content_window(&self) -> Option<isize> {
         None
     }
+    /// The last [`Self::set_rasterization_scale`], while one applies.
+    fn content_scale(&self) -> Option<f64> {
+        None
+    }
 }
 
 #[derive(Clone)]
@@ -141,6 +145,14 @@ impl WindowsWebViewHandler {
         match &self.content {
             Content::WebView(_) => None,
             Content::Native(_, native) => native.content_window(),
+        }
+    }
+
+    /// Native content's physical pixels per CSS pixel under a fit-scaled presentation.
+    pub fn content_scale(&self) -> Option<f64> {
+        match &self.content {
+            Content::WebView(_) => None,
+            Content::Native(_, native) => native.content_scale(),
         }
     }
 

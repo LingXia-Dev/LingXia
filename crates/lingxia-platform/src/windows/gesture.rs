@@ -261,9 +261,12 @@ fn resolve(target: &GestureTarget) -> Result<(isize, f64), PlatformError> {
             let window = handler
                 .content_window()
                 .unwrap_or_else(|| handler.native_view().window);
-            // SAFETY: reads a window's DPI.
-            let dpi = unsafe { GetDpiForWindow(HWND(window as *mut _)) };
-            let scale = if dpi == 0 { 1.0 } else { f64::from(dpi) / 96.0 };
+            // A device frame shrinks the page to fit the screen, below the window's DPI.
+            let scale = handler.content_scale().unwrap_or_else(|| {
+                // SAFETY: reads a window's DPI.
+                let dpi = unsafe { GetDpiForWindow(HWND(window as *mut _)) };
+                if dpi == 0 { 1.0 } else { f64::from(dpi) / 96.0 }
+            });
             Ok((window, scale))
         }
     }

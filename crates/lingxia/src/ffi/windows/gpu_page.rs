@@ -15,7 +15,7 @@ use lxapp::{GpuViewGeneration, LxAppError, PageInstance};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicIsize, Ordering};
+use std::sync::atomic::{AtomicIsize, AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 use std::time::Duration;
 
@@ -105,6 +105,7 @@ fn run(token: Token, webtag: WebTag, request: Creation) {
             window: page.hwnd(),
             parent: parent.window,
             current: AtomicIsize::new(parent.window),
+            scale: AtomicU64::new(0),
         });
         register_native_content(&webtag, content.clone());
         LIVE.with(|live| {
@@ -164,6 +165,8 @@ struct Content {
     parent: isize,
     /// The window the content sits in now, or is moving to.
     current: AtomicIsize,
+    /// `f64` bits of the rasterization scale; 0 while the window's DPI applies.
+    scale: AtomicU64,
 }
 
 impl Content {
@@ -187,6 +190,10 @@ impl WindowsNativeContent for Content {
 
     fn content_window(&self) -> Option<isize> {
         Some(self.window)
+    }
+
+    fn content_scale(&self) -> Option<f64> {
+        Some(f64::from_bits(self.scale.load(Ordering::Acquire))).filter(|scale| *scale > 0.0)
     }
 
     fn set_content_geometry(
@@ -244,6 +251,8 @@ impl WindowsNativeContent for Content {
     }
 
     fn set_rasterization_scale(&self, scale: f64) -> WebResult<()> {
+        let kept = if scale > 0.0 { scale } else { 0.0 };
+        self.scale.store(kept.to_bits(), Ordering::Release);
         let scale = (scale > 0.0).then_some(scale as f32);
         self.post(move |page| page.set_scale(scale));
         Ok(())
