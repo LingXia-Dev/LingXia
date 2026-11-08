@@ -399,17 +399,24 @@ impl ImageProvider for WindowsAdapter {
         let done = {
             let finished = finished.clone();
             Box::new(move |result: Result<Vec<u8>, String>| {
-                finished.store(true, Ordering::Release);
-                if let Some(host) = host.upgrade() {
-                    host.adapter().images().remove(&id);
-                    host.image_loaded(id, result);
+                let Some(host) = host.upgrade() else {
+                    finished.store(true, Ordering::Release);
+                    return;
+                };
+                {
+                    // Under the lock `fetch` stores the handle with, so it is never stored late.
+                    let mut images = host.adapter().images();
+                    finished.store(true, Ordering::Release);
+                    images.remove(&id);
                 }
+                host.image_loaded(id, result);
             })
         };
         let handle = self.shell.load_image(self.token, source.into(), done);
-        // A loader may finish synchronously; then there is nothing left to cancel.
+        // A loader may finish at once, on any thread; then there is nothing left to cancel.
+        let mut images = self.images();
         if !finished.load(Ordering::Acquire) {
-            self.images().insert(id, handle);
+            images.insert(id, handle);
         }
     }
     fn cancel(&self, id: u64) {
