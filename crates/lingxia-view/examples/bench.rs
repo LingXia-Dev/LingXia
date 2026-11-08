@@ -1,8 +1,9 @@
 //! Times a compiled View page through Logic ticks on the host: each tick sends `{tick}` as a
 //! state snapshot and lays the page out, as a device frame would. Driven by
 //! packages/lingxia-view/corpus/bench.mjs.
-//!   cargo run --release -p lingxia-view --example bench -- page.js [ticks] [state-json]
-//! `state-json` is merged into every tick's state.
+//!   cargo run --release -p lingxia-view --example bench -- page.js [ticks] [state-json] [patch]
+//! `state-json` is merged into every tick's state; with `patch`, it is sent once and each tick
+//! sends a patch instead (`/tick`, and one record of `/rows` when there is one).
 
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -20,6 +21,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let extra: serde_json::Value = args
         .get(3)
         .map_or(Ok(json!({})), |s| serde_json::from_str(s))?;
+    let patch = args.get(4).is_some_and(|mode| mode == "patch");
+    let rows = extra["rows"].as_array().map_or(0, Vec::len) as u64;
     let (width, height, scale) = (393u16, 852u16, 2.0f32);
     // The dev clock lets the View runtime split its eval into phases.
     lingxia_view::engine::enable_dev_globals();
@@ -49,9 +52,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The first ticks warm the caches a device page also keeps between frames.
     let warm = 20;
     for tick in 0..ticks + warm {
-        let mut state = extra.clone();
-        state["tick"] = tick.into();
-        page.write_state(lingxia_view::session::state::StateWrite::Snapshot { rev: tick, state })?;
+        use lingxia_view::session::state::{PatchOp, StateWrite};
+        if patch && tick > 0 {
+            let mut ops = vec![PatchOp::Replace {
+                path: "/tick".into(),
+                value: tick.into(),
+            }];
+            if rows > 0 {
+                ops.push(PatchOp::Replace {
+                    path: format!("/rows/{}/count", tick * 7 % rows),
+                    value: tick.into(),
+                });
+            }
+            page.write_state(StateWrite::Patch {
+                rev: tick,
+                ops,
+                ack: false,
+            })?;
+        } else {
+            let mut state = extra.clone();
+            state["tick"] = tick.into();
+            page.write_state(StateWrite::Snapshot { rev: tick, state })?;
+        }
         page.layout(pw, ph, scale)?;
         // The host collects between frames, as a device worker does when idle.
         let started = std::time::Instant::now();

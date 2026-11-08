@@ -1,7 +1,7 @@
 import { List, measureFrames, useLocal, type FrameStats, type View } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Page, Section } from '../../shared/ui';
-import type { PerfActions, PerfData, PerfScene } from '../../shared/perf-types';
+import type { PerfActions, PerfData, PerfRow, PerfScene } from '../../shared/perf-types';
 import { judgeFrames, judgeInput, judgeReveal, type Verdict } from '../../shared/perf-judge';
 
 // A standard workload per pipeline stage. "Run budget" drives one scene for 5 s and
@@ -19,6 +19,7 @@ interface SceneSpec {
 const scenes: Record<PerfScene, SceneSpec> = {
   list: { label: 'List', knob: 'rows', counts: [100, 1000, 5000, 20000], judge: 'frames' },
   data: { label: 'Data', knob: 'rows', counts: [100, 1000, 5000, 20000], judge: 'frames' },
+  state: { label: 'State', knob: 'records', counts: [100, 1000, 5000], judge: 'frames' },
   animation: { label: 'Springs', knob: 'nodes', counts: [100, 250, 500], judge: 'frames' },
   fill: { label: 'Fill', knob: 'layers', counts: [4, 8, 16], judge: 'frames' },
   text: { label: 'Text', knob: 'paragraphs', counts: [1, 4, 12], judge: 'frames' },
@@ -109,11 +110,12 @@ function stall() {
   while (Date.now() < until) { /* spin */ }
 }
 
-function Workload({ scene, count, data }: { scene: PerfScene; count: number; data: PerfData }) {
+function Workload({ scene, count, data }: { scene: PerfScene; count: number; data: View<PerfActions, PerfData>['data'] }) {
   const active = data.running === scene;
   switch (scene) {
     case 'list': return <LongList count={count} step={-1} glide={active} />;
     case 'data': return <LongList count={count} step={active ? data.tick * 2 : -1} glide={false} />;
+    case 'state': return <Records rows={active ? data.rows : []} count={count} />;
     case 'animation': return <Springs count={count} phase={active && data.phase} />;
     case 'fill': return <Layers count={count} spinning={active} />;
     case 'text': return <Relayout count={count} tick={active ? data.tick : 0} />;
@@ -150,6 +152,24 @@ function LongList({ count, step, glide }: { count: number; step: number; glide: 
             <text className="text-xs text-muted truncate">A second line of text to lay out in every row</text>
           </column>
           <text className="px-2 rounded-full bg-accent text-on-accent text-xs tabular-nums">{String(i % 100)}</text>
+        </row>
+      )} />
+  );
+}
+
+/** Logic owns the records; each tick changes one of them, so a frame's cost should follow the
+ *  change, not the size of the page's data. */
+function Records({ rows, count }: { rows: readonly PerfRow[]; count: number }) {
+  if (rows.length === 0) return <text className="text-xs text-muted">Run budget loads {count} records into Logic data and changes one per tick.</text>;
+  return (
+    <List data-testid="perf-records" data-rows={String(rows.length)} className="h-96 rounded-lg border border-line" items={rows} getKey={row => String(row.id)}
+      renderItem={row => (
+        <row data-testid={`perf-record-${row.id}`} className="items-center gap-3 px-3 py-2 border-b border-line">
+          <column className="grow basis-0 min-w-0">
+            <text className="text-sm font-medium truncate">{row.title}</text>
+            <text className="text-xs text-muted truncate">{row.note}</text>
+          </column>
+          <text className={`px-2 rounded-full text-xs tabular-nums ${row.done ? 'bg-accent text-on-accent' : 'bg-surface-sunken'}`}>{String(row.count)}</text>
         </row>
       )} />
   );

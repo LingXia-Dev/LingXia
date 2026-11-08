@@ -1,4 +1,6 @@
-export type PerfScene = 'list' | 'data' | 'animation' | 'fill' | 'text' | 'touch' | 'transition' | 'images';
+export type PerfScene = 'list' | 'data' | 'state' | 'animation' | 'fill' | 'text' | 'touch' | 'transition' | 'images';
+/** One Logic-owned record of the state scene. */
+export interface PerfRow { id: number; title: string; note: string; count: number; done: boolean }
 export interface PerfData {
   /** The scene a run drives, or '' between runs. */
   running: PerfScene | '';
@@ -6,6 +8,8 @@ export interface PerfData {
   tick: number;
   /** Flips every 600 ms during an animation run. */
   phase: boolean;
+  /** The state scene's records, empty otherwise. */
+  rows: PerfRow[];
 }
 export interface DriveRequest { scene: PerfScene; ms: number; count: number }
 export interface PerfActions {

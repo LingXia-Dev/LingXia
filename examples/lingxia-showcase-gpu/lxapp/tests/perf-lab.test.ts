@@ -84,6 +84,11 @@ spec('a 1000-row list keeps pace while Logic moves its anchor every tick', { id:
   await expectFrames(t, await runBudget(t, 'data', 1000));
 });
 
+spec('a 1000-record Logic list keeps pace while one record changes every tick', { id: 'PERF-STATE-001', covers: ['view:list'] }, async (t) => {
+  await scene(t, 'state', 1000);
+  await expectFrames(t, await runBudget(t, 'state', 1000));
+});
+
 spec('250 springs at once keep pace', { id: 'PERF-ANIM-001' }, async (t) => {
   await scene(t, 'animation', 250);
   await expectFrames(t, await runBudget(t, 'animation', 250));

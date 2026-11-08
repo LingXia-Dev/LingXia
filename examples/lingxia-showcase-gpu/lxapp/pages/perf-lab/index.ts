@@ -1,11 +1,11 @@
-import type { DriveRequest, PerfData } from '../../shared/perf-types';
+import type { DriveRequest, PerfData, PerfRow } from '../../shared/perf-types';
 
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
 // Drivers for the workloads; the View measures the frames they cause. `drive` returns at
 // once so the caller can measure while the scene runs.
 Page({
-  data: { running: '', tick: 0, phase: false } as PerfData,
+  data: { running: '', tick: 0, phase: false, rows: [] } as PerfData,
   drive(request: DriveRequest) {
     void this.run(request);
   },
@@ -25,6 +25,20 @@ Page({
           this.setData({ phase });
           await sleep(600);
         }
+      } else if (scene === 'state') {
+        // A Logic-owned list of records: one record changes per tick, the rest stays.
+        const rows: PerfRow[] = Array.from({ length: count }, (_, id) => ({
+          id, title: `Record ${id + 1}`, note: 'A second line of text kept in Logic data', count: 0, done: false,
+        }));
+        this.setData({ rows });
+        await this.flush();
+        for (let tick = 1; Date.now() < until; tick++) {
+          const row = (tick * 7) % count;
+          this.setData({ tick });
+          this.setPath(['rows', row, 'count'], tick);
+          this.setPath(['rows', row, 'done'], tick % 2 === 0);
+          await this.flush();
+        }
       } else if (scene === 'data' || scene === 'images' || scene === 'text') {
         // A GPU page acknowledges a write once the frame showing it is on screen, so the
         // loop writes once per presented frame.
@@ -37,7 +51,7 @@ Page({
         await sleep(ms);
       }
     } finally {
-      this.setData({ running: '', phase: false });
+      this.setData({ running: '', phase: false, rows: [] });
     }
   },
 });
