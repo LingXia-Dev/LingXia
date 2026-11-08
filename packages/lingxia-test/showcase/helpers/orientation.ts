@@ -44,3 +44,8 @@ async function turnNow(t: Fixture, orientation: 'portrait' | 'landscape' | 'rest
   }
   if (orientation !== 'restore') await t.app.window.orient(orientation);
 }
+
+/** Skip on a desktop: its window keeps the shape its user gave it, whatever a page asks. */
+export async function requirePhone(t: Fixture): Promise<void> {
+  if (DESKTOPS.includes(await hostOs(t))) t.skip('a desktop window keeps the shape its user gave it');
+}
