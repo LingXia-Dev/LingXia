@@ -1,4 +1,4 @@
-import { Details, Fragment, List, Summary, useLocal, useView, type VectorPath } from '@lingxia/view';
+import { Details, Fragment, List, Pager as KitPagerView, Summary, useLocal, useView, type VectorPath } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Icon, Page, Section } from '../../shared/ui';
 import type { LabPageData } from '../../shared/lab-types';
@@ -13,7 +13,7 @@ const groups = {
   overlay: { label: 'Overlay', sections: [Overlays] },
   data: { label: 'Data', sections: [Plots] },
   gesture: { label: 'Gesture', sections: [Drag, DragChain, Detents] },
-  swipe: { label: 'Swipe', sections: [SwipeRows, Pager] },
+  swipe: { label: 'Swipe', sections: [SwipeRows, Pager, KitPager] },
 };
 type Group = keyof typeof groups;
 
@@ -643,6 +643,24 @@ function Pager() {
         <text data-testid="lab-pager-state" className="grow text-xs text-muted tabular-nums">{`page=${page.value}`}</text>
         <Button testId="lab-pager-next" size="sm" variant="secondary" onClick={() => page.set((page.value + 1) % pages.length)}>Next</Button>
       </row>
+    </Section>
+  );
+}
+
+// The kit pager: dots under the pages, tap one to jump; the pages read "n of m" as a list.
+function KitPager() {
+  const page = useLocal('kit-pager-page', 0);
+  const pages = ['Plan', 'Pay', 'Done'];
+  return (
+    <Section title="Kit pager" testId="lab-kit-pager">
+      <KitPagerView bind={page} aria-label="Checkout steps" data-testid="lab-kit-pager-view" className="w-72">
+        {pages.map(name => (
+          <column key={name} className="h-28 items-center justify-center rounded-xl bg-surface-sunken">
+            <text className="text-lg font-semibold">{name}</text>
+          </column>
+        ))}
+      </KitPagerView>
+      <text data-testid="lab-kit-pager-state" className="text-xs text-muted tabular-nums">{`page=${page.value}`}</text>
     </Section>
   );
 }

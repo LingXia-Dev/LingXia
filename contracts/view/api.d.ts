@@ -171,6 +171,8 @@ export declare function List<T>(props: DataListProps<T>): JSX.Element;
 export declare function Details(props: { open?: boolean; defaultOpen?: boolean; onToggle?: (open: boolean) => void; className?: string; "data-testid"?: string; children?: Child }): JSX.Element;
 /** The label row of a `<Details>`; `className` styles its toggle. */
 export declare function Summary(props: { className?: string; children?: Child }): JSX.Element;
+/** Pages side by side that stop on each one, as a named list a screen reader reads "n of m"; dots under it follow the page and jump to one on tap. Uncontrolled with `defaultPage`, controlled with `bind`. */
+export declare function Pager(props: { bind?: Local<number>; defaultPage?: number; dots?: boolean; "aria-label": string; className?: string; "data-testid"?: string; children?: Child }): JSX.Element;
 
 export interface BoxShadow { offsetX?: number; offsetY?: number; blur?: number; spread?: number; color?: string }
 export interface GradientStop { offset: number; color: string }

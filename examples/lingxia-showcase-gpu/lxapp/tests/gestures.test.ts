@@ -99,3 +99,32 @@ spec('a pager stops on the next page however fast the flick, and its bound page 
   await view.testId('lab-pager-scroll').performAction('decrement');
   await expect(state).toHaveText('page=1');
 });
+
+spec('the kit pager reads as a list of pages, its dots follow the page and a tap on one jumps there', { covers: ['view:scroll', 'view:a11y'], start: { page: 'view-lab' } }, async (t) => {
+  const view = t.app.view;
+  await view.testId('lab-tab-swipe').click();
+  const state = view.testId('lab-kit-pager-state');
+  await expect(state).toHaveText('page=0');
+  // A screen reader meets the pages as one named list of three; the dots are not in its tree.
+  await expect(view.getByRole('list', { name: 'Checkout steps' })).toHaveCount(1);
+  await expect(view.getByRole('listitem')).toHaveCount(3);
+  await expect(view.getByRole('button', { name: /^$/ })).toHaveCount(0);
+  const width = async (index: number) => (await view.testId(`lab-kit-pager-view-mark-${index}`).boundingBox()).width;
+  await expect.poll(() => width(0)).toBe(18);
+  // A screen reader's scroll steps one page and the dots follow it.
+  await view.testId('lab-kit-pager-view-scroll').performAction('increment');
+  await expect(state).toHaveText('page=1');
+  await expect.poll(() => width(1)).toBe(18);
+  // The dots are out of the accessibility tree, so a finger taps one once the pager settles.
+  const left = async (id: string) => (await view.testId(id).boundingBox()).x;
+  await expect.poll(async () => await left('lab-kit-pager-view-page-1') - await left('lab-kit-pager-view-scroll')).toBe(0);
+  await (await view.touch(view.testId('lab-kit-pager-view-dot-2'))).up();
+  await expect(state).toHaveText('page=2');
+  await expect.poll(() => width(2)).toBe(18);
+  await expect.poll(() => width(1)).toBe(6);
+  await expect.poll(async () => await left('lab-kit-pager-view-page-2') - await left('lab-kit-pager-view-scroll')).toBe(0);
+  await view.fling('right', 4000, { at: view.testId('lab-kit-pager-view-scroll') });
+  await expect(state).toHaveText('page=1');
+  await expect.poll(() => width(1)).toBe(18);
+  await expect.poll(() => width(2)).toBe(6);
+});

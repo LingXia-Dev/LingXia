@@ -2,7 +2,8 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { Fragment } from '../src/runtime/nodes.js';
 import * as details from '../src/runtime/details.js';
-import { rendered } from './support/wire.mjs';
+import { Pager } from '../src/runtime/pager.js';
+import { rendered, byTestId } from './support/wire.mjs';
 import { h, List, childrenToArray, describe, prepare, discard, reset, dispatch, useLocal, useRequest, configureActions, createView, takeActionRequests } from '../src/internal.js';
 
 beforeEach(() => reset());
@@ -148,6 +149,22 @@ test('Details discloses its body behind a Summary toggle that announces expanded
   assert.equal(controlled.children.length, 2);
   dispatch(controlled.children[0].props.onClick);
   assert.equal(asked, false);
+});
+
+test('Pager lists its pages for a screen reader and its hidden dots follow and set the page', () => {
+  const view = () => h(Pager, { 'aria-label': 'Steps', 'data-testid': 'p' }, h('text', {}, 'A'), h('text', {}, 'B'), h('text', {}, 'C'));
+  let root = rendered(view);
+  const list = byTestId(root, 'p-scroll').children[0];
+  assert.equal(list.props.role, 'list');
+  assert.equal(list.props.accessibilityLabel, 'Steps');
+  assert.deepEqual(list.children.map(page => page.props.role), ['listitem', 'listitem', 'listitem']);
+  assert.equal(byTestId(root, 'p-dots').props.accessibilityHidden, 1);
+  assert.deepEqual([0, 1, 2].map(i => byTestId(root, `p-mark-${i}`).props.width), [18, 6, 6]);
+  dispatch(byTestId(root, 'p-dot-2').props.onClick);
+  root = rendered(view);
+  assert.deepEqual([0, 1, 2].map(i => byTestId(root, `p-mark-${i}`).props.width), [6, 6, 18]);
+  assert.equal(rendered(() => h(Pager, { 'aria-label': 'One', 'data-testid': 'q' }, h('text', {}, 'A'))).children.length, 1, 'one page: no dots');
+  assert.throws(() => rendered(() => h(Pager, {}, h('text', {}, 'A'))), /aria-label/);
 });
 
 test('useLocal(initial) keys state by call order, independent of named locals', () => {
