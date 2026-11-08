@@ -159,6 +159,9 @@ mod tests {
     #[test]
     fn infinite_guest_code_is_interrupted_without_poisoning_other_pages() {
         let mut app = ViewApp::new(3).unwrap();
+        // The limit charges this thread's CPU time, so measure that: wall time grows with host load.
+        let clock = crate::engine::thread_clock::ThreadClock::current();
+        let cpu_started = clock.and_then(|clock| clock.elapsed());
         let started = std::time::Instant::now();
         assert!(
             app.create("while(true){}", false)
@@ -220,6 +223,10 @@ mod tests {
         // Three runs end at the interrupt limit each; nothing waits on a hung one.
         let limit =
             crate::session::eval_budget() * crate::protocol::limits::EVAL_LIMIT_MULTIPLIER as u32;
-        assert!(started.elapsed() < limit * 4, "{:?}", started.elapsed());
+        let spent = match (clock, cpu_started) {
+            (Some(clock), Some(from)) => clock.elapsed().unwrap().saturating_sub(from),
+            _ => started.elapsed(),
+        };
+        assert!(spent < limit * 4, "{spent:?}");
     }
 }

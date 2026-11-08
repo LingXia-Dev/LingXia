@@ -1779,13 +1779,33 @@ fn a_stopped_window_pauses_the_deadline_and_a_failure_reveals_at_once() {
 fn a_frame_past_its_budget_is_dropped_without_recovery_and_counted() {
     let worker = ViewWorker::spawn("test-budget-overrun").unwrap();
     let platform = Platform::new(&[&worker]);
-    let budget = crate::session::eval_budget().as_millis();
+    // The budget charges CPU time, so the page spins two budgets of CPU work, calibrated on this
+    // thread's clock: a wall-clock spin falls short of the budget under host load.
+    let Some(clock) = crate::engine::thread_clock::ThreadClock::current() else {
+        return;
+    };
+    let probe = 2_000_000u64;
+    let mut calibration = crate::session::ViewSession::new(&source(&format!(
+        "function render(){{let s=0;for(let i=0;i<{probe};i++)s+=i;return h('text',{{}},'probe')}}"
+    )))
+    .unwrap();
+    let before = clock.elapsed().unwrap();
+    calibration.layout(300, 500, 1.0).unwrap();
+    let per_ms = probe as f64
+        / (clock
+            .elapsed()
+            .unwrap()
+            .saturating_sub(before)
+            .as_secs_f64()
+            * 1000.0)
+            .max(0.001);
+    let budget_ms = crate::session::eval_budget().as_secs_f64() * 1000.0;
     // The page's second render runs two budgets once; every other render is quick.
     let host = platform.host(
         &worker,
         &source(&format!(
-            "let n=0;function render(){{n++;if(n===2){{const t=Date.now();while(Date.now()-t<{}){{}}}}return h('text',{{}},'frame '+n)}}",
-            budget * 2
+            "let n=0;function render(){{n++;if(n===2){{let s=0;for(let i=0;i<{};i++)s+=i;}}return h('text',{{}},'frame '+n)}}",
+            (per_ms * budget_ms * 2.0) as u64
         )),
         false,
     );
