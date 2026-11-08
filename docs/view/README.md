@@ -67,6 +67,7 @@ rendered by the test suite. Blocks marked `tsx error UI_…` show code that is r
 | [Lists and scrolling](guide/lists-and-scrolling.md) | `<List>`, `<scroll>`, anchors, reach events, overscroll |
 | [State and data](guide/state-and-data.md) | `useLocal`, `useRequest`, `useStream`, `useChannel`, `useLeaveGuard` |
 | [Interaction](guide/interaction.md) | buttons, press states, gestures, hit testing |
+| [Overlays](guide/overlays.md) | dialogs, popovers, menus, sheets, the host bars |
 | [Accessibility](guide/accessibility.md) | labels, roles, headings, live regions, hidden content |
 | [RTL and i18n](guide/rtl-and-i18n.md) | direction, logical properties, `rtl:`, display language |
 | [Motion](guide/motion.md) | transitions, keyframe animations, reduced motion |

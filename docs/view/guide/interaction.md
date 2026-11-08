@@ -169,47 +169,7 @@ export function render() {
 
 ## Dialogs, popovers and menus
 
-`<dialog>` and the `popover` attribute work as in HTML. Open ones draw in the top layer: above the
-whole page (under the system bars, above the keyboard) whatever their place in the tree, unclipped
-by their ancestors. On phones an open dialog also covers the host's navigation and tab bars, which
-take no input meanwhile; pad its content by `env.safeArea` (the system bars alone), not `env.insets`.
-
-```tsx
-import { useLocal } from '@lingxia/view';
-
-export function render() {
-  const open = useLocal('open', false);
-  return (
-    <page className="p-4 gap-3">
-      <button popoverTarget="more" aria-label="More" className="self-end rounded-full p-2 bg-surface">⋯</button>
-      <view id="more" popover role="menu" aria-label="Actions" className="rounded-xl bg-surface-raised p-1 shadow-lg">
-        <button role="menuitem" onClick={() => open.set(true)} className="px-3 py-2 rounded-lg active:bg-surface-sunken">Delete…</button>
-      </view>
-      <dialog open={open.value} onClose={() => open.set(false)} closedby="any" aria-label="Delete note?"
-        className="mt-auto mb-0 w-full rounded-t-2xl bg-surface-raised p-4 gap-3 backdrop:bg-scrim transition-transform duration-300 starting:translate-y-full exit:translate-y-full">
-        <text className="text-lg font-semibold">Delete note?</text>
-        <button onClick={() => open.set(false)} className="rounded-xl bg-danger p-3 text-on-danger">Delete</button>
-      </dialog>
-    </page>
-  );
-}
-```
-
-- `<dialog open onClose closedby>` is always modal: a backdrop (`backdrop:` styles it, `bg-scrim` by
-  default) takes taps, focus stays inside, and assistive tech reads only the dialog. `closedby`:
-  `closerequest` (default) closes on Escape or Android back, `any` also on a backdrop tap, `none` only from code.
-  It needs `aria-label`. A dialog is centred by auto margins; `mt-auto mb-0 w-full` makes a sheet.
-- `popover` (`auto`) or `popover="manual"` on a `<view>`, `<row>`, `<column>`, `<stack>` or `<grid>`
-  with an `id`; `<button popoverTarget="id">` toggles it and gets `aria-expanded`. An auto popover
-  closes on a tap outside (the tap goes nowhere else), on Escape or Android back, and when another auto popover opens.
-  Opened by its invoker it sits below it, flipping above when needed; `positionArea` (`top`,
-  `bottom span-inline-start`, …) picks the side. `open` and `onToggle(open)` control it from state.
-- `<dialog drag="y" dragSnapPoints={[0, '50%', '100%']} bind={detent}>` is a sheet with detents. One
-  that comes to rest wholly off screen calls `onClose` (unless `closedby="none"`), and its scrim fades
-  with how much of it is on screen. Its `exit:` styles have nothing left to show by then.
-- `role="menu"` names a popover of actions; a `<button role="menuitem">` closes its popover after `onClick`.
-- At most 16 are open at once; another stays closed with a `UI_BUDGET` warning. A closed one renders
-  nothing, so local state inside it resets.
+See [Overlays](overlays.md): where they draw against the host bars, closing, sheets, focus.
 
 ## Hit testing
 

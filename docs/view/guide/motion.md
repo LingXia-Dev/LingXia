@@ -30,10 +30,7 @@ timing, up to 10 s each; the defaults are 150 ms and `cubic-bezier(0.4, 0, 0.2, 
 a state variant (`active:`, `hover:`, `focus:`) changes one of those properties. A change mid-flight
 continues from the value on screen.
 
-`ease-spring` (no bounce), `ease-spring-bouncy` and `ease-[spring(0.4)]` (bounce 0–0.9) time a
-transition by a spring instead: `duration-*` is how long it feels, and it settles when it settles.
-Retargeted mid-flight, a spring keeps its velocity as well as its value. Transforms may overshoot;
-opacity and colours stop at their ends. Keyframes take no spring.
+`ease-spring*` times a transition by a spring instead of a curve ([Springs](#springs)).
 
 Some changes land at once instead of animating:
 
@@ -53,6 +50,34 @@ export function render() {
 ```
 
 Animate a scale or translate instead of a size, or let `transition-layout` move the box (below).
+
+## Springs
+
+`ease-spring` (no bounce), `ease-spring-bouncy` (bounce 0.25) and `ease-[spring(0.4)]` (bounce 0–0.9)
+time a transition by a spring:
+
+```tsx
+import { useLocal } from '@lingxia/view';
+
+export function render() {
+  const on = useLocal('on', false);
+  return (
+    <page className="p-4">
+      <button aria-label="Expand" onClick={() => on.set(!on.value)} className="w-40 rounded-full bg-surface-sunken p-1">
+        <view className={`w-8 h-8 rounded-full bg-accent transition-transform duration-500 ease-spring-bouncy ${on.value ? 'translate-x-30' : 'translate-x-0'}`} />
+      </button>
+    </page>
+  );
+}
+```
+
+- `duration-*` is how long the spring feels, not a hard stop: it settles when it settles.
+- A spring retargeted mid-flight keeps its speed as well as its position, so a second tap turns it
+  around smoothly instead of stopping it dead.
+- Transforms may overshoot their target; opacity and colours stop at their ends.
+- Keyframe animations take no spring.
+- A drag element springs to its snap point with the same timing
+  ([Dragging an element](interaction.md#dragging-an-element)).
 
 ## Enter and exit
 
