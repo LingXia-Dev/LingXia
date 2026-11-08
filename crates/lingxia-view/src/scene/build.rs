@@ -62,6 +62,9 @@ impl Renderer {
         let colors: Vec<&str> = styles.iter().map(|style| style.color.as_str()).collect();
         let palette = self.palette;
         let color = |value: &str| palette.resolve(value);
+        let press_layer =
+            crate::interaction::chrome::FeedbackStyle::press_layer(&palette, self.dark);
+        let pressed_identity = self.pressed.clone();
         let button_owners = &groups.owners;
         let button_hashes = &groups.content;
         let mut commands = Vec::new();
@@ -891,6 +894,8 @@ impl Renderer {
                     + layout.padding.top
                     + (layout.size.height - layout.padding.top - layout.padding.bottom).max(0.0)
                         / 2.0;
+                let pressed = enabled
+                    && pressed_identity.as_deref() == identities.get(index).map(String::as_str);
                 if record.tag == tag::RADIO_OPTION {
                     let cx = x + layout.padding.left;
                     commands.push(Paint::Rect {
@@ -911,6 +916,14 @@ impl Renderer {
                             color: accent,
                             bounds: [cx + 6.0, cy - 6.0, 12.0, 12.0],
                             radius: 6.0,
+                        });
+                    }
+                    if pressed {
+                        commands.push(Paint::Rect {
+                            corners: None,
+                            color: press_layer,
+                            bounds: [cx, cy - 12.0, 24.0, 24.0],
+                            radius: 12.0,
                         });
                     }
                 } else if record.tag == tag::CHECKBOX {
@@ -940,6 +953,14 @@ impl Renderer {
                             radius: 3.0,
                         });
                     }
+                    if pressed {
+                        commands.push(Paint::Rect {
+                            corners: None,
+                            color: press_layer,
+                            bounds: [cx, cy - 12.0, 24.0, 24.0],
+                            radius: 5.0,
+                        });
+                    }
                 } else {
                     let cx = x + layout.size.width - layout.padding.right - 52.0;
                     commands.push(Paint::Rect {
@@ -948,10 +969,25 @@ impl Renderer {
                         bounds: [cx, cy - 16.0, 52.0, 32.0],
                         radius: 16.0,
                     });
+                    if pressed {
+                        commands.push(Paint::Rect {
+                            corners: None,
+                            color: press_layer,
+                            bounds: [cx, cy - 16.0, 52.0, 32.0],
+                            radius: 16.0,
+                        });
+                    }
+                    // A held thumb stretches toward the side it will move to.
+                    let stretch = if pressed { 6.0 } else { 0.0 };
                     commands.push(Paint::Rect {
                         corners: None,
                         color: [255; 4],
-                        bounds: [cx + if checked { 24.0 } else { 4.0 }, cy - 12.0, 24.0, 24.0],
+                        bounds: [
+                            cx + if checked { 24.0 - stretch } else { 4.0 },
+                            cy - 12.0,
+                            24.0 + stretch,
+                            24.0,
+                        ],
                         radius: 12.0,
                     });
                 }
@@ -1088,7 +1124,10 @@ impl Renderer {
                     .and_then(|source| serde_json::from_str(source).ok())
                     .map(std::sync::Arc::new),
                 clips_children: record.string(field::OVERFLOW) == Some("hidden"),
+                // Indicator controls paint their own press state instead of a box overlay.
                 pressed_style: group_pressed[index]
+                    || (matches!(record.tag, tag::CHECKBOX | tag::SWITCH | tag::RADIO_OPTION)
+                        && !(record.tag == tag::CHECKBOX && button_hashes.contains_key(&index)))
                     || record
                         .fields
                         .iter()

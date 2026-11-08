@@ -4138,11 +4138,12 @@ fn a_pressable_row_holds_its_own_controls() {
             _ => None,
         })
         .collect();
+    // The switch paints its own press, so neither it nor the row gets an overlay.
     assert_eq!(
-        pressed,
-        [index("wifi")],
-        "the switch is pressed, not the row"
+        pressed, [0usize; 0],
+        "no overlay over the row or the switch box"
     );
+    assert_eq!(nodes[index("wifi")]["pressed_style"], true);
     host.pointer(Pointer {
         phase: PointerPhase::Cancel,
         x: 0.0,

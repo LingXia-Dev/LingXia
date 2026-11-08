@@ -174,6 +174,8 @@ convert OS events and report pointer state; they compute no geometry.
 - State styles are paint-only deltas: `focusStyle` (editors), `pressedStyle`
   (buttons, checkboxes, switches, radios) and `hoverStyle`, which the runtime
   emits only for fine pointers. `pointer` is part of the environment.
+- Switches, checkboxes and radios paint their own press state on the drawn
+  indicator and never get the platform overlay, which would fill their padded touch box.
 - Buttons and checkboxes may compose noninteractive content. They form one
   semantic node; its name is the explicit label or else the descendant text
   and image alternatives in order. Controls nested in a composed control stay their own nodes and targets

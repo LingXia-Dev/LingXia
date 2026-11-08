@@ -65,6 +65,52 @@ fn pressed_states_may_scale_through_the_paint_delta() {
 }
 
 #[test]
+fn a_pressed_switch_paints_its_track_not_a_box() {
+    use crate::scene::paint::Paint;
+    let module = super::source(
+        "function render(){const on=useLocal('on',true);return h('page',{},h('switch',{'data-testid':'s',bind:on,'aria-label':'Wi-Fi'}))}",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    let display = page.layout(400, 200, 1.0).unwrap();
+    let switch = display.nodes.iter().find(|n| n.test_id == "s").unwrap();
+    assert!(
+        switch.pressed_style,
+        "the switch repaints itself, so no platform overlay covers its touch box"
+    );
+    let [x, y, w, h] = switch.bounds;
+    let identity = switch.identity.clone();
+    let layer =
+        crate::interaction::chrome::FeedbackStyle::press_layer(&page.renderer.palette, false);
+    let layers = |display: &crate::scene::display::DisplayList| -> Vec<[f32; 4]> {
+        display
+            .commands
+            .iter()
+            .filter_map(|p| match p {
+                Paint::Rect { color, bounds, .. } if *color == layer => Some(*bounds),
+                _ => None,
+            })
+            .collect()
+    };
+    assert!(layers(&display).is_empty());
+    page.set_pointer_state(Some(&identity), None);
+    let pressed = page.layout(400, 200, 1.0).unwrap();
+    // The track: 52x32 at the inline end, vertically centred in the 12px padding.
+    let track = [x + w - 12.0 - 52.0, y + h / 2.0 - 16.0, 52.0, 32.0];
+    assert_eq!(
+        layers(&pressed),
+        [track],
+        "the state layer covers the track only"
+    );
+    assert!(
+        !pressed.commands.iter().any(|p| matches!(p,
+            Paint::Rect { color, bounds, .. } if color[3] == 255 && *bounds == [x, y, w, h])),
+        "no opaque fill covers the switch's box"
+    );
+    page.set_pointer_state(None, None);
+    assert!(layers(&page.layout(400, 200, 1.0).unwrap()).is_empty());
+}
+
+#[test]
 fn group_pressed_paint_applies_to_the_pressed_controls_descendants() {
     let module = super::source(
         "function render(){return h('page',{},h('button',{'data-testid':'b',onClick(){},className:'group',style:{width:100,height:40,padding:0}},h('view',{'data-testid':'disc',className:'group-active:opacity-50',style:{width:20,height:20}})),h('view',{'data-testid':'outside',className:'group-active:opacity-50',style:{width:20,height:20}}))}",

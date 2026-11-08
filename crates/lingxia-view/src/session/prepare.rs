@@ -598,6 +598,7 @@ impl ViewSession {
                 inputs.apply_values(&mut render_records);
                 inputs.apply_styles(&mut render_records)?;
                 self.apply_pointer_styles(&mut render_records)?;
+                self.renderer.pressed.clone_from(&self.pressed);
                 let started = std::time::Instant::now();
                 let reusable = if !self.input_dirty && self.viewport == Some((width, height, scale))
                 {

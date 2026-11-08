@@ -31,16 +31,20 @@ impl FeedbackStyle {
     pub fn for_palette(palette: &crate::theme::Palette, dark: bool) -> Self {
         use lingxia_theme::Role;
         let argb = |[r, g, b, a]: [u8; 4]| u32::from_be_bytes([a, r, g, b]);
-        let [r, g, b, _] = palette.role(Role::Text);
         Self {
-            // The text colour as a state layer: 13% over light pages, 20% over dark ones.
-            press_overlay: argb([r, g, b, if dark { 0x33 } else { 0x22 }]),
+            press_overlay: argb(Self::press_layer(palette, dark)),
             focus_ring: argb(palette.role(Role::Focus)),
             focus_ring_width: 2.0,
             selection_handle: argb(palette.role(Role::Accent)),
             notice_background: argb(palette.role(Role::SurfaceRaised)),
             notice_text: argb(palette.role(Role::Text)),
         }
+    }
+
+    /// RGBA press state layer: the text colour at 13% over light pages, 20% over dark ones.
+    pub(crate) fn press_layer(palette: &crate::theme::Palette, dark: bool) -> [u8; 4] {
+        let [r, g, b, _] = palette.role(lingxia_theme::Role::Text);
+        [r, g, b, if dark { 0x33 } else { 0x22 }]
     }
 }
 
