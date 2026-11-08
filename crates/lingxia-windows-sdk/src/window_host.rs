@@ -7948,6 +7948,36 @@ static DIVIDER_DRAG: AtomicBool = AtomicBool::new(false);
 static SIDEBAR_DRAG: Mutex<Option<(i32, bool)>> = Mutex::new(None);
 
 #[cfg(feature = "shell-chrome")]
+pub(crate) fn chrome_elements_for_window(
+    window: isize,
+) -> Vec<lingxia_platform::traits::gesture::ChromeElement> {
+    let Some(state) = chrome_state_for_window(HWND(window as *mut _)) else {
+        return Vec::new();
+    };
+    crate::shell::chrome_items(&state)
+        .into_iter()
+        .map(|item| lingxia_platform::traits::gesture::ChromeElement {
+            role: if item.scope == "sidebar" || item.scope == "tabBar" {
+                "tab"
+            } else {
+                "button"
+            }
+            .into(),
+            label: item.label,
+            scope: item.scope.into(),
+            selected: item.selected,
+            bounds: [
+                item.rect.left,
+                item.rect.top,
+                item.rect.right - item.rect.left,
+                item.rect.bottom - item.rect.top,
+            ]
+            .map(f64::from),
+        })
+        .collect()
+}
+
+#[cfg(feature = "shell-chrome")]
 fn sidebar_resize_anchor_at(hwnd: HWND, point: (i32, i32)) -> Option<(i32, bool)> {
     crate::shell::sidebar_resize_anchor(&chrome_state_for_window(hwnd)?, point)
 }

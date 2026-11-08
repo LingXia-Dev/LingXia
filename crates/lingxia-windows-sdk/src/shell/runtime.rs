@@ -1166,6 +1166,9 @@ pub(super) fn install() {
             done(true);
         }));
     }));
+    lingxia_platform::set_windows_chrome_provider(Arc::new(
+        crate::window_host::chrome_elements_for_window,
+    ));
     // Page Chrome capsule measurement: a framed simulated phone answers with
     // its floating pill's page-space rect, so a custom-navigation page lays
     // out around the capsule the way it does on iOS. Hosts without a device

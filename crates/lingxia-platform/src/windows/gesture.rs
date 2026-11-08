@@ -5,13 +5,13 @@ use super::mouse::deepest_child_at;
 use super::screenshot::resolve_screenshot_window;
 use crate::error::PlatformError;
 use crate::traits::gesture::{
-    AppGesture, AppGestureRequest, AppGestureResult, GestureDelivery, GestureEnd, GestureInput,
-    GesturePoint, GestureTarget,
+    AppGesture, AppGestureRequest, AppGestureResult, ChromeElement, GestureDelivery, GestureEnd,
+    GestureInput, GesturePoint, GestureTarget, HostCapability,
 };
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
@@ -20,9 +20,9 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumChildWindows, GetClassNameW, GetClientRect, GetWindowRect, IsWindowVisible, PostMessageW,
-    RegisterWindowMessageW, SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos, WM_LBUTTONDOWN,
-    WM_LBUTTONUP, WM_MOUSEMOVE,
+    EnumChildWindows, GetClassNameW, GetClientRect, GetWindowRect, GetWindowTextW, IsWindowVisible,
+    PostMessageW, RegisterWindowMessageW, SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos,
+    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE,
 };
 use windows::core::BOOL;
 use windows::core::w;
@@ -55,10 +55,100 @@ fn touch_message() -> u32 {
     unsafe { RegisterWindowMessageW(w!("LingXiaViewTouch")) }
 }
 
+/// The shell's own chrome of a host window, in its client pixels.
+pub type WindowsChromeProvider = Arc<dyn Fn(isize) -> Vec<ChromeElement> + Send + Sync>;
+static CHROME_PROVIDER: Mutex<Option<WindowsChromeProvider>> = Mutex::new(None);
+
+pub fn set_windows_chrome_provider(provider: WindowsChromeProvider) {
+    *CHROME_PROVIDER.lock().unwrap_or_else(|p| p.into_inner()) = Some(provider);
+}
+
+/// Visible push buttons under `window`, such as a failed page's recovery button.
+fn child_buttons(window: isize) -> Vec<ChromeElement> {
+    unsafe extern "system" fn visit(child: HWND, found: LPARAM) -> BOOL {
+        // SAFETY: `found` is the pair below, alive for the enumeration.
+        let (window, found) = unsafe { &mut *(found.0 as *mut (HWND, Vec<ChromeElement>)) };
+        let mut class = [0u16; 32];
+        let mut text = [0u16; 128];
+        // SAFETY: buffers of their stated lengths; reads of a live child.
+        unsafe {
+            let len = GetClassNameW(child, &mut class) as usize;
+            if !IsWindowVisible(child).as_bool()
+                || !String::from_utf16_lossy(&class[..len]).eq_ignore_ascii_case("button")
+            {
+                return BOOL(1);
+            }
+            let len = GetWindowTextW(child, &mut text) as usize;
+            let mut rect = RECT::default();
+            let _ = GetWindowRect(child, &mut rect);
+            let mut origin = POINT {
+                x: rect.left,
+                y: rect.top,
+            };
+            let _ = ScreenToClient(*window, &mut origin);
+            found.push(ChromeElement {
+                label: String::from_utf16_lossy(&text[..len]),
+                role: "button".into(),
+                scope: "window".into(),
+                selected: false,
+                bounds: [
+                    f64::from(origin.x),
+                    f64::from(origin.y),
+                    f64::from(rect.right - rect.left),
+                    f64::from(rect.bottom - rect.top),
+                ],
+            });
+        }
+        BOOL(1)
+    }
+    let mut found = (HWND(window as *mut _), Vec::new());
+    // SAFETY: the callback only touches `found`, which outlives the call.
+    unsafe {
+        let _ = EnumChildWindows(
+            Some(found.0),
+            Some(visit),
+            LPARAM(&mut found as *mut _ as isize),
+        );
+    }
+    found.1
+}
+
 #[async_trait]
 impl AppGesture for Platform {
     fn gesture_inputs(&self) -> Vec<GestureInput> {
         vec![GestureInput::Touch, GestureInput::Mouse]
+    }
+
+    fn host_capabilities(&self) -> Vec<HostCapability> {
+        if CHROME_PROVIDER
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .is_some()
+        {
+            vec![HostCapability::Chrome, HostCapability::HostInput]
+        } else {
+            Vec::new()
+        }
+    }
+
+    // Bounds are host client pixels: the unit a window gesture takes here.
+    async fn chrome_elements(
+        &self,
+        scope: Option<String>,
+    ) -> Result<Vec<ChromeElement>, PlatformError> {
+        let window = resolve_screenshot_window(None)?.0 as isize;
+        let provider = CHROME_PROVIDER
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone();
+        let mut elements = provider
+            .map(|provider| provider(window))
+            .unwrap_or_default();
+        elements.extend(child_buttons(window));
+        if let Some(scope) = scope {
+            elements.retain(|element| element.scope == scope);
+        }
+        Ok(elements)
     }
 
     fn webview_page_gestures(&self) -> bool {

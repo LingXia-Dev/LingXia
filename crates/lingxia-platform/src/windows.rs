@@ -43,6 +43,7 @@ pub use app::{
     set_windows_sidebar_actions_handler, set_windows_tray_click_intercept_handler,
     set_windows_tray_menu_handler,
 };
+pub use gesture::{WindowsChromeProvider, set_windows_chrome_provider};
 pub use media_preview::{
     WindowsMediaPreviewCancel, WindowsMediaPreviewOpen, register_windows_media_preview_host,
 };
