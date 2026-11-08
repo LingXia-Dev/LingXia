@@ -30,6 +30,7 @@ mod recovery;
 mod surface;
 mod text_menu;
 mod touch;
+mod uia;
 mod view;
 mod vsync;
 

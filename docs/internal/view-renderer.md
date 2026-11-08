@@ -239,7 +239,11 @@ presenter before that window is destroyed, including when a host destroys the wi
 holding it (`WM_DESTROY`), and wait out an attach still running on the render thread —
 a swap chain made for a window that is gone poisons the shared GPU context for every page.
 Touch arrives as `WM_POINTER` (and the registered `LingXiaViewTouch` message automation
-posts); text input runs through IMM32 against the page's editor mirror.
+posts); text input runs through IMM32 against the page's editor mirror. Press and
+focus-ring feedback are drawn into the frame (a window over the swap chain cannot blend),
+recovery chrome is a native child panel, and UI Automation answers `WM_GETOBJECT` with a
+fragment tree over the semantic projection. UIA may call from any thread: providers hold
+only the window and a node id and reach the page with a message sent to its thread.
 
 New platform: adapter traits, text scaling and insets in the environment, `renderer` frames.
 
@@ -247,11 +251,11 @@ New platform: adapter traits, text scaling and insets in the environment, `rende
 
 | Capability | Android | iOS | macOS | HarmonyOS | Windows |
 | --- | --- | --- | --- | --- | --- |
-| GPU page adapter | yes | no | no | no | yes (no accessibility or press chrome yet) |
+| GPU page adapter | yes | no | no | no | yes |
 | Bounded JS jobs | yes | no (JSC) | no (JSC) | no (ArkJS) | yes |
 | CPU raster (tests, previews) | yes | yes | yes | yes | yes |
 | System text scaling | yes | — | — | — | — |
-| Accessibility projection | yes | — | — | — | — |
+| Accessibility projection | yes | — | — | — | yes (UI Automation) |
 | Hover state styles | no (reports a coarse pointer) | — | — | — | yes |
 | GPU driver crash sentinel | yes (Maleoon Vulkan → GLES) | — | — | — | — |
 | GPU device limits | WebGL2 downlevel + 4096 px textures (pipelines bind ≤5 sampled textures, 1 sampler and 1 uniform per stage, 4 bind groups; no storage buffers or compute), else CPU | — | — | — | — |

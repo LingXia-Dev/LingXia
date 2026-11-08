@@ -27,7 +27,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     CS_DBLCLKS, CreateWindowExW, DLGC_WANTALLKEYS, DefWindowProcW, GetClientRect, GetMessageTime,
     GetSystemMetrics, IDC_ARROW, IsWindowVisible, LoadCursorW, PT_PEN, PT_TOUCH, RegisterClassW,
     RegisterWindowMessageW, SM_CXDRAG, WINDOW_EX_STYLE, WM_CAPTURECHANGED, WM_CHAR, WM_DESTROY,
-    WM_DPICHANGED_AFTERPARENT, WM_ERASEBKGND, WM_GETDLGCODE, WM_IME_COMPOSITION,
+    WM_DPICHANGED_AFTERPARENT, WM_ERASEBKGND, WM_GETDLGCODE, WM_GETOBJECT, WM_IME_COMPOSITION,
     WM_IME_ENDCOMPOSITION, WM_IME_SETCONTEXT, WM_IME_STARTCOMPOSITION, WM_KEYDOWN, WM_KILLFOCUS,
     WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL,
     WM_PAINT, WM_POINTERCAPTURECHANGED, WM_POINTERDOWN, WM_POINTERUP, WM_POINTERUPDATE,
@@ -199,7 +199,11 @@ fn handle(
         touch(page, hwnd, SYNTHETIC_FINGER, phase, point(lparam));
         return Some(LRESULT(0));
     }
+    if msg == crate::uia::CALL {
+        return Some(crate::uia::call(lparam));
+    }
     match msg {
+        WM_GETOBJECT => crate::uia::get_object(hwnd, wparam, lparam),
         WM_POINTERDOWN | WM_POINTERUPDATE | WM_POINTERUP | WM_POINTERCAPTURECHANGED => {
             let id = (wparam.0 & 0xffff) as u32;
             let mut kind = Default::default();
@@ -233,6 +237,7 @@ fn handle(
         // A host that destroys the window holding the page destroys the page's window too.
         WM_DESTROY => {
             crate::recovery::forget(hwnd.0 as isize);
+            crate::uia::window_destroyed(hwnd);
             page.window_destroyed();
             None
         }

@@ -418,9 +418,12 @@ impl ImageProvider for WindowsAdapter {
     }
 }
 
-// UI Automation is not bridged yet: Narrator sees an empty page.
 impl AccessibilitySink for WindowsAdapter {
-    fn announce(&self, _: &[AccessibilityEffect]) {}
+    fn announce(&self, events: &[AccessibilityEffect]) {
+        let (hwnd, events) = (self.hwnd.load(Ordering::Acquire), events.to_vec());
+        self.dispatcher
+            .post(Box::new(move || crate::uia::announce(hwnd, &events)));
+    }
     fn clicked(&self) {}
 }
 
