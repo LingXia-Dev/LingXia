@@ -97,14 +97,15 @@ impl DisplayList {
         initial_transform: Affine,
         commands: impl IntoIterator<Item = Paint>,
     ) -> Result<(), String> {
-        context.set_transform(
-            Affine::scale(self.scale as f64) * checked_paint_transform(initial_transform)?,
-        );
+        let mut transform =
+            Affine::scale(self.scale as f64) * checked_paint_transform(initial_transform)?;
+        context.set_transform(transform);
         for command in commands {
             match command {
-                Paint::Transform(matrix) => context.set_transform(
-                    Affine::scale(self.scale as f64) * checked_paint_transform(matrix)?,
-                ),
+                Paint::Transform(matrix) => {
+                    transform = Affine::scale(self.scale as f64) * checked_paint_transform(matrix)?;
+                    context.set_transform(transform);
+                }
                 Paint::Vector {
                     path,
                     color: [r, g, b, a],
@@ -188,7 +189,9 @@ impl DisplayList {
                     context.set_stroke(check_stroke(width, round));
                     context.stroke_path(&check_path(&points));
                 }
-                Paint::Clip(shape) => context.push_clip_layer(&shape.path()),
+                Paint::Clip(shape) => {
+                    context.push_clip_layer(&snapped_clip(&shape, transform).path())
+                }
                 Paint::PopClip | Paint::PopOpacity => context.pop_layer(),
                 Paint::Mask { .. } => context.push_layer(None, None, None, None, None),
                 Paint::Blur { radius, .. } => {
@@ -196,9 +199,9 @@ impl DisplayList {
                 }
                 Paint::PopBlur => context.pop_layer(),
                 Paint::PopMask(mask) => {
-                    context.set_transform(
-                        Affine::scale(self.scale as f64) * checked_paint_transform(mask.transform)?,
-                    );
+                    transform =
+                        Affine::scale(self.scale as f64) * checked_paint_transform(mask.transform)?;
+                    context.set_transform(transform);
                     let [x, y, w, h] = mask.bounds.map(f64::from);
                     for layer in &mask.layers {
                         context.push_blend_layer(crate::scene::mask::blend());
@@ -225,7 +228,7 @@ impl DisplayList {
                     context.set_paint(AlphaColor::<Srgb>::from_rgba8(r, g, b, a));
                     context.fill_path(
                         &crate::scene::border::Border::with_radii(
-                            bounds,
+                            pixel_snapped(bounds, transform),
                             widths,
                             corners.unwrap_or([[radius; 2]; 4]),
                         )
@@ -243,7 +246,7 @@ impl DisplayList {
                     context.set_paint_transform(brush.transform);
                     context.fill_path(
                         &ClipSnapshot {
-                            bounds: [x, y, w, h],
+                            bounds: pixel_snapped([x, y, w, h], transform),
                             radius,
                             radii: corners,
                             transform: None,
@@ -255,13 +258,13 @@ impl DisplayList {
                 Paint::Rect {
                     corners,
                     color: [r, g, b, a],
-                    bounds: [x, y, w, h],
+                    bounds,
                     radius,
                 } => {
                     context.set_paint(AlphaColor::<Srgb>::from_rgba8(r, g, b, a));
                     context.fill_path(
                         &ClipSnapshot {
-                            bounds: [x, y, w, h],
+                            bounds: pixel_snapped(bounds, transform),
                             radius,
                             radii: corners,
                             transform: None,
@@ -277,8 +280,13 @@ impl DisplayList {
                     position,
                 } => {
                     if let Some(bitmap) = self.images.get(&src) {
-                        let (rect, transform, clip) =
-                            image_geometry(bitmap, bounds, radius, fit, position)?;
+                        let (rect, transform, clip) = image_geometry(
+                            bitmap,
+                            pixel_snapped(bounds, transform),
+                            radius,
+                            fit,
+                            position,
+                        )?;
                         context.push_clip_layer(&clip);
                         context.set_paint(vello_cpu::Image {
                             image: vello_cpu::ImageSource::Pixmap(bitmap.pixels().clone()),
@@ -412,6 +420,35 @@ impl DisplayList {
             }
         }
         Ok(())
+    }
+}
+
+/// `bounds` with every edge moved to the nearest device pixel under an axis-aligned
+/// `transform`. Fills that share a fractional edge otherwise both draw it at partial
+/// coverage, and whatever lies under them shows through the seam.
+pub(crate) fn pixel_snapped(bounds: [f32; 4], transform: Affine) -> [f32; 4] {
+    let [sx, ky, kx, sy, tx, ty] = transform.as_coeffs();
+    let [x, y, w, h] = bounds.map(f64::from);
+    if ky != 0.0 || kx != 0.0 || sx <= 0.0 || sy <= 0.0 || !(w > 0.0 && h > 0.0) {
+        return bounds;
+    }
+    let snap = |v: f64, scale: f64, offset: f64| ((v * scale + offset).round() - offset) / scale;
+    let (left, top) = (snap(x, sx, tx), snap(y, sy, ty));
+    // A visible sliver keeps at least one device pixel.
+    let right = snap(x + w, sx, tx).max(left + 1.0 / sx);
+    let bottom = snap(y + h, sy, ty).max(top + 1.0 / sy);
+    [left, top, right - left, bottom - top].map(|v| v as f32)
+}
+
+/// `shape` with its box on device pixels, as the fills it cuts are; a clip with its own
+/// affine is left as is.
+pub(crate) fn snapped_clip(shape: &ClipSnapshot, transform: Affine) -> ClipSnapshot {
+    if shape.transform.is_some() {
+        return *shape;
+    }
+    ClipSnapshot {
+        bounds: pixel_snapped(shape.bounds, transform),
+        ..*shape
     }
 }
 
