@@ -29,6 +29,8 @@ struct Slot {
     dispatcher: Option<Dispatcher>,
     /// Disposed before the thread could take tasks: it tears down as soon as it can.
     disposed: bool,
+    /// What the page registered, withdrawn as soon as it is disposed.
+    registered: Option<(WebTag, Arc<dyn WindowsNativeContent>)>,
 }
 
 static THREADS: LazyLock<Mutex<HashMap<Token, Slot>>> = LazyLock::new(Default::default);
@@ -118,6 +120,13 @@ fn run(token: Token, webtag: WebTag, request: Creation) {
             let mut threads = threads();
             let slot = threads.entry(token).or_default();
             slot.dispatcher = Some(dispatcher);
+            if !slot.disposed {
+                slot.registered = LIVE.with(|live| {
+                    live.borrow()
+                        .as_ref()
+                        .map(|live| (live.webtag.clone(), live.content.clone()))
+                });
+            }
             slot.disposed
         };
         if disposed {
@@ -402,7 +411,7 @@ impl NativeFactory for Factory {
     }
 
     fn dispose(&self, token: Token) {
-        let dispatcher = {
+        let (dispatcher, registered) = {
             let mut threads = threads();
             let Some(slot) = threads.get_mut(&token) else {
                 return;
@@ -410,8 +419,14 @@ impl NativeFactory for Factory {
             if slot.dispatcher.is_none() {
                 slot.disposed = true;
             }
-            slot.dispatcher
+            (slot.dispatcher, slot.registered.take())
         };
+        // Withdraw now, not when the page thread gets to it: until then the host still counts
+        // the page's window as a live workspace and can present the next page into it, just
+        // before teardown destroys that window.
+        if let Some((webtag, content)) = registered {
+            unregister_native_content(&webtag, &content);
+        }
         if let Some(dispatcher) = dispatcher {
             dispatcher.post(Box::new(teardown));
         }
