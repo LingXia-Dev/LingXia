@@ -17,6 +17,10 @@ use std::path::{Path, PathBuf};
 /// (`lx.audio`). The check walks the **built** bundle so a tag inside a
 /// third-party component is caught the same way as authored markup.
 pub(crate) fn audit_output_media(output_dir: &Path) -> Result<()> {
+    // A GPU app's View draws `<video>` itself; no WebView ever loads its pages.
+    if gpu_renderer(output_dir) {
+        return Ok(());
+    }
     let mut findings = Vec::new();
     let mut unscannable = Vec::new();
     for path in collect_files(output_dir)? {
@@ -77,6 +81,13 @@ pub(crate) fn audit_output_media(output_dir: &Path) -> Result<()> {
             .collect::<Vec<_>>()
             .join("\n")
     )
+}
+
+fn gpu_renderer(output_dir: &Path) -> bool {
+    fs::read_to_string(output_dir.join("lxapp.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .is_some_and(|config| config["renderer"] == "gpu")
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -746,6 +757,20 @@ mod tests {
         }
         fs::write(&path, source).unwrap();
         audit_output_media(temp.path())
+    }
+
+    #[test]
+    fn a_gpu_app_draws_its_own_video() {
+        let temp = tempdir().unwrap();
+        fs::create_dir_all(temp.path().join("pages/video")).unwrap();
+        fs::write(
+            temp.path().join("pages/video/index.js"),
+            "document.createElement(\"video\");",
+        )
+        .unwrap();
+        assert!(audit_output_media(temp.path()).is_err());
+        fs::write(temp.path().join("lxapp.json"), r#"{"renderer":"gpu"}"#).unwrap();
+        audit_output_media(temp.path()).unwrap();
     }
 
     /// A call is a factory call because of where its callee came from, never
