@@ -1099,6 +1099,9 @@ fn present_webview_in_active_group_with_policy(
     // browser row to an already-selected lxapp tab can show the new page for
     // one frame under the old browser address bar.
     repaint_window_now(host);
+    if presentation_outlived(webtag) {
+        return Ok(());
+    }
     // Show the host before the content so the controller's SetIsVisible(true)
     // lands on a visible parent chain and composition starts immediately.
     if !is_window_visible(host) {
@@ -1123,6 +1126,9 @@ fn present_webview_in_active_group_with_policy(
     // Re-run without explicit candidates to converge a controller registered
     // into the host while the incoming main was being laid out.
     retire_other_group_main_controllers(host, webtag.key(), &[]);
+    if presentation_outlived(webtag) {
+        return Ok(());
+    }
 
     mark_active(webtag);
     notify_webtag_visibility(webtag.key(), true);
@@ -8982,6 +8988,21 @@ pub fn show_webview_window_with_chrome(
     Ok(())
 }
 
+/// Laying out and retiring controllers wait on other threads, and the UI thread
+/// handles sent messages meanwhile: a relaunch can destroy this page and present
+/// its successor before the present resumes. Its tail must then not reshow the
+/// old host or hide the successor's as a duplicate.
+fn presentation_outlived(webtag: &WebTag) -> bool {
+    let gone = find_webview_handler(webtag).is_none();
+    if gone {
+        log::info!(
+            "abandoning the present of {}: the page closed meanwhile",
+            webtag.key()
+        );
+    }
+    gone
+}
+
 fn show_webview_window_replacing(
     webtag: &WebTag,
     title: &str,
@@ -9104,6 +9125,9 @@ fn show_webview_window_replacing(
     handler.set_content_visible(true)?;
 
     retire_other_group_main_controllers(target, webtag.key(), &[]);
+    if presentation_outlived(webtag) {
+        return Ok(());
+    }
 
     let defer_initial_show = defer_initial_home_window(webtag, target);
     if !defer_initial_show && (!is_window_visible(target) || activate) {
