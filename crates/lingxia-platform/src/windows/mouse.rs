@@ -165,7 +165,7 @@ fn post_wheel_message(
 /// Walks `ChildWindowFromPointEx` down from `window` to the deepest child
 /// containing `point`; returns that window and the point translated into
 /// its client coordinates.
-fn deepest_child_at(window: isize, point: (f64, f64)) -> (HWND, POINT) {
+pub(super) fn deepest_child_at(window: isize, point: (f64, f64)) -> (HWND, POINT) {
     use windows::Win32::Graphics::Gdi::{ClientToScreen, ScreenToClient};
 
     let mut target = HWND(window as *mut core::ffi::c_void);
