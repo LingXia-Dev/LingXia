@@ -948,9 +948,13 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             @Override public void doFrame(long time) {
                 if (!active || destroyed || flingRegion == null || !scroller.computeScrollOffset()) return;
                 int position = flingHorizontal ? scroller.getCurrX() : scroller.getCurrY();
-                boolean changed = nativeScrollBy(host, flingRegion, position - flingPosition);
-                flingPosition = position;
-                if (!changed) { scroller.abortAnimation(); flingRegion = null; return; }
+                // The first frame can share the fling's start time and move 0 px; only a scroll the
+                // region refuses (an edge) ends the glide.
+                if (position != flingPosition) {
+                    boolean changed = nativeScrollBy(host, flingRegion, position - flingPosition);
+                    flingPosition = position;
+                    if (!changed) { scroller.abortAnimation(); flingRegion = null; return; }
+                }
                 Choreographer.getInstance().postFrameCallback(this);
             }
         };
