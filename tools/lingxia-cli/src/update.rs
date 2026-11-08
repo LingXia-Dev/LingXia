@@ -50,6 +50,10 @@ pub fn newer_released_cli() -> Option<(String, String)> {
 /// Returns whether this binary was replaced on disk, which also means the new
 /// binary has already reconciled the skill.
 pub fn maybe_auto_update() -> bool {
+    // A source build copied over an install.sh install must not be replaced by the release.
+    if !crate::runner_cache::CliBuild::current().release {
+        return false;
+    }
     notify_deferred_update_failure();
 
     let Ok(raw_exe_path) = current_exe_path() else {
