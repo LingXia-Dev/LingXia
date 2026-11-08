@@ -236,6 +236,60 @@ impl DisplayList {
         });
     }
 
+    /// Press (`ring` 0) or focus-ring feedback drawn into the frame, for a host that cannot
+    /// layer it over the page: `shapes` as [`crate::interaction::chrome::feedback_shape`] gives
+    /// them, `argb` its colour. A ring lies inside the node, as the native hosts stroke it.
+    pub fn push_feedback(
+        &mut self,
+        identity: &str,
+        shapes: &[crate::interaction::chrome::RoundedRect],
+        argb: u32,
+        ring: f32,
+    ) {
+        let Some((own, masks)) = shapes.split_first() else {
+            return;
+        };
+        let [a, r, g, b] = argb.to_be_bytes();
+        let color = [r, g, b, a];
+        let corners = |shape: &[f32; 12]| {
+            [
+                [shape[4], shape[5]],
+                [shape[6], shape[7]],
+                [shape[8], shape[9]],
+                [shape[10], shape[11]],
+            ]
+        };
+        let bounds = |shape: &[f32; 12]| [shape[0], shape[1], shape[2], shape[3]];
+        let mut paints = vec![Paint::Transform(Affine::IDENTITY)];
+        paints.extend(masks.iter().map(|mask| {
+            Paint::Clip(ClipSnapshot {
+                radii: Some(corners(mask)),
+                bounds: bounds(mask),
+                radius: 0.0,
+                transform: None,
+            })
+        }));
+        paints.push(if ring > 0.0 {
+            Paint::Border {
+                color,
+                bounds: bounds(own),
+                widths: [ring; 4],
+                radius: 0.0,
+                corners: Some(corners(own)),
+                style: crate::scene::border::LineStyle::Solid,
+            }
+        } else {
+            Paint::Rect {
+                color,
+                bounds: bounds(own),
+                radius: 0.0,
+                corners: Some(corners(own)),
+            }
+        });
+        paints.extend(masks.iter().map(|_| Paint::PopClip));
+        self.push_overlay(identity, paints);
+    }
+
     /// The caret blink's off phase.
     pub(crate) fn hide_caret(&mut self) {
         if let Some(index) = self.caret_paint.take() {

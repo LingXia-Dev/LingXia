@@ -64,6 +64,11 @@ pub struct WindowsAdapter {
     pub(crate) menu: AtomicU64,
     pub(crate) ime: crate::ime::Ime,
     fling: Mutex<Option<Fling>>,
+    /// The nodes showing press (0) and focus-ring (1) feedback, drawn into each frame: a
+    /// window over the swap chain cannot blend with it.
+    highlights: Mutex<[Option<usize>; 2]>,
+    /// The presented frame's feedback colours.
+    feedback: Mutex<Option<lingxia_view::interaction::chrome::FeedbackStyle>>,
 }
 
 impl WindowsAdapter {
@@ -87,6 +92,8 @@ impl WindowsAdapter {
             menu: AtomicU64::new(0),
             ime: Default::default(),
             fling: Mutex::new(None),
+            highlights: Mutex::new([None; 2]),
+            feedback: Mutex::new(None),
         }
     }
 
@@ -176,16 +183,67 @@ pub enum Frame {
     Cpu(DisplayList, CommitTicket),
 }
 
+impl WindowsAdapter {
+    fn highlight(&self, which: usize, node: Option<usize>) {
+        let changed = {
+            let mut highlights = self.highlights.lock().unwrap_or_else(|p| p.into_inner());
+            std::mem::replace(&mut highlights[which], node) != node
+        };
+        if changed && let Some(host) = self.weak() {
+            // Effects arrive while the core delivers them; redraw once it is done.
+            self.dispatcher.post(Box::new(move || {
+                if let Some(host) = host.upgrade() {
+                    host.redraw();
+                }
+            }));
+        }
+    }
+
+    /// Press and focus-ring feedback over the page, following its node into this frame.
+    fn decorate(&self, display: &mut DisplayList) {
+        use lingxia_view::interaction::chrome::{ChromeNode, feedback_shape};
+        let highlights = *self.highlights.lock().unwrap_or_else(|p| p.into_inner());
+        if highlights.iter().all(Option::is_none) {
+            return;
+        }
+        let Some(style) = *self.feedback.lock().unwrap_or_else(|p| p.into_inner()) else {
+            return;
+        };
+        for (which, node) in highlights.into_iter().enumerate() {
+            let shape = node
+                .and_then(|index| serde_json::to_string(display.nodes.get(index)?).ok())
+                .and_then(|json| feedback_shape(&ChromeNode::parse(&json).ok()?));
+            let Some(shape) = shape else { continue };
+            let (color, ring) = if which == 0 {
+                (style.press_overlay, 0.0)
+            } else {
+                (style.focus_ring, style.focus_ring_width)
+            };
+            display.push_feedback(
+                if which == 0 {
+                    "lingxia:press"
+                } else {
+                    "lingxia:focus"
+                },
+                &shape,
+                color,
+                ring,
+            );
+        }
+    }
+}
+
 impl Presenter for WindowsAdapter {
     type Frame = Frame;
 
     fn prepare(
         &self,
-        display: DisplayList,
+        mut display: DisplayList,
         _: SurfaceTicket,
         generation: CommitTicket,
     ) -> Result<Option<Frame>, String> {
         use lingxia_view::renderer::render_thread;
+        self.decorate(&mut display);
         Ok(match self.route() {
             Route::Wait => None,
             Route::Gpu(surface) => Some(Frame::Gpu {
@@ -433,7 +491,15 @@ impl Feedback for WindowsAdapter {
                 Effect::StopFling => {
                     *self.fling.lock().unwrap_or_else(|p| p.into_inner()) = None;
                 }
-                // Press and focus-ring chrome is not drawn over the swap chain yet.
+                // A node with a pressed style repaints itself.
+                Effect::Press {
+                    node,
+                    styled: false,
+                    ..
+                } => self.highlight(0, Some(*node)),
+                Effect::Press { .. } | Effect::ClearPress => self.highlight(0, None),
+                Effect::FocusRing { node } => self.highlight(1, Some(*node)),
+                Effect::ClearFocusRing => self.highlight(1, None),
                 _ => {}
             }
         }
@@ -443,6 +509,7 @@ impl Feedback for WindowsAdapter {
 impl HostEvents for WindowsAdapter {
     fn loaded(&self) {}
     fn presented(&self, frame: &FrameSnapshot, timing: &FrameTiming) {
+        *self.feedback.lock().unwrap_or_else(|p| p.into_inner()) = Some(frame.feedback);
         // An exiting dialog still covers the page until its exit ends.
         let open = frame.frame.nodes.iter().any(|node| {
             node.role.as_deref() == Some("dialog")
