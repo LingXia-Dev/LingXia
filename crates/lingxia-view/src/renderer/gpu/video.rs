@@ -53,7 +53,24 @@ pub trait Player: Send {
     fn status(&self) -> Status {
         Status::default()
     }
+    /// An adaptive stream's renditions by label, once its manifest is read.
+    fn qualities(&self) -> Vec<String> {
+        Vec::new()
+    }
+    /// Pins the rendition `label`, or gives the choice back to the player with `None`.
+    fn set_quality(&mut self, label: Option<&str>) -> Result<(), VideoError> {
+        let _ = label;
+        Err(VideoError::new(
+            "VIDEO_SOURCE",
+            "this video has one quality; give `sources` to choose between files",
+        ))
+    }
 }
+
+/// How far ahead of the playing position a new quality is prepared, in media seconds.
+const SWITCH_LEAD: f64 = 1.0;
+/// The new quality starts this far before the playing one reaches it, covering its start-up.
+const SWITCH_START: f64 = 0.12;
 
 /// Opens the player for a source URL.
 pub type Opener = fn(&str) -> Result<Box<dyn Player>, String>;
@@ -94,7 +111,8 @@ pub(crate) fn configure(key: &str, source: Result<Source, VideoError>) {
     if previous.as_ref() == Some(&source) {
         return;
     }
-    let url = |source: &Result<Source, VideoError>| source.as_ref().ok().map(|s| s.url.clone());
+    let url =
+        |source: &Result<Source, VideoError>| source.as_ref().ok().map(|s| s.variants.clone());
     let reopen = previous
         .as_ref()
         .is_some_and(|previous| url(previous) != url(&source));
@@ -104,17 +122,23 @@ pub(crate) fn configure(key: &str, source: Result<Source, VideoError>) {
         let mut players = players();
         if let Some(entry) = players.get_mut(key) {
             entry.applied = None;
+            entry.switch = None;
+            entry.quality = None;
             let _closed = std::mem::replace(&mut entry.state, State::Opening);
             request(key, &mut entry.state);
         }
     }
 }
 
+fn source_of(key: &str) -> Option<Source> {
+    sources().get(key)?.as_ref().ok().cloned()
+}
+
 fn request(key: &str, state: &mut State) {
     let sent = OPENER
         .lock()
         .unwrap_or_else(|p| p.into_inner())
-        .send(key.to_owned());
+        .send(Job::Open(key.to_owned()));
     if sent.is_err() {
         *state = State::Failed(VideoError::new(
             "VIDEO_DECODERS",
@@ -149,6 +173,23 @@ pub(crate) fn status(key: &str) -> Option<Status> {
     } else if status.duration.is_some() {
         status.ready_state = "metadata";
     }
+    let source = source_of(key);
+    let labels = source.as_ref().map(Source::labels).unwrap_or_default();
+    status.qualities = match (&entry.state, labels.is_empty()) {
+        (State::Ready(player), true) => player.qualities(),
+        _ => labels,
+    };
+    status.quality = entry.quality.clone().unwrap_or_else(|| "auto".into());
+    status.shown = source
+        .and_then(|source| {
+            source
+                .variants
+                .into_iter()
+                .find(|(label, url)| !label.is_empty() && *url == entry.url)
+                .map(|(label, _)| label)
+        })
+        .or_else(|| (status.video_height > 0).then(|| format!("{}p", status.video_height)))
+        .unwrap_or_default();
     Some(status)
 }
 
@@ -161,9 +202,13 @@ pub(crate) fn command(key: &str, op: VideoOp) -> Result<(), VideoError> {
             "no <video> on this page shows this player",
         ));
     };
+    if let VideoOp::SetQuality(label) = op {
+        return set_quality(key, entry, label);
+    }
     match (&mut entry.state, op) {
         (_, VideoOp::Retry) => {
             entry.applied = None;
+            entry.switch = None;
             let _closed = std::mem::replace(&mut entry.state, State::Opening);
             request(key, &mut entry.state);
             Ok(())
@@ -175,6 +220,136 @@ pub(crate) fn command(key: &str, op: VideoOp) -> Result<(), VideoError> {
         }
         (State::Failed(error), _) => Err(error.clone()),
     }
+}
+
+/// Picks quality `label` of player `key`: a file of `sources` opens beside the playing one and
+/// takes over at the same position; an adaptive stream switches renditions itself.
+fn set_quality(key: &str, entry: &mut Entry, label: Option<String>) -> Result<(), VideoError> {
+    let Some(source) = source_of(key) else {
+        return Err(VideoError::new(
+            "VIDEO_NO_PLAYER",
+            "this player has no source yet",
+        ));
+    };
+    let labels = source.labels();
+    if labels.is_empty() {
+        let State::Ready(player) = &mut entry.state else {
+            return Err(VideoError::new(
+                "VIDEO_SOURCE",
+                "the video is still opening",
+            ));
+        };
+        let choices = player.qualities();
+        if let Some(label) = &label
+            && !choices.contains(label)
+        {
+            return Err(unknown_quality(label, &choices));
+        }
+        if label == entry.quality && entry.switch.is_none() {
+            return Ok(());
+        }
+        let now = player.status();
+        if label.is_none() || (now.paused && now.current_time == 0.0) {
+            player.set_quality(label.as_deref())?;
+            entry.quality = label;
+            return Ok(());
+        }
+        // A pin would otherwise wait out the buffered segments: a second player of the same
+        // stream, pinned before it loads, takes over seamlessly like a file switch.
+        let url = entry.url.clone();
+        return start_switch(key, entry, label, url);
+    }
+    if let Some(label) = &label
+        && !labels.contains(label)
+    {
+        return Err(unknown_quality(label, &labels));
+    }
+    let url = source.url(label.as_deref()).to_owned();
+    if entry
+        .switch
+        .as_ref()
+        .is_some_and(|switch| switch.url == url)
+    {
+        entry.switch.as_mut().unwrap().label = label;
+        return Ok(());
+    }
+    if url == entry.url || !matches!(entry.state, State::Ready(_)) {
+        // Same file, or nothing playing yet: the choice applies as the player opens.
+        entry.switch = None;
+        if url != entry.url {
+            entry.url = url;
+            entry.applied = None;
+            let _closed = std::mem::replace(&mut entry.state, State::Opening);
+            request(key, &mut entry.state);
+        }
+        entry.quality = label;
+        return Ok(());
+    }
+    start_switch(key, entry, label, url)
+}
+
+fn start_switch(
+    key: &str,
+    entry: &mut Entry,
+    label: Option<String>,
+    url: String,
+) -> Result<(), VideoError> {
+    entry.switch = Some(Switch {
+        label,
+        url: url.clone(),
+        asked: Instant::now(),
+        player: None,
+        target: 0.0,
+        started: false,
+    });
+    let sent = OPENER
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .send(Job::Switch(key.to_owned(), url));
+    if sent.is_err() {
+        entry.switch = None;
+        return Err(VideoError::new(
+            "VIDEO_DECODERS",
+            "the opener is not running",
+        ));
+    }
+    Ok(())
+}
+
+fn unknown_quality(label: &str, labels: &[String]) -> VideoError {
+    VideoError::new(
+        "VIDEO_SOURCE",
+        format!(
+            "no quality \"{label}\"; pick \"auto\" or one of {}",
+            labels
+                .iter()
+                .map(|l| format!("\"{l}\""))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    )
+}
+
+/// A quality switch in flight: the next file's player, parked at `target` until the playing one
+/// reaches it.
+struct Switch {
+    label: Option<String>,
+    url: String,
+    asked: Instant,
+    player: Option<Box<dyn Player>>,
+    /// Media seconds the next player is parked at.
+    target: f64,
+    /// The next player was told to play.
+    started: bool,
+}
+
+/// The last switches: label, ms from the ask to the swap, the frame gap across it and the
+/// position step at it.
+static SWITCHES: Mutex<Vec<serde_json::Value>> = Mutex::new(Vec::new());
+
+enum Job {
+    Open(String),
+    Switch(String, String),
 }
 
 struct Frame {
@@ -197,6 +372,12 @@ struct Entry {
     applied: Option<Settings>,
     /// Commands sent while the player opened.
     pending: Vec<VideoOp>,
+    /// The URL playing; the chosen quality (`None`: auto) and a switch to another.
+    url: String,
+    quality: Option<String>,
+    switch: Option<Switch>,
+    /// When the last frame was imported.
+    imported: Option<Instant>,
 }
 
 static PLAYERS: LazyLock<Mutex<HashMap<String, Entry>>> = LazyLock::new(Default::default);
@@ -210,45 +391,15 @@ fn players() -> MutexGuard<'static, HashMap<String, Entry>> {
 static REBINDS: Mutex<[u64; 14]> = Mutex::new([0; 14]);
 
 /// Opens players and closes idle ones, so neither stalls a render.
-static OPENER: LazyLock<Mutex<mpsc::Sender<String>>> = LazyLock::new(|| {
-    let (sender, receiver) = mpsc::channel::<String>();
+static OPENER: LazyLock<Mutex<mpsc::Sender<Job>>> = LazyLock::new(|| {
+    let (sender, receiver) = mpsc::channel::<Job>();
     let spawned = std::thread::Builder::new()
         .name("lingxia-video".into())
         .spawn(move || {
             loop {
                 match receiver.recv_timeout(Duration::from_millis(500)) {
-                    Ok(key) => {
-                        let source = sources().get(&key).cloned();
-                        let mut state = match source {
-                            Some(Ok(source)) => match open(&source.url) {
-                                Ok(mut player) => {
-                                    player.apply(&source.settings, None);
-                                    State::Ready(player)
-                                }
-                                Err(error) => {
-                                    log::warn!(target: "lingxia_view", "video {key}: {error}");
-                                    State::Failed(VideoError::from_message(&error))
-                                }
-                            },
-                            Some(Err(error)) => State::Failed(error),
-                            None => State::Failed(VideoError::new("VIDEO_SOURCE", "no source")),
-                        };
-                        // Evicted while opening: the player closes here, unused.
-                        let _unused = match players().get_mut(&key) {
-                            Some(entry) => {
-                                if let State::Ready(player) = &mut state {
-                                    entry.applied = settings_of(&key);
-                                    for op in entry.pending.drain(..) {
-                                        if let Err(error) = player.command(&op) {
-                                            log::warn!(target: "lingxia_view", "video {key}: {}", error.message);
-                                        }
-                                    }
-                                }
-                                std::mem::replace(&mut entry.state, state)
-                            }
-                            None => state,
-                        };
-                    }
+                    Ok(Job::Open(key)) => open_player(&key),
+                    Ok(Job::Switch(key, url)) => open_switch(&key, &url),
                     Err(mpsc::RecvTimeoutError::Timeout) => {}
                     Err(mpsc::RecvTimeoutError::Disconnected) => return,
                 }
@@ -269,6 +420,191 @@ static OPENER: LazyLock<Mutex<mpsc::Sender<String>>> = LazyLock::new(|| {
     }
     Mutex::new(sender)
 });
+
+fn open_player(key: &str) {
+    let source = sources().get(key).cloned();
+    let quality = players().get(key).and_then(|entry| entry.quality.clone());
+    let mut url = String::new();
+    let mut state = match source {
+        Some(Ok(source)) => {
+            url = source.url(quality.as_deref()).to_owned();
+            match open(&url) {
+                Ok(mut player) => {
+                    player.apply(&source.settings, None);
+                    State::Ready(player)
+                }
+                Err(error) => {
+                    log::warn!(target: "lingxia_view", "video {key}: {error}");
+                    State::Failed(VideoError::from_message(&error))
+                }
+            }
+        }
+        Some(Err(error)) => State::Failed(error),
+        None => State::Failed(VideoError::new("VIDEO_SOURCE", "no source")),
+    };
+    // Evicted while opening: the player closes here, unused.
+    let _unused = match players().get_mut(key) {
+        Some(entry) => {
+            if let State::Ready(player) = &mut state {
+                entry.applied = settings_of(key);
+                for op in entry.pending.drain(..) {
+                    if let Err(error) = player.command(&op) {
+                        log::warn!(target: "lingxia_view", "video {key}: {}", error.message);
+                    }
+                }
+            }
+            entry.url = url;
+            std::mem::replace(&mut entry.state, state)
+        }
+        None => state,
+    };
+}
+
+/// Opens the next quality's file paused, matched to the playing one's sound and rate, and parks
+/// it a lead ahead of the playing position.
+fn open_switch(key: &str, url: &str) {
+    let Some(source) = source_of(key) else {
+        return;
+    };
+    let label = players()
+        .get(key)
+        .and_then(|entry| entry.switch.as_ref().map(|switch| switch.label.clone()))
+        .flatten();
+    let mut next = match open(url) {
+        Ok(mut player) if source.labels().is_empty() => {
+            match player.set_quality(label.as_deref()) {
+                Ok(()) => player,
+                Err(error) => {
+                    log::warn!(target: "lingxia_view", "video {key} quality: {}", error.message);
+                    if let Some(entry) = players().get_mut(key) {
+                        entry.switch = None;
+                    }
+                    return;
+                }
+            }
+        }
+        Ok(player) => player,
+        Err(error) => {
+            log::warn!(target: "lingxia_view", "video {key} quality: {error}");
+            if let Some(entry) = players().get_mut(key) {
+                entry.switch = None;
+            }
+            return;
+        }
+    };
+    let mut players = players();
+    let Some(entry) = players.get_mut(key) else {
+        return;
+    };
+    let State::Ready(playing) = &entry.state else {
+        return;
+    };
+    let now = playing.status();
+    let settings = Settings {
+        paused: true,
+        muted: now.muted,
+        looped: source.settings.looped,
+        rate: now.playback_rate,
+        volume: now.volume,
+    };
+    next.apply(&settings, None);
+    let target = if now.paused {
+        now.current_time
+    } else {
+        lead(now.current_time, now.playback_rate, now.duration)
+    };
+    let _ = next.command(&VideoOp::Seek(target));
+    match &mut entry.switch {
+        Some(switch) if switch.url == url && switch.label == label => {
+            switch.player = Some(next);
+            switch.target = target;
+        }
+        // Superseded or cancelled while opening.
+        _ => {}
+    }
+}
+
+/// The position a lead ahead of `time`, kept short of the end.
+fn lead(time: f64, rate: f32, duration: Option<f64>) -> f64 {
+    let ahead = time + SWITCH_LEAD * f64::from(rate.max(0.25));
+    duration.map_or(ahead, |duration| ahead.min((duration - 0.05).max(0.0)))
+}
+
+/// Moves a switch on at a refresh: starts the next player just before the playing one reaches
+/// its position, then binds its frame once the playing one has, so the picture never stalls.
+fn advance_switch(key: &str, entry: &mut Entry, device: &wgpu::Device) {
+    let Some(switch) = &mut entry.switch else {
+        return;
+    };
+    let Some(next) = &mut switch.player else {
+        return;
+    };
+    let now = match &entry.state {
+        State::Ready(playing) => playing.status(),
+        _ => Status::default(),
+    };
+    if now.paused {
+        if (now.current_time - switch.target).abs() > 0.02 {
+            switch.target = now.current_time;
+            let _ = next.command(&VideoOp::Seek(switch.target));
+            return;
+        }
+    } else if !switch.started {
+        if now.current_time > switch.target + 0.05 {
+            // The playing one passed the parked position before it was ready: park further on.
+            switch.target = lead(
+                now.current_time + SWITCH_LEAD,
+                now.playback_rate,
+                now.duration,
+            );
+            let _ = next.command(&VideoOp::Seek(switch.target));
+            return;
+        }
+        if now.current_time < switch.target - SWITCH_START * f64::from(now.playback_rate) {
+            return;
+        }
+        let _ = next.command(&VideoOp::Play);
+        switch.started = true;
+        return;
+    } else if now.current_time < switch.target {
+        return;
+    }
+    let Ok(Some((texture, size))) = next.next_frame(device) else {
+        return;
+    };
+    let after = next.status().current_time;
+    let switch = entry.switch.take().unwrap();
+    let gap = entry.imported.map(|at| at.elapsed().as_secs_f64() * 1000.0);
+    let record = serde_json::json!({
+        "player": key,
+        "quality": switch.label.clone().unwrap_or_else(|| "auto".into()),
+        "switchMs": switch.asked.elapsed().as_millis() as u64,
+        "frameGapMs": gap.map(|g| (g * 10.0).round() / 10.0),
+        "positionStep": ((after - now.current_time) * 1000.0).round() / 1000.0,
+    });
+    log::info!(target: "lingxia_view", "video quality switch {record}");
+    {
+        let mut switches = SWITCHES.lock().unwrap_or_else(|p| p.into_inner());
+        if switches.len() >= 8 {
+            switches.remove(0);
+        }
+        switches.push(record);
+    }
+    if entry.frame.as_ref().is_none_or(|frame| frame.size != size) {
+        EPOCH.fetch_add(1, Ordering::Relaxed);
+    }
+    entry.frame = Some(Frame {
+        view: texture.create_view(&Default::default()),
+        size,
+    });
+    entry.imported = Some(Instant::now());
+    entry.frames += 1;
+    entry.url = switch.url;
+    entry.quality = switch.label;
+    let previous = std::mem::replace(&mut entry.state, State::Ready(switch.player.unwrap()));
+    // Closing a player can wait on its decoder; the render thread does not.
+    std::thread::spawn(move || drop(previous));
+}
 
 fn keys(display: &crate::DisplayList) -> Vec<&str> {
     let mut keys: Vec<&str> = display
@@ -315,12 +651,14 @@ pub(crate) fn has_new(display: &crate::DisplayList) -> bool {
     let mut players = players();
     let mut new = false;
     for key in keys(display) {
-        if let Some(Entry {
-            state: State::Ready(player),
-            ..
-        }) = touch(&mut players, key)
-        {
-            new |= player.has_new();
+        if let Some(entry) = touch(&mut players, key) {
+            if let State::Ready(player) = &entry.state {
+                new |= player.has_new();
+            }
+            new |= entry
+                .switch
+                .as_ref()
+                .is_some_and(|switch| switch.player.as_ref().is_some_and(|next| next.has_new()));
         }
     }
     new
@@ -337,6 +675,10 @@ fn touch<'a>(players: &'a mut HashMap<String, Entry>, key: &str) -> Option<&'a m
                 state,
                 applied: None,
                 pending: Vec::new(),
+                url: String::new(),
+                quality: None,
+                switch: None,
+                imported: None,
                 frame: None,
                 drawn: now,
                 requested: now,
@@ -375,6 +717,12 @@ pub(crate) fn import_frames(device: &wgpu::Device, display: &crate::DisplayList)
         let Some(entry) = touch(&mut players, key) else {
             continue;
         };
+        let frames = entry.frames;
+        advance_switch(key, entry, device);
+        if entry.frames != frames {
+            imported = true;
+            continue;
+        }
         let State::Ready(player) = &mut entry.state else {
             continue;
         };
@@ -393,6 +741,7 @@ pub(crate) fn import_frames(device: &wgpu::Device, display: &crate::DisplayList)
                     size,
                 });
                 let us = crate::session::metrics::micros(started);
+                entry.imported = Some(Instant::now());
                 entry.frames += 1;
                 imported = true;
                 entry.import_us = [entry.import_us[0] + us, entry.import_us[1].max(us)];
@@ -500,6 +849,7 @@ pub fn stats() -> serde_json::Value {
             "sceneAvg": avg(2), "imagesAvg": avg(3), "encodeAvg": avg(4), "submitAvg": avg(5),
         },
         "gpuUs": super::timing::stats(),
+        "qualitySwitches": SWITCHES.lock().unwrap_or_else(|p| p.into_inner()).clone(),
     })
 }
 
@@ -666,11 +1016,26 @@ mod platform {
         }
     }
 
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct CGSize {
+        width: f64,
+        height: f64,
+    }
+
+    /// An HLS variant, named by its height.
+    struct Rendition {
+        label: String,
+        size: [f64; 2],
+        peak: f64,
+    }
+
     pub(super) struct Player {
         player: Id,
         item: Id,
         output: Id,
         cache: *mut c_void,
+        renditions: Vec<Rendition>,
         looped: std::cell::Cell<bool>,
         ended: std::cell::Cell<bool>,
         rate: f32,
@@ -754,8 +1119,43 @@ mod platform {
                             set_float(self.player, c"setRate:", rate);
                         }
                     }
-                    VideoOp::Retry => {}
+                    VideoOp::Retry | VideoOp::SetQuality(_) => {}
                 }
+            }
+            Ok(())
+        }
+
+        fn qualities(&self) -> Vec<String> {
+            self.renditions.iter().map(|r| r.label.clone()).collect()
+        }
+
+        fn set_quality(&mut self, label: Option<&str>) -> Result<(), VideoError> {
+            let rendition = match label {
+                None => None,
+                Some(label) => Some(
+                    self.renditions
+                        .iter()
+                        .find(|r| r.label == label)
+                        .ok_or_else(|| {
+                            VideoError::new("VIDEO_SOURCE", format!("no rendition {label}"))
+                        })?,
+                ),
+            };
+            let (size, peak) = rendition.map_or(([0.0, 0.0], 0.0), |r| (r.size, r.peak));
+            unsafe {
+                let set_size: unsafe extern "C" fn(Id, *const c_void, CGSize) =
+                    std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+                set_size(
+                    self.item,
+                    sel(c"setPreferredMaximumResolution:"),
+                    CGSize {
+                        width: size[0],
+                        height: size[1],
+                    },
+                );
+                let set_double: unsafe extern "C" fn(Id, *const c_void, f64) =
+                    std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+                set_double(self.item, sel(c"setPreferredPeakBitRate:"), peak);
             }
             Ok(())
         }
@@ -778,6 +1178,52 @@ mod platform {
                     ..Status::default()
                 }
             }
+        }
+    }
+
+    /// The video variants of an HLS item's manifest, highest first, one per height. Reading
+    /// them loads the manifest, so this runs on the opener thread.
+    unsafe fn renditions(item: Id) -> Vec<Rendition> {
+        unsafe {
+            let asset = send0(item, c"asset");
+            let selector = sel(c"variants");
+            let responds: unsafe extern "C" fn(Id, *const c_void, *const c_void) -> bool =
+                std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+            if asset.is_null() || !responds(asset, sel(c"respondsToSelector:"), selector) {
+                return Vec::new();
+            }
+            let variants = send0(asset, c"variants");
+            let count = get_int(variants, c"count").max(0) as usize;
+            let at: unsafe extern "C" fn(Id, *const c_void, usize) -> Id =
+                std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+            let size_of: unsafe extern "C" fn(Id, *const c_void) -> CGSize =
+                std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+            let double: unsafe extern "C" fn(Id, *const c_void) -> f64 =
+                std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+            let mut out: Vec<Rendition> = Vec::new();
+            for index in 0..count {
+                let variant = at(variants, sel(c"objectAtIndex:"), index);
+                let video = send0(variant, c"videoAttributes");
+                if video.is_null() {
+                    continue;
+                }
+                let size = size_of(video, sel(c"presentationSize"));
+                let peak = double(variant, sel(c"peakBitRate"));
+                if size.height <= 0.0 {
+                    continue;
+                }
+                let label = format!("{}p", size.height.round() as u32);
+                match out.iter_mut().find(|r| r.label == label) {
+                    Some(existing) => existing.peak = existing.peak.max(peak),
+                    None => out.push(Rendition {
+                        label,
+                        size: [size.width, size.height],
+                        peak,
+                    }),
+                }
+            }
+            out.sort_by(|a, b| b.size[1].total_cmp(&a.size[1]));
+            out
         }
     }
 
@@ -835,11 +1281,22 @@ mod platform {
                 set_int(player, sel(c"setActionAtItemEnd:"), 2);
                 // Paused on the first frame until the page's props say play.
                 send0(player, c"pause");
+                let renditions = if url
+                    .to_bytes()
+                    .split(|b| *b == b'?')
+                    .next()
+                    .is_some_and(|path| path.ends_with(b".m3u8"))
+                {
+                    renditions(item)
+                } else {
+                    Vec::new()
+                };
                 Ok(Self {
                     player,
                     item,
                     output,
                     cache: std::ptr::null_mut(),
+                    renditions,
                     looped: std::cell::Cell::new(false),
                     ended: std::cell::Cell::new(false),
                     rate: 1.0,

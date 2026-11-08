@@ -138,6 +138,32 @@ pub enum GpuViewMessage {
 #[derive(Clone, Debug, PartialEq)]
 pub enum GpuViewRequest {
     Ui(GpuUiRequest),
+    Video(GpuVideoRequest),
+}
+
+/// `lx.createVideoContext(name)`: one command to the page's player `name`, which is a
+/// `useVideo` name or a `<video id>`.
+#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+pub struct GpuVideoRequest {
+    pub player: String,
+    #[serde(flatten)]
+    pub command: GpuVideoCommand,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+#[serde(tag = "op", rename_all = "camelCase")]
+pub enum GpuVideoCommand {
+    Play,
+    Pause,
+    Stop,
+    Seek { seconds: f64 },
+    RequestFullScreen,
+    ExitFullScreen,
+    SetStreamSource,
+    SetQuality { quality: String },
+    SetPlaybackRate { rate: f64 },
+    SetMuted { muted: bool },
+    SetVolume { volume: f64 },
 }
 
 /// The feedback overlays a desktop GPU View draws for `lx.showToast` and its siblings.
@@ -198,6 +224,7 @@ impl GpuViewRequest {
             "ui.hideToast" => Self::Ui(GpuUiRequest::HideToast),
             "ui.showModal" => Self::Ui(GpuUiRequest::ShowModal(fit(method, params)?)),
             "ui.showActionSheet" => Self::Ui(GpuUiRequest::ShowActionSheet(fit(method, params)?)),
+            "video.command" => Self::Video(fit(method, params)?),
             _ => {
                 return Err((
                     "E_UNSUPPORTED",
@@ -374,6 +401,32 @@ mod gpu_request_tests {
             GpuViewRequest::from_call(
                 "ui.showActionSheet",
                 Some(serde_json::json!({"itemList": 3}))
+            )
+            .unwrap_err()
+            .0,
+            "E_INVALID_ARGUMENT"
+        );
+    }
+
+    #[test]
+    fn a_video_command_names_its_player_and_op() {
+        assert_eq!(
+            GpuViewRequest::from_call(
+                "video.command",
+                Some(serde_json::json!({"player": "hero", "op": "setQuality", "quality": "720p"}))
+            )
+            .unwrap(),
+            GpuViewRequest::Video(GpuVideoRequest {
+                player: "hero".into(),
+                command: GpuVideoCommand::SetQuality {
+                    quality: "720p".into()
+                },
+            })
+        );
+        assert_eq!(
+            GpuViewRequest::from_call(
+                "video.command",
+                Some(serde_json::json!({"player": "hero", "op": "seek"}))
             )
             .unwrap_err()
             .0,

@@ -205,6 +205,27 @@ pub enum ToView {
 #[derive(Clone, Debug, PartialEq)]
 pub enum ViewRequest {
     Ui(UiRequest),
+    /// `lx.createVideoContext(player)`: answered by the View's players, not its runtime.
+    Video {
+        player: String,
+        command: VideoCommand,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum VideoCommand {
+    Play,
+    Pause,
+    /// Pause, then back to the start.
+    Stop,
+    Seek(f64),
+    RequestFullScreen,
+    ExitFullScreen,
+    SetStreamSource,
+    SetQuality(String),
+    SetPlaybackRate(f64),
+    SetMuted(bool),
+    SetVolume(f64),
 }
 
 /// The feedback overlays a desktop page draws for `lx.showToast` and its siblings.
@@ -318,7 +339,9 @@ impl ToView {
 impl ViewRequest {
     /// The `{id, method, params}` call the View runtime's request handler takes.
     pub(crate) fn to_js(&self, ctx: &JSContext, id: &str) -> JSResult<JSValue> {
-        let ViewRequest::Ui(request) = self;
+        let ViewRequest::Ui(request) = self else {
+            return Err(invalid("a video request is not a runtime call"));
+        };
         let (method, params) = match request {
             UiRequest::ShowToast {
                 title,

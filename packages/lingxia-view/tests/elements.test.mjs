@@ -52,6 +52,16 @@ test('video playback props: paused unless autoPlay, flags, rate and volume bound
     throwsOn(() => h('video', { src: 'a.mp4', ...props }), /UI_VIDEO/);
 });
 
+test('video sources carry labelled files, one of src or sources', () => {
+  const sources = [{ src: 'a-360.mp4', label: '360p' }, { src: 'a-720.mp4', label: '720p' }];
+  const props = rendered(() => h('video', { sources, autoPlay: true })).props;
+  assert.deepEqual(JSON.parse(props.videoSources), sources);
+  assert.equal(props.videoPaused, 0);
+  for (const bad of [[], [{ src: 'a.mp4' }], [{ src: 'a.mp4', label: 'auto' }], [{ src: 'a.mp4', label: 'x' }, { src: 'b.mp4', label: 'x' }]])
+    throwsOn(() => h('video', { sources: bad }), /UI_VIDEO/);
+  throwsOn(() => h('video', { src: 'a.mp4', sources }), /UI_VIDEO: give src or sources/);
+});
+
 test('useVideo names the player, re-renders only for read fields and rejects commands without a player', async () => {
   let renders = 0;
   const render = () => {
@@ -63,7 +73,7 @@ test('useVideo names the player, re-renders only for read fields and rejects com
   assert.equal(video.props.videoPlayer, 'name:hero');
   assert.equal(label.text, 'paused');
   const status = { readyState: 'ready', currentTime: 1, duration: 4, paused: false, ended: false, buffering: false, seeking: false,
-    buffered: 2, videoWidth: 640, videoHeight: 360, playbackRate: 1, volume: 1, muted: true, error: null };
+    buffered: 2, videoWidth: 640, videoHeight: 360, playbackRate: 1, volume: 1, muted: true, quality: 'auto', qualities: [], error: null };
   assert.equal(dispatch(video.props.onVideoEvent, JSON.stringify({ status, events: [{ type: 'play' }] })), true);
   assert.equal(hasLocalUpdates(), true);
   const [, current, playing] = decode(describe(render, {}));
@@ -77,6 +87,10 @@ test('useVideo names the player, re-renders only for read fields and rejects com
   describe(() => { hero = useVideo('hero'); return h('video', { player: hero }); }, {});
   assert.equal(hero.currentTime, 2);
   await assert.rejects(hero.play(), error => error.code === 'VIDEO_NO_PLAYER');
+  assert.equal(hero.quality, 'auto');
+  assert.deepEqual(hero.qualities, []);
+  await assert.rejects(hero.setQuality('720p'), error => error.code === 'VIDEO_NO_PLAYER');
+  assert.throws(() => hero.setQuality(''), /UI_VIDEO/);
   assert.throws(() => hero.setVolume(3), /UI_VIDEO/);
   throwsOn(() => useVideo('bad name'), /UI_VIDEO/);
   throwsOn(() => h('video', { player: {} }), /UI_VIDEO/);

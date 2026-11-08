@@ -1077,18 +1077,28 @@ impl Renderer {
                     .videos
                     .key(record.string(field::VIDEO_PLAYER).unwrap_or_default());
                 // The view that names the source configures the player; others only show it.
-                if let Some(src) = record.string(field::VIDEO_SRC) {
+                let authored = match record.string(field::VIDEO_SRC) {
+                    Some(src) => Some(vec![(String::new(), src.to_owned())]),
+                    None => record
+                        .string(field::VIDEO_SOURCES)
+                        .and_then(crate::scene::video::variants),
+                };
+                if let Some(authored) = authored {
                     let flag = |id| record.number(id) == Some(1.0);
-                    let source = self.videos.url(src).map(|url| crate::scene::video::Source {
-                        url,
-                        settings: crate::scene::video::Settings {
-                            paused: flag(field::VIDEO_PAUSED),
-                            muted: flag(field::VIDEO_MUTED),
-                            looped: flag(field::VIDEO_LOOP),
-                            rate: record.number(field::VIDEO_RATE).unwrap_or(1.0) as f32,
-                            volume: record.number(field::VIDEO_VOLUME).unwrap_or(1.0) as f32,
-                        },
-                    });
+                    let source = authored
+                        .into_iter()
+                        .map(|(label, src)| self.videos.url(&src).map(|url| (label, url)))
+                        .collect::<Result<Vec<_>, _>>()
+                        .map(|variants| crate::scene::video::Source {
+                            variants,
+                            settings: crate::scene::video::Settings {
+                                paused: flag(field::VIDEO_PAUSED),
+                                muted: flag(field::VIDEO_MUTED),
+                                looped: flag(field::VIDEO_LOOP),
+                                rate: record.number(field::VIDEO_RATE).unwrap_or(1.0) as f32,
+                                volume: record.number(field::VIDEO_VOLUME).unwrap_or(1.0) as f32,
+                            },
+                        });
                     crate::renderer::video_configure(&key, source);
                 }
                 let fit = match record.string(field::IMAGE_FIT) {

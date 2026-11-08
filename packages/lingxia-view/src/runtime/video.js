@@ -3,9 +3,9 @@ import { local, cellOf } from './hooks.js';
 import { render, page, outsideRender } from './state.js';
 
 const fields = ['paused', 'ended', 'buffering', 'seeking', 'readyState', 'currentTime', 'duration', 'buffered',
-  'videoWidth', 'videoHeight', 'playbackRate', 'volume', 'muted', 'error'];
+  'videoWidth', 'videoHeight', 'playbackRate', 'volume', 'muted', 'quality', 'qualities', 'error'];
 const empty = Object.freeze({ paused: true, ended: false, buffering: false, seeking: false, readyState: 'empty', currentTime: 0,
-  duration: null, buffered: 0, videoWidth: 0, videoHeight: 0, playbackRate: 1, volume: 1, muted: false, error: null });
+  duration: null, buffered: 0, videoWidth: 0, videoHeight: 0, playbackRate: 1, volume: 1, muted: false, quality: 'auto', qualities: Object.freeze([]), error: null });
 const players = new WeakMap();
 // Each mounted reader of a name, with the fields it read on its last render.
 const readers = new Map();
@@ -32,7 +32,8 @@ export function useVideo(name) {
   } });
   const command = (op, value) => {
     outsideRender('video command');
-    const failure = globalThis.__lingxiaVideoCommand?.(`name:${name}`, op, value ?? 0) ?? 'VIDEO_NO_PLAYER: this host plays no video';
+    const failure = globalThis.__lingxiaVideoCommand?.(`name:${name}`, op, typeof value === 'number' ? value : 0, typeof value === 'string' ? value : '')
+      ?? 'VIDEO_NO_PLAYER: this host plays no video';
     if (!failure) return Promise.resolve();
     const [code] = failure.split(':', 1);
     return Promise.reject(Object.assign(Error(failure), { code, recoverable: code === 'VIDEO_NETWORK' }));
@@ -48,6 +49,10 @@ export function useVideo(name) {
     setMuted: muted => { if (typeof muted !== 'boolean') throw Error('UI_VIDEO: setMuted takes a boolean'); return command('muted', +muted); },
     setVolume: volume => command('volume', number('setVolume', volume, 0, 1)),
     setPlaybackRate: rate => command('rate', number('setPlaybackRate', rate, 0.25, 4)),
+    setQuality: quality => {
+      if (typeof quality !== 'string' || !quality) throw Error('UI_VIDEO: setQuality takes "auto" or a label of sources');
+      return command('quality', quality);
+    },
     retry: () => command('retry'),
   });
   Object.freeze(handle);
@@ -55,15 +60,18 @@ export function useVideo(name) {
   return handle;
 }
 
+// Lists and errors arrive as new objects each tick; equal content is no change.
+const same = (a, b) => Object.is(a, b) || (typeof a === 'object' && typeof b === 'object' && a !== null && b !== null && JSON.stringify(a) === JSON.stringify(b));
+
 /** A status from the player `name`: readers re-render only for fields they read. */
 export function videoStatus(name, status) {
-  const next = Object.freeze({ ...status, error: status.error ? Object.freeze({ ...status.error }) : null });
+  const next = Object.freeze({ ...status, qualities: Object.freeze([...(status.qualities ?? [])]), error: status.error ? Object.freeze({ ...status.error }) : null });
   const named = readers.get(name);
   for (const reader of named ?? []) {
     const { key, cell } = cellOf(reader.binding);
     if (page.locals.get(key) !== cell) { named.delete(reader); continue; }
     const current = reader.binding.value;
-    if ([...reader.read].some(field => !Object.is(current[field], next[field]))) reader.binding.set(next);
+    if ([...reader.read].some(field => !same(current[field], next[field]))) reader.binding.set(next);
     else cell.value = next;
   }
 }

@@ -35,8 +35,53 @@ impl Default for Settings {
 /// One player's source and props, as the last scene built them.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Source {
-    pub url: String,
+    /// `(label, url)` per quality; a plain `src` is one variant labelled "".
+    pub variants: Vec<(String, String)>,
     pub settings: Settings,
+}
+
+impl Source {
+    /// The URL of `label`; "auto" or an unknown label plays the first variant.
+    pub fn url(&self, label: Option<&str>) -> &str {
+        label
+            .and_then(|label| self.variants.iter().find(|(l, _)| l == label))
+            .or(self.variants.first())
+            .map_or("", |(_, url)| url)
+    }
+
+    /// The labels a page can pick between; empty for a plain `src`.
+    pub fn labels(&self) -> Vec<String> {
+        self.variants
+            .iter()
+            .filter(|(label, _)| !label.is_empty())
+            .map(|(label, _)| label.clone())
+            .collect()
+    }
+}
+
+/// The `{src, label}` list of a `sources` prop, already checked by the runtime.
+pub fn variants(json: &str) -> Option<Vec<(String, String)>> {
+    let list: Vec<serde_json::Value> = serde_json::from_str(json).ok()?;
+    if list.is_empty() || list.len() > 8 {
+        return None;
+    }
+    let out: Vec<(String, String)> = list
+        .iter()
+        .map(|entry| {
+            let src = entry["src"]
+                .as_str()
+                .filter(|s| !s.is_empty() && !s.contains('\0'))?;
+            let label = entry["label"]
+                .as_str()
+                .filter(|l| !l.is_empty() && l.chars().count() <= 32 && *l != "auto")?;
+            Some((label.to_owned(), src.to_owned()))
+        })
+        .collect::<Option<_>>()?;
+    let unique = out
+        .iter()
+        .enumerate()
+        .all(|(i, (label, _))| out[..i].iter().all(|(l, _)| l != label));
+    unique.then_some(out)
 }
 
 /// An imperative edge from a handle or Logic: it never changes the props' values.
@@ -48,12 +93,14 @@ pub enum VideoOp {
     SetMuted(bool),
     SetVolume(f32),
     SetRate(f32),
+    /// A label of `sources` or of an adaptive stream's renditions; `None` is "auto".
+    SetQuality(Option<String>),
     Retry,
 }
 
 impl VideoOp {
     /// The runtime's `(op, value)` form.
-    pub fn parse(op: &str, value: f64) -> Option<Self> {
+    pub fn parse(op: &str, value: f64, text: &str) -> Option<Self> {
         Some(match op {
             "play" => Self::Play,
             "pause" => Self::Pause,
@@ -62,6 +109,8 @@ impl VideoOp {
             "volume" if (0.0..=1.0).contains(&value) => Self::SetVolume(value as f32),
             "rate" if (0.25..=4.0).contains(&value) => Self::SetRate(value as f32),
             "retry" => Self::Retry,
+            "quality" if text == "auto" => Self::SetQuality(None),
+            "quality" if !text.is_empty() => Self::SetQuality(Some(text.to_owned())),
             _ => return None,
         })
     }
@@ -85,7 +134,7 @@ impl VideoError {
 
     /// A host resolver's message names its code first; others are source errors.
     pub fn from_message(message: &str) -> Self {
-        const CODES: [&str; 8] = [
+        const CODES: [&str; 9] = [
             "VIDEO_SOURCE",
             "VIDEO_NOT_GRANTED",
             "VIDEO_NETWORK",
@@ -94,6 +143,7 @@ impl VideoError {
             "VIDEO_DECODE",
             "VIDEO_DECODERS",
             "VIDEO_NO_PLAYER",
+            "VIDEO_UNSUPPORTED",
         ];
         let code = CODES
             .into_iter()
@@ -128,6 +178,12 @@ pub struct Status {
     pub playback_rate: f32,
     pub volume: f32,
     pub muted: bool,
+    /// "auto" or the label now on screen; `qualities` are the labels to pick between.
+    pub quality: String,
+    pub qualities: Vec<String>,
+    /// The label on screen, which "auto" leaves to the player.
+    #[serde(skip)]
+    pub shown: String,
     pub error: Option<VideoError>,
 }
 
@@ -147,6 +203,9 @@ impl Default for Status {
             playback_rate: 1.0,
             volume: 1.0,
             muted: false,
+            quality: "auto".into(),
+            qualities: Vec::new(),
+            shown: String::new(),
             error: None,
         }
     }

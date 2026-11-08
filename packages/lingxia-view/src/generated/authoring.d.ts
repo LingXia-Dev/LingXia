@@ -104,10 +104,14 @@ export declare function useChannel<P, T, S>(
   options: { params: P; onData?: (message: ReadonlyData<T>) => void },
 ): ChannelResource<S>;
 
-export type VideoErrorCode = "VIDEO_SOURCE" | "VIDEO_NOT_GRANTED" | "VIDEO_NETWORK" | "VIDEO_NOT_FOUND" | "VIDEO_FORMAT" | "VIDEO_DECODE" | "VIDEO_DECODERS" | "VIDEO_NO_PLAYER";
+export type VideoErrorCode = "VIDEO_SOURCE" | "VIDEO_NOT_GRANTED" | "VIDEO_NETWORK" | "VIDEO_NOT_FOUND" | "VIDEO_FORMAT" | "VIDEO_DECODE" | "VIDEO_DECODERS" | "VIDEO_NO_PLAYER" | "VIDEO_UNSUPPORTED";
 /** Says what to do in `message`; `recoverable` errors resume with `retry()`. */
 export interface VideoError { readonly code: VideoErrorCode; readonly message: string; readonly recoverable: boolean }
 export interface VideoMetadata { readonly duration: number | null; readonly videoWidth: number; readonly videoHeight: number; readonly live: boolean }
+/** One quality of a `sources` video: `label` is what `setQuality` and `quality` name. */
+export interface VideoSource { readonly src: string; readonly label: string }
+/** `quality` is the label now on screen; `auto` while the player picks it. */
+export interface VideoQualityChange { readonly quality: string; readonly auto: boolean }
 export interface VideoPause { readonly reason: "user" | "api" | "hidden" | "interrupted" | "replaced" | "parked" }
 /** A page's player: pass it as `player` to each `<video>` that shows it. Reading a field re-renders on its change. */
 export interface Video {
@@ -117,9 +121,13 @@ export interface Video {
   readonly currentTime: number; readonly duration: number | null; readonly buffered: number;
   readonly videoWidth: number; readonly videoHeight: number;
   readonly playbackRate: number; readonly volume: number; readonly muted: boolean;
+  /** `"auto"` or the label chosen with `setQuality`; `qualities` are the labels to choose from. */
+  readonly quality: string; readonly qualities: readonly string[];
   readonly error: VideoError | null;
   play(): Promise<void>; pause(): Promise<void>; seek(seconds: number): Promise<void>;
   setMuted(muted: boolean): Promise<void>; setVolume(volume: number): Promise<void>; setPlaybackRate(rate: number): Promise<void>;
+  /** Switches at a keyframe without a restart; resolves once asked, `onQualityChange` fires when on screen. */
+  setQuality(quality: string): Promise<void>;
   retry(): Promise<void>;
 }
 export declare function useVideo(name: string): Video;
@@ -394,7 +402,7 @@ export type LinkProps = Omit<Props, "style" | "children"> & { style?: LinkStyle;
 export type SelectStyle = Pick<Style, "width" | "height" | "minWidth" | "minHeight" | "maxWidth" | "aspectRatio" | "maxHeight" | "margin" | "marginTop" | "marginRight" | "marginBottom" | "marginLeft" | "marginInlineStart" | "marginInlineEnd" | "position" | "inset" | "top" | "right" | "bottom" | "left" | "insetInlineStart" | "insetInlineEnd" | "zIndex" | "positionArea" | "flexGrow" | "flexShrink" | "flexBasis" | "alignSelf" | "gridColumn" | "gridColumnStart" | "gridColumnEnd" | "gridRow" | "gridRowStart" | "gridRowEnd" | "justifySelf" | "order" | "opacity" | "overflow" | "backgroundColor" | "backgroundImage" | "borderRadius" | "borderTopLeftRadius" | "borderTopRightRadius" | "borderBottomRightRadius" | "borderBottomLeftRadius" | "borderStartStartRadius" | "borderStartEndRadius" | "borderEndStartRadius" | "borderEndEndRadius" | "borderWidth" | "borderTopWidth" | "borderRightWidth" | "borderBottomWidth" | "borderLeftWidth" | "borderInlineStartWidth" | "borderInlineEndWidth" | "borderStyle" | "borderColor" | "boxShadow" | "backdropFilter" | "translate" | "rotate" | "scale" | "transformOrigin" | "filter" | "display" | "scrollSnapAlign" | "padding" | "paddingTop" | "paddingRight" | "paddingBottom" | "paddingLeft" | "paddingInlineStart" | "paddingInlineEnd" | "color" | "fontSize" | "fontWeight" | "fontFamily" | "fontStyle" | "lineHeight" | "letterSpacing" | "fontVariantNumeric" | "userSelect" | "textAlign" | "textDecorationLine" | "textTransform" | "whiteSpace" | "wordBreak" | "overflowWrap">;
 export type SelectProps = Omit<Props, "style" | "children"> & { style?: SelectStyle; children?: never; options: readonly RadioOption[]; placeholder?: string; "aria-label"?: string; disabled?: boolean; } & ({ bind: Local<string>; value?: never; onChange?: never } | { bind?: never; value?: string; onChange?: (value: string) => void });
 export type VideoStyle = Pick<Style, "width" | "height" | "minWidth" | "minHeight" | "maxWidth" | "aspectRatio" | "maxHeight" | "margin" | "marginTop" | "marginRight" | "marginBottom" | "marginLeft" | "marginInlineStart" | "marginInlineEnd" | "position" | "inset" | "top" | "right" | "bottom" | "left" | "insetInlineStart" | "insetInlineEnd" | "zIndex" | "positionArea" | "flexGrow" | "flexShrink" | "flexBasis" | "alignSelf" | "gridColumn" | "gridColumnStart" | "gridColumnEnd" | "gridRow" | "gridRowStart" | "gridRowEnd" | "justifySelf" | "order" | "opacity" | "overflow" | "backgroundColor" | "backgroundImage" | "borderRadius" | "borderTopLeftRadius" | "borderTopRightRadius" | "borderBottomRightRadius" | "borderBottomLeftRadius" | "borderStartStartRadius" | "borderStartEndRadius" | "borderEndStartRadius" | "borderEndEndRadius" | "borderWidth" | "borderTopWidth" | "borderRightWidth" | "borderBottomWidth" | "borderLeftWidth" | "borderInlineStartWidth" | "borderInlineEndWidth" | "borderStyle" | "borderColor" | "boxShadow" | "backdropFilter" | "translate" | "rotate" | "scale" | "transformOrigin" | "filter" | "display" | "scrollSnapAlign" | "objectFit" | "objectPosition">;
-export type VideoProps = Omit<Props, "style" | "children"> & { style?: VideoStyle; children?: never; src?: string; player?: Video; poster?: string; autoPlay?: boolean; paused?: boolean; muted?: boolean; loop?: boolean; playbackRate?: number; volume?: number; "aria-label"?: string; onLoadedMetadata?: (event: VideoMetadata) => void; onPlay?: () => void; onPlaying?: () => void; onPause?: (event: VideoPause) => void; onWaiting?: () => void; onSeeked?: (event: { readonly currentTime: number }) => void; onTimeUpdate?: (event: { readonly currentTime: number }) => void; onEnded?: () => void; onError?: (error: VideoError) => void; onRateChange?: (event: { readonly playbackRate: number }) => void; onVolumeChange?: (event: { readonly volume: number; readonly muted: boolean }) => void; };
+export type VideoProps = Omit<Props, "style" | "children"> & { style?: VideoStyle; children?: never; src?: string; sources?: readonly VideoSource[]; player?: Video; poster?: string; autoPlay?: boolean; paused?: boolean; muted?: boolean; loop?: boolean; playbackRate?: number; volume?: number; "aria-label"?: string; onLoadedMetadata?: (event: VideoMetadata) => void; onPlay?: () => void; onPlaying?: () => void; onPause?: (event: VideoPause) => void; onWaiting?: () => void; onSeeked?: (event: { readonly currentTime: number }) => void; onTimeUpdate?: (event: { readonly currentTime: number }) => void; onEnded?: () => void; onError?: (error: VideoError) => void; onRateChange?: (event: { readonly playbackRate: number }) => void; onVolumeChange?: (event: { readonly volume: number; readonly muted: boolean }) => void; onQualityChange?: (event: VideoQualityChange) => void; };
 
 declare global {
   namespace JSX {

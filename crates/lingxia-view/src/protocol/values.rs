@@ -414,6 +414,12 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             "UI_VIDEO: volume takes 0..1",
         ),
         field::ON_VIDEO_EVENT => ensure(handle(value), "UI_VIDEO: invalid handle"),
+        field::VIDEO_SOURCES => ensure(
+            value.as_str().is_some_and(|s| {
+                s.len() <= limits::SOURCE_BYTES * 8 && crate::scene::video::variants(s).is_some()
+            }),
+            "UI_VIDEO: invalid sources",
+        ),
         field::VIDEO_SRC => ensure(
             value.as_str().is_some_and(|s| {
                 !s.is_empty() && s.len() <= limits::SOURCE_BYTES && !s.contains('\0')

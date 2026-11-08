@@ -366,6 +366,7 @@ Children: none. May sit inside a composed `<button>` or `<checkbox>`.
 | Prop | Type | Required |
 | --- | --- | --- |
 | `src` | `string` |  |
+| `sources` | `readonly VideoSource[]` |  |
 | `player` | `Video` |  |
 | `poster` | `string` |  |
 | `autoPlay` | `boolean` |  |
@@ -386,3 +387,4 @@ Children: none. May sit inside a composed `<button>` or `<checkbox>`.
 | `onError` | `(error: VideoError) => void` |  |
 | `onRateChange` | `(event: { readonly playbackRate: number }) => void` |  |
 | `onVolumeChange` | `(event: { readonly volume: number; readonly muted: boolean }) => void` |  |
+| `onQualityChange` | `(event: VideoQualityChange) => void` |  |

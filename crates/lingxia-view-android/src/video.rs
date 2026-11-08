@@ -192,10 +192,26 @@ impl Player for Video {
             VideoOp::SetMuted(muted) => ("muted", muted as u8 as f64),
             VideoOp::SetVolume(volume) => ("volume", volume as f64),
             VideoOp::SetRate(rate) => ("rate", rate as f64),
-            // The registry reopens the source.
-            VideoOp::Retry => return Ok(()),
+            // The registry reopens the source and switches files.
+            VideoOp::Retry | VideoOp::SetQuality(_) => return Ok(()),
         };
         self.send(op, value)
+            .map_err(|error| VideoError::new("VIDEO_NO_PLAYER", error))
+    }
+
+    fn qualities(&self) -> Vec<String> {
+        self.renditions()
+    }
+
+    fn set_quality(&mut self, label: Option<&str>) -> Result<(), VideoError> {
+        let height = match label {
+            None => 0.0,
+            Some(label) => label
+                .strip_suffix('p')
+                .and_then(|h| h.parse::<f64>().ok())
+                .ok_or_else(|| VideoError::new("VIDEO_SOURCE", format!("no rendition {label}")))?,
+        };
+        self.send("quality", height)
             .map_err(|error| VideoError::new("VIDEO_NO_PLAYER", error))
     }
 
@@ -261,6 +277,30 @@ impl Player for Video {
 }
 
 impl Video {
+    fn renditions(&self) -> Vec<String> {
+        java(|env| {
+            let text = env
+                .call_method(
+                    &*self.java,
+                    jni_str!("qualities"),
+                    jni_sig!("()Ljava/lang/String;"),
+                    &[],
+                )?
+                .l()?;
+            if text.is_null() {
+                return Ok(String::new());
+            }
+            env.cast_local::<JString>(text)?.try_to_string(env)
+        })
+        .map(|text| {
+            text.split(',')
+                .filter(|l| !l.is_empty())
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
+    }
+
     fn send(&self, op: &str, value: f64) -> Result<(), String> {
         java(|env| {
             let op = env.new_string(op)?;

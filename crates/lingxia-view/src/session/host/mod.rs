@@ -492,6 +492,9 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     images: ImageRequests::default(),
                     fonts: Default::default(),
                     next_font: 0,
+                    video_flushed: None,
+                    video_time_flushed: None,
+                    video_scroll_revision: 0,
                     environment: None,
                     presented_environment: None,
                     host_environment,
@@ -502,9 +505,6 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     in_flight: None,
                     next_flight: 0,
                     presented_flight: 0,
-                    video_flushed: None,
-                    video_time_flushed: None,
-                    video_scroll_revision: 0,
                     acked_flight: 0,
                     inputs_in_flight: 0,
                     input_seq: 0,
@@ -697,6 +697,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
     pub fn tick(&self) {
         if !self.inner.window_hidden() && self.inner.adapter.tick() {
             self.inner.adapter.request_vsync();
+            self.inner.video_tick();
         }
     }
 
@@ -709,7 +710,6 @@ impl<A: PlatformAdapter> ViewHost<A> {
             now + delta
         } else {
             now.saturating_sub(delta)
-            self.inner.video_tick();
         };
         let interval = Duration::from_micros(interval_us);
         self.inner.main().display = Some((target, interval));

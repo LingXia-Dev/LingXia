@@ -7,9 +7,9 @@ mod view;
 pub(crate) use view::PageView;
 pub use view::{
     GpuActionSheet, GpuBridgeError, GpuModal, GpuPageView, GpuPageViewFactory, GpuPatchOp,
-    GpuStateSignal, GpuStateWrite, GpuToast, GpuUiRequest, GpuViewCreation, GpuViewEvent,
-    GpuViewGeneration, GpuViewMessage, GpuViewRequest, PageViewEnvironment,
-    register_gpu_page_view_factory,
+    GpuStateSignal, GpuStateWrite, GpuToast, GpuUiRequest, GpuVideoCommand, GpuVideoRequest,
+    GpuViewCreation, GpuViewEvent, GpuViewGeneration, GpuViewMessage, GpuViewRequest,
+    PageViewEnvironment, register_gpu_page_view_factory,
 };
 #[cfg(all(test, feature = "js-appservice"))]
 pub(crate) mod startup_test_host;
@@ -2240,6 +2240,13 @@ impl PageInstance {
         if !source.starts_with("lx://") && (source.starts_with('/') || source.contains(':')) {
             return Err(LxAppError::InvalidParameter(
                 "VIDEO_SOURCE: src is a package path, an lx:// URI or an http(s) URL".into(),
+            ));
+        }
+        // AVFoundation refuses file:// HLS, so packaged streams fail on every platform alike.
+        let bare = source.split(['?', '#']).next().unwrap_or_default();
+        if bare.ends_with(".m3u8") || bare.ends_with(".mpd") {
+            return Err(LxAppError::InvalidParameter(
+                "VIDEO_UNSUPPORTED: adaptive streams play from http(s) URLs; for packaged files give <video sources> labelled mp4s".into(),
             ));
         }
         let path = app.resolve_accessible_path(source)?;

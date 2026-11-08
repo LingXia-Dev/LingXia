@@ -137,6 +137,17 @@ const source = value => typeof value === 'string' && value.length > 0 && value.l
 export function video(props) {
   if (props.src !== undefined && !source(props.src)) throw Error('UI_VIDEO: invalid source');
   if (props.poster !== undefined && !source(props.poster)) throw Error('UI_VIDEO: invalid poster');
+  if (props.sources !== undefined) {
+    if (props.src !== undefined) throw Error('UI_VIDEO: give src or sources, not both');
+    const labels = new Set();
+    if (!Array.isArray(props.sources) || props.sources.length < 1 || props.sources.length > 8) throw Error('UI_VIDEO: sources takes 1..8 { src, label } entries');
+    for (const entry of props.sources) {
+      if (!entry || !source(entry.src)) throw Error('UI_VIDEO: each of sources needs a valid src');
+      if (typeof entry.label !== 'string' || !/^[^\s].{0,31}$/.test(entry.label) || entry.label === 'auto' || labels.has(entry.label))
+        throw Error('UI_VIDEO: each of sources needs a unique label of 1..32 characters other than "auto"');
+      labels.add(entry.label);
+    }
+  }
   for (const name of ['autoPlay', 'paused', 'muted', 'loop']) if (props[name] !== undefined && typeof props[name] !== 'boolean') throw Error(`UI_VIDEO: ${name} takes a boolean`);
   if (props.playbackRate !== undefined && !(typeof props.playbackRate === 'number' && props.playbackRate >= 0.25 && props.playbackRate <= 4)) throw Error('UI_VIDEO: playbackRate takes a number in 0.25..4');
   if (props.volume !== undefined && !(typeof props.volume === 'number' && props.volume >= 0 && props.volume <= 1)) throw Error('UI_VIDEO: volume takes a number in 0..1');

@@ -7,11 +7,11 @@ use lingxia_view_apple::lingxia_view;
 use lingxia_view_harmony::lingxia_view;
 
 pub(crate) use lingxia_view::session::logic::ToLogic;
-use lingxia_view::session::logic::{BridgeError, ToView, UiRequest, ViewRequest};
+use lingxia_view::session::logic::{BridgeError, ToView, UiRequest, VideoCommand, ViewRequest};
 use lingxia_view::session::state::{PatchOp, StateSignal, StateWrite};
 use lxapp::{
-    GpuBridgeError, GpuPatchOp, GpuStateSignal, GpuStateWrite, GpuUiRequest, GpuViewEvent,
-    GpuViewMessage, GpuViewRequest,
+    GpuBridgeError, GpuPatchOp, GpuStateSignal, GpuStateWrite, GpuUiRequest, GpuVideoCommand,
+    GpuViewEvent, GpuViewMessage, GpuViewRequest,
 };
 
 pub(crate) fn to_view(write: GpuStateWrite) -> StateWrite {
@@ -123,6 +123,26 @@ pub(crate) fn message_to_view(message: GpuViewMessage) -> ToView {
                         cancel_text: sheet.cancel_text,
                     },
                 }),
+                GpuViewRequest::Video(request) => ViewRequest::Video {
+                    player: request.player,
+                    command: match request.command {
+                        GpuVideoCommand::Play => VideoCommand::Play,
+                        GpuVideoCommand::Pause => VideoCommand::Pause,
+                        GpuVideoCommand::Stop => VideoCommand::Stop,
+                        GpuVideoCommand::Seek { seconds } => VideoCommand::Seek(seconds),
+                        GpuVideoCommand::RequestFullScreen => VideoCommand::RequestFullScreen,
+                        GpuVideoCommand::ExitFullScreen => VideoCommand::ExitFullScreen,
+                        GpuVideoCommand::SetStreamSource => VideoCommand::SetStreamSource,
+                        GpuVideoCommand::SetQuality { quality } => {
+                            VideoCommand::SetQuality(quality)
+                        }
+                        GpuVideoCommand::SetPlaybackRate { rate } => {
+                            VideoCommand::SetPlaybackRate(rate)
+                        }
+                        GpuVideoCommand::SetMuted { muted } => VideoCommand::SetMuted(muted),
+                        GpuVideoCommand::SetVolume { volume } => VideoCommand::SetVolume(volume),
+                    },
+                },
             },
         },
     }

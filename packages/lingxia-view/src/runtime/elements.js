@@ -18,7 +18,7 @@ import { playerName, videoStatus } from './video.js';
 const videoFlags = [['videoMuted', 'muted'], ['videoLoop', 'loop']];
 const videoEvents = [['loadedmetadata', 'onLoadedMetadata'], ['play', 'onPlay'], ['playing', 'onPlaying'], ['pause', 'onPause'],
   ['waiting', 'onWaiting'], ['seeked', 'onSeeked'], ['timeupdate', 'onTimeUpdate'], ['ended', 'onEnded'], ['error', 'onError'],
-  ['ratechange', 'onRateChange'], ['volumechange', 'onVolumeChange']];
+  ['ratechange', 'onRateChange'], ['volumechange', 'onVolumeChange'], ['qualitychange', 'onQualityChange']];
 
 const common = new Set(commonProps);
 const semanticStates = { pressed: 'statePressed', selected: 'stateSelected', expanded: 'stateExpanded', busy: 'stateBusy' };
@@ -433,13 +433,15 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       check.video(props);
       const name = props.player === undefined ? undefined : playerName(props.player);
       if (props.player !== undefined && name === undefined) throw Error('UI_VIDEO: player takes the handle useVideo(name) returns');
-      if (props.src === undefined && name === undefined) throw Error('UI_VIDEO: a <video> needs src, or a player another <video> gives one');
+      const source = props.src ?? props.sources;
+      if (source === undefined && name === undefined) throw Error('UI_VIDEO: a <video> needs src or sources, or a player another <video> gives one');
       if (props.src !== undefined) wire('videoSrc', props.src);
+      if (props.sources !== undefined) wire('videoSources', JSON.stringify(props.sources.map(({ src, label }) => ({ src, label }))));
       // A named player is the page's; a bare <video> owns one keyed by its place in the tree.
       wire('videoPlayer', name === undefined ? `el:${identity}` : `name:${name}`);
       if (props.poster !== undefined) wire('videoPoster', props.poster);
       // Without autoPlay a player waits on its first frame, as HTML's; `paused` wins over it.
-      if (props.src !== undefined) wire('videoPaused', +(props.paused ?? !props.autoPlay));
+      if (source !== undefined) wire('videoPaused', +(props.paused ?? !props.autoPlay));
       for (const [key, prop] of videoFlags) if (props[prop] !== undefined) wire(key, +props[prop]);
       if (props.playbackRate !== undefined) wire('videoRate', props.playbackRate);
       if (props.volume !== undefined) wire('videoVolume', props.volume);

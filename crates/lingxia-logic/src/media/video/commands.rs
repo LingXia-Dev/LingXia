@@ -14,8 +14,11 @@ use lingxia_platform::traits::stream_decoder::{
 };
 use lingxia_platform::traits::video_player::VideoPlayerCommand;
 use log::{info, warn};
-use rong::{FromJSObject, JSObject, JSResult, JSValue, js_class, js_method};
+use rong::{
+    FromJSObject, HostError, JSContext, JSObject, JSResult, JSValue, Promise, js_class, js_method,
+};
 use serde_json::Value;
+use serde_json::json;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::thread;
@@ -114,15 +117,8 @@ impl JSVideoContext {
 // The callback is tied to VideoContextSharedState lifetime, not JSVideoContext instance.
 // The callback holds a strong reference to shared state, keeping it alive as needed.
 
-#[js_class]
 impl JSVideoContext {
-    #[js_method(constructor)]
-    fn _ctor() -> JSResult<()> {
-        Err(js_invalid_parameter_error("Use lx.createVideoContext()"))
-    }
-
-    #[js_method]
-    fn play(&self) -> JSResult<()> {
+    fn native_play(&self) -> JSResult<()> {
         if self.has_stream_source()? {
             let is_live = self.shared.stream_live.load(Ordering::Relaxed);
             let was_paused = self.shared.stream_paused.swap(false, Ordering::Relaxed);
@@ -157,8 +153,7 @@ impl JSVideoContext {
         self.dispatch(VideoPlayerCommand::Play)
     }
 
-    #[js_method]
-    fn pause(&self) -> JSResult<()> {
+    fn native_pause(&self) -> JSResult<()> {
         if self.has_stream_source()? {
             let is_live = self.shared.stream_live.load(Ordering::Relaxed);
             self.shared.play_requested.store(false, Ordering::Relaxed);
@@ -174,8 +169,7 @@ impl JSVideoContext {
         self.dispatch(VideoPlayerCommand::Pause)
     }
 
-    #[js_method]
-    fn stop(&self) -> JSResult<()> {
+    fn native_stop(&self) -> JSResult<()> {
         if self.has_stream_source()? {
             self.shared.play_requested.store(false, Ordering::Relaxed);
             self.shared.stream_paused.store(false, Ordering::Relaxed);
@@ -193,8 +187,7 @@ impl JSVideoContext {
         self.dispatch(VideoPlayerCommand::Stop)
     }
 
-    #[js_method]
-    fn seek(&self, position_seconds: f64) -> JSResult<()> {
+    fn native_seek(&self, position_seconds: f64) -> JSResult<()> {
         let position = position_seconds;
         if self.has_stream_source()? {
             seek_stream_session_async_shared(&self.shared, &self.component_id, position);
@@ -202,18 +195,7 @@ impl JSVideoContext {
         self.dispatch(VideoPlayerCommand::Seek { position })
     }
 
-    #[js_method(rename = "requestFullScreen")]
-    fn request_full_screen(&self) -> JSResult<()> {
-        self.dispatch(VideoPlayerCommand::EnterFullscreen)
-    }
-
-    #[js_method(rename = "exitFullScreen")]
-    fn exit_full_screen(&self) -> JSResult<()> {
-        self.dispatch(VideoPlayerCommand::ExitFullscreen)
-    }
-
-    #[js_method(rename = "setStreamSource", ts_params = "options: StreamSourceOptions")]
-    fn set_stream_source(&self, options: JSStreamSourceOptions) -> JSResult<()> {
+    fn native_set_stream_source(&self, options: JSStreamSourceOptions) -> JSResult<()> {
         if options.provider.trim().is_empty() {
             return Err(js_invalid_parameter_error("provider is required"));
         }
@@ -425,6 +407,154 @@ impl JSVideoContext {
         }
 
         Ok(())
+    }
+
+    /// A GPU page's player takes the command and answers once applied; a WebView page's
+    /// native player took it already.
+    fn send(
+        &self,
+        ctx: &JSContext,
+        command: Value,
+        native: impl FnOnce(&Self) -> JSResult<()>,
+    ) -> JSResult<Promise> {
+        let Some(gpu) = &self.gpu else {
+            native(self)?;
+            return Promise::from_future(ctx, None, async { Ok(()) });
+        };
+        let page = gpu.page.clone();
+        let mut params = command;
+        params["player"] = Value::from(self.component_id.clone());
+        Promise::from_future(ctx, None, async move {
+            page.call_view_json_with("video.command", &params)
+                .await
+                .map(drop)
+                .map_err(|error| video_error(&error))
+        })
+    }
+
+    fn webview_unsupported(&self, what: &str) -> JSResult<()> {
+        Err(HostError::new(
+            "VIDEO_UNSUPPORTED",
+            format!("{what} needs a GPU page; on a WebView page use the <lx-video> controls"),
+        )
+        .into())
+    }
+}
+
+/// A View's `VideoError` keeps its code for Logic; other failures keep theirs.
+fn video_error(error: &lxapp::LxAppError) -> rong::RongJSError {
+    const CODES: [&str; 10] = [
+        "VIDEO_SOURCE",
+        "VIDEO_NOT_GRANTED",
+        "VIDEO_NETWORK",
+        "VIDEO_NOT_FOUND",
+        "VIDEO_FORMAT",
+        "VIDEO_DECODE",
+        "VIDEO_DECODERS",
+        "VIDEO_NO_PLAYER",
+        "VIDEO_UNSUPPORTED",
+        "VIDEO_PLAYER_PROPS",
+    ];
+    if let lxapp::LxAppError::RongJSHost { code, message, .. } = error
+        && let Some(code) = CODES.into_iter().find(|known| known == code)
+    {
+        return HostError::new(code, message.clone()).into();
+    }
+    crate::i18n::js_error_from_lxapp_error(error)
+}
+
+#[js_class]
+impl JSVideoContext {
+    #[js_method(constructor)]
+    fn _ctor() -> JSResult<()> {
+        Err(js_invalid_parameter_error("Use lx.createVideoContext()"))
+    }
+
+    #[js_method(ts_return = "Promise<void>")]
+    fn play(&self, ctx: JSContext) -> JSResult<Promise> {
+        self.send(&ctx, json!({"op": "play"}), Self::native_play)
+    }
+
+    #[js_method(ts_return = "Promise<void>")]
+    fn pause(&self, ctx: JSContext) -> JSResult<Promise> {
+        self.send(&ctx, json!({"op": "pause"}), Self::native_pause)
+    }
+
+    /// Pauses and returns to the start.
+    #[js_method(ts_return = "Promise<void>")]
+    fn stop(&self, ctx: JSContext) -> JSResult<Promise> {
+        self.send(&ctx, json!({"op": "stop"}), Self::native_stop)
+    }
+
+    #[js_method(ts_return = "Promise<void>")]
+    fn seek(&self, ctx: JSContext, position_seconds: f64) -> JSResult<Promise> {
+        self.send(
+            &ctx,
+            json!({"op": "seek", "seconds": position_seconds}),
+            |this| this.native_seek(position_seconds),
+        )
+    }
+
+    #[js_method(rename = "requestFullScreen", ts_return = "Promise<void>")]
+    fn request_full_screen(&self, ctx: JSContext) -> JSResult<Promise> {
+        self.send(&ctx, json!({"op": "requestFullScreen"}), |this| {
+            this.dispatch(VideoPlayerCommand::EnterFullscreen)
+        })
+    }
+
+    #[js_method(rename = "exitFullScreen", ts_return = "Promise<void>")]
+    fn exit_full_screen(&self, ctx: JSContext) -> JSResult<Promise> {
+        self.send(&ctx, json!({"op": "exitFullScreen"}), |this| {
+            this.dispatch(VideoPlayerCommand::ExitFullscreen)
+        })
+    }
+
+    #[js_method(
+        rename = "setStreamSource",
+        ts_params = "options: StreamSourceOptions",
+        ts_return = "Promise<void>"
+    )]
+    fn set_stream_source(
+        &self,
+        ctx: JSContext,
+        options: JSStreamSourceOptions,
+    ) -> JSResult<Promise> {
+        self.send(&ctx, json!({"op": "setStreamSource"}), |this| {
+            this.native_set_stream_source(options)
+        })
+    }
+
+    /// `"auto"` or a label of the `<video sources>`; switches without a restart.
+    #[js_method(rename = "setQuality", ts_return = "Promise<void>")]
+    fn set_quality(&self, ctx: JSContext, quality: String) -> JSResult<Promise> {
+        self.send(
+            &ctx,
+            json!({"op": "setQuality", "quality": quality}),
+            |this| this.webview_unsupported("setQuality"),
+        )
+    }
+
+    #[js_method(rename = "setPlaybackRate", ts_return = "Promise<void>")]
+    fn set_playback_rate(&self, ctx: JSContext, rate: f64) -> JSResult<Promise> {
+        self.send(
+            &ctx,
+            json!({"op": "setPlaybackRate", "rate": rate}),
+            |this| this.webview_unsupported("setPlaybackRate"),
+        )
+    }
+
+    #[js_method(rename = "setMuted", ts_return = "Promise<void>")]
+    fn set_muted(&self, ctx: JSContext, muted: bool) -> JSResult<Promise> {
+        self.send(&ctx, json!({"op": "setMuted", "muted": muted}), |this| {
+            this.webview_unsupported("setMuted")
+        })
+    }
+
+    #[js_method(rename = "setVolume", ts_return = "Promise<void>")]
+    fn set_volume(&self, ctx: JSContext, volume: f64) -> JSResult<Promise> {
+        self.send(&ctx, json!({"op": "setVolume", "volume": volume}), |this| {
+            this.webview_unsupported("setVolume")
+        })
     }
 
     #[js_method(gc_mark)]

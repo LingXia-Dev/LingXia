@@ -491,6 +491,11 @@ impl<A: PlatformAdapter> Inner<A> {
         } = request.environment;
         let mut loaded_images = 0;
         let mut image_buckets = Default::default();
+        if !session.renderer.videos.has_resolver()
+            && let Some(resolver) = self.adapter.video_resolver()
+        {
+            session.renderer.videos.set_resolver(resolver);
+        }
         session.set_environment(value)?;
         session.set_animation_target(Some(request.surface), request.visible, now)?;
         let (sample, ahead, single_target, dropped_activations, activations) = (

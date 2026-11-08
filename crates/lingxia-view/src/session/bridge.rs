@@ -37,6 +37,20 @@ impl ViewSession {
         if !self.connected {
             return Err("UI_BRIDGE: message outside a connection".into());
         }
+        if let ToView::Request {
+            id,
+            request: crate::session::logic::ViewRequest::Video { player, command },
+        } = &message
+        {
+            let outcome = self.video_request(player, command);
+            return Ok(crate::session::state::StateUpdate {
+                outbound: vec![ToLogic::Reply {
+                    id: id.clone(),
+                    outcome,
+                }],
+                ..Default::default()
+            });
+        }
         let (changed, outbound) = self.execute(|| {
             let ctx = &self.context;
             let global = ctx.global();

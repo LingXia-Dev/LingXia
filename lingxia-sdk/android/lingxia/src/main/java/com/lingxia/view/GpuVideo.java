@@ -13,6 +13,7 @@ import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.PlaybackParameters;
 import androidx.media3.common.Player;
+import androidx.media3.common.Tracks;
 import androidx.media3.common.VideoSize;
 import androidx.media3.exoplayer.ExoPlayer;
 import java.io.File;
@@ -41,6 +42,8 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
     private boolean ended;
     private boolean muted;
     private float volume = 1f;
+    /** An adaptive stream's video heights, highest first, as "720p,360p". */
+    private volatile String qualities = "";
     private static final long SAMPLE_MS = 100;
 
     static GpuVideo open(String source) {
@@ -81,6 +84,27 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
                 }
 
                 @Override
+                public void onTracksChanged(Tracks tracks) {
+                    java.util.TreeSet<Integer> heights = new java.util.TreeSet<>(java.util.Collections.reverseOrder());
+                    for (Tracks.Group group : tracks.getGroups()) {
+                        if (group.getType() != C.TRACK_TYPE_VIDEO || !group.isAdaptiveSupported()) {
+                            continue;
+                        }
+                        for (int i = 0; i < group.length; i++) {
+                            int height = group.getTrackFormat(i).height;
+                            if (height > 0 && group.isTrackSupported(i)) {
+                                heights.add(height);
+                            }
+                        }
+                    }
+                    StringBuilder text = new StringBuilder();
+                    for (int height : heights) {
+                        text.append(text.length() == 0 ? "" : ",").append(height).append('p');
+                    }
+                    qualities = text.toString();
+                }
+
+                @Override
                 public void onPlayerError(PlaybackException failure) {
                     error = code(failure) + ": " + failure.getMessage();
                     sample();
@@ -111,6 +135,8 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
             } else if (op.equals("volume")) {
                 volume = (float) value;
                 player.setVolume(muted ? 0f : volume);
+            } else if (op.equals("quality")) {
+                pinHeight((int) value);
             } else if (op.equals("loop")) {
                 player.setRepeatMode(value != 0 ? Player.REPEAT_MODE_ONE : Player.REPEAT_MODE_OFF);
             } else if (op.equals("rate")) {
@@ -118,6 +144,22 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
             }
             sample();
         });
+    }
+
+    /** Pins the video rendition of this height; 0 gives adaptive selection back. Needs no tracks yet. */
+    private void pinHeight(int height) {
+        androidx.media3.common.TrackSelectionParameters.Builder params =
+            player.getTrackSelectionParameters().buildUpon().clearOverridesOfType(C.TRACK_TYPE_VIDEO);
+        if (height > 0) {
+            params.setMinVideoSize(0, height).setMaxVideoSize(Integer.MAX_VALUE, height);
+        } else {
+            params.clearVideoSizeConstraints().setMinVideoSize(0, 0);
+        }
+        player.setTrackSelectionParameters(params.build());
+    }
+
+    String qualities() {
+        return qualities;
     }
 
     private void setPlaying(boolean playing) {

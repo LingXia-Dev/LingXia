@@ -18,7 +18,8 @@ pub fn init(ctx: &JSContext) -> JSResult<()> {
     register_video_context_api(ctx)
 }
 
-/// Take a control handle for the `<lx-video>` component with this id.
+/// A control handle for the `<lx-video>` with this id, or on a GPU page for the player of this
+/// `useVideo` name or `<video id>`.
 fn create_video_context(ctx: JSContext, component_id: String) -> JSResult<JSVideoContext> {
     JSVideoContext::create(&ctx, component_id)
 }
@@ -27,7 +28,7 @@ rong::js_api! {
     fn register_video_context_api(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
         fn createVideoContext(
-            ts_params = "componentId: string",
+            ts_params = "name: string",
             ts_return = "VideoContext"
         ) = create_video_context;
     }
@@ -39,6 +40,13 @@ pub struct JSVideoContext {
     pub(super) player_handle: Arc<dyn VideoPlayerHandle>,
     pub(super) runtime: Arc<Platform>,
     pub(super) shared: Arc<VideoContextSharedState>,
+    /// Set on a GPU page: commands go to its View, which answers each one.
+    pub(super) gpu: Option<GpuTarget>,
+}
+
+#[derive(Clone)]
+pub(super) struct GpuTarget {
+    pub(super) page: lxapp::PageInstance,
 }
 
 #[derive(Debug, Clone)]
@@ -162,6 +170,23 @@ impl JSVideoContext {
 
         let lxapp = LxApp::from_ctx(ctx)?;
         let runtime = lxapp.runtime.clone();
+        if let Ok(page) = lxapp.current_page()
+            && page.renderer() == lxapp::PageRenderer::Gpu
+        {
+            return Ok(Self {
+                shared: Arc::new(VideoContextSharedState::new(runtime.clone())),
+                player_handle: Arc::new(
+                    lingxia_platform::traits::video_player::VideoPlayerHandleImpl::new(|_| {
+                        Err(lingxia_platform::error::PlatformError::NotSupported(
+                            "a GPU page's player takes commands through its View".into(),
+                        ))
+                    }),
+                ),
+                component_id,
+                runtime,
+                gpu: Some(GpuTarget { page }),
+            });
+        }
         let shared = shared_state_for(&runtime, &component_id);
         let callback_id = VideoContextSharedState::register_callback(&shared, &component_id)?;
         if !shared.callback_bound.swap(true, Ordering::AcqRel)
@@ -196,6 +221,7 @@ impl JSVideoContext {
             player_handle: handle.into(),
             runtime,
             shared,
+            gpu: None,
         })
     }
 }

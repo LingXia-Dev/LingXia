@@ -250,6 +250,7 @@ pub mod field {
     pub const VIDEO_RATE: usize = 213;
     pub const VIDEO_VOLUME: usize = 214;
     pub const ON_VIDEO_EVENT: usize = 215;
+    pub const VIDEO_SOURCES: usize = 216;
 }
 
 pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page", "span", "link", "select", "video"];
@@ -472,6 +473,7 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("playbackRate", "video-number"),
     ("volume", "video-number"),
     ("onVideoEvent", "handle"),
+    ("sources", "video-sources"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -881,6 +883,7 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::SCROLL, tag::LIST]), parent: None },
     FieldAdmission { tags: Some(&[tag::SCROLL]), parent: None },
     FieldAdmission { tags: Some(&[tag::SCROLL]), parent: None },
+    FieldAdmission { tags: Some(&[tag::VIDEO]), parent: None },
     FieldAdmission { tags: Some(&[tag::VIDEO]), parent: None },
     FieldAdmission { tags: Some(&[tag::VIDEO]), parent: None },
     FieldAdmission { tags: Some(&[tag::VIDEO]), parent: None },

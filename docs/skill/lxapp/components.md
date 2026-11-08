@@ -167,6 +167,8 @@ ctx.exitFullScreen();
 ctx.setStreamSource({ /* … */ });
 ```
 
+Every method returns a `Promise<void>` that rejects with a `VIDEO_*` code. On a GPU page the name is the `useVideo` name or the `<video id>`, and `setQuality`/`setPlaybackRate`/`setMuted`/`setVolume` also work; fullscreen and `setStreamSource` reject `VIDEO_UNSUPPORTED` there.
+
 ## `LxMediaSwiper`
 
 A native carousel of images and videos (loop, autoplay, dots, peek,
