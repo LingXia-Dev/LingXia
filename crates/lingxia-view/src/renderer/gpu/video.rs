@@ -25,9 +25,38 @@ pub(crate) fn texture_id(player: &str) -> vello_gpu::TextureId {
     vello_gpu::TextureId(hasher.finish() | (1 << 63))
 }
 
+/// A platform player the renderer draws from: it decodes on its own and hands over its newest
+/// frame as a texture of the renderer's device.
+pub trait Player: Send {
+    /// A frame newer than the last one taken is due at this refresh.
+    fn has_new(&self) -> bool;
+    /// The frame due now, when it is new.
+    fn next_frame(
+        &mut self,
+        device: &wgpu::Device,
+    ) -> Result<Option<(wgpu::Texture, [u16; 2])>, String>;
+}
+
+/// Opens the player for a source URL.
+pub type Opener = fn(&str) -> Result<Box<dyn Player>, String>;
+
+static INSTALLED: std::sync::OnceLock<Opener> = std::sync::OnceLock::new();
+
+/// Installs the platform's players, for platforms whose decoders live outside this crate.
+pub fn install(opener: Opener) {
+    let _ = INSTALLED.set(opener);
+}
+
+fn open(source: &str) -> Result<Box<dyn Player>, String> {
+    if let Some(opener) = INSTALLED.get() {
+        return opener(source);
+    }
+    platform::open(source)
+}
+
 enum State {
     Opening,
-    Ready(platform::Player),
+    Ready(Box<dyn Player>),
     Failed,
 }
 
@@ -68,7 +97,7 @@ static OPENER: LazyLock<Mutex<mpsc::Sender<String>>> = LazyLock::new(|| {
             loop {
                 match receiver.recv_timeout(Duration::from_millis(500)) {
                     Ok(key) => {
-                        let state = match platform::Player::open(&key) {
+                        let state = match open(&key) {
                             Ok(player) => State::Ready(player),
                             Err(error) => {
                                 log::warn!(target: "lingxia_view", "UI_VIDEO: {key}: {error}");
@@ -438,8 +467,25 @@ mod platform {
     unsafe impl Send for Held {}
     unsafe impl Sync for Held {}
 
+    pub(super) fn open(url: &str) -> Result<Box<dyn super::Player>, String> {
+        Ok(Box::new(Player::open(url)?))
+    }
+
+    impl super::Player for Player {
+        fn has_new(&self) -> bool {
+            unsafe { self.due().is_some() }
+        }
+
+        fn next_frame(
+            &mut self,
+            device: &wgpu::Device,
+        ) -> Result<Option<(wgpu::Texture, [u16; 2])>, String> {
+            self.frame(device)
+        }
+    }
+
     impl Player {
-        pub(super) fn open(url: &str) -> Result<Self, String> {
+        fn open(url: &str) -> Result<Self, String> {
             let url = std::ffi::CString::new(url).map_err(|e| e.to_string())?;
             unsafe {
                 let string = {
@@ -505,7 +551,7 @@ mod platform {
         }
 
         /// The frame due at this refresh as a wgpu texture, when a new one is ready.
-        pub(super) fn next_frame(
+        fn frame(
             &mut self,
             device: &wgpu::Device,
         ) -> Result<Option<(wgpu::Texture, [u16; 2])>, String> {
@@ -528,11 +574,6 @@ mod platform {
                 CVBufferRelease(buffer);
                 result.map(Some)
             }
-        }
-
-        /// A frame newer than the last one taken is due at this refresh.
-        pub(super) fn has_new(&self) -> bool {
-            unsafe { self.due().is_some() }
         }
 
         /// The item time of the refresh now, when it has a new frame.
@@ -672,24 +713,112 @@ mod platform {
     }
 }
 
+/// Imports an RGBA8 AHardwareBuffer as a texture of `device`, sharing its memory.
+///
+/// # Safety
+/// `buffer` must be a live `AHardwareBuffer*` allocated with GPU sampling usage; the texture
+/// holds its own reference.
+#[cfg(target_os = "android")]
+pub unsafe fn import_hardware_buffer(
+    device: &wgpu::Device,
+    buffer: *mut std::ffi::c_void,
+    size: [u32; 2],
+) -> Result<wgpu::Texture, String> {
+    use ash::{android::external_memory_android_hardware_buffer as ahb, vk};
+    unsafe {
+        let hal = device
+            .as_hal::<wgpu::hal::api::Vulkan>()
+            .ok_or("not a Vulkan device")?;
+        let instance = hal.shared_instance().raw_instance();
+        let raw = hal.raw_device();
+        let loader = ahb::Device::new(instance, raw);
+        let mut properties = vk::AndroidHardwareBufferPropertiesANDROID::default();
+        loader
+            .get_android_hardware_buffer_properties(buffer.cast(), &mut properties)
+            .map_err(|e| format!("AHardwareBuffer properties: {e}"))?;
+        let mut external = vk::ExternalMemoryImageCreateInfo::default()
+            .handle_types(vk::ExternalMemoryHandleTypeFlags::ANDROID_HARDWARE_BUFFER_ANDROID);
+        let info = vk::ImageCreateInfo::default()
+            .push_next(&mut external)
+            .image_type(vk::ImageType::TYPE_2D)
+            .format(vk::Format::R8G8B8A8_UNORM)
+            .extent(vk::Extent3D {
+                width: size[0],
+                height: size[1],
+                depth: 1,
+            })
+            .mip_levels(1)
+            .array_layers(1)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .tiling(vk::ImageTiling::OPTIMAL)
+            .usage(vk::ImageUsageFlags::SAMPLED)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .initial_layout(vk::ImageLayout::UNDEFINED);
+        let image = raw
+            .create_image(&info, None)
+            .map_err(|e| format!("vkCreateImage: {e}"))?;
+        let mut import =
+            vk::ImportAndroidHardwareBufferInfoANDROID::default().buffer(buffer.cast());
+        let mut dedicated = vk::MemoryDedicatedAllocateInfo::default().image(image);
+        let allocate = vk::MemoryAllocateInfo::default()
+            .push_next(&mut import)
+            .push_next(&mut dedicated)
+            .allocation_size(properties.allocation_size)
+            .memory_type_index(properties.memory_type_bits.trailing_zeros());
+        let memory = match raw.allocate_memory(&allocate, None) {
+            Ok(memory) => memory,
+            Err(e) => {
+                raw.destroy_image(image, None);
+                return Err(format!("vkAllocateMemory: {e}"));
+            }
+        };
+        if let Err(e) = raw.bind_image_memory(image, memory, 0) {
+            raw.free_memory(memory, None);
+            raw.destroy_image(image, None);
+            return Err(format!("vkBindImageMemory: {e}"));
+        }
+        let extent = wgpu::Extent3d {
+            width: size[0],
+            height: size[1],
+            depth_or_array_layers: 1,
+        };
+        let hal_texture = hal.texture_from_raw(
+            image,
+            &wgpu::hal::TextureDescriptor {
+                label: Some("LingXia video frame"),
+                size: extent,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUses::RESOURCE,
+                memory_flags: wgpu::hal::MemoryFlags::empty(),
+                view_formats: Vec::new(),
+            },
+            None,
+            wgpu::hal::vulkan::TextureMemory::Dedicated(memory),
+        );
+        drop(hal);
+        Ok(device.create_texture_from_hal::<wgpu::hal::api::Vulkan>(
+            hal_texture,
+            &wgpu::TextureDescriptor {
+                label: Some("LingXia video frame"),
+                size: extent,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            },
+            wgpu::TextureUses::RESOURCE,
+        ))
+    }
+}
+
 #[cfg(not(target_vendor = "apple"))]
 mod platform {
-    pub(super) struct Player;
-
-    impl Player {
-        pub(super) fn open(_url: &str) -> Result<Self, String> {
-            Err("video is not available on this platform yet".into())
-        }
-
-        pub(super) fn has_new(&self) -> bool {
-            false
-        }
-
-        pub(super) fn next_frame(
-            &mut self,
-            _device: &wgpu::Device,
-        ) -> Result<Option<(wgpu::Texture, [u16; 2])>, String> {
-            Ok(None)
-        }
+    pub(super) fn open(_url: &str) -> Result<Box<dyn super::Player>, String> {
+        Err("no video player is installed on this platform".into())
     }
 }

@@ -2,13 +2,14 @@
 //! call but `route` and `describe` runs on the render thread; one registry shares the device
 //! context between pages.
 use super::gpu::{Presenter, SurfaceSource};
+use super::render_thread::PresenterFn;
 use image::ImageEncoder;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 static NEXT: AtomicU64 = AtomicU64::new(1);
-type Shared = Arc<Mutex<Presenter>>;
+pub type Shared = Arc<Mutex<Presenter>>;
 /// Held only to look up or insert; each presenter has its own lock, so one
 /// page's encode or attach never blocks another page's present.
 static SURFACES: LazyLock<Mutex<HashMap<u64, Shared>>> =
@@ -32,7 +33,7 @@ fn gpu_binding() -> RwLockWriteGuard<'static, ()> {
     GPU.write().unwrap_or_else(|p| p.into_inner())
 }
 
-fn presenter(id: u64) -> Result<Option<Shared>, String> {
+pub(crate) fn presenter(id: u64) -> Result<Option<Shared>, String> {
     Ok(registry()?.get(&id).cloned())
 }
 
@@ -187,16 +188,20 @@ pub fn present(id: u64, revision: u64) -> Result<Option<[u64; 4]>, String> {
 
 /// Presenters keeping a frame that draws video; read on the main thread at every refresh, so
 /// it never waits on a presenter.
-static VIDEO: LazyLock<Mutex<std::collections::HashSet<u64>>> = LazyLock::new(Default::default);
+static VIDEO: LazyLock<Mutex<HashMap<u64, PresenterFn>>> = LazyLock::new(Default::default);
 
-fn video_surfaces() -> MutexGuard<'static, std::collections::HashSet<u64>> {
+fn video_surfaces() -> MutexGuard<'static, HashMap<u64, PresenterFn>> {
     VIDEO.lock().unwrap_or_else(|p| p.into_inner())
 }
 
 /// Keeps the frame just drawn for `revision` while it draws video, for [`rebind`].
-pub(crate) fn retain(id: u64, revision: u64, display: Box<crate::DisplayList>) {
-    // Presenters outside this registry keep nothing.
-    let Ok(Some(presenter)) = presenter(id) else {
+pub(crate) fn retain(
+    lookup: PresenterFn,
+    id: u64,
+    revision: u64,
+    display: Box<crate::DisplayList>,
+) {
+    let Ok(Some(presenter)) = lookup(id) else {
         return;
     };
     let Ok(mut presenter) = lock(&presenter) else {
@@ -204,7 +209,7 @@ pub(crate) fn retain(id: u64, revision: u64, display: Box<crate::DisplayList>) {
     };
     let mut surfaces = video_surfaces();
     if presenter.retain(revision, display) {
-        surfaces.insert(id);
+        surfaces.insert(id, lookup);
     } else {
         surfaces.remove(&id);
     }
@@ -212,7 +217,7 @@ pub(crate) fn retain(id: u64, revision: u64, display: Box<crate::DisplayList>) {
 
 /// Presenter `id` keeps a frame that draws video: its page should [`tick`] every refresh.
 pub fn keeps_video(id: u64) -> bool {
-    video_surfaces().contains(&id)
+    video_surfaces().contains_key(&id)
 }
 
 /// On a display refresh of the page presenting through `id`: queues a redraw of its kept frame
@@ -229,7 +234,8 @@ pub fn tick(id: u64) -> bool {
 /// worker involved; nothing when no player has a new frame or a newer frame awaits its present.
 pub(crate) fn rebind(id: u64) -> Result<(), String> {
     let _work = gpu_work();
-    let Some(presenter) = presenter(id)? else {
+    let lookup = video_surfaces().get(&id).copied();
+    let Some(presenter) = lookup.map_or(Ok(None), |lookup| lookup(id))? else {
         return Ok(());
     };
     let due = lock(&presenter)?.take_due();

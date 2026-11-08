@@ -7,7 +7,7 @@ description = "Experimental LingXia UI language and headless renderer"
 
 [features]
 default = []
-gpu = ["dep:vello_gpu", "dep:glifo", "dep:wgpu", "dep:pollster", "dep:objc2", "dep:objc2-metal"]
+gpu = ["dep:vello_gpu", "dep:glifo", "dep:wgpu", "dep:pollster", "dep:objc2", "dep:objc2-metal", "dep:ash"]
 # Dev sessions only: swap a page module in place, keeping its state.
 hot-swap = []
 
@@ -42,6 +42,8 @@ parley = { workspace = true, features = ["std", "complex-scripts"] }
 [target.'cfg(target_os = "android")'.dependencies]
 # GLES is the fallback for Vulkan drivers the crash sentinel blocks.
 wgpu = { workspace = true, optional = true, features = ["gles"] }
+# Video frames arrive as AHardwareBuffers that Vulkan imports in place.
+ash = { version = "0.38", optional = true, default-features = false }
 
 [target.'cfg(target_vendor = "apple")'.dependencies]
 # Video frames arrive as Metal textures that wgpu adopts in place.

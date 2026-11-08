@@ -17,6 +17,8 @@ mod fonts;
 #[cfg(all(feature = "gpu", target_os = "android"))]
 mod gpu_surface;
 #[cfg(all(feature = "gpu", target_os = "android"))]
+mod video;
+#[cfg(all(feature = "gpu", target_os = "android"))]
 use lingxia_view::renderer::render_thread as render;
 
 use adapter::AndroidAdapter;
@@ -204,6 +206,8 @@ pub fn register_natives(env: &mut Env, class: &JClass) -> jni::errors::Result<()
         #[cfg(feature = "hot-swap")]
         method!("nativeSwapModule", "(JLjava/lang/String;)V", swap_module),
     ];
+    #[cfg(all(feature = "gpu", target_os = "android"))]
+    video::register(env);
     // SAFETY: every entry above names a function with the matching signature.
     unsafe { env.register_native_methods(class, &methods) }
 }

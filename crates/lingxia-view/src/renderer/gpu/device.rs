@@ -133,22 +133,76 @@ impl Devices {
         let required_limits = renderer_limits()
             .using_resolution(available.clone())
             .using_alignment(available);
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("LingXia UI"),
-                // Timestamps measure sampled redraws; nothing depends on them.
-                required_features: adapter.features() & wgpu::Features::TIMESTAMP_QUERY,
-                required_limits,
-                ..Default::default()
-            })
-            .await
-            .ok()?;
+        let descriptor = wgpu::DeviceDescriptor {
+            label: Some("LingXia UI"),
+            // Timestamps measure sampled redraws; nothing depends on them.
+            required_features: adapter.features() & wgpu::Features::TIMESTAMP_QUERY,
+            required_limits,
+            ..Default::default()
+        };
+        #[cfg(target_os = "android")]
+        let opened = video_device(&adapter, &descriptor);
+        #[cfg(not(target_os = "android"))]
+        let opened = None;
+        let (device, queue) = match opened {
+            Some(opened) => opened,
+            None => adapter.request_device(&descriptor).await.ok()?,
+        };
         self.devices.push(DeviceHandle {
             adapter,
             device,
             queue,
         });
         Some(self.devices.len() - 1)
+    }
+}
+
+/// A Vulkan device that can import video frames' AHardwareBuffers, which wgpu leaves off;
+/// `None` elsewhere or when the driver lacks the extension.
+#[cfg(target_os = "android")]
+fn video_device(
+    adapter: &wgpu::Adapter,
+    descriptor: &wgpu::DeviceDescriptor<'_>,
+) -> Option<(wgpu::Device, wgpu::Queue)> {
+    use ash::{android::external_memory_android_hardware_buffer as ahb, ext, khr};
+    let wanted = [
+        ahb::NAME,
+        ext::queue_family_foreign::NAME,
+        khr::sampler_ycbcr_conversion::NAME,
+        khr::external_memory::NAME,
+        khr::dedicated_allocation::NAME,
+        khr::get_memory_requirements2::NAME,
+        khr::bind_memory2::NAME,
+        khr::maintenance1::NAME,
+    ];
+    unsafe {
+        let hal = adapter.as_hal::<wgpu::hal::api::Vulkan>()?;
+        let capabilities = hal.physical_device_capabilities();
+        if !capabilities.supports_extension(ahb::NAME) {
+            return None;
+        }
+        let extra: Vec<&'static std::ffi::CStr> = wanted
+            .into_iter()
+            .filter(|name| capabilities.supports_extension(name))
+            .collect();
+        let opened = hal
+            .open_with_callback(
+                descriptor.required_features,
+                &descriptor.required_limits,
+                &descriptor.memory_hints,
+                Some(Box::new(
+                    move |args: wgpu::hal::vulkan::CreateDeviceCallbackArgs| {
+                        for name in extra {
+                            if !args.extensions.contains(&name) {
+                                args.extensions.push(name);
+                            }
+                        }
+                    },
+                )),
+            )
+            .ok()?;
+        drop(hal);
+        adapter.create_device_from_hal(opened, descriptor).ok()
     }
 }
 

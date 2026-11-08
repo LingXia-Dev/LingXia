@@ -10,7 +10,9 @@ pub(crate) mod scene;
 pub(crate) mod surface;
 pub(crate) mod text;
 pub(crate) mod timing;
-pub(crate) mod video;
+pub mod video;
+
+pub use wgpu;
 
 use device::{Devices, RenderSurface};
 use std::{

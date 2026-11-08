@@ -14,18 +14,22 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 pub type PrepareFn = fn(u64, &DisplayList, u64) -> Result<Option<serde_json::Value>, String>;
 /// Presents a drawn revision: the presenter's timings, `None` when it did not reach the screen.
 pub type PresentFn = fn(u64, u64) -> Result<Option<[u64; 4]>, String>;
+/// The presenter behind an id, for redrawing a kept video frame.
+pub type PresenterFn = fn(u64) -> Result<Option<super::surfaces::Shared>, String>;
 
 /// The presenter registry a page draws through.
 #[derive(Clone, Copy)]
 pub struct Backend {
     pub prepare: PrepareFn,
     pub present: PresentFn,
+    pub presenter: PresenterFn,
 }
 
 /// The registry shared by adapters that bind windows through [`super::surfaces`].
 pub const SURFACES: Backend = Backend {
     prepare: super::surfaces::prepare,
     present: super::surfaces::present,
+    presenter: super::surfaces::presenter,
 };
 
 /// A frame's draw: `None` until it ran, then what the backend's prepare returned.
@@ -76,7 +80,12 @@ static QUEUE: LazyLock<Arc<(Mutex<VecDeque<Job>>, Condvar)>> = LazyLock::new(|| 
                         let kept = matches!(result, Ok(Some(_)));
                         *lock(&drawn.result) = Some(result);
                         if kept {
-                            super::surfaces::retain(surface, revision, display);
+                            super::surfaces::retain(
+                                drawn.backend.presenter,
+                                surface,
+                                revision,
+                                display,
+                            );
                         }
                     }
                     Job::Rebind(surface) => {

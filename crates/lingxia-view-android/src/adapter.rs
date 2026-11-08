@@ -100,6 +100,8 @@ pub(super) struct AndroidAdapter {
     reconcile_us: AtomicU64,
     /// A dialog of the top layer is open: the page sits above the host's bars.
     modal: std::sync::atomic::AtomicBool,
+    /// Display frames keep coming for a playing video's new frames.
+    ticking: Arc<AtomicBool>,
 }
 
 pub(super) enum Frame {
@@ -158,6 +160,7 @@ impl AndroidAdapter {
             raster: OnceLock::new(),
             reconcile_us: AtomicU64::new(0),
             modal: Default::default(),
+            ticking: Default::default(),
         }
     }
 
@@ -275,8 +278,21 @@ impl Presenter for AndroidAdapter {
                 let Some(host) = self.host.get().cloned() else {
                     return Ok(false);
                 };
+                let ticking = self.ticking.clone();
                 super::render::present(surface, revision, drawn, move |shown, gpu| {
-                    let Some(host) = host.upgrade() else { return };
+                    let Some(strong) = host.upgrade() else { return };
+                    // The first frame that draws video starts display frames for its frames.
+                    if lingxia_view::renderer::surfaces::keeps_video(surface)
+                        && !ticking.swap(true, Ordering::AcqRel)
+                    {
+                        let host = host.clone();
+                        strong.adapter().post(Box::new(move || {
+                            if let Some(host) = host.upgrade() {
+                                host.tick();
+                            }
+                        }));
+                    }
+                    let host = strong;
                     match shown {
                         Ok(shown) => host.deferred_drawn(CommitTicket::new(revision), shown, gpu),
                         Err(error) => {
@@ -360,6 +376,13 @@ fn rasterize(host: &WeakViewHost<AndroidAdapter>, display: DisplayList, generati
 }
 
 impl FrameScheduler for AndroidAdapter {
+    #[cfg(all(feature = "gpu", target_os = "android"))]
+    fn tick(&self) -> bool {
+        let ticking = lingxia_view::renderer::surfaces::tick(self.gpu.load(Ordering::Acquire));
+        self.ticking.store(ticking, Ordering::Release);
+        ticking
+    }
+
     fn request_vsync(&self) {
         self.void(jni_str!("requestVsync"));
     }

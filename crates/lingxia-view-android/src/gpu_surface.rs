@@ -115,7 +115,11 @@ fn lock(presenter: &Shared) -> Result<std::sync::MutexGuard<'_, Presenter>, Stri
 
 /// The registry the render thread draws Android pages through.
 pub(super) const BACKEND: lingxia_view::renderer::render_thread::Backend =
-    lingxia_view::renderer::render_thread::Backend { prepare, present };
+    lingxia_view::renderer::render_thread::Backend {
+        prepare,
+        present,
+        presenter,
+    };
 
 /// Bind `window` to the presenter `existing`, or to a new one; returns its id.
 pub(super) fn attach(
