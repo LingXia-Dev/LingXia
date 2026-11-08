@@ -161,7 +161,8 @@ pub(super) fn resolve_screenshot_window(
 /// content windows, as opposed to the device frame's companion windows.
 fn webview_host_window_ids() -> std::collections::HashSet<usize> {
     let mut ids = std::collections::HashSet::new();
-    for webtag in webview_runtime::list_webviews() {
+    // GPU pages present as native content in the same hosts.
+    for webtag in lingxia_webview::platform::windows::list_content_webtags() {
         if let Ok(snapshot) = lingxia_windows_contract::webview_window_snapshot(&webtag)
             && snapshot.visible
             && snapshot.content_width > 0

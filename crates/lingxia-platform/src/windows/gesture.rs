@@ -14,11 +14,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT, RECT, WPARAM};
-use windows::Win32::Graphics::Gdi::{ClientToScreen, ScreenToClient};
+use windows::Win32::Graphics::Gdi::{
+    ClientToScreen, GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
+    ScreenToClient,
+};
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumChildWindows, GetClassNameW, GetClientRect, GetWindowRect, IsWindowVisible, PostMessageW,
-    RegisterWindowMessageW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOZORDER, SetWindowPos, WM_LBUTTONDOWN,
+    RegisterWindowMessageW, SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos, WM_LBUTTONDOWN,
     WM_LBUTTONUP, WM_MOUSEMOVE,
 };
 use windows::core::BOOL;
@@ -77,23 +80,41 @@ impl AppGesture for Platform {
         let (pw, ph) = largest_page(window).unwrap_or((width, height));
         if (pw > ph) != landscape {
             let mut frame = RECT::default();
+            let mut monitor = MONITORINFO {
+                cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+                ..Default::default()
+            };
             // SAFETY: reads and resizes a live top-level window; the resize is sent to its thread.
             unsafe {
-                GetWindowRect(HWND(window as *mut _), &mut frame)
+                let hwnd = HWND(window as *mut _);
+                GetWindowRect(hwnd, &mut frame)
                     .map_err(|e| PlatformError::Platform(format!("window rect: {e}")))?;
-                let outer = (
-                    f64::from(frame.right - frame.left),
-                    f64::from(frame.bottom - frame.top),
+                let _ = GetMonitorInfoW(
+                    MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST),
+                    &mut monitor,
                 );
-                let size = (outer.0 - pw + ph, outer.1 - ph + pw);
+                let work = monitor.rcWork;
+                let chrome = (
+                    f64::from(frame.right - frame.left) - pw,
+                    f64::from(frame.bottom - frame.top) - ph,
+                );
+                // Windows caps a window at its work area: a page too tall to turn there
+                // shrinks until it fits.
+                let fit = ((f64::from(work.right - work.left) - chrome.0) / ph)
+                    .min((f64::from(work.bottom - work.top) - chrome.1) / pw)
+                    .min(1.0);
+                let width = (chrome.0 + ph * fit).round() as i32;
+                let height = (chrome.1 + pw * fit).round() as i32;
+                let left = frame.left.min(work.right - width).max(work.left);
+                let top = frame.top.min(work.bottom - height).max(work.top);
                 SetWindowPos(
-                    HWND(window as *mut _),
+                    hwnd,
                     None,
-                    0,
-                    0,
-                    size.0.round() as i32,
-                    size.1.round() as i32,
-                    SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE,
+                    left,
+                    top,
+                    width,
+                    height,
+                    SWP_NOZORDER | SWP_NOACTIVATE,
                 )
                 .map_err(|e| PlatformError::Platform(format!("resize window: {e}")))?;
             }
