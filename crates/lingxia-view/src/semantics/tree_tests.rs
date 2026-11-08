@@ -138,3 +138,21 @@ fn authored_states_and_scroll_position_reach_the_projection() {
         (Some(true), None)
     );
 }
+
+#[test]
+fn reading_order_visits_each_container_before_its_children() {
+    let i = present(page(TREE).layout(300, 600, 1.0).unwrap());
+    let p = i.semantics().unwrap();
+    let test_ids: Vec<String> = p
+        .reading_order()
+        .iter()
+        .map(|id| p.node(*id).unwrap().test_id)
+        .collect();
+    assert_eq!(
+        test_ids,
+        [
+            "title", "list", "a", "a-text", "b", "", "c", "", "dialog", "body", "ok", "feed", "f1",
+            ""
+        ]
+    );
+}

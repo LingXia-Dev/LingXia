@@ -403,6 +403,13 @@ pub const SEARCH_PREFETCH_SIBLINGS: i32 = 1 << 1;
 pub const SEARCH_PREFETCH_CHILDREN: i32 = 1 << 2;
 pub const SEARCH_PREFETCH_RECURSIVE_CHILDREN: i32 = 1 << 3;
 
+pub const DIRECTION_UP: i32 = 0x01;
+pub const DIRECTION_DOWN: i32 = 0x02;
+pub const DIRECTION_LEFT: i32 = 0x04;
+pub const DIRECTION_RIGHT: i32 = 0x08;
+pub const DIRECTION_FORWARD: i32 = 0x10;
+pub const DIRECTION_BACKWARD: i32 = 0x20;
+
 pub const FOCUS_TYPE_INPUT: i32 = 1 << 0;
 pub const FOCUS_TYPE_ACCESSIBILITY: i32 = 1 << 1;
 

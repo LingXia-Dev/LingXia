@@ -200,6 +200,21 @@ impl Projection<'_> {
             .collect()
     }
 
+    /// Every node, a container before its children: the order a screen reader's swipe walks,
+    /// as Android's virtual tree yields it.
+    pub fn reading_order(&self) -> Vec<u32> {
+        let mut order = Vec::new();
+        let mut pending: Vec<u32> = self.roots();
+        pending.reverse();
+        while let Some(id) = pending.pop() {
+            order.push(id);
+            if let Some(node) = self.node(id) {
+                pending.extend(node.children.iter().rev());
+            }
+        }
+        order
+    }
+
     fn published(&self, index: usize) -> bool {
         let node = &self.frame.nodes[index];
         meaningful(node) && visible(node) && !self.covered(node)

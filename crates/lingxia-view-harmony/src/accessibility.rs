@@ -243,9 +243,50 @@ unsafe fn find_by_id_main(
                 & (sys::SEARCH_PREFETCH_CHILDREN | sys::SEARCH_PREFETCH_RECURSIVE_CHILDREN)
                 != 0;
             let recursive = mode & sys::SEARCH_PREFETCH_RECURSIVE_CHILDREN != 0;
+            let roots = projection.roots();
+            // The provider root comes first when asked for, or as the last predecessor.
+            let mut with_root = root;
             let mut wanted: Vec<u32> = Vec::new();
+            // Nodes whose children the prefetch adds: the provider root's are the roots.
+            let mut below: Vec<u32>;
             if root {
-                let roots = projection.roots();
+                below = roots.clone();
+            } else {
+                let Some(node) = projection.node(id as u32) else {
+                    return sys::RESULT_FAILED;
+                };
+                wanted.push(node.id);
+                if mode & sys::SEARCH_PREFETCH_PREDECESSORS != 0 {
+                    let mut parent = node.parent;
+                    while let Some(id) = parent {
+                        wanted.push(id);
+                        parent = projection.node(id).and_then(|n| n.parent);
+                    }
+                    with_root = true;
+                }
+                if mode & sys::SEARCH_PREFETCH_SIBLINGS != 0 {
+                    let siblings = match node.parent {
+                        Some(parent) => projection
+                            .node(parent)
+                            .map(|n| n.children)
+                            .unwrap_or_default(),
+                        None => roots.clone(),
+                    };
+                    wanted.extend(siblings.into_iter().filter(|&s| s != node.id));
+                }
+                below = node.children;
+            }
+            if children {
+                let mut i = 0;
+                while i < below.len() {
+                    wanted.push(below[i]);
+                    if recursive && let Some(node) = projection.node(below[i]) {
+                        below.extend(node.children);
+                    }
+                    i += 1;
+                }
+            }
+            if with_root {
                 // SAFETY: the list is live for this callback.
                 unsafe {
                     populate_root(
@@ -255,24 +296,6 @@ unsafe fn find_by_id_main(
                         origin,
                     )
                 };
-                if children {
-                    wanted = roots;
-                }
-            } else {
-                wanted.push(id as u32);
-            }
-            if children {
-                // Direct children of a node are its own children; of the root, its roots.
-                let first = if root { usize::MAX } else { 0 };
-                let mut i = 0;
-                while i < wanted.len() {
-                    if let Some(node) = projection.node(wanted[i])
-                        && (recursive || i == first)
-                    {
-                        wanted.extend(node.children);
-                    }
-                    i += 1;
-                }
             }
             for id in wanted {
                 let Some(node) = projection.node(id) else {
@@ -360,13 +383,55 @@ unsafe fn find_focused_main(
 }
 
 unsafe fn find_next_focus_main(
-    _: *const c_char,
-    _: i64,
-    _: i32,
-    _: i32,
-    _: *mut sys::ArkUI_AccessibilityElementInfo,
+    instance: *const c_char,
+    id: i64,
+    direction: i32,
+    _request: i32,
+    info: *mut sys::ArkUI_AccessibilityElementInfo,
 ) -> i32 {
-    sys::RESULT_FAILED
+    let Some(token) = token(instance) else {
+        return sys::RESULT_FAILED;
+    };
+    let forward = match direction {
+        sys::DIRECTION_FORWARD | sys::DIRECTION_DOWN | sys::DIRECTION_RIGHT => true,
+        sys::DIRECTION_BACKWARD | sys::DIRECTION_UP | sys::DIRECTION_LEFT => false,
+        _ => return sys::RESULT_FAILED,
+    };
+    pages::with(token, |page| {
+        let (scale, origin) = page.adapter().placement();
+        page.semantics(|projection, focus| {
+            let projection = projection?;
+            // Containers with nothing to say and nothing to do are walked through, not stopped on.
+            let stops: Vec<_> = projection
+                .reading_order()
+                .into_iter()
+                .filter_map(|id| projection.node(id))
+                .filter(|n| {
+                    n.visible
+                        && (n.focusable
+                            || n.clickable
+                            || !n.name.is_empty()
+                            || !n.text.is_empty()
+                            || n.text_field.is_some()
+                            || n.range.is_some()
+                            || n.checked.is_some())
+                })
+                .collect();
+            let at = stops.iter().position(|n| i64::from(n.id) == id);
+            let next = match (at, forward) {
+                (Some(at), true) => stops.get(at + 1),
+                (Some(at), false) => at.checked_sub(1).and_then(|at| stops.get(at)),
+                // From the provider root or a node that is not a stop: the first or last stop.
+                (None, true) => stops.first(),
+                (None, false) => stops.last(),
+            }?;
+            // SAFETY: ArkUI's live element info for this callback.
+            unsafe { populate(info, next, focus == Some(next.id), scale, origin) };
+            Some(())
+        })
+    })
+    .flatten()
+    .map_or(sys::RESULT_FAILED, |()| sys::RESULT_SUCCESSFUL)
 }
 
 unsafe fn execute_action_main(
