@@ -126,7 +126,7 @@ final class MacGpuAccessibilityElement: NSAccessibilityElement {
         case "radio-group": return .radioGroup
         case "link": return .link
         case "heading", "text": return .staticText
-        case "image": return .image
+        case "image", "video": return .image
         case "slider": return .slider
         case "text-field": return .textField
         case "scroll-view", "horizontal-scroll-view": return .scrollArea

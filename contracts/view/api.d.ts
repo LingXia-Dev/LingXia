@@ -105,6 +105,26 @@ export declare function useChannel<P, T, S>(
   options: { params: P; onData?: (message: ReadonlyData<T>) => void },
 ): ChannelResource<S>;
 
+export type VideoErrorCode = "VIDEO_SOURCE" | "VIDEO_NOT_GRANTED" | "VIDEO_NETWORK" | "VIDEO_NOT_FOUND" | "VIDEO_FORMAT" | "VIDEO_DECODE" | "VIDEO_DECODERS" | "VIDEO_NO_PLAYER";
+/** Says what to do in `message`; `recoverable` errors resume with `retry()`. */
+export interface VideoError { readonly code: VideoErrorCode; readonly message: string; readonly recoverable: boolean }
+export interface VideoMetadata { readonly duration: number | null; readonly videoWidth: number; readonly videoHeight: number; readonly live: boolean }
+export interface VideoPause { readonly reason: "user" | "api" | "hidden" | "interrupted" | "replaced" | "parked" }
+/** A page's player: pass it as `player` to each `<video>` that shows it. Reading a field re-renders on its change. */
+export interface Video {
+  readonly paused: boolean; readonly ended: boolean; readonly buffering: boolean; readonly seeking: boolean;
+  readonly readyState: "empty" | "metadata" | "ready";
+  /** Seconds; `duration` is null before metadata and for live streams. `buffered` is seconds ready ahead. */
+  readonly currentTime: number; readonly duration: number | null; readonly buffered: number;
+  readonly videoWidth: number; readonly videoHeight: number;
+  readonly playbackRate: number; readonly volume: number; readonly muted: boolean;
+  readonly error: VideoError | null;
+  play(): Promise<void>; pause(): Promise<void>; seek(seconds: number): Promise<void>;
+  setMuted(muted: boolean): Promise<void>; setVolume(volume: number): Promise<void>; setPlaybackRate(rate: number): Promise<void>;
+  retry(): Promise<void>;
+}
+export declare function useVideo(name: string): Video;
+
 export type LeaveReason = "back" | "home";
 export interface LeaveGuard {
   readonly pending: LeaveReason | null; readonly requests: number; readonly error: ResourceError | null;

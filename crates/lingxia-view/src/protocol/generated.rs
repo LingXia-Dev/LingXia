@@ -242,6 +242,14 @@ pub mod field {
     pub const SNAP_INDEX: usize = 205;
     pub const ON_SNAP_CHANGE: usize = 206;
     pub const VIDEO_SRC: usize = 207;
+    pub const VIDEO_PLAYER: usize = 208;
+    pub const VIDEO_POSTER: usize = 209;
+    pub const VIDEO_PAUSED: usize = 210;
+    pub const VIDEO_MUTED: usize = 211;
+    pub const VIDEO_LOOP: usize = 212;
+    pub const VIDEO_RATE: usize = 213;
+    pub const VIDEO_VOLUME: usize = 214;
+    pub const ON_VIDEO_EVENT: usize = 215;
 }
 
 pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page", "span", "link", "select", "video"];
@@ -456,6 +464,14 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("snapIndex", "snap-index"),
     ("onSnapChange", "handle"),
     ("src", "video-source"),
+    ("player", "video-player"),
+    ("poster", "image-src"),
+    ("paused", "video-flag"),
+    ("muted", "video-flag"),
+    ("loop", "video-flag"),
+    ("playbackRate", "video-number"),
+    ("volume", "video-number"),
+    ("onVideoEvent", "handle"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -646,7 +662,7 @@ pub const TAG_ADMISSION: &[TagAdmission] = &[
     TagAdmission { children: Children::Text, content: true, parent: Some(tag::TEXT), root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::Text, content: false, parent: Some(tag::TEXT), root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::Text, content: false, parent: None, root: false, keyed: false, requires: &[] },
-    TagAdmission { children: Children::None, content: true, parent: None, root: false, keyed: false, requires: &[field::VIDEO_SRC] },
+    TagAdmission { children: Children::None, content: true, parent: None, root: false, keyed: false, requires: &[] },
 ];
 
 /// The tags a field applies to (`None`: every tag) and the parent tag it requires.
@@ -865,5 +881,13 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::SCROLL, tag::LIST]), parent: None },
     FieldAdmission { tags: Some(&[tag::SCROLL]), parent: None },
     FieldAdmission { tags: Some(&[tag::SCROLL]), parent: None },
+    FieldAdmission { tags: Some(&[tag::VIDEO]), parent: None },
+    FieldAdmission { tags: Some(&[tag::VIDEO]), parent: None },
+    FieldAdmission { tags: Some(&[tag::VIDEO]), parent: None },
+    FieldAdmission { tags: Some(&[tag::VIDEO]), parent: None },
+    FieldAdmission { tags: Some(&[tag::VIDEO]), parent: None },
+    FieldAdmission { tags: Some(&[tag::VIDEO]), parent: None },
+    FieldAdmission { tags: Some(&[tag::VIDEO]), parent: None },
+    FieldAdmission { tags: Some(&[tag::VIDEO]), parent: None },
     FieldAdmission { tags: Some(&[tag::VIDEO]), parent: None },
 ];

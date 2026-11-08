@@ -33,6 +33,7 @@ mod reveal;
 mod snap;
 mod telemetry;
 mod text_menu;
+mod video;
 mod virtual_rows;
 mod worker;
 
@@ -270,6 +271,11 @@ struct Main<F> {
     /// `@font-face` fetches in flight, by token.
     fonts: std::collections::HashMap<u64, super::fonts::FontFace>,
     next_font: u64,
+    /// When the players' states were last turned into events.
+    video_flushed: Option<Duration>,
+    /// When playback time last reached the page, and the scroll revision seen then.
+    video_time_flushed: Option<Duration>,
+    video_scroll_revision: u64,
     environment: Option<FrameEnvironment>,
     /// The environment of the last frame the target accepted; cleared when the target changes.
     presented_environment: Option<FrameEnvironment>,
@@ -475,6 +481,9 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     in_flight: None,
                     next_flight: 0,
                     presented_flight: 0,
+                    video_flushed: None,
+                    video_time_flushed: None,
+                    video_scroll_revision: 0,
                     acked_flight: 0,
                     inputs_in_flight: 0,
                     input_seq: 0,
@@ -669,6 +678,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
             now + delta
         } else {
             now.saturating_sub(delta)
+            self.inner.video_tick();
         };
         let interval = Duration::from_micros(interval_us);
         self.inner.main().display = Some((target, interval));

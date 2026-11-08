@@ -443,6 +443,10 @@ impl ImageProvider for HarmonyAdapter {
         let handle = lock(&self.images).remove(&id);
         drop(handle);
     }
+    fn video_resolver(&self) -> Option<lingxia_view::scene::video::VideoResolver> {
+        let (shell, token) = (self.shell.clone(), self.token);
+        Some(Arc::new(move |source: &str| shell.video_url(token, source)))
+    }
 }
 
 impl AccessibilitySink for HarmonyAdapter {

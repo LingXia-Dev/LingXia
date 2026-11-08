@@ -49,6 +49,11 @@ pub trait Shell: Send + Sync + 'static {
         source: String,
         done: Box<dyn FnOnce(Result<Vec<u8>, String>) + Send>,
     ) -> Box<dyn Send>;
+    /// The URL the platform player opens for a page's `<video src>`; called on the View worker.
+    fn video_url(&self, token: i64, source: &str) -> Result<String, String> {
+        let _ = token;
+        Ok(source.to_owned())
+    }
     /// Draw press (`ring` false) or focus-ring feedback, or clear it when `shape` is empty:
     /// the node's rounded rect then its clip masks, virtual pixels; `color` is ARGB.
     fn feedback(&self, token: i64, ring: bool, shape: &[f32], color: u32, width: f32);

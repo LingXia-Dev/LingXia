@@ -390,6 +390,30 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             }),
             "UI_IMAGE: invalid source",
         ),
+        field::VIDEO_PLAYER => ensure(
+            value.as_str().is_some_and(|s| {
+                (s.starts_with("name:") || s.starts_with("el:")) && s.len() <= 4096
+            }),
+            "UI_VIDEO: invalid player",
+        ),
+        field::VIDEO_POSTER => ensure(
+            value.as_str().is_some_and(|s| {
+                !s.is_empty() && s.len() <= limits::SOURCE_BYTES && !s.contains('\0')
+            }),
+            "UI_VIDEO: invalid poster",
+        ),
+        field::VIDEO_PAUSED | field::VIDEO_MUTED | field::VIDEO_LOOP => {
+            ensure(flag(value), "UI_VIDEO: invalid flag")
+        }
+        field::VIDEO_RATE => ensure(
+            value.as_f64().is_some_and(|v| (0.25..=4.0).contains(&v)),
+            "UI_VIDEO: playbackRate takes 0.25..4",
+        ),
+        field::VIDEO_VOLUME => ensure(
+            value.as_f64().is_some_and(|v| (0.0..=1.0).contains(&v)),
+            "UI_VIDEO: volume takes 0..1",
+        ),
+        field::ON_VIDEO_EVENT => ensure(handle(value), "UI_VIDEO: invalid handle"),
         field::VIDEO_SRC => ensure(
             value.as_str().is_some_and(|s| {
                 !s.is_empty() && s.len() <= limits::SOURCE_BYTES && !s.contains('\0')

@@ -4,6 +4,7 @@ export { Details, Summary } from './runtime/details.js';
 // Tests reach the list element directly, as `List` does.
 export { listTag } from './runtime/elements.js';
 export { List, prepare, prepareWindows, takeMovedAnchors, commit, discard, reset, dispatch, describe } from './runtime/tree.js';
+export { useVideo } from './runtime/video.js';
 export { useLocal, useView, useRequest, useStream, useChannel, useLeaveGuard, hasLocalUpdates, createView, readsHostContext } from './runtime/hooks.js';
 export { configureActions, takeActionRequests, receiveActionResponse, takeActionErrors, requestLeave } from './runtime/actions.js';
 export { measureFrames } from './runtime/frames.js';

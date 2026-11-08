@@ -41,6 +41,8 @@ pub enum Role {
     Menu,
     /// One action of a menu; a button.
     MenuItem,
+    /// A video player's picture; its media state rides on the node.
+    Video,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -384,7 +386,9 @@ impl Projection<'_> {
         } else if node.drag.is_some() {
             // Moved between its snap points, a drag element adjusts like a slider.
             Role::Slider
-        } else if matches!(node.tag, "image" | "plot" | "video") {
+        } else if node.tag == "video" {
+            Role::Video
+        } else if matches!(node.tag, "image" | "plot") {
             Role::Image
         } else {
             Role::Text
@@ -393,6 +397,7 @@ impl Projection<'_> {
         let name = if matches!(
             role,
             Role::Image
+                | Role::Video
                 | Role::Slider
                 | Role::RadioGroup
                 | Role::List

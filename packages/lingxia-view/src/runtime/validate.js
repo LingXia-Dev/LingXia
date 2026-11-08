@@ -133,8 +133,14 @@ export function image(props) {
   for (const name of ['onLoad', 'onError']) if (props[name] !== undefined && typeof props[name] !== 'function') throw Error('UI_IMAGE: invalid callback');
 }
 
+const source = value => typeof value === 'string' && value.length > 0 && value.length <= limits.sourceBytes && !value.includes('\0');
 export function video(props) {
-  if (typeof props.src !== 'string' || !props.src.length || props.src.length > limits.sourceBytes || props.src.includes('\0')) throw Error('UI_VIDEO: invalid source');
+  if (props.src !== undefined && !source(props.src)) throw Error('UI_VIDEO: invalid source');
+  if (props.poster !== undefined && !source(props.poster)) throw Error('UI_VIDEO: invalid poster');
+  for (const name of ['autoPlay', 'paused', 'muted', 'loop']) if (props[name] !== undefined && typeof props[name] !== 'boolean') throw Error(`UI_VIDEO: ${name} takes a boolean`);
+  if (props.playbackRate !== undefined && !(typeof props.playbackRate === 'number' && props.playbackRate >= 0.25 && props.playbackRate <= 4)) throw Error('UI_VIDEO: playbackRate takes a number in 0.25..4');
+  if (props.volume !== undefined && !(typeof props.volume === 'number' && props.volume >= 0 && props.volume <= 1)) throw Error('UI_VIDEO: volume takes a number in 0..1');
+  for (const [name, value] of Object.entries(props)) if (/^on[A-Z]/.test(name) && value !== undefined && typeof value !== 'function') throw Error(`UI_VIDEO: ${name} takes a function`);
 }
 
 // `key:"…"` of a key this long is at most 6 bytes per character plus 6, within the limit.

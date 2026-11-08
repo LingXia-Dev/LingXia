@@ -378,4 +378,7 @@ impl lingxia_view_android::ImageLoader for Images {
     ) -> Box<dyn Send> {
         Box::new(gpu_page::load_image(owner, source, done))
     }
+    fn video_url(&self, owner: i64, source: &str) -> Result<String, String> {
+        gpu_page::video_url(owner, source)
+    }
 }

@@ -114,6 +114,7 @@ fn aria(role: Role) -> Option<&'static str> {
         Role::ComboBox => "combobox",
         Role::TextField => "textbox",
         Role::Image => "img",
+        Role::Video => "video",
         Role::Slider => "slider",
         Role::Link => "link",
         Role::Heading => "heading",

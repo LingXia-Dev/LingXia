@@ -22,3 +22,42 @@ pub fn video_stats() -> serde_json::Value {
     #[cfg(not(feature = "gpu"))]
     serde_json::Value::Null
 }
+
+/// The page's scene asks player `key` to play `source`.
+pub(crate) fn video_configure(
+    key: &str,
+    source: Result<crate::scene::video::Source, crate::scene::video::VideoError>,
+) {
+    #[cfg(feature = "gpu")]
+    gpu::video::configure(key, source);
+    #[cfg(not(feature = "gpu"))]
+    let _ = (key, source);
+}
+
+/// Player `key`'s state; `None` until a frame draws it.
+pub(crate) fn video_status(key: &str) -> Option<crate::scene::video::Status> {
+    #[cfg(feature = "gpu")]
+    return gpu::video::status(key);
+    #[cfg(not(feature = "gpu"))]
+    {
+        let _ = key;
+        None
+    }
+}
+
+/// A handle's or Logic's command to player `key`.
+pub(crate) fn video_command(
+    key: &str,
+    op: crate::scene::video::VideoOp,
+) -> Result<(), crate::scene::video::VideoError> {
+    #[cfg(feature = "gpu")]
+    return gpu::video::command(key, op);
+    #[cfg(not(feature = "gpu"))]
+    {
+        let _ = (key, op);
+        Err(crate::scene::video::VideoError::new(
+            "VIDEO_NO_PLAYER",
+            "this renderer plays no video",
+        ))
+    }
+}

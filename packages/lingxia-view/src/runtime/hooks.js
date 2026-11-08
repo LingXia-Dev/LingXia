@@ -10,7 +10,7 @@ const bindings = new WeakMap();
 /** The cell behind a `useLocal` binding, if it is one. */
 export function cellOf(binding) { return bindings.get(binding); }
 
-function local(name, initial, resource = '', order) {
+export function local(name, initial, resource = '', order) {
   if (!render.active || render.scope === null || (order === undefined && (typeof name !== 'string' || !name || name.length > 256)))
     throw Error('UI_SCOPE: invalid local state');
   const { candidate, scope } = render;

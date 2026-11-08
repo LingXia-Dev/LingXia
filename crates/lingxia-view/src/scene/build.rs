@@ -1072,24 +1072,54 @@ impl Renderer {
                     position,
                 });
             }
-            if record.tag == tag::VIDEO
-                && let Some(player) = record
-                    .string(field::VIDEO_SRC)
-                    .and_then(|src| self.videos.url(src))
-            {
+            if record.tag == tag::VIDEO {
+                let key = self
+                    .videos
+                    .key(record.string(field::VIDEO_PLAYER).unwrap_or_default());
+                // The view that names the source configures the player; others only show it.
+                if let Some(src) = record.string(field::VIDEO_SRC) {
+                    let flag = |id| record.number(id) == Some(1.0);
+                    let source = self.videos.url(src).map(|url| crate::scene::video::Source {
+                        url,
+                        settings: crate::scene::video::Settings {
+                            paused: flag(field::VIDEO_PAUSED),
+                            muted: flag(field::VIDEO_MUTED),
+                            looped: flag(field::VIDEO_LOOP),
+                            rate: record.number(field::VIDEO_RATE).unwrap_or(1.0) as f32,
+                            volume: record.number(field::VIDEO_VOLUME).unwrap_or(1.0) as f32,
+                        },
+                    });
+                    crate::renderer::video_configure(&key, source);
+                }
+                let fit = match record.string(field::IMAGE_FIT) {
+                    Some("contain") => crate::scene::image::Fit::Contain,
+                    Some("fill") => crate::scene::image::Fit::Fill,
+                    _ => crate::scene::image::Fit::Cover,
+                };
+                let position = record
+                    .string(field::IMAGE_POSITION)
+                    .and_then(crate::protocol::image_position)
+                    .unwrap_or([0.5, 0.5]);
+                let radius = if content_clip.is_some() { 0.0 } else { radius };
+                // The poster shows until the first frame is on screen.
+                if let Some(poster) = record.string(field::VIDEO_POSTER)
+                    && crate::renderer::video_status(&key)
+                        .is_none_or(|status| status.ready_state != "ready")
+                {
+                    commands.push(Paint::Image {
+                        src: poster.to_owned(),
+                        bounds: control_bounds,
+                        radius,
+                        fit,
+                        position,
+                    });
+                }
                 commands.push(Paint::Video {
-                    player,
+                    player: key,
                     bounds: control_bounds,
-                    radius: if content_clip.is_some() { 0.0 } else { radius },
-                    fit: match record.string(field::IMAGE_FIT) {
-                        Some("contain") => crate::scene::image::Fit::Contain,
-                        Some("fill") => crate::scene::image::Fit::Fill,
-                        _ => crate::scene::image::Fit::Cover,
-                    },
-                    position: record
-                        .string(field::IMAGE_POSITION)
-                        .and_then(crate::protocol::image_position)
-                        .unwrap_or([0.5, 0.5]),
+                    radius,
+                    fit,
+                    position,
                 });
             }
             input_layouts.push(

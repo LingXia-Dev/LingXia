@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { h, listTag, describe, prepare, commit, discard, dispatch, useLocal, useView, createView, readsHostContext } from '../src/internal.js';
+import { h, listTag, describe, prepare, commit, discard, dispatch, useLocal, useView, createView, readsHostContext, useVideo, hasLocalUpdates } from '../src/internal.js';
 import { decode, rendered } from './support/wire.mjs';
 
 const throwsOn = (render, pattern) => assert.throws(() => describe(render, {}), pattern);
@@ -40,6 +40,46 @@ test('video takes one source and the image placement styles', () => {
   assert.ok(video.props.imagePosition);
   for (const props of [{}, { src: 42 }, { src: '' }, { src: 'a\0b' }, { src: 'a', 'aria-label': ' ' }]) throwsOn(() => h('video', props), /UI_VIDEO/);
   throwsOn(() => h('video', { src: 'a' }, h('text', {}, 'x')), /UI_CHILD/);
+});
+
+test('video playback props: paused unless autoPlay, flags, rate and volume bounds', () => {
+  const plain = rendered(() => h('video', { src: 'a.mp4' })).props;
+  assert.equal(plain.videoPaused, 1);
+  const auto = rendered(() => h('video', { src: 'a.mp4', autoPlay: true, muted: true, loop: true, playbackRate: 2, volume: 0.5, poster: 'p.png' })).props;
+  assert.deepEqual([auto.videoPaused, auto.videoMuted, auto.videoLoop, auto.videoRate, auto.videoVolume, auto.videoPoster], [0, 1, 1, 2, 0.5, 'p.png']);
+  assert.equal(rendered(() => h('video', { src: 'a.mp4', autoPlay: true, paused: true })).props.videoPaused, 1);
+  for (const props of [{ playbackRate: 5 }, { playbackRate: 0.1 }, { volume: 2 }, { muted: 'yes' }, { onPlay: 1 }])
+    throwsOn(() => h('video', { src: 'a.mp4', ...props }), /UI_VIDEO/);
+});
+
+test('useVideo names the player, re-renders only for read fields and rejects commands without a player', async () => {
+  let renders = 0;
+  const render = () => {
+    const hero = useVideo('hero');
+    renders++;
+    return h('column', {}, h('video', { player: hero, src: 'a.mp4', onPlay: () => {} }), h('text', {}, hero.paused ? 'paused' : 'playing'));
+  };
+  const [, video, label] = decode(describe(render, {}));
+  assert.equal(video.props.videoPlayer, 'name:hero');
+  assert.equal(label.text, 'paused');
+  const status = { readyState: 'ready', currentTime: 1, duration: 4, paused: false, ended: false, buffering: false, seeking: false,
+    buffered: 2, videoWidth: 640, videoHeight: 360, playbackRate: 1, volume: 1, muted: true, error: null };
+  assert.equal(dispatch(video.props.onVideoEvent, JSON.stringify({ status, events: [{ type: 'play' }] })), true);
+  assert.equal(hasLocalUpdates(), true);
+  const [, current, playing] = decode(describe(render, {}));
+  assert.equal(playing.text, 'playing');
+  const before = renders;
+  // Only currentTime moved: the render read `paused` alone, so nothing re-renders.
+  assert.equal(dispatch(current.props.onVideoEvent, JSON.stringify({ status: { ...status, currentTime: 2 }, events: [] })), true);
+  assert.equal(hasLocalUpdates(), false);
+  assert.equal(renders, before);
+  let hero;
+  describe(() => { hero = useVideo('hero'); return h('video', { player: hero }); }, {});
+  assert.equal(hero.currentTime, 2);
+  await assert.rejects(hero.play(), error => error.code === 'VIDEO_NO_PLAYER');
+  assert.throws(() => hero.setVolume(3), /UI_VIDEO/);
+  throwsOn(() => useVideo('bad name'), /UI_VIDEO/);
+  throwsOn(() => h('video', { player: {} }), /UI_VIDEO/);
 });
 
 test('objectPosition lowers CSS keywords and percentages to box fractions on images only', () => {

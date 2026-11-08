@@ -3,10 +3,11 @@
 //! buffer to Vulkan, which samples the same memory. A buffer goes to Vulkan only once the EGL
 //! fence after its GL draw has signalled, a refresh later, so the render thread never waits on
 //! the GPU.
-use jni::objects::{Global, JClass, JFloatArray, JObject};
+use jni::objects::{Global, JClass, JDoubleArray, JFloatArray, JObject, JString};
 use jni::{Env, JValue, JavaVM, jni_sig, jni_str};
 use lingxia_view::renderer::gpu::video::{Player, import_hardware_buffer, install};
 use lingxia_view::renderer::gpu::wgpu;
+use lingxia_view::scene::video::{Settings, Status, VideoError, VideoOp};
 use std::ffi::{CStr, c_void};
 use std::sync::{Mutex, OnceLock};
 
@@ -157,6 +158,120 @@ impl Player for Video {
                 [size[0].min(65535) as u16, size[1].min(65535) as u16],
             )
         }))
+    }
+
+    fn apply(&mut self, settings: &Settings, previous: Option<&Settings>) {
+        let changed =
+            |field: fn(&Settings) -> f64| previous.is_none_or(|p| field(p) != field(settings));
+        let ops: [(&str, fn(&Settings) -> f64); 5] = [
+            ("loop", |s| s.looped as u8 as f64),
+            ("rate", |s| s.rate as f64),
+            ("volume", |s| s.volume as f64),
+            ("muted", |s| s.muted as u8 as f64),
+            ("paused", |s| s.paused as u8 as f64),
+        ];
+        for (op, field) in ops {
+            if changed(field) {
+                let (op, value) = match op {
+                    "paused" if settings.paused => ("pause", 0.0),
+                    "paused" => ("play", 0.0),
+                    _ => (op, field(settings)),
+                };
+                if let Err(error) = self.send(op, value) {
+                    log::warn!("GpuVideo apply {op}: {error}");
+                }
+            }
+        }
+    }
+
+    fn command(&mut self, op: &VideoOp) -> Result<(), VideoError> {
+        let (op, value) = match *op {
+            VideoOp::Play => ("play", 0.0),
+            VideoOp::Pause => ("pause", 0.0),
+            VideoOp::Seek(seconds) => ("seek", seconds),
+            VideoOp::SetMuted(muted) => ("muted", muted as u8 as f64),
+            VideoOp::SetVolume(volume) => ("volume", volume as f64),
+            VideoOp::SetRate(rate) => ("rate", rate as f64),
+            // The registry reopens the source.
+            VideoOp::Retry => return Ok(()),
+        };
+        self.send(op, value)
+            .map_err(|error| VideoError::new("VIDEO_NO_PLAYER", error))
+    }
+
+    fn status(&self) -> Status {
+        let mut values = [0f64; 11];
+        let read = java(|env| {
+            let array = env
+                .call_method(&*self.java, jni_str!("status"), jni_sig!("()[D"), &[])?
+                .l()?;
+            let array = env.cast_local::<JDoubleArray>(array)?;
+            array.get_region(env, 0, &mut values)?;
+            let error = env
+                .call_method(
+                    &*self.java,
+                    jni_str!("error"),
+                    jni_sig!("()Ljava/lang/String;"),
+                    &[],
+                )?
+                .l()?;
+            if error.is_null() {
+                return Ok(None);
+            }
+            let error = env.cast_local::<JString>(error)?;
+            Ok(Some(error.try_to_string(env)?))
+        });
+        let error = match read {
+            Ok(error) => error,
+            Err(error) => {
+                return Status {
+                    error: Some(VideoError::new("VIDEO_NO_PLAYER", error)),
+                    ..Status::default()
+                };
+            }
+        };
+        let [
+            time,
+            duration,
+            paused,
+            ended,
+            buffering,
+            buffered,
+            rate,
+            volume,
+            muted,
+            seeking,
+            _ready,
+        ] = values;
+        Status {
+            current_time: time,
+            duration: (duration > 0.0).then_some(duration),
+            paused: paused != 0.0,
+            ended: ended != 0.0,
+            buffering: buffering != 0.0,
+            seeking: seeking != 0.0,
+            buffered,
+            playback_rate: rate as f32,
+            volume: volume as f32,
+            muted: muted != 0.0,
+            error: error.map(|message| VideoError::from_message(&message)),
+            ..Status::default()
+        }
+    }
+}
+
+impl Video {
+    fn send(&self, op: &str, value: f64) -> Result<(), String> {
+        java(|env| {
+            let op = env.new_string(op)?;
+            env.call_method(
+                &*self.java,
+                jni_str!("command"),
+                jni_sig!("(Ljava/lang/String;D)V"),
+                &[JValue::Object(&op), JValue::Double(value)],
+            )
+            .map(drop)
+        })
     }
 }
 

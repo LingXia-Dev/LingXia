@@ -25,6 +25,11 @@ pub trait ImageLoader: Send + Sync + 'static {
         source: String,
         done: Box<dyn FnOnce(Result<Vec<u8>, String>) + Send>,
     ) -> Box<dyn Send>;
+    /// The URL the platform player opens for the owner page's `<video src>`.
+    fn video_url(&self, owner: i64, source: &str) -> Result<String, String> {
+        let _ = owner;
+        Ok(source.to_owned())
+    }
 }
 
 static IMAGE_LOADER: OnceLock<Arc<dyn ImageLoader>> = OnceLock::new();
@@ -499,6 +504,13 @@ impl ImageProvider for AndroidAdapter {
     fn cancel(&self, id: u64) {
         let handle = self.images().remove(&id);
         drop(handle);
+    }
+    fn video_resolver(&self) -> Option<lingxia_view::scene::video::VideoResolver> {
+        let (loader, owner) = (IMAGE_LOADER.get()?.clone(), self.owner);
+        (owner != 0).then(|| {
+            Arc::new(move |source: &str| loader.video_url(owner, source))
+                as lingxia_view::scene::video::VideoResolver
+        })
     }
 }
 

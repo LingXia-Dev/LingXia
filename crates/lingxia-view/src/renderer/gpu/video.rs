@@ -2,6 +2,7 @@
 //! thread; the render thread imports each new frame as an external texture, with no CPU copy.
 //! Players nothing drew for 2 s stop and close on the opener thread.
 use crate::scene::paint::Paint;
+use crate::scene::video::{Settings, Source, Status, VideoError, VideoOp};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex, MutexGuard, mpsc};
@@ -35,6 +36,23 @@ pub trait Player: Send {
         &mut self,
         device: &wgpu::Device,
     ) -> Result<Option<(wgpu::Texture, [u16; 2])>, String>;
+    /// The page's props changed: only the fields that differ from `previous` apply, so a
+    /// handle's change stands until its prop changes.
+    fn apply(&mut self, settings: &Settings, previous: Option<&Settings>) {
+        let _ = (settings, previous);
+    }
+    /// An imperative edge from a handle or Logic.
+    fn command(&mut self, op: &VideoOp) -> Result<(), VideoError> {
+        let _ = op;
+        Err(VideoError::new(
+            "VIDEO_NO_PLAYER",
+            "this platform's player takes no commands yet",
+        ))
+    }
+    /// Time, duration and transport state; the registry fills readiness and size.
+    fn status(&self) -> Status {
+        Status::default()
+    }
 }
 
 /// Opens the player for a source URL.
@@ -57,7 +75,106 @@ fn open(source: &str) -> Result<Box<dyn Player>, String> {
 enum State {
     Opening,
     Ready(Box<dyn Player>),
-    Failed,
+    Failed(VideoError),
+}
+
+/// What each page's last scene asked of its players, by key.
+static SOURCES: LazyLock<Mutex<HashMap<String, Result<Source, VideoError>>>> =
+    LazyLock::new(Default::default);
+
+fn sources() -> MutexGuard<'static, HashMap<String, Result<Source, VideoError>>> {
+    SOURCES.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// A scene asks `key` to play `source`: a new URL reopens the player, which keeps showing its
+/// last frame until the new one's first.
+pub(crate) fn configure(key: &str, source: Result<Source, VideoError>) {
+    let mut sources = sources();
+    let previous = sources.get(key).cloned();
+    if previous.as_ref() == Some(&source) {
+        return;
+    }
+    let url = |source: &Result<Source, VideoError>| source.as_ref().ok().map(|s| s.url.clone());
+    let reopen = previous
+        .as_ref()
+        .is_some_and(|previous| url(previous) != url(&source));
+    sources.insert(key.to_owned(), source);
+    drop(sources);
+    if reopen {
+        let mut players = players();
+        if let Some(entry) = players.get_mut(key) {
+            entry.applied = None;
+            let _closed = std::mem::replace(&mut entry.state, State::Opening);
+            request(key, &mut entry.state);
+        }
+    }
+}
+
+fn request(key: &str, state: &mut State) {
+    let sent = OPENER
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .send(key.to_owned());
+    if sent.is_err() {
+        *state = State::Failed(VideoError::new(
+            "VIDEO_DECODERS",
+            "the opener is not running",
+        ));
+    }
+}
+
+fn settings_of(key: &str) -> Option<Settings> {
+    sources()
+        .get(key)?
+        .as_ref()
+        .ok()
+        .map(|s| s.settings.clone())
+}
+
+/// The state of player `key`, while a page draws it.
+pub(crate) fn status(key: &str) -> Option<Status> {
+    let players = players();
+    let entry = players.get(key)?;
+    let mut status = match &entry.state {
+        State::Ready(player) => player.status(),
+        State::Opening => Status::default(),
+        State::Failed(error) => Status {
+            error: Some(error.clone()),
+            ..Status::default()
+        },
+    };
+    if let Some(frame) = &entry.frame {
+        status.ready_state = "ready";
+        [status.video_width, status.video_height] = frame.size.map(u32::from);
+    } else if status.duration.is_some() {
+        status.ready_state = "metadata";
+    }
+    Some(status)
+}
+
+/// Applies `op` to player `key`, or queues it while the player opens.
+pub(crate) fn command(key: &str, op: VideoOp) -> Result<(), VideoError> {
+    let mut players = players();
+    let Some(entry) = players.get_mut(key) else {
+        return Err(VideoError::new(
+            "VIDEO_NO_PLAYER",
+            "no <video> on this page shows this player",
+        ));
+    };
+    match (&mut entry.state, op) {
+        (_, VideoOp::Retry) => {
+            entry.applied = None;
+            let _closed = std::mem::replace(&mut entry.state, State::Opening);
+            request(key, &mut entry.state);
+            Ok(())
+        }
+        (State::Ready(player), op) => player.command(&op),
+        (State::Opening, op) => {
+            entry.pending.push(op);
+            Ok(())
+        }
+        (State::Failed(error), _) => Err(error.clone()),
+    }
 }
 
 struct Frame {
@@ -76,6 +193,10 @@ struct Entry {
     first_present_us: Option<u64>,
     frames: u64,
     import_us: [u64; 2],
+    /// The props last applied; the player keeps a handle's change until they differ.
+    applied: Option<Settings>,
+    /// Commands sent while the player opened.
+    pending: Vec<VideoOp>,
 }
 
 static PLAYERS: LazyLock<Mutex<HashMap<String, Entry>>> = LazyLock::new(Default::default);
@@ -97,16 +218,34 @@ static OPENER: LazyLock<Mutex<mpsc::Sender<String>>> = LazyLock::new(|| {
             loop {
                 match receiver.recv_timeout(Duration::from_millis(500)) {
                     Ok(key) => {
-                        let state = match open(&key) {
-                            Ok(player) => State::Ready(player),
-                            Err(error) => {
-                                log::warn!(target: "lingxia_view", "video {key}: {error}");
-                                State::Failed
-                            }
+                        let source = sources().get(&key).cloned();
+                        let mut state = match source {
+                            Some(Ok(source)) => match open(&source.url) {
+                                Ok(mut player) => {
+                                    player.apply(&source.settings, None);
+                                    State::Ready(player)
+                                }
+                                Err(error) => {
+                                    log::warn!(target: "lingxia_view", "video {key}: {error}");
+                                    State::Failed(VideoError::from_message(&error))
+                                }
+                            },
+                            Some(Err(error)) => State::Failed(error),
+                            None => State::Failed(VideoError::new("VIDEO_SOURCE", "no source")),
                         };
                         // Evicted while opening: the player closes here, unused.
                         let _unused = match players().get_mut(&key) {
-                            Some(entry) => std::mem::replace(&mut entry.state, state),
+                            Some(entry) => {
+                                if let State::Ready(player) = &mut state {
+                                    entry.applied = settings_of(&key);
+                                    for op in entry.pending.drain(..) {
+                                        if let Err(error) = player.command(&op) {
+                                            log::warn!(target: "lingxia_view", "video {key}: {}", error.message);
+                                        }
+                                    }
+                                }
+                                std::mem::replace(&mut entry.state, state)
+                            }
                             None => state,
                         };
                     }
@@ -190,18 +329,14 @@ pub(crate) fn has_new(display: &crate::DisplayList) -> bool {
 fn touch<'a>(players: &'a mut HashMap<String, Entry>, key: &str) -> Option<&'a mut Entry> {
     if !players.contains_key(key) {
         let now = Instant::now();
-        let sent = OPENER
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .send(key.to_owned());
+        let mut state = State::Opening;
+        request(key, &mut state);
         players.insert(
             key.to_owned(),
             Entry {
-                state: if sent.is_ok() {
-                    State::Opening
-                } else {
-                    State::Failed
-                },
+                state,
+                applied: None,
+                pending: Vec::new(),
                 frame: None,
                 drawn: now,
                 requested: now,
@@ -216,6 +351,13 @@ fn touch<'a>(players: &'a mut HashMap<String, Entry>, key: &str) -> Option<&'a m
     }
     let entry = players.get_mut(key)?;
     entry.drawn = Instant::now();
+    if let State::Ready(player) = &mut entry.state
+        && let Some(settings) = settings_of(key)
+        && entry.applied.as_ref() != Some(&settings)
+    {
+        player.apply(&settings, entry.applied.as_ref());
+        entry.applied = Some(settings);
+    }
     Some(entry)
 }
 
@@ -327,7 +469,7 @@ pub fn stats() -> serde_json::Value {
                 "state": match entry.state {
                     State::Opening => "opening",
                     State::Ready(_) => "ready",
-                    State::Failed => "failed",
+                    State::Failed(_) => "failed",
                 },
                 "firstFrameMs": entry.first_frame_ms,
                 "firstPresentUs": entry.first_present_us,
@@ -364,6 +506,7 @@ pub fn stats() -> serde_json::Value {
 #[cfg(target_vendor = "apple")]
 mod platform {
     //! AVPlayer → AVPlayerItemVideoOutput (BGRA, Metal-compatible) → CVMetalTextureCache.
+    use crate::scene::video::{Settings, Status, VideoError, VideoOp};
     use objc2::rc::Retained;
     use objc2::runtime::ProtocolObject;
     use objc2_metal::{MTLTexture, MTLTextureType};
@@ -441,6 +584,7 @@ mod platform {
     unsafe extern "C" {
         static kCMTimeZero: CMTime;
         fn CMTimeGetSeconds(time: CMTime) -> f64;
+        fn CMTimeMakeWithSeconds(seconds: f64, timescale: i32) -> CMTime;
     }
 
     #[link(name = "AVFoundation", kind = "framework")]
@@ -460,6 +604,36 @@ mod platform {
 
     unsafe fn send0(object: Id, name: &std::ffi::CStr) -> Id {
         let f: unsafe extern "C" fn(Id, *const c_void) -> Id =
+            unsafe { std::mem::transmute(objc_msgSend as unsafe extern "C" fn()) };
+        unsafe { f(object, sel(name)) }
+    }
+
+    unsafe fn set_bool(object: Id, name: &std::ffi::CStr, value: bool) {
+        let f: unsafe extern "C" fn(Id, *const c_void, bool) =
+            unsafe { std::mem::transmute(objc_msgSend as unsafe extern "C" fn()) };
+        unsafe { f(object, sel(name), value) }
+    }
+
+    unsafe fn set_float(object: Id, name: &std::ffi::CStr, value: f32) {
+        let f: unsafe extern "C" fn(Id, *const c_void, f32) =
+            unsafe { std::mem::transmute(objc_msgSend as unsafe extern "C" fn()) };
+        unsafe { f(object, sel(name), value) }
+    }
+
+    unsafe fn get_int(object: Id, name: &std::ffi::CStr) -> isize {
+        let f: unsafe extern "C" fn(Id, *const c_void) -> isize =
+            unsafe { std::mem::transmute(objc_msgSend as unsafe extern "C" fn()) };
+        unsafe { f(object, sel(name)) }
+    }
+
+    unsafe fn get_bool(object: Id, name: &std::ffi::CStr) -> bool {
+        let f: unsafe extern "C" fn(Id, *const c_void) -> bool =
+            unsafe { std::mem::transmute(objc_msgSend as unsafe extern "C" fn()) };
+        unsafe { f(object, sel(name)) }
+    }
+
+    unsafe fn get_float(object: Id, name: &std::ffi::CStr) -> f32 {
+        let f: unsafe extern "C" fn(Id, *const c_void) -> f32 =
             unsafe { std::mem::transmute(objc_msgSend as unsafe extern "C" fn()) };
         unsafe { f(object, sel(name)) }
     }
@@ -497,6 +671,9 @@ mod platform {
         item: Id,
         output: Id,
         cache: *mut c_void,
+        looped: std::cell::Cell<bool>,
+        ended: std::cell::Cell<bool>,
+        rate: f32,
     }
 
     // AVPlayer and the video output are thread-safe for these calls; the registry serializes them.
@@ -520,6 +697,87 @@ mod platform {
             device: &wgpu::Device,
         ) -> Result<Option<(wgpu::Texture, [u16; 2])>, String> {
             self.frame(device)
+        }
+
+        fn apply(&mut self, settings: &Settings, previous: Option<&Settings>) {
+            let changed = |field: fn(&Settings) -> f32| {
+                previous.is_none_or(|previous| field(previous) != field(settings))
+            };
+            self.looped.set(settings.looped);
+            unsafe {
+                if changed(|s| f32::from(u8::from(s.muted))) {
+                    set_bool(self.player, c"setMuted:", settings.muted);
+                }
+                if changed(|s| s.volume) {
+                    set_float(self.player, c"setVolume:", settings.volume);
+                }
+                if changed(|s| s.rate) {
+                    self.rate = settings.rate;
+                    if !self.paused() {
+                        set_float(self.player, c"setRate:", settings.rate);
+                    }
+                }
+                if changed(|s| f32::from(u8::from(s.paused))) {
+                    if settings.paused {
+                        send0(self.player, c"pause");
+                    } else {
+                        self.play();
+                    }
+                }
+            }
+        }
+
+        fn command(&mut self, op: &VideoOp) -> Result<(), VideoError> {
+            unsafe {
+                match *op {
+                    VideoOp::Play => self.play(),
+                    VideoOp::Pause => {
+                        send0(self.player, c"pause");
+                    }
+                    VideoOp::Seek(seconds) => {
+                        self.ended.set(false);
+                        let seek: unsafe extern "C" fn(Id, *const c_void, CMTime, CMTime, CMTime) =
+                            std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+                        seek(
+                            self.player,
+                            sel(c"seekToTime:toleranceBefore:toleranceAfter:"),
+                            CMTimeMakeWithSeconds(seconds, 600),
+                            kCMTimeZero,
+                            kCMTimeZero,
+                        );
+                    }
+                    VideoOp::SetMuted(muted) => set_bool(self.player, c"setMuted:", muted),
+                    VideoOp::SetVolume(volume) => set_float(self.player, c"setVolume:", volume),
+                    VideoOp::SetRate(rate) => {
+                        self.rate = rate;
+                        if !self.paused() {
+                            set_float(self.player, c"setRate:", rate);
+                        }
+                    }
+                    VideoOp::Retry => {}
+                }
+            }
+            Ok(())
+        }
+
+        fn status(&self) -> Status {
+            unsafe {
+                let seconds = |time: CMTime| CMTimeGetSeconds(time);
+                let duration = seconds(send_time(self.item, c"duration", None));
+                let control = get_int(self.player, c"timeControlStatus");
+                Status {
+                    current_time: seconds(send_time(self.item, c"currentTime", None)).max(0.0),
+                    duration: (duration.is_finite() && duration > 0.0).then_some(duration),
+                    paused: control == 0,
+                    buffering: control == 1,
+                    ended: self.ended.get(),
+                    playback_rate: self.rate,
+                    volume: get_float(self.player, c"volume"),
+                    muted: get_bool(self.player, c"isMuted"),
+                    error: self.error(),
+                    ..Status::default()
+                }
+            }
         }
     }
 
@@ -572,19 +830,19 @@ mod platform {
                     c"playerWithPlayerItem:",
                     item,
                 ));
-                let set_bool: unsafe extern "C" fn(Id, *const c_void, bool) =
-                    std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
-                // Muted until the element's audio policy lands: it never takes the audio session.
-                set_bool(player, sel(c"setMuted:"), true);
                 let set_int: unsafe extern "C" fn(Id, *const c_void, isize) =
                     std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
                 set_int(player, sel(c"setActionAtItemEnd:"), 2);
-                send0(player, c"play");
+                // Paused on the first frame until the page's props say play.
+                send0(player, c"pause");
                 Ok(Self {
                     player,
                     item,
                     output,
                     cache: std::ptr::null_mut(),
+                    looped: std::cell::Cell::new(false),
+                    ended: std::cell::Cell::new(false),
+                    rate: 1.0,
                 })
             }
         }
@@ -630,15 +888,71 @@ mod platform {
             }
         }
 
+        /// At the end a looping player starts over; any other pauses there, ended.
         unsafe fn restart_at_end(&self) {
             unsafe {
                 let duration = CMTimeGetSeconds(send_time(self.item, c"duration", None));
                 let now = CMTimeGetSeconds(send_time(self.item, c"currentTime", None));
                 if duration.is_finite() && duration > 0.0 && now >= duration - 0.01 {
+                    if self.looped.get() {
+                        let seek: unsafe extern "C" fn(Id, *const c_void, CMTime) =
+                            std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+                        seek(self.player, sel(c"seekToTime:"), kCMTimeZero);
+                    } else if !self.ended.get() {
+                        self.ended.set(true);
+                        send0(self.player, c"pause");
+                    }
+                }
+            }
+        }
+
+        unsafe fn paused(&self) -> bool {
+            unsafe { get_int(self.player, c"timeControlStatus") == 0 }
+        }
+
+        /// Plays at the page's rate, from the start once ended.
+        unsafe fn play(&self) {
+            unsafe {
+                if self.ended.replace(false) {
                     let seek: unsafe extern "C" fn(Id, *const c_void, CMTime) =
                         std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
                     seek(self.player, sel(c"seekToTime:"), kCMTimeZero);
                 }
+                set_float(self.player, c"setRate:", self.rate);
+            }
+        }
+
+        /// The item's failure, coded by where it came from.
+        unsafe fn error(&self) -> Option<VideoError> {
+            unsafe {
+                if get_int(self.item, c"status") != 2 {
+                    return None;
+                }
+                let error = send0(self.item, c"error");
+                let text = |object: Id| {
+                    if object.is_null() {
+                        return String::new();
+                    }
+                    let utf8: unsafe extern "C" fn(Id, *const c_void) -> *const c_char =
+                        std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+                    let raw = utf8(object, sel(c"UTF8String"));
+                    if raw.is_null() {
+                        String::new()
+                    } else {
+                        std::ffi::CStr::from_ptr(raw).to_string_lossy().into_owned()
+                    }
+                };
+                let message = text(send0(error, c"localizedDescription"));
+                let domain = text(send0(error, c"domain"));
+                let code = get_int(error, c"code");
+                let kind = if domain == "NSURLErrorDomain" {
+                    "VIDEO_NETWORK"
+                } else if code == -1100 || code == 4 || message.contains("not found") {
+                    "VIDEO_NOT_FOUND"
+                } else {
+                    "VIDEO_FORMAT"
+                };
+                Some(VideoError::new(kind, message))
             }
         }
 

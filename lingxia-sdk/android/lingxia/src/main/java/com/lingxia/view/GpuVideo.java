@@ -8,7 +8,10 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.util.Log;
 import android.view.Surface;
+import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
+import androidx.media3.common.PlaybackException;
+import androidx.media3.common.PlaybackParameters;
 import androidx.media3.common.Player;
 import androidx.media3.common.VideoSize;
 import androidx.media3.exoplayer.ExoPlayer;
@@ -32,6 +35,13 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
     private volatile int width;
     private volatile int height;
     private boolean attached;
+    /** The transport as the handler thread last saw it, so Rust reads it from any thread. */
+    private volatile double[] snapshot = {0, -1, 1, 0, 0, 0, 1, 1, 0, 0, 0};
+    private volatile String error;
+    private boolean ended;
+    private boolean muted;
+    private float volume = 1f;
+    private static final long SAMPLE_MS = 100;
 
     static GpuVideo open(String source) {
         return new GpuVideo(source);
@@ -54,19 +64,121 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
             // Built on the handler thread, which becomes the player's application thread.
             player = new ExoPlayer.Builder(context).build();
             player.setVideoSurface(surface);
-            player.setRepeatMode(Player.REPEAT_MODE_ALL);
-            player.setVolume(0f);
             player.addListener(new Player.Listener() {
                 @Override
                 public void onVideoSizeChanged(VideoSize size) {
                     width = size.width;
                     height = size.height;
                 }
+
+                @Override
+                public void onPlaybackStateChanged(int state) {
+                    if (state == Player.STATE_ENDED && player != null) {
+                        ended = true;
+                        player.setPlayWhenReady(false);
+                    }
+                    sample();
+                }
+
+                @Override
+                public void onPlayerError(PlaybackException failure) {
+                    error = code(failure) + ": " + failure.getMessage();
+                    sample();
+                }
             });
             player.setMediaItem(MediaItem.fromUri(uri));
             player.prepare();
-            player.play();
+            sampleLoop();
         });
+    }
+
+    /** play, pause, seek (seconds), muted and loop (0/1), volume, rate; in order on the handler. */
+    void command(String op, double value) {
+        handler.post(() -> {
+            if (player == null) {
+                return;
+            }
+            if (op.equals("play")) {
+                setPlaying(true);
+            } else if (op.equals("pause")) {
+                setPlaying(false);
+            } else if (op.equals("seek")) {
+                ended = false;
+                player.seekTo((long) (value * 1000));
+            } else if (op.equals("muted")) {
+                muted = value != 0;
+                player.setVolume(muted ? 0f : volume);
+            } else if (op.equals("volume")) {
+                volume = (float) value;
+                player.setVolume(muted ? 0f : volume);
+            } else if (op.equals("loop")) {
+                player.setRepeatMode(value != 0 ? Player.REPEAT_MODE_ONE : Player.REPEAT_MODE_OFF);
+            } else if (op.equals("rate")) {
+                player.setPlaybackParameters(new PlaybackParameters((float) value));
+            }
+            sample();
+        });
+    }
+
+    private void setPlaying(boolean playing) {
+        if (playing && ended) {
+            ended = false;
+            player.seekTo(0);
+        }
+        player.setPlayWhenReady(playing);
+        sample();
+    }
+
+    /** currentTime, duration (-1 unknown), paused, ended, buffering, buffered, rate, volume, muted, seeking, ready. */
+    double[] status() {
+        return snapshot;
+    }
+
+    String error() {
+        return error;
+    }
+
+    private void sampleLoop() {
+        if (player == null) {
+            return;
+        }
+        sample();
+        handler.postDelayed(this::sampleLoop, SAMPLE_MS);
+    }
+
+    private void sample() {
+        if (player == null) {
+            return;
+        }
+        long duration = player.getDuration();
+        int state = player.getPlaybackState();
+        snapshot = new double[] {
+            Math.max(0, player.getCurrentPosition()) / 1000.0,
+            duration == C.TIME_UNSET ? -1 : duration / 1000.0,
+            player.getPlayWhenReady() ? 0 : 1,
+            ended ? 1 : 0,
+            state == Player.STATE_BUFFERING && player.getPlayWhenReady() ? 1 : 0,
+            Math.max(0, player.getBufferedPosition() - player.getCurrentPosition()) / 1000.0,
+            player.getPlaybackParameters().speed,
+            volume,
+            muted ? 1 : 0,
+            0,
+            state == Player.STATE_READY || state == Player.STATE_ENDED ? 1 : 0,
+        };
+    }
+
+    private static String code(PlaybackException failure) {
+        int code = failure.errorCode;
+        if (code >= 2000 && code < 3000) {
+            return code == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ? "VIDEO_NOT_FOUND" : "VIDEO_NETWORK";
+        }
+        if (code >= 3000 && code < 4000) {
+            return "VIDEO_FORMAT";
+        }
+        if (code >= 4000 && code < 5000) {
+            return code == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ? "VIDEO_DECODERS" : "VIDEO_DECODE";
+        }
+        return "VIDEO_SOURCE";
     }
 
     @Override

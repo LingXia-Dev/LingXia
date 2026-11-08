@@ -10,20 +10,20 @@ impl ViewSession {
             .as_deref()
             .unwrap_or_default()
             .iter()
-            .filter(|record| record.tag == tag::IMAGE)
+            .filter(|record| matches!(record.tag, tag::IMAGE | tag::VIDEO))
             .flat_map(|record| {
                 let image = record.string(field::IMAGE_SRC).map(|source| ImageSource {
                     source: source.into(),
                     retry_key: record.string(field::IMAGE_RETRY_KEY).unwrap_or("").into(),
                 });
                 // The placeholder loads alongside; it never reports load events of its own.
-                let placeholder =
-                    record
-                        .string(field::IMAGE_PLACEHOLDER)
-                        .map(|source| ImageSource {
-                            source: source.into(),
-                            retry_key: String::new(),
-                        });
+                let placeholder = record
+                    .string(field::IMAGE_PLACEHOLDER)
+                    .or_else(|| record.string(field::VIDEO_POSTER))
+                    .map(|source| ImageSource {
+                        source: source.into(),
+                        retry_key: String::new(),
+                    });
                 [placeholder, image].into_iter().flatten()
             })
             .filter(|resource| {

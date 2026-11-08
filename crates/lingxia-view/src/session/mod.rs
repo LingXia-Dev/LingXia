@@ -27,6 +27,7 @@ mod prepare;
 mod selection;
 #[cfg(test)]
 pub(crate) mod tests;
+mod video;
 use frame_animation::FrameAnimations;
 
 /// Thread-confined View context. Candidates commit only after native validation and layout.
@@ -69,6 +70,8 @@ pub struct ViewSession {
     image_sources: std::collections::HashSet<String>,
     image_status: HashMap<crate::ImageSource, bool>,
     image_notified: std::collections::HashSet<(String, crate::ImageSource)>,
+    /// Each player's state as its views last heard it.
+    video_reported: HashMap<String, crate::scene::video::Status>,
     inputs: crate::interaction::input_state::Inputs,
     input_records: Option<std::sync::Arc<[crate::protocol::Record]>>,
     /// The records `retained` was laid out from: `input_records` as painted, with input values
@@ -178,9 +181,12 @@ impl ViewSession {
     ) -> Result<Self, String> {
         crate::engine::compatibility::validate(source)?;
         let context = runtime.context();
+        let renderer = Renderer::default();
+        let video_scope = renderer.videos.scope();
         let (initialized, _) = budget.run(Duration::from_secs(1), Duration::from_secs(1), || {
             crate::engine::compatibility::install(&context)?;
             crate::engine::install_dev_globals(&context)?;
+            video::install(&context, video_scope)?;
             crate::engine::defer_collections(&context);
             <crate::engine::Active as crate::engine::Engine>::evaluate_module(&context, source)?;
             let valid: bool = context.eval(Source::from_bytes(
@@ -206,7 +212,7 @@ impl ViewSession {
         Ok(Self {
             context,
             _runtime: runtime,
-            renderer: Renderer::default(),
+            renderer,
             generation: lifecycle::CommitTicket::new(0),
             budget,
             poisoned: Cell::new(false),
@@ -229,6 +235,7 @@ impl ViewSession {
             image_sources: Default::default(),
             image_status: Default::default(),
             image_notified: Default::default(),
+            video_reported: Default::default(),
             inputs: Default::default(),
             input_records: None,
             paint_records: None,

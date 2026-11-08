@@ -25,6 +25,7 @@ fn component_type(role: Role) -> &'static CStr {
         Role::TextField => c"TextInput",
         Role::ScrollView | Role::HorizontalScrollView => c"Scroll",
         Role::Image => c"Image",
+        Role::Video => c"Video",
         Role::Slider => c"Slider",
         Role::List | Role::ListBox | Role::Menu => c"List",
         Role::ListItem | Role::Option => c"ListItem",

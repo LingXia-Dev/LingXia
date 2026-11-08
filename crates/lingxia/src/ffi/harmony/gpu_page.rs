@@ -173,6 +173,9 @@ impl Shell for Bridge {
     ) -> Box<dyn Send> {
         Box::new(gpu_page::load_image(token, source, done))
     }
+    fn video_url(&self, token: i64, source: &str) -> std::result::Result<String, String> {
+        gpu_page::video_url(token, source)
+    }
     fn feedback(&self, token: i64, ring: bool, shape: &[f32], color: u32, width: f32) {
         let payload =
             serde_json::json!({"ring": ring, "shape": shape, "color": color, "width": width});

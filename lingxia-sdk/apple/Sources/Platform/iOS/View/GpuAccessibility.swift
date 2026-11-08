@@ -124,6 +124,7 @@ final class GpuAccessibilityElement: UIAccessibilityElement {
         case "link": traits.insert(.link)
         case "heading": traits.insert(.header)
         case "image": traits.insert(.image)
+        case "video": traits.formUnion([.image, .startsMediaSession])
         case "slider": traits.insert(.adjustable)
         case "text": traits.insert(.staticText)
         // A day of a month or a choice of a picker column: pressable, and selected when chosen.

@@ -365,5 +365,24 @@ Children: none. May sit inside a composed `<button>` or `<checkbox>`.
 
 | Prop | Type | Required |
 | --- | --- | --- |
-| `src` | `string` | yes |
+| `src` | `string` |  |
+| `player` | `Video` |  |
+| `poster` | `string` |  |
+| `autoPlay` | `boolean` |  |
+| `paused` | `boolean` |  |
+| `muted` | `boolean` |  |
+| `loop` | `boolean` |  |
+| `playbackRate` | `number` |  |
+| `volume` | `number` |  |
 | `aria-label` | `string` |  |
+| `onLoadedMetadata` | `(event: VideoMetadata) => void` |  |
+| `onPlay` | `() => void` |  |
+| `onPlaying` | `() => void` |  |
+| `onPause` | `(event: VideoPause) => void` |  |
+| `onWaiting` | `() => void` |  |
+| `onSeeked` | `(event: { readonly currentTime: number }) => void` |  |
+| `onTimeUpdate` | `(event: { readonly currentTime: number }) => void` |  |
+| `onEnded` | `() => void` |  |
+| `onError` | `(error: VideoError) => void` |  |
+| `onRateChange` | `(event: { readonly playbackRate: number }) => void` |  |
+| `onVolumeChange` | `(event: { readonly volume: number; readonly muted: boolean }) => void` |  |

@@ -30,6 +30,7 @@ public final class GpuSemantics {
     public static final String ROLE_OPTION = "option";
     public static final String ROLE_MENU = "menu";
     public static final String ROLE_MENU_ITEM = "menu-item";
+    public static final String ROLE_VIDEO = "video";
     public static final String LIVE_POLITE = "polite";
     public static final String LIVE_ASSERTIVE = "assertive";
     public static final String EVENT_ANNOUNCE = "announce";
