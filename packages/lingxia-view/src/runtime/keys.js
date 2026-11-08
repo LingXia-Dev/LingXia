@@ -1,5 +1,6 @@
 // List keys are checked, encoded and indexed once per frozen key array. An array that
-// extends an earlier one (a list growing at its end) costs only its new keys.
+// extends an earlier one (a list growing at its end) costs only its new keys, and one that
+// replaces some items under the same keys (a patched data array) reuses the earlier keys.
 import { utf8Bytes } from './data.js';
 import { limits } from '../generated/contract.js';
 
@@ -19,6 +20,12 @@ export function keysOf(items, getKey) {
   const known = itemKeys.get(items);
   if (known) return known;
   const frozen = Object.isFrozen(items);
+  // A patched data array: same length, its keys unchanged. The old key array stands.
+  if (frozen && latest && latest.getKey === getKey && sameKeys(items, latest, getKey)) {
+    itemKeys.set(items, latest.keys);
+    latest = { ...latest, items };
+    return latest.keys;
+  }
   const base = frozen && latest && extendsArray(items, latest.items) ? latest : null;
   const keys = base
     ? Object.freeze(base.keys.concat(items.slice(base.items.length).map((item, i) => getKey(item, base.items.length + i))))
@@ -26,9 +33,17 @@ export function keysOf(items, getKey) {
   if (frozen) {
     if (base && base.keys.length) parents.set(keys, base.keys);
     itemKeys.set(items, keys);
-    latest = { items, keys };
+    latest = { items, keys, getKey };
   }
   return keys;
+}
+
+function sameKeys(items, { items: before, keys }, getKey) {
+  if (items.length !== before.length || !Object.isFrozen(before)) return false;
+  for (let i = 0; i < items.length; i++) {
+    if (items[i] !== before[i] && getKey(items[i], i) !== keys[i]) return false;
+  }
+  return true;
 }
 
 function extendsArray(items, prefix) {

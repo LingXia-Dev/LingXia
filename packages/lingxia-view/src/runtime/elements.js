@@ -651,14 +651,20 @@ function radioOptions(props, identity, fields, disabled) {
   });
 }
 
-/** The committed list's pure rows a full render may reuse, when nothing they were built from changed. */
+/** The committed list's pure rows a full render may reuse, when nothing they were built from changed:
+ *  over new items (a patched data array), a row whose frozen item is the same object stands. */
 function reusableRows(old, props, rowEnv) {
   const source = props.row?.__lxRows, before = old?.rowSource;
-  if (!source || !before || before.items !== source.items || before.site !== source.site || old.count !== props.count ||
+  if (!source || !before || before.site !== source.site || old.count !== props.count ||
       old.rowEnv !== rowEnv || !old.pure?.size) return null;
+  const same = before.items === source.items;
   const rows = new Map();
-  for (const i of old.pure) if (old.cache.has(i)) rows.set(i, old.cache.get(i));
-  return { rows, typography: old.typography };
+  for (const i of old.pure) {
+    if (!old.cache.has(i)) continue;
+    const item = source.items[i];
+    if (same || (item === before.items[i] && (item === null || typeof item !== 'object' || Object.isFrozen(item)))) rows.set(i, old.cache.get(i));
+  }
+  return rows.size ? { rows, typography: old.typography } : null;
 }
 
 function listState(props, identity) {

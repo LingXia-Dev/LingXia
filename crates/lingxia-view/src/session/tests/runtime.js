@@ -2272,14 +2272,26 @@
     const known = itemKeys.get(items);
     if (known) return known;
     const frozen = Object.isFrozen(items);
+    if (frozen && latest && latest.getKey === getKey && sameKeys(items, latest, getKey)) {
+      itemKeys.set(items, latest.keys);
+      latest = { ...latest, items };
+      return latest.keys;
+    }
     const base = frozen && latest && extendsArray(items, latest.items) ? latest : null;
     const keys = base ? Object.freeze(base.keys.concat(items.slice(base.items.length).map((item, i) => getKey(item, base.items.length + i)))) : Object.freeze(items.map(getKey));
     if (frozen) {
       if (base && base.keys.length) parents.set(keys, base.keys);
       itemKeys.set(items, keys);
-      latest = { items, keys };
+      latest = { items, keys, getKey };
     }
     return keys;
+  }
+  function sameKeys(items, { items: before, keys }, getKey) {
+    if (items.length !== before.length || !Object.isFrozen(before)) return false;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i] !== before[i] && getKey(items[i], i) !== keys[i]) return false;
+    }
+    return true;
   }
   function extendsArray(items, prefix) {
     if (items.length < prefix.length || !Object.isFrozen(prefix)) return false;
@@ -3122,10 +3134,15 @@
   }
   function reusableRows(old, props, rowEnv) {
     const source = props.row?.__lxRows, before = old?.rowSource;
-    if (!source || !before || before.items !== source.items || before.site !== source.site || old.count !== props.count || old.rowEnv !== rowEnv || !old.pure?.size) return null;
+    if (!source || !before || before.site !== source.site || old.count !== props.count || old.rowEnv !== rowEnv || !old.pure?.size) return null;
+    const same2 = before.items === source.items;
     const rows = /* @__PURE__ */ new Map();
-    for (const i of old.pure) if (old.cache.has(i)) rows.set(i, old.cache.get(i));
-    return { rows, typography: old.typography };
+    for (const i of old.pure) {
+      if (!old.cache.has(i)) continue;
+      const item = source.items[i];
+      if (same2 || item === before.items[i] && (item === null || typeof item !== "object" || Object.isFrozen(item))) rows.set(i, old.cache.get(i));
+    }
+    return rows.size ? { rows, typography: old.typography } : null;
   }
   function listState(props, identity) {
     const old = page.committed?.lists.get(identity);

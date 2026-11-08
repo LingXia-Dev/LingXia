@@ -338,3 +338,32 @@ test('a List whose frozen items extend the last ones keys only the new items',()
  items=Object.freeze([...items.slice(0,21999),'0']);
  assert.throws(()=>prepare(page,{},{root:{start:0,end:3,leading:0,trailing:0}}),/duplicate itemKey/,'a duplicate in the new part is still refused');
 });
+
+test('over new items, a pure row stands while its frozen item is the same object',()=>{
+ reset();let built=[];
+ const item=n=>Object.freeze({id:n,count:0});
+ let items=Object.freeze([item(0),item(1),item(2),item(3)]);
+ const renderItem=Object.assign(row=>{built.push(row.id);return h('text',{'data-testid':`r${row.id}`},`${row.id}:${row.count}`);},{__lxRow:'site'});
+ const getKey=row=>String(row.id);
+ const page=()=>h(List,{items,getKey,renderItem});
+ const id=records(prepare(page,{data:{},env:{}})).find(r=>r.tag==='list').fields.get('listId');commit();
+ const win={[id]:{start:0,end:3,leading:0,trailing:0}};
+ prepare(page,{data:{},env:{}},win);commit();
+ built=[];items=Object.freeze([items[0],Object.freeze({id:1,count:5}),items[2],items[3]]);
+ const out=records(prepare(page,{data:{},env:{}},win));commit();
+ assert.deepEqual(built,[1],'only the changed record renders');
+ assert.deepEqual(out.filter(r=>r.id).map(r=>r.text),['0:0','1:5','2:0']);
+});
+
+test('a patched frozen array under the same keys reuses the earlier keys',()=>{
+ reset();let keyed=0;
+ let items=Object.freeze(Array.from({length:5000},(_,i)=>Object.freeze({id:i})));
+ const getKey=row=>{keyed++;return String(row.id);};
+ const page=()=>h(List,{items,getKey,renderItem:row=>h('text',{},String(row.id))});
+ prepare(page,{},{root:{start:0,end:3,leading:0,trailing:0}});commit();
+ keyed=0;items=Object.freeze(items.map((row,i)=>i===7?Object.freeze({id:7,more:1}):row));
+ prepare(page,{},{root:{start:0,end:3,leading:0,trailing:0}});commit();
+ assert.equal(keyed,1,'only the replaced item is keyed');
+ keyed=0;items=Object.freeze(items.map((row,i)=>i===0?Object.freeze({id:7}):row));
+ assert.throws(()=>prepare(page,{},{root:{start:0,end:3,leading:0,trailing:0}}),/duplicate itemKey/,'a changed key is checked again');
+});
