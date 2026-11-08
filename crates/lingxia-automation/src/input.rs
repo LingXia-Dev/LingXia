@@ -277,11 +277,85 @@ impl JSPagePointer {
 // ===================== page.key.* =====================
 
 #[js_class(clone)]
-pub(crate) struct JSPageKey {}
+pub(crate) struct JSPageKey {
+    lxapp: std::sync::Weak<lxapp::LxApp>,
+}
 
 impl JSPageKey {
-    pub(crate) fn new() -> Self {
-        Self {}
+    pub(crate) fn new(lxapp: std::sync::Weak<lxapp::LxApp>) -> Self {
+        Self { lxapp }
+    }
+
+    /// This lxapp when its current page renders on the GPU.
+    fn gpu_app(&self) -> Option<Arc<lxapp::LxApp>> {
+        self.lxapp
+            .upgrade()
+            .filter(|app| lxapp::automation::page_is_gpu(app, None))
+    }
+}
+
+/// A window key press as the DOM key name a GPU page's focused element takes. A GPU page
+/// is driven in-process so a covered window is never activated; only Shift chords exist there.
+fn gpu_key_name(key: &str, modifiers: &[keyboard::AppKeyboardModifier]) -> Result<String, String> {
+    let mut shift = false;
+    for modifier in modifiers {
+        match modifier {
+            keyboard::AppKeyboardModifier::Shift => shift = true,
+            other => {
+                return Err(format!(
+                    "E_UNSUPPORTED: modifier {other:?} on a GPU page; press the control's key directly"
+                ));
+            }
+        }
+    }
+    let key = key.trim();
+    let name = match key.to_ascii_lowercase().as_str() {
+        "return" | "enter" => "Enter",
+        "tab" => "Tab",
+        "escape" | "esc" => "Escape",
+        "space" => "Space",
+        "left" | "arrowleft" => "ArrowLeft",
+        "right" | "arrowright" => "ArrowRight",
+        "up" | "arrowup" => "ArrowUp",
+        "down" | "arrowdown" => "ArrowDown",
+        "home" => "Home",
+        "end" => "End",
+        "pageup" => "PageUp",
+        "pagedown" => "PageDown",
+        _ if key.chars().count() == 1 => key,
+        _ => return Err(format!("E_UNSUPPORTED: key {key:?} on a GPU page")),
+    };
+    Ok(if shift {
+        format!("Shift+{name}")
+    } else {
+        name.to_owned()
+    })
+}
+
+#[cfg(test)]
+mod gpu_key_tests {
+    use super::gpu_key_name;
+    use lingxia_platform::traits::keyboard::AppKeyboardModifier;
+
+    #[test]
+    fn window_key_names_map_to_the_gpu_page_vocabulary() {
+        assert_eq!(gpu_key_name("return", &[]).unwrap(), "Enter");
+        assert_eq!(gpu_key_name("down", &[]).unwrap(), "ArrowDown");
+        assert_eq!(gpu_key_name("ArrowLeft", &[]).unwrap(), "ArrowLeft");
+        assert_eq!(gpu_key_name("End", &[]).unwrap(), "End");
+        assert_eq!(gpu_key_name("s", &[]).unwrap(), "s");
+        assert_eq!(
+            gpu_key_name("tab", &[AppKeyboardModifier::Shift]).unwrap(),
+            "Shift+Tab"
+        );
+    }
+
+    #[test]
+    fn a_chord_a_gpu_page_cannot_take_is_refused_not_sent_to_the_window() {
+        let err = gpu_key_name("a", &[AppKeyboardModifier::Command]).unwrap_err();
+        assert!(err.starts_with("E_UNSUPPORTED"), "{err}");
+        let err = gpu_key_name("backspace", &[]).unwrap_err();
+        assert!(err.starts_with("E_UNSUPPORTED"), "{err}");
     }
 }
 
@@ -320,6 +394,12 @@ impl JSPageKey {
 
     #[js_method(rename = "type")]
     async fn key_type(&self, ctx: JSContext, o: KeyType) -> JSResult<JSValue> {
+        if self.gpu_app().is_some() {
+            require_host_context(&ctx)?;
+            return Err(auto_err(
+                "E_UNSUPPORTED: a GPU page takes text through locator type or fill",
+            ));
+        }
         app_keyboard(
             &ctx,
             o.window,
@@ -334,6 +414,24 @@ impl JSPageKey {
     #[js_method]
     async fn press(&self, ctx: JSContext, o: KeyPress) -> JSResult<JSValue> {
         let modifiers = keyboard_modifiers(&o.modifiers)?;
+        if let Some(app) = self.gpu_app() {
+            require_host_context(&ctx)?;
+            let key = gpu_key_name(&o.key, &modifiers).map_err(auto_err)?;
+            lxapp::automation::page_press(&app, None, &key, None, None)
+                .await
+                .map_err(auto_err)?;
+            use lingxia_platform::traits::screenshot::AppScreenshot;
+            let platform =
+                lxapp::get_platform().ok_or_else(|| auto_err("platform is not initialized"))?;
+            let window = platform
+                .resolve_app_window(o.window.as_deref())
+                .await
+                .map_err(|err| auto_err(err.to_string()))?;
+            return json_to_js(
+                &ctx,
+                &serde_json::json!({ "window_id": window.id, "action": "press" }),
+            );
+        }
         app_keyboard(
             &ctx,
             o.window,

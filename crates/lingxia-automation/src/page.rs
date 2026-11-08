@@ -509,13 +509,11 @@ impl JSPageDriver {
             .instance(crate::gesture::JSPageGesture::new(self.lxapp.clone())))
     }
 
-    /// App-window keyboard input (`lxdev lxapp page key`).
+    /// App-window keyboard input (`lxdev lxapp page key`); a GPU page takes presses in-process.
     #[js_method(getter, enumerable)]
     fn key(&self, ctx: JSContext) -> JSResult<JSObject> {
-        Ok(
-            Class::lookup::<crate::input::JSPageKey>(&ctx)?
-                .instance(crate::input::JSPageKey::new()),
-        )
+        Ok(Class::lookup::<crate::input::JSPageKey>(&ctx)?
+            .instance(crate::input::JSPageKey::new(self.lxapp.clone())))
     }
 
     #[js_method(rename = "waitFor")]

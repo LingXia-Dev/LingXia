@@ -136,6 +136,11 @@ pub fn resolve_webview(app: &Arc<LxApp>, page_name: Option<&str>) -> Result<Arc<
         .ok_or_else(|| "page WebView is not ready".to_string())
 }
 
+/// Whether the target page renders on the GPU: its input travels in-process, never via a key window.
+pub fn page_is_gpu(app: &Arc<LxApp>, page_name: Option<&str>) -> bool {
+    resolve_page(app, page_name).is_ok_and(|(page, _)| page.renderer() == crate::PageRenderer::Gpu)
+}
+
 /// A page name the session does not know, with the names it does know.
 pub fn unknown_page_name(app: &Arc<LxApp>, page_name: &str) -> String {
     let configured: Vec<String> = app

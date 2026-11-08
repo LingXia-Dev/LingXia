@@ -2386,7 +2386,11 @@ export interface KeyPressOptions extends WindowRef {
   modifiers?: KeyModifier[];
 }
 
-/** App-window keyboard input to the focused control (`lxdev lxapp page key`). */
+/**
+ * App-window keyboard input to the focused control (`lxdev lxapp page key`). On a GPU
+ * page `press` reaches its focused element in-process (Shift chords only) and `type`
+ * rejects: use a locator's `type` or `fill`.
+ */
 export interface PageKey {
   type(options: KeyTypeOptions): Promise<InputResult>;
   press(options: KeyPressOptions): Promise<InputResult>;
