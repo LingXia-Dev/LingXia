@@ -318,6 +318,14 @@ export class PageLocator implements Locator {
     return this.read("getAttribute", async () => (await this.single("getAttribute", [name])).attributes?.[name] ?? null);
   }
 
+  boundingBox(): Promise<{ x: number; y: number; width: number; height: number }> {
+    return this.read("boundingBox", async () => {
+      const rect = (await this.single("boundingBox")).rect;
+      if (!rect) throw new Error(`boundingBox(): ${this.target()} is not visible`);
+      return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
+    });
+  }
+
   /** A traced one-shot read. */
   private read<T>(verb: string, op: () => Promise<T>): Promise<T> {
     return this.record(`page.${verb}`, this.target(), op);

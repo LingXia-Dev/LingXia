@@ -281,6 +281,8 @@ export interface Locator {
   inputValue(): Promise<string>;
   /** The single match's attribute, `null` when absent; rejects unless exactly one matches. */
   getAttribute(name: string): Promise<string | null>;
+  /** The single visible match's box in page CSS pixels, as `viewport()` measures; rejects unless exactly one is visible. */
+  boundingBox(): Promise<{ x: number; y: number; width: number; height: number }>;
 }
 
 /** A value that crosses the eval boundary unchanged. */

@@ -97,7 +97,7 @@ Iterate with `--changed` or a file path; run everything at handoff and in CI.
 | Find an element | `t.app.view.testId(id)`, `.css(selector)`, `.nth(i)` / `.first()` / `.last()`, `.filter({ hasText })` |
 | Another page (below the current one, on a surface) | `(await t.app.page({ name })).view`; [Pages](#pages) |
 | Act | `locator.click()` / `.fill(text)` / `.type(text)` / `.press(key)` |
-| Read an element once | `locator.textContent()` / `.inputValue()` / `.getAttribute(name)` / `.count()` / `.isVisible()`; no retry, so assert with `expect(locator)` |
+| Read an element once | `locator.textContent()` / `.inputValue()` / `.getAttribute(name)` / `.boundingBox()` / `.count()` / `.isVisible()`; no retry, so assert with `expect(locator)` |
 | Native window input | `t.app.window.pointer` / `.key`; independent of pages |
 | Swipe, drag, fling, pull to refresh, edge back | `t.app.view.swipe` / `.drag` / `.fling` / `.pullToRefresh` / `.touch`, `t.app.gesture.*`; [Gestures](#gestures) |
 | Assert UI | `expect(locator).toBeVisible()` / `.toBeInViewport()` / `.toBeAttached()` / `.toHaveText()` / `.toContainText()` / `.toHaveAttribute(name, value?)` / `.toHaveCount()` / `.toHaveValue()` / `.toBeEnabled()`; `.not` |

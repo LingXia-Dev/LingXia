@@ -19,8 +19,11 @@ type Group = keyof typeof groups;
 
 export function render() {
   const group = useLocal<Group>('group', 'paint');
+  // The bottom inset (bars and home indicator) specs measure overlays and the page scroll against.
+  const { insets, safeArea } = useView().env;
+  const data = { 'data-inset-bottom': String(insets.bottom), 'data-safe-bottom': String(safeArea.bottom) } as const;
   return (
-    <Page testId="view-lab">
+    <Page testId="view-lab" data={data}>
       <row className="gap-2 flex-wrap">
         {(Object.keys(groups) as Group[]).map(key => (
           <Button key={key} testId={`lab-tab-${key}`} size="sm" variant={group.value === key ? 'primary' : 'secondary'} onClick={() => group.set(key)}>
