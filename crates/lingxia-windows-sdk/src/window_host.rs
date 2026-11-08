@@ -5801,7 +5801,7 @@ fn set_primary_host_window(hwnd: HWND) {
     if let Some(previous) = previous {
         remember_primary_frame(hwnd_from_handle(previous));
     }
-    if previous.is_none() || !adopt_primary_frame(hwnd) {
+    if previous.is_none() || !adopt_primary_frame(hwnd, previous.map(hwnd_from_handle)) {
         restore_primary_window_frame(hwnd);
     }
     if let Ok(mut slot) = slot.lock() {
@@ -5851,22 +5851,36 @@ fn remember_primary_frame(hwnd: HWND) {
     }
 }
 
-fn adopt_primary_frame(hwnd: HWND) -> bool {
+/// Takes the old primary's frame and, while it is still up, its place in the z-order: a
+/// window shown at the top from a background process can land under the foreground app.
+fn adopt_primary_frame(hwnd: HWND, previous: Option<HWND>) -> bool {
     if !frame_follows_workspace(hwnd) {
         return false;
     }
     let Some(rect) = PRIMARY_FRAME.lock().ok().and_then(|frame| *frame) else {
         return false;
     };
+    let above = previous
+        .filter(|previous| unsafe { WindowsAndMessaging::IsWindow(Some(*previous)).as_bool() })
+        .map(|previous| {
+            unsafe { WindowsAndMessaging::GetWindow(previous, WindowsAndMessaging::GW_HWNDPREV) }
+                .ok()
+                .filter(|above| *above != hwnd)
+                .unwrap_or(WindowsAndMessaging::HWND_TOP)
+        });
+    let mut flags = WindowsAndMessaging::SWP_NOACTIVATE;
+    if above.is_none() {
+        flags |= WindowsAndMessaging::SWP_NOZORDER;
+    }
     unsafe {
         WindowsAndMessaging::SetWindowPos(
             hwnd,
-            None,
+            above,
             rect.left,
             rect.top,
             rect.right - rect.left,
             rect.bottom - rect.top,
-            WindowsAndMessaging::SWP_NOZORDER | WindowsAndMessaging::SWP_NOACTIVATE,
+            flags,
         )
         .is_ok()
     }
