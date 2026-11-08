@@ -63,6 +63,11 @@ pub trait Presenter {
 pub trait FrameScheduler {
     /// Call [`crate::session::host::ViewHost::vsync`] on the next display frame.
     fn request_vsync(&self);
+    /// Renderer work on a display frame that needs no View frame, such as showing a playing
+    /// video's new frame; true asks for the next display frame too.
+    fn tick(&self) -> bool {
+        false
+    }
 }
 
 /// Callable from any thread.

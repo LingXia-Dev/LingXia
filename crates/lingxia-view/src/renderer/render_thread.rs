@@ -43,6 +43,8 @@ enum Job {
         display: Box<DisplayList>,
         drawn: Arc<Drawn>,
     },
+    /// Redraw a surface's kept frame for new video frames; see [`super::surfaces::rebind`].
+    Rebind(u64),
     Run(Task),
 }
 
@@ -71,7 +73,16 @@ static QUEUE: LazyLock<Arc<(Mutex<VecDeque<Job>>, Condvar)>> = LazyLock::new(|| 
                         drawn,
                     } => {
                         let result = (drawn.backend.prepare)(surface, &display, revision);
+                        let kept = matches!(result, Ok(Some(_)));
                         *lock(&drawn.result) = Some(result);
+                        if kept {
+                            super::surfaces::retain(surface, revision, display);
+                        }
+                    }
+                    Job::Rebind(surface) => {
+                        if let Err(error) = super::surfaces::rebind(surface) {
+                            log::warn!(target: "lingxia_view", "video redraw: {error}");
+                        }
                     }
                     Job::Run(task) => task(),
                 }
@@ -175,6 +186,19 @@ pub fn present(
         None => jobs.push_front(Job::Run(task)),
     }
     wake.notify_one();
+}
+
+/// Queues a redraw of `surface`'s kept frame, unless one is queued already.
+pub fn rebind(surface: u64) {
+    let (queue, wake) = &**QUEUE;
+    let mut jobs = lock(queue);
+    if !jobs
+        .iter()
+        .any(|job| matches!(job, Job::Rebind(queued) if *queued == surface))
+    {
+        jobs.push_back(Job::Rebind(surface));
+        wake.notify_one();
+    }
 }
 
 /// Runs `task` on the render thread after the work already queued.

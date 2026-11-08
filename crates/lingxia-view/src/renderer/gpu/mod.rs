@@ -9,6 +9,7 @@ pub(crate) mod pass;
 pub(crate) mod scene;
 pub(crate) mod surface;
 pub(crate) mod text;
+pub(crate) mod video;
 
 use device::{Devices, RenderSurface};
 use std::{
@@ -176,6 +177,7 @@ impl PrepareJob {
     pub(crate) fn run(&mut self, display: &crate::DisplayList) -> Result<(), String> {
         let (width, height) = (self.width, self.height);
         let target = &self.target;
+        let has_video = video::import(&self.device, display);
         if self.composed {
             let started = Instant::now();
             let compositor = self.compositor.get_or_insert_with(|| {
@@ -200,9 +202,13 @@ impl PrepareJob {
         // A kept scene draws glyphs from the atlas, which drops those no render touched for 64
         // renders: well before that, every scene is encoded again.
         let renders = self.renderer.renders();
-        if renders.saturating_sub(self.scenes.encoded_at) > ATLAS_REFRESH {
+        let video_epoch = video::epoch();
+        if renders.saturating_sub(self.scenes.encoded_at) > ATLAS_REFRESH
+            || self.scenes.video_epoch != video_epoch
+        {
             self.scenes.clear();
             self.scenes.encoded_at = renders;
+            self.scenes.video_epoch = video_epoch;
         }
         let (scenes, prep) = (&mut self.scenes, &mut self.glyph_cache);
         let scene_cache_hit = self.renderer.with_resources(
@@ -226,13 +232,17 @@ impl PrepareJob {
             .bitmaps()
             .map(|bitmap| bitmap.pixels().clone())
             .chain(self.scenes.glyph_images().cloned());
-        let bindings = self.images.bindings(&self.device, &self.queue, pixels);
+        let mut bindings = self.images.bindings(&self.device, &self.queue, pixels);
+        if has_video {
+            video::bind(display, &mut bindings);
+        }
         let images_us = crate::session::metrics::micros(started);
         let [mut encode_us, mut submit_us] = [0, 0];
         self.pass_us.clear();
         let mut scenes = self.scenes.scenes();
         // A kept bottom segment is copied in; only the passes above it draw again.
-        let base = self.scenes.base().filter(|_| self.keep_base);
+        // A kept base would freeze a video frame drawn inside it.
+        let base = self.scenes.base().filter(|_| self.keep_base && !has_video);
         self.base = self.base.take().filter(|(id, view)| {
             Some(*id) == base && view.texture().size() == target.texture().size()
         });
@@ -330,6 +340,10 @@ pub struct Presenter {
     backend: &'static str,
     /// Rebuilds the surface target: a GLES window surface keeps its creation size.
     target: Option<SurfaceSource>,
+    /// The newest drawn frame while it draws video: a new video frame redraws it.
+    retained: Option<(u64, Box<crate::DisplayList>)>,
+    /// The revision last shown.
+    presented: Option<u64>,
 }
 
 /// What a presenter binds its wgpu surface to.
@@ -487,11 +501,15 @@ impl Presenter {
             adapter,
             backend,
             target: None,
+            retained: None,
+            presented: None,
         })
     }
 
     pub fn suspend(&mut self) {
         self.epoch += 1;
+        self.retained = None;
+        self.presented = None;
         self.surface = None;
         self.depth = None;
         self.images.clear();
@@ -609,8 +627,11 @@ impl Presenter {
             self.prepared = [None; 2];
         }
         let device = &context.devices[surface.dev_id];
-        // Reuse the target of the older (or no) revision; the newer may still wait to present.
+        // A revision drawn again keeps its slot; else reuse the target of the older (or no)
+        // revision, as the newer may still wait to present.
         let slot = match self.prepared {
+            _ if self.prepared[0] == Some(revision) => 0,
+            _ if self.prepared[1] == Some(revision) => 1,
             [None, _] => 0,
             [_, None] => 1,
             [Some(a), Some(b)] => usize::from(b < a),
@@ -731,6 +752,39 @@ impl Presenter {
         self.scene_cache_hit
     }
 
+    /// Keeps `display` as drawn for `revision` while it draws video; true when it does.
+    pub(crate) fn retain(&mut self, revision: u64, display: Box<crate::DisplayList>) -> bool {
+        self.retained =
+            (self.surface.is_some() && video::draws_video(&display)).then_some((revision, display));
+        self.retained.is_some()
+    }
+
+    /// The kept frame, once shown and a player in it has a newer frame: it is lent out to be
+    /// drawn again and given back with [`Self::restore`].
+    pub(crate) fn take_due(&mut self) -> Option<(u64, Box<crate::DisplayList>)> {
+        let (revision, display) = self.retained.as_ref()?;
+        if self.presented != Some(*revision) {
+            return None;
+        }
+        if !video::has_new(display) {
+            return None;
+        }
+        self.retained.take()
+    }
+
+    pub(crate) fn device_queue(&self) -> Result<(wgpu::Device, wgpu::Queue), String> {
+        let context = self.context.lock()?;
+        let device = &context.devices[self.device_id];
+        Ok((device.device.clone(), device.queue.clone()))
+    }
+
+    /// Gives a lent frame back, unless a newer one was kept meanwhile.
+    pub(crate) fn restore(&mut self, revision: u64, display: Box<crate::DisplayList>) {
+        if self.retained.is_none() && self.surface.is_some() {
+            self.retained = Some((revision, display));
+        }
+    }
+
     pub fn present(&mut self, revision: u64) -> Result<bool, String> {
         self.presentation_us = [0; 4];
         let Some(slot) = self
@@ -789,6 +843,10 @@ impl Presenter {
         self.presentation_us[3] = started.elapsed().as_micros() as u64;
         crate::renderer::sentinel::presented(&self.adapter);
         self.keep_base = true;
+        self.presented = Some(revision);
+        if self.retained.is_some() {
+            video::presented();
+        }
         Ok(true)
     }
 

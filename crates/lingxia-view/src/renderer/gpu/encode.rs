@@ -316,6 +316,34 @@ impl DisplayList {
                         context.pop_clip();
                     }
                 }
+                Paint::Video {
+                    player,
+                    bounds,
+                    radius,
+                    fit,
+                    position,
+                } => {
+                    // Nothing shows until the player's first frame gives its size.
+                    if let Some(size) = crate::renderer::gpu::video::frame_size(player) {
+                        let (rect, transform, clip) =
+                            crate::renderer::cpu_paint::sized_image_geometry(
+                                size, *bounds, *radius, *fit, *position,
+                            )?;
+                        context.push_clip_path(&clip);
+                        context.set_paint(vello_gpu::Image {
+                            image: vello_gpu::ImageSource::external_texture(
+                                crate::renderer::gpu::video::texture_id(player),
+                                vello_gpu::RectU16::new(0, 0, size[0], size[1]),
+                                false,
+                            ),
+                            sampler: Default::default(),
+                        });
+                        context.set_paint_transform(transform);
+                        context.fill_rect(&rect);
+                        context.reset_paint_transform();
+                        context.pop_clip();
+                    }
+                }
                 Paint::Text {
                     color: [r, g, b, a],
                     font,

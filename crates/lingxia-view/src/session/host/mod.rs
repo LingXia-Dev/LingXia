@@ -618,7 +618,16 @@ impl<A: PlatformAdapter> ViewHost<A> {
 
     /// The display frame requested through `FrameScheduler::request_vsync`.
     pub fn vsync(&self) {
+        self.tick();
         self.inner.vsync();
+    }
+
+    /// Runs the adapter's per-frame renderer work, keeping display frames coming while it has
+    /// some. A hidden window shows nothing, so it has none.
+    pub fn tick(&self) {
+        if !self.inner.window_hidden() && self.inner.adapter.tick() {
+            self.inner.adapter.request_vsync();
+        }
     }
 
     /// [`Self::vsync`] with the platform's frame timing: the refresh this frame shows on is
@@ -633,6 +642,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
         };
         let interval = Duration::from_micros(interval_us);
         self.inner.main().display = Some((target, interval));
+        self.tick();
         self.inner.vsync();
     }
 

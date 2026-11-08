@@ -206,6 +206,7 @@ impl<A: PlatformAdapter> Inner<A> {
         serde_json::json!({
             "composite": presenter("composite"),
             "backdropCache": presenter("backdropCache"),
+            "video": crate::renderer::video_stats(),
             "renderer": "gpu",
             "page": self.lifecycle.page().get().to_string(),
             "commit": telemetry.commit,

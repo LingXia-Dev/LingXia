@@ -272,6 +272,8 @@ impl DisplayList {
                         context.pop_layer();
                     }
                 }
+                // No decoder feeds the CPU renderer: the box's own background shows.
+                Paint::Video { .. } => {}
                 Paint::Text {
                     color: [r, g, b, a],
                     font,
@@ -338,14 +340,27 @@ pub(crate) fn image_geometry(
     position: [f32; 2],
 ) -> Result<(PaintRect, Affine, vello_cpu::kurbo::BezPath), String> {
     let pixels = bitmap.pixels();
-    let [x, y, w, h] =
-        crate::scene::image::placement([pixels.width(), pixels.height()], bounds, fit, position)?;
+    sized_image_geometry(
+        [pixels.width(), pixels.height()],
+        bounds,
+        radius,
+        fit,
+        position,
+    )
+}
+
+/// [`image_geometry`] for a source of `size` texels.
+pub(crate) fn sized_image_geometry(
+    size: [u16; 2],
+    bounds: [f32; 4],
+    radius: f32,
+    fit: crate::scene::image::Fit,
+    position: [f32; 2],
+) -> Result<(PaintRect, Affine, vello_cpu::kurbo::BezPath), String> {
+    let [x, y, w, h] = crate::scene::image::placement(size, bounds, fit, position)?;
     let rect = PaintRect::new(x as f64, y as f64, (x + w) as f64, (y + h) as f64);
     let transform = Affine::translate((x as f64, y as f64))
-        * Affine::scale_non_uniform(
-            w as f64 / f64::from(pixels.width()),
-            h as f64 / f64::from(pixels.height()),
-        );
+        * Affine::scale_non_uniform(w as f64 / f64::from(size[0]), h as f64 / f64::from(size[1]));
     let [x, y, w, h] = bounds;
     let clip = RoundedRect::new(
         x as f64,

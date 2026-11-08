@@ -59,7 +59,7 @@ impl crate::DisplayList {
                     cost.backdrops += 1;
                 }
                 Paint::Shadow { .. } | Paint::RasterShadow { .. } => cost.shadows += 1,
-                Paint::Image { bounds, .. } => {
+                Paint::Image { bounds, .. } | Paint::Video { bounds, .. } => {
                     cost.images += 1;
                     let area = f64::from(bounds[2].max(0.0)) * f64::from(bounds[3].max(0.0));
                     cost.image_pixels += (area * scale * scale).round() as u64;

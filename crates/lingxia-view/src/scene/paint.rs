@@ -194,6 +194,17 @@ pub(crate) enum Paint {
         /// Box fractions the image aligns to, as CSS `object-position`.
         position: [f32; 2],
     },
+    /// A player's current frame, bound by the renderer at draw time: the scene holds no pixels,
+    /// so a new frame redraws the kept scenes without the View worker.
+    #[allow(dead_code, reason = "no schema element paints a video yet")]
+    Video {
+        /// The renderer's player key; paints with one key share a decoder.
+        player: String,
+        bounds: [f32; 4],
+        radius: f32,
+        fit: crate::scene::image::Fit,
+        position: [f32; 2],
+    },
     Clip(ClipSnapshot),
     PopClip,
     Opacity {

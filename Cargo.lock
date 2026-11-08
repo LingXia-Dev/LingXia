@@ -4349,6 +4349,8 @@ dependencies = [
  "lingxia-theme",
  "log",
  "memmap2",
+ "objc2",
+ "objc2-metal",
  "parley",
  "pollster",
  "rong",

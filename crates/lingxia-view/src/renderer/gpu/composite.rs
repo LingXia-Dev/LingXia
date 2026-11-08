@@ -291,6 +291,7 @@ impl Compositor {
                         .map(|bitmap| bitmap.pixels().clone())
                         .chain(glyph_images.values().cloned()),
                 );
+                crate::renderer::gpu::video::bind(display, bindings);
                 Ok(())
             },
             backdrops,

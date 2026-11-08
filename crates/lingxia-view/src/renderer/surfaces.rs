@@ -105,6 +105,7 @@ pub fn describe(id: u64) -> Option<(String, &'static str)> {
 
 pub fn suspend(id: u64) {
     let _binding = gpu_binding();
+    video_surfaces().remove(&id);
     if let Ok(Some(presenter)) = presenter(id)
         && let Ok(mut presenter) = lock(&presenter)
     {
@@ -114,6 +115,7 @@ pub fn suspend(id: u64) {
 
 pub fn detach(id: u64) {
     let _binding = gpu_binding();
+    video_surfaces().remove(&id);
     // The presenter's surface is destroyed with it, inside the binding.
     let removed = registry()
         .ok()
@@ -181,6 +183,92 @@ pub fn present(id: u64, revision: u64) -> Result<Option<[u64; 4]>, String> {
     Ok(presenter
         .present(revision)?
         .then(|| presenter.presentation_timings_us()))
+}
+
+/// Presenters keeping a frame that draws video; read on the main thread at every refresh, so
+/// it never waits on a presenter.
+static VIDEO: LazyLock<Mutex<std::collections::HashSet<u64>>> = LazyLock::new(Default::default);
+
+fn video_surfaces() -> MutexGuard<'static, std::collections::HashSet<u64>> {
+    VIDEO.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// Keeps the frame just drawn for `revision` while it draws video, for [`rebind`].
+pub(crate) fn retain(id: u64, revision: u64, display: Box<crate::DisplayList>) {
+    // Presenters outside this registry keep nothing.
+    let Ok(Some(presenter)) = presenter(id) else {
+        return;
+    };
+    let Ok(mut presenter) = lock(&presenter) else {
+        return;
+    };
+    let mut surfaces = video_surfaces();
+    if presenter.retain(revision, display) {
+        surfaces.insert(id);
+    } else {
+        surfaces.remove(&id);
+    }
+}
+
+/// Presenter `id` keeps a frame that draws video: its page should [`tick`] every refresh.
+pub fn keeps_video(id: u64) -> bool {
+    video_surfaces().contains(&id)
+}
+
+/// On a display refresh of the page presenting through `id`: queues a redraw of its kept frame
+/// for new video frames. True while it keeps one, so the display link keeps running.
+pub fn tick(id: u64) -> bool {
+    if !keeps_video(id) {
+        return false;
+    }
+    super::render_thread::rebind(id);
+    true
+}
+
+/// Draws the kept frame again with the players' newest frames and shows it, with no View
+/// worker involved; nothing when no player has a new frame or a newer frame awaits its present.
+pub(crate) fn rebind(id: u64) -> Result<(), String> {
+    let _work = gpu_work();
+    let Some(presenter) = presenter(id)? else {
+        return Ok(());
+    };
+    let due = lock(&presenter)?.take_due();
+    let Some((revision, display)) = due else {
+        super::gpu::video::note_rebind(None);
+        return Ok(());
+    };
+    let started = std::time::Instant::now();
+    let job = lock(&presenter)?.begin_prepare(
+        &display,
+        u32::from(display.width),
+        u32::from(display.height),
+        revision,
+        display.requires_composition(),
+    );
+    let drawn = match job {
+        Ok(Some(mut job)) => {
+            let result = job.run(&display);
+            lock(&presenter)?.finish_prepare(job, result)
+        }
+        Ok(None) => Ok(false),
+        Err(error) => Err(error),
+    };
+    let render = crate::session::metrics::micros(started);
+    let mut held = lock(&presenter)?;
+    held.restore(revision, display);
+    if !drawn? {
+        return Ok(());
+    }
+    let presenting = std::time::Instant::now();
+    if held.present(revision)? {
+        let [scene, images, encode, submit] = held.preparation_timings_us();
+        let present = crate::session::metrics::micros(presenting);
+        super::gpu::video::note_rebind(Some([render, present, scene, images, encode, submit]));
+        if let Ok((device, queue)) = held.device_queue() {
+            super::gpu::video::sample_gpu(device, &queue, started);
+        }
+    }
+    Ok(())
 }
 
 /// The newest frame presenter `id` holds as a PNG, `None` when it holds none.

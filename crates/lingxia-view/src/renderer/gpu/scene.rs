@@ -226,6 +226,9 @@ pub(crate) struct SceneCache {
     base: Option<u64>,
     /// The renderer's render count when these scenes were last all encoded.
     pub(crate) encoded_at: u64,
+    /// The video frame-size epoch these scenes were encoded under. Scenes key on content, never
+    /// on texture contents: a new video frame keeps them valid, a new frame size does not.
+    pub(crate) video_epoch: u64,
 }
 
 static BASES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
@@ -240,6 +243,7 @@ impl Default for SceneCache {
             segments: Vec::new(),
             base: None,
             encoded_at: 0,
+            video_epoch: 0,
         }
     }
 }

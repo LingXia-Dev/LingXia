@@ -25,6 +25,9 @@ pub struct AppleAdapter {
     pub(crate) gpu: std::sync::atomic::AtomicU64,
     #[cfg(feature = "gpu")]
     pub(crate) target: Mutex<lingxia_view::renderer::surfaces::Target>,
+    /// The display link runs for video frames, see [`FrameScheduler::tick`].
+    #[cfg(feature = "gpu")]
+    ticking: Arc<AtomicBool>,
     /// In-flight loads; dropping a handle cancels its transport.
     images: Mutex<HashMap<u64, Box<dyn Send>>>,
     /// The pressed and keyboard-focused nodes with feedback drawn, redrawn per frame.
@@ -47,6 +50,8 @@ impl AppleAdapter {
             #[cfg(feature = "gpu")]
             // CPU frames until the view attaches a Metal presenter.
             target: Mutex::new(lingxia_view::renderer::surfaces::Target::Unavailable),
+            #[cfg(feature = "gpu")]
+            ticking: Default::default(),
             images: Mutex::new(HashMap::new()),
             highlights: Mutex::new([None; 2]),
             modal: Default::default(),
@@ -163,12 +168,28 @@ impl Presenter for AppleAdapter {
                 let Some(host) = self.host.get().cloned() else {
                     return Ok(false);
                 };
+                let ticking = self.ticking.clone();
                 lingxia_view::renderer::render_thread::present(
                     surface,
                     revision,
                     drawn,
                     move |shown, gpu| {
-                        let Some(host) = host.upgrade() else { return };
+                        let Some(strong) = host.upgrade() else { return };
+                        // The first frame that draws video starts the display link for its frames.
+                        if lingxia_view::renderer::surfaces::keeps_video(surface)
+                            && !ticking.swap(true, Ordering::AcqRel)
+                        {
+                            let host = host.clone();
+                            crate::dispatch::post_after(
+                                Duration::ZERO,
+                                Box::new(move || {
+                                    if let Some(host) = host.upgrade() {
+                                        host.tick();
+                                    }
+                                }),
+                            );
+                        }
+                        let host = strong;
                         match shown {
                             Ok(shown) => {
                                 host.deferred_drawn(CommitTicket::new(revision), shown, gpu)
@@ -238,6 +259,13 @@ fn rasterize(host: &WeakViewHost<AppleAdapter>, display: DisplayList, generation
 }
 
 impl FrameScheduler for AppleAdapter {
+    #[cfg(feature = "gpu")]
+    fn tick(&self) -> bool {
+        let ticking = lingxia_view::renderer::surfaces::tick(self.gpu.load(Ordering::Acquire));
+        self.ticking.store(ticking, Ordering::Release);
+        ticking
+    }
+
     fn request_vsync(&self) {
         if self.shell.request_vsync(self.token) {
             return;

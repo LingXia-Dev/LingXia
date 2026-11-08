@@ -7,7 +7,7 @@ description = "Experimental LingXia UI language and headless renderer"
 
 [features]
 default = []
-gpu = ["dep:vello_gpu", "dep:glifo", "dep:wgpu", "dep:pollster"]
+gpu = ["dep:vello_gpu", "dep:glifo", "dep:wgpu", "dep:pollster", "dep:objc2", "dep:objc2-metal"]
 # Dev sessions only: swap a page module in place, keeping its state.
 hot-swap = []
 
@@ -42,6 +42,11 @@ parley = { workspace = true, features = ["std", "complex-scripts"] }
 [target.'cfg(target_os = "android")'.dependencies]
 # GLES is the fallback for Vulkan drivers the crash sentinel blocks.
 wgpu = { workspace = true, optional = true, features = ["gles"] }
+
+[target.'cfg(target_vendor = "apple")'.dependencies]
+# Video frames arrive as Metal textures that wgpu adopts in place.
+objc2 = { version = "0.6", optional = true }
+objc2-metal = { version = "0.3.2", optional = true, default-features = false, features = ["std", "MTLTexture", "MTLResource", "MTLAllocation", "MTLDevice"] }
 
 [target.'cfg(unix)'.dependencies]
 # The View JS budget measures the worker thread's CPU time.

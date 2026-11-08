@@ -14,3 +14,11 @@ pub mod surfaces;
 pub(crate) mod backdrop_tests;
 #[cfg(test)]
 mod composite_tests;
+
+/// Video player costs for frame metrics; null without the GPU renderer.
+pub fn video_stats() -> serde_json::Value {
+    #[cfg(feature = "gpu")]
+    return gpu::video::stats();
+    #[cfg(not(feature = "gpu"))]
+    serde_json::Value::Null
+}

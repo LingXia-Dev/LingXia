@@ -981,6 +981,30 @@ impl RetainedLayout {
                             });
                         }
                     }
+                    Paint::Video {
+                        player,
+                        bounds,
+                        radius,
+                        fit,
+                        position,
+                    } => {
+                        let mut bounds = *bounds;
+                        bounds[0] -= translation[0];
+                        bounds[1] -= translation[1];
+                        let visible = intersect(bounds, clip);
+                        if visible[2] > 0.0
+                            && visible[3] > 0.0
+                            && node.clips.iter().all(|shape| shape.intersects(visible))
+                        {
+                            painted.push(Paint::Video {
+                                player: player.clone(),
+                                bounds,
+                                radius: *radius,
+                                fit: *fit,
+                                position: *position,
+                            });
+                        }
+                    }
                     Paint::Text {
                         color,
                         font,
