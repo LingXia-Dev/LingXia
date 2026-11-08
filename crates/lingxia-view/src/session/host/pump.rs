@@ -238,9 +238,13 @@ impl<A: PlatformAdapter> Inner<A> {
             // A page waiting to replace the shown one builds its first frame as shown work.
             let revealing = main.reveal.waiting();
             let background = !main.visible && !revealing;
-            let surface = if main.visible {
+            // A parked page renders nothing, even while still on screen: its worker may not have
+            // reset yet, and a frame of the old document would un-park it.
+            let surface = if main.interaction.parked() {
+                None
+            } else if main.visible {
                 self.lifecycle.frame()
-            } else if (main.catch_up || revealing) && !main.interaction.parked() {
+            } else if main.catch_up || revealing {
                 self.lifecycle.frame_hidden()
             } else {
                 None

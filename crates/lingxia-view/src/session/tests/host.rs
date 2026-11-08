@@ -2791,6 +2791,33 @@ fn abandoned_automation_calls_expire_instead_of_exhausting_the_slots() {
 }
 
 #[test]
+fn a_page_parked_while_still_shown_stays_blank() {
+    let worker = ViewWorker::spawn("test-park-shown").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source("function render(){return h('text',{'data-testid':'t'},'page')}"),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let presents = || host.adapter().log.lock().unwrap().presented.len();
+    let before = presents();
+    // Parked before the next page hides it, as a desktop host can.
+    host.park();
+    host.surface_changed();
+    host.request_frame();
+    platform.settle(&[&host]);
+    platform.advance(Duration::from_secs(2));
+    platform.settle(&[&host]);
+    assert_eq!(presents(), before, "a shown parked page renders nothing");
+    let found = host
+        .automation_request(&serde_json::json!({"op": "query", "css": "[data-testid=\"t\"]"}))
+        .unwrap();
+    assert_eq!(found["exists"], false, "no old frame un-parks it");
+}
+
+#[test]
 fn a_parked_page_reads_blank_and_refuses_actions() {
     let worker = ViewWorker::spawn("test-automation-parked").unwrap();
     let platform = Platform::new(&[&worker]);
