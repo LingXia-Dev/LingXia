@@ -146,8 +146,9 @@ pub use native_authority::NativeControlPlaneAuthority;
 pub use native_component::{NativeComponentHost, register_native_component_host};
 pub use page::config::{OrientationConfig, PageOrientation, PageRenderer};
 pub use page::{
-    GpuBridgeError, GpuPageView, GpuPageViewFactory, GpuPatchOp, GpuStateSignal, GpuStateWrite,
-    GpuViewCreation, GpuViewEvent, GpuViewGeneration, PageViewEnvironment,
+    GpuActionSheet, GpuBridgeError, GpuModal, GpuPageView, GpuPageViewFactory, GpuPatchOp,
+    GpuStateSignal, GpuStateWrite, GpuToast, GpuUiRequest, GpuViewCreation, GpuViewEvent,
+    GpuViewGeneration, GpuViewMessage, GpuViewRequest, PageViewEnvironment,
     register_gpu_page_view_factory,
 };
 pub use page::{

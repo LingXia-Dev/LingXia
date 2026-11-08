@@ -12,9 +12,10 @@ const reply = (id, ok, payload) => ok ? { kind: 'res', id, ok: true, result: pay
   : { kind: 'res', id, ok: false, error: payload };
 const text = (value, fallback = '') => typeof value === 'string' ? value.slice(0, 4096) : fallback;
 
-/** A view call from Logic: `{changed, replies}`; `replies` are bridge frames to send. */
-export function viewRequest(frame) {
-  const { id, method } = frame, params = frame.params ?? {};
+/** A request from Logic, `{id, method, params}`: `{changed, replies}`, replies being the
+ *  messages to send back. */
+export function viewCall(call) {
+  const { id, method } = call, params = call.params ?? {};
   const replies = [];
   let changed = false;
   switch (method) {
@@ -51,6 +52,12 @@ export function viewRequest(frame) {
     default:
       replies.push(reply(id, false, { code: 'E_UNSUPPORTED', message: `${String(method)} is not served by a GPU View` }));
   }
+  return { changed, replies };
+}
+
+// The same as frame text, for a native session that predates typed requests.
+export function viewRequest(frame) {
+  const { changed, replies } = viewCall(frame);
   return JSON.stringify({ changed, replies: replies.map(r => JSON.stringify({ v: 2, ...r })) });
 }
 

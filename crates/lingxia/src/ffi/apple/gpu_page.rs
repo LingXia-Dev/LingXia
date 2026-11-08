@@ -966,7 +966,7 @@ mod live {
 
     struct ApplePage {
         token: Token,
-        writer: lingxia_view_apple::lingxia_view::session::host::StateWriter,
+        port: lingxia_view_apple::lingxia_view::session::host::LogicPort,
     }
 
     impl NativePage for ApplePage {
@@ -986,12 +986,23 @@ mod live {
             });
             Ok(())
         }
+        fn deliver(
+            &self,
+            generation: GpuViewGeneration,
+            message: lxapp::GpuViewMessage,
+        ) -> Result<(), LxAppError> {
+            self.port.deliver(
+                ConnectionTicket::new(generation.get()),
+                gpu_page::state::message_to_view(message),
+            );
+            Ok(())
+        }
         fn write_state(
             &self,
             generation: GpuViewGeneration,
             write: lxapp::GpuStateWrite,
         ) -> Result<(), LxAppError> {
-            self.writer.write(
+            self.port.write_state(
                 ConnectionTicket::new(generation.get()),
                 gpu_page::state::to_view(write),
             );
@@ -1075,9 +1086,9 @@ mod live {
                 let created = Page::new(token, Arc::new(Bridge), &request.worker, request.logic)
                     .map(|page| {
                         page.host().load(request.source);
-                        let writer = page.host().state_writer();
+                        let port = page.host().logic_port();
                         PAGES.with(|pages| pages.borrow_mut().insert(token, page));
-                        Arc::new(ApplePage { token, writer }) as Arc<dyn NativePage>
+                        Arc::new(ApplePage { token, port }) as Arc<dyn NativePage>
                     });
                 gpu_page::created(token, created);
             }));

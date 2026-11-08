@@ -520,8 +520,13 @@ fn deliver(host: &ViewHost<Fake>, connection: ConnectionTicket, frame: serde_jso
         .is_some_and(|kind| kind.starts_with("state."))
     {
         host.write_state(connection, state_write(&frame));
-    } else {
+    } else if matches!(frame["kind"].as_str(), Some("helloAck" | "ready")) {
         host.receive(connection, frame.to_string());
+    } else {
+        host.deliver(
+            connection,
+            crate::session::logic::ToView::from_frame(&frame),
+        );
     }
 }
 
@@ -2056,10 +2061,10 @@ fn automation_calls_page_actions_and_reads_data_once_the_frame_commits() {
         connection,
         serde_json::json!({"v":2,"kind":"state.snapshot","rev":1,"state":{"count":3}}),
     );
-    host.receive(
+    deliver(
+        &host,
         connection,
-        serde_json::json!({"v":2,"kind":"res","id":request["id"],"ok":true,"result":{"count":3}})
-            .to_string(),
+        serde_json::json!({"v":2,"kind":"res","id":request["id"],"ok":true,"result":{"count":3}}),
     );
     assert_eq!(
         poll(&started["call"]).unwrap(),
@@ -2085,9 +2090,10 @@ fn automation_calls_page_actions_and_reads_data_once_the_frame_commits() {
         serde_json::from_str::<serde_json::Value>(&log.messages.last().unwrap().1).unwrap()["id"]
             .clone()
     };
-    host.receive(
+    deliver(
+        &host,
         connection,
-        serde_json::json!({"v":2,"kind":"res","id":id,"ok":false,"error":{"code":"E_LIMIT","message":"too many"}}).to_string(),
+        serde_json::json!({"v":2,"kind":"res","id":id,"ok":false,"error":{"code":"E_LIMIT","message":"too many"}}),
     );
     assert_eq!(poll(&failing["call"]).unwrap_err(), "E_LIMIT: too many");
 }
@@ -2244,23 +2250,17 @@ fn logic_feedback_calls_draw_in_the_view_and_answer_like_the_webview() {
             .collect()
     };
     let call = |id: &str, method: &str, params: serde_json::Value| {
-        host.receive(connection, serde_json::json!({"v":2,"kind":"req","id":id,"method":method,"params":params,"cap":"page"}).to_string());
+        deliver(
+            &host,
+            connection,
+            serde_json::json!({"v":2,"kind":"req","id":id,"method":method,"params":params}),
+        );
         platform.settle(&[&host]);
     };
     let query = |css: &str| {
         host.automation_request(&serde_json::json!({"op":"query","css":css}))
             .unwrap()
     };
-    // A method the GPU View does not serve is refused at once.
-    call("lv_1", "ui.unknown", serde_json::json!({}));
-    let refused = replies()
-        .into_iter()
-        .find(|r| r["id"] == "lv_1")
-        .expect("answered");
-    assert_eq!(
-        (refused["ok"].as_bool(), refused["error"]["code"].as_str()),
-        (Some(false), Some("E_UNSUPPORTED"))
-    );
     // A toast answers on presentation and leaves after its duration.
     call(
         "lv_2",

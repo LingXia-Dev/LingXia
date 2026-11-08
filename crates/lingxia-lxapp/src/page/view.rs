@@ -103,6 +103,111 @@ pub struct GpuBridgeError {
     pub data: Option<serde_json::Value>,
 }
 
+/// What Logic sends a GPU View besides state. Payloads are owned trees, moved, never serialized.
+#[derive(Debug)]
+pub enum GpuViewMessage {
+    Reply {
+        id: String,
+        outcome: Result<serde_json::Value, GpuBridgeError>,
+    },
+    StreamEvent {
+        id: String,
+        seq: u64,
+        payload: serde_json::Value,
+    },
+    ChannelAck {
+        id: String,
+        outcome: Result<(), GpuBridgeError>,
+    },
+    ChannelData {
+        id: String,
+        seq: u64,
+        payload: serde_json::Value,
+    },
+    ChannelClose {
+        id: String,
+        code: Option<String>,
+        reason: Option<String>,
+    },
+    /// Answered by [`GpuViewEvent::Reply`] under the same id.
+    Request { id: String, request: GpuViewRequest },
+}
+
+/// Logic requests a GPU View serves, one variant per family. A new family is a variant here,
+/// an arm in [`GpuViewRequest::from_call`] and a handler in the View; replies route by id.
+#[derive(Clone, Debug, PartialEq)]
+pub enum GpuViewRequest {
+    Ui(GpuUiRequest),
+}
+
+/// The feedback overlays a desktop GPU View draws for `lx.showToast` and its siblings.
+#[derive(Clone, Debug, PartialEq)]
+pub enum GpuUiRequest {
+    ShowToast(GpuToast),
+    HideToast,
+    ShowModal(GpuModal),
+    ShowActionSheet(GpuActionSheet),
+}
+
+#[derive(Clone, Debug, Default, PartialEq, serde::Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct GpuToast {
+    pub title: String,
+    pub icon: Option<String>,
+    pub duration: Option<f64>,
+    pub mask: bool,
+    pub position: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, serde::Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct GpuModal {
+    pub title: String,
+    pub content: String,
+    pub show_cancel: Option<bool>,
+    pub cancel_text: Option<String>,
+    pub confirm_text: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, serde::Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct GpuActionSheet {
+    pub item_list: Vec<String>,
+    pub cancel_text: Option<String>,
+}
+
+impl GpuViewRequest {
+    /// The request a `call_view(method, params)` makes of a GPU View: `Err((code, message))`
+    /// when no family serves `method` or its params do not fit.
+    pub(crate) fn from_call(
+        method: &str,
+        params: Option<serde_json::Value>,
+    ) -> Result<Self, (&'static str, String)> {
+        let params = params
+            .filter(|params| !params.is_null())
+            .unwrap_or_else(|| serde_json::json!({}));
+        fn fit<T: serde::de::DeserializeOwned>(
+            method: &str,
+            params: serde_json::Value,
+        ) -> Result<T, (&'static str, String)> {
+            serde_json::from_value(params)
+                .map_err(|error| ("E_INVALID_ARGUMENT", format!("{method}: {error}")))
+        }
+        Ok(match method {
+            "ui.showToast" => Self::Ui(GpuUiRequest::ShowToast(fit(method, params)?)),
+            "ui.hideToast" => Self::Ui(GpuUiRequest::HideToast),
+            "ui.showModal" => Self::Ui(GpuUiRequest::ShowModal(fit(method, params)?)),
+            "ui.showActionSheet" => Self::Ui(GpuUiRequest::ShowActionSheet(fit(method, params)?)),
+            _ => {
+                return Err((
+                    "E_UNSUPPORTED",
+                    format!("{method} is not served by a GPU View"),
+                ));
+            }
+        })
+    }
+}
+
 /// What a GPU View sends Logic. Payloads are owned trees, moved, never serialized.
 #[derive(Debug)]
 pub enum GpuViewEvent {
@@ -146,6 +251,13 @@ pub trait GpuPageView: Send + Sync {
         &self,
         generation: GpuViewGeneration,
         message: &str,
+    ) -> Result<(), LxAppError>;
+    /// Replies, stream and channel traffic and requests; rechecked for this generation at
+    /// delivery like state.
+    fn deliver(
+        &self,
+        generation: GpuViewGeneration,
+        message: GpuViewMessage,
     ) -> Result<(), LxAppError>;
     /// Typed Logic state; like messages, rechecked for this generation at delivery.
     fn write_state(
@@ -229,5 +341,45 @@ impl PageView {
         if let Self::Gpu(view) = self {
             view.dispose();
         }
+    }
+}
+
+#[cfg(test)]
+mod gpu_request_tests {
+    use super::*;
+
+    #[test]
+    fn view_calls_become_typed_requests_and_unknown_methods_are_refused() {
+        let toast = GpuViewRequest::from_call(
+            "ui.showToast",
+            Some(serde_json::json!({"title":"Saved","icon":"success","duration":1500.0,"image":null})),
+        )
+        .unwrap();
+        assert_eq!(
+            toast,
+            GpuViewRequest::Ui(GpuUiRequest::ShowToast(GpuToast {
+                title: "Saved".into(),
+                icon: Some("success".into()),
+                duration: Some(1500.0),
+                ..Default::default()
+            }))
+        );
+        assert_eq!(
+            GpuViewRequest::from_call("ui.hideToast", None).unwrap(),
+            GpuViewRequest::Ui(GpuUiRequest::HideToast)
+        );
+        assert_eq!(
+            GpuViewRequest::from_call("ui.unknown", None).unwrap_err().0,
+            "E_UNSUPPORTED"
+        );
+        assert_eq!(
+            GpuViewRequest::from_call(
+                "ui.showActionSheet",
+                Some(serde_json::json!({"itemList": 3}))
+            )
+            .unwrap_err()
+            .0,
+            "E_INVALID_ARGUMENT"
+        );
     }
 }

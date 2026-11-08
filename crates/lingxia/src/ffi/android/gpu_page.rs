@@ -130,6 +130,18 @@ impl NativePage for AndroidPage {
     fn receive(&self, generation: GpuViewGeneration, frame: &str) -> Result<(), LxAppError> {
         bridge_operation(self.token, generation, frame, jni_str!("receive"))
     }
+    fn deliver(
+        &self,
+        generation: GpuViewGeneration,
+        message: lxapp::GpuViewMessage,
+    ) -> Result<(), LxAppError> {
+        lingxia_view_android::deliver(
+            self.token,
+            generation.get(),
+            gpu_page::state::message_to_view(message),
+        );
+        Ok(())
+    }
     fn write_state(
         &self,
         generation: GpuViewGeneration,

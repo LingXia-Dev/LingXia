@@ -49,7 +49,7 @@ fn next_lifecycle_event(
 
 type CreatedStreamHandle = (
     JSObject,
-    oneshot::Receiver<Result<String, RpcError>>,
+    oneshot::Receiver<Result<Payload, RpcError>>,
     Rc<RefCell<Option<JSFunc>>>,
 );
 
@@ -328,6 +328,21 @@ fn payload_value(ctx: &JSContext, payload: Payload) -> JSResult<JSValue> {
     }
 }
 
+/// A Logic value bound for the View: a tree for a GPU View, JSON text for a document.
+fn js_payload(v: JSValue, gpu: bool) -> Result<Payload, RpcError> {
+    if gpu {
+        crate::appservice::js_tree::from_js(v)
+            .map(Payload::Tree)
+            .map_err(rpc_error_from_rong)
+    } else {
+        js_value_to_json_str(v).map(Payload::Json)
+    }
+}
+
+fn is_gpu(outbound: Option<&OutboundContext>) -> bool {
+    outbound.is_some_and(OutboundContext::is_gpu)
+}
+
 fn js_value_to_json_str(v: JSValue) -> Result<String, RpcError> {
     if v.is_undefined() || v.is_null() {
         return Ok("null".to_owned());
@@ -407,12 +422,13 @@ fn get_optional_property(obj: &JSObject, field: &str, ctx: &JSContext) -> JSValu
 fn read_async_iterator_step(
     step_obj: &JSObject,
     ctx: &JSContext,
-) -> Result<(bool, String), RpcError> {
+    gpu: bool,
+) -> Result<(bool, Payload), RpcError> {
     let done = step_obj
         .get::<_, bool>("done")
         .map_err(rpc_error_from_rong)?;
-    let value_json = js_value_to_json_str(get_optional_property(step_obj, "value", ctx))?;
-    Ok((done, value_json))
+    let value = js_payload(get_optional_property(step_obj, "value", ctx), gpu)?;
+    Ok((done, value))
 }
 
 impl ViewTransport for PageSvc {
@@ -468,7 +484,8 @@ impl PageSvc {
         method: &str,
         params: Option<Payload>,
         mut cancel_rx: tokio::sync::oneshot::Receiver<()>,
-    ) -> Result<String, RpcError> {
+    ) -> Result<Payload, RpcError> {
+        let gpu = is_gpu(outbound.as_ref());
         let ctx = self
             .get_ctx()
             .ok_or_else(|| RpcError::new(BRIDGE_CANCELED, None))?;
@@ -578,7 +595,7 @@ impl PageSvc {
                 .await;
         }
 
-        js_value_to_json_str(value)
+        js_payload(value, gpu)
     }
 
     /// `surface.openPage` / `surface.openUrl` let a View reach the same
@@ -588,7 +605,7 @@ impl PageSvc {
         name: &str,
         params: Option<JSValue>,
         cancel_rx: &mut oneshot::Receiver<()>,
-    ) -> Result<String, RpcError> {
+    ) -> Result<Payload, RpcError> {
         let target_key = match name {
             "openPage" => "page",
             "openUrl" => "url",
@@ -621,7 +638,7 @@ impl PageSvc {
             open.call_async::<_, JSValue>(None, (target, options)).await
         };
         await_js_call_or_cancel(cancel_rx, call).await?;
-        Ok("null".to_owned())
+        Ok(Payload::Tree(serde_json::Value::Null))
     }
 
     pub(crate) async fn handle_notify(
@@ -1437,7 +1454,8 @@ impl PageSvc {
         cancel_rx: &mut tokio::sync::oneshot::Receiver<()>,
         work_id: Option<SessionWorkId>,
         outbound: Option<&OutboundContext>,
-    ) -> Result<String, RpcError> {
+    ) -> Result<Payload, RpcError> {
+        let gpu = is_gpu(outbound);
         let ctx = self
             .get_ctx()
             .ok_or_else(|| RpcError::new(BRIDGE_CANCELED, None))?;
@@ -1468,10 +1486,10 @@ impl PageSvc {
                 }
             };
 
-            let (done, value_json) = read_async_iterator_step(&step_obj, &ctx)?;
+            let (done, value) = read_async_iterator_step(&step_obj, &ctx, gpu)?;
 
             if done {
-                return Ok(value_json);
+                return Ok(value);
             }
 
             if !self.session_work_is_active(work_id).await {
@@ -1479,14 +1497,7 @@ impl PageSvc {
             }
 
             self.bridge()
-                .send_event_for_context(
-                    self,
-                    work_id,
-                    outbound,
-                    stream_id.to_string(),
-                    seq,
-                    value_json,
-                )
+                .send_event_for_context(self, work_id, outbound, stream_id.to_string(), seq, value)
                 .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())))?;
             seq += 1;
         }
@@ -1518,7 +1529,8 @@ impl PageSvc {
         let seq = Rc::new(Cell::new(0u64));
 
         // Shared oneshot sender — whichever of end / error fires first wins.
-        let (end_tx, end_rx) = oneshot::channel::<Result<String, RpcError>>();
+        let gpu = is_gpu(outbound.as_ref());
+        let (end_tx, end_rx) = oneshot::channel::<Result<Payload, RpcError>>();
         let end_tx_cell = Rc::new(RefCell::new(Some(end_tx)));
 
         // stream.send(data) — emits a stream event to the View.
@@ -1537,21 +1549,14 @@ impl PageSvc {
                 if !page.session_work_is_active(work_id_send).await {
                     return Ok(());
                 }
-                let payload_json = js_value_to_json_str(payload).map_err(|e: RpcError| {
+                let payload = js_payload(payload, gpu).map_err(|e: RpcError| {
                     RongJSError::from(HostError::new(
                         rong::error::E_INTERNAL,
                         e.message.unwrap_or(e.code),
                     ))
                 })?;
                 page.bridge()
-                    .send_event_for_context(
-                        &page,
-                        work_id_send,
-                        outbound.as_ref(),
-                        id,
-                        s,
-                        payload_json,
-                    )
+                    .send_event_for_context(&page, work_id_send, outbound.as_ref(), id, s, payload)
                     .map_err(|e| {
                         RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))
                     })?;
@@ -1566,14 +1571,14 @@ impl PageSvc {
         let end_fn = JSFunc::new(&ctx, move |result: JSValue| {
             let tx = tx_end.clone();
             async move {
-                let result_json = js_value_to_json_str(result).map_err(|e: RpcError| {
+                let result = js_payload(result, gpu).map_err(|e: RpcError| {
                     RongJSError::from(HostError::new(
                         rong::error::E_INTERNAL,
                         e.message.unwrap_or(e.code),
                     ))
                 })?;
                 if let Some(sender) = tx.borrow_mut().take() {
-                    let _ = sender.send(Ok(result_json));
+                    let _ = sender.send(Ok(result));
                 }
                 Ok(())
             }
@@ -1649,7 +1654,7 @@ impl PageSvc {
                 {
                     return Ok(());
                 }
-                let payload_json = js_value_to_json_str(payload).map_err(|e| {
+                let payload = js_payload(payload, is_gpu(outbound.as_ref())).map_err(|e| {
                     RongJSError::from(HostError::new(
                         rong::error::E_INTERNAL,
                         e.message.unwrap_or(e.code),
@@ -1681,7 +1686,7 @@ impl PageSvc {
                         outbound.as_ref(),
                         channel_key.id.clone(),
                         seq,
-                        payload_json,
+                        payload,
                     )
                     .map_err(|e| {
                         RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))

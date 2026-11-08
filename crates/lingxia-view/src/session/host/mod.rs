@@ -192,20 +192,32 @@ pub struct ViewHost<A: PlatformAdapter> {
     inner: Arc<Inner<A>>,
 }
 
-/// Writes Logic state into one host from any thread; see [`ViewHost::state_writer`].
+/// Hands Logic's state and messages to one host from any thread; see [`ViewHost::logic_port`].
 #[derive(Clone)]
-pub struct StateWriter(
-    Arc<dyn Fn(ConnectionTicket, crate::session::state::StateWrite) -> bool + Send + Sync>,
-);
+pub struct LogicPort(Arc<dyn Fn(ConnectionTicket, FromLogic) -> bool + Send + Sync>);
 
-impl StateWriter {
+enum FromLogic {
+    State(crate::session::state::StateWrite),
+    Message(crate::session::logic::ToView),
+}
+
+impl LogicPort {
     /// False once the page is gone.
-    pub fn write(
+    pub fn write_state(
         &self,
         connection: ConnectionTicket,
         write: crate::session::state::StateWrite,
     ) -> bool {
-        (self.0)(connection, write)
+        (self.0)(connection, FromLogic::State(write))
+    }
+
+    /// False once the page is gone.
+    pub fn deliver(
+        &self,
+        connection: ConnectionTicket,
+        message: crate::session::logic::ToView,
+    ) -> bool {
+        (self.0)(connection, FromLogic::Message(message))
     }
 }
 
@@ -710,12 +722,20 @@ impl<A: PlatformAdapter> ViewHost<A> {
         self.inner.write_state(connection, write);
     }
 
-    /// A handle for [`Self::write_state`] that does not keep the page alive.
-    pub fn state_writer(&self) -> StateWriter {
+    /// Any thread: a typed Logic message, applied in order with state writes.
+    pub fn deliver(&self, connection: ConnectionTicket, message: crate::session::logic::ToView) {
+        self.inner.deliver_logic(connection, message);
+    }
+
+    /// A handle for [`Self::write_state`] and [`Self::deliver`] that does not keep the page alive.
+    pub fn logic_port(&self) -> LogicPort {
         let host = self.downgrade();
-        StateWriter(Arc::new(move |connection, write| {
+        LogicPort(Arc::new(move |connection, from| {
             host.upgrade()
-                .map(|host| host.write_state(connection, write))
+                .map(|host| match from {
+                    FromLogic::State(write) => host.write_state(connection, write),
+                    FromLogic::Message(message) => host.deliver(connection, message),
+                })
                 .is_some()
         }))
     }

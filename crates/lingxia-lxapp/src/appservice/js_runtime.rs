@@ -439,12 +439,12 @@ fn reply_to_view_req(
     work_id: Option<bridge::SessionWorkId>,
     outbound: Option<&bridge::OutboundContext>,
     id: String,
-    result: Result<String, bridge::RpcError>,
+    result: Result<bridge::Payload, bridge::RpcError>,
 ) {
     let bridge = page_svc.bridge();
     let (sent, canceled) = match result {
-        Ok(json) => (
-            bridge.send_res_ok_for_context(page_svc, work_id, outbound, id, json),
+        Ok(result) => (
+            bridge.send_res_ok_for_context(page_svc, work_id, outbound, id, result),
             false,
         ),
         Err(err) => {
@@ -513,7 +513,7 @@ async fn handle_bridge_source(
                     work_id,
                     outbound.as_ref(),
                     id,
-                    snapshot,
+                    bridge::Payload::Json(snapshot),
                 )?,
                 Err(err) => bridge.send_res_err_for_context(
                     page_svc,
@@ -559,20 +559,15 @@ async fn handle_bridge_source(
             context_lifecycle::spawn(&ctx, move |_ctx| async move {
                 bridge::probe::record(
                     bridge::probe::Probe::EventHandler,
-                    outbound.as_ref().is_some_and(bridge::OutboundContext::is_gpu),
+                    outbound
+                        .as_ref()
+                        .is_some_and(bridge::OutboundContext::is_gpu),
                     sent_us,
                 );
                 let result = page::with_document_callback_work(
                     work_id,
                     outbound.clone(),
-                    page_svc.handle_req(
-                        work_id,
-                        outbound.clone(),
-                        &id,
-                        &method,
-                        params,
-                        cancel_rx,
-                    ),
+                    page_svc.handle_req(work_id, outbound.clone(), &id, &method, params, cancel_rx),
                 )
                 .await;
                 drop(pending_request);
@@ -606,13 +601,7 @@ async fn handle_bridge_source(
             }
             let bridge = page_svc.bridge();
             match page_svc
-                .handle_ch_open(
-                    work_id,
-                    outbound.clone(),
-                    &id,
-                    &topic,
-                    params,
-                )
+                .handle_ch_open(work_id, outbound.clone(), &id, &topic, params)
                 .await
             {
                 Ok(result_rx) => {

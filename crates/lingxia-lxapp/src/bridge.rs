@@ -155,6 +155,14 @@ impl Payload {
             Self::Tree(value) => value.is_null(),
         }
     }
+
+    /// For a GPU View: JSON text (a host route's result) is parsed only here.
+    fn into_tree(self) -> Result<Value, LxAppError> {
+        match self {
+            Self::Json(json) => Ok(serde_json::from_str(&json)?),
+            Self::Tree(value) => Ok(value),
+        }
+    }
 }
 
 // AppServiceBackend — trait to decouple bridge routing from the JS runtime executor
@@ -328,6 +336,11 @@ pub(crate) enum OutboundContext {
     },
 }
 
+/// The outbound context when it is a GPU View's.
+fn gpu(outbound: Option<&OutboundContext>) -> Option<&OutboundContext> {
+    outbound.filter(|outbound| outbound.is_gpu())
+}
+
 impl OutboundContext {
     pub(crate) fn is_gpu(&self) -> bool {
         matches!(self, Self::Gpu { .. })
@@ -348,6 +361,23 @@ impl OutboundContext {
             .upgrade()
             .ok_or_else(|| LxAppError::Bridge("GPU endpoint was disposed".into()))?;
         endpoint.write_state(*generation, write)
+    }
+
+    /// Everything else a GPU View takes from Logic, typed.
+    fn post_gpu(&self, message: crate::GpuViewMessage) -> Result<(), LxAppError> {
+        let Self::Gpu {
+            endpoint,
+            generation,
+        } = self
+        else {
+            return Err(LxAppError::Bridge(
+                "typed messages are only for GPU pages".into(),
+            ));
+        };
+        let endpoint = endpoint
+            .upgrade()
+            .ok_or_else(|| LxAppError::Bridge("GPU endpoint was disposed".into()))?;
+        endpoint.deliver(*generation, message)
     }
 
     fn binding(&self) -> Option<&V3OutboundBinding> {
@@ -2219,10 +2249,18 @@ impl PageBridge {
         work_id: Option<SessionWorkId>,
         outbound: Option<&OutboundContext>,
         id: String,
-        result_json: String,
+        result: Payload,
     ) -> Result<(), LxAppError> {
-        let result =
-            RawValue::from_string(result_json).map_err(|e| LxAppError::Bridge(e.to_string()))?;
+        if let Some(outbound) = gpu(outbound) {
+            return self.post_gpu(work_id, outbound, || {
+                Ok(crate::GpuViewMessage::Reply {
+                    id,
+                    outcome: Ok(result.into_tree()?),
+                })
+            });
+        }
+        let result = RawValue::from_string(result.into_json())
+            .map_err(|e| LxAppError::Bridge(e.to_string()))?;
         let msg = Res {
             v: 2,
             kind: "res",
@@ -2244,6 +2282,19 @@ impl PageBridge {
         params: Option<Value>,
         cap: String,
     ) -> Result<(), LxAppError> {
+        if let Some(outbound) = gpu(outbound) {
+            let request =
+                crate::GpuViewRequest::from_call(&method, params).map_err(|(code, message)| {
+                    LxAppError::RongJSHost {
+                        code: code.into(),
+                        message,
+                        data: None,
+                    }
+                })?;
+            return self.post_gpu(work_id, outbound, || {
+                Ok(crate::GpuViewMessage::Request { id, request })
+            });
+        }
         let msg = ViewReqOut {
             v: 2,
             kind: "req",
@@ -2271,6 +2322,18 @@ impl PageBridge {
             .and_then(|v| v.as_u64())
             .map(|n| Value::Number(n.into()))
             .unwrap_or_else(|| Value::String(code.to_string()));
+        if let Some(outbound) = gpu(outbound) {
+            return self.post_gpu(work_id, outbound, || {
+                Ok(crate::GpuViewMessage::Reply {
+                    id,
+                    outcome: Err(crate::GpuBridgeError {
+                        code: wire_code,
+                        message,
+                        data,
+                    }),
+                })
+            });
+        }
 
         let msg = Res {
             v: 2,
@@ -2374,8 +2437,17 @@ impl PageBridge {
         outbound: Option<&OutboundContext>,
         id: impl Into<String>,
         seq: u64,
-        payload_json: String,
+        payload: Payload,
     ) -> Result<(), LxAppError> {
+        if let Some(outbound) = gpu(outbound) {
+            return self.post_gpu(work_id, outbound, || {
+                Ok(crate::GpuViewMessage::StreamEvent {
+                    id: id.into(),
+                    seq,
+                    payload: payload.into_tree()?,
+                })
+            });
+        }
         self.send_seq_frame_with_payload_for_context(
             transport,
             work_id,
@@ -2384,7 +2456,7 @@ impl PageBridge {
             "event",
             id.into(),
             seq,
-            &payload_json,
+            &payload.into_json(),
         )
     }
 
@@ -2395,6 +2467,14 @@ impl PageBridge {
         outbound: Option<&OutboundContext>,
         id: impl Into<String>,
     ) -> Result<(), LxAppError> {
+        if let Some(outbound) = gpu(outbound) {
+            return self.post_gpu(work_id, outbound, || {
+                Ok(crate::GpuViewMessage::ChannelAck {
+                    id: id.into(),
+                    outcome: Ok(()),
+                })
+            });
+        }
         let msg = ChAck {
             v: 2,
             kind: "ch.ack",
@@ -2415,6 +2495,18 @@ impl PageBridge {
         message: Option<String>,
         data: Option<Value>,
     ) -> Result<(), LxAppError> {
+        if let Some(outbound) = gpu(outbound) {
+            return self.post_gpu(work_id, outbound, || {
+                Ok(crate::GpuViewMessage::ChannelAck {
+                    id: id.into(),
+                    outcome: Err(crate::GpuBridgeError {
+                        code: Value::String(code.to_string()),
+                        message,
+                        data,
+                    }),
+                })
+            });
+        }
         let msg = ChAck {
             v: 2,
             kind: "ch.ack",
@@ -2436,8 +2528,17 @@ impl PageBridge {
         outbound: Option<&OutboundContext>,
         id: impl Into<String>,
         seq: u64,
-        payload_json: String,
+        payload: Payload,
     ) -> Result<(), LxAppError> {
+        if let Some(outbound) = gpu(outbound) {
+            return self.post_gpu(work_id, outbound, || {
+                Ok(crate::GpuViewMessage::ChannelData {
+                    id: id.into(),
+                    seq,
+                    payload: payload.into_tree()?,
+                })
+            });
+        }
         self.send_seq_frame_with_payload_for_context(
             transport,
             work_id,
@@ -2446,7 +2547,7 @@ impl PageBridge {
             "ch.data",
             id.into(),
             seq,
-            &payload_json,
+            &payload.into_json(),
         )
     }
 
@@ -2459,6 +2560,15 @@ impl PageBridge {
         code: Option<String>,
         reason: Option<String>,
     ) -> Result<(), LxAppError> {
+        if let Some(outbound) = gpu(outbound) {
+            return self.post_gpu(work_id, outbound, || {
+                Ok(crate::GpuViewMessage::ChannelClose {
+                    id: id.into(),
+                    code,
+                    reason,
+                })
+            });
+        }
         let msg = ChCloseOut {
             v: 2,
             kind: "ch.close",
@@ -2467,6 +2577,19 @@ impl PageBridge {
             reason,
         };
         self.send_json_for_context(transport, work_id, outbound, V3OutboundKind::ChClose, &msg)
+    }
+
+    /// A typed message for the current work's GPU View; `build` runs only for current work.
+    fn post_gpu(
+        &self,
+        work_id: Option<SessionWorkId>,
+        outbound: &OutboundContext,
+        build: impl FnOnce() -> Result<crate::GpuViewMessage, LxAppError>,
+    ) -> Result<(), LxAppError> {
+        if !self.is_current_work(work_id) {
+            return Ok(());
+        }
+        outbound.post_gpu(build()?)
     }
 
     fn send_json_for_context<T: ViewTransport, S: Serialize>(
@@ -2874,7 +2997,7 @@ impl PageBridge {
                                     task_outbound.as_ref(),
                                     task_id.clone(),
                                     seq,
-                                    payload_json,
+                                    Payload::Json(payload_json),
                                 ) {
                                     crate::warn!(
                                         "host channel '{}' data send failed: {}",
@@ -3058,7 +3181,7 @@ impl PageBridge {
                             Some(work_id),
                             task_outbound.as_ref(),
                             task_id.clone(),
-                            json,
+                            Payload::Json(json),
                         ),
                         Ok(HostOutput::Stream(stream)) => {
                             match bridge
@@ -3079,7 +3202,7 @@ impl PageBridge {
                                     Some(work_id),
                                     task_outbound.as_ref(),
                                     task_id.clone(),
-                                    json,
+                                    Payload::Json(json),
                                 ),
                                 Err(err) => bridge.send_res_err_for_context(
                                     &task_page,
@@ -3269,7 +3392,7 @@ impl PageBridge {
                         outbound,
                         stream_id.to_string(),
                         seq,
-                        payload_json,
+                        Payload::Json(payload_json),
                     )
                     .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())))?;
                     seq += 1;
@@ -3332,6 +3455,13 @@ mod tests {
                     .lock()
                     .unwrap()
                     .push((generation.get(), format!("{write:?}")));
+                Ok(())
+            }
+            fn deliver(
+                &self,
+                _: crate::GpuViewGeneration,
+                _: crate::GpuViewMessage,
+            ) -> Result<(), LxAppError> {
                 Ok(())
             }
             fn post_message_for_generation(

@@ -24,6 +24,17 @@ impl NativePage for Shell {
             .push(format!("receive {} {frame}", generation.get()));
         Ok(())
     }
+    fn deliver(
+        &self,
+        generation: GpuViewGeneration,
+        message: GpuViewMessage,
+    ) -> Result<(), LxAppError> {
+        self.0
+            .lock()
+            .unwrap()
+            .push(format!("deliver {} {message:?}", generation.get()));
+        Ok(())
+    }
     fn write_state(
         &self,
         generation: GpuViewGeneration,
@@ -252,6 +263,9 @@ impl NativePage for Acting {
         Ok(())
     }
     fn receive(&self, _: GpuViewGeneration, _: &str) -> Result<(), LxAppError> {
+        Ok(())
+    }
+    fn deliver(&self, _: GpuViewGeneration, _: GpuViewMessage) -> Result<(), LxAppError> {
         Ok(())
     }
     fn write_state(&self, _: GpuViewGeneration, _: GpuStateWrite) -> Result<(), LxAppError> {

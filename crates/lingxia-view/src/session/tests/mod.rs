@@ -685,12 +685,12 @@ fn engines_without_bounded_jobs_refuse_page_actions() {
             .is_err()
     );
     page.begin_bridge("nonce").unwrap();
-    page.receive_bridge(
+    page.receive_frame(
         &serde_json::json!({"v":2,"kind":"helloAck","nonce":"nonce","protocol":2,"sessionId":"s"}),
     )
     .unwrap();
     let error = page
-        .receive_bridge(&serde_json::json!({"v":2,"kind":"ready","sessionId":"s"}))
+        .receive_frame(&serde_json::json!({"v":2,"kind":"ready","sessionId":"s"}))
         .unwrap_err();
     assert!(error.contains("UI_ACTION"), "{error}");
 }
@@ -714,7 +714,7 @@ fn committed_channel_resource_opens_without_input_and_quiesces_after_redraw() {
     ) + "\nglobalThis.__lingxiaActionCatalog={__names:['ticker'],__modes:{ticker:'call'}};";
     let mut page = ViewSession::new_with_logic(&module, true).unwrap();
     page.begin_bridge("nonce").unwrap();
-    page.receive_bridge(
+    page.receive_frame(
         &json!({"v":2,"kind":"helloAck","nonce":"nonce","protocol":2,"sessionId":"session"}),
     )
     .unwrap();
@@ -722,7 +722,7 @@ fn committed_channel_resource_opens_without_input_and_quiesces_after_redraw() {
         &json!({"v":2,"kind":"state.snapshot","rev":0,"state":{}}),
     ))
     .unwrap();
-    page.receive_bridge(&json!({"v":2,"kind":"ready","sessionId":"session"}))
+    page.receive_frame(&json!({"v":2,"kind":"ready","sessionId":"session"}))
         .unwrap();
     assert!(page.take_action_requests().unwrap().is_empty());
     page.layout(300, 500, 1.0).unwrap();
@@ -731,9 +731,9 @@ fn committed_channel_resource_opens_without_input_and_quiesces_after_redraw() {
     let request: serde_json::Value = requests[0].frame();
     assert_eq!(request["kind"], "ch.open");
     assert!(page.has_local_updates().unwrap());
-    page.receive_bridge(&json!({"v":2,"kind":"ch.ack","id":request["id"],"ok":true}))
+    page.receive_frame(&json!({"v":2,"kind":"ch.ack","id":request["id"],"ok":true}))
         .unwrap();
-    page.receive_bridge(
+    page.receive_frame(
         &json!({"v":2,"kind":"ch.data","id":request["id"],"seq":0,"payload":"tick"}),
     )
     .unwrap();
@@ -757,7 +757,7 @@ fn stream_bridge_events_render_and_cancel_through_the_page_endpoint() {
     ) + "\nglobalThis.__lingxiaActionCatalog={__names:['watch'],__modes:{watch:'stream'}};";
     let mut page = ViewSession::new_with_logic(&module, true).unwrap();
     page.begin_bridge("nonce").unwrap();
-    page.receive_bridge(
+    page.receive_frame(
         &json!({"v":2,"kind":"helloAck","nonce":"nonce","protocol":2,"sessionId":"session"}),
     )
     .unwrap();
@@ -765,21 +765,21 @@ fn stream_bridge_events_render_and_cancel_through_the_page_endpoint() {
         &json!({"v":2,"kind":"state.snapshot","rev":0,"state":{}}),
     ))
     .unwrap();
-    page.receive_bridge(&json!({"v":2,"kind":"ready","sessionId":"session"}))
+    page.receive_frame(&json!({"v":2,"kind":"ready","sessionId":"session"}))
         .unwrap();
     let frame = page.layout(300, 500, 1.0).unwrap();
     page.click(page.generation(), frame.nodes[1].on_click.unwrap())
         .unwrap();
     let request: serde_json::Value = page.take_action_requests().unwrap()[0].frame();
     let event = json!({"v":2,"kind":"event","id":request["id"],"seq":0,"payload":"first"});
-    assert!(page.receive_bridge(&event).unwrap().changed);
+    assert!(page.receive_frame(&event).unwrap().changed);
     let frame = page.layout(300, 500, 1.0).unwrap();
     assert_eq!(frame.nodes[2].text, "first");
     page.click(page.generation(), frame.nodes[3].on_click.unwrap())
         .unwrap();
     let cancel: serde_json::Value = page.take_action_requests().unwrap()[0].frame();
     assert_eq!(cancel, json!({"v":2,"kind":"cancel","id":request["id"]}));
-    assert!(!page.receive_bridge(&event).unwrap().changed);
+    assert!(!page.receive_frame(&event).unwrap().changed);
 }
 
 #[test]
@@ -793,7 +793,7 @@ fn channel_bridge_opens_delivers_and_sends_on_the_bound_endpoint() {
     ) + "\nglobalThis.__lingxiaActionCatalog={__names:['ticker'],__modes:{ticker:'call'}};";
     let mut page = ViewSession::new_with_logic(&module, true).unwrap();
     page.begin_bridge("nonce").unwrap();
-    page.receive_bridge(
+    page.receive_frame(
         &json!({"v":2,"kind":"helloAck","nonce":"nonce","protocol":2,"sessionId":"session"}),
     )
     .unwrap();
@@ -801,17 +801,17 @@ fn channel_bridge_opens_delivers_and_sends_on_the_bound_endpoint() {
         &json!({"v":2,"kind":"state.snapshot","rev":0,"state":{}}),
     ))
     .unwrap();
-    page.receive_bridge(&json!({"v":2,"kind":"ready","sessionId":"session"}))
+    page.receive_frame(&json!({"v":2,"kind":"ready","sessionId":"session"}))
         .unwrap();
     let frame = page.layout(300, 500, 1.0).unwrap();
     page.click(page.generation(), frame.nodes[1].on_click.unwrap())
         .unwrap();
     let request: serde_json::Value = page.take_action_requests().unwrap()[0].frame();
     assert_eq!(request["kind"], "ch.open");
-    page.receive_bridge(&json!({"v":2,"kind":"ch.ack","id":request["id"],"ok":true}))
+    page.receive_frame(&json!({"v":2,"kind":"ch.ack","id":request["id"],"ok":true}))
         .unwrap();
     let message = json!({"v":2,"kind":"ch.data","id":request["id"],"seq":0,"payload":"first tick"});
-    page.receive_bridge(&message).unwrap();
+    page.receive_frame(&message).unwrap();
     assert_eq!(
         page.take_action_requests().unwrap()[0].frame(),
         json!({"v":2,"kind":"ch.data","id":request["id"],"payload":{"symbol":"MSFT"}})
@@ -822,7 +822,7 @@ fn channel_bridge_opens_delivers_and_sends_on_the_bound_endpoint() {
         .unwrap();
     let closed: serde_json::Value = page.take_action_requests().unwrap()[0].frame();
     assert_eq!(closed["kind"], "ch.close");
-    assert!(!page.receive_bridge(&message).unwrap().changed);
+    assert!(!page.receive_frame(&message).unwrap().changed);
 }
 
 #[test]
@@ -1518,13 +1518,13 @@ fn bridge_requires_ack_ready_and_state_then_roundtrips_actions() {
         json!({"v":2,"kind":"hello","nonce":"native-nonce","role":"view","protocolsSupported":[2]})
     );
     let ready = json!({"v":2,"kind":"ready","sessionId":"native-session"});
-    assert!(page.receive_bridge(&ready).is_err());
+    assert!(page.receive_frame(&ready).is_err());
     assert!(
-        page.receive_bridge(&json!({"v":3,"kind":"helloAck"}))
+        page.receive_frame(&json!({"v":3,"kind":"helloAck"}))
             .is_err()
     );
-    assert!(page.receive_bridge(&json!({"v":2,"kind":"helloAck","nonce":"wrong","protocol":2,"sessionId":"native-session"})).is_err());
-    page.receive_bridge(&json!({"v":2,"kind":"helloAck","nonce":"native-nonce","protocol":2,"sessionId":"native-session"})).unwrap();
+    assert!(page.receive_frame(&json!({"v":2,"kind":"helloAck","nonce":"wrong","protocol":2,"sessionId":"native-session"})).is_err());
+    page.receive_frame(&json!({"v":2,"kind":"helloAck","nonce":"native-nonce","protocol":2,"sessionId":"native-session"})).unwrap();
     let update = page
         .write_state(state_write(
             &json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"count":0}}),
@@ -1532,19 +1532,19 @@ fn bridge_requires_ack_ready_and_state_then_roundtrips_actions() {
         .unwrap();
     assert!(!update.changed);
     assert!(page.layout(300, 500, 1.0).is_err());
-    assert!(page.receive_bridge(&ready).unwrap().changed);
+    assert!(page.receive_frame(&ready).unwrap().changed);
     let frame = page.layout(300, 500, 1.0).unwrap();
     page.click(page.generation(), frame.nodes[0].on_click.unwrap())
         .unwrap();
     let request: serde_json::Value = page.take_action_requests().unwrap()[0].frame();
     let response = json!({"v":2,"kind":"res","id":request["id"],"ok":true,"result":"done"});
-    assert!(page.receive_bridge(&response).unwrap().changed);
+    assert!(page.receive_frame(&response).unwrap().changed);
     let patch = json!({"v":2,"kind":"state.patch","baseRev":0,"rev":1,"ack":true,"ops":[{"op":"replace","path":"/count","value":1}]});
     assert_eq!(page.write_state(state_write(&patch)).unwrap().ack, Some(1));
     assert_eq!(page.layout(300, 500, 1.0).unwrap().nodes[0].text, "1/done");
     page.begin_bridge("replacement").unwrap();
     assert!(!page.ready_to_render());
-    assert!(page.receive_bridge(&response).is_err());
+    assert!(page.receive_frame(&response).is_err());
 }
 
 #[test]

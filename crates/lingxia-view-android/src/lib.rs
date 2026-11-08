@@ -8,7 +8,7 @@ use jni::sys::{jboolean, jdouble, jfloat, jint, jlong};
 use jni::{Env, EnvUnowned, JValue, jni_sig, jni_str};
 use lingxia_view::interaction::view::{AccessibilityAction, Key, Pointer, PointerPhase};
 use lingxia_view::platform::Task;
-use lingxia_view::session::host::{CaretState, StateWriter, ViewHost, ViewWorker};
+use lingxia_view::session::host::{CaretState, LogicPort, ViewHost, ViewWorker};
 use lingxia_view::session::lifecycle::ConnectionTicket;
 use lingxia_view::session::state::StateWrite;
 
@@ -216,18 +216,24 @@ pub extern "system" fn Java_com_lingxia_view_GpuView_initializeNative<'a>(
     run(&mut env, |env| Ok(register_natives(env, &class)?));
 }
 
-/// Hosts by owner token, for Logic state writes that never cross JNI.
-fn writers() -> std::sync::MutexGuard<'static, std::collections::HashMap<jlong, StateWriter>> {
-    static WRITERS: std::sync::LazyLock<
-        std::sync::Mutex<std::collections::HashMap<jlong, StateWriter>>,
+/// Hosts by owner token, for Logic state and messages that never cross JNI.
+fn ports() -> std::sync::MutexGuard<'static, std::collections::HashMap<jlong, LogicPort>> {
+    static PORTS: std::sync::LazyLock<
+        std::sync::Mutex<std::collections::HashMap<jlong, LogicPort>>,
     > = std::sync::LazyLock::new(Default::default);
-    WRITERS.lock().unwrap_or_else(|p| p.into_inner())
+    PORTS.lock().unwrap_or_else(|p| p.into_inner())
 }
 
 /// Any thread: a typed Logic state write for the page `owner` names; false when it has no host.
 pub fn write_state(owner: i64, connection: u64, write: StateWrite) -> bool {
-    let writer = writers().get(&owner).cloned();
-    writer.is_some_and(|writer| writer.write(ConnectionTicket::new(connection), write))
+    let port = ports().get(&owner).cloned();
+    port.is_some_and(|port| port.write_state(ConnectionTicket::new(connection), write))
+}
+
+/// Any thread: a typed Logic message for the page `owner` names; false when it has no host.
+pub fn deliver(owner: i64, connection: u64, message: lingxia_view::session::logic::ToView) -> bool {
+    let port = ports().get(&owner).cloned();
+    port.is_some_and(|port| port.deliver(ConnectionTicket::new(connection), message))
 }
 
 extern "system" fn host_create<'a>(
@@ -245,7 +251,7 @@ extern "system" fn host_create<'a>(
         let host = ViewHost::new(AndroidAdapter::new(platform, image_owner), worker, logic);
         let _ = host.adapter().host.set(host.downgrade());
         if image_owner != 0 {
-            writers().insert(image_owner, host.state_writer());
+            ports().insert(image_owner, host.logic_port());
         }
         Ok(Box::into_raw(Box::new(host)) as jlong)
     })
@@ -263,7 +269,7 @@ extern "system" fn host_release<'a>(mut env: EnvUnowned<'a>, _: JClass<'a>, hand
         }
         // SAFETY: created by `host_create` and released exactly once by Java.
         let host = unsafe { Box::from_raw(handle as *mut Host) };
-        writers().remove(&host.adapter().owner);
+        ports().remove(&host.adapter().owner);
         host.dispose();
         #[cfg(all(feature = "gpu", target_os = "android"))]
         {

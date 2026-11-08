@@ -7,8 +7,12 @@ use lingxia_view_apple::lingxia_view;
 use lingxia_view_harmony::lingxia_view;
 
 pub(crate) use lingxia_view::session::logic::ToLogic;
+use lingxia_view::session::logic::{BridgeError, ToView, UiRequest, ViewRequest};
 use lingxia_view::session::state::{PatchOp, StateSignal, StateWrite};
-use lxapp::{GpuBridgeError, GpuPatchOp, GpuStateSignal, GpuStateWrite, GpuViewEvent};
+use lxapp::{
+    GpuBridgeError, GpuPatchOp, GpuStateSignal, GpuStateWrite, GpuUiRequest, GpuViewEvent,
+    GpuViewMessage, GpuViewRequest,
+};
 
 pub(crate) fn to_view(write: GpuStateWrite) -> StateWrite {
     match write {
@@ -63,6 +67,62 @@ pub(crate) fn event_from_view(message: ToLogic) -> GpuViewEvent {
                 message: error.message,
                 data: error.data,
             }),
+        },
+    }
+}
+
+fn error_to_view(error: GpuBridgeError) -> BridgeError {
+    BridgeError {
+        code: error.code,
+        message: error.message,
+        data: error.data,
+    }
+}
+
+pub(crate) fn message_to_view(message: GpuViewMessage) -> ToView {
+    match message {
+        GpuViewMessage::Reply { id, outcome } => ToView::Reply {
+            id,
+            outcome: outcome.map_err(error_to_view),
+        },
+        GpuViewMessage::StreamEvent { id, seq, payload } => {
+            ToView::StreamEvent { id, seq, payload }
+        }
+        GpuViewMessage::ChannelAck { id, outcome } => ToView::ChannelAck {
+            id,
+            outcome: outcome.map_err(error_to_view),
+        },
+        GpuViewMessage::ChannelData { id, seq, payload } => {
+            ToView::ChannelData { id, seq, payload }
+        }
+        GpuViewMessage::ChannelClose { id, code, reason } => {
+            ToView::ChannelClose { id, code, reason }
+        }
+        GpuViewMessage::Request { id, request } => ToView::Request {
+            id,
+            request: match request {
+                GpuViewRequest::Ui(request) => ViewRequest::Ui(match request {
+                    GpuUiRequest::ShowToast(toast) => UiRequest::ShowToast {
+                        title: toast.title,
+                        icon: toast.icon,
+                        duration: toast.duration,
+                        mask: toast.mask,
+                        position: toast.position,
+                    },
+                    GpuUiRequest::HideToast => UiRequest::HideToast,
+                    GpuUiRequest::ShowModal(modal) => UiRequest::ShowModal {
+                        title: modal.title,
+                        content: modal.content,
+                        show_cancel: modal.show_cancel,
+                        cancel_text: modal.cancel_text,
+                        confirm_text: modal.confirm_text,
+                    },
+                    GpuUiRequest::ShowActionSheet(sheet) => UiRequest::ShowActionSheet {
+                        items: sheet.item_list,
+                        cancel_text: sheet.cancel_text,
+                    },
+                }),
+            },
         },
     }
 }

@@ -1181,8 +1181,8 @@
   var ENTER_MS = 200;
   var reply = (id, ok, payload) => ok ? { kind: "res", id, ok: true, result: payload ?? null } : { kind: "res", id, ok: false, error: payload };
   var text = (value, fallback = "") => typeof value === "string" ? value.slice(0, 4096) : fallback;
-  function viewRequest(frame) {
-    const { id, method } = frame, params = frame.params ?? {};
+  function viewCall(call) {
+    const { id, method } = call, params = call.params ?? {};
     const replies = [];
     let changed2 = false;
     switch (method) {
@@ -1228,6 +1228,10 @@
       default:
         replies.push(reply(id, false, { code: "E_UNSUPPORTED", message: `${String(method)} is not served by a GPU View` }));
     }
+    return { changed: changed2, replies };
+  }
+  function viewRequest(frame) {
+    const { changed: changed2, replies } = viewCall(frame);
     return JSON.stringify({ changed: changed2, replies: replies.map((r) => JSON.stringify({ v: 2, ...r })) });
   }
   function overlayTimer(token) {
@@ -4822,6 +4826,7 @@
       __lingxiaAutomationAction: automationAction,
       __lingxiaTakeAutomationResults: takeAutomationResults,
       __lingxiaViewRequest: viewRequest,
+      __lingxiaViewCall: viewCall,
       __lingxiaOverlayTimer: overlayTimer,
       __lingxiaTakeOverlayTimers: takeOverlayTimers,
       __lingxiaEscape: escapeOverlay,

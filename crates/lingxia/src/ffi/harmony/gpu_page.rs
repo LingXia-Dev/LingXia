@@ -210,7 +210,7 @@ impl Shell for Bridge {
 
 struct HarmonyPage {
     token: Token,
-    writer: lingxia_view_harmony::lingxia_view::session::host::StateWriter,
+    port: lingxia_view_harmony::lingxia_view::session::host::LogicPort,
 }
 
 impl NativePage for HarmonyPage {
@@ -236,12 +236,23 @@ impl NativePage for HarmonyPage {
         });
         Ok(())
     }
+    fn deliver(
+        &self,
+        generation: GpuViewGeneration,
+        message: lxapp::GpuViewMessage,
+    ) -> std::result::Result<(), LxAppError> {
+        self.port.deliver(
+            ConnectionTicket::new(generation.get()),
+            gpu_page::state::message_to_view(message),
+        );
+        Ok(())
+    }
     fn write_state(
         &self,
         generation: GpuViewGeneration,
         write: lxapp::GpuStateWrite,
     ) -> std::result::Result<(), LxAppError> {
-        self.writer.write(
+        self.port.write_state(
             ConnectionTicket::new(generation.get()),
             gpu_page::state::to_view(write),
         );
@@ -346,14 +357,14 @@ impl NativeFactory for Factory {
             arkts(token, "create", &describe);
             let created = Page::new(token, Arc::new(Bridge), &request.worker, request.logic)
                 .and_then(|page| {
-                    let writer = page
+                    let port = page
                         .with_host(|host| {
                             host.load(request.source);
-                            host.state_writer()
+                            host.logic_port()
                         })
                         .ok_or_else(|| "GPU page has no host".to_string())?;
                     PAGES.with(|pages| pages.borrow_mut().insert(token, page));
-                    Ok(Arc::new(HarmonyPage { token, writer }) as Arc<dyn NativePage>)
+                    Ok(Arc::new(HarmonyPage { token, port }) as Arc<dyn NativePage>)
                 });
             if created.is_err() {
                 arkts(token, "dispose", "");

@@ -5075,6 +5075,17 @@ mod manifest_reload_tests {
         fn post_message(&self, _: &str) -> Result<(), LxAppError> {
             Ok(())
         }
+        fn deliver(
+            &self,
+            generation: crate::GpuViewGeneration,
+            message: crate::GpuViewMessage,
+        ) -> Result<(), LxAppError> {
+            self.1
+                .lock()
+                .unwrap()
+                .push((generation, format!("{message:?}")));
+            Ok(())
+        }
         fn post_message_for_generation(
             &self,
             generation: crate::GpuViewGeneration,
@@ -5223,25 +5234,39 @@ mod manifest_reload_tests {
             page.handle_incoming_gpu_message(&endpoint, generation, &hello)
                 .is_err()
         );
-        page.handle_incoming_gpu_message(
+        page.gpu_view_event(
             &endpoint,
             generation,
-            r#"{"v":2,"kind":"req","id":"forbidden","method":"host.anything","cap":"host"}"#,
+            crate::GpuViewEvent::Call {
+                id: "forbidden".into(),
+                method: "host.anything".into(),
+                params: None,
+                sent_us: 0,
+            },
         )
         .unwrap();
-        let denied: serde_json::Value =
-            serde_json::from_str(&concrete.1.lock().unwrap().last().unwrap().1).unwrap();
-        assert_eq!(denied["id"], "forbidden");
-        assert_eq!(denied["error"]["code"], "E_PERMISSION_DENIED");
-        assert!(denied.get("sessionId").is_none());
-        for (topic, cap) in [("host.terminal", "host"), ("other.topic", "other")] {
-            let frame = serde_json::json!({"v":2,"kind":"ch.open","id":"channel-forbidden","topic":topic,"cap":cap});
-            page.handle_incoming_gpu_message(&endpoint, generation, &frame.to_string())
-                .unwrap();
-            let denied: serde_json::Value =
-                serde_json::from_str(&concrete.1.lock().unwrap().last().unwrap().1).unwrap();
-            assert_eq!(denied["kind"], "ch.ack");
-            assert_eq!(denied["error"]["code"], "E_PERMISSION_DENIED");
+        let denied = concrete.1.lock().unwrap().last().unwrap().1.clone();
+        assert!(
+            denied.starts_with(r#"Reply { id: "forbidden", outcome: Err("#)
+                && denied.contains("E_PERMISSION_DENIED"),
+            "{denied}"
+        );
+        for topic in ["host.terminal", "other.topic"] {
+            page.gpu_view_event(
+                &endpoint,
+                generation,
+                crate::GpuViewEvent::ChannelOpen {
+                    id: "channel-forbidden".into(),
+                    topic: topic.into(),
+                    params: None,
+                },
+            )
+            .unwrap();
+            let denied = concrete.1.lock().unwrap().last().unwrap().1.clone();
+            assert!(
+                denied.starts_with("ChannelAck") && denied.contains("E_PERMISSION_DENIED"),
+                "{denied}"
+            );
         }
         page.detach_webview();
     }
@@ -5510,6 +5535,13 @@ mod manifest_reload_tests {
             impl GpuPageView for Endpoint {
                 fn post_message(&self, message: &str) -> Result<(), LxAppError> {
                     self.0.lock().unwrap().push(message.into());
+                    Ok(())
+                }
+                fn deliver(
+                    &self,
+                    _: crate::GpuViewGeneration,
+                    _: crate::GpuViewMessage,
+                ) -> Result<(), LxAppError> {
                     Ok(())
                 }
                 fn post_message_for_generation(

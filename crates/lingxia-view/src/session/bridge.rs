@@ -81,48 +81,66 @@ impl ViewSession {
             _ if bridge.session.is_none() || frame.get("sessionId").is_some() => {
                 Err("UI_BRIDGE: frame outside acknowledged LegacyV2 connection".into())
             }
-            "res" | "event" | "ch.ack" | "ch.data" | "ch.close" => {
-                let changed = self.receive_action_response(frame)?;
-                Ok(crate::session::state::StateUpdate {
-                    changed: changed && self.ready_to_render(),
-                    ..Default::default()
-                })
-            }
-            // A Logic call into the View (`call_view`): the overlays answer `ui.*`; any other
-            // method is refused at once, so Logic never waits on a GPU page.
-            "req" => {
-                let json = serde_json::to_string(&frame.to_string()).map_err(|e| e.to_string())?;
-                let answer: String = self.execute(|| {
-                    self.context
-                        .eval(Source::from_bytes(
-                            format!("__lingxiaViewRequest(JSON.parse({json}))").as_bytes(),
-                        ))
-                        .map_err(|e| e.to_string())
-                })?;
-                let answer: serde_json::Value =
-                    serde_json::from_str(&answer).map_err(|e| e.to_string())?;
-                let changed = answer["changed"] == true && self.ready_to_render();
-                let outbound = match answer {
-                    serde_json::Value::Object(mut answer) => match answer.remove("replies") {
-                        Some(serde_json::Value::Array(replies)) => replies,
-                        _ => Vec::new(),
-                    },
-                    _ => Vec::new(),
-                }
-                .into_iter()
-                .filter_map(|reply| match reply {
-                    serde_json::Value::String(reply) => serde_json::from_str(&reply).ok(),
-                    reply => Some(reply),
-                })
-                .map(crate::session::logic::ToLogic::from_reply)
-                .collect::<Result<_, _>>()?;
-                Ok(crate::session::state::StateUpdate {
-                    changed,
-                    outbound,
-                    ..Default::default()
-                })
-            }
             _ => Err("UI_BRIDGE: unsupported frame".into()),
+        }
+    }
+
+    /// A typed message from Logic for this acknowledged connection: a reply, stream or channel
+    /// message for the runtime, or a request the overlays answer.
+    pub fn receive_logic(
+        &mut self,
+        message: crate::session::logic::ToView,
+    ) -> Result<crate::session::state::StateUpdate, String> {
+        use crate::session::logic::{ToLogic, ToView};
+        if self
+            .bridge
+            .as_ref()
+            .is_none_or(|bridge| bridge.session.is_none())
+        {
+            return Err("UI_BRIDGE: message outside an acknowledged connection".into());
+        }
+        let (changed, outbound) = self.execute(|| {
+            let ctx = &self.context;
+            let global = ctx.global();
+            let fail = |e: rong::RongJSError| crate::engine::js_error(ctx, e);
+            if let ToView::Request { id, request } = &message {
+                let call = request.to_js(ctx, id).map_err(fail)?;
+                let answer: rong::quickjs::JSObject = global
+                    .get::<_, rong::quickjs::JSFunc>("__lingxiaViewCall")
+                    .and_then(|handler| handler.call(None, (call,)))
+                    .map_err(fail)?;
+                let changed = answer.get::<_, bool>("changed").map_err(fail)?;
+                let replies: rong::quickjs::JSArray = answer.get("replies").map_err(fail)?;
+                let replies = (0..replies.len().map_err(fail)?)
+                    .map(|index| replies.get_value(index).and_then(ToLogic::from_js))
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(fail)?;
+                return Ok((changed, replies));
+            }
+            let frame = message.to_js(ctx).map_err(fail)?;
+            let changed = global
+                .get::<_, rong::quickjs::JSFunc>("__lingxiaReceiveActionResponse")
+                .and_then(|receive| receive.call::<_, bool>(None, (frame,)))
+                .map_err(fail)?;
+            Ok((changed, Vec::new()))
+        })?;
+        Ok(crate::session::state::StateUpdate {
+            changed: changed && self.ready_to_render(),
+            outbound,
+            ..Default::default()
+        })
+    }
+
+    /// A handshake frame, or a Logic message written as its frame.
+    #[cfg(test)]
+    pub(crate) fn receive_frame(
+        &mut self,
+        frame: &serde_json::Value,
+    ) -> Result<crate::session::state::StateUpdate, String> {
+        if matches!(frame["kind"].as_str(), Some("helloAck" | "ready")) || frame["v"] != 2 {
+            self.receive_bridge(frame)
+        } else {
+            self.receive_logic(crate::session::logic::ToView::from_frame(frame))
         }
     }
 
@@ -340,13 +358,14 @@ impl ViewSession {
     }
 
     pub fn receive_action_response(&self, frame: &serde_json::Value) -> Result<bool, String> {
-        let json = serde_json::to_string(&frame.to_string()).map_err(|e| e.to_string())?;
         self.execute(|| {
-            self.context
-                .eval(Source::from_bytes(
-                    format!("__lingxiaReceiveActionResponse(JSON.parse({json}))").as_bytes(),
-                ))
-                .map_err(|e| e.to_string())
+            let ctx = &self.context;
+            let fail = |e: rong::RongJSError| crate::engine::js_error(ctx, e);
+            let frame = crate::session::js_tree::to_js(ctx, frame).map_err(fail)?;
+            ctx.global()
+                .get::<_, rong::quickjs::JSFunc>("__lingxiaReceiveActionResponse")
+                .and_then(|receive| receive.call::<_, bool>(None, (frame,)))
+                .map_err(fail)
         })
     }
 }

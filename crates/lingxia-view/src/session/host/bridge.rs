@@ -216,6 +216,17 @@ impl<A: PlatformAdapter> Inner<A> {
         });
     }
 
+    pub(super) fn deliver_logic(
+        self: &Arc<Self>,
+        connection: ConnectionTicket,
+        message: crate::session::logic::ToView,
+    ) {
+        self.bridge_step(connection, move |inner, session| {
+            let state = session.receive_logic(message)?;
+            update(inner, session, state)
+        });
+    }
+
     /// A state write skips the action queues: it runs no View code.
     pub(super) fn write_state(self: &Arc<Self>, connection: ConnectionTicket, write: StateWrite) {
         let sent = crate::session::probe::now_us();

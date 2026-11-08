@@ -1,6 +1,6 @@
-//! View isolate values to owned trees for Logic: walked through the engine, never serialized.
-use rong::quickjs::{JSArray, JSFunc, JSValue};
-use rong::{JSResult, error::HostError};
+//! View isolate values to and from owned trees for Logic: walked through the engine, never serialized.
+use rong::quickjs::{JSArray, JSContext, JSFunc, JSObject, JSValue, PropertyDescriptor};
+use rong::{IntoJSValue, JSResult, error::HostError};
 use serde_json::{Map, Number, Value};
 
 const MAX_DEPTH: usize = 128;
@@ -68,4 +68,45 @@ pub(crate) fn number_value(number: f64) -> Value {
     } else {
         Number::from_f64(number).map_or(Value::Null, Value::Number)
     }
+}
+
+/// Build the JS value for `value` in `ctx`.
+pub(crate) fn to_js(ctx: &JSContext, value: &Value) -> JSResult<JSValue> {
+    build(ctx, value, 0)
+}
+
+fn build(ctx: &JSContext, value: &Value, depth: usize) -> JSResult<JSValue> {
+    if depth > MAX_DEPTH {
+        return Err(too_deep());
+    }
+    Ok(match value {
+        Value::Null => JSValue::null(ctx),
+        Value::Bool(value) => (*value).into_js_value(ctx),
+        Value::Number(number) => number.as_f64().unwrap_or(f64::NAN).into_js_value(ctx),
+        Value::String(value) => value.as_str().into_js_value(ctx),
+        Value::Array(items) => {
+            let array = JSArray::new(ctx)?;
+            for (index, item) in items.iter().enumerate() {
+                array.set_value(index as u32, build(ctx, item, depth + 1)?)?;
+            }
+            array.into_js_value(ctx)
+        }
+        Value::Object(map) => {
+            let object = JSObject::new(ctx);
+            for (key, item) in map {
+                let item = build(ctx, item, depth + 1)?;
+                if key == "__proto__" {
+                    // An own property, as JSON.parse makes it; a plain set would replace the prototype.
+                    let own = PropertyDescriptor::from_value(item)
+                        .writable()
+                        .enumerable()
+                        .configurable();
+                    object.define_property(key.as_str(), own)?;
+                } else {
+                    object.set(key.as_str(), item)?;
+                }
+            }
+            object.into_js_value()
+        }
+    })
 }
