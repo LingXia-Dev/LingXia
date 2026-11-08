@@ -215,6 +215,23 @@ opt-level = 2
 opt-level = 2
 [profile.dev.package.serde_json]
 opt-level = 2
+[profile.dev.package.color]
+opt-level = 2
+[profile.dev.package.guillotiere]
+opt-level = 2
+[profile.dev.package.bytemuck]
+opt-level = 2
+[profile.dev.package.smallvec]
+opt-level = 2
+[profile.dev.package.lingxia-view-harmony]
+opt-level = 2
+# wgpu's GLES backend (Harmony, Android fallback) sends every call through these.
+[profile.dev.package.glow]
+opt-level = 2
+[profile.dev.package.khronos-egl]
+opt-level = 2
+[profile.dev.package.wgpu-types]
+opt-level = 2
 # wgpu's Metal backend sends every call through these.
 [profile.dev.package.objc2]
 opt-level = 2
