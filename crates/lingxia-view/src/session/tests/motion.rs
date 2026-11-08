@@ -111,6 +111,64 @@ fn a_pressed_switch_paints_its_track_not_a_box() {
 }
 
 #[test]
+fn a_focused_switch_and_checkbox_ring_their_indicator_not_their_box() {
+    use crate::scene::paint::Paint;
+    let module = super::source(
+        "function render(){const on=useLocal('on',true);return h('page',{},h('switch',{'data-testid':'s',bind:on,'aria-label':'Wi-Fi'}),h('checkbox',{'data-testid':'c',bind:on},'Agree'))}",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    let display = page.layout(400, 200, 1.0).unwrap();
+    let focus = page.renderer.palette.role(lingxia_theme::Role::Focus);
+    let rings = |display: &crate::scene::display::DisplayList| -> Vec<([f32; 4], f32)> {
+        display
+            .commands
+            .iter()
+            .filter_map(|p| match p {
+                Paint::Border {
+                    color,
+                    bounds,
+                    radius,
+                    ..
+                } if *color == focus => Some((*bounds, *radius)),
+                _ => None,
+            })
+            .collect()
+    };
+    assert!(rings(&display).is_empty());
+    let node = |id: &str| {
+        display
+            .nodes
+            .iter()
+            .find(|n| n.test_id == id)
+            .unwrap()
+            .clone()
+    };
+    let (switch, checkbox) = (node("s"), node("c"));
+    assert!(
+        switch.focus_style && checkbox.focus_style,
+        "both ring themselves"
+    );
+    page.set_control_focus(Some(&switch.identity));
+    let [x, y, w, h] = switch.bounds;
+    // The track (52x32 at the inline end) grown by 4 on each side.
+    assert_eq!(
+        rings(&page.layout(400, 200, 1.0).unwrap()),
+        [(
+            [x + w - 12.0 - 52.0 - 4.0, y + h / 2.0 - 20.0, 60.0, 40.0],
+            20.0
+        )]
+    );
+    page.set_control_focus(Some(&checkbox.identity));
+    let [x, y, _, h] = checkbox.bounds;
+    let ring = rings(&page.layout(400, 200, 1.0).unwrap());
+    assert_eq!(ring.len(), 1);
+    assert_eq!(ring[0].0[2..], [32.0, 32.0], "the 24 px box grown by 4");
+    assert!(ring[0].0[0] > x - 4.0 && (ring[0].0[1] + 16.0 - (y + h / 2.0)).abs() < 1.0);
+    page.set_control_focus(None);
+    assert!(rings(&page.layout(400, 200, 1.0).unwrap()).is_empty());
+}
+
+#[test]
 fn group_pressed_paint_applies_to_the_pressed_controls_descendants() {
     let module = super::source(
         "function render(){return h('page',{},h('button',{'data-testid':'b',onClick(){},className:'group',style:{width:100,height:40,padding:0}},h('view',{'data-testid':'disc',className:'group-active:opacity-50',style:{width:20,height:20}})),h('view',{'data-testid':'outside',className:'group-active:opacity-50',style:{width:20,height:20}}))}",

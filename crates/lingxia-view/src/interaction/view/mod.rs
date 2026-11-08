@@ -131,6 +131,18 @@ impl ViewInteraction {
         (snapshot.focus_style.then(|| snapshot.identity.clone())).map(String::from)
     }
 
+    /// Whether `node` draws its own keyboard focus ring (around a switch, checkbox or radio
+    /// indicator), so the platform ring stays off.
+    pub fn rings_itself(&self, node: usize) -> bool {
+        self.frame
+            .as_ref()
+            .and_then(|frame| frame.nodes.get(node))
+            .is_some_and(|snapshot| {
+                snapshot.focus_style
+                    && matches!(snapshot.tag, "checkbox" | "switch" | "radio-option")
+            })
+    }
+
     /// Scroll and drag offsets to request with the next frame.
     pub fn offsets(&self) -> HashMap<String, f32> {
         let mut offsets = self.scroll.snapshot();

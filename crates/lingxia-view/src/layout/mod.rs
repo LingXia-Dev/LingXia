@@ -37,6 +37,8 @@ pub struct Renderer {
     pub(crate) palette: crate::theme::Palette,
     /// The pressed control: switches, checkboxes and radios paint their own press state.
     pub(crate) pressed: Option<String>,
+    /// The keyboard-focused control: switches, checkboxes and radios ring their own indicator.
+    pub(crate) focused: Option<String>,
     /// `@font-face` names this page declared, to the families their loaded files registered.
     pub(crate) font_faces: std::collections::HashMap<String, Vec<String>>,
     /// The layout tree of the last frame, whose cached boxes the next one starts from.
@@ -65,6 +67,7 @@ impl Default for Renderer {
             dark: false,
             palette: crate::theme::Palette::builtin(false),
             pressed: None,
+            focused: None,
             font_faces: Default::default(),
             layout_tree: None,
             ink_cache: HashMap::new(),

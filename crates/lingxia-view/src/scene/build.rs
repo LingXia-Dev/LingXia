@@ -65,6 +65,7 @@ impl Renderer {
         let press_layer =
             crate::interaction::chrome::FeedbackStyle::press_layer(&palette, self.dark);
         let pressed_identity = self.pressed.clone();
+        let focused_identity = self.focused.clone();
         let button_owners = &groups.owners;
         let button_hashes = &groups.content;
         let mut commands = Vec::new();
@@ -896,6 +897,24 @@ impl Renderer {
                         / 2.0;
                 let pressed = enabled
                     && pressed_identity.as_deref() == identities.get(index).map(String::as_str);
+                let focused = enabled
+                    && focused_identity.as_deref() == identities.get(index).map(String::as_str);
+                // The drawn indicator and its corner radius: press and focus follow its shape.
+                let indicator = if record.tag == tag::RADIO_OPTION {
+                    ([x + layout.padding.left, cy - 12.0, 24.0, 24.0], 12.0)
+                } else if record.tag == tag::CHECKBOX {
+                    ([x + layout.padding.left, cy - 12.0, 24.0, 24.0], 5.0)
+                } else {
+                    (
+                        [
+                            x + layout.size.width - layout.padding.right - 52.0,
+                            cy - 16.0,
+                            52.0,
+                            32.0,
+                        ],
+                        16.0,
+                    )
+                };
                 if record.tag == tag::RADIO_OPTION {
                     let cx = x + layout.padding.left;
                     commands.push(Paint::Rect {
@@ -989,6 +1008,18 @@ impl Renderer {
                             24.0,
                         ],
                         radius: 12.0,
+                    });
+                }
+                if focused {
+                    // A focus ring 2 px outside the indicator, as the platform rings other controls.
+                    let ([ix, iy, iw, ih], radius) = indicator;
+                    commands.push(Paint::Border {
+                        corners: None,
+                        color: palette.role(Role::Focus),
+                        bounds: [ix - 4.0, iy - 4.0, iw + 8.0, ih + 8.0],
+                        widths: [2.0; 4],
+                        radius: radius + 4.0,
+                        style: crate::scene::border::LineStyle::Solid,
                     });
                 }
             }
@@ -1107,6 +1138,11 @@ impl Renderer {
                 None => (bounds, visible_bounds),
             };
             ranges.push(paint_start..commands.len());
+            // Switches, checkboxes and radios paint press and focus on their indicator; a
+            // checkbox inside a button leaves both to the button.
+            let indicator_control =
+                matches!(record.tag, tag::CHECKBOX | tag::SWITCH | tag::RADIO_OPTION)
+                    && !(record.tag == tag::CHECKBOX && button_hashes.contains_key(&index));
             nodes.push(NodeSnapshot {
                 drag: record.string(field::DRAG).and_then(|source| {
                     drag_snapshot(source, record, [bounds[2], bounds[3]], directions[index])
@@ -1126,8 +1162,7 @@ impl Renderer {
                 clips_children: record.string(field::OVERFLOW) == Some("hidden"),
                 // Indicator controls paint their own press state instead of a box overlay.
                 pressed_style: group_pressed[index]
-                    || (matches!(record.tag, tag::CHECKBOX | tag::SWITCH | tag::RADIO_OPTION)
-                        && !(record.tag == tag::CHECKBOX && button_hashes.contains_key(&index)))
+                    || indicator_control
                     || record
                         .fields
                         .iter()
@@ -1136,11 +1171,13 @@ impl Renderer {
                     .fields
                     .iter()
                     .any(|(id, _)| *id == field::HOVER_STYLE),
-                focus_style: record.tag == tag::SELECT
+                // A select repaints its `focus:` delta; indicator controls ring their indicator.
+                focus_style: (record.tag == tag::SELECT
                     && record
                         .fields
                         .iter()
-                        .any(|(id, _)| *id == field::FOCUS_STYLE),
+                        .any(|(id, _)| *id == field::FOCUS_STYLE))
+                    || indicator_control,
                 order: 0,
                 radii: corners,
                 plot: plot_snapshot,
