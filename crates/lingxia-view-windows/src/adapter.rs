@@ -537,6 +537,13 @@ impl HostEvents for WindowsAdapter {
             .and_then(|host| host.upgrade())
             .map_or(0, |host| host.lifecycle().connection().get());
         self.shell.presented(self.token, connection);
+        let page = self.hwnd.load(Ordering::Acquire);
+        let (width, height, scale) = (u32::from(frame.width), u32::from(frame.height), frame.scale);
+        self.dispatcher.post(Box::new(move || {
+            if let Some(page) = crate::view::page_for(page) {
+                page.presented(width, height, scale);
+            }
+        }));
     }
     fn message(&self, connection: ConnectionTicket, message: &str) {
         self.shell.message(self.token, connection.get(), message);

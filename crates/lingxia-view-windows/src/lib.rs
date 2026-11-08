@@ -6,18 +6,18 @@ use lingxia_view::renderer::render_thread as render;
 use lingxia_view::session::host::{Failure, ViewHost, ViewWorker};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::sync::{Arc, Mutex, MutexGuard};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Gdi::{
-    DeleteObject, GetMonitorInfoW, HRGN, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
-    SetWindowRgn,
+    CreateRectRgn, DeleteObject, GetMonitorInfoW, HRGN, MONITOR_DEFAULTTONEAREST, MONITORINFO,
+    MonitorFromWindow, SetWindowRgn,
 };
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
 use windows::Win32::UI::WindowsAndMessaging::{
-    DestroyWindow, HWND_TOP, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-    SWP_NOZORDER, SetParent, SetWindowPos, ShowWindow,
+    DestroyWindow, GA_ROOT, GetAncestor, HWND_TOP, IsWindowVisible, SW_HIDE, SW_SHOWNOACTIVATE,
+    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SetParent, SetWindowPos, ShowWindow,
 };
 
 mod adapter;
@@ -96,6 +96,29 @@ pub enum Scheme {
     Dark,
 }
 
+/// Pages coming on screen over the pages they replace, clipped until they present. Each page
+/// has its own thread, so these are shared and a page hides itself on its own.
+static SETTLING: Mutex<Vec<isize>> = Mutex::new(Vec::new());
+/// Hidden pages left on screen until no page is settling, with their threads.
+static LEAVING: Mutex<Vec<(isize, Dispatcher)>> = Mutex::new(Vec::new());
+
+fn settling() -> MutexGuard<'static, Vec<isize>> {
+    SETTLING.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+fn leaving() -> MutexGuard<'static, Vec<(isize, Dispatcher)>> {
+    LEAVING.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// On `hwnd`'s thread: off screen unless shown again meanwhile.
+fn hide_left(hwnd: isize) {
+    if let Some(page) = view::page_for(hwnd)
+        && !page.visible.get()
+    {
+        page.show_window(false);
+    }
+}
+
 pub struct Page {
     host: ViewHost<WindowsAdapter>,
     hwnd: isize,
@@ -106,6 +129,17 @@ pub struct Page {
     /// A presenter is bound, or its attach is pending.
     attached: Cell<bool>,
     visible: Cell<bool>,
+    /// Shown clipped to one pixel until a frame of its geometry reaches the screen.
+    settling: Cell<bool>,
+    /// Size and corner radii from the host, device pixels.
+    shape: Cell<(i32, i32, [i32; 4])>,
+    /// Bumped to revoke a pending settle deadline.
+    settle_epoch: Cell<u64>,
+    /// Frames presented while settling.
+    settle_presents: Cell<u8>,
+    presented_once: Cell<bool>,
+    /// The parent a host moved this page to while it stayed on screen for its replacement.
+    parked: Cell<Option<isize>>,
     /// The window is gone (its host destroyed it).
     destroyed: Cell<bool>,
     presenter: Arc<Presenter>,
@@ -148,6 +182,12 @@ impl Page {
             scheme: Cell::new(scheme),
             attached: Cell::new(false),
             visible: Cell::new(true),
+            settling: Cell::new(false),
+            shape: Cell::new((0, 0, [0; 4])),
+            settle_epoch: Cell::new(0),
+            settle_presents: Cell::new(0),
+            presented_once: Cell::new(false),
+            parked: Cell::new(None),
             destroyed: Cell::new(false),
             presenter: Arc::new(Presenter {
                 alive: true.into(),
@@ -156,8 +196,10 @@ impl Page {
         });
         view::register(hwnd, &page);
         page.host.set_visible(true);
+        page.show_window(false);
         let (width, height) = view::client_size(parent);
         page.set_bounds(0, 0, width as i32, height as i32, [0; 4]);
+        page.arrive();
         Ok(page)
     }
 
@@ -176,6 +218,7 @@ impl Page {
     /// Position in the parent's client area, device pixels, clipped to corner radii
     /// `[top-left, top-right, bottom-right, bottom-left]`.
     pub fn set_bounds(&self, left: i32, top: i32, width: i32, height: i32, radii: [i32; 4]) {
+        self.shape.set((width, height, radii));
         // SAFETY: this thread's window.
         unsafe {
             let _ = SetWindowPos(
@@ -187,33 +230,185 @@ impl Page {
                 height.max(0),
                 SWP_NOZORDER | SWP_NOACTIVATE,
             );
-            // The window owns a region it is given.
-            let _ = SetWindowRgn(self.window(), corner_region(width, height, radii), true);
         }
+        self.apply_region();
         self.report();
+    }
+
+    /// The window's corners, or a single interior pixel while it settles: a window nothing of
+    /// which shows is occluded and never presents.
+    fn apply_region(&self) {
+        let (width, height, radii) = self.shape.get();
+        let region = if self.settling.get() {
+            let (x, y) = (width.max(1) / 2, height.max(1) / 2);
+            // SAFETY: a plain rectangular region, owned by the window once set.
+            Some(unsafe { CreateRectRgn(x, y, x + 1, y + 1) })
+        } else {
+            corner_region(width, height, radii)
+        };
+        // SAFETY: this thread's window, which owns a region it is given.
+        let _ = unsafe { SetWindowRgn(self.window(), region, true) };
     }
 
     pub fn set_visible(&self, visible: bool) {
         if self.visible.replace(visible) == visible {
             return;
         }
+        self.host.set_visible(visible);
+        if visible {
+            leaving().retain(|(page, _)| *page != self.hwnd);
+            if let Some(parent) = self.parked.take() {
+                self.set_parent(parent);
+            }
+            self.report();
+            // A page shown again before it left the screen needs no settling.
+            // SAFETY: this thread's window.
+            if !unsafe { IsWindowVisible(self.window()) }.as_bool() {
+                self.arrive();
+            }
+        } else {
+            self.settled();
+            self.leave();
+        }
+    }
+
+    fn show_window(&self, shown: bool) {
         // SAFETY: this thread's window.
         unsafe {
             let _ = ShowWindow(
                 self.window(),
-                if visible { SW_SHOWNOACTIVATE } else { SW_HIDE },
+                if shown { SW_SHOWNOACTIVATE } else { SW_HIDE },
             );
         }
-        self.host.set_visible(visible);
-        if visible {
-            self.report();
+        if !shown && let Some(parent) = self.parked.take() {
+            self.set_parent(parent);
         }
     }
 
+    /// Come on screen without a flash. A frame presented while hidden is lost on showing, so
+    /// the page shows clipped to one pixel, over the page it replaces, until a frame of its
+    /// present geometry reaches the screen.
+    fn arrive(&self) {
+        // Nothing shows in a hidden window, which never presents either.
+        // SAFETY: this thread's window and its top-level ancestor.
+        if !unsafe { IsWindowVisible(GetAncestor(self.window(), GA_ROOT)) }.as_bool() {
+            self.show_window(true);
+            return;
+        }
+        let mut queue = settling();
+        if !queue.contains(&self.hwnd) {
+            queue.push(self.hwnd);
+        }
+        drop(queue);
+        let epoch = self.settle_epoch.get() + 1;
+        self.settle_epoch.set(epoch);
+        self.settle_presents.set(0);
+        self.settling.set(true);
+        self.apply_region();
+        self.show_window(true);
+        self.host.redraw();
+        let wait = if self.presented_once.get() {
+            std::time::Duration::from_millis(300)
+        } else {
+            std::time::Duration::from_secs(2)
+        };
+        let hwnd = self.hwnd;
+        self.host.adapter().dispatcher.post_after(
+            wait,
+            Box::new(move || {
+                if let Some(page) = view::page_for(hwnd)
+                    && page.settle_epoch.get() == epoch
+                {
+                    log::warn!(target: "lingxia_view", "page shown before a frame of its geometry presented");
+                    page.settled();
+                }
+            }),
+        );
+    }
+
+    /// A `width`×`height` frame at `scale` reached the screen. While settling, only frames
+    /// for the window's present geometry count, and the first of those may have been drawn
+    /// hidden.
+    pub(crate) fn presented(&self, width: u32, height: u32, scale: f32) {
+        self.presented_once.set(true);
+        if !self.settling.get() || !self.visible.get() {
+            return;
+        }
+        let current = self
+            .host
+            .adapter()
+            .facts
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .as_ref()
+            .map(|facts| (facts.width, facts.height, facts.scale));
+        if current != Some((width, height, scale)) {
+            return;
+        }
+        let presents = self.settle_presents.get() + 1;
+        self.settle_presents.set(presents);
+        if presents < 2 {
+            self.host.redraw();
+        } else {
+            self.settled();
+        }
+    }
+
+    /// Settling ends: the whole page shows, and once no page settles, hidden pages leave.
+    fn settled(&self) {
+        self.settle_epoch.set(self.settle_epoch.get() + 1);
+        let done = {
+            let mut queue = settling();
+            queue.retain(|page| *page != self.hwnd);
+            queue.is_empty()
+        };
+        if !self.settling.replace(false) {
+            return;
+        }
+        self.apply_region();
+        if done {
+            let left = std::mem::take(&mut *leaving());
+            for (page, dispatcher) in left {
+                dispatcher.post(Box::new(move || hide_left(page)));
+            }
+        }
+    }
+
+    /// Leave the screen once no page settles over the place this one keeps. Hosts show the
+    /// page replacing this one before or shortly after hiding it, so a page that never comes
+    /// is not waited for long.
+    fn leave(&self) {
+        let hwnd = self.hwnd;
+        let dispatcher = self.host.adapter().dispatcher;
+        leaving().push((hwnd, dispatcher));
+        dispatcher.post_after(
+            std::time::Duration::from_millis(150),
+            Box::new(move || {
+                if settling().is_empty() {
+                    leaving().retain(|(page, _)| *page != hwnd);
+                    hide_left(hwnd);
+                }
+            }),
+        );
+    }
+
     pub fn set_parent(&self, parent: isize) {
+        // A hidden page still on screen for the page replacing it is parked once it leaves.
+        // SAFETY: this thread's window.
+        if !self.visible.get() && unsafe { IsWindowVisible(self.window()) }.as_bool() {
+            self.parked.set(Some(parent));
+            return;
+        }
+        self.parked.set(None);
         // SAFETY: this thread's window into a live host window.
-        let _ = unsafe { SetParent(self.window(), Some(HWND(parent as *mut _))) };
+        let previous = unsafe { SetParent(self.window(), Some(HWND(parent as *mut _))) };
         self.report();
+        // A page moved on screen shows what it drew for its old parent until it presents anew.
+        let moved = previous.is_ok_and(|previous| previous.0 as isize != parent);
+        // SAFETY: this thread's window.
+        if moved && self.visible.get() && unsafe { IsWindowVisible(self.window()) }.as_bool() {
+            self.arrive();
+        }
     }
 
     pub fn bring_to_front(&self) {
@@ -341,6 +536,8 @@ impl Page {
             resized
         };
         if resized {
+            // A settling page waits for frames of its new geometry.
+            self.settle_presents.set(0);
             self.host.surface_changed();
         } else {
             self.host.request_frame();
@@ -493,6 +690,8 @@ impl Page {
 
 impl Drop for Page {
     fn drop(&mut self) {
+        self.settled();
+        leaving().retain(|(page, _)| *page != self.hwnd);
         view::unregister(self.hwnd);
         vsync::cancel(self.host.adapter().token);
         vsync::cancel(self.host.adapter().fling_key());
