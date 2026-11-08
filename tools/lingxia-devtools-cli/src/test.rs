@@ -106,6 +106,11 @@ pub struct TestOptions {
     #[arg(value_name = "PATH[:LINE]", value_parser = crate::test_select::parse_test_path, help_heading = "Selection")]
     pub paths: Vec<crate::test_select::TestPath>,
 
+    /// Evaluate this module before any test file, whatever the selection
+    /// (repeatable): setup that shared specs read at import. Default: lxdev.json `test.setup`
+    #[arg(long = "setup", value_name = "MODULE", help_heading = "Selection")]
+    pub setup: Vec<PathBuf>,
+
     /// Run only specs whose title or id matches this regex
     #[arg(long, value_name = "PATTERN", help_heading = "Selection")]
     pub grep: Option<String>,
@@ -273,6 +278,11 @@ pub struct ListOptions {
     #[arg(value_name = "PATH[:LINE]", value_parser = crate::test_select::parse_test_path)]
     pub paths: Vec<crate::test_select::TestPath>,
 
+    /// Evaluate this module before any test file, whatever the selection
+    /// (repeatable): setup that shared specs read at import. Default: lxdev.json `test.setup`
+    #[arg(long = "setup", value_name = "MODULE")]
+    pub setup: Vec<PathBuf>,
+
     /// List only specs whose title or id matches this regex
     #[arg(long, value_name = "PATTERN")]
     pub grep: Option<String>,
@@ -421,6 +431,16 @@ pub enum ReportFormat {
 pub const LATEST: &str = "latest";
 
 impl TestOptions {
+    /// The bundle's entries: the `--setup` modules, then the selected files. A setup module
+    /// evaluates before any test file's imports, so a spec selected alone sees the same setup.
+    pub fn bundle_entries(
+        &self,
+        selection: &crate::test_select::Selection,
+    ) -> Result<Vec<PathBuf>> {
+        let cwd = std::env::current_dir()?;
+        setup_first(&self.setup, &selection.files, &cwd)
+    }
+
     /// The output format (`text` unless `--format` says otherwise).
     pub fn output(&self) -> OutputFormat {
         self.format.unwrap_or(OutputFormat::Text)
@@ -585,6 +605,7 @@ impl ListOptions {
         TestOptions {
             command: None,
             paths: self.paths,
+            setup: self.setup,
             grep: self.grep,
             id: self.id,
             tags: self.tags,
@@ -650,7 +671,11 @@ fn execute_inner(info: &SessionInfo, options: TestOptions, selection: Selection)
     // Held until the run ends: a save during the run neither rebuilds the
     // app's output nor reloads the app under a spec.
     let watch_pause = WatchPause::acquire(&info.ws_url)?;
-    let bundle = bundle_test_files(&selection.files, &selection.identity, Purpose::Run)?;
+    let bundle = bundle_test_files(
+        &options.bundle_entries(&selection)?,
+        &selection.identity,
+        Purpose::Run,
+    )?;
     if !machine {
         eprintln!(
             "{} bundled {} ({})",
@@ -1000,7 +1025,11 @@ fn list(info: &SessionInfo, options: &TestOptions, selection: &Selection) -> Res
     // Listing loads every module, so it holds the watcher like a run: a save
     // meanwhile must not reload the app under the modules' top-level code.
     let watch_pause = WatchPause::acquire(&info.ws_url)?;
-    let bundle = bundle_test_files(&selection.files, &selection.identity, Purpose::List)?;
+    let bundle = bundle_test_files(
+        &options.bundle_entries(&selection)?,
+        &selection.identity,
+        Purpose::List,
+    )?;
     let secrets = RunSecrets::with_sources(
         &options.args,
         &options.secret_args,
@@ -1150,7 +1179,11 @@ pub fn list_offline(options: &TestOptions, selection: &Selection, asked: bool) -
         .map(|report| failed_ids(&report))
         .transpose()?;
     // Specs register from every module the entries import, not only the entries.
-    let bundle = bundle_test_files(&selection.files, &selection.identity, Purpose::List)?;
+    let bundle = bundle_test_files(
+        &options.bundle_entries(&selection)?,
+        &selection.identity,
+        Purpose::List,
+    )?;
     let filters = crate::test_offline::Filters::new(
         options.grep.as_deref(),
         options.id.as_deref(),
@@ -2965,9 +2998,35 @@ fn rerun_flags(options: &TestOptions, secrets: &RunSecrets) -> String {
             shell_quote(&spec.to_string_lossy())
         ));
     }
+    for module in &options.setup {
+        flags.push_str(&format!(
+            " --setup {}",
+            shell_quote(&module.to_string_lossy())
+        ));
+    }
     flags.push_str(&secrets.rerun_flags(shell_quote));
     flags.push_str(&options.state.rerun_flags(shell_quote));
     flags
+}
+
+/// `setup` (relative to `cwd`) ahead of `files`, each module once.
+fn setup_first(setup: &[PathBuf], files: &[PathBuf], cwd: &Path) -> Result<Vec<PathBuf>> {
+    let mut entries = Vec::with_capacity(setup.len() + files.len());
+    for module in setup {
+        let path = cwd.join(module);
+        let path = path.canonicalize().map_err(|err| {
+            crate::test_select::usage(format!("--setup {}: {err}", module.display()))
+        })?;
+        if !entries.contains(&path) {
+            entries.push(path);
+        }
+    }
+    for file in files {
+        if !entries.contains(file) {
+            entries.push(file.clone());
+        }
+    }
+    Ok(entries)
 }
 
 pub(crate) fn rerun_with_id(base: &str, id: &str) -> String {
@@ -4362,6 +4421,30 @@ mod lifecycle_tests {
     struct Harness {
         #[command(flatten)]
         options: TestOptions,
+    }
+
+    #[test]
+    fn setup_modules_come_before_the_selected_files_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        for name in ["setup.ts", "a.test.ts", "shared.test.ts"] {
+            std::fs::write(root.join(name), "").unwrap();
+        }
+        let files = vec![
+            root.join("a.test.ts"),
+            root.join("setup.ts"),
+            root.join("shared.test.ts"),
+        ];
+        let entries = setup_first(&[PathBuf::from("setup.ts")], &files, &root).unwrap();
+        assert_eq!(
+            entries,
+            vec![
+                root.join("setup.ts"),
+                root.join("a.test.ts"),
+                root.join("shared.test.ts")
+            ]
+        );
+        assert!(setup_first(&[PathBuf::from("missing.ts")], &files, &root).is_err());
     }
 
     fn options(args: &[&str]) -> TestOptions {

@@ -1,4 +1,3 @@
-import './shared-setup.js';
 import { expect, spec } from '@lingxia/test';
 import type { PageContract } from '@lingxia/types/page';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';

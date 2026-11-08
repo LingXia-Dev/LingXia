@@ -1557,6 +1557,28 @@ mod tests {
     }
 
     #[test]
+    fn a_setup_entry_runs_before_the_imports_of_later_entries() {
+        let dir = project();
+        let setup = write(&dir, "tests/setup.ts", "globalThis.__app = 'gpu';\n");
+        write(
+            &dir,
+            "helpers/app.ts",
+            "export const APP = globalThis.__app ?? 'web';\n",
+        );
+        let spec = write(
+            &dir,
+            "tests/a.test.ts",
+            "import { APP } from '../helpers/app';\nconsole.log(APP);\n",
+        );
+        let bundle =
+            bundle_test_files(&[setup, spec.clone()], &spec, Purpose::Run).expect("bundle");
+        assert!(
+            bundle.code.find("globalThis.__app = \"gpu\"").unwrap()
+                < bundle.code.find("globalThis.__app ?? \"web\"").unwrap()
+        );
+    }
+
+    #[test]
     fn dependencies_follow_source_order_not_path_order() {
         let dir = project();
         write(&dir, "z-first.ts", "globalThis.__order.push('first');\n");

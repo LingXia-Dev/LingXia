@@ -14,6 +14,13 @@
           "minLength": 1,
           "description": "Default test entry (file or directory), relative to lxdev.json. Used when neither the preset nor the command line names one."
         },
+        "setup": {
+          "description": "Module(s) evaluated before any test file, whatever the selection, relative to lxdev.json: setup that shared specs read at import. Same as --setup, unless the preset or the command line gives --setup.",
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            { "type": "array", "items": { "type": "string", "minLength": 1 } }
+          ]
+        },
         "outputDir": {
           "type": "string",
           "minLength": 1,

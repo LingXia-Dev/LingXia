@@ -1,0 +1,6 @@
+{
+  "$schema": "../../../packages/lingxia-test/schemas/lxdev.schema.json",
+  "test": {
+    "setup": "tests/shared-setup.ts"
+  }
+}

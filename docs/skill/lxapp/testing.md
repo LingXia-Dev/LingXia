@@ -521,6 +521,8 @@ lxdev test args --preset ci                 # show the effective arguments
 - `lxdev.json` sits in the project root. A preset's arguments come first;
   repeatable flags add up and other command-line flags win.
 - Paths in `lxdev.json` are relative to it.
+- `test.setup` (or `--setup`) names modules evaluated before any test file, so a spec run
+  alone with `--id` sees the globals its imports read.
 - Presets are committed, so they may not hold `--secret-arg` or credential
   args; name a gitignored `--secrets-file` instead.
 

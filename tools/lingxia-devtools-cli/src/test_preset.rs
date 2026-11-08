@@ -23,7 +23,7 @@ use std::path::{Path, PathBuf};
 
 pub const PRESET_FILE: &str = "lxdev.json";
 const FILE_KEYS: [&str; 2] = ["$schema", "test"];
-const TEST_KEYS: [&str; 5] = ["presets", "entry", "outputDir", "openapi", "tags"];
+const TEST_KEYS: [&str; 6] = ["presets", "entry", "setup", "outputDir", "openapi", "tags"];
 
 /// Flags a preset may not contain, and why.
 const FORBIDDEN: [(&str, &str); 3] = [
@@ -42,7 +42,7 @@ const FORBIDDEN: [(&str, &str); 3] = [
 pub struct Presets {
     pub path: PathBuf,
     pub presets: BTreeMap<String, Vec<String>>,
-    /// `test.entry|outputDir|openapi|tags`: `(flag, values)`, with `None`
+    /// `test.entry|setup|outputDir|openapi|tags`: `(flag, values)`, with `None`
     /// for the entry.
     pub defaults: Vec<(Option<&'static str>, Vec<String>)>,
 }
@@ -248,6 +248,7 @@ pub fn parse(text: &str, path: &Path) -> Result<Presets> {
             }
             for (key, flag, many) in [
                 ("entry", None, false),
+                ("setup", Some("--setup"), true),
                 // The results root (runs in <run-id>/ under it), like the
                 // default test-results; `--output-dir` is one run's directory.
                 ("outputDir", Some("--output-root"), false),
@@ -697,7 +698,8 @@ fn without_paths(args: &[String]) -> Vec<String> {
 
 /// Flags whose value is a file or directory. `--profile` takes `empty`, a
 /// NAME or a PATH; only a PATH is anchored.
-const PATH_FLAGS: [&str; 7] = [
+const PATH_FLAGS: [&str; 8] = [
+    "--setup",
     "--openapi",
     "--covers-manifest",
     "--record-network",
@@ -1128,6 +1130,7 @@ mod tests {
         let dir = project(
             r#"{ "test": {
                 "entry": "tests/",
+                "setup": "tests/setup.ts",
                 "outputDir": "results",
                 "openapi": ["api.yaml"],
                 "tags": "unit",
@@ -1149,6 +1152,8 @@ mod tests {
                 "lxdev".to_string(),
                 "test".to_string(),
                 at("tests"),
+                "--setup".to_string(),
+                at("tests/setup.ts"),
                 "--output-root".to_string(),
                 at("results"),
                 "--openapi".to_string(),
@@ -1164,6 +1169,8 @@ mod tests {
         assert!(!smoke.contains(&at("tests")), "{smoke:?}");
         assert!(!smoke.contains(&"unit".to_string()), "{smoke:?}");
         assert!(smoke.contains(&at("results")), "{smoke:?}");
+        // The setup stays whatever the entry: a preset's own files still need it.
+        assert!(smoke.contains(&at("tests/setup.ts")), "{smoke:?}");
         // Paths on the command line replace the preset's.
         let one = strings(
             expand(

@@ -1,7 +1,7 @@
 import { skipSpecFiles } from '@lingxia/test/runner';
 import manifest from './shared-specs.json';
 
-// Runs before the shared specs load: they read this lxapp's id at import.
+// lxdev.json runs this before any test file: the shared specs read this lxapp's id at import.
 (globalThis as { __SHOWCASE_APP_ID__?: string }).__SHOWCASE_APP_ID__ = 'lingxia-showcase-gpu';
 (globalThis as { __SHOWCASE_KEYED_IDS__?: string[] }).__SHOWCASE_KEYED_IDS__ = Object.keys(manifest.keyed);
 
