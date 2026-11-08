@@ -211,8 +211,8 @@ impl WindowsAdapter {
         };
         for (which, node) in highlights.into_iter().enumerate() {
             let shape = node
-                .and_then(|index| serde_json::to_string(display.nodes.get(index)?).ok())
-                .and_then(|json| feedback_shape(&ChromeNode::parse(&json).ok()?));
+                .and_then(|index| display.nodes.get(index))
+                .and_then(|node| feedback_shape(&ChromeNode::from_snapshot(node)));
             let Some(shape) = shape else { continue };
             let (color, ring) = if which == 0 {
                 (style.press_overlay, 0.0)
