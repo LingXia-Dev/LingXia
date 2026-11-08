@@ -92,6 +92,8 @@ internal object LxAppGesture {
                     return
                 }
                 if (!view.isShown || view is com.lingxia.lxapp.WebView || view is com.lingxia.lxapp.GpuPage) return
+                // Bars under a GPU page's open dialog are out of reach, as for assistive tech.
+                if (view.importantForAccessibility == View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS) return
                 // An overlay added this frame has no position yet: a tap at its unlaid bounds
                 // lands on the backdrop and dismisses it.
                 if (!view.isLaidOut || view.width == 0 || view.height == 0) return

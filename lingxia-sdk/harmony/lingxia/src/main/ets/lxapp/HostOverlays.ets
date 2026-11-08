@@ -8,6 +8,8 @@ class HostOverlayElement {
   role: string = 'text';
   bounds: number[] = [0, 0, 0, 0];
   press: (() => void) | null = null;
+  scope: string = 'window';
+  selected: () => boolean = () => false;
 }
 
 /** The wire shape Rust reads. */
@@ -16,12 +18,14 @@ class ReportedElement {
   label: string = '';
   role: string = 'text';
   bounds: number[] = [0, 0, 0, 0];
+  scope: string = 'window';
+  selected: boolean = false;
 }
 
 /**
- * The host's own overlays (toast, modal, action sheet) as window chrome for automation: their
- * labels, bounds, and the press a window tap at those bounds runs. HarmonyOS keeps window input
- * injection from apps, so these are the only window elements a tap reaches.
+ * The host's own overlays (toast, modal, action sheet) and tab bar items as chrome for automation:
+ * their labels, bounds, and the press a window tap at those bounds runs. HarmonyOS keeps window
+ * input injection from apps, so these are the only window elements a tap reaches.
  */
 export class HostOverlays {
   private static elements: Map<string, HostOverlayElement> = new Map();
@@ -34,7 +38,7 @@ export class HostOverlays {
    * arrives for it.
    */
   static place(source: string, id: string, label: () => string, role: string, area: Area,
-    press: (() => void) | null = null): void {
+    press: (() => void) | null = null, scope: string = 'window', selected: () => boolean = () => false): void {
     const element = new HostOverlayElement();
     element.source = source;
     element.key = `${source}:${id}`;
@@ -45,6 +49,8 @@ export class HostOverlays {
       Number(area.width), Number(area.height),
     ];
     element.press = press;
+    element.scope = scope;
+    element.selected = selected;
     HostOverlays.elements.set(element.key, element);
     HostOverlays.report();
   }
@@ -69,6 +75,17 @@ export class HostOverlays {
     }
   }
 
+  /** Overlay `source` went away with all its elements. */
+  static drop(source: string): void {
+    HostOverlays.shown.delete(source);
+    HostOverlays.elements.forEach((element: HostOverlayElement, key: string) => {
+      if (element.source === source) {
+        HostOverlays.elements.delete(key);
+      }
+    });
+    HostOverlays.report();
+  }
+
   /** A window tap landed on element `key`; false when it is gone or presses nothing. */
   static press(key: string): boolean {
     const element = HostOverlays.elements.get(key);
@@ -90,6 +107,8 @@ export class HostOverlays {
         out.label = element.label();
         out.role = element.role;
         out.bounds = element.bounds;
+        out.scope = element.scope;
+        out.selected = element.selected();
         return out;
       });
     reportHostOverlays(JSON.stringify(reported));

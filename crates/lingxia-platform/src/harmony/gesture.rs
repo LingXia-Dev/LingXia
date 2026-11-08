@@ -47,8 +47,8 @@ pub fn set_refresh_indicator(app_id: &str, webtag: &str, indicator: Option<PullR
         .insert(app_id.to_owned(), (webtag.to_owned(), indicator));
 }
 
-/// The host's own overlays (toast, modal, action sheet): the only window chrome Harmony can read,
-/// and the only window target a tap reaches. Keys name the element to the shell; bounds are vp.
+/// The host's own overlays (toast, modal, action sheet) and tab bar items: the only chrome Harmony
+/// can read, and the only window targets a tap reaches. Keys name the element to the shell; bounds are vp.
 static OVERLAYS: Mutex<Vec<(String, ChromeElement)>> = Mutex::new(Vec::new());
 
 #[derive(serde::Deserialize)]
@@ -57,6 +57,14 @@ struct Overlay {
     label: String,
     role: String,
     bounds: [f64; 4],
+    #[serde(default = "window_scope")]
+    scope: String,
+    #[serde(default)]
+    selected: bool,
+}
+
+fn window_scope() -> String {
+    "window".into()
 }
 
 /// Replace the overlay elements with the shell's `[{key,label,role,bounds}]`.
@@ -71,8 +79,8 @@ pub fn set_host_overlays(elements: &str) {
             let element = ChromeElement {
                 label: o.label,
                 role: o.role,
-                scope: "window".into(),
-                selected: false,
+                scope: o.scope,
+                selected: o.selected,
                 bounds: o.bounds,
             };
             (o.key, element)
@@ -222,21 +230,25 @@ impl AppGesture for Platform {
         }
     }
 
-    // Only the host's own overlays are readable: they sit at window scope.
+    // Only what the shell reports is readable: its overlays and the tab bar.
     async fn chrome_elements(
         &self,
         scope: Option<String>,
     ) -> Result<Vec<ChromeElement>, PlatformError> {
-        match scope.as_deref() {
-            None | Some("window") => Ok(OVERLAYS
-                .lock()
-                .unwrap_or_else(|p| p.into_inner())
-                .iter()
-                .map(|(_, e)| e.clone())
-                .collect()),
-            Some(other) => Err(PlatformError::NotSupported(format!(
-                "HarmonyOS reads only the host's own overlays (window scope), not {other}"
-            ))),
+        if let Some(other) = scope
+            .as_deref()
+            .filter(|s| !matches!(*s, "window" | "tabBar"))
+        {
+            return Err(PlatformError::NotSupported(format!(
+                "HarmonyOS reads only the host's overlays and tab bar, not {other}"
+            )));
         }
+        Ok(OVERLAYS
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .iter()
+            .filter(|(_, e)| scope.as_deref().is_none_or(|s| s == e.scope))
+            .map(|(_, e)| e.clone())
+            .collect())
     }
 }

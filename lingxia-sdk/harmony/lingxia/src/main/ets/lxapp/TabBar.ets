@@ -1,4 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { HostOverlays } from './HostOverlays';
 import { LxLog } from '../app/LxLog';
 import { TabBarPosition, type TabBarItem, type TabBarState } from 'liblingxia.so';
 import { localizedString } from '../app/DisplayLanguageResources';
@@ -120,6 +121,8 @@ export struct TabBar {
   // Bottom system-gesture inset (vp): the home-indicator zone swallows taps,
   // so the strip grows and the items sit above it.
   @Prop bottomInset: number = 0;
+  // A GPU page's open dialog lies over the bar: automation no longer reaches it.
+  @Prop @Watch('coveredChanged') covered: boolean = false;
   // Whether the overflow panel is open above the "more" slot.
   @State private moreVisible: boolean = false;
 
@@ -128,6 +131,30 @@ export struct TabBar {
 
   aboutToAppear() {
     hilog.info(DOMAIN, TAG, `TabBar created: ${this.tabbar.items.length} items, vertical: ${this.isVertical()}, transparent: ${this.isTransparent()}, refreshKey: ${this.refreshKey}`);
+    this.coveredChanged();
+  }
+
+  aboutToDisappear() {
+    HostOverlays.drop(this.chromeSource());
+  }
+
+  /** The items as automation reads them: tab chrome a window tap presses. */
+  private chromeSource(): string {
+    return `tabbar-${this.appId}-${this.refreshKey}`;
+  }
+
+  private pickItem(item: TabBarItem): void {
+    if (this.onTabSelected) {
+      this.onTabSelected(this.appId, item.index, item);
+    }
+  }
+
+  coveredChanged(): void {
+    if (this.covered) {
+      HostOverlays.hide(this.chromeSource());
+    } else {
+      HostOverlays.show(this.chromeSource());
+    }
   }
 
   build() {
@@ -296,6 +323,8 @@ export struct TabBar {
       top: 0,
       bottom: 0
     })
+    .onAreaChange((_: Area, area: Area) => HostOverlays.place(this.chromeSource(), `item-${index}`, (): string => item.text,
+      'tab', area, (): void => this.pickItem(item), 'tabBar', (): boolean => this.isDirectItemSelected(item)))
     .onClick(() => {
       hilog.info(DOMAIN, TAG, `Tab clicked: ${index}, current: ${this.tabbar.selectedIndex}, appId: ${this.appId}, path: ${item.pagePath}`);
 

@@ -40,6 +40,8 @@ import { CapsuleMenuManager, CapsuleMenuBottomSheetComponent } from './CapsuleMe
 // Container-specific constants
 const SYSTEM_STATUS_BAR_HEIGHT = 44;     // Default status bar height
 const TAB_BAR_HORIZONTAL_HEIGHT = 72;    // Match TabBar default height
+// Above the navigation bar (10) and tab bar (11): an open GPU dialog covers both.
+const GPU_TOP_LAYER_Z = 12;
 
 const COLOR_BLACK = '#000000';
 const COLOR_TRANSPARENT = Color.Transparent;
@@ -175,7 +177,24 @@ export struct LxAppContainer {
   /** A GPU page waiting for its first frame before it replaces the shown page. */
   private pendingRevealTag: string = ''
   private gpuCreated = (page: GpuPageModel): void => this.handleGpuPage('create', page);
-  private gpuDisposed = (page: GpuPageModel): void => this.handleGpuPage('destroy', page);
+  private gpuDisposed = (page: GpuPageModel): void => {
+    this.gpuTopLayers.delete(page.token);
+    this.handleGpuPage('destroy', page);
+  };
+  /** Bumped when a GPU page of this app opens or closes its top layer; reads of it follow. */
+  @State private gpuChangeKey: number = 0
+  private gpuTopLayers: Set<number> = new Set();
+  private gpuChanged = (page: GpuPageModel): void => {
+    if (page.appId !== this.appId || this.gpuTopLayers.has(page.token) === page.topLayer) {
+      return;
+    }
+    if (page.topLayer) {
+      this.gpuTopLayers.add(page.token);
+    } else {
+      this.gpuTopLayers.delete(page.token);
+    }
+    this.gpuChangeKey++;
+  };
   @State presentationOverlayWebTag: string = '' // WebView tag currently displayed in presentation (may include #instance suffix)
   @State private presentationPreviousWebTag: string = '' // Previously focused WebView before presentation took focus
   @State overlayActive: boolean = false
@@ -375,6 +394,7 @@ export struct LxAppContainer {
 
     GpuPages.onCreated(this.gpuCreated);
     GpuPages.onDisposed(this.gpuDisposed);
+    GpuPages.onChanged(this.gpuChanged);
     GpuPages.all().forEach((page: GpuPageModel) => this.handleGpuPage('create', page));
 
     this.startKeyboardMonitor();
@@ -415,6 +435,7 @@ export struct LxAppContainer {
   aboutToDisappear() {
     GpuPages.off(this.gpuCreated);
     GpuPages.off(this.gpuDisposed);
+    GpuPages.off(this.gpuChanged);
     // Unregister this container
     LxAppContainer.activeContainers.delete(this.appId);
     if (LxAppContainer.statusBarOwner === this) {
@@ -1056,10 +1077,12 @@ export struct LxAppContainer {
           refreshKey: key,
           pageCanvasColor: resolveCanvasColor(this.appearanceDark),
           bottomInset: this.isTabBarVertical() ? 0 : this.bottomIndicatorInset,
+          covered: this.isGpuTopLayer(),
           onTabSelected: (appId: string, index: number, item: TabBarItem): void => this.handleTabSelected(index)
         })
           // Above the left-edge swipe strip so the first tab stays tappable.
           .zIndex(11)
+          .accessibilityLevel(this.isGpuTopLayer() ? 'no-hide-descendants' : 'auto')
       }, (key: number) => `lx-tabbar-${this.appId}-${key}`)
     }
   }
@@ -1109,6 +1132,7 @@ export struct LxAppContainer {
       .height(this.getNavigationBarHeight())
       .zIndex(this.shouldRenderOverlayMask() ? 10002 : 10)
       .hitTestBehavior(HitTestMode.Transparent)
+      .accessibilityLevel(this.isGpuTopLayer() ? 'no-hide-descendants' : 'auto')
     }
   }
 
@@ -1350,7 +1374,7 @@ export struct LxAppContainer {
       }
     })
     .hitTestBehavior(HitTestMode.Transparent)
-    .zIndex(this.shouldRenderOverlayMask() ? 10004 : 0)
+    .zIndex(this.shouldRenderOverlayMask() ? 10004 : this.isGpuTopLayer() ? GPU_TOP_LAYER_Z : 0)
     // CUTOUT included so the web area reaches y=0 on cutout devices like the
     // other mobile hosts; the camera zone is covered by the status-bar inset.
     .expandSafeArea([SafeAreaType.SYSTEM, SafeAreaType.CUTOUT], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
@@ -1910,6 +1934,12 @@ export struct LxAppContainer {
     const container = LxAppContainer.activeContainers.get(appId);
     const page = container ? GpuPages.byWebTag(container.currentWebTag) : undefined;
     return page !== undefined && gpuPageCloseRequest(page.token);
+  }
+
+  /** The GPU page on screen has a dialog open: the page then lies over the host bars, scrim and all. */
+  private isGpuTopLayer(): boolean {
+    void this.gpuChangeKey;
+    return this.gpuPages.get(this.currentWebTag)?.topLayer === true;
   }
 
   /** Host bars over a GPU page (top, right, bottom, left), device pixels. */
