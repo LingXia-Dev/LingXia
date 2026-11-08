@@ -370,12 +370,30 @@ impl<F> Main<F> {
     /// only on frames that present. What they rendered must render again.
     fn drop_ahead(&mut self) {
         let ahead = self.in_flight.is_some_and(|flight| flight.ahead);
-        if self.next_prepared.take().is_some() || ahead {
-            self.prepared = None;
+        let next = self.next_prepared.take();
+        if let Some(next) = &next {
+            self.release_input(next.input());
+        }
+        if next.is_some() || ahead {
+            self.drop_prepared();
             self.dirty = true;
         }
         if ahead {
             self.in_flight = None;
+        }
+    }
+
+    /// A frame that will not present hands its input to the next one, which then reports
+    /// the whole wait.
+    fn release_input(&mut self, input: Option<Duration>) {
+        if let Some(at) = input {
+            self.telemetry.stats.input(at);
+        }
+    }
+
+    fn drop_prepared(&mut self) {
+        if let Some(prepared) = self.prepared.take() {
+            self.release_input(prepared.input());
         }
     }
 
@@ -661,6 +679,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
     /// The next pointer, wheel or key event happened `age_us` ago on the platform's input
     /// clock; without it the host takes the time it receives the event.
     pub fn input_age(&self, age_us: u64) {
+        crate::session::probe::sample(crate::session::probe::Probe::InputDispatch, true, age_us);
         let at = self
             .inner
             .adapter
@@ -689,9 +708,11 @@ impl<A: PlatformAdapter> ViewHost<A> {
     /// [`Self::deferred_presented`] from an adapter that drew the frame itself, with its
     /// scene, encode, submit and present µs.
     pub fn deferred_drawn(&self, generation: CommitTicket, shown: bool, gpu_us: [u64; 4]) {
+        // Stamped here, not on main: the post back is not part of presenting.
+        let done = self.inner.adapter.now();
         let inner = self.inner.clone();
         self.inner.adapter.post(Box::new(move || {
-            inner.deferred_presented(generation, shown, gpu_us)
+            inner.deferred_presented(generation, shown, gpu_us, done)
         }));
     }
 

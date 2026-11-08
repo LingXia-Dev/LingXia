@@ -419,8 +419,9 @@ impl<A: PlatformAdapter> Inner<A> {
             // both, as the session builds ahead only on a frame that will present.
             let mut main = self.main();
             main.input_seq += 1;
-            if main.next_prepared.take().is_some() {
-                main.prepared = None;
+            if let Some(next) = main.next_prepared.take() {
+                main.release_input(next.input());
+                main.drop_prepared();
                 main.dirty = true;
             }
         }

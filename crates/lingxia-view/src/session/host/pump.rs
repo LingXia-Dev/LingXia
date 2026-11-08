@@ -43,8 +43,17 @@ pub(super) struct Pacing {
     interval: Duration,
     /// When the display took the frame.
     done: Duration,
+    /// When the frame was requested from the worker, and its vsync.
+    requested: Duration,
+    vsync: Duration,
     /// The newest pointer position the frame shows, for the HUD's trail.
     point: Option<[f32; 2]>,
+}
+
+impl<F> Prepared<F> {
+    pub(super) fn input(&self) -> Option<Duration> {
+        self.pacing.input
+    }
 }
 
 /// A presented frame waiting for the adapter to put it on screen.
@@ -66,6 +75,29 @@ use crate::session::FRAME_DECLINED as DECLINED;
 
 fn micros(duration: Duration) -> u64 {
     u64::try_from(duration.as_micros()).unwrap_or(u64::MAX)
+}
+
+/// Where a frame that shows input spent the time from that input to its refresh.
+fn input_probes(pacing: &Pacing, timing: &FrameTiming, input: Duration, present: Duration) {
+    use crate::session::probe::{Probe, sample};
+    if !cfg!(debug_assertions) {
+        return;
+    }
+    let span = |from: Duration, to: Duration| micros(to.saturating_sub(from));
+    sample(Probe::InputSlot, true, span(input, pacing.requested));
+    sample(Probe::InputQueue, true, timing.queue_us);
+    sample(Probe::InputBuild, true, timing.worker_us);
+    sample(Probe::InputHold, true, timing.wait_us);
+    sample(Probe::InputPresent, true, span(pacing.vsync, pacing.done));
+    sample(Probe::InputScanout, true, span(pacing.done, present));
+    sample(Probe::InputToPresent, true, span(input, present));
+    if timing.gpu_us != [0; 4] {
+        let [scene, encode, submit, presented] = timing.gpu_us;
+        sample(Probe::DrawScene, true, scene);
+        sample(Probe::DrawEncode, true, encode);
+        sample(Probe::DrawSubmit, true, submit);
+        sample(Probe::DrawPresent, true, presented);
+    }
 }
 
 struct Request {
@@ -183,6 +215,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 pacing: Pacing {
                     demand: main.demand_at.take().unwrap_or(asked),
                     input: main.telemetry.stats.take_input(asked),
+                    requested: asked,
                     point: main.telemetry.stats.take_point(),
                     ..Pacing::default()
                 },
@@ -284,8 +317,9 @@ impl<A: PlatformAdapter> Inner<A> {
                             // Built on a frame that will not present, or both it and the frame
                             // under it miss newer input: a fresh frame replaces them.
                             let mut main = inner.main();
+                            main.release_input(pacing.input);
                             if missed && current {
-                                main.prepared = None;
+                                main.drop_prepared();
                             }
                             main.dirty = true;
                             drop(main);
@@ -350,8 +384,11 @@ impl<A: PlatformAdapter> Inner<A> {
                         // The session holds frames this host dropped: a fresh frame replaces them.
                         {
                             let mut main = inner.main();
-                            main.prepared = None;
-                            main.next_prepared = None;
+                            main.release_input(pacing.input);
+                            main.drop_prepared();
+                            if let Some(next) = main.next_prepared.take() {
+                                main.release_input(next.input());
+                            }
                             main.dirty = true;
                         }
                         inner.schedule_more();
@@ -452,11 +489,6 @@ impl<A: PlatformAdapter> Inner<A> {
         } = request.environment;
         let mut loaded_images = 0;
         let mut image_buckets = Default::default();
-        if !session.renderer.videos.has_resolver()
-            && let Some(resolver) = self.adapter.video_resolver()
-        {
-            session.renderer.videos.set_resolver(resolver);
-        }
         session.set_environment(value)?;
         session.set_animation_target(Some(request.surface), request.visible, now)?;
         let (sample, ahead, single_target, dropped_activations, activations) = (
@@ -708,6 +740,7 @@ impl<A: PlatformAdapter> Inner<A> {
             let prepared = main.prepared.take().map(|mut prepared| {
                 prepared.pacing.target = target;
                 prepared.pacing.interval = interval;
+                prepared.pacing.vsync = at;
                 prepared
             });
             if prepared.is_some() {
@@ -724,7 +757,8 @@ impl<A: PlatformAdapter> Inner<A> {
         if !current {
             // Built for a target that has since changed: the page still owes a frame.
             let mut main = self.main();
-            main.prepared = None;
+            main.release_input(prepared.input());
+            main.drop_prepared();
             main.drop_ahead();
             main.dirty = true;
             main.pending = true;
@@ -787,6 +821,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 }
                 Ok(false) => {
                     retry = true;
+                    self.main().release_input(pacing.input);
                     if newer {
                         self.stale_decline();
                     }
@@ -798,7 +833,7 @@ impl<A: PlatformAdapter> Inner<A> {
             // Frames built on the refused one cannot present either.
             {
                 let mut main = self.main();
-                main.prepared = None;
+                main.drop_prepared();
                 main.drop_ahead();
                 main.dirty = true;
             }
@@ -841,6 +876,7 @@ impl<A: PlatformAdapter> Inner<A> {
         generation: CommitTicket,
         shown: bool,
         gpu_us: [u64; 4],
+        done: Duration,
     ) {
         let Some(deferred) = ({
             let mut main = self.main();
@@ -867,7 +903,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 flight,
             } = deferred;
             timing.gpu_us = gpu_us;
-            pacing.done = self.adapter.now();
+            pacing.done = done;
             {
                 let mut main = self.main();
                 main.presented_environment = Some(environment);
@@ -879,7 +915,8 @@ impl<A: PlatformAdapter> Inner<A> {
         } else {
             // Frames built on the dropped one cannot present either.
             let mut main = self.main();
-            main.prepared = None;
+            main.release_input(deferred.pacing.input);
+            main.drop_prepared();
             main.drop_ahead();
             main.dirty = true;
             main.pending = true;
@@ -956,7 +993,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.telemetry.presented(now, &snapshot, &timing);
             // A covered window's frames count: they complete on the refresh tick, unpresented.
             if main.visible && main.reveal.counts_frames() {
-                main.telemetry.stats.record(
+                let record = main.telemetry.stats.record(
                     super::frame_stats::Presented {
                         demand: pacing.demand,
                         target: pacing.target,
@@ -969,6 +1006,9 @@ impl<A: PlatformAdapter> Inner<A> {
                     },
                     pacing.point,
                 );
+                if let Some(input) = pacing.input {
+                    input_probes(&pacing, &timing, input, record.present);
+                }
             }
         }
         self.adapter.presented(&snapshot, &timing);
