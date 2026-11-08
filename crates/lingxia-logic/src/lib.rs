@@ -126,6 +126,13 @@ fn register_platform_i18n() {
             "update.store_title" => I18nKey::UpdateStoreTitle,
             "update.store_message" => I18nKey::UpdateStoreMessage,
             "update.open_store" => I18nKey::UpdateOpenStore,
+            "gpu.update_required" => I18nKey::GpuUpdateRequired,
+            "gpu.session_failed" => I18nKey::GpuSessionFailed,
+            "gpu.update_failed" => I18nKey::GpuUpdateFailed,
+            "gpu.display_failed" => I18nKey::GpuDisplayFailed,
+            "gpu.retry" => I18nKey::GpuRetry,
+            "gpu.reload" => I18nKey::GpuReload,
+            "gpu.retrying" => I18nKey::GpuRetrying,
             _ => return None,
         };
         Some(i18n::t(i18n_key))

@@ -26,6 +26,7 @@ mod dispatch;
 mod environment;
 mod fonts;
 mod ime;
+mod recovery;
 mod surface;
 mod text_menu;
 mod touch;
@@ -44,6 +45,11 @@ pub trait Shell: Send + Sync + 'static {
     /// Restart the Logic connection after a session failure; false when it cannot.
     fn restart(&self, token: i64, connection: u64) -> bool;
     fn recovery(&self, token: i64, failure: Option<&Failure>);
+    /// Host chrome text for a localizer `key`, else `fallback`.
+    fn text(&self, key: &str, fallback: &str) -> String {
+        let _ = key;
+        fallback.to_owned()
+    }
     fn bootstrap_overdue(&self, token: i64, overdue: bool);
     /// The colours the host paints around this page while it is shown.
     fn host_chrome(&self, token: i64, chrome: &lingxia_view::platform::HostChrome);

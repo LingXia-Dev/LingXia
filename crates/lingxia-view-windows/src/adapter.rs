@@ -546,6 +546,22 @@ impl HostEvents for WindowsAdapter {
             log(&format!("recovery token={}: {}", self.token, failure.error));
         }
         self.shell.recovery(self.token, failure);
+        let page = self.hwnd.load(Ordering::Acquire);
+        if page == 0 {
+            return;
+        }
+        let dark = self
+            .facts
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .as_ref()
+            .is_some_and(|facts| facts.dark);
+        let (shell, failure) = (self.shell.clone(), failure.cloned());
+        self.dispatcher.post(Box::new(move || {
+            crate::recovery::show(page, failure.as_ref(), dark, &|key, fallback| {
+                shell.text(key, fallback)
+            });
+        }));
     }
     fn bootstrap_overdue(&self, overdue: bool) {
         self.shell.bootstrap_overdue(self.token, overdue);

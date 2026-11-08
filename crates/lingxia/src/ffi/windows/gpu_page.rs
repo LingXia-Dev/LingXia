@@ -286,6 +286,9 @@ impl Shell for Bridge {
             log::warn!("GPU page {token} failed: {}", failure.error);
         }
     }
+    fn text(&self, key: &str, fallback: &str) -> String {
+        lingxia_platform::i18n::text(key, fallback)
+    }
     fn bootstrap_overdue(&self, token: i64, overdue: bool) {
         if overdue {
             log::warn!("GPU page {token}: Logic bootstrap overdue");

@@ -80,8 +80,12 @@ pub(crate) fn unregister(hwnd: isize) {
     PAGES.with(|pages| pages.borrow_mut().remove(&hwnd));
 }
 
+pub(crate) fn page_for(hwnd: isize) -> Option<Rc<Page>> {
+    PAGES.with(|pages| pages.borrow().get(&hwnd)?.upgrade())
+}
+
 fn page_of(hwnd: HWND) -> Option<Rc<Page>> {
-    PAGES.with(|pages| pages.borrow().get(&(hwnd.0 as isize))?.upgrade())
+    page_for(hwnd.0 as isize)
 }
 
 /// A visible child of `parent` on this thread.
@@ -223,10 +227,12 @@ fn handle(
         }
         WM_SIZE | WM_DPICHANGED_AFTERPARENT => {
             page.report();
+            crate::recovery::layout(hwnd.0 as isize);
             None
         }
         // A host that destroys the window holding the page destroys the page's window too.
         WM_DESTROY => {
+            crate::recovery::forget(hwnd.0 as isize);
             page.window_destroyed();
             None
         }
