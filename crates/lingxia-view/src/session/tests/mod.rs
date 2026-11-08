@@ -2120,3 +2120,48 @@ fn a_run_past_the_limit_is_interrupted_at_once_and_a_first_render_gets_the_warm_
         "{error}"
     );
 }
+
+#[test]
+fn the_view_isolate_replays_writes_into_its_own_data() {
+    use serde_json::json;
+    let source = source("function render({data}){return h('text',{},JSON.stringify(data))}");
+    let mut session = ViewSession::new_with_logic(&source, true).unwrap();
+    // The isolate's keys must iterate as the replica's whole tree would arrive.
+    let rendered = |session: &mut ViewSession| {
+        let text = session.render(300, 500, 1.0).unwrap().nodes[0].text.clone();
+        assert_eq!(text, session.state.data().unwrap().to_string());
+        serde_json::from_str::<serde_json::Value>(&text).unwrap()
+    };
+    session
+        .write_state(state_write(&json!({"v":2,"kind":"state.snapshot","rev":0,
+            "state":{"rows":[{"n":1},{"n":2}],"keep":{"a":1}}})))
+        .unwrap();
+    rendered(&mut session);
+    let patches = [
+        json!([{"op":"replace","path":"/rows/1/n","value":5}]),
+        json!([{"op":"add","path":"/rows/-","value":{"n":3}},{"op":"add","path":"/fresh/0","value":"x"},{"op":"add","path":"/b","value":1}]),
+        json!([{"op":"remove","path":"/keep"},{"op":"replace","path":"/rows/0","value":{"n":0}}]),
+    ];
+    // Two writes before one frame, then one write per frame.
+    for (index, ops) in patches.iter().enumerate() {
+        let rev = index as u64 + 1;
+        session
+            .write_state(state_write(
+                &json!({"v":2,"kind":"state.patch","baseRev":rev-1,"rev":rev,"ops":ops}),
+            ))
+            .unwrap();
+        if rev > 1 {
+            rendered(&mut session);
+        }
+    }
+    assert_eq!(
+        rendered(&mut session),
+        json!({"b":1,"fresh":["x"],"rows":[{"n":0},{"n":5},{"n":3}]})
+    );
+    session
+        .write_state(state_write(
+            &json!({"v":2,"kind":"state.snapshot","rev":9,"state":{"only":true}}),
+        ))
+        .unwrap();
+    assert_eq!(rendered(&mut session), json!({"only":true}));
+}

@@ -1,6 +1,47 @@
 use super::*;
 
 impl ViewSession {
+    /// The `data` argument for `__lingxiaCreateView`: `undefined` when the isolate's own copy
+    /// was brought current by replaying the writes since its last frame, else the whole tree.
+    fn sync_view_data(&mut self, metrics: &mut crate::FrameMetrics) -> Result<String, String> {
+        let revision = self.state.revision();
+        let replayed = match self.state.journal() {
+            Some((from, ops)) => {
+                let ops =
+                    serde_json::to_string(&serde_json::to_string(ops).map_err(|e| e.to_string())?)
+                        .map_err(|e| e.to_string())?;
+                let call = format!(
+                    "typeof __lingxiaSyncData === 'function' && __lingxiaSyncData({from}, {revision}, JSON.parse({ops}))"
+                );
+                let started = std::time::Instant::now();
+                let replayed = self.execute(|| {
+                    self.context
+                        .eval::<bool>(Source::from_bytes(&call))
+                        .map_err(|e| e.to_string())
+                })?;
+                let us = crate::session::metrics::micros(started);
+                metrics.view_eval_us += us;
+                metrics.view_us += us;
+                replayed
+            }
+            None => false,
+        };
+        // A replay the isolate refused (fresh context) falls back to the whole tree; the
+        // isolate checks the revision either way.
+        let data = if replayed {
+            "undefined".to_string()
+        } else {
+            let data = self
+                .state
+                .data()
+                .ok_or("UI_STATE: waiting for first snapshot")?;
+            let data = serde_json::to_string(&data.to_string()).map_err(|e| e.to_string())?;
+            format!("JSON.parse({data})")
+        };
+        self.state.mark_synced();
+        Ok(data)
+    }
+
     pub fn render(&mut self, width: u16, height: u16, scale: f32) -> Result<Frame, String> {
         self.prepare(width, height, scale, DisplayList::rasterize)
     }
@@ -467,11 +508,7 @@ impl ViewSession {
         } else {
             let width_dp = width as f32 / scale;
             let height_dp = height as f32 / scale;
-            let data = self
-                .state
-                .data()
-                .ok_or("UI_STATE: waiting for first snapshot")?;
-            let data = serde_json::to_string(&data.to_string()).map_err(|e| e.to_string())?;
+            let data = self.sync_view_data(metrics)?;
             let mut environment = self.environment.clone();
             // Platform interpolation samples are an internal layout contract.
             environment.as_object_mut().unwrap().remove("textScale");
@@ -486,7 +523,8 @@ impl ViewSession {
             let environment =
                 serde_json::to_string(&environment.to_string()).map_err(|e| e.to_string())?;
             format!(
-                "__lingxiaPrepare(__lingxiaRender, __lingxiaCreateView(JSON.parse({data}), JSON.parse({environment})), JSON.parse({encoded_windows}), true)"
+                "__lingxiaPrepare(__lingxiaRender, __lingxiaCreateView({data}, JSON.parse({environment}), {revision}), JSON.parse({encoded_windows}), true)",
+                revision = self.state.revision(),
             )
         };
         let mut prepared_js = !native_input;

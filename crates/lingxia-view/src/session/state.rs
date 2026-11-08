@@ -1,7 +1,8 @@
 use serde_json::{Value, json};
 
 /// One JSON Patch operation on page data; `path` is a JSON Pointer.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+#[serde(tag = "op", rename_all = "lowercase")]
 pub enum PatchOp {
     Add { path: String, value: Value },
     Replace { path: String, value: Value },
@@ -35,7 +36,14 @@ pub struct StateReplica {
     data: Option<Value>,
     revision: u64,
     resyncing: bool,
+    /// Ops applied since the View isolate's copy was last synced at `journal_from`; `None`
+    /// when that copy needs the whole tree.
+    journal: Vec<PatchOp>,
+    journal_from: Option<u64>,
 }
+
+/// Past this many ops the isolate takes the whole tree instead of a replay.
+const JOURNAL_LIMIT: usize = 1024;
 
 #[derive(Default, Debug)]
 pub struct StateUpdate {
@@ -70,6 +78,7 @@ impl StateReplica {
                 self.data = Some(state);
                 self.revision = rev;
                 self.resyncing = false;
+                self.forget_journal();
                 Ok(StateUpdate {
                     changed: true,
                     ..StateUpdate::default()
@@ -82,6 +91,14 @@ impl StateReplica {
                 let Some(data) = self.data.as_mut().filter(|_| rev > self.revision) else {
                     return Ok(self.resync());
                 };
+                if self.journal_from.is_some() {
+                    if self.journal.len() + ops.len() > JOURNAL_LIMIT {
+                        self.journal_from = None;
+                        self.journal.clear();
+                    } else {
+                        self.journal.extend(ops.iter().cloned());
+                    }
+                }
                 // In place: a failed op may leave earlier ones applied until the snapshot
                 // it asks for replaces the whole tree.
                 if apply_patch(data, ops).is_err() {
@@ -97,8 +114,26 @@ impl StateReplica {
         }
     }
 
+    /// The isolate's synced revision and the ops since, when a replay can bring it current.
+    pub fn journal(&self) -> Option<(u64, &[PatchOp])> {
+        self.journal_from
+            .map(|from| (from, self.journal.as_slice()))
+    }
+
+    /// The isolate's copy now matches the current revision.
+    pub fn mark_synced(&mut self) {
+        self.journal.clear();
+        self.journal_from = self.data.is_some().then_some(self.revision);
+    }
+
+    fn forget_journal(&mut self) {
+        self.journal.clear();
+        self.journal_from = None;
+    }
+
     fn resync(&mut self) -> StateUpdate {
         self.resyncing = true;
+        self.forget_journal();
         StateUpdate {
             resync: true,
             ..StateUpdate::default()
@@ -330,5 +365,51 @@ mod tests {
             ops: vec![],
         };
         assert!(state.write(stale).unwrap().resync);
+    }
+
+    #[test]
+    fn the_journal_holds_ops_since_the_isolate_synced() {
+        let op = |n: i64| PatchOp::Replace {
+            path: "/n".into(),
+            value: json!(n),
+        };
+        let patch = |rev, n| StateWrite::Patch {
+            rev,
+            ops: vec![op(n)],
+            ack: false,
+        };
+        let mut replica = StateReplica::default();
+        replica
+            .write(StateWrite::Snapshot {
+                rev: 1,
+                state: json!({"n": 0}),
+            })
+            .unwrap();
+        assert!(
+            replica.journal().is_none(),
+            "a snapshot needs the whole tree"
+        );
+        replica.mark_synced();
+        replica.write(patch(2, 1)).unwrap();
+        replica.write(patch(3, 2)).unwrap();
+        assert_eq!(replica.journal(), Some((1, &[op(1), op(2)][..])));
+        replica.mark_synced();
+        assert_eq!(replica.journal(), Some((3, &[][..])));
+        replica.write(patch(3, 9)).unwrap();
+        assert!(replica.journal().is_none(), "a resync forgets the journal");
+        replica
+            .write(StateWrite::Snapshot {
+                rev: 4,
+                state: json!({"n": 0}),
+            })
+            .unwrap();
+        replica.mark_synced();
+        for rev in 0..=JOURNAL_LIMIT as u64 {
+            replica.write(patch(5 + rev, 1)).unwrap();
+        }
+        assert!(
+            replica.journal().is_none(),
+            "a long replay takes the whole tree"
+        );
     }
 }

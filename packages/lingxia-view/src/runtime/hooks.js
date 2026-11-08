@@ -1,4 +1,4 @@
-import { immutable, shared } from './data.js';
+import { applyPatch, immutable, shared } from './data.js';
 import { render, page, outsideRender } from './state.js';
 import { actionInfo, currentActions, leaveGuards, report } from './actions.js';
 import { streamResource, requestResource } from './resources.js';
@@ -156,8 +156,25 @@ let hostContextRead = false;
 const rawEnvs = new WeakMap();
 // The data the last view froze: a new one shares its unchanged parts.
 let lastData;
+// The native replica revision `lastData` matches; null until a whole tree arrives.
+let lastRevision = null;
 
-export function createView(data, env) {
+/** Brings `lastData` from revision `from` to `revision` by replaying the replica's ops; false when
+ *  this isolate is not at `from`, and the host then sends the whole tree. */
+export function syncData(from, revision, ops) {
+  if (lastData === undefined || lastRevision !== from) return false;
+  try {
+    lastData = applyPatch(lastData, ops);
+  } catch {
+    lastRevision = null;
+    return false;
+  }
+  lastRevision = revision;
+  return true;
+}
+
+/** `data` undefined: the isolate's own copy, already synced by `syncData`. */
+export function createView(data, env, revision) {
   const { actions, channels } = currentActions();
   hostContextRead = false;
   const frozen = immutable(env);
@@ -167,7 +184,8 @@ export function createView(data, env) {
       return Reflect.get(target, key, receiver);
     },
   }) : frozen;
-  const view = Object.freeze({ data: shared(data, lastData), env: watched, actions, channels });
+  const view = Object.freeze({ data: data === undefined ? lastData : shared(data, lastData), env: watched, actions, channels });
+  if (data !== undefined) lastRevision = typeof revision === 'number' ? revision : null;
   lastData = view.data;
   rawEnvs.set(view, frozen);
   return view;

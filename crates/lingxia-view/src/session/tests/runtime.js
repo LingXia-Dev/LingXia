@@ -192,6 +192,83 @@
     }
     return same2 && entries2.length === Object.keys(old).length ? old : Object.freeze(Object.fromEntries(entries2));
   }
+  function applyPatch(root, ops) {
+    const fresh = /* @__PURE__ */ new Set();
+    for (const op of ops) {
+      if (op.path === "") {
+        root = op.op === "remove" ? Object.freeze({}) : shared(op.value, root);
+        continue;
+      }
+      const tokens = op.path.slice(1).split("/").map((t) => t.replace(/~1/g, "/").replace(/~0/g, "~"));
+      root = patchAt(root, tokens, 0, op, fresh);
+    }
+    for (const container2 of fresh) Object.freeze(container2);
+    return root;
+  }
+  function patchAt(node, tokens, i, op, fresh) {
+    const key = tokens[i];
+    const array = Array.isArray(node);
+    if (i === tokens.length - 1) return patchLeaf(node, array, key, op, fresh);
+    const slot = array ? Number(key) : key;
+    const had = array || has(node, key);
+    let child = had ? node[slot] : void 0;
+    if (child === void 0 && !array) child = /^\d+$/.test(tokens[i + 1]) ? [] : {};
+    const next = patchAt(child, tokens, i + 1, op, fresh);
+    if (had && next === node[slot]) return node;
+    const copy2 = mutable(node, fresh);
+    define(copy2, slot, next);
+    if (!had) sortKeys(copy2);
+    return copy2;
+  }
+  function patchLeaf(node, array, key, op, fresh) {
+    if (array) {
+      const index = key === "-" ? node.length : Number(key);
+      if (op.op === "remove" && index >= node.length) return node;
+      const copy3 = mutable(node, fresh);
+      if (op.op === "add") copy3.splice(Math.min(index, copy3.length), 0, immutable(op.value));
+      else if (op.op === "remove") copy3.splice(index, 1);
+      else {
+        while (copy3.length < index) copy3.push(null);
+        copy3[index] = shared(op.value, node[index]);
+      }
+      return copy3;
+    }
+    const had = has(node, key);
+    if (op.op === "remove") {
+      if (!had) return node;
+      const copy3 = mutable(node, fresh);
+      delete copy3[key];
+      return copy3;
+    }
+    const value = shared(op.value, had ? node[key] : void 0);
+    if (had && value === node[key]) return node;
+    const copy2 = mutable(node, fresh);
+    define(copy2, key, value);
+    if (!had) sortKeys(copy2);
+    return copy2;
+  }
+  function sortKeys(object) {
+    const entries2 = Object.entries(object).sort(([a], [b]) => compareKeys(a, b));
+    for (const [key] of entries2) delete object[key];
+    for (const [key, value] of entries2) define(object, key, value);
+  }
+  function compareKeys(a, b) {
+    for (let i = 0; i < a.length && i < b.length; i++) {
+      const x = a.codePointAt(i), y = b.codePointAt(i);
+      if (x !== y) return x - y;
+      if (x > 65535) i++;
+    }
+    return a.length - b.length;
+  }
+  function mutable(node, fresh) {
+    if (fresh.has(node)) return node;
+    const copy2 = Array.isArray(node) ? node.slice() : Object.fromEntries(Object.entries(node));
+    fresh.add(copy2);
+    return copy2;
+  }
+  function define(target, key, value) {
+    Object.defineProperty(target, key, { value, writable: true, enumerable: true, configurable: true });
+  }
   function utf8Bytes(value, limit) {
     if (value.length > limit) return Infinity;
     if (/^[\x00-\x7f]*$/.test(value)) return value.length;
@@ -3676,7 +3753,19 @@
   var hostContextRead = false;
   var rawEnvs = /* @__PURE__ */ new WeakMap();
   var lastData;
-  function createView(data, env) {
+  var lastRevision = null;
+  function syncData(from, revision, ops) {
+    if (lastData === void 0 || lastRevision !== from) return false;
+    try {
+      lastData = applyPatch(lastData, ops);
+    } catch {
+      lastRevision = null;
+      return false;
+    }
+    lastRevision = revision;
+    return true;
+  }
+  function createView(data, env, revision) {
     const { actions: actions2, channels: channels2 } = currentActions();
     hostContextRead = false;
     const frozen = immutable(env);
@@ -3686,7 +3775,8 @@
         return Reflect.get(target, key, receiver);
       }
     }) : frozen;
-    const view = Object.freeze({ data: shared(data, lastData), env: watched, actions: actions2, channels: channels2 });
+    const view = Object.freeze({ data: data === void 0 ? lastData : shared(data, lastData), env: watched, actions: actions2, channels: channels2 });
+    if (data !== void 0) lastRevision = typeof revision === "number" ? revision : null;
     lastData = view.data;
     rawEnvs.set(view, frozen);
     return view;
@@ -4698,6 +4788,7 @@
       __lingxiaReset: reset,
       __lingxiaDispatch: dispatch,
       __lingxiaCreateView: createView,
+      __lingxiaSyncData: syncData,
       __lingxiaConfigureActions: configureActions,
       __lingxiaTakeActionRequests: takeActionRequests,
       __lingxiaReceiveActionResponse: receiveActionResponse,

@@ -225,6 +225,11 @@ There is no `baseRev`, no `state.getSnapshot` and no batch window: writes of one
 coalesce and leave when the task ends. Adapters (`lingxia-view-{android,apple,harmony}`) carry
 no state at all.
 
+The View isolate keeps its own frozen copy of `data` and, before a render, replays the ops
+journaled since its last frame, so a frame costs the change; a snapshot, a resync, a long journal
+or a fresh isolate takes the whole tree. Renders are paced by vsync (writes between two vsyncs
+cost one render), and `flush()` resolves on `Acked`, one refresh before the frame is on screen.
+
 ## 8. WebView transport
 
 ### 8.1 Profiles
