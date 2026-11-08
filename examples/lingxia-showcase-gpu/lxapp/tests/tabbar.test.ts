@@ -97,3 +97,25 @@ spec('a sheet with detents covers the tab bar', { covers: ['view:dialog', 'view:
   await coversTheBar(t, () => view.testId('lab-detents-open').click(), view.testId('lab-detents-sheet'),
     () => view.testId('lab-detents-sheet').performAction('dismiss'));
 });
+
+spec('a tap at an element under the tab bar scrolls it clear of the bar first and lands on it', { covers: ['view:scroll'], start: { page: 'view-lab' } }, async (t) => {
+  const view = t.app.view;
+  const { page, top } = await bars(t);
+  await view.testId('lab-tab-swipe').click();
+  const state = view.testId('lab-kit-pager-state');
+  await expect(state).toHaveText('page=0');
+  // Park a pager dot in the middle of the bar with a slow drag that does not fling.
+  const dot = view.testId('lab-kit-pager-view-dot-2');
+  const center = (box: Box) => box.y + box.height / 2;
+  const dy = center(await dot.boundingBox()) - (top + bottom(page)) / 2;
+  if (Math.abs(dy) > 1) await view.swipe({ from: [20, 400], to: [20, 400 - dy], durationMs: 600 });
+  let last = Number.NaN;
+  const parked = await t.waitFor(() => dot.boundingBox(), {
+    until: b => { const settled = b.y === last; last = b.y; return settled; }, interval: 100,
+  });
+  expect(parked.y).toBeGreaterThanOrEqual(top);
+  await expect(dot).not.toBeInViewport();
+  await (await view.touch(dot)).up();
+  await expect(state).toHaveText('page=2');
+  expect(bottom(await dot.boundingBox())).toBeLessThanOrEqual(top);
+});

@@ -28,6 +28,7 @@ fn semantic(frame: &PresentedFrame, test_id: &str) -> Option<SemanticNode> {
         keyboard_focus: None,
         inert: false,
         drags: None,
+        obscured: [0.0; 4],
     }
     .node(ids.id(index)?)
 }

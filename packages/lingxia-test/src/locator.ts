@@ -499,7 +499,8 @@ export class PageLocator implements Locator {
     return `while trying to ${verb} ${formatValue(this.selector)}\nat ${this.where()}`;
   }
 
-  private async reveal(index: number, verb: string, deadline: ActionDeadline): Promise<void> {
+  /** @internal Scroll match `index` on screen through the page driver. */
+  async reveal(index: number, verb: string, deadline: ActionDeadline): Promise<void> {
     if (!this.page.scrollTo) return;
     await this.guard(() => deadline.call("page.scrollTo", () =>
       this.page.scrollTo!({ page: this.options.page, css: this.selector, index }), () => this.callContext(verb)));

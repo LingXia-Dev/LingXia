@@ -8,6 +8,7 @@ import type {
   RefreshIndicator,
   RefreshPhase,
 } from "@lingxia/types/automation";
+import { ActionDeadline } from "./deadline.js";
 import { PageLocator, sleep } from "./locator.js";
 import type {
   DragOptions,
@@ -60,8 +61,13 @@ async function centerOf(locator: Locator, name: string): Promise<Point> {
     if (match.kind === "unique" && match.rect && match.inViewport) {
       return [match.rect.left + match.rect.width / 2, match.rect.top + match.rect.height / 2];
     }
-    reason = match.kind === "unique" ? "element is outside the viewport; scroll it in first" : locator.missText(match);
+    reason = match.kind === "unique" ? "element is outside the viewport" : locator.missText(match);
     if (Date.now() >= until) throw new Error(`${name}: ${locator.describe()} ${reason}`);
+    // A GPU page reaches only what it shows: scroll the match out from under bars first.
+    if (match.kind === "unique" && match.renderer === "gpu") {
+      // A refusal keeps the wait going; the deadline reports it.
+      await locator.reveal(match.index, "gesture", new ActionDeadline(Math.max(1, until - Date.now()))).catch(() => {});
+    }
     await sleep(100);
   }
 }

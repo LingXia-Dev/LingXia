@@ -32,6 +32,17 @@ test("swipe, drag and fling send real paths at page points and record their deli
     [["swipe", "window"], ["drag", "window"], ["fling", "window"]]);
 });
 
+test("a gesture at a GPU match outside the viewport scrolls it on screen first", async () => {
+  const world = createWorld();
+  const under = world.add({ testId: "under", renderer: "gpu", rect: { left: 0, top: 380, width: 40, height: 20 }, inViewport: false });
+  spec("reveal", async (t) => { await (await t.app.view.touch(t.app.view.testId("under"))).up(); });
+  installFakeHost(world);
+  const report = await run();
+  assert.equal(report.cases[0].status, "passed", JSON.stringify(report.cases[0].error));
+  assert.equal(under.scrolledTo, 1);
+  assert.deepEqual(world.gestureCalls[0].shape.at, [20, 390]);
+});
+
 test("a fallback past the input dispatcher is visible in the result", async () => {
   const world = createWorld();
   world.gestureHost.delivered = "view";

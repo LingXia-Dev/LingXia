@@ -103,6 +103,22 @@ impl DeviceFacts {
     }
 }
 
+/// The surface edges covered, logical pixels (top, right, bottom, left): by host and system
+/// bars and the keyboard, then by system bars and the keyboard alone.
+pub fn obscured(env: &serde_json::Value) -> [[f32; 4]; 2] {
+    let length = |value: &serde_json::Value| value.as_f64().unwrap_or(0.0) as f32;
+    let keyboard = length(&env["keyboard"]["height"]);
+    let edges = |insets: &serde_json::Value| {
+        [
+            length(&insets["top"]),
+            length(&insets["right"]),
+            length(&insets["bottom"]).max(keyboard),
+            length(&insets["left"]),
+        ]
+    };
+    [edges(&env["insets"]), edges(&env["safeArea"])]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

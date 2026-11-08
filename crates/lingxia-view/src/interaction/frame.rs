@@ -140,6 +140,14 @@ impl PresentedFrame {
     }
 }
 
+/// An open dialog: every host lifts the page above its bars while one shows.
+pub fn has_open_dialog(frame: &PresentedFrame) -> bool {
+    frame
+        .nodes
+        .iter()
+        .any(|node| node.role.as_deref() == Some("dialog") && visible(node))
+}
+
 pub fn visible(node: &NodeSnapshot) -> bool {
     node.visible_bounds[2] > 0.0 && node.visible_bounds[3] > 0.0
 }

@@ -191,6 +191,9 @@ pub struct Projection<'a> {
     pub inert: bool,
     /// Live snap points of `drag` elements, ahead of the frame once input moved them.
     pub drags: Option<&'a crate::interaction::drag::DragModel>,
+    /// Host chrome, system bars and the keyboard over the root's edges (top, right, bottom,
+    /// left): what lies under them is outside the viewport.
+    pub obscured: [f32; 4],
 }
 
 impl Projection<'_> {

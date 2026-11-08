@@ -544,3 +544,86 @@ fn a_click_on_a_controls_label_lands_on_the_control() {
         .unwrap_err();
     assert!(refused.contains("not enabled"), "{refused}");
 }
+
+#[test]
+fn a_match_under_a_bottom_bar_is_outside_the_viewport_until_revealed() {
+    let mut i = interaction(
+        "h('scroll',{style:{height:400,paddingBottom:60}},h('column',{style:{height:345}}),h('button',{'data-testid':'under',onClick(){}},'Under'))",
+    );
+    let under = |i: &ViewInteraction| {
+        i.automation_query("[data-testid=\"under\"]", None, false, None)
+            .unwrap()["inViewport"]
+            .as_bool()
+    };
+    assert_eq!(under(&i), Some(true));
+    i.set_obscured([[0.0, 0.0, 60.0, 0.0], [0.0; 4]]);
+    assert_eq!(under(&i), Some(false));
+    let page = PageTicket::new(1);
+    let refused = i
+        .automate(
+            "[data-testid=\"under\"]",
+            None,
+            AutomationAct::Click,
+            false,
+            page,
+        )
+        .unwrap_err();
+    assert!(refused.contains("outside the viewport"), "{refused}");
+    let revealed = i
+        .automate(
+            "[data-testid=\"under\"]",
+            None,
+            AutomationAct::ScrollIntoView,
+            false,
+            page,
+        )
+        .unwrap();
+    assert!(revealed.contains(&Effect::Redraw));
+}
+
+#[test]
+fn a_reveal_in_an_unpadded_root_scroll_stops_above_the_bar() {
+    let mut i = interaction(
+        "h('scroll',{style:{height:400}},h('column',{style:{height:350}}),h('button',{'data-testid':'under',style:{height:30},onClick(){}},'Under'),h('column',{style:{height:200}}))",
+    );
+    i.set_obscured([[0.0, 0.0, 60.0, 0.0], [0.0; 4]]);
+    let frame = i.frame().unwrap().clone();
+    let node = frame.nodes.iter().find(|n| n.test_id == "under").unwrap();
+    let offsets = i.scroll().reveal_offsets(&frame, node).unwrap();
+    // The button ends at 380; above a 60 px bar its end sits at 340.
+    assert_eq!(offsets.values().copied().collect::<Vec<_>>(), vec![40.0]);
+}
+
+#[test]
+fn an_open_dialog_rises_above_host_bars_but_not_the_system_ones() {
+    let mut i = interaction(
+        "h('page',{},h('dialog',{open:true,'aria-label':'Sheet',style:{width:300,height:400,justifyContent:'flex-end'}},h('button',{'data-testid':'apply',style:{height:30},onClick(){}},'Apply')))",
+    );
+    let apply = |i: &ViewInteraction| {
+        i.automation_query("[data-testid=\"apply\"]", None, false, None)
+            .unwrap()["inViewport"]
+            .as_bool()
+    };
+    i.set_obscured([[0.0, 0.0, 60.0, 0.0], [0.0; 4]]);
+    assert_eq!(apply(&i), Some(true));
+    i.set_obscured([[0.0, 0.0, 60.0, 0.0], [0.0, 0.0, 40.0, 0.0]]);
+    assert_eq!(apply(&i), Some(false));
+}
+
+#[test]
+fn a_match_out_of_the_accessibility_tree_can_still_be_revealed() {
+    let mut i = interaction(
+        "h('scroll',{style:{height:100}},h('column',{style:{height:400}}),h('row',{'aria-hidden':true},h('button',{'data-testid':'dot',onClick(){}},'')))",
+    );
+    let page = PageTicket::new(1);
+    let revealed = i
+        .automate(
+            "[data-testid=\"dot\"]",
+            None,
+            AutomationAct::ScrollIntoView,
+            false,
+            page,
+        )
+        .unwrap();
+    assert!(revealed.contains(&Effect::Redraw));
+}

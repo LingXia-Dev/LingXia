@@ -154,7 +154,7 @@ impl ViewInteraction {
                 "Element not interactable: {selector} is outside the viewport"
             ));
         }
-        if !enabled {
+        if !enabled && act != AutomationAct::ScrollIntoView {
             return Err(format!(
                 "Element not interactable: {selector} is not enabled"
             ));

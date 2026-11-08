@@ -314,6 +314,11 @@ impl ViewInteraction {
         self.fine_pointer = fine;
     }
 
+    /// Edges covered by all bars and the keyboard, and by system bars and the keyboard alone.
+    pub fn set_obscured(&mut self, [bars, system]: [[f32; 4]; 2]) {
+        self.scroll.set_obscured(bars, system);
+    }
+
     /// A double click at a device-pixel point: select the word of selectable text there.
     pub fn select_word_at(&mut self, x: f32, y: f32) -> Vec<Effect> {
         let Some(frame) = self.frame.clone().filter(|_| !self.inert) else {
@@ -389,6 +394,10 @@ impl ViewInteraction {
             keyboard_focus: self.keyboard_focus,
             inert: self.inert,
             drags: Some(&self.drag),
+            obscured: self
+                .frame
+                .as_deref()
+                .map(|frame| self.scroll.obscured(frame))?,
         })
     }
 

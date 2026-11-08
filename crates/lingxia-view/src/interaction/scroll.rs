@@ -24,6 +24,10 @@ pub struct ScrollModel {
     /// List anchors with a `duration` the host is scrolling toward.
     glides: HashMap<String, GlideRun>,
     started_glides: Vec<String>,
+    /// Root edges under all bars and the keyboard; a reveal stops clear of them.
+    obscured: [f32; 4],
+    /// The same without host bars, which an open dialog rises above.
+    obscured_by_system: [f32; 4],
 }
 
 struct GlideRun {
@@ -516,8 +520,21 @@ impl ScrollModel {
                 ScrollAxis::Horizontal => (region.content_insets[3], region.content_insets[1]),
                 ScrollAxis::Vertical => (region.content_insets[0], region.content_insets[2]),
             };
-            let low = bounds[axis] + lead;
-            let high = (bounds[axis] + bounds[axis + 2] - trail).max(low);
+            let mut low = bounds[axis] + lead;
+            let mut high = bounds[axis] + bounds[axis + 2] - trail;
+            // A root region's visible part ends where bars and the keyboard begin.
+            if region.parent.is_none()
+                && let Some(root) = frame.nodes.first()
+            {
+                let obscured = self.obscured(frame);
+                let (before_edge, after_edge) = match region.axis {
+                    ScrollAxis::Horizontal => (obscured[3], obscured[1]),
+                    ScrollAxis::Vertical => (obscured[0], obscured[2]),
+                };
+                low = low.max(root.bounds[axis] + before_edge);
+                high = high.min(root.bounds[axis] + root.bounds[axis + 2] - after_edge);
+            }
+            let high = high.max(low);
             let delta = if start[axis] < low || end[axis] - start[axis] > high - low {
                 start[axis] - low
             } else {
@@ -535,6 +552,21 @@ impl ScrollModel {
             id = region.parent.clone();
         }
         None
+    }
+
+    pub fn set_obscured(&mut self, bars: [f32; 4], system: [f32; 4]) {
+        let clean = |edges: [f32; 4]| edges.map(|e| if e.is_finite() { e.max(0.0) } else { 0.0 });
+        self.obscured = clean(bars);
+        self.obscured_by_system = clean(system);
+    }
+
+    /// The root edges covered while `frame` shows.
+    pub fn obscured(&self, frame: &PresentedFrame) -> [f32; 4] {
+        if crate::interaction::frame::has_open_dialog(frame) {
+            self.obscured_by_system
+        } else {
+            self.obscured
+        }
     }
 
     pub fn can_reveal(&self, frame: &PresentedFrame, target: &NodeSnapshot) -> bool {

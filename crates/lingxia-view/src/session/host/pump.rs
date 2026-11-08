@@ -156,6 +156,8 @@ impl<A: PlatformAdapter> Inner<A> {
             let fine = environment.value["pointer"] == "fine";
             main.interaction.set_fine_pointer(fine);
             main.text_menu.set_fine_pointer(fine);
+            main.interaction
+                .set_obscured(crate::platform::obscured(&environment.value));
             let same = main
                 .environment
                 .as_ref()

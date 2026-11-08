@@ -293,19 +293,21 @@ pub fn describe(
     // As on the Web, visible means rendered; scrolled or clipped away is only out of the viewport.
     let visible = node.bounds[2] > 0.0 && node.bounds[3] > 0.0;
     let [left, top, width, height] = node.visible_bounds;
+    // The root less the edges bars and the keyboard cover: what a finger can reach.
     let viewport = projection
         .frame
         .nodes
         .first()
         .map(|root| [root.bounds[2], root.bounds[3]])
         .unwrap_or_default();
+    let [cover_top, cover_right, cover_bottom, cover_left] = projection.obscured;
     let in_viewport = visible
         && width > 0.0
         && height > 0.0
-        && left + width > 0.0
-        && top + height > 0.0
-        && left < viewport[0]
-        && top < viewport[1];
+        && left + width > cover_left
+        && top + height > cover_top
+        && left < viewport[0] - cover_right
+        && top < viewport[1] - cover_bottom;
     let input = node.input.as_ref();
     let chosen = node.select.as_ref().and_then(|select| {
         select
