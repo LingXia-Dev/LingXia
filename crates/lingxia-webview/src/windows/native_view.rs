@@ -454,6 +454,12 @@ pub fn destroy_native_content_parent(webtag_key: &str, view: WindowsWebViewNativ
     destroy_webview_parent(webtag_key, view);
 }
 
+/// Move other pages out of `view` before it is destroyed. Call off the parent's thread, which
+/// keeps pumping; `Deferred` is asked again.
+pub fn retire_native_content_parent(view: WindowsWebViewNativeView) -> StdResult<ParentRetirement> {
+    prepare_destroy_webview_parent(view)
+}
+
 /// The scheme pages of `webtag`'s lxapp follow: the lxapp's own, else new WebViews'.
 pub fn preferred_color_scheme_for(webtag: &WebTag) -> WindowsPreferredColorScheme {
     super::color_scheme::lxapp_color_scheme(webtag)

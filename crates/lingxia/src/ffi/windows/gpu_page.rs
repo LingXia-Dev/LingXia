@@ -7,15 +7,17 @@ use lingxia_view_windows::lingxia_view::session::lifecycle::ConnectionTicket;
 use lingxia_view_windows::{Dispatcher, Page, Scheme, Shell};
 use lingxia_webview::WebTag;
 use lingxia_webview::platform::windows::{
-    ParkOutcome, WindowsNativeContent, WindowsPreferredColorScheme, WindowsWebViewNativeView,
-    create_native_content_parent, destroy_native_content_parent, preferred_color_scheme_for,
-    register_native_content, unregister_native_content,
+    ParentRetirement, ParkOutcome, WindowsNativeContent, WindowsPreferredColorScheme,
+    WindowsWebViewNativeView, create_native_content_parent, destroy_native_content_parent,
+    preferred_color_scheme_for, register_native_content, retire_native_content_parent,
+    unregister_native_content,
 };
 use lxapp::{GpuViewGeneration, LxAppError, PageInstance};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicIsize, AtomicU64, Ordering};
+use std::sync::mpsc::RecvTimeoutError;
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 use std::time::Duration;
 
@@ -153,9 +155,38 @@ fn teardown() {
     threads().remove(&live.token);
     unregister_native_content(&live.webtag, &live.content);
     drop(live.page);
-    destroy_native_content_parent(live.webtag.key(), live.parent);
-    lingxia_view_windows::quit_message_loop();
+    let key = live.webtag.key().to_owned();
+    let parent = live.parent;
+    let finish = move || {
+        destroy_native_content_parent(&key, parent);
+        lingxia_view_windows::quit_message_loop();
+    };
+    let Ok(dispatcher) = Dispatcher::current() else {
+        return finish();
+    };
+    // Other pages the host presented into this parent move out first; that may wait on this
+    // thread, which keeps pumping meanwhile.
+    std::thread::spawn(move || {
+        let deadline = std::time::Instant::now() + RETIRE_DEADLINE;
+        loop {
+            match retire_native_content_parent(parent) {
+                Ok(ParentRetirement::Ready) => break,
+                Ok(ParentRetirement::Deferred) => {}
+                Err(error) => {
+                    log::warn!("GPU page parent retirement could not park pages: {error}")
+                }
+            }
+            if std::time::Instant::now() >= deadline {
+                log::warn!("GPU page parent retirement timed out; destroying the parent anyway");
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(16));
+        }
+        dispatcher.post(Box::new(finish));
+    });
 }
+
+const RETIRE_DEADLINE: Duration = Duration::from_secs(10);
 
 /// The host's handle on a page: every call lands on the page thread.
 struct Content {
@@ -230,23 +261,32 @@ impl WindowsNativeContent for Content {
     }
 
     fn park_from_parent(&self, expected: isize, window: isize) -> WebResult<ParkOutcome> {
-        if self
+        let claimed = self
             .current
             .compare_exchange(expected, window, Ordering::AcqRel, Ordering::Acquire)
-            .is_err()
-        {
-            return Ok(ParkOutcome::NotInParent);
-        }
+            .is_ok();
+        // A page leaving the screen moves to its new parent late, so it can still sit in
+        // `expected` after the host moved it on.
+        let target = if claimed {
+            window
+        } else {
+            self.current.load(Ordering::Acquire)
+        };
         // The host destroys the old parent once this returns: the move must be done by then.
         // It runs off the host's UI thread, which keeps pumping, so waiting cannot deadlock.
         let (tx, rx) = std::sync::mpsc::channel();
         self.post(move |page| {
-            page.set_parent(window);
-            let _ = tx.send(());
+            let inside = claimed || page.parent_window() == expected;
+            if inside {
+                page.park(target);
+            }
+            let _ = tx.send(inside);
         });
         Ok(match rx.recv_timeout(CAPTURE_TIMEOUT) {
-            Ok(()) => ParkOutcome::Parked,
-            Err(_) => ParkOutcome::Deferred,
+            Ok(true) => ParkOutcome::Parked,
+            // A page whose thread is gone holds no window.
+            Ok(false) | Err(RecvTimeoutError::Disconnected) => ParkOutcome::NotInParent,
+            Err(RecvTimeoutError::Timeout) => ParkOutcome::Deferred,
         })
     }
 

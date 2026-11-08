@@ -16,8 +16,9 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
 use windows::Win32::UI::WindowsAndMessaging::{
-    DestroyWindow, GA_ROOT, GetAncestor, HWND_TOP, IsWindowVisible, SW_HIDE, SW_SHOWNOACTIVATE,
-    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SetParent, SetWindowPos, ShowWindow,
+    DestroyWindow, GA_ROOT, GetAncestor, GetParent, HWND_TOP, IsWindowVisible, SW_HIDE,
+    SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SetParent,
+    SetWindowPos, ShowWindow,
 };
 
 mod adapter;
@@ -411,6 +412,24 @@ impl Page {
         }
     }
 
+    /// The window this page sits in now.
+    pub fn parent_window(&self) -> isize {
+        // SAFETY: this thread's window.
+        unsafe { GetParent(self.window()) }.map_or(0, |parent| parent.0 as isize)
+    }
+
+    /// Move to `parent` now, as a host does before destroying the current parent: a hidden page
+    /// still on screen for its replacement leaves the screen first.
+    pub fn park(&self, parent: isize) {
+        if !self.visible.get() {
+            leaving().retain(|(page, _)| *page != self.hwnd);
+            self.parked.set(None);
+            // SAFETY: this thread's window.
+            let _ = unsafe { ShowWindow(self.window(), SW_HIDE) };
+        }
+        self.set_parent(parent);
+    }
+
     pub fn bring_to_front(&self) {
         // SAFETY: this thread's window.
         let _ = unsafe {
@@ -675,6 +694,8 @@ impl Page {
             return;
         }
         log::warn!(target: "lingxia_view", "GPU page window destroyed by its host");
+        self.settled();
+        leaving().retain(|(page, _)| *page != self.hwnd);
         view::unregister(self.hwnd);
         self.retire_presenter();
         *self

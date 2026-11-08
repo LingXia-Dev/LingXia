@@ -82,8 +82,9 @@ pub use native_view::{
     ParentRetirement, ParkOutcome, WindowsNativeContent, WindowsWebViewHandler,
     WindowsWebViewNativeView, WindowsWebViewNativeViewHost, create_native_content_parent,
     destroy_native_content_parent, find_webview_handler, list_content_webtags,
-    preferred_color_scheme_for, register_native_content, set_webview_devtools_enabled,
-    set_webview_native_view_host, set_webview_user_data_dir, unregister_native_content,
+    preferred_color_scheme_for, register_native_content, retire_native_content_parent,
+    set_webview_devtools_enabled, set_webview_native_view_host, set_webview_user_data_dir,
+    unregister_native_content,
 };
 
 // Private glob re-imports so submodules can reach their siblings (and this
