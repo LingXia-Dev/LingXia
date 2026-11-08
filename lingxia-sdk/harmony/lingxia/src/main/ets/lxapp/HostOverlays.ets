@@ -86,6 +86,11 @@ export class HostOverlays {
     HostOverlays.report();
   }
 
+  /** A label or selection changed without new areas: report again. */
+  static refresh(): void {
+    HostOverlays.report();
+  }
+
   /** A window tap landed on element `key`; false when it is gone or presses nothing. */
   static press(key: string): boolean {
     const element = HostOverlays.elements.get(key);

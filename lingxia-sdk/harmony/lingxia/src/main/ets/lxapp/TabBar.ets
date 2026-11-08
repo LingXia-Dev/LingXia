@@ -124,7 +124,7 @@ export struct TabBar {
   // A GPU page's open dialog lies over the bar: automation no longer reaches it.
   @Prop @Watch('coveredChanged') covered: boolean = false;
   // Whether the overflow panel is open above the "more" slot.
-  @State private moreVisible: boolean = false;
+  @State @Watch('moreChanged') private moreVisible: boolean = false;
 
   // Callback functions
   onTabSelected?: (appId: string, index: number, item: TabBarItem) => void;
@@ -147,6 +147,11 @@ export struct TabBar {
     if (this.onTabSelected) {
       this.onTabSelected(this.appId, item.index, item);
     }
+  }
+
+  /** Opening the panel moves the selection to "more": automation reads it again. */
+  moreChanged(): void {
+    HostOverlays.refresh();
   }
 
   coveredChanged(): void {
@@ -509,6 +514,9 @@ export struct TabBar {
     .onClick(() => {
       this.moreVisible = !this.moreVisible;
     })
+    .onAreaChange((_: Area, area: Area) => HostOverlays.place(this.chromeSource(), 'more', (): string => this.getMoreLabel(),
+      'tab', area, (): void => { this.moreVisible = !this.moreVisible; }, 'tabBar', (): boolean => this.isMoreSelected()))
+    .onDisAppear(() => HostOverlays.forget(this.chromeSource(), 'more'))
     .bindSheet(this.moreVisible, this.buildOverflowSheet(), {
       height: this.getOverflowSheetHeight(),
       width: '100%',
