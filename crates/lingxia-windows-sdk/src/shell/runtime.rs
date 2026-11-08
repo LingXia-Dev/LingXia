@@ -592,32 +592,70 @@ fn persist_sidebar_chrome(rail: bool) {
     }
 }
 
-/// A sidebar width drag's current 96-DPI width, or 0.
+/// A sidebar width drag's live state: 0 none, `RAIL_LIVE` the icon rail, else
+/// the expanded 96-DPI width.
 static LIVE_SIDEBAR_WIDTH: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+const RAIL_LIVE: i32 = -1;
+/// A drag that ends narrower than this snaps the sidebar to its icon rail.
+const RAIL_SNAP_WIDTH: f64 = 160.0;
 
-/// Drag the expanded sidebar to `width` (96-DPI, `None` keeps the dragged one);
-/// `done` ends the drag and remembers the width.
+fn live_sidebar_rail() -> Option<bool> {
+    match LIVE_SIDEBAR_WIDTH.load(Ordering::Acquire) {
+        0 => None,
+        live => Some(live == RAIL_LIVE),
+    }
+}
+
+/// Drag the sidebar to `width` (96-DPI, `None` keeps the dragged one); `done`
+/// ends the drag and settles on the icon rail or the expanded width.
 pub(crate) fn resize_sidebar(width: Option<f64>, done: bool) {
     let live = LIVE_SIDEBAR_WIDTH.load(Ordering::Acquire);
-    let width = match width {
+    let next = match width {
+        Some(width) if width < RAIL_SNAP_WIDTH => RAIL_LIVE,
         Some(width) => width
             .round()
-            .clamp(f64::from(MIN_SIDEBAR_WIDTH), f64::from(MAX_SIDEBAR_WIDTH))
-            as i32,
-        None if live > 0 => live,
+            .min(f64::from(MAX_SIDEBAR_WIDTH))
+            .max(f64::from(MIN_SIDEBAR_WIDTH)) as i32,
+        None if live != 0 => live,
         None => return,
     };
-    LIVE_SIDEBAR_WIDTH.store(if done { 0 } else { width }, Ordering::Release);
-    if done
-        && let Err(error) = lingxia_shell::set_sidebar_chrome(
-            lingxia_shell::SidebarChrome::with_expanded(true, f64::from(width)),
-        )
-    {
-        log::warn!("could not persist the sidebar width: {error}");
+    LIVE_SIDEBAR_WIDTH.store(if done { 0 } else { next }, Ordering::Release);
+    let Some(owner) = shell_owner_appid() else {
+        return;
+    };
+    if done {
+        let rail = next == RAIL_LIVE;
+        let medium = resolved_shell_size_class(None) == SizeClass::Medium;
+        update_sidebar_ui_state(&owner, |state| {
+            state.collapsed = false;
+            if medium {
+                // Medium already projects a rail; the drag only reveals or
+                // dismisses the full sidebar for this session.
+                state.medium_expanded = !rail;
+                state.icon_rail = false;
+            } else {
+                state.medium_expanded = false;
+                state.icon_rail = rail;
+                state.seeded = true;
+            }
+        });
+        let remembered = lingxia_shell::sidebar_chrome();
+        let chrome = if rail {
+            lingxia_shell::SidebarChrome::with_expanded(
+                medium && remembered.expanded,
+                remembered.expanded_width,
+            )
+        } else {
+            lingxia_shell::SidebarChrome::with_expanded(
+                !medium || remembered.expanded,
+                f64::from(next),
+            )
+        };
+        if let Err(error) = lingxia_shell::set_sidebar_chrome(chrome) {
+            log::warn!("could not persist the sidebar width: {error}");
+        }
     }
-    if (done || width != live)
-        && let Some(owner) = shell_owner_appid()
-    {
+    if done || next != live {
         sync_shell_layout(&owner);
     }
 }
@@ -2104,7 +2142,7 @@ fn build_self_browser_tab_bar_layout() -> Option<WindowsShellTabBarLayout> {
         items: Vec::new(),
         overflow_start_index: -1,
         collapsed: ui_state.collapsed,
-        icon_rail: ui_state.icon_rail,
+        icon_rail: live_sidebar_rail().unwrap_or(ui_state.icon_rail),
         rail_expand_disabled: resolved_shell_size_class(None) == SizeClass::Compact,
         items_api_hidden: false,
         items_collapsed: false,
@@ -2599,7 +2637,7 @@ fn build_tab_bar_layout(
             .unwrap_or_else(|| main_lxapp_closable(&app.appid)),
         group_order_index,
         collapsed: ui_state.collapsed,
-        icon_rail: ui_state.icon_rail || force_icon_rail,
+        icon_rail: live_sidebar_rail().unwrap_or(ui_state.icon_rail || force_icon_rail),
         rail_expand_disabled: size_class == SizeClass::Compact,
         items_api_hidden,
         items_collapsed: items_api_hidden || items_ui_state.items_collapsed,

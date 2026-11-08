@@ -7504,6 +7504,10 @@ fn hit_test_window(hwnd: HWND, lparam: LPARAM) -> LRESULT {
     if is_full_chrome_window(hwnd) && point.y < full_chrome_drag_strip_pixels(hwnd) {
         return LRESULT(WindowsAndMessaging::HTCAPTION as isize);
     }
+    #[cfg(feature = "shell-chrome")]
+    if sidebar_resize_anchor_at(hwnd, point_tuple).is_some() {
+        return LRESULT(WindowsAndMessaging::HTCLIENT as isize);
+    }
 
     match chrome_hit_for_window(hwnd, point_tuple) {
         // Windows 11 discovers custom-titlebar snap layouts through
@@ -7940,6 +7944,26 @@ static SIDEBAR_DRAG: Mutex<Option<(i32, bool)>> = Mutex::new(None);
 #[cfg(feature = "shell-chrome")]
 fn sidebar_resize_anchor_at(hwnd: HWND, point: (i32, i32)) -> Option<(i32, bool)> {
     crate::shell::sidebar_resize_anchor(&chrome_state_for_window(hwnd)?, point)
+}
+
+#[cfg(feature = "shell-chrome")]
+fn sidebar_resize_cursor_wanted(hwnd: HWND) -> bool {
+    if SIDEBAR_DRAG
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .is_some()
+    {
+        return true;
+    }
+    let mut cursor = POINT::default();
+    unsafe {
+        if WindowsAndMessaging::GetCursorPos(&mut cursor).is_err()
+            || !ScreenToClient(hwnd, &mut cursor).as_bool()
+        {
+            return false;
+        }
+    }
+    sidebar_resize_anchor_at(hwnd, (cursor.x, cursor.y)).is_some()
 }
 
 /// Apply a sidebar width drag at `point`; `done` ends it. False when none is running.
@@ -10444,6 +10468,14 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 snap_window_after_caption_drag(hwnd);
                 persist_primary_window_frame(hwnd);
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
+            #[cfg(feature = "shell-chrome")]
+            WindowsAndMessaging::WM_SETCURSOR
+                if (lparam.0 & 0xffff) as u32 == WindowsAndMessaging::HTCLIENT
+                    && sidebar_resize_cursor_wanted(hwnd) =>
+            {
+                set_divider_cursor(true);
+                LRESULT(1)
             }
             WindowsAndMessaging::WM_MOUSEMOVE => {
                 if update_window_resize_drag(hwnd) {
