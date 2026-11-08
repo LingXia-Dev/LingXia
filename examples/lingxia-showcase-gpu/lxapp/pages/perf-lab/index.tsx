@@ -106,7 +106,8 @@ export function render({ data, actions }: View<PerfActions, PerfData>) {
 
 /** Busy past the View's execution budget, as a runaway handler would be. */
 function stall() {
-  const until = Date.now() + 2000;
+  // Past the interrupt limit of a debug build too (8x budget), so every profile fails the page.
+  const until = Date.now() + 5000;
   while (Date.now() < until) { /* spin */ }
 }
 
