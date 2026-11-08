@@ -174,11 +174,11 @@ pub fn set_app_window_device_frame(
     appid: &str,
     frame: Option<WindowsDeviceFrame>,
 ) -> Result<(), String> {
-    let webview = current_page_webview(appid)?;
+    let webtag = current_page_webtag(appid)?;
     let host_window = (frame.is_none())
-        .then(|| crate::window_host::find_host_window_for_webview(&webview.webtag()).ok())
+        .then(|| crate::window_host::find_host_window_for_webview(&webtag).ok())
         .flatten();
-    native::set_webview_device_frame(&webview.webtag(), frame)?;
+    native::set_webview_device_frame(&webtag, frame)?;
     if let Some(host_window) = host_window {
         app_menu::refresh_host_window_menu(host_window.window);
     }
@@ -189,9 +189,9 @@ pub fn set_app_window_device_frame(
 /// device frame. Runners use this to restore the frame after a relaunch swaps
 /// the page WebView and its host window.
 pub fn app_window_has_device_frame(appid: &str) -> Result<bool, String> {
-    let webview = current_page_webview(appid)?;
-    let host_window = crate::window_host::find_host_window_for_webview(&webview.webtag())
-        .map_err(|err| err.to_string())?;
+    let webtag = current_page_webtag(appid)?;
+    let host_window =
+        crate::window_host::find_host_window_for_webview(&webtag).map_err(|err| err.to_string())?;
     Ok(native::window_has_frame(host_window.window))
 }
 
@@ -204,9 +204,9 @@ pub fn set_app_window_device_frame_and_tabbar_position(
     frame: WindowsDeviceFrame,
     tabbar_position: WindowsShellTabBarPosition,
 ) -> Result<(), String> {
-    let webview = current_page_webview(appid)?;
+    let webtag = current_page_webtag(appid)?;
     native::set_webview_device_frame_and_tabbar_position(
-        &webview.webtag(),
+        &webtag,
         appid.to_string(),
         frame,
         tabbar_position,
@@ -325,9 +325,9 @@ pub fn show_device_frame_info_sheet(
     appid: &str,
     info: WindowsDeviceFrameInfoSheet,
 ) -> Result<(), String> {
-    let webview = current_page_webview(appid)?;
-    let host_window = crate::window_host::find_host_window_for_webview(&webview.webtag())
-        .map_err(|err| err.to_string())?;
+    let webtag = current_page_webtag(appid)?;
+    let host_window =
+        crate::window_host::find_host_window_for_webview(&webtag).map_err(|err| err.to_string())?;
     let window = host_window.window;
     let info = native::DeviceFrameInfoSheet {
         title: info.title,
@@ -360,8 +360,8 @@ pub fn show_device_frame_info_sheet(
 
 /// Opens the WebView2 DevTools window for the current page of `appid`.
 pub fn open_current_page_devtools(appid: &str) -> Result<(), String> {
-    let webview = current_page_webview(appid)?;
-    lingxia_webview::platform::windows::find_webview_handler(&webview.webtag())
+    let webtag = current_page_webtag(appid)?;
+    lingxia_webview::platform::windows::find_webview_handler(&webtag)
         .ok_or_else(|| "page WebView handler is not ready".to_string())?
         .open_devtools()
         .map_err(|err| err.to_string())
@@ -448,20 +448,19 @@ pub fn set_windows_preferred_color_scheme(
     }
 }
 
-fn current_page_webview(appid: &str) -> Result<std::sync::Arc<lingxia_webview::WebView>, String> {
+/// The current page's webtag, which names its window for a GPU page and a WebView alike.
+fn current_page_webtag(appid: &str) -> Result<lingxia_webview::WebTag, String> {
+    use lingxia_webview::platform::windows::{find_webview_handler, list_content_webtags};
     let app = lxapp::try_get(appid).ok_or_else(|| format!("lxapp is not active: {appid}"))?;
+    // A page's WebView or native content can still be on its way; another of the app's pages
+    // shares its window meanwhile.
     if let Ok(page) = app.current_page()
-        && let Some(webview) = page.webview()
+        && find_webview_handler(&page.webtag()).is_some()
     {
-        return Ok(webview);
+        return Ok(page.webtag());
     }
-    for webtag in lingxia_webview::runtime::list_webviews() {
-        if webtag.extract_appid() != appid {
-            continue;
-        }
-        if let Some(webview) = lingxia_webview::runtime::find_webview(&webtag) {
-            return Ok(webview);
-        }
-    }
-    Err("page WebView is not ready".to_string())
+    list_content_webtags()
+        .into_iter()
+        .find(|webtag| webtag.extract_appid() == appid && find_webview_handler(webtag).is_some())
+        .ok_or_else(|| "page WebView is not ready".to_string())
 }

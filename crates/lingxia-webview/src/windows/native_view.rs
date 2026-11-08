@@ -164,7 +164,9 @@ impl WindowsWebViewHandler {
     pub fn open_devtools(&self) -> StdResult<()> {
         match self.webview() {
             Some(webview) => webview.inner.open_devtools(),
-            None => Ok(()),
+            None => Err(WebViewError::WebView(
+                "native page content has no DevTools".to_string(),
+            )),
         }
     }
 
