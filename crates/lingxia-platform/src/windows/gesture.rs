@@ -56,7 +56,11 @@ fn touch_message() -> u32 {
 }
 
 /// The shell's own chrome of a host window, in its client pixels.
-pub type WindowsChromeProvider = Arc<dyn Fn(isize) -> Vec<ChromeElement> + Send + Sync>;
+///
+/// With `reveal_tabs` a collapsed sidebar is asked to show its tabs; the flag returned is
+/// true while that reveal is under way, and the caller asks again once it has drawn.
+pub type WindowsChromeProvider =
+    Arc<dyn Fn(isize, bool) -> (Vec<ChromeElement>, bool) + Send + Sync>;
 static CHROME_PROVIDER: Mutex<Option<WindowsChromeProvider>> = Mutex::new(None);
 
 pub fn set_windows_chrome_provider(provider: WindowsChromeProvider) {
@@ -141,9 +145,20 @@ impl AppGesture for Platform {
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .clone();
-        let mut elements = provider
-            .map(|provider| provider(window))
-            .unwrap_or_default();
+        let reveal = matches!(scope.as_deref(), Some("sidebar" | "tabBar"));
+        let mut elements = match provider {
+            Some(provider) => {
+                let (elements, opening) = provider(window, reveal);
+                if opening {
+                    // The peek slides open before its rows can be pressed.
+                    tokio::time::sleep(Duration::from_millis(250)).await;
+                    provider(window, reveal).0
+                } else {
+                    elements
+                }
+            }
+            None => Vec::new(),
+        };
         elements.extend(child_buttons(window));
         if let Some(scope) = scope {
             elements.retain(|element| element.scope == scope);
@@ -164,50 +179,58 @@ impl AppGesture for Platform {
 
     async fn orient_window(&self, landscape: bool) -> Result<[f64; 2], PlatformError> {
         let window = resolve_screenshot_window(None)?.0 as isize;
-        let (width, height) = client_size(window);
         // The page decides the orientation, not the window: the sidebar and title bar make a
-        // squarish window's page portrait.
-        let (pw, ph) = largest_page(window).unwrap_or((width, height));
-        if (pw > ph) != landscape {
-            let mut frame = RECT::default();
-            let mut monitor = MONITORINFO {
-                cbSize: std::mem::size_of::<MONITORINFO>() as u32,
-                ..Default::default()
-            };
-            // SAFETY: reads and resizes a live top-level window; the resize is sent to its thread.
-            unsafe {
-                let hwnd = HWND(window as *mut _);
-                GetWindowRect(hwnd, &mut frame)
-                    .map_err(|e| PlatformError::Platform(format!("window rect: {e}")))?;
-                let _ = GetMonitorInfoW(
-                    MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST),
-                    &mut monitor,
-                );
-                let work = monitor.rcWork;
-                let chrome = (
-                    f64::from(frame.right - frame.left) - pw,
-                    f64::from(frame.bottom - frame.top) - ph,
-                );
-                // Windows caps a window at its work area: a page too tall to turn there
-                // shrinks until it fits.
-                let fit = ((f64::from(work.right - work.left) - chrome.0) / ph)
-                    .min((f64::from(work.bottom - work.top) - chrome.1) / pw)
-                    .min(1.0);
-                let width = (chrome.0 + ph * fit).round() as i32;
-                let height = (chrome.1 + pw * fit).round() as i32;
-                let left = frame.left.min(work.right - width).max(work.left);
-                let top = frame.top.min(work.bottom - height).max(work.top);
-                SetWindowPos(
-                    hwnd,
-                    None,
-                    left,
-                    top,
-                    width,
-                    height,
-                    SWP_NOZORDER | SWP_NOACTIVATE,
-                )
-                .map_err(|e| PlatformError::Platform(format!("resize window: {e}")))?;
+        // squarish window's page portrait. Resizing can also change that chrome (a narrow
+        // window folds its sidebar), so the page is measured again after each turn.
+        for _ in 0..3 {
+            let (width, height) = client_size(window);
+            let (pw, ph) = largest_page(window).unwrap_or((width, height));
+            if (pw > ph) == landscape {
+                break;
             }
+            {
+                let mut frame = RECT::default();
+                let mut monitor = MONITORINFO {
+                    cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+                    ..Default::default()
+                };
+                // SAFETY: reads and resizes a live top-level window; the resize is sent to its thread.
+                unsafe {
+                    let hwnd = HWND(window as *mut _);
+                    GetWindowRect(hwnd, &mut frame)
+                        .map_err(|e| PlatformError::Platform(format!("window rect: {e}")))?;
+                    let _ = GetMonitorInfoW(
+                        MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST),
+                        &mut monitor,
+                    );
+                    let work = monitor.rcWork;
+                    let chrome = (
+                        f64::from(frame.right - frame.left) - pw,
+                        f64::from(frame.bottom - frame.top) - ph,
+                    );
+                    // Windows caps a window at its work area: a page too tall to turn there
+                    // shrinks until it fits.
+                    let fit = ((f64::from(work.right - work.left) - chrome.0) / ph)
+                        .min((f64::from(work.bottom - work.top) - chrome.1) / pw)
+                        .min(1.0);
+                    let width = (chrome.0 + ph * fit).round() as i32;
+                    let height = (chrome.1 + pw * fit).round() as i32;
+                    let left = frame.left.min(work.right - width).max(work.left);
+                    let top = frame.top.min(work.bottom - height).max(work.top);
+                    SetWindowPos(
+                        hwnd,
+                        None,
+                        left,
+                        top,
+                        width,
+                        height,
+                        SWP_NOZORDER | SWP_NOACTIVATE,
+                    )
+                    .map_err(|e| PlatformError::Platform(format!("resize window: {e}")))?;
+                }
+            }
+            // The shell lays out the resized window on its own thread.
+            tokio::time::sleep(Duration::from_millis(200)).await;
         }
         let (width, height) = client_size(window);
         // SAFETY: reads a window's DPI.
@@ -330,7 +353,8 @@ fn begin(
     at: (f64, f64),
 ) -> Result<Held, PlatformError> {
     let (window, scale) = resolve(target)?;
-    let (child, _) = deepest_child_at(window, (at.0 * scale, at.1 * scale));
+    let (base, at_px) = popup_at(window, target, (at.0 * scale, at.1 * scale));
+    let (child, _) = deepest_child_at(base, at_px);
     // The target's origin in the child's client space.
     let mut origin = POINT { x: 0, y: 0 };
     // SAFETY: maps between two live windows.
@@ -347,6 +371,59 @@ fn begin(
         touch: input == GestureInput::Touch && is_gpu_page(child),
         last: at,
     })
+}
+
+/// A window point lands on what a press there would reach: a visible popup the window owns
+/// (a sidebar peek, say) when one covers it, else the window itself. Other apps' windows do
+/// not count: posted input reaches the app whatever lies above it. The point is returned in
+/// the chosen window's client pixels.
+fn popup_at(window: isize, target: &GestureTarget, at: (f64, f64)) -> (isize, (f64, f64)) {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GW_OWNER, GWL_EXSTYLE, GetWindow, GetWindowLongPtrW, WS_EX_TRANSPARENT,
+    };
+    unsafe extern "system" fn visit(candidate: HWND, found: LPARAM) -> BOOL {
+        // SAFETY: `found` is the tuple below, alive for the enumeration.
+        let (host, screen, found) = unsafe { &mut *(found.0 as *mut (HWND, POINT, Option<HWND>)) };
+        let mut rect = RECT::default();
+        // SAFETY: reads of a live top-level window.
+        let covers = unsafe {
+            IsWindowVisible(candidate).as_bool()
+                && GetWindowLongPtrW(candidate, GWL_EXSTYLE) as u32 & WS_EX_TRANSPARENT.0 == 0
+                && GetWindow(candidate, GW_OWNER).is_ok_and(|owner| owner == *host)
+                && GetWindowRect(candidate, &mut rect).is_ok()
+        } && screen.x >= rect.left
+            && screen.x < rect.right
+            && screen.y >= rect.top
+            && screen.y < rect.bottom;
+        if covers {
+            *found = Some(candidate);
+            return BOOL(0);
+        }
+        BOOL(1)
+    }
+    if !matches!(target, GestureTarget::Window { .. }) {
+        return (window, at);
+    }
+    let host = HWND(window as *mut _);
+    let mut screen = POINT {
+        x: at.0.round() as i32,
+        y: at.1.round() as i32,
+    };
+    // SAFETY: maps a point of a live window.
+    let _ = unsafe { ClientToScreen(host, &mut screen) };
+    let mut found = (host, screen, None);
+    // SAFETY: the callback only touches `found`, which outlives the call; top-level windows
+    // enumerate top first.
+    unsafe {
+        let _ = EnumWindows(Some(visit), LPARAM(&mut found as *mut _ as isize));
+    }
+    let Some(popup) = found.2 else {
+        return (window, at);
+    };
+    let mut client = screen;
+    // SAFETY: maps a point into a live window.
+    let _ = unsafe { ScreenToClient(popup, &mut client) };
+    (popup.0 as isize, (f64::from(client.x), f64::from(client.y)))
 }
 
 fn send(held: &Held, phase: usize, at: (f64, f64)) -> Result<(), PlatformError> {

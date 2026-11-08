@@ -262,6 +262,11 @@ pub(super) fn open(owner: HWND) -> bool {
     true
 }
 
+/// The open peek's tab rows in owner client coordinates.
+pub(super) fn rows(owner: HWND) -> Option<Vec<crate::shell::ChromeItem>> {
+    peek_for_owner(owner).map(|peek| peek.layout.rows())
+}
+
 /// Closes the owner's peek at once. True when there was one.
 pub(super) fn close(owner: HWND) -> bool {
     cancel_hover(owner);

@@ -3043,19 +3043,7 @@ pub(crate) fn chrome_items(state: &WindowsChromeState) -> Vec<ChromeItem> {
                 }
                 return items;
             }
-            if tabbar.items_collapsed || tabbar.items_api_hidden {
-                return items;
-            }
-            let (scroll_offset, _, viewport_bottom) =
-                sidebar_scroll_metrics(tabbar_rect, layout).unwrap_or((0, 0, tabbar_rect.bottom));
-            let viewport_top = tabbar_rect.top + sidebar_header_height();
-            for (slot, item) in tabbar.items.iter().enumerate() {
-                let rect = sidebar_item_rect(tabbar_rect, tabbar, slot, scroll_offset);
-                // Only rows a press can reach: the list scrolls under its header.
-                if rect.top >= viewport_top && rect.bottom <= viewport_bottom {
-                    push(&item.text, "sidebar", selected(item.index), rect);
-                }
-            }
+            items.extend(sidebar_rows(tabbar_rect, layout));
         }
         WindowsShellTabBarPosition::Bottom => {
             let count = tabbar.bottom_slot_count();
@@ -3074,6 +3062,34 @@ pub(crate) fn chrome_items(state: &WindowsChromeState) -> Vec<ChromeItem> {
         }
     }
     items
+}
+
+/// The expanded sidebar's tab rows a press can reach; the list scrolls under its header.
+pub(super) fn sidebar_rows(
+    tabbar_rect: RECT,
+    layout: &WindowsShellWindowLayout,
+) -> Vec<ChromeItem> {
+    let Some(tabbar) = layout.tab_bar.as_ref() else {
+        return Vec::new();
+    };
+    if tabbar.items_collapsed || tabbar.items_api_hidden {
+        return Vec::new();
+    }
+    let (scroll_offset, _, viewport_bottom) =
+        sidebar_scroll_metrics(tabbar_rect, layout).unwrap_or((0, 0, tabbar_rect.bottom));
+    let viewport_top = tabbar_rect.top + sidebar_header_height();
+    tabbar
+        .items
+        .iter()
+        .enumerate()
+        .map(|(slot, item)| ChromeItem {
+            label: item.text.clone(),
+            scope: "sidebar",
+            selected: tabbar.selected_index == item.index as i32,
+            rect: sidebar_item_rect(tabbar_rect, tabbar, slot, scroll_offset),
+        })
+        .filter(|item| item.rect.top >= viewport_top && item.rect.bottom <= viewport_bottom)
+        .collect()
 }
 
 /// The sidebar's width handle under `point`: the x of the sidebar's fixed

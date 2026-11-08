@@ -7950,11 +7950,32 @@ static SIDEBAR_DRAG: Mutex<Option<(i32, bool)>> = Mutex::new(None);
 #[cfg(feature = "shell-chrome")]
 pub(crate) fn chrome_elements_for_window(
     window: isize,
-) -> Vec<lingxia_platform::traits::gesture::ChromeElement> {
-    let Some(state) = chrome_state_for_window(HWND(window as *mut _)) else {
-        return Vec::new();
+    reveal_tabs: bool,
+) -> (Vec<lingxia_platform::traits::gesture::ChromeElement>, bool) {
+    let hwnd = HWND(window as *mut _);
+    let Some(state) = chrome_state_for_window(hwnd) else {
+        return (Vec::new(), false);
     };
-    crate::shell::chrome_items(&state)
+    let mut items = crate::shell::chrome_items(&state);
+    let mut opening = false;
+    // A rail shows no tabs; as on macOS, a query for tabs peeks it as a pointer would.
+    if reveal_tabs && crate::shell::sidebar_peek_layout(state.client, &state.layout).is_some() {
+        match sidebar_peek::rows(hwnd) {
+            Some(rows) => {
+                items.retain(|item| item.scope != "sidebar");
+                items.extend(rows);
+            }
+            None => {
+                opening = post_to_window_thread(
+                    window,
+                    Box::new(move || {
+                        sidebar_peek::open(hwnd_from_handle(window));
+                    }),
+                );
+            }
+        }
+    }
+    let elements = items
         .into_iter()
         .map(|item| lingxia_platform::traits::gesture::ChromeElement {
             role: if item.scope == "sidebar" || item.scope == "tabBar" {
@@ -7974,7 +7995,8 @@ pub(crate) fn chrome_elements_for_window(
             ]
             .map(f64::from),
         })
-        .collect()
+        .collect();
+    (elements, opening)
 }
 
 #[cfg(feature = "shell-chrome")]
