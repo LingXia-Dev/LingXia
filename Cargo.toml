@@ -215,3 +215,14 @@ opt-level = 2
 opt-level = 2
 [profile.dev.package.fontique]
 opt-level = 2
+# wgpu's Metal backend sends every call through these.
+[profile.dev.package.objc2]
+opt-level = 2
+[profile.dev.package.objc2-metal]
+opt-level = 2
+[profile.dev.package.objc2-foundation]
+opt-level = 2
+[profile.dev.package.objc2-quartz-core]
+opt-level = 2
+[profile.dev.package.block2]
+opt-level = 2

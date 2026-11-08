@@ -58,8 +58,6 @@ fn players() -> MutexGuard<'static, HashMap<String, Entry>> {
 /// Redraws without the worker: count, skipped for want of a new frame, then total and max µs of
 /// render, present, scene, images, encode and submit.
 static REBINDS: Mutex<[u64; 14]> = Mutex::new([0; 14]);
-/// Sampled redraws: count, total and max µs from the redraw's start until the GPU finished it.
-static GPU_DONE: Mutex<[u64; 3]> = Mutex::new([0; 3]);
 
 /// Opens players and closes idle ones, so neither stalls a render.
 static OPENER: LazyLock<Mutex<mpsc::Sender<String>>> = LazyLock::new(|| {
@@ -252,22 +250,10 @@ pub(crate) fn note_rebind(drawn: Option<[u64; 6]>) {
     }
 }
 
-/// Every eighth redraw, times until the GPU finished it: an upper bound on its GPU time.
-pub(crate) fn sample_gpu(device: wgpu::Device, queue: &wgpu::Queue, started: Instant) {
+/// Every eighth redraw is timed on the GPU.
+pub(crate) fn sample_due() -> bool {
     static COUNT: AtomicU64 = AtomicU64::new(0);
-    if !COUNT.fetch_add(1, Ordering::Relaxed).is_multiple_of(8) {
-        return;
-    }
-    queue.on_submitted_work_done(move || {
-        let us = crate::session::metrics::micros(started);
-        let mut done = GPU_DONE.lock().unwrap_or_else(|p| p.into_inner());
-        *done = [done[0] + 1, done[1] + us, done[2].max(us)];
-    });
-    let _ = std::thread::Builder::new()
-        .name("lingxia-video-probe".into())
-        .spawn(move || {
-            let _ = device.poll(wgpu::PollType::wait_indefinitely());
-        });
+    COUNT.fetch_add(1, Ordering::Relaxed).is_multiple_of(8)
 }
 
 /// Per-player first-frame and import costs, and the cost of redraws for new frames.
@@ -292,7 +278,6 @@ pub fn stats() -> serde_json::Value {
         })
         .collect();
     let r = *REBINDS.lock().unwrap_or_else(|p| p.into_inner());
-    let g = *GPU_DONE.lock().unwrap_or_else(|p| p.into_inner());
     let avg = |index: usize| r[2 + index * 2].checked_div(r[0]);
     let max = |index: usize| r[3 + index * 2];
     serde_json::json!({
@@ -303,8 +288,8 @@ pub fn stats() -> serde_json::Value {
             "renderAvg": avg(0), "renderMax": max(0),
             "presentAvg": avg(1), "presentMax": max(1),
             "sceneAvg": avg(2), "imagesAvg": avg(3), "encodeAvg": avg(4), "submitAvg": avg(5),
-            "gpuDoneAvg": g[1].checked_div(g[0]), "gpuDoneMax": g[2], "gpuSamples": g[0],
         },
+        "gpuUs": super::timing::stats(),
     })
 }
 

@@ -9,6 +9,7 @@ pub(crate) mod pass;
 pub(crate) mod scene;
 pub(crate) mod surface;
 pub(crate) mod text;
+pub(crate) mod timing;
 pub(crate) mod video;
 
 use device::{Devices, RenderSurface};
@@ -825,6 +826,7 @@ impl Presenter {
         let view = texture
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
+        let span = timing::begin(&mut encoder);
         surface.blitter.copy(
             &device.device,
             &mut encoder,
@@ -833,6 +835,7 @@ impl Presenter {
                 .map_or(&surface.target_views[slot], |output| output.view()),
             &view,
         );
+        timing::end(&mut encoder, span);
         let command = encoder.finish();
         self.presentation_us[1] = started.elapsed().as_micros() as u64;
         let started = Instant::now();

@@ -99,6 +99,7 @@ impl SceneRenderer {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("LingXia sparse pass"),
         });
+        let span = crate::renderer::gpu::timing::begin(&mut encoder);
         renderer
             .render(
                 scene,
@@ -113,6 +114,7 @@ impl SceneRenderer {
                 target.init,
             )
             .map_err(|error| error.to_string())?;
+        crate::renderer::gpu::timing::end(&mut encoder, span);
         let commands = encoder.finish();
         let encode_us = crate::session::metrics::micros(started);
         let started = Instant::now();

@@ -237,6 +237,11 @@ pub(crate) fn rebind(id: u64) -> Result<(), String> {
         super::gpu::video::note_rebind(None);
         return Ok(());
     };
+    let device = lock(&presenter)?.device_queue();
+    let sampled = super::gpu::video::sample_due()
+        && device
+            .as_ref()
+            .is_ok_and(|(device, _)| super::gpu::timing::start(device));
     let started = std::time::Instant::now();
     let job = lock(&presenter)?.begin_prepare(
         &display,
@@ -256,17 +261,19 @@ pub(crate) fn rebind(id: u64) -> Result<(), String> {
     let render = crate::session::metrics::micros(started);
     let mut held = lock(&presenter)?;
     held.restore(revision, display);
-    if !drawn? {
-        return Ok(());
-    }
     let presenting = std::time::Instant::now();
-    if held.present(revision)? {
+    let shown = match drawn {
+        Ok(true) => held.present(revision),
+        Ok(false) => Ok(false),
+        Err(error) => Err(error),
+    };
+    if sampled && let Ok((device, queue)) = &device {
+        super::gpu::timing::finish(device, queue);
+    }
+    if shown? {
         let [scene, images, encode, submit] = held.preparation_timings_us();
         let present = crate::session::metrics::micros(presenting);
         super::gpu::video::note_rebind(Some([render, present, scene, images, encode, submit]));
-        if let Ok((device, queue)) = held.device_queue() {
-            super::gpu::video::sample_gpu(device, &queue, started);
-        }
     }
     Ok(())
 }
