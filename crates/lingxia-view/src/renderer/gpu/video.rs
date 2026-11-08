@@ -161,6 +161,15 @@ pub(crate) fn frame_size(player: &str) -> Option<[u16; 2]> {
         .map(|frame| frame.size)
 }
 
+/// A view of the newest frame of `player`, once one is bound.
+pub(crate) fn frame_view(player: &str) -> Option<wgpu::TextureView> {
+    players()
+        .get(player)?
+        .frame
+        .as_ref()
+        .map(|frame| frame.view.clone())
+}
+
 /// Marks the players of `display` drawn, asking for those not open yet; true when one of them
 /// has a frame newer than the one bound.
 pub(crate) fn has_new(display: &crate::DisplayList) -> bool {
@@ -212,6 +221,12 @@ fn touch<'a>(players: &'a mut HashMap<String, Entry>, key: &str) -> Option<&'a m
 
 /// Imports the frame due now of every player `display` draws; true when it draws a video.
 pub(crate) fn import(device: &wgpu::Device, display: &crate::DisplayList) -> bool {
+    import_frames(device, display).0
+}
+
+/// [`import`], and whether a player gave a new frame.
+pub(crate) fn import_frames(device: &wgpu::Device, display: &crate::DisplayList) -> (bool, bool) {
+    let mut imported = false;
     let keys = keys(display);
     let mut players = players();
     for key in &keys {
@@ -237,13 +252,14 @@ pub(crate) fn import(device: &wgpu::Device, display: &crate::DisplayList) -> boo
                 });
                 let us = crate::session::metrics::micros(started);
                 entry.frames += 1;
+                imported = true;
                 entry.import_us = [entry.import_us[0] + us, entry.import_us[1].max(us)];
             }
             Ok(None) => {}
             Err(error) => log::warn!(target: "lingxia_view", "UI_VIDEO: {key}: {error}"),
         }
     }
-    !keys.is_empty()
+    (!keys.is_empty(), imported)
 }
 
 /// Binds each player's newest frame under its texture id.
@@ -277,6 +293,22 @@ pub(crate) fn note_rebind(drawn: Option<[u64; 6]>) {
         }
         None => rebinds[1] += 1,
     }
+}
+
+static PLANS: AtomicU64 = AtomicU64::new(0);
+static PLAN_US: Mutex<[u64; 2]> = Mutex::new([0; 2]);
+static QUADS: AtomicU64 = AtomicU64::new(0);
+
+/// A kept frame's quad plan was built: its under and over layers rendered.
+pub(crate) fn note_plan(us: u64) {
+    PLANS.fetch_add(1, Ordering::Relaxed);
+    let mut plan = PLAN_US.lock().unwrap_or_else(|p| p.into_inner());
+    *plan = [plan[0] + us, plan[1].max(us)];
+}
+
+/// A redraw drew its videos as quads.
+pub(crate) fn note_quads() {
+    QUADS.fetch_add(1, Ordering::Relaxed);
 }
 
 /// Every eighth redraw is timed on the GPU.
@@ -313,6 +345,13 @@ pub fn stats() -> serde_json::Value {
         "players": players,
         "rebinds": r[0],
         "rebindsSkipped": r[1],
+        "quadRedraws": QUADS.load(Ordering::Relaxed),
+        "quadPlans": PLANS.load(Ordering::Relaxed),
+        "quadPlanUs": {
+            "avg": PLAN_US.lock().unwrap_or_else(|p| p.into_inner())[0]
+                .checked_div(PLANS.load(Ordering::Relaxed)),
+            "max": PLAN_US.lock().unwrap_or_else(|p| p.into_inner())[1],
+        },
         "rebindUs": {
             "renderAvg": avg(0), "renderMax": max(0),
             "presentAvg": avg(1), "presentMax": max(1),

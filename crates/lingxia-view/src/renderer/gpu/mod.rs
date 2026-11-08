@@ -11,6 +11,7 @@ pub(crate) mod surface;
 pub(crate) mod text;
 pub(crate) mod timing;
 pub mod video;
+pub(crate) mod video_quad;
 
 pub use wgpu;
 
@@ -347,6 +348,13 @@ pub struct Presenter {
     retained: Option<(u64, Box<crate::DisplayList>)>,
     /// The revision last shown.
     presented: Option<u64>,
+    /// When the page last drew a frame of its own; its frames carry new video frames too.
+    page_drawn: Option<Instant>,
+    /// How the kept frame's videos redraw as quads, for the revision it was built for.
+    video_plan: Option<video_quad::Plan>,
+    /// Built off the render thread on first need: compiling them would stall a frame.
+    video_pipelines: Arc<std::sync::OnceLock<video_quad::Pipelines>>,
+    video_pipelines_started: bool,
 }
 
 /// What a presenter binds its wgpu surface to.
@@ -506,6 +514,10 @@ impl Presenter {
             target: None,
             retained: None,
             presented: None,
+            page_drawn: None,
+            video_plan: None,
+            video_pipelines: Default::default(),
+            video_pipelines_started: false,
         })
     }
 
@@ -757,6 +769,7 @@ impl Presenter {
 
     /// Keeps `display` as drawn for `revision` while it draws video; true when it does.
     pub(crate) fn retain(&mut self, revision: u64, display: Box<crate::DisplayList>) -> bool {
+        self.page_drawn = Some(Instant::now());
         self.retained =
             (self.surface.is_some() && video::draws_video(&display)).then_some((revision, display));
         self.retained.is_some()
@@ -769,6 +782,14 @@ impl Presenter {
         if self.presented != Some(*revision) {
             return None;
         }
+        // While the page draws frames of its own (a scroll), each carries the newest video
+        // frame: a redraw between them would only add GPU work.
+        if self
+            .page_drawn
+            .is_some_and(|drawn| drawn.elapsed() < std::time::Duration::from_millis(25))
+        {
+            return None;
+        }
         if !video::has_new(display) {
             return None;
         }
@@ -779,6 +800,86 @@ impl Presenter {
         let context = self.context.lock()?;
         let device = &context.devices[self.device_id];
         Ok((device.device.clone(), device.queue.clone()))
+    }
+
+    /// Draws the new frames of `display`'s videos into the target holding `revision` as quads,
+    /// with no vello render once the revision's plan exists: `Some(false)` when no player had a
+    /// new frame, `None` when this frame cannot be redrawn this way and needs a whole redraw.
+    pub(crate) fn redraw_video(
+        &mut self,
+        revision: u64,
+        display: &crate::DisplayList,
+    ) -> Result<Option<bool>, String> {
+        let Some(slot) = self
+            .prepared
+            .iter()
+            .position(|held| *held == Some(revision))
+        else {
+            return Ok(None);
+        };
+        if self.composed[slot].is_some() || display.requires_composition() {
+            return Ok(None);
+        }
+        let Some(surface) = &self.surface else {
+            return Ok(None);
+        };
+        let target = surface.target_views[slot].clone();
+        let (device, queue) = self.device_queue()?;
+        let format = target.texture().format();
+        let Some(pipelines) = self.video_pipelines.get().filter(|p| p.format() == format) else {
+            if !self.video_pipelines_started {
+                self.video_pipelines_started = true;
+                let (cell, device) = (self.video_pipelines.clone(), device.clone());
+                let _ = std::thread::Builder::new()
+                    .name("lingxia-video-pipelines".into())
+                    .spawn(move || {
+                        let _ = cell.set(video_quad::Pipelines::new(&device, format));
+                    });
+            }
+            return Ok(None);
+        };
+        let started = Instant::now();
+        let (_, imported) = video::import_frames(&device, display);
+        let import_us = crate::session::metrics::micros(started);
+        let started = Instant::now();
+        if !self
+            .video_plan
+            .as_ref()
+            .is_some_and(|plan| plan.serves(revision, slot))
+        {
+            self.video_plan = None;
+            let page_glyphs = self.scenes.glyph_images().cloned().collect();
+            let mut draw = video_quad::Draw {
+                device: &device,
+                queue: &queue,
+                renderer: &mut self.renderer,
+                glyph_cache: &mut self.glyph_cache,
+                images: &mut self.images,
+                page_glyphs,
+            };
+            self.video_plan = video_quad::plan(&mut draw, pipelines, display, revision, slot)?;
+            if self.video_plan.is_some() {
+                video::note_plan(crate::session::metrics::micros(started));
+            }
+        }
+        let plan_us = crate::session::metrics::micros(started);
+        let Some(plan) = &self.video_plan else {
+            return Ok(None);
+        };
+        if !imported {
+            return Ok(Some(false));
+        }
+        let started = Instant::now();
+        if !video_quad::redraw(plan, pipelines, &device, &queue, &target) {
+            return Ok(None);
+        }
+        self.preparation_us = [
+            plan_us,
+            import_us,
+            crate::session::metrics::micros(started),
+            0,
+        ];
+        Ok(Some(true))
     }
 
     /// Gives a lent frame back, unless a newer one was kept meanwhile.

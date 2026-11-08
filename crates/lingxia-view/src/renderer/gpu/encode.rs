@@ -102,6 +102,50 @@ impl DisplayList {
         Ok(())
     }
 
+    /// One segment of the frame limited to the device-pixel rectangle `area` `[x, y, w, h]`,
+    /// drawn into rows `row..row + h` of `context`, which holds several such rectangles.
+    #[cfg(feature = "gpu")]
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn sparse_area(
+        &self,
+        cache: &mut crate::renderer::gpu::text::Glyphs<'_>,
+        context: &mut vello_gpu::Scene,
+        image_ids: &HashMap<usize, vello_gpu::ImageSource>,
+        glyph_images: &mut HashMap<usize, Arc<vello_gpu::Pixmap>>,
+        segment: &crate::renderer::gpu::scene::Segment,
+        area: [u16; 4],
+        row: u16,
+    ) -> Result<(), String> {
+        let [x, y, width, height] = area.map(f64::from);
+        let row = f64::from(row);
+        let bounds = PaintRect::new(0.0, row, width, row + height);
+        context.set_transform(Affine::IDENTITY);
+        context.push_clip_rect(&bounds);
+        if segment.background {
+            context.set_paint(AlphaColor::<Srgb>::from_rgb8(246, 247, 251));
+            context.fill_rect(&bounds);
+        }
+        let device = Affine::translate((-x, row - y)) * Affine::scale(self.scale as f64);
+        for (clip, transform) in &segment.clips {
+            context.set_transform(device * checked_paint_transform(*transform)?);
+            push_clip(context, clip);
+        }
+        self.sparse_paints(
+            cache,
+            context,
+            image_ids,
+            glyph_images,
+            device,
+            segment.transform,
+            &self.commands[segment.range.clone()],
+        )?;
+        for _ in 0..segment.open_at_end {
+            context.pop_clip();
+        }
+        context.pop_clip();
+        Ok(())
+    }
+
     #[cfg(feature = "gpu")]
     #[allow(clippy::too_many_arguments)]
     fn sparse_paints(

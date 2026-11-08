@@ -249,19 +249,33 @@ pub(crate) fn rebind(id: u64) -> Result<(), String> {
             .as_ref()
             .is_ok_and(|(device, _)| super::gpu::timing::start(device));
     let started = std::time::Instant::now();
-    let job = lock(&presenter)?.begin_prepare(
-        &display,
-        u32::from(display.width),
-        u32::from(display.height),
-        revision,
-        display.requires_composition(),
-    );
-    let drawn = match job {
-        Ok(Some(mut job)) => {
-            let result = job.run(&display);
-            lock(&presenter)?.finish_prepare(job, result)
+    let quads = lock(&presenter)?.redraw_video(revision, &display);
+    let drawn = match quads {
+        Ok(Some(true)) => {
+            super::gpu::video::note_quads();
+            Ok(true)
         }
-        Ok(None) => Ok(false),
+        Ok(Some(false)) => {
+            super::gpu::video::note_rebind(None);
+            Ok(false)
+        }
+        Ok(None) => {
+            let job = lock(&presenter)?.begin_prepare(
+                &display,
+                u32::from(display.width),
+                u32::from(display.height),
+                revision,
+                display.requires_composition(),
+            );
+            match job {
+                Ok(Some(mut job)) => {
+                    let result = job.run(&display);
+                    lock(&presenter)?.finish_prepare(job, result)
+                }
+                Ok(None) => Ok(false),
+                Err(error) => Err(error),
+            }
+        }
         Err(error) => Err(error),
     };
     let render = crate::session::metrics::micros(started);

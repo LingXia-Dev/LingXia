@@ -1,6 +1,8 @@
 //! ExoPlayer frames for the GPU renderer. ExoPlayer decodes into a SurfaceTexture; the render
 //! thread latches each frame, draws it into an RGBA AHardwareBuffer with GLES and hands the
-//! buffer to Vulkan, which samples the same memory. `glFinish` orders the GL write first.
+//! buffer to Vulkan, which samples the same memory. A buffer goes to Vulkan only once the EGL
+//! fence after its GL draw has signalled, a refresh later, so the render thread never waits on
+//! the GPU.
 use jni::objects::{Global, JClass, JFloatArray, JObject};
 use jni::{Env, JValue, JavaVM, jni_sig, jni_str};
 use lingxia_view::renderer::gpu::video::{Player, import_hardware_buffer, install};
@@ -56,6 +58,7 @@ fn open(source: &str) -> Result<Box<dyn Player>, String> {
         slots: Vec::new(),
         next: 0,
         size: [0, 0],
+        pending: None,
     }))
 }
 
@@ -65,6 +68,8 @@ struct Video {
     slots: Vec<Slot>,
     next: usize,
     size: [u32; 2],
+    /// The slot drawn last and the fence its draw signals.
+    pending: Option<(usize, *mut c_void)>,
 }
 
 // The GL names and buffers are used on the render thread only; drop defers their GL half.
@@ -86,11 +91,12 @@ struct Slot {
 
 impl Player for Video {
     fn has_new(&self) -> bool {
-        java(|env| {
-            env.call_method(&*self.java, jni_str!("available"), jni_sig!("()Z"), &[])?
-                .z()
-        })
-        .unwrap_or(false)
+        self.pending.is_some()
+            || java(|env| {
+                env.call_method(&*self.java, jni_str!("available"), jni_sig!("()Z"), &[])?
+                    .z()
+            })
+            .unwrap_or(false)
     }
 
     fn next_frame(
@@ -127,11 +133,36 @@ impl Player for Video {
         }
         if size != self.size {
             self.release_slots();
+            self.next = 0;
             for _ in 0..SLOTS {
                 self.slots.push(unsafe { Slot::new(device, size)? });
             }
             self.size = size;
         }
+        let egl = egl()?;
+        let ready = match self.pending {
+            Some((slot, sync)) if unsafe { egl.signalled(sync) } => {
+                unsafe { (egl.destroy_sync)(egl.display, sync) };
+                self.pending = None;
+                Some(slot)
+            }
+            _ => None,
+        };
+        if self.pending.is_none() {
+            self.draw_next(size)?;
+        }
+        Ok(ready.map(|slot| {
+            (
+                self.slots[slot].texture.clone(),
+                [size[0].min(65535) as u16, size[1].min(65535) as u16],
+            )
+        }))
+    }
+}
+
+impl Video {
+    /// Latches the newest decoded frame and draws it into the next slot, behind a fence.
+    fn draw_next(&mut self, size: [u32; 2]) -> Result<(), String> {
         let mut matrix = [0f32; 16];
         let latched = java(|env| {
             let array = env
@@ -145,21 +176,29 @@ impl Player for Video {
             Ok(true)
         })?;
         if !latched {
-            return Ok(None);
+            return Ok(());
         }
-        let slot = &self.slots[self.next];
+        let index = self.next;
         self.next = (self.next + 1) % self.slots.len();
         let gl = self.gl.as_ref().ok_or("GpuVideo: no GL")?;
-        unsafe { gl.draw(slot.color, size, &matrix)? };
-        Ok(Some((
-            slot.texture.clone(),
-            [size[0].min(65535) as u16, size[1].min(65535) as u16],
-        )))
+        unsafe { gl.draw(self.slots[index].color, size, &matrix)? };
+        let egl = egl()?;
+        let sync = unsafe { (egl.create_sync)(egl.display, EGL_SYNC_FENCE_KHR, std::ptr::null()) };
+        unsafe { glFlush() };
+        if sync.is_null() {
+            unsafe { glFinish() };
+        }
+        self.pending = Some((index, sync));
+        Ok(())
     }
-}
 
-impl Video {
     fn release_slots(&mut self) {
+        if let Some((_, sync)) = self.pending.take()
+            && !sync.is_null()
+            && let Ok(egl) = egl()
+        {
+            unsafe { (egl.destroy_sync)(egl.display, sync) };
+        }
         for slot in self.slots.drain(..) {
             defer(Garbage::Texture(slot.color));
             unsafe {
@@ -351,8 +390,6 @@ impl Blit {
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
             glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            // Vulkan samples the buffer next, outside any GL fence.
-            glFinish();
             Ok(())
         }
     }
@@ -396,6 +433,9 @@ struct Egl {
     destroy_image: unsafe extern "C" fn(*mut c_void, *mut c_void) -> u32,
     client_buffer: unsafe extern "C" fn(*mut c_void) -> *mut c_void,
     target_texture: unsafe extern "C" fn(u32, *mut c_void),
+    create_sync: unsafe extern "C" fn(*mut c_void, u32, *const i32) -> *mut c_void,
+    client_wait_sync: unsafe extern "C" fn(*mut c_void, *mut c_void, i32, u64) -> i32,
+    destroy_sync: unsafe extern "C" fn(*mut c_void, *mut c_void) -> u32,
 }
 
 unsafe impl Send for Egl {}
@@ -488,8 +528,18 @@ impl Egl {
                 destroy_image: proc!(c"eglDestroyImageKHR"),
                 client_buffer: proc!(c"eglGetNativeClientBufferANDROID"),
                 target_texture: proc!(c"glEGLImageTargetTexture2DOES"),
+                create_sync: proc!(c"eglCreateSyncKHR"),
+                client_wait_sync: proc!(c"eglClientWaitSyncKHR"),
+                destroy_sync: proc!(c"eglDestroySyncKHR"),
             })
         }
+    }
+
+    /// The fence has signalled, without waiting; a missing fence means `glFinish` ran.
+    unsafe fn signalled(&self, sync: *mut c_void) -> bool {
+        sync.is_null()
+            || unsafe { (self.client_wait_sync)(self.display, sync, 0, 0) }
+                == EGL_CONDITION_SATISFIED_KHR
     }
 
     fn enter(&self) -> Current {
@@ -528,6 +578,8 @@ const EGL_DRAW: i32 = 0x3059;
 const EGL_READ: i32 = 0x305A;
 const EGL_NATIVE_BUFFER_ANDROID: u32 = 0x3140;
 const EGL_IMAGE_PRESERVED_KHR: i32 = 0x30D2;
+const EGL_SYNC_FENCE_KHR: u32 = 0x30F9;
+const EGL_CONDITION_SATISFIED_KHR: i32 = 0x30F6;
 
 const GL_TEXTURE_EXTERNAL_OES: u32 = 0x8D65;
 const GL_TEXTURE_2D: u32 = 0x0DE1;
@@ -642,4 +694,5 @@ unsafe extern "C" {
     fn glDisable(capability: u32);
     fn glDrawArrays(mode: u32, first: i32, count: i32);
     fn glFinish();
+    fn glFlush();
 }
