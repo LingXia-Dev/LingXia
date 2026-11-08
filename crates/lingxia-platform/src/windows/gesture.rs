@@ -447,17 +447,14 @@ async fn perform(request: AppGestureRequest) -> Result<AppGestureResult, Platfor
         .shape
         .points()
         .map_err(PlatformError::InvalidParameter)?;
-    let continued =
+    let held_input =
         match request.finger {
-            Some(id) => Some(held().remove(&id).ok_or_else(|| {
+            Some(id) => Some(held().get(&id).map(|held| held.input).ok_or_else(|| {
                 PlatformError::InvalidParameter(format!("finger {id} is not held"))
             })?),
             None => None,
         };
-    let input = continued
-        .map(|held| held.input)
-        .or(request.input)
-        .unwrap_or(GestureInput::Touch);
+    let input = held_input.or(request.input).unwrap_or(GestureInput::Touch);
     if input == GestureInput::Trackpad {
         return Err(PlatformError::NotSupported(
             "Windows gestures imitate touch or a mouse".into(),
@@ -468,6 +465,14 @@ async fn perform(request: AppGestureRequest) -> Result<AppGestureResult, Platfor
             "a mouse gesture cannot be cancelled; end it with up".into(),
         ));
     }
+    // A rejected continuation keeps its finger held.
+    let continued =
+        match request.finger {
+            Some(id) => Some(held().remove(&id).ok_or_else(|| {
+                PlatformError::InvalidParameter(format!("finger {id} is not held"))
+            })?),
+            None => None,
+        };
     let mut state = match continued {
         Some(held) => held,
         None => {
