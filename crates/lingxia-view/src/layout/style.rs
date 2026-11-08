@@ -228,6 +228,20 @@ fn replaced_size<T: taffy::style_helpers::FromLength>(record: &Record, axis: usi
     record.number(axis).map(length)
 }
 
+/// A page's last in-flow child when it scrolls: it reaches the page's bottom edge under the bars.
+fn page_bottom_scroll(records: &[Record]) -> Option<usize> {
+    if records.first()?.tag != tag::PAGE {
+        return None;
+    }
+    let last = (1..records.len()).rev().find(|&index| {
+        let record = &records[index];
+        record.parent == Some(0)
+            && !matches!(record.string(field::POSITION), Some("absolute" | "fixed"))
+            && record.string(field::DISPLAY) != Some("none")
+    })?;
+    matches!(records[last].tag, tag::SCROLL | tag::LIST).then_some(last)
+}
+
 /// Taffy style for one record; the root fills the viewport and a page root keeps out of the safe area.
 pub(crate) fn node_style(
     records: &[Record],
@@ -325,12 +339,23 @@ pub(crate) fn node_style(
         ),
     ]
     .map(|field| record.number(field).unwrap_or(padding));
+    let keyboard_above = safe.keyboard > safe.insets[2];
     if page {
         padding_top += safe.insets[0];
         padding_right += safe.insets[1];
         // The keyboard overlaps bottom chrome; avoid whichever is taller.
-        padding_bottom += safe.insets[2].max(safe.keyboard);
+        padding_bottom += if keyboard_above || page_bottom_scroll(records).is_none() {
+            safe.insets[2].max(safe.keyboard)
+        } else {
+            0.0
+        };
         padding_left += safe.insets[3];
+    } else if !keyboard_above
+        && record.parent == Some(0)
+        && page_bottom_scroll(records) == Some(index)
+    {
+        // It runs on under the bottom bars, which show it through; its end still clears them.
+        padding_bottom += safe.insets[2];
     }
     let display = record.string(field::DISPLAY);
     // `block` children stretch down a column; inline boxes shrink to content.

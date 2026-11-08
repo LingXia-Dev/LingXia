@@ -885,6 +885,60 @@ mod box_model {
             "page must be the root"
         );
     }
+
+    #[test]
+    fn a_page_bottom_scroll_runs_under_the_bottom_bars_and_its_end_clears_them() {
+        let records = |trailing: bool| {
+            let mut records = vec![
+                node(tag::PAGE, None, "page", &[]),
+                node(tag::SCROLL, Some(0), "content", &[]),
+                node(tag::COLUMN, Some(1), "rows", &[(field::HEIGHT, json!(600))]),
+            ];
+            if trailing {
+                records.push(node(
+                    tag::ROW,
+                    Some(0),
+                    "footer",
+                    &[(field::HEIGHT, json!(40))],
+                ));
+            }
+            records
+        };
+        let layout = |records: &[crate::protocol::Record], keyboard: f32| {
+            let mut renderer = Renderer {
+                safe_area: SafeArea {
+                    insets: [24.0, 0.0, 80.0, 0.0],
+                    keyboard,
+                },
+                ..Default::default()
+            };
+            renderer.layout(records, 200, 400, 1.0).unwrap()
+        };
+        let display = layout(&records(false), 0.0);
+        assert_eq!(
+            display.nodes[1].bounds,
+            [0.0, 24.0, 200.0, 376.0],
+            "down to the bottom edge"
+        );
+        let scroll = display.nodes[1].scroll.as_ref().unwrap();
+        assert_eq!(
+            scroll.max_offset,
+            600.0 + 80.0 - 376.0,
+            "the last row scrolls clear of the bars"
+        );
+        let display = layout(&records(false), 300.0);
+        assert_eq!(
+            display.nodes[1].bounds,
+            [0.0, 24.0, 200.0, 76.0],
+            "a taller keyboard still ends it"
+        );
+        let display = layout(&records(true), 0.0);
+        assert_eq!(
+            display.nodes[1].bounds[3],
+            400.0 - 24.0 - 80.0 - 40.0,
+            "content below it keeps the inset"
+        );
+    }
 }
 
 #[path = "tests/display.rs"]

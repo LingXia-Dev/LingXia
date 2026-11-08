@@ -511,8 +511,13 @@ impl ScrollModel {
             let pending = before - region.offset;
             start[axis] -= pending;
             end[axis] -= pending;
-            let low = bounds[axis];
-            let high = low + bounds[axis + 2];
+            // Its padding is scroll padding: a reveal stops clear of it, so of the bars a page scroll runs under.
+            let (lead, trail) = match region.axis {
+                ScrollAxis::Horizontal => (region.content_insets[3], region.content_insets[1]),
+                ScrollAxis::Vertical => (region.content_insets[0], region.content_insets[2]),
+            };
+            let low = bounds[axis] + lead;
+            let high = (bounds[axis] + bounds[axis + 2] - trail).max(low);
             let delta = if start[axis] < low || end[axis] - start[axis] > high - low {
                 start[axis] - low
             } else {

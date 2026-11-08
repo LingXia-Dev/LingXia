@@ -123,6 +123,12 @@ keyboard height for the bottom. Content inside `<page>` therefore never sits und
 the gesture area or the keyboard. When you need the numbers, `view.env.insets` and
 `view.env.keyboard.height` are in logical pixels, and the page re-renders when they change.
 
+The exception is a `<scroll>` or `<List>` that is the page's last child: it runs to the bottom edge,
+under the tab bar and the gesture area, so a translucent bar shows the content scrolling beneath it.
+The bottom inset becomes its own end padding instead, so its last row still scrolls clear, and a
+focused or revealed node stops above it. A keyboard taller than the inset still ends the scroll at
+the keyboard.
+
 Insets of `absolute` and `fixed` boxes measure from the padding box, so they do not include the page's
 safe-area padding: a `fixed bottom-4` box sits 16 px above the page's bottom edge. Add
 `env.insets.bottom` (and `env.keyboard.height` if it must clear the keyboard) through `style` when it

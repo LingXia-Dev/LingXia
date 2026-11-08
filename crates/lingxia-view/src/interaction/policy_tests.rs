@@ -199,6 +199,25 @@ fn reveal_moves_every_ancestor_once_and_rejects_unreachable_targets_atomically()
 }
 
 #[test]
+fn a_reveal_stops_clear_of_the_scroll_padding_a_page_keeps_under_its_bars() {
+    let mut page = node("p", "scroll", [0.0, 0.0, 100.0, 300.0]);
+    let mut snapshot = region("page", None, 0.0, 400.0);
+    snapshot.content_insets = [0.0, 0.0, 80.0, 0.0];
+    page.scroll = Some(snapshot);
+    let presented = frame(vec![page]);
+    let mut scroll = ScrollModel::default();
+    scroll.accept(&presented, 0, &HashMap::new());
+    let mut target = node("t", "button", [0.0, 300.0, 100.0, 40.0]);
+    target.scroll_parent = Some("page".into());
+    assert!(scroll.reveal(&presented, &target));
+    assert_eq!(
+        scroll.offset("page"),
+        120.0,
+        "its bottom lands at the bars' top, 220"
+    );
+}
+
+#[test]
 fn reach_edges_fire_once_per_arrival_in_bounded_batches() {
     let edge = |offset, max, visible: bool, start, end| {
         let mut feed = node("feed", "scroll", [0.0, 0.0, 100.0, 100.0]);
