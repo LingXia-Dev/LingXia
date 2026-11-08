@@ -236,7 +236,7 @@ final class GpuEditorMirror {
     func replaceAll(_ value: String) -> Bool {
         let value = fit(value, 0, length)
         guard Self.valid(value), reserve([
-            .finishComposition, .selection(anchor: 0, focus: UInt32(length)),
+            .finishComposition, .selectAll,
             .replace(text: value, cursor: 1, composing: false),
         ]) else { return false }
         text = value

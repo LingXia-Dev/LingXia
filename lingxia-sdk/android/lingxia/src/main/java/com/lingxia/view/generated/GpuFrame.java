@@ -62,6 +62,7 @@ public final class GpuFrame {
     public static final String INPUT_EDIT_SELECTION = "selection";
     public static final String INPUT_EDIT_COMPOSITION = "composition";
     public static final String INPUT_EDIT_REPLACE = "replace";
+    public static final String INPUT_EDIT_SELECT_ALL = "select_all";
     public static final String INPUT_EDIT_FINISH_COMPOSITION = "finish_composition";
     public static final String INPUT_EDIT_UNDO = "undo";
     public static final String INPUT_EDIT_REDO = "redo";
@@ -700,6 +701,8 @@ public final class GpuFrame {
         public static JSONObject composition(long start, long end) { return GpuFrame.message("op", "composition", "start", start, "end", end); }
         /** A `replace` InputEdit. */
         public static JSONObject replace(String text, long cursor, boolean composing) { return GpuFrame.message("op", "replace", "text", text, "cursor", cursor, "composing", composing); }
+        /** A `select_all` InputEdit. */
+        public static JSONObject selectAll() { return GpuFrame.message("op", "select_all"); }
         /** A `finish_composition` InputEdit. */
         public static JSONObject finishComposition() { return GpuFrame.message("op", "finish_composition"); }
         /** A `undo` InputEdit. */

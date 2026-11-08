@@ -1242,6 +1242,7 @@ public enum GpuFrameInputEditMessage: Encodable, Sendable {
     case selection(anchor: UInt32, focus: UInt32)
     case composition(start: UInt32, end: UInt32)
     case replace(text: String, cursor: Int64, composing: Bool)
+    case selectAll
     case finishComposition
     case undo
     case redo
@@ -1263,6 +1264,8 @@ public enum GpuFrameInputEditMessage: Encodable, Sendable {
             try container.encode(text, forKey: GpuFrameKey("text"))
             try container.encode(cursor, forKey: GpuFrameKey("cursor"))
             try container.encode(composing, forKey: GpuFrameKey("composing"))
+        case .selectAll:
+            try container.encode("select_all", forKey: GpuFrameKey("op"))
         case .finishComposition:
             try container.encode("finish_composition", forKey: GpuFrameKey("op"))
         case .undo:

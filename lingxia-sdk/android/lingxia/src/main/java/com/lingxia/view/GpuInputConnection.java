@@ -187,7 +187,7 @@ final class GpuInputConnection extends BaseInputConnection {
     boolean replaceAll(String value) {
         value = fit(value, 0, text.length());
         if (!validText(value) || !reserve(GpuFrame.InputEdit.finishComposition(),
-            GpuFrame.InputEdit.selection(0,text.length()),
+            GpuFrame.InputEdit.selectAll(),
             GpuFrame.InputEdit.replace(value,1,false))) return false;
         text=value; anchor=focus=value.length(); composeStart=composeEnd=-1;
         changed(); return true;

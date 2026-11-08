@@ -33,6 +33,8 @@ pub enum Edit {
         anchor: u32,
         focus: u32,
     },
+    /// Select the editor's whole text as the core holds it, whatever the host last saw.
+    SelectAll,
     Composition {
         start: u32,
         end: u32,
@@ -214,7 +216,7 @@ impl Editor {
         ) {
             return;
         }
-        if matches!(edit, Edit::Selection { .. }) {
+        if matches!(edit, Edit::Selection { .. } | Edit::SelectAll) {
             if before.selection != self.selection {
                 self.history.boundary();
             }
@@ -287,6 +289,10 @@ impl Editor {
                     byte_offset(self.visual.raw_text(), anchor)?,
                     byte_offset(self.visual.raw_text(), focus)?,
                 ];
+                Ok(false)
+            }
+            Edit::SelectAll => {
+                self.selection = [0, self.visual.raw_text().len()];
                 Ok(false)
             }
             Edit::Composition { start, end } => {

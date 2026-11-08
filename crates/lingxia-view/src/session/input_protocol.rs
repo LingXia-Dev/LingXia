@@ -50,6 +50,7 @@ enum HostEdit {
         anchor: u32,
         focus: u32,
     },
+    SelectAll,
     Composition {
         start: u32,
         end: u32,
@@ -73,6 +74,7 @@ impl From<HostEdit> for Edit {
     fn from(edit: HostEdit) -> Self {
         match edit {
             HostEdit::Selection { anchor, focus } => Self::Selection { anchor, focus },
+            HostEdit::SelectAll => Self::SelectAll,
             HostEdit::Composition { start, end } => Self::Composition { start, end },
             HostEdit::Replace {
                 text,

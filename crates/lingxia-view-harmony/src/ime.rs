@@ -160,14 +160,14 @@ fn on_main(work: impl FnOnce() + Send + 'static) {
 }
 
 fn replace_all_edits(m: &mut Mirror, text: &str) -> Vec<Value> {
-    let end = m.text.len();
     m.text = text.encode_utf16().collect();
     m.anchor = m.text.len() as u32;
     m.focus = m.anchor;
     m.composition = None;
     vec![
         json!({"op": "finish_composition"}),
-        json!({"op": "selection", "anchor": 0, "focus": end}),
+        // The core's own extent: a mirror refreshed from an older frame must not shrink it.
+        json!({"op": "select_all"}),
         json!({"op": "replace", "text": text, "cursor": 1, "composing": false}),
     ]
 }

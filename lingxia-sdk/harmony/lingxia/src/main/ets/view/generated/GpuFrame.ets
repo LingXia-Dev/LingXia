@@ -96,6 +96,7 @@ export class GpuFrameInputEditKinds {
   static readonly SELECTION: string = "selection";
   static readonly COMPOSITION: string = "composition";
   static readonly REPLACE: string = "replace";
+  static readonly SELECT_ALL: string = "select_all";
   static readonly FINISH_COMPOSITION: string = "finish_composition";
   static readonly UNDO: string = "undo";
   static readonly REDO: string = "redo";

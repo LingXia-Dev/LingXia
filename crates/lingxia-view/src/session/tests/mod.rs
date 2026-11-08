@@ -1366,6 +1366,33 @@ fn host_undo_redo_updates_bound_values_and_failed_frames_restore_history() {
     assert_eq!(redone.nodes[0].text, "hello");
 }
 
+/// A controlled input whose Logic echo is late gets its fill re-sent, and the host mirror may
+/// have been refreshed from a frame older than the first send: the re-send must replace.
+#[test]
+fn a_resent_fill_of_a_controlled_input_with_a_late_echo_never_duplicates() {
+    use serde_json::{Value, json};
+    // `value` stays '' for the whole test: the echo never arrives in time.
+    let module =
+        source("function render(){return h('input',{value:'',onInput(){},autoFocus:true})}");
+    let mut page = ViewSession::new(&module).unwrap();
+    let frame = page.layout(200, 100, 1.0).unwrap();
+    let id = &frame.nodes[0].identity;
+    let token = frame.nodes[0].input.as_ref().unwrap().edit_token.unwrap();
+    // What a host sends for `fill('Gate N')`, whatever its mirror holds.
+    let fill = json!({"op":"edit", "identity":id, "token":token, "submit":false, "edits":[
+        {"op":"finish_composition"}, {"op":"select_all"},
+        {"op":"replace", "text":"Gate N", "cursor":1, "composing":false}]})
+    .to_string();
+    let first: Value = serde_json::from_str(&page.input_request(&fill).unwrap()).unwrap();
+    assert_eq!(first["state"]["text"], "Gate N");
+    page.prepare_native(200, 100, 1.0, false, None, Ok).unwrap();
+    let resent: Value = serde_json::from_str(&page.input_request(&fill).unwrap()).unwrap();
+    assert_eq!(resent["state"]["text"], "Gate N");
+    assert_eq!(resent["state"]["selection"], json!([6, 6]));
+    let shown = page.prepare_native(200, 100, 1.0, false, None, Ok).unwrap();
+    assert_eq!(shown.nodes[0].text, "Gate N");
+}
+
 #[test]
 fn host_input_messages_preserve_composition_and_reject_stale_connections() {
     use serde_json::{Value, json};
