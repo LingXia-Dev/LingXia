@@ -62,7 +62,7 @@ function renderCase(item: CaseRecord, suite: string): string {
   }
   if (item.flaky) { inner.push(`      <system-out>${text(`Flaky: passed after ${item.attempts?.length ?? 1} attempts`)}</system-out>\n`); }
   if (item.status === "xfail") {
-    inner.push(`      <system-out>${text("spec.fail: failed as declared")}</system-out>\n`);
+    inner.push(`      <system-out>${text(item.reason ?? "spec.fail: failed as declared")}</system-out>\n`);
   }
   const properties = [
     ...(item.covers.length > 0 ? [`        <property name="covers" value="${attr(item.covers.join(" "))}"/>\n`] : []),

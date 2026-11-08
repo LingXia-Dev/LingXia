@@ -208,6 +208,8 @@ impl<A: PlatformAdapter> Inner<A> {
             "backdropCache": presenter("backdropCache"),
             "video": crate::renderer::video_stats(),
             "renderer": "gpu",
+            // Frame budgets hold for an optimized core only.
+            "profile": if cfg!(debug_assertions) { "debug" } else { "release" },
             "page": self.lifecycle.page().get().to_string(),
             "commit": telemetry.commit,
             "firstPresentAt": telemetry.since_open(telemetry.first_present),

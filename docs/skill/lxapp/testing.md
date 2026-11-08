@@ -117,7 +117,7 @@ Iterate with `--changed` or a file path; run everything at handoff and in CI.
 | Restore state before each attempt | `spec.reset(async (t) => { ... })` (required by `--retries`) |
 | Skip | `spec.skip`, `spec.fixme`; on a condition `{ skip: cond ? 'why' : undefined }` (whole file: `spec.configure({ skip })`); found mid-spec `t.skip(reason)`; without an input `{ requires: { args: ['PASSWORD'], openapi: true } }` |
 | Run another lxapp's specs | import its spec files from your entry; skip the ones this app cannot run with `skipSpecFiles({ '../other/lxapp/tests/x.test.ts': 'why' })` from `@lingxia/test/runner` (names as reports print them) |
-| Expect a failure | `spec.fail(title, { expected: { code, message } }, body)` |
+| Expect a failure | `spec.fail(title, { expected: { code, message } }, body)`; found mid-spec `t.fail(reason)` (xfail) — e.g. a frame budget missed when `(await t.app.metrics()).profile === 'debug'` |
 | Group trace, add evidence | `t.step(name, fn)` (await one at a time; nest through the callback's `step`), `t.attach(name, data)` |
 | Another running lxapp | `t.automation.lxapp(appId)` |
 | App lifecycle, inbound links | `t.automation.lxapps` (`applink({ url })`) |

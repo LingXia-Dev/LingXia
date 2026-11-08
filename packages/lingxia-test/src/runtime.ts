@@ -1,6 +1,6 @@
 import { matchesErrorCode } from "./deadline.js";
 import { expect, setExpectScope, setStrayAssertionSink, type LoggedAssertion } from "./expect.js";
-import { LiveFixture, SkipSignal, TimeoutError, toReportError } from "./fixture.js";
+import { LiveFixture, SkipSignal, TimeoutError, XfailSignal, toReportError } from "./fixture.js";
 import { formatValue } from "./format.js";
 import { attachText, bundledSources, resolveHost, warnVersionSkew, type ResolvedHost } from "./host.js";
 import { captureFrames, fileStem, isUnattributed, resolveOrigin, resolveOwner, slugTitle, type StackFrame } from "./ids.js";
@@ -1065,6 +1065,8 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
           forceRelaunchNext = true;
         } else if (winner.err instanceof SkipSignal) {
           status = "skipped";
+        } else if (winner.err instanceof XfailSignal) {
+          status = "xfail";
         } else {
           status = "failed";
           error = winner.err;
@@ -1073,6 +1075,8 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
       } else if (fixture.skipReason !== undefined) {
         // The body caught the signal; the skip was still requested.
         status = "skipped";
+      } else if (fixture.xfailReason !== undefined) {
+        status = "xfail";
       } else {
         // A call the body did not await would turn a failure into a pass.
         const unsettled = fixture.unsettledCalls();
@@ -1350,6 +1354,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
 
     if (status !== "passed" && status !== "skipped") await collectEvidence();
     if (status === "skipped") record.reason = fixture.skipReason ?? record.reason;
+    if (status === "xfail" && fixture.xfailReason !== undefined) record.reason = fixture.xfailReason;
     fixture.close();
     record.status = status;
     record.duration_ms = Date.now() - caseStarted;

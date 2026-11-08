@@ -411,6 +411,8 @@ export interface PageTree {
 /** `page.uiFrame()`: a GPU page's presentation counters. */
 export interface PageUiFrame {
   renderer: 'gpu';
+  /** How the View core was compiled; an older host omits it. */
+  profile?: 'debug' | 'release';
   page: string;
   commit: number;
   /** Milliseconds since the page opened; `null` until it first presents. */

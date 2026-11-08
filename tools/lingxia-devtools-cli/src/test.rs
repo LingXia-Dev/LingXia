@@ -2482,10 +2482,16 @@ fn poll_until_terminal(
                                 *duration_ms as f64 / 1000.0
                             );
                         } else {
-                            let reason = record
-                                .as_ref()
-                                .and_then(|r| r["reason"].as_str())
-                                .filter(|_| *status == TestCaseStatus::Skipped);
+                            let reason =
+                                record
+                                    .as_ref()
+                                    .and_then(|r| r["reason"].as_str())
+                                    .filter(|_| {
+                                        matches!(
+                                            *status,
+                                            TestCaseStatus::Skipped | TestCaseStatus::Xfail
+                                        )
+                                    });
                             let tagged = format!(
                                 "{full_name}{}",
                                 renderer_tag(record.as_ref().unwrap_or(&serde_json::Value::Null))
@@ -3305,7 +3311,11 @@ fn print_case_finished(
             eprintln!(
                 "{} {display_name} ({seconds:.2}s)",
                 format!("✓ {}", status.as_str()).green()
-            )
+            );
+            // What a `t.fail(reason)` measured, e.g. a debug build's frame times.
+            if let Some(reason) = reason.filter(|_| status == TestCaseStatus::Xfail) {
+                eprintln!("  {}", reason.dimmed());
+            }
         }
         TestCaseStatus::Skipped => match reason {
             Some(reason) => eprintln!(
@@ -4033,7 +4043,14 @@ fn render_final_junit(
                 ));
             }
             if status == "xfail" {
-                xml.push_str("<system-out>spec.fail: failed as declared</system-out>");
+                xml.push_str(&format!(
+                    "<system-out>{}</system-out>",
+                    escape_markup(
+                        case["reason"]
+                            .as_str()
+                            .unwrap_or("spec.fail: failed as declared")
+                    )
+                ));
             }
             let mut properties = String::new();
             for key in ["covers", "tags"] {

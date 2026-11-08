@@ -210,6 +210,28 @@ test("a step failure the body observed never overrides spec.fail or a caught rej
   assert.equal(report.cases[1].steps.find((step) => step.name === "submit")?.status ?? report.cases[1].steps[0].steps[0].status, "failed");
 });
 
+test("t.fail stops the spec and reports it xfail with its reason", async () => {
+  const { attachments } = installFakeHost(createWorld());
+  let after = false, cleaned = false;
+  spec("over budget in debug", { forensics: false }, async (t) => {
+    t.defer(() => { cleaned = true; });
+    t.fail("debug build: frame p95 49 ms over the 16.7 ms budget");
+    after = true;
+  });
+  spec("within budget passes", { forensics: false }, async () => {});
+  spec("swallowed fail is still xfail", { forensics: false }, async (t) => {
+    try { t.fail("caught"); } catch { /* the author swallowed it */ }
+  });
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  const report = JSON.parse(decodeAttachment(attachments, "report.json"));
+  assert.equal(after, false);
+  assert.equal(cleaned, true);
+  assert.deepEqual(report.cases.map((c) => c.status), ["xfail", "passed", "xfail"]);
+  assert.equal(report.cases[0].reason, "debug build: frame p95 49 ms over the 16.7 ms budget");
+  assert.equal(protocol.failed, 0);
+  assert.match(decodeAttachment(attachments, "junit.xml"), /frame p95 49 ms over the 16.7 ms budget/);
+});
+
 test("t.skip stops the spec and reports it skipped with its reason", async () => {
   const world = createWorld();
   const { attachments, events } = installFakeHost(world);

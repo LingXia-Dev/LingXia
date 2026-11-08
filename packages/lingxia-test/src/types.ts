@@ -960,6 +960,8 @@ export interface TestApp {
 
 /** `t.app.metrics()`: frame times in ms, dropped refreshes and jank, latencies and reveal counters. */
 export interface TestMetrics extends PageFramePacing {
+  /** How the host's View core was compiled: frame budgets hold for `release` only; `null` from an older host. */
+  profile: "debug" | "release" | null;
   /** Milliseconds from the page opening to its first and latest presents. */
   firstPresentAt: number | null;
   lastPresentAt: number | null;
@@ -1212,6 +1214,12 @@ export interface Fixture {
    * from the body or `beforeEach`; it rejects during cleanup.
    */
   skip(reason: string): never;
+  /**
+   * Stop this spec and report it `xfail` with `reason`, for a failure only
+   * knowable at run time (a budget a debug build cannot meet). Throws; deferred
+   * cleanup still runs.
+   */
+  fail(reason: string): never;
 }
 
 /** Matchers that check once, synchronously. */

@@ -97,6 +97,18 @@ export class SkipSignal extends Error {
   }
 }
 
+/**
+ * Thrown by `t.fail()`: the runtime grades the spec `xfail`, a failure known
+ * at run time. Internal, like `SkipSignal`.
+ */
+export class XfailSignal extends Error {
+  override readonly name = "XfailSignal";
+  readonly code = "E_XFAIL" as const;
+  constructor(readonly reason: string) {
+    super(`expected failure: ${reason}`);
+  }
+}
+
 export type FailurePhase = "beforeEach" | "body" | "defer" | "forensics" | "timeout" | "contract" | "capture";
 
 export class LiveFixture implements Fixture {
@@ -150,6 +162,7 @@ export class LiveFixture implements Fixture {
   remoteTimeoutKind: "Logic eval" | "View eval" | "page action" | undefined;
   /** Set by `t.skip()`; survives a body that catches the signal. */
   skipReason: string | undefined;
+  xfailReason: string | undefined;
   private readonly stepStack: StepRecord[] = [];
   /** An overlap cannot be attributed safely without async-local JS context. */
   stepConflict: Error | undefined;
@@ -565,7 +578,7 @@ export class LiveFixture implements Fixture {
             lastError = undefined;
             if (accept(value)) return value;
           } catch (error) {
-            if (error instanceof SkipSignal || this.aborted) throw error;
+            if (error instanceof SkipSignal || error instanceof XfailSignal || this.aborted) throw error;
             if (error instanceof TimeoutError && deadline.expired()) {
               for (const call of this.inFlight) if (!before.has(call)) call.detached = true;
               break;
@@ -604,6 +617,13 @@ export class LiveFixture implements Fixture {
     const text = typeof reason === "string" && reason.trim().length > 0 ? reason : "skipped at runtime";
     this.skipReason ??= text;
     throw new SkipSignal(text);
+  }
+
+  fail(reason: string): never {
+    if (this.cleanupActive) throw new Error("t.fail cannot be called during cleanup (t.defer or afterEach)");
+    const text = typeof reason === "string" && reason.trim().length > 0 ? reason : "failed as expected";
+    this.xfailReason ??= text;
+    throw new XfailSignal(text);
   }
 
   async attach(name: string, data: unknown): Promise<void> {
@@ -1072,6 +1092,7 @@ export class LiveFixture implements Fixture {
         const frame = await this.readRetrying(() => options ? driver().page.uiFrame(options) : driver().page.uiFrame());
         return {
           ...frame.pacing,
+          profile: frame.profile ?? null,
           firstPresentAt: frame.firstPresentAt,
           lastPresentAt: frame.lastPresentAt,
           framesTotal: frame.frames,
