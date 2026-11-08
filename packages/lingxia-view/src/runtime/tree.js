@@ -16,6 +16,7 @@ import { now, spent } from './profile.js';
 // Candidate transactions: prepare renders and encodes without touching the
 // committed page; commit adopts the candidate, discard drops it.
 export function List({ items, getKey, renderItem, getItemHeight, ...props }) {
+  if (!Object.isFrozen(items) && typeof globalThis.__lingxiaWarn === 'function') warnUnfrozen(props, renderItem);
   const itemKeys = keysOf(items, getKey);
   const row = index => renderItem(items[index], index);
   // The same renderItem over the same frozen items builds the same rows, save those that read state.
@@ -25,6 +26,17 @@ export function List({ items, getKey, renderItem, getItemHeight, ...props }) {
     ...(getItemHeight ? { height: index => getItemHeight(items[index], index) } : {}) });
 }
 List.__lxid = '@lingxia/view#List';
+
+// Dev sessions only: rows are reused only over a frozen array, so say so once per List.
+const warnedLists = new Set();
+function warnUnfrozen(props, renderItem) {
+  const site = props['data-testid'] ?? String(renderItem).slice(0, 120);
+  if (warnedLists.has(site)) return;
+  warnedLists.add(site);
+  const name = props['data-testid'] ? ` "${props['data-testid']}"` : '';
+  globalThis.__lingxiaWarn(`UI_LIST: <List>${name} got an items array that is not frozen, so every row renders again on every render; ` +
+    'Object.freeze the array the View builds, or pass the Logic data array through unchanged');
+}
 
 function runCandidate(view, lookup, build, recall = null) {
   if (render.active) throw Error('UI_RENDER: recursive render');

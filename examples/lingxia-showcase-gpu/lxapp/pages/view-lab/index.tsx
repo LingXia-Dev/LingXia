@@ -426,7 +426,8 @@ function StateVariants() {
   );
 }
 
-const rows = Array.from({ length: 40 }, (_, index) => ({ id: `row-${index + 1}`, label: `Row ${index + 1}` }));
+// Frozen rows in a frozen array: a List reuses the rows it already rendered.
+const rows = Object.freeze(Array.from({ length: 40 }, (_, index) => Object.freeze({ id: `row-${index + 1}`, label: `Row ${index + 1}` })));
 
 // Every control kind a spec drives: radio group, slider, multi-line editor, search field and a keyed list.
 function Controls() {
@@ -445,7 +446,7 @@ function Controls() {
       <textarea data-testid="lab-controls-notes" bind={notes} rows={3} maxRows={6} aria-label="Notes" placeholder="Several lines" className={field} />
       <input type="search" data-testid="lab-controls-search" bind={query} aria-label="Filter rows" placeholder="Filter rows" className={field} />
       <List data-testid="lab-controls-list" className="h-48 rounded-lg border border-line"
-        items={rows.filter(row => row.label.toLowerCase().includes(query.value.toLowerCase()))} getKey={row => row.id}
+        items={Object.freeze(rows.filter(row => row.label.toLowerCase().includes(query.value.toLowerCase())))} getKey={row => row.id}
         renderItem={row => (
           <button data-testid={`lab-controls-${row.id}`} onClick={() => picked.set(row.label)} className="px-3 py-2 border-b border-line text-sm">{row.label}</button>
         )} />

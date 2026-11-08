@@ -134,7 +134,18 @@ pub(crate) fn collect_between_frames(context: &JSContext) {
 
 static DEV_GLOBALS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// Isolates created from now on carry the dev-session globals (`__lingxiaClock`).
+/// Dev diagnostics the View runtime raised through `__lingxiaWarn`, for the host to log.
+static DEV_WARNINGS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+const DEV_WARNINGS_KEPT: usize = 32;
+
+pub(crate) fn take_dev_warnings() -> Vec<String> {
+    DEV_WARNINGS
+        .lock()
+        .map(|mut warnings| std::mem::take(&mut *warnings))
+        .unwrap_or_default()
+}
+
+/// Isolates created from now on carry the dev-session globals (`__lingxiaClock`, `__lingxiaWarn`).
 pub fn enable_dev_globals() {
     DEV_GLOBALS.store(true, std::sync::atomic::Ordering::Release);
 }
@@ -148,9 +159,20 @@ pub(crate) fn install_dev_globals(context: &JSContext) -> Result<(), String> {
     let started = *STARTED.get_or_init(std::time::Instant::now);
     let clock = rong::quickjs::JSFunc::new(context, move || started.elapsed().as_secs_f64() * 1e6)
         .map_err(|e| e.to_string())?;
-    context
-        .global()
+    let warn = rong::quickjs::JSFunc::new(context, |message: String| {
+        if let Ok(mut warnings) = DEV_WARNINGS.lock()
+            && warnings.len() < DEV_WARNINGS_KEPT
+        {
+            warnings.push(message);
+        }
+    })
+    .map_err(|e| e.to_string())?;
+    let global = context.global();
+    global
         .set("__lingxiaClock", clock)
+        .map_err(|e| e.to_string())?;
+    global
+        .set("__lingxiaWarn", warn)
         .map(|_| ())
         .map_err(|e| e.to_string())
 }

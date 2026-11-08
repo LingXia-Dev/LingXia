@@ -367,3 +367,24 @@ test('a patched frozen array under the same keys reuses the earlier keys',()=>{
  keyed=0;items=Object.freeze(items.map((row,i)=>i===0?Object.freeze({id:7}):row));
  assert.throws(()=>prepare(page,{},{root:{start:0,end:3,leading:0,trailing:0}}),/duplicate itemKey/,'a changed key is checked again');
 });
+
+test('a dev session hears once per List that a mutable items array re-renders every row',()=>{
+ reset();const warnings=[];globalThis.__lingxiaWarn=message=>warnings.push(message);
+ try {
+  let items=['a','b'];const frozen=Object.freeze(['x','y']);
+  const page=()=>h('page',{},
+   h(List,{'data-testid':'mutable',items,getKey:item=>item,renderItem:item=>h('text',{},item)}),
+   h(List,{'data-testid':'frozen',items:frozen,getKey:item=>item,renderItem:item=>h('text',{},item)}));
+  prepare(page,{},window(0,2));commit();
+  items=['a','b','c'];prepare(page,{},window(0,3));commit();
+  assert.equal(warnings.length,1,warnings.join('\n'));
+  assert.match(warnings[0],/^UI_LIST: <List> "mutable" got an items array that is not frozen/);
+  assert.match(warnings[0],/Object\.freeze/);
+ } finally { delete globalThis.__lingxiaWarn; }
+});
+
+test('outside a dev session a mutable items array says nothing',()=>{
+ reset();assert.equal(globalThis.__lingxiaWarn,undefined);
+ const page=()=>h(List,{items:['a'],getKey:item=>item,renderItem:item=>h('text',{},item)});
+ prepare(page,{},window(0,1));commit();
+});
