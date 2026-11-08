@@ -361,6 +361,8 @@ struct Main<F> {
     animation_timer: u64,
     /// The last presented frame asked for the next display frame.
     animating: bool,
+    /// Animating with motion that ends; endless keyframe animations leave it false.
+    moving: bool,
     /// When the last frame was queued behind an acknowledgement; one per instant.
     animation_queued_at: Duration,
     bootstrap_timer: u64,
@@ -549,6 +551,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     disposed: false,
                     animation_timer: 0,
                     animating: false,
+                    moving: false,
                     animation_queued_at: Duration::ZERO,
                     bootstrap_timer: 0,
                     reveal: Default::default(),
@@ -1266,8 +1269,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
         // worker already ran is the answer, as when a click navigates away or a dialog covers it.
         // Otherwise nothing is coming, or a frame started after the answer presented and the
         // session saw no animation still running; newer Logic state meanwhile does not count.
-        let shown =
-            (!main.dirty && !main.busy()) || (main.acked_flight >= after && !main.animating);
+        let shown = (!main.dirty && !main.busy()) || (main.acked_flight >= after && !main.moving);
         let settled = quiet && (shown || main.interaction.parked() || !main.visible);
         if settled || matches!(main.automation_calls.get(&call), Some(Some(Err(_))) | None) {
             main.settle_after.remove(&call);

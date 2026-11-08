@@ -663,3 +663,34 @@ fn a_covered_window_runs_finite_animations_to_completion_and_parks_looping_ones(
         Wakeup::NextFrame
     );
 }
+
+#[test]
+fn an_endless_spin_keeps_frames_coming_but_leaves_the_page_settled_while_finite_motion_waits() {
+    let spin = serde_json::json!({"name":"spin","durationMs":800,"delayMs":0,"iterations":null,"whenReduced":"base","easing":"linear",
+      "transforms":[{"kind":"rotate","angle":[{"offset":0,"value":0},{"offset":1,"value":360}]}]});
+    let source = tests::source(&format!(
+        "function render(){{return h('column',{{}},h('column',{{'data-testid':'spin',style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{spin}}}}}),h('column',{{'data-testid':'fade',style:{{width:20,height:20,backgroundColor:'#00ff00',animation:{}}}}}));}}",
+        authored_effect()
+    ));
+    let mut page = ViewSession::new(&source).unwrap();
+    page.set_animation_surface(Some(SurfaceTicket::new(1)), ms(0))
+        .unwrap();
+    automatic(&mut page, 0, true, 0.0);
+    page.animation_presented(SurfaceTicket::new(1), page.generation(), ms(0))
+        .unwrap();
+    // The 100 ms fade still runs: the page is moving.
+    assert_eq!(
+        page.view_animation_wakeup(ms(10)).unwrap(),
+        Wakeup::NextFrame
+    );
+    assert!(page.view_animation_moving(ms(10)).unwrap());
+    automatic(&mut page, 110, false, 0.0);
+    page.animation_presented(SurfaceTicket::new(1), page.generation(), ms(110))
+        .unwrap();
+    // Only the spin is left: frames keep coming, yet nothing that ends is running.
+    assert_eq!(
+        page.view_animation_wakeup(ms(120)).unwrap(),
+        Wakeup::NextFrame
+    );
+    assert!(!page.view_animation_moving(ms(120)).unwrap());
+}

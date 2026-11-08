@@ -306,6 +306,25 @@ impl Timeline {
         now: Duration,
         visible_identities: impl IntoIterator<Item = &'a str>,
     ) -> Result<Wakeup, String> {
+        self.wakeup(now, visible_identities, true)
+    }
+
+    /// [`Self::next_wakeup`] leaving out endless keyframe animations: whether motion that
+    /// ends is still running, so a spinner does not keep the page unsettled.
+    pub fn finite_wakeup<'a>(
+        &self,
+        now: Duration,
+        visible_identities: impl IntoIterator<Item = &'a str>,
+    ) -> Result<Wakeup, String> {
+        self.wakeup(now, visible_identities, false)
+    }
+
+    fn wakeup<'a>(
+        &self,
+        now: Duration,
+        visible_identities: impl IntoIterator<Item = &'a str>,
+        endless: bool,
+    ) -> Result<Wakeup, String> {
         let active_time = self.time_at(now)?;
         if !self.visible {
             return Ok(Wakeup::None);
@@ -325,7 +344,9 @@ impl Timeline {
             .collect();
         for identity in identities.iter().map(String::as_str) {
             let instance = self.instances.get(identity);
-            if self.covered && instance.is_some_and(|i| i.definition.timing.iterations.is_none()) {
+            if (self.covered || !endless)
+                && instance.is_some_and(|i| i.definition.timing.iterations.is_none())
+            {
                 next = next.earliest(self.transitions.wakeup(identity, active_time));
                 continue;
             }

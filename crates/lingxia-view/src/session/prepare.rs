@@ -384,6 +384,14 @@ impl ViewSession {
             .next_wakeup(now, self.animation_visible.iter().map(|id| &**id))
     }
 
+    /// Whether motion that ends is still running: endless animations do not count.
+    pub fn view_animation_moving(&self, now: Duration) -> Result<bool, String> {
+        Ok(self
+            .animations
+            .finite_wakeup(now, self.animation_visible.iter().map(|id| &**id))?
+            == crate::animation::Wakeup::NextFrame)
+    }
+
     /// Acknowledge on the owning View thread after native presentation succeeds.
     /// Stale acknowledgements leave a newer candidate intact.
     pub fn animation_presented(

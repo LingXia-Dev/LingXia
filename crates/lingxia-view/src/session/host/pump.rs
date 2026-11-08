@@ -1038,21 +1038,29 @@ impl<A: PlatformAdapter> Inner<A> {
             Guard::Page(self.lifecycle.page()),
             move |_, session| {
                 if !session.animation_presented(surface, generation, at)? {
-                    return Ok(None);
+                    return Ok((None, false));
                 }
-                Ok(match session.view_animation_wakeup(at)? {
+                let wakeup = match session.view_animation_wakeup(at)? {
                     crate::animation::Wakeup::None => None,
                     crate::animation::Wakeup::NextFrame => Some(Duration::ZERO),
                     crate::animation::Wakeup::After(delay) => Some(delay),
-                })
+                };
+                let moving = wakeup == Some(Duration::ZERO) && session.view_animation_moving(at)?;
+                Ok((wakeup, moving))
             },
             move |inner, result| {
+                let (result, moving) = match result {
+                    Some(Ok((wakeup, moving))) => (Some(Ok(wakeup)), moving),
+                    Some(Err(error)) => (Some(Err(error)), false),
+                    None => (None, false),
+                };
                 let animating = matches!(result, Some(Ok(Some(Duration::ZERO))));
                 let settled = {
                     let mut main = inner.main();
                     main.animating = animating;
+                    main.moving = moving;
                     main.acked_flight = main.acked_flight.max(flight);
-                    if animating {
+                    if moving {
                         Vec::new()
                     } else {
                         main.interaction.settled()
@@ -1108,6 +1116,7 @@ impl<A: PlatformAdapter> Inner<A> {
             let mut main = self.main();
             main.animation_timer += 1;
             main.animating = false;
+            main.moving = false;
             main.drop_ahead();
         }
         let at = self.adapter.now();
