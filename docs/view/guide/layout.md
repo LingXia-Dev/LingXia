@@ -122,6 +122,10 @@ is the default. `overflow-scroll` is not supported; use `<scroll>`.
 keyboard height for the bottom. Content inside `<page>` therefore never sits under the status bar,
 the gesture area or the keyboard. When you need the numbers, `view.env.insets` and
 `view.env.keyboard.height` are in logical pixels, and the page re-renders when they change.
+The same holds for `env.viewport` and `env.sizeClass`: lay out from them in the View. Logic's
+`lx.surface.watchContext` is for Logic that acts on a size change itself; never subscribe there to
+pass the size on with `setData`: the View already has it, and the copy arrives after a `setData` round
+trip and renders the page again.
 
 The exception is a `<scroll>` or `<List>` that is the page's last child: it runs to the bottom edge,
 under the tab bar and the gesture area, so a translucent bar shows the content scrolling beneath it.

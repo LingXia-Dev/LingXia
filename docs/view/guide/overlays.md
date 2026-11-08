@@ -52,6 +52,13 @@ export function render() {
 - At most 16 are open at once ([limits](../reference/limits.md)); another stays closed with a
   `UI_BUDGET` warning and calls no `onClose` or `onToggle`.
 
+## Floats and windows
+
+Use `<dialog>` and popovers for anything that belongs to the page. `lx.surface.openPage(page, { as:
+'float' })` opens another page as a surface of its own, outside the page that opened it: keep it for
+content that must stay on screen across pages, like a mini player. A float or window always sits
+above the page and its top layer, so a page's dialog never covers it.
+
 ## Sheets
 
 A dialog is centred by auto margins; `mt-auto mb-0 w-full` sits it on the bottom edge as a sheet. Add
