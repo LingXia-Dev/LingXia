@@ -396,18 +396,10 @@ pub fn execute(mut options: DevExecuteOptions) -> Result<()> {
     }
 
     if options.background && env::var_os(BACKGROUND_CHILD_ENV).is_none() {
-        // The target the child registers, when this command names it; an
-        // auto-detected platform is left to the child.
-        let expected_target = if runner_requested {
-            Some("runner".to_string())
-        } else {
-            match options.platform_arg.as_deref() {
-                Some(platform) => {
-                    Some(platform_session_name(platform.parse::<PlatformType>()?).to_string())
-                }
-                None => None,
-            }
-        };
+        let runs_runner = runner_requested
+            || runner::resolve_dev_target(&project_root, options.target.as_deref())?.is_some();
+        let expected_target =
+            background_session_target(runs_runner, options.platform_arg.as_deref())?;
         return spawn_background_dev(&project_root, expected_target, options.json);
     }
 
@@ -597,6 +589,21 @@ pub fn execute(mut options: DevExecuteOptions) -> Result<()> {
 #[cfg(target_os = "windows")]
 pub fn focus_windows_launch(executable: &Path, excluded_pids: &str) -> Result<()> {
     runner::focus_windows_launch(executable, excluded_pids)
+}
+
+/// The target the background child registers, when this command names it; an
+/// auto-detected platform is left to the child. An lxapp runs in the Runner,
+/// which registers as `runner` even when `-p` names the desktop it runs on.
+fn background_session_target(
+    runs_runner: bool,
+    platform_arg: Option<&str>,
+) -> Result<Option<String>> {
+    if runs_runner {
+        return Ok(Some(RUNNER_TARGET.to_string()));
+    }
+    platform_arg
+        .map(|platform| Ok(platform_session_name(platform.parse::<PlatformType>()?).to_string()))
+        .transpose()
 }
 
 /// `lingxia dev --background`: start the session owner detached, return once
@@ -1742,6 +1749,27 @@ mod tests {
     }
 
     #[cfg(unix)]
+    #[test]
+    fn an_lxapp_background_start_waits_for_the_runner_session() {
+        assert_eq!(
+            background_session_target(true, Some("macos"))
+                .unwrap()
+                .as_deref(),
+            Some("runner")
+        );
+        assert_eq!(
+            background_session_target(true, None).unwrap().as_deref(),
+            Some("runner")
+        );
+        assert_eq!(
+            background_session_target(false, Some("macos"))
+                .unwrap()
+                .as_deref(),
+            Some("macos")
+        );
+        assert_eq!(background_session_target(false, None).unwrap(), None);
+    }
+
     #[test]
     fn a_background_start_returns_its_own_session_once_ready() {
         let dir = tempfile::tempdir().unwrap();
