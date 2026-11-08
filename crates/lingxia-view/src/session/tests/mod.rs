@@ -728,7 +728,7 @@ fn committed_channel_resource_opens_without_input_and_quiesces_after_redraw() {
     page.layout(300, 500, 1.0).unwrap();
     let requests = page.take_action_requests().unwrap();
     assert_eq!(requests.len(), 1);
-    let request: serde_json::Value = serde_json::from_str(&requests[0]).unwrap();
+    let request: serde_json::Value = requests[0].frame();
     assert_eq!(request["kind"], "ch.open");
     assert!(page.has_local_updates().unwrap());
     page.receive_bridge(&json!({"v":2,"kind":"ch.ack","id":request["id"],"ok":true}))
@@ -770,16 +770,14 @@ fn stream_bridge_events_render_and_cancel_through_the_page_endpoint() {
     let frame = page.layout(300, 500, 1.0).unwrap();
     page.click(page.generation(), frame.nodes[1].on_click.unwrap())
         .unwrap();
-    let request: serde_json::Value =
-        serde_json::from_str(&page.take_action_requests().unwrap()[0]).unwrap();
+    let request: serde_json::Value = page.take_action_requests().unwrap()[0].frame();
     let event = json!({"v":2,"kind":"event","id":request["id"],"seq":0,"payload":"first"});
     assert!(page.receive_bridge(&event).unwrap().changed);
     let frame = page.layout(300, 500, 1.0).unwrap();
     assert_eq!(frame.nodes[2].text, "first");
     page.click(page.generation(), frame.nodes[3].on_click.unwrap())
         .unwrap();
-    let cancel: serde_json::Value =
-        serde_json::from_str(&page.take_action_requests().unwrap()[0]).unwrap();
+    let cancel: serde_json::Value = page.take_action_requests().unwrap()[0].frame();
     assert_eq!(cancel, json!({"v":2,"kind":"cancel","id":request["id"]}));
     assert!(!page.receive_bridge(&event).unwrap().changed);
 }
@@ -808,25 +806,21 @@ fn channel_bridge_opens_delivers_and_sends_on_the_bound_endpoint() {
     let frame = page.layout(300, 500, 1.0).unwrap();
     page.click(page.generation(), frame.nodes[1].on_click.unwrap())
         .unwrap();
-    let request: serde_json::Value =
-        serde_json::from_str(&page.take_action_requests().unwrap()[0]).unwrap();
+    let request: serde_json::Value = page.take_action_requests().unwrap()[0].frame();
     assert_eq!(request["kind"], "ch.open");
     page.receive_bridge(&json!({"v":2,"kind":"ch.ack","id":request["id"],"ok":true}))
         .unwrap();
     let message = json!({"v":2,"kind":"ch.data","id":request["id"],"seq":0,"payload":"first tick"});
-    let update = page.receive_bridge(&message).unwrap();
+    page.receive_bridge(&message).unwrap();
     assert_eq!(
-        update.outbound,
-        vec![
-            json!({"v":2,"kind":"ch.data","id":request["id"],"seq":0,"payload":{"symbol":"MSFT"}})
-        ]
+        page.take_action_requests().unwrap()[0].frame(),
+        json!({"v":2,"kind":"ch.data","id":request["id"],"payload":{"symbol":"MSFT"}})
     );
     let frame = page.layout(300, 500, 1.0).unwrap();
     assert_eq!(frame.nodes[2].text, "first tick");
     page.click(page.generation(), frame.nodes[3].on_click.unwrap())
         .unwrap();
-    let closed: serde_json::Value =
-        serde_json::from_str(&page.take_action_requests().unwrap()[0]).unwrap();
+    let closed: serde_json::Value = page.take_action_requests().unwrap()[0].frame();
     assert_eq!(closed["kind"], "ch.close");
     assert!(!page.receive_bridge(&message).unwrap().changed);
 }
@@ -1542,8 +1536,7 @@ fn bridge_requires_ack_ready_and_state_then_roundtrips_actions() {
     let frame = page.layout(300, 500, 1.0).unwrap();
     page.click(page.generation(), frame.nodes[0].on_click.unwrap())
         .unwrap();
-    let request: serde_json::Value =
-        serde_json::from_str(&page.take_action_requests().unwrap()[0]).unwrap();
+    let request: serde_json::Value = page.take_action_requests().unwrap()[0].frame();
     let response = json!({"v":2,"kind":"res","id":request["id"],"ok":true,"result":"done"});
     assert!(page.receive_bridge(&response).unwrap().changed);
     let patch = json!({"v":2,"kind":"state.patch","baseRev":0,"rev":1,"ack":true,"ops":[{"op":"replace","path":"/count","value":1}]});
@@ -1616,7 +1609,7 @@ fn action_response_runs_async_continuation_on_view_worker() {
         .unwrap();
     let requests = session.take_action_requests().unwrap();
     assert_eq!(requests.len(), 1);
-    let request: serde_json::Value = serde_json::from_str(&requests[0]).unwrap();
+    let request: serde_json::Value = requests[0].frame();
     assert_eq!(request["params"]["step"], 1);
     let response =
         serde_json::json!({"v":2,"kind":"res","id":request["id"],"ok":true,"result":{"count":7}});
@@ -1641,7 +1634,7 @@ fn leave_request_updates_view_and_waits_for_explicit_confirmation() {
         .unwrap();
     session.layout(300, 500, 1.0).unwrap();
     let requests = session.take_action_requests().unwrap();
-    let registration: Value = serde_json::from_str(&requests[0]).unwrap();
+    let registration: Value = requests[0].frame();
     assert_eq!(registration["method"], "host.navigation.setLeaveGuard");
     session
         .receive_action_response(
@@ -1658,7 +1651,7 @@ fn leave_request_updates_view_and_waits_for_explicit_confirmation() {
         .click(session.generation(), frame.nodes[0].on_click.unwrap())
         .unwrap();
     let requests = session.take_action_requests().unwrap();
-    let leave: Value = serde_json::from_str(&requests[0]).unwrap();
+    let leave: Value = requests[0].frame();
     assert_eq!(leave["method"], "host.navigation.leave");
     assert_eq!(leave["params"]["reason"], "home");
 }

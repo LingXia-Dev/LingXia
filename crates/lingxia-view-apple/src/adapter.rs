@@ -452,6 +452,13 @@ impl HostEvents for AppleAdapter {
     fn message(&self, connection: ConnectionTicket, message: &str) {
         self.shell.message(self.token, connection.get(), message);
     }
+    fn logic(
+        &self,
+        connection: ConnectionTicket,
+        messages: Vec<lingxia_view::session::logic::ToLogic>,
+    ) {
+        self.shell.logic(self.token, connection.get(), messages);
+    }
     fn state(
         &self,
         connection: ConnectionTicket,

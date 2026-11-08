@@ -506,10 +506,10 @@ impl<A: PlatformAdapter> Inner<A> {
         };
         let update = if self.logic {
             let mut update = super::bridge::update(
+                self,
                 session,
                 crate::session::state::StateUpdate {
                     changed: true,
-                    outbound: Vec::new(),
                     ..Default::default()
                 },
             )?;

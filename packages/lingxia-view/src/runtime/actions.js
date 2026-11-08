@@ -6,8 +6,8 @@ import { createStream } from './stream.js';
 import { createChannel } from './channel.js';
 import { createLeaveGuards } from './leave-guard.js';
 
-// Page actions, streams and channels share one bounded request queue that the
-// native session drains; every reset invalidates what the old page issued.
+// Page actions, streams and channels share one bounded queue of plain messages that the
+// native session walks into typed Logic events; every reset invalidates what the old page issued.
 let actions = Object.freeze(Object.create(null)), actionEpoch = 0, nextRequest = 1;
 let requests = [], actionErrors = [];
 const pendingActions = new Map();
@@ -52,11 +52,7 @@ function admit(what) {
   if (pendingActions.size + activeChannels.size >= 256 || requests.length >= 256) throw Error(`UI_LIMIT: too many pending ${what}`);
 }
 
-function encodeFrame(frame, what) {
-  const encoded = JSON.stringify(frame);
-  if (encoded.length > 65536) throw Error(`UI_LIMIT: ${what} payload too large`);
-  return encoded;
-}
+const bounded = (value, what) => immutable(value, 0, false, { left: 65536, what });
 
 // Native supplies the same compiled action catalog used by WebView pages, after ready.
 export function configureActions(metadata) {
@@ -73,15 +69,15 @@ export function configureActions(metadata) {
     if (epoch !== actionEpoch) throw bridgeError('BRIDGE_CANCELED', 'Stale page action');
     if (args.length > 1) throw Error('UI_ACTION: expected at most one JSON payload');
     admit('actions');
-    const params = args.length && args[0] !== undefined ? immutable(args[0]) : undefined;
+    const params = args.length && args[0] !== undefined ? bounded(args[0], 'action') : undefined;
     const id = `ui-action:${nextRequest++}`;
-    const encoded = encodeFrame({ v: 2, kind: 'req', id, method: name, cap: 'page', ...(params === undefined ? {} : { params }) }, 'action');
+    const encoded = { kind: 'req', id, method: name, params };
     if (modes[name] === 'stream') {
       const stream = createStream(id, cause => {
         if (!pendingActions.has(id)) return;
         // Reserve a bounded cancellation slot for every admitted request.
         if (requests.length >= 512) throw Error('UI_LIMIT: too many pending cancellations');
-        requests.push(JSON.stringify({ v: 2, kind: 'cancel', id }));
+        requests.push({ kind: 'cancel', id });
         pendingActions.delete(id);
         stream.reject(cause ?? bridgeError('BRIDGE_CANCELED', 'Stream canceled'));
       }, reportLive, bridgeError);
@@ -105,14 +101,14 @@ export function configureActions(metadata) {
         throw Error('UI_CHANNEL: expected a page channel handler');
       admit('channels');
       const id = `ui-channel:${nextRequest++}`;
-      const encoded = encodeFrame({ v: 2, kind: 'ch.open', id, topic, cap: 'page', ...(params === undefined ? {} : { params: immutable(params) }) }, 'channel');
+      const encoded = { kind: 'ch.open', id, topic, params: params === undefined ? undefined : bounded(params, 'channel') };
       let outgoing = 0;
       const channel = createChannel(id, payload => {
         outsideRender('channel send');
         const entry = activeChannels.get(id);
         if (epoch !== actionEpoch || !entry?.open) throw bridgeError('STREAM_CLOSED', 'Channel is closed');
         if (requests.length >= 256) throw Error('UI_LIMIT: too many pending channel frames');
-        requests.push(encodeFrame({ v: 2, kind: 'ch.data', id, seq: outgoing, payload: immutable(payload) }, 'channel'));
+        requests.push({ kind: 'ch.data', id, seq: outgoing, payload: bounded(payload, 'channel') });
         outgoing++;
       }, (code, reason, cause) => {
         outsideRender('channel close');
@@ -120,7 +116,7 @@ export function configureActions(metadata) {
         if (typeof code !== 'string' || code.length > 256 || typeof reason !== 'string' || reason.length > 2048)
           throw Error('UI_CHANNEL: invalid close reason');
         if (requests.length >= 512) throw Error('UI_LIMIT: too many pending cancellations');
-        requests.push(JSON.stringify({ v: 2, kind: 'ch.close', id, code, reason }));
+        requests.push({ kind: 'ch.close', id, code, reason });
         activeChannels.delete(id);
         if (cause) channel.reject(cause); else channel.finish(code, reason, true);
       }, reportLive, bridgeError);
@@ -139,7 +135,7 @@ function callLeaveHost(method, params) {
   const id = `ui-action:${nextRequest++}`;
   const promise = new Promise((resolve, reject) => pendingActions.set(id, { resolve, reject }));
   promise.catch(() => {});
-  requests.push(JSON.stringify({ v: 2, kind: 'req', id, method: `host.${method}`, cap: 'host', params }));
+  requests.push({ kind: 'req', id, method: `host.${method}`, params });
   return promise;
 }
 
@@ -148,7 +144,18 @@ export function requestLeave(reason) {
   leaveGuards.request(reason);
 }
 
-export function takeActionRequests() { const result = requests.concat(takeOverlayReplies()); requests = []; return result; }
+/** What the View sends Logic since the last call, in order: plain objects the native session walks. */
+export function takeViewEvents() { const result = requests.concat(takeOverlayReplies()); requests = []; return result; }
+
+// The same messages as bridge frame text, for a native session that predates typed events.
+const frameCaps = { req: m => m.method.startsWith('host.') ? 'host' : 'page', 'ch.open': () => 'page' };
+export function takeActionRequests() {
+  return takeViewEvents().map(message => {
+    const frame = { v: 2, ...message };
+    if (frameCaps[message.kind]) frame.cap = frameCaps[message.kind](message);
+    return JSON.stringify(frame);
+  });
+}
 
 // Test automation calls a page action exactly as `view.actions[name](payload)` would.
 let automationResults = [];

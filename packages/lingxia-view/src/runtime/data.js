@@ -1,13 +1,15 @@
 // JSON-shaped values cross the View boundary frozen; nothing else crosses it.
-export function immutable(value, depth = 0, omitUndefined = false) {
+export function immutable(value, depth = 0, omitUndefined = false, budget) {
   if (depth > 64) throw Error('UI_LOCAL: value too deep');
+  // `budget` bounds what crosses to Logic about as its JSON text would, without encoding it.
+  if (budget && (budget.left -= typeof value === 'string' ? value.length + 2 : 8) < 0) throw Error(`UI_LIMIT: ${budget.what} payload too large`);
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
   if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (Array.isArray(value)) return Object.freeze(value.map(v => immutable(v, depth + 1, omitUndefined)));
+  if (Array.isArray(value)) return Object.freeze(value.map(v => immutable(v, depth + 1, omitUndefined, budget)));
   if (value && Object.getPrototypeOf(value) === Object.prototype) {
     return Object.freeze(Object.fromEntries(Object.entries(value)
       .filter(([, v]) => !omitUndefined || v !== undefined)
-      .map(([k, v]) => [k, immutable(v, depth + 1, omitUndefined)])));
+      .map(([k, v]) => [k, immutable(v, depth + 1, omitUndefined, budget && ((budget.left -= k.length + 3), budget))])));
   }
   throw Error('UI_LOCAL: expected JSON value');
 }

@@ -414,6 +414,32 @@ pub(crate) fn message(token: Token, generation: u64, body: &str) {
     }
 }
 
+/// The View worker: what the View sends Logic for its connection generation, in order.
+#[cfg(any(
+    target_os = "android",
+    target_os = "ios",
+    target_os = "macos",
+    target_env = "ohos"
+))]
+pub(crate) fn view_events(token: Token, generation: u64, messages: Vec<state::ToLogic>) {
+    let Some(endpoint) = live(token) else {
+        return;
+    };
+    let Some(current) = endpoint.current(generation) else {
+        return;
+    };
+    let Some(page) = lxapp::find_page_by_instance_id(&endpoint.lease.page) else {
+        return;
+    };
+    let endpoint = endpoint as Arc<dyn GpuPageView>;
+    for message in messages {
+        if let Err(error) = page.gpu_view_event(&endpoint, current, state::event_from_view(message))
+        {
+            log::warn!("GPU bridge ingress rejected: {error}");
+        }
+    }
+}
+
 /// What the View made of Logic's typed state writes for its connection generation.
 pub(crate) fn state_signal(token: Token, generation: u64, signal: GpuStateSignal) {
     let Some(endpoint) = live(token) else {

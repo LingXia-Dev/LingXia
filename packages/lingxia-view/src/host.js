@@ -1,7 +1,7 @@
 import { render as rendering } from './runtime/state.js';
 import { describe, prepare, prepareWindows, takeMovedAnchors, commit, discard, reset, dispatch, probeListRow } from './runtime/tree.js';
 import { createView, syncData, hasLocalUpdates, readsHostContext } from './runtime/hooks.js';
-import { configureActions, takeActionRequests, receiveActionResponse, takeActionErrors, requestLeave, automationAction, takeAutomationResults } from './runtime/actions.js';
+import { configureActions, takeActionRequests, takeViewEvents, receiveActionResponse, takeActionErrors, requestLeave, automationAction, takeAutomationResults } from './runtime/actions.js';
 import { viewRequest, overlayTimer, takeOverlayTimers, escapeOverlay } from './runtime/overlay.js';
 import { openPicker, pickerKey, closePicker, takePickerResults, pickerIdentity } from './runtime/picker.js';
 import { takeFonts } from './runtime/fonts.js';
@@ -15,7 +15,7 @@ export function publishHost(render, catalog) {
     __lingxiaRender: render, __lingxiaDescribe: describe, __lingxiaPrepare: prepare,
     __lingxiaPrepareWindows: prepareWindows, __lingxiaTakeMovedAnchors: takeMovedAnchors, __lingxiaCommit: commit, __lingxiaDiscard: discard,
     __lingxiaReset: reset, __lingxiaDispatch: dispatch, __lingxiaCreateView: createView, __lingxiaSyncData: syncData,
-    __lingxiaConfigureActions: configureActions, __lingxiaTakeActionRequests: takeActionRequests,
+    __lingxiaConfigureActions: configureActions, __lingxiaTakeActionRequests: takeActionRequests, __lingxiaTakeViewEvents: takeViewEvents,
     __lingxiaReceiveActionResponse: receiveActionResponse, __lingxiaTakeActionErrors: takeActionErrors,
     __lingxiaHasLocalUpdates: hasLocalUpdates, __lingxiaRequestLeave: requestLeave,
     __lingxiaReadsHostContext: readsHostContext,

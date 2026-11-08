@@ -3,8 +3,11 @@ pub mod app;
 pub mod host;
 pub mod image_requests;
 pub(crate) mod input_protocol;
+pub(crate) mod js_tree;
 pub mod lifecycle;
+pub mod logic;
 pub mod metrics;
+pub(crate) mod probe;
 pub mod state;
 
 use crate::engine::{RongJS, decode_buffer};

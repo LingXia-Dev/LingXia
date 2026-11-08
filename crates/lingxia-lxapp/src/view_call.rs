@@ -26,6 +26,7 @@ struct PendingViewCallEntry {
     /// same immutable destination as the request it cancels.
     _outbound: Option<OutboundContext>,
     tx: oneshot::Sender<Result<Value, RpcError>>,
+    sent_us: u64,
 }
 
 pub(crate) struct PendingViewCall {
@@ -71,6 +72,7 @@ pub(crate) fn call_view(
         PendingViewCallEntry {
             page_instance_id,
             work_id,
+            sent_us: crate::bridge::probe::now_us(),
             _outbound: outbound.clone(),
             tx,
         },
@@ -156,6 +158,14 @@ pub(crate) fn resolve_view_call(
         pending.remove(id)
     };
     if let Some(entry) = entry {
+        crate::bridge::probe::record(
+            crate::bridge::probe::Probe::RequestAnswer,
+            entry
+                ._outbound
+                .as_ref()
+                .is_some_and(OutboundContext::is_gpu),
+            entry.sent_us,
+        );
         let _ = entry.tx.send(result);
         return true;
     }
@@ -311,6 +321,7 @@ mod tests {
                 page_instance_id: "page-1".to_string(),
                 work_id: SessionWorkId::for_test(22),
                 _outbound: None,
+                sent_us: 0,
                 tx,
             },
         );
@@ -344,6 +355,7 @@ mod tests {
                 page_instance_id: "page-1".to_string(),
                 work_id: SessionWorkId::for_test(31),
                 _outbound: None,
+                sent_us: 0,
                 tx: old_tx,
             },
         );
@@ -353,6 +365,7 @@ mod tests {
                 page_instance_id: "page-1".to_string(),
                 work_id: SessionWorkId::for_test(32),
                 _outbound: None,
+                sent_us: 0,
                 tx: new_tx,
             },
         );
@@ -378,6 +391,7 @@ mod tests {
                 page_instance_id: "foreground".to_string(),
                 work_id: SessionWorkId::for_test(1),
                 _outbound: None,
+                sent_us: 0,
                 tx: foreground_tx,
             },
         );
@@ -387,6 +401,7 @@ mod tests {
                 page_instance_id: "hidden".to_string(),
                 work_id: SessionWorkId::for_test(1),
                 _outbound: None,
+                sent_us: 0,
                 tx: hidden_tx,
             },
         );

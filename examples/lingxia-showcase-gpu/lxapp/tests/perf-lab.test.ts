@@ -186,14 +186,42 @@ spec('state set from an awaited Logic loop keeps reaching the View', { id: 'PERF
   await scene(t, 'touch', 48);
   const page = await t.app.page<PerfLab>({ name: 'perf-lab' });
   const before = (await t.app.metrics()).framesTotal;
+  const started = Date.now();
   await page.invoke('drive', { payload: { scene: 'text', ms: 3000, count: 1 } });
-  await new Promise<void>(resolve => setTimeout(resolve, 3000));
+  // Action replies share the bridge with the loop's writes and must not queue behind them.
+  const replies: number[] = [];
+  while (Date.now() - started < 2500) {
+    const sent = Date.now();
+    await page.invoke('ping', {});
+    replies.push(Date.now() - sent);
+    await new Promise<void>(resolve => setTimeout(resolve, 100));
+  }
+  await new Promise<void>(resolve => setTimeout(resolve, Math.max(0, 3000 - (Date.now() - started))));
   const { tick } = await t.waitFor(() => page.data(), { until: data => data.running === '', timeout: 5000 });
   const shown = (await t.app.metrics()).framesTotal - before;
-  await t.attach('ticks-and-frames', { tick, shown });
+  const sorted = [...replies].sort((a, b) => a - b);
+  const reply = { count: sorted.length, p50: sorted[Math.floor(sorted.length / 2)], max: sorted[sorted.length - 1] };
+  await t.attach('ticks-and-frames', { tick, shown, reply });
   // Ticks come every ~18 ms from an awaited loop. The View keeps the newest state when a
   // frame is still in flight, so about one frame per two ticks shows on macOS (92 for 170);
   // the old debounce let through 8.
   expect(tick).toBeGreaterThan(50);
   expect(shown).toBeGreaterThan(tick * TICK_SHARE);
+  expect(reply.count).toBeGreaterThan(3);
+});
+
+spec('the bridge micro-benchmark runs its writes, requests and calls', { id: 'PERF-BRIDGE-002' }, async (t) => {
+  // Latencies come from the runtime's bridge probes in debug builds: `lxdev logs --grep bridge-probe`.
+  await scene(t, 'touch', 48);
+  const page = await t.app.page<PerfLab>({ name: 'perf-lab' });
+  const result = await page.invoke('bench', { payload: { writes: 200, requests: 100, calls: 1000 }, timeout: 60_000 });
+  const pings: number[] = [];
+  for (let i = 0; i < 100; i++) {
+    const sent = Date.now();
+    await page.invoke('ping', {});
+    pings.push(Date.now() - sent);
+  }
+  pings.sort((a, b) => a - b);
+  await t.attach('bench', { ...result, pingMs: { p50: pings[50], p95: pings[95] } });
+  expect(result.setDataUs).toBeGreaterThan(0);
 });

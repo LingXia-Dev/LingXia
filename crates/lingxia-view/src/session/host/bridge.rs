@@ -17,7 +17,6 @@ pub struct BridgeUpdate {
     pub ready: bool,
     pub changed: bool,
     pub local_changed: bool,
-    pub outbound: Vec<String>,
     /// Revisions to acknowledge once a frame from that state is built.
     pub acks: Vec<u64>,
     /// Ask Logic for a state snapshot.
@@ -29,18 +28,22 @@ pub struct BridgeUpdate {
     pub overlay_timers: Vec<(u64, u64)>,
 }
 
-/// Collect queued Logic actions after a View step.
-pub(super) fn update(
+/// Send what the View queued for Logic, from the worker, and collect the rest for main.
+pub(super) fn update<A: PlatformAdapter>(
+    inner: &Inner<A>,
     session: &mut ViewSession,
     update: StateUpdate,
 ) -> Result<BridgeUpdate, String> {
-    let mut outbound: Vec<String> = update.outbound.iter().map(|m| m.to_string()).collect();
-    outbound.extend(session.take_action_requests()?);
+    let mut messages = update.outbound;
+    messages.extend(session.take_action_requests()?);
+    let connection = inner.lifecycle.connection();
+    if !messages.is_empty() && inner.lifecycle.is_current_connection(connection) {
+        inner.adapter.logic(connection, messages);
+    }
     Ok(BridgeUpdate {
         ready: session.ready_to_render(),
         changed: update.changed,
         local_changed: session.has_local_updates()?,
-        outbound,
         acks: update.ack.into_iter().collect(),
         resync: update.resync,
         errors: session.take_action_errors()?,
@@ -58,10 +61,10 @@ impl<A: PlatformAdapter> Inner<A> {
             return Ok(None);
         }
         let update = update(
+            self,
             session,
             StateUpdate {
                 changed: true,
-                outbound: Vec::new(),
                 ..Default::default()
             },
         )?;
@@ -83,9 +86,6 @@ impl<A: PlatformAdapter> Inner<A> {
                     *slot = Some(result);
                 }
             }
-        }
-        for message in &update.outbound {
-            self.adapter.message(connection, message);
         }
         if update.resync {
             self.adapter.state(connection, StateSignal::Resync);
@@ -209,17 +209,19 @@ impl<A: PlatformAdapter> Inner<A> {
     }
 
     pub(super) fn receive(self: &Arc<Self>, connection: ConnectionTicket, frame: String) {
-        self.bridge_step(connection, move |session| {
+        self.bridge_step(connection, move |inner, session| {
             let frame = serde_json::from_str(&frame).map_err(|e| format!("UI_BRIDGE: {e}"))?;
             let state = session.receive_bridge(&frame)?;
-            update(session, state)
+            update(inner, session, state)
         });
     }
 
     /// A state write skips the action queues: it runs no View code.
     pub(super) fn write_state(self: &Arc<Self>, connection: ConnectionTicket, write: StateWrite) {
-        self.bridge_step(connection, move |session| {
+        let sent = crate::session::probe::now_us();
+        self.bridge_step(connection, move |_, session| {
             let state = session.write_state(write)?;
+            crate::session::probe::record(crate::session::probe::Probe::WriteApply, true, sent);
             Ok(BridgeUpdate {
                 ready: session.ready_to_render(),
                 changed: state.changed,
@@ -231,13 +233,13 @@ impl<A: PlatformAdapter> Inner<A> {
     }
 
     pub(super) fn request_leave(self: &Arc<Self>, connection: ConnectionTicket, reason: String) {
-        self.bridge_step(connection, move |session| {
+        self.bridge_step(connection, move |inner, session| {
             session.request_leave(&reason)?;
             update(
+                inner,
                 session,
                 StateUpdate {
                     changed: true,
-                    outbound: Vec::new(),
                     ..Default::default()
                 },
             )
@@ -247,14 +249,14 @@ impl<A: PlatformAdapter> Inner<A> {
     fn bridge_step(
         self: &Arc<Self>,
         connection: ConnectionTicket,
-        step: impl FnOnce(&mut ViewSession) -> Result<BridgeUpdate, String> + Send + 'static,
+        step: impl FnOnce(&Inner<A>, &mut ViewSession) -> Result<BridgeUpdate, String> + Send + 'static,
     ) {
         if self.main().disposed || !self.lifecycle.is_current_connection(connection) {
             return;
         }
         self.work(
             Guard::Connection(connection),
-            move |_, session| step(session),
+            move |inner, session| step(inner, session),
             move |inner, result| match result {
                 Some(Ok(update)) => inner.publish(connection, update),
                 Some(Err(error)) if inner.lifecycle.is_current_connection(connection) => {

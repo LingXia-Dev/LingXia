@@ -532,9 +532,10 @@ async fn handle_bridge_source(
             outbound,
             id,
             method,
-            params_json,
+            params,
             cancel_rx,
             pending_request,
+            sent_us,
         } => {
             if !page_svc.session_work_is_active(work_id).await {
                 return Ok(());
@@ -556,6 +557,11 @@ async fn handle_bridge_source(
             // only later messages (evals, clock ticks, other actions) can drive.
             let page_svc = page_svc.clone();
             context_lifecycle::spawn(&ctx, move |_ctx| async move {
+                bridge::probe::record(
+                    bridge::probe::Probe::EventHandler,
+                    outbound.as_ref().is_some_and(bridge::OutboundContext::is_gpu),
+                    sent_us,
+                );
                 let result = page::with_document_callback_work(
                     work_id,
                     outbound.clone(),
@@ -564,7 +570,7 @@ async fn handle_bridge_source(
                         outbound.clone(),
                         &id,
                         &method,
-                        params_json.as_deref(),
+                        params,
                         cancel_rx,
                     ),
                 )
@@ -593,7 +599,7 @@ async fn handle_bridge_source(
             outbound,
             id,
             topic,
-            params_json,
+            params,
         } => {
             if !page_svc.session_work_is_active(work_id).await {
                 return Ok(());
@@ -605,7 +611,7 @@ async fn handle_bridge_source(
                     outbound.clone(),
                     &id,
                     &topic,
-                    params_json.as_deref(),
+                    params,
                 )
                 .await
             {
@@ -656,12 +662,12 @@ async fn handle_bridge_source(
         AppServiceCommand::ChData {
             work_id,
             id,
-            payload_json,
+            payload,
         } => {
             if !page_svc.session_work_is_active(work_id).await {
                 return Ok(());
             }
-            if let Err(err) = page_svc.handle_ch_data(work_id, &id, &payload_json).await {
+            if let Err(err) = page_svc.handle_ch_data(work_id, &id, payload).await {
                 error!("channel '{}' data handler failed: {}", id, err.code)
                     .with_appid(page_svc.page.appid())
                     .with_path(page_svc.page.path());
@@ -1802,9 +1808,10 @@ mod worker_assignment_tests {
                             outbound: None,
                             id: "c1".to_string(),
                             method: "start".to_string(),
-                            params_json: None,
+                            params: None,
                             cancel_rx,
                             pending_request,
+                            sent_us: 0,
                         }),
                         &mut current,
                     ),

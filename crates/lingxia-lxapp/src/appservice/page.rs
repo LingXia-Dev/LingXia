@@ -1,7 +1,8 @@
 use crate::PageLifecycleEvent;
 use crate::bridge::{
     BRIDGE_CANCELED, BRIDGE_INTERNAL_ERROR, BRIDGE_MALFORMED_MESSAGE, BRIDGE_METHOD_NOT_FOUND,
-    BRIDGE_TOPIC_NOT_FOUND, OutboundContext, PageBridge, RpcError, SessionWorkId, ViewTransport,
+    BRIDGE_TOPIC_NOT_FOUND, OutboundContext, PageBridge, Payload, RpcError, SessionWorkId,
+    ViewTransport,
 };
 use crate::error;
 use crate::error::LxAppError;
@@ -149,6 +150,7 @@ struct StateCallback {
     callback: JSFunc,
     work_id: Option<SessionWorkId>,
     outbound: Option<OutboundContext>,
+    sent_us: u64,
 }
 
 #[derive(Clone)]
@@ -312,6 +314,20 @@ async fn await_channel_call_or_cancel<T>(
     }
 }
 
+/// The JS argument for a View's params; absent or `null` passes none.
+fn payload_arg(ctx: &JSContext, payload: Option<Payload>) -> Option<JSValue> {
+    payload
+        .filter(|payload| !payload.is_null())
+        .and_then(|payload| payload_value(ctx, payload).ok())
+}
+
+fn payload_value(ctx: &JSContext, payload: Payload) -> JSResult<JSValue> {
+    match payload {
+        Payload::Json(json) => json.json_to_js_value(ctx),
+        Payload::Tree(value) => crate::appservice::js_tree::to_js(ctx, &value),
+    }
+}
+
 fn js_value_to_json_str(v: JSValue) -> Result<String, RpcError> {
     if v.is_undefined() || v.is_null() {
         return Ok("null".to_owned());
@@ -450,24 +466,16 @@ impl PageSvc {
         outbound: Option<OutboundContext>,
         req_id: &str,
         method: &str,
-        params_json: Option<&str>,
+        params: Option<Payload>,
         mut cancel_rx: tokio::sync::oneshot::Receiver<()>,
     ) -> Result<String, RpcError> {
         let ctx = self
             .get_ctx()
             .ok_or_else(|| RpcError::new(BRIDGE_CANCELED, None))?;
 
-        let build_call_arg = |json: Option<&str>| -> Option<JSValue> {
-            let json = json?;
-            if json == "null" {
-                return None;
-            }
-            json.json_to_js_value(&ctx).ok()
-        };
-
         if let Some(name) = method.strip_prefix("surface.") {
             return self
-                .open_surface_for_view(name, params_json, &mut cancel_rx)
+                .open_surface_for_view(name, payload_arg(&ctx, params), &mut cancel_rx)
                 .await;
         }
 
@@ -478,7 +486,7 @@ impl PageSvc {
             ));
         };
 
-        let call_arg = build_call_arg(params_json);
+        let call_arg = payload_arg(&ctx, params);
 
         // Explicit stream handle path — function declared in `stream_handlers`.
         // The handler receives `(params, streamHandle)` and is expected to call
@@ -578,7 +586,7 @@ impl PageSvc {
     async fn open_surface_for_view(
         &self,
         name: &str,
-        params_json: Option<&str>,
+        params: Option<JSValue>,
         cancel_rx: &mut oneshot::Receiver<()>,
     ) -> Result<String, RpcError> {
         let target_key = match name {
@@ -594,15 +602,12 @@ impl PageSvc {
         let ctx = self
             .get_ctx()
             .ok_or_else(|| RpcError::new(BRIDGE_CANCELED, None))?;
-        let params = params_json
-            .and_then(|json| json.json_to_js_value(&ctx).ok())
-            .and_then(JSValue::into_object)
-            .ok_or_else(|| {
-                RpcError::new(
-                    BRIDGE_MALFORMED_MESSAGE,
-                    Some(format!("surface.{name} requires a params object")),
-                )
-            })?;
+        let params = params.and_then(JSValue::into_object).ok_or_else(|| {
+            RpcError::new(
+                BRIDGE_MALFORMED_MESSAGE,
+                Some(format!("surface.{name} requires a params object")),
+            )
+        })?;
         let call = async {
             let target = params.get::<_, String>(target_key)?;
             let options = params
@@ -681,7 +686,7 @@ impl PageSvc {
         outbound: Option<OutboundContext>,
         id: &str,
         topic: &str,
-        params_json: Option<&str>,
+        params: Option<Payload>,
     ) -> Result<oneshot::Receiver<Result<(), RpcError>>, RpcError> {
         let work_id = work_id.ok_or_else(|| RpcError::new(BRIDGE_CANCELED, None))?;
         let Some(js_func) = self.get_js_func(topic) else {
@@ -694,12 +699,7 @@ impl PageSvc {
         let ctx = self
             .get_ctx()
             .ok_or_else(|| RpcError::new(BRIDGE_CANCELED, None))?;
-        let call_arg = params_json.and_then(|json| {
-            if json == "null" {
-                return None;
-            }
-            json.json_to_js_value(&ctx).ok()
-        });
+        let call_arg = payload_arg(&ctx, params);
 
         let listeners = Rc::new(RefCell::new(ChannelListeners {
             on_data: None,
@@ -808,7 +808,7 @@ impl PageSvc {
         &self,
         work_id: Option<SessionWorkId>,
         id: &str,
-        payload_json: &str,
+        payload: Payload,
     ) -> Result<(), RpcError> {
         let Some(work_id) = work_id else {
             return Ok(());
@@ -823,9 +823,7 @@ impl PageSvc {
         let ctx = self
             .get_ctx()
             .ok_or_else(|| RpcError::new(BRIDGE_CANCELED, None))?;
-        let payload = payload_json
-            .json_to_js_value(&ctx)
-            .map_err(rpc_error_from_rong)?;
+        let payload = payload_value(&ctx, payload).map_err(rpc_error_from_rong)?;
         let page_svc = self.clone();
         let key_for_task = key.clone();
         let appid = self.page.appid();
@@ -1028,6 +1026,7 @@ impl PageSvc {
                         callback: callback.callback.clone(),
                         work_id: callback.work_id,
                         outbound: callback.outbound.clone(),
+                        sent_us: 0,
                     });
                     false
                 } else {
@@ -1116,6 +1115,11 @@ impl PageSvc {
             });
         drop(state);
         if let Some(cb) = callback {
+            crate::bridge::probe::record(
+                crate::bridge::probe::Probe::WriteAck,
+                cb.outbound.as_ref().is_some_and(OutboundContext::is_gpu),
+                cb.sent_us,
+            );
             let _ = with_document_callback_work(cb.work_id, cb.outbound, async move {
                 cb.callback.call_async::<_, ()>(None, (STATE_ACKED,)).await
             })
@@ -1216,6 +1220,7 @@ impl PageSvc {
 
     #[js_method(rename = "_setData")]
     async fn set_data(&self, ops_json: String, callback: Optional<JSFunc>) -> JSResult<()> {
+        let sent_us = crate::bridge::probe::now_us();
         let callback = callback.0;
         // This is the creation boundary for a JS-originated state write. It
         // must happen before awaiting the state mutex, since a replacement
@@ -1282,6 +1287,7 @@ impl PageSvc {
                     callback: cb,
                     work_id,
                     outbound: outbound.clone(),
+                    sent_us,
                 },
             );
             Some(true)

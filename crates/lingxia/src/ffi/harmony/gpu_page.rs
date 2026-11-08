@@ -113,6 +113,14 @@ impl Shell for Bridge {
     fn message(&self, token: i64, connection: u64, message: &str) {
         gpu_page::message(token, connection, message);
     }
+    fn logic(
+        &self,
+        token: i64,
+        connection: u64,
+        messages: Vec<lingxia_view_harmony::lingxia_view::session::logic::ToLogic>,
+    ) {
+        gpu_page::view_events(token, connection, messages);
+    }
     fn state(
         &self,
         token: i64,

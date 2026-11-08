@@ -1,4 +1,4 @@
-import type { DriveRequest, PerfData, PerfRow } from '../../shared/perf-types';
+import type { BenchRequest, BenchResult, DriveRequest, PerfData, PerfRow } from '../../shared/perf-types';
 
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
@@ -8,6 +8,24 @@ Page({
   data: { running: '', tick: 0, phase: false, rows: [] } as PerfData,
   drive(request: DriveRequest) {
     void this.run(request);
+  },
+  ping() {
+    return this.data.tick;
+  },
+  // Latencies are read from the runtime's bridge probes (`lxdev logs --grep bridge-probe`).
+  async bench({ writes, requests, calls }: BenchRequest): Promise<BenchResult> {
+    for (let tick = 1; tick <= writes; tick++) {
+      this.setData({ tick });
+      await this.flush();
+    }
+    for (let i = 0; i < requests; i++) await lx.hideToast().catch(() => undefined);
+    const record = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`field${i}`, `value ${i}`]));
+    const started = Date.now();
+    for (let i = 0; i < calls; i++) this.setData({ record: { ...record, field0: i } });
+    const setDataUs = ((Date.now() - started) * 1000) / Math.max(1, calls);
+    await this.flush();
+    this.setData({ record: null });
+    return { setDataUs };
   },
   async run({ scene, ms, count }: DriveRequest) {
     const until = Date.now() + ms;

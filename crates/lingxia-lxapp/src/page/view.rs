@@ -95,6 +95,49 @@ pub enum GpuStateSignal {
     Resync,
 }
 
+/// A bridge failure as a reply carries it: `code` is a string or a business code number.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GpuBridgeError {
+    pub code: serde_json::Value,
+    pub message: Option<String>,
+    pub data: Option<serde_json::Value>,
+}
+
+/// What a GPU View sends Logic. Payloads are owned trees, moved, never serialized.
+#[derive(Debug)]
+pub enum GpuViewEvent {
+    /// A page action or stream, or a page-owned `host.navigation.*` control.
+    Call {
+        id: String,
+        method: String,
+        params: Option<serde_json::Value>,
+        /// When the View queued it, for the debug-build bridge probes; 0 when unknown.
+        sent_us: u64,
+    },
+    Cancel {
+        id: String,
+    },
+    ChannelOpen {
+        id: String,
+        topic: String,
+        params: Option<serde_json::Value>,
+    },
+    ChannelData {
+        id: String,
+        payload: serde_json::Value,
+    },
+    ChannelClose {
+        id: String,
+        code: Option<String>,
+        reason: Option<String>,
+    },
+    /// The answer to a Logic call into the View.
+    Reply {
+        id: String,
+        outcome: Result<serde_json::Value, GpuBridgeError>,
+    },
+}
+
 /// Native-owned GPU endpoint. Methods must enqueue without blocking the caller.
 pub trait GpuPageView: Send + Sync {
     fn post_message(&self, message: &str) -> Result<(), LxAppError>;

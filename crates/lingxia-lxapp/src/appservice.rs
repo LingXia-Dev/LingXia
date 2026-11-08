@@ -2,6 +2,9 @@
 #[path = "appservice/js_runtime.rs"]
 mod js_runtime;
 #[cfg(feature = "js-appservice")]
+#[path = "appservice/js_tree.rs"]
+mod js_tree;
+#[cfg(feature = "js-appservice")]
 #[path = "appservice/js_worker_pool.rs"]
 mod js_worker_pool;
 

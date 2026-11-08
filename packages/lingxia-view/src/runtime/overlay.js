@@ -8,8 +8,8 @@ import { closeTopmost } from './toplayer.js';
 let toast = null, modals = [], sheets = [], timers = [], nextToken = 1;
 const ENTER_MS = 200;
 
-const reply = (id, ok, payload) => JSON.stringify(ok ? { v: 2, kind: 'res', id, ok: true, result: payload ?? null }
-  : { v: 2, kind: 'res', id, ok: false, error: payload });
+const reply = (id, ok, payload) => ok ? { kind: 'res', id, ok: true, result: payload ?? null }
+  : { kind: 'res', id, ok: false, error: payload };
 const text = (value, fallback = '') => typeof value === 'string' ? value.slice(0, 4096) : fallback;
 
 /** A view call from Logic: `{changed, replies}`; `replies` are bridge frames to send. */
@@ -51,7 +51,7 @@ export function viewRequest(frame) {
     default:
       replies.push(reply(id, false, { code: 'E_UNSUPPORTED', message: `${String(method)} is not served by a GPU View` }));
   }
-  return JSON.stringify({ changed, replies });
+  return JSON.stringify({ changed, replies: replies.map(r => JSON.stringify({ v: 2, ...r })) });
 }
 
 /** The toast timer `token` ran out; true when it hid the toast still showing. */

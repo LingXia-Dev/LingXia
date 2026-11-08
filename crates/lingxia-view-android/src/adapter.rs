@@ -34,10 +34,17 @@ pub fn set_image_loader(loader: Arc<dyn ImageLoader>) {
     let _ = IMAGE_LOADER.set(loader);
 }
 
-/// Hears what became of Logic's typed state writes, for the page an owner token names. The
-/// embedding host installs it; state never crosses JNI.
+/// Hears what became of Logic's typed state writes, and what the View sends Logic, for the page
+/// an owner token names. The embedding host installs it; neither crosses JNI.
 pub trait StateListener: Send + Sync + 'static {
     fn state(&self, owner: i64, connection: u64, signal: lingxia_view::session::state::StateSignal);
+    /// The View worker thread: what the View sends Logic for `connection`, in order.
+    fn logic(
+        &self,
+        owner: i64,
+        connection: u64,
+        messages: Vec<lingxia_view::session::logic::ToLogic>,
+    );
 }
 
 static STATE_LISTENER: OnceLock<Arc<dyn StateListener>> = OnceLock::new();
@@ -769,6 +776,15 @@ impl HostEvents for AndroidAdapter {
     ) {
         if let Some(listener) = STATE_LISTENER.get().filter(|_| self.owner != 0) {
             listener.state(self.owner, connection.get(), signal);
+        }
+    }
+    fn logic(
+        &self,
+        connection: ConnectionTicket,
+        messages: Vec<lingxia_view::session::logic::ToLogic>,
+    ) {
+        if let Some(listener) = STATE_LISTENER.get().filter(|_| self.owner != 0) {
+            listener.logic(self.owner, connection.get(), messages);
         }
     }
     fn restart(&self, connection: ConnectionTicket) -> bool {

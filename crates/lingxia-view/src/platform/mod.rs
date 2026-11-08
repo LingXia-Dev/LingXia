@@ -129,6 +129,9 @@ pub trait HostEvents {
     fn presented(&self, frame: &FrameSnapshot, timing: &FrameTiming);
     /// An outbound Logic bridge message for `connection`.
     fn message(&self, connection: ConnectionTicket, message: &str);
+    /// The View worker thread: what the View sends Logic for `connection`, in order. It goes
+    /// straight to Logic's queue; waiting on the main thread would add a hop per event.
+    fn logic(&self, connection: ConnectionTicket, messages: Vec<crate::session::logic::ToLogic>);
     /// What became of Logic's typed state writes for `connection`.
     fn state(&self, connection: ConnectionTicket, signal: crate::session::state::StateSignal);
     /// Restart the Logic connection after a session failure; false when it cannot.

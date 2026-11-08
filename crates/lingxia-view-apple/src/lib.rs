@@ -88,6 +88,13 @@ pub trait Shell: Send + Sync + 'static {
     /// A frame for `connection` reached the screen; 0 is a standalone page.
     fn presented(&self, token: i64, connection: u64);
     fn message(&self, token: i64, connection: u64, message: &str);
+    /// The View worker thread: what the View sends Logic for `connection`, in order.
+    fn logic(
+        &self,
+        token: i64,
+        connection: u64,
+        messages: Vec<lingxia_view::session::logic::ToLogic>,
+    );
     /// What became of Logic's typed state writes for `connection`.
     fn state(&self, token: i64, connection: u64, signal: lingxia_view::session::state::StateSignal);
     /// Restart the Logic connection after a session failure; false when it cannot.

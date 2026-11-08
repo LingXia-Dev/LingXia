@@ -11,6 +11,7 @@
 //!          Rust host registry   AppServiceBackend
 //! ```
 
+pub(crate) mod probe;
 mod protocol;
 
 #[allow(unused_imports)] // Re-exported for the next document-session binding step.
@@ -73,9 +74,11 @@ pub(crate) enum AppServiceCommand {
         outbound: Option<OutboundContext>,
         id: String,
         method: String,
-        params_json: Option<String>,
+        params: Option<Payload>,
         cancel_rx: oneshot::Receiver<()>,
         pending_request: PendingRequestGuard,
+        /// When the View queued it (`probe::now_us`), 0 when unknown.
+        sent_us: u64,
     },
     Notify {
         work_id: Option<SessionWorkId>,
@@ -88,12 +91,12 @@ pub(crate) enum AppServiceCommand {
         outbound: Option<OutboundContext>,
         id: String,
         topic: String,
-        params_json: Option<String>,
+        params: Option<Payload>,
     },
     ChData {
         work_id: Option<SessionWorkId>,
         id: String,
-        payload_json: String,
+        payload: Payload,
     },
     ChClose {
         work_id: Option<SessionWorkId>,
@@ -118,6 +121,40 @@ pub(crate) enum AppServiceCommand {
     CancelSessionWork {
         work_id: SessionWorkId,
     },
+}
+
+/// A View's request, from a WebView frame or a GPU View.
+struct Call {
+    id: String,
+    method: String,
+    cap: String,
+    params: Option<Payload>,
+    /// When the View queued it (`probe::now_us`).
+    sent_us: u64,
+}
+
+/// Logic data from a View: JSON text from a WebView frame, an owned tree from a GPU View.
+#[derive(Debug)]
+pub(crate) enum Payload {
+    Json(String),
+    Tree(Value),
+}
+
+impl Payload {
+    /// For consumers whose input is JSON text (host routes): a tree is serialized only here.
+    pub(crate) fn into_json(self) -> String {
+        match self {
+            Self::Json(json) => json,
+            Self::Tree(value) => value.to_string(),
+        }
+    }
+
+    pub(crate) fn is_null(&self) -> bool {
+        match self {
+            Self::Json(json) => json == "null",
+            Self::Tree(value) => value.is_null(),
+        }
+    }
 }
 
 // AppServiceBackend — trait to decouple bridge routing from the JS runtime executor
@@ -1096,6 +1133,123 @@ impl PageBridge {
         )
     }
 
+    /// A typed message from the GPU View, admitted like its frames: endpoint and generation
+    /// must be the current connection's before anything is dispatched.
+    pub(crate) fn handle_gpu_event(
+        &self,
+        page: &PageInstance,
+        endpoint: &Arc<dyn crate::GpuPageView>,
+        generation: crate::GpuViewGeneration,
+        event: crate::GpuViewEvent,
+    ) -> Result<(), LxAppError> {
+        let (work, ready) = {
+            let handshake = self.inner.handshake.lock().unwrap();
+            let connection = handshake
+                .connection
+                .as_ref()
+                .filter(|connection| {
+                    connection.work_id == SessionWorkId(generation.0)
+                        && matches!(connection.outbound.as_ref(), Some(OutboundContext::Gpu { endpoint: expected, generation: current })
+                            if *current == generation && expected.upgrade().is_some_and(|expected| Arc::ptr_eq(&expected, endpoint)))
+                })
+                .ok_or_else(|| LxAppError::Bridge("stale GPU connection".into()))?;
+            let work = CapturedSessionWork {
+                work_id: Some(connection.work_id),
+                outbound: connection.outbound.clone(),
+                caller: Some(connection.caller.clone()),
+                execution_permit: None,
+            };
+            (work, handshake.ready)
+        };
+        let context = &BridgeMessageContext::Gpu;
+        match event {
+            crate::GpuViewEvent::Call {
+                id,
+                method,
+                params,
+                sent_us,
+            } => {
+                if method
+                    .strip_prefix("host.")
+                    .is_some_and(|route| !gpu_view_control_route(route))
+                {
+                    return self.send_res_err_for_context(
+                        page,
+                        work.work_id,
+                        work.outbound.as_ref(),
+                        id,
+                        "E_PERMISSION_DENIED",
+                        Some("GPU View host calls require a Logic action".into()),
+                        None,
+                    );
+                }
+                let call = Call {
+                    cap: required_cap_for_name(&method),
+                    id,
+                    method,
+                    params: params.map(Payload::Tree),
+                    sent_us,
+                };
+                self.handle_call(page, context, call, &work, ready)
+            }
+            crate::GpuViewEvent::Cancel { id } => {
+                self.handle_cancel(page, context, &CancelMsg { v: 2, id }, &work)
+            }
+            crate::GpuViewEvent::ChannelOpen { id, topic, params } => {
+                if topic.contains('.') {
+                    return self.send_ch_ack_err_for_context(
+                        page,
+                        work.work_id,
+                        work.outbound.as_ref(),
+                        id,
+                        "E_PERMISSION_DENIED",
+                        Some("GPU View channels require a page Logic handler".into()),
+                        None,
+                    );
+                }
+                let cap = required_cap_for_name(&topic);
+                let params = params.map(Payload::Tree);
+                self.handle_ch_open_parts(page, context, &id, &topic, &cap, params, &work, ready)
+            }
+            crate::GpuViewEvent::ChannelData { id, payload } => {
+                self.handle_ch_data_parts(page, &id, Payload::Tree(payload), &work)
+            }
+            crate::GpuViewEvent::ChannelClose { id, code, reason } => self.handle_ch_close(
+                page,
+                context,
+                &ChCloseMsg {
+                    v: 2,
+                    id,
+                    code,
+                    reason,
+                },
+                &work,
+            ),
+            crate::GpuViewEvent::Reply { id, outcome } => {
+                if !self.is_current_work(work.work_id) || !Self::work_effect_is_active(&work) {
+                    return Ok(());
+                }
+                let result = outcome.map_err(|error| RpcError {
+                    code: match error.code {
+                        Value::String(code) => code,
+                        Value::Number(code) => code.to_string(),
+                        _ => BRIDGE_INTERNAL_ERROR.to_string(),
+                    },
+                    message: error.message,
+                    data: error.data,
+                });
+                let page_instance_id = page.instance_id_string();
+                crate::view_call::resolve_view_call(
+                    &id,
+                    Some(&page_instance_id),
+                    work.work_id,
+                    result,
+                );
+                Ok(())
+            }
+        }
+    }
+
     pub(crate) fn handle_gpu_incoming(
         &self,
         page: &PageInstance,
@@ -1426,21 +1580,37 @@ impl PageBridge {
         msg: &ChDataMsg,
         work: &CapturedSessionWork,
     ) -> Result<(), LxAppError> {
+        self.handle_ch_data_parts(
+            page,
+            &msg.id,
+            Payload::Json(msg.payload.get().to_owned()),
+            work,
+        )
+    }
+
+    fn handle_ch_data_parts(
+        &self,
+        page: &PageInstance,
+        id: &str,
+        payload: Payload,
+        work: &CapturedSessionWork,
+    ) -> Result<(), LxAppError> {
         if !self.is_current_work(work.work_id) || !Self::work_effect_is_active(work) {
             return Ok(());
         }
         let Some(work_id) = work.work_id else {
             return Ok(());
         };
-        if self.send_data_to_host_channel(&msg.id, work_id, msg.payload.get().to_owned()) {
-            return Ok(());
-        }
+        let payload = match self.send_data_to_host_channel(id, work_id, payload) {
+            None => return Ok(()),
+            Some(payload) => payload,
+        };
         self.forward_js_message(
             page,
             AppServiceCommand::ChData {
                 work_id: work.work_id,
-                id: msg.id.clone(),
-                payload_json: msg.payload.get().to_owned(),
+                id: id.to_owned(),
+                payload,
             },
         )
     }
@@ -1727,6 +1897,27 @@ impl PageBridge {
         work: &CapturedSessionWork,
         ready: bool,
     ) -> Result<(), LxAppError> {
+        let call = Call {
+            id: msg.id.clone(),
+            method: msg.method.clone(),
+            cap: msg.cap.clone(),
+            params: msg
+                .params
+                .as_ref()
+                .map(|v| Payload::Json(v.get().to_owned())),
+            sent_us: probe::now_us(),
+        };
+        self.handle_call(page, context, call, work, ready)
+    }
+
+    fn handle_call(
+        &self,
+        page: &PageInstance,
+        context: &BridgeMessageContext,
+        call: Call,
+        work: &CapturedSessionWork,
+        ready: bool,
+    ) -> Result<(), LxAppError> {
         if !self.is_current_work(work.work_id) || !Self::work_effect_is_active(work) {
             return Ok(());
         }
@@ -1735,7 +1926,7 @@ impl PageBridge {
                 page,
                 work.work_id,
                 work.outbound.as_ref(),
-                msg.id.clone(),
+                call.id.clone(),
                 BRIDGE_NOT_READY,
                 Some("Bridge not ready".to_string()),
                 None,
@@ -1743,25 +1934,25 @@ impl PageBridge {
             return Ok(());
         }
 
-        let required_cap = required_cap_for_name(&msg.method);
-        if msg.cap.is_empty() {
+        let required_cap = required_cap_for_name(&call.method);
+        if call.cap.is_empty() {
             let _ = self.send_res_err_for_context(
                 page,
                 work.work_id,
                 work.outbound.as_ref(),
-                msg.id.clone(),
+                call.id.clone(),
                 BRIDGE_MALFORMED_MESSAGE,
                 Some("Missing cap".to_string()),
                 None,
             );
             return Ok(());
         }
-        if msg.cap != required_cap {
+        if call.cap != required_cap {
             let _ = self.send_res_err_for_context(
                 page,
                 work.work_id,
                 work.outbound.as_ref(),
-                msg.id.clone(),
+                call.id.clone(),
                 BRIDGE_MALFORMED_MESSAGE,
                 Some(format!("Capability mismatch: expected '{}'", required_cap)),
                 None,
@@ -1769,39 +1960,41 @@ impl PageBridge {
             return Ok(());
         }
 
-        let params_json = msg.params.as_ref().map(|v| v.get().to_owned());
-        if msg.method == "state.getSnapshot" {
+        if call.method == "state.getSnapshot" {
             #[derive(serde::Deserialize)]
             struct SnapshotParams {
                 scope: Option<String>,
             }
 
-            let scope = params_json
-                .as_deref()
-                .and_then(|json| serde_json::from_str::<SnapshotParams>(json).ok())
+            let scope = call
+                .params
+                .and_then(|params| match params {
+                    Payload::Json(json) => serde_json::from_str::<SnapshotParams>(&json).ok(),
+                    Payload::Tree(value) => serde_json::from_value::<SnapshotParams>(value).ok(),
+                })
                 .and_then(|params| params.scope);
             return self.forward_js_request(
                 page,
                 work.work_id,
                 work.outbound.as_ref(),
-                msg.id.clone(),
+                call.id.clone(),
                 AppServiceCommand::StateSnapshot {
                     work_id: work.work_id,
                     outbound: work.outbound.clone(),
-                    id: msg.id.clone(),
+                    id: call.id.clone(),
                     scope,
                 },
             );
         }
 
         // host.* → native Rust handler (bypasses JS worker)
-        if let Some(host_method) = msg.method.strip_prefix("host.") {
+        if let Some(host_method) = call.method.strip_prefix("host.") {
             return self.dispatch_host_req(
                 page,
                 context,
-                msg.id.clone(),
+                call.id.clone(),
                 host_method.to_string(),
-                params_json,
+                call.params.map(Payload::into_json),
                 work,
             );
         }
@@ -1813,7 +2006,7 @@ impl PageBridge {
         let (cancel_rx, pending_request) = self
             .inner
             .pending_requests
-            .register(msg.id.clone(), work_id);
+            .register(call.id.clone(), work_id);
         // Registration and session revocation race across independent locks.
         // If revocation swept this work just before the insertion, compensate
         // before handing the request to the asynchronous JS backend.
@@ -1825,15 +2018,16 @@ impl PageBridge {
             page,
             Some(work_id),
             work.outbound.as_ref(),
-            msg.id.clone(),
+            call.id.clone(),
             AppServiceCommand::Req {
                 work_id: Some(work_id),
                 outbound: work.outbound.clone(),
-                id: msg.id.clone(),
-                method: msg.method.clone(),
-                params_json,
+                id: call.id.clone(),
+                method: call.method.clone(),
+                params: call.params,
                 cancel_rx,
                 pending_request,
+                sent_us: call.sent_us,
             },
         )
     }
@@ -1885,6 +2079,27 @@ impl PageBridge {
         work: &CapturedSessionWork,
         ready: bool,
     ) -> Result<(), LxAppError> {
+        let params = msg
+            .params
+            .as_ref()
+            .map(|v| Payload::Json(v.get().to_owned()));
+        self.handle_ch_open_parts(
+            page, context, &msg.id, &msg.topic, &msg.cap, params, work, ready,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn handle_ch_open_parts(
+        &self,
+        page: &PageInstance,
+        context: &BridgeMessageContext,
+        id: &str,
+        topic: &str,
+        cap: &str,
+        params: Option<Payload>,
+        work: &CapturedSessionWork,
+        ready: bool,
+    ) -> Result<(), LxAppError> {
         if !self.is_current_work(work.work_id) || !Self::work_effect_is_active(work) {
             return Ok(());
         }
@@ -1893,7 +2108,7 @@ impl PageBridge {
                 page,
                 work.work_id,
                 work.outbound.as_ref(),
-                msg.id.clone(),
+                id.to_owned(),
                 BRIDGE_NOT_READY,
                 Some("Bridge not ready".to_string()),
                 None,
@@ -1901,27 +2116,27 @@ impl PageBridge {
             return Ok(());
         }
 
-        let required_cap = required_cap_for_name(&msg.topic);
-        if msg.cap.is_empty() || msg.cap != required_cap {
+        let required_cap = required_cap_for_name(topic);
+        if cap.is_empty() || cap != required_cap {
             let _ = self.send_ch_ack_err_for_context(
                 page,
                 work.work_id,
                 work.outbound.as_ref(),
-                msg.id.clone(),
+                id.to_owned(),
                 BRIDGE_MALFORMED_MESSAGE,
                 Some(format!("Capability mismatch: expected '{}'", required_cap)),
                 None,
             );
             return Ok(());
         }
-        if msg.topic.starts_with("host.") {
-            let host_topic = &msg.topic["host.".len()..];
+        if topic.starts_with("host.") {
+            let host_topic = &topic["host.".len()..];
             return self.dispatch_host_ch_open(
                 page,
                 context,
-                msg.id.clone(),
+                id.to_owned(),
                 host_topic,
-                msg.params.as_ref().map(|v| v.get().to_owned()),
+                params.map(Payload::into_json),
                 work,
             );
         }
@@ -1930,13 +2145,13 @@ impl PageBridge {
             page,
             work.work_id,
             work.outbound.as_ref(),
-            msg.id.clone(),
+            id.to_owned(),
             AppServiceCommand::ChOpen {
                 work_id: work.work_id,
                 outbound: work.outbound.clone(),
-                id: msg.id.clone(),
-                topic: msg.topic.clone(),
-                params_json: msg.params.as_ref().map(|v| v.get().to_owned()),
+                id: id.to_owned(),
+                topic: topic.to_owned(),
+                params,
             },
         )
     }
@@ -2541,18 +2756,19 @@ impl PageBridge {
 
     /// Forward inbound `ch.data` payload to the matching host channel sender.
     /// Returns `true` if the channel was found (message consumed), `false` otherwise.
+    /// Hands `payload` to the host channel `id`; returns it when no host channel has that id.
     fn send_data_to_host_channel(
         &self,
         id: &str,
         work_id: SessionWorkId,
-        payload_json: String,
-    ) -> bool {
+        payload: Payload,
+    ) -> Option<Payload> {
         let lock = self.inner.active_host_channels.lock().unwrap();
         if let Some(channel) = lock.get(&(work_id, id.to_owned())) {
-            channel.sender.send_data(payload_json);
-            true
+            channel.sender.send_data(payload.into_json());
+            None
         } else {
-            false
+            Some(payload)
         }
     }
 

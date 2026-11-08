@@ -227,7 +227,7 @@ extern "system" fn automation_reply<'a>(
     .resolve::<ThrowRuntimeExAndDefault>();
 }
 
-/// Hears the View's reports on typed Logic state, by page token.
+/// Hears the View's typed reports and events for Logic, by page token.
 struct States;
 
 impl lingxia_view_android::StateListener for States {
@@ -238,6 +238,14 @@ impl lingxia_view_android::StateListener for States {
         signal: lingxia_view_android::lingxia_view::session::state::StateSignal,
     ) {
         gpu_page::state_signal(owner, connection, gpu_page::state::from_view(signal));
+    }
+    fn logic(
+        &self,
+        owner: i64,
+        connection: u64,
+        messages: Vec<lingxia_view_android::lingxia_view::session::logic::ToLogic>,
+    ) {
+        gpu_page::view_events(owner, connection, messages);
     }
 }
 

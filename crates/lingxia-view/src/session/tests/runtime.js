@@ -157,13 +157,14 @@
   }
 
   // src/runtime/data.js
-  function immutable(value, depth = 0, omitUndefined = false) {
+  function immutable(value, depth = 0, omitUndefined = false, budget) {
     if (depth > 64) throw Error("UI_LOCAL: value too deep");
+    if (budget && (budget.left -= typeof value === "string" ? value.length + 2 : 8) < 0) throw Error(`UI_LIMIT: ${budget.what} payload too large`);
     if (value === null || typeof value === "string" || typeof value === "boolean") return value;
     if (typeof value === "number" && Number.isFinite(value)) return value;
-    if (Array.isArray(value)) return Object.freeze(value.map((v) => immutable(v, depth + 1, omitUndefined)));
+    if (Array.isArray(value)) return Object.freeze(value.map((v) => immutable(v, depth + 1, omitUndefined, budget)));
     if (value && Object.getPrototypeOf(value) === Object.prototype) {
-      return Object.freeze(Object.fromEntries(Object.entries(value).filter(([, v]) => !omitUndefined || v !== void 0).map(([k, v]) => [k, immutable(v, depth + 1, omitUndefined)])));
+      return Object.freeze(Object.fromEntries(Object.entries(value).filter(([, v]) => !omitUndefined || v !== void 0).map(([k, v]) => [k, immutable(v, depth + 1, omitUndefined, budget && (budget.left -= k.length + 3, budget))])));
     }
     throw Error("UI_LOCAL: expected JSON value");
   }
@@ -1178,7 +1179,7 @@
   var timers = [];
   var nextToken = 1;
   var ENTER_MS = 200;
-  var reply = (id, ok, payload) => JSON.stringify(ok ? { v: 2, kind: "res", id, ok: true, result: payload ?? null } : { v: 2, kind: "res", id, ok: false, error: payload });
+  var reply = (id, ok, payload) => ok ? { kind: "res", id, ok: true, result: payload ?? null } : { kind: "res", id, ok: false, error: payload };
   var text = (value, fallback = "") => typeof value === "string" ? value.slice(0, 4096) : fallback;
   function viewRequest(frame) {
     const { id, method } = frame, params = frame.params ?? {};
@@ -1227,7 +1228,7 @@
       default:
         replies.push(reply(id, false, { code: "E_UNSUPPORTED", message: `${String(method)} is not served by a GPU View` }));
     }
-    return JSON.stringify({ changed: changed2, replies });
+    return JSON.stringify({ changed: changed2, replies: replies.map((r) => JSON.stringify({ v: 2, ...r })) });
   }
   function overlayTimer(token) {
     if (!toast || toast.token !== token) return false;
@@ -1878,11 +1879,7 @@
   function admit(what) {
     if (pendingActions.size + activeChannels.size >= 256 || requests.length >= 256) throw Error(`UI_LIMIT: too many pending ${what}`);
   }
-  function encodeFrame(frame, what) {
-    const encoded = JSON.stringify(frame);
-    if (encoded.length > 65536) throw Error(`UI_LIMIT: ${what} payload too large`);
-    return encoded;
-  }
+  var bounded = (value, what) => immutable(value, 0, false, { left: 65536, what });
   function configureActions(metadata) {
     outsideRender("configure actions");
     const names3 = metadata?.__names, modes = metadata?.__modes;
@@ -1897,14 +1894,14 @@
       if (epoch2 !== actionEpoch) throw bridgeError("BRIDGE_CANCELED", "Stale page action");
       if (args.length > 1) throw Error("UI_ACTION: expected at most one JSON payload");
       admit("actions");
-      const params = args.length && args[0] !== void 0 ? immutable(args[0]) : void 0;
+      const params = args.length && args[0] !== void 0 ? bounded(args[0], "action") : void 0;
       const id = `ui-action:${nextRequest++}`;
-      const encoded = encodeFrame({ v: 2, kind: "req", id, method: name, cap: "page", ...params === void 0 ? {} : { params } }, "action");
+      const encoded = { kind: "req", id, method: name, params };
       if (modes[name] === "stream") {
         const stream = createStream(id, (cause) => {
           if (!pendingActions.has(id)) return;
           if (requests.length >= 512) throw Error("UI_LIMIT: too many pending cancellations");
-          requests.push(JSON.stringify({ v: 2, kind: "cancel", id }));
+          requests.push({ kind: "cancel", id });
           pendingActions.delete(id);
           stream.reject(cause ?? bridgeError("BRIDGE_CANCELED", "Stream canceled"));
         }, reportLive, bridgeError);
@@ -1931,14 +1928,14 @@
           throw Error("UI_CHANNEL: expected a page channel handler");
         admit("channels");
         const id = `ui-channel:${nextRequest++}`;
-        const encoded = encodeFrame({ v: 2, kind: "ch.open", id, topic, cap: "page", ...params === void 0 ? {} : { params: immutable(params) } }, "channel");
+        const encoded = { kind: "ch.open", id, topic, params: params === void 0 ? void 0 : bounded(params, "channel") };
         let outgoing = 0;
         const channel = createChannel(id, (payload) => {
           outsideRender("channel send");
           const entry = activeChannels.get(id);
           if (epoch2 !== actionEpoch || !entry?.open) throw bridgeError("STREAM_CLOSED", "Channel is closed");
           if (requests.length >= 256) throw Error("UI_LIMIT: too many pending channel frames");
-          requests.push(encodeFrame({ v: 2, kind: "ch.data", id, seq: outgoing, payload: immutable(payload) }, "channel"));
+          requests.push({ kind: "ch.data", id, seq: outgoing, payload: bounded(payload, "channel") });
           outgoing++;
         }, (code, reason, cause) => {
           outsideRender("channel close");
@@ -1946,7 +1943,7 @@
           if (typeof code !== "string" || code.length > 256 || typeof reason !== "string" || reason.length > 2048)
             throw Error("UI_CHANNEL: invalid close reason");
           if (requests.length >= 512) throw Error("UI_LIMIT: too many pending cancellations");
-          requests.push(JSON.stringify({ v: 2, kind: "ch.close", id, code, reason }));
+          requests.push({ kind: "ch.close", id, code, reason });
           activeChannels.delete(id);
           if (cause) channel.reject(cause);
           else channel.finish(code, reason, true);
@@ -1967,17 +1964,25 @@
     const promise = new Promise((resolve, reject) => pendingActions.set(id, { resolve, reject }));
     promise.catch(() => {
     });
-    requests.push(JSON.stringify({ v: 2, kind: "req", id, method: `host.${method}`, cap: "host", params }));
+    requests.push({ kind: "req", id, method: `host.${method}`, params });
     return promise;
   }
   function requestLeave(reason) {
     outsideRender("leave request");
     leaveGuards.request(reason);
   }
-  function takeActionRequests() {
+  function takeViewEvents() {
     const result = requests.concat(takeOverlayReplies());
     requests = [];
     return result;
+  }
+  var frameCaps = { req: (m) => m.method.startsWith("host.") ? "host" : "page", "ch.open": () => "page" };
+  function takeActionRequests() {
+    return takeViewEvents().map((message) => {
+      const frame = { v: 2, ...message };
+      if (frameCaps[message.kind]) frame.cap = frameCaps[message.kind](message);
+      return JSON.stringify(frame);
+    });
   }
   var automationResults = [];
   var automationError = (call, error) => automationResults.push({ call, error: {
@@ -2492,8 +2497,8 @@
       if (typeof props.spellCheck !== "boolean") throw Error("UI_INPUT: spellCheck must be boolean");
       out.push(["spellCheck", +props.spellCheck]);
     }
-    const bounded = ["min", "max", "step"].filter((name) => props[name] !== void 0);
-    if (bounded.length) {
+    const bounded2 = ["min", "max", "step"].filter((name) => props[name] !== void 0);
+    if (bounded2.length) {
       if (tag !== "input" || !["number", "date", "time"].includes(props.type)) throw Error('UI_INPUT: min, max and step need type="number", "date" or "time"');
       const valid = (value) => keyboard === "number" ? typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= 1e15 : typeof value === "string" && iso[keyboard].test(value);
       for (const name of ["min", "max"]) if (props[name] !== void 0 && !valid(props[name])) throw Error(`UI_INPUT: ${name} must be a ${keyboard === "number" ? "number" : `${keyboard} in ISO form`}`);
@@ -4808,6 +4813,7 @@
       __lingxiaSyncData: syncData,
       __lingxiaConfigureActions: configureActions,
       __lingxiaTakeActionRequests: takeActionRequests,
+      __lingxiaTakeViewEvents: takeViewEvents,
       __lingxiaReceiveActionResponse: receiveActionResponse,
       __lingxiaTakeActionErrors: takeActionErrors,
       __lingxiaHasLocalUpdates: hasLocalUpdates,

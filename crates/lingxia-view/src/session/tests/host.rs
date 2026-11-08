@@ -307,6 +307,14 @@ impl HostEvents for Fake {
             .messages
             .push((connection.get(), message.into()));
     }
+    fn logic(&self, connection: ConnectionTicket, messages: Vec<crate::session::logic::ToLogic>) {
+        // The worker calls this; it must not count as a main-thread call.
+        let mut log = self.log.lock().unwrap();
+        for message in messages {
+            log.messages
+                .push((connection.get(), message.frame().to_string()));
+        }
+    }
     fn state(&self, connection: ConnectionTicket, signal: StateSignal) {
         self.main().signals.push((connection.get(), signal));
     }

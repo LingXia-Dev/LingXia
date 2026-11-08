@@ -10,9 +10,18 @@ export interface PerfData {
   phase: boolean;
   /** The state scene's records, empty otherwise. */
   rows: PerfRow[];
+  /** The bridge benchmark's write payload; null otherwise. */
+  record?: Record<string, string | number> | null;
 }
 export interface DriveRequest { scene: PerfScene; ms: number; count: number }
 export interface PerfActions {
   /** Start driving `scene` for `ms`; returns at once. */
   drive(request: DriveRequest): Promise<void>;
+  /** Answers at once with the current tick: an action reply racing a running scene's writes. */
+  ping(): Promise<number>;
+  /** The bridge micro-benchmark: awaited writes, `ui.*` requests, and the cost of one `setData` call. */
+  bench(request: BenchRequest): Promise<BenchResult>;
 }
+export interface BenchRequest { writes: number; requests: number; calls: number }
+/** `setDataUs`: Logic time of one unawaited `setData` of a 20-field record, µs. */
+export interface BenchResult { setDataUs: number }

@@ -48,8 +48,8 @@ const JOURNAL_LIMIT: usize = 1024;
 #[derive(Default, Debug)]
 pub struct StateUpdate {
     pub changed: bool,
-    /// Bridge frames to send before attempting a render.
-    pub outbound: Vec<Value>,
+    /// Messages for Logic, sent before attempting a render.
+    pub outbound: Vec<crate::session::logic::ToLogic>,
     /// The revision to acknowledge once a frame shows it.
     pub ack: Option<u64>,
     pub resync: bool,

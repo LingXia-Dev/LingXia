@@ -83,14 +83,8 @@ impl ViewSession {
             }
             "res" | "event" | "ch.ack" | "ch.data" | "ch.close" => {
                 let changed = self.receive_action_response(frame)?;
-                let outbound = self
-                    .take_action_requests()?
-                    .iter()
-                    .map(|frame| serde_json::from_str(frame).map_err(|e| e.to_string()))
-                    .collect::<Result<_, _>>()?;
                 Ok(crate::session::state::StateUpdate {
                     changed: changed && self.ready_to_render(),
-                    outbound,
                     ..Default::default()
                 })
             }
@@ -107,14 +101,23 @@ impl ViewSession {
                 })?;
                 let answer: serde_json::Value =
                     serde_json::from_str(&answer).map_err(|e| e.to_string())?;
-                let outbound = answer["replies"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|reply| serde_json::from_str(reply.as_str()?).ok())
-                    .collect();
+                let changed = answer["changed"] == true && self.ready_to_render();
+                let outbound = match answer {
+                    serde_json::Value::Object(mut answer) => match answer.remove("replies") {
+                        Some(serde_json::Value::Array(replies)) => replies,
+                        _ => Vec::new(),
+                    },
+                    _ => Vec::new(),
+                }
+                .into_iter()
+                .filter_map(|reply| match reply {
+                    serde_json::Value::String(reply) => serde_json::from_str(&reply).ok(),
+                    reply => Some(reply),
+                })
+                .map(crate::session::logic::ToLogic::from_reply)
+                .collect::<Result<_, _>>()?;
                 Ok(crate::session::state::StateUpdate {
-                    changed: answer["changed"] == true && self.ready_to_render(),
+                    changed,
                     outbound,
                     ..Default::default()
                 })
@@ -248,11 +251,22 @@ impl ViewSession {
         })
     }
 
-    pub fn take_action_requests(&self) -> Result<Vec<String>, String> {
+    /// What the View queued for Logic since the last call, walked out of the isolate in order.
+    pub fn take_action_requests(&self) -> Result<Vec<crate::session::logic::ToLogic>, String> {
         self.execute(|| {
-            self.context
-                .eval(Source::from_bytes("__lingxiaTakeActionRequests()"))
-                .map_err(|e| e.to_string())
+            let queued: rong::quickjs::JSArray = self
+                .context
+                .eval(Source::from_bytes("__lingxiaTakeViewEvents()"))
+                .map_err(|e| e.to_string())?;
+            let len = queued.len().map_err(|e| e.to_string())?;
+            (0..len)
+                .map(|index| {
+                    queued
+                        .get_value(index)
+                        .and_then(crate::session::logic::ToLogic::from_js)
+                        .map_err(|e| e.to_string())
+                })
+                .collect()
         })
     }
 
