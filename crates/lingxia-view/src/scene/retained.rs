@@ -426,7 +426,19 @@ impl RetainedLayout {
         let mut subtree_end = vec![0usize; count];
         let mut spans = Vec::new();
         let mut open: Option<(usize, usize, usize)> = None;
-        if !visuals.is_empty() {
+        // A drag element off its resting point moves every frame: its subtree is a span too.
+        let dragged: Vec<bool> = self
+            .nodes
+            .iter()
+            .map(|node| {
+                node.drag.as_ref().is_some_and(|drag| {
+                    offsets
+                        .get(&crate::scene::node::DragSnapshot::key(&node.identity))
+                        .is_some_and(|at| *at != drag.rest())
+                })
+            })
+            .collect();
+        if !visuals.is_empty() || dragged.contains(&true) {
             let mut sizes = vec![1usize; count];
             for index in (0..count).rev() {
                 if let Some(parent) = self.parents[index].filter(|p| *p < index) {
@@ -466,7 +478,9 @@ impl RetainedLayout {
                 open = None;
             }
             let parent = self.parents[index];
-            if open.is_none() && visuals.contains_key(&*self.nodes[index].identity) {
+            if open.is_none()
+                && (dragged[index] || visuals.contains_key(&*self.nodes[index].identity))
+            {
                 let parent_layers = parent.map(|p| child_layers[p].clone()).unwrap_or_default();
                 sync_layers(&mut commands, &mut active_layers, parent_layers);
                 open = Some((index, commands.len(), subtree_end[index]));

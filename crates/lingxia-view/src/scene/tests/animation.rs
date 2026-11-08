@@ -453,3 +453,35 @@ fn animated_subtrees_are_self_contained_spans_and_the_rest_is_unchanged() {
     let none = display.retained.compose(&HashMap::new()).unwrap();
     assert!(none.animated_spans().is_empty());
 }
+
+#[test]
+fn a_dragged_element_off_its_rest_is_a_span_and_the_rest_is_unchanged() {
+    let mut page = crate::ViewSession::new(&crate::session::tests::source(
+        "function render(){return h('page',{},h('column',{style:{height:20,backgroundColor:'#ff0000'}}),h('view',{'data-testid':'box',drag:'x',dragSnapPoints:[0,60],'aria-label':'Box',style:{width:40,height:40,backgroundColor:'#00ff00'}}),h('column',{style:{height:20,backgroundColor:'#000000'}}))}",
+    ))
+    .unwrap();
+    let display = page.layout(200, 200, 1.0).unwrap();
+    let node = &display.nodes[display
+        .nodes
+        .iter()
+        .position(|n| n.test_id == "box")
+        .unwrap()];
+    let key = crate::scene::node::DragSnapshot::key(&node.identity);
+    let frame = |at: f32| {
+        display
+            .retained
+            .compose(&HashMap::from([(key.clone(), at)]))
+            .unwrap()
+    };
+    let (a, b) = (frame(-20.0), frame(-35.0));
+    assert_eq!(a.animated_spans().len(), 1);
+    let (sa, sb) = (&a.animated_spans()[0], &b.animated_spans()[0]);
+    assert_eq!(sa.identity, node.identity.to_string());
+    assert!(a.commands[..sa.commands.start] == b.commands[..sb.commands.start]);
+    assert!(a.commands[sa.commands.end..] == b.commands[sb.commands.end..]);
+    assert!(a.commands[sa.commands.clone()] != b.commands[sb.commands.clone()]);
+    assert!(
+        frame(0.0).animated_spans().is_empty(),
+        "at rest it draws in place"
+    );
+}
