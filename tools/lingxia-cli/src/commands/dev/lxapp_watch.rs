@@ -177,13 +177,18 @@ pub(super) fn is_ignored_path(path: &Path) -> bool {
         component
             .as_os_str()
             .to_str()
-            .is_some_and(|name| IGNORED_DIR_NAMES.contains(&name))
+            .is_some_and(|name| IGNORED_DIR_NAMES.contains(&name) || is_build_staging(name))
     }) {
         return true;
     }
     path.file_name()
         .and_then(|name| name.to_str())
         .is_some_and(is_ignored_file_name)
+}
+
+/// A build's `.dist.building-<pid>` / `.dist.previous-<pid>` siblings of its output.
+fn is_build_staging(name: &str) -> bool {
+    name.starts_with('.') && (name.contains(".building-") || name.contains(".previous-"))
 }
 
 fn is_ignored_file_name(name: &str) -> bool {
@@ -917,6 +922,10 @@ mod tests {
         assert!(is_ignored_path(Path::new("target/debug/lingxia.exe")));
         assert!(is_ignored_path(Path::new("pages/home/index.tsx~")));
         assert!(is_ignored_path(Path::new("pages/home/.index.tsx.swp")));
+        assert!(is_ignored_path(Path::new(
+            ".dist.building-42/pages/home/index.js"
+        )));
+        assert!(is_ignored_path(Path::new(".dist.previous-42/logic.js")));
         assert!(!is_ignored_path(Path::new("pages/home/index.tsx")));
         assert!(!is_ignored_path(Path::new("lxapp.json")));
         assert!(!is_ignored_path(Path::new("pages/home/index.json")));

@@ -62,15 +62,75 @@ fn run_with_context(args: &[String], cwd: &Path, dev_session: bool) -> Result<()
     // editor completes against, so they must exist even if the build then fails.
     page_types::generate(&project)?;
 
-    if project.output_dir.exists() {
-        fs::remove_dir_all(&project.output_dir)?;
-    }
-    fs::create_dir_all(&project.output_dir)?;
-
     let reporter = Reporter::new(options.progress);
+    build_staged(&project.output_dir, |staging| {
+        let staged = Project {
+            output_dir: staging.to_path_buf(),
+            ..project.clone()
+        };
+        build_output(&staged, &options, &reporter)
+    })?;
+
+    if options.package {
+        let package_started = Instant::now();
+        let archive = package::package_dist(&project)?;
+        reporter.package_built(&archive.display().to_string(), package_started.elapsed());
+    }
+
+    reporter.build_done(build_started.elapsed());
+
+    Ok(())
+}
+
+/// Build into a staging directory and swap it in whole: a failed build leaves the last good
+/// output in place, which a dev session keeps serving.
+fn build_staged(output_dir: &Path, build: impl FnOnce(&Path) -> Result<()>) -> Result<()> {
+    let staging = staging_dir(output_dir);
+    if staging.exists() {
+        fs::remove_dir_all(&staging)?;
+    }
+    fs::create_dir_all(&staging)?;
+    if let Err(err) = build(&staging) {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(err);
+    }
+    replace_dir(&staging, output_dir)
+}
+
+/// `dist` builds into `.dist.building-<pid>` next to it: the same depth keeps relative paths
+/// valid, and the pid keeps dev sessions of other platforms, which rebuild the same lxapp on
+/// the same save, out of each other's staging.
+fn staging_dir(output_dir: &Path) -> std::path::PathBuf {
+    sibling(output_dir, "building")
+}
+
+fn sibling(output_dir: &Path, role: &str) -> std::path::PathBuf {
+    let name = output_dir
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "dist".to_string());
+    output_dir.with_file_name(format!(".{name}.{role}-{}", std::process::id()))
+}
+
+/// Swap `staging` in as `output_dir`; the old output is gone only once the new one is in place.
+fn replace_dir(staging: &Path, output_dir: &Path) -> Result<()> {
+    let previous = sibling(output_dir, "previous");
+    if previous.exists() {
+        fs::remove_dir_all(&previous)?;
+    }
+    if output_dir.exists() {
+        fs::rename(output_dir, &previous)?;
+    }
+    fs::rename(staging, output_dir)?;
+    if previous.exists() {
+        fs::remove_dir_all(&previous)?;
+    }
+    Ok(())
+}
+
+fn build_output(project: &Project, options: &BuildOptions, reporter: &Reporter) -> Result<()> {
     reporter.start_parallel_tasks();
-    let install_duration_hint =
-        view::prepare_tooling(&project, &options, reporter.view_progress())?;
+    let install_duration_hint = view::prepare_tooling(project, options, reporter.view_progress())?;
     let logic_progress = reporter.logic_progress();
     let view_progress = reporter.view_progress();
     let logic_project = project.clone();
@@ -127,17 +187,8 @@ fn run_with_context(args: &[String], cwd: &Path, dev_session: bool) -> Result<()
     crate::lxapp::stamp_output_html(&project.output_dir)?;
 
     if options.release {
-        crate::lxapp::hardening::harden_release_output(&project)?;
+        crate::lxapp::hardening::harden_release_output(project)?;
     }
-
-    if options.package {
-        let package_started = Instant::now();
-        let archive = package::package_dist(&project)?;
-        reporter.package_built(&archive.display().to_string(), package_started.elapsed());
-    }
-
-    reporter.build_done(build_started.elapsed());
-
     Ok(())
 }
 
@@ -349,5 +400,54 @@ fn format_duration(duration: Duration) -> String {
         format!("{:.2}s", duration.as_secs_f64())
     } else {
         format!("{}ms", duration.as_millis())
+    }
+}
+
+#[cfg(test)]
+mod staging_tests {
+    use super::*;
+
+    #[test]
+    fn a_failed_build_leaves_the_last_output_untouched() {
+        let temp = tempfile::tempdir().unwrap();
+        let dist = temp.path().join("dist");
+        fs::create_dir_all(dist.join("pages/a")).unwrap();
+        fs::write(dist.join("pages/a/index.js"), "old a").unwrap();
+        fs::create_dir_all(dist.join("pages/b")).unwrap();
+        fs::write(dist.join("pages/b/index.js"), "old b").unwrap();
+
+        // Page a compiles, page b fails: nothing of the attempt reaches `dist`.
+        let result = build_staged(&dist, |staging| {
+            fs::create_dir_all(staging.join("pages/a")).unwrap();
+            fs::write(staging.join("pages/a/index.js"), "new a").unwrap();
+            Err(anyhow!("pages/b/index.tsx: 1 authoring problem"))
+        });
+        assert!(result.is_err());
+        assert_eq!(
+            fs::read_to_string(dist.join("pages/a/index.js")).unwrap(),
+            "old a"
+        );
+        assert_eq!(
+            fs::read_to_string(dist.join("pages/b/index.js")).unwrap(),
+            "old b"
+        );
+        assert!(!staging_dir(&dist).exists());
+
+        build_staged(&dist, |staging| {
+            fs::create_dir_all(staging.join("pages/a")).unwrap();
+            fs::write(staging.join("pages/a/index.js"), "new a").unwrap();
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(
+            fs::read_to_string(dist.join("pages/a/index.js")).unwrap(),
+            "new a"
+        );
+        assert!(!dist.join("pages/b").exists());
+        let siblings: Vec<_> = fs::read_dir(temp.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(siblings, vec![std::ffi::OsString::from("dist")]);
     }
 }
