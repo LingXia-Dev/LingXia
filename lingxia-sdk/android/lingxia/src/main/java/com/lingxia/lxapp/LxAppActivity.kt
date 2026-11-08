@@ -966,7 +966,8 @@ class LxAppActivity : AppCompatActivity() {
                     }
                 }
                 setupTabBar(config, false)
-                page.resume()
+                // A navigation that followed the chrome change has already paused this page.
+                if (currentWebView === page) page.resume()
             })
             return
         }

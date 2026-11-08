@@ -348,6 +348,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 layoutPending = false;
                 if (destroyed || !active) return true;
                 syncVisibility();
+                // Keys go to the focused view, so the page now shown takes it from the one it covers.
+                if (!surface.hasFocus()) surface.requestFocus();
                 // Shown in the same frame when the target already holds a frame for this layout.
                 if (!revealed) nativeReveal(host, hasSurfaceFrame);
                 return true;
@@ -418,6 +420,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         }
         setImportantForAccessibility(active ? View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
             : View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+        setDescendantFocusability(active ? FOCUS_AFTER_DESCENDANTS : FOCUS_BLOCK_DESCENDANTS);
+        if (!active && surface.hasFocus()) surface.clearFocus();
         if (ime != null) updateCaretActivity();
     }
     /**
