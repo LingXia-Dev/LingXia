@@ -654,4 +654,7 @@ fn drag(source: &str) -> bool {
         && value["index"]
             .as_u64()
             .is_some_and(|index| points.is_some_and(|points| (index as usize) < points.len()))
+        && (value["release"].is_null()
+            || crate::animation::transition::TransitionDef::decode_release(&value["release"])
+                .is_ok())
 }

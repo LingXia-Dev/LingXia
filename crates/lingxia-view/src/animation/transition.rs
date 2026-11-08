@@ -106,6 +106,17 @@ impl TransitionDef {
     }
 
     /// The spring a released drag takes: this duration, and the bounce of an `ease-spring*`.
+    /// A drag's release timing from bare `duration-*`/`ease-*`: `{durationMs, easing}` on transform.
+    pub fn decode_release(release: &serde_json::Value) -> Result<Self, String> {
+        let mut wire = release.clone();
+        let object = wire
+            .as_object_mut()
+            .ok_or_else(|| "UI_TRANSITION: invalid transition".to_string())?;
+        object.insert("properties".into(), serde_json::json!(["transform"]));
+        object.insert("delayMs".into(), 0.into());
+        Self::decode(&wire.to_string())
+    }
+
     pub fn release(&self) -> (Duration, f64) {
         match self.timing {
             Timing::Spring(bounce) => (self.duration, bounce),

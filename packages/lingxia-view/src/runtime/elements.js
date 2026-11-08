@@ -183,7 +183,7 @@ function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure
     paintOnly(name.replace(/^has/, 'has-').toLowerCase(), tag, delta);
     descendants[kind] = lowerStyle(tag, delta, env, { fontSize: typography.fontSize }).fields;
   }
-  return { fields, states, typography, author, children: classes?.children, descendants };
+  return { fields, states, typography, author, children: classes?.children, descendants, release: classes?.release };
 }
 
 /** The tag `List` renders; page code reaches the list element only through it. */
@@ -315,7 +315,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   if (data) wire('dataAttributes', JSON.stringify(data));
   if (props.dir !== undefined) wire('direction', props.dir);
   semantics(tag, props, wire);
-  if (props.drag !== undefined) dragElement(tag, props, wire, on);
+  if (props.drag !== undefined) dragElement(tag, props, wire, on, style.release);
   else for (let i = 0; i < dragProps.length; i++) {
     const key = dragProps[i];
     if (props[key] !== undefined && !element.binding && !(key === 'bind' && tag === 'scroll')) throw Error(`UI_PROP: ${key} belongs to an element with drag`);
@@ -638,7 +638,7 @@ function semantics(tag, props, wire) {
 // `drag="x|y"`: the host moves the element with the finger between its snap points (offsets
 // from where layout put it, px or % of its own size) and springs it to one on release.
 const dragPoint = /^-?\d+(\.\d+)?%$/;
-function dragElement(tag, props, wire, on) {
+function dragElement(tag, props, wire, on, release) {
   const { drag: axis, dragSnapPoints: points = [0], bind: cell, onDragStart, onDragEnd } = props;
   if (axis !== 'x' && axis !== 'y') throw Error('UI_PROP: drag is "x" or "y"');
   if (!Array.isArray(points) || !points.length || points.length > limits.dragSnapPoints ||
@@ -657,7 +657,7 @@ function dragElement(tag, props, wire, on) {
     index = cell.value;
   }
   if (!Number.isInteger(index) || index < 0 || index >= points.length) throw Error('UI_PROP: the bound snap index is out of range');
-  wire('drag', JSON.stringify({ axis, points, index }));
+  wire('drag', JSON.stringify({ axis, points, index, ...(release ? { release } : {}) }));
   const close = props[dragClose];
   on('onDragEvent', payload => {
     const event = JSON.parse(payload);

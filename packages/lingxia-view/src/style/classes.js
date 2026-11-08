@@ -70,6 +70,9 @@ function cascade(rules, meta) {
     easing: copy(motion.easing ?? motion.easingDefault ?? [0.4, 0, 0.2, 1]),
   };
   else if (motion.properties) style.transition = 'none';
+  // Tailwind gives bare duration-*/ease-* no transition; a drag's runtime-owned release still reads them.
+  else if (meta && (motion.duration !== undefined || motion.easing !== undefined))
+    meta.release = { durationMs: motion.duration ?? 300, easing: copy(motion.easing ?? [0.4, 0, 0.2, 1]) };
   // Edge masks fade from their `from` stop (opaque at the start by default) to their `to` stop.
   if (mask.none) style.maskImage = 'none';
   else if (mask.fixed) style.maskImage = copy(mask.fixed);
@@ -167,7 +170,7 @@ export function resolveClasses(className, env = {}) {
   const plain = own.filter(rule => !rule.when?.state);
   const meta = {};
   const base = cascade(plain, meta);
-  const result = { base, ...(meta.pairedLeading ? { pairedLeading: true } : {}) };
+  const result = { base, ...(meta.pairedLeading ? { pairedLeading: true } : {}), ...(meta.release ? { release: meta.release } : {}) };
   for (const state of states) {
     const extra = own.filter(rule => rule.when?.state === state);
     if (!extra.length || (state === 'hover' && env.pointer !== 'fine')) continue;

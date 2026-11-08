@@ -122,6 +122,22 @@ fn the_release_spring_is_the_elements_transition_timing() {
 }
 
 #[test]
+fn bare_duration_and_ease_classes_time_the_release_without_a_transition() {
+    let module = super::source(
+        "function render(){return h('page',{},h('view',{'data-testid':'a',drag:'y','aria-label':'A',className:'duration-500 ease-spring-bouncy',style:{height:10}}))}",
+    )
+    .replace(
+        "__lingxiaPublish(render);",
+        "configureClasses([{name:'duration-500',motion:{duration:500}},{name:'ease-spring-bouncy',motion:{easing:{spring:0.25}}}]);__lingxiaPublish(render);",
+    );
+    let mut session = ViewSession::new(&module).unwrap();
+    let display = session.layout(100, 100, 1.0).unwrap();
+    let node = display.nodes.iter().find(|n| n.test_id == "a").unwrap();
+    let drag = node.drag.as_ref().unwrap();
+    assert_eq!((drag.duration.as_millis(), drag.bounce), (500, 0.25));
+}
+
+#[test]
 fn a_dragged_dialog_knows_which_points_hide_it_and_its_scrim_follows_how_much_shows() {
     let module = super::source(
         "function render(){return h('page',{},h('dialog',{open:true,onClose(){},closedby:'any','aria-label':'Sheet','data-testid':'sheet',drag:'y',dragSnapPoints:[0,'50%','100%'],style:{marginTop:'auto',marginBottom:0,height:100}},h('text',{},'Hi')))}",

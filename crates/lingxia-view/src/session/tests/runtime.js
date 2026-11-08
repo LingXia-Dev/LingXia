@@ -868,6 +868,8 @@
       easing: copy(motion.easing ?? motion.easingDefault ?? [0.4, 0, 0.2, 1])
     };
     else if (motion.properties) style2.transition = "none";
+    else if (meta && (motion.duration !== void 0 || motion.easing !== void 0))
+      meta.release = { durationMs: motion.duration ?? 300, easing: copy(motion.easing ?? [0.4, 0, 0.2, 1]) };
     if (mask.none) style2.maskImage = "none";
     else if (mask.fixed) style2.maskImage = copy(mask.fixed);
     else if (mask.edges) {
@@ -954,7 +956,7 @@
     const plain2 = own2.filter((rule) => !rule.when?.state);
     const meta = {};
     const base = cascade(plain2, meta);
-    const result = { base, ...meta.pairedLeading ? { pairedLeading: true } : {} };
+    const result = { base, ...meta.pairedLeading ? { pairedLeading: true } : {}, ...meta.release ? { release: meta.release } : {} };
     for (const state of states) {
       const extra = own2.filter((rule) => rule.when?.state === state);
       if (!extra.length || state === "hover" && env.pointer !== "fine") continue;
@@ -2794,7 +2796,7 @@
       paintOnly(name.replace(/^has/, "has-").toLowerCase(), tag, delta);
       descendants[kind] = lowerStyle(tag, delta, env, { fontSize: typography.fontSize }).fields;
     }
-    return { fields: fields2, states: states2, typography, author, children: classes?.children, descendants };
+    return { fields: fields2, states: states2, typography, author, children: classes?.children, descendants, release: classes?.release };
   }
   var listTag = Object.freeze({});
   function resolveNode(node, identity, depth = 0, parent = {}) {
@@ -2936,7 +2938,7 @@
     if (data) wire("dataAttributes", JSON.stringify(data));
     if (props.dir !== void 0) wire("direction", props.dir);
     semantics(tag, props, wire);
-    if (props.drag !== void 0) dragElement(tag, props, wire, on);
+    if (props.drag !== void 0) dragElement(tag, props, wire, on, style2.release);
     else for (let i = 0; i < dragProps.length; i++) {
       const key = dragProps[i];
       if (props[key] !== void 0 && !element.binding && !(key === "bind" && tag === "scroll")) throw Error(`UI_PROP: ${key} belongs to an element with drag`);
@@ -3267,7 +3269,7 @@
     }
   }
   var dragPoint = /^-?\d+(\.\d+)?%$/;
-  function dragElement(tag, props, wire, on) {
+  function dragElement(tag, props, wire, on, release) {
     const { drag: axis, dragSnapPoints: points = [0], bind: cell, onDragStart, onDragEnd } = props;
     if (axis !== "x" && axis !== "y") throw Error('UI_PROP: drag is "x" or "y"');
     if (!Array.isArray(points) || !points.length || points.length > limits.dragSnapPoints || points.some((point) => typeof point === "number" ? !Number.isFinite(point) || Math.abs(point) > 16384 : typeof point !== "string" || !dragPoint.test(point) || Math.abs(parseFloat(point)) > 1e3))
@@ -3284,7 +3286,7 @@
       index = cell.value;
     }
     if (!Number.isInteger(index) || index < 0 || index >= points.length) throw Error("UI_PROP: the bound snap index is out of range");
-    wire("drag", JSON.stringify({ axis, points, index }));
+    wire("drag", JSON.stringify({ axis, points, index, ...release ? { release } : {} }));
     const close = props[dragClose];
     on("onDragEvent", (payload) => {
       const event = JSON.parse(payload);

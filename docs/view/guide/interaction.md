@@ -151,6 +151,8 @@ export function render() {
 - `onDragStart()` runs once the finger has moved past slop on the element's axis (a press inside it is
   cancelled then); `onDragEnd({ index, velocity })` on release, with the point it heads for and px/s.
 - A finger on a moving element catches it where it is.
+- The release springs with the element's `transition-transform` timing; bare `duration-*`/`ease-*`
+  time the release alone and, as in Tailwind, animate no class change. Without either: 300 ms, no bounce.
 - Swipe rows: a `<button drag="x" dragSnapPoints={[0, -144, '-100%']} aria-actions="archive-1 delete-1">`
   over a row of `<button id="archive-1">`… behind it. While the row rests closed, those controls leave
   screen-reader navigation and the row offers them as its own actions, named by their text; specs reach

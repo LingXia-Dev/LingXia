@@ -1603,6 +1603,9 @@ fn drag_snapshot(
     let (duration, bounce) = record
         .string(field::TRANSITION)
         .and_then(|source| crate::animation::transition::TransitionDef::decode(source).ok())
+        .or_else(|| {
+            crate::animation::transition::TransitionDef::decode_release(&value["release"]).ok()
+        })
         .map(|transition| transition.release())
         .unwrap_or((std::time::Duration::from_millis(300), 0.0));
     (index < points.len()).then(|| crate::scene::node::DragSnapshot {

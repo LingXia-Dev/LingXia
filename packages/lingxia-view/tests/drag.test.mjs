@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { h, prepare, commit, dispatch, useLocal, reset } from '../src/internal.js';
 import { decode } from './support/wire.mjs';
+import { compileUtilities } from '../compiler/tailwind.mjs';
+import { configureClasses } from '../src/style/classes.js';
 
 const render = (view, env = {}) => { const out = decode(prepare(view, { env })); commit(); return out; };
 const byId = (nodes, id) => nodes.find(node => node.testId === id);
@@ -83,4 +85,22 @@ test('bind on a snapping scroll sends its snap index and takes the one it settle
   dispatch(byId(render(view), 's').props.onSnapChange, '-1');
   assert.equal(cell.value, 2, 'a negative index is ignored');
   assert.throws(() => render(() => h('page', {}, h('scroll', { bind: { value: 0 } }))), /snap index/);
+});
+
+test('bare duration-*/ease-* time only a drag release: class changes keep Tailwind\'s no-transition', async () => {
+  reset();
+  configureClasses(await compileUtilities(new Set(['duration-500', 'ease-spring-bouncy', 'transition-transform', 'duration-200']), ''));
+  const view = () => h('page', {},
+    h('view', { drag: 'y', 'aria-label': 'Bare', 'data-testid': 'bare', className: 'duration-500 ease-spring-bouncy' }),
+    h('view', { drag: 'y', 'aria-label': 'Ease', 'data-testid': 'ease', className: 'ease-spring-bouncy' }),
+    h('view', { drag: 'y', 'aria-label': 'Own', 'data-testid': 'own', className: 'transition-transform duration-200' }),
+    h('view', { 'data-testid': 'plain', className: 'duration-500' }));
+  const nodes = render(view);
+  const drag = id => JSON.parse(byId(nodes, id).props.drag);
+  assert.deepEqual(drag('bare').release, { durationMs: 500, easing: { spring: 0.25 } });
+  assert.equal(byId(nodes, 'bare').props.transition, undefined, 'no transition record for class changes');
+  assert.deepEqual(drag('ease').release, { durationMs: 300, easing: { spring: 0.25 } });
+  assert.equal(drag('own').release, undefined, 'a transition-* class times the release itself');
+  assert.equal(byId(nodes, 'plain').props.transition, undefined);
+  assert.equal(byId(nodes, 'plain').props.drag, undefined);
 });
