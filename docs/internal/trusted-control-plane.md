@@ -198,7 +198,7 @@ Widening that list widens what every downloaded lxapp can do;
 ## Invariants to preserve
 
 - GPU View ingress is native-owned: the attached endpoint and runtime-issued
-  connection generation must match before protocol decoding. LegacyV2 caller
+  connection generation must match before protocol decoding. Page-profile caller
   identity comes from the owning LxApp. Never synthesize a WebMessageContext or
   browser document identity for a GPU page. Capture its endpoint and generation
   for outbound work and recheck the generation at native worker delivery.
