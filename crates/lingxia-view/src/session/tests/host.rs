@@ -2934,6 +2934,24 @@ fn a_held_press_keeps_its_scale_transition_and_accessibility_hears_moves_at_a_qu
 }
 
 #[test]
+fn a_spinning_decoration_sends_accessibility_no_content_changes() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(&format!(
+            "function render(){{return h('column',{{}},h('text',{{}},'Loading'),h('column',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}}))}}"
+        )),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let before = content_changes(&host);
+    run_frames(&platform, &host, 24);
+    assert_eq!(content_changes(&host), before);
+}
+
+#[test]
 fn a_deferred_present_holds_the_next_frame_until_it_reaches_the_screen() {
     let worker = ViewWorker::spawn("test-view").unwrap();
     let platform = Platform::new(&[&worker]);

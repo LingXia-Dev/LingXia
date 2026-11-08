@@ -458,12 +458,12 @@ impl ViewInteraction {
                 effects.push(Effect::Accessibility(AccessibilityEffect::Change(event)));
             }
             // Within one layout only presented geometry moves; compare that, not whole frames.
+            // Decoration a reader never sees, like a spinner's arc, must not stream changes.
             let moved = previous.as_ref().is_some_and(|previous| {
-                previous
-                    .nodes
-                    .iter()
-                    .zip(&next.nodes)
-                    .any(|(a, b)| a.bounds != b.bounds || a.visible_bounds != b.visible_bounds)
+                previous.nodes.iter().zip(&next.nodes).any(|(a, b)| {
+                    (a.bounds != b.bounds || a.visible_bounds != b.visible_bounds)
+                        && projection::meaningful(b)
+                })
             });
             if moved {
                 self.moved_frames += 1;
