@@ -56,6 +56,8 @@ export interface QueryMatch {
     viewportWidth?: number;
     viewportHeight?: number;
   };
+  /** On a GPU page: the part of `rect` a finger reaches, past scroll clips and host bars; null when none. */
+  visibleRect?: { left: number; top: number; width: number; height: number } | null;
   items?: QueryMatch[];
 }
 
@@ -98,6 +100,7 @@ export interface LocatorResolve {
   editable?: boolean;
   focused?: boolean;
   rect?: QueryMatch["rect"];
+  visibleRect?: QueryMatch["visibleRect"];
   renderer?: "gpu";
   /** Attribute values read for the single match, by name (`null`: absent). */
   attributes?: Record<string, string | null>;
@@ -152,6 +155,7 @@ export const ROLE_SELECTORS: Readonly<Record<LocatorRole, string>> = {
   combobox: 'select, [role="combobox"]',
   menu: '[role="menu"]',
   menuitem: '[role="menuitem"]',
+  progressbar: 'progress, [role="progressbar"]',
 };
 
 export function roleSelector(role: string): string {
@@ -412,6 +416,7 @@ export class PageLocator implements Locator {
         value: unique.value ?? null,
         index: unique.index ?? items.indexOf(unique),
         enabled: unique.enabled, editable: unique.editable, focused: unique.focused, rect: unique.rect,
+        ...(unique.visibleRect !== undefined ? { visibleRect: unique.visibleRect } : {}),
         ...(unique.renderer ? { renderer: unique.renderer } : {}),
         kind: "unique",
       };

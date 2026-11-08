@@ -1299,6 +1299,21 @@ impl Renderer {
                     field::STATE_BUSY,
                 ]
                 .map(|id| record.number(id).map(|v| v == 1.0)),
+                progress: (record.string(field::ROLE) == Some("progressbar")).then(|| {
+                    let value = |id: usize| {
+                        record
+                            .fields
+                            .iter()
+                            .find(|(field, _)| *field == id)
+                            .and_then(|(_, value)| value.as_f64())
+                    };
+                    crate::scene::node::ProgressSnapshot {
+                        now: value(field::ARIA_VALUE_NOW),
+                        min: value(field::ARIA_VALUE_MIN).unwrap_or(0.0),
+                        max: value(field::ARIA_VALUE_MAX).unwrap_or(100.0),
+                        text: record.string(field::ARIA_VALUE_TEXT).map(str::to_owned),
+                    }
+                }),
                 live_region: match record.string(field::ACCESSIBILITY_LIVE_REGION) {
                     Some("off") => None,
                     Some(kind) => Some(kind.to_owned()),

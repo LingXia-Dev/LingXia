@@ -61,6 +61,7 @@ take one of the structural roles with `role`; on a control, `role` is ignored ex
 | `status` | a result or progress message, announced politely when its text changes |
 | `grid`, `gridcell` | a two-dimensional set of cells, such as a month of days; name each cell in full |
 | `listbox`, `option` | a set of choices to pick one from; mark the chosen one with `aria-selected` |
+| `progressbar` | an amount done: `aria-valuenow` within `aria-valuemin` (0) and `aria-valuemax` (100), spoken as a percentage unless `aria-valuetext` is set; leave the value out while indeterminate. The kit `<Progress>` draws one as a bar or a ring |
 
 A modal is the `<dialog>` element, not a role: it keeps focus inside and hides the page behind it
 ([Interaction](interaction.md#dialogs-popovers-and-menus)). `role="menu"` names a popover of actions and

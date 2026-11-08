@@ -56,7 +56,7 @@
     "grid-auto-flow": ["row", "column", "row-dense", "column-dense"],
     "align-content": ["start", "center", "end", "between", "around", "evenly", "stretch"],
     "direction": ["ltr", "rtl", "auto"],
-    "role": ["heading", "list", "listitem", "dialog", "alert", "status", "grid", "gridcell", "listbox", "option", "menu", "menuitem"],
+    "role": ["heading", "list", "listitem", "dialog", "alert", "status", "grid", "gridcell", "listbox", "option", "menu", "menuitem", "progressbar"],
     "anchor-area": ["bottom span-inline-end", "bottom span-inline-start", "bottom", "top span-inline-end", "top span-inline-start", "top"],
     "live-region": ["off", "polite", "assertive"],
     "input-keyboard": ["text", "number", "email", "phone", "search", "date", "time"],
@@ -283,14 +283,18 @@
     {"id": 213, "key": "videoRate", "wire": "playbackRate", "kind": "video-number", "tags": ["video"]},
     {"id": 214, "key": "videoVolume", "wire": "volume", "kind": "video-number", "tags": ["video"]},
     {"id": 215, "key": "onVideoEvent", "wire": "onVideoEvent", "kind": "handle", "tags": ["video"]},
-    {"id": 216, "key": "videoSources", "wire": "sources", "kind": "video-sources", "tags": ["video"]}
+    {"id": 216, "key": "videoSources", "wire": "sources", "kind": "video-sources", "tags": ["video"]},
+    {"id": 217, "key": "ariaValueNow", "wire": "ariaValueNow", "kind": "number"},
+    {"id": 218, "key": "ariaValueMin", "wire": "ariaValueMin", "kind": "number"},
+    {"id": 219, "key": "ariaValueMax", "wire": "ariaValueMax", "kind": "number"},
+    {"id": 220, "key": "ariaValueText", "wire": "ariaValueText", "kind": "string"}
   ],
   "input": {
     "autofill": {"username": "username", "current-password": "password", "new-password": "newPassword", "one-time-code": "smsOTPCode", "email": "emailAddress", "tel": "phone", "name": "personName", "given-name": "personGivenName", "family-name": "personFamilyName", "street-address": "postalAddress", "postal-code": "postalCode", "country": "addressCountry", "cc-number": "creditCardNumber", "cc-exp": "creditCardExpirationDate", "cc-csc": "creditCardSecurityCode", "bday": "birthDateFull"},
     "keys": {"maxLength": "max_length", "autoComplete": "auto_complete", "enterKeyHint": "enter_key_hint", "autoCapitalize": "auto_capitalize", "spellCheck": "spell_check", "min": "min", "max": "max", "step": "step", "picker": "picker"}
   },
   "semantics": {
-    "roles": ["button", "check-box", "switch", "radio-group", "radio-button", "combo-box", "text-field", "scroll-view", "horizontal-scroll-view", "image", "slider", "text", "link", "heading", "list", "list-item", "dialog", "alert", "status", "grid", "grid-cell", "list-box", "option", "menu", "menu-item", "video"],
+    "roles": ["button", "check-box", "switch", "radio-group", "radio-button", "combo-box", "text-field", "scroll-view", "horizontal-scroll-view", "image", "slider", "text", "link", "heading", "list", "list-item", "dialog", "alert", "status", "grid", "grid-cell", "list-box", "option", "menu", "menu-item", "video", "progress-bar"],
     "liveRegions": ["polite", "assertive"],
     "events": ["announce"],
     "actions": ["copy", "cut", "paste", "set-selection"],
@@ -367,7 +371,7 @@
       "AutomationCall": {"call": "u64"},
       "AutomationResult": {"done": "bool", "value": "any?"},
       "AutomationAction": {"tagged": "kind", "variants": {"click": {"force": "bool?"}, "fill": {"text": "string", "force": "bool?"}, "type": {"text": "string", "force": "bool?"}, "scroll": {"force": "bool?"}, "press": {"key": "string", "force": "bool?"}, "select": {"value": "string", "force": "bool?"}, "dblclick": {"force": "bool?"}, "action": {"name": "string", "force": "bool?"}}},
-      "AutomationElement": {"exists": "bool", "renderer": "string", "index": "usize", "count": "usize", "tag": "string?", "type": "string?", "id": "string?", "name": "string?", "role": "string?", "aria_label": "string?", "placeholder": "string?", "visible": "bool", "inViewport": "bool", "enabled": "bool", "editable": "bool", "focused": "bool?", "checked": "bool?", "text": "string?", "text_truncated": "bool?", "value": "string?", "value_truncated": "bool?", "rect": "AutomationRect?", "attributes": "any?"},
+      "AutomationElement": {"exists": "bool", "renderer": "string", "index": "usize", "count": "usize", "tag": "string?", "type": "string?", "id": "string?", "name": "string?", "role": "string?", "aria_label": "string?", "placeholder": "string?", "visible": "bool", "inViewport": "bool", "enabled": "bool", "editable": "bool", "focused": "bool?", "checked": "bool?", "text": "string?", "text_truncated": "bool?", "value": "string?", "value_truncated": "bool?", "rect": "AutomationRect?", "visibleRect": "AutomationArea?", "attributes": "any?"},
       "AutomationQueryAll": {"count": "usize", "renderer": "string", "items": "AutomationElement[]"},
       "AutomationFrame": {"renderer": "string", "page": "string", "commit": "u64", "firstPresentAt": "u64?", "lastPresentAt": "u64?", "frames": "u64", "workerQueueUs": "QueueTimes", "evalMs": "EvalTimes", "imageCacheBytes": "u64", "imageCacheEntries": "usize", "animationFrames": "usize", "wakeups": "u64", "reveal": "any", "hud": "bool", "nodes": "usize?", "pacing": "FramePacing", "composite": "CompositeStats?", "backdropCache": "BackdropCacheStats?", "...": "any"},
       "QueueTimes": {"last": "u64", "p50": "u64", "max": "u64"},
@@ -377,6 +381,7 @@
       "FramePacing": {"windowMs": "u64", "frames": "usize", "samples": "usize", "refreshMs": "f64?", "frameTimeMs": "Percentiles?", "fps": "f64?", "dropped": "u64", "jank": "usize", "late": "usize", "cpuMs": "Percentiles?", "queueMs": "Percentiles?", "gpuMs": "Percentiles?", "inputToPresent": "InputLatency", "firstPresentMs": "f64?", "firstPresentReason": "string?", "reveals": "u64", "revealMs": "Percentiles?"},
       "Percentiles": {"p50": "f64", "p95": "f64", "p99": "f64", "max": "f64"},
       "InputLatency": {"count": "usize", "lastMs": "f64?", "statsMs": "Percentiles?"},
+      "AutomationArea": {"left": "f32", "top": "f32", "width": "f32", "height": "f32"},
       "AutomationRect": {"left": "f32", "top": "f32", "width": "f32", "height": "f32", "right": "f32", "bottom": "f32", "center_x": "f32", "center_y": "f32", "viewport_width": "f32", "viewport_height": "f32"},
       "AutomationTree": {"renderer": "string", "nodes": "AutomationTreeNode[]"},
       "AutomationTreeNode": {"role": "string", "name": "string", "testId": "string?", "bounds": "f32[4]", "disabled": "bool?", "focused": "bool?", "offscreen": "bool?", "checked": "bool?", "pressed": "bool?", "selected": "bool?", "expanded": "bool?", "busy": "bool?", "level": "u8?", "value": "any?", "scroll": "f32[2]?", "children": "AutomationTreeNode[]?"},

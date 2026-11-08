@@ -39,6 +39,8 @@ export interface GestureScope {
 const POINT_TIMEOUT_MS = 5_000;
 const SAMPLE_SEGMENTS = 6;
 const SETTLE_MS = 1_000;
+/** The smallest visible side, in page points, a gesture aims at without scrolling first. */
+const MIN_TARGET = 8;
 
 function trace(result: GestureResult): GestureTrace {
   return { input: result.input, delivered: result.delivered, events: result.events, durationMs: result.durationMs };
@@ -59,7 +61,11 @@ async function centerOf(locator: Locator, name: string): Promise<Point> {
   for (;;) {
     const match = await locator.resolve(undefined, "gesture");
     if (match.kind === "unique" && match.rect && match.inViewport) {
-      return [match.rect.left + match.rect.width / 2, match.rect.top + match.rect.height / 2];
+      // A GPU page names the part a finger reaches; aim at its centre once it is big enough to hit.
+      const area = match.visibleRect === undefined ? match.rect : match.visibleRect;
+      if (area && area.width >= Math.min(MIN_TARGET, match.rect.width) && area.height >= Math.min(MIN_TARGET, match.rect.height)) {
+        return [area.left + area.width / 2, area.top + area.height / 2];
+      }
     }
     reason = match.kind === "unique" ? "element is outside the viewport" : locator.missText(match);
     if (Date.now() >= until) throw new Error(`${name}: ${locator.describe()} ${reason}`);

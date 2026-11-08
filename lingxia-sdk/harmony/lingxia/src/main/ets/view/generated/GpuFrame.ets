@@ -504,6 +504,7 @@ export interface GpuFrameAutomationElement {
   value?: string | null;
   value_truncated?: boolean | null;
   rect?: GpuFrameAutomationRect | null;
+  visibleRect?: GpuFrameAutomationArea | null;
   attributes?: Object | null;
 }
 
@@ -609,6 +610,14 @@ export interface GpuFrameInputLatency {
   count: number;
   lastMs?: number | null;
   statsMs?: GpuFramePercentiles | null;
+}
+
+/** `AutomationArea` in the frame contract. */
+export interface GpuFrameAutomationArea {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
 }
 
 /** `AutomationRect` in the frame contract. */

@@ -609,6 +609,8 @@ export interface PageElement {
   value: string | null;
   valueTruncated: boolean;
   rect: ElementRect;
+  /** On a GPU page: the part of `rect` a finger reaches, past scroll clips and host bars; null when none. */
+  visibleRect?: { left: number; top: number; width: number; height: number } | null;
 }
 
 /** Returned when no element matches (single-element mode). */

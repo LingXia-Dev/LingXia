@@ -43,6 +43,25 @@ test("a gesture at a GPU match outside the viewport scrolls it on screen first",
   assert.deepEqual(world.gestureCalls[0].shape.at, [20, 390]);
 });
 
+test("a gesture aims at the visible part of a GPU match and scrolls a sliver into view first", async () => {
+  const world = createWorld();
+  world.add({ testId: "half", renderer: "gpu", rect: { left: 0, top: 380, width: 40, height: 40 }, inViewport: true,
+    visibleRect: { left: 0, top: 380, width: 40, height: 20 } });
+  const sliver = world.add({ testId: "sliver", renderer: "gpu", rect: { left: 0, top: 395, width: 40, height: 40 }, inViewport: true,
+    visibleRect: { left: 0, top: 395, width: 40, height: 5 }, revealedRect: { left: 0, top: 300, width: 40, height: 40 } });
+  spec("aim", async (t) => {
+    await (await t.app.view.touch(t.app.view.testId("half"))).up();
+    await (await t.app.view.touch(t.app.view.testId("sliver"))).up();
+  });
+  installFakeHost(world);
+  const report = await run();
+  assert.equal(report.cases[0].status, "passed", JSON.stringify(report.cases[0].error));
+  // Each touch holds at its point on down and again on up.
+  const holds = world.gestureCalls.filter((call) => call.shape.kind === "hold");
+  assert.deepEqual(holds.map((call) => call.shape.at), [[20, 390], [20, 390], [20, 320], [20, 320]]);
+  assert.equal(sliver.scrolledTo, 1);
+});
+
 test("a fallback past the input dispatcher is visible in the result", async () => {
   const world = createWorld();
   world.gestureHost.delivered = "view";

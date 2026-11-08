@@ -180,6 +180,14 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
         | field::STATE_SELECTED
         | field::STATE_EXPANDED
         | field::STATE_BUSY => ensure(flag(value), "UI_PROP: invalid aria state"),
+        field::ARIA_VALUE_NOW | field::ARIA_VALUE_MIN | field::ARIA_VALUE_MAX => ensure(
+            value.as_f64().is_some_and(f64::is_finite),
+            "UI_PROP: invalid aria value",
+        ),
+        field::ARIA_VALUE_TEXT => ensure(
+            value.as_str().is_some_and(|text| text.len() <= 4096),
+            "UI_PROP: invalid aria-valuetext",
+        ),
         field::ACCESSIBILITY_HIDDEN => ensure(
             value.as_u64() == Some(1),
             "UI_PROP: invalid accessibilityHidden",

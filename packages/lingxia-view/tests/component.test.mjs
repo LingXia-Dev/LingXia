@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { Fragment } from '../src/runtime/nodes.js';
 import * as details from '../src/runtime/details.js';
 import { Pager } from '../src/runtime/pager.js';
+import { Progress } from '../src/runtime/progress.js';
 import { rendered, byTestId } from './support/wire.mjs';
 import { h, List, childrenToArray, describe, prepare, discard, reset, dispatch, useLocal, useRequest, configureActions, createView, takeActionRequests } from '../src/internal.js';
 
@@ -165,6 +166,18 @@ test('Pager lists its pages for a screen reader and its hidden dots follow and s
   assert.deepEqual([0, 1, 2].map(i => byTestId(root, `p-mark-${i}`).props.width), [6, 6, 18]);
   assert.equal(rendered(() => h(Pager, { 'aria-label': 'One', 'data-testid': 'q' }, h('text', {}, 'A'))).children.length, 1, 'one page: no dots');
   assert.throws(() => rendered(() => h(Pager, {}, h('text', {}, 'A'))), /aria-label/);
+});
+
+test('Progress is a progressbar with its value, or indeterminate and moving without one', () => {
+  const bar = rendered(() => h(Progress, { value: 3, max: 4, 'aria-label': 'Upload', 'data-testid': 'p' }));
+  assert.deepEqual([bar.props.role, bar.props.ariaValueNow, bar.props.ariaValueMax, bar.props.accessibilityLabel], ['progressbar', 3, 4, 'Upload']);
+  assert.equal(byTestId(bar, 'p-fill').props.widthPercent, 75);
+  const busy = rendered(() => h(Progress, { 'aria-label': 'Loading', 'data-testid': 'q' }));
+  assert.equal(busy.props.ariaValueNow, undefined);
+  assert.match(byTestId(busy, 'q-fill').props.animation, /lx-progress-slide/);
+  const ring = rendered(() => h(Progress, { variant: 'ring', value: 150, 'aria-label': 'Sync', 'aria-valuetext': 'Done', 'data-testid': 'r' }));
+  assert.deepEqual([ring.props.ariaValueNow, ring.props.ariaValueText], [100, 'Done']);
+  assert.throws(() => rendered(() => h(Progress, { value: 1 })), /aria-label/);
 });
 
 test('useLocal(initial) keys state by call order, independent of named locals', () => {

@@ -129,6 +129,7 @@ fn aria(role: Role) -> Option<&'static str> {
         Role::Option => "option",
         Role::Menu => "menu",
         Role::MenuItem => "menuitem",
+        Role::ProgressBar => "progressbar",
         Role::Text | Role::ScrollView | Role::HorizontalScrollView => return None,
     })
 }
@@ -308,6 +309,14 @@ pub fn describe(
         && top + height > cover_top
         && left < viewport[0] - cover_right
         && top < viewport[1] - cover_bottom;
+    // What a finger can reach: the clipped box less the covered edges.
+    let visible_rect = in_viewport.then(|| {
+        let x0 = left.max(cover_left);
+        let y0 = top.max(cover_top);
+        let x1 = (left + width).min(viewport[0] - cover_right);
+        let y1 = (top + height).min(viewport[1] - cover_bottom);
+        json!({ "left": x0, "top": y0, "width": x1 - x0, "height": y1 - y0 })
+    });
     let input = node.input.as_ref();
     let chosen = node.select.as_ref().and_then(|select| {
         select
@@ -363,6 +372,7 @@ pub fn describe(
             "center_x": left + width / 2.0, "center_y": top + height / 2.0,
             "viewport_width": viewport[0], "viewport_height": viewport[1],
         },
+        "visibleRect": visible_rect,
     })
 }
 
@@ -424,6 +434,11 @@ pub fn tree(projection: &Projection) -> Value {
         }
         if let Some(field) = &node.text_field {
             out.insert("value".into(), json!(field.text));
+        } else if let (Role::ProgressBar, Some(range)) = (node.role, &node.range) {
+            out.insert(
+                "value".into(),
+                json!({ "now": range.value, "min": range.min, "max": range.max, "text": node.value }),
+            );
         } else if let Some(range) = &node.range {
             out.insert("value".into(), json!(range.value));
         }

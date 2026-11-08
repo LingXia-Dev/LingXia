@@ -255,7 +255,8 @@ function strongDirection(children, depth = 0) {
 }
 
 // DOM-named accessibility props as the runtime carries them.
-const ariaNames = [['aria-label', 'accessibilityLabel'], ['aria-hidden', 'accessibilityHidden'], ['aria-live', 'accessibilityLiveRegion']];
+const ariaNames = [['aria-label', 'accessibilityLabel'], ['aria-hidden', 'accessibilityHidden'], ['aria-live', 'accessibilityLiveRegion'],
+  ['aria-valuenow', 'ariaValueNow'], ['aria-valuemin', 'ariaValueMin'], ['aria-valuemax', 'ariaValueMax'], ['aria-valuetext', 'ariaValueText']];
 const ariaStates = [['aria-pressed', 'pressed'], ['aria-selected', 'selected'], ['aria-expanded', 'expanded'], ['aria-busy', 'busy']];
 function ariaProps(props) {
   for (let i = 0; i < ariaNames.length; i++) {
@@ -577,6 +578,23 @@ function structure(sibling, flat) {
   return out;
 }
 
+// A progressbar's amount: `aria-valuenow` within min (0) and max (100); without it, indeterminate.
+function progressValues(role, props, wire) {
+  const { ariaValueNow: now, ariaValueMin: min, ariaValueMax: max, ariaValueText: text } = props;
+  if (now === undefined && min === undefined && max === undefined && text === undefined) return;
+  if (role !== 'progressbar') throw Error('UI_PROP: aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar"');
+  const number = (value, name) => {
+    if (value !== undefined && (typeof value !== 'number' || !Number.isFinite(value))) throw Error(`UI_PROP: ${name} must be a finite number`);
+  };
+  number(now, 'aria-valuenow'); number(min, 'aria-valuemin'); number(max, 'aria-valuemax');
+  if ((min ?? 0) >= (max ?? 100)) throw Error('UI_PROP: aria-valuemin must be below aria-valuemax');
+  if (text !== undefined && typeof text !== 'string') throw Error('UI_PROP: aria-valuetext must be a string');
+  if (now !== undefined) wire('ariaValueNow', now);
+  if (min !== undefined) wire('ariaValueMin', min);
+  if (max !== undefined) wire('ariaValueMax', max);
+  if (text !== undefined) wire('ariaValueText', text);
+}
+
 // Accessibility roles and states any element may declare; controls keep their own role.
 function semantics(tag, props, wire) {
   const { role, headingLevel, accessibilityHidden, accessibilityLiveRegion } = props;
@@ -585,6 +603,7 @@ function semantics(tag, props, wire) {
     if (!fieldOptions.role.includes(role)) throw Error(`UI_PROP: role must be one of ${fieldOptions.role.join(', ')}`);
     wire('role', role);
   }
+  progressValues(role, props, wire);
   if (headingLevel !== undefined) {
     if (role !== 'heading' || !Number.isInteger(headingLevel) || headingLevel < 1 || headingLevel > 6)
       throw Error('UI_PROP: headingLevel is an integer 1..6 on role="heading"');

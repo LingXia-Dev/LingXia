@@ -43,6 +43,8 @@ pub enum Role {
     MenuItem,
     /// A video player's picture; its media state rides on the node.
     Video,
+    /// An amount done; its range is absent while indeterminate.
+    ProgressBar,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -382,6 +384,7 @@ impl Projection<'_> {
                 "option" => Role::Option,
                 "menu" => Role::Menu,
                 "menuitem" => Role::MenuItem,
+                "progressbar" => Role::ProgressBar,
                 _ => Role::Status,
             }
         } else if button {
@@ -401,6 +404,7 @@ impl Projection<'_> {
             role,
             Role::Image
                 | Role::Video
+                | Role::ProgressBar
                 | Role::Slider
                 | Role::RadioGroup
                 | Role::List
@@ -592,6 +596,27 @@ impl Projection<'_> {
         if clickable {
             actions.push(Action::Click);
         }
+        // A determinate progressbar reads its `aria-valuetext`, else its share as a percentage.
+        let progress = node
+            .progress
+            .as_ref()
+            .filter(|_| role == Role::ProgressBar)
+            .and_then(|progress| {
+                let now = progress.now?.clamp(progress.min, progress.max);
+                let share = (now - progress.min) / (progress.max - progress.min);
+                let text = progress
+                    .text
+                    .clone()
+                    .unwrap_or_else(|| format!("{}%", (share * 100.0).round()));
+                Some((
+                    Range {
+                        min: progress.min,
+                        max: progress.max,
+                        value: now,
+                    },
+                    text,
+                ))
+            });
         let focused = match input {
             Some(input) => input.edit_token.is_some_and(|token| token > 0),
             None => self.keyboard_focus == Some(index),
@@ -622,6 +647,7 @@ impl Projection<'_> {
                     max: range.max,
                     value: range.value,
                 })
+                .or_else(|| progress.as_ref().map(|(range, _)| range.clone()))
                 .or_else(|| {
                     drag.filter(|_| role == Role::Slider)
                         .map(|(at, count)| Range {
@@ -644,7 +670,8 @@ impl Projection<'_> {
             busy: node.states[3],
             value: select
                 .map(|_| node.text.clone())
-                .filter(|text| !text.is_empty()),
+                .filter(|text| !text.is_empty())
+                .or_else(|| progress.map(|(_, text)| text)),
             scroll: node.scroll.as_ref().map(|scroll| ScrollPosition {
                 offset: scroll.offset,
                 max_offset: scroll.max_offset,

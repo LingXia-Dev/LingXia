@@ -793,6 +793,8 @@ public final class GpuFrame {
         public Boolean valueTruncated() { if (json.isNull("value_truncated")) return null; return json.optBoolean("value_truncated"); }
         /** `rect`: AutomationRect? */
         public AutomationRect rect() { JSONObject o = json.optJSONObject("rect"); return o == null ? null : new AutomationRect(o); }
+        /** `visibleRect`: AutomationArea? */
+        public AutomationArea visibleRect() { JSONObject o = json.optJSONObject("visibleRect"); return o == null ? null : new AutomationArea(o); }
         /** `attributes`: any? */
         public Object attributes() { return json.isNull("attributes") ? null : json.opt("attributes"); }
     }
@@ -976,6 +978,19 @@ public final class GpuFrame {
         public Double lastMs() { if (json.isNull("lastMs")) return null; return json.optDouble("lastMs"); }
         /** `statsMs`: Percentiles? */
         public Percentiles statsMs() { JSONObject o = json.optJSONObject("statsMs"); return o == null ? null : new Percentiles(o); }
+    }
+
+    public static final class AutomationArea {
+        public final JSONObject json;
+        public AutomationArea(JSONObject json) { this.json = json; }
+        /** `left`: f32 */
+        public float left() { return (float) json.optDouble("left"); }
+        /** `top`: f32 */
+        public float top() { return (float) json.optDouble("top"); }
+        /** `width`: f32 */
+        public float width() { return (float) json.optDouble("width"); }
+        /** `height`: f32 */
+        public float height() { return (float) json.optDouble("height"); }
     }
 
     public static final class AutomationRect {
@@ -1218,6 +1233,7 @@ public final class GpuFrame {
             case "FramePacing": return FramePacing.class;
             case "Percentiles": return Percentiles.class;
             case "InputLatency": return InputLatency.class;
+            case "AutomationArea": return AutomationArea.class;
             case "AutomationRect": return AutomationRect.class;
             case "AutomationTree": return AutomationTree.class;
             case "AutomationTreeNode": return AutomationTreeNode.class;
@@ -1272,6 +1288,7 @@ public final class GpuFrame {
             case "FramePacing": return new FramePacing(json);
             case "Percentiles": return new Percentiles(json);
             case "InputLatency": return new InputLatency(json);
+            case "AutomationArea": return new AutomationArea(json);
             case "AutomationRect": return new AutomationRect(json);
             case "AutomationTree": return new AutomationTree(json);
             case "AutomationTreeNode": return new AutomationTreeNode(json);

@@ -92,6 +92,16 @@ pub struct SelectOption {
     pub enabled: bool,
 }
 
+/// A progressbar's amount: `now` within `min` and `max`, `None` while indeterminate, and
+/// the authored `aria-valuetext`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ProgressSnapshot {
+    pub now: Option<f64>,
+    pub min: f64,
+    pub max: f64,
+    pub text: Option<String>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct SelectSnapshot {
     pub options: Vec<SelectOption>,
@@ -162,6 +172,8 @@ pub struct NodeSnapshot {
     /// Authored `aria-pressed`/`-selected`/`-expanded`/`-busy`; absent ones are `None`.
     #[serde(skip)]
     pub states: [Option<bool>; 4],
+    #[serde(skip)]
+    pub progress: Option<ProgressSnapshot>,
     /// A `<select>`: its options, the chosen one and the handle that reports a choice.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub select: Option<SelectSnapshot>,

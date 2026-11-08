@@ -288,6 +288,7 @@ export function createWorld(options = {}) {
       if (!target) throw new Error(`Element not found: ${css}`);
       target.inViewport = true;
       target.scrolledTo = (target.scrolledTo ?? 0) + 1;
+      if (target.revealedRect) target.visibleRect = target.revealedRect;
     },
     async uiFrame(...args) {
       if (args.length > 0 && args[0] === undefined) throw new TypeError("Not JS Object");
@@ -481,6 +482,7 @@ export function createWorld(options = {}) {
       valueTruncated: false,
       rect: element.rect ?? { left: 0, top: 0, width: 10, height: 10, right: 10, bottom: 10, centerX: 5, centerY: 5, viewportWidth: 100, viewportHeight: 100 },
       ...(element.renderer ? { renderer: element.renderer } : {}),
+      ...(element.visibleRect !== undefined ? { visibleRect: element.visibleRect } : {}),
       // A GPU page answers its data-* attributes in the query; it has no DOM to eval.
       ...(element.renderer === "gpu" ? { attributes: element.attributes ?? {} } : {}),
     };

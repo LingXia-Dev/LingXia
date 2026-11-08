@@ -17,7 +17,9 @@ export declare function childrenToArray(children: Child): readonly Exclude<Child
 export interface Props {
   style?: Style; className?: string; key?: string; "data-testid"?: string; dir?: "ltr" | "rtl" | "auto"; children?: Child;
   /** Semantic role; controls keep their own. Headings take `headingLevel` 1..6. */
-  role?: "heading" | "list" | "listitem" | "alert" | "status" | "menu" | "menuitem"; headingLevel?: 1 | 2 | 3 | 4 | 5 | 6;
+  role?: "heading" | "list" | "listitem" | "alert" | "status" | "menu" | "menuitem" | "progressbar"; headingLevel?: 1 | 2 | 3 | 4 | 5 | 6;
+  /** A progressbar's value between `aria-valuemin` (0) and `aria-valuemax` (100); leave it out while the amount is unknown. `aria-valuetext` replaces the spoken percentage. */
+  "aria-valuenow"?: number; "aria-valuemin"?: number; "aria-valuemax"?: number; "aria-valuetext"?: string;
   /** Removes the node and its subtree from accessibility. */
   "aria-hidden"?: boolean;
   /** Announce changes; `alert` is assertive and `status` polite unless set. */
@@ -173,6 +175,8 @@ export declare function Details(props: { open?: boolean; defaultOpen?: boolean; 
 export declare function Summary(props: { className?: string; children?: Child }): JSX.Element;
 /** Pages side by side that stop on each one, as a named list a screen reader reads "n of m"; dots under it follow the page and jump to one on tap. Uncontrolled with `defaultPage`, controlled with `bind`. */
 export declare function Pager(props: { bind?: Local<number>; defaultPage?: number; dots?: boolean; "aria-label": string; className?: string; "data-testid"?: string; children?: Child }): JSX.Element;
+/** An amount done, as HTML's progress: a bar or a ring, indeterminate without `value`. A screen reader hears `value` / `max` (100) as a percentage unless `aria-valuetext` says otherwise. */
+export declare function Progress(props: { value?: number; max?: number; variant?: "bar" | "ring"; size?: number; "aria-label": string; "aria-valuetext"?: string; className?: string; "data-testid"?: string }): JSX.Element;
 
 export interface BoxShadow { offsetX?: number; offsetY?: number; blur?: number; spread?: number; color?: string }
 export interface GradientStop { offset: number; color: string }

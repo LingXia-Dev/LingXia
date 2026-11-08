@@ -68,3 +68,18 @@ spec('the controls take a tap, a drag, typing and a fling as a user gives them',
   await view.fling('up', 3000, { at: list });
   await expect(view.testId('lab-controls-row-40')).toBeInViewport({ timeout: 3_000 });
 });
+
+spec('kit progress reads as a progressbar with its value, and without one while indeterminate', { covers: ['view:a11y'], start: { page: 'view-lab' } }, async (t) => {
+  const view = t.app.view;
+  await view.testId('lab-tab-data').click();
+  const upload = view.getByRole('progressbar', { name: 'Upload' });
+  await expect(upload).toHaveValue('40');
+  await expect(view.getByRole('progressbar', { name: 'Storage' })).toHaveValue('40');
+  // Indeterminate: the role without a value.
+  await expect(view.getByRole('progressbar', { name: 'Syncing' })).not.toHaveValue(/./);
+  await expect(view.getByRole('progressbar', { name: 'Connecting' })).not.toHaveValue(/./);
+  await view.testId('lab-progress-more').click();
+  await expect(upload).toHaveValue('60');
+  const width = async (id: string) => (await view.testId(id).boundingBox()).width;
+  await expect.poll(async () => Math.round(await width('lab-progress-bar-fill') / await width('lab-progress-bar') * 100)).toBe(60);
+});

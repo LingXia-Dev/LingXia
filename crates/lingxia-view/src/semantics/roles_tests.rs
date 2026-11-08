@@ -188,6 +188,7 @@ fn projected_roles_match_the_schema_vocabulary() {
         Role::Menu,
         Role::MenuItem,
         Role::Video,
+        Role::ProgressBar,
     ]
     .iter()
     .map(|role| {

@@ -27,6 +27,7 @@ fn component_type(role: Role) -> &'static CStr {
         Role::Image => c"Image",
         Role::Video => c"Video",
         Role::Slider => c"Slider",
+        Role::ProgressBar => c"Progress",
         Role::List | Role::ListBox | Role::Menu => c"List",
         Role::ListItem | Role::Option => c"ListItem",
         Role::Grid => c"Grid",

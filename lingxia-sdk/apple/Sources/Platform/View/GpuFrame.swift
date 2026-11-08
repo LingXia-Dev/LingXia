@@ -786,6 +786,7 @@ public struct GpuFrameAutomationElement: Decodable, Sendable {
     public let value: String?
     public let valueTruncated: Bool?
     public let rect: GpuFrameAutomationRect?
+    public let visibleRect: GpuFrameAutomationArea?
     public let attributes: GpuJSON?
 
     enum CodingKeys: String, CodingKey {
@@ -811,6 +812,7 @@ public struct GpuFrameAutomationElement: Decodable, Sendable {
         case value = "value"
         case valueTruncated = "value_truncated"
         case rect = "rect"
+        case visibleRect = "visibleRect"
         case attributes = "attributes"
     }
 }
@@ -1011,6 +1013,21 @@ public struct GpuFrameInputLatency: Decodable, Sendable {
         case count = "count"
         case lastMs = "lastMs"
         case statsMs = "statsMs"
+    }
+}
+
+/// `AutomationArea` in the frame contract.
+public struct GpuFrameAutomationArea: Decodable, Sendable {
+    public let left: Float
+    public let top: Float
+    public let width: Float
+    public let height: Float
+
+    enum CodingKeys: String, CodingKey {
+        case left = "left"
+        case top = "top"
+        case width = "width"
+        case height = "height"
     }
 }
 

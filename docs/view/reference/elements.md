@@ -13,8 +13,12 @@ Styles each element accepts are in [styles.md](styles.md).
 | `key` | `string` |  |
 | `"data-testid"` | `string` |  |
 | `dir` | `"ltr" \| "rtl" \| "auto"` |  |
-| `role` | `"heading" \| "list" \| "listitem" \| "alert" \| "status" \| "menu" \| "menuitem"` | Semantic role; controls keep their own. Headings take `headingLevel` 1..6. |
+| `role` | `"heading" \| "list" \| "listitem" \| "alert" \| "status" \| "menu" \| "menuitem" \| "progressbar"` | Semantic role; controls keep their own. Headings take `headingLevel` 1..6. |
 | `headingLevel` | `1 \| 2 \| 3 \| 4 \| 5 \| 6` |  |
+| `"aria-valuenow"` | `number` | A progressbar's value between `aria-valuemin` (0) and `aria-valuemax` (100); leave it out while the amount is unknown. `aria-valuetext` replaces the spoken percentage. |
+| `"aria-valuemin"` | `number` |  |
+| `"aria-valuemax"` | `number` |  |
+| `"aria-valuetext"` | `string` |  |
 | `"aria-hidden"` | `boolean` | Removes the node and its subtree from accessibility. |
 | `"aria-live"` | `"off" \| "polite" \| "assertive"` | Announce changes; `alert` is assertive and `status` polite unless set. |
 | `"aria-pressed"` | `boolean` | States assistive input announces; leave one out when the element has no such state. |

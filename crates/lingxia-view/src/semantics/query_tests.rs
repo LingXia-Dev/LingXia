@@ -627,3 +627,39 @@ fn a_match_out_of_the_accessibility_tree_can_still_be_revealed() {
         .unwrap();
     assert!(revealed.contains(&Effect::Redraw));
 }
+
+#[test]
+fn a_progressbar_reads_its_share_or_its_value_text_and_has_no_value_while_indeterminate() {
+    let i = interaction(
+        "h('column',{},h('column',{'data-testid':'up',role:'progressbar','aria-label':'Upload','aria-valuenow':42,style:{height:4}}),h('column',{'data-testid':'steps',role:'progressbar','aria-label':'Steps','aria-valuenow':2,'aria-valuemin':1,'aria-valuemax':5,'aria-valuetext':'Step 2 of 5',style:{height:4}}),h('column',{'data-testid':'spin',role:'progressbar','aria-label':'Loading',style:{height:4}}))",
+    );
+    let found = |id: &str| {
+        i.automation_query(&format!("[data-testid=\"{id}\"]"), None, false, None)
+            .unwrap()
+    };
+    assert_eq!(found("up")["role"], "progressbar");
+    assert_eq!(found("up")["value"], "42");
+    let tree = i.automation_tree().unwrap().to_string();
+    assert!(
+        tree.contains(r#""value":{"max":100.0,"min":0.0,"now":42.0,"text":"42%"}"#),
+        "{tree}"
+    );
+    assert!(tree.contains(r#""text":"Step 2 of 5""#), "{tree}");
+    assert_eq!(found("spin")["role"], "progressbar");
+    assert!(found("spin")["value"].is_null());
+}
+
+#[test]
+fn the_visible_rect_is_the_box_less_scroll_clips_and_covered_edges() {
+    let mut i = interaction(
+        "h('scroll',{style:{height:400}},h('column',{style:{height:330}}),h('button',{'data-testid':'half',style:{height:40},onClick(){}},'Half'),h('column',{style:{height:300}}))",
+    );
+    i.set_obscured([[0.0, 0.0, 60.0, 0.0], [0.0; 4]]);
+    let half = i
+        .automation_query("[data-testid=\"half\"]", None, false, None)
+        .unwrap();
+    assert_eq!(half["inViewport"], true);
+    assert_eq!(half["rect"]["height"], 40.0);
+    assert_eq!(half["visibleRect"]["top"], 330.0);
+    assert_eq!(half["visibleRect"]["height"], 10.0);
+}

@@ -131,6 +131,8 @@ final class GpuAccessibilityElement: UIAccessibilityElement {
         case "grid-cell", "option", "menu-item": traits.insert(.button)
         case "grid", "list-box", "list", "list-item", "dialog", "alert", "status", "text-field", "menu",
              "scroll-view", "horizontal-scroll-view", "radio-group": break
+        // As UIProgressView: no trait, its share spoken as the value.
+        case "progress-bar": traits.insert(.updatesFrequently)
         default:
             // A role the core added without a mapping here is a bug, never silently traitless.
             assertionFailure("unmapped semantic role \(node.role)")

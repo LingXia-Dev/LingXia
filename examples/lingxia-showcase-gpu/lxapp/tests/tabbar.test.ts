@@ -119,3 +119,31 @@ spec('a tap at an element under the tab bar scrolls it clear of the bar first an
   await expect(state).toHaveText('page=2');
   expect(bottom(await dot.boundingBox())).toBeLessThanOrEqual(top);
 });
+
+spec('a tap at an element partly under the tab bar lands on its visible part without scrolling', { covers: ['view:scroll'], start: { page: 'view-lab' } }, async (t) => {
+  const view = t.app.view;
+  const { top } = await bars(t);
+  await view.testId('lab-tab-swipe').click();
+  const state = view.testId('lab-kit-pager-state');
+  await expect(state).toHaveText('page=0');
+  // Park a pager dot so its centre sits just under the bar's top edge and its upper part shows.
+  const dot = view.testId('lab-kit-pager-view-dot-2');
+  const center = (box: Box) => box.y + box.height / 2;
+  let parked = await dot.boundingBox();
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const dy = center(parked) - (top + 1);
+    if (Math.abs(dy) <= 1) break;
+    // A drag first spends the touch slop: lengthen it by about that much.
+    await view.swipe({ from: [20, 400], to: [20, 400 - dy - Math.sign(dy) * 8], durationMs: 600 });
+    let last = Number.NaN;
+    parked = await t.waitFor(() => dot.boundingBox(), {
+      until: b => { const settled = b.y === last; last = b.y; return settled; }, interval: 100,
+    });
+  }
+  expect(parked.y).toBeLessThan(top - 8);
+  expect(center(parked)).toBeGreaterThan(top);
+  await expect(dot).toBeInViewport();
+  await (await view.touch(dot)).up();
+  await expect(state).toHaveText('page=2');
+  expect((await dot.boundingBox()).y).toBe(parked.y);
+});

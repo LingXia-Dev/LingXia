@@ -128,6 +128,7 @@ final class MacGpuAccessibilityElement: NSAccessibilityElement {
         case "heading", "text": return .staticText
         case "image", "video": return .image
         case "slider": return .slider
+        case "progress-bar": return .progressIndicator
         case "text-field": return .textField
         case "scroll-view", "horizontal-scroll-view": return .scrollArea
         case "list", "list-box": return .list

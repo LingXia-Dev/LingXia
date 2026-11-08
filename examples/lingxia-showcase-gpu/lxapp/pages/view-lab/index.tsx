@@ -1,4 +1,4 @@
-import { Details, Fragment, List, Pager as KitPagerView, Summary, useLocal, useView, type VectorPath } from '@lingxia/view';
+import { Details, Fragment, List, Pager as KitPagerView, Progress, Summary, useLocal, useView, type VectorPath } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Icon, Page, Section } from '../../shared/ui';
 import type { LabPageData } from '../../shared/lab-types';
@@ -11,7 +11,7 @@ const groups = {
   text: { label: 'Text', sections: [TextLayout, RichText, Selection, Document] },
   input: { label: 'Input', sections: [Accessibility, Inputs, Controls, Focus, NestedControls, StateVariants] },
   overlay: { label: 'Overlay', sections: [Overlays] },
-  data: { label: 'Data', sections: [Plots] },
+  data: { label: 'Data', sections: [Plots, Progresses] },
   gesture: { label: 'Gesture', sections: [Drag, DragChain, Detents] },
   swipe: { label: 'Swipe', sections: [SwipeRows, Pager, KitPager] },
 };
@@ -248,6 +248,22 @@ function Plots() {
       <row className="gap-4">
         <plot data-testid="lab-plot-pie" kind="pie" values={plots.share} colors={colors} aria-label="Share" className="grow basis-0 h-36" />
         <plot data-testid="lab-plot-line" kind="line" values={plots.latency} colors={['chart-2']} smooth area aria-label="Latency" className="grow basis-0 h-36" />
+      </row>
+    </Section>
+  );
+}
+
+// Kit progress: a bar and a ring with a value a screen reader hears as a share, and both indeterminate.
+function Progresses() {
+  const done = useLocal('progress-done', 40);
+  return (
+    <Section title="Progress" testId="lab-progress">
+      <Progress value={done.value} aria-label="Upload" data-testid="lab-progress-bar" />
+      <Progress aria-label="Syncing" data-testid="lab-progress-busy" />
+      <row className="gap-4 items-center">
+        <Progress variant="ring" value={done.value} aria-label="Storage" aria-valuetext={`${done.value} of 100 GB`} data-testid="lab-progress-ring" />
+        <Progress variant="ring" aria-label="Connecting" data-testid="lab-progress-spin" />
+        <Button testId="lab-progress-more" size="sm" onClick={() => done.set(Math.min(100, done.value + 20))}>More</Button>
       </row>
     </Section>
   );
