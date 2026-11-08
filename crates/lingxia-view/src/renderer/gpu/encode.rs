@@ -61,7 +61,8 @@ impl DisplayList {
 
     /// One segment of a frame drawn on its own: the clips open at its start are pushed
     /// again under the transforms they were opened with, and every clip open at its end
-    /// is closed.
+    /// is closed. With `underlay` the frame first fills from the kept base bound at
+    /// [`crate::renderer::gpu::scene::UNDERLAY`].
     #[cfg(feature = "gpu")]
     pub(crate) fn sparse_segment(
         &self,
@@ -70,8 +71,29 @@ impl DisplayList {
         image_ids: &HashMap<usize, vello_gpu::ImageSource>,
         glyph_images: &mut HashMap<usize, Arc<vello_gpu::Pixmap>>,
         segment: &crate::renderer::gpu::scene::Segment,
+        underlay: bool,
     ) -> Result<(), String> {
         context.reset_and_resize(self.width, self.height);
+        if underlay {
+            context.set_transform(Affine::IDENTITY);
+            context.set_paint(vello_gpu::Image {
+                image: vello_gpu::ImageSource::external_texture(
+                    crate::renderer::gpu::scene::UNDERLAY,
+                    vello_gpu::RectU16::new(0, 0, self.width, self.height),
+                    // The base starts with the opaque page background.
+                    false,
+                ),
+                // Pixel-aligned and unscaled: nearest keeps it exact.
+                sampler: vello_cpu::peniko::ImageSampler::new()
+                    .with_quality(vello_cpu::peniko::ImageQuality::Low),
+            });
+            context.fill_rect(&PaintRect::new(
+                0.0,
+                0.0,
+                self.width as f64,
+                self.height as f64,
+            ));
+        }
         if segment.background {
             context.set_paint(AlphaColor::<Srgb>::from_rgb8(246, 247, 251));
             context.fill_rect(&PaintRect::new(

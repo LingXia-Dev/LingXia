@@ -155,6 +155,7 @@ pub(crate) struct PrepareJob {
     revision: u64,
     composed: bool,
     keep_base: bool,
+    pass_cost: crate::renderer::gpu::scene::PassCost,
     width: u32,
     height: u32,
     device: wgpu::Device,
@@ -215,17 +216,20 @@ impl PrepareJob {
             self.scenes.video_epoch = video_epoch;
         }
         let (scenes, prep) = (&mut self.scenes, &mut self.glyph_cache);
+        let underlay = self.keep_base && !has_video;
         let scene_cache_hit = self.renderer.with_resources(
             &self.device,
             width as u16,
             height as u16,
             |resources| {
-                scenes.prepare(
+                scenes.prepare_over(
                     display,
                     &mut crate::renderer::gpu::text::Glyphs {
                         prep,
                         atlas: Some(resources),
                     },
+                    underlay,
+                    self.pass_cost,
                 )
             },
         )??;
@@ -244,8 +248,9 @@ impl PrepareJob {
         let [mut encode_us, mut submit_us] = [0, 0];
         self.pass_us.clear();
         let mut scenes = self.scenes.scenes();
-        // A kept bottom segment is copied in; only the passes above it draw again.
-        // A kept base would freeze a video frame drawn inside it.
+        // A kept bottom segment is sampled by the pass above it, which clears the target: on
+        // GLES a copy into the target stalls whatever its size. A kept base would freeze a
+        // video frame drawn inside it.
         let base = self.scenes.base().filter(|_| self.keep_base && !has_video);
         self.base = self.base.take().filter(|(id, view)| {
             Some(*id) == base && view.texture().size() == target.texture().size()
@@ -271,21 +276,14 @@ impl PrepareJob {
                 self.pass_us.push([encode, submit]);
                 self.base = Some((id, view));
             }
-            let started = Instant::now();
-            let mut encoder = self.device.create_command_encoder(&Default::default());
             let base = &self.base.as_ref().ok_or("UI_SURFACE: no base")?.1;
-            encoder.copy_texture_to_texture(
-                base.texture().as_image_copy(),
-                target.texture().as_image_copy(),
-                target.texture().size(),
-            );
-            self.queue.submit([encoder.finish()]);
-            let copy = crate::session::metrics::micros(started);
-            submit_us += copy;
-            self.pass_us.push([0, copy]);
+            if base.texture() == target.texture() {
+                return Err("UI_SURFACE: base is the render target".into());
+            }
+            bindings.insert(crate::renderer::gpu::scene::UNDERLAY, base.clone());
         }
         for (index, scene) in scenes.enumerate() {
-            let first = index == 0 && base.is_none();
+            let first = index == 0;
             let [encode, submit] = self.renderer.draw(
                 &self.device,
                 &self.queue,
@@ -660,6 +658,11 @@ impl Presenter {
             revision,
             composed,
             keep_base: self.keep_base,
+            pass_cost: if self.backend == "vello-gles" {
+                crate::renderer::gpu::scene::PassCost::High
+            } else {
+                crate::renderer::gpu::scene::PassCost::Low
+            },
             width,
             height,
             device: device.device.clone(),

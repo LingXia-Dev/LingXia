@@ -56,11 +56,23 @@ pub(crate) struct Segment {
     pub(crate) open_at_end: usize,
 }
 
+/// The texture binding the first pass over a kept base samples it from.
+pub(crate) const UNDERLAY: vello_gpu::TextureId = vello_gpu::TextureId(u64::MAX);
+
 /// Each pass reloads the full target, so many spans cost more than one full encode.
 const MAX_SPANS: usize = 8;
 
-/// Static commands that cost less to encode again each frame than a pass of their own.
-fn cheap(commands: &[Paint]) -> bool {
+/// What a pass of its own costs against encoding its commands again each frame.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum PassCost {
+    /// GLES: every pass's upload and replay stalls the driver.
+    High,
+    Low,
+}
+
+/// Static commands that cost less to encode again each frame than a pass of their own. Glyphs
+/// come from the atlas, so on GLES a short label's runs cost less than a pass.
+fn cheap(commands: &[Paint], cost: PassCost) -> bool {
     let glyphs: usize = commands
         .iter()
         .map(|paint| match paint {
@@ -68,13 +80,17 @@ fn cheap(commands: &[Paint]) -> bool {
             _ => 0,
         })
         .sum();
-    commands.len() <= 24 && glyphs <= 48
+    let limit = match cost {
+        PassCost::High => 128,
+        PassCost::Low => 48,
+    };
+    commands.len() <= 24 && glyphs <= limit
 }
 
 /// Split a frame at its animated spans so commands outside them keep their scenes. A
 /// boundary never sits inside an opacity or backdrop group: a span inside one widens to
 /// the outermost group, since a group's pixels only combine correctly in one scene.
-fn segments(display: &DisplayList) -> Option<Vec<Segment>> {
+fn segments(display: &DisplayList, cost: PassCost) -> Option<Vec<Segment>> {
     let spans = display.animated_spans();
     if spans.is_empty() || spans.len() > MAX_SPANS || !SceneKey::eligible(display, 2048, 32768) {
         return None;
@@ -111,12 +127,21 @@ fn segments(display: &DisplayList) -> Option<Vec<Segment>> {
             range = range.start.min(group)..range.end.max(group_end[&group] + 1);
         }
         match ranges.last_mut() {
-            Some(last) if range.start <= last.end || cheap(&commands[last.end..range.start]) => {
+            Some(last)
+                if range.start <= last.end || cheap(&commands[last.end..range.start], cost) =>
+            {
                 last.end = last.end.max(range.end)
             }
             _ if range.is_empty() => {}
             _ => ranges.push(range),
         }
+    }
+    // On GLES a cheap static tail costs less encoded again with the last span than a pass.
+    if cost == PassCost::High
+        && let Some(last) = ranges.last_mut()
+        && cheap(&commands[last.end..], cost)
+    {
+        last.end = count;
     }
     let mut cuts = vec![(0, false)];
     for range in &ranges {
@@ -254,13 +279,27 @@ impl SceneCache {
     }
 
     /// `true` when no scene was encoded again, or while animating, no static segment was.
+    #[cfg(test)]
     pub(crate) fn prepare(
         &mut self,
         display: &DisplayList,
         glyphs: &mut crate::renderer::gpu::text::Glyphs<'_>,
     ) -> Result<bool, String> {
-        if let Some(plan) = segments(display) {
-            return self.prepare_segments(display, &plan, glyphs);
+        self.prepare_over(display, glyphs, false, PassCost::High)
+    }
+
+    /// [`Self::prepare`]; with `underlay`, the pass over a kept base starts from its pixels.
+    pub(crate) fn prepare_over(
+        &mut self,
+        display: &DisplayList,
+        glyphs: &mut crate::renderer::gpu::text::Glyphs<'_>,
+        underlay: bool,
+        cost: PassCost,
+    ) -> Result<bool, String> {
+        if let Some(plan) = segments(display, cost) {
+            // The segment over a kept base starts from its pixels.
+            let underlay = (underlay && !plan[0].animated).then_some(1);
+            return self.prepare_segments(display, &plan, glyphs, underlay);
         }
         self.segmented = false;
         self.frame = None;
@@ -303,6 +342,7 @@ impl SceneCache {
         display: &DisplayList,
         plan: &[Segment],
         glyphs: &mut crate::renderer::gpu::text::Glyphs<'_>,
+        underlay: Option<usize>,
     ) -> Result<bool, String> {
         self.segmented = true;
         let frame = FrameKey::of(display);
@@ -359,6 +399,7 @@ impl SceneCache {
                 &images,
                 &mut entry.entry.glyph_images,
                 segment,
+                underlay == Some(index),
             )?;
             entry.key = keys[index].take();
             next[index] = Some(entry);
@@ -465,10 +506,17 @@ mod tests {
             atlas: None,
         };
         assert!(!cache.prepare(&spun(&display, 0.0), &mut glyphs).unwrap());
-        let plan = segments(&spun(&display, 0.0)).unwrap();
+        let plan = segments(&spun(&display, 0.0), PassCost::High).unwrap();
         assert_eq!(
             plan.iter().map(|s| s.animated).collect::<Vec<_>>(),
-            [false, true, false]
+            [false, true],
+            "the cheap static tail draws with the span"
+        );
+        let separate = segments(&spun(&display, 0.0), PassCost::Low).unwrap();
+        assert_eq!(
+            separate.iter().map(|s| s.animated).collect::<Vec<_>>(),
+            [false, true, false],
+            "where passes are cheap the static tail keeps its own scene"
         );
         assert_eq!(
             plan[1].clips.len(),
@@ -476,12 +524,12 @@ mod tests {
             "the span opens inside its parent's clip"
         );
         assert_eq!(plan[0].open_at_end, 1);
-        assert_eq!(plan[2].open_at_end, 0);
+        assert_eq!(plan[1].open_at_end, 0);
         let base = cache.base();
         assert!(base.is_some());
         for angle in [10.0, 20.0, 30.0] {
             assert!(cache.prepare(&spun(&display, angle), &mut glyphs).unwrap());
-            assert_eq!(cache.scenes().count(), 3);
+            assert_eq!(cache.scenes().count(), 2);
             assert_eq!(cache.base(), base, "the bottom segment's pixels are kept");
         }
         let shown = spun(&display, 40.0);
@@ -492,8 +540,10 @@ mod tests {
             shown.commands[a.commands.clone()] == hidden.commands[b.commands.clone()],
             "spans follow their commands past the removed caret"
         );
-        assert!(!cache.prepare(&hidden, &mut glyphs).unwrap());
-        assert!(cache.prepare(&hidden, &mut glyphs).unwrap());
+        assert!(
+            cache.prepare(&hidden, &mut glyphs).unwrap(),
+            "the caret blinks in the span's pass, with the static tail folded into it"
+        );
         assert_eq!(
             cache.base(),
             base,
@@ -529,10 +579,10 @@ mod tests {
             .compose_animated(&HashMap::new(), &visuals)
             .unwrap();
         assert_eq!(frame.animated_spans().len(), 2);
-        let plan = segments(&frame).unwrap();
+        let plan = segments(&frame, PassCost::High).unwrap();
         assert_eq!(
             plan.iter().map(|s| s.animated).collect::<Vec<_>>(),
-            [false, true, false]
+            [false, true]
         );
     }
 
@@ -540,14 +590,19 @@ mod tests {
     fn a_span_inside_a_group_widens_to_the_group() {
         let (_page, display) = spin_page(true);
         let frame = spun(&display, 15.0);
-        let plan = segments(&frame).unwrap();
+        let plan = segments(&frame, PassCost::High).unwrap();
         let animated: Vec<_> = plan.iter().filter(|s| s.animated).collect();
         assert_eq!(animated.len(), 1);
         let span = &frame.animated_spans()[0].commands;
         let range = &animated[0].range;
         assert!(range.start < span.start && span.end < range.end);
         assert!(matches!(frame.commands[range.start], Paint::Opacity { .. }));
-        assert!(matches!(frame.commands[range.end - 1], Paint::PopOpacity));
+        assert!(
+            frame.commands[span.end..range.end]
+                .iter()
+                .any(|paint| matches!(paint, Paint::PopOpacity)),
+            "the group closes inside the widened span"
+        );
     }
 
     #[cfg(feature = "gpu")]
@@ -566,50 +621,55 @@ mod tests {
             height: 96,
         };
         let depth = vello_gpu::Renderer::create_depth_texture_view(device, &size);
-        let mut draw =
-            |scenes: Vec<&vello_gpu::Scene>, images: Vec<Arc<vello_gpu::Pixmap>>| -> Vec<u8> {
-                let texture = device.create_texture(&wgpu::TextureDescriptor {
-                    label: None,
-                    size: wgpu::Extent3d {
-                        width: 96,
-                        height: 96,
-                        depth_or_array_layers: 1,
-                    },
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Rgba8Unorm,
-                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                        | wgpu::TextureUsages::COPY_SRC
-                        | wgpu::TextureUsages::TEXTURE_BINDING
-                        | wgpu::TextureUsages::STORAGE_BINDING,
-                    view_formats: &[],
-                });
-                let view = texture.create_view(&Default::default());
-                let bindings = crate::renderer::gpu::images::ImageTextures::default()
-                    .bindings(device, queue, images);
-                for (index, scene) in scenes.into_iter().enumerate() {
-                    renderer
-                        .draw(
-                            device,
-                            queue,
-                            scene,
-                            &bindings,
-                            pass::Target {
-                                size: size.clone(),
-                                view: &view,
-                                depth: Some(&depth),
-                                init: if index == 0 {
-                                    vello_gpu::TargetInit::Clear(Default::default())
-                                } else {
-                                    vello_gpu::TargetInit::SrcOver
-                                },
+        let mut draw = |scenes: Vec<&vello_gpu::Scene>,
+                        images: Vec<Arc<vello_gpu::Pixmap>>,
+                        underlay: Option<&wgpu::TextureView>|
+         -> (Vec<u8>, wgpu::TextureView) {
+            let texture = device.create_texture(&wgpu::TextureDescriptor {
+                label: None,
+                size: wgpu::Extent3d {
+                    width: 96,
+                    height: 96,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::COPY_SRC
+                    | wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::STORAGE_BINDING,
+                view_formats: &[],
+            });
+            let view = texture.create_view(&Default::default());
+            let mut bindings = crate::renderer::gpu::images::ImageTextures::default()
+                .bindings(device, queue, images);
+            if let Some(base) = underlay {
+                bindings.insert(UNDERLAY, base.clone());
+            }
+            for (index, scene) in scenes.into_iter().enumerate() {
+                renderer
+                    .draw(
+                        device,
+                        queue,
+                        scene,
+                        &bindings,
+                        pass::Target {
+                            size: size.clone(),
+                            view: &view,
+                            depth: Some(&depth),
+                            init: if index == 0 {
+                                vello_gpu::TargetInit::Clear(Default::default())
+                            } else {
+                                vello_gpu::TargetInit::SrcOver
                             },
-                        )
-                        .unwrap();
-                }
-                readback(device, queue, &texture)
-            };
+                        },
+                    )
+                    .unwrap();
+            }
+            (readback(device, queue, &texture), view)
+        };
         for faded in [false, true] {
             let (_page, display) = spin_page(faded);
             let mut cache = SceneCache::default();
@@ -622,21 +682,32 @@ mod tests {
                 let frame = spun(&display, angle);
                 cache.prepare(&frame, &mut glyphs).unwrap();
                 assert!(cache.segmented);
-                let actual = draw(
+                let (actual, _) = draw(
                     cache.scenes().collect(),
                     cache.glyph_images().cloned().collect(),
+                    None,
                 );
                 let mut whole = Entry::new();
                 whole.build(&frame, &mut glyphs).unwrap();
-                let expected = draw(
+                let (expected, _) = draw(
                     vec![&whole.scene],
                     whole.glyph_images.values().cloned().collect(),
+                    None,
                 );
-                for (index, (a, e)) in actual.iter().zip(&expected).enumerate() {
+                // The kept base drawn alone, then sampled by the pass over it.
+                let images: Vec<_> = cache.glyph_images().cloned().collect();
+                let (_, base) = draw(cache.scenes().take(1).collect(), images.clone(), None);
+                cache
+                    .prepare_over(&frame, &mut glyphs, true, PassCost::High)
+                    .unwrap();
+                let (underlaid, _) = draw(cache.scenes().skip(1).collect(), images, Some(&base));
+                for (index, ((a, e), u)) in actual.iter().zip(&expected).zip(&underlaid).enumerate()
+                {
                     assert!(
                         a.abs_diff(*e) <= 2,
                         "faded={faded} angle={angle} byte={index}: {a} vs {e}"
                     );
+                    assert_eq!(u, a, "faded={faded} angle={angle} byte={index}: underlay");
                 }
             }
         }
