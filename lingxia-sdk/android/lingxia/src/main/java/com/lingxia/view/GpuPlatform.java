@@ -50,7 +50,6 @@ interface GpuPlatform {
     void loaded();
     /** A frame reached the screen and its effects ran. */
     void presented();
-    void message(long connection, String message);
     boolean restart(long connection);
     /** Show recovery chrome; {@code message} -1 clears it, {@code action} -1 offers none. */
     void recovery(int message, int action, boolean retained, String error);

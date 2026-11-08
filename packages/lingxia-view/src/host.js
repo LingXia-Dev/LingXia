@@ -1,8 +1,8 @@
 import { render as rendering } from './runtime/state.js';
 import { describe, prepare, prepareWindows, takeMovedAnchors, commit, discard, reset, dispatch, probeListRow } from './runtime/tree.js';
 import { createView, syncData, hasLocalUpdates, readsHostContext } from './runtime/hooks.js';
-import { configureActions, takeActionRequests, takeViewEvents, receiveActionResponse, takeActionErrors, requestLeave, automationAction, takeAutomationResults } from './runtime/actions.js';
-import { viewRequest, viewCall, overlayTimer, takeOverlayTimers, escapeOverlay } from './runtime/overlay.js';
+import { configureActions, takeViewEvents, receiveActionResponse, takeActionErrors, requestLeave, automationAction, takeAutomationResults } from './runtime/actions.js';
+import { viewCall, overlayTimer, takeOverlayTimers, escapeOverlay } from './runtime/overlay.js';
 import { openPicker, pickerKey, closePicker, takePickerResults, pickerIdentity } from './runtime/picker.js';
 import { takeFonts } from './runtime/fonts.js';
 import { takeFrameMeasures, frameMeasured } from './runtime/frames.js';
@@ -15,12 +15,12 @@ export function publishHost(render, catalog) {
     __lingxiaRender: render, __lingxiaDescribe: describe, __lingxiaPrepare: prepare,
     __lingxiaPrepareWindows: prepareWindows, __lingxiaTakeMovedAnchors: takeMovedAnchors, __lingxiaCommit: commit, __lingxiaDiscard: discard,
     __lingxiaReset: reset, __lingxiaDispatch: dispatch, __lingxiaCreateView: createView, __lingxiaSyncData: syncData,
-    __lingxiaConfigureActions: configureActions, __lingxiaTakeActionRequests: takeActionRequests, __lingxiaTakeViewEvents: takeViewEvents,
+    __lingxiaConfigureActions: configureActions, __lingxiaTakeViewEvents: takeViewEvents,
     __lingxiaReceiveActionResponse: receiveActionResponse, __lingxiaTakeActionErrors: takeActionErrors,
     __lingxiaHasLocalUpdates: hasLocalUpdates, __lingxiaRequestLeave: requestLeave,
     __lingxiaReadsHostContext: readsHostContext,
     __lingxiaAutomationAction: automationAction, __lingxiaTakeAutomationResults: takeAutomationResults,
-    __lingxiaViewRequest: viewRequest, __lingxiaViewCall: viewCall, __lingxiaOverlayTimer: overlayTimer, __lingxiaTakeOverlayTimers: takeOverlayTimers,
+    __lingxiaViewCall: viewCall, __lingxiaOverlayTimer: overlayTimer, __lingxiaTakeOverlayTimers: takeOverlayTimers,
     __lingxiaEscape: escapeOverlay, __lingxiaFonts: takeFonts, __lingxiaProbeListRow: probeListRow,
     __lingxiaOpenPicker: openPicker, __lingxiaPickerKey: pickerKey, __lingxiaClosePicker: closePicker,
     __lingxiaTakePickerResults: takePickerResults, __lingxiaPickerIdentity: pickerIdentity,

@@ -1230,10 +1230,6 @@
     }
     return { changed: changed2, replies };
   }
-  function viewRequest(frame) {
-    const { changed: changed2, replies } = viewCall(frame);
-    return JSON.stringify({ changed: changed2, replies: replies.map((r) => JSON.stringify({ v: 2, ...r })) });
-  }
   function overlayTimer(token) {
     if (!toast || toast.token !== token) return false;
     toast = null;
@@ -4816,7 +4812,6 @@
       __lingxiaCreateView: createView,
       __lingxiaSyncData: syncData,
       __lingxiaConfigureActions: configureActions,
-      __lingxiaTakeActionRequests: takeActionRequests,
       __lingxiaTakeViewEvents: takeViewEvents,
       __lingxiaReceiveActionResponse: receiveActionResponse,
       __lingxiaTakeActionErrors: takeActionErrors,
@@ -4825,7 +4820,6 @@
       __lingxiaReadsHostContext: readsHostContext,
       __lingxiaAutomationAction: automationAction,
       __lingxiaTakeAutomationResults: takeAutomationResults,
-      __lingxiaViewRequest: viewRequest,
       __lingxiaViewCall: viewCall,
       __lingxiaOverlayTimer: overlayTimer,
       __lingxiaTakeOverlayTimers: takeOverlayTimers,

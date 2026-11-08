@@ -18,7 +18,10 @@ pub(crate) fn now_us() -> u64 {
         .map_or(0, |d| d.as_micros() as u64)
 }
 
-static SAMPLES: LazyLock<Mutex<HashMap<(Probe, bool), Vec<u64>>>> = LazyLock::new(Default::default);
+/// Elapsed microseconds per probe and transport (`true` = GPU).
+type Samples = HashMap<(Probe, bool), Vec<u64>>;
+
+static SAMPLES: LazyLock<Mutex<Samples>> = LazyLock::new(Default::default);
 
 /// Record `since_us` → now for `probe` on the GPU (`gpu`) or WebView transport.
 pub(crate) fn record(probe: Probe, gpu: bool, since_us: u64) {

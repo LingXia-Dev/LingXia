@@ -705,12 +705,9 @@ impl<A: PlatformAdapter> ViewHost<A> {
         self.inner.fail(error);
     }
 
-    pub fn connect(&self, connection: ConnectionTicket, nonce: String) {
-        self.inner.connect(connection, nonce);
-    }
-
-    pub fn receive(&self, connection: ConnectionTicket, frame: String) {
-        self.inner.receive(connection, frame);
+    /// A fresh Logic connection; the View answers with `ToLogic::Connected` from its worker.
+    pub fn connect(&self, connection: ConnectionTicket) {
+        self.inner.connect(connection);
     }
 
     /// Any thread: a typed Logic state write, applied in write order with the others.

@@ -60,7 +60,6 @@ public class GpuNativeLoadTest {
         public int editText(int node, String text, int start, int end) { events.add("edit:" + text); return 0; }
         public void loaded() { loaded++; }
         public void presented() { presented++; }
-        public void message(long connection, String message) { }
         public boolean restart(long connection) { return false; }
         // A throw inside a JNI callback never reaches the test; pump reports it instead.
         volatile String failure;

@@ -147,7 +147,7 @@ export function requestLeave(reason) {
 /** What the View sends Logic since the last call, in order: plain objects the native session walks. */
 export function takeViewEvents() { const result = requests.concat(takeOverlayReplies()); requests = []; return result; }
 
-// The same messages as bridge frame text, for a native session that predates typed events.
+// The same messages as frame text, for the package's JS tests.
 const frameCaps = { req: m => m.method.startsWith('host.') ? 'host' : 'page', 'ch.open': () => 'page' };
 export function takeActionRequests() {
   return takeViewEvents().map(message => {

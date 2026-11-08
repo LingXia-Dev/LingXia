@@ -21,7 +21,7 @@ impl ViewSession {
             self.eval(&format!(
                 "typeof __lingxiaImportState === 'function' && __lingxiaImportState({state})"
             ))?;
-            if self.bridge.as_ref().is_some_and(|bridge| bridge.ready) {
+            if self.connected {
                 self.eval("__lingxiaConfigureActions(globalThis.__lingxiaActionCatalog)")?;
             }
             // Render once now so a module that cannot render never replaces one that can.

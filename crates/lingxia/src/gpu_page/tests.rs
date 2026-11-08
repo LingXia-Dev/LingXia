@@ -10,18 +10,11 @@ impl Shell {
 }
 
 impl NativePage for Shell {
-    fn connect(&self, generation: GpuViewGeneration, nonce: &str) -> Result<(), LxAppError> {
+    fn connect(&self, generation: GpuViewGeneration) -> Result<(), LxAppError> {
         self.0
             .lock()
             .unwrap()
-            .push(format!("connect {} {nonce}", generation.get()));
-        Ok(())
-    }
-    fn receive(&self, generation: GpuViewGeneration, frame: &str) -> Result<(), LxAppError> {
-        self.0
-            .lock()
-            .unwrap()
-            .push(format!("receive {} {frame}", generation.get()));
+            .push(format!("connect {}", generation.get()));
         Ok(())
     }
     fn deliver(
@@ -119,37 +112,31 @@ fn generation(value: u64) -> GpuViewGeneration {
 fn messages_and_state_reach_the_shell_only_for_the_current_connection() {
     let factory = Arc::new(Factory::default());
     let (endpoint, shell, _) = endpoint(&factory, "gate");
-    endpoint
-        .post_message_for_generation(generation(1), "early")
-        .unwrap();
-    endpoint.connect(generation(2), "nonce").unwrap();
-    endpoint
-        .post_message_for_generation(generation(1), "stale")
-        .unwrap();
-    endpoint
-        .post_message_for_generation(generation(2), "state")
-        .unwrap();
+    let close = |id: &str| GpuViewMessage::ChannelClose {
+        id: id.into(),
+        code: None,
+        reason: None,
+    };
+    endpoint.deliver(generation(1), close("early")).unwrap();
+    endpoint.connect(generation(2)).unwrap();
+    endpoint.deliver(generation(1), close("stale")).unwrap();
+    endpoint.deliver(generation(2), close("current")).unwrap();
     let snapshot = |rev| GpuStateWrite::Snapshot {
         rev,
         state: serde_json::json!({}),
     };
     endpoint.write_state(generation(1), snapshot(1)).unwrap();
     endpoint.write_state(generation(2), snapshot(2)).unwrap();
-    assert!(
-        endpoint.connect(generation(1), "old").is_err(),
-        "superseded"
-    );
+    assert!(endpoint.connect(generation(1)).is_err(), "superseded");
     endpoint.request_leave(LeaveReason::Back).unwrap();
     endpoint.park().unwrap();
     endpoint.request_leave(LeaveReason::Home).unwrap();
-    endpoint
-        .post_message_for_generation(generation(2), "parked")
-        .unwrap();
+    endpoint.deliver(generation(2), close("parked")).unwrap();
     assert_eq!(
         shell.calls(),
         [
-            "connect 2 nonce",
-            "receive 2 state",
+            "connect 2",
+            "deliver 2 ChannelClose { id: \"current\", code: None, reason: None }",
             "state 2 Snapshot { rev: 2, state: Object {} }",
             "leave 2 back",
             "park"
@@ -162,11 +149,18 @@ fn a_lease_disposes_once_and_leaves_no_index_behind() {
     let factory = Arc::new(Factory::default());
     let (endpoint, shell, token) = endpoint(&factory, "dispose-once");
     assert!(live(token).is_some());
-    endpoint.connect(generation(3), "n").unwrap();
+    endpoint.connect(generation(3)).unwrap();
     endpoint.dispose();
     endpoint.dispose();
     endpoint
-        .post_message_for_generation(generation(3), "late")
+        .deliver(
+            generation(3),
+            GpuViewMessage::ChannelClose {
+                id: "late".into(),
+                code: None,
+                reason: None,
+            },
+        )
         .unwrap();
     endpoint
         .update_environment(PageViewEnvironment::DisplayLanguage {
@@ -178,7 +172,7 @@ fn a_lease_disposes_once_and_leaves_no_index_behind() {
     assert!(!registry().pages.contains_key("dispose-once"));
     drop(endpoint);
     assert_eq!(*factory.0.lock().unwrap(), [token]);
-    assert_eq!(shell.calls(), ["connect 3 n"]);
+    assert_eq!(shell.calls(), ["connect 3"]);
 }
 
 #[test]
@@ -259,10 +253,7 @@ struct Acting {
 
 #[cfg(feature = "automation")]
 impl NativePage for Acting {
-    fn connect(&self, _: GpuViewGeneration, _: &str) -> Result<(), LxAppError> {
-        Ok(())
-    }
-    fn receive(&self, _: GpuViewGeneration, _: &str) -> Result<(), LxAppError> {
+    fn connect(&self, _: GpuViewGeneration) -> Result<(), LxAppError> {
         Ok(())
     }
     fn deliver(&self, _: GpuViewGeneration, _: GpuViewMessage) -> Result<(), LxAppError> {
@@ -377,7 +368,7 @@ fn a_bundled_pack_parses_and_a_malformed_one_is_skipped() {
 fn a_stale_frame_keeps_the_platform_reporting_until_the_current_view_presents() {
     let factory = Arc::new(Factory::default());
     let (endpoint, _, token) = endpoint(&factory, "ready-rearm");
-    endpoint.connect(generation(2), "nonce").unwrap();
+    endpoint.connect(generation(2)).unwrap();
     assert!(
         !presented(token, 1),
         "a frame of the old connection is not the first frame"

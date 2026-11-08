@@ -684,14 +684,7 @@ fn engines_without_bounded_jobs_refuse_page_actions() {
         page.configure_actions(&serde_json::json!({"__names":[],"__modes":{}}))
             .is_err()
     );
-    page.begin_bridge("nonce").unwrap();
-    page.receive_frame(
-        &serde_json::json!({"v":2,"kind":"helloAck","nonce":"nonce","protocol":2,"sessionId":"s"}),
-    )
-    .unwrap();
-    let error = page
-        .receive_frame(&serde_json::json!({"v":2,"kind":"ready","sessionId":"s"}))
-        .unwrap_err();
+    let error = page.begin_bridge().unwrap_err();
     assert!(error.contains("UI_ACTION"), "{error}");
 }
 
@@ -713,17 +706,11 @@ fn committed_channel_resource_opens_without_input_and_quiesces_after_redraw() {
         "function render(view){const last=useLocal('last','waiting');const feed=useChannel('feed',view.actions.ticker,{params:{},onData:v=>last.set(v)});return h('column',{},h('text',{},feed.connected?'connected':'waiting'),h('text',{},last.value));}",
     ) + "\nglobalThis.__lingxiaActionCatalog={__names:['ticker'],__modes:{ticker:'call'}};";
     let mut page = ViewSession::new_with_logic(&module, true).unwrap();
-    page.begin_bridge("nonce").unwrap();
-    page.receive_frame(
-        &json!({"v":2,"kind":"helloAck","nonce":"nonce","protocol":2,"sessionId":"session"}),
-    )
-    .unwrap();
+    page.begin_bridge().unwrap();
     page.write_state(state_write(
         &json!({"v":2,"kind":"state.snapshot","rev":0,"state":{}}),
     ))
     .unwrap();
-    page.receive_frame(&json!({"v":2,"kind":"ready","sessionId":"session"}))
-        .unwrap();
     assert!(page.take_action_requests().unwrap().is_empty());
     page.layout(300, 500, 1.0).unwrap();
     let requests = page.take_action_requests().unwrap();
@@ -756,17 +743,11 @@ fn stream_bridge_events_render_and_cancel_through_the_page_endpoint() {
         "let stream;function render({actions}){const value=useLocal('value','');return h('column',{},h('button',{onClick:()=>{stream=actions.watch();stream.on('data',v=>value.set(v));}},'Start'),h('text',{},value.value),h('button',{onClick:()=>stream.cancel()},'Stop'))}",
     ) + "\nglobalThis.__lingxiaActionCatalog={__names:['watch'],__modes:{watch:'stream'}};";
     let mut page = ViewSession::new_with_logic(&module, true).unwrap();
-    page.begin_bridge("nonce").unwrap();
-    page.receive_frame(
-        &json!({"v":2,"kind":"helloAck","nonce":"nonce","protocol":2,"sessionId":"session"}),
-    )
-    .unwrap();
+    page.begin_bridge().unwrap();
     page.write_state(state_write(
         &json!({"v":2,"kind":"state.snapshot","rev":0,"state":{}}),
     ))
     .unwrap();
-    page.receive_frame(&json!({"v":2,"kind":"ready","sessionId":"session"}))
-        .unwrap();
     let frame = page.layout(300, 500, 1.0).unwrap();
     page.click(page.generation(), frame.nodes[1].on_click.unwrap())
         .unwrap();
@@ -792,17 +773,11 @@ fn channel_bridge_opens_delivers_and_sends_on_the_bound_endpoint() {
         "let channel;function render({channels}){const value=useLocal('value','');return h('column',{},h('button',{onClick:async()=>{channel=await channels.open('ticker');channel.on('data',v=>{value.set(v);channel.send({symbol:'MSFT'})})}},'Connect'),h('text',{},value.value),h('button',{onClick:()=>channel.close()},'Close'))}",
     ) + "\nglobalThis.__lingxiaActionCatalog={__names:['ticker'],__modes:{ticker:'call'}};";
     let mut page = ViewSession::new_with_logic(&module, true).unwrap();
-    page.begin_bridge("nonce").unwrap();
-    page.receive_frame(
-        &json!({"v":2,"kind":"helloAck","nonce":"nonce","protocol":2,"sessionId":"session"}),
-    )
-    .unwrap();
+    page.begin_bridge().unwrap();
     page.write_state(state_write(
         &json!({"v":2,"kind":"state.snapshot","rev":0,"state":{}}),
     ))
     .unwrap();
-    page.receive_frame(&json!({"v":2,"kind":"ready","sessionId":"session"}))
-        .unwrap();
     let frame = page.layout(300, 500, 1.0).unwrap();
     page.click(page.generation(), frame.nodes[1].on_click.unwrap())
         .unwrap();
@@ -1504,7 +1479,7 @@ fn text_events_are_typed_generation_bound_and_safely_encoded() {
 }
 
 #[test]
-fn bridge_requires_ack_ready_and_state_then_roundtrips_actions() {
+fn bridge_needs_a_connection_and_state_then_roundtrips_actions() {
     if !bounded_jobs() {
         return;
     }
@@ -1513,26 +1488,16 @@ fn bridge_requires_ack_ready_and_state_then_roundtrips_actions() {
         "function render({data,actions}){const result=useLocal('result','');return h('button',{onClick:async()=>{result.set(await actions.increment({step:1}))}},`${data.count}/${result.value}`)}",
     ) + "\nglobalThis.__lingxiaActionCatalog={__names:['increment'],__modes:{increment:'call'}};";
     let mut page = ViewSession::new_with_logic(&source, true).unwrap();
-    assert_eq!(
-        page.begin_bridge("native-nonce").unwrap(),
-        json!({"v":2,"kind":"hello","nonce":"native-nonce","role":"view","protocolsSupported":[2]})
-    );
-    let ready = json!({"v":2,"kind":"ready","sessionId":"native-session"});
-    assert!(page.receive_frame(&ready).is_err());
-    assert!(
-        page.receive_frame(&json!({"v":3,"kind":"helloAck"}))
-            .is_err()
-    );
-    assert!(page.receive_frame(&json!({"v":2,"kind":"helloAck","nonce":"wrong","protocol":2,"sessionId":"native-session"})).is_err());
-    page.receive_frame(&json!({"v":2,"kind":"helloAck","nonce":"native-nonce","protocol":2,"sessionId":"native-session"})).unwrap();
+    let early = json!({"v":2,"kind":"res","id":"x","ok":true,"result":1});
+    assert!(page.receive_frame(&early).is_err());
+    page.begin_bridge().unwrap();
+    assert!(page.layout(300, 500, 1.0).is_err());
     let update = page
         .write_state(state_write(
             &json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"count":0}}),
         ))
         .unwrap();
-    assert!(!update.changed);
-    assert!(page.layout(300, 500, 1.0).is_err());
-    assert!(page.receive_frame(&ready).unwrap().changed);
+    assert!(update.changed);
     let frame = page.layout(300, 500, 1.0).unwrap();
     page.click(page.generation(), frame.nodes[0].on_click.unwrap())
         .unwrap();
@@ -1542,9 +1507,10 @@ fn bridge_requires_ack_ready_and_state_then_roundtrips_actions() {
     let patch = json!({"v":2,"kind":"state.patch","baseRev":0,"rev":1,"ack":true,"ops":[{"op":"replace","path":"/count","value":1}]});
     assert_eq!(page.write_state(state_write(&patch)).unwrap().ack, Some(1));
     assert_eq!(page.layout(300, 500, 1.0).unwrap().nodes[0].text, "1/done");
-    page.begin_bridge("replacement").unwrap();
+    page.begin_bridge().unwrap();
     assert!(!page.ready_to_render());
-    assert!(page.receive_frame(&response).is_err());
+    // The earlier connection's reply finds no pending call.
+    assert!(!page.receive_frame(&response).unwrap().changed);
 }
 
 #[test]

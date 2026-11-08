@@ -32,7 +32,6 @@ pub(super) fn initialize(env: &mut Env) -> Result<(), jni::errors::Error> {
         env.register_native_methods(
             &class,
             &[
-                method!("message", "(JJLjava/lang/String;)V", message),
                 method!(
                     "created",
                     "(JLcom/lingxia/lxapp/GpuPage;Ljava/lang/String;)V",
@@ -124,11 +123,17 @@ struct AndroidPage {
 }
 
 impl NativePage for AndroidPage {
-    fn connect(&self, generation: GpuViewGeneration, nonce: &str) -> Result<(), LxAppError> {
-        bridge_operation(self.token, generation, nonce, jni_str!("connect"))
-    }
-    fn receive(&self, generation: GpuViewGeneration, frame: &str) -> Result<(), LxAppError> {
-        bridge_operation(self.token, generation, frame, jni_str!("receive"))
+    fn connect(&self, generation: GpuViewGeneration) -> Result<(), LxAppError> {
+        with_env(|env| {
+            env.call_static_method(
+                class(),
+                jni_str!("connect"),
+                jni_sig!("(JJ)V"),
+                &[self.token.into(), (generation.get() as i64).into()],
+            )?;
+            Ok::<_, jni::errors::Error>(())
+        })
+        .map_err(runtime)
     }
     fn deliver(
         &self,
@@ -317,21 +322,6 @@ pub(super) fn java_view<'a>(
         Some(page) => env.new_local_ref(&page.object),
         None => Ok(JObject::null()),
     }
-}
-
-extern "system" fn message<'a>(
-    mut env: EnvUnowned<'a>,
-    _: JClass<'a>,
-    token: i64,
-    generation: i64,
-    message: JString<'a>,
-) {
-    env.with_env(|env| -> Result<(), jni::errors::Error> {
-        let body = message.try_to_string(env)?;
-        gpu_page::message(token, generation as u64, &body);
-        Ok(())
-    })
-    .resolve::<ThrowRuntimeExAndDefault>();
 }
 
 extern "system" fn created<'a>(

@@ -902,9 +902,6 @@ mod live {
         fn presented(&self, token: i64, connection: u64) {
             gpu_page::presented(token, connection);
         }
-        fn message(&self, token: i64, connection: u64, message: &str) {
-            gpu_page::message(token, connection, message);
-        }
         fn logic(
             &self,
             token: i64,
@@ -970,19 +967,9 @@ mod live {
     }
 
     impl NativePage for ApplePage {
-        fn connect(&self, generation: GpuViewGeneration, nonce: &str) -> Result<(), LxAppError> {
-            let nonce = nonce.to_owned();
+        fn connect(&self, generation: GpuViewGeneration) -> Result<(), LxAppError> {
             on_page(self.token, move |page| {
-                page.host()
-                    .connect(ConnectionTicket::new(generation.get()), nonce)
-            });
-            Ok(())
-        }
-        fn receive(&self, generation: GpuViewGeneration, frame: &str) -> Result<(), LxAppError> {
-            let frame = frame.to_owned();
-            on_page(self.token, move |page| {
-                page.host()
-                    .receive(ConnectionTicket::new(generation.get()), frame)
+                page.host().connect(ConnectionTicket::new(generation.get()))
             });
             Ok(())
         }

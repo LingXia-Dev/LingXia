@@ -211,6 +211,8 @@ impl GpuViewRequest {
 /// What a GPU View sends Logic. Payloads are owned trees, moved, never serialized.
 #[derive(Debug)]
 pub enum GpuViewEvent {
+    /// The View took this connection; Logic may now load the page and write its state.
+    Connected,
     /// A page action or stream, or a page-owned `host.navigation.*` control.
     Call {
         id: String,
@@ -245,13 +247,6 @@ pub enum GpuViewEvent {
 
 /// Native-owned GPU endpoint. Methods must enqueue without blocking the caller.
 pub trait GpuPageView: Send + Sync {
-    fn post_message(&self, message: &str) -> Result<(), LxAppError>;
-    /// Recheck this generation at worker delivery, not only while enqueueing.
-    fn post_message_for_generation(
-        &self,
-        generation: GpuViewGeneration,
-        message: &str,
-    ) -> Result<(), LxAppError>;
     /// Replies, stream and channel traffic and requests; rechecked for this generation at
     /// delivery like state.
     fn deliver(
@@ -265,7 +260,8 @@ pub trait GpuPageView: Send + Sync {
         generation: GpuViewGeneration,
         write: GpuStateWrite,
     ) -> Result<(), LxAppError>;
-    fn connect(&self, generation: GpuViewGeneration, nonce: &str) -> Result<(), LxAppError>;
+    /// The View answers with [`GpuViewEvent::Connected`] once it can take this generation.
+    fn connect(&self, generation: GpuViewGeneration) -> Result<(), LxAppError>;
     fn request_leave(&self, reason: super::LeaveReason) -> Result<(), LxAppError>;
     fn update_environment(&self, update: PageViewEnvironment) -> Result<(), LxAppError>;
     /// Rebuild View state for a fresh Logic connection.
@@ -317,7 +313,9 @@ impl PageView {
     pub(crate) fn post_message(&self, message: &str) -> Result<(), LxAppError> {
         match self {
             Self::Web(view) => view.post_message(message).map_err(LxAppError::from),
-            Self::Gpu(view) => view.post_message(message),
+            Self::Gpu(_) => Err(LxAppError::Bridge(
+                "a GPU View takes typed messages only".into(),
+            )),
         }
     }
 

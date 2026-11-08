@@ -47,8 +47,7 @@ pub(crate) fn decode_reply(reply: &str) -> Result<serde_json::Value, String> {
 
 /// A platform's native page shell. Calls enqueue on its UI thread without blocking.
 pub(crate) trait NativePage: Send + Sync + 'static {
-    fn connect(&self, generation: GpuViewGeneration, nonce: &str) -> Result<(), LxAppError>;
-    fn receive(&self, generation: GpuViewGeneration, frame: &str) -> Result<(), LxAppError>;
+    fn connect(&self, generation: GpuViewGeneration) -> Result<(), LxAppError>;
     /// Any thread: a typed Logic message, straight into the View host.
     fn deliver(
         &self,
@@ -179,23 +178,6 @@ impl Endpoint {
 }
 
 impl GpuPageView for Endpoint {
-    fn post_message(&self, _: &str) -> Result<(), LxAppError> {
-        Err(LxAppError::Runtime(
-            "GPU messages require a captured connection generation".into(),
-        ))
-    }
-
-    fn post_message_for_generation(
-        &self,
-        generation: GpuViewGeneration,
-        message: &str,
-    ) -> Result<(), LxAppError> {
-        if self.current(generation.get()).is_none() {
-            return Ok(());
-        }
-        self.native.receive(generation, message)
-    }
-
     fn write_state(
         &self,
         generation: GpuViewGeneration,
@@ -218,7 +200,7 @@ impl GpuPageView for Endpoint {
         self.native.deliver(generation, message)
     }
 
-    fn connect(&self, generation: GpuViewGeneration, nonce: &str) -> Result<(), LxAppError> {
+    fn connect(&self, generation: GpuViewGeneration) -> Result<(), LxAppError> {
         {
             let mut current = self.generation();
             if current.is_some_and(|current| current.get() > generation.get()) {
@@ -226,7 +208,7 @@ impl GpuPageView for Endpoint {
             }
             *current = Some(generation);
         }
-        self.native.connect(generation, nonce)
+        self.native.connect(generation)
     }
 
     fn request_leave(&self, reason: LeaveReason) -> Result<(), LxAppError> {
@@ -410,24 +392,6 @@ pub(crate) fn created(token: Token, outcome: Created) {
     let pending = registry().pending.remove(&token);
     if let Some(pending) = pending {
         let _ = pending.send(outcome);
-    }
-}
-
-/// An outbound View message for its connection generation.
-pub(crate) fn message(token: Token, generation: u64, body: &str) {
-    let Some(endpoint) = live(token) else {
-        return;
-    };
-    let Some(current) = endpoint.current(generation) else {
-        return;
-    };
-    let Some(page) = lxapp::find_page_by_instance_id(&endpoint.lease.page) else {
-        return;
-    };
-    if let Err(error) =
-        page.handle_incoming_gpu_message(&(endpoint as Arc<dyn GpuPageView>), current, body)
-    {
-        log::warn!("GPU bridge ingress rejected: {error}");
     }
 }
 

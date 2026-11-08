@@ -1247,22 +1247,6 @@ impl PageInstance {
         self.inner.bridge.handle_incoming(self, message)
     }
 
-    pub fn handle_incoming_gpu_message(
-        &self,
-        endpoint: &Arc<dyn GpuPageView>,
-        generation: GpuViewGeneration,
-        message: &str,
-    ) -> Result<(), LxAppError> {
-        if !self.is_current_gpu_endpoint(endpoint) {
-            return Err(LxAppError::Bridge(
-                "GPU endpoint is no longer attached".into(),
-            ));
-        }
-        self.inner
-            .bridge
-            .handle_gpu_incoming(self, endpoint, generation, message)
-    }
-
     /// A typed message from the current GPU View, straight from its worker thread.
     pub fn gpu_view_event(
         &self,
@@ -1319,10 +1303,7 @@ impl PageInstance {
             return Ok(());
         }
         let generation = self.inner.bridge.bind_gpu(self, endpoint)?;
-        if let Err(error) = endpoint.connect(
-            generation,
-            self.bridge_nonce().as_deref().unwrap_or_default(),
-        ) {
+        if let Err(error) = endpoint.connect(generation) {
             self.inner.bridge.cancel_gpu_generation(self, generation);
             return Err(error);
         }

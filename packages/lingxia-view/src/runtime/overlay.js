@@ -55,12 +55,6 @@ export function viewCall(call) {
   return { changed, replies };
 }
 
-// The same as frame text, for a native session that predates typed requests.
-export function viewRequest(frame) {
-  const { changed, replies } = viewCall(frame);
-  return JSON.stringify({ changed, replies: replies.map(r => JSON.stringify({ v: 2, ...r })) });
-}
-
 /** The toast timer `token` ran out; true when it hid the toast still showing. */
 export function overlayTimer(token) {
   if (!toast || toast.token !== token) return false;

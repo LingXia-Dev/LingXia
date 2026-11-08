@@ -302,11 +302,6 @@ impl HostEvents for Fake {
         self.main().feedback.push(json["feedback"].clone());
         self.main().shown.push(frame.generation);
     }
-    fn message(&self, connection: ConnectionTicket, message: &str) {
-        self.main()
-            .messages
-            .push((connection.get(), message.into()));
-    }
     fn logic(&self, connection: ConnectionTicket, messages: Vec<crate::session::logic::ToLogic>) {
         // The worker calls this; it must not count as a main-thread call.
         let mut log = self.log.lock().unwrap();
@@ -513,15 +508,13 @@ fn loaded_images(host: &ViewHost<Fake>) -> usize {
     host.snapshot().map_or(0, |snapshot| snapshot.loaded_images)
 }
 
-/// A Logic frame as it now reaches the host: state as a typed write, the rest as a frame.
+/// A Logic frame as it now reaches the host: state as a typed write, the rest as a message.
 fn deliver(host: &ViewHost<Fake>, connection: ConnectionTicket, frame: serde_json::Value) {
     if frame["kind"]
         .as_str()
         .is_some_and(|kind| kind.starts_with("state."))
     {
         host.write_state(connection, state_write(&frame));
-    } else if matches!(frame["kind"].as_str(), Some("helloAck" | "ready")) {
-        host.receive(connection, frame.to_string());
     } else {
         host.deliver(
             connection,
@@ -1268,7 +1261,7 @@ fn the_caret_blinks_on_a_host_timer_and_text_changes_restart_its_phase() {
 }
 
 #[test]
-fn connections_say_hello_and_report_an_overdue_bootstrap() {
+fn connections_report_connected_and_an_overdue_bootstrap() {
     let worker = ViewWorker::spawn("test-view").unwrap();
     let platform = Platform::new(&[&worker]);
     let host = platform.host(
@@ -1281,15 +1274,16 @@ fn connections_say_hello_and_report_an_overdue_bootstrap() {
     host.set_visible(true);
     platform.settle(&[&host]);
     let connection = ConnectionTicket::new(1);
-    host.connect(connection, "nonce".into());
+    host.connect(connection);
     platform.settle(&[&host]);
-    let hello: serde_json::Value =
-        serde_json::from_str(&host.adapter().log.lock().unwrap().messages[0].1).unwrap();
-    assert_eq!(hello["kind"], "hello");
-    assert_eq!(hello["nonce"], "nonce");
+    if bounded_jobs() {
+        let connected: serde_json::Value =
+            serde_json::from_str(&host.adapter().log.lock().unwrap().messages[0].1).unwrap();
+        assert_eq!(connected["kind"], "connected");
+    }
     assert!(
         host.adapter().log.lock().unwrap().presented.is_empty(),
-        "a Logic page waits for ready and state"
+        "a Logic page waits for its state"
     );
     platform.advance(Duration::from_secs(5));
     assert_eq!(
@@ -1305,19 +1299,10 @@ fn connections_say_hello_and_report_an_overdue_bootstrap() {
             .iter()
             .any(|w| w.starts_with("UI_BOOTSTRAP_TIMEOUT:"))
     );
-    host.receive(
-        connection,
-        serde_json::json!({"v":2,"kind":"helloAck","nonce":"nonce","protocol":2,"sessionId":"s"})
-            .to_string(),
-    );
     deliver(
         &host,
         connection,
         serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"count":3}}),
-    );
-    host.receive(
-        connection,
-        serde_json::json!({"v":2,"kind":"ready","sessionId":"s"}).to_string(),
     );
     platform.settle(&[&host]);
     if bounded_jobs() {
@@ -1327,7 +1312,7 @@ fn connections_say_hello_and_report_an_overdue_bootstrap() {
             Some(&false)
         );
         // A superseded connection's frames are ignored.
-        host.connect(ConnectionTicket::new(2), "next".into());
+        host.connect(ConnectionTicket::new(2));
         deliver(
             &host,
             connection,
@@ -1357,12 +1342,8 @@ fn a_state_write_is_acknowledged_once_a_frame_showing_it_is_built() {
     );
     host.set_visible(true);
     let connection = ConnectionTicket::new(1);
-    host.connect(connection, "nonce".into());
-    for frame in [
-        serde_json::json!({"v":2,"kind":"helloAck","nonce":"nonce","protocol":2,"sessionId":"s"}),
-        serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"count":3}}),
-        serde_json::json!({"v":2,"kind":"ready","sessionId":"s"}),
-    ] {
+    host.connect(connection);
+    for frame in [serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"count":3}})] {
         deliver(&host, connection, frame);
     }
     platform.settle(&[&host]);
@@ -2040,12 +2021,8 @@ fn automation_calls_page_actions_and_reads_data_once_the_frame_commits() {
     );
     host.set_visible(true);
     let connection = ConnectionTicket::new(1);
-    host.connect(connection, "nonce".into());
-    for frame in [
-        serde_json::json!({"v":2,"kind":"helloAck","nonce":"nonce","protocol":2,"sessionId":"s"}),
-        serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"count":1}}),
-        serde_json::json!({"v":2,"kind":"ready","sessionId":"s"}),
-    ] {
+    host.connect(connection);
+    for frame in [serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"count":1}})] {
         deliver(&host, connection, frame);
     }
     platform.settle(&[&host]);
@@ -2160,12 +2137,8 @@ fn fill_and_pick(dev: bool, swap: bool, logic: bool) {
     host.set_visible(true);
     if logic {
         let connection = ConnectionTicket::new(1);
-        host.connect(connection, "nonce".into());
-        for frame in [
-            serde_json::json!({"v":2,"kind":"helloAck","nonce":"nonce","protocol":2,"sessionId":"s"}),
-            serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"n":0}}),
-            serde_json::json!({"v":2,"kind":"ready","sessionId":"s"}),
-        ] {
+        host.connect(connection);
+        for frame in [serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"n":0}})] {
             deliver(&host, connection, frame);
         }
     }
@@ -2249,12 +2222,8 @@ fn logic_feedback_calls_draw_in_the_view_and_answer_like_the_webview() {
         .value["reducedMotion"] = serde_json::json!(true);
     host.set_visible(true);
     let connection = ConnectionTicket::new(1);
-    host.connect(connection, "nonce".into());
-    for frame in [
-        serde_json::json!({"v":2,"kind":"helloAck","nonce":"nonce","protocol":2,"sessionId":"s"}),
-        serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"n":0}}),
-        serde_json::json!({"v":2,"kind":"ready","sessionId":"s"}),
-    ] {
+    host.connect(connection);
+    for frame in [serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"n":0}})] {
         deliver(&host, connection, frame);
     }
     platform.settle(&[&host]);
@@ -2409,12 +2378,8 @@ fn abandoned_automation_calls_expire_instead_of_exhausting_the_slots() {
     );
     host.set_visible(true);
     let connection = ConnectionTicket::new(1);
-    host.connect(connection, "nonce".into());
-    for frame in [
-        serde_json::json!({"v":2,"kind":"helloAck","nonce":"nonce","protocol":2,"sessionId":"s"}),
-        serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"n":0}}),
-        serde_json::json!({"v":2,"kind":"ready","sessionId":"s"}),
-    ] {
+    host.connect(connection);
+    for frame in [serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"n":0}})] {
         deliver(&host, connection, frame);
     }
     platform.settle(&[&host]);

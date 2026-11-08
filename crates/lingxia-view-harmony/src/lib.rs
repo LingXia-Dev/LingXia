@@ -27,7 +27,6 @@ pub trait Shell: Send + Sync + 'static {
     fn loaded(&self, token: i64);
     /// A frame for `connection` reached the screen; 0 is a standalone page.
     fn presented(&self, token: i64, connection: u64);
-    fn message(&self, token: i64, connection: u64, message: &str);
     /// The View worker thread: what the View sends Logic for `connection`, in order.
     fn logic(
         &self,

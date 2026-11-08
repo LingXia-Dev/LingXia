@@ -41,6 +41,7 @@ pub(crate) fn from_view(signal: StateSignal) -> GpuStateSignal {
 
 pub(crate) fn event_from_view(message: ToLogic) -> GpuViewEvent {
     match message {
+        ToLogic::Connected => GpuViewEvent::Connected,
         ToLogic::Call {
             id,
             method,

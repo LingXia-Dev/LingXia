@@ -777,21 +777,6 @@ impl HostEvents for AndroidAdapter {
             );
         }
     }
-    fn message(&self, connection: ConnectionTicket, message: &str) {
-        self.java(|env, platform| {
-            let message = env.new_string(message)?;
-            env.call_method(
-                platform,
-                jni_str!("message"),
-                jni_sig!("(JLjava/lang/String;)V"),
-                &[
-                    JValue::Long(connection.get() as i64),
-                    JValue::Object(&message),
-                ],
-            )?;
-            Ok(())
-        })
-    }
     fn state(
         &self,
         connection: ConnectionTicket,

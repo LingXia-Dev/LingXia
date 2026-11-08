@@ -122,8 +122,7 @@ pub fn register_natives(env: &mut Env, class: &JClass) -> jni::errors::Result<()
         method!("nativeVsyncAt", "(JJJ)V", vsync_at),
         method!("nativeInputAge", "(JJ)V", input_age),
         method!("nativeRetry", "(J)V", retry),
-        method!("nativeConnect", "(JJLjava/lang/String;)V", connect),
-        method!("nativeReceive", "(JJLjava/lang/String;)V", receive),
+        method!("nativeConnect", "(JJ)V", connect),
         method!(
             "nativeRequestLeave",
             "(JJLjava/lang/String;)V",
@@ -417,25 +416,9 @@ extern "system" fn connect<'a>(
     _: JClass<'a>,
     handle: jlong,
     connection: jlong,
-    nonce: JString<'a>,
 ) {
-    run(&mut env, |env| {
-        let nonce = text(env, &nonce)?;
-        host(handle)?.connect(connection_ticket(connection)?, nonce);
-        Ok(())
-    })
-}
-
-extern "system" fn receive<'a>(
-    mut env: EnvUnowned<'a>,
-    _: JClass<'a>,
-    handle: jlong,
-    connection: jlong,
-    frame: JString<'a>,
-) {
-    run(&mut env, |env| {
-        let frame = text(env, &frame)?;
-        host(handle)?.receive(connection_ticket(connection)?, frame);
+    run(&mut env, |_| {
+        host(handle)?.connect(connection_ticket(connection)?);
         Ok(())
     })
 }

@@ -110,9 +110,6 @@ impl Shell for Bridge {
     fn presented(&self, token: i64, connection: u64) {
         gpu_page::presented(token, connection);
     }
-    fn message(&self, token: i64, connection: u64, message: &str) {
-        gpu_page::message(token, connection, message);
-    }
     fn logic(
         &self,
         token: i64,
@@ -214,25 +211,9 @@ struct HarmonyPage {
 }
 
 impl NativePage for HarmonyPage {
-    fn connect(
-        &self,
-        generation: GpuViewGeneration,
-        nonce: &str,
-    ) -> std::result::Result<(), LxAppError> {
-        let nonce = nonce.to_owned();
+    fn connect(&self, generation: GpuViewGeneration) -> std::result::Result<(), LxAppError> {
         on_page(self.token, move |page| {
-            page.with_host(|host| host.connect(ConnectionTicket::new(generation.get()), nonce));
-        });
-        Ok(())
-    }
-    fn receive(
-        &self,
-        generation: GpuViewGeneration,
-        frame: &str,
-    ) -> std::result::Result<(), LxAppError> {
-        let frame = frame.to_owned();
-        on_page(self.token, move |page| {
-            page.with_host(|host| host.receive(ConnectionTicket::new(generation.get()), frame));
+            page.with_host(|host| host.connect(ConnectionTicket::new(generation.get())));
         });
         Ok(())
     }

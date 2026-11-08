@@ -16,6 +16,8 @@ pub struct BridgeError {
 /// What the View sends Logic: page actions, streams, channels, and answers to its requests.
 #[derive(Debug, PartialEq)]
 pub enum ToLogic {
+    /// The View took the connection: its state is empty and its actions go to Logic.
+    Connected,
     /// A page action or stream, or one of the page-owned `host.navigation.*` controls.
     /// `sent_us` is the debug-build probe stamp, 0 otherwise.
     Call {
@@ -135,6 +137,7 @@ impl ToLogic {
     pub(crate) fn frame(&self) -> Value {
         use serde_json::json;
         let mut frame = match self {
+            Self::Connected => json!({"v":2,"kind":"connected"}),
             Self::Call {
                 id, method, params, ..
             } => {
@@ -359,10 +362,10 @@ impl ViewRequest {
             }
         };
         let params = params.done();
-        Ok(Build::new(ctx)
+        Build::new(ctx)
             .set("id", id)?
             .set("method", method)?
-            .done_with("params", params)?)
+            .done_with("params", params)
     }
 }
 

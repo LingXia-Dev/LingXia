@@ -16,7 +16,6 @@ public final class GpuPage extends FrameLayout {
     /** A presented frame; true once the page took it as its first, so reports stop until the next connection. */
     private static native boolean presented(long token, long generation);
     private static native boolean restart(long token, long generation);
-    private static native void message(long token, long generation, String frame);
     private static native void automationReply(long replyId, String reply);
     private static final String INACTIVE = "{\"error\":\"page is not active: the GPU page was disposed\"}";
     private final String appId, path, webTag;
@@ -43,7 +42,6 @@ public final class GpuPage extends FrameLayout {
                         android.util.Log.d("LingXia.Nav", "first frame of " + webTag + " not its current view's; reporting the next");
                     }
                 }
-                public void onMessage(long generation, String frame) { message(token, generation, frame); }
                 public boolean onRestart(long generation) { return restart(token, generation); }
                 public void onChrome(GpuView.Chrome chrome) {
                     if (chromeListener != null) chromeListener.accept(GpuPage.this, chrome);
@@ -107,15 +105,11 @@ public final class GpuPage extends FrameLayout {
         });
     }
 
-    public static void connect(long token, long generation, String nonce) {
-        MAIN.post(() -> { GpuPage page = PAGES.get(token); if (page != null) { page.frameReported = false; page.frameWaitLogged = false; page.content.connect(generation, nonce); } });
+    public static void connect(long token, long generation) {
+        MAIN.post(() -> { GpuPage page = PAGES.get(token); if (page != null) { page.frameReported = false; page.frameWaitLogged = false; page.content.connect(generation); } });
     }
     public static void requestLeave(long token, long generation, String reason) {
         MAIN.post(() -> { GpuPage page = PAGES.get(token); if (page != null) page.content.requestLeave(generation, reason); });
-    }
-
-    public static void receive(long token, long generation, String frame) {
-        MAIN.post(() -> { GpuPage page = PAGES.get(token); if (page != null) page.content.receive(generation, frame); });
     }
 
     /** Automation runs on the main thread, after the frames already posted there. */

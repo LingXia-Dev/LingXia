@@ -1,4 +1,4 @@
-//! The Logic bridge: connection handshake, inbound frames, Logic actions and
+//! The Logic bridge: connection, typed Logic messages and state, Logic actions and
 //! the bootstrap deadline.
 use super::{BOOTSTRAP, Guard, Inner};
 
@@ -166,7 +166,7 @@ impl<A: PlatformAdapter> Inner<A> {
         );
     }
 
-    pub(super) fn connect(self: &Arc<Self>, connection: ConnectionTicket, nonce: String) {
+    pub(super) fn connect(self: &Arc<Self>, connection: ConnectionTicket) {
         if self.main().disposed || !self.lifecycle.connect(connection) {
             return;
         }
@@ -188,32 +188,30 @@ impl<A: PlatformAdapter> Inner<A> {
                 {
                     inner
                         .adapter
-                        .warn("UI_BOOTSTRAP_TIMEOUT: bridge ready and initial state not received within 5 seconds");
+                        .warn("UI_BOOTSTRAP_TIMEOUT: initial state not received within 5 seconds");
                     inner.adapter.bootstrap_overdue(true);
                 }
             }),
         );
         self.work(
             Guard::Connection(connection),
-            move |_, session| Ok(session.begin_bridge(&nonce)?.to_string()),
-            move |inner, result| match result {
-                Some(Ok(hello)) if inner.lifecycle.is_current_connection(connection) => {
-                    inner.adapter.message(connection, &hello);
+            // Logic loads the page only after this, so its first write finds the View connected.
+            move |inner, session| {
+                session.begin_bridge()?;
+                if inner.lifecycle.is_current_connection(connection) {
+                    inner
+                        .adapter
+                        .logic(connection, vec![crate::session::logic::ToLogic::Connected]);
                 }
+                Ok(())
+            },
+            move |inner, result| match result {
                 Some(Err(error)) if inner.lifecycle.is_current_connection(connection) => {
                     inner.fail(error);
                 }
                 _ => {}
             },
         );
-    }
-
-    pub(super) fn receive(self: &Arc<Self>, connection: ConnectionTicket, frame: String) {
-        self.bridge_step(connection, move |inner, session| {
-            let frame = serde_json::from_str(&frame).map_err(|e| format!("UI_BRIDGE: {e}"))?;
-            let state = session.receive_bridge(&frame)?;
-            update(inner, session, state)
-        });
     }
 
     pub(super) fn deliver_logic(

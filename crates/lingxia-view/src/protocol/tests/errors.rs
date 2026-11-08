@@ -31,8 +31,16 @@ fn host_inputs_outside_their_contract_fail_by_code() {
         code(page.set_environment(json!({"palette": {"revision": 1, "colors": ["red"]}}))),
         "UI_ENVIRONMENT"
     );
-    assert_eq!(code(page.begin_bridge("")), "UI_BRIDGE");
-    assert_eq!(code(page.receive_bridge(&json!({"v": 3}))), "UI_BRIDGE");
+    assert_eq!(
+        code(
+            page.receive_logic(crate::session::logic::ToView::ChannelClose {
+                id: "c".into(),
+                code: None,
+                reason: None,
+            })
+        ),
+        "UI_BRIDGE"
+    );
     assert_eq!(
         code(
             page.write_state(crate::session::state::StateWrite::Snapshot {

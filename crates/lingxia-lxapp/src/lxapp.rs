@@ -5072,9 +5072,6 @@ mod manifest_reload_tests {
         std::sync::Mutex<Vec<String>>,
     );
     impl crate::GpuPageView for FactoryEndpoint {
-        fn post_message(&self, _: &str) -> Result<(), LxAppError> {
-            Ok(())
-        }
         fn deliver(
             &self,
             generation: crate::GpuViewGeneration,
@@ -5084,14 +5081,6 @@ mod manifest_reload_tests {
                 .lock()
                 .unwrap()
                 .push((generation, format!("{message:?}")));
-            Ok(())
-        }
-        fn post_message_for_generation(
-            &self,
-            generation: crate::GpuViewGeneration,
-            message: &str,
-        ) -> Result<(), LxAppError> {
-            self.1.lock().unwrap().push((generation, message.into()));
             Ok(())
         }
         fn write_state(
@@ -5112,7 +5101,7 @@ mod manifest_reload_tests {
             self.2.lock().unwrap().push("reload".into());
             Ok(())
         }
-        fn connect(&self, generation: crate::GpuViewGeneration, _: &str) -> Result<(), LxAppError> {
+        fn connect(&self, generation: crate::GpuViewGeneration) -> Result<(), LxAppError> {
             self.2
                 .lock()
                 .unwrap()
@@ -5197,7 +5186,7 @@ mod manifest_reload_tests {
         assert!(events[1].starts_with("connect:"));
         assert_ne!(events[1], format!("connect:{}", previous.get()));
         assert!(
-            page.handle_incoming_gpu_message(&endpoint, previous, "not JSON")
+            page.gpu_view_event(&endpoint, previous, crate::GpuViewEvent::Connected)
                 .unwrap_err()
                 .to_string()
                 .contains("stale GPU connection")
@@ -5208,30 +5197,17 @@ mod manifest_reload_tests {
     }
 
     #[test]
-    fn gpu_bridge_handshake_preserves_the_native_connection_and_replies_to_denied_calls() {
+    fn gpu_bridge_connects_once_per_generation_and_replies_to_denied_calls() {
         let (_temp, _app, page) = gpu_factory_fixture();
         let concrete = Arc::new(FactoryEndpoint::default());
         let endpoint: Arc<dyn crate::GpuPageView> = concrete.clone();
         page.attach_gpu_view(endpoint.clone()).unwrap();
         let generation = page.bridge().bind_gpu(&page, &endpoint).unwrap();
-        let hello = serde_json::json!({"v":2,"kind":"hello","nonce":page.bridge_nonce().unwrap(),"role":"view","protocolsSupported":[2]}).to_string();
-        page.handle_incoming_gpu_message(&endpoint, generation, &hello)
+        page.gpu_view_event(&endpoint, generation, crate::GpuViewEvent::Connected)
             .unwrap();
-        let frames: Vec<serde_json::Value> = concrete
-            .1
-            .lock()
-            .unwrap()
-            .iter()
-            .map(|(actual, text)| {
-                assert_eq!(*actual, generation);
-                serde_json::from_str(text).unwrap()
-            })
-            .collect();
-        assert_eq!(frames[0]["kind"], "helloAck");
-        assert_eq!(frames[1]["kind"], "ready");
-        assert_eq!(frames[0]["sessionId"], frames[1]["sessionId"]);
+        assert!(concrete.1.lock().unwrap().is_empty());
         assert!(
-            page.handle_incoming_gpu_message(&endpoint, generation, &hello)
+            page.gpu_view_event(&endpoint, generation, crate::GpuViewEvent::Connected)
                 .is_err()
         );
         page.gpu_view_event(
@@ -5272,7 +5248,7 @@ mod manifest_reload_tests {
     }
 
     #[test]
-    fn gpu_bridge_rejects_stale_generation_and_wrong_endpoint_before_decode() {
+    fn gpu_bridge_rejects_stale_generation_and_wrong_endpoint() {
         let (_temp, _app, page) = gpu_factory_fixture();
         let endpoint: Arc<dyn crate::GpuPageView> = Arc::new(FactoryEndpoint::default());
         let other: Arc<dyn crate::GpuPageView> = Arc::new(FactoryEndpoint::default());
@@ -5280,26 +5256,18 @@ mod manifest_reload_tests {
         let first = page.bridge().bind_gpu(&page, &endpoint).unwrap();
         let second = page.bridge().bind_gpu(&page, &endpoint).unwrap();
         assert_ne!(first, second);
-        let error = page
-            .handle_incoming_gpu_message(&endpoint, first, "not JSON")
-            .unwrap_err();
+        let connected = |endpoint: &Arc<dyn crate::GpuPageView>, generation| {
+            page.gpu_view_event(endpoint, generation, crate::GpuViewEvent::Connected)
+        };
+        let error = connected(&endpoint, first).unwrap_err();
         assert!(error.to_string().contains("stale GPU connection"));
-        let error = page
-            .handle_incoming_gpu_message(&other, second, "not JSON")
-            .unwrap_err();
+        let error = connected(&other, second).unwrap_err();
         assert!(error.to_string().contains("no longer attached"));
         page.bridge().cancel_gpu_generation(&page, first);
-        let error = page
-            .handle_incoming_gpu_message(&endpoint, second, "not JSON")
-            .unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("invalid bridge protocol envelope")
-        );
+        connected(&endpoint, second).unwrap();
         page.detach_webview();
         assert!(
-            page.handle_incoming_gpu_message(&endpoint, second, "not JSON")
+            connected(&endpoint, second)
                 .unwrap_err()
                 .to_string()
                 .contains("no longer attached")
@@ -5533,23 +5501,12 @@ mod manifest_reload_tests {
             #[derive(Default)]
             struct Endpoint(Mutex<Vec<String>>);
             impl GpuPageView for Endpoint {
-                fn post_message(&self, message: &str) -> Result<(), LxAppError> {
-                    self.0.lock().unwrap().push(message.into());
-                    Ok(())
-                }
                 fn deliver(
                     &self,
                     _: crate::GpuViewGeneration,
                     _: crate::GpuViewMessage,
                 ) -> Result<(), LxAppError> {
                     Ok(())
-                }
-                fn post_message_for_generation(
-                    &self,
-                    _: crate::GpuViewGeneration,
-                    message: &str,
-                ) -> Result<(), LxAppError> {
-                    self.post_message(message)
                 }
                 fn write_state(
                     &self,
@@ -5558,7 +5515,7 @@ mod manifest_reload_tests {
                 ) -> Result<(), LxAppError> {
                     Ok(())
                 }
-                fn connect(&self, _: crate::GpuViewGeneration, _: &str) -> Result<(), LxAppError> {
+                fn connect(&self, _: crate::GpuViewGeneration) -> Result<(), LxAppError> {
                     Ok(())
                 }
                 fn request_leave(&self, _: crate::LeaveReason) -> Result<(), LxAppError> {
@@ -5598,7 +5555,7 @@ mod manifest_reload_tests {
             assert!(page.has_live_view());
             assert!(page.webview().is_none());
             assert!(page.attach_gpu_view(endpoint.clone()).is_err());
-            page.post_message_to_view("snapshot".into()).unwrap();
+            assert!(page.post_message_to_view("frame".into()).is_err());
             assert!(
                 page.post_message_to_document(
                     lingxia_webview::DocumentGeneration::for_test(1),
@@ -5621,11 +5578,10 @@ mod manifest_reload_tests {
             assert!(!page.has_live_view());
             assert!(page.post_message_to_view("stale".into()).is_err());
             let events = endpoint.0.lock().unwrap();
-            assert_eq!(events.len(), 6);
-            assert_eq!(events[0], "snapshot");
-            assert!(events[1].contains("SurfaceContext") && events[1].contains("revision: 7"));
-            assert!(events[2].contains("zh-CN") && events[2].contains("revision: 8"));
-            assert_eq!(&events[3..], ["park", "reload", "dispose"]);
+            assert_eq!(events.len(), 5);
+            assert!(events[0].contains("SurfaceContext") && events[0].contains("revision: 7"));
+            assert!(events[1].contains("zh-CN") && events[1].contains("revision: 8"));
+            assert_eq!(&events[2..], ["park", "reload", "dispose"]);
         }
         assert_eq!(config.page_orientation, Some(crate::PageOrientation::Auto));
         assert_eq!(app.app_session_class(), crate::AppSessionClass::StandardApp);

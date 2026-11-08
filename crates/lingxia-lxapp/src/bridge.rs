@@ -396,15 +396,9 @@ impl OutboundContext {
             } => {
                 transport.post_message_to_document(*expected_generation, Arc::clone(gate), message)
             }
-            Self::Gpu {
-                endpoint,
-                generation,
-            } => {
-                let endpoint = endpoint
-                    .upgrade()
-                    .ok_or_else(|| LxAppError::Bridge("GPU endpoint was disposed".into()))?;
-                endpoint.post_message_for_generation(*generation, &message)
-            }
+            Self::Gpu { .. } => Err(LxAppError::Bridge(
+                "a GPU View takes typed messages only".into(),
+            )),
         }
     }
 }
@@ -1193,6 +1187,26 @@ impl PageBridge {
         };
         let context = &BridgeMessageContext::Gpu;
         match event {
+            crate::GpuViewEvent::Connected => {
+                let Some(work_id) = work.work_id.filter(|_| !ready) else {
+                    return Err(LxAppError::Bridge("repeated GPU connection".into()));
+                };
+                if !self.set_ready_if_current(work_id, self.new_session_id()) {
+                    return Ok(());
+                }
+                if let Err(err) = self.forward_js_message(
+                    page,
+                    AppServiceCommand::Ready {
+                        work_id: work.work_id,
+                        outbound: work.outbound.clone(),
+                    },
+                ) {
+                    crate::warn!("bridge ready bootstrap failed: {}", err)
+                        .with_appid(page.appid())
+                        .with_path(page.path());
+                }
+                Ok(())
+            }
             crate::GpuViewEvent::Call {
                 id,
                 method,
@@ -1278,65 +1292,6 @@ impl PageBridge {
                 Ok(())
             }
         }
-    }
-
-    pub(crate) fn handle_gpu_incoming(
-        &self,
-        page: &PageInstance,
-        endpoint: &Arc<dyn crate::GpuPageView>,
-        generation: crate::GpuViewGeneration,
-        frame: &str,
-    ) -> Result<(), LxAppError> {
-        // Admission precedes parsing; JavaScript cannot select either the endpoint or generation.
-        {
-            let handshake = self.inner.handshake.lock().unwrap();
-            let valid = handshake.connection.as_ref().is_some_and(|connection| {
-                matches!(connection.outbound.as_ref(), Some(OutboundContext::Gpu { endpoint: expected, generation: current })
-                    if *current == generation && expected.upgrade().is_some_and(|expected| Arc::ptr_eq(&expected, endpoint)))
-            });
-            if !valid {
-                return Err(LxAppError::Bridge("stale GPU connection".into()));
-            }
-        }
-        let decoded = self.predecode_inbound(frame)?;
-        if decoded.bound_v3 || decoded.work.work_id != Some(SessionWorkId(generation.0)) {
-            return Err(LxAppError::Bridge(
-                "GPU connection changed during admission".into(),
-            ));
-        }
-        if let IncomingMessage::Req(request) = &decoded.message
-            && request
-                .method
-                .strip_prefix("host.")
-                .is_some_and(|route| !gpu_view_control_route(route))
-        {
-            return self.send_res_err_for_context(
-                page,
-                decoded.work.work_id,
-                decoded.work.outbound.as_ref(),
-                request.id.clone(),
-                "E_PERMISSION_DENIED",
-                Some("GPU View host calls require a Logic action".into()),
-                None,
-            );
-        }
-        if let IncomingMessage::ChOpen(request) = &decoded.message
-            && request.topic.contains('.')
-        {
-            return self.send_ch_ack_err_for_context(
-                page,
-                decoded.work.work_id,
-                decoded.work.outbound.as_ref(),
-                request.id.clone(),
-                "E_PERMISSION_DENIED",
-                Some("GPU View channels require a page Logic handler".into()),
-                None,
-            );
-        }
-        if matches!(decoded.message, IncomingMessage::Notify(_)) {
-            return Err(LxAppError::Bridge("unsupported GPU ingress frame".into()));
-        }
-        self.execute_decoded_incoming(page, &BridgeMessageContext::Gpu, decoded)
     }
 
     pub(crate) fn handle_incoming(
@@ -1796,13 +1751,9 @@ impl PageBridge {
                 context.document(),
             )?,
             BridgeMessageContext::Gpu => {
-                let handshake = self.inner.handshake.lock().unwrap();
-                if handshake.ready
-                    || !connection_matches_work(handshake.connection.as_ref(), decoded.work.work_id)
-                {
-                    return Err(LxAppError::Bridge("stale or repeated GPU hello".into()));
-                }
-                handshake.connection.clone()
+                return Err(LxAppError::Bridge(
+                    "a GPU View connects without hello".into(),
+                ));
             }
         };
         let Some(connection) = connection else {
@@ -3443,9 +3394,6 @@ mod tests {
         #[derive(Default)]
         struct Endpoint(Mutex<Vec<(u64, String)>>);
         impl crate::GpuPageView for Endpoint {
-            fn post_message(&self, _: &str) -> Result<(), LxAppError> {
-                panic!("unbound delivery")
-            }
             fn write_state(
                 &self,
                 generation: crate::GpuViewGeneration,
@@ -3459,23 +3407,16 @@ mod tests {
             }
             fn deliver(
                 &self,
-                _: crate::GpuViewGeneration,
-                _: crate::GpuViewMessage,
-            ) -> Result<(), LxAppError> {
-                Ok(())
-            }
-            fn post_message_for_generation(
-                &self,
                 generation: crate::GpuViewGeneration,
-                frame: &str,
+                message: crate::GpuViewMessage,
             ) -> Result<(), LxAppError> {
                 self.0
                     .lock()
                     .unwrap()
-                    .push((generation.get(), frame.into()));
+                    .push((generation.get(), format!("{message:?}")));
                 Ok(())
             }
-            fn connect(&self, _: crate::GpuViewGeneration, _: &str) -> Result<(), LxAppError> {
+            fn connect(&self, _: crate::GpuViewGeneration) -> Result<(), LxAppError> {
                 Ok(())
             }
             fn request_leave(&self, _: crate::LeaveReason) -> Result<(), LxAppError> {
@@ -3508,8 +3449,19 @@ mod tests {
             generation: crate::GpuViewGeneration(42),
         };
         assert!(outbound.binding().is_none());
-        outbound.post(&OtherTransport, "reply".into()).unwrap();
-        assert_eq!(*target.0.lock().unwrap(), vec![(42, "reply".into())]);
+        assert!(outbound.post(&OtherTransport, "frame".into()).is_err());
+        outbound
+            .post_gpu(crate::GpuViewMessage::ChannelClose {
+                id: "c".into(),
+                code: None,
+                reason: None,
+            })
+            .unwrap();
+        let reply = target.0.lock().unwrap()[0].clone();
+        assert!(
+            reply.0 == 42 && reply.1.starts_with("ChannelClose"),
+            "{reply:?}"
+        );
         let ops: Vec<crate::GpuPatchOp> = serde_json::from_str(
             r#"[{"op":"replace","path":"/n","value":1},{"op":"remove","path":"/m"}]"#,
         )
@@ -3535,7 +3487,15 @@ mod tests {
         );
         drop(endpoint);
         drop(target);
-        assert!(outbound.post(&OtherTransport, "late".into()).is_err());
+        assert!(
+            outbound
+                .post_gpu(crate::GpuViewMessage::ChannelClose {
+                    id: "late".into(),
+                    code: None,
+                    reason: None,
+                })
+                .is_err()
+        );
     }
 
     #[derive(Debug, PartialEq, Eq)]

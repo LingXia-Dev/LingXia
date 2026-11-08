@@ -1,8 +1,7 @@
 use super::*;
 
 impl ViewSession {
-    /// A typed Logic state write. It needs no acknowledged session: it arrives in process,
-    /// guarded by its connection, and may overtake the handshake frames.
+    /// A typed Logic state write, already checked against its connection on the way in.
     pub fn write_state(
         &mut self,
         write: crate::session::state::StateWrite,
@@ -12,92 +11,31 @@ impl ViewSession {
         Ok(update)
     }
 
-    /// Called by native after attaching this context to its owning page endpoint.
-    pub fn begin_bridge(&mut self, nonce: &str) -> Result<serde_json::Value, String> {
-        if nonce.is_empty() || nonce.len() > 256 {
-            return Err("UI_BRIDGE: invalid nonce".into());
-        }
+    /// Called by native for a fresh Logic connection: the page starts over without state
+    /// and its actions go to the new connection.
+    pub fn begin_bridge(&mut self) -> Result<(), String> {
         self.reset()?;
         self.state = crate::session::state::StateReplica::default();
-        self.bridge = Some(ViewBridge {
-            nonce: nonce.into(),
-            session: None,
-            ready: false,
-        });
-        Ok(
-            serde_json::json!({"v":2,"kind":"hello","nonce":nonce,"role":"view","protocolsSupported":[2]}),
-        )
+        self.connected = false;
+        require_bounded_jobs()?;
+        self.eval("__lingxiaConfigureActions(globalThis.__lingxiaActionCatalog)")?;
+        self.connected = true;
+        Ok(())
     }
 
     pub fn ready_to_render(&self) -> bool {
-        self.state.data().is_some() && self.bridge.as_ref().is_none_or(|bridge| bridge.ready)
+        self.state.data().is_some()
     }
 
-    pub fn receive_bridge(
-        &mut self,
-        frame: &serde_json::Value,
-    ) -> Result<crate::session::state::StateUpdate, String> {
-        if frame["v"] != 2 {
-            return Err("UI_BRIDGE: expected LegacyV2".into());
-        }
-        let bridge = self
-            .bridge
-            .as_ref()
-            .ok_or("UI_BRIDGE: context is not connected")?;
-        let kind = frame["kind"].as_str().ok_or("UI_BRIDGE: missing kind")?;
-        match kind {
-            "helloAck" => {
-                let session = frame["sessionId"]
-                    .as_str()
-                    .filter(|s| !s.is_empty() && s.len() <= 256)
-                    .ok_or("UI_BRIDGE: invalid session")?;
-                if bridge.session.is_some()
-                    || frame["nonce"] != bridge.nonce
-                    || frame["protocol"] != 2
-                {
-                    return Err("UI_BRIDGE: invalid hello acknowledgement".into());
-                }
-                self.bridge.as_mut().unwrap().session = Some(session.into());
-                Ok(crate::session::state::StateUpdate::default())
-            }
-            "ready" => {
-                if bridge
-                    .session
-                    .as_deref()
-                    .is_none_or(|id| frame["sessionId"] != id)
-                    || bridge.ready
-                {
-                    return Err("UI_BRIDGE: invalid ready".into());
-                }
-                require_bounded_jobs()?;
-                self.eval("__lingxiaConfigureActions(globalThis.__lingxiaActionCatalog)")?;
-                self.bridge.as_mut().unwrap().ready = true;
-                Ok(crate::session::state::StateUpdate {
-                    changed: self.ready_to_render(),
-                    outbound: Vec::new(),
-                    ..Default::default()
-                })
-            }
-            _ if bridge.session.is_none() || frame.get("sessionId").is_some() => {
-                Err("UI_BRIDGE: frame outside acknowledged LegacyV2 connection".into())
-            }
-            _ => Err("UI_BRIDGE: unsupported frame".into()),
-        }
-    }
-
-    /// A typed message from Logic for this acknowledged connection: a reply, stream or channel
+    /// A typed message from Logic for this connection: a reply, stream or channel
     /// message for the runtime, or a request the overlays answer.
     pub fn receive_logic(
         &mut self,
         message: crate::session::logic::ToView,
     ) -> Result<crate::session::state::StateUpdate, String> {
         use crate::session::logic::{ToLogic, ToView};
-        if self
-            .bridge
-            .as_ref()
-            .is_none_or(|bridge| bridge.session.is_none())
-        {
-            return Err("UI_BRIDGE: message outside an acknowledged connection".into());
+        if !self.connected {
+            return Err("UI_BRIDGE: message outside a connection".into());
         }
         let (changed, outbound) = self.execute(|| {
             let ctx = &self.context;
@@ -131,17 +69,13 @@ impl ViewSession {
         })
     }
 
-    /// A handshake frame, or a Logic message written as its frame.
+    /// A Logic message written as its frame.
     #[cfg(test)]
     pub(crate) fn receive_frame(
         &mut self,
         frame: &serde_json::Value,
     ) -> Result<crate::session::state::StateUpdate, String> {
-        if matches!(frame["kind"].as_str(), Some("helloAck" | "ready")) || frame["v"] != 2 {
-            self.receive_bridge(frame)
-        } else {
-            self.receive_logic(crate::session::logic::ToView::from_frame(frame))
-        }
+        self.receive_logic(crate::session::logic::ToView::from_frame(frame))
     }
 
     /// Toast deadlines the overlays asked for since the last call: `(token, milliseconds)`.

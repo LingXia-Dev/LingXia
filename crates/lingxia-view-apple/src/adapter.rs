@@ -477,9 +477,6 @@ impl HostEvents for AppleAdapter {
             .map_or(0, |host| host.lifecycle().connection().get());
         self.shell.presented(self.token, connection);
     }
-    fn message(&self, connection: ConnectionTicket, message: &str) {
-        self.shell.message(self.token, connection.get(), message);
-    }
     fn logic(
         &self,
         connection: ConnectionTicket,

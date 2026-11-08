@@ -59,8 +59,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     /** The input event delivered next happened {@code ageUs} ago. */
     static native void nativeInputAge(long host, long ageUs);
     static native void nativeRetry(long host);
-    static native void nativeConnect(long host, long connection, String nonce);
-    static native void nativeReceive(long host, long connection, String frame);
+    static native void nativeConnect(long host, long connection);
     static native void nativeRequestLeave(long host, long connection, String reason);
     static native long nativeConnection(long host);
     static native boolean nativeInputBlocked(long host);
@@ -109,7 +108,6 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         void onLoaded();
         void onFrame(String metadata);
         void onError(Throwable error);
-        default void onMessage(long generation, String frame) { }
         default boolean onRestart(long generation) { return false; }
         /** The host chrome this page asks for changed; it arrives before the frame it colours. */
         default void onChrome(Chrome chrome) { }
@@ -534,8 +532,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         nativeCopyTextSelection(host, callback);
     }
 
-    public void connect(long generation, String nonce) { if (!destroyed) nativeConnect(host, generation, nonce); }
-    public void receive(long generation, String frame) { if (!destroyed) nativeReceive(host, generation, frame); }
+    public void connect(long generation) { if (!destroyed) nativeConnect(host, generation); }
     public void requestLeave(long generation, String reason) { if (!destroyed) nativeRequestLeave(host, generation, reason); }
 
     private void showBootstrapMessage(boolean overdue) {
@@ -887,9 +884,6 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         @Override public void presented() {
             if (listener != null && snapshotText != null) listener.onFrame(snapshotText);
             finishPresentation(true);
-        }
-        @Override public void message(long connection, String message) {
-            if (listener != null) listener.onMessage(connection, message);
         }
         @Override public boolean restart(long connection) { return listener != null && listener.onRestart(connection); }
         @Override public void recovery(int message, int action, boolean retained, String error) {

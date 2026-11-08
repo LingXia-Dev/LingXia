@@ -48,7 +48,8 @@ pub struct ViewSession {
     /// Frames in a row that finished past their budget; each was dropped.
     overruns: Cell<u32>,
     environment: serde_json::Value,
-    bridge: Option<ViewBridge>,
+    /// Connected to Logic: its page actions are configured.
+    connected: bool,
     retained: Option<Arc<crate::scene::retained::RetainedLayout>>,
     /// Bumped whenever a frame commits a different retained layout.
     layout_revision: u64,
@@ -121,12 +122,6 @@ pub struct ClickRecord {
     pub reresolved: bool,
     /// Whether a callback ran, or why the click was refused.
     pub outcome: Result<bool, &'static str>,
-}
-
-struct ViewBridge {
-    nonce: String,
-    session: Option<String>,
-    ready: bool,
 }
 
 /// Prefix of a frame dropped for finishing past its budget; the page keeps running.
@@ -219,7 +214,7 @@ impl ViewSession {
             uncollected: Cell::new(0),
             eval_phases,
             overruns: Cell::new(0),
-            bridge: None,
+            connected: false,
             retained: None,
             layout_revision: 0,
             seen_commit: lifecycle::CommitTicket::new(0),
