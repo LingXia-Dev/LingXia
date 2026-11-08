@@ -23,5 +23,8 @@ export interface PerfActions {
   bench(request: BenchRequest): Promise<BenchResult>;
 }
 export interface BenchRequest { writes: number; requests: number; calls: number }
-/** `setDataUs`: Logic time of one unawaited `setData` of a 20-field record, µs. */
-export interface BenchResult { setDataUs: number }
+/**
+ * `setDataUs`: Logic time of one unawaited `setData` of a 20-field record, µs.
+ * `requestsSkipped`: why no `ui.*` requests ran (mobile shows toasts natively, not in the View).
+ */
+export interface BenchResult { setDataUs: number; requestsSkipped?: string }

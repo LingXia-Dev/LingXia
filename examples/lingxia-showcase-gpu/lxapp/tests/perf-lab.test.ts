@@ -230,5 +230,6 @@ spec('the bridge micro-benchmark runs its writes, requests and calls', { id: 'PE
   }
   pings.sort((a, b) => a - b);
   await t.attach('bench', { ...result, pingMs: { p50: pings[50], p95: pings[95] } });
+  if (result.requestsSkipped) await t.attach('requests-skipped', result.requestsSkipped);
   expect(result.setDataUs).toBeGreaterThan(0);
 });

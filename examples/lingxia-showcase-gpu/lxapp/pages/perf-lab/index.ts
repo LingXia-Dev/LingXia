@@ -18,14 +18,17 @@ Page({
       this.setData({ tick });
       await this.flush();
     }
-    for (let i = 0; i < requests; i++) await lx.hideToast().catch(() => undefined);
+    // Only desktop answers `ui.*` in the View; mobile shows toasts natively.
+    const os = lx.getDeviceInfo().osName;
+    const viewUi = os === 'macOS' || os === 'Windows';
+    if (viewUi) for (let i = 0; i < requests; i++) await lx.hideToast().catch(() => undefined);
     const record = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`field${i}`, `value ${i}`]));
     const started = Date.now();
     for (let i = 0; i < calls; i++) this.setData({ record: { ...record, field0: i } });
     const setDataUs = ((Date.now() - started) * 1000) / Math.max(1, calls);
     await this.flush();
     this.setData({ record: null });
-    return { setDataUs };
+    return viewUi ? { setDataUs } : { setDataUs, requestsSkipped: `${os} answers ui.* natively, not in the View` };
   },
   async run({ scene, ms, count }: DriveRequest) {
     const until = Date.now() + ms;
