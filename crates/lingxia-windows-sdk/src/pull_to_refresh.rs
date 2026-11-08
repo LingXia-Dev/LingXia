@@ -67,11 +67,11 @@ fn set_page_refreshing(webtag: &str, refreshing: bool) -> bool {
         log::warn!("pull-to-refresh ignored: lxapp is not active: {webtag}");
         return false;
     };
-    if app
-        .get_page_by_webtag(webtag)
-        .and_then(|page| page.webview())
-        .is_none()
-    {
+    // The bar is the host's, over either renderer; a WebView page must have its WebView.
+    let ready = app.get_page_by_webtag(webtag).is_some_and(|page| {
+        page.renderer() == lxapp::PageRenderer::Gpu || page.webview().is_some()
+    });
+    if !ready {
         log::warn!("pull-to-refresh ignored: page is not ready: {webtag}");
         return false;
     }

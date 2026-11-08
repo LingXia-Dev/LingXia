@@ -5790,8 +5790,20 @@ fn active_host_window_except(excluded: Option<HWND>) -> Option<HWND> {
 }
 
 fn set_primary_host_window(hwnd: HWND) {
-    restore_primary_window_frame(hwnd);
     let slot = PRIMARY_HOST_WINDOW.get_or_init(|| Mutex::new(None));
+    let previous = slot
+        .lock()
+        .ok()
+        .and_then(|slot| *slot)
+        .filter(|previous| *previous != hwnd_handle(hwnd));
+    // A relaunch moves the workspace to a new window: the frame the user (or a resize)
+    // gave the old one comes along instead of the first-launch default.
+    if let Some(previous) = previous {
+        remember_primary_frame(hwnd_from_handle(previous));
+    }
+    if previous.is_none() || !adopt_primary_frame(hwnd) {
+        restore_primary_window_frame(hwnd);
+    }
     if let Ok(mut slot) = slot.lock() {
         *slot = Some(hwnd_handle(hwnd));
     }
@@ -5801,6 +5813,63 @@ fn set_primary_host_window(hwnd: HWND) {
     // default until the user manually resizes the window.
     #[cfg(feature = "shell-chrome")]
     report_shell_surface_width(hwnd);
+}
+
+/// The last primary host's screen frame, while it was neither maximized nor minimized.
+static PRIMARY_FRAME: Mutex<Option<RECT>> = Mutex::new(None);
+
+fn frame_follows_workspace(hwnd: HWND) -> bool {
+    #[cfg(feature = "device-frame")]
+    if crate::device_frame::window_has_device_frame(hwnd_handle(hwnd)) {
+        return false;
+    }
+    !DEFAULT_HOST_HEADLESS.load(Ordering::Acquire)
+        && TRAY_POPOVER_HWND.load(Ordering::Relaxed) != hwnd_handle(hwnd)
+}
+
+fn remember_primary_frame(hwnd: HWND) {
+    let is_window = unsafe { WindowsAndMessaging::IsWindow(Some(hwnd)).as_bool() };
+    if !is_window || !frame_follows_workspace(hwnd) {
+        return;
+    }
+    let mut placement = WindowsAndMessaging::WINDOWPLACEMENT {
+        length: std::mem::size_of::<WindowsAndMessaging::WINDOWPLACEMENT>() as u32,
+        ..Default::default()
+    };
+    let mut rect = RECT::default();
+    let read = unsafe {
+        WindowsAndMessaging::GetWindowPlacement(hwnd, &mut placement).is_ok()
+            && WindowsAndMessaging::GetWindowRect(hwnd, &mut rect).is_ok()
+    };
+    let normal = read
+        && !placement_is_maximized(&placement)
+        && placement.showCmd as i32 != WindowsAndMessaging::SW_SHOWMINIMIZED.0
+        && rect.right > rect.left
+        && rect.bottom > rect.top;
+    if let Ok(mut frame) = PRIMARY_FRAME.lock() {
+        *frame = normal.then_some(rect);
+    }
+}
+
+fn adopt_primary_frame(hwnd: HWND) -> bool {
+    if !frame_follows_workspace(hwnd) {
+        return false;
+    }
+    let Some(rect) = PRIMARY_FRAME.lock().ok().and_then(|frame| *frame) else {
+        return false;
+    };
+    unsafe {
+        WindowsAndMessaging::SetWindowPos(
+            hwnd,
+            None,
+            rect.left,
+            rect.top,
+            rect.right - rect.left,
+            rect.bottom - rect.top,
+            WindowsAndMessaging::SWP_NOZORDER | WindowsAndMessaging::SWP_NOACTIVATE,
+        )
+        .is_ok()
+    }
 }
 
 fn primary_host_window_except(excluded: Option<HWND>) -> Option<HWND> {
@@ -10384,6 +10453,9 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_DESTROY => {
+                if stored_primary_host_window() == Some(hwnd) {
+                    remember_primary_frame(hwnd);
+                }
                 #[cfg(feature = "runtime")]
                 crate::dev_service_mark::destroy(hwnd);
                 #[cfg(feature = "shell-chrome")]
