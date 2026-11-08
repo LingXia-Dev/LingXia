@@ -158,7 +158,8 @@
       // from a write the View will never see.
       const current = ops.length === 0 ? Promise.resolve("acked") : new Promise((resolve, reject) => {
         try {
-          Promise.resolve(pageSvc._setData(JSON.stringify(ops), resolve)).catch(reject);
+          // A GPU View walks the ops in place; a WebView takes them as frame text.
+          Promise.resolve(pageSvc._setData(gpu ? ops : JSON.stringify(ops), resolve)).catch(reject);
         } catch (error) {
           reject(error);
         }

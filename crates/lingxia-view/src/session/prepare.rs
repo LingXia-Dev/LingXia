@@ -1,23 +1,45 @@
 use super::*;
+use crate::session::state::PatchOp;
+
+/// Where the whole data tree waits for the frame's `__lingxiaCreateView` to take it.
+const VIEW_DATA: &str = "__lingxiaViewData";
 
 impl ViewSession {
     /// The `data` argument for `__lingxiaCreateView`: `undefined` when the isolate's own copy
     /// was brought current by replaying the writes since its last frame, else the whole tree.
+    /// Both reach the isolate as values built through the engine, never as JSON text.
     fn sync_view_data(&mut self, metrics: &mut crate::FrameMetrics) -> Result<String, String> {
+        use rong::quickjs::{JSArray, JSFunc, JSObject};
         let revision = self.state.revision();
         let replayed = match self.state.journal() {
             Some((from, ops)) => {
-                let ops =
-                    serde_json::to_string(&serde_json::to_string(ops).map_err(|e| e.to_string())?)
-                        .map_err(|e| e.to_string())?;
-                let call = format!(
-                    "typeof __lingxiaSyncData === 'function' && __lingxiaSyncData({from}, {revision}, JSON.parse({ops}))"
-                );
                 let started = std::time::Instant::now();
                 let replayed = self.execute(|| {
-                    self.context
-                        .eval::<bool>(Source::from_bytes(&call))
-                        .map_err(|e| e.to_string())
+                    let ctx = &self.context;
+                    let fail = |e| crate::engine::js_error(ctx, e);
+                    let Ok(sync) = ctx.global().get::<_, JSFunc>("__lingxiaSyncData") else {
+                        return Ok(false);
+                    };
+                    let list = JSArray::new(ctx).map_err(fail)?;
+                    for (index, op) in ops.iter().enumerate() {
+                        let (kind, path, value) = match op {
+                            PatchOp::Add { path, value } => ("add", path, Some(value)),
+                            PatchOp::Replace { path, value } => ("replace", path, Some(value)),
+                            PatchOp::Remove { path } => ("remove", path, None),
+                        };
+                        let object = JSObject::new(ctx);
+                        object.set("op", kind).map_err(fail)?;
+                        object.set("path", path.as_str()).map_err(fail)?;
+                        if let Some(value) = value {
+                            let value = crate::session::js_tree::to_js(ctx, value).map_err(fail)?;
+                            object.set("value", value).map_err(fail)?;
+                        }
+                        list.set_value(index as u32, object.into_js_value())
+                            .map_err(fail)?;
+                    }
+                    // Numbers, not BigInts: the isolate compares revisions with `===`.
+                    sync.call::<_, bool>(None, (from as f64, revision as f64, list))
+                        .map_err(fail)
                 })?;
                 let us = crate::session::metrics::micros(started);
                 metrics.view_eval_us += us;
@@ -35,8 +57,16 @@ impl ViewSession {
                 .state
                 .data()
                 .ok_or("UI_STATE: waiting for first snapshot")?;
-            let data = serde_json::to_string(&data.to_string()).map_err(|e| e.to_string())?;
-            format!("JSON.parse({data})")
+            self.execute(|| {
+                let ctx = &self.context;
+                let fail = |e| crate::engine::js_error(ctx, e);
+                let data = crate::session::js_tree::to_js(ctx, data).map_err(fail)?;
+                ctx.global().set(VIEW_DATA, data).map_err(fail)?;
+                Ok(())
+            })?;
+            format!(
+                "(() => {{ const d = globalThis.{VIEW_DATA}; globalThis.{VIEW_DATA} = undefined; return d; }})()"
+            )
         };
         self.state.mark_synced();
         Ok(data)

@@ -94,8 +94,8 @@ impl Fixture {
                         let pages = with_page_svc_map(&ctx, |map| Ok(map.borrow().clone())).unwrap();
                         let mut snapshots = HashMap::new();
                         for (id, svc) in pages {
-                            let snapshot = svc.get_state_snapshot(Some("page")).await.unwrap();
-                            snapshots.insert(id, serde_json::from_str(&snapshot).unwrap());
+                            let snapshot = svc.get_state_snapshot(Some("page"), false).await.unwrap();
+                            snapshots.insert(id, serde_json::from_str(&snapshot.into_json()).unwrap());
                         }
                         observation_tx.send(snapshots).unwrap();
                     }

@@ -339,6 +339,14 @@ fn js_payload(v: JSValue, gpu: bool) -> Result<Payload, RpcError> {
     }
 }
 
+fn page_data(data: JSObject, gpu: bool) -> JSResult<Payload> {
+    if gpu {
+        crate::appservice::js_tree::from_js(data.into_js_value()).map(Payload::Tree)
+    } else {
+        data.to_json_string().map(Payload::Json)
+    }
+}
+
 fn is_gpu(outbound: Option<&OutboundContext>) -> bool {
     outbound.is_some_and(OutboundContext::is_gpu)
 }
@@ -457,23 +465,28 @@ impl PageSvc {
     pub(crate) async fn get_state_snapshot(
         &self,
         _scope: Option<&str>,
-    ) -> Result<String, LxAppError> {
-        let (rev, data_json) = self.state_snapshot_parts().await?;
-        Ok(format!(r#"{{"rev":{},"state":{}}}"#, rev, data_json))
+        gpu: bool,
+    ) -> Result<Payload, LxAppError> {
+        let (rev, data) = self.state_snapshot_parts(gpu).await?;
+        Ok(match data {
+            Payload::Json(data) => Payload::Json(format!(r#"{{"rev":{rev},"state":{data}}}"#)),
+            Payload::Tree(state) => Payload::Tree(serde_json::json!({"rev": rev, "state": state})),
+        })
     }
 
-    /// The current revision and the live page data as JSON.
-    pub(crate) async fn state_snapshot_parts(&self) -> Result<(u64, String), LxAppError> {
+    /// The current revision and the live page data: walked for a GPU View, JSON for a WebView.
+    pub(crate) async fn state_snapshot_parts(
+        &self,
+        gpu: bool,
+    ) -> Result<(u64, Payload), LxAppError> {
         let data_obj = self
             .this
             .require()
             .and_then(|this| this.get::<_, JSObject>("data"))
             .map_err(|e| LxAppError::Bridge(e.to_string()))?;
-        let data_json = data_obj
-            .to_json_string()
-            .map_err(|e| LxAppError::Bridge(e.to_string()))?;
+        let data = page_data(data_obj, gpu).map_err(|e| LxAppError::Bridge(e.to_string()))?;
         let rev = self.state.lock().await.state_rev;
-        Ok((rev, data_json))
+        Ok((rev, data))
     }
 
     pub(crate) async fn handle_req(
@@ -1236,7 +1249,7 @@ impl PageSvc {
     }
 
     #[js_method(rename = "_setData")]
-    async fn set_data(&self, ops_json: String, callback: Optional<JSFunc>) -> JSResult<()> {
+    async fn set_data(&self, ops: JSValue, callback: Optional<JSFunc>) -> JSResult<()> {
         let sent_us = crate::bridge::probe::now_us();
         let callback = callback.0;
         // This is the creation boundary for a JS-originated state write. It
@@ -1288,14 +1301,25 @@ impl PageSvc {
         let internal = |e: serde_json::Error| {
             RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))
         };
-        // A GPU View takes the ops typed and in process; a WebView takes the frame.
-        let ops = if outbound.as_ref().is_some_and(OutboundContext::is_gpu) {
-            PatchOps::Typed(serde_json::from_str(&ops_json).map_err(internal)?)
-        } else {
-            let ops = RawValue::from_string(ops_json).map_err(internal)?;
+        // A GPU View takes the ops as values walked from the engine; a WebView takes the frame.
+        let ops = if ops.is_string() {
+            let ops: String = ops.into_value().try_into()?;
+            let ops = RawValue::from_string(ops).map_err(internal)?;
             serde_json::from_str::<Vec<crate::bridge::JsonPatchOp>>(ops.get()).map_err(internal)?;
             PatchOps::Frame(ops)
+        } else {
+            let tree = crate::appservice::js_tree::from_js(ops)?;
+            PatchOps::Typed(serde_json::from_value(tree).map_err(internal)?)
         };
+        if matches!(ops, PatchOps::Frame(_))
+            == outbound.as_ref().is_some_and(OutboundContext::is_gpu)
+        {
+            return Err(HostError::new(
+                rong::error::E_INTERNAL,
+                "setData ops do not match the page's View",
+            )
+            .into());
+        }
 
         let ack = if let Some(cb) = callback {
             state.state_callback.insert(
@@ -1996,10 +2020,10 @@ impl PageSvc {
             // before the bridge was ready, and the construction-time snapshot
             // would silently miss those writes.
             let this = self.this.require()?;
-            let page_data = this
+            let page_data_obj = this
                 .get::<_, JSObject>("data")
                 .unwrap_or_else(|_| JSObject::new(&this.context()));
-            let data_json = page_data.to_json_string()?;
+            let data = page_data(page_data_obj, is_gpu(outbound.as_ref()))?;
 
             let new_rev = state.state_rev + 1;
             state.state_rev = new_rev;
@@ -2012,7 +2036,7 @@ impl PageSvc {
                     outbound.as_ref(),
                     None,
                     new_rev,
-                    data_json,
+                    data,
                 )
                 .map_err(|e| {
                     RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))

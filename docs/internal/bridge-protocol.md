@@ -52,10 +52,10 @@ Every View speaks the same message families, routing rules, capability rules and
 A renderer is chosen per lxapp (`renderer` in `lxapp.json`); a page cannot pick its transport,
 and neither transport can be negotiated into the other.
 
-Today the GPU transport carries **state** typed (section 7.2) while its handshake, requests,
-events and channels still travel as `v: 2` JSON frames inside the process. Typed events and
-requests are the next step in [`docs/draft/gpu-bridge.md`](../draft/gpu-bridge.md); when they
-land, this section is the place that records it.
+The GPU transport is fully typed: state, requests, replies, events, streams and channels cross
+as Rust values walked to and from the engines, with no JSON text and no frame in either
+direction. It has no handshake frames; the connection generation and endpoint identity carry
+the trust the page and document-bound profiles prove on the WebView path.
 
 ## 3. Message families
 
@@ -103,7 +103,8 @@ check. Native derives caller identity from the owning app session or the active 
 
 ## 5. Session
 
-Application traffic begins after the handshake:
+Application traffic begins after the handshake (WebView; a GPU View connects as section 9
+says):
 
 | Step | Direction | Purpose |
 |---|---|---|
@@ -328,10 +329,18 @@ authority.
 
 - The View session lives on the host's render thread; the facade's `gpu_page` host owns the
   channel to it. Nothing crosses a WebView, so no envelope, size cap or provenance proof applies.
-- State: typed, section 7.2.
-- Handshake, requests, events, channels: `v: 2` frames handed to the session as strings
-  (`NativePage::receive`); the session rejects any other version. Replacing these with typed
-  values is the remaining step of the GPU bridge redesign.
+- State: typed, section 7.2. `setData` ops, snapshots and the replica's sync into the View
+  isolate are walked through the engines, never serialized.
+- Connection: Logic binds a generation and calls `connect(generation)`; the View resets, arms its
+  actions and answers `Connected` from its worker, which marks the bridge ready and starts Logic.
+  No hello, helloAck, ready or nonce: every message after that is admitted only for the current
+  endpoint and generation, checked again at delivery.
+- View → Logic (`GpuViewEvent`): calls, cancels, channel open/data/close and replies, sent from
+  the View worker straight to Logic's queue.
+- Logic → View (`GpuViewMessage`): replies, stream events, channel acks/data/close and requests,
+  applied on the View worker in order with state writes.
+- Requests are `GpuViewRequest`, one nested enum per family (`Ui` today) answered by id. A new
+  family is one variant with its `from_call` arm and a View handler; the transport is unchanged.
 - Hot swap and automation keep their own entry points; they are not on the per-frame path.
 
 ## 10. Error codes

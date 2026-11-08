@@ -507,13 +507,16 @@ async fn handle_bridge_source(
                 return Ok(());
             }
             let bridge = page_svc.bridge();
-            match page_svc.get_state_snapshot(scope.as_deref()).await {
+            let gpu = outbound
+                .as_ref()
+                .is_some_and(bridge::OutboundContext::is_gpu);
+            match page_svc.get_state_snapshot(scope.as_deref(), gpu).await {
                 Ok(snapshot) => bridge.send_res_ok_for_context(
                     page_svc,
                     work_id,
                     outbound.as_ref(),
                     id,
-                    bridge::Payload::Json(snapshot),
+                    snapshot,
                 )?,
                 Err(err) => bridge.send_res_err_for_context(
                     page_svc,
@@ -689,7 +692,10 @@ async fn handle_bridge_source(
             if !page_svc.session_work_is_active(work_id).await {
                 return Ok(());
             }
-            let (rev, state) = page_svc.state_snapshot_parts().await?;
+            let gpu = outbound
+                .as_ref()
+                .is_some_and(bridge::OutboundContext::is_gpu);
+            let (rev, state) = page_svc.state_snapshot_parts(gpu).await?;
             page_svc.bridge().send_state_snapshot_for_context(
                 page_svc,
                 work_id,

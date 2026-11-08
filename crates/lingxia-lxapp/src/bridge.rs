@@ -2110,8 +2110,7 @@ impl PageBridge {
             );
             return Ok(());
         }
-        if topic.starts_with("host.") {
-            let host_topic = &topic["host.".len()..];
+        if let Some(host_topic) = topic.strip_prefix("host.") {
             return self.dispatch_host_ch_open(
                 page,
                 context,
@@ -2308,17 +2307,17 @@ impl PageBridge {
         outbound: Option<&OutboundContext>,
         scope: Option<String>,
         rev: u64,
-        state_json: String,
+        state: Payload,
     ) -> Result<(), LxAppError> {
         if let Some(outbound) = outbound.filter(|outbound| outbound.is_gpu()) {
             if !self.is_current_work(work_id) {
                 return Ok(());
             }
-            let state = serde_json::from_str(&state_json)?;
+            let state = state.into_tree()?;
             return outbound.post_state(crate::GpuStateWrite::Snapshot { rev, state });
         }
-        let state =
-            RawValue::from_string(state_json).map_err(|e| LxAppError::Bridge(e.to_string()))?;
+        let state = RawValue::from_string(state.into_json())
+            .map_err(|e| LxAppError::Bridge(e.to_string()))?;
         let msg = StateSnapshotOut {
             v: 2,
             kind: "state.snapshot",

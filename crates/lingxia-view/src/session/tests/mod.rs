@@ -2108,6 +2108,33 @@ fn a_run_past_the_limit_is_interrupted_at_once_and_a_first_render_gets_the_warm_
 }
 
 #[test]
+fn a_replayed_write_keeps_untouched_subtrees_the_same_objects() {
+    use serde_json::json;
+    let source = source(
+        "let last;function render({data}){const same=last===data.keep;last=data.keep;return h('text',{},String(same))}",
+    );
+    let mut session = ViewSession::new_with_logic(&source, true).unwrap();
+    let mut text =
+        |session: &mut ViewSession| session.render(300, 500, 1.0).unwrap().nodes[0].text.clone();
+    session
+        .write_state(state_write(&json!({"v":2,"kind":"state.snapshot","rev":0,
+            "state":{"keep":{"a":1},"n":0}})))
+        .unwrap();
+    assert_eq!(text(&mut session), "false");
+    session
+        .write_state(state_write(
+            &json!({"v":2,"kind":"state.patch","baseRev":0,"rev":1,
+            "ops":[{"op":"replace","path":"/n","value":1}]}),
+        ))
+        .unwrap();
+    assert_eq!(
+        text(&mut session),
+        "true",
+        "the write was replayed, not the whole tree"
+    );
+}
+
+#[test]
 fn the_view_isolate_replays_writes_into_its_own_data() {
     use serde_json::json;
     let source = source("function render({data}){return h('text',{},JSON.stringify(data))}");
