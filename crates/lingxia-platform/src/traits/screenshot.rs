@@ -108,3 +108,144 @@ pub trait AppScreenshot: Send + Sync {
         ))
     }
 }
+
+#[cfg(any(target_os = "android", target_env = "ohos", test))]
+use image::ImageEncoder as _;
+
+/// A GPU surface inside a window capture, in the capture's pixels. Window captures leave the
+/// surface out (it is composited by the system), so its newest frame is drawn in beneath.
+#[cfg(any(target_os = "android", target_env = "ohos", test))]
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct CapturedSurface {
+    /// Names the surface to the installed [`SurfaceFrames`] source.
+    pub handle: i64,
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// The newest frame a GPU surface presented: width, height and straight-alpha RGBA rows;
+/// `None` when it has none or is not on screen.
+pub type SurfaceFrames = fn(handle: i64) -> Option<(u32, u32, Vec<u8>)>;
+
+static SURFACE_FRAMES: std::sync::OnceLock<SurfaceFrames> = std::sync::OnceLock::new();
+
+/// Installed by the host runtime, which owns the GPU presenters.
+pub fn set_surface_frames(source: SurfaceFrames) {
+    let _ = SURFACE_FRAMES.set(source);
+}
+
+/// `capture` (PNG) with each surface's newest frame drawn beneath it.
+#[cfg(any(target_os = "android", target_env = "ohos", test))]
+pub(crate) fn composite_surfaces(
+    capture: Vec<u8>,
+    surfaces: &[CapturedSurface],
+) -> Result<Vec<u8>, PlatformError> {
+    let Some(source) = SURFACE_FRAMES.get() else {
+        return Ok(capture);
+    };
+    let frames: Vec<_> = surfaces
+        .iter()
+        .filter(|surface| surface.width > 0 && surface.height > 0)
+        .filter_map(|surface| source(surface.handle).map(|frame| (surface, frame)))
+        .collect();
+    if frames.is_empty() {
+        return Ok(capture);
+    }
+    let window = image::load_from_memory_with_format(&capture, image::ImageFormat::Png)
+        .map_err(|e| PlatformError::Platform(format!("app screenshot decode: {e}")))?
+        .into_rgba8();
+    let mut composed = image::RgbaImage::new(window.width(), window.height());
+    for (surface, (width, height, rgba)) in frames {
+        let Some(frame) = image::RgbaImage::from_raw(width, height, rgba) else {
+            continue;
+        };
+        // A surface scaled by the system shows its frame at the size it was laid out.
+        let frame = if (width, height) == (surface.width, surface.height) {
+            frame
+        } else {
+            image::imageops::resize(
+                &frame,
+                surface.width,
+                surface.height,
+                image::imageops::FilterType::Triangle,
+            )
+        };
+        image::imageops::replace(&mut composed, &frame, surface.x.into(), surface.y.into());
+    }
+    image::imageops::overlay(&mut composed, &window, 0, 0);
+    let mut png = Vec::new();
+    image::codecs::png::PngEncoder::new(&mut png)
+        .write_image(
+            composed.as_raw(),
+            composed.width(),
+            composed.height(),
+            image::ExtendedColorType::Rgba8,
+        )
+        .map_err(|e| PlatformError::Platform(format!("app screenshot encode: {e}")))?;
+    Ok(png)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn png(image: &image::RgbaImage) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        image::codecs::png::PngEncoder::new(&mut bytes)
+            .write_image(
+                image.as_raw(),
+                image.width(),
+                image.height(),
+                image::ExtendedColorType::Rgba8,
+            )
+            .unwrap();
+        bytes
+    }
+
+    #[test]
+    fn a_surface_frame_shows_through_the_window_capture_and_under_its_chrome() {
+        set_surface_frames(|handle| {
+            (handle == 7).then(|| (2, 2, [[0u8, 0, 255, 255]; 4].concat()))
+        });
+        // A 4x4 window: an opaque red bar on the top row, a clear hole elsewhere.
+        let mut window = image::RgbaImage::new(4, 4);
+        for x in 0..4 {
+            window.put_pixel(x, 0, image::Rgba([255, 0, 0, 255]));
+        }
+        let surfaces = [
+            CapturedSurface {
+                handle: 7,
+                x: 0,
+                y: 0,
+                width: 4,
+                height: 4,
+            },
+            CapturedSurface {
+                handle: 8,
+                x: 0,
+                y: 0,
+                width: 4,
+                height: 4,
+            },
+        ];
+        let out = composite_surfaces(png(&window), &surfaces).unwrap();
+        let out = image::load_from_memory(&out).unwrap().into_rgba8();
+        assert_eq!(
+            out.get_pixel(1, 0).0,
+            [255, 0, 0, 255],
+            "chrome stays on top"
+        );
+        assert_eq!(
+            out.get_pixel(2, 3).0,
+            [0, 0, 255, 255],
+            "the scaled frame fills the hole"
+        );
+        assert_eq!(
+            composite_surfaces(png(&window), &surfaces[1..]).unwrap(),
+            png(&window),
+            "no frame leaves the capture as it was"
+        );
+    }
+}

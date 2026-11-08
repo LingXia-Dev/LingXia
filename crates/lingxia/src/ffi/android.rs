@@ -148,6 +148,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_lingxiaInit<'a>(
             error!("Failed to register Android GPU renderer: {error}");
             return Err(jni::errors::Error::JniCall(jni::errors::JniError::Unknown));
         }
+        lingxia_platform::traits::screenshot::set_surface_frames(lingxia_view_android::frame);
 
         let data_dir_str: String = data_dir.try_to_string(env)?;
         gpu_page::initialize(env)?;

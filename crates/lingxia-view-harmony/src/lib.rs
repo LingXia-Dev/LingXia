@@ -220,6 +220,23 @@ pub fn page_viewport(token: i64) -> Option<[f64; 4]> {
     .flatten()
 }
 
+/// The newest frame page `token` showed, for a window screenshot: the window snapshot leaves
+/// XComponent surfaces out. Read on the render thread; the caller encodes.
+pub fn frame(token: i64) -> Option<(u32, u32, Vec<u8>)> {
+    let id = dispatch::run_on_main(move || {
+        pages::with(token, |host| {
+            host.adapter()
+                .gpu
+                .load(std::sync::atomic::Ordering::Acquire)
+        })
+    })
+    .flatten()
+    .filter(|id| *id != 0)?;
+    crate::render::run_now(move || lingxia_view::renderer::surfaces::readback(id))?
+        .ok()
+        .flatten()
+}
+
 /// One GPU page: its host, and once mounted, its XComponent node.
 pub struct Page {
     token: i64,

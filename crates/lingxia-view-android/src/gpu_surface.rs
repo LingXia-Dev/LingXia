@@ -202,6 +202,14 @@ pub(super) fn prepare(
     })))
 }
 
+/// The newest frame presenter `id` holds: width, height and straight-alpha RGBA rows.
+pub(super) fn readback(id: u64) -> Result<Option<(u32, u32, Vec<u8>)>, String> {
+    let Some(presenter) = presenter(id)? else {
+        return Ok(None);
+    };
+    lock(&presenter)?.readback()
+}
+
 /// Returns the presenter's timings for diagnostics when the frame reached the screen.
 pub(super) fn present(id: u64, revision: u64) -> Result<Option<[u64; 4]>, String> {
     let Some(presenter) = presenter(id)? else {

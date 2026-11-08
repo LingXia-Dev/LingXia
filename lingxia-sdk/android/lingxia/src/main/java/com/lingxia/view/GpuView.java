@@ -52,6 +52,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     static native void nativeRequestFrame(long host);
     static native void nativeRedraw(long host);
     static native boolean nativeFrameCurrent(long host);
+    static native long nativePresenter(long host);
     static native boolean nativeCloseRequest(long host);
     static native void nativeVsync(long host);
     /** A display frame shown {@code presentInUs} from now; refreshes every {@code intervalUs}. */
@@ -381,6 +382,10 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         java.util.ArrayList<Runnable> waiters = new java.util.ArrayList<>(revealWaiters);
         revealWaiters.clear();
         for (Runnable waiter : waiters) waiter.run();
+    }
+    /** The presenter showing this page, for a window screenshot; 0 while the page is not on screen. */
+    public long screenshotPresenter() {
+        return destroyed || !active || !isShown() ? 0 : nativePresenter(host);
     }
     /** The surface still holds a presented frame, so showing the page needs no new frame. */
     public boolean hasLiveFrame() {

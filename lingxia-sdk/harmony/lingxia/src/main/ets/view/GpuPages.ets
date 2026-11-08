@@ -2,6 +2,7 @@ import { NodeContent } from '@kit.ArkUI';
 import { LxLog } from '../app/LxLog';
 import { GpuFrameTextMenu } from './generated/GpuFrame';
 import { gpuPageReveal } from 'liblingxia.so';
+import { GpuRect } from './GpuEnvironment';
 
 const TAG = 'LingXia.GpuPages';
 
@@ -60,6 +61,9 @@ export class GpuPageModel {
   revealed: boolean = false;
   /** Runs once the core reveals the page; a later reveal replaces it. */
   revealWaiter: (() => void) | null = null;
+  /** Where the page shows in its window, device pixels; null while it is hidden. A window
+   *  snapshot leaves the XComponent surface out, so screenshots draw this page in beneath. */
+  onScreen: GpuRect | null = null;
 
   constructor(token: number, identity: GpuPageIdentity) {
     this.token = token;

@@ -64,6 +64,16 @@ fn run<'a, T: Default>(
     env.with_env(work).resolve::<ThrowRuntimeExAndDefault>()
 }
 
+/// The newest frame presenter `id` showed, for a window screenshot: the window capture leaves
+/// SurfaceViews out. Read on the render thread; the caller encodes.
+pub fn frame(id: i64) -> Option<(u32, u32, Vec<u8>)> {
+    let id = u64::try_from(id).ok().filter(|id| *id != 0)?;
+    render::run_now(move || gpu_surface::readback(id))?
+        .inspect_err(|error| adapter::log(&format!("UI_SURFACE: screenshot: {error}")))
+        .ok()
+        .flatten()
+}
+
 fn host<'a>(handle: jlong) -> Result<&'a Host, Error> {
     // SAFETY: Java owns the box from create until release and calls nothing afterwards.
     unsafe { (handle as *const Host).as_ref() }.ok_or_else(|| "UI_HOST: released".into())
@@ -117,6 +127,7 @@ pub fn register_natives(env: &mut Env, class: &JClass) -> jni::errors::Result<()
         method!("nativeRequestFrame", "(J)V", request_frame),
         method!("nativeRedraw", "(J)V", redraw),
         method!("nativeFrameCurrent", "(J)Z", frame_current),
+        method!("nativePresenter", "(J)J", presenter),
         method!("nativeCloseRequest", "(J)Z", close_request),
         method!("nativeVsync", "(J)V", vsync),
         method!("nativeVsyncAt", "(JJJ)V", vsync_at),
@@ -440,6 +451,16 @@ extern "system" fn request_leave<'a>(
 extern "system" fn connection<'a>(mut env: EnvUnowned<'a>, _: JClass<'a>, handle: jlong) -> jlong {
     run(&mut env, |_| {
         Ok(host(handle)?.lifecycle().connection().get() as jlong)
+    })
+}
+
+/// The presenter showing this page, `0` before it has one: names the surface in a screenshot.
+extern "system" fn presenter<'a>(mut env: EnvUnowned<'a>, _: JClass<'a>, handle: jlong) -> jlong {
+    run(&mut env, |_| {
+        Ok(host(handle)?
+            .adapter()
+            .gpu
+            .load(std::sync::atomic::Ordering::Acquire) as jlong)
     })
 }
 

@@ -130,6 +130,7 @@ pub fn lingxia_init(
     }
 
     lingxia_platform::harmony::set_harmony_host_appearance_dark(host_appearance_dark);
+    lingxia_platform::traits::screenshot::set_surface_frames(lingxia_view_harmony::frame);
 
     // Create Platform instance
     let platform = match lingxia_platform::Platform::new(

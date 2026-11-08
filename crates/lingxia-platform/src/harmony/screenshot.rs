@@ -1,6 +1,6 @@
 use super::app::Platform;
 use crate::error::PlatformError;
-use crate::traits::screenshot::{AppScreenshot, WindowInfo};
+use crate::traits::screenshot::{AppScreenshot, CapturedSurface, WindowInfo, composite_surfaces};
 use async_trait::async_trait;
 use base64::Engine as _;
 use serde::Deserialize;
@@ -17,6 +17,9 @@ struct ScreenshotEnvelope {
     data: Option<String>,
     #[serde(default)]
     error: Option<String>,
+    /// GPU surfaces on screen, which the window capture leaves out.
+    #[serde(default)]
+    surfaces: Vec<CapturedSurface>,
 }
 
 #[async_trait]
@@ -67,10 +70,11 @@ impl AppScreenshot for Platform {
         let data = envelope
             .data
             .ok_or_else(|| PlatformError::Platform("envelope ok=true but no data".to_string()))?;
-        base64::engine::general_purpose::STANDARD
+        let capture = base64::engine::general_purpose::STANDARD
             .decode(data.trim())
             .map_err(|e| {
                 PlatformError::Platform(format!("Failed to decode app screenshot base64: {}", e))
-            })
+            })?;
+        composite_surfaces(capture, &envelope.surfaces)
     }
 }

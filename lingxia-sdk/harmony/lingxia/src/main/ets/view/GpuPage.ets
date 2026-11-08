@@ -68,10 +68,16 @@ export struct GpuPage {
     }
     this.win?.off('avoidAreaChange');
     this.win?.off('windowVisibilityChange');
+    this.page.onScreen = null;
   }
 
   visibilityChanged(): void {
     gpuPageSetVisible(this.page.token, this.pageVisible);
+    this.trackOnScreen();
+  }
+
+  private trackOnScreen(): void {
+    this.page.onScreen = this.pageVisible && this.rect.width > 0 ? this.rect : null;
   }
 
   remeasure(): void {
@@ -185,6 +191,7 @@ export struct GpuPage {
       this.rect.y = vp2px(area.globalPosition.y ?? 0);
       this.rect.width = vp2px(area.width);
       this.rect.height = vp2px(area.height);
+      this.trackOnScreen();
       this.remeasure();
     })
   }

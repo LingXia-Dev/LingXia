@@ -12,6 +12,10 @@ import com.lingxia.app.Lingxia
 import com.lingxia.lxapp.LxApp
 import com.lingxia.app.NativeApi
 import java.io.ByteArrayOutputStream
+import android.view.View
+import android.view.ViewGroup
+import com.lingxia.view.GpuView
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -57,6 +61,7 @@ object AppScreenshot {
                     return@post
                 }
                 val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                val surfaces = gpuSurfaces(decorView)
 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     val location = IntArray(2)
@@ -74,7 +79,7 @@ object AppScreenshot {
                         { result ->
                             try {
                                 if (result == PixelCopy.SUCCESS) {
-                                    deliverBitmap(callbackId, bitmap)
+                                    deliverBitmap(callbackId, bitmap, surfaces)
                                 } else {
                                     bitmap.recycle()
                                     deliverError(callbackId, "PixelCopy failed: result=$result")
@@ -88,7 +93,7 @@ object AppScreenshot {
                 } else {
                     val canvas = Canvas(bitmap)
                     decorView.draw(canvas)
-                    deliverBitmap(callbackId, bitmap)
+                    deliverBitmap(callbackId, bitmap, surfaces)
                 }
             } catch (e: Throwable) {
                 deliverError(callbackId, "captureWindow threw: ${e.message ?: e.toString()}")
@@ -96,7 +101,32 @@ object AppScreenshot {
         }
     }
 
-    private fun deliverBitmap(callbackId: Long, bitmap: Bitmap) {
+    /**
+     * GPU pages on screen, in the capture's pixels: PixelCopy of a window leaves their
+     * SurfaceViews out, so native draws each page's newest frame in beneath the capture.
+     */
+    private fun gpuSurfaces(decorView: View): JSONArray {
+        val surfaces = JSONArray()
+        val origin = IntArray(2).also { decorView.getLocationInWindow(it) }
+        fun visit(view: View) {
+            if (view is GpuView) {
+                val presenter = view.screenshotPresenter()
+                if (presenter != 0L && view.width > 0 && view.height > 0) {
+                    val at = IntArray(2).also { view.getLocationInWindow(it) }
+                    surfaces.put(JSONObject()
+                        .put("handle", presenter)
+                        .put("x", at[0] - origin[0]).put("y", at[1] - origin[1])
+                        .put("width", view.width).put("height", view.height))
+                }
+                return
+            }
+            if (view is ViewGroup) for (i in 0 until view.childCount) visit(view.getChildAt(i))
+        }
+        visit(decorView)
+        return surfaces
+    }
+
+    private fun deliverBitmap(callbackId: Long, bitmap: Bitmap, surfaces: JSONArray) {
         try {
             val stream = ByteArrayOutputStream(
                 Math.max(64 * 1024, bitmap.width * bitmap.height / 4),
@@ -108,7 +138,7 @@ object AppScreenshot {
                 return
             }
             val b64 = Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP)
-            deliverEnvelope(callbackId, JSONObject().put("ok", true).put("data", b64))
+            deliverEnvelope(callbackId, JSONObject().put("ok", true).put("data", b64).put("surfaces", surfaces))
         } catch (e: Throwable) {
             deliverError(callbackId, "PNG encode failed: ${e.message ?: e.toString()}")
         }
