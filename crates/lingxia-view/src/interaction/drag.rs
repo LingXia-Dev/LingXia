@@ -39,15 +39,22 @@ pub struct DragModel {
 
 impl DragModel {
     /// A frame keeps each element where the finger or its spring left it. One that enters sits
-    /// at its resting point; one whose snap index the View changed springs there.
-    pub fn accept(&mut self, frame: &PresentedFrame) {
+    /// at its resting point; one whose snap index the View changed springs there. True when an
+    /// entering element was drawn at an offset kept from before, so the next frame must redraw.
+    pub fn accept(&mut self, frame: &PresentedFrame) -> bool {
         let previous = std::mem::take(&mut self.regions);
+        let mut stale = false;
         for node in &frame.nodes {
-            let Some(drag) = &node.drag else { continue };
+            // A ghost is the element gone: one that enters again starts from rest.
+            let Some(drag) = node.drag.as_ref().filter(|drag| !drag.ghost) else {
+                continue;
+            };
             match previous.get(&*node.identity) {
                 None => {
                     if !self.moving.contains(&*node.identity) {
-                        self.offsets.insert(node.identity.to_string(), drag.rest());
+                        let rest = drag.rest();
+                        let kept = self.offsets.insert(node.identity.to_string(), rest);
+                        stale |= kept.is_some_and(|kept| kept != rest);
                         self.targets.remove(&*node.identity);
                     }
                 }
@@ -82,6 +89,7 @@ impl DragModel {
             self.offsets.retain(|id, _| regions.contains_key(id));
             self.targets.retain(|id, _| regions.contains_key(id));
         }
+        stale
     }
 
     pub fn region(&self, identity: &str) -> Option<&DragSnapshot> {
@@ -108,7 +116,7 @@ impl DragModel {
         frame
             .hit_order()
             .find(|(_, node)| {
-                node.drag.is_some()
+                node.drag.as_ref().is_some_and(|drag| !drag.ghost)
                     && super::frame::visible(node)
                     && point[0] >= node.bounds[0]
                     && point[0] <= node.bounds[0] + node.bounds[2]

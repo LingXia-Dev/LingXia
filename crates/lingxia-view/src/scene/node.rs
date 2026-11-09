@@ -227,6 +227,8 @@ pub struct DragSnapshot {
     pub bounce: f64,
     /// Per point: resting there leaves no part of the element in the viewport (set by composition).
     pub hides: Vec<bool>,
+    /// An exit ghost's copy: drawn at the element's offset, but it takes no input.
+    pub ghost: bool,
 }
 
 impl DragSnapshot {

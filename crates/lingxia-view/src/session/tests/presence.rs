@@ -288,3 +288,115 @@ fn a_sheet_holding_a_scroll_slides_in_by_composition() {
         "{tops:?}"
     );
 }
+
+#[test]
+fn a_sheet_dragged_off_reopens_on_its_resting_point() {
+    let sheet = "h('dialog',{open:open.value,onClose(){open.set(false)},closedby:'any','aria-label':'Sheet','data-testid':'sheet',drag:'y',dragSnapPoints:[0,'50%','100%'],bind:at,className:'starting:down exit:down',style:{marginTop:'auto',marginBottom:0,width:200,height:100,backgroundColor:'#000000',transition:{properties:['transform'],durationMs:200,delayMs:0,easing:'linear'}}},h('text',{},'Hi'))";
+    let module = super::source(&format!(
+        "function render(){{const open=useLocal('open',false);const at=useLocal('at',1);return h('page',{{}},h('button',{{'data-testid':'toggle',onClick(){{at.set(1);open.set(true)}},style:{{width:40,height:20}}}},'T'),{sheet})}}"
+    ))
+    .replace(
+        "__lingxiaPublish(render);",
+        "configureClasses([{name:'starting:down',when:{state:'starting'},style:{translate:[0,'100%']}},{name:'exit:down',when:{state:'exit'},style:{translate:[0,'100%']}}]);__lingxiaPublish(render);",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    page.set_animation_surface(Some(SURFACE), Duration::ZERO)
+        .unwrap();
+    let mut frame = 0u64;
+    let mut show = |page: &mut ViewSession,
+                    offsets: &std::collections::HashMap<String, f32>,
+                    rebuild: bool| {
+        frame += 1;
+        let at = frame_time(frame);
+        let nodes = page
+            .prepare_view_animated(
+                200,
+                200,
+                1.0,
+                rebuild,
+                Some(offsets),
+                at,
+                |display: DisplayList| Ok(display.nodes.clone()),
+            )
+            .unwrap();
+        assert!(
+            page.animation_presented(SURFACE, page.generation(), at)
+                .unwrap()
+        );
+        (nodes, page.view_animation_wakeup(at).unwrap())
+    };
+    let none = std::collections::HashMap::new();
+    let (nodes, _) = show(&mut page, &none, true);
+    let toggle = nodes
+        .iter()
+        .find(|n| n.test_id == "toggle")
+        .unwrap()
+        .on_click
+        .unwrap();
+    assert!(page.click(page.generation(), toggle).unwrap());
+    let mut rebuild = true;
+    let mut nodes;
+    loop {
+        let (next, wakeup) = show(&mut page, &none, rebuild);
+        rebuild = false;
+        nodes = next;
+        if wakeup == Wakeup::None {
+            break;
+        }
+    }
+    let panel = nodes.iter().find(|n| n.test_id == "sheet").unwrap().clone();
+    assert_eq!(panel.bounds[1], 150.0, "opens on its half point");
+    let key = crate::scene::node::DragSnapshot::key(&panel.identity);
+    // The finger drags it off and its spring lands on the hiding point.
+    let off = std::collections::HashMap::from([(key.clone(), 100.0)]);
+    show(&mut page, &off, false);
+    let handle = panel.drag.as_ref().unwrap().handle;
+    assert!(
+        page.text_event(
+            page.generation(),
+            handle,
+            r#"{"phase":"settle","index":2,"velocity":0,"hidden":true}"#
+        )
+        .unwrap()
+    );
+    let mut rebuild = true;
+    let mut closed = Vec::new();
+    for _ in 0..40 {
+        let (nodes, wakeup) = show(&mut page, &off, rebuild);
+        rebuild = false;
+        closed = nodes;
+        if wakeup == Wakeup::None {
+            break;
+        }
+    }
+    assert!(closed.iter().all(|n| n.test_id != "sheet"));
+    let toggle = closed
+        .iter()
+        .find(|n| n.test_id == "toggle")
+        .unwrap()
+        .on_click
+        .unwrap();
+    assert!(page.click(page.generation(), toggle).unwrap());
+    let rest = std::collections::HashMap::from([(key, 50.0)]);
+    let mut rebuild = true;
+    let mut tops = Vec::new();
+    for _ in 0..40 {
+        let (nodes, wakeup) = show(&mut page, if rebuild { &off } else { &rest }, rebuild);
+        rebuild = false;
+        tops.push(
+            nodes
+                .iter()
+                .find(|n| n.test_id == "sheet")
+                .map(|n| n.bounds[1]),
+        );
+        if wakeup == Wakeup::None && tops.len() > 1 {
+            break;
+        }
+    }
+    assert_eq!(*tops.last().unwrap(), Some(150.0), "{tops:?}");
+    assert!(
+        tops.iter()
+            .any(|t| t.is_some_and(|t| t > 150.0 && t < 250.0)),
+        "slides in: {tops:?}"
+    );
+}

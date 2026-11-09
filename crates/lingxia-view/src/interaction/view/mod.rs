@@ -536,7 +536,9 @@ impl ViewInteraction {
         }
         self.scroll
             .accept(&next, requested_revision, requested_offsets);
-        self.drag.accept(&next);
+        if self.drag.accept(&next) {
+            effects.push(Effect::Redraw);
+        }
         let Reached { handles, more } = self.reach.presented(&next);
         let reach = (!handles.is_empty() || more).then(|| Dispatch::Reach {
             commit: next.commit,

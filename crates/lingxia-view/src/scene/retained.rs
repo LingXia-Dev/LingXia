@@ -237,6 +237,9 @@ impl RetainedLayout {
                 node.range = None;
                 node.radio_group = None;
                 node.scroll_parent = None;
+                if let Some(drag) = node.drag.as_mut() {
+                    drag.ghost = true;
+                }
                 next.nodes.push(node);
                 let start = next.commands.len();
                 let shift = |command: usize| command + start - old.ranges[index].start;

@@ -1612,6 +1612,7 @@ fn drag_snapshot(
         duration,
         bounce,
         hides: Vec::new(),
+        ghost: false,
         axis: if horizontal {
             crate::scene::node::ScrollAxis::Horizontal
         } else {

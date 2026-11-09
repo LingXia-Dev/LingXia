@@ -65,6 +65,10 @@ spec('a sheet moves between its detents and closes when dragged off', { covers: 
   await view.drag(view.testId('lab-detents-title'), { dx: 0, dy: 600, durationMs: 500 });
   await expect(sheet).not.toBeAttached();
   await expect(state).toHaveText('open=false at=2 closed=1');
+  // Reopened, it rests on its half detent again, not where the drag left it.
+  await view.testId('lab-detents-open').click();
+  await expect(state).toHaveText('open=true at=1 closed=1');
+  await expect(sheet).toBeInViewport();
 });
 
 spec('a swipe row opens to its actions, deletes on a full swipe, and offers its actions to assistive tech', { covers: ['view:drag', 'view:a11y'], start: { page: 'view-lab' } }, async (t) => {

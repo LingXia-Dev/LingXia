@@ -187,7 +187,9 @@ fn activatable(node: &NodeSnapshot) -> bool {
 
 /// A `drag` element with somewhere to go: keys and assistive input step it between points.
 pub fn draggable(node: &NodeSnapshot) -> bool {
-    node.drag.as_ref().is_some_and(|drag| drag.points.len() > 1)
+    node.drag
+        .as_ref()
+        .is_some_and(|drag| !drag.ghost && drag.points.len() > 1)
 }
 
 /// Targets of pointer activation and keyboard focus.

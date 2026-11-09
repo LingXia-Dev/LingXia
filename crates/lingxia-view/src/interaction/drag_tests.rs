@@ -20,6 +20,7 @@ fn panel(index: usize) -> NodeSnapshot {
         duration: std::time::Duration::from_millis(300),
         bounce: 0.0,
         hides: Vec::new(),
+        ghost: false,
     });
     panel
 }
@@ -390,6 +391,42 @@ fn a_settle_on_a_point_that_hides_the_element_says_so() {
             settled[1]["hidden"].as_bool()
         ),
         (Some(true), Some(false))
+    );
+}
+
+#[test]
+fn an_element_reopened_during_its_exit_ghost_redraws_on_its_resting_point() {
+    let mut interaction = ViewInteraction::default();
+    let page = PageTicket::new(1);
+    present(&mut interaction, vec![panel(0)], 1);
+    interaction.set_drag_offset("sheet", 180.0, true);
+    let mut ghost = panel(0);
+    ghost.drag.as_mut().unwrap().ghost = true;
+    present(&mut interaction, vec![ghost], 2);
+    assert_eq!(
+        offset(&interaction),
+        180.0,
+        "the ghost exits from its offset"
+    );
+    let (consumed, _) = interaction.pointer(pointer(PointerPhase::Down, 50.0, 0.0), page);
+    assert!(!consumed, "a ghost takes no finger");
+    interaction.pointer(pointer(PointerPhase::Cancel, 50.0, 0.0), page);
+    let offsets = interaction.offsets();
+    let revision = interaction.scroll().revision();
+    let presented = interaction.presented(
+        Arc::new(PresentedFrame::new(
+            CommitTicket::new(3),
+            1.0,
+            vec![panel(0)],
+        )),
+        revision,
+        &offsets,
+        PageTicket::new(1),
+    );
+    assert_eq!(offset(&interaction), 0.0);
+    assert!(
+        presented.effects.contains(&Effect::Redraw),
+        "its entering frame was drawn at the kept offset"
     );
 }
 
