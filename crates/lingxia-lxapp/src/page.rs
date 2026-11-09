@@ -195,6 +195,8 @@ pub(crate) struct PageInstanceInner {
     /// Native WebView was reclaimed to free memory. Logic, `data`, and the
     /// instance stay; [`PageInstance::ensure_live_webview`] recreates the view.
     discarded: AtomicBool,
+    /// The attached GPU View holds a module instance no connection has used yet.
+    gpu_module_fresh: AtomicBool,
     webview_create_in_flight: AtomicBool,
     initial_setup_succeeded: AtomicBool,
 }
@@ -574,6 +576,7 @@ impl PageInstance {
             page_scripts: lxapp.page_scripts_snapshot(),
             loaded_tx,
             discarded: AtomicBool::new(false),
+            gpu_module_fresh: AtomicBool::new(false),
             webview_create_in_flight: AtomicBool::new(true),
             initial_setup_succeeded: AtomicBool::new(false),
         });
@@ -631,6 +634,7 @@ impl PageInstance {
             page_scripts: lxapp.page_scripts_snapshot(),
             loaded_tx,
             discarded: AtomicBool::new(false),
+            gpu_module_fresh: AtomicBool::new(false),
             webview_create_in_flight: AtomicBool::new(false),
             initial_setup_succeeded: AtomicBool::new(false),
         });
@@ -1094,6 +1098,7 @@ impl PageInstance {
             state.parked = true;
         }
         if let Some(PageView::Gpu(view)) = self.page_view() {
+            self.inner.gpu_module_fresh.store(false, Ordering::SeqCst);
             if let Err(error) = view.park() {
                 warn!("Failed to park GPU View: {}", error)
                     .with_appid(self.appid())
@@ -1797,6 +1802,7 @@ impl PageInstance {
         *current = Some(PageView::Gpu(view));
         drop(current);
         self.inner.discarded.store(false, Ordering::SeqCst);
+        self.inner.gpu_module_fresh.store(true, Ordering::SeqCst);
         // Navigation may have queued Load/Show while the asynchronous factory ran.
         // As with the first WebView attachment, those entry requests must survive.
         Ok(())
@@ -2098,7 +2104,10 @@ impl PageInstance {
         }
         if let Some(PageView::Gpu(view)) = self.page_view() {
             self.notify_render_started_inner();
-            view.reload()?;
+            // Creation already evaluated the module; a cold open only has to connect it.
+            if !self.inner.gpu_module_fresh.swap(false, Ordering::SeqCst) {
+                view.reload()?;
+            }
             return self.connect_gpu_bridge(&view);
         }
         let lxapp = self.owning_lxapp();

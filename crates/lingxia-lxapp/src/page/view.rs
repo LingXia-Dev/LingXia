@@ -10,6 +10,7 @@ pub type GpuViewCreation =
     Pin<Box<dyn Future<Output = Result<Arc<dyn GpuPageView>, LxAppError>> + Send>>;
 
 /// Installed by the native SDK before opening lxapps. Cancelled creation must release resources.
+/// A created View has already been given its module, so the first connect needs no reload.
 pub trait GpuPageViewFactory: Send + Sync {
     fn create(&self, page: super::PageInstance) -> GpuViewCreation;
 }

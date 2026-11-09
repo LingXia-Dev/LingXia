@@ -5552,6 +5552,9 @@ mod manifest_reload_tests {
             }
             let endpoint = Arc::new(Endpoint::default());
             page.attach_gpu_view(endpoint.clone()).unwrap();
+            // The created View already holds its module: the cold open does not reload it.
+            page.reload_view().unwrap();
+            assert!(endpoint.0.lock().unwrap().is_empty());
             assert!(page.has_live_view());
             assert!(page.webview().is_none());
             assert!(page.attach_gpu_view(endpoint.clone()).is_err());
