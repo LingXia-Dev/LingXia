@@ -53,6 +53,8 @@ pub(crate) fn apply(
                     resolved.background = Some(color(value)?);
                 }
             }
+            // The inherited colour is the one already resolved.
+            field::COLOR if value == "currentColor" => {}
             field::COLOR => resolved.foreground = color(value)?,
             field::BORDER_COLOR => {
                 if resolved.border.is_some() {

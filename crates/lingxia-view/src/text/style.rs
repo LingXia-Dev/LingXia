@@ -284,10 +284,14 @@ pub(crate) fn computed(records: &[Record], directions: &[bool]) -> Vec<TextStyle
         let letter_spacing = record
             .number(field::LETTER_SPACING)
             .unwrap_or_else(|| parent.as_ref().map(|p| p.letter_spacing).unwrap_or(0.0));
-        let color = record
-            .string(field::COLOR)
-            .map(str::to_owned)
-            .unwrap_or_else(|| {
+        let color = match record.string(field::COLOR) {
+            // `currentColor` on `color` itself is the inherited colour, as in CSS.
+            Some("currentColor") => parent
+                .as_ref()
+                .map(|p| p.color.clone())
+                .unwrap_or("text".into()),
+            Some(color) => color.to_owned(),
+            None => {
                 // A button is unstyled, as HTML's: its ink pairs with a fill it sets, else inherits.
                 if let Some(ink) = (record.tag == tag::BUTTON)
                     .then(|| button_ink(record))
@@ -302,7 +306,8 @@ pub(crate) fn computed(records: &[Record], directions: &[bool]) -> Vec<TextStyle
                         .map(|p| p.color.clone())
                         .unwrap_or("text".into())
                 }
-            });
+            }
+        };
         styles.push(TextStyle {
             size: font_size,
             family,

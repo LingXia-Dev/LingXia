@@ -344,7 +344,9 @@ impl Renderer {
             let paint_start = commands.len();
             let mut paint_style = PaintStyle {
                 foreground: color(colors[index]).unwrap_or([0, 0, 0, 255]),
-                own_color: record.string(field::COLOR).is_some(),
+                own_color: record
+                    .string(field::COLOR)
+                    .is_some_and(|value| value != "currentColor"),
                 transform: transforms[index],
                 corners,
                 radius,
@@ -559,7 +561,10 @@ impl Renderer {
                 let center = control_bounds[1] + control_bounds[3] / 2.0;
                 let fraction = ((range.value - range.min) / (range.max - range.min)) as f32;
                 let accent = if range.enabled {
-                    color(record.string(field::COLOR).unwrap_or("accent"))?
+                    match record.string(field::COLOR) {
+                        Some("currentColor") => paint_style.foreground,
+                        value => color(value.unwrap_or("accent"))?,
+                    }
                 } else {
                     palette.role(Role::TextFaint)
                 };

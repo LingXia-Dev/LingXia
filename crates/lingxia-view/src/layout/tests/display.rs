@@ -96,6 +96,15 @@ fn current_color_backgrounds_follow_the_text_color() {
 }
 
 #[test]
+fn a_current_color_text_color_is_the_inherited_one() {
+    let display = layout(
+        "h('column',{style:{color:'#00ff00'}},h('column',{style:{color:'currentColor'}},h('column',{style:{width:10,height:10,backgroundColor:'currentColor'}})))",
+    );
+    let pixels = display.rasterize().unwrap().pixels;
+    assert_eq!(&pixels.data_as_u8_slice()[..4], &[0, 255, 0, 255]);
+}
+
+#[test]
 fn unstyled_defaults_follow_the_page_theme() {
     use crate::scene::paint::Paint;
     let source = crate::session::tests::source(

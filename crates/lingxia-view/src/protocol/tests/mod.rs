@@ -429,16 +429,24 @@ fn padding_and_border_edges_are_bounded_nonnegative_lengths() {
 }
 
 #[test]
-fn current_color_is_only_accepted_for_borders_and_backgrounds() {
+fn current_color_is_only_accepted_for_text_borders_and_backgrounds() {
     assert!(
         decode(
-            json!([0, -1, "", "", "", 1, 5, "currentColor"])
+            json!([9, -1, "", "", "", 1, 97, "currentColor"])
                 .as_array()
                 .unwrap()
         )
         .is_err()
     );
-    for field in [6, 66] {
+    assert!(
+        decode(
+            json!([9, -1, "", "", "", 1, 97, "#123456"])
+                .as_array()
+                .unwrap()
+        )
+        .is_ok()
+    );
+    for field in [5, 6, 66] {
         for value in ["currentColor", "#123456", "#12345680"] {
             assert!(
                 decode(
