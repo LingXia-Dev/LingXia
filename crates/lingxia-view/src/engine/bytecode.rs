@@ -117,12 +117,12 @@ pub(crate) fn store(key: Key, bytes: Vec<u8>) {
         .name("view-bytecode".into())
         .spawn(move || {
             if let Err(error) = write_file(&dir, &key, &bytes) {
-                log::warn!(target: "lingxia_view", "UI_BYTECODE: cannot write cache: {error}");
+                log::warn!(target: "lingxia_view", "BYTECODE_CACHE: cannot write cache: {error}");
             }
             trim(&dir, &path(&dir, &key));
         });
     if let Err(error) = spawned {
-        log::warn!(target: "lingxia_view", "UI_BYTECODE: cannot write cache: {error}");
+        log::warn!(target: "lingxia_view", "BYTECODE_CACHE: cannot write cache: {error}");
     }
 }
 
@@ -214,7 +214,7 @@ pub(crate) fn report(outcome: Outcome, bytes: usize, elapsed: std::time::Duratio
     };
     log::info!(
         target: "lingxia_view",
-        "UI_BYTECODE: {source}, {} KB in {:.1} ms",
+        "BYTECODE_CACHE: {source}, {} KB in {:.1} ms",
         bytes / 1024,
         elapsed.as_secs_f64() * 1000.0
     );
