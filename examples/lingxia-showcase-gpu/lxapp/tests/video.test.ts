@@ -1,4 +1,5 @@
 import { expect, spec } from '@lingxia/test';
+import { decodePng } from './png.js';
 
 spec('a video plays in a 16:9 box and under its overlay', { start: { page: 'video' } }, async (t) => {
   const view = t.app.view;
@@ -10,7 +11,33 @@ spec('a video plays in a 16:9 box and under its overlay', { start: { page: 'vide
   // Nothing else on the page moves: a changed screenshot is a new video frame.
   const first = (await view.screenshot()).base64;
   await expect.poll(async () => (await view.screenshot()).base64 !== first, { timeout: 10_000 }).toBe(true);
+  await expectPicture(view, hero);
 });
+
+type View = Parameters<Parameters<typeof spec>[2]>[0]['app']['view'];
+
+/** Frames that only count are not a picture: the box shows colour, not black or the page. */
+async function expectPicture(view: View, video: ReturnType<View['testId']>) {
+  let box = await video.boundingBox();
+  let viewport = await view.viewport();
+  if (box.y < viewport.top || box.y + box.height > viewport.top + viewport.height) {
+    const dy = box.y + box.height / 2 - (viewport.top + viewport.height / 2);
+    const x = viewport.left + 12;
+    const y = viewport.top + viewport.height / 2;
+    await view.swipe({ from: [x, y + dy / 2], to: [x, y - dy / 2], durationMs: 600 });
+    await new Promise<void>(resolve => setTimeout(resolve, 600));
+    box = await video.boundingBox();
+    viewport = await view.viewport();
+  }
+  const shot = await decodePng((await view.screenshot()).base64);
+  const scale = shot.width / viewport.width;
+  const at = (x: number, y: number) => shot.at(Math.round((x - viewport.left) * scale), Math.round((y - viewport.top) * scale));
+  const page = at(box.x + box.width / 2, box.y - 6);
+  const samples = [0.5, 0.3, 0.7].map(fx => at(box.x + box.width * fx, box.y + box.height * 0.5));
+  const lit = samples.filter(([r, g, b]) => Math.max(r, g, b) > 40);
+  const apart = samples.filter(rgb => rgb.some((value, i) => Math.abs(value - page[i]) > 30));
+  expect(lit.length > 0 && apart.length > 0 ? 'picture' : `blank ${JSON.stringify({ samples, page })}`).toBe('picture');
+}
 
 spec('useVideo reports playback and pauses on command', { start: { page: 'video' } }, async (t) => {
   const view = t.app.view;
@@ -63,14 +90,22 @@ spec('an HLS source offers its renditions as qualities', { start: { page: 'video
   const view = t.app.view;
   const state = view.testId('video-stream-state');
   const offline = () => t.skip('needs the network: the public HLS test stream is unreachable');
+  // HarmonyOS's player plays the stream but does not list or pin its renditions yet.
+  const harmony = await t.app.logic.eval(({ lx }) => String(lx.host.getBaseInfo().os || '').toLowerCase()) === 'harmony';
+  const done = (text: string) => harmony ? /· [1-9]\d*p ·/.test(text) : text.includes('1080p/720p/540p/360p');
   const deadline = Date.now() + 20_000;
   let text = await state.textContent();
-  while (!text.includes('1080p/720p/540p/360p') && Date.now() < deadline) {
+  while (!done(text) && Date.now() < deadline) {
     if (text.includes('VIDEO_NETWORK')) offline();
-    await new Promise(resolve => setTimeout(resolve, 250));
+    await new Promise<void>(resolve => setTimeout(resolve, 250));
     text = await state.textContent();
   }
   if (text.includes('VIDEO_NETWORK')) offline();
+  if (harmony) {
+    expect(text).toMatch(/· [1-9]\d*p ·/);
+    await expectPicture(view, view.testId('video-stream'));
+    t.skip('HarmonyOS does not list HLS renditions yet');
+  }
   expect(text).toContain('1080p/720p/540p/360p');
   await view.testId('video-stream-360p').click();
   await expect(state).toContainText('360p · 360p', { timeout: 30_000 });

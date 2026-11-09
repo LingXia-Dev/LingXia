@@ -838,12 +838,8 @@ fn touch<'a>(players: &'a mut HashMap<String, Entry>, key: &str) -> Option<&'a m
     Some(entry)
 }
 
-/// Imports the frame due now of every player `display` draws; true when it draws a video.
-pub(crate) fn import(device: &wgpu::Device, display: &crate::DisplayList) -> bool {
-    import_frames(device, display).0
-}
-
-/// [`import`], and whether a player gave a new frame.
+/// Imports the frame due now of every player `display` draws: whether it draws a video, and
+/// whether a player gave a new frame.
 pub(crate) fn import_frames(device: &wgpu::Device, display: &crate::DisplayList) -> (bool, bool) {
     let mut imported = false;
     let keys = keys(display);

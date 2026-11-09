@@ -14,6 +14,7 @@ mod ime;
 use lingxia_view::renderer::render_thread as render;
 mod surface;
 mod sys;
+mod video;
 mod xcomponent;
 
 pub use adapter::HarmonyAdapter;
@@ -256,6 +257,7 @@ impl Page {
         logic: bool,
     ) -> Result<Self, String> {
         lingxia_view::text::fonts::set_system_fonts(fonts::system_fonts);
+        video::install();
         let worker = ViewWorker::shared(worker)?;
         let host = ViewHost::new(HarmonyAdapter::new(token, shell), worker, logic);
         let _ = host.adapter().host.set(host.downgrade());
