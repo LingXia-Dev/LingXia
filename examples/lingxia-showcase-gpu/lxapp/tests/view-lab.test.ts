@@ -83,3 +83,28 @@ spec('kit progress reads as a progressbar with its value, and without one while 
   const width = async (id: string) => (await view.testId(id).boundingBox()).width;
   await expect.poll(async () => Math.round(await width('lab-progress-bar-fill') / await width('lab-progress-bar') * 100)).toBe(60);
 });
+
+spec('kit video controls start a poster video on a tap, then pause, mute and scrub it', { start: { page: 'view-lab' } }, async (t) => {
+  const view = t.app.view;
+  await view.testId('lab-tab-media').click();
+  const button = (name: string) => view.getByRole('button', { name });
+  const time = view.testId('lab-video-controls-time');
+  const seconds = async () => {
+    const [, m, s] = /^(\d+):(\d+)/.exec(await time.textContent()) ?? [];
+    return Number(m) * 60 + Number(s);
+  };
+  // Not autoplaying: it waits on its poster with the length known.
+  await expect(button('Play')).toBeVisible();
+  await expect(time).toHaveText('0:00 / 0:06', { timeout: 5_000 });
+  await button('Play').click();
+  await expect(button('Pause')).toBeVisible();
+  await expect.poll(seconds, { timeout: 5_000 }).toBeGreaterThan(0);
+  await button('Pause').click();
+  await expect(button('Play')).toBeVisible();
+  await button('Mute').click();
+  await expect(button('Unmute')).toBeVisible();
+  // A drag to the far end seeks there and stays paused (at the end, the button offers Replay).
+  await view.drag(view.getByRole('slider', { name: 'Seek' }), { dx: 1000, dy: 0, durationMs: 400 });
+  await expect.poll(seconds, { timeout: 5_000 }).toBeGreaterThanOrEqual(5);
+  await expect(button('Pause')).toHaveCount(0);
+});

@@ -1,4 +1,4 @@
-import { Details, Fragment, List, Pager as KitPagerView, Progress, Summary, useLocal, useView, type VectorPath } from '@lingxia/view';
+import { Details, Fragment, List, Pager as KitPagerView, Progress, Summary, useLocal, useVideo, useView, VideoControls, type VectorPath } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Icon, Page, Section } from '../../shared/ui';
 import type { LabPageData } from '../../shared/lab-types';
@@ -11,6 +11,7 @@ const groups = {
   text: { label: 'Text', sections: [TextLayout, RichText, Selection, Document] },
   input: { label: 'Input', sections: [Accessibility, Inputs, Controls, Focus, NestedControls, StateVariants] },
   overlay: { label: 'Overlay', sections: [Overlays] },
+  media: { label: 'Media', sections: [Media] },
   data: { label: 'Data', sections: [Plots, Progresses] },
   gesture: { label: 'Gesture', sections: [Drag, DragChain, Detents] },
   swipe: { label: 'Swipe', sections: [SwipeRows, Pager, KitPager] },
@@ -265,6 +266,18 @@ function Progresses() {
         <Progress variant="ring" aria-label="Connecting" data-testid="lab-progress-spin" />
         <Button testId="lab-progress-more" size="sm" onClick={() => done.set(Math.min(100, done.value + 20))}>More</Button>
       </row>
+    </Section>
+  );
+}
+
+function Media() {
+  const clip = useVideo('lab-clip');
+  // Waits on its poster for a tap; the kit bar drives it.
+  return (
+    <Section title="Media" testId="lab-video">
+      <video data-testid="lab-video-player" player={clip} src="public/video/fractal.mp4" poster="public/video/fractal-poster.jpg"
+        aria-label="Fractal zoom" className="rounded-xl" />
+      <VideoControls player={clip} data-testid="lab-video-controls" />
     </Section>
   );
 }

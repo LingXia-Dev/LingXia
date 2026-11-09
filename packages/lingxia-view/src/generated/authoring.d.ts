@@ -176,6 +176,8 @@ export declare function Summary(props: { className?: string; children?: Child })
 export declare function Pager(props: { bind?: Local<number>; defaultPage?: number; dots?: boolean; "aria-label": string; className?: string; "data-testid"?: string; children?: Child }): JSX.Element;
 /** An amount done, as HTML's progress: a bar or a ring, indeterminate without `value`. A screen reader hears `value` / `max` (100) as a percentage unless `aria-valuetext` says otherwise. */
 export declare function Progress(props: { value?: number; max?: number; variant?: "bar" | "ring"; size?: number; "aria-label": string; "aria-valuetext"?: string; className?: string; "data-testid"?: string }): JSX.Element;
+/** The standard bar for a `useVideo` player: play/pause (replay once ended), a scrubber that holds a dragged position until the player reaches it, the time or a Live badge, mute, a quality menu when there are qualities, and a recoverable error's Retry. */
+export declare function VideoControls(props: { player: Video; className?: string; "data-testid"?: string }): JSX.Element;
 
 export interface BoxShadow { offsetX?: number; offsetY?: number; blur?: number; spread?: number; color?: string }
 export interface GradientStop { offset: number; color: string }

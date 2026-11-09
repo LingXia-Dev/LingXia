@@ -12,6 +12,7 @@
     Details: () => Details,
     List: () => List,
     Summary: () => Summary,
+    VideoControls: () => VideoControls,
     childrenToArray: () => childrenToArray,
     commit: () => commit,
     configureActions: () => configureActions,
@@ -4473,7 +4474,7 @@
     const shift = (months) => {
       picker.focus = clampDate(addMonths(picker.focus, months), min, max);
     };
-    const iconButton = (testId, label2, d, months) => h(
+    const iconButton2 = (testId, label2, d, months) => h(
       "button",
       {
         "data-testid": testId,
@@ -4532,8 +4533,8 @@
         "row",
         { style: { alignItems: "center", gap: 4, justifyContent: titled ? "start" : "space-between" } },
         titled && h("text", { "data-testid": "lx-picker-title", "aria-live": "polite", style: { flexGrow: 1, fontSize: 16, fontWeight: 600, color: "text", paddingLeft: 8 } }, title),
-        iconButton("lx-picker-previous", words.previous, "M12.5 4l-6 6 6 6", -1),
-        iconButton("lx-picker-next", words.next, "M7.5 4l6 6-6 6", 1)
+        iconButton2("lx-picker-previous", words.previous, "M12.5 4l-6 6 6 6", -1),
+        iconButton2("lx-picker-next", words.next, "M7.5 4l6 6-6 6", 1)
       ),
       h(
         "column",
@@ -4988,6 +4989,96 @@
     commit();
     return output;
   }
+
+  // src/runtime/video-controls.js
+  var glyph = (d, filled = true) => filled ? [{ d, fill: "currentColor" }] : [{ d, fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }];
+  var speaker = "M4 9v6h4l5 4V5L8 9z";
+  var icons2 = {
+    play: glyph("M8 5.5v13l10.5-6.5z"),
+    pause: glyph("M6.5 5h4v14h-4zM13.5 5h4v14h-4z"),
+    replay: glyph("M4 12a8 8 0 1 0 2.3-5.6M4 4v4.5h4.5", false),
+    sound: [...glyph(speaker), ...glyph("M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11", false)],
+    muted: [...glyph(speaker), ...glyph("M16 9.5l5 5M21 9.5l-5 5", false)]
+  };
+  var HOLD_MS = 1500;
+  var reached = /* @__PURE__ */ new WeakSet();
+  var clock3 = (seconds) => {
+    const s = Math.max(0, Math.floor(seconds));
+    const m = Math.floor(s / 60);
+    const two = (n) => String(n).padStart(2, "0");
+    return m >= 60 ? `${Math.floor(m / 60)}:${two(m % 60)}:${two(s % 60)}` : `${m}:${two(s % 60)}`;
+  };
+  var iconButton = (testId, label2, icon, onClick, extra = {}) => h(
+    "button",
+    {
+      "data-testid": testId,
+      "aria-label": label2,
+      onClick,
+      ...extra,
+      style: { paddingTop: 11, paddingBottom: 11, paddingLeft: 11, paddingRight: 11, backgroundColor: "transparent", color: "text" }
+    },
+    h("vector", { "aria-hidden": true, paths: icons2[icon], viewBox: [0, 0, 24, 24], style: { width: 22, height: 22 } })
+  );
+  function VideoControls({ player, className, "data-testid": testId }) {
+    if (playerName(player) === void 0) throw Error("UI_PROP: player must be a useVideo handle");
+    const id = (part) => testId && `${testId}-${part}`;
+    const held = useLocal("held", null);
+    const { paused, ended, muted, duration, readyState, qualities, buffering, error } = player;
+    const live = duration === null && readyState !== "empty";
+    const known = typeof duration === "number" && duration > 0;
+    const now2 = player.currentTime;
+    const hold = held.value;
+    if (hold !== null && Math.abs(now2 - hold.value) <= 0.5) reached.add(hold);
+    const holding = hold !== null && !reached.has(hold) && Date.now() - hold.at < HOLD_MS;
+    const at = known ? Math.min(holding ? hold.value : now2, duration) : 0;
+    const scrub = (value) => {
+      held.set({ value, at: Date.now() });
+      player.seek(value).catch(() => held.set(null));
+    };
+    const toggle2 = () => ended ? player.seek(0).then(() => player.play()) : paused ? player.play() : player.pause();
+    const label2 = ended ? "Replay" : paused ? "Play" : "Pause";
+    return h(
+      "column",
+      { className, "data-testid": testId, style: { color: "text" } },
+      error && h(
+        "row",
+        { "data-testid": id("error"), role: "alert", style: { alignItems: "center", gap: 8, paddingLeft: 11, paddingRight: 11 } },
+        h("text", { style: { flexGrow: 1, flexBasis: 0, fontSize: 12, color: "danger" } }, error.message),
+        error.recoverable && h("button", { "data-testid": id("retry"), onClick: () => player.retry(), style: { fontSize: 12 } }, "Retry")
+      ),
+      h(
+        "row",
+        { style: { alignItems: "center", gap: 2 } },
+        iconButton(id("play"), label2, ended ? "replay" : paused ? "play" : "pause", toggle2, { "aria-busy": buffering }),
+        live ? h("text", { "data-testid": id("live"), style: { flexGrow: 1, fontSize: 12, fontWeight: 600, color: "accent" } }, "LIVE") : h("slider", {
+          "data-testid": id("scrub"),
+          "aria-label": "Seek",
+          min: 0,
+          max: known ? duration : 1,
+          step: 0.1,
+          value: at,
+          disabled: !known,
+          onChange: scrub,
+          style: { flexGrow: 1, flexBasis: 0 }
+        }),
+        !live && h(
+          "text",
+          { "data-testid": id("time"), style: { fontSize: 12, color: "text-muted", fontVariantNumeric: "tabular-nums" } },
+          `${clock3(at)} / ${known ? clock3(duration) : "--:--"}`
+        ),
+        iconButton(id("mute"), muted ? "Unmute" : "Mute", muted ? "muted" : "sound", () => player.setMuted(!muted), { "aria-pressed": muted }),
+        qualities.length > 0 && h("select", {
+          "data-testid": id("quality"),
+          "aria-label": "Quality",
+          value: player.quality,
+          options: [{ value: "auto", label: "Auto" }, ...qualities.map((name) => ({ value: name, label: name }))],
+          onChange: (quality) => player.setQuality(quality),
+          style: { fontSize: 12 }
+        })
+      )
+    );
+  }
+  VideoControls.__lxid = "@lingxia/view#VideoControls";
 
   // src/runtime/hot-swap.js
   function exportState() {
