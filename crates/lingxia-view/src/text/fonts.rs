@@ -47,7 +47,35 @@ pub(crate) fn right_to_left(tag: &str) -> bool {
     }
 }
 
+thread_local! {
+    /// This thread's system font set, built once; whether the platform loader was set then.
+    static TEMPLATE: std::cell::RefCell<Option<(bool, FontContext)>> =
+        const { std::cell::RefCell::new(None) };
+    #[cfg(test)]
+    static BUILDS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// A clone of the worker's font set: scanning the system fonts costs ~100 ms per call on
+/// Android, and faces a page registers stay in its own clone.
 pub(crate) fn context() -> FontContext {
+    let configured = SOURCE.get().is_some();
+    TEMPLATE.with_borrow_mut(|template| {
+        if template
+            .as_ref()
+            .is_none_or(|(built, _)| *built != configured)
+        {
+            *template = Some((configured, build()));
+        }
+        template
+            .as_ref()
+            .map(|(_, fonts)| fonts.clone())
+            .unwrap_or_default()
+    })
+}
+
+fn build() -> FontContext {
+    #[cfg(test)]
+    BUILDS.set(BUILDS.get() + 1);
     let mut fonts = FontContext::new();
     if let Some(system) = SOURCE.get().map(|load| SYSTEM.get_or_init(load)) {
         system.apply(&mut fonts.collection);

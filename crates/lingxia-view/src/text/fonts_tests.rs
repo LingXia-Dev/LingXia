@@ -342,3 +342,29 @@ fn configured_families_resolve_from_font_dirs() {
     assert_eq!(fonts.files, [dir.join("Arial.ttf")]);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn renderers_share_one_font_set_and_keep_their_own_faces() {
+    let builds = BUILDS.get();
+    let mut page = context();
+    let other = context();
+    assert!(
+        BUILDS.get() - builds <= 1,
+        "the system font set is built once per thread"
+    );
+    let registered = page.collection.register_fonts(
+        Blob::new(std::sync::Arc::new(
+            include_bytes!("../session/tests/wide.ttf").to_vec(),
+        )),
+        None,
+    );
+    let name = page
+        .collection
+        .family_name(registered[0].0)
+        .unwrap()
+        .to_owned();
+    assert!(page.collection.family_by_name(&name).is_some());
+    let mut other = other;
+    assert!(other.collection.family_by_name(&name).is_none());
+    assert!(context().collection.family_by_name(&name).is_none());
+}
