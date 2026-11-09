@@ -3,6 +3,8 @@
 //! Reconfiguring a surface waits for the device to idle, so it must not race a submit.
 use crate::DisplayList;
 use std::collections::VecDeque;
+use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Condvar, LazyLock, Mutex, MutexGuard};
 use std::time::Instant;
 
@@ -16,6 +18,8 @@ pub type PrepareFn = fn(u64, &DisplayList, u64) -> Result<Option<serde_json::Val
 pub type PresentFn = fn(u64, u64) -> Result<Option<[u64; 4]>, String>;
 /// The presenter behind an id, for redrawing a kept video frame.
 pub type PresenterFn = fn(u64) -> Result<Option<super::surfaces::Shared>, String>;
+/// Moves every bound presenter to a new device after the old one was lost.
+pub type ResetFn = fn() -> Result<(), String>;
 
 /// The presenter registry a page draws through.
 #[derive(Clone, Copy)]
@@ -23,6 +27,7 @@ pub struct Backend {
     pub prepare: PrepareFn,
     pub present: PresentFn,
     pub presenter: PresenterFn,
+    pub reset: ResetFn,
 }
 
 /// The registry shared by adapters that bind windows through [`super::surfaces`].
@@ -30,6 +35,7 @@ pub const SURFACES: Backend = Backend {
     prepare: super::surfaces::prepare,
     present: super::surfaces::present,
     presenter: super::surfaces::presenter,
+    reset: super::surfaces::reset,
 };
 
 /// A frame's draw: `None` until it ran, then what the backend's prepare returned.
@@ -76,7 +82,10 @@ static QUEUE: LazyLock<Arc<(Mutex<VecDeque<Job>>, Condvar)>> = LazyLock::new(|| 
                         display,
                         drawn,
                     } => {
-                        let result = (drawn.backend.prepare)(surface, &display, revision);
+                        let backend = drawn.backend;
+                        let result =
+                            catch_unwind(AssertUnwindSafe(|| (backend.prepare)(surface, &display, revision)))
+                                .unwrap_or_else(|panic| lost(&backend, surface, panic).map(|()| None));
                         let kept = matches!(result, Ok(Some(_)));
                         *lock(&drawn.result) = Some(result);
                         if kept {
@@ -89,11 +98,17 @@ static QUEUE: LazyLock<Arc<(Mutex<VecDeque<Job>>, Condvar)>> = LazyLock::new(|| 
                         }
                     }
                     Job::Rebind(surface) => {
-                        if let Err(error) = super::surfaces::rebind(surface) {
+                        let redrawn = catch_unwind(|| super::surfaces::rebind(surface))
+                            .unwrap_or_else(|panic| lost(&SURFACES, surface, panic));
+                        if let Err(error) = redrawn {
                             log::warn!(target: "lingxia_view", "video redraw: {error}");
                         }
                     }
-                    Job::Run(task) => task(),
+                    Job::Run(task) => {
+                        if let Err(panic) = catch_unwind(AssertUnwindSafe(task)) {
+                            log::error!(target: "lingxia_view", "GPU task panicked: {}", message(&*panic));
+                        }
+                    }
                 }
             }
         });
@@ -102,6 +117,51 @@ static QUEUE: LazyLock<Arc<(Mutex<VecDeque<Job>>, Condvar)>> = LazyLock::new(|| 
     }
     queue
 });
+
+/// Device losses this process has recovered from.
+static LOSSES: AtomicU32 = AtomicU32::new(0);
+
+fn message(panic: &(dyn std::any::Any + Send)) -> &str {
+    panic
+        .downcast_ref::<&str>()
+        .copied()
+        .or_else(|| panic.downcast_ref::<String>().map(String::as_str))
+        .unwrap_or("non-string panic")
+}
+
+/// A panic inside wgpu or the renderer leaves the device unusable. The first moves every
+/// presenter to a new device and drops the frame, which the page then draws again; after a
+/// second the page gets the error and shows its recovery screen instead of staying blank.
+fn lost(
+    backend: &Backend,
+    surface: u64,
+    panic: Box<dyn std::any::Any + Send>,
+) -> Result<(), String> {
+    let adapter = (backend.presenter)(surface)
+        .ok()
+        .flatten()
+        .map(|presenter| {
+            presenter
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .adapter()
+                .to_owned()
+        })
+        .unwrap_or_default();
+    let error = format!("UI_GPU_LOST: {} ({adapter})", message(&*panic));
+    log::error!(target: "lingxia_view", "{error}");
+    if LOSSES.fetch_add(1, Ordering::AcqRel) > 0 {
+        return Err(error);
+    }
+    match catch_unwind(backend.reset) {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(reset)) => Err(format!("{error}; rebuilding failed: {reset}")),
+        Err(panic) => Err(format!(
+            "{error}; rebuilding panicked: {}",
+            message(&*panic)
+        )),
+    }
+}
 
 fn push(job: Job, front: bool) {
     let (queue, wake) = &**QUEUE;
@@ -146,7 +206,10 @@ pub fn present(
         let started = Instant::now();
         let outcome = match lock(&target.result).take() {
             Some(Ok(Some(metrics))) => {
-                (target.backend.present)(surface, revision).map(|timings| {
+                let backend = target.backend;
+                catch_unwind(|| (backend.present)(surface, revision))
+                    .unwrap_or_else(|panic| lost(&backend, surface, panic).map(|()| None))
+                    .map(|timings| {
                     if timings.is_none() {
                         log::debug!(target: "lingxia_view", "gpu present refused surface={surface} revision={revision}");
                     }
@@ -231,7 +294,7 @@ pub fn run_now<T: Send + 'static>(task: impl FnOnce() -> T + Send + 'static) -> 
 mod tests {
     use super::*;
     use std::collections::HashSet;
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::atomic::AtomicBool;
     use std::sync::mpsc::channel;
     use std::time::Duration;
 
@@ -260,6 +323,10 @@ mod tests {
         Ok(None)
     }
 
+    fn reset() -> Result<(), String> {
+        Ok(())
+    }
+
     #[test]
     fn a_surface_released_while_a_frame_waits_takes_its_swapchain_down_first() {
         let surface = 9_000_001;
@@ -281,6 +348,7 @@ mod tests {
             prepare,
             present,
             presenter,
+            reset,
         };
         let drawn = draw(backend, surface, 1, display);
         let (sent, reported) = channel();
@@ -303,5 +371,60 @@ mod tests {
             Ok(false),
             "the waiting frame never reaches the dead window"
         );
+    }
+
+    static RESETS: AtomicU32 = AtomicU32::new(0);
+
+    fn panicking_prepare(
+        _: u64,
+        _: &DisplayList,
+        _: u64,
+    ) -> Result<Option<serde_json::Value>, String> {
+        panic!("Capacity handled in creation")
+    }
+
+    fn counted_reset() -> Result<(), String> {
+        RESETS.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+
+    fn panicking_frame(surface: u64) -> Result<bool, String> {
+        let backend = Backend {
+            prepare: panicking_prepare,
+            present,
+            presenter,
+            reset: counted_reset,
+        };
+        let display = crate::session::tests::source("function render(){return h('text',{},'A')}");
+        let display = crate::ViewSession::new(&display)
+            .unwrap()
+            .layout(32, 32, 1.0)
+            .unwrap()
+            .retained
+            .compose(&Default::default())
+            .unwrap();
+        let drawn = draw(backend, surface, 1, display);
+        let (sent, reported) = channel();
+        super::present(surface, 1, drawn, move |shown, _| {
+            let _ = sent.send(shown);
+        });
+        reported.recv_timeout(Duration::from_secs(5)).unwrap()
+    }
+
+    #[test]
+    fn a_device_lost_mid_frame_is_rebuilt_once_then_reported_and_the_thread_lives_on() {
+        assert_eq!(
+            panicking_frame(9_000_002),
+            Ok(false),
+            "the first loss rebuilds the presenters and drops the frame for a redraw"
+        );
+        assert_eq!(RESETS.load(Ordering::SeqCst), 1);
+        let second = panicking_frame(9_000_003);
+        assert!(
+            second.as_ref().is_err_and(|e| e.starts_with("UI_GPU_LOST")),
+            "a second loss reaches the page as an error: {second:?}"
+        );
+        assert_eq!(RESETS.load(Ordering::SeqCst), 1);
+        assert_eq!(run_now(|| 7), Some(7), "the render thread still runs work");
     }
 }

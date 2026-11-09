@@ -119,6 +119,7 @@ pub(super) const BACKEND: lingxia_view::renderer::render_thread::Backend =
         prepare,
         present,
         presenter,
+        reset,
     };
 
 /// Bind `window` to the presenter `existing`, or to a new one; returns its id.
@@ -153,6 +154,36 @@ pub(super) fn describe(id: u64) -> Option<(String, &'static str)> {
     let presenter = presenter(id).ok()??;
     let presenter = lock(&presenter).ok()?;
     Some((presenter.adapter().to_owned(), presenter.backend()))
+}
+
+/// The device was lost: every bound presenter moves to a new one under the same id; a
+/// suspended one is dropped and its page attaches anew.
+fn reset() -> Result<(), String> {
+    let presenters: Vec<(u64, Shared)> = registry()?
+        .iter()
+        .map(|(id, presenter)| (*id, presenter.clone()))
+        .collect();
+    *CONTEXT.lock().unwrap_or_else(|p| p.into_inner()) = None;
+    for (id, presenter) in presenters {
+        let binding = {
+            // The panic that lost the device may have poisoned it; only its window is read.
+            let mut old = presenter.lock().unwrap_or_else(|p| p.into_inner());
+            let binding = old.binding();
+            old.suspend();
+            binding
+        };
+        let Some((source, width, height)) = binding else {
+            registry()?.remove(&id);
+            continue;
+        };
+        let mut context = CONTEXT.lock().unwrap_or_else(|p| p.into_inner());
+        let rebuilt =
+            Presenter::with_fallback(context.clone().unwrap_or_default(), source, width, height)?;
+        context.get_or_insert_with(|| rebuilt.context());
+        drop(context);
+        registry()?.insert(id, Arc::new(Mutex::new(rebuilt)));
+    }
+    Ok(())
 }
 
 pub(super) fn suspend(id: u64) {

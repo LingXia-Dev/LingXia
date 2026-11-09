@@ -1084,7 +1084,11 @@ extern "system" fn attach<'a>(
         adapter.set_target(adapter::Target::Waiting);
         let (width, height) = (width as u32, height as u32);
         render::run(move || {
-            let attached = gpu_surface::attach(window, width, height, existing);
+            // A driver that panics while binding leaves the page on the CPU renderer, not blank.
+            let attached = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                gpu_surface::attach(window, width, height, existing)
+            }))
+            .unwrap_or_else(|_| Err("UI_GPU_LOST: binding the surface panicked".into()));
             let main = host.clone();
             lingxia_view::platform::MainThread::post(
                 host.adapter(),

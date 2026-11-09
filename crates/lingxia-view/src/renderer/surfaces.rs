@@ -124,6 +124,36 @@ pub fn detach(id: u64) {
     drop(removed);
 }
 
+/// The device was lost: every bound presenter moves to a new one under the same id; a
+/// suspended one is dropped and its page attaches anew.
+pub fn reset() -> Result<(), String> {
+    let _binding = gpu_binding();
+    video_surfaces().clear();
+    let presenters: Vec<(u64, Shared)> = registry()?
+        .iter()
+        .map(|(id, presenter)| (*id, presenter.clone()))
+        .collect();
+    let mut context: Option<super::gpu::Context> = None;
+    for (id, presenter) in presenters {
+        let binding = {
+            // The panic that lost the device may have poisoned it; only its window is read.
+            let mut old = presenter.lock().unwrap_or_else(|p| p.into_inner());
+            let binding = old.binding();
+            old.suspend();
+            binding
+        };
+        let Some((source, width, height)) = binding else {
+            registry()?.remove(&id);
+            continue;
+        };
+        let rebuilt =
+            Presenter::with_fallback(context.clone().unwrap_or_default(), source, width, height)?;
+        context.get_or_insert_with(|| rebuilt.context());
+        registry()?.insert(id, Arc::new(Mutex::new(rebuilt)));
+    }
+    Ok(())
+}
+
 /// Encode `display`; `None` while the presenter is suspended or detached.
 pub fn prepare(
     id: u64,

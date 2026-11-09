@@ -391,6 +391,7 @@ const errorNotes = {
   UI_SELECT: 'Invalid `<select>` options, value or selection reply.',
   UI_FONT: 'A family is not declared with `@font-face`, a declared face file is missing, outside the lxapp or too large, or a face or system font could not be read; text falls back to the next font.',
   UI_FRAME: 'The platform presenter kept refusing frames prepared ahead; the page falls back to one frame at a time.',
+  UI_GPU_LOST: 'The GPU device failed mid-frame. The first time, every page moves to a new device and redraws; after a second, the page shows its recovery screen.',
   UI_BUDGET: 'A warning, once per page and limit: a frame used at least three quarters of a page limit, or a dialog or popover past `topLayer` stayed closed.',
   UI_ACTION: 'An action call was malformed or its reply invalid.',
   UI_ANIMATION: 'An invalid or over-budget animation definition, or an inline `style.animation`.',

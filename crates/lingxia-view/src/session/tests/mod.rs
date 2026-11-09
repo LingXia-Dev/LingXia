@@ -2116,7 +2116,7 @@ fn a_replayed_write_keeps_untouched_subtrees_the_same_objects() {
         "let last;function render({data}){const same=last===data.keep;last=data.keep;return h('text',{},String(same))}",
     );
     let mut session = ViewSession::new_with_logic(&source, true).unwrap();
-    let mut text =
+    let text =
         |session: &mut ViewSession| session.render(300, 500, 1.0).unwrap().nodes[0].text.clone();
     session
         .write_state(state_write(&json!({"v":2,"kind":"state.snapshot","rev":0,

@@ -487,6 +487,16 @@ impl Presenter {
         &self.adapter
     }
 
+    /// The window and size this presenter draws to while bound; `None` while suspended.
+    pub fn binding(&self) -> Option<(SurfaceSource, u32, u32)> {
+        let surface = self.surface.as_ref()?;
+        Some((
+            self.target.clone()?,
+            surface.config.width,
+            surface.config.height,
+        ))
+    }
+
     pub fn new(source: SurfaceSource, width: u32, height: u32) -> Result<Self, String> {
         Self::with_context(Context::default(), source, width, height)
     }
