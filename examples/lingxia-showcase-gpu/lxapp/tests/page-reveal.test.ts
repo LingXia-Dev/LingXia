@@ -9,7 +9,8 @@ spec('a page pushed again is not revealed on its previous frame', {
 }, async (t) => {
   const app = t.app;
   const platform = await runtimePlatform(app);
-  if (!['harmony', 'android'].includes(platform)) t.skip(`${platform} has no host-side reveal`);
+  // Android slides a pushed page in itself; only its unanimated swaps go through the core reveal.
+  if (platform !== 'harmony') t.skip(`${platform} does not reveal a pushed page through the core`);
   let reveals = -1;
   for (let round = 0; round < 3; round++) {
     await app.nav.to({ page: 'motion-lab' });
