@@ -80,15 +80,11 @@ fn events(before: &Status, now: &Status) -> Vec<serde_json::Value> {
 
 impl ViewSession {
     /// Players whose state moved since it was last reported get their views' events; true when
-    /// a handler ran or a poster must give way to the first frame.
-    pub fn dispatch_video_events(
-        &mut self,
-        generation: crate::session::lifecycle::CommitTicket,
-        hold_time: bool,
-    ) -> Result<bool, String> {
-        if generation != self.generation {
-            return Ok(false);
-        }
+    /// a handler ran or a poster must give way to the first frame. They go to the latest commit's
+    /// handlers: a page that commits every frame (a spinner) is always a commit past its last
+    /// present.
+    pub fn dispatch_video_events(&mut self, hold_time: bool) -> Result<bool, String> {
+        let generation = self.generation;
         let records = self.input_records.clone().unwrap_or_default();
         let mut statuses = std::collections::HashMap::new();
         let mut views = Vec::new();

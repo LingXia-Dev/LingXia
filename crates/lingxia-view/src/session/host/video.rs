@@ -11,7 +11,7 @@ const SCROLLING_PERIOD: Duration = Duration::from_secs(1);
 impl<A: PlatformAdapter> Inner<A> {
     pub(super) fn video_tick(self: &Arc<Self>) {
         let now = self.adapter.now();
-        let generation = {
+        let presented = {
             let mut main = self.main();
             if main.disposed
                 || main
@@ -31,16 +31,16 @@ impl<A: PlatformAdapter> Inner<A> {
             if !hold_time {
                 main.video_time_flushed = Some(now);
             }
-            main.snapshot.as_ref().map(|s| (s.generation, hold_time))
+            main.snapshot.is_some().then_some(hold_time)
         };
-        let Some((generation, hold_time)) = generation else {
+        let Some(hold_time) = presented else {
             return;
         };
         let page = self.lifecycle.page();
         self.work(
             Guard::Page(page),
             move |inner, session| {
-                if !session.dispatch_video_events(generation, hold_time)? {
+                if !session.dispatch_video_events(hold_time)? {
                     return Ok(None);
                 }
                 inner.drained(session).map(Some)

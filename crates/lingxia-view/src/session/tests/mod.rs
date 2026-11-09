@@ -3,6 +3,8 @@ mod drag;
 mod flex_direction;
 mod host;
 mod images;
+#[cfg(feature = "gpu")]
+mod video;
 
 use super::*;
 

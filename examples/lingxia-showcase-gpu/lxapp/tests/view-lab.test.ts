@@ -93,7 +93,9 @@ spec('kit video controls start a poster video on a tap, then pause, mute and scr
     const [, m, s] = /^(\d+):(\d+)/.exec(await time.textContent()) ?? [];
     return Number(m) * 60 + Number(s);
   };
-  // Not autoplaying: it waits on its poster with the length known.
+  // Not autoplaying: it waits on its poster with the length known. The spinner beside it commits
+  // the page every frame, and the player's state must reach the bar all the same.
+  await expect(view.testId('lab-video-spinner')).toBeVisible();
   await expect(button('Play')).toBeVisible();
   await expect(time).toHaveText('0:00 / 0:06', { timeout: 5_000 });
   await button('Play').click();

@@ -278,6 +278,8 @@ function Media() {
       <video data-testid="lab-video-player" player={clip} src="public/video/fractal.mp4" poster="public/video/fractal-poster.jpg"
         aria-label="Fractal zoom" className="rounded-xl" />
       <VideoControls player={clip} data-testid="lab-video-controls" />
+      {/* A spinner beside the player commits the page every frame; the bar must still follow it. */}
+      <Progress variant="ring" size={24} aria-label="Loading next" data-testid="lab-video-spinner" />
     </Section>
   );
 }
