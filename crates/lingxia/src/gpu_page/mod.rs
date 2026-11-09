@@ -492,6 +492,25 @@ pub(crate) fn page_of(token: Token) -> Option<PageInstance> {
     live(token).and_then(|endpoint| lxapp::find_page_by_instance_id(&endpoint.lease.page))
 }
 
+/// A full-screen video on page `token` locks the window to its shape, or (`None`) gives the
+/// window back to the page's own orientation. The lock lives on the page, so the host's
+/// own reapplies (page switches, resume) keep it while that page shows.
+pub(crate) fn video_orientation(token: Token, orientation: Option<lxapp::PageOrientation>) {
+    use lingxia_platform::traits::ui::UIUpdate;
+    let Some(page) = page_of(token) else {
+        return;
+    };
+    if !page.set_presentation_orientation(orientation) {
+        return;
+    }
+    let Some(app) = lxapp::try_get(&page.appid()) else {
+        return;
+    };
+    if let Err(error) = app.runtime.update_orientation_ui(app.appid.clone()) {
+        log::warn!("full-screen orientation: {error}");
+    }
+}
+
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;

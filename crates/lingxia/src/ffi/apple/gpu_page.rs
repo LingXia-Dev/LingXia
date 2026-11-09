@@ -890,6 +890,13 @@ mod live {
         fn top_layer(&self, token: i64, modal: bool) {
             super::bridge::gpu_pages_top_layer(token, modal);
         }
+        fn video_orientation(
+            &self,
+            token: i64,
+            orientation: Option<lingxia_view_apple::lingxia_view::scene::video::Orientation>,
+        ) {
+            gpu_page::video_orientation(token, orientation.map(gpu_page::state::page_orientation));
+        }
         fn claim(&self, token: i64, exclusive: bool) {
             super::bridge::gpu_pages_claim(token, exclusive);
         }

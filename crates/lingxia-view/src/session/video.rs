@@ -6,7 +6,27 @@ use crate::protocol::{field, tag};
 use crate::scene::video::{Status, VideoOp};
 
 /// `__lingxiaVideoCommand(player, op, value)`: `""` once applied, else the error message.
-pub(super) fn install(context: &JSContext, scope: u64) -> Result<(), String> {
+/// `__lingxiaVideoOrientation(orientation)`: what the full-screen layer asks of the window,
+/// `""` for nothing.
+pub(super) fn install(
+    context: &JSContext,
+    scope: u64,
+    orientation: impl Fn(Option<crate::scene::video::Orientation>) + 'static,
+) -> Result<(), String> {
+    let request = rong::quickjs::JSFunc::new(context, move |text: String| {
+        match crate::scene::video::Orientation::parse(&text) {
+            Some(value) => {
+                orientation(value);
+                String::new()
+            }
+            None => format!("UI_VIDEO: unknown orientation {text}"),
+        }
+    })
+    .map_err(|e| e.to_string())?;
+    context
+        .global()
+        .set("__lingxiaVideoOrientation", request)
+        .map_err(|e| e.to_string())?;
     let command = rong::quickjs::JSFunc::new(
         context,
         move |player: String, op: String, value: f64, text: String| {

@@ -2582,7 +2582,20 @@
   function resetVideos() {
     fullscreenName = null;
     latest2.clear();
+    posters.clear();
+    syncOrientation();
   }
+  var orientation = "";
+  function syncOrientation() {
+    const { videoWidth: w = 0, videoHeight: h2 = 0 } = fullscreenName !== null && latest2.get(fullscreenName) || {};
+    const next = fullscreenName === null || w === h2 && w > 0 ? "" : h2 > w && w > 0 ? "portrait" : "landscape";
+    if (next === orientation) return;
+    orientation = next;
+    globalThis.__lingxiaVideoOrientation?.(next);
+  }
+  var posters = /* @__PURE__ */ new Map();
+  var videoPoster = (name, poster) => posters.set(name, poster);
+  var posterOf = (name) => posters.get(name);
   function fullscreenHandler(name, handler) {
     var _a;
     const handlers = (_a = render.candidate).fullscreenHandlers ?? (_a.fullscreenHandlers = /* @__PURE__ */ new Map());
@@ -2594,6 +2607,7 @@
     const touched = [fullscreenName, name].filter((n) => n !== null);
     fullscreenName = name;
     page.invalidated = true;
+    syncOrientation();
     for (const each of touched) for (const reader of readers.get(each) ?? []) {
       const { key, cell } = cellOf(reader.binding);
       if (page.locals.get(key) === cell) reader.binding.set({ ...reader.binding.value, fullscreen: fullscreenName === each });
@@ -2668,6 +2682,7 @@
   function videoStatus(name, status) {
     const next = Object.freeze({ ...status, fullscreen: fullscreenName === name, qualities: Object.freeze([...status.qualities ?? []]), error: status.error ? Object.freeze({ ...status.error }) : null });
     latest2.set(name, next);
+    if (name === fullscreenName) syncOrientation();
     const named = readers.get(name);
     for (const reader of named ?? []) {
       const { key, cell } = cellOf(reader.binding);
@@ -3111,7 +3126,10 @@
         if (props.src !== void 0) wire("videoSrc", props.src);
         if (props.sources !== void 0) wire("videoSources", JSON.stringify(props.sources.map(({ src, label: label2 }) => ({ src, label: label2 }))));
         wire("videoPlayer", name === void 0 ? `el:${identity}` : `name:${name}`);
-        if (props.poster !== void 0) wire("videoPoster", props.poster);
+        if (props.poster !== void 0) {
+          wire("videoPoster", props.poster);
+          if (name !== void 0) videoPoster(name, props.poster);
+        }
         if (source2 !== void 0) wire("videoPaused", +(props.paused ?? !props.autoPlay));
         for (const [key, prop] of videoFlags) if (props[prop] !== void 0) wire(key, +props[prop]);
         if (props.playbackRate !== void 0) wire("videoRate", props.playbackRate);
@@ -4931,7 +4949,8 @@
       h(
         "column",
         { style: { flexGrow: 1, justifyContent: "center" } },
-        h("video", { player, style: { width: "100%", flexGrow: 1, objectFit: "contain" } })
+        // Until the player has a frame the full screen view shows what the page's view does.
+        h("video", { player, poster: posterOf(name), style: { width: "100%", flexGrow: 1, objectFit: "contain" } })
       ),
       h(
         "column",

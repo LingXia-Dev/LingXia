@@ -19,7 +19,7 @@ pub use definition::{register_page_resolver, resolve_page_path};
 use crate::bridge::PageBridge;
 use crate::lifecycle::PageLifecycleEvent;
 use crate::lxapp::{self, LxAppSessionStatus, navbar::NavigationBarState};
-use crate::page::config::{OrientationOverride, PageConfig, PageRenderer};
+use crate::page::config::{OrientationOverride, PageConfig, PageOrientation, PageRenderer};
 use crate::plugin;
 use crate::startup::parse_query_string;
 use crate::{LxApp, LxAppError, debug, error, info, warn};
@@ -273,6 +273,8 @@ pub struct PageState {
     leave_guard: bool,
     // PageInstance orientation overrides
     pub(crate) orientation_override: OrientationOverride,
+    /// A full-screen video's lock; it outranks the page and app orientation while set.
+    presentation_orientation: Option<PageOrientation>,
     // Query parameters
     pub(crate) query: serde_json::Value,
 }
@@ -520,6 +522,7 @@ impl PageInstance {
             config_load_error,
             enable_pull_down_refresh: page_config.is_pull_down_refresh_enabled(),
             leave_guard: false,
+            presentation_orientation: None,
             orientation_override: page_config.get_orientation_override(),
             query: serde_json::json!({}),
         }
@@ -1197,6 +1200,7 @@ impl PageInstance {
         state.ready_dispatched = false;
         state.render_status = PageRenderStatus::Unstarted;
         state.leave_guard = false;
+        state.presentation_orientation = None;
     }
 
     fn invalidate_renderer_state(state: &mut PageState) {
@@ -1431,6 +1435,7 @@ impl PageInstance {
         state.bridge_ready = false;
         state.ready_dispatched = false;
         state.leave_guard = false;
+        state.presentation_orientation = None;
     }
 
     fn collect_ready_lifecycle_events(
@@ -1777,6 +1782,23 @@ impl PageInstance {
             .lock()
             .ok()
             .map(|state| state.orientation_override)
+    }
+
+    pub fn presentation_orientation(&self) -> Option<PageOrientation> {
+        self.inner
+            .state
+            .lock()
+            .ok()
+            .and_then(|state| state.presentation_orientation)
+    }
+
+    /// Lock the window while this page shows a full-screen video, or release it (`None`);
+    /// true when it changed.
+    pub fn set_presentation_orientation(&self, orientation: Option<PageOrientation>) -> bool {
+        let Ok(mut state) = self.inner.state.lock() else {
+            return false;
+        };
+        std::mem::replace(&mut state.presentation_orientation, orientation) != orientation
     }
 
     /// Get WebView if available
@@ -2975,6 +2997,7 @@ mod tests {
             config_load_error: None,
             enable_pull_down_refresh: false,
             leave_guard: false,
+            presentation_orientation: None,
             orientation_override: OrientationOverride::default(),
             query: serde_json::json!({}),
         }

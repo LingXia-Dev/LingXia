@@ -61,6 +61,12 @@ pub trait Shell: Send + Sync + 'static {
     fn haptic(&self, token: i64);
     /// A top-layer dialog opened or closed; while open the page covers the host's bars.
     fn top_layer(&self, token: i64, modal: bool);
+    /// A full-screen video asks the window for its orientation, or gives it back (`None`).
+    fn video_orientation(
+        &self,
+        token: i64,
+        orientation: Option<lingxia_view::scene::video::Orientation>,
+    );
     fn copy_text(&self, text: &str);
     /// Read the clipboard; `done` runs once, on any thread.
     fn paste(&self, done: Box<dyn FnOnce(Option<String>) + Send>);

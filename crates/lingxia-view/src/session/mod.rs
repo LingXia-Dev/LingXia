@@ -183,10 +183,11 @@ impl ViewSession {
         let context = runtime.context();
         let renderer = Renderer::default();
         let video_scope = renderer.videos.scope();
+        let video_orientation = renderer.videos.orientation_writer();
         let (initialized, _) = budget.run(Duration::from_secs(1), Duration::from_secs(1), || {
             crate::engine::compatibility::install(&context)?;
             crate::engine::install_dev_globals(&context)?;
-            video::install(&context, video_scope)?;
+            video::install(&context, video_scope, video_orientation)?;
             crate::engine::defer_collections(&context);
             <crate::engine::Active as crate::engine::Engine>::evaluate_module(&context, source)?;
             let valid: bool = context.eval(Source::from_bytes(

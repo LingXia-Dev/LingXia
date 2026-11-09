@@ -50,6 +50,12 @@ pub trait StateListener: Send + Sync + 'static {
         connection: u64,
         messages: Vec<lingxia_view::session::logic::ToLogic>,
     );
+    /// Main thread: a full-screen video asks the window for its orientation, or gives it back.
+    fn video_orientation(
+        &self,
+        owner: i64,
+        orientation: Option<lingxia_view::scene::video::Orientation>,
+    );
 }
 
 static STATE_LISTENER: OnceLock<Arc<dyn StateListener>> = OnceLock::new();
@@ -105,6 +111,7 @@ pub(super) struct AndroidAdapter {
     reconcile_us: AtomicU64,
     /// A dialog of the top layer is open: the page sits above the host's bars.
     modal: std::sync::atomic::AtomicBool,
+    orientation: Mutex<Option<lingxia_view::scene::video::Orientation>>,
     /// Display frames keep coming for a playing video's new frames.
     ticking: Arc<AtomicBool>,
 }
@@ -165,6 +172,7 @@ impl AndroidAdapter {
             raster: OnceLock::new(),
             reconcile_us: AtomicU64::new(0),
             modal: Default::default(),
+            orientation: Default::default(),
             ticking: Default::default(),
         }
     }
@@ -762,6 +770,14 @@ impl HostEvents for AndroidAdapter {
         let modal = open || (self.modal.load(Ordering::Relaxed) && frame.metrics.ghosts > 0);
         if self.modal.swap(modal, Ordering::Relaxed) != modal {
             self.flag(jni_str!("topLayer"), modal);
+        }
+        let orientation = frame.metrics.video_orientation;
+        let changed = {
+            let mut held = self.orientation.lock().unwrap_or_else(|p| p.into_inner());
+            std::mem::replace(&mut *held, orientation) != orientation
+        };
+        if changed && let Some(listener) = STATE_LISTENER.get().filter(|_| self.owner != 0) {
+            listener.video_orientation(self.owner, orientation);
         }
         let started = Instant::now();
         self.void(jni_str!("presented"));

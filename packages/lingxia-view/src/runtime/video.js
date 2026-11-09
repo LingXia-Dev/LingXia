@@ -19,9 +19,26 @@ const latest = new Map();
 /** The name of the player shown full screen, or null. */
 export const fullscreenPlayer = () => fullscreenName;
 
-export function resetVideos() { fullscreenName = null; latest.clear(); }
+export function resetVideos() { fullscreenName = null; latest.clear(); posters.clear(); syncOrientation(); }
+
+// The window turns to the full-screen picture's shape: landscape until a picture says it is tall,
+// and left be for a square one.
+let orientation = '';
+function syncOrientation() {
+  const { videoWidth: w = 0, videoHeight: h = 0 } = (fullscreenName !== null && latest.get(fullscreenName)) || {};
+  const next = fullscreenName === null || (w === h && w > 0) ? '' : h > w && w > 0 ? 'portrait' : 'landscape';
+  if (next === orientation) return;
+  orientation = next;
+  globalThis.__lingxiaVideoOrientation?.(next);
+}
 
 /** A <video> view's onFullscreenChange for player `name`, collected as the page renders. */
+// Kept by name, not per render: a page view reused from memo does not set it again.
+const posters = new Map();
+/** The poster a page's `<video>` gives its named player, for the full screen view of it. */
+export const videoPoster = (name, poster) => posters.set(name, poster);
+export const posterOf = name => posters.get(name);
+
 export function fullscreenHandler(name, handler) {
   const handlers = render.candidate.fullscreenHandlers ??= new Map();
   if (!handlers.has(name)) handlers.set(name, []);
@@ -34,6 +51,7 @@ function setFullscreen(name) {
   const touched = [fullscreenName, name].filter(n => n !== null);
   fullscreenName = name;
   page.invalidated = true;
+  syncOrientation();
   for (const each of touched) for (const reader of readers.get(each) ?? []) {
     const { key, cell } = cellOf(reader.binding);
     if (page.locals.get(key) === cell) reader.binding.set({ ...reader.binding.value, fullscreen: fullscreenName === each });
@@ -106,6 +124,7 @@ const same = (a, b) => Object.is(a, b) || (typeof a === 'object' && typeof b ===
 export function videoStatus(name, status) {
   const next = Object.freeze({ ...status, fullscreen: fullscreenName === name, qualities: Object.freeze([...(status.qualities ?? [])]), error: status.error ? Object.freeze({ ...status.error }) : null });
   latest.set(name, next);
+  if (name === fullscreenName) syncOrientation();
   const named = readers.get(name);
   for (const reader of named ?? []) {
     const { key, cell } = cellOf(reader.binding);

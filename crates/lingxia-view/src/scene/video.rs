@@ -2,7 +2,7 @@
 //! and the host's resolution of an authored `src` to the URL a player opens.
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 
 /// Resolves an authored source under the page's authority; runs on the View worker.
 pub type VideoResolver = Arc<dyn Fn(&str) -> Result<String, String> + Send + Sync>;
@@ -211,6 +211,41 @@ impl Default for Status {
     }
 }
 
+/// The window orientation a full-screen video asks for: the shape of its picture.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Orientation {
+    Landscape,
+    Portrait,
+}
+
+impl Orientation {
+    fn code(orientation: Option<Self>) -> u8 {
+        match orientation {
+            None => 0,
+            Some(Self::Landscape) => 1,
+            Some(Self::Portrait) => 2,
+        }
+    }
+
+    fn from_code(code: u8) -> Option<Self> {
+        match code {
+            1 => Some(Self::Landscape),
+            2 => Some(Self::Portrait),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn parse(text: &str) -> Option<Option<Self>> {
+        match text {
+            "" => Some(None),
+            "landscape" => Some(Some(Self::Landscape)),
+            "portrait" => Some(Some(Self::Portrait)),
+            _ => None,
+        }
+    }
+}
+
 static SCOPES: AtomicU64 = AtomicU64::new(1);
 
 /// A page's players: their keys are scoped to it, and their sources resolved under its authority.
@@ -218,6 +253,8 @@ pub(crate) struct Sources {
     scope: u64,
     resolver: Option<VideoResolver>,
     resolved: HashMap<String, Result<String, VideoError>>,
+    /// Written by the runtime's full-screen layer, read into each frame's metrics.
+    orientation: Arc<AtomicU8>,
 }
 
 impl Default for Sources {
@@ -226,6 +263,7 @@ impl Default for Sources {
             scope: SCOPES.fetch_add(1, Ordering::Relaxed),
             resolver: None,
             resolved: HashMap::new(),
+            orientation: Arc::default(),
         }
     }
 }
@@ -242,6 +280,16 @@ impl Sources {
 
     pub(crate) fn scope(&self) -> u64 {
         self.scope
+    }
+
+    pub(crate) fn orientation(&self) -> Option<Orientation> {
+        Orientation::from_code(self.orientation.load(Ordering::Relaxed))
+    }
+
+    /// Sets what [`Self::orientation`] reads; the runtime's global holds one.
+    pub(crate) fn orientation_writer(&self) -> impl Fn(Option<Orientation>) + 'static {
+        let cell = self.orientation.clone();
+        move |orientation| cell.store(Orientation::code(orientation), Ordering::Relaxed)
     }
 
     /// The renderer's key for the page's player named `player` (`name:…` or `el:…`).

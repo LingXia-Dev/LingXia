@@ -187,6 +187,13 @@ impl Shell for Bridge {
     fn top_layer(&self, token: i64, modal: bool) {
         arkts(token, "topLayer", if modal { "true" } else { "false" });
     }
+    fn video_orientation(
+        &self,
+        token: i64,
+        orientation: Option<lingxia_view_harmony::lingxia_view::scene::video::Orientation>,
+    ) {
+        gpu_page::video_orientation(token, orientation.map(gpu_page::state::page_orientation));
+    }
     fn copy_text(&self, text: &str) {
         arkts(0, "copy", text);
     }

@@ -114,10 +114,14 @@ spec('kit video controls start a poster video on a tap, then pause, mute and scr
 spec('kit video controls show the player full screen and Escape brings it back', { start: { page: 'view-lab' } }, async (t) => {
   const view = t.app.view;
   await view.testId('lab-tab-media').click();
+  const wide = async () => { const area = await view.viewport(); return area.width > area.height; };
+  const before = await wide();
   await view.testId('lab-video-controls-play').click();
   await view.testId('lab-video-controls-fullscreen').click();
   const layer = view.getByRole('dialog', { name: 'Full screen video' });
   await expect(layer).toBeVisible();
+  // A landscape picture turns the window to it.
+  await expect.poll(wide, { timeout: 5_000 }).toBe(true);
   // The same player, so the full screen bar reads its time as it plays on.
   const time = view.testId('lx-fullscreen-controls-time');
   const seconds = async () => Number(/^\d+:(\d+)/.exec(await time.textContent())?.[1] ?? NaN);
@@ -133,4 +137,6 @@ spec('kit video controls show the player full screen and Escape brings it back',
   await expect(layer).toBeVisible();
   await view.testId('lx-fullscreen-controls-fullscreen').click();
   await expect(layer).not.toBeAttached();
+  // Leaving gives the window back to the page's own orientation.
+  await expect.poll(wide, { timeout: 5_000 }).toBe(before);
 });

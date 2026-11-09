@@ -66,6 +66,7 @@ pub struct HarmonyAdapter {
     images: Mutex<HashMap<u64, Box<dyn Send>>>,
     highlights: Mutex<[Option<usize>; 2]>,
     modal: AtomicBool,
+    orientation: Mutex<Option<lingxia_view::scene::video::Orientation>>,
     vsync: AtomicBool,
     long_press: AtomicU64,
     claimed: AtomicBool,
@@ -94,6 +95,7 @@ impl HarmonyAdapter {
             images: Mutex::new(HashMap::new()),
             highlights: Mutex::new([None; 2]),
             modal: AtomicBool::new(false),
+            orientation: Mutex::new(None),
             vsync: AtomicBool::new(false),
             long_press: AtomicU64::new(0),
             claimed: AtomicBool::new(false),
@@ -612,6 +614,10 @@ impl HostEvents for HarmonyAdapter {
         let modal = open || (self.modal.load(Ordering::Relaxed) && frame.metrics.ghosts > 0);
         if self.modal.swap(modal, Ordering::Relaxed) != modal {
             self.shell.top_layer(self.token, modal);
+        }
+        let orientation = frame.metrics.video_orientation;
+        if std::mem::replace(&mut *lock(&self.orientation), orientation) != orientation {
+            self.shell.video_orientation(self.token, orientation);
         }
         let highlights = *lock(&self.highlights);
         for (which, node) in highlights.into_iter().enumerate() {

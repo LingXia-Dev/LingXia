@@ -25,6 +25,8 @@ export function harmonyDevice(t: Fixture) {
     pixels: async (points: readonly (readonly [number, number])[]) =>
       (await request<{ pixels: [number, number, number][] }>('pixels', { points })).pixels,
     swipe: (input: { x1: number; y1: number; x2: number; y2: number; velocity: number }) => request('swipe', input),
+    /** A finger tap at screen pixels, through the system input path. */
+    click: (x: number, y: number) => request('click', { x, y }),
     /** The system back gesture: a finger from the left edge to the middle of the screen. */
     async edgeBack() {
       const screen = (await nodes()).reduce((a, b) => (b.bounds[2] * b.bounds[3] > a.bounds[2] * a.bounds[3] ? b : a));

@@ -34,6 +34,7 @@ pub struct AppleAdapter {
     highlights: Mutex<[Option<usize>; 2]>,
     /// A dialog of the top layer is open: the view sits above the host's bars.
     modal: std::sync::atomic::AtomicBool,
+    orientation: std::sync::Mutex<Option<lingxia_view::scene::video::Orientation>>,
 }
 
 impl AppleAdapter {
@@ -55,6 +56,7 @@ impl AppleAdapter {
             images: Mutex::new(HashMap::new()),
             highlights: Mutex::new([None; 2]),
             modal: Default::default(),
+            orientation: Default::default(),
         }
     }
 
@@ -458,6 +460,12 @@ impl HostEvents for AppleAdapter {
             || (self.modal.load(std::sync::atomic::Ordering::Relaxed) && frame.metrics.ghosts > 0);
         if self.modal.swap(modal, std::sync::atomic::Ordering::Relaxed) != modal {
             self.shell.top_layer(self.token, modal);
+        }
+        let orientation = frame.metrics.video_orientation;
+        let mut held = self.orientation.lock().unwrap_or_else(|p| p.into_inner());
+        if std::mem::replace(&mut *held, orientation) != orientation {
+            drop(held);
+            self.shell.video_orientation(self.token, orientation);
         }
         // Feedback follows its node as the page scrolls and changes.
         let highlights = *self.highlights.lock().unwrap_or_else(|p| p.into_inner());

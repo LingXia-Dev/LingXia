@@ -69,3 +69,36 @@ spec('the system back gesture closes an open dialog and leaves the page where it
     await expect(view.testId('lab-overlay-last')).toHaveText(last ?? '');
   }
 });
+
+// Full screen covers the host's bars, and a finger on their strip reaches the page, never a tab
+// item under it: a leaked tap would switch tabs or open More.
+spec('a finger on the covered tab bar strip in full screen stays with the video', {
+  id: 'TOP-LAYER-BARS-002', covers: ['view:dialog'],
+  reason: 'taps through the system input path of the Harmony device fixture',
+  start: { page: 'view-lab' },
+}, async (t) => {
+  const view = t.app.view;
+  const device = harmonyDevice(t);
+  await view.testId('lab-tab-media').click();
+  await view.testId('lab-video-controls-fullscreen').click();
+  const layer = view.getByRole('dialog', { name: 'Full screen video' });
+  await expect(layer).toBeVisible();
+  // A landscape picture turns the window.
+  await expect.poll(async () => { const area = await view.viewport(); return area.width > area.height; }, { timeout: 5_000 }).toBe(true);
+  await new Promise<void>(resolve => setTimeout(() => resolve(), 500));
+  // The tab items still lie under the layer: a finger on each label, More included.
+  const labels = ['Home', '首页', 'API', '接口', 'Perf', '性能', 'More', '更多'];
+  const items = (await device.nodes()).filter(node => labels.includes(node.text));
+  expect(items.length, 'the covered tab labels').toBe(4);
+  for (const item of items) {
+    await device.click(...centre(item));
+    await new Promise<void>(resolve => setTimeout(() => resolve(), 400));
+  }
+  expect((await t.app.nav.current()).name).toBe('view-lab');
+  await expect(layer).toBeVisible();
+  // More's panel lists the tabs past the bar.
+  expect((await device.nodes()).some(node => ['ToDo', '待办'].includes(node.text)), 'More stays closed').toBe(false);
+  await view.testId('lx-fullscreen-controls-fullscreen').click();
+  await expect(layer).not.toBeAttached();
+  await expect.poll(async () => { const area = await view.viewport(); return area.height > area.width; }, { timeout: 5_000 }).toBe(true);
+});

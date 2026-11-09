@@ -264,6 +264,13 @@ impl lingxia_view_android::StateListener for States {
     ) {
         gpu_page::view_events(owner, connection, messages);
     }
+    fn video_orientation(
+        &self,
+        owner: i64,
+        orientation: Option<lingxia_view_android::lingxia_view::scene::video::Orientation>,
+    ) {
+        gpu_page::video_orientation(owner, orientation.map(gpu_page::state::page_orientation));
+    }
 }
 
 struct Factory;

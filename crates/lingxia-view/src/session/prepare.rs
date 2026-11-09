@@ -140,6 +140,7 @@ impl ViewSession {
         )?;
         metrics.total_us = crate::session::metrics::micros(started);
         metrics.generation = self.generation.get();
+        metrics.video_orientation = self.renderer.videos.orientation();
         if self.eval_phases {
             metrics.view_phases = self.take_eval_phases()?;
         }

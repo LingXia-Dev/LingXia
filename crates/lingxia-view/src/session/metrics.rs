@@ -31,6 +31,9 @@ pub struct FrameMetrics {
     /// Where View eval went, when the page opted its dev clock into phases.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub view_phases: Option<ViewPhases>,
+    /// The window orientation a full-screen video asks for; hosts lock to it while set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub video_orientation: Option<crate::scene::video::Orientation>,
 }
 
 /// Eval time by runtime phase in µs; spans nest (recall in resolve, rows in encode).

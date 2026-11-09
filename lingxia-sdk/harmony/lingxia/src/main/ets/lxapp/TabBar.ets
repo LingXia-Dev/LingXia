@@ -121,7 +121,8 @@ export struct TabBar {
   // Bottom system-gesture inset (vp): the home-indicator zone swallows taps,
   // so the strip grows and the items sit above it.
   @Prop bottomInset: number = 0;
-  // A GPU page's open dialog lies over the bar: automation no longer reaches it.
+  // A GPU page's open dialog lies over the bar: automation no longer reaches it, and its items
+  // take no touches, which belong to the page.
   @Prop @Watch('coveredChanged') covered: boolean = false;
   // Whether the overflow panel is open above the "more" slot.
   @State @Watch('moreChanged') private moreVisible: boolean = false;
@@ -330,6 +331,7 @@ export struct TabBar {
     })
     .onAreaChange((_: Area, area: Area) => HostOverlays.place(this.chromeSource(), `item-${index}`, (): string => item.text,
       'tab', area, (): void => this.pickItem(item), 'tabBar', (): boolean => this.isDirectItemSelected(item)))
+    .hitTestBehavior(this.covered ? HitTestMode.None : HitTestMode.Default)
     .onClick(() => {
       hilog.info(DOMAIN, TAG, `Tab clicked: ${index}, current: ${this.tabbar.selectedIndex}, appId: ${this.appId}, path: ${item.pagePath}`);
 
@@ -511,6 +513,7 @@ export struct TabBar {
       top: 0,
       bottom: 0
     })
+    .hitTestBehavior(this.covered ? HitTestMode.None : HitTestMode.Default)
     .onClick(() => {
       this.moreVisible = !this.moreVisible;
     })
@@ -552,6 +555,7 @@ export struct TabBar {
         Blank()
           .layoutWeight(1)
           .height('100%')
+          .hitTestBehavior(this.covered ? HitTestMode.None : HitTestMode.Default)
           .onClick(() => {
             this.pickTab(index);
           })
@@ -559,6 +563,7 @@ export struct TabBar {
       Blank()
         .layoutWeight(1)
         .height('100%')
+        .hitTestBehavior(this.covered ? HitTestMode.None : HitTestMode.Default)
         .onClick(() => {
           this.moreVisible = false;
         })
@@ -687,6 +692,7 @@ export struct TabBar {
       top: 0,
       bottom: 0
     })
+    .hitTestBehavior(this.covered ? HitTestMode.None : HitTestMode.Default)
     .onClick(() => {
       this.pickTab(index);
     })

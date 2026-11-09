@@ -1194,7 +1194,10 @@ export struct LxAppContainer {
       themeBar: this.currentGpuChrome()?.bar ?? 0,
       themeContent: this.currentGpuChrome()?.content ?? 0,
       onNavigationClick: (appId: string, isHomeButton: boolean): boolean => {
-        this.handleNavigationBack(isHomeButton);
+        // A GPU page's top layer covers the bar: a touch on its button belongs to the page.
+        if (!this.isGpuTopLayer()) {
+          this.handleNavigationBack(isHomeButton);
+        }
         return true;
       }
     })

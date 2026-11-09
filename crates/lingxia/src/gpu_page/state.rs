@@ -14,6 +14,15 @@ use lxapp::{
     GpuViewEvent, GpuViewMessage, GpuViewRequest,
 };
 
+pub(crate) fn page_orientation(
+    orientation: lingxia_view::scene::video::Orientation,
+) -> lxapp::PageOrientation {
+    match orientation {
+        lingxia_view::scene::video::Orientation::Landscape => lxapp::PageOrientation::Landscape,
+        lingxia_view::scene::video::Orientation::Portrait => lxapp::PageOrientation::Portrait,
+    }
+}
+
 pub(crate) fn to_view(write: GpuStateWrite) -> StateWrite {
     match write {
         GpuStateWrite::Snapshot { rev, state } => StateWrite::Snapshot { rev, state },

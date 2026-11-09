@@ -82,15 +82,36 @@ test('VideoControls replays once ended, shows Live without a duration and offers
   delete globalThis.__lingxiaVideoCommand;
 });
 
+test('the full screen view keeps the poster of a page view that did not re-render', () => {
+  const { by } = setup();
+  globalThis.__lingxiaVideoOrientation = () => '';
+  let runs = 0;
+  const Inline = () => (runs++, h('video', { player: useVideo('hero'), src: 'a.mp4', poster: 'a.jpg' }));
+  // The ticking sibling commits every render, so Inline is reused rather than re-run.
+  let tick = 0;
+  const page = () => h('column', {}, h(Inline, {}), h('text', {}, String(tick++)), h(VideoControls, { player: useVideo('hero'), 'data-testid': 'bar' }));
+  const all = () => decode(describe(page, {}));
+  all();
+  dispatch(by(all(), 'bar-fullscreen').props.onClick);
+  all(); all();
+  const views = all().filter(node => node.tag === 'video');
+  assert.ok(runs < 5, 'Inline was reused');
+  assert.deepEqual(views.map(node => node.props.videoPoster), ['a.jpg', 'a.jpg']);
+  delete globalThis.__lingxiaVideoCommand;
+  delete globalThis.__lingxiaVideoOrientation;
+});
+
 test('VideoControls full screen shows the player again in the top layer and a close request leaves it', () => {
   const { nodes, by, report } = setup();
-  report({});
+  const turns = [];
+  globalThis.__lingxiaVideoOrientation = orientation => { turns.push(orientation); return ''; };
+  report({ videoWidth: 0, videoHeight: 0 });
   let read;
   const changes = [];
   const probe = () => {
     const hero = useVideo('hero');
     read = hero.fullscreen;
-    return h('column', {}, h('video', { player: hero, src: 'a.mp4', onFullscreenChange: ({ fullscreen }) => changes.push(fullscreen) }),
+    return h('column', {}, h('video', { player: hero, src: 'a.mp4', poster: 'a.jpg', onFullscreenChange: ({ fullscreen }) => changes.push(fullscreen) }),
       h(VideoControls, { player: hero, 'data-testid': 'bar' }));
   };
   const all = () => decode(describe(probe, {}));
@@ -104,7 +125,14 @@ test('VideoControls full screen shows the player again in the top layer and a cl
   assert.ok(layer, 'a full screen view in the top layer');
   const views = list.filter(node => node.tag === 'video');
   assert.deepEqual(views.map(node => node.props.videoPlayer), ['name:hero', 'name:hero']);
+  // Before its first frame the full screen view shows the page's poster.
+  assert.deepEqual(views.map(node => node.props.videoPoster), ['a.jpg', 'a.jpg']);
   assert.equal(by(list, 'lx-fullscreen-controls-fullscreen').props.accessibilityLabel, 'Exit full screen');
+  // Landscape before the picture's shape is known; a wide one keeps it.
+  assert.deepEqual(turns, ['landscape']);
+  report({ videoWidth: 1920, videoHeight: 1080 });
+  assert.deepEqual(turns, ['landscape']);
+  list = all();
   // The full screen bar starts from the player's last state.
   assert.equal(by(list, 'lx-fullscreen-controls-time').text, '0:12 / 1:30');
   dispatch(by(list, 'lx-fullscreen-controls-fullscreen').props.onClick);
@@ -118,6 +146,13 @@ test('VideoControls full screen shows the player again in the top layer and a cl
   assert.equal(by(all(), 'lx-fullscreen-video'), undefined);
   assert.equal(read, false);
   assert.deepEqual(changes, [true, false, true, false]);
+  // Leaving gives the window back; a tall picture asks for portrait, a square one for nothing.
+  report({ videoWidth: 1080, videoHeight: 1920 });
+  dispatch(by(all(), 'bar-fullscreen').props.onClick);
+  report({ videoWidth: 1080, videoHeight: 1080 });
+  dispatch(by(all(), 'lx-fullscreen-controls-fullscreen').props.onClick);
+  assert.deepEqual(turns, ['landscape', '', 'landscape', '', 'portrait', '']);
   void nodes;
   delete globalThis.__lingxiaVideoCommand;
+  delete globalThis.__lingxiaVideoOrientation;
 });

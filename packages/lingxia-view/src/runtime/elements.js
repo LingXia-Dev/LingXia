@@ -13,7 +13,7 @@ import { defaultSeries } from '../style/color.js';
 import { keyPositions } from './keys.js';
 import { expand, invokerHandler, popoverScope, dragClose, scrimMark } from './toplayer.js';
 import { recall, enter, leave, remember } from './memo.js';
-import { playerName, videoStatus, fullscreenHandler } from './video.js';
+import { playerName, videoStatus, fullscreenHandler, videoPoster } from './video.js';
 
 const videoFlags = [['videoMuted', 'muted'], ['videoLoop', 'loop']];
 const videoEvents = [['loadedmetadata', 'onLoadedMetadata'], ['play', 'onPlay'], ['playing', 'onPlaying'], ['pause', 'onPause'],
@@ -440,7 +440,10 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       if (props.sources !== undefined) wire('videoSources', JSON.stringify(props.sources.map(({ src, label }) => ({ src, label }))));
       // A named player is the page's; a bare <video> owns one keyed by its place in the tree.
       wire('videoPlayer', name === undefined ? `el:${identity}` : `name:${name}`);
-      if (props.poster !== undefined) wire('videoPoster', props.poster);
+      if (props.poster !== undefined) {
+        wire('videoPoster', props.poster);
+        if (name !== undefined) videoPoster(name, props.poster);
+      }
       // Without autoPlay a player waits on its first frame, as HTML's; `paused` wins over it.
       if (source !== undefined) wire('videoPaused', +(props.paused ?? !props.autoPlay));
       for (const [key, prop] of videoFlags) if (props[prop] !== undefined) wire(key, +props[prop]);

@@ -4,7 +4,7 @@
 // more view of the same player, in the top layer.
 import { h } from './nodes.js';
 import { useLocal, useView } from './hooks.js';
-import { playerName, useVideo, fullscreenPlayer } from './video.js';
+import { playerName, useVideo, fullscreenPlayer, posterOf } from './video.js';
 
 const glyph = (d, filled = true) => filled
   ? [{ d, fill: 'currentColor' }]
@@ -90,7 +90,8 @@ function FullscreenVideo({ name }) {
     style: { width: '100%', height: '100%', maxWidth: '100%', maxHeight: '100%', marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0,
       paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0, borderRadius: 0, backgroundColor: '#000000' } },
     h('column', { style: { flexGrow: 1, justifyContent: 'center' } },
-      h('video', { player, style: { width: '100%', flexGrow: 1, objectFit: 'contain' } })),
+      // Until the player has a frame the full screen view shows what the page's view does.
+      h('video', { player, poster: posterOf(name), style: { width: '100%', flexGrow: 1, objectFit: 'contain' } })),
     h('column', { style: { paddingLeft: safeArea.left, paddingRight: safeArea.right, paddingBottom: safeArea.bottom } },
       h(VideoControls, { player, [tone]: '#ffffff', 'data-testid': 'lx-fullscreen-controls' })));
 }

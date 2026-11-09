@@ -88,6 +88,10 @@ export function createHarmonyDeviceFixture({ hdc, screen }, token = randomBytes(
         await hdc(['shell', 'uitest', 'uiInput', 'swipe', ...[input.x1, input.y1, input.x2, input.y2, input.velocity].map(String)]);
         return done(200, { ok: true });
       }
+      if (operation === 'click' && [input?.x, input?.y].every(coordinate)) {
+        await hdc(['shell', 'uitest', 'uiInput', 'click', String(input.x), String(input.y)]);
+        return done(200, { ok: true });
+      }
       return done(400, { error: 'invalid input operation' });
     } catch (error) {
       if (!response.headersSent) done(500, { error: String(error) });

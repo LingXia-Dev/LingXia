@@ -45,6 +45,12 @@ pub trait Shell: Send + Sync + 'static {
     /// A top-layer dialog opened or closed: while one is open the view covers the host's bars,
     /// which take no input.
     fn top_layer(&self, token: i64, modal: bool);
+    /// A full-screen video asks the window for its orientation, or gives it back (`None`).
+    fn video_orientation(
+        &self,
+        token: i64,
+        orientation: Option<lingxia_view::scene::video::Orientation>,
+    );
     /// The View takes the gesture under the finger (`true`) or lets it go: while it holds it,
     /// enclosing scroll views and the back swipe stand down.
     fn claim(&self, token: i64, exclusive: bool);

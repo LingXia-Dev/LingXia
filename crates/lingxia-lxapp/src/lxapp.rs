@@ -2893,11 +2893,17 @@ impl LxApp {
         state.orientation_override = Some(orientation);
     }
 
-    /// Get resolved orientation for a page; falls back to app-level config.
+    /// Resolved orientation for a page: a full-screen video lock, else the page config, else the app.
     pub fn get_page_orientation(&self, path: &str) -> OrientationConfig {
+        let page = self.get_page(path);
+        if let Some(mode) = page
+            .as_ref()
+            .and_then(|page| page.presentation_orientation())
+        {
+            return OrientationConfig::normalize(mode, 0);
+        }
         let app_orientation = self.get_app_orientation();
-        let page_override = self
-            .get_page(path)
+        let page_override = page
             .and_then(|page| page.get_orientation_override())
             .unwrap_or_default();
         page_override.apply(app_orientation)

@@ -45,6 +45,17 @@ pub(crate) fn video_status(key: &str) -> Option<crate::scene::video::Status> {
     }
 }
 
+/// Player `key` has a frame (or a still) to draw.
+pub(crate) fn video_has_frame(key: &str) -> bool {
+    #[cfg(feature = "gpu")]
+    return gpu::video::frame_size(key).is_some();
+    #[cfg(not(feature = "gpu"))]
+    {
+        let _ = key;
+        false
+    }
+}
+
 /// The page of video scope `scope` hid or showed.
 pub(crate) fn video_hidden(scope: u64, hidden: bool) {
     #[cfg(feature = "gpu")]

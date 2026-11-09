@@ -1116,10 +1116,10 @@ impl Renderer {
                     .and_then(crate::protocol::image_position)
                     .unwrap_or([0.5, 0.5]);
                 let radius = if content_clip.is_some() { 0.0 } else { radius };
-                // The poster shows until the first frame is on screen.
+                // The poster shows until the player has a frame: a paused player can be ready
+                // without having decoded one.
                 if let Some(poster) = record.string(field::VIDEO_POSTER)
-                    && crate::renderer::video_status(&key)
-                        .is_none_or(|status| status.ready_state != "ready")
+                    && !crate::renderer::video_has_frame(&key)
                 {
                     commands.push(Paint::Image {
                         src: poster.to_owned(),
