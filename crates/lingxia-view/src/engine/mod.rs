@@ -1,10 +1,12 @@
 //! JavaScript engine adapters for View isolates.
 pub(crate) mod budget;
+pub(crate) mod bytecode;
 pub(crate) mod compatibility;
 mod quickjs;
 pub(crate) mod thread_clock;
 
 // QuickJS on every target, beside whatever engine the app's Logic runtime uses.
+pub use bytecode::set_bytecode_dir;
 pub(crate) use rong::quickjs::{JSArray, JSContext, JSRuntime, RongJS};
 
 /// A module feature an engine adapter implements for compiled UI bundles.
@@ -148,6 +150,10 @@ pub(crate) fn take_dev_warnings() -> Vec<String> {
 /// Isolates created from now on carry the dev-session globals (`__lingxiaClock`, `__lingxiaWarn`).
 pub fn enable_dev_globals() {
     DEV_GLOBALS.store(true, std::sync::atomic::Ordering::Release);
+}
+
+pub(crate) fn dev_globals() -> bool {
+    DEV_GLOBALS.load(std::sync::atomic::Ordering::Acquire)
 }
 
 /// Installs the dev-session globals when a dev session asked for them before this isolate.

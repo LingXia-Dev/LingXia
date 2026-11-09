@@ -30,6 +30,7 @@ pollster = { workspace = true, optional = true }
 rong = { workspace = true, features = ["quickjs"] }
 rong_core = { workspace = true }
 rong_quickjs_sys = { workspace = true }
+sha2 = "0.10"
 
 # OHOS reports `target_os = "linux"`, where parley's system fonts mean fontconfig, which OHOS
 # lacks; its adapter registers system faces from the OHOS font configuration instead.
@@ -53,7 +54,3 @@ objc2-metal = { version = "0.3.2", optional = true, default-features = false, fe
 [target.'cfg(unix)'.dependencies]
 # The View JS budget measures the worker thread's CPU time.
 libc = { workspace = true }
-
-[dev-dependencies]
-# The corpus example hashes each rendered frame.
-sha2 = "0.10"

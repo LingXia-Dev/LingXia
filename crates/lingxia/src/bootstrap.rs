@@ -273,6 +273,18 @@ pub(crate) fn init_with_platform(
     crate::host_addon::run_before_init();
 
     let runtime = std::sync::Arc::new(platform.clone());
+    #[cfg(any(
+        target_os = "android",
+        target_os = "ios",
+        target_os = "macos",
+        target_env = "ohos"
+    ))]
+    crate::gpu_page::set_bytecode_dir(
+        runtime
+            .app_cache_dir()
+            .join("lingxia")
+            .join("view-bytecode"),
+    );
     #[cfg(feature = "devtool")]
     let app_config = crate::devtool::prepare_host_app_config(&runtime, load_bundled_app_config)
         .ok_or_else(|| crate::Error::internal("failed to load host app configuration"))?;

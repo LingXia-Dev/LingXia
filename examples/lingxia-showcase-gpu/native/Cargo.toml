@@ -165,6 +165,9 @@ opt-level = 2
 opt-level = 2
 [profile.dev.package.lingxia-view-android]
 opt-level = 2
+# Keys the View bytecode cache on every page open.
+[profile.dev.package.sha2]
+opt-level = 2
 [profile.dev.package.vello_cpu]
 opt-level = 2
 [profile.dev.package.vello_common]

@@ -62,24 +62,122 @@ fn discard_jobs(context: &super::JSContext) {
 }
 
 fn evaluate(context: &super::JSContext, source: &str) -> Result<(), String> {
+    use super::bytecode::{self, Outcome};
     use rong_core::engine::JSContextImpl;
     use rong_quickjs_sys as qjs;
 
     let ctx = *context.as_ref().as_raw();
-    let mut code = source.as_bytes().to_vec();
-    code.push(0);
     // The caller confines this context to its View worker and scopes the interrupt budget.
-    // QuickJS requires a trailing NUL even when an explicit source length is supplied.
+    // This isolate is renderer-owned; cleanup restores this same stack limit.
     unsafe {
-        // This isolate is renderer-owned; cleanup restores this same stack limit.
-        qjs::JS_SetMaxStackSize(qjs::JS_GetRuntime(ctx), qjs::JS_DEFAULT_STACK_SIZE as usize);
-        let result = qjs::JS_Eval(
+        qjs::JS_SetMaxStackSize(qjs::JS_GetRuntime(ctx), qjs::JS_DEFAULT_STACK_SIZE as usize)
+    };
+    let started = std::time::Instant::now();
+    let key = bytecode::key(source);
+    let cached = bytecode::load(&key).and_then(|(bytes, outcome)| {
+        let module = unsafe { read(ctx, &bytes) };
+        if module.is_none() {
+            bytecode::forget(&key);
+        }
+        Some((module?, outcome, bytes.len()))
+    });
+    let (module, outcome, size) = match cached {
+        Some(cached) => cached,
+        None => {
+            let module = unsafe { compile(ctx, source)? };
+            let bytes = unsafe { write(ctx, module) };
+            let size = bytes.as_ref().map_or(0, Vec::len);
+            if let Some(bytes) = bytes {
+                bytecode::store(key, bytes);
+            }
+            (module, Outcome::Miss, size)
+        }
+    };
+    bytecode::report(outcome, size, started.elapsed());
+    unsafe { run(ctx, module) }
+}
+
+unsafe extern "C" {
+    // Frees what `JS_WriteObject` allocated; the generated bindings leave it out.
+    fn js_free(ctx: *mut rong_quickjs_sys::JSContext, ptr: *mut std::ffi::c_void);
+}
+
+/// Parse and resolve without running; `run` evaluates the returned module.
+unsafe fn compile(
+    ctx: *mut rong_quickjs_sys::JSContext,
+    source: &str,
+) -> Result<rong_quickjs_sys::JSValue, String> {
+    use rong_quickjs_sys as qjs;
+    let mut code = source.as_bytes().to_vec();
+    // QuickJS requires a trailing NUL even when an explicit source length is supplied.
+    code.push(0);
+    unsafe {
+        let module = qjs::JS_Eval(
             ctx,
             code.as_ptr().cast(),
             source.len(),
             c"page.js".as_ptr(),
-            qjs::JS_EVAL_TYPE_MODULE as i32,
+            (qjs::JS_EVAL_TYPE_MODULE | qjs::JS_EVAL_FLAG_COMPILE_ONLY) as i32,
         );
+        if qjs::QJS_IsException(ctx, module) {
+            return Err(message(ctx, qjs::JS_GetException(ctx)));
+        }
+        Ok(module)
+    }
+}
+
+unsafe fn write(
+    ctx: *mut rong_quickjs_sys::JSContext,
+    module: rong_quickjs_sys::JSValue,
+) -> Option<Vec<u8>> {
+    use rong_quickjs_sys as qjs;
+    unsafe {
+        let mut size = 0usize;
+        let buffer = qjs::JS_WriteObject(ctx, &mut size, module, qjs::JS_WRITE_OBJ_BYTECODE as i32);
+        if buffer.is_null() {
+            qjs::JS_FreeValue(ctx, qjs::JS_GetException(ctx));
+            return None;
+        }
+        let bytes = std::slice::from_raw_parts(buffer, size).to_vec();
+        js_free(ctx, buffer.cast());
+        Some(bytes)
+    }
+}
+
+/// A module from bytecode this build wrote; `None` when QuickJS refuses it.
+unsafe fn read(
+    ctx: *mut rong_quickjs_sys::JSContext,
+    bytes: &[u8],
+) -> Option<rong_quickjs_sys::JSValue> {
+    use rong_quickjs_sys as qjs;
+    unsafe {
+        let module = qjs::JS_ReadObject(
+            ctx,
+            bytes.as_ptr(),
+            bytes.len(),
+            qjs::JS_READ_OBJ_BYTECODE as i32,
+        );
+        if qjs::QJS_IsException(ctx, module) {
+            qjs::JS_FreeValue(ctx, qjs::JS_GetException(ctx));
+            return None;
+        }
+        if qjs::JS_ResolveModule(ctx, module) < 0 {
+            qjs::JS_FreeValue(ctx, qjs::JS_GetException(ctx));
+            qjs::JS_FreeValue(ctx, module);
+            return None;
+        }
+        Some(module)
+    }
+}
+
+/// Link and evaluate a compiled module; it must settle synchronously.
+unsafe fn run(
+    ctx: *mut rong_quickjs_sys::JSContext,
+    module: rong_quickjs_sys::JSValue,
+) -> Result<(), String> {
+    use rong_quickjs_sys as qjs;
+    unsafe {
+        let result = qjs::JS_EvalFunction(ctx, module);
         let error = if qjs::QJS_IsException(ctx, result) {
             Some(qjs::JS_GetException(ctx))
         } else if qjs::JS_PromiseState(ctx, result) == qjs::JSPromiseStateEnum_JS_PROMISE_REJECTED {
@@ -88,21 +186,8 @@ fn evaluate(context: &super::JSContext, source: &str) -> Result<(), String> {
             None
         };
         if let Some(error) = error {
-            let text = qjs::JS_ToCStringLen2(ctx, std::ptr::null_mut(), error, false);
-            let message = if text.is_null() {
-                let secondary = qjs::JS_GetException(ctx);
-                qjs::JS_FreeValue(ctx, secondary);
-                "module evaluation failed".into()
-            } else {
-                let message = std::ffi::CStr::from_ptr(text)
-                    .to_string_lossy()
-                    .into_owned();
-                qjs::JS_FreeCString(ctx, text);
-                message
-            };
-            qjs::JS_FreeValue(ctx, error);
             qjs::JS_FreeValue(ctx, result);
-            return Err(format!("UI_MODULE: {message}"));
+            return Err(message(ctx, error));
         }
         let pending =
             qjs::JS_PromiseState(ctx, result) == qjs::JSPromiseStateEnum_JS_PROMISE_PENDING;
@@ -112,6 +197,30 @@ fn evaluate(context: &super::JSContext, source: &str) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// Consumes `error`.
+unsafe fn message(
+    ctx: *mut rong_quickjs_sys::JSContext,
+    error: rong_quickjs_sys::JSValue,
+) -> String {
+    use rong_quickjs_sys as qjs;
+    unsafe {
+        let text = qjs::JS_ToCStringLen2(ctx, std::ptr::null_mut(), error, false);
+        let message = if text.is_null() {
+            let secondary = qjs::JS_GetException(ctx);
+            qjs::JS_FreeValue(ctx, secondary);
+            "module evaluation failed".into()
+        } else {
+            let message = std::ffi::CStr::from_ptr(text)
+                .to_string_lossy()
+                .into_owned();
+            qjs::JS_FreeCString(ctx, text);
+            message
+        };
+        qjs::JS_FreeValue(ctx, error);
+        format!("UI_MODULE: {message}")
+    }
 }
 
 #[cfg(test)]
@@ -131,6 +240,27 @@ mod tests {
                 "ESM hello"
             );
         }
+    }
+
+    #[test]
+    fn unreadable_bytecode_falls_back_to_the_source() {
+        use crate::engine::bytecode;
+        let module =
+            source("function render(){return h('text',{},'from source')}") + "\nexport { render };";
+        let key = bytecode::key(&module);
+        bytecode::remember(key, vec![1, 2, 3].into());
+        let mut app = ViewApp::new(1).unwrap();
+        let page = app.create(&module, false).unwrap();
+        assert_eq!(
+            app.page(page).unwrap().layout(320, 640, 1.0).unwrap().nodes[0].text,
+            "from source"
+        );
+        let (cached, _) = bytecode::load(&key).unwrap();
+        assert_ne!(
+            &cached[..],
+            &[1, 2, 3][..],
+            "the compiled module replaced it"
+        );
     }
 
     #[test]

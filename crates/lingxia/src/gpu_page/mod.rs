@@ -495,3 +495,20 @@ pub(crate) fn page_of(token: Token) -> Option<PageInstance> {
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
+
+/// Compiled View modules persist under `dir`, so a later open skips the QuickJS compile.
+pub(crate) fn set_bytecode_dir(dir: std::path::PathBuf) {
+    #[cfg(target_os = "android")]
+    lingxia_view_android::lingxia_view::engine::set_bytecode_dir(dir);
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    lingxia_view_apple::lingxia_view::engine::set_bytecode_dir(dir);
+    #[cfg(target_env = "ohos")]
+    lingxia_view_harmony::lingxia_view::engine::set_bytecode_dir(dir);
+    #[cfg(not(any(
+        target_os = "android",
+        target_os = "ios",
+        target_os = "macos",
+        target_env = "ohos"
+    )))]
+    let _ = dir;
+}

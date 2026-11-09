@@ -47,6 +47,13 @@ plugins) bypass the store and resume from a `.part` file instead. The store
 evicts LRU by bytes within `STORE_BUDGET_BYTES`; the OS may delete its files at
 any time, which reads as a miss.
 
+## View bytecode
+
+GPU page modules compiled by QuickJS persist under the OS cache dir at
+`lingxia/view-bytecode`, one file per source hash plus engine and View version,
+LRU-trimmed to 32 MB. A file that does not match its key or length reads as a
+miss and is removed; the OS may delete any of them.
+
 ## Host cache maintenance
 
 `lx.host.cache.clear()` removes unprotected lxapp usercache, idle session temp,
