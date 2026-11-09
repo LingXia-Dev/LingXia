@@ -388,6 +388,15 @@ impl TabBar {
         }
     }
 
+    /// Whether the bar shows over the page at `path`, whichever page is current.
+    pub fn is_visible_on(&self, path: &str) -> bool {
+        match self.visibility {
+            TabBarVisibilityPreference::Auto => self.is_tabbar_page(path),
+            TabBarVisibilityPreference::Visible => true,
+            TabBarVisibilityPreference::Hidden => false,
+        }
+    }
+
     pub fn is_desktop_group_visible(&self) -> bool {
         self.visibility != TabBarVisibilityPreference::Hidden
     }
@@ -874,6 +883,21 @@ mod patch_tests {
                 .is_err()
         );
         assert_eq!(state.visibility, TabBarVisibilityPreference::Auto);
+    }
+
+    #[test]
+    fn visibility_on_a_page_follows_that_page_not_the_current_route() {
+        let mut state = tabbar();
+        let home = "pages/home/index".to_string();
+        state.items[0].page_path = home.clone();
+        state.set_visible(false);
+        assert!(state.is_visible_on(&home));
+        assert!(!state.is_visible_on("pages/detail/index"));
+
+        state.set_visibility(TabBarVisibilityPreference::Hidden);
+        assert!(!state.is_visible_on(&home));
+        state.set_visibility(TabBarVisibilityPreference::Visible);
+        assert!(state.is_visible_on("pages/detail/index"));
     }
 
     #[test]

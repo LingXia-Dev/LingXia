@@ -497,6 +497,14 @@ pub fn surface_derived_layout(appid: String) -> String {
         .unwrap_or_else(|| "null".to_string())
 }
 
+/// Whether the tab bar shows over the page at `path`, whichever page is current.
+#[napi]
+fn tab_bar_visible_on(appid: String, path: String) -> bool {
+    lxapp::try_get(&appid)
+        .and_then(|lxapp| lxapp.get_tabbar())
+        .is_some_and(|tabbar| tabbar.is_visible_on(&path))
+}
+
 /// Get complete TabBar state with items array
 #[napi]
 fn get_tab_bar(appid: String) -> Option<TabBarState> {

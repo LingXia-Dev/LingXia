@@ -304,6 +304,8 @@ declare module 'liblingxia.so' {
    * @returns TabBar state or null if not found
    */
   export function getTabBar(appid: string): TabBarState | null;
+  /** Whether the tab bar shows over the page at `path`, whichever page is current. */
+  export function tabBarVisibleOn(appid: string, path: string): boolean;
 
   /**
    * Get navigation bar state for a specific LxApp page

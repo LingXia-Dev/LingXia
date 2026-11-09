@@ -25,7 +25,7 @@ import { NavigationBar, NavigationBarState, NAVBAR_TOTAL_HEIGHT, isColorDark } f
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';
 import { TabBar, tabBarExtraBottomHeight } from './TabBar';
 import { TabBarPosition, TabBarItem, UiEventType } from 'liblingxia.so';
-import liblingxia, { gpuPageCloseRequest, gpuPageTransitionStart, gpuPageTransitionFrame, gpuPageTransitionEnd, TabBarState, getNavigationBarState, isPullDownRefreshEnabled, reportPullRefreshIndicator, onPageShow, onLxappEvent, setSurfaceViewport, setSurfaceWidth, pageBackgroundColor, refreshIndicatorColor, syncLxappHostUI } from 'liblingxia.so';
+import liblingxia, { gpuPageCloseRequest, tabBarVisibleOn, gpuPageTransitionStart, gpuPageTransitionFrame, gpuPageTransitionEnd, TabBarState, getNavigationBarState, isPullDownRefreshEnabled, reportPullRefreshIndicator, onPageShow, onLxappEvent, setSurfaceViewport, setSurfaceWidth, pageBackgroundColor, refreshIndicatorColor, syncLxappHostUI } from 'liblingxia.so';
 import { notePageOrigin, setCapsuleGeometryListener } from './capsuleGeometry';
 import { NAVIGATION_ACTION_BACK, NAVIGATION_ACTION_HOME, CAPSULE_ACTION_CLOSE } from '../app/NativeBridge';
 import { AnimationType, EDGE_BACK_SWIPE_ZONE_WIDTH_VP } from './LxAppNavigation';
@@ -2001,16 +2001,21 @@ export struct LxAppContainer {
   /** Host bars over a GPU page (top, right, bottom, left), device pixels. */
   private getGpuChromeInsets(webTag: string): number[] {
     const px = (vp: number): number => this.getUIContext().vp2px(vp);
-    return [px(this.getPageNavTop(webTag)), 0, px(this.getTabBarCoverage()), 0];
+    return [px(this.getPageNavTop(webTag)), 0, px(this.getTabBarCoverage(webTag)), 0];
   }
 
   /**
-   * The height a shown horizontal tab bar covers at the window's bottom, vp. Unlike the
-   * WebView's reservation it counts a transparent bar too: a GPU page always lies under it.
+   * The height the tab bar covers at the bottom of the page under webTag when that page shows,
+   * vp. It follows that page, not the current one, so a kept or incoming page keeps its final
+   * size. Unlike the WebView's reservation it counts a transparent bar: a GPU page lies under it.
    */
-  private getTabBarCoverage(): number {
+  private getTabBarCoverage(webTag: string): number {
     const hasTabBar = (this.tabBarState?.items?.length ?? 0) > 0;
-    if (!hasTabBar || this.tabBarState?.isVisible !== true || this.isTabBarVertical()) {
+    if (!hasTabBar || this.isTabBarVertical()) {
+      return 0;
+    }
+    const extracted = extractWebTag(webTag);
+    if (!tabBarVisibleOn(this.appId, extracted ? extracted.path : this.path)) {
       return 0;
     }
     const tabBarSize: number = (this.tabBarState?.dimension as number) ?? TAB_BAR_HORIZONTAL_HEIGHT;
