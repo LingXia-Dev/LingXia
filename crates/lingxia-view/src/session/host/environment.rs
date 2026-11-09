@@ -109,12 +109,19 @@ impl HostEnvironment {
         a: &crate::platform::FrameEnvironment,
         b: &crate::platform::FrameEnvironment,
     ) -> bool {
+        Self::same_as_read(a, b, !self.ignores_host_context)
+    }
+
+    /// `a` and `b` are the same for a View run that read the host context or did not.
+    pub(super) fn same_as_read(
+        a: &crate::platform::FrameEnvironment,
+        b: &crate::platform::FrameEnvironment,
+        reads_host_context: bool,
+    ) -> bool {
         if a == b {
             return true;
         }
-        if !self.ignores_host_context
-            || (a.width, a.height, a.scale) != (b.width, b.height, b.scale)
-        {
+        if reads_host_context || (a.width, a.height, a.scale) != (b.width, b.height, b.scale) {
             return false;
         }
         let strip = |value: &serde_json::Value| {
@@ -127,6 +134,20 @@ impl HostEnvironment {
             value
         };
         strip(&a.value) == strip(&b.value)
+    }
+
+    /// A frame built for `built` still fits a target measuring `now`: same size and scale,
+    /// and the same environment as far as this page's View read it.
+    pub(super) fn still_fits(
+        &self,
+        built: Option<&crate::platform::FrameEnvironment>,
+        now: Option<crate::platform::FrameEnvironment>,
+    ) -> bool {
+        let (Some(built), Some(mut now)) = (built, now) else {
+            return false;
+        };
+        self.apply(&mut now.value);
+        self.same(built, &now)
     }
 
     /// Overlays pushed values on the measured `env`; `canDock` is false until a surface push.
@@ -216,6 +237,67 @@ mod tests {
         assert_eq!(
             env,
             json!({"displayLanguage": "zh-Hans-CN", "sizeClass": "regular", "canDock": true})
+        );
+    }
+
+    #[test]
+    fn a_built_frame_fits_until_an_input_its_view_read_differs() {
+        let frame =
+            |width: u16, scale: f32, value: serde_json::Value| crate::platform::FrameEnvironment {
+                width,
+                height: 800,
+                scale,
+                value,
+            };
+        let mut host = HostEnvironment::default();
+        let mut measured = json!({"theme": "light"});
+        host.apply(&mut measured);
+        let built = frame(400, 2.0, measured.clone());
+        assert!(host.still_fits(
+            Some(&built),
+            Some(frame(400, 2.0, json!({"theme": "light"})))
+        ));
+        assert!(!host.still_fits(
+            Some(&built),
+            Some(frame(401, 2.0, json!({"theme": "light"})))
+        ));
+        assert!(!host.still_fits(
+            Some(&built),
+            Some(frame(400, 3.0, json!({"theme": "light"})))
+        ));
+        assert!(!host.still_fits(
+            Some(&built),
+            Some(frame(400, 2.0, json!({"theme": "dark"})))
+        ));
+        assert!(
+            !host.still_fits(Some(&built), None),
+            "an unmeasured target fits nothing"
+        );
+        assert!(!host.still_fits(None, Some(frame(400, 2.0, json!({"theme": "light"})))));
+
+        let push = |dock: bool| {
+            json!({"kind": "surface", "revision": u64::from(dock) + 1,
+                "context": {"sizeClass": "compact", "canDock": dock, "width": 200.0, "height": 400.0}})
+            .to_string()
+        };
+        assert!(host.update(&push(false)).unwrap());
+        let now = || Some(frame(400, 2.0, json!({"theme": "light"})));
+        assert!(
+            !host.still_fits(Some(&built), now()),
+            "a View that reads host context needs the pushed values"
+        );
+        host.set_reads_host_context(false);
+        assert!(
+            host.still_fits(Some(&built), now()),
+            "a push this View never read leaves its frame current"
+        );
+        host.set_reads_host_context(true);
+        let mut pushed = json!({"theme": "light"});
+        host.apply(&mut pushed);
+        let rebuilt = frame(400, 2.0, pushed);
+        assert!(
+            host.still_fits(Some(&rebuilt), now()),
+            "a frame built with the pushed values stays current"
         );
     }
 

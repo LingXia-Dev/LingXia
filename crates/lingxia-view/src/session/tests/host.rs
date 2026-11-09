@@ -24,6 +24,8 @@ struct Log {
     /// Display sizes of frames the fake target accepted.
     accepted: Vec<(u16, u16)>,
     presented: Vec<Vec<String>>,
+    /// Display sizes of the frames presented, in order.
+    presented_sizes: Vec<(u16, u16)>,
     presented_at: Vec<std::time::Instant>,
     fetched: Vec<(u64, String)>,
     cancelled: Vec<u64>,
@@ -93,6 +95,7 @@ struct Encoded {
     texts: Vec<String>,
     caret: bool,
     generation: CommitTicket,
+    size: (u16, u16),
     /// The offscreen target this frame holds until it is presented or dropped.
     target: Option<Arc<Mutex<Vec<CommitTicket>>>>,
 }
@@ -176,6 +179,7 @@ impl Presenter for Fake {
                 .collect(),
             caret: display.caret_paint.is_some(),
             generation,
+            size: (display.width, display.height),
             target: self
                 .costs
                 .lock()
@@ -209,6 +213,7 @@ impl Presenter for Fake {
         let mut log = self.main();
         log.carets.push(frame.caret);
         log.presented.push(frame.texts.clone());
+        log.presented_sizes.push(frame.size);
         log.presented_at.push(std::time::Instant::now());
         drop(log);
         if let Some(costs) = self.costs.lock().unwrap().as_mut()
@@ -910,17 +915,8 @@ fn only_an_accepted_frame_for_the_current_environment_is_current() {
     );
 }
 
-#[test]
-fn a_frame_prepared_for_a_replaced_target_is_rebuilt_for_the_new_one() {
-    let worker = ViewWorker::shared("test:replaced-target").unwrap();
-    let platform = Platform::new(&[&worker]);
-    let host = platform.host(
-        &worker,
-        &source("function render(){return h('text',{},'A')}"),
-        false,
-    );
-    host.set_visible(true);
-    // The worker prepares a frame; its vsync has not come yet.
+/// Runs the worker until the host holds a prepared frame whose vsync has not come.
+fn prepare_one(platform: &Platform, worker: &Arc<ViewWorker>, host: &ViewHost<Fake>) {
     for _ in 0..50 {
         let (done, wait) = channel();
         worker.run_background(move |_| {
@@ -934,12 +930,111 @@ fn a_frame_prepared_for_a_replaced_target_is_rebuilt_for_the_new_one() {
             break;
         }
     }
-    assert_eq!(presents(&host), 0);
-    // The target is replaced before that vsync, as a surface attaching late does.
+    assert_eq!(presents(host), 0);
+}
+
+#[test]
+fn a_frame_prepared_before_a_same_size_target_change_still_presents() {
+    let worker = ViewWorker::shared("test:replaced-target").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source("function render(){return h('text',{},'A')}"),
+        false,
+    );
+    host.set_visible(true);
+    prepare_one(&platform, &worker, &host);
+    // The target is replaced at the same size before that vsync, as Android reports a new
+    // surface's size right after creating it.
     host.surface_changed();
     platform.settle(&[&host]);
-    assert_eq!(presents(&host), 1, "a frame for the new target presents");
-    assert_eq!(last(&host), ["A"]);
+    let log = host.adapter().log.lock().unwrap();
+    assert_eq!(
+        log.accepted.len(),
+        1,
+        "the frame built first is not thrown away"
+    );
+    assert_eq!(log.presented, [["A"]]);
+    drop(log);
+    assert!(host.frame_is_current());
+}
+
+#[test]
+fn a_frame_prepared_for_another_size_is_rebuilt_and_never_presented() {
+    let worker = ViewWorker::shared("test:resized-target").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source("function render(){return h('text',{},'A')}"),
+        false,
+    );
+    host.set_visible(true);
+    prepare_one(&platform, &worker, &host);
+    let built = host.adapter().log.lock().unwrap().accepted[0];
+    host.adapter()
+        .environment
+        .lock()
+        .unwrap()
+        .as_mut()
+        .unwrap()
+        .width = 300;
+    host.surface_changed();
+    platform.settle(&[&host]);
+    let log = host.adapter().log.lock().unwrap();
+    assert!(log.accepted.len() > 1 && log.accepted[1..].iter().all(|size| *size == (300, built.1)));
+    assert!(
+        !log.presented_sizes.is_empty()
+            && log
+                .presented_sizes
+                .iter()
+                .all(|size| *size == (300, built.1)),
+        "only frames laid out for the new size present: {:?}",
+        log.presented_sizes
+    );
+}
+
+/// A surface push lands while the page's first frame waits for its vsync.
+/// Returns the presents at that vsync, then every frame presented.
+fn first_frame_across_a_surface_push(name: &str, render: &str) -> (usize, Vec<Vec<String>>) {
+    let worker = ViewWorker::shared(name).unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(&worker, &source(render), false);
+    host.set_visible(true);
+    prepare_one(&platform, &worker, &host);
+    let surface = serde_json::json!({"kind": "surface", "revision": 1,
+        "context": {"sizeClass": "regular", "canDock": true, "width": 900.0, "height": 700.0}});
+    host.update_environment(&surface.to_string()).unwrap();
+    host.vsync();
+    let at_vsync = host.adapter().log.lock().unwrap().presented.len();
+    platform.settle(&[&host]);
+    let presented = host.adapter().log.lock().unwrap().presented.clone();
+    (at_vsync, presented)
+}
+
+#[test]
+fn a_frame_presents_across_a_push_its_view_did_not_read() {
+    let (at_vsync, presented) = first_frame_across_a_surface_push(
+        "test:push-unread",
+        "function render(){ return h('text',{},'Static') }",
+    );
+    assert_eq!(
+        at_vsync, 1,
+        "the frame built before the push presents at its vsync"
+    );
+    assert_eq!(presented.first(), Some(&vec!["Static".to_string()]));
+}
+
+#[test]
+fn a_frame_whose_view_read_a_pushed_key_is_rebuilt_before_it_presents() {
+    let (at_vsync, presented) = first_frame_across_a_surface_push(
+        "test:push-read",
+        "function render(view){ return h('text',{},String(view.env.sizeClass)) }",
+    );
+    assert!(
+        !presented.is_empty() && presented.iter().all(|p| p == &vec!["regular".to_string()]),
+        "only frames with the pushed value present: {presented:?}"
+    );
+    assert_eq!(at_vsync, 0);
 }
 
 #[test]

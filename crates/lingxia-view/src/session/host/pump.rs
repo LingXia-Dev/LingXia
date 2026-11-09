@@ -1,5 +1,6 @@
 //! Frame sequencing: sample, prepare on the worker, present on vsync, then run
 //! the presented frame's effects, reach, images and animation wakeup.
+use super::environment::HostEnvironment;
 use super::{FrameSnapshot, FrameTiming, Guard, Inner};
 use crate::interaction::frame::PresentedFrame;
 use crate::platform::{FrameEnvironment, PlatformAdapter};
@@ -19,6 +20,8 @@ pub(super) struct Prepared<F> {
     offsets: HashMap<String, f32>,
     timing: FrameTiming,
     prepared_at: Instant,
+    /// Its View run read a host-context key.
+    reads_host_context: bool,
     pacing: Pacing,
     flight: u64,
 }
@@ -153,6 +156,10 @@ impl<A: PlatformAdapter> Inner<A> {
             let Some(environment) = environment else {
                 return;
             };
+            // A target with no size yet would only take a frame thrown away once it has one.
+            if environment.width == 0 || environment.height == 0 {
+                return;
+            }
             let fine = environment.value["pointer"] == "fine";
             main.interaction.set_fine_pointer(fine);
             main.text_menu.set_fine_pointer(fine);
@@ -167,7 +174,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 main.environment = Some(environment.clone());
             } else {
                 main.environment = Some(environment.clone());
-                self.lifecycle.invalidate_surface();
+                // A frame already being built is judged at its vsync by what its View read.
                 main.dirty = true;
                 // A kept hidden frame no longer matches; catch up so a return can show at once.
                 // A parked page left: it renders nothing until the next connection.
@@ -279,7 +286,7 @@ impl<A: PlatformAdapter> Inner<A> {
                         micros(started.elapsed()),
                     )
                 });
-                Ok((input, rebuild, prepared))
+                Ok((input, rebuild, prepared, reads))
             },
             move |inner, result| {
                 let measures = std::mem::take(&mut inner.main().frame_measures);
@@ -297,10 +304,12 @@ impl<A: PlatformAdapter> Inner<A> {
                     let missed = main.prepared.is_some() && flight.input < main.input_seq;
                     (current, missed)
                 };
-                let (input, rebuild, prepared) = match result {
-                    Some(Ok((input, rebuild, prepared))) => (Some(input), rebuild, Some(prepared)),
-                    Some(Err(error)) => (None, false, Some(Err(error))),
-                    None => (None, false, None),
+                let (input, rebuild, prepared, reads_host_context) = match result {
+                    Some(Ok((input, rebuild, prepared, reads))) => {
+                        (Some(input), rebuild, Some(prepared), reads)
+                    }
+                    Some(Err(error)) => (None, false, Some(Err(error)), true),
+                    None => (None, false, None, true),
                 };
                 // A frame that failed rendering the input reports that failure itself.
                 let rendered =
@@ -342,6 +351,7 @@ impl<A: PlatformAdapter> Inner<A> {
                             offsets,
                             timing,
                             prepared_at: Instant::now(),
+                            reads_host_context,
                             pacing,
                             flight: flight.id,
                         };
@@ -762,7 +772,17 @@ impl<A: PlatformAdapter> Inner<A> {
         if self.main().prepared.is_some() {
             self.request_frame();
         }
-        let current = !self.main().disposed && self.lifecycle.is_current_surface(prepared.surface);
+        // A frame presents only at the size it was laid out for, and only while what its View
+        // read is unchanged.
+        let current = !self.main().disposed
+            && self.lifecycle.is_current_surface(prepared.surface)
+            && self.main().environment.as_ref().is_none_or(|now| {
+                HostEnvironment::same_as_read(
+                    &prepared.environment,
+                    now,
+                    prepared.reads_host_context,
+                )
+            });
         if !current {
             // Built for a target that has since changed: the page still owes a frame.
             let mut main = self.main();
@@ -786,6 +806,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 prepared_at,
                 pacing,
                 flight,
+                ..
             } = prepared;
             timing.wait_us = micros(vsync.saturating_duration_since(prepared_at));
             timing.main_work_us = micros(vsync.elapsed());
@@ -1019,6 +1040,9 @@ impl<A: PlatformAdapter> Inner<A> {
                     input_probes(&pacing, &timing, input, record.present);
                 }
             }
+        }
+        if self.main().visible {
+            self.worker.release();
         }
         self.adapter.presented(&snapshot, &timing);
         self.revealed_by_frame();

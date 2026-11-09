@@ -612,21 +612,34 @@ impl<A: PlatformAdapter> ViewHost<A> {
         self.inner.set_visible(visible);
     }
 
-    /// The presentation target was replaced or resized; a size change still reruns the View.
+    /// The presentation target was replaced or resized. A frame being built for the same size,
+    /// scale and environment still presents; one built for other inputs is rebuilt.
     pub fn surface_changed(&self) {
         // Back on screen: a visible page's videos play again where they held.
         let visible = self.inner.main().visible && !self.inner.window_stopped();
         self.inner.hide_videos(!visible);
-        self.inner.lifecycle.invalidate_surface();
-        let hidden = {
+        let fits = {
+            let measured = self.inner.adapter.environment();
+            let main = self.inner.main();
+            main.host_environment
+                .still_fits(main.environment.as_ref(), measured)
+        };
+        if !fits {
+            self.inner.lifecycle.invalidate_surface();
+        }
+        let (hidden, kept) = {
             let mut main = self.inner.main();
             main.presented_environment = None;
             main.catch_up = !main.visible && !main.interaction.parked();
-            main.catch_up
+            let kept = fits && (main.prepared.is_some() || main.in_flight.is_some());
+            (main.catch_up, kept)
         };
         // A hidden page's catch-up frame runs as background work, behind the shown page's frame.
         let _ = hidden;
-        self.redraw();
+        // A kept frame on its way presents to the new target; a redraw would only repeat it.
+        if !kept {
+            self.redraw();
+        }
     }
 
     /// The target holds an accepted frame for the current size and environment; a pending
@@ -1693,6 +1706,10 @@ impl<A: PlatformAdapter> Inner<A> {
         let (disposed, shown) = {
             let mut main = self.main();
             let shown = visible && !main.visible;
+            if !visible && main.visible {
+                // The page coming in builds first; this page's catch-up waits for its frame.
+                self.worker.hold();
+            }
             main.visible = visible;
             (main.disposed, shown)
         };
