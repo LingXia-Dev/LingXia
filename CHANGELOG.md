@@ -19,6 +19,78 @@ written out in full in that release's notes on GitHub.
 
 <!-- releases below -->
 
+## 0.29.0 — 2026-11-09
+
+### Breaking
+
+- **Breaking** — remove the inline native island (da895f311)
+- **Breaking** — **test**: rename the spec() API to test() (1d67c3ab5)
+- **Breaking** — **shell**: one side panel for lxapps and browser tabs; two aside slots (904e6a843)
+
+### Writing an lxapp
+
+- **lxapp**: serve lx: media with byte ranges and stream file bodies (d52aa802c)
+- **test**: write xfail as skipped in junit.xml, not as a pass (e034a8dcc)
+- **lxapp**: drop drained apps from the window switcher (a09e1dc9a)
+- **webview**: service COM calls while waiting for a controller reply (dddfb1362)
+
+### Embedding a host app
+
+- **ios**: let the host gate system permission prompts (4717073fb)
+- **harmony**: let the host gate system permission prompts (055aef367)
+- **android**: let the host gate system permission prompts (81fafbdbe)
+- **ios**: defer tab bar refresh until view containers exist (2a06e106e)
+- **macos**: decode sidebar icons from their bytes (69aa28815)
+- **windows**: keep device toolbar controls apart on narrow frames (47f34e8c0)
+- **windows**: scale device-frame chrome and info sheet on high-DPI displays (59bc7fe3d)
+- **windows**: scale runner device frames consistently on high-DPI displays (95097d144)
+- **ios**: a selected tab's highlight no longer swallows taps on its icon (487abe25a)
+- **macos**: refuse host updates this Mac cannot run (e5e638618)
+- **windows**: decode shell icons from their bytes (72f1ab21a)
+- **macos**: the dev mark is as wide as its label (a6d911839)
+- **windows**: sidebar action icons follow the theme like macOS (b422d4a25)
+- **windows**: centre the surface close and back glyphs at any DPI (f1b99efc0)
+- **windows**: sidebar rows keep one geometry, hover and selection (57581762a)
+- **shell**: Windows adopts the moved tab; Close Below shows whenever rows sit below (98e76db5f)
+- **shell**: the close family counts every main-area row (262a0855f)
+- **shell**: every main-area row opens the same menu; a browser tab can move into the side panel (dd22d8a97)
+- **browser**: sort side panel tab matches with sort_by_key for clippy (a82872ae4)
+- **macos**: clicking the side panel's first browser tab shows it (149d4f12f)
+- **windows**: side panel tabs share a narrow strip and overflow instead of vanishing (a2e7f212c)
+- **macos**: side panel tabs share a narrow strip instead of breaking its layout (9a8a5b753)
+- **macos**: release an lxapp's side panel tab when the runtime closes it (265121144)
+- **shell**: hidden side panels stay reachable; calmer Windows drag and handle (36c90c6a8)
+- **shell**: "Open in Side Panel" in the main switcher's host menu (99d9c4679)
+- **macos**: drag a sidebar group onto the main's edge to open it beside (aac8930a7)
+- **windows**: drag a sidebar group onto the main's edge to open it beside (c3ac21602)
+- **windows**: resizable sidebar, 148 default width on every platform (d97bc9f4a)
+- **windows**: one side panel for lxapps and browser tabs (1890ee8c8)
+- **shell**: move a live lxapp main back beside the main as an aside (f6aaea736)
+- **windows**: aside tab menu, single-content header and icon handle (4072b717a)
+- **macos**: aside tab menu, single-content header and icon handle (dcc25c9d9)
+- **macos**: closing the main window hides it, tray or not (e1bed14ed)
+
+### Rust native extensions
+
+- **control**: open an lxapp or a page in a chosen region; read where an app is (f090454fa)
+
+### CLI and CI
+
+- **cli**: write the DMG window layout without Finder (ab141b860)
+- **cli**: lay out the macOS DMG with a drag-to-install background (48684c095)
+- **runner**: hide the dev port mark on Runner hosts (ce971f02a)
+- **cli**: build an env that has no lingxiaServer (9893e02f3)
+- **cli**: isolate macOS SwiftPM caches by architecture (382f37f74)
+- **cli**: declare macOS host app architectures with macos.arch (bbe8b81da)
+- **lxdev**: set the Runner display language with `lxdev runner set` (a9b0c45e5)
+- **cli**: take the Runner server from auth (39f295572)
+- **cli**: upgrade every published lingxia crate (1d29b59f0)
+
+### Other
+
+- state when the permission gate is called (aabc77c7b)
+- **transfer**: stop retrying refused download connections (05fef52cc)
+
 ## 0.28.0 — 2026-10-23
 
 ### Breaking
