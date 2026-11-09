@@ -392,6 +392,15 @@ pub(crate) fn disconnect(page: i64) {
     });
 }
 
+/// Page `page` holds the input method's connection.
+pub(crate) fn editing(page: i64) -> bool {
+    MIRROR
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .as_ref()
+        .is_some_and(|m| m.page == page)
+}
+
 /// The focused editor went away: detach the keyboard; the core already knows.
 fn drop_connection(page: i64) -> Option<Mirror> {
     let was = MIRROR

@@ -11,6 +11,12 @@ const execute = promisify(execFile);
 const coordinate = (value) => Number.isInteger(value) && value >= 0 && value <= 10000;
 
 // An uncompressed 24- or 32-bit BMP, rows bottom-up unless the height is negative; as `[r, g, b]`.
+// The Android fixture's `key` names, plus the keys a menu walk needs; values are ArkUI key codes.
+const keys = {
+  back: 'Back', enter: '2054', tab: '2049', escape: '2070', up: '2012', down: '2013', home: '2081', end: '2082',
+  ...Object.fromEntries([...'abcdefghijklmnopqrstuvwxyz'].map((letter, index) => [letter, String(2017 + index)])),
+};
+
 export function bmpPixels(raw, points) {
   if (raw.toString('latin1', 0, 2) !== 'BM') throw new Error('not a BMP');
   const offset = raw.readUInt32LE(10), width = raw.readInt32LE(18), signed = raw.readInt32LE(22);
@@ -90,6 +96,11 @@ export function createHarmonyDeviceFixture({ hdc, screen }, token = randomBytes(
       }
       if (operation === 'click' && [input?.x, input?.y].every(coordinate)) {
         await hdc(['shell', 'uitest', 'uiInput', 'click', String(input.x), String(input.y)]);
+        return done(200, { ok: true });
+      }
+      // A hardware key press through the system's input path.
+      if (operation === 'key' && Object.hasOwn(keys, input?.key)) {
+        await hdc(['shell', 'uitest', 'uiInput', 'keyEvent', keys[input.key]]);
         return done(200, { ok: true });
       }
       return done(400, { error: 'invalid input operation' });

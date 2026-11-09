@@ -8,6 +8,10 @@ export interface HarmonyNode {
   bounds: [number, number, number, number];
 }
 
+export type HarmonyKey = 'back' | 'enter' | 'tab' | 'escape' | 'up' | 'down' | 'home' | 'end'
+  | 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k' | 'l' | 'm'
+  | 'n' | 'o' | 'p' | 'q' | 'r' | 's' | 't' | 'u' | 'v' | 'w' | 'x' | 'y' | 'z';
+
 export function harmonyDevice(t: Fixture) {
   const base = t.arg('harmonyDevice');
   if (!base) throw new Error('Harmony device fixture is required');
@@ -25,6 +29,8 @@ export function harmonyDevice(t: Fixture) {
     pixels: async (points: readonly (readonly [number, number])[]) =>
       (await request<{ pixels: [number, number, number][] }>('pixels', { points })).pixels,
     swipe: (input: { x1: number; y1: number; x2: number; y2: number; velocity: number }) => request('swipe', input),
+    /** A hardware key press; the Android fixture's names plus arrows, Home, End and letters. */
+    key: (key: HarmonyKey) => request('key', { key }),
     /** A finger tap at screen pixels, through the system input path. */
     click: (x: number, y: number) => request('click', { x, y }),
     /** The system back gesture: a finger from the left edge to the middle of the screen. */

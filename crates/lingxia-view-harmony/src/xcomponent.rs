@@ -1,7 +1,7 @@
 //! One native XComponent node per page, mounted in an ArkTS `ContentSlot`. ArkUI calls
 //! back on the main thread: surface lifetime, touch, keys, focus and display frames.
 use crate::{accessibility, pages, surface::NativeWindow, sys};
-use lingxia_view::interaction::view::{Pointer, PointerPhase};
+use lingxia_view::interaction::view::{Key, Pointer, PointerPhase};
 use std::ffi::{CString, c_void};
 use std::sync::OnceLock;
 
@@ -71,13 +71,13 @@ pub(crate) struct Node {
     pub(crate) provider: *mut sys::ArkUI_AccessibilityProvider,
 }
 
-// Hardware keys reach the page once they map to `Key`; Back must keep reaching the page stack.
-const EVENTS: [i32; 5] = [
+const EVENTS: [i32; 6] = [
     sys::NODE_TOUCH_EVENT,
     sys::NODE_ON_FOCUS,
     sys::NODE_ON_BLUR,
     sys::NODE_ON_HOVER,
     sys::NODE_ON_AXIS,
+    sys::NODE_ON_KEY_EVENT,
 ];
 
 impl Node {
@@ -114,6 +114,8 @@ impl Node {
             (api.set_attribute)(handle, sys::NODE_WIDTH_PERCENT, &number(&full));
             (api.set_attribute)(handle, sys::NODE_HEIGHT_PERCENT, &number(&full));
             (api.set_attribute)(handle, sys::NODE_FOCUSABLE, &number(&yes));
+            // ArkUI only routes hardware keys to a focused node, and touch focuses nothing by default.
+            (api.set_attribute)(handle, sys::NODE_FOCUS_ON_TOUCH, &number(&yes));
             // The page runs its own input connection; the XComponent must not raise one.
             sys::OH_ArkUI_XComponent_SetNeedSoftKeyboard(handle, false);
             for kind in EVENTS {
@@ -299,8 +301,68 @@ unsafe extern "C" fn on_event(event: *mut sys::ArkUI_NodeEvent) {
         sys::NODE_TOUCH_EVENT if !input.is_null() => touch(host, input),
         sys::NODE_ON_FOCUS => host.focus_entered(false),
         sys::NODE_ON_BLUR => host.focus_left(),
+        sys::NODE_ON_KEY_EVENT if !input.is_null() => key(host, token, input),
         _ => {}
     });
+}
+
+/// A hardware key the View uses; an unmapped key, Back among them, stays with ArkUI.
+fn key(host: &pages::Host, page: i64, input: *mut sys::ArkUI_UIInputEvent) {
+    let mut modifiers = 0u64;
+    // SAFETY: the live key event of this callback.
+    let (kind, code, unicode) = unsafe {
+        sys::OH_ArkUI_UIInputEvent_GetModifierKeyStates(input, &mut modifiers);
+        (
+            sys::OH_ArkUI_KeyEvent_GetType(input),
+            sys::OH_ArkUI_KeyEvent_GetKeyCode(input),
+            sys::OH_ArkUI_KeyEvent_GetUnicode(input),
+        )
+    };
+    let repeat = kind == sys::ARKUI_KEY_EVENT_LONG_PRESS;
+    if kind != sys::ARKUI_KEY_EVENT_DOWN && !repeat {
+        return;
+    }
+    let shift = modifiers & sys::ARKUI_MODIFIER_KEY_SHIFT != 0;
+    let Some(view_key) = view_key(code, unicode, shift) else {
+        return;
+    };
+    // An open editor takes typing through the input method; Tab still moves focus.
+    if view_key != Key::Tab && crate::ime::editing(page) {
+        return;
+    }
+    if host.key(view_key, shift, repeat) {
+        // SAFETY: as above.
+        unsafe { sys::OH_ArkUI_KeyEvent_SetConsumed(input, true) };
+    }
+}
+
+/// ArkUI key codes to the View's keys. A key event can carry no character, so letters and
+/// digits also map from their codes.
+fn view_key(code: i32, unicode: u32, shift: bool) -> Option<Key> {
+    Some(match code {
+        2049 => Key::Tab,
+        2012 => Key::Up,
+        2013 => Key::Down,
+        2014 => Key::Left,
+        2015 => Key::Right,
+        2081 => Key::Home,
+        2082 => Key::End,
+        2016 | 2050 | 2054 | 2119 => Key::Activate,
+        2070 => Key::Escape,
+        2068 => Key::PageUp,
+        2069 => Key::PageDown,
+        _ => Key::Char(match char::from_u32(unicode).filter(|c| !c.is_control()) {
+            Some(c) => c,
+            None => match code {
+                2000..=2009 => char::from(b'0' + (code - 2000) as u8),
+                2017..=2042 => {
+                    let c = char::from(b'a' + (code - 2017) as u8);
+                    if shift { c.to_ascii_uppercase() } else { c }
+                }
+                _ => return None,
+            },
+        }),
+    })
 }
 
 /// The clock vsync timestamps and input event times use.

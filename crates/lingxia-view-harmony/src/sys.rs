@@ -45,6 +45,7 @@ pub const ARKUI_XCOMPONENT_TYPE_SURFACE: i32 = 0;
 pub const NODE_ID: i32 = 5;
 pub const NODE_FOCUSABLE: i32 = 39;
 pub const NODE_FOCUS_STATUS: i32 = 66;
+pub const NODE_FOCUS_ON_TOUCH: i32 = 84;
 pub const NODE_WIDTH_PERCENT: i32 = 71;
 pub const NODE_HEIGHT_PERCENT: i32 = 72;
 pub const NODE_XCOMPONENT_ID: i32 = 12000;
@@ -56,6 +57,9 @@ pub const NODE_ON_BLUR: i32 = 5;
 pub const NODE_ON_HOVER: i32 = 9;
 pub const NODE_ON_MOUSE: i32 = 10;
 pub const NODE_ON_KEY_EVENT: i32 = 21;
+pub const ARKUI_KEY_EVENT_DOWN: i32 = 0;
+pub const ARKUI_KEY_EVENT_LONG_PRESS: i32 = 2;
+pub const ARKUI_MODIFIER_KEY_SHIFT: u64 = 1 << 1;
 pub const NODE_ON_AXIS: i32 = 25;
 
 pub const UI_TOUCH_EVENT_ACTION_CANCEL: i32 = 0;
@@ -156,6 +160,14 @@ unsafe extern "C" {
     -> *mut ArkUI_UIInputEvent;
     pub fn OH_ArkUI_UIInputEvent_GetAction(event: *const ArkUI_UIInputEvent) -> i32;
     pub fn OH_ArkUI_UIInputEvent_GetEventTime(event: *const ArkUI_UIInputEvent) -> i64;
+    pub fn OH_ArkUI_UIInputEvent_GetModifierKeyStates(
+        event: *const ArkUI_UIInputEvent,
+        keys: *mut u64,
+    ) -> i32;
+    pub fn OH_ArkUI_KeyEvent_GetType(event: *const ArkUI_UIInputEvent) -> i32;
+    pub fn OH_ArkUI_KeyEvent_GetKeyCode(event: *const ArkUI_UIInputEvent) -> i32;
+    pub fn OH_ArkUI_KeyEvent_GetUnicode(event: *const ArkUI_UIInputEvent) -> u32;
+    pub fn OH_ArkUI_KeyEvent_SetConsumed(event: *const ArkUI_UIInputEvent, consumed: bool);
     pub fn OH_ArkUI_PointerEvent_GetX(event: *const ArkUI_UIInputEvent) -> f32;
     pub fn OH_ArkUI_PointerEvent_GetY(event: *const ArkUI_UIInputEvent) -> f32;
     pub fn OH_ArkUI_PointerEvent_GetHistorySize(event: *const ArkUI_UIInputEvent) -> u32;
