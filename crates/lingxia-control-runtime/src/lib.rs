@@ -14,6 +14,11 @@
 mod apple_host_stubs;
 
 mod app;
+#[cfg(all(
+    feature = "dev-bridge",
+    any(target_os = "android", target_env = "ohos")
+))]
+mod app_state;
 #[cfg(feature = "dev-bridge")]
 mod bridge;
 #[cfg(all(feature = "dev-bridge", feature = "test-runtime"))]

@@ -23,6 +23,9 @@ const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 /// A swap is one module eval; a runtime that has not answered by then never will.
 const HOT_SWAP_TIMEOUT: Duration = Duration::from_secs(10);
 const COMMAND_TIMEOUT_BUFFER: Duration = Duration::from_secs(5);
+/// How long a relayed call waits for an app its host reports in the background.
+/// Long enough for a spec that leaves the app and comes back on purpose.
+const APP_BACKGROUND_GRACE: Duration = Duration::from_secs(5);
 const RUNTIME_EVENT_QUEUE_CAPACITY: usize = 64;
 const DEV_LXAPP_HTTP_PREFIX: &str = "/__lingxia/dev/lxapp/";
 /// zstd window of the dev bundle archive (16 MiB); the client allows the same.
@@ -158,6 +161,10 @@ pub(crate) struct DevServerState {
     runtime_sender: Mutex<Option<(u64, Sender<DevSessionMessage>)>>,
     next_runtime_id: AtomicU64,
     pending_results: Mutex<std::collections::HashMap<String, Sender<DevSessionMessage>>>,
+    /// Since when the runtime has reported the app in the background.
+    app_background_since: Mutex<Option<Instant>>,
+    /// Test-run cancels a background app could not take; sent when it comes back.
+    held_cancels: Mutex<Vec<ControlRequest>>,
     command_lock: Mutex<()>,
     /// Held while an lxapp is rebuilt, and by a relayed `session.test` start
     /// until it is answered. A start may move the app onto an isolated
@@ -277,6 +284,8 @@ impl DevServerState {
             runtime_sender: Mutex::new(None),
             next_runtime_id: AtomicU64::new(1),
             pending_results: Mutex::new(std::collections::HashMap::new()),
+            app_background_since: Mutex::new(None),
+            held_cancels: Mutex::new(Vec::new()),
             command_lock: Mutex::new(()),
             build_lock: Mutex::new(()),
             auth_token,
@@ -701,6 +710,8 @@ impl DevServerState {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let replaced = guard.is_some();
         *guard = Some((runtime_id, sender));
+        // A new connection reports its own state; until then it is answering.
+        self.set_app_foreground(true);
         // Cancel any in-flight "runtime gone" teardown from a previous disconnect.
         self.runtime_epoch.fetch_add(1, Ordering::AcqRel);
         // A run interrupted by the disconnect may have survived it.
@@ -736,6 +747,94 @@ impl DevServerState {
             return Some(self.runtime_epoch.fetch_add(1, Ordering::AcqRel) + 1);
         }
         None
+    }
+
+    fn set_app_foreground(&self, foreground: bool) {
+        let mut since = self
+            .app_background_since
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        match (foreground, *since) {
+            (true, _) => *since = None,
+            (false, None) => *since = Some(Instant::now()),
+            (false, Some(_)) => {}
+        }
+    }
+
+    fn lock_held_cancels(&self) -> std::sync::MutexGuard<'_, Vec<ControlRequest>> {
+        self.held_cancels
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// Keeps a cancel for when the app comes back, one per run.
+    fn hold_cancel(&self, request: ControlRequest) {
+        let run_id = held_run_id(&request);
+        let mut held = self.lock_held_cancels();
+        held.retain(|other| held_run_id(other) != run_id);
+        held.push(request);
+    }
+
+    /// Sends the held cancels to the runtime that just reported the foreground.
+    fn forward_held_cancels(self: &Arc<Self>) {
+        let Some(sender) = self.runtime_sender() else {
+            return;
+        };
+        for request in std::mem::take(&mut *self.lock_held_cancels()) {
+            let state = Arc::clone(self);
+            let sender = sender.clone();
+            thread::spawn(move || {
+                let (id, method) = (request.id.clone(), request.method.clone());
+                let (tx, rx) = mpsc::channel();
+                state.register_pending_result(id.clone(), tx);
+                if sender.send(DevSessionMessage::Request(request)).is_err() {
+                    state.take_pending_result(&id);
+                    return;
+                }
+                match rx.recv_timeout(DEFAULT_COMMAND_TIMEOUT) {
+                    Ok(result) => {
+                        if let Some(owner) = state.observe_test_response(&method, &result) {
+                            state.clear_companion_owner(owner.clone());
+                            state.drop_companion_mock_owner(owner);
+                        }
+                    }
+                    Err(_) => {
+                        state.take_pending_result(&id);
+                    }
+                }
+            });
+        }
+    }
+
+    /// The runtime that should take a held cancel is gone. A killed app's
+    /// runs end with it, so they stop holding the session here; a reconnect
+    /// of the same app still gets the cancel. Returns the released runs.
+    fn release_held_runs(&self) -> Vec<String> {
+        let runs: Vec<String> = self
+            .lock_held_cancels()
+            .iter()
+            .filter_map(held_run_id)
+            .collect();
+        for run_id in &runs {
+            self.settle_watch_leases(run_id, false);
+            let mut active = self.lock_active_test_run();
+            if active.as_ref().is_some_and(|(id, _)| id == run_id) {
+                *active = None;
+            }
+            drop(active);
+            let mut interrupted = self.lock_interrupted_test_run();
+            if interrupted.as_ref().is_some_and(|(id, _)| id == run_id) {
+                *interrupted = None;
+            }
+        }
+        runs
+    }
+
+    fn app_background_since(&self) -> Option<Instant> {
+        *self
+            .app_background_since
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     fn runtime_sender(&self) -> Option<Sender<DevSessionMessage>> {
@@ -828,6 +927,7 @@ impl DevServerState {
         let Some(epoch) = state.clear_runtime_sender(runtime_id) else {
             return;
         };
+        let released = state.release_held_runs();
         // A dev scenario and the live mock selection fail closed with the
         // connection, on both sides.
         let companion = state.clone();
@@ -836,6 +936,11 @@ impl DevServerState {
                 .clear_companion_owner(lingxia_control_protocol::scenario::DEV_OWNER.to_string());
             companion
                 .drop_companion_mock_owner(lingxia_control_protocol::mock::DEV_OWNER.to_string());
+            for run_id in released {
+                let owner = lingxia_control_protocol::scenario::test_owner(&run_id);
+                companion.clear_companion_owner(owner.clone());
+                companion.drop_companion_mock_owner(owner);
+            }
         });
         if !state.end_on_runtime_gone {
             println!("  • app disconnected; waiting for it to reconnect");
@@ -1981,21 +2086,29 @@ fn route_runtime_message(
     dropped_event_batch_warning: &mut bool,
 ) -> Result<()> {
     match message {
-        DevSessionMessage::EventBatch { events } => match event_tx.try_send(events) {
-            Ok(()) => {}
-            Err(mpsc::TrySendError::Full(events)) => {
-                if !*dropped_event_batch_warning {
-                    eprintln!(
-                        "[lingxia dev] session log writer fell behind; dropping a batch of {} events",
-                        events.len()
-                    );
-                    *dropped_event_batch_warning = true;
+        DevSessionMessage::EventBatch { events } => {
+            if let Some(foreground) = events.iter().rev().find_map(DevSessionEvent::as_app_state) {
+                state.set_app_foreground(foreground);
+                if foreground {
+                    state.forward_held_cancels();
                 }
             }
-            Err(mpsc::TrySendError::Disconnected(_)) => {
-                return Err(anyhow!("session log writer stopped"));
+            match event_tx.try_send(events) {
+                Ok(()) => {}
+                Err(mpsc::TrySendError::Full(events)) => {
+                    if !*dropped_event_batch_warning {
+                        eprintln!(
+                            "[lingxia dev] session log writer fell behind; dropping a batch of {} events",
+                            events.len()
+                        );
+                        *dropped_event_batch_warning = true;
+                    }
+                }
+                Err(mpsc::TrySendError::Disconnected(_)) => {
+                    return Err(anyhow!("session log writer stopped"));
+                }
             }
-        },
+        }
         DevSessionMessage::Response(response) => {
             let id = response.id.clone();
             let payload = DevSessionMessage::Response(response);
@@ -2326,6 +2439,28 @@ fn handle_client_connection(
         return Ok(());
     };
 
+    // A frozen app would hold the cancel past its grace and lose it; keep
+    // it for when the app comes back and answer now.
+    if method == lingxia_control_protocol::methods::session::test::CANCEL
+        && state.app_background_since().is_some()
+    {
+        state.hold_cancel(ControlRequest {
+            id: format!("held-{id}"),
+            method,
+            params,
+        });
+        send_wire_message(
+            &mut websocket,
+            &DevSessionMessage::error(
+                id,
+                "app_in_background",
+                "the app is in the background; the cancel is sent when it comes back",
+            ),
+        )?;
+        let _ = websocket.close(None);
+        return Ok(());
+    }
+
     let relay_guards = state.lock_for_relay(&method);
     if method == lingxia_control_protocol::methods::session::test::START
         && let Some(reason) = state.companion_cleanup_error()
@@ -2352,8 +2487,10 @@ fn handle_client_connection(
         anyhow!("Failed to forward command to devtool")
     })?;
 
-    match result_rx.recv_timeout(command_timeout) {
-        Ok(result) => {
+    match wait_for_result(&result_rx, command_timeout, APP_BACKGROUND_GRACE, || {
+        state.app_background_since()
+    }) {
+        RelayWait::Answered(result) => {
             let ended_owner = state.observe_test_response(&relayed_method, &result);
             let sent = send_wire_message(&mut websocket, &result);
             // Fallback for the host's own cleanup; not under the command
@@ -2365,14 +2502,30 @@ fn handle_client_connection(
             }
             sent?;
         }
-        Err(mpsc::RecvTimeoutError::Timeout) => {
+        RelayWait::TimedOut => {
             let _ = state.take_pending_result(&id);
             send_wire_message(
                 &mut websocket,
                 &DevSessionMessage::error(id, "request_timeout", "request timed out"),
             )?;
         }
-        Err(mpsc::RecvTimeoutError::Disconnected) => {
+        RelayWait::Background => {
+            let _ = state.take_pending_result(&id);
+            send_wire_message(
+                &mut websocket,
+                &DevSessionMessage::error(
+                    id,
+                    "app_in_background",
+                    format!(
+                        "the app is in the background (screen locked or another app in front) \
+                         and did not answer within {}s; unlock the device or bring the app to \
+                         the foreground, then retry",
+                        APP_BACKGROUND_GRACE.as_secs()
+                    ),
+                ),
+            )?;
+        }
+        RelayWait::Disconnected => {
             let _ = state.take_pending_result(&id);
             send_wire_message(
                 &mut websocket,
@@ -2386,6 +2539,52 @@ fn handle_client_connection(
     }
     let _ = websocket.close(None);
     Ok(())
+}
+
+fn held_run_id(request: &ControlRequest) -> Option<String> {
+    request
+        .params
+        .as_ref()?
+        .get("run_id")?
+        .as_str()
+        .map(str::to_string)
+}
+
+enum RelayWait {
+    Answered(DevSessionMessage),
+    TimedOut,
+    Background,
+    Disconnected,
+}
+
+/// Waits for a relayed call's answer. While the app is in the background the
+/// call gets `grace` from its start or from the moment the app left,
+/// whichever is later; coming back to the foreground lifts it.
+fn wait_for_result(
+    result_rx: &mpsc::Receiver<DevSessionMessage>,
+    timeout: Duration,
+    grace: Duration,
+    background_since: impl Fn() -> Option<Instant>,
+) -> RelayWait {
+    const SLICE: Duration = Duration::from_millis(100);
+    let started = Instant::now();
+    let deadline = started + timeout;
+    loop {
+        let now = Instant::now();
+        let background_at = background_since().map(|since| since.max(started) + grace);
+        if background_at.is_some_and(|at| now >= at) {
+            return RelayWait::Background;
+        }
+        if now >= deadline {
+            return RelayWait::TimedOut;
+        }
+        let wake = background_at.map_or(deadline, |at| at.min(deadline));
+        match result_rx.recv_timeout((wake - now).min(SLICE)) {
+            Ok(result) => return RelayWait::Answered(result),
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => return RelayWait::Disconnected,
+        }
+    }
 }
 
 fn command_timeout(args: Option<&serde_json::Value>) -> Duration {
@@ -2530,9 +2729,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        DevServerState, TEST_RUN_LEASE, accept_websocket, dev_port, handle_watch_request,
-        persist_runtime_events, read_wire_message, refresh_lxapp_manifests, resolve_lxapp_dir,
-        route_runtime_message, send_wire_message,
+        DevServerState, RelayWait, TEST_RUN_LEASE, accept_websocket, dev_port,
+        handle_watch_request, persist_runtime_events, read_wire_message, refresh_lxapp_manifests,
+        resolve_lxapp_dir, route_runtime_message, send_wire_message, wait_for_result,
     };
     use lingxia_control_protocol::dev_session::{
         DEV_SESSION_PROTOCOL_VERSION, DevSessionMessage, DevSessionRole, WatchPauseArgs,
@@ -2544,6 +2743,121 @@ mod tests {
     use std::sync::{Arc, mpsc};
     use std::thread;
     use std::time::{Duration, Instant};
+
+    const GRACE: Duration = Duration::from_millis(200);
+
+    #[test]
+    fn a_background_app_fails_a_call_after_the_grace_not_at_once() {
+        let (_tx, rx) = mpsc::channel::<DevSessionMessage>();
+        let long_ago = Instant::now() - Duration::from_secs(60);
+        let started = Instant::now();
+        let outcome = wait_for_result(&rx, Duration::from_secs(5), GRACE, || Some(long_ago));
+        assert!(matches!(outcome, RelayWait::Background));
+        assert!(
+            started.elapsed() >= GRACE,
+            "the grace counts from the call's start"
+        );
+    }
+
+    #[test]
+    fn a_call_waiting_when_the_app_leaves_gets_the_grace_from_then() {
+        let (_tx, rx) = mpsc::channel::<DevSessionMessage>();
+        let started = Instant::now();
+        let left = started + GRACE;
+        let outcome = wait_for_result(&rx, Duration::from_secs(5), GRACE, || {
+            (Instant::now() >= left).then_some(left)
+        });
+        assert!(matches!(outcome, RelayWait::Background));
+        assert!(started.elapsed() >= GRACE * 2);
+    }
+
+    fn cancel(run_id: &str) -> lingxia_control_protocol::ControlRequest {
+        lingxia_control_protocol::ControlRequest {
+            id: "held-1".into(),
+            method: lingxia_control_protocol::methods::session::test::CANCEL.into(),
+            params: Some(serde_json::json!({ "run_id": run_id })),
+        }
+    }
+
+    fn app_state(state: &Arc<DevServerState>, foreground: bool) {
+        let (events, _rx) = mpsc::sync_channel(4);
+        let event =
+            lingxia_control_protocol::dev_session::DevSessionEvent::app_state(0, foreground);
+        route_runtime_message(
+            DevSessionMessage::EventBatch {
+                events: vec![event],
+            },
+            state,
+            &events,
+            &mut false,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn a_held_cancel_reaches_the_app_when_it_comes_back() {
+        use lingxia_control_protocol::methods::session::test;
+        let state = Arc::new(authenticated_state());
+        let (tx, rx) = mpsc::channel();
+        state.claim_runtime_sender(tx);
+        app_state(&state, false);
+        state.hold_cancel(cancel("run-1"));
+        state.hold_cancel(cancel("run-1"));
+        assert!(rx.try_recv().is_err(), "nothing reaches a frozen app");
+        app_state(&state, true);
+        match rx.recv_timeout(Duration::from_secs(2)) {
+            Ok(DevSessionMessage::Request(request)) => {
+                assert_eq!(request.method, test::CANCEL);
+                assert_eq!(request.params.unwrap()["run_id"], "run-1");
+            }
+            other => panic!("expected the held cancel, got {other:?}"),
+        }
+        assert!(
+            rx.recv_timeout(Duration::from_millis(200)).is_err(),
+            "one cancel per run"
+        );
+    }
+
+    #[test]
+    fn a_disconnect_releases_a_held_run_and_a_reconnect_still_gets_the_cancel() {
+        use lingxia_control_protocol::methods::session::test;
+        let state = Arc::new(authenticated_state());
+        let (tx, _rx) = mpsc::channel();
+        let (id, _) = state.claim_runtime_sender(tx);
+        state.observe_test_response(test::START, &test_response("run-1", "running"));
+        app_state(&state, false);
+        state.hold_cancel(cancel("run-1"));
+        DevServerState::drop_runtime(&state, id);
+        assert!(
+            !state.test_run_active(),
+            "a killed app does not hold the session"
+        );
+        assert!(state.interrupted_test_run().is_none());
+
+        let (tx, rx) = mpsc::channel();
+        state.claim_runtime_sender(tx);
+        assert!(!state.test_run_active(), "the released run is not resumed");
+        app_state(&state, true);
+        assert!(matches!(
+            rx.recv_timeout(Duration::from_secs(2)),
+            Ok(DevSessionMessage::Request(request)) if request.method == test::CANCEL
+        ));
+    }
+
+    #[test]
+    fn coming_back_to_the_foreground_lifts_the_grace() {
+        let (tx, rx) = mpsc::channel::<DevSessionMessage>();
+        let started = Instant::now();
+        let back = started + GRACE / 2;
+        thread::spawn(move || {
+            thread::sleep(GRACE * 2);
+            let _ = tx.send(DevSessionMessage::success("1", None));
+        });
+        let outcome = wait_for_result(&rx, Duration::from_secs(5), GRACE, || {
+            (Instant::now() < back).then_some(started)
+        });
+        assert!(matches!(outcome, RelayWait::Answered(_)));
+    }
 
     fn authenticated_state() -> DevServerState {
         DevServerState::new(

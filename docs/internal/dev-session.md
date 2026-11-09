@@ -37,6 +37,12 @@ connects to an authenticated LAN listener using the token in
 `~/.lingxia/apple/dev-device-token`. The LAN address skips VPN and container
 ranges. The dev websocket is not a remote machine-management API.
 
+Android and HarmonyOS runtimes send an `app_state` event (`{"foreground": bool}`) on connect and on each
+change; while it reports background, the server fails a relayed call with `app_in_background` once it has
+waited 5 s from the call's start or the move to the background, whichever is later. A test cancel is answered at
+once and held until the app reports foreground; a disconnect releases its run. Other hosts send none and keep the
+plain timeout.
+
 On Windows over SSH, `lingxia dev` starts the host or Runner through a
 temporary interactive-token task so its window opens on the signed-in desktop;
 without a signed-in session of the same account, startup fails with an

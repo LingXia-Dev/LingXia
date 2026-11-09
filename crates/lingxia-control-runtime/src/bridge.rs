@@ -275,6 +275,8 @@ fn bridge_loop(
 ) -> Result<(), String> {
     let (recent, mut receiver) = attached.into_parts();
     let dispatcher = Dispatcher::start();
+    #[cfg(any(target_os = "android", target_env = "ohos"))]
+    let app_state = crate::app_state::attach();
     let mut last_received = Instant::now();
     let mut last_ping = Instant::now();
     // Skipped records are reported at most every few seconds: the report is itself a record.
@@ -319,6 +321,20 @@ fn bridge_loop(
             send_wire_message(websocket, &DevSessionMessage::Response(response))?;
         }
 
+        #[cfg(any(target_os = "android", target_env = "ohos"))]
+        while let Ok((foreground, sent)) = app_state.try_recv() {
+            let event = DevSessionEvent::app_state(unix_ms(), foreground);
+            send_wire_message(
+                websocket,
+                &DevSessionMessage::EventBatch {
+                    events: vec![event],
+                },
+            )?;
+            if let Some(sent) = sent {
+                let _ = sent.send(());
+            }
+        }
+
         // Requests this runtime sends up (a run's companion calls).
         if let Some(outbox) = outbox {
             while let Ok(request) = outbox.try_recv() {
@@ -359,6 +375,13 @@ fn bridge_loop(
 
         thread::sleep(Duration::from_millis(50));
     }
+}
+
+#[cfg(any(target_os = "android", target_env = "ohos"))]
+fn unix_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| since.as_millis() as u64)
 }
 
 fn is_retryable_read_error(err: &std::io::Error) -> bool {

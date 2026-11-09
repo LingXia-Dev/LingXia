@@ -873,7 +873,9 @@ fn execute_inner(info: &SessionInfo, options: TestOptions, selection: Selection)
     );
     if !machine && needs_recovery(&outcome, interrupted) {
         eprintln!(
-            "{} the app under test may not be running; restart it with `lxdev lxapp restart`",
+            "{} the app under test may be in the background (screen locked?) or not running; \
+             unlock the device or bring it to the foreground, else restart it with \
+             `lxdev lxapp restart`",
             "Recover:".yellow()
         );
     }
@@ -2276,6 +2278,18 @@ fn poll_until_terminal(
                 std::thread::sleep(POLL_INTERVAL);
                 continue;
             }
+            // The server already waited out its grace for a frozen app.
+            Err(err) if is_app_in_background(&err) => {
+                run.cancel("app_in_background");
+                return Ok(interrupted_outcome(
+                    TestRunState::InternalError,
+                    format!("{err}"),
+                    run_started.elapsed(),
+                    console,
+                    artifacts,
+                    streamed,
+                ));
+            }
             Err(err) => {
                 /* A poll that times out has not told us the session is gone:
                  * the runtime answers it between spec steps, so a spec doing
@@ -2614,6 +2628,11 @@ fn poll_until_terminal(
 }
 
 /// The dev server's "runtime away, may reconnect" answer to a poll.
+fn is_app_in_background(err: &anyhow::Error) -> bool {
+    err.downcast_ref::<CommandError>()
+        .is_some_and(|error| error.code == "app_in_background")
+}
+
 fn is_runtime_reconnecting(err: &anyhow::Error) -> bool {
     err.downcast_ref::<CommandError>()
         .is_some_and(|error| error.code == "runtime_reconnecting")

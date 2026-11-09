@@ -659,6 +659,8 @@ pub mod dev_session {
         pub const LOG: &str = "log";
         /// One live network feed event (`session.network.watch`).
         pub const NETWORK: &str = "network";
+        /// The app went to the background or came back (`{"foreground": bool}`).
+        pub const APP_STATE: &str = "app_state";
     }
 
     /// Extract the session auth token from a dev websocket URL's `?token=` query.
@@ -746,6 +748,24 @@ pub mod dev_session {
                 kind: event_kinds::NETWORK.to_string(),
                 data,
             }
+        }
+
+        /// The app's foreground state, from a host whose OS freezes it in the background.
+        pub fn app_state(timestamp_ms: u64, foreground: bool) -> Self {
+            Self {
+                timestamp_ms,
+                origin: event_kinds::APP_STATE.to_string(),
+                kind: event_kinds::APP_STATE.to_string(),
+                data: serde_json::json!({ "foreground": foreground }),
+            }
+        }
+
+        /// Whether an [`app_state`](Self::app_state) event reports the foreground.
+        pub fn as_app_state(&self) -> Option<bool> {
+            if self.kind != event_kinds::APP_STATE {
+                return None;
+            }
+            self.data.get("foreground")?.as_bool()
         }
 
         pub fn as_log(&self) -> Result<Option<DevSessionLog>, serde_json::Error> {
@@ -932,6 +952,18 @@ mod tests {
         assert_eq!(role, DevSessionRole::Controller);
         assert_eq!(capabilities, [capabilities::REQUESTS]);
         assert_eq!(build, None);
+    }
+
+    #[test]
+    fn app_state_event_round_trips_and_ignores_other_kinds() {
+        let event = DevSessionEvent::app_state(7, false);
+        let decoded: DevSessionEvent =
+            serde_json::from_str(&serde_json::to_string(&event).unwrap()).unwrap();
+        assert_eq!(decoded.as_app_state(), Some(false));
+        assert_eq!(
+            DevSessionEvent::network(7, serde_json::json!({})).as_app_state(),
+            None
+        );
     }
 
     #[test]
