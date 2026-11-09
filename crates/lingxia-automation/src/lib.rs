@@ -22,6 +22,7 @@ mod dialogs;
 #[path = "dialogs/unavailable.rs"]
 mod dialogs;
 mod error;
+pub use error::set_app_foreground;
 mod gesture;
 pub mod gpu;
 mod host;

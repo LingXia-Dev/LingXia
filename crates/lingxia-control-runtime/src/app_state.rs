@@ -30,6 +30,8 @@ pub(crate) fn attach() -> Receiver<Change> {
 // Runs inside the OS background grace: waiting until the change is on the
 // wire lets the server learn it before the app is frozen.
 fn forward(foreground: bool) {
+    #[cfg(feature = "test-runtime")]
+    lingxia_automation::set_app_foreground(foreground);
     let Some(tx) = connection().clone() else {
         return;
     };

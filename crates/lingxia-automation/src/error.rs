@@ -124,7 +124,28 @@ pub(crate) fn eval_code_for(message: &str) -> &'static str {
 
 /// A coded automation error.
 pub(crate) fn coded(code: &'static str, message: impl Into<String>) -> HostError {
-    HostError::new(code, message)
+    let foreground = FOREGROUND.load(std::sync::atomic::Ordering::Relaxed);
+    HostError::new(code, in_background(code, message.into(), foreground))
+}
+
+static FOREGROUND: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// The host's foreground state, from hosts whose OS stops a background app's pages.
+pub fn set_app_foreground(foreground: bool) {
+    FOREGROUND.store(foreground, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// A wait that ran out while the app was in the background says so: its pages
+/// could not get ready, and nothing else in the message names why.
+fn in_background(code: &str, message: String, foreground: bool) -> String {
+    let waited = code == E_AUTOMATION_TIMEOUT || code == E_PAGE_NOT_READY;
+    if !waited || foreground {
+        return message;
+    }
+    format!(
+        "{message} (the app is in the background: screen locked or another app in front; \
+         unlock the device or bring the app to the foreground)"
+    )
 }
 
 /// Attach JSON diagnostic data to an error.
@@ -259,6 +280,22 @@ pub(crate) fn instance_error(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_timeout_in_the_background_names_it() {
+        use super::{E_AUTOMATION, E_AUTOMATION_TIMEOUT, in_background};
+        let message = "timed out after 15000ms waiting for page 4f2a to become ready";
+        assert_eq!(
+            in_background(E_AUTOMATION_TIMEOUT, message.into(), true),
+            message
+        );
+        let named = in_background(E_AUTOMATION_TIMEOUT, message.into(), false);
+        assert!(
+            named.starts_with(message) && named.contains("in the background"),
+            "{named}"
+        );
+        assert_eq!(in_background(E_AUTOMATION, "boom".into(), false), "boom");
+    }
+
     use super::*;
 
     #[test]
