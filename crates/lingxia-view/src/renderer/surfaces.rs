@@ -220,6 +220,15 @@ pub fn keeps_video(id: u64) -> bool {
     video_surfaces().contains_key(&id)
 }
 
+/// A player has its first frame: every page keeping video redraws now rather than at its next
+/// display refresh, which a page that just presented may not have asked for yet.
+pub(crate) fn wake_video() {
+    let ids: Vec<u64> = video_surfaces().keys().copied().collect();
+    for id in ids {
+        super::render_thread::rebind(id);
+    }
+}
+
 /// On a display refresh of the page presenting through `id`: queues a redraw of its kept frame
 /// for new video frames. True while it keeps one, so the display link keeps running.
 pub fn tick(id: u64) -> bool {

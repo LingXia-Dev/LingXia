@@ -810,9 +810,11 @@ impl Presenter {
         }
         // While the page draws frames of its own (a scroll), each carries the newest video
         // frame: a redraw between them would only add GPU work.
+        // A player's first frame never waits: the page drew it as blank.
         if self
             .page_drawn
             .is_some_and(|drawn| drawn.elapsed() < std::time::Duration::from_millis(25))
+            && !video::awaits_first(display)
         {
             return None;
         }
@@ -968,8 +970,8 @@ impl Presenter {
         crate::renderer::sentinel::presented(&self.adapter);
         self.keep_base = true;
         self.presented = Some(revision);
-        if self.retained.is_some() {
-            video::presented();
+        if let Some((_, display)) = &self.retained {
+            video::presented(display);
         }
         Ok(true)
     }

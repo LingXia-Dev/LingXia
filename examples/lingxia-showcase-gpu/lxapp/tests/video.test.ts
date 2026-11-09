@@ -70,7 +70,8 @@ spec('an HLS source offers its renditions as qualities', { start: { page: 'video
     await new Promise(resolve => setTimeout(resolve, 250));
     text = await state.textContent();
   }
-  if (!text.includes('360p')) offline();
+  if (text.includes('VIDEO_NETWORK')) offline();
+  expect(text).toContain('1080p/720p/540p/360p');
   await view.testId('video-stream-360p').click();
   await expect(state).toContainText('360p · 360p', { timeout: 30_000 });
 });

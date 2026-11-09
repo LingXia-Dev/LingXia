@@ -31,6 +31,8 @@ pub(crate) fn texture_id(player: &str) -> vello_gpu::TextureId {
 pub trait Player: Send {
     /// A frame newer than the last one taken is due at this refresh.
     fn has_new(&self) -> bool;
+    /// Drops a first frame decoded ahead of the player, for a player that starts elsewhere.
+    fn discard_first(&mut self) {}
     /// The frame due now, when it is new.
     fn next_frame(
         &mut self,
@@ -67,8 +69,24 @@ pub trait Player: Send {
     }
 }
 
-/// How far ahead of the playing position a new quality is prepared, in media seconds.
-const SWITCH_LEAD: f64 = 1.0;
+/// How far ahead of the playing position a new quality is parked, in ms of media time, for
+/// local files and for network sources. It learns: shorter while the parked player is ready in
+/// time, longer when it is not, so a switch takes no longer than the source needs.
+static SWITCH_LEAD_MS: [std::sync::atomic::AtomicU32; 2] = [
+    std::sync::atomic::AtomicU32::new(400),
+    std::sync::atomic::AtomicU32::new(1000),
+];
+
+fn switch_lead(url: &str) -> &'static std::sync::atomic::AtomicU32 {
+    &SWITCH_LEAD_MS[usize::from(!url.starts_with("file:"))]
+}
+
+/// Scales `url`'s lead by `factor`, within 0.4–3 s.
+fn tune_lead(url: &str, factor: f64) {
+    let lead = switch_lead(url);
+    let next = (f64::from(lead.load(Ordering::Relaxed)) * factor).clamp(400.0, 3000.0);
+    lead.store(next as u32, Ordering::Relaxed);
+}
 /// The new quality starts this far before the playing one reaches it, covering its start-up.
 const SWITCH_START: f64 = 0.12;
 
@@ -118,6 +136,21 @@ pub(crate) fn configure(key: &str, source: Result<Source, VideoError>) {
         .is_some_and(|previous| url(previous) != url(&source));
     sources.insert(key.to_owned(), source);
     drop(sources);
+    let mut configured = CONFIGURED.lock().unwrap_or_else(|p| p.into_inner());
+    if configured.len() > 64 {
+        configured.clear();
+    }
+    configured
+        .entry(key.to_owned())
+        .or_insert_with(Instant::now);
+    drop(configured);
+    // Open as the scene names the source, not at its first paint a frame later.
+    {
+        let mut open = players();
+        if !open.contains_key(key) {
+            touch(&mut open, key);
+        }
+    }
     if reopen {
         let mut players = players();
         if let Some(entry) = players.get_mut(key) {
@@ -128,6 +161,13 @@ pub(crate) fn configure(key: &str, source: Result<Source, VideoError>) {
             request(key, &mut entry.state);
         }
     }
+}
+
+/// When each key's source was first configured, for the first-frame phases.
+static CONFIGURED: LazyLock<Mutex<HashMap<String, Instant>>> = LazyLock::new(Default::default);
+
+fn ms(duration: std::time::Duration) -> f64 {
+    (duration.as_secs_f64() * 10_000.0).round() / 10.0
 }
 
 fn source_of(key: &str) -> Option<Source> {
@@ -366,6 +406,16 @@ struct Entry {
     unshown: Option<Instant>,
     first_frame_ms: Option<u64>,
     first_present_us: Option<u64>,
+    /// First-frame phases, ms: scene configure to the open request, queued for the opener,
+    /// platform open, open to metadata, metadata to the first new frame, and that to its import.
+    phases: [Option<f64>; 6],
+    ready_at: Option<Instant>,
+    loaded_at: Option<Instant>,
+    /// The first page draw showing this player, and its first frame's import after it.
+    /// When a frame drawing the player's box first reached the screen.
+    shown_at: Option<Instant>,
+    after_shown_ms: Option<f64>,
+    new_at: Option<Instant>,
     frames: u64,
     import_us: [u64; 2],
     /// The props last applied; the player keeps a handle's change until they differ.
@@ -397,11 +447,23 @@ static OPENER: LazyLock<Mutex<mpsc::Sender<Job>>> = LazyLock::new(|| {
         .name("lingxia-video".into())
         .spawn(move || {
             loop {
-                match receiver.recv_timeout(Duration::from_millis(500)) {
-                    Ok(Job::Open(key)) => open_player(&key),
-                    Ok(Job::Switch(key, url)) => open_switch(&key, &url),
-                    Err(mpsc::RecvTimeoutError::Timeout) => {}
+                // Each open runs on its own thread: a stream's manifest fetch must not hold up a
+                // file behind it.
+                let job = match receiver.recv_timeout(Duration::from_millis(500)) {
+                    Ok(job) => Some(job),
+                    Err(mpsc::RecvTimeoutError::Timeout) => None,
                     Err(mpsc::RecvTimeoutError::Disconnected) => return,
+                };
+                if let Some(job) = job {
+                    let spawned = std::thread::Builder::new()
+                        .name("lingxia-video-open".into())
+                        .spawn(move || match job {
+                            Job::Open(key) => open_player(&key),
+                            Job::Switch(key, url) => open_switch(&key, &url),
+                        });
+                    if let Err(error) = spawned {
+                        log::warn!(target: "lingxia_view", "video open did not start: {error}");
+                    }
                 }
                 let idle: Vec<Entry> = {
                     let mut players = players();
@@ -412,7 +474,9 @@ static OPENER: LazyLock<Mutex<mpsc::Sender<Job>>> = LazyLock::new(|| {
                         .collect();
                     keys.iter().filter_map(|key| players.remove(key)).collect()
                 };
-                drop(idle);
+                if !idle.is_empty() {
+                    std::thread::spawn(move || drop(idle));
+                }
             }
         });
     if let Err(error) = spawned {
@@ -422,6 +486,7 @@ static OPENER: LazyLock<Mutex<mpsc::Sender<Job>>> = LazyLock::new(|| {
 });
 
 fn open_player(key: &str) {
+    let picked = Instant::now();
     let source = sources().get(key).cloned();
     let quality = players().get(key).and_then(|entry| entry.quality.clone());
     let mut url = String::new();
@@ -442,11 +507,31 @@ fn open_player(key: &str) {
         Some(Err(error)) => State::Failed(error),
         None => State::Failed(VideoError::new("VIDEO_SOURCE", "no source")),
     };
+    // Opens run in parallel: one overtaken by a newer source for the key closes unused.
+    let current = source_of(key).map(|source| {
+        let quality = players().get(key).and_then(|entry| entry.quality.clone());
+        source.url(quality.as_deref()).to_owned()
+    });
+    if !url.is_empty() && current.as_deref() != Some(url.as_str()) {
+        return;
+    }
+    let mut wake = false;
     // Evicted while opening: the player closes here, unused.
     let _unused = match players().get_mut(key) {
         Some(entry) => {
+            let now = Instant::now();
+            entry.phases[1] = Some(ms(picked.saturating_duration_since(entry.requested)));
+            entry.phases[2] = Some(ms(now.saturating_duration_since(picked)));
+            entry.ready_at = Some(now);
             if let State::Ready(player) = &mut state {
                 entry.applied = settings_of(key);
+                if entry
+                    .pending
+                    .iter()
+                    .any(|op| matches!(op, VideoOp::Seek(_)))
+                {
+                    player.discard_first();
+                }
                 for op in entry.pending.drain(..) {
                     if let Err(error) = player.command(&op) {
                         log::warn!(target: "lingxia_view", "video {key}: {}", error.message);
@@ -454,10 +539,15 @@ fn open_player(key: &str) {
                 }
             }
             entry.url = url;
+            wake = entry.frame.is_none() && matches!(state, State::Ready(_));
             std::mem::replace(&mut entry.state, state)
         }
         None => state,
     };
+    drop(_unused);
+    if wake {
+        crate::renderer::surfaces::wake_video();
+    }
 }
 
 /// Opens the next quality's file paused, matched to the playing one's sound and rate, and parks
@@ -492,6 +582,8 @@ fn open_switch(key: &str, url: &str) {
             return;
         }
     };
+    // The switch shows the next player from its parked position, never its opening frame.
+    next.discard_first();
     let mut players = players();
     let Some(entry) = players.get_mut(key) else {
         return;
@@ -511,7 +603,7 @@ fn open_switch(key: &str, url: &str) {
     let target = if now.paused {
         now.current_time
     } else {
-        lead(now.current_time, now.playback_rate, now.duration)
+        lead(url, now.current_time, now.playback_rate, now.duration)
     };
     let _ = next.command(&VideoOp::Seek(target));
     match &mut entry.switch {
@@ -525,8 +617,9 @@ fn open_switch(key: &str, url: &str) {
 }
 
 /// The position a lead ahead of `time`, kept short of the end.
-fn lead(time: f64, rate: f32, duration: Option<f64>) -> f64 {
-    let ahead = time + SWITCH_LEAD * f64::from(rate.max(0.25));
+fn lead(url: &str, time: f64, rate: f32, duration: Option<f64>) -> f64 {
+    let seconds = f64::from(switch_lead(url).load(Ordering::Relaxed)) / 1000.0;
+    let ahead = time + seconds * f64::from(rate.max(0.25));
     duration.map_or(ahead, |duration| ahead.min((duration - 0.05).max(0.0)))
 }
 
@@ -552,8 +645,10 @@ fn advance_switch(key: &str, entry: &mut Entry, device: &wgpu::Device) {
     } else if !switch.started {
         if now.current_time > switch.target + 0.05 {
             // The playing one passed the parked position before it was ready: park further on.
+            tune_lead(&switch.url, 2.0);
             switch.target = lead(
-                now.current_time + SWITCH_LEAD,
+                &switch.url,
+                now.current_time,
                 now.playback_rate,
                 now.duration,
             );
@@ -563,6 +658,9 @@ fn advance_switch(key: &str, entry: &mut Entry, device: &wgpu::Device) {
         if now.current_time < switch.target - SWITCH_START * f64::from(now.playback_rate) {
             return;
         }
+        // Ready in time (its parked frame is decoded): the next switch parks closer.
+        let parked = (next.status().current_time - switch.target).abs() < 0.05 && next.has_new();
+        tune_lead(&switch.url, if parked { 0.8 } else { 1.5 });
         let _ = next.command(&VideoOp::Play);
         switch.started = true;
         return;
@@ -620,6 +718,16 @@ fn keys(display: &crate::DisplayList) -> Vec<&str> {
     keys
 }
 
+/// A player of `display` is open but has no frame bound yet.
+pub(crate) fn awaits_first(display: &crate::DisplayList) -> bool {
+    let players = players();
+    keys(display).iter().any(|key| {
+        players
+            .get(*key)
+            .is_some_and(|entry| entry.frame.is_none() && matches!(entry.state, State::Ready(_)))
+    })
+}
+
 pub(crate) fn draws_video(display: &crate::DisplayList) -> bool {
     display
         .commands
@@ -653,7 +761,17 @@ pub(crate) fn has_new(display: &crate::DisplayList) -> bool {
     for key in keys(display) {
         if let Some(entry) = touch(&mut players, key) {
             if let State::Ready(player) = &entry.state {
-                new |= player.has_new();
+                if entry.frame.is_none()
+                    && entry.loaded_at.is_none()
+                    && player.status().duration.is_some()
+                {
+                    entry.loaded_at = Some(Instant::now());
+                }
+                let fresh = player.has_new();
+                if fresh && entry.new_at.is_none() {
+                    entry.new_at = Some(Instant::now());
+                }
+                new |= fresh;
             }
             new |= entry
                 .switch
@@ -685,6 +803,23 @@ fn touch<'a>(players: &'a mut HashMap<String, Entry>, key: &str) -> Option<&'a m
                 unshown: None,
                 first_frame_ms: None,
                 first_present_us: None,
+                phases: [
+                    CONFIGURED
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner())
+                        .get(key)
+                        .map(|at| ms(now.saturating_duration_since(*at))),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                ],
+                ready_at: None,
+                loaded_at: None,
+                shown_at: None,
+                after_shown_ms: None,
+                new_at: None,
                 frames: 0,
                 import_us: [0; 2],
             },
@@ -734,6 +869,14 @@ pub(crate) fn import_frames(device: &wgpu::Device, display: &crate::DisplayList)
                 }
                 if entry.frame.is_none() {
                     entry.first_frame_ms = Some(entry.requested.elapsed().as_millis() as u64);
+                    let now = Instant::now();
+                    let new_at = entry.new_at.unwrap_or(now);
+                    let loaded = entry.loaded_at.unwrap_or(new_at);
+                    entry.phases[3] = entry
+                        .ready_at
+                        .map(|at| ms(loaded.saturating_duration_since(at)));
+                    entry.phases[4] = Some(ms(new_at.saturating_duration_since(loaded)));
+                    entry.phases[5] = Some(ms(now.saturating_duration_since(new_at)));
                     entry.unshown = Some(Instant::now());
                 }
                 entry.frame = Some(Frame {
@@ -763,11 +906,18 @@ pub(crate) fn bind(display: &crate::DisplayList, bindings: &mut vello_gpu::Textu
     }
 }
 
-/// A frame drawing video reached the screen: first frames imported before it are now shown.
-pub(crate) fn presented() {
-    for entry in players().values_mut() {
+/// `display` reached the screen: first frames imported before it are now shown.
+pub(crate) fn presented(display: &crate::DisplayList) {
+    let now = Instant::now();
+    let mut players = players();
+    for key in keys(display) {
+        let Some(entry) = players.get_mut(key) else {
+            continue;
+        };
+        let shown = *entry.shown_at.get_or_insert(now);
         if let Some(imported) = entry.unshown.take() {
             entry.first_present_us = Some(crate::session::metrics::micros(imported));
+            entry.after_shown_ms = Some(ms(now.saturating_duration_since(shown)));
         }
     }
 }
@@ -822,6 +972,8 @@ pub fn stats() -> serde_json::Value {
                 },
                 "firstFrameMs": entry.first_frame_ms,
                 "firstPresentUs": entry.first_present_us,
+                "firstFramePhasesMs": entry.phases,
+                "firstFrameAfterShownMs": entry.after_shown_ms,
                 "frames": entry.frames,
                 "importUsAvg": entry.import_us[0].checked_div(entry.frames),
                 "importUsMax": entry.import_us[1],
@@ -900,6 +1052,7 @@ mod platform {
             value_callbacks: *const c_void,
         ) -> *const c_void;
         fn CFRelease(object: *const c_void);
+        fn CFRetain(object: *const c_void) -> *const c_void;
     }
 
     #[link(name = "CoreVideo", kind = "framework")]
@@ -928,6 +1081,7 @@ mod platform {
         fn CVPixelBufferGetWidth(buffer: *mut c_void) -> usize;
         fn CVPixelBufferGetHeight(buffer: *mut c_void) -> usize;
         fn CVBufferRelease(buffer: *mut c_void);
+        fn CVBufferRetain(buffer: *mut c_void) -> *mut c_void;
     }
 
     #[link(name = "CoreMedia", kind = "framework")]
@@ -935,10 +1089,13 @@ mod platform {
         static kCMTimeZero: CMTime;
         fn CMTimeGetSeconds(time: CMTime) -> f64;
         fn CMTimeMakeWithSeconds(seconds: f64, timescale: i32) -> CMTime;
+        fn CMSampleBufferGetImageBuffer(sample: *mut c_void) -> *mut c_void;
     }
 
     #[link(name = "AVFoundation", kind = "framework")]
-    unsafe extern "C" {}
+    unsafe extern "C" {
+        static AVMediaTypeVideo: Id;
+    }
 
     #[link(name = "QuartzCore", kind = "framework")]
     unsafe extern "C" {
@@ -1039,6 +1196,8 @@ mod platform {
         looped: std::cell::Cell<bool>,
         ended: std::cell::Cell<bool>,
         rate: f32,
+        /// The file's first frame, decoded while the player readies; shown until the player's own.
+        first: std::cell::Cell<*mut c_void>,
     }
 
     // AVPlayer and the video output are thread-safe for these calls; the registry serializes them.
@@ -1054,7 +1213,14 @@ mod platform {
 
     impl super::Player for Player {
         fn has_new(&self) -> bool {
-            unsafe { self.due().is_some() }
+            !self.first.get().is_null() || unsafe { self.due().is_some() }
+        }
+
+        fn discard_first(&mut self) {
+            let first = self.first.replace(std::ptr::null_mut());
+            if !first.is_null() {
+                unsafe { CVBufferRelease(first) };
+            }
         }
 
         fn next_frame(
@@ -1227,6 +1393,52 @@ mod platform {
         }
     }
 
+    /// Decodes a file's first video frame with an asset reader, which takes a few ms where an
+    /// AVPlayerItem takes hundreds to become ready. Null when the file gives none.
+    unsafe fn first_frame(asset: Id, attributes: *const c_void) -> *mut c_void {
+        unsafe {
+            let tracks = send1(asset, c"tracksWithMediaType:", AVMediaTypeVideo);
+            if tracks.is_null() || get_int(tracks, c"count") < 1 {
+                log::debug!(target: "lingxia_view", "video first frame: no video track");
+                return std::ptr::null_mut();
+            }
+            let at: unsafe extern "C" fn(Id, *const c_void, usize) -> Id =
+                std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+            let track = at(tracks, sel(c"objectAtIndex:"), 0);
+            let two: unsafe extern "C" fn(Id, *const c_void, Id, Id) -> Id =
+                std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+            let reader = two(
+                objc_getClass(c"AVAssetReader".as_ptr()),
+                sel(c"assetReaderWithAsset:error:"),
+                asset,
+                std::ptr::null_mut(),
+            );
+            if reader.is_null() {
+                return std::ptr::null_mut();
+            }
+            let output = two(
+                objc_getClass(c"AVAssetReaderTrackOutput".as_ptr()),
+                sel(c"assetReaderTrackOutputWithTrack:outputSettings:"),
+                track,
+                attributes as Id,
+            );
+            send1(reader, c"addOutput:", output);
+            let mut image = std::ptr::null_mut();
+            if get_bool(reader, c"startReading") {
+                let sample = send0(output, c"copyNextSampleBuffer");
+                if !sample.is_null() {
+                    let buffer = CMSampleBufferGetImageBuffer(sample);
+                    if !buffer.is_null() {
+                        image = CVBufferRetain(buffer);
+                    }
+                    CFRelease(sample);
+                }
+            }
+            send0(reader, c"cancelReading");
+            image
+        }
+    }
+
     impl Player {
         fn open(url: &str) -> Result<Self, String> {
             let url = std::ffi::CString::new(url).map_err(|e| e.to_string())?;
@@ -1244,10 +1456,21 @@ mod platform {
                 if nsurl.is_null() {
                     return Err("invalid URL".into());
                 }
+                let two: unsafe extern "C" fn(Id, *const c_void, Id, Id) -> Id =
+                    std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+                let asset = two(
+                    objc_getClass(c"AVURLAsset".as_ptr()),
+                    sel(c"URLAssetWithURL:options:"),
+                    nsurl,
+                    std::ptr::null_mut(),
+                );
+                if asset.is_null() {
+                    return Err("invalid URL".into());
+                }
                 let item = objc_retain(send1(
                     objc_getClass(c"AVPlayerItem".as_ptr()),
-                    c"playerItemWithURL:",
-                    nsurl,
+                    c"playerItemWithAsset:",
+                    asset,
                 ));
                 let format = CFNumberCreate(std::ptr::null(), 3, (&BGRA as *const i32).cast());
                 let keys = [
@@ -1269,16 +1492,32 @@ mod platform {
                     c"initWithPixelBufferAttributes:",
                     attributes as Id,
                 );
-                CFRelease(attributes);
                 send1(item, c"addOutput:", output);
                 let player = objc_retain(send1(
                     objc_getClass(c"AVPlayer".as_ptr()),
                     c"playerWithPlayerItem:",
                     item,
                 ));
+                // Decoded while the item readies, so the first frame does not wait for it.
+                let first = if url.to_bytes().starts_with(b"file:") {
+                    first_frame(asset, attributes)
+                } else {
+                    std::ptr::null_mut()
+                };
+                CFRelease(attributes);
                 let set_int: unsafe extern "C" fn(Id, *const c_void, isize) =
                     std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
                 set_int(player, sel(c"setActionAtItemEnd:"), 2);
+                // A local file never stalls, so playback need not wait to buffer.
+                if url.to_bytes().starts_with(b"file:") {
+                    let set_bool: unsafe extern "C" fn(Id, *const c_void, bool) =
+                        std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+                    set_bool(
+                        player,
+                        sel(c"setAutomaticallyWaitsToMinimizeStalling:"),
+                        false,
+                    );
+                }
                 // Paused on the first frame until the page's props say play.
                 send0(player, c"pause");
                 let renditions = if url
@@ -1300,6 +1539,7 @@ mod platform {
                     looped: std::cell::Cell::new(false),
                     ended: std::cell::Cell::new(false),
                     rate: 1.0,
+                    first: std::cell::Cell::new(first),
                 })
             }
         }
@@ -1310,20 +1550,29 @@ mod platform {
             device: &wgpu::Device,
         ) -> Result<Option<(wgpu::Texture, [u16; 2])>, String> {
             unsafe {
-                let Some(time) = self.due() else {
-                    return Ok(None);
-                };
                 let copy: unsafe extern "C" fn(Id, *const c_void, CMTime, *mut CMTime) -> Id =
                     std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
-                let buffer = copy(
-                    self.output,
-                    sel(c"copyPixelBufferForItemTime:itemTimeForDisplay:"),
-                    time,
-                    std::ptr::null_mut(),
-                );
-                if buffer.is_null() {
-                    return Ok(None);
-                }
+                let buffer = match self.due() {
+                    Some(time) => copy(
+                        self.output,
+                        sel(c"copyPixelBufferForItemTime:itemTimeForDisplay:"),
+                        time,
+                        std::ptr::null_mut(),
+                    ),
+                    None => std::ptr::null_mut(),
+                };
+                // The decoded first frame stands in until the player gives a frame of its own.
+                let first = self.first.replace(std::ptr::null_mut());
+                let buffer = match (buffer.is_null(), first.is_null()) {
+                    (true, true) => return Ok(None),
+                    (true, false) => first,
+                    (false, stale) => {
+                        if !stale {
+                            CVBufferRelease(first);
+                        }
+                        buffer
+                    }
+                };
                 let result = self.import(device, buffer);
                 CVBufferRelease(buffer);
                 result.map(Some)
@@ -1460,8 +1709,10 @@ mod platform {
                 let raw = CVMetalTextureGetTexture(metal);
                 let texture: Retained<ProtocolObject<dyn MTLTexture>> =
                     Retained::retain(raw.cast()).ok_or("no Metal texture")?;
-                // The CVMetalTexture keeps the IOSurface checked out until wgpu is done with it.
+                // The CVMetalTexture keeps the IOSurface checked out until wgpu is done with it,
+                // and its cache must outlive it, even when the player closes first.
                 let held = Held(metal);
+                let cache = Held(CFRetain(self.cache).cast_mut());
                 let hal_texture = wgpu::hal::metal::Device::texture_from_raw(
                     texture,
                     wgpu::TextureFormat::Bgra8Unorm,
@@ -1474,8 +1725,9 @@ mod platform {
                         depth: 1,
                     },
                     Some(Box::new(move || {
-                        let held = held;
+                        let (held, cache) = (held, cache);
                         CFRelease(held.0);
+                        CFRelease(cache.0);
                     })),
                 );
                 drop(hal);
@@ -1512,6 +1764,10 @@ mod platform {
         fn drop(&mut self) {
             unsafe {
                 send0(self.player, c"pause");
+                let first = self.first.get();
+                if !first.is_null() {
+                    CVBufferRelease(first);
+                }
                 objc_release(self.output);
                 objc_release(self.player);
                 objc_release(self.item);
