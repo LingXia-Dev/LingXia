@@ -866,14 +866,23 @@ class LxAppActivity : AppCompatActivity() {
                     top = barBounds.bottom - pageBounds.top
                 }
                 val bar = tabBar
-                // Actual clipped frames avoid double-counting space already reserved by margins.
-                if (page.getGlobalVisibleRect(pageBounds) && bar != null && bar.isShown &&
-                    bar.getGlobalVisibleRect(barBounds) && barBounds.intersect(pageBounds)) {
-                    when (bar.config.position) {
-                        TabBarState.Position.LEFT -> left = barBounds.right - pageBounds.left
-                        TabBarState.Position.RIGHT -> right = pageBounds.right - barBounds.left
-                        TabBarState.Position.BOTTOM -> bottom = pageBounds.bottom - barBounds.top
-                    }
+                // The page's own tab bar, not the one on screen: that can still be the outgoing
+                // page's on the incoming page's first pre-draw, and a wrong first sample
+                // rebuilds its first frame.
+                val box = bar?.let { laidOutBox(it) }
+                if (bar != null && box != null && !isMediaFullscreen && tabBarOver(page)) {
+                    val at = IntArray(2).also { page.getLocationInWindow(it) }
+                    val root = IntArray(2).also { rootContainer.getLocationInWindow(it) }
+                    val x = at[0] - root[0]
+                    val y = at[1] - root[1]
+                    val overlap = KeptPageGeometry.overlap(
+                        KeptPageGeometry.Box(x, y, x + page.width, y + page.height), box,
+                        KeptPageGeometry.Chrome(navigationBar = false, tabBar = true, fullscreen = false, gpu = true),
+                        bar.config.position,
+                    )
+                    left = overlap.left
+                    right = overlap.right
+                    bottom = overlap.bottom
                 }
                 page.setChromeInsets(left, top, right, bottom)
             }
@@ -889,13 +898,10 @@ class LxAppActivity : AppCompatActivity() {
      */
     private fun reportKeptChromeInsets() {
         val bar = tabBar ?: return
-        if (!com.lingxia.view.GpuView.keepsSurfaces() || !::webViewContainer.isInitialized ||
-            bar.width <= 0 || bar.height <= 0) return
+        if (!com.lingxia.view.GpuView.keepsSurfaces() || !::webViewContainer.isInitialized) return
+        val barBox = laidOutBox(bar) ?: return
         val root = IntArray(2).also { rootContainer.getLocationInWindow(it) }
-        val at = IntArray(2).also { bar.getLocationInWindow(it) }
-        // The bar's laid-out frame: it keeps its place while another page hides it.
-        val barBox = KeptPageGeometry.Box(at[0] - root[0], at[1] - root[1],
-            at[0] - root[0] + bar.width, at[1] - root[1] + bar.height)
+        val at = IntArray(2)
         for (index in 0 until webViewContainer.childCount) {
             val child = webViewContainer.getChildAt(index) as? ViewGroup ?: continue
             val page = child.getChildAt(0) as? GpuPage ?: continue
@@ -911,6 +917,22 @@ class LxAppActivity : AppCompatActivity() {
             val navigation = if (chrome.gpu && chrome.navigationBar) currentBars().navigationBar else 0
             page.setChromeInsets(overlap.left, navigation, overlap.right, overlap.bottom)
         }
+    }
+
+    /** Whether the tab bar shows over [page], by the core's rule for its path. */
+    private fun tabBarOver(page: GpuPage): Boolean {
+        val path = normalizePath(page.getCurrentPath())
+        if (path.isEmpty()) return tabBar?.visibility == View.VISIBLE
+        return NativeApi.tabBarVisibleOn(appId, path)
+    }
+
+    /** The bar's laid-out frame in root coordinates: it keeps its place while hidden. */
+    private fun laidOutBox(bar: View): KeptPageGeometry.Box? {
+        if (bar.width <= 0 || bar.height <= 0) return null
+        val root = IntArray(2).also { rootContainer.getLocationInWindow(it) }
+        val at = IntArray(2).also { bar.getLocationInWindow(it) }
+        return KeptPageGeometry.Box(at[0] - root[0], at[1] - root[1],
+            at[0] - root[0] + bar.width, at[1] - root[1] + bar.height)
     }
 
     private fun setupContainers() {

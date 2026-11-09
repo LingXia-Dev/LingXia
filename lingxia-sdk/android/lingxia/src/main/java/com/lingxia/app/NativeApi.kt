@@ -366,6 +366,10 @@ internal object NativeApi {
     @JvmStatic
     external fun getTabBarState(appId: String): TabBarState?
 
+    /** Whether the tab bar shows over the page at [path], whichever page is current. */
+    @JvmStatic
+    external fun tabBarVisibleOn(appId: String, path: String): Boolean
+
     /**
      * Get the navigation bar configuration for a specific page/path
      * @param appId The ID of the app

@@ -1162,6 +1162,24 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getLxAppMoreActions<'a>(
     .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+/// Whether the tab bar shows over the page at `path`, whichever page is current.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_tabBarVisibleOn<'a>(
+    mut env: EnvUnowned<'a>,
+    _class: JClass<'a>,
+    appid: JString<'a>,
+    path: JString<'a>,
+) -> jboolean {
+    env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
+        Ok(lxapp::try_get(&appid)
+            .and_then(|lxapp| lxapp.get_tabbar())
+            .is_some_and(|tabbar| tabbar.is_visible_on(&path)))
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
 // Get TabBar configuration using new typed API
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_app_NativeApi_getTabBarState<'a>(
