@@ -1933,7 +1933,8 @@ class LxAppActivity : AppCompatActivity() {
             }.start()
     }
 
-    private fun showGpuTransitionFrame(frame: android.graphics.Bitmap, source: View) {
+    /** [passThrough]: the frame is of the live page under the cover, so touches go to it. */
+    private fun showGpuTransitionFrame(frame: android.graphics.Bitmap, source: View, passThrough: Boolean = false) {
         val origin = IntArray(2)
         val rootOrigin = IntArray(2)
         source.getLocationInWindow(origin)
@@ -1971,6 +1972,7 @@ class LxAppActivity : AppCompatActivity() {
             topMargin = -rootContainer.paddingTop
         }
         cover.setImageBitmap(snapshot)
+        cover.isClickable = !passThrough
         bringGpuTransitionCoverToFront()
     }
 
@@ -2434,7 +2436,7 @@ class LxAppActivity : AppCompatActivity() {
                     // PixelCopy waits for the submitted GPU buffer, unlike the
                     // presentation callback. Commit those pixels before uncovering.
                     val outgoing = gpuTransitionCover?.drawable
-                    if (gpuTransitionCover != null) showGpuTransitionFrame(frame, newWebView)
+                    if (gpuTransitionCover != null) showGpuTransitionFrame(frame, newWebView, passThrough = !animateGpu)
                     if (animateGpu && outgoing != null) {
                         animateGpuTransition(outgoing, isBackNavigation, version, newWebView)
                         return
