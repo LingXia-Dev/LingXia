@@ -113,6 +113,28 @@ fn lock(presenter: &Shared) -> Result<std::sync::MutexGuard<'_, Presenter>, Stri
         .map_err(|_| "UI_SURFACE: poisoned presenter".into())
 }
 
+/// Opens the device and builds the renderer while the first page loads, once per process; the
+/// first attach then finds both, and its draw queues behind this one.
+pub(super) fn warm() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        lingxia_view::renderer::render_thread::run(|| {
+            let Ok(mut shared) = shared_context() else {
+                return;
+            };
+            if shared.is_some() {
+                return;
+            }
+            let context = lingxia_view::renderer::gpu::Context::default();
+            match context.warm() {
+                Ok(true) => *shared = Some(context),
+                Ok(false) => {}
+                Err(error) => super::adapter::log(&format!("UI_SURFACE: warming the GPU: {error}")),
+            }
+        });
+    });
+}
+
 /// The registry the render thread draws Android pages through.
 pub(super) const BACKEND: lingxia_view::renderer::render_thread::Backend =
     lingxia_view::renderer::render_thread::Backend {

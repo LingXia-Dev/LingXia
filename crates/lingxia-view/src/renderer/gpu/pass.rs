@@ -74,6 +74,16 @@ impl SceneRenderer {
         Ok(record(&mut created(&mut state, device, width, height).1))
     }
 
+    /// Builds the renderer and its pipelines ahead of the first scene.
+    pub(crate) fn warm(&self, device: &wgpu::Device) -> Result<(), String> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| "UI_SURFACE: poisoned scene renderer")?;
+        created(&mut state, device, 256, 256);
+        Ok(())
+    }
+
     pub(crate) fn renders(&self) -> u64 {
         self.renders.load(Ordering::Relaxed)
     }

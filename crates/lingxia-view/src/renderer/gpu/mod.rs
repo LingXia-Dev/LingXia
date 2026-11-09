@@ -127,6 +127,40 @@ impl Context {
             .len())
     }
 
+    /// Opens the Vulkan device and builds its renderer before any surface exists, so the first
+    /// page's draw does not compile every pipeline. False when there was nothing to warm.
+    pub fn warm(&self) -> Result<bool, String> {
+        if !self.probes_adapters()? || self.blocked_backends()?.contains(wgpu::Backends::VULKAN) {
+            return Ok(false);
+        }
+        let mut devices = self.lock()?;
+        let Ok(adapter) = pollster::block_on(wgpu::util::initialize_adapter_from_env_or_default(
+            &devices.instance,
+            None,
+        )) else {
+            return Ok(false);
+        };
+        let info = adapter.get_info();
+        // A GLES adapter opened without its window would hold the EGL context the surface needs.
+        if info.backend != wgpu::Backend::Vulkan {
+            return Ok(false);
+        }
+        let record = adapter_record(&info);
+        if !crate::renderer::sentinel::arm(&record) {
+            return Ok(false);
+        }
+        let Some(device_id) = pollster::block_on(devices.open(adapter)) else {
+            crate::renderer::sentinel::released(&record);
+            return Ok(false);
+        };
+        let device = devices.devices[device_id].device.clone();
+        drop(devices);
+        let warmed = self.renderer(device_id)?.warm(&device);
+        // Compiling passed; the first surface arms the sentinel again for its draws.
+        crate::renderer::sentinel::released(&record);
+        warmed.map(|()| true)
+    }
+
     pub(crate) fn renderer(
         &self,
         device_id: usize,

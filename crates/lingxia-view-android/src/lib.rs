@@ -265,6 +265,8 @@ extern "system" fn host_create<'a>(
         let platform = env.new_global_ref(platform)?;
         let worker = ViewWorker::shared(&text(env, &worker)?)?;
         let host = ViewHost::new(AndroidAdapter::new(platform, image_owner), worker, logic);
+        #[cfg(all(feature = "gpu", target_os = "android"))]
+        gpu_surface::warm();
         let _ = host.adapter().host.set(host.downgrade());
         if image_owner != 0 {
             ports().insert(image_owner, host.logic_port());

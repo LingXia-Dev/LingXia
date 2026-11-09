@@ -125,6 +125,11 @@ impl Devices {
             wgpu::util::initialize_adapter_from_env_or_default(&self.instance, compatible)
                 .await
                 .ok()?;
+        self.open(adapter).await
+    }
+
+    /// Opens a device on `adapter`; None when it falls short of the renderer's limits.
+    pub async fn open(&mut self, adapter: wgpu::Adapter) -> Option<usize> {
         let available = adapter.limits();
         if !shortfall(&available).is_empty() {
             return None;
