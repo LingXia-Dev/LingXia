@@ -1608,6 +1608,21 @@ pub struct MacosConfig {
     /// App Store Connect identity for `lingxia store`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub store: Option<AppStoreConfig>,
+
+    /// Look of the `--dmg` install window.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dmg: Option<MacosDmgConfig>,
+}
+
+/// The DMG install window: the app on the left, an Applications link on the
+/// right, over a background that shows the drag between them.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MacosDmgConfig {
+    /// A 660×400 PNG, relative to the project root, replacing the built-in
+    /// arrow. A `@2x` sibling (1320×800) is used on Retina when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub background: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
