@@ -16,7 +16,7 @@ spec('a page dialog dims the nav and tab bars as it dims the page', {
 }, async (t) => {
   const view = t.app.view;
   const device = harmonyDevice(t);
-  await view.testId('lab-tab-overlay').click();
+  await view.testId('lab-tab-feedback').click();
   const layout = await device.nodes();
   const one = (labels: string[], pick: (nodes: HarmonyNode[]) => HarmonyNode | undefined) => {
     const node = pick(layout.filter(node => labels.includes(node.text)));
@@ -56,7 +56,7 @@ spec('the system back gesture closes an open dialog and leaves the page where it
 }, async (t) => {
   const view = t.app.view;
   const device = harmonyDevice(t);
-  await view.testId('lab-tab-overlay').click();
+  await view.testId('lab-tab-feedback').click();
   const last = await view.testId('lab-overlay-last').textContent();
   for (const [open, name] of [['lab-overlay-confirm', 'Delete note?'], ['lab-overlay-sheet', 'Filters']] as const) {
     await view.testId(open).click();

@@ -10,9 +10,9 @@ const groups = {
   layout: { label: 'Layout', sections: [Display, Sizing, Direction, Structure, StickyHeaders, Fragments, Disclosure] },
   text: { label: 'Text', sections: [TextLayout, RichText, Selection, Document] },
   input: { label: 'Input', sections: [Accessibility, Inputs, Controls, Focus, NestedControls, StateVariants] },
-  overlay: { label: 'Overlay', sections: [Overlays] },
+  feedback: { label: 'Feedback', sections: [Overlays, Progresses] },
   media: { label: 'Media', sections: [Media] },
-  data: { label: 'Data', sections: [Plots, Progresses] },
+  data: { label: 'Data', sections: [Plots] },
   gesture: { label: 'Gesture', sections: [Drag, DragChain, Detents] },
   swipe: { label: 'Swipe', sections: [SwipeRows, Pager, KitPager] },
 };

@@ -71,7 +71,7 @@ spec('the controls take a tap, a drag, typing and a fling as a user gives them',
 
 spec('kit progress reads as a progressbar with its value, and without one while indeterminate', { covers: ['view:a11y'], start: { page: 'view-lab' } }, async (t) => {
   const view = t.app.view;
-  await view.testId('lab-tab-data').click();
+  await view.testId('lab-tab-feedback').click();
   const upload = view.getByRole('progressbar', { name: 'Upload' });
   await expect(upload).toHaveValue('40');
   await expect(view.getByRole('progressbar', { name: 'Storage' })).toHaveValue('40');
@@ -109,6 +109,17 @@ spec('kit video controls start a poster video on a tap, then pause, mute and scr
   await view.drag(view.getByRole('slider', { name: 'Seek' }), { dx: 1000, dy: 0, durationMs: 400 });
   await expect.poll(seconds, { timeout: 5_000 }).toBeGreaterThanOrEqual(5);
   await expect(button('Pause')).toHaveCount(0);
+});
+
+spec('a finger on any group tab opens its group, wrapped line included', { start: { page: 'view-lab' } }, async (t) => {
+  const view = t.app.view;
+  // A real touch at each tab's centre, not a dispatch to the element: the hit test decides.
+  for (const [group, shows] of [['media', 'lab-video-player'], ['data', 'lab-plots'], ['gesture', 'lab-drag'], ['swipe', 'lab-pager'], ['feedback', 'lab-progress-more']] as const) {
+    const box = await view.testId(`lab-tab-${group}`).boundingBox();
+    const at = [box.x + box.width / 2, box.y + box.height / 2] as const;
+    await view.swipe({ from: at, to: at, durationMs: 60, hold: 0 });
+    await expect(view.testId(shows).first()).toBeVisible({ timeout: 3_000 });
+  }
 });
 
 spec('kit video controls show the player full screen and Escape brings it back', { start: { page: 'view-lab' } }, async (t) => {

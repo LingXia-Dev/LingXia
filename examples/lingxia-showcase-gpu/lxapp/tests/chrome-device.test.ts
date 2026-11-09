@@ -17,7 +17,7 @@ spec('the nav bar takes the GPU page palette in light and in dark', {
   const device = harmonyDevice(t);
   const previous = await app.logic.eval(({ lx }) => lx.host.control?.appearance.getPreference() ?? null);
   if (previous === null) t.skip('only the Control app sets the appearance');
-  await app.view.testId('lab-tab-overlay').click();
+  await app.view.testId('lab-tab-feedback').click();
   const colours = async () => {
     const layout = await device.nodes();
     const title = layout.filter(node => ['View lab', '视图实验'].includes(node.text)).sort((a, b) => a.bounds[1] - b.bounds[1])[0];

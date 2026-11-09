@@ -86,7 +86,7 @@ spec('a date picker covers the tab bar', { covers: ['view:input', 'view:dialog']
 
 spec('an overlay sheet covers the tab bar', { covers: ['view:dialog'], start: { page: 'view-lab' } }, async (t) => {
   const view = t.app.view;
-  await view.testId('lab-tab-overlay').click();
+  await view.testId('lab-tab-feedback').click();
   await coversTheBar(t, () => view.testId('lab-overlay-sheet').click(), view.getByRole('dialog', { name: 'Filters' }),
     () => view.testId('lab-sheet-apply').click());
 });
