@@ -320,7 +320,13 @@ A campaign screen after launch: [Launch screen](../native/splash.md).
   `bundleId`, optional `store:` (App Store Connect identity), optional `arch`:
   `arm64` (default), `x86_64`, or `universal`. Packages build it and
   `lingxia publish` refuses one missing a declared slice; installed Macs whose
-  CPU a later update drops keep their current version.
+  CPU a later update drops keep their current version. Optional
+  `dmg.background`: a 660×400 PNG (plus a 1320×800 `@2x` sibling for Retina)
+  behind the `--dmg` install window, replacing the built-in arrow from the app
+  (left, centred at 180,190) to Applications (right, 480,190). Finder applies
+  the window layout through AppleScript, so the packaging session needs a
+  logged-in GUI and Automation access to Finder; without it the DMG keeps
+  only the Applications link.
 - `windows` — optional `executableName`, `publisher` (MSIX Identity Publisher,
   a distinguished name; required for MSIX except `--self-signed`),
   `publisherDisplayName` (the publisher's name, default the `O=`/`CN=` of

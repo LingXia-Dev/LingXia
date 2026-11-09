@@ -227,6 +227,7 @@ fn generated_app_json_embeds_store_listing_ids() {
         store: Some(AppStoreConfig {
             app_id: Some("987654321".into()),
         }),
+        dmg: None,
     });
     let app_json = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
     let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();

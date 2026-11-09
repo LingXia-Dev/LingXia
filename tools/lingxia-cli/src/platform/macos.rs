@@ -688,10 +688,17 @@ impl Platform for MacosPlatform {
         };
 
         let dmg_path = if config.dmg {
+            let background = config
+                .lingxia_config
+                .as_ref()
+                .and_then(|host| host.macos.as_ref())
+                .and_then(|macos| macos.dmg.as_ref())
+                .and_then(|dmg| dmg.background.as_deref());
             Some(create_dmg(
                 &app_path,
                 &config.project_root,
                 super::artifact_stem(config.lingxia_config.as_ref(), config.resolved_env.version),
+                background,
             )?)
         } else {
             None
@@ -1060,7 +1067,12 @@ fn copy_info_plist_localizations(source_root: &Path, resources_dir: &Path) -> Re
     Ok(())
 }
 
-fn create_dmg(app_path: &Path, project_root: &Path, stem: Option<String>) -> Result<PathBuf> {
+fn create_dmg(
+    app_path: &Path,
+    project_root: &Path,
+    stem: Option<String>,
+    background: Option<&str>,
+) -> Result<PathBuf> {
     let app_name = app_path
         .file_stem()
         .and_then(|n| n.to_str())
@@ -1111,6 +1123,8 @@ fn create_dmg(app_path: &Path, project_root: &Path, stem: Option<String>) -> Res
     } else {
         println!("  {} Created Applications symlink", "✓".green());
     }
+    let background_name = stage_dmg_background(&stage_dir, project_root, background)?;
+
     let rw_dmg_path = temp_dir.path().join(format!("{app_name}-rw.dmg"));
     let status = Command::new("hdiutil")
         .arg("create")
@@ -1129,27 +1143,27 @@ fn create_dmg(app_path: &Path, project_root: &Path, stem: Option<String>) -> Res
         anyhow::bail!("Failed to create temporary writable DMG");
     }
 
-    let mount_point = temp_dir.path().join("mnt");
-    fs::create_dir_all(&mount_point)?;
-    let attach_status = Command::new("hdiutil")
+    // Mount under /Volumes like a user would: the background alias Finder
+    // writes into .DS_Store records the mount path, and a private temp path
+    // would ship the build machine's user directory inside the DMG.
+    let attach = Command::new("hdiutil")
         .arg("attach")
-        .arg("-quiet")
+        .arg("-plist")
         .arg(&rw_dmg_path)
         .arg("-readwrite")
         .arg("-noverify")
         .arg("-noautoopen")
-        .arg("-mountpoint")
-        .arg(&mount_point)
-        .status()
+        .output()
         .context("Failed to mount temporary DMG")?;
-    if !attach_status.success() {
+    if !attach.status.success() {
         anyhow::bail!("Failed to mount temporary DMG");
     }
+    let mount_point = attached_mount_point(&attach.stdout)?;
 
     // Give the system time to register the disk with Finder before AppleScript
     thread::sleep(Duration::from_millis(2000));
 
-    if let Err(err) = configure_dmg_layout(app_name, app_bundle_name) {
+    if let Err(err) = configure_dmg_layout(&mount_point, app_bundle_name, &background_name) {
         eprintln!(
             "  {} Failed to configure DMG Finder layout: {}",
             "Warning:".yellow(),
@@ -1245,31 +1259,137 @@ fn create_update_zip(
     Ok(zip_path)
 }
 
-fn configure_dmg_layout(volume_name: &str, app_bundle_name: &str) -> Result<()> {
-    let volume_name = escape_applescript_string(volume_name);
+/// Install window content size, in points. The background fills it exactly.
+const DMG_WINDOW_SIZE: (u32, u32) = (660, 400);
+/// Icon centres, in points, matching the arrow in [`DMG_DEFAULT_BACKGROUND`].
+const DMG_APP_POSITION: (u32, u32) = (180, 190);
+const DMG_APPLICATIONS_POSITION: (u32, u32) = (480, 190);
+/// Finder's title bar; window bounds include it, the background does not.
+const DMG_TITLE_BAR_HEIGHT: u32 = 28;
+
+/// The built-in background: a quiet floor and an arrow from the app to the
+/// Applications link. No text, so it needs no localization.
+const DMG_DEFAULT_BACKGROUND: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="660" height="400" viewBox="0 0 660 400">
+  <rect width="660" height="400" fill="#F5F6F8"/>
+  <g fill="none" stroke="#A3ABB6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M270 190 H384"/>
+    <path d="M362 168 L390 190 L362 212"/>
+  </g>
+</svg>"##;
+
+/// Put the window background in the staged volume's hidden `.background`
+/// folder and return its file name there. With a Retina representation the
+/// two scales are joined into one TIFF so Finder picks the sharp one.
+fn stage_dmg_background(
+    stage_dir: &Path,
+    project_root: &Path,
+    custom: Option<&str>,
+) -> Result<String> {
+    let dir = stage_dir.join(".background");
+    fs::create_dir_all(&dir)?;
+    let one_x = dir.join("background.png");
+    let two_x = dir.join("background@2x.png");
+
+    let has_two_x = match custom {
+        Some(relative) => {
+            let source = project_root.join(relative);
+            fs::copy(&source, &one_x).with_context(|| {
+                format!("Failed to read macos.dmg.background {}", source.display())
+            })?;
+            let retina = source.with_file_name(format!(
+                "{}@2x.{}",
+                source
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("background"),
+                source.extension().and_then(|s| s.to_str()).unwrap_or("png"),
+            ));
+            retina.is_file() && fs::copy(&retina, &two_x).is_ok()
+        }
+        None => {
+            fs::write(&one_x, render_dmg_background(1)?)?;
+            fs::write(&two_x, render_dmg_background(2)?)?;
+            true
+        }
+    };
+    if !has_two_x {
+        return Ok("background.png".to_string());
+    }
+
+    let tiff = dir.join("background.tiff");
+    let status = Command::new("tiffutil")
+        .arg("-cathidpicheck")
+        .arg(&one_x)
+        .arg(&two_x)
+        .arg("-out")
+        .arg(&tiff)
+        .output()
+        .context("Failed to execute tiffutil for the DMG background")?;
+    if !status.status.success() {
+        let _ = fs::remove_file(&two_x);
+        return Ok("background.png".to_string());
+    }
+    fs::remove_file(&one_x)?;
+    fs::remove_file(&two_x)?;
+    Ok("background.tiff".to_string())
+}
+
+fn render_dmg_background(scale: u32) -> Result<Vec<u8>> {
+    let tree = usvg::Tree::from_str(DMG_DEFAULT_BACKGROUND, &usvg::Options::default())
+        .context("Failed to parse the DMG background")?;
+    let (width, height) = DMG_WINDOW_SIZE;
+    let mut pixmap = tiny_skia::Pixmap::new(width * scale, height * scale)
+        .ok_or_else(|| anyhow!("Failed to allocate the DMG background"))?;
+    let scale = scale as f32;
+    resvg::render(
+        &tree,
+        tiny_skia::Transform::from_scale(scale, scale),
+        &mut pixmap.as_mut(),
+    );
+    pixmap
+        .encode_png()
+        .context("Failed to encode the DMG background")
+}
+
+/// Address the volume by its mount path: Finder's `disk "<name>"` misses a
+/// volume mounted anywhere but /Volumes, and a same-named volume already
+/// mounted there would be picked instead.
+fn configure_dmg_layout(
+    mount_point: &Path,
+    app_bundle_name: &str,
+    background_name: &str,
+) -> Result<()> {
+    let mount_point = escape_applescript_string(&mount_point.to_string_lossy());
     let app_bundle_name = escape_applescript_string(app_bundle_name);
+    let background_name = escape_applescript_string(background_name);
+    let (width, height) = DMG_WINDOW_SIZE;
+    let (left, top) = (120, 120);
+    let (right, bottom) = (left + width, top + height + DMG_TITLE_BAR_HEIGHT);
+    let (app_x, app_y) = DMG_APP_POSITION;
+    let (apps_x, apps_y) = DMG_APPLICATIONS_POSITION;
     let script = format!(
         r#"
 tell application "Finder"
-    set dmgDisk to disk "{volume_name}"
+    set dmgDisk to (POSIX file "{mount_point}" as alias)
     open dmgDisk
     delay 0.5
     set dmgWindow to container window of dmgDisk
     set current view of dmgWindow to icon view
     set toolbar visible of dmgWindow to false
     set statusbar visible of dmgWindow to false
-    set bounds of dmgWindow to {{120, 120, 780, 500}}
+    set bounds of dmgWindow to {{{left}, {top}, {right}, {bottom}}}
     tell icon view options of dmgWindow
         set arrangement to not arranged
         set icon size to 128
         set text size to 14
+        set background picture to (POSIX file "{mount_point}/.background/{background_name}" as alias)
     end tell
     -- Position app and Applications link (symlink should already exist)
-    set position of item "{app_bundle_name}" of dmgWindow to {{180, 220}}
+    set position of item "{app_bundle_name}" of dmgWindow to {{{app_x}, {app_y}}}
     if exists item "Applications" of dmgWindow then
-        set position of item "Applications" of dmgWindow to {{500, 220}}
+        set position of item "Applications" of dmgWindow to {{{apps_x}, {apps_y}}}
     end if
-    update without registering applications
+    update dmgDisk without registering applications
     delay 0.5
     close dmgWindow
 end tell
@@ -1292,6 +1412,22 @@ end tell
         );
     }
     Ok(())
+}
+
+/// The mount point `hdiutil attach -plist` reports for the image's volume.
+fn attached_mount_point(plist_bytes: &[u8]) -> Result<PathBuf> {
+    let value = plist::Value::from_reader_xml(plist_bytes)
+        .context("Failed to parse hdiutil attach output")?;
+    value
+        .as_dictionary()
+        .and_then(|root| root.get("system-entities"))
+        .and_then(|entities| entities.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|entity| entity.as_dictionary()?.get("mount-point")?.as_string())
+        .map(PathBuf::from)
+        .next()
+        .ok_or_else(|| anyhow!("hdiutil attach reported no mount point"))
 }
 
 fn detach_mount(mount_point: &Path) -> Result<()> {
@@ -1819,5 +1955,33 @@ mod dock_icon_tests {
         // Art already on the grid passes through rather than shrinking again.
         let gridded = build_macos_icon_source(&write_source(temp.path(), 824)).unwrap();
         assert!((822..=826).contains(&plate_width(gridded.path())));
+    }
+}
+
+#[cfg(test)]
+mod dmg_tests {
+    use super::*;
+
+    #[test]
+    fn mount_point_comes_from_the_entity_that_has_one() {
+        let output = br#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>system-entities</key><array>
+  <dict><key>dev-entry</key><string>/dev/disk4</string></dict>
+  <dict><key>dev-entry</key><string>/dev/disk4s1</string>
+        <key>mount-point</key><string>/Volumes/Fusheng 1</string></dict>
+</array></dict></plist>"#;
+        assert_eq!(
+            attached_mount_point(output).unwrap(),
+            PathBuf::from("/Volumes/Fusheng 1")
+        );
+    }
+
+    #[test]
+    fn default_background_renders_at_both_scales() {
+        for scale in [1, 2] {
+            let png = image::load_from_memory(&render_dmg_background(scale).unwrap()).unwrap();
+            assert_eq!(png.dimensions(), (660 * scale, 400 * scale));
+        }
     }
 }
