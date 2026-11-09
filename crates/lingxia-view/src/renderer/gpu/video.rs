@@ -207,6 +207,10 @@ pub(crate) fn status(key: &str) -> Option<Status> {
             ..Status::default()
         },
     };
+    // A hidden page's hold is not the page's pause: the player still reads as playing.
+    if entry.resume {
+        status.paused = false;
+    }
     if let Some(frame) = &entry.frame {
         status.ready_state = "ready";
         [status.video_width, status.video_height] = frame.size.map(u32::from);
@@ -244,6 +248,14 @@ pub(crate) fn command(key: &str, op: VideoOp) -> Result<(), VideoError> {
     };
     if let VideoOp::SetQuality(label) = op {
         return set_quality(key, entry, label);
+    }
+    // A held player takes play and pause as what it does once its page shows again.
+    if matches!(entry.state, State::Ready(_))
+        && is_hidden(key)
+        && matches!(op, VideoOp::Play | VideoOp::Pause)
+    {
+        entry.resume = op == VideoOp::Play;
+        return Ok(());
     }
     match (&mut entry.state, op) {
         (_, VideoOp::Retry) => {
