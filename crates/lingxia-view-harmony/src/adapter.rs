@@ -38,6 +38,9 @@ struct Fling {
     last: Instant,
 }
 
+/// Display frames that have not ticked for this long have stopped.
+const STALLED_MS: u64 = 250;
+
 pub struct HarmonyAdapter {
     pub(crate) token: i64,
     pub(crate) shell: Arc<dyn Shell>,
@@ -45,6 +48,8 @@ pub struct HarmonyAdapter {
     pub(crate) host: OnceLock<WeakViewHost<HarmonyAdapter>>,
     /// Display frames run for the videos of the kept frame.
     ticking: Arc<AtomicBool>,
+    /// When the last display tick ran, ms after `started`.
+    ticked: Arc<AtomicU64>,
     /// The page's latest measurement from ArkTS; the surface size overrides its extent.
     pub(crate) facts: Mutex<Option<DeviceFacts>>,
     /// The XComponent surface in device pixels, from its surface callbacks.
@@ -76,6 +81,7 @@ impl HarmonyAdapter {
             started: Instant::now(),
             host: OnceLock::new(),
             ticking: Default::default(),
+            ticked: Default::default(),
             facts: Mutex::new(None),
             size: Mutex::new(None),
             origin: Mutex::new([0.0; 2]),
@@ -144,6 +150,10 @@ impl HarmonyAdapter {
             attach(host, window, width, height);
         }
         host.surface_changed();
+    }
+
+    fn elapsed_ms(&self) -> u64 {
+        self.started.elapsed().as_millis() as u64
     }
 
     /// The page is gone: no queued attach binds its window again; returns its presenter.
@@ -353,10 +363,18 @@ impl Presenter for HarmonyAdapter {
                     return Ok(false);
                 };
                 let ticking = self.ticking.clone();
+                // A tick on a hidden window runs nothing and leaves `ticking` set: frames that
+                // stopped that way restart on the next present.
+                let stalled = self
+                    .elapsed_ms()
+                    .saturating_sub(self.ticked.load(Ordering::Acquire))
+                    > STALLED_MS;
                 crate::render::present(surface, revision, drawn, move |shown, gpu| {
                     let Some(strong) = host.upgrade() else { return };
                     // The first frame that draws video starts display frames for its players.
-                    if surfaces::keeps_video(surface) && !ticking.swap(true, Ordering::AcqRel) {
+                    if surfaces::keeps_video(surface)
+                        && (!ticking.swap(true, Ordering::AcqRel) || stalled)
+                    {
                         let weak = host.clone();
                         strong.adapter().post(Box::new(move || {
                             if let Some(host) = weak.upgrade() {
@@ -428,6 +446,7 @@ impl FrameScheduler for HarmonyAdapter {
     }
 
     fn tick(&self) -> bool {
+        self.ticked.store(self.elapsed_ms(), Ordering::Release);
         let ticking = surfaces::tick(self.gpu.load(Ordering::Acquire));
         self.ticking.store(ticking, Ordering::Release);
         ticking
