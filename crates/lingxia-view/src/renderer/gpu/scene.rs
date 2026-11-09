@@ -115,12 +115,11 @@ fn still(display: &DisplayList) -> impl Iterator<Item = &Paint> {
 /// The device box the frame's animated spans paint, padded for antialiasing; `None` when a
 /// span paints unbounded or inside a group whose pixels spread past what it paints.
 fn spans_box(display: &DisplayList) -> Option<[u16; 4]> {
-    // A backdrop samples what lies under it, the moving parts included; a video changes
-    // its pixels without changing its command.
+    // A backdrop samples what lies under it, the moving parts included.
     if display
         .commands
         .iter()
-        .any(|paint| matches!(paint, Paint::Backdrop { .. } | Paint::Video { .. }))
+        .any(|paint| matches!(paint, Paint::Backdrop { .. }))
     {
         return None;
     }
@@ -1119,29 +1118,42 @@ mod tests {
     }
 
     #[test]
-    fn a_frame_with_a_video_never_takes_a_damage_box() {
+    fn a_still_video_keeps_the_damage_box_and_a_moved_one_ends_the_history() {
         let (_page, display) = spin_page(false);
-        let mut playing = spun(&display, 0.0);
-        playing.commands.push(Paint::Video {
+        let video = |x: f32| Paint::Video {
             player: "clip".into(),
-            bounds: [0.0, 0.0, 48.0, 27.0],
+            bounds: [x, 0.0, 48.0, 27.0],
             radius: 0.0,
             fit: crate::scene::image::Fit::Cover,
             position: [0.5, 0.5],
-        });
+        };
         let mut cache = SceneCache::default();
         let mut prep = glifo::GlyphPrepCache::default();
         let mut glyphs = crate::renderer::gpu::text::Glyphs {
             prep: &mut prep,
             atlas: None,
         };
-        cache
-            .prepare_over(&playing, &mut glyphs, true, PassCost::Low)
-            .unwrap();
-        assert_eq!(cache.drawn(), None, "a video frame always draws whole");
+        let mut frame = |angle: f64, x: f32| {
+            let mut playing = spun(&display, angle);
+            playing.commands.push(video(x));
+            cache
+                .prepare_over(&playing, &mut glyphs, true, PassCost::Low)
+                .unwrap();
+            cache.drawn()
+        };
+        let first = frame(0.0, 0.0).expect("a video's frame changes are gated by the presenter");
+        let turned = frame(45.0, 0.0).unwrap();
+        assert_eq!(
+            (turned.base, turned.generation),
+            (first.base, first.generation)
+        );
+        let moved = frame(45.0, 4.0).unwrap();
+        assert_ne!(
+            moved.generation, first.generation,
+            "a moved video is static content"
+        );
     }
 
-    #[cfg(feature = "gpu")]
     #[test]
     #[ignore = "requires a GPU adapter; run explicitly with --features gpu -- --ignored"]
     fn a_damage_frame_over_the_frame_before_last_matches_the_whole_frame() {

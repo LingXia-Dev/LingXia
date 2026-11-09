@@ -171,6 +171,9 @@ pub(crate) struct PrepareJob {
     /// What the target held before this frame, and what it holds after.
     held: Option<crate::renderer::gpu::scene::Drawn>,
     drawn: Option<crate::renderer::gpu::scene::Drawn>,
+    /// Frames drawn since a video frame was imported, and whether this one imported one.
+    quiet: u32,
+    imported: bool,
     pass_us: Vec<[u64; 2]>,
     output: Option<crate::renderer::gpu::composite::Surface>,
     preparation_us: [u64; 4],
@@ -180,12 +183,37 @@ pub(crate) struct PrepareJob {
 /// Renders after which kept scenes are encoded again, under the atlas's 64-render entry age.
 const ATLAS_REFRESH: u64 = 32;
 
+/// Frames without a new video frame after which a video counts as still: a playing one keeps
+/// drawing whole frames instead of re-rendering the kept base at its frame rate.
+const VIDEO_QUIET_FRAMES: u32 = 3;
+
+/// A frame keeps a base and may redraw only a box when no video draws or none has changed lately.
+fn video_rests(has_video: bool, imported: bool, quiet: u32) -> bool {
+    !has_video || (!imported && quiet.saturating_add(1) >= VIDEO_QUIET_FRAMES)
+}
+
+/// A new video frame changes pixels no slot record covers: every slot draws whole again.
+fn settle_video(
+    drawn: &mut [Option<crate::renderer::gpu::scene::Drawn>; 2],
+    quiet: &mut u32,
+    imported: bool,
+) {
+    if imported {
+        *drawn = [None; 2];
+        *quiet = 0;
+    } else {
+        *quiet = quiet.saturating_add(1);
+    }
+}
+
 impl PrepareJob {
     /// Draws `display`; holds no presenter or context lock.
     pub(crate) fn run(&mut self, display: &crate::DisplayList) -> Result<(), String> {
         let (width, height) = (self.width, self.height);
         let target = &self.target;
-        let has_video = video::import(&self.device, display);
+        let (has_video, imported) = video::import_frames(&self.device, display);
+        self.imported = imported;
+        let rests = video_rests(has_video, imported, self.quiet);
         if self.composed {
             let started = Instant::now();
             let compositor = self.compositor.get_or_insert_with(|| {
@@ -222,7 +250,7 @@ impl PrepareJob {
             self.scenes.video_epoch = video_epoch;
         }
         let (scenes, prep) = (&mut self.scenes, &mut self.glyph_cache);
-        let underlay = self.keep_base && !has_video;
+        let underlay = self.keep_base && rests;
         let scene_cache_hit = self.renderer.with_resources(
             &self.device,
             width as u16,
@@ -241,8 +269,8 @@ impl PrepareJob {
         )??;
         // A kept bottom segment is sampled by the pass above it, which clears the target: on
         // GLES a copy into the target stalls whatever its size. A kept base would freeze a
-        // video frame drawn inside it.
-        let base = self.scenes.base().filter(|_| self.keep_base && !has_video);
+        // playing video drawn inside it.
+        let base = self.scenes.base().filter(|_| self.keep_base && rests);
         self.base = self.base.take().filter(|(id, view)| {
             Some(*id) == base && view.texture().size() == target.texture().size()
         });
@@ -382,6 +410,7 @@ pub struct Presenter {
     composed: [Option<crate::renderer::gpu::composite::Surface>; 2],
     /// What each target slot holds, so a frame can redraw only what moved since.
     drawn: [Option<crate::renderer::gpu::scene::Drawn>; 2],
+    quiet: u32,
 
     depth: Option<wgpu::TextureView>,
     context: Context,
@@ -553,6 +582,7 @@ impl Presenter {
             compositor: None,
             composed: [None, None],
             drawn: [None; 2],
+            quiet: VIDEO_QUIET_FRAMES,
             glyph_cache: Default::default(),
             depth: Some(depth),
             context,
@@ -720,6 +750,8 @@ impl Presenter {
             base: self.base.take(),
             held: self.drawn[slot].take(),
             drawn: None,
+            quiet: self.quiet,
+            imported: false,
             pass_us: std::mem::take(&mut self.pass_us),
             output: None,
             preparation_us: [0; 4],
@@ -750,6 +782,7 @@ impl Presenter {
             self.scenes.clear();
             return result.map(|()| false);
         }
+        settle_video(&mut self.drawn, &mut self.quiet, job.imported);
         result?;
         self.composed[job.slot] = job.output;
         self.preparation_us = job.preparation_us;
@@ -935,6 +968,7 @@ impl Presenter {
         if !imported {
             return Ok(Some(false));
         }
+        settle_video(&mut self.drawn, &mut self.quiet, true);
         let started = Instant::now();
         if !video_quad::redraw(plan, pipelines, &device, &queue, &target) {
             return Ok(None);
@@ -1169,6 +1203,47 @@ mod tests {
             slot_for(prepared, 4),
             1,
             "a revision drawn again keeps its slot"
+        );
+    }
+
+    #[test]
+    fn a_new_video_frame_draws_whole_until_the_video_rests() {
+        use crate::renderer::gpu::scene::{Drawn, damage};
+        let still = Drawn {
+            base: 1,
+            generation: 1,
+            spans: [0, 0, 10, 10],
+        };
+        let (mut prepared, mut drawn, mut quiet) = ([None; 2], [None; 2], VIDEO_QUIET_FRAMES);
+        let mut damaged = Vec::new();
+        let imports = [
+            false, false, false, true, false, false, false, false, false, false,
+        ];
+        for (revision, imported) in (1..=10u64).zip(imports) {
+            let slot = slot_for(prepared, revision);
+            let held = drawn[slot].take();
+            let now = video_rests(true, imported, quiet).then_some(still);
+            damaged.push(damage(held, now, 400, 400).is_some());
+            prepared[slot] = Some(revision);
+            settle_video(&mut drawn, &mut quiet, imported);
+            drawn[slot] = now;
+        }
+        assert_eq!(
+            damaged,
+            [
+                false, false, true, false, false, false, false, false, true, true
+            ],
+            "a paused video redraws a box; a new frame draws whole until it rests again"
+        );
+        settle_video(&mut drawn, &mut quiet, true);
+        assert_eq!(
+            drawn, [None; 2],
+            "a frame redrawn as video quads stales every slot"
+        );
+        assert!(!video_rests(true, false, quiet));
+        assert!(
+            video_rests(false, false, quiet),
+            "a page with no video always rests"
         );
     }
 
