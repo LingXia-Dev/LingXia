@@ -2,7 +2,7 @@ import { expect, spec } from '@lingxia/test';
 import type { PageTransition } from '@lingxia/types/automation';
 import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
 
-// The slide is ANIMATION_DURATION_STANDARD (300 ms); host scheduling adds a little on either side.
+// The host slide lasts 300 ms; host scheduling adds a little on either side.
 const SLIDE_MS = [250, 600] as const;
 // A 300 ms slide spans 18 display frames at 60 Hz; fewer than half moving is a visible stutter.
 const MIN_MOVING_FRAMES = 9;
@@ -22,7 +22,7 @@ spec('a push and a pop slide the GPU page on every display frame', {
 }, async (t) => {
   const app = t.app;
   const platform = await runtimePlatform(app);
-  if (!['harmony'].includes(platform)) t.skip(`${platform} does not report page slides`);
+  if (!['harmony', 'android'].includes(platform)) t.skip(`${platform} does not report page slides`);
 
   await app.nav.to({ page: 'motion-lab' });
   const pushed = await t.waitFor(() => app.metrics({ page: 'motion-lab' }), { until: m => m.transition?.durationMs != null });

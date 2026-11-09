@@ -42,6 +42,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     static native void nativePark(long host);
     static native void nativeSetVisible(long host, boolean visible);
     static native void nativeReveal(long host, boolean surfaceHoldsFrame);
+    static native void nativeTransition(long host, int kind, float x);
     static native void nativeSwapModule(long host, String source);
     static native boolean nativeTextMenuAction(long host, int action);
     static native void nativeTextMenuDismissed(long host);
@@ -142,6 +143,12 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
      * Back as a close request: the shown page's topmost dialog or light-dismiss popover closes,
      * and the back is consumed. False when no page of {@code activity} holds one.
      */
+    public static final int TRANSITION_PUSH = 0, TRANSITION_POP = 1, TRANSITION_FRAME = 2, TRANSITION_END = 3;
+    /** The host's push or pop slide of this page: start, each displayed frame at {@code x} px, end. */
+    public void transition(int kind, float x) {
+        if (host != 0 && !destroyed) nativeTransition(host, kind, x);
+    }
+
     public static boolean closeRequest(android.app.Activity activity) {
         for (GpuView view : new java.util.ArrayList<>(LIVE)) {
             // Pages are created on the application context: match the window they are shown in.

@@ -1903,8 +1903,14 @@ class LxAppActivity : AppCompatActivity() {
         previous.animate().translationX(-distance).setDuration(300L).setInterpolator(interpolator).start()
         val show = Runnable { (page.parent as? FrameLayout)?.let { triggerOnPageShow(it) } }
         slideShow = show
+        val gpu = page as? GpuPage
+        gpu?.transition(if (backwards) com.lingxia.view.GpuView.TRANSITION_POP else com.lingxia.view.GpuView.TRANSITION_PUSH, 0f)
         incoming.animate().translationX(0f).setDuration(300L).setInterpolator(interpolator)
+            .setUpdateListener { gpu?.transition(com.lingxia.view.GpuView.TRANSITION_FRAME, incoming.translationX) }
             .withEndAction {
+                // The view's animator keeps listeners for its next animation.
+                incoming.animate().setUpdateListener(null)
+                gpu?.transition(com.lingxia.view.GpuView.TRANSITION_END, 0f)
                 LxLog.d(NAV_TAG, "slide ${page.getWebTag()} done v$version now v$gpuTransitionVersion")
                 if (slideShow === show) slideShow = null
                 if (version == gpuTransitionVersion) {

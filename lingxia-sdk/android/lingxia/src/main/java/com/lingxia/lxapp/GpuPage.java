@@ -75,6 +75,7 @@ public final class GpuPage extends FrameLayout {
     public void setChromeListener(java.util.function.BiConsumer<GpuPage, GpuView.Chrome> listener) { chromeListener = listener; }
     /** The chrome this page last asked for, or null before its first frame. */
     public GpuView.Chrome getChrome() { return content.getChrome(); }
+    public void transition(int kind, float x) { content.transition(kind, x); }
 
     public String getAppId() { return appId; }
     public String getCurrentPath() { return path; }

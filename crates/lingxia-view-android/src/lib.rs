@@ -8,7 +8,7 @@ use jni::sys::{jboolean, jdouble, jfloat, jint, jlong};
 use jni::{Env, EnvUnowned, JValue, jni_sig, jni_str};
 use lingxia_view::interaction::view::{AccessibilityAction, Key, Pointer, PointerPhase};
 use lingxia_view::platform::Task;
-use lingxia_view::session::host::{CaretState, LogicPort, ViewHost, ViewWorker};
+use lingxia_view::session::host::{CaretState, LogicPort, TransitionEvent, ViewHost, ViewWorker};
 use lingxia_view::session::lifecycle::ConnectionTicket;
 use lingxia_view::session::state::StateWrite;
 
@@ -143,6 +143,7 @@ pub fn register_natives(env: &mut Env, class: &JClass) -> jni::errors::Result<()
         method!("nativeInputBlocked", "(J)Z", input_blocked),
         method!("nativeWindowFocus", "(JZ)V", window_focus),
         method!("nativeReveal", "(JZ)V", reveal),
+        method!("nativeTransition", "(JIF)V", transition),
         method!("nativeTextMenuAction", "(JI)Z", text_menu_action),
         method!("nativeTextMenuDismissed", "(J)V", text_menu_dismissed),
         method!("nativeTextHandleDrag", "(JZ)V", text_handle_drag),
@@ -526,6 +527,25 @@ extern "system" fn reveal<'a>(
 ) {
     run(&mut env, |_| {
         host(handle)?.reveal(surface_holds_frame);
+        Ok(())
+    })
+}
+
+/// `kind`: 0 a push starts, 1 a pop starts, 2 a displayed frame at `x`, 3 the slide ended.
+extern "system" fn transition<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    kind: jint,
+    x: jfloat,
+) {
+    run(&mut env, |_| {
+        let event = match kind {
+            0 | 1 => TransitionEvent::Start { pop: kind == 1 },
+            2 => TransitionEvent::Frame { at: x },
+            _ => TransitionEvent::End,
+        };
+        host(handle)?.transition(event);
         Ok(())
     })
 }
