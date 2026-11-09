@@ -1,22 +1,55 @@
 // `useVideo(name)`: the page's player, read during render and driven from handlers.
 import { local, cellOf } from './hooks.js';
 import { render, page, outsideRender } from './state.js';
+import { report } from './actions.js';
 
 const fields = ['paused', 'ended', 'buffering', 'seeking', 'readyState', 'currentTime', 'duration', 'buffered',
-  'videoWidth', 'videoHeight', 'playbackRate', 'volume', 'muted', 'quality', 'qualities', 'error'];
+  'videoWidth', 'videoHeight', 'playbackRate', 'volume', 'muted', 'quality', 'qualities', 'error', 'fullscreen'];
 const empty = Object.freeze({ paused: true, ended: false, buffering: false, seeking: false, readyState: 'empty', currentTime: 0,
-  duration: null, buffered: 0, videoWidth: 0, videoHeight: 0, playbackRate: 1, volume: 1, muted: false, quality: 'auto', qualities: Object.freeze([]), error: null });
+  duration: null, buffered: 0, videoWidth: 0, videoHeight: 0, playbackRate: 1, volume: 1, muted: false, quality: 'auto', qualities: Object.freeze([]), error: null, fullscreen: false });
 const players = new WeakMap();
 // Each mounted reader of a name, with the fields it read on its last render.
 const readers = new Map();
 const NAME = /^[A-Za-z0-9_.-]{1,64}$/;
+// The player the page shows full screen, by name: one at a time, as a window has one.
+let fullscreenName = null;
+// Each player's last reported state.
+const latest = new Map();
+
+/** The name of the player shown full screen, or null. */
+export const fullscreenPlayer = () => fullscreenName;
+
+export function resetVideos() { fullscreenName = null; latest.clear(); }
+
+/** A <video> view's onFullscreenChange for player `name`, collected as the page renders. */
+export function fullscreenHandler(name, handler) {
+  const handlers = render.candidate.fullscreenHandlers ??= new Map();
+  if (!handlers.has(name)) handlers.set(name, []);
+  handlers.get(name).push(handler);
+}
+
+// Readers of both players re-render: one leaves full screen, the other enters it.
+function setFullscreen(name) {
+  if (fullscreenName === name) return;
+  const touched = [fullscreenName, name].filter(n => n !== null);
+  fullscreenName = name;
+  page.invalidated = true;
+  for (const each of touched) for (const reader of readers.get(each) ?? []) {
+    const { key, cell } = cellOf(reader.binding);
+    if (page.locals.get(key) === cell) reader.binding.set({ ...reader.binding.value, fullscreen: fullscreenName === each });
+  }
+  for (const each of touched) for (const handler of page.committed?.fullscreenHandlers?.get(each) ?? []) {
+    try { handler(Object.freeze({ fullscreen: fullscreenName === each })); } catch (error) { report(error); }
+  }
+}
 
 /** The player name a `player` prop carries, or undefined when it is not a `useVideo` handle. */
 export const playerName = handle => players.get(handle);
 
 export function useVideo(name) {
   if (typeof name !== 'string' || !NAME.test(name)) throw Error('UI_VIDEO: useVideo takes a name of 1..64 letters, digits, "_", "." or "-"');
-  const binding = local(name, empty, 'video');
+  // A view mounted later (the full screen one) starts from the player's last state, not blank.
+  const binding = local(name, latest.get(name) ?? empty, 'video');
   const { cell } = cellOf(binding);
   let reader = cell.videoReader;
   if (!reader) {
@@ -28,7 +61,7 @@ export function useVideo(name) {
   const handle = {};
   for (const field of fields) Object.defineProperty(handle, field, { enumerable: true, get() {
     if (render.active) reader.read.add(field);
-    return binding.value[field];
+    return field === 'fullscreen' ? fullscreenName === name : binding.value[field];
   } });
   const command = (op, value) => {
     outsideRender('video command');
@@ -54,6 +87,12 @@ export function useVideo(name) {
       return command('quality', quality);
     },
     retry: () => command('retry'),
+    requestFullscreen: () => { outsideRender('video command'); setFullscreen(name); return Promise.resolve(); },
+    exitFullscreen: () => {
+      outsideRender('video command');
+      if (fullscreenName === name) setFullscreen(null);
+      return Promise.resolve();
+    },
   });
   Object.freeze(handle);
   players.set(handle, name);
@@ -65,7 +104,8 @@ const same = (a, b) => Object.is(a, b) || (typeof a === 'object' && typeof b ===
 
 /** A status from the player `name`: readers re-render only for fields they read. */
 export function videoStatus(name, status) {
-  const next = Object.freeze({ ...status, qualities: Object.freeze([...(status.qualities ?? [])]), error: status.error ? Object.freeze({ ...status.error }) : null });
+  const next = Object.freeze({ ...status, fullscreen: fullscreenName === name, qualities: Object.freeze([...(status.qualities ?? [])]), error: status.error ? Object.freeze({ ...status.error }) : null });
+  latest.set(name, next);
   const named = readers.get(name);
   for (const reader of named ?? []) {
     const { key, cell } = cellOf(reader.binding);

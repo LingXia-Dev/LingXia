@@ -11,6 +11,8 @@ import { pickerNode, pickerAnchor, resetPicker } from './picker.js';
 import { envOf } from './hooks.js';
 import { keysOf } from './keys.js';
 import { finishTopLayer, resetTopLayer } from './toplayer.js';
+import { fullscreenNode } from './video-controls.js';
+import { resetVideos } from './video.js';
 import { now, spent } from './profile.js';
 
 // Candidate transactions: prepare renders and encodes without touching the
@@ -73,6 +75,10 @@ export function prepare(renderPage, view, windows = {}, deferAnchors = false) {
     const env = envOf(view), overlay = overlayNode(env);
     if (overlay) candidate.tree.children.push(decorateOverlay(resolveNode(overlay, `root/${candidate.tree.element}/key:"lx-overlay"`, 1,
       { tag: candidate.tree.element, typography: candidate.tree.typography }), env));
+    // A player shown full screen is one more view of it, in the top layer.
+    const fullscreen = fullscreenNode();
+    if (fullscreen) candidate.tree.children.push(resolveNode(fullscreen, `root/${candidate.tree.element}/key:"lx-fullscreen"`, 1,
+      { tag: candidate.tree.element, typography: candidate.tree.typography }));
     // A date or time editor's picker draws above everything else on the page.
     const picker = pickerNode(env);
     if (picker) {
@@ -103,6 +109,7 @@ export function prepareWindows(windows) {
   return runCandidate(base.view, base.locals, candidate => {
     candidate.resources = new Map(base.resources);
     candidate.topLayer = base.topLayer;
+    candidate.fullscreenHandlers = base.fullscreenHandlers;
     candidate.tree = copyTree(base.tree);
     candidate.memo = new Map(base.memo);
     candidate.closures = new Map(base.closures);
@@ -184,7 +191,7 @@ export function reset() {
   for (const resource of page.resources.values()) resource.dispose();
   page.resources.clear();
   resetActions();
-  resetOverlays(); resetPicker(); resetTopLayer(); resetFrameMeasures();
+  resetOverlays(); resetPicker(); resetTopLayer(); resetFrameMeasures(); resetVideos();
   wireReset();
 }
 

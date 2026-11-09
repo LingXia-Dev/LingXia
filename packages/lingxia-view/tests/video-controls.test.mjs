@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { h, describe, dispatch, useVideo, reset, VideoControls } from '../src/internal.js';
 import { decode } from './support/wire.mjs';
+import { escapeOverlay } from '../src/runtime/overlay.js';
 
 const status = { readyState: 'ready', currentTime: 12, duration: 90, paused: false, ended: false, buffering: false, seeking: false,
   buffered: 4, videoWidth: 640, videoHeight: 360, playbackRate: 1, volume: 1, muted: false, quality: 'auto', qualities: [], error: null };
@@ -78,5 +79,45 @@ test('VideoControls replays once ended, shows Live without a duration and offers
   dispatch(by(list, 'bar-retry').props.onClick);
   assert.deepEqual(commands.at(-1).slice(1, 2), ['retry']);
   assert.throws(() => describe(() => h(VideoControls, { player: {} }), {}), /UI_PROP/);
+  delete globalThis.__lingxiaVideoCommand;
+});
+
+test('VideoControls full screen shows the player again in the top layer and a close request leaves it', () => {
+  const { nodes, by, report } = setup();
+  report({});
+  let read;
+  const changes = [];
+  const probe = () => {
+    const hero = useVideo('hero');
+    read = hero.fullscreen;
+    return h('column', {}, h('video', { player: hero, src: 'a.mp4', onFullscreenChange: ({ fullscreen }) => changes.push(fullscreen) }),
+      h(VideoControls, { player: hero, 'data-testid': 'bar' }));
+  };
+  const all = () => decode(describe(probe, {}));
+  let list = all();
+  assert.equal(by(list, 'bar-fullscreen').props.accessibilityLabel, 'Full screen');
+  assert.equal(by(list, 'lx-fullscreen-video'), undefined);
+  dispatch(by(list, 'bar-fullscreen').props.onClick);
+  list = all();
+  assert.equal(read, true);
+  const layer = by(list, 'lx-fullscreen-video');
+  assert.ok(layer, 'a full screen view in the top layer');
+  const views = list.filter(node => node.tag === 'video');
+  assert.deepEqual(views.map(node => node.props.videoPlayer), ['name:hero', 'name:hero']);
+  assert.equal(by(list, 'lx-fullscreen-controls-fullscreen').props.accessibilityLabel, 'Exit full screen');
+  // The full screen bar starts from the player's last state.
+  assert.equal(by(list, 'lx-fullscreen-controls-time').text, '0:12 / 1:30');
+  dispatch(by(list, 'lx-fullscreen-controls-fullscreen').props.onClick);
+  list = all();
+  assert.equal(read, false);
+  assert.equal(by(list, 'lx-fullscreen-video'), undefined);
+  // Back (a close request) leaves full screen too.
+  dispatch(by(list, 'bar-fullscreen').props.onClick);
+  assert.ok(by(all(), 'lx-fullscreen-video'));
+  assert.equal(escapeOverlay(), true);
+  assert.equal(by(all(), 'lx-fullscreen-video'), undefined);
+  assert.equal(read, false);
+  assert.deepEqual(changes, [true, false, true, false]);
+  void nodes;
   delete globalThis.__lingxiaVideoCommand;
 });

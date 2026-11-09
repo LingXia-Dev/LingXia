@@ -13,7 +13,7 @@ import { defaultSeries } from '../style/color.js';
 import { keyPositions } from './keys.js';
 import { expand, invokerHandler, popoverScope, dragClose, scrimMark } from './toplayer.js';
 import { recall, enter, leave, remember } from './memo.js';
-import { playerName, videoStatus } from './video.js';
+import { playerName, videoStatus, fullscreenHandler } from './video.js';
 
 const videoFlags = [['videoMuted', 'muted'], ['videoLoop', 'loop']];
 const videoEvents = [['loadedmetadata', 'onLoadedMetadata'], ['play', 'onPlay'], ['playing', 'onPlaying'], ['pause', 'onPause'],
@@ -447,6 +447,10 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       if (props.playbackRate !== undefined) wire('videoRate', props.playbackRate);
       if (props.volume !== undefined) wire('videoVolume', props.volume);
       if (props.accessibilityLabel !== undefined) { check.label(props.accessibilityLabel, 'UI_VIDEO'); wire('accessibilityLabel', props.accessibilityLabel); }
+      if (name !== undefined && props.onFullscreenChange !== undefined) {
+        if (typeof props.onFullscreenChange !== 'function') throw Error('UI_VIDEO: onFullscreenChange takes a function');
+        fullscreenHandler(name, props.onFullscreenChange);
+      }
       const handlers = videoEvents.filter(([, prop]) => props[prop]);
       if (name !== undefined || handlers.length) on('onVideoEvent', payload => {
         const { status, events } = JSON.parse(payload);

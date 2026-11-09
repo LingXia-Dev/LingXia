@@ -110,3 +110,27 @@ spec('kit video controls start a poster video on a tap, then pause, mute and scr
   await expect.poll(seconds, { timeout: 5_000 }).toBeGreaterThanOrEqual(5);
   await expect(button('Pause')).toHaveCount(0);
 });
+
+spec('kit video controls show the player full screen and Escape brings it back', { start: { page: 'view-lab' } }, async (t) => {
+  const view = t.app.view;
+  await view.testId('lab-tab-media').click();
+  await view.testId('lab-video-controls-play').click();
+  await view.testId('lab-video-controls-fullscreen').click();
+  const layer = view.getByRole('dialog', { name: 'Full screen video' });
+  await expect(layer).toBeVisible();
+  // The same player, so the full screen bar reads its time as it plays on.
+  const time = view.testId('lx-fullscreen-controls-time');
+  const seconds = async () => Number(/^\d+:(\d+)/.exec(await time.textContent())?.[1] ?? NaN);
+  const start = await seconds();
+  await expect.poll(seconds, { timeout: 5_000 }).toBeGreaterThan(start);
+  const area = await view.viewport();
+  const box = await layer.boundingBox();
+  expect(box.width).toBeGreaterThanOrEqual(area.width - 1);
+  await layer.press('Escape');
+  await expect(layer).not.toBeAttached();
+  expect((await t.app.nav.current()).name).toBe('view-lab');
+  await view.testId('lab-video-controls-fullscreen').click();
+  await expect(layer).toBeVisible();
+  await view.testId('lx-fullscreen-controls-fullscreen').click();
+  await expect(layer).not.toBeAttached();
+});

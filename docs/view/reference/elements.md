@@ -392,3 +392,4 @@ Children: none. May sit inside a composed `<button>` or `<checkbox>`.
 | `onRateChange` | `(event: { readonly playbackRate: number }) => void` |  |
 | `onVolumeChange` | `(event: { readonly volume: number; readonly muted: boolean }) => void` |  |
 | `onQualityChange` | `(event: VideoQualityChange) => void` |  |
+| `onFullscreenChange` | `(event: { readonly fullscreen: boolean }) => void` |  |
