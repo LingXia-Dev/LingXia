@@ -235,7 +235,11 @@ const VIDEO_CONTEXT_API = [
   'play',
   'requestFullScreen',
   'seek',
+  'setMuted',
+  'setPlaybackRate',
+  'setQuality',
   'setStreamSource',
+  'setVolume',
   'stop',
 ] as const;
 

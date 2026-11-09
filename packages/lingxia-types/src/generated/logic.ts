@@ -2710,13 +2710,21 @@ export type UploadTask = CancelableTask<UploadResult, UploadProgressEvent>;
 export type VideoCompressQuality = 'low' | 'medium' | 'high';
 
 export type VideoContext = {
-    play(): void;
-    pause(): void;
-    stop(): void;
-    seek(positionSeconds: number): void;
-    requestFullScreen(): void;
-    exitFullScreen(): void;
-    setStreamSource(options: StreamSourceOptions): void;
+    play(): Promise<void>;
+    pause(): Promise<void>;
+    stop(): Promise<void>;
+    seek(positionSeconds: number): Promise<void>;
+    requestFullScreen(): Promise<void>;
+    exitFullScreen(): Promise<void>;
+    setStreamSource(options: StreamSourceOptions): Promise<void>;
+    /** A GPU page player's quality: `"auto"` or one of its source labels. */
+    setQuality(quality: string): Promise<void>;
+    /** A GPU page player's playback rate. */
+    setPlaybackRate(rate: number): Promise<void>;
+    /** Mutes or unmutes a GPU page player. */
+    setMuted(muted: boolean): Promise<void>;
+    /** A GPU page player's volume. */
+    setVolume(volume: number): Promise<void>;
 };
 
 /**
@@ -3246,8 +3254,11 @@ declare global {
      * when scanning fails or the host returns an invalid payload.
      */
     scanCode(options?: ScanCodeOptions): Promise<ScanCodeResult>;
-    /** Take a control handle for the `<lx-video>` component with this id. */
-    createVideoContext(componentId: string): VideoContext;
+    /**
+     * A control handle for the `<lx-video>` with this id, or on a GPU page for the player of this
+     * `useVideo` name or `<video id>`.
+     */
+    createVideoContext(name: string): VideoContext;
     /**
      * Reads local video metadata for upload preflight and presentation.
      * Size, dimensions, duration, and path form the portable core. Container type,

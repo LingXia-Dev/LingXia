@@ -2122,13 +2122,21 @@ true
         type VideoCompressQuality = r###"'low' | 'medium' | 'high'"###;
 
         type VideoContext = r###"{
-    play(): void;
-    pause(): void;
-    stop(): void;
-    seek(positionSeconds: number): void;
-    requestFullScreen(): void;
-    exitFullScreen(): void;
-    setStreamSource(options: StreamSourceOptions): void;
+    play(): Promise<void>;
+    pause(): Promise<void>;
+    stop(): Promise<void>;
+    seek(positionSeconds: number): Promise<void>;
+    requestFullScreen(): Promise<void>;
+    exitFullScreen(): Promise<void>;
+    setStreamSource(options: StreamSourceOptions): Promise<void>;
+    /** A GPU page player's quality: `"auto"` or one of its source labels. */
+    setQuality(quality: string): Promise<void>;
+    /** A GPU page player's playback rate. */
+    setPlaybackRate(rate: number): Promise<void>;
+    /** Mutes or unmutes a GPU page player. */
+    setMuted(muted: boolean): Promise<void>;
+    /** A GPU page player's volume. */
+    setVolume(volume: number): Promise<void>;
 }"###;
 
         /// Local video metadata for client-side upload preflight and presentation.
