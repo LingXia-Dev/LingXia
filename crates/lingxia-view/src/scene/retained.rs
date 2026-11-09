@@ -461,12 +461,11 @@ impl RetainedLayout {
                 .map(|p| child_layers[p].clone())
                 .unwrap_or_default();
             sync_layers(commands, active_layers, parent_layers.clone());
-            if commands.len() > start {
-                spans.push(AnimatedSpan {
-                    identity: self.nodes[root].identity.to_string(),
-                    commands: start..commands.len(),
-                });
-            }
+            // A span clipped out this frame stays, empty: it keeps the static runs around it apart.
+            spans.push(AnimatedSpan {
+                identity: self.nodes[root].identity.to_string(),
+                commands: start..commands.len(),
+            });
             commands.push(Paint::Transform(last_transform(&parent_layers)));
         };
         for (position, &index) in self.order.iter().enumerate() {

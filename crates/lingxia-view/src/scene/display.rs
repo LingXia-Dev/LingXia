@@ -658,7 +658,7 @@ impl DisplayList {
 
     /// The logical box `paint` can touch under `transform`: `Some(None)` when it paints nothing,
     /// `None` when it is not bounded.
-    fn paint_box(
+    pub(crate) fn paint_box(
         &self,
         paint: &Paint,
         transform: Affine,

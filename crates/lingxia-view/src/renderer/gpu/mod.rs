@@ -168,6 +168,9 @@ pub(crate) struct PrepareJob {
     images: crate::renderer::gpu::images::ImageTextures,
     compositor: Option<crate::renderer::gpu::composite::Compositor>,
     base: Option<(u64, wgpu::TextureView)>,
+    /// What the target held before this frame, and what it holds after.
+    held: Option<crate::renderer::gpu::scene::Drawn>,
+    drawn: Option<crate::renderer::gpu::scene::Drawn>,
     pass_us: Vec<[u64; 2]>,
     output: Option<crate::renderer::gpu::composite::Surface>,
     preparation_us: [u64; 4],
@@ -208,10 +211,13 @@ impl PrepareJob {
         // renders: well before that, every scene is encoded again.
         let renders = self.renderer.renders();
         let video_epoch = video::epoch();
-        if renders.saturating_sub(self.scenes.encoded_at) > ATLAS_REFRESH
-            || self.scenes.video_epoch != video_epoch
-        {
+        let aged = renders.saturating_sub(self.scenes.encoded_at) > ATLAS_REFRESH;
+        if self.scenes.video_epoch != video_epoch {
             self.scenes.clear();
+        } else if aged {
+            self.scenes.refresh();
+        }
+        if aged || self.scenes.video_epoch != video_epoch {
             self.scenes.encoded_at = renders;
             self.scenes.video_epoch = video_epoch;
         }
@@ -233,6 +239,36 @@ impl PrepareJob {
                 )
             },
         )??;
+        // A kept bottom segment is sampled by the pass above it, which clears the target: on
+        // GLES a copy into the target stalls whatever its size. A kept base would freeze a
+        // video frame drawn inside it.
+        let base = self.scenes.base().filter(|_| self.keep_base && !has_video);
+        self.base = self.base.take().filter(|(id, view)| {
+            Some(*id) == base && view.texture().size() == target.texture().size()
+        });
+        self.drawn = base.and(self.scenes.drawn());
+        // Over a target holding this frame but for its moving parts, only their box is drawn.
+        let damage = self.base.as_ref().and_then(|_| {
+            crate::renderer::gpu::scene::damage(self.held, self.drawn, width, height)
+        });
+        if let Some(area) = damage {
+            let (scenes, prep) = (&mut self.scenes, &mut self.glyph_cache);
+            self.renderer.with_resources(
+                &self.device,
+                width as u16,
+                height as u16,
+                |resources| {
+                    scenes.prepare_damage(
+                        display,
+                        &mut crate::renderer::gpu::text::Glyphs {
+                            prep,
+                            atlas: Some(resources),
+                        },
+                        area,
+                    )
+                },
+            )??;
+        }
         self.glyph_cache.maintain();
         let scene_us = crate::session::metrics::micros(started);
         let started = Instant::now();
@@ -248,16 +284,13 @@ impl PrepareJob {
         let [mut encode_us, mut submit_us] = [0, 0];
         self.pass_us.clear();
         let mut scenes = self.scenes.scenes();
-        // A kept bottom segment is sampled by the pass above it, which clears the target: on
-        // GLES a copy into the target stalls whatever its size. A kept base would freeze a
-        // video frame drawn inside it.
-        let base = self.scenes.base().filter(|_| self.keep_base && !has_video);
-        self.base = self.base.take().filter(|(id, view)| {
-            Some(*id) == base && view.texture().size() == target.texture().size()
-        });
         if let Some(id) = base {
-            let first = scenes.next().ok_or("UI_SURFACE: no base scene")?;
-            if self.base.is_none() {
+            let first = if damage.is_some() {
+                None
+            } else {
+                Some(scenes.next().ok_or("UI_SURFACE: no base scene")?)
+            };
+            if let Some(first) = first.filter(|_| self.base.is_none()) {
                 let view = crate::renderer::gpu::device::target_view(&self.device, width, height);
                 let [encode, submit] = self.renderer.draw(
                     &self.device,
@@ -293,7 +326,7 @@ impl PrepareJob {
                     size: size.clone(),
                     view: target,
                     depth: self.depth.as_ref(),
-                    init: if first {
+                    init: if first && damage.is_none() {
                         vello_gpu::TargetInit::Clear(vello_gpu::ClearSettings::default())
                     } else {
                         vello_gpu::TargetInit::SrcOver
@@ -307,6 +340,19 @@ impl PrepareJob {
         self.preparation_us = [scene_us, images_us, encode_us, submit_us];
         self.scene_cache_hit = scene_cache_hit;
         Ok(())
+    }
+}
+
+/// The target slot for `revision`: one drawn again keeps its slot; else the older (or no)
+/// revision's, as the newer may still wait to present. Frames thus alternate slots, and a slot
+/// holds the frame before last.
+fn slot_for(prepared: [Option<u64>; 2], revision: u64) -> usize {
+    match prepared {
+        _ if prepared[0] == Some(revision) => 0,
+        _ if prepared[1] == Some(revision) => 1,
+        [None, _] => 0,
+        [_, None] => 1,
+        [Some(a), Some(b)] => usize::from(b < a),
     }
 }
 
@@ -334,6 +380,8 @@ pub struct Presenter {
     images: crate::renderer::gpu::images::ImageTextures,
     compositor: Option<crate::renderer::gpu::composite::Compositor>,
     composed: [Option<crate::renderer::gpu::composite::Surface>; 2],
+    /// What each target slot holds, so a frame can redraw only what moved since.
+    drawn: [Option<crate::renderer::gpu::scene::Drawn>; 2],
 
     depth: Option<wgpu::TextureView>,
     context: Context,
@@ -504,6 +552,7 @@ impl Presenter {
             images: Default::default(),
             compositor: None,
             composed: [None, None],
+            drawn: [None; 2],
             glyph_cache: Default::default(),
             depth: Some(depth),
             context,
@@ -529,6 +578,7 @@ impl Presenter {
         self.composed = [None, None];
         self.base = None;
         self.prepared = [None; 2];
+        self.drawn = [None; 2];
         if let Some(compositor) = &mut self.compositor {
             compositor.clear();
         }
@@ -638,17 +688,10 @@ impl Presenter {
             context.resize_surface(surface, width, height);
             self.depth = Some(depth_view(surface, &context.devices[surface.dev_id].device));
             self.prepared = [None; 2];
+            self.drawn = [None; 2];
         }
         let device = &context.devices[surface.dev_id];
-        // A revision drawn again keeps its slot; else reuse the target of the older (or no)
-        // revision, as the newer may still wait to present.
-        let slot = match self.prepared {
-            _ if self.prepared[0] == Some(revision) => 0,
-            _ if self.prepared[1] == Some(revision) => 1,
-            [None, _] => 0,
-            [_, None] => 1,
-            [Some(a), Some(b)] => usize::from(b < a),
-        };
+        let slot = slot_for(self.prepared, revision);
         self.prepared[slot] = None;
         // The slot's previous output was presented; its texture can serve this frame.
         self.composed[slot] = None;
@@ -675,6 +718,8 @@ impl Presenter {
             images: std::mem::take(&mut self.images),
             compositor: self.compositor.take(),
             base: self.base.take(),
+            held: self.drawn[slot].take(),
+            drawn: None,
             pass_us: std::mem::take(&mut self.pass_us),
             output: None,
             preparation_us: [0; 4],
@@ -710,6 +755,7 @@ impl Presenter {
         self.preparation_us = job.preparation_us;
         self.scene_cache_hit = job.scene_cache_hit;
         self.prepared[job.slot] = Some(job.revision);
+        self.drawn[job.slot] = job.drawn;
         Ok(true)
     }
 
@@ -1096,6 +1142,35 @@ fn depth_view(surface: &RenderSurface<'_>, device: &wgpu::Device) -> wgpu::Textu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn frames_alternate_slots_so_a_slot_redraws_over_the_frame_before_last() {
+        use crate::renderer::gpu::scene::{Drawn, damage};
+        let at = |x: u16| Drawn {
+            base: 1,
+            generation: 1,
+            spans: [x, 0, x + 10, 10],
+        };
+        let (mut prepared, mut held) = ([None; 2], [None; 2]);
+        let mut areas = Vec::new();
+        for revision in 1..=4u64 {
+            let slot = slot_for(prepared, revision);
+            assert_eq!(slot, (revision as usize + 1) % 2);
+            let now = Some(at(revision as u16 * 20));
+            areas.push(damage(held[slot], now, 400, 400));
+            prepared[slot] = Some(revision);
+            held[slot] = now;
+        }
+        assert_eq!(areas[..2], [None, None]);
+        // Revision 3 lands on revision 1's target: its box joins revision 1's, not 2's.
+        assert_eq!(areas[2], Some([20, 0, 70, 10]));
+        assert_eq!(areas[3], Some([40, 0, 90, 10]));
+        assert_eq!(
+            slot_for(prepared, 4),
+            1,
+            "a revision drawn again keeps its slot"
+        );
+    }
 
     #[test]
     fn only_ohos_narrows_the_default_backends() {

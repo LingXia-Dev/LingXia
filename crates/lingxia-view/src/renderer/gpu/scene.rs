@@ -59,6 +59,126 @@ pub(crate) struct Segment {
 /// The texture binding the first pass over a kept base samples it from.
 pub(crate) const UNDERLAY: vello_gpu::TextureId = vello_gpu::TextureId(u64::MAX);
 
+/// What a target slot holds after a frame drawn over a kept base: that base, the static
+/// content over it, and the device box `[x0, y0, x1, y1]` its moving parts painted.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) struct Drawn {
+    pub(crate) base: u64,
+    pub(crate) generation: u64,
+    pub(crate) spans: [u16; 4],
+}
+
+/// The box to draw again over a target holding `held` so it shows `now`: what either frame's
+/// moving parts painted, when all else matches and the box is a quarter of the frame or less.
+pub(crate) fn damage(
+    held: Option<Drawn>,
+    now: Option<Drawn>,
+    width: u32,
+    height: u32,
+) -> Option<[u16; 4]> {
+    let (held, now) = (held?, now?);
+    if held.base != now.base || held.generation != now.generation {
+        return None;
+    }
+    let empty = |b: [u16; 4]| b[0] >= b[2] || b[1] >= b[3];
+    let [a, b] = [held.spans, now.spans];
+    let area = match (empty(a), empty(b)) {
+        (true, true) => return None,
+        (true, false) => b,
+        (false, true) => a,
+        (false, false) => [
+            a[0].min(b[0]),
+            a[1].min(b[1]),
+            a[2].max(b[2]),
+            a[3].max(b[3]),
+        ],
+    };
+    let pixels = u64::from(area[2] - area[0]) * u64::from(area[3] - area[1]);
+    (pixels * 4 <= u64::from(width) * u64::from(height)).then_some(area)
+}
+
+/// The frame's commands outside its animated spans.
+fn still(display: &DisplayList) -> impl Iterator<Item = &Paint> {
+    let spans: Vec<Range<usize>> = display
+        .animated_spans()
+        .iter()
+        .map(|span| span.commands.clone())
+        .collect();
+    display
+        .commands
+        .iter()
+        .enumerate()
+        .filter(move |(index, _)| !spans.iter().any(|span| span.contains(index)))
+        .map(|(_, paint)| paint)
+}
+
+/// The device box the frame's animated spans paint, padded for antialiasing; `None` when a
+/// span paints unbounded or inside a group whose pixels spread past what it paints.
+fn spans_box(display: &DisplayList) -> Option<[u16; 4]> {
+    // A backdrop samples what lies under it, the moving parts included; a video changes
+    // its pixels without changing its command.
+    if display
+        .commands
+        .iter()
+        .any(|paint| matches!(paint, Paint::Backdrop { .. } | Paint::Video { .. }))
+    {
+        return None;
+    }
+    let spans: Vec<Range<usize>> = display
+        .animated_spans()
+        .iter()
+        .map(|span| span.commands.clone())
+        .collect();
+    let mut transform = Affine::IDENTITY;
+    let mut spreading = 0usize;
+    let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+    for (index, paint) in display.commands.iter().enumerate() {
+        let inside = spans.iter().any(|span| span.contains(&index));
+        match paint {
+            Paint::Transform(matrix) => {
+                transform = crate::scene::paint::checked_paint_transform(*matrix).ok()?;
+                continue;
+            }
+            Paint::Backdrop { .. } | Paint::Blur { .. } | Paint::Mask { .. } => {
+                if inside {
+                    return None;
+                }
+                spreading += 1;
+                continue;
+            }
+            Paint::PopBackdrop | Paint::PopBlur | Paint::PopMask(_) => {
+                spreading = spreading.saturating_sub(1);
+                continue;
+            }
+            Paint::Clip(_) | Paint::PopClip | Paint::Opacity { .. } | Paint::PopOpacity => {
+                continue;
+            }
+            _ if !inside => continue,
+            _ if spreading > 0 => return None,
+            _ => {}
+        }
+        match display.paint_box(paint, transform).ok()? {
+            Some(Some([x, y, w, h])) => {
+                (x0, y0) = (x0.min(x), y0.min(y));
+                (x1, y1) = (x1.max(x + w), y1.max(y + h));
+            }
+            Some(None) => {}
+            None => return None,
+        }
+    }
+    if x0 > x1 || y0 > y1 {
+        return Some([0; 4]);
+    }
+    let scale = display.scale;
+    let clamp = |v: f32, max: u16| v.clamp(0.0, f32::from(max)) as u16;
+    Some([
+        clamp((x0 * scale - 2.0).floor(), display.width),
+        clamp((y0 * scale - 2.0).floor(), display.height),
+        clamp((x1 * scale + 2.0).ceil(), display.width),
+        clamp((y1 * scale + 2.0).ceil(), display.height),
+    ])
+}
+
 /// Each pass reloads the full target, so many spans cost more than one full encode.
 const MAX_SPANS: usize = 8;
 
@@ -126,13 +246,15 @@ fn segments(display: &DisplayList, cost: PassCost) -> Option<Vec<Segment>> {
         while let Some(group) = outer_group[range.start].or(outer_group[range.end]) {
             range = range.start.min(group)..range.end.max(group_end[&group] + 1);
         }
+        let first = ranges.is_empty();
         match ranges.last_mut() {
             Some(last)
                 if range.start <= last.end || cheap(&commands[last.end..range.start], cost) =>
             {
                 last.end = last.end.max(range.end)
             }
-            _ if range.is_empty() => {}
+            // An empty first span still ends the base, which then stays the same while it is clipped out.
+            _ if range.is_empty() && !first => {}
             _ => ranges.push(range),
         }
     }
@@ -254,9 +376,22 @@ pub(crate) struct SceneCache {
     /// The video frame-size epoch these scenes were encoded under. Scenes key on content, never
     /// on texture contents: a new video frame keeps them valid, a new frame size does not.
     pub(crate) video_epoch: u64,
+    /// Changes whenever `still` does, so equal values mean equal pixels outside the spans.
+    generation: u64,
+    /// The commands outside the animated spans when `generation` last changed.
+    still: Vec<Paint>,
+    spans: Option<[u16; 4]>,
+    /// Everything over the base as one segment, for a frame redrawn only where it moved.
+    over: Option<Segment>,
+    damage: Option<Entry>,
+    /// The frame draws as the damage scene alone.
+    damaged: bool,
+    /// Every kept segment is encoded again on next use, keeping what identifies its pixels.
+    stale: bool,
 }
 
 static BASES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+static GENERATIONS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 impl Default for SceneCache {
     fn default() -> Self {
@@ -269,6 +404,13 @@ impl Default for SceneCache {
             base: None,
             encoded_at: 0,
             video_epoch: 0,
+            generation: 0,
+            still: Vec::new(),
+            spans: None,
+            over: None,
+            damage: None,
+            damaged: false,
+            stale: false,
         }
     }
 }
@@ -276,6 +418,14 @@ impl Default for SceneCache {
 impl SceneCache {
     pub(crate) fn clear(&mut self) {
         *self = Self::default();
+    }
+
+    /// Encodes every scene again on next use, as glyphs age out of the atlas. Unchanged content
+    /// keeps its identity, so a kept base and the targets drawn over it stay valid.
+    pub(crate) fn refresh(&mut self) {
+        self.current = Entry::new();
+        self.previous = None;
+        self.stale = true;
     }
 
     /// `true` when no scene was encoded again, or while animating, no static segment was.
@@ -296,6 +446,7 @@ impl SceneCache {
         underlay: bool,
         cost: PassCost,
     ) -> Result<bool, String> {
+        self.damaged = false;
         if let Some(plan) = segments(display, cost) {
             // The segment over a kept base starts from its pixels.
             let underlay = (underlay && !plan[0].animated).then_some(1);
@@ -305,6 +456,7 @@ impl SceneCache {
         self.frame = None;
         self.segments.clear();
         self.base = None;
+        self.over = None;
         if self.current.matches(display) {
             return Ok(true);
         }
@@ -346,7 +498,8 @@ impl SceneCache {
     ) -> Result<bool, String> {
         self.segmented = true;
         let frame = FrameKey::of(display);
-        if self.frame.as_ref() != Some(&frame) {
+        let fresh = self.frame.as_ref() != Some(&frame);
+        if fresh {
             self.segments.iter_mut().for_each(|entry| entry.key = None);
             self.frame = Some(frame);
         }
@@ -384,13 +537,16 @@ impl SceneCache {
             })
             .collect();
         for (index, segment) in plan.iter().enumerate() {
-            if next[index].is_some() {
+            if next[index].is_some() && !self.stale {
                 continue;
             }
-            let mut entry = spare.next().unwrap_or_else(|| SegmentEntry {
-                entry: Entry::new(),
-                key: None,
-            });
+            let mut entry = next[index]
+                .take()
+                .or_else(|| spare.next())
+                .unwrap_or_else(|| SegmentEntry {
+                    entry: Entry::new(),
+                    key: None,
+                });
             entry.key = None;
             entry.entry.glyph_images.clear();
             display.sparse_segment(
@@ -419,7 +575,71 @@ impl SceneCache {
         } else {
             Some(BASES.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
         };
-        Ok(hit)
+        let stale = std::mem::take(&mut self.stale);
+        // Static runs folded into a span are encoded with it, so their keys cannot tell.
+        if fresh || self.generation == 0 || !still(display).eq(self.still.iter()) {
+            self.generation = GENERATIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            self.still = still(display).cloned().collect();
+        }
+        self.spans = spans_box(display);
+        self.over = plan
+            .get(1)
+            .filter(|_| !plan[0].animated)
+            .map(|first| Segment {
+                animated: true,
+                range: first.range.start..display.commands.len(),
+                background: false,
+                clips: first.clips.clone(),
+                transform: first.transform,
+                open_at_end: plan.last().map_or(0, |last| last.open_at_end),
+            });
+        Ok(hit && !stale)
+    }
+
+    /// What a target holds once this frame is drawn over its kept base.
+    pub(crate) fn drawn(&self) -> Option<Drawn> {
+        self.over.as_ref()?;
+        Some(Drawn {
+            base: self.base()?,
+            generation: self.generation,
+            spans: self.spans?,
+        })
+    }
+
+    /// Encodes everything over the kept base inside `area` as the frame's one scene, to draw
+    /// over a target that holds the same frame outside it.
+    pub(crate) fn prepare_damage(
+        &mut self,
+        display: &DisplayList,
+        glyphs: &mut crate::renderer::gpu::text::Glyphs<'_>,
+        area: [u16; 4],
+    ) -> Result<(), String> {
+        let over = self
+            .over
+            .as_ref()
+            .ok_or("UI_SURFACE: nothing over the base")?;
+        let entry = self.damage.get_or_insert_with(Entry::new);
+        entry.glyph_images.clear();
+        let images = display
+            .bitmaps()
+            .map(|bitmap| {
+                let pixels = bitmap.pixels();
+                (
+                    Arc::as_ptr(pixels) as usize,
+                    crate::renderer::gpu::text::source(pixels),
+                )
+            })
+            .collect();
+        display.sparse_damage(
+            glyphs,
+            &mut entry.scene,
+            &images,
+            &mut entry.glyph_images,
+            over,
+            area,
+        )?;
+        self.damaged = true;
+        Ok(())
     }
 
     /// While animating over a static bottom segment: an id that changes whenever that
@@ -430,7 +650,9 @@ impl SceneCache {
 
     /// Scenes to draw in order; the first clears the target.
     pub(crate) fn scenes(&self) -> Box<dyn Iterator<Item = &vello_gpu::Scene> + '_> {
-        if self.segmented {
+        if let Some(damage) = self.damage.as_ref().filter(|_| self.damaged) {
+            Box::new(std::iter::once(&damage.scene))
+        } else if self.segmented {
             Box::new(self.segments.iter().map(|entry| &entry.entry.scene))
         } else {
             Box::new(std::iter::once(&self.current.scene))
@@ -438,7 +660,9 @@ impl SceneCache {
     }
 
     pub(crate) fn glyph_images(&self) -> Box<dyn Iterator<Item = &Arc<vello_gpu::Pixmap>> + '_> {
-        if self.segmented {
+        if let Some(damage) = self.damage.as_ref().filter(|_| self.damaged) {
+            Box::new(damage.glyph_images.values())
+        } else if self.segmented {
             Box::new(
                 self.segments
                     .iter()
@@ -459,9 +683,14 @@ mod tests {
     /// A rotating child inside a rounded clip between static siblings, one a focused
     /// input whose caret blinks; with `faded`, the clip is translucent.
     fn spin_page(faded: bool) -> (crate::ViewSession, DisplayList) {
+        spin_page_on(faded, ",backgroundColor:'#ffffff'")
+    }
+
+    /// [`spin_page`] with `background` as the root's background style.
+    fn spin_page_on(faded: bool, background: &str) -> (crate::ViewSession, DisplayList) {
         let opacity = if faded { ",opacity:0.8" } else { "" };
         let module = crate::session::tests::source(&format!(
-            "function render(){{return h('column',{{style:{{width:96,height:96,backgroundColor:'#ffffff'}}}},h('text',{{}},'Before'),h('column',{{style:{{width:80,height:56,borderRadius:8,overflow:'hidden',backgroundColor:'#eeeeee'{opacity}}}}},h('column',{{'data-testid':'spin',style:{{width:30,height:30,backgroundColor:'#00ff00'}}}},h('text',{{}},'Go')),h('input',{{value:'Hi',autoFocus:true}}),h('column',{{style:{{height:10,backgroundColor:'#000000'}}}})),h('text',{{}},'After'))}}"
+            "function render(){{return h('column',{{style:{{width:96,height:96{background}}}}},h('text',{{}},'Before'),h('column',{{style:{{width:80,height:56,borderRadius:8,overflow:'hidden',backgroundColor:'#eeeeee'{opacity}}}}},h('column',{{'data-testid':'spin',style:{{width:30,height:30,backgroundColor:'#00ff00'}}}},h('text',{{}},'Go')),h('input',{{value:'Hi',autoFocus:true}}),h('column',{{style:{{height:10,backgroundColor:'#000000'}}}})),h('text',{{}},'After'))}}"
         ));
         let mut page = crate::ViewSession::new(&module).unwrap();
         let display = page.layout(96, 96, 1.0).unwrap();
@@ -494,6 +723,65 @@ mod tests {
         frame.decorate_inputs();
         assert!(frame.caret_paint.is_some());
         frame
+    }
+
+    #[test]
+    fn a_span_clipped_out_keeps_the_base_and_the_damage_history() {
+        let module = crate::session::tests::source(
+            "function render(){return h('column',{style:{width:200,height:120,backgroundColor:'#ffffff'}},h('text',{},'Top'),h('column',{style:{height:4,overflow:'hidden',backgroundColor:'#eeeeee'}},h('column',{'data-testid':'bar',style:{width:'40%',height:'100%',backgroundColor:'#00ff00'}})),h('column',{'data-testid':'spin',style:{width:30,height:30,backgroundColor:'#ff0000'}}),h('text',{},'After'))}",
+        );
+        let mut page = crate::ViewSession::new(&module).unwrap();
+        let display = page.layout(200, 120, 1.0).unwrap();
+        let id = |test_id: &str| {
+            display
+                .nodes
+                .iter()
+                .find(|node| node.test_id == test_id)
+                .unwrap()
+                .identity
+                .clone()
+        };
+        let mut cache = SceneCache::default();
+        let mut prep = glifo::GlyphPrepCache::default();
+        let mut glyphs = crate::renderer::gpu::text::Glyphs {
+            prep: &mut prep,
+            atlas: None,
+        };
+        // The bar slides across its track and out of it, as an indeterminate progress bar does.
+        let mut drawn = Vec::new();
+        for x in [-0.5, -1.0, 2.5, 1.0] {
+            let visuals = BTreeMap::from([
+                (
+                    id("bar"),
+                    Visual {
+                        transforms: vec![Transform::Relative([x, 0.0])],
+                        ..Default::default()
+                    },
+                ),
+                (
+                    id("spin"),
+                    Visual {
+                        transforms: vec![Transform::Rotate(30.0)],
+                        ..Default::default()
+                    },
+                ),
+            ]);
+            let frame = display
+                .retained
+                .compose_animated(&HashMap::new(), &visuals)
+                .unwrap();
+            cache
+                .prepare_over(&frame, &mut glyphs, true, PassCost::Low)
+                .unwrap();
+            drawn.push(cache.drawn().unwrap());
+        }
+        for (x, next) in [-1.0, 2.5, 1.0].iter().zip(&drawn[1..]) {
+            assert_eq!(
+                (next.base, next.generation),
+                (drawn[0].base, drawn[0].generation),
+                "x={x}"
+            );
+        }
     }
 
     #[test]
@@ -708,6 +996,296 @@ mod tests {
                         "faded={faded} angle={angle} byte={index}: {a} vs {e}"
                     );
                     assert_eq!(u, a, "faded={faded} angle={angle} byte={index}: underlay");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_static_change_folded_into_a_span_ends_the_damage_history() {
+        let (_page, display) = spin_page(false);
+        let mut cache = SceneCache::default();
+        let mut prep = glifo::GlyphPrepCache::default();
+        let mut glyphs = crate::renderer::gpu::text::Glyphs {
+            prep: &mut prep,
+            atlas: None,
+        };
+        let first_frame = spun(&display, 0.0);
+        cache
+            .prepare_over(&first_frame, &mut glyphs, true, PassCost::High)
+            .unwrap();
+        let first = cache.drawn().unwrap();
+        // The last text, after the span: High cost encodes it with the span.
+        let mut changed = spun(&display, 10.0);
+        let span_end = changed.animated_spans()[0].commands.end;
+        let tail = changed.commands[span_end..]
+            .iter()
+            .rposition(|paint| matches!(paint, Paint::Text { .. }))
+            .unwrap();
+        if let Paint::Text { color, .. } = &mut changed.commands[span_end + tail] {
+            *color = [255, 0, 0, 255];
+        }
+        let plan = segments(&changed, PassCost::High).unwrap();
+        assert!(
+            plan.last().unwrap().animated
+                && plan.last().unwrap().range.end == changed.commands.len()
+        );
+        cache
+            .prepare_over(&changed, &mut glyphs, true, PassCost::High)
+            .unwrap();
+        let next = cache.drawn().unwrap();
+        assert_eq!(next.base, first.base, "the base is unchanged");
+        assert_ne!(
+            next.generation, first.generation,
+            "the tail drawn with the span changed outside its box"
+        );
+    }
+
+    #[test]
+    fn damage_needs_the_same_base_and_static_content_and_a_small_box() {
+        let drawn = |base, generation, spans| {
+            Some(Drawn {
+                base,
+                generation,
+                spans,
+            })
+        };
+        let held = drawn(1, 1, [10, 10, 20, 20]);
+        assert_eq!(
+            damage(held, drawn(1, 1, [30, 10, 40, 20]), 100, 100),
+            Some([10, 10, 40, 20])
+        );
+        assert_eq!(damage(held, drawn(2, 1, [10, 10, 20, 20]), 100, 100), None);
+        assert_eq!(damage(held, drawn(1, 2, [10, 10, 20, 20]), 100, 100), None);
+        assert_eq!(damage(None, drawn(1, 1, [10, 10, 20, 20]), 100, 100), None);
+        assert_eq!(
+            damage(held, drawn(1, 1, [0, 0, 0, 0]), 100, 100),
+            Some([10, 10, 20, 20]),
+            "a span that paints nothing leaves the held box to clear"
+        );
+        assert_eq!(
+            damage(held, drawn(1, 1, [50, 50, 70, 70]), 100, 100),
+            None,
+            "over a quarter of the frame draws it whole"
+        );
+    }
+
+    #[test]
+    fn spans_box_covers_the_turning_child_and_tracks_the_static_content() {
+        let (_page, display) = spin_page(false);
+        let mut cache = SceneCache::default();
+        let mut prep = glifo::GlyphPrepCache::default();
+        let mut glyphs = crate::renderer::gpu::text::Glyphs {
+            prep: &mut prep,
+            atlas: None,
+        };
+        cache
+            .prepare_over(&spun(&display, 0.0), &mut glyphs, true, PassCost::Low)
+            .unwrap();
+        let first = cache.drawn().unwrap();
+        let [x0, y0, x1, y1] = first.spans;
+        assert!(x0 < x1 && y0 < y1 && x1 <= 96 && y1 <= 96);
+        assert!(u32::from(x1 - x0) * u32::from(y1 - y0) < 96 * 96 / 4);
+        cache
+            .prepare_over(&spun(&display, 45.0), &mut glyphs, true, PassCost::Low)
+            .unwrap();
+        let turned = cache.drawn().unwrap();
+        assert_eq!(
+            (turned.base, turned.generation),
+            (first.base, first.generation)
+        );
+        assert!(
+            turned.spans[2] - turned.spans[0] > x1 - x0,
+            "a turned square spans wider"
+        );
+        cache.refresh();
+        assert!(
+            !cache
+                .prepare_over(&spun(&display, 60.0), &mut glyphs, true, PassCost::Low)
+                .unwrap(),
+            "a refresh encodes the kept segments again"
+        );
+        let refreshed = cache.drawn().unwrap();
+        assert_eq!(
+            (refreshed.base, refreshed.generation),
+            (first.base, first.generation),
+            "unchanged content keeps its kept base and the targets drawn over it"
+        );
+        cache.clear();
+        cache
+            .prepare_over(&spun(&display, 45.0), &mut glyphs, true, PassCost::Low)
+            .unwrap();
+        assert_ne!(cache.drawn().unwrap().generation, first.generation);
+    }
+
+    #[test]
+    fn a_frame_with_a_video_never_takes_a_damage_box() {
+        let (_page, display) = spin_page(false);
+        let mut playing = spun(&display, 0.0);
+        playing.commands.push(Paint::Video {
+            player: "clip".into(),
+            bounds: [0.0, 0.0, 48.0, 27.0],
+            radius: 0.0,
+            fit: crate::scene::image::Fit::Cover,
+            position: [0.5, 0.5],
+        });
+        let mut cache = SceneCache::default();
+        let mut prep = glifo::GlyphPrepCache::default();
+        let mut glyphs = crate::renderer::gpu::text::Glyphs {
+            prep: &mut prep,
+            atlas: None,
+        };
+        cache
+            .prepare_over(&playing, &mut glyphs, true, PassCost::Low)
+            .unwrap();
+        assert_eq!(cache.drawn(), None, "a video frame always draws whole");
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    #[ignore = "requires a GPU adapter; run explicitly with --features gpu -- --ignored"]
+    fn a_damage_frame_over_the_frame_before_last_matches_the_whole_frame() {
+        use crate::renderer::{backdrop_tests::readback, gpu::pass};
+        let domain = crate::renderer::gpu::Context::default();
+        let mut context = domain.lock().unwrap();
+        let id = pollster::block_on(context.device(None)).expect("GPU adapter required");
+        let device = &context.devices[id].device;
+        let queue = &context.devices[id].queue;
+        let mut renderer = pass::SceneRenderer::default();
+        let size = vello_gpu::RenderSize {
+            width: 96,
+            height: 96,
+        };
+        let depth = vello_gpu::Renderer::create_depth_texture_view(device, &size);
+        let texture = || {
+            device.create_texture(&wgpu::TextureDescriptor {
+                label: None,
+                size: wgpu::Extent3d {
+                    width: 96,
+                    height: 96,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::COPY_SRC
+                    | wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::STORAGE_BINDING,
+                view_formats: &[],
+            })
+        };
+        let mut draw = |scenes: Vec<&vello_gpu::Scene>,
+                        images: Vec<Arc<vello_gpu::Pixmap>>,
+                        underlay: Option<&wgpu::TextureView>,
+                        onto: &wgpu::Texture,
+                        clear: bool| {
+            let view = onto.create_view(&Default::default());
+            let mut bindings = crate::renderer::gpu::images::ImageTextures::default()
+                .bindings(device, queue, images);
+            if let Some(base) = underlay {
+                bindings.insert(UNDERLAY, base.clone());
+            }
+            for (index, scene) in scenes.into_iter().enumerate() {
+                renderer
+                    .draw(
+                        device,
+                        queue,
+                        scene,
+                        &bindings,
+                        pass::Target {
+                            size: size.clone(),
+                            view: &view,
+                            depth: Some(&depth),
+                            init: if index == 0 && clear {
+                                vello_gpu::TargetInit::Clear(Default::default())
+                            } else {
+                                vello_gpu::TargetInit::SrcOver
+                            },
+                        },
+                    )
+                    .unwrap();
+            }
+        };
+        // The base starts with the opaque frame fill, so a translucent page still covers the box.
+        let backgrounds = [
+            "",
+            ",backgroundColor:'accent/12'",
+            ",backgroundColor:'#ffffff'",
+        ];
+        for (cost, background) in [PassCost::High, PassCost::Low]
+            .into_iter()
+            .flat_map(|cost| backgrounds.map(|background| (cost, background)))
+        {
+            for faded in [false, true] {
+                let (_page, display) = spin_page_on(faded, background);
+                let mut cache = SceneCache::default();
+                let mut prep = glifo::GlyphPrepCache::default();
+                let mut glyphs = crate::renderer::gpu::text::Glyphs {
+                    prep: &mut prep,
+                    atlas: None,
+                };
+                // One target holds the 10° frame drawn whole over the kept base.
+                cache
+                    .prepare_over(&spun(&display, 10.0), &mut glyphs, true, cost)
+                    .unwrap();
+                let images: Vec<_> = cache.glyph_images().cloned().collect();
+                let base = texture();
+                draw(
+                    cache.scenes().take(1).collect(),
+                    images.clone(),
+                    None,
+                    &base,
+                    true,
+                );
+                let base = base.create_view(&Default::default());
+                let target = texture();
+                draw(
+                    cache.scenes().skip(1).collect(),
+                    images,
+                    Some(&base),
+                    &target,
+                    true,
+                );
+                let held = cache.drawn();
+                // 30° goes to the other target; 50° comes back to this one.
+                for angle in [30.0, 50.0] {
+                    cache
+                        .prepare_over(&spun(&display, angle), &mut glyphs, true, cost)
+                        .unwrap();
+                }
+                let images: Vec<_> = cache.glyph_images().cloned().collect();
+                let whole = texture();
+                draw(
+                    cache.scenes().skip(1).collect(),
+                    images,
+                    Some(&base),
+                    &whole,
+                    true,
+                );
+                let area = damage(held, cache.drawn(), 96, 96)
+                    .unwrap_or_else(|| panic!("cost={cost:?} {background} faded={faded}: no box"));
+                cache
+                    .prepare_damage(&spun(&display, 50.0), &mut glyphs, area)
+                    .unwrap();
+                let images: Vec<_> = cache.glyph_images().cloned().collect();
+                draw(
+                    cache.scenes().collect(),
+                    images,
+                    Some(&base),
+                    &target,
+                    false,
+                );
+                let (actual, expected) = (
+                    readback(device, queue, &target),
+                    readback(device, queue, &whole),
+                );
+                for (index, (a, e)) in actual.iter().zip(&expected).enumerate() {
+                    assert_eq!(
+                        a, e,
+                        "cost={cost:?} {background} faded={faded} byte={index}"
+                    );
                 }
             }
         }

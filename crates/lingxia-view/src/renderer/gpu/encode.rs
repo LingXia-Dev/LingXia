@@ -56,6 +56,7 @@ impl DisplayList {
                 * Affine::scale(self.scale as f64),
             self.transform_before(paints.start),
             &self.commands[paints],
+            None,
         )
     }
 
@@ -75,24 +76,10 @@ impl DisplayList {
     ) -> Result<(), String> {
         context.reset_and_resize(self.width, self.height);
         if underlay {
-            context.set_transform(Affine::IDENTITY);
-            context.set_paint(vello_gpu::Image {
-                image: vello_gpu::ImageSource::external_texture(
-                    crate::renderer::gpu::scene::UNDERLAY,
-                    vello_gpu::RectU16::new(0, 0, self.width, self.height),
-                    // The base starts with the opaque page background.
-                    false,
-                ),
-                // Pixel-aligned and unscaled: nearest keeps it exact.
-                sampler: vello_cpu::peniko::ImageSampler::new()
-                    .with_quality(vello_cpu::peniko::ImageQuality::Low),
-            });
-            context.fill_rect(&PaintRect::new(
-                0.0,
-                0.0,
-                self.width as f64,
-                self.height as f64,
-            ));
+            self.underlay(
+                context,
+                &PaintRect::new(0.0, 0.0, self.width as f64, self.height as f64),
+            );
         }
         if segment.background {
             context.set_paint(AlphaColor::<Srgb>::from_rgb8(246, 247, 251));
@@ -117,10 +104,71 @@ impl DisplayList {
             Affine::scale(self.scale as f64),
             segment.transform,
             &self.commands[segment.range.clone()],
+            None,
         )?;
         for _ in 0..segment.open_at_end {
             context.pop_clip();
         }
+        Ok(())
+    }
+
+    /// Fills `area` with the kept base's pixels.
+    #[cfg(feature = "gpu")]
+    fn underlay(&self, context: &mut vello_gpu::Scene, area: &PaintRect) {
+        context.set_transform(Affine::IDENTITY);
+        context.set_paint(vello_gpu::Image {
+            image: vello_gpu::ImageSource::external_texture(
+                crate::renderer::gpu::scene::UNDERLAY,
+                vello_gpu::RectU16::new(0, 0, self.width, self.height),
+                // The base starts with the opaque page background.
+                false,
+            ),
+            // Pixel-aligned and unscaled: nearest keeps it exact.
+            sampler: vello_cpu::peniko::ImageSampler::new()
+                .with_quality(vello_cpu::peniko::ImageQuality::Low),
+        });
+        context.fill_rect(area);
+    }
+
+    /// `segment` and the kept base under it, limited to the device-pixel box `area`
+    /// `[x0, y0, x1, y1]`: drawn over the frame the target holds, it replaces only that box.
+    #[cfg(feature = "gpu")]
+    pub(crate) fn sparse_damage(
+        &self,
+        cache: &mut crate::renderer::gpu::text::Glyphs<'_>,
+        context: &mut vello_gpu::Scene,
+        image_ids: &HashMap<usize, vello_gpu::ImageSource>,
+        glyph_images: &mut HashMap<usize, Arc<vello_gpu::Pixmap>>,
+        segment: &crate::renderer::gpu::scene::Segment,
+        area: [u16; 4],
+    ) -> Result<(), String> {
+        context.reset_and_resize(self.width, self.height);
+        let [x0, y0, x1, y1] = area.map(f64::from);
+        let bounds = PaintRect::new(x0, y0, x1, y1);
+        context.set_transform(Affine::IDENTITY);
+        context.push_clip_rect(&bounds);
+        // Opaque, so it replaces what the target held in the box.
+        self.underlay(context, &bounds);
+        for (clip, transform) in &segment.clips {
+            context.set_transform(
+                Affine::scale(self.scale as f64) * checked_paint_transform(*transform)?,
+            );
+            push_clip(context, clip);
+        }
+        self.sparse_paints(
+            cache,
+            context,
+            image_ids,
+            glyph_images,
+            Affine::scale(self.scale as f64),
+            segment.transform,
+            &self.commands[segment.range.clone()],
+            Some(bounds),
+        )?;
+        for _ in 0..segment.open_at_end {
+            context.pop_clip();
+        }
+        context.pop_clip();
         Ok(())
     }
 
@@ -160,6 +208,7 @@ impl DisplayList {
             device,
             segment.transform,
             &self.commands[segment.range.clone()],
+            None,
         )?;
         for _ in 0..segment.open_at_end {
             context.pop_clip();
@@ -179,13 +228,30 @@ impl DisplayList {
         device: Affine,
         initial_transform: Affine,
         commands: &[Paint],
+        cull: Option<PaintRect>,
     ) -> Result<(), String> {
-        let mut transform = device * checked_paint_transform(initial_transform)?;
+        let mut logical = checked_paint_transform(initial_transform)?;
+        let mut transform = device * logical;
         context.set_transform(transform);
         for command in commands {
+            // Outside the device box `cull` it would draw nothing: skip encoding it.
+            if let Some(area) = cull
+                && let Ok(Some(Some([x, y, w, h]))) = self.paint_box(command, logical)
+            {
+                let painted = device.transform_rect_bbox(PaintRect::new(
+                    f64::from(x),
+                    f64::from(y),
+                    f64::from(x + w),
+                    f64::from(y + h),
+                ));
+                if painted.intersect(area).is_zero_area() {
+                    continue;
+                }
+            }
             match command {
                 Paint::Transform(matrix) => {
-                    transform = device * checked_paint_transform(*matrix)?;
+                    logical = checked_paint_transform(*matrix)?;
+                    transform = device * logical;
                     context.set_transform(transform);
                 }
                 Paint::Vector {
