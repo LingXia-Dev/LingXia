@@ -52,6 +52,8 @@ pub struct HarmonyAdapter {
     /// The node's top-left on screen, device pixels, for accessibility bounds.
     pub(crate) origin: Mutex<[f32; 2]>,
     window: Mutex<Option<Arc<NativeWindow>>>,
+    /// Bumped when the window goes: an attach queued before then must not bind it.
+    windows: Arc<AtomicU64>,
     raster: OnceLock<Arc<Mailbox<(DisplayList, CommitTicket)>>>,
     /// The attached GPU presenter, or 0.
     pub(crate) gpu: AtomicU64,
@@ -78,6 +80,7 @@ impl HarmonyAdapter {
             size: Mutex::new(None),
             origin: Mutex::new([0.0; 2]),
             window: Mutex::new(None),
+            windows: Default::default(),
             raster: OnceLock::new(),
             gpu: AtomicU64::new(0),
             // Frames wait for the first attach; a failed one falls back to the CPU.
@@ -143,10 +146,17 @@ impl HarmonyAdapter {
         host.surface_changed();
     }
 
+    /// The page is gone: no queued attach binds its window again; returns its presenter.
+    pub(crate) fn release_gpu(&self) -> u64 {
+        self.windows.fetch_add(1, Ordering::AcqRel);
+        self.gpu.swap(0, Ordering::AcqRel)
+    }
+
     /// The window goes away; its size is kept, a recreated surface usually has the same.
     pub(crate) fn surface_destroyed(&self, host: &pages::Host) {
         log::debug!(target: "lingxia_view", "surface destroyed token={}", self.token);
         let gpu = self.gpu.load(Ordering::Acquire);
+        self.windows.fetch_add(1, Ordering::AcqRel);
         // The window goes when this returns: release its surface on the thread that owns GL.
         crate::render::run_now(move || surfaces::suspend(gpu));
         *lock(&self.window) = None;
@@ -234,8 +244,14 @@ fn attach(host: &pages::Host, window: Arc<NativeWindow>, width: u32, height: u32
     let adapter = host.adapter();
     let existing = adapter.gpu.load(Ordering::Acquire);
     *lock(&adapter.target) = Target::Waiting;
+    let windows = adapter.windows.clone();
+    let seen = windows.load(Ordering::Acquire);
     let host = host.downgrade();
     crate::render::run(move || {
+        // The window went while this waited; binding it would swap into a dead window.
+        if windows.load(Ordering::Acquire) != seen {
+            return;
+        }
         let attached = surfaces::attach(
             SurfaceSource::window(Arc::new(SharedWindow(window))),
             width,

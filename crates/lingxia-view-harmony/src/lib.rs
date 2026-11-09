@@ -108,14 +108,12 @@ mod pages {
         PAGES.with(|pages| pages.borrow_mut().nodes.insert(token, node));
     }
 
-    /// Drops the page's node (and its ArkUI resources), then its host.
-    pub(crate) fn remove(token: i64) -> Option<Host> {
-        let (host, node) = PAGES.with(|pages| {
+    /// Takes the page's host and its node; the node owns the ArkUI surface.
+    pub(crate) fn remove(token: i64) -> (Option<Host>, Option<xcomponent::Node>) {
+        PAGES.with(|pages| {
             let mut pages = pages.borrow_mut();
             (pages.hosts.remove(&token), pages.nodes.remove(&token))
-        });
-        drop(node);
-        host
+        })
     }
 
     /// An accessibility Paste: the clipboard arrives later, so the action reports success now.
@@ -331,19 +329,23 @@ impl Page {
 
 impl Drop for Page {
     fn drop(&mut self) {
-        let Some(host) = pages::remove(self.token) else {
+        let (host, node) = pages::remove(self.token);
+        let Some(host) = host else {
             return;
         };
         // A late frame of a leaving page can reconnect its editor; the keyboard must not outlive it.
         ime::reset(self.token);
         host.dispose();
-        let surface = host
-            .adapter()
-            .gpu
-            .swap(0, std::sync::atomic::Ordering::AcqRel);
+        let surface = host.adapter().release_gpu();
         if surface != 0 {
-            // Behind the frames already queued for it, on the thread that owns GL.
-            crate::render::run(move || lingxia_view::renderer::surfaces::detach(surface));
+            // On the thread that owns GL, ahead of frames still queued for it: once this returns
+            // the platform may destroy the window, and a later swap would target a dead one.
+            crate::render::run_now(move || {
+                lingxia_view::renderer::surfaces::suspend(surface);
+                lingxia_view::renderer::surfaces::detach(surface);
+            });
         }
+        // Dropping the node destroys its window, so it goes after the swapchain.
+        drop(node);
     }
 }

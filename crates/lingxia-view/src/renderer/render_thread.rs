@@ -226,3 +226,82 @@ pub fn run_now<T: Send + 'static>(task: impl FnOnce() -> T + Send + 'static) -> 
     );
     receiver.recv().ok()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::mpsc::channel;
+    use std::time::Duration;
+
+    /// Surfaces holding a swapchain, and whether the platform has destroyed their window.
+    static SWAPCHAINS: Mutex<Option<HashSet<u64>>> = Mutex::new(None);
+    static WINDOW_GONE: AtomicBool = AtomicBool::new(false);
+
+    fn prepare(_: u64, _: &DisplayList, _: u64) -> Result<Option<serde_json::Value>, String> {
+        Ok(Some(serde_json::json!({})))
+    }
+
+    fn present(surface: u64, _: u64) -> Result<Option<[u64; 4]>, String> {
+        if !lock(&SWAPCHAINS)
+            .as_ref()
+            .is_some_and(|s| s.contains(&surface))
+        {
+            return Ok(None);
+        }
+        if WINDOW_GONE.load(Ordering::SeqCst) {
+            return Err("queued a buffer to a window that is gone".into());
+        }
+        Ok(Some([0; 4]))
+    }
+
+    fn presenter(_: u64) -> Result<Option<super::super::surfaces::Shared>, String> {
+        Ok(None)
+    }
+
+    #[test]
+    fn a_surface_released_while_a_frame_waits_takes_its_swapchain_down_first() {
+        let surface = 9_000_001;
+        *lock(&SWAPCHAINS) = Some(HashSet::from([surface]));
+        let display = crate::session::tests::source("function render(){return h('text',{},'A')}");
+        let display = crate::ViewSession::new(&display)
+            .unwrap()
+            .layout(32, 32, 1.0)
+            .unwrap()
+            .retained
+            .compose(&Default::default())
+            .unwrap();
+        // The render thread is busy while the frame is queued and the page goes away.
+        let (open, gate) = channel::<()>();
+        run(move || {
+            let _ = gate.recv();
+        });
+        let backend = Backend {
+            prepare,
+            present,
+            presenter,
+        };
+        let drawn = draw(backend, surface, 1, display);
+        let (sent, reported) = channel();
+        super::present(surface, 1, drawn, move |shown, _| {
+            let _ = sent.send(shown);
+        });
+        let release = std::thread::spawn(move || {
+            run_now(move || {
+                lock(&SWAPCHAINS).as_mut().unwrap().remove(&surface);
+            })
+        });
+        std::thread::sleep(Duration::from_millis(100));
+        open.send(()).unwrap();
+        release.join().unwrap();
+        // The platform destroys the window once the release returns.
+        WINDOW_GONE.store(true, Ordering::SeqCst);
+        let shown = reported.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_eq!(
+            shown,
+            Ok(false),
+            "the waiting frame never reaches the dead window"
+        );
+    }
+}

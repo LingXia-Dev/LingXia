@@ -292,7 +292,12 @@ extern "system" fn host_release<'a>(mut env: EnvUnowned<'a>, _: JClass<'a>, hand
                 .gpu
                 .swap(0, std::sync::atomic::Ordering::AcqRel);
             if surface != 0 {
-                render::run(move || gpu_surface::detach(surface));
+                // Java destroys the Surface after this returns: the swapchain goes first, ahead of
+                // frames still queued for it, or one of them presents to a window that is gone.
+                render::run_now(move || {
+                    gpu_surface::suspend(surface);
+                    gpu_surface::detach(surface);
+                });
             }
         }
         Ok(())

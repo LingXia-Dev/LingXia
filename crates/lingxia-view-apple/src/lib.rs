@@ -343,7 +343,11 @@ impl Drop for Page {
                 .gpu
                 .swap(0, std::sync::atomic::Ordering::AcqRel);
             if surface != 0 {
-                render::run(move || lingxia_view::renderer::surfaces::detach(surface));
+                // Ahead of frames still queued for it: once this returns the layer may go away.
+                render::run_now(move || {
+                    lingxia_view::renderer::surfaces::suspend(surface);
+                    lingxia_view::renderer::surfaces::detach(surface);
+                });
             }
         }
     }
