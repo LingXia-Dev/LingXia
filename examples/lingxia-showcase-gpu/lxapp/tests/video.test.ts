@@ -85,6 +85,37 @@ spec('lx.createVideoContext pauses and plays the page player from Logic', { star
   await expect(state).toContainText('playing');
 });
 
+spec('a page under another holds its videos still and plays the playing ones again on return', { start: { page: 'video' } }, async (t) => {
+  const view = t.app.view;
+  const state = view.testId('video-hero-state');
+  const at = async () => Number(/([\d.]+)s \//.exec(await state.textContent())?.[1] ?? NaN);
+  const away = async () => {
+    await t.app.nav.to({ page: 'todo' });
+    await new Promise<void>(resolve => setTimeout(resolve, 2_500));
+    await t.app.nav.back();
+    await expect(state).toBeVisible();
+  };
+  await expect(state).toContainText('playing');
+  // Early in the 6 s loop, so 2.5 s of hidden playback could not wrap back near the start.
+  await expect.poll(at, { timeout: 8_000 }).toBeLessThan(2.5);
+  const before = await at();
+  await away();
+  const back = await at();
+  expect(back - before).toBeGreaterThan(-0.1);
+  expect(back - before).toBeLessThan(0.8);
+  await expect(state).toContainText('playing');
+  await expect.poll(at, { timeout: 5_000 }).toBeGreaterThan(back);
+  // One the user paused stays paused.
+  await view.testId('video-hero-toggle').click();
+  await expect(state).toContainText('paused');
+  // The player stops within a frame or two of the state flipping; read where it settled.
+  await new Promise<void>(resolve => setTimeout(resolve, 600));
+  const paused = await at();
+  await away();
+  await expect(state).toContainText('paused');
+  expect(await at()).toBe(paused);
+});
+
 // Needs the network: the row streams Apple's public HLS test stream, so an unreachable stream skips.
 spec('an HLS source offers its renditions as qualities', { start: { page: 'video' } }, async (t) => {
   const view = t.app.view;

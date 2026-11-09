@@ -4,6 +4,7 @@
 //! so no fence sits between the draw and wgpu's use of the texture.
 use lingxia_view::renderer::gpu::video::{Player, install as install_opener};
 use lingxia_view::renderer::gpu::wgpu;
+use lingxia_view::renderer::render_thread;
 use lingxia_view::scene::video::{Settings, Status, VideoError, VideoOp};
 use std::ffi::{CStr, CString, c_char, c_void};
 use std::fs::File;
@@ -31,6 +32,8 @@ struct Shared {
     seeking: AtomicBool,
     /// Play asked before the player was prepared.
     play: AtomicBool,
+    /// The last play or pause asked: the player's own state trails a request by a callback.
+    wants: AtomicBool,
     /// A seek in ms asked before the player was prepared; -1 for none.
     seek: AtomicI64,
     /// Surface and prepare wait for the initialized state when the source set them back.
@@ -91,6 +94,7 @@ fn open(source: &str) -> Result<Box<dyn Player>, String> {
             buffering: AtomicBool::new(false),
             seeking: AtomicBool::new(false),
             play: AtomicBool::new(false),
+            wants: AtomicBool::new(false),
             seek: AtomicI64::new(-1),
             window,
             deferred: AtomicBool::new(false),
@@ -206,7 +210,10 @@ extern "C" fn on_info(_: *mut c_void, kind: i32, body: *mut c_void, context: *mu
                         unsafe { OH_AVPlayer_Play(shared.player) };
                     }
                 }
-                STATE_COMPLETED => shared.ended.store(true, Ordering::Release),
+                STATE_COMPLETED => {
+                    shared.ended.store(true, Ordering::Release);
+                    shared.wants.store(false, Ordering::Release);
+                }
                 STATE_ERROR => shared.fail("VIDEO_DECODE: the player stopped on an error".into()),
                 _ => {}
             }
@@ -275,6 +282,7 @@ impl Video {
     fn play(&self) {
         let shared = self.shared();
         shared.ended.store(false, Ordering::Release);
+        shared.wants.store(true, Ordering::Release);
         if shared.prepared() {
             unsafe { OH_AVPlayer_Play(self.player()) };
         } else {
@@ -285,6 +293,7 @@ impl Video {
     fn pause(&self) {
         let shared = self.shared();
         shared.play.store(false, Ordering::Release);
+        shared.wants.store(false, Ordering::Release);
         if shared.prepared() {
             unsafe { OH_AVPlayer_Pause(self.player()) };
         }
@@ -342,7 +351,7 @@ impl Player for Video {
             return Ok(None);
         }
         if self.device.as_ref().is_some_and(|owner| owner != device) {
-            self.release(false);
+            self.release();
         }
         let resize = size != self.size;
         if resize {
@@ -510,8 +519,7 @@ impl Player for Video {
             }
         }
         let duration = (duration > 0).then(|| f64::from(duration) / 1000.0);
-        let playing = shared.state.load(Ordering::Acquire) == STATE_PLAYING
-            || shared.play.load(Ordering::Acquire);
+        let playing = shared.wants.load(Ordering::Acquire);
         Status {
             current_time: f64::from(time.max(0)) / 1000.0,
             duration,
@@ -534,43 +542,45 @@ impl Player for Video {
 }
 
 impl Video {
-    /// Frees the frame path's GL names in the context that made them, and destroys the image
-    /// (`destroy`) or detaches it to attach again elsewhere.
-    fn release(&mut self, destroy: bool) {
+    /// Detaches the image from the context that made its GL names and frees them there, to
+    /// attach it to another; on the render thread, where `next_frame` runs.
+    fn release(&mut self) {
         // wgpu frees these frames itself, under its own lock.
         self.slots.clear();
         self.size = [0, 0];
         self.next = 0;
-        let (Some(gl), Some(device)) = (self.gl.take(), self.device.take()) else {
-            if destroy {
-                unsafe { OH_NativeImage_Destroy(&mut self.image) };
-            }
-            return;
-        };
-        let Some(hal) = (unsafe { device.as_hal::<wgpu::hal::api::Gles>() }) else {
-            return;
-        };
-        let _context = hal.context().lock();
-        unsafe {
-            if destroy {
-                OH_NativeImage_Destroy(&mut self.image);
-            } else {
-                OH_NativeImage_DetachContext(self.image);
-            }
-            // Destroy leaves the attached texture to this context; checked under the same lock,
-            // so the name cannot have gone to another player in between.
-            let alive = glIsTexture(gl.external) != 0;
-            log::debug!(
-                target: "lingxia_view",
-                "video teardown: external texture {} alive after destroy: {alive}, context {:?}",
-                gl.external,
-                eglGetCurrentContext(),
-            );
-            if alive {
-                glDeleteTextures(1, &gl.external);
-            }
-            gl.delete_pipeline();
+        if let (Some(gl), Some(device)) = (self.gl.take(), self.device.take()) {
+            unsafe { teardown(&device, gl, self.image, false) };
         }
+    }
+}
+
+/// Frees `gl`'s names under `device`'s context lock, destroying the image or detaching it.
+/// Only on the render thread: the lock makes the context current on the calling thread.
+unsafe fn teardown(device: &wgpu::Device, gl: Blit, mut image: *mut c_void, destroy: bool) {
+    let Some(hal) = (unsafe { device.as_hal::<wgpu::hal::api::Gles>() }) else {
+        return;
+    };
+    let _context = hal.context().lock();
+    unsafe {
+        if destroy {
+            OH_NativeImage_Destroy(&mut image);
+        } else {
+            OH_NativeImage_DetachContext(image);
+        }
+        // Destroy leaves the attached texture to this context; checked under the same lock,
+        // so the name cannot have gone to another player in between.
+        let alive = glIsTexture(gl.external) != 0;
+        log::debug!(
+            target: "lingxia_view",
+            "video teardown: external texture {} alive after destroy: {alive}, context {:?}",
+            gl.external,
+            eglGetCurrentContext(),
+        );
+        if alive {
+            glDeleteTextures(1, &gl.external);
+        }
+        gl.delete_pipeline();
     }
 }
 
@@ -578,8 +588,18 @@ impl Drop for Video {
     fn drop(&mut self) {
         // Synchronous: no new frame or callback comes after this returns.
         unsafe { OH_AVPlayer_ReleaseSync(self.player()) };
-        self.release(true);
-        unsafe { drop(Box::from_raw(self.shared)) };
+        self.slots.clear();
+        let (gl, device) = (self.gl.take(), self.device.take());
+        let (image, shared) = (self.image as usize, self.shared as usize);
+        // Players close on any thread; their GL work runs on the render thread, like all of it.
+        render_thread::run(move || unsafe {
+            let mut image = image as *mut c_void;
+            match (gl, device) {
+                (Some(gl), Some(device)) => teardown(&device, gl, image, true),
+                _ => OH_NativeImage_Destroy(&mut image),
+            }
+            drop(Box::from_raw(shared as *mut Shared));
+        });
     }
 }
 

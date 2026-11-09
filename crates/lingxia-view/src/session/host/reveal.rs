@@ -157,16 +157,29 @@ impl<A: PlatformAdapter> Inner<A> {
         }
         if !hidden {
             // Frames completed while hidden never reached the screen.
-            self.main().dirty = true;
+            let visible = {
+                let mut main = self.main();
+                main.dirty = true;
+                main.visible
+            };
+            self.hide_videos(!visible);
             self.request_frame();
             self.schedule();
         } else if !covered {
+            // The surface may go with the window: videos pause and keep their place.
+            self.hide_videos(true);
             self.park_animations();
         }
     }
 
     pub(super) fn window_hidden(&self) -> bool {
         self.main().reveal.window_hidden
+    }
+
+    /// Stopped, not merely covered: a covered window's videos keep playing.
+    pub(super) fn window_stopped(&self) -> bool {
+        let main = self.main();
+        main.reveal.window_hidden && !main.reveal.window_covered
     }
 
     /// Hidden by other windows only: frames keep their pace and count.

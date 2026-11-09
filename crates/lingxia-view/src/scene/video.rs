@@ -269,6 +269,12 @@ impl Sources {
     }
 }
 
+impl Drop for Sources {
+    fn drop(&mut self) {
+        crate::renderer::video_forget(self.scope);
+    }
+}
+
 pub(crate) fn key(scope: u64, player: &str) -> String {
     format!("{scope}/{player}")
 }

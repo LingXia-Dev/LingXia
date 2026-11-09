@@ -428,6 +428,8 @@ struct Entry {
     switch: Option<Switch>,
     /// When the last frame was imported.
     imported: Option<Instant>,
+    /// Paused because its page hid while it played; plays again when the page shows.
+    resume: bool,
 }
 
 static PLAYERS: LazyLock<Mutex<HashMap<String, Entry>>> = LazyLock::new(Default::default);
@@ -465,14 +467,28 @@ static OPENER: LazyLock<Mutex<mpsc::Sender<Job>>> = LazyLock::new(|| {
                         log::warn!(target: "lingxia_view", "video open did not start: {error}");
                     }
                 }
+                // A shown page's player out of view closes after IDLE; a hidden page's, paused,
+                // after HIDDEN_IDLE. Each leaves its last frame as a still.
                 let idle: Vec<Entry> = {
                     let mut players = players();
                     let keys: Vec<String> = players
                         .iter()
-                        .filter(|(_, entry)| entry.drawn.elapsed() > IDLE)
+                        .filter(|(key, entry)| {
+                            if is_hidden(key) {
+                                hidden_long(key)
+                            } else {
+                                entry.drawn.elapsed() > IDLE
+                            }
+                        })
                         .map(|(key, _)| key.clone())
                         .collect();
-                    keys.iter().filter_map(|key| players.remove(key)).collect()
+                    keys.iter()
+                        .filter_map(|key| {
+                            let mut entry = players.remove(key)?;
+                            keep_still(key, &mut entry);
+                            Some(entry)
+                        })
+                        .collect()
                 };
                 if !idle.is_empty() {
                     std::thread::spawn(move || drop(idle));
@@ -484,6 +500,135 @@ static OPENER: LazyLock<Mutex<mpsc::Sender<Job>>> = LazyLock::new(|| {
     }
     Mutex::new(sender)
 });
+
+/// Scopes of pages that are hidden: their players hold still and keep their place.
+static HIDDEN: LazyLock<Mutex<HashMap<u64, Instant>>> = LazyLock::new(Default::default);
+
+/// How long a hidden page keeps its paused decoders; after it they close, leaving stills.
+const HIDDEN_IDLE: Duration = Duration::from_secs(30);
+
+/// A closed player's last frame and place: its box shows the frame until the next player's
+/// first one, which starts from the same place, so the box never shows the page behind it.
+struct Still {
+    frame: Frame,
+    time: f64,
+    playing: bool,
+}
+
+/// Bounded: each holds one frame's texture.
+const STILLS_MAX: usize = 16;
+static STILLS: LazyLock<Mutex<Vec<(String, Still)>>> = LazyLock::new(Default::default);
+
+fn stills() -> MutexGuard<'static, Vec<(String, Still)>> {
+    STILLS.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+fn still_frame(key: &str) -> Option<(wgpu::TextureView, [u16; 2])> {
+    stills()
+        .iter()
+        .find(|(k, _)| k == key)
+        .map(|(_, still)| (still.frame.view.clone(), still.frame.size))
+}
+
+/// Keeps a closing player's last frame and place under its key.
+fn keep_still(key: &str, entry: &mut Entry) {
+    let Some(frame) = entry.frame.take() else {
+        return;
+    };
+    let (time, playing) = match &entry.state {
+        State::Ready(player) => {
+            let status = player.status();
+            (status.current_time, !status.paused || entry.resume)
+        }
+        _ => return,
+    };
+    let mut stills = stills();
+    stills.retain(|(k, _)| k != key);
+    if stills.len() >= STILLS_MAX {
+        stills.remove(0);
+    }
+    stills.push((
+        key.to_owned(),
+        Still {
+            frame,
+            time,
+            playing,
+        },
+    ));
+}
+
+/// Whether `key`'s page has been hidden longer than its decoders are kept.
+fn hidden_long(key: &str) -> bool {
+    scope_of(key).is_some_and(|scope| {
+        HIDDEN
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .get(&scope)
+            .is_some_and(|since| since.elapsed() > HIDDEN_IDLE)
+    })
+}
+
+fn scope_of(key: &str) -> Option<u64> {
+    key.split_once('/')
+        .and_then(|(scope, _)| scope.parse().ok())
+}
+
+fn is_hidden(key: &str) -> bool {
+    scope_of(key).is_some_and(|scope| {
+        HIDDEN
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .contains_key(&scope)
+    })
+}
+
+/// A page hid or showed: its playing players pause and keep their position while it is hidden,
+/// and those play again when it shows; ones paused before stay paused.
+pub(crate) fn set_hidden(scope: u64, hidden: bool) {
+    {
+        let mut scopes = HIDDEN.lock().unwrap_or_else(|p| p.into_inner());
+        let changed = if hidden {
+            scopes.insert(scope, Instant::now()).is_none()
+        } else {
+            scopes.remove(&scope).is_some()
+        };
+        if !changed {
+            return;
+        }
+    }
+    let mut players = players();
+    let now = Instant::now();
+    for (key, entry) in players
+        .iter_mut()
+        .filter(|(key, _)| scope_of(key) == Some(scope))
+    {
+        // Shown again: not idle, whatever time passed while hidden.
+        entry.drawn = now;
+        let State::Ready(player) = &mut entry.state else {
+            continue;
+        };
+        let op = if hidden && !player.status().paused {
+            entry.resume = true;
+            VideoOp::Pause
+        } else if !hidden && std::mem::take(&mut entry.resume) {
+            VideoOp::Play
+        } else {
+            continue;
+        };
+        if let Err(error) = player.command(&op) {
+            log::warn!(target: "lingxia_view", "video {key}: {}", error.message);
+        }
+    }
+}
+
+/// The page closed: its players go idle and close like any undrawn one, and its stills go.
+pub(crate) fn forget(scope: u64) {
+    HIDDEN
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .remove(&scope);
+    stills().retain(|(key, _)| scope_of(key) != Some(scope));
+}
 
 fn open_player(key: &str) {
     let picked = Instant::now();
@@ -525,6 +670,26 @@ fn open_player(key: &str) {
             entry.ready_at = Some(now);
             if let State::Ready(player) = &mut state {
                 entry.applied = settings_of(key);
+                // A reopened player picks up where its still left off.
+                let resume = stills()
+                    .iter()
+                    .find(|(k, _)| k == key)
+                    .map(|(_, still)| (still.time, still.playing));
+                if let Some((time, playing)) = resume {
+                    entry.pending.insert(0, VideoOp::Seek(time));
+                    entry.pending.insert(
+                        1,
+                        if playing {
+                            VideoOp::Play
+                        } else {
+                            VideoOp::Pause
+                        },
+                    );
+                }
+                if is_hidden(key) && !player.status().paused {
+                    entry.resume = true;
+                    entry.pending.push(VideoOp::Pause);
+                }
                 if entry
                     .pending
                     .iter()
@@ -725,6 +890,7 @@ pub(crate) fn awaits_first(display: &crate::DisplayList) -> bool {
         players
             .get(*key)
             .is_some_and(|entry| entry.frame.is_none() && matches!(entry.state, State::Ready(_)))
+            && still_frame(key).is_none()
     })
 }
 
@@ -737,20 +903,18 @@ pub(crate) fn draws_video(display: &crate::DisplayList) -> bool {
 
 /// The size of the newest frame of `player`, once one is bound.
 pub(crate) fn frame_size(player: &str) -> Option<[u16; 2]> {
-    players()
-        .get(player)?
-        .frame
-        .as_ref()
-        .map(|frame| frame.size)
+    let shown = players()
+        .get(player)
+        .and_then(|entry| entry.frame.as_ref().map(|frame| frame.size));
+    shown.or_else(|| still_frame(player).map(|(_, size)| size))
 }
 
 /// A view of the newest frame of `player`, once one is bound.
 pub(crate) fn frame_view(player: &str) -> Option<wgpu::TextureView> {
-    players()
-        .get(player)?
-        .frame
-        .as_ref()
-        .map(|frame| frame.view.clone())
+    let shown = players()
+        .get(player)
+        .and_then(|entry| entry.frame.as_ref().map(|frame| frame.view.clone()));
+    shown.or_else(|| still_frame(player).map(|(view, _)| view))
 }
 
 /// Marks the players of `display` drawn, asking for those not open yet; true when one of them
@@ -797,6 +961,7 @@ fn touch<'a>(players: &'a mut HashMap<String, Entry>, key: &str) -> Option<&'a m
                 quality: None,
                 switch: None,
                 imported: None,
+                resume: false,
                 frame: None,
                 drawn: now,
                 requested: now,
@@ -875,6 +1040,9 @@ pub(crate) fn import_frames(device: &wgpu::Device, display: &crate::DisplayList)
                     entry.phases[5] = Some(ms(now.saturating_duration_since(new_at)));
                     entry.unshown = Some(Instant::now());
                 }
+                if entry.frame.is_none() {
+                    stills().retain(|(k, _)| k != *key);
+                }
                 entry.frame = Some(Frame {
                     view: texture.create_view(&Default::default()),
                     size,
@@ -898,6 +1066,8 @@ pub(crate) fn bind(display: &crate::DisplayList, bindings: &mut vello_gpu::Textu
     for key in keys(display) {
         if let Some(frame) = players.get(key).and_then(|entry| entry.frame.as_ref()) {
             bindings.insert(texture_id(key), frame.view.clone());
+        } else if let Some((view, _)) = still_frame(key) {
+            bindings.insert(texture_id(key), view);
         }
     }
 }

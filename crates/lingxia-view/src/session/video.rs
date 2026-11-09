@@ -131,6 +131,10 @@ impl ViewSession {
 }
 
 impl ViewSession {
+    pub(crate) fn video_scope(&self) -> u64 {
+        self.renderer.videos.scope()
+    }
+
     /// A Logic video command for the page's player `player`: a `useVideo` name, else a
     /// `<video id>`.
     pub(crate) fn video_request(

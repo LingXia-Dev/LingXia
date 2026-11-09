@@ -613,6 +613,9 @@ impl<A: PlatformAdapter> ViewHost<A> {
 
     /// The presentation target was replaced or resized; a size change still reruns the View.
     pub fn surface_changed(&self) {
+        // Back on screen: a visible page's videos play again where they held.
+        let visible = self.inner.main().visible && !self.inner.window_stopped();
+        self.inner.hide_videos(!visible);
         self.inner.lifecycle.invalidate_surface();
         let hidden = {
             let mut main = self.inner.main();
@@ -651,6 +654,8 @@ impl<A: PlatformAdapter> ViewHost<A> {
 
     /// The presentation target is gone; nothing presents until it returns.
     pub fn surface_lost(&self) {
+        // Off screen like a hidden page: its videos pause and keep their place.
+        self.inner.hide_videos(true);
         self.inner.lifecycle.invalidate_surface();
         self.inner.main().presented_environment = None;
         self.inner.park_animations();
@@ -1664,6 +1669,19 @@ impl<A: PlatformAdapter> Inner<A> {
         });
     }
 
+    /// A hidden page's videos hold still: no decoding, no frames, the same place when it shows.
+    fn hide_videos(self: &Arc<Self>, hidden: bool) {
+        let inner = self.clone();
+        self.worker.run(move |app| {
+            let Some(id) = *inner.page.lock().unwrap_or_else(|p| p.into_inner()) else {
+                return;
+            };
+            if let Ok(session) = app.page(id) {
+                crate::renderer::video_hidden(session.video_scope(), hidden);
+            }
+        });
+    }
+
     fn set_visible(self: &Arc<Self>, visible: bool) {
         let (disposed, shown) = {
             let mut main = self.main();
@@ -1682,6 +1700,7 @@ impl<A: PlatformAdapter> Inner<A> {
             }
         }
         self.lifecycle.set_visible(visible && !disposed);
+        self.hide_videos(!visible || self.window_stopped());
         if visible {
             self.pump_images();
             self.schedule();

@@ -45,6 +45,22 @@ pub(crate) fn video_status(key: &str) -> Option<crate::scene::video::Status> {
     }
 }
 
+/// The page of video scope `scope` hid or showed.
+pub(crate) fn video_hidden(scope: u64, hidden: bool) {
+    #[cfg(feature = "gpu")]
+    gpu::video::set_hidden(scope, hidden);
+    #[cfg(not(feature = "gpu"))]
+    let _ = (scope, hidden);
+}
+
+/// The page of video scope `scope` closed.
+pub(crate) fn video_forget(scope: u64) {
+    #[cfg(feature = "gpu")]
+    gpu::video::forget(scope);
+    #[cfg(not(feature = "gpu"))]
+    let _ = scope;
+}
+
 /// A handle's or Logic's command to player `key`.
 pub(crate) fn video_command(
     key: &str,
