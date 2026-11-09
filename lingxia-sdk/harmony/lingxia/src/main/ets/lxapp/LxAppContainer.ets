@@ -1993,7 +1993,7 @@ export struct LxAppContainer {
       GpuPage({
         page: page,
         chromeInsets: this.getGpuChromeInsets(page.webTag),
-        pageVisible: this.getRenderVisibility(page.webTag) === Visibility.Visible,
+        pageVisible: this.isGpuPageShown(page.webTag),
         floor: resolveCanvasColor(this.appearanceDark),
       })
         .translate(this.getRenderTranslation(page.webTag))
@@ -2290,6 +2290,16 @@ export struct LxAppContainer {
 
     // Standard visibility
     return webTag === this.currentWebTag ? Visibility.Visible : this.getHiddenVisibility(webTag);
+  }
+
+  /**
+   * Whether a GPU page is on screen. A parked page stays `Visible` for ArkWeb's sake but is
+   * hidden to its View, so it stops drawing and its videos hold still.
+   */
+  private isGpuPageShown(webTag: string): boolean {
+    if (this.isOverlayWebView(webTag)) return true;
+    if (this.animationInProgress && webTag === this.previousWebTag) return true;
+    return !this.isParkedOffscreen(webTag);
   }
 
   private isParkedOffscreen(webTag: string): boolean {
