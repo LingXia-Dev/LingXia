@@ -11,13 +11,20 @@ spec('a video plays in a 16:9 box and under its overlay', { start: { page: 'vide
   // Nothing else on the page moves: a changed screenshot is a new video frame.
   const first = (await view.screenshot()).base64;
   await expect.poll(async () => (await view.screenshot()).base64 !== first, { timeout: 10_000 }).toBe(true);
-  await expectPicture(view, hero);
+  // Playing and past its first frames, so a blank box now is a finding, not a race.
+  const time = async () => Number(/([\d.]+)s \//.exec(await view.testId('video-hero-state').textContent())?.[1] ?? NaN);
+  await expect.poll(time, { timeout: 5_000 }).toBeGreaterThan(0.3);
+  await expectPicture(t, hero);
 });
 
-type View = Parameters<Parameters<typeof spec>[2]>[0]['app']['view'];
+type Fixture = Parameters<Parameters<typeof spec>[2]>[0];
+type View = Fixture['app']['view'];
+type Viewport = Awaited<ReturnType<View['viewport']>>;
 
-/** Frames that only count are not a picture: the box shows colour, not black or the page. */
-async function expectPicture(view: View, video: ReturnType<View['testId']>) {
+/** Frames that only count are not a picture: the box shows colour, not black or the page. Call it
+ * once the player has shown frames, so a blank box is a finding, not a race. */
+async function expectPicture(t: Fixture, video: ReturnType<View['testId']>) {
+  const view = t.app.view;
   let box = await video.boundingBox();
   let viewport = await view.viewport();
   if (box.y < viewport.top || box.y + box.height > viewport.top + viewport.height) {
@@ -29,14 +36,22 @@ async function expectPicture(view: View, video: ReturnType<View['testId']>) {
     box = await video.boundingBox();
     viewport = await view.viewport();
   }
-  const shot = await decodePng((await view.screenshot()).base64);
-  const scale = shot.width / viewport.width;
-  const at = (x: number, y: number) => shot.at(Math.round((x - viewport.left) * scale), Math.round((y - viewport.top) * scale));
-  const page = at(box.x + box.width / 2, box.y - 6);
-  const samples = [0.5, 0.3, 0.7].map(fx => at(box.x + box.width * fx, box.y + box.height * 0.5));
+  const points: [number, number][] = [[box.x + box.width / 2, box.y - 6], ...[0.5, 0.3, 0.7].map(fx => [box.x + box.width * fx, box.y + box.height * 0.5] as [number, number])];
+  const [page, ...samples] = await sample(t, points, viewport);
   const lit = samples.filter(([r, g, b]) => Math.max(r, g, b) > 40);
   const apart = samples.filter(rgb => rgb.some((value, i) => Math.abs(value - page[i]) > 30));
   expect(lit.length > 0 && apart.length > 0 ? 'picture' : `blank ${JSON.stringify({ samples, page })}`).toBe('picture');
+}
+
+/** Colours at page points from the page screenshot, decoded only down to the lowest point. */
+async function sample(t: Fixture, points: [number, number][], viewport: Viewport) {
+  let scale = 1;
+  const at = ([x, y]: [number, number]) => [Math.round((x - viewport.left) * scale), Math.round((y - viewport.top) * scale)] as const;
+  const shot = await decodePng((await t.app.view.screenshot()).base64, width => {
+    scale = width / viewport.width;
+    return Math.max(...points.map(point => at(point)[1]));
+  });
+  return points.map(point => shot.at(...at(point)));
 }
 
 spec('useVideo reports playback and pauses on command', { start: { page: 'video' } }, async (t) => {
@@ -67,9 +82,11 @@ spec('a quality switch keeps the position and the frames moving', { start: { pag
   await view.testId('video-quality-720p').click();
   await expect(state).toContainText('720p · 720p', { timeout: 5_000 });
   const after = seconds(await state.textContent());
-  // The clip loops every 8 s; the position follows the wall clock across the switch.
+  // The clip loops every 8 s; the position follows the wall clock across the switch. Each label
+  // reading may be a 250 ms status tick old, so the seam itself gets the 0.5 s left over.
   const expected = (before + (Date.now() - asked) / 1000) % 8;
-  expect(Math.abs(after - expected) < 0.5 || Math.abs(after - expected) > 7.5).toBe(true);
+  const off = Math.abs(after - expected);
+  expect(Math.min(off, 8 - off)).toBeLessThan(0.75);
   await expect.poll(async () => seconds(await state.textContent()), { timeout: 3_000 }).not.toBe(after);
   await view.testId('video-quality-logic-360p').click();
   await expect(state).toContainText('360p · 360p', { timeout: 5_000 });
@@ -134,7 +151,7 @@ spec('an HLS source offers its renditions as qualities', { start: { page: 'video
   if (text.includes('VIDEO_NETWORK')) offline();
   if (harmony) {
     expect(text).toMatch(/· [1-9]\d*p ·/);
-    await expectPicture(view, view.testId('video-stream'));
+    await expectPicture(t, view.testId('video-stream'));
     t.skip('HarmonyOS does not list HLS renditions yet');
   }
   expect(text).toContain('1080p/720p/540p/360p');

@@ -1,10 +1,12 @@
-/** RGB samples of an 8-bit, non-interlaced RGB or RGBA PNG, as screenshots return. */
-export async function decodePng(base64: string): Promise<{ width: number; height: number; at(x: number, y: number): number[] }> {
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+/** RGB samples of an 8-bit, non-interlaced RGB or RGBA PNG, as screenshots return. Rows below
+ * `lastRow(width)` are not unfiltered: a check that samples near the top pays for that part only. */
+export async function decodePng(base64: string, lastRow: (width: number) => number = () => Infinity): Promise<{ width: number; height: number; at(x: number, y: number): number[] }> {
+  const table = new Uint8Array(128);
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'.split('').forEach((c, i) => { table[c.charCodeAt(0)] = i; });
   const clean = base64.replace(/=+$/, '');
   const bytes = new Uint8Array(Math.floor(clean.length * 3 / 4));
   for (let i = 0, o = 0, bits = 0, acc = 0; i < clean.length; i++) {
-    acc = (acc << 6) | alphabet.indexOf(clean[i]);
+    acc = ((acc << 6) | table[clean.charCodeAt(i)]) & 0xffffff;
     bits += 6;
     if (bits >= 8) {
       bits -= 8;
@@ -32,19 +34,29 @@ export async function decodePng(base64: string): Promise<{ width: number; height
   void writer.close();
   const raw = new Uint8Array(await new Response(inflate.readable).arrayBuffer());
   const stride = width * channels;
-  const pixels = new Uint8Array(stride * height);
-  for (let y = 0; y < height; y++) {
+  const rows = Math.min(height, lastRow(width) + 1);
+  const pixels = new Uint8Array(stride * rows);
+  // One loop per filter: a per-byte dispatch is what made a phone-sized screenshot slow.
+  for (let y = 0; y < rows; y++) {
     const filter = raw[y * (stride + 1)];
-    const row = raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1));
-    for (let i = 0; i < stride; i++) {
-      const a = i >= channels ? pixels[y * stride + i - channels] : 0;
-      const b = y > 0 ? pixels[(y - 1) * stride + i] : 0;
-      const c = i >= channels && y > 0 ? pixels[(y - 1) * stride + i - channels] : 0;
+    const src = y * (stride + 1) + 1, out = y * stride, up = out - stride;
+    if (filter === 0) for (let i = 0; i < stride; i++) pixels[out + i] = raw[src + i];
+    else if (filter === 1) for (let i = 0; i < stride; i++) pixels[out + i] = (raw[src + i] + (i >= channels ? pixels[out + i - channels] : 0)) & 255;
+    else if (filter === 2) for (let i = 0; i < stride; i++) pixels[out + i] = (raw[src + i] + (y > 0 ? pixels[up + i] : 0)) & 255;
+    else if (filter === 3) for (let i = 0; i < stride; i++) pixels[out + i] = (raw[src + i] + (((i >= channels ? pixels[out + i - channels] : 0) + (y > 0 ? pixels[up + i] : 0)) >> 1)) & 255;
+    else for (let i = 0; i < stride; i++) {
+      const a = i >= channels ? pixels[out + i - channels] : 0;
+      const b = y > 0 ? pixels[up + i] : 0;
+      const c = i >= channels && y > 0 ? pixels[up + i - channels] : 0;
       const p = a + b - c;
       const pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
-      const predictor = [0, a, b, (a + b) >> 1, pa <= pb && pa <= pc ? a : pb <= pc ? b : c][filter];
-      pixels[y * stride + i] = (row[i] + predictor) & 255;
+      pixels[out + i] = (raw[src + i] + (pa <= pb && pa <= pc ? a : pb <= pc ? b : c)) & 255;
     }
   }
-  return { width, height, at: (x, y) => [...pixels.subarray((y * width + x) * channels, (y * width + x) * channels + 3)] };
+  return {
+    width, height, at: (x, y) => {
+      if (y >= rows) throw new Error(`row ${y} is past the decoded ${rows}`);
+      return [...pixels.subarray((y * width + x) * channels, (y * width + x) * channels + 3)];
+    },
+  };
 }

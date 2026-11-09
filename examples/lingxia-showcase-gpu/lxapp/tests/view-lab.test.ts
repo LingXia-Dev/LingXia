@@ -126,7 +126,14 @@ spec('kit video controls show the player full screen and Escape brings it back',
   const view = t.app.view;
   await view.testId('lab-tab-media').click();
   const wide = async () => { const area = await view.viewport(); return area.width > area.height; };
-  const before = await wide();
+  // Just after launch a window the sensor turned can still report its old shape: read it settled.
+  let before = await wide();
+  for (let i = 0; i < 6; i++) {
+    await new Promise<void>(resolve => setTimeout(resolve, 500));
+    const now = await wide();
+    if (now === before) break;
+    before = now;
+  }
   await view.testId('lab-video-controls-play').click();
   await view.testId('lab-video-controls-fullscreen').click();
   const layer = view.getByRole('dialog', { name: 'Full screen video' });
