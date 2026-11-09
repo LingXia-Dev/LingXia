@@ -1432,6 +1432,13 @@ impl<A: PlatformAdapter> ViewHost<A> {
             .can_scroll_vertically_at(point[0], point[1], direction)
     }
 
+    pub fn can_scroll_horizontally_at(&self, point: [f32; 2], direction: i32) -> bool {
+        self.inner
+            .main()
+            .interaction
+            .can_scroll_horizontally_at(point[0], point[1], direction)
+    }
+
     pub fn keyboard_focus(&self) -> Option<usize> {
         self.inner.main().interaction.keyboard_focus()
     }

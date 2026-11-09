@@ -36,6 +36,8 @@ const BACK_PRESS_THROTTLE_MS: number = 200;
 // Edge-swipe back gesture area (system gesture-back is disabled in LingxiaBaseAbility).
 // Exported: each lxapp container lays the same strip over its own Web.
 export const EDGE_BACK_SWIPE_ZONE_WIDTH_VP: number = 40;
+// Within the system's own edge zone back always wins; past it a page scroll under the finger does.
+const EDGE_BACK_SYSTEM_ZONE_VP: number = 16;
 const EDGE_BACK_SWIPE_TRIGGER_DISTANCE_VP: number = 18;
 const EDGE_BACK_SWIPE_MAX_VERTICAL_DRIFT_VP: number = 200;
 const EDGE_BACK_SWIPE_VERTICAL_CANCEL_MARGIN_VP: number = 8;
@@ -266,6 +268,12 @@ export struct LxAppNavigation {
     return null;
   }
 
+  private gpuPageScrollsRightAt(touch: TouchObject): boolean {
+    const current: CurrentLxApp = getCurrentLxapp();
+    return !!current && !!current.appid &&
+      LxAppContainer.gpuScrollsRightAt(current.appid, touch.displayX, touch.displayY);
+  }
+
   private handleEdgeBackSwipeTouch(event: TouchEvent): void {
     if (!event) {
       return;
@@ -283,6 +291,10 @@ export struct LxAppNavigation {
     const firstTouch: TouchObject = event.changedTouches[0];
 
     if (event.type === TouchType.Down) {
+      if (firstTouch.windowX >= EDGE_BACK_SYSTEM_ZONE_VP && this.gpuPageScrollsRightAt(firstTouch)) {
+        this.resetEdgeBackSwipe();
+        return;
+      }
       this.updateEdgeBackSwipeMetrics();
       this.edgeBackSwipeTracking = true;
       this.edgeBackSwipeTriggered = false;

@@ -25,6 +25,7 @@ export function screenPixels(raw, points) {
 // is a capability: pass it with --secret-arg androidDevice, never into an app.
 export function createAndroidDeviceFixture(runAdb, token = randomBytes(24).toString('hex')) {
   let busy = false;
+  let injects;
   const server = createServer(async (request, response) => {
     const reply = (status, body) => {
       response.writeHead(status, { 'content-type': 'application/json' });
@@ -52,6 +53,19 @@ export function createAndroidDeviceFixture(runAdb, token = randomBytes(24).toStr
           await runAdb(['shell', 'rm', remote]);
         }
         return reply(200, { xml });
+      }
+      // MIUI rejects injected input until "USB debugging (Security settings)" is on; probe once.
+      if (request.method === 'GET' && operation === 'inject') {
+        if (injects === undefined) {
+          try {
+            await runAdb(['shell', 'input', 'keyevent', 'KEYCODE_UNKNOWN']);
+            injects = true;
+          } catch (error) {
+            if (!String(error).includes('INJECT_EVENTS')) throw error;
+            injects = false;
+          }
+        }
+        return reply(200, { ok: injects });
       }
       if (request.method === 'GET' && operation === 'size') {
         const sizes = [...(await runAdb(['shell', 'wm', 'size'])).matchAll(/(?:Physical|Override) size: (\d+)x(\d+)/g)];

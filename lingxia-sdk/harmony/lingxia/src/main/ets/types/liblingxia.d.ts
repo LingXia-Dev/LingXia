@@ -639,6 +639,8 @@ declare module 'liblingxia.so' {
   /** Back: true when the page closed its own top layer. */
   export function gpuPageCloseRequest(token: number): boolean;
   export function gpuPageCanScrollVertically(token: number, x: number, y: number, direction: number): boolean;
+  /** Edge back: whether a rightward drag from a screen point (device pixels) scrolls the page. */
+  export function gpuPageScrollsRightAt(token: number, screenX: number, screenY: number): boolean;
   export function gpuPageTextMenuAction(token: number, action: number): boolean;
   export function gpuPageTextMenuDismissed(token: number): void;
   export function gpuPageInputBlocked(token: number): boolean;

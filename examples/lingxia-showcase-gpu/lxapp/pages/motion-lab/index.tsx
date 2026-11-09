@@ -11,9 +11,25 @@ export function render({ data, actions }: View<Actions, { dipped: boolean }>) {
   const shown = useLocal('shown', true);
   const present = useLocal('present', true);
   const order = useLocal('order', ['One', 'Two', 'Three', 'Four']);
+  const pager = useLocal('pager', 0);
   const visible = shown.value && !data.dipped;
   return (
     <Page testId="motion-lab">
+      <Section title="Pager" testId="motion-pager">
+        <scroll data-testid="motion-pager-scroll" bind={pager} className="w-72 overflow-x-auto snap-x snap-always rounded-xl bg-surface-sunken">
+          <row>
+            {['Morning', 'Noon', 'Evening'].map(name => (
+              <column key={name} className="snap-start shrink-0 w-72 h-24 items-center justify-center">
+                <text className="text-lg font-semibold">{name}</text>
+              </column>
+            ))}
+          </row>
+        </scroll>
+        <row className="gap-2 items-center">
+          <text data-testid="motion-pager-state" className="grow text-xs text-muted tabular-nums">{`page=${pager.value}`}</text>
+          <Button testId="motion-pager-next" onClick={() => pager.set((pager.value + 1) % 3)}>Next</Button>
+        </row>
+      </Section>
       <Section title="Pressed scale" testId="motion-press">
         <button data-testid="motion-press-button" onClick={() => {}} className="px-4 py-3 rounded-xl bg-accent text-on-accent active:scale-95 transition-transform duration-150">
           Press and hold

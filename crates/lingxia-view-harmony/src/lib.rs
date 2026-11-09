@@ -316,6 +316,15 @@ impl Page {
         });
     }
 
+    /// Whether a rightward drag from a screen point (device pixels) would scroll the page.
+    pub fn scrolls_right_at(&self, screen: [f32; 2]) -> bool {
+        pages::with(self.token, |host| {
+            let (_, origin) = host.adapter().placement();
+            host.can_scroll_horizontally_at([screen[0] - origin[0], screen[1] - origin[1]], -1)
+        })
+        .unwrap_or(false)
+    }
+
     /// The newest GPU frame as a PNG, for automation screenshots.
     pub fn screenshot_png(&self) -> Result<Option<Vec<u8>>, String> {
         let id = pages::with(self.token, |host| {

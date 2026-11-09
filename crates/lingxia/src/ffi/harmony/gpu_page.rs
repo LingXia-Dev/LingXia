@@ -522,6 +522,15 @@ pub fn gpu_page_can_scroll_vertically(token: i64, x: f64, y: f64, direction: i32
     .unwrap_or(false)
 }
 
+/// Edge back asks whether a rightward drag from a screen point (device pixels) scrolls the page.
+#[napi]
+pub fn gpu_page_scrolls_right_at(token: i64, screen_x: f64, screen_y: f64) -> bool {
+    with_page(token, |page| {
+        page.scrolls_right_at([screen_x as f32, screen_y as f32])
+    })
+    .unwrap_or(false)
+}
+
 /// The text menu's actions, in `GpuTextMenu.ACTIONS` order.
 #[napi]
 pub fn gpu_page_text_menu_action(token: i64, action: i32) -> bool {

@@ -25,7 +25,7 @@ import { NavigationBar, NavigationBarState, NAVBAR_TOTAL_HEIGHT, isColorDark } f
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';
 import { TabBar, tabBarExtraBottomHeight } from './TabBar';
 import { TabBarPosition, TabBarItem, UiEventType } from 'liblingxia.so';
-import liblingxia, { gpuPageCloseRequest, tabBarVisibleOn, gpuPageTransitionStart, gpuPageTransitionFrame, gpuPageTransitionEnd, TabBarState, getNavigationBarState, isPullDownRefreshEnabled, reportPullRefreshIndicator, onPageShow, onLxappEvent, setSurfaceViewport, setSurfaceWidth, pageBackgroundColor, refreshIndicatorColor, syncLxappHostUI } from 'liblingxia.so';
+import liblingxia, { gpuPageCloseRequest, gpuPageScrollsRightAt, tabBarVisibleOn, gpuPageTransitionStart, gpuPageTransitionFrame, gpuPageTransitionEnd, TabBarState, getNavigationBarState, isPullDownRefreshEnabled, reportPullRefreshIndicator, onPageShow, onLxappEvent, setSurfaceViewport, setSurfaceWidth, pageBackgroundColor, refreshIndicatorColor, syncLxappHostUI } from 'liblingxia.so';
 import { notePageOrigin, setCapsuleGeometryListener } from './capsuleGeometry';
 import { NAVIGATION_ACTION_BACK, NAVIGATION_ACTION_HOME, CAPSULE_ACTION_CLOSE } from '../app/NativeBridge';
 import { AnimationType, EDGE_BACK_SWIPE_ZONE_WIDTH_VP } from './LxAppNavigation';
@@ -1987,6 +1987,13 @@ export struct LxAppContainer {
     const container = LxAppContainer.activeContainers.get(appId);
     const page = container ? GpuPages.byWebTag(container.currentWebTag) : undefined;
     return page !== undefined && gpuPageCloseRequest(page.token);
+  }
+
+  /** Edge back: a rightward drag from this screen point (vp) would scroll the shown GPU page of `appId`. */
+  static gpuScrollsRightAt(appId: string, displayX: number, displayY: number): boolean {
+    const container = LxAppContainer.activeContainers.get(appId);
+    const page = container ? GpuPages.byWebTag(container.currentWebTag) : undefined;
+    return page !== undefined && gpuPageScrollsRightAt(page.token, vp2px(displayX), vp2px(displayY));
   }
 
   /** The GPU page on screen has a dialog open: the page then lies over the host bars, scrim and all. */

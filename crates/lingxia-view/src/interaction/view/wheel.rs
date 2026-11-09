@@ -39,6 +39,17 @@ impl ViewInteraction {
             .can_scroll(hit.as_deref(), direction, ScrollAxis::Vertical)
     }
 
+    /// Whether the regions under a device-pixel point can scroll horizontally toward
+    /// `direction`: a host edge-back swipe outside the system's edge zone yields when so.
+    pub fn can_scroll_horizontally_at(&self, x: f32, y: f32, direction: i32) -> bool {
+        let Some(frame) = self.frame.as_ref() else {
+            return false;
+        };
+        let hit = frame.scroll_hit(self.logical(x, y));
+        self.scroll
+            .can_scroll(hit.as_deref(), direction, ScrollAxis::Horizontal)
+    }
+
     /// Scrolls the region under the gesture's start; the whole gesture, momentum included,
     /// stays on that region. Returns whether a region moved.
     pub fn wheel(&mut self, event: Wheel) -> (bool, Vec<Effect>) {

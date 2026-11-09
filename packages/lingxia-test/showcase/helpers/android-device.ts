@@ -48,6 +48,8 @@ export function androidDevice(t: Fixture) {
     nodes, tap,
     key: (key: 'back' | 'enter' | 'tab' | 'escape') => request('key', { key }),
     size: () => request<{ width: number; height: number }>('size'),
+    /** Whether the OS accepts injected taps, swipes and keys from adb. */
+    canInject: async () => (await request<{ ok: boolean }>('inject')).ok,
     /** Turn the phone as a user does with auto-rotate off; `auto` gives the sensor back. */
     rotate: (orientation: 'portrait' | 'landscape' | 'auto') => request('rotate', { orientation }),
     swipe: (input: { x1: number; y1: number; x2: number; y2: number; duration: number }) => request('swipe', input),
