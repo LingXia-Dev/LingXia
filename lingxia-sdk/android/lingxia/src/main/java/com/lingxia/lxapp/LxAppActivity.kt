@@ -2456,7 +2456,9 @@ class LxAppActivity : AppCompatActivity() {
                 }
                 newWebView.capturePreview { frame -> reveal(frame) }
             }
-            newWebView.afterNextPresentation { success ->
+            // A re-pushed page's surface still holds its previous instance's frame; the slide
+            // copies the surface, so it waits for the core to reveal a frame of this instance.
+            newWebView.afterCurrentFrame { success ->
                 LxLog.d(NAV_TAG, "presented ${newWebView.getWebTag()} ok=$success v$version now v$gpuTransitionVersion")
                 if (version == gpuTransitionVersion) {
                     if (success) revealPresentedFrame() else failedGpuPresentation()

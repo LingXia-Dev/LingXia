@@ -408,6 +408,30 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         if (!destroyed && active) afterLayout();
         else if (!destroyed) nativeReveal(host, hasSurfaceFrame);
     }
+    private final java.util.ArrayList<java.util.function.Consumer<Boolean>> currentFrameWaiters = new java.util.ArrayList<>();
+    /**
+     * Run [then] once the core reveals this page on a frame of its current instance. A surface
+     * still holding the previous instance's frame is held, so [then] waits for the new one.
+     */
+    public void afterCurrentFrame(java.util.function.Consumer<Boolean> then) {
+        if (destroyed) { then.accept(false); return; }
+        currentFrameWaiters.add(then);
+        revealed = false; revealWaiters.add(() -> answerCurrentFrame(true)); updateSurfaceVisibility();
+        // Its environment is sampled after layout; a page not yet resumed reveals from resume().
+        if (active) afterLayout();
+        // The core's watchdog reveals a page that never presents still held; answer before a cover could stay up.
+        final int wait = ++currentFrameWait;
+        main.postDelayed(() -> { if (wait == currentFrameWait) answerCurrentFrame(false); }, CURRENT_FRAME_LIMIT_MS);
+    }
+    /** Past the core's 2 s first-frame watchdog. */
+    private static final long CURRENT_FRAME_LIMIT_MS = 2500;
+    private int currentFrameWait;
+    private void answerCurrentFrame(boolean success) {
+        if ((success && holdSurface) || currentFrameWaiters.isEmpty()) return;
+        java.util.ArrayList<java.util.function.Consumer<Boolean>> waiters = new java.util.ArrayList<>(currentFrameWaiters);
+        currentFrameWaiters.clear();
+        for (java.util.function.Consumer<Boolean> waiter : waiters) waiter.accept(success);
+    }
     private void reveal() {
         if (revealed) return;
         revealed = true; updateSurfaceVisibility();
@@ -495,6 +519,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     private void finishPresentation(boolean success) {
         finishSurfaceRedraws();
         answerPresentationWaiters(success);
+        if (!success) answerCurrentFrame(false);
     }
     private void answerPresentationWaiters(boolean success) {
         if (nextPresentation.isEmpty()) return;
@@ -941,6 +966,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         @Override public void revealed(boolean hold) {
             holdSurface = hold;
             if (revealed) updateSurfaceVisibility(); else reveal();
+            if (!hold) answerCurrentFrame(true);
         }
         @Override public void hostChrome(int canvas, int bar, int barLine, int content, int contentMuted, int accent, boolean dark) {
             if (destroyed) return;

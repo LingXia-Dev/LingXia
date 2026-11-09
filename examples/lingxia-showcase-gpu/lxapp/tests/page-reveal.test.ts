@@ -9,8 +9,7 @@ spec('a page pushed again is not revealed on its previous frame', {
 }, async (t) => {
   const app = t.app;
   const platform = await runtimePlatform(app);
-  // Android slides a pushed page in itself; only its unanimated swaps go through the core reveal.
-  if (platform !== 'harmony') t.skip(`${platform} does not reveal a pushed page through the core`);
+  if (!['harmony', 'android'].includes(platform)) t.skip(`${platform} has no host-side reveal`);
   let reveals = -1;
   for (let round = 0; round < 3; round++) {
     await app.nav.to({ page: 'motion-lab' });
@@ -20,7 +19,10 @@ spec('a page pushed again is not revealed on its previous frame', {
     });
     reveals = shown.reveal.count;
     await t.attach(`push-${round}`, { reveal: shown.reveal, firstPresentAt: shown.firstPresentAt });
-    if (round > 0) expect(shown.reveal.lastReveal!.reason, `push ${round + 1}`).not.toBe('current');
+    const { reason, atMs } = shown.reveal.lastReveal!;
+    if (round > 0) expect(reason, `push ${round + 1}`).not.toBe('current');
+    // Revealed on a frame means on this instance's first one, never before it.
+    if (reason === 'frame') expect(atMs, `push ${round + 1}`).toBeGreaterThanOrEqual(shown.firstPresentAt!);
     await app.nav.back();
     await expect.poll(async () => (await app.nav.current()).name).toBe('view-lab');
   }

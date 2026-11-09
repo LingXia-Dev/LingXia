@@ -93,6 +93,7 @@ public final class GpuPage extends FrameLayout {
     public void captureReadyPreview(java.util.function.Consumer<android.graphics.Bitmap> completed) { content.captureFrameWhenReady(completed); }
     public void afterNextPresentation(java.util.function.Consumer<Boolean> completed) { content.afterNextPresentation(completed); }
     public void revealOnFirstFrame(Runnable then) { content.revealOnFirstFrame(then); }
+    public void afterCurrentFrame(java.util.function.Consumer<Boolean> completed) { content.afterCurrentFrame(completed); }
     public boolean hasLiveFrame() { return content.hasLiveFrame(); }
 
     /** {@code worker} keys the View worker; pages of one app session share it. */
