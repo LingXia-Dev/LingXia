@@ -352,11 +352,11 @@ export struct LxAppNavigation {
     }
   }
 
-  private handleKeyEventDispatch(event: KeyEvent): boolean {
-    if (event && event.keyCode === KEYCODE_BACK && event.type === KeyType.Down) {
-      return this.handleSystemBackPress();
+  // Bubbles up from the focused page, so every other key reaches the page first.
+  private handleKeyEvent(event: KeyEvent): void {
+    if (event && event.keyCode === KEYCODE_BACK && event.type === KeyType.Down && this.handleSystemBackPress()) {
+      event.stopPropagation();
     }
-    return false;
   }
 
   @Builder
@@ -775,7 +775,7 @@ export struct LxAppNavigation {
     .width('100%')
     .height('100%')
     .focusable(true)
-    .onKeyEventDispatch((event: KeyEvent): boolean => this.handleKeyEventDispatch(event))
+    .onKeyEvent((event: KeyEvent): void => this.handleKeyEvent(event))
   }
 
   @Builder
