@@ -1589,6 +1589,8 @@ impl<A: PlatformAdapter> Inner<A> {
             let page = self.lifecycle.load();
             main.telemetry.opened(self.adapter.now());
             main.snapshot = None;
+            // The surface still holds the previous instance's frame; it is not this page's.
+            main.presented_environment = None;
             main.forget_frames();
             main.dirty = true;
             main.caret.stop();
@@ -1651,6 +1653,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.telemetry.stats.abandon_reveal();
             let page = self.lifecycle.park();
             main.snapshot = None;
+            main.presented_environment = None;
             main.forget_frames();
             main.dirty = true;
             main.caret.stop();

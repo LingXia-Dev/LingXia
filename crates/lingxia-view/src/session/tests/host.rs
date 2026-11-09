@@ -1917,6 +1917,42 @@ fn a_frame_past_its_budget_is_dropped_without_recovery_and_counted() {
 }
 
 #[test]
+fn a_parked_or_reloaded_page_is_not_shown_on_its_old_frame() {
+    let worker = ViewWorker::spawn("test-reveal-reused").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = revealing_page(&platform, &worker);
+    platform.settle(&[&host]);
+    assert_eq!(last(&host), ["shown"]);
+    // Popped into the cache, then pushed again: the surface holds the old instance's frame.
+    host.set_visible(false);
+    host.park();
+    platform.settle(&[&host]);
+    host.set_visible(true);
+    host.reveal(true);
+    assert!(
+        revealed(&host).is_empty(),
+        "a parked page's old frame is not current"
+    );
+    platform.advance(crate::session::host::REVEAL_DEADLINE);
+    assert_eq!(
+        revealed(&host),
+        [true],
+        "shown at the deadline with its surface held"
+    );
+    // A reload of a shown page waits for its own first frame too.
+    host.load(source("function render(){return h('text',{},'again')}"));
+    host.reveal(true);
+    assert_eq!(revealed(&host), [true], "nothing new at once");
+    platform.settle(&[&host]);
+    assert_eq!(last(&host), ["again"]);
+    assert_eq!(
+        revealed(&host),
+        [true, false],
+        "the new frame releases the surface"
+    );
+}
+
+#[test]
 fn a_failed_reveal_does_not_charge_its_wait_to_the_next_load() {
     let worker = ViewWorker::spawn("test-reveal-failed-reload").unwrap();
     let platform = Platform::new(&[&worker]);
