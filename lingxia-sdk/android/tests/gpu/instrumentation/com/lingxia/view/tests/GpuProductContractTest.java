@@ -85,7 +85,7 @@ public class GpuProductContractTest {
         AtomicReference<Throwable> error=new AtomicReference<>();
         GpuView view=main(()->{
             GpuView candidate=new GpuView(activity.get(),source,"test:product-contract",new GpuView.Listener(){
-                public void onLoaded(){} public void onFrame(String metadata){} public void onError(Throwable e){error.set(e);}
+                public void onLoaded(){} public void onFrame(){} public void onError(Throwable e){error.set(e);}
             });
             activity.get().addContentView(candidate,new ViewGroup.LayoutParams(-1,-1));candidate.resume();return candidate;
         });

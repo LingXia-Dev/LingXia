@@ -273,8 +273,7 @@ impl<A: PlatformAdapter> Inner<A> {
         let presented = main
             .snapshot
             .as_ref()
-            .and_then(|snapshot| serde_json::from_str::<serde_json::Value>(&snapshot.json).ok())
-            .and_then(|frame| frame.get("metrics").cloned());
+            .map(|snapshot| snapshot.reported.clone());
         let presenter = |key: &str| {
             presented
                 .as_ref()

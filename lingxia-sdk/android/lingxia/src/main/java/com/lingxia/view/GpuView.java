@@ -82,6 +82,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     static native boolean nativeCanScrollVertically(long host, int direction);
     static native String nativeSemanticRoots(long host);
     static native String nativeSemanticNode(long host, int id);
+    static native String nativeFrame(long host);
     static native String nativeAutomate(long host, String request);
     static native void nativeMoveTextSelection(long host, String identity, int which, float x, float y);
     static native void nativeSetTextSelection(long host, String identity, int start, int end);
@@ -108,7 +109,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     }
     public interface Listener {
         void onLoaded();
-        void onFrame(String metadata);
+        /** A frame reached the screen; read it through the view when needed. */
+        void onFrame();
         void onError(Throwable error);
         default boolean onRestart(long generation) { return false; }
         /** The host chrome this page asks for changed; it arrives before the frame it colours. */
@@ -172,18 +174,39 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     private boolean hasSurfaceFrame;
     private final String worker;
     private long refusedInputLoggedAt = -1000;
-    // The presented frame as JSON, for the input method and its chrome.
+    // The presented frame: its generation each frame; its JSON pulled from the core and
+    // decoded only when something reads it, at most once per frame.
+    private long presentedGeneration = -1;
+    private long snapshotGeneration = -1;
     private JSONObject snapshot;
+    private boolean selectionShown;
     private JSONObject decodedFor;
     private GpuFrame.FrameSnapshot decoded;
     private GpuFrame.Node[] decodedNodes;
+    private static final JSONObject NO_FRAME = new JSONObject();
+    private boolean hasFrame() { return presentedGeneration >= 0; }
+    private JSONObject snapshot() {
+        if (!hasFrame() || destroyed) return null;
+        if (snapshotGeneration != presentedGeneration) {
+            String encoded = nativeFrame(host);
+            try { snapshot = encoded == null ? null : new JSONObject(encoded); }
+            catch (org.json.JSONException error) { throw new IllegalStateException("Invalid native frame", error); }
+            snapshotGeneration = presentedGeneration;
+        }
+        return snapshot;
+    }
+    /** The presented frame as JSON, serialized by the core on first read; null before one. */
+    public String presentedFrame() { return destroyed || !hasFrame() ? null : nativeFrame(host); }
+    private void forgetFrame() { presentedGeneration = -1; snapshotGeneration = -1; snapshot = null; }
     /** Typed view of the current frame snapshot, decoded once per frame. */
     private GpuFrame.FrameSnapshot frame() {
-        if (decodedFor != snapshot) { decodedFor = snapshot; decoded = new GpuFrame.FrameSnapshot(snapshot); decodedNodes = decoded.nodes(); }
+        JSONObject current = snapshot();
+        // The core may have dropped its frame (a reload) before this view heard of it.
+        if (current == null) current = NO_FRAME;
+        if (decodedFor != current) { decodedFor = current; decoded = new GpuFrame.FrameSnapshot(current); decodedNodes = decoded.nodes(); }
         return decoded;
     }
     private GpuFrame.Node[] frameNodes() { frame(); return decodedNodes; }
-    private String snapshotText;
     private float frameScale;
     // Bumped when the surface is replaced; a capture only completes against its own surface.
     private long surfaceEpoch;
@@ -261,7 +284,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 if (autofill == null) return;
                 if (autofilled >= 0) { autofill.notifyViewExited(surface, autofilled); autofilled = -1; }
                 JSONObject node = null;
-                GpuFrame.Node[] nodes = identity == null || snapshot == null ? null : frameNodes();
+                GpuFrame.Node[] nodes = identity == null || !hasFrame() ? null : frameNodes();
                 for (int i = 0; nodes != null && i < nodes.length; i++)
                     if (identity.equals(nodes[i].identity())) node = nodes[i].json;
                 if (node == null) return;
@@ -271,6 +294,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 bounds.offset(origin[0], origin[1]);
                 autofill.notifyViewEntered(surface, autofilled, bounds);
             }
+            @Override public JSONObject frame() { return snapshot(); }
             @Override public void caret(boolean eligible, String text, int anchor, int focus, int start, int end) {
                 if (!destroyed) nativeCaret(host, eligible, text != null, text == null ? "" : text, anchor, focus, start, end);
             }
@@ -281,14 +305,15 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             public void dismissed() { if (!destroyed) nativeTextMenuDismissed(host); }
         });
         selectionHandles = new GpuSelectionHandles(ime, new GpuSelectionHandles.Host() {
-            public JSONObject frame() { return snapshot; }
+            public JSONObject frame() { return snapshot(); }
             public float scale() { return frameScale; }
             public boolean busy() { return false; }
             public void dragging(boolean active) { if (!destroyed) nativeTextHandleDrag(host, active); }
         });
         feedback.getOverlay().add(selectionHandles);
         staticSelection = new GpuStaticSelection(surface, new GpuStaticSelection.Host() {
-            public JSONObject frame() { return snapshot; }
+            // Most frames carry no selection; those are not read at all.
+            public JSONObject frame() { return selectionShown ? snapshot() : null; }
             public float scale() { return frameScale; }
             public void move(String identity, int which, float x, float y) { if (!destroyed) nativeMoveTextSelection(host, identity, which, x, y); }
             public void dragging(boolean active) { if (!destroyed) nativeTextHandleDrag(host, active); }
@@ -327,7 +352,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     }
     /** A new module instance: drop chrome and frame state tied to the previous one. */
     private void prepareInstance() {
-        snapshot = null; snapshotText = null;
+        forgetFrame();
         inputReplies.clear();
         if (surface.getParent() != this) {
             removeAllViews();
@@ -478,7 +503,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         for (java.util.function.Consumer<Boolean> waiter : waiters) waiter.accept(success);
     }
     public void captureFrame(java.util.function.Consumer<Bitmap> callback) {
-        if (android.os.Build.VERSION.SDK_INT < 24 || destroyed || snapshot == null || !hasSurfaceFrame
+        if (android.os.Build.VERSION.SDK_INT < 24 || destroyed || !hasFrame() || !hasSurfaceFrame
                 || surface.getWidth() == 0 || surface.getHeight() == 0 || !surface.getHolder().getSurface().isValid()) {
             callback.accept(null); return;
         }
@@ -497,7 +522,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     }
     public void captureFrameWhenReady(java.util.function.Consumer<Bitmap> callback) {
         captureFrame(frame -> {
-            if (frame != null || destroyed || snapshot == null || !active) {
+            if (frame != null || destroyed || !hasFrame() || !active) {
                 callback.accept(frame);
                 return;
             }
@@ -517,7 +542,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     }
     public void park() {
         if (destroyed) return;
-        pause(); snapshot = null; snapshotText = null;
+        pause(); forgetFrame();
         nativePark(host);
     }
 
@@ -560,7 +585,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         bootstrapMessage = new TextView(getContext());
         bootstrapMessage.setText(com.lingxia.lxapp.R.string.lx_gpu_bootstrap_overdue);
         // The core picks the notice colours for the page's theme; before any frame, the light pair.
-        GpuFrame.FeedbackStyle style = snapshot == null ? null : frame().feedback();
+        GpuFrame.FeedbackStyle style = !hasFrame() ? null : frame().feedback();
         bootstrapMessage.setTextColor(style == null ? android.graphics.Color.BLACK : (int)style.noticeText());
         bootstrapMessage.setBackgroundColor(style == null ? android.graphics.Color.WHITE : (int)style.noticeBackground());
         int padding = Math.round(16 * getResources().getDisplayMetrics().density);
@@ -847,11 +872,14 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             event.getText().add(text);
             surface.send(event);
         }
-        @Override public void frame(String encoded, float scale) {
-            try { snapshot = new JSONObject(encoded); }
-            catch (org.json.JSONException error) { throw new IllegalStateException("Invalid native frame", error); }
-            snapshotText = encoded; frameScale = scale; hasSurfaceFrame = true;
-            ime.presented(snapshot, ime.capture());
+        @Override public void frame(long generation, String editor, boolean selection, float scale) {
+            presentedGeneration = generation; selectionShown = selection; frameScale = scale; hasSurfaceFrame = true;
+            JSONObject presented = new JSONObject();
+            try {
+                presented.put("generation", generation);
+                presented.put("nodes", editor == null ? new org.json.JSONArray() : new org.json.JSONArray().put(new JSONObject(editor)));
+            } catch (org.json.JSONException error) { throw new IllegalStateException("Invalid native frame", error); }
+            ime.presented(presented, ime.capture());
             staticSelection.setBounds(0, 0, feedback.getWidth(), feedback.getHeight());
             staticSelection.update();
             updateCaretActivity();
@@ -889,12 +917,12 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         @Override public void topLayer(boolean modal) { listener.onTopLayer(modal); }
         @Override public int editText(int index, String text, int start, int end) {
             JSONObject node = surface.node(index);
-            if (node == null || snapshot == null) return GpuIme.EDIT_FAILED;
+            if (node == null || !hasFrame()) return GpuIme.EDIT_FAILED;
             return ime.accessibilityEdit(node, GpuView.this.frame().generation(), text, start, end);
         }
         @Override public void loaded() { if (listener != null) listener.onLoaded(); }
         @Override public void presented() {
-            if (listener != null && snapshotText != null) listener.onFrame(snapshotText);
+            if (listener != null && hasFrame()) listener.onFrame();
             finishPresentation(true);
         }
         @Override public boolean restart(long connection) { return listener != null && listener.onRestart(connection); }
@@ -979,13 +1007,13 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             focusOverlay.setColor(Color.TRANSPARENT);
         }
         JSONObject node(int index) {
-            GpuFrame.Node[] nodes = snapshot == null ? null : frameNodes();
+            GpuFrame.Node[] nodes = !hasFrame() ? null : frameNodes();
             return nodes == null || index < 0 || index >= nodes.length ? null : nodes[index].json;
         }
         /** Autofill addresses an editor by a virtual id stable across frames. */
         int autofillId(JSONObject node) { return String.valueOf(new GpuFrame.Node(node).identity()).hashCode() & 0x7fffffff; }
         JSONObject editor(int autofillId) {
-            GpuFrame.Node[] nodes = snapshot == null ? null : frameNodes();
+            GpuFrame.Node[] nodes = !hasFrame() ? null : frameNodes();
             for (int i = 0; nodes != null && i < nodes.length; i++)
                 if (nodes[i].input() != null && autofillId(nodes[i].json) == autofillId) return nodes[i].json;
             return null;
@@ -993,7 +1021,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         @Override public void onProvideAutofillVirtualStructure(android.view.ViewStructure structure, int flags) {
             if (android.os.Build.VERSION.SDK_INT < 26) return;
             structure.setClassName(getClass().getName());
-            GpuFrame.Node[] nodes = snapshot == null || !active ? null : frameNodes();
+            GpuFrame.Node[] nodes = !hasFrame() || !active ? null : frameNodes();
             java.util.List<JSONObject> editors = new java.util.ArrayList<>();
             for (int i = 0; nodes != null && i < nodes.length; i++)
                 if (GpuIme.editable(nodes[i].json)) editors.add(nodes[i].json);
@@ -1021,7 +1049,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             }
         }
         @Override public void autofill(android.util.SparseArray<android.view.autofill.AutofillValue> values) {
-            if (android.os.Build.VERSION.SDK_INT < 26 || destroyed || snapshot == null) return;
+            if (android.os.Build.VERSION.SDK_INT < 26 || destroyed || !hasFrame()) return;
             for (int i = 0; i < values.size(); i++) {
                 android.view.autofill.AutofillValue value = values.valueAt(i);
                 JSONObject node = editor(values.keyAt(i));
@@ -1036,7 +1064,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         }
         /** The frame's `feedback` style, chosen by the core for the page's theme. */
         private GpuFrame.FeedbackStyle feedbackStyle() {
-            GpuFrame.FeedbackStyle style = snapshot == null ? null : frame().feedback();
+            GpuFrame.FeedbackStyle style = !hasFrame() ? null : frame().feedback();
             return style == null ? new GpuFrame.FeedbackStyle(new JSONObject()) : style;
         }
         void showPress(int index) {

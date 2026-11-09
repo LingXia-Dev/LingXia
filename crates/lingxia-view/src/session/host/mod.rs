@@ -65,9 +65,27 @@ pub struct FrameSnapshot {
     /// The Logic state revision the frame was built from.
     pub data_revision: u64,
     pub feedback: crate::interaction::chrome::FeedbackStyle,
-    /// `{generation, nodes, images, metrics, feedback}` for adapters that marshal the
-    /// frame; `feedback` is the [`crate::interaction::chrome::FeedbackStyle`] to draw.
-    pub json: String,
+    /// The metrics as reported, with the presenter's own counters.
+    pub reported: serde_json::Value,
+    json: std::sync::OnceLock<String>,
+}
+
+impl FrameSnapshot {
+    /// `{nodes, generation, images, metrics, feedback}`, serialized on first use: most frames
+    /// are never read as text.
+    pub fn json(&self) -> &str {
+        self.json.get_or_init(|| {
+            let nodes = serde_json::to_string(&self.frame.nodes).unwrap_or_else(|_| "[]".into());
+            let rest = serde_json::json!({
+                "generation": self.generation,
+                "images": self.images,
+                "metrics": self.reported,
+                "feedback": self.feedback,
+            })
+            .to_string();
+            format!("{{\"nodes\":{nodes},{}", &rest[1..])
+        })
+    }
 }
 
 /// How one presented frame was produced, for diagnostics.

@@ -40,7 +40,9 @@ public class GpuNativeLoadTest {
         public void announceSelection(int id, boolean secure, String text, int start, int end) { }
         public void announceClicked() { events.add("announce-clicked"); }
         public void announceLive(int id, String text, boolean assertive) { events.add("live:" + (assertive ? "assertive:" : "polite:") + text); }
-        public void frame(String snapshot, float scale) { frames.add(snapshot); }
+        // Frames are pulled as the view does; the last host pumped presented this one.
+        long host;
+        public void frame(long generation, String editor, boolean selection, float scale) { frames.add(GpuView.nativeFrame(host)); }
         public void imeFocus(int node, long commit, boolean touch, float x, float y, boolean word) { }
         public void imeActivation() { }
         public void imeReset() { }
@@ -78,6 +80,7 @@ public class GpuNativeLoadTest {
 
         /** Run posted work and vsyncs until {@code done} holds. */
         void pump(long host, java.util.function.BooleanSupplier done) throws InterruptedException {
+            this.host = host;
             long deadline = System.currentTimeMillis() + 20000;
             while (!done.getAsBoolean()) {
                 if (failure != null) fail(failure);

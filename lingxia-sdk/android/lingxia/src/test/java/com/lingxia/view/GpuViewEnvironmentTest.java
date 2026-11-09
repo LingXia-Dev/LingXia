@@ -205,7 +205,7 @@ public class GpuViewEnvironmentTest {
         GpuView view = new GpuView(RuntimeEnvironment.getApplication(), GpuNative.module("function render(){return h('text',{},'a')}"),
             "test:environment", new GpuView.Listener() {
                 public void onLoaded() { }
-                public void onFrame(String metadata) { }
+                public void onFrame() { }
                 public void onError(Throwable error) { errors[0]++; }
             });
         GpuNative.settle();

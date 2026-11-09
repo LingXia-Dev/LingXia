@@ -79,7 +79,9 @@ public final class SmokeActivity extends Activity {
                 pages[index] = new GpuView(this, source, "smoke", new GpuView.Listener() {
                     public void onLoaded() { }
                     public void onError(Throwable error) { android.util.Log.e("LingXia.UI", "Page " + page, error); }
-                    public void onFrame(String metadata) {
+                    public void onFrame() {
+                        String metadata = pages[page].presentedFrame();
+                        if (metadata == null) return;
                         io.execute(() -> {
                             try {
                                 JSONObject snapshot = new JSONObject(metadata); snapshot.put("page", page);

@@ -1,5 +1,6 @@
 //! Platform-neutral input, editor and selection policy.
 pub mod chrome;
+pub(crate) mod content_hash;
 pub mod drag;
 #[cfg(test)]
 mod drag_tests;

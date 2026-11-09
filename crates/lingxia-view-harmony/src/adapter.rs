@@ -626,13 +626,7 @@ impl HostEvents for HarmonyAdapter {
             }
         }
         if log::log_enabled!(target: "lingxia_view", log::Level::Debug) {
-            // Borrow the metrics text instead of building the whole frame as a value.
-            let metrics = serde_json::from_str::<
-                std::collections::HashMap<&str, &serde_json::value::RawValue>,
-            >(&frame.json)
-            .ok()
-            .and_then(|snapshot| snapshot.get("metrics").map(|raw| raw.get().to_owned()))
-            .unwrap_or_default();
+            let metrics = &frame.reported;
             log::debug!(
                 target: "lingxia_view",
                 "present token={} generation={} size={}x{} workerMs={} nodes={} metrics={metrics}",

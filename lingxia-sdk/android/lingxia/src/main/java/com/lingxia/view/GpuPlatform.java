@@ -24,8 +24,8 @@ interface GpuPlatform {
     /** A live region's text changed; assertive interrupts speech. */
     void announceLive(int id, String text, boolean assertive);
 
-    /** The presented frame snapshot, before its effects run. */
-    void frame(String snapshot, float scale);
+    /** A frame was presented, before its effects run: its focused editor's node, if any, and whether it shows a text selection. */
+    void frame(long generation, String editor, boolean selection, float scale);
     void imeFocus(int node, long commit, boolean touch, float x, float y, boolean word);
     void imeActivation();
     void imeReset();

@@ -34,7 +34,7 @@ public final class GpuPage extends FrameLayout {
                 public void onLoaded() {
                     if (!reported) { reported = true; created(token, GpuPage.this, null); }
                 }
-                public void onFrame(String metadata) {
+                public void onFrame() {
                     if (frameReported) return;
                     frameReported = presented(token, content.getConnectionGeneration());
                     if (!frameReported && !frameWaitLogged) {

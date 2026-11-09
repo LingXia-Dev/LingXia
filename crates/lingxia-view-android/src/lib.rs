@@ -179,6 +179,7 @@ pub fn register_natives(env: &mut Env, class: &JClass) -> jni::errors::Result<()
             "(JI)Ljava/lang/String;",
             semantic_node
         ),
+        method!("nativeFrame", "(J)Ljava/lang/String;", frame_json),
         method!(
             "nativeAutomate",
             "(JLjava/lang/String;)Ljava/lang/String;",
@@ -790,6 +791,18 @@ extern "system" fn semantic_node<'a>(
                 .unwrap_or_default()
         });
         Ok(env.new_string(node.to_string())?)
+    })
+}
+
+/// The presented frame as JSON, serialized once however many readers ask; null before one.
+extern "system" fn frame_json<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+) -> JString<'a> {
+    run(&mut env, |env| match host(handle)?.snapshot() {
+        Some(snapshot) => Ok(env.new_string(snapshot.json())?),
+        None => Ok(JString::null()),
     })
 }
 

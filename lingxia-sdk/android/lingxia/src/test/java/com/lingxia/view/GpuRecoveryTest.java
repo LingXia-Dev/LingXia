@@ -60,7 +60,7 @@ public class GpuRecoveryTest {
         AtomicInteger errors = new AtomicInteger(), loads = new AtomicInteger();
         GpuView view = new GpuView(RuntimeEnvironment.getApplication(), "throw Error('broken module')", "test:recovery", new GpuView.Listener() {
             public void onLoaded() { loads.incrementAndGet(); }
-            public void onFrame(String metadata) { }
+            public void onFrame() { }
             public void onError(Throwable error) { errors.incrementAndGet(); }
         });
         android.view.View surface = view.getChildAt(0), feedback = view.getChildAt(1);

@@ -621,13 +621,34 @@ impl AccessibilitySink for AndroidAdapter {
 impl InputMethod for AndroidAdapter {
     fn reconcile(&self, frame: &FrameSnapshot) {
         let started = Instant::now();
+        // Only the focused editor crosses every frame; the rest is pulled when read.
+        let nodes = &frame.frame.nodes;
+        let editor = nodes
+            .iter()
+            .find(|node| {
+                node.input
+                    .as_ref()
+                    .is_some_and(|input| input.enabled && input.edit_token.is_some_and(|t| t > 0))
+            })
+            .and_then(|node| serde_json::to_string(node).ok());
+        let selection = nodes
+            .iter()
+            .any(|node| node.input.is_none() && node.text_selection.is_some());
         self.java(|env, platform| {
-            let snapshot = env.new_string(&frame.json)?;
+            let editor = match &editor {
+                Some(editor) => JObject::from(env.new_string(editor)?),
+                None => JObject::null(),
+            };
             env.call_method(
                 platform,
                 jni_str!("frame"),
-                jni_sig!("(Ljava/lang/String;F)V"),
-                &[JValue::Object(&snapshot), JValue::Float(frame.scale)],
+                jni_sig!("(JLjava/lang/String;ZF)V"),
+                &[
+                    JValue::Long(frame.generation.get() as i64),
+                    JValue::Object(&editor),
+                    JValue::Bool(selection),
+                    JValue::Float(frame.scale),
+                ],
             )?;
             Ok(())
         });

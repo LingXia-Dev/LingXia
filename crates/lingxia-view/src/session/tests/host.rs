@@ -303,7 +303,7 @@ impl HostEvents for Fake {
         self.main().loaded += 1;
     }
     fn presented(&self, frame: &FrameSnapshot, _: &FrameTiming) {
-        let json: serde_json::Value = serde_json::from_str(&frame.json).unwrap();
+        let json: serde_json::Value = serde_json::from_str(frame.json()).unwrap();
         self.main().feedback.push(json["feedback"].clone());
         self.main().shown.push(frame.generation);
     }
@@ -1531,7 +1531,7 @@ fn run_frames(platform: &Platform, host: &ViewHost<Fake>, frames: u32) {
 
 fn animation_frames(host: &ViewHost<Fake>) -> u64 {
     let snapshot = host.snapshot().unwrap();
-    let json: serde_json::Value = serde_json::from_str(&snapshot.json).unwrap();
+    let json: serde_json::Value = serde_json::from_str(snapshot.json()).unwrap();
     json["metrics"]["animationFrames"].as_u64().unwrap()
 }
 
@@ -2253,7 +2253,8 @@ fn fill_and_pick(dev: bool, swap: bool, logic: bool) {
         platform.settle(&[&host]);
         serde_json::from_str(&rx.recv_timeout(Duration::from_secs(5)).unwrap().unwrap()).unwrap()
     };
-    let snapshot: serde_json::Value = serde_json::from_str(&host.snapshot().unwrap().json).unwrap();
+    let snapshot: serde_json::Value =
+        serde_json::from_str(host.snapshot().unwrap().json()).unwrap();
     let node = |test_id: &str| {
         snapshot["nodes"]
             .as_array()
@@ -2276,7 +2277,7 @@ fn fill_and_pick(dev: bool, swap: bool, logic: bool) {
     host.request_frame();
     platform.settle(&[&host]);
     let generation: serde_json::Value = serde_json::from_str::<serde_json::Value>(
-        &host.snapshot().unwrap().json,
+        &host.snapshot().unwrap().json(),
     )
     .unwrap()["generation"]
         .clone();
@@ -2626,7 +2627,8 @@ fn the_frame_says_how_to_draw_press_and_focus_feedback_for_its_theme() {
     );
     host.set_visible(true);
     platform.settle(&[&host]);
-    let snapshot: serde_json::Value = serde_json::from_str(&host.snapshot().unwrap().json).unwrap();
+    let snapshot: serde_json::Value =
+        serde_json::from_str(host.snapshot().unwrap().json()).unwrap();
     let feedback = |dark| FeedbackStyle::for_palette(&crate::theme::Palette::builtin(dark), dark);
     assert_eq!(
         snapshot["feedback"],
@@ -3328,7 +3330,7 @@ fn a_single_target_presenter_is_named_in_the_log_and_falls_back_to_one_frame_at_
         .collect();
     assert_eq!(warnings.len(), 1, "warned once: {warnings:?}");
     assert!(warnings[0].contains("Presenter::prepare must keep each prepared frame presentable"));
-    let json: serde_json::Value = serde_json::from_str(&host.snapshot().unwrap().json).unwrap();
+    let json: serde_json::Value = serde_json::from_str(host.snapshot().unwrap().json()).unwrap();
     assert_eq!(json["metrics"]["presenterSingleTarget"], true);
     assert!(
         rate >= 26,
@@ -3398,7 +3400,8 @@ fn every_message_adapters_receive_matches_the_frame_schema() {
     let host = platform.host(&worker, &source(page), false);
     host.set_visible(true);
     platform.settle(&[&host]);
-    let snapshot: serde_json::Value = serde_json::from_str(&host.snapshot().unwrap().json).unwrap();
+    let snapshot: serde_json::Value =
+        serde_json::from_str(host.snapshot().unwrap().json()).unwrap();
     assert_eq!(conform("snapshot", &snapshot), Vec::<String>::new());
     let nodes: Vec<serde_json::Value> = host.semantics(|projection, _| {
         let projection = projection.unwrap();
@@ -3477,7 +3480,7 @@ fn every_message_adapters_receive_matches_the_frame_schema() {
     );
     // Input-protocol replies, the copy reply, semantic roots and the text menu, as adapters get them.
     platform.settle(&[&host]);
-    let current: serde_json::Value = serde_json::from_str(&host.snapshot().unwrap().json).unwrap();
+    let current: serde_json::Value = serde_json::from_str(host.snapshot().unwrap().json()).unwrap();
     let node = |test_id: &str| {
         current["nodes"]
             .as_array()
@@ -3517,7 +3520,7 @@ fn every_message_adapters_receive_matches_the_frame_schema() {
     // The adapter renders when the edit reply asks for it.
     host.request_frame();
     platform.settle(&[&host]);
-    let generation = serde_json::from_str::<serde_json::Value>(&host.snapshot().unwrap().json)
+    let generation = serde_json::from_str::<serde_json::Value>(&host.snapshot().unwrap().json())
         .unwrap()["generation"]
         .clone();
     input.push(ask(
@@ -3917,7 +3920,7 @@ fn an_activation_whose_control_went_away_before_dispatch_is_reported_not_silent(
     );
     host.request_frame();
     platform.settle(&[&host]);
-    let json: serde_json::Value = serde_json::from_str(&host.snapshot().unwrap().json).unwrap();
+    let json: serde_json::Value = serde_json::from_str(host.snapshot().unwrap().json()).unwrap();
     assert_eq!(json["metrics"]["droppedActivations"], 1);
 }
 
@@ -3944,7 +3947,7 @@ fn quick_taps_on_a_changing_toggle_during_an_animation_are_never_dropped() {
         dropped_warnings(&host)
     );
     assert_eq!(last(&host), ["Count 100"]);
-    let json: serde_json::Value = serde_json::from_str(&host.snapshot().unwrap().json).unwrap();
+    let json: serde_json::Value = serde_json::from_str(host.snapshot().unwrap().json()).unwrap();
     assert_eq!(json["metrics"]["droppedActivations"], 0);
 }
 
@@ -3982,7 +3985,7 @@ fn every_tap_changes_state_exactly_once_while_the_presenter_declines_frames() {
         "{:?}",
         dropped_warnings(&host)
     );
-    let json: serde_json::Value = serde_json::from_str(&host.snapshot().unwrap().json).unwrap();
+    let json: serde_json::Value = serde_json::from_str(host.snapshot().unwrap().json()).unwrap();
     assert_eq!(json["metrics"]["activations"], 100);
     assert_eq!(json["metrics"]["droppedActivations"], 0);
     let clicks = host
@@ -4070,7 +4073,7 @@ fn an_editor_selection_offers_copy_cut_and_paste_to_assistive_tech() {
     };
     let select = |test_id: &str, anchor: u32, focus: u32| -> u32 {
         let snapshot: serde_json::Value =
-            serde_json::from_str(&host.snapshot().unwrap().json).unwrap();
+            serde_json::from_str(host.snapshot().unwrap().json()).unwrap();
         let node = snapshot["nodes"]
             .as_array()
             .unwrap()
@@ -4207,7 +4210,7 @@ fn a_pressable_row_holds_its_own_controls() {
     // A real press at the center of a node, in device pixels.
     let press = |id: &str| {
         let snapshot: serde_json::Value =
-            serde_json::from_str(&host.snapshot().unwrap().json).unwrap();
+            serde_json::from_str(host.snapshot().unwrap().json()).unwrap();
         let node = snapshot["nodes"]
             .as_array()
             .unwrap()
@@ -4220,7 +4223,8 @@ fn a_pressable_row_holds_its_own_controls() {
         platform.settle(&[&host]);
     };
     // Only the innermost control shows the press.
-    let snapshot: serde_json::Value = serde_json::from_str(&host.snapshot().unwrap().json).unwrap();
+    let snapshot: serde_json::Value =
+        serde_json::from_str(host.snapshot().unwrap().json()).unwrap();
     let nodes = snapshot["nodes"].as_array().unwrap().clone();
     let index = |id: &str| nodes.iter().position(|n| n["test_id"] == id).unwrap();
     let b = |i: usize| nodes[index("wifi")]["bounds"][i].as_f64().unwrap() as f32;

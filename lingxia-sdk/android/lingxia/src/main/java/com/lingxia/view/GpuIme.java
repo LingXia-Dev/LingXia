@@ -24,6 +24,8 @@ final class GpuIme {
         default void caret(boolean eligible, String text, int anchor, int focus, int compositionStart, int compositionEnd) { }
         /** The connected editor changed (null when none), for autofill. */
         default void editorChanged(String identity) { }
+        /** The whole presented frame, read when an action moves to another editor; null: the one {@link #presented} got. */
+        default JSONObject frame() { return null; }
     }
     static final class Ticket {
         final long epoch, revision;
@@ -41,7 +43,7 @@ final class GpuIme {
     private JSONObject config;
     /** The core's keyboard configuration for the connected editor (`input.ime`). */
     private GpuFrame.Ime ime() { GpuFrame.Ime ime=config == null ? null : new GpuFrame.Input(config).ime(); return ime == null ? new GpuFrame.Ime(new JSONObject()) : ime; }
-    /** The last presented frame, to find the editor a NEXT/PREVIOUS action moved to. */
+    /** The last frame {@link #presented} got; a live view passes only its focused editor. */
     private JSONObject frame;
     private boolean pendingFocus;
     /** The edit token this side last blurred: a frame drawn before the core saw the blur still shows it focused. */
@@ -219,7 +221,9 @@ final class GpuIme {
         return kind == null ? "" : kind;
     }
     private JSONObject node(String identity) {
-        GpuFrame.Node[] nodes=frame == null ? null : new GpuFrame.FrameSnapshot(frame).nodes();
+        JSONObject whole=host.frame();
+        if (whole == null) whole=frame;
+        GpuFrame.Node[] nodes=whole == null ? null : new GpuFrame.FrameSnapshot(whole).nodes();
         for (int i=0; nodes != null && i<nodes.length; i++)
             if (identity.equals(nodes[i].identity())) return nodes[i].json;
         return null;
