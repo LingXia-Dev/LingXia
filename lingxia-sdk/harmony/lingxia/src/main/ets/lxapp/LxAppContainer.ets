@@ -20,7 +20,7 @@ import {
 } from './WebViewBridge';
 import { LingXiaWebView } from './LingXiaWebView';
 import { GpuPage } from '../view/GpuPage';
-import { GpuPageModel, GpuPages } from '../view/GpuPages';
+import { GpuChrome, GpuPageModel, GpuPages } from '../view/GpuPages';
 import { NavigationBar, NavigationBarState, NAVBAR_TOTAL_HEIGHT, isColorDark } from './NavigationBar';
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';
 import { TabBar, tabBarExtraBottomHeight } from './TabBar';
@@ -179,13 +179,20 @@ export struct LxAppContainer {
   private gpuCreated = (page: GpuPageModel): void => this.handleGpuPage('create', page);
   private gpuDisposed = (page: GpuPageModel): void => {
     this.gpuTopLayers.delete(page.token);
+    this.gpuChromes.delete(page.token);
     this.handleGpuPage('destroy', page);
   };
-  /** Bumped when a GPU page of this app opens or closes its top layer; reads of it follow. */
+  /** Bumped when a GPU page of this app opens or closes its top layer or changes its chrome; reads of them follow. */
   @State private gpuChangeKey: number = 0
   private gpuTopLayers: Set<number> = new Set();
+  private gpuChromes: Map<number, GpuChrome | null> = new Map();
   private gpuChanged = (page: GpuPageModel): void => {
-    if (page.appId !== this.appId || this.gpuTopLayers.has(page.token) === page.topLayer) {
+    if (page.appId !== this.appId) {
+      return;
+    }
+    const layered = this.gpuTopLayers.has(page.token) !== page.topLayer;
+    const repainted = (this.gpuChromes.get(page.token) ?? null) !== page.chrome;
+    if (!layered && !repainted) {
       return;
     }
     if (page.topLayer) {
@@ -193,7 +200,11 @@ export struct LxAppContainer {
     } else {
       this.gpuTopLayers.delete(page.token);
     }
+    this.gpuChromes.set(page.token, page.chrome);
     this.gpuChangeKey++;
+    if (repainted && page.webTag === this.currentWebTag) {
+      this.applyStatusBarContentColor();
+    }
   };
   @State presentationOverlayWebTag: string = '' // WebView tag currently displayed in presentation (may include #instance suffix)
   @State private presentationPreviousWebTag: string = '' // Previously focused WebView before presentation took focus
@@ -1160,6 +1171,8 @@ export struct LxAppContainer {
       currentPath: this.path,
       translateX: this.navbarTranslateX,
       statusBarHeight: this.getChromeStatusInset(),
+      themeBar: this.currentGpuChrome()?.bar ?? 0,
+      themeContent: this.currentGpuChrome()?.content ?? 0,
       onNavigationClick: (appId: string, isHomeButton: boolean): boolean => {
         this.handleNavigationBack(isHomeButton);
         return true;
@@ -1625,8 +1638,11 @@ export struct LxAppContainer {
       return;
     }
     const config = this.pageConfig;
+    const chrome = this.currentGpuChrome();
     let lightGlyphs: boolean;
-    if (config && config.showNavbar) {
+    if (chrome !== null) {
+      lightGlyphs = chrome.dark;
+    } else if (config && config.showNavbar) {
       lightGlyphs = !isColorDark(config.navigationBarForegroundColor || 0xFF000000);
     } else {
       lightGlyphs = this.appearanceDark;
@@ -1937,6 +1953,12 @@ export struct LxAppContainer {
   }
 
   /** The GPU page on screen has a dialog open: the page then lies over the host bars, scrim and all. */
+  /** The palette chrome of the shown GPU page; null on a WebView page, which keeps its config. */
+  private currentGpuChrome(): GpuChrome | null {
+    void this.gpuChangeKey;
+    return this.gpuPages.get(this.currentWebTag)?.chrome ?? null;
+  }
+
   private isGpuTopLayer(): boolean {
     void this.gpuChangeKey;
     return this.gpuPages.get(this.currentWebTag)?.topLayer === true;

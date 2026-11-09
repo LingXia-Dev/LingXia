@@ -97,6 +97,9 @@ export struct NavigationBar {
   @Prop translateX: number = 0;
   @Prop statusBarHeight: number = 44; // Add status bar height prop
   @Prop forceShowButtons: boolean = false; // Force show buttons even when navbar is hidden
+  /** A GPU page's palette bar and content colours (ARGB) over the page config's; 0 keeps the config. */
+  @Prop themeBar: number = 0;
+  @Prop themeContent: number = 0;
 
   onNavigationClick?: (appId: string, isHomeButton: boolean) => boolean;
 
@@ -123,7 +126,7 @@ export struct NavigationBar {
           if (this.shouldShowButtons()) {
             NavigationButton({
               isBackButton: this.config.showBackButton,
-              color: this.config.navigationBarForegroundColor,
+              color: this.themeContent || this.config.navigationBarForegroundColor,
               onPressed: () => {
                 const isBackButton = this.config.showBackButton;
                 const isHomeButton = !isBackButton;
@@ -216,7 +219,7 @@ export struct NavigationBar {
     if (!this.config.showNavbar) {
       return false;
     }
-    const bgColor = this.config.navigationBarBackgroundColor || 0xFFFFFFFF;
+    const bgColor = this.themeBar || this.config.navigationBarBackgroundColor || 0xFFFFFFFF;
     const alpha = (bgColor >>> 24) & 0xFF;
     return alpha > 0; // Only show background if alpha > 0
   }
@@ -225,14 +228,14 @@ export struct NavigationBar {
    * Get background color
    */
   private getBackgroundColor(): ResourceColor {
-    return toResourceColor(this.config.navigationBarBackgroundColor || 0xFFFFFFFF);
+    return toResourceColor(this.themeBar || this.config.navigationBarBackgroundColor || 0xFFFFFFFF);
   }
 
   /**
    * Get text color: explicit style wins, unset contrasts with the background
    */
   private getTextColor(): ResourceColor {
-    return toResourceColor(this.config.navigationBarForegroundColor);
+    return toResourceColor(this.themeContent || this.config.navigationBarForegroundColor);
   }
 }
 
