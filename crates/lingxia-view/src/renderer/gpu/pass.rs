@@ -14,6 +14,7 @@ pub(crate) struct SceneRenderer {
     state: Arc<Mutex<State>>,
     /// Render calls so far: the glyph atlas ages its entries by them.
     renders: Arc<AtomicU64>,
+    pipelines: Option<Arc<super::pipeline_cache::PipelineCache>>,
 }
 
 /// Glyph atlas pages: 4 MB each at RGBA8, made on demand; a glyph that finds no room is
@@ -28,12 +29,13 @@ const ATLAS: vello_common::multi_atlas::AtlasConfig = vello_common::multi_atlas:
 
 fn created<'a>(
     state: &'a mut State,
+    pipelines: Option<&super::pipeline_cache::PipelineCache>,
     device: &wgpu::Device,
     width: u16,
     height: u16,
 ) -> &'a mut (vello_gpu::Renderer, vello_gpu::Resources) {
     state.get_or_insert_with(|| {
-        vello_gpu::Renderer::new_with(
+        let created = vello_gpu::Renderer::new_with_cache(
             device,
             &vello_gpu::RenderTargetConfig {
                 format: wgpu::TextureFormat::Rgba8Unorm,
@@ -47,7 +49,12 @@ fn created<'a>(
                 },
                 ..Default::default()
             },
-        )
+            pipelines.map(super::pipeline_cache::PipelineCache::get),
+        );
+        if let Some(pipelines) = pipelines {
+            pipelines.save();
+        }
+        created
     })
 }
 
@@ -59,6 +66,13 @@ pub(crate) struct Target<'a> {
 }
 
 impl SceneRenderer {
+    pub(crate) fn with_cache(pipelines: Option<super::pipeline_cache::PipelineCache>) -> Self {
+        Self {
+            pipelines: pipelines.map(Arc::new),
+            ..Default::default()
+        }
+    }
+
     /// The renderer's resources (its glyph atlas) while a scene records against them.
     pub(crate) fn with_resources<R>(
         &self,
@@ -71,7 +85,9 @@ impl SceneRenderer {
             .state
             .lock()
             .map_err(|_| "UI_SURFACE: poisoned scene renderer")?;
-        Ok(record(&mut created(&mut state, device, width, height).1))
+        Ok(record(
+            &mut created(&mut state, self.pipelines.as_deref(), device, width, height).1,
+        ))
     }
 
     /// Builds the renderer and its pipelines ahead of the first scene.
@@ -80,7 +96,7 @@ impl SceneRenderer {
             .state
             .lock()
             .map_err(|_| "UI_SURFACE: poisoned scene renderer")?;
-        created(&mut state, device, 256, 256);
+        created(&mut state, self.pipelines.as_deref(), device, 256, 256);
         Ok(())
     }
 
@@ -103,8 +119,13 @@ impl SceneRenderer {
             .state
             .lock()
             .map_err(|_| "UI_SURFACE: poisoned scene renderer")?;
-        let (renderer, resources) =
-            created(&mut state, device, target.size.width, target.size.height);
+        let (renderer, resources) = created(
+            &mut state,
+            self.pipelines.as_deref(),
+            device,
+            target.size.width,
+            target.size.height,
+        );
         self.renders.fetch_add(1, Ordering::Relaxed);
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("LingXia sparse pass"),
