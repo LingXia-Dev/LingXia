@@ -21,6 +21,7 @@ import type {
   PageBackdropCache,
   PageCompositeStats,
   PageStageMedians,
+  PageTransition,
   LxAppDriver,
   ModalAnswer,
   ModalRecord,
@@ -977,6 +978,8 @@ export interface TestMetrics extends PageFramePacing {
   backdropCache: PageBackdropCache | null;
   /** Median preparation cost by stage of the frames in the window; `null` from an older host. */
   stagesMs: PageStageMedians | null;
+  /** The host's latest push or pop slide of this page; `null` before one. */
+  transition: PageTransition | null;
 }
 
 /** A checkpoint of the app's isolated data. */

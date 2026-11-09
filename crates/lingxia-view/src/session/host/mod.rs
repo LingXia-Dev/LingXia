@@ -42,6 +42,7 @@ pub use super::input_protocol::MAX_REQUEST_BYTES as MAX_INPUT_REQUEST_BYTES;
 pub use bridge::BridgeUpdate;
 pub(crate) use frame_stats::SPARK as HUD_SPARK;
 pub use reveal::{FIRST_FRAME_WATCHDOG, REVEAL_DEADLINE};
+pub use telemetry::TransitionEvent;
 pub use text_menu::{MenuAction, MenuTarget, TextMenu};
 pub use worker::ViewWorker;
 
@@ -645,6 +646,12 @@ impl<A: PlatformAdapter> ViewHost<A> {
     /// reveal waits while it is stopped.
     pub fn window_visible(&self, visible: bool) {
         self.inner.window_visible(visible);
+    }
+
+    /// The platform slides this page in on a push or pop; `frame_metrics` reports the slide.
+    pub fn transition(&self, event: TransitionEvent) {
+        let now = self.inner.adapter.now();
+        self.inner.main().telemetry.transition(now, event);
     }
 
     /// Other windows cover this one completely, or no longer do; its surface stays live.

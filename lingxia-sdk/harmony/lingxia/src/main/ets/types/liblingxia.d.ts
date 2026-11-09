@@ -628,6 +628,10 @@ declare module 'liblingxia.so' {
   export function gpuPageWindowVisible(token: number, visible: boolean): void;
   export function gpuPageWindowFocus(token: number, focused: boolean): void;
   export function gpuPageReveal(token: number, surfaceHoldsFrame: boolean): void;
+  /** The container's push or pop slide of the page: start, each rendered frame with how far it has moved, end. */
+  export function gpuPageTransitionStart(token: number, pop: boolean): void;
+  export function gpuPageTransitionFrame(token: number, at: number): void;
+  export function gpuPageTransitionEnd(token: number): void;
   /** The recovery panel's button: runs the action the page's last failure offered. */
   export function gpuPageRetry(token: number): void;
   /** Back: true when the page closed its own top layer. */

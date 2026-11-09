@@ -1103,6 +1103,7 @@ export class LiveFixture implements Fixture {
           composite: frame.composite ?? null,
           backdropCache: frame.backdropCache ?? null,
           stagesMs: frame.stagesMs ?? null,
+          transition: frame.transition ?? null,
         } satisfies TestMetrics;
       }),
       hud: (on: boolean, options?: { page?: string }) => this.act("app.hud", String(on), async () => {

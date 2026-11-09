@@ -2,7 +2,7 @@
 //! node; ArkTS owns the `GpuPage` component (a `ContentSlot` plus chrome) by token.
 use crate::gpu_page::{self, AutomationReply, Creation, NativeFactory, NativePage, Token};
 use lingxia_view_harmony::lingxia_view::platform::{DeviceFacts, HostChrome};
-use lingxia_view_harmony::lingxia_view::session::host::Failure;
+use lingxia_view_harmony::lingxia_view::session::host::{Failure, TransitionEvent};
 use lingxia_view_harmony::lingxia_view::session::lifecycle::ConnectionTicket;
 use lingxia_view_harmony::{Page, Shell};
 use lxapp::{GpuViewGeneration, LxAppError, PageInstance};
@@ -465,6 +465,29 @@ pub fn gpu_page_window_focus(token: i64, focused: bool) {
 pub fn gpu_page_reveal(token: i64, surface_holds_frame: bool) {
     with_page(token, |page| {
         page.with_host(|host| host.reveal(surface_holds_frame))
+    });
+}
+
+/// The container's push or pop slide of this page begins.
+#[napi]
+pub fn gpu_page_transition_start(token: i64, pop: bool) {
+    with_page(token, |page| {
+        page.with_host(|host| host.transition(TransitionEvent::Start { pop }))
+    });
+}
+
+/// A rendered frame of the slide with how far it has moved, in any unit.
+#[napi]
+pub fn gpu_page_transition_frame(token: i64, at: f64) {
+    with_page(token, |page| {
+        page.with_host(|host| host.transition(TransitionEvent::Frame { at: at as f32 }))
+    });
+}
+
+#[napi]
+pub fn gpu_page_transition_end(token: i64) {
+    with_page(token, |page| {
+        page.with_host(|host| host.transition(TransitionEvent::End))
     });
 }
 

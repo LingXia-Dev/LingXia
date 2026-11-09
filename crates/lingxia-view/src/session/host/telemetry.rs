@@ -27,6 +27,31 @@ pub(super) struct Telemetry {
     /// When each presented frame showed and what its preparation cost, by stage.
     stages: VecDeque<(Duration, Stages)>,
     pub(super) stats: super::frame_stats::FrameStats,
+    transition: Option<Transition>,
+}
+
+/// The platform's push or pop slide of this page, reported frame by frame.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TransitionEvent {
+    Start {
+        pop: bool,
+    },
+    /// A rendered frame with how far the slide has moved the page, in any unit.
+    Frame {
+        at: f32,
+    },
+    End,
+}
+
+#[derive(Debug)]
+struct Transition {
+    pop: bool,
+    started: Duration,
+    ended: Option<Duration>,
+    frames: u32,
+    moving: u32,
+    first_move: Option<Duration>,
+    last: Option<f32>,
 }
 
 /// Total, view, view eval, layout, text, compose and build µs; view and layout passes; then the
@@ -175,6 +200,58 @@ impl Telemetry {
         self.wakeups += 1;
     }
 
+    pub(super) fn transition(&mut self, now: Duration, event: TransitionEvent) {
+        match event {
+            TransitionEvent::Start { pop } => {
+                self.transition = Some(Transition {
+                    pop,
+                    started: now,
+                    ended: None,
+                    frames: 0,
+                    moving: 0,
+                    first_move: None,
+                    last: None,
+                });
+            }
+            TransitionEvent::Frame { at } => {
+                let Some(slide) = self
+                    .transition
+                    .as_mut()
+                    .filter(|slide| slide.ended.is_none())
+                else {
+                    return;
+                };
+                slide.frames += 1;
+                // Below half a unit is float noise in the platform's readout.
+                if slide.last.is_some_and(|last| (at - last).abs() >= 0.5) {
+                    slide.moving += 1;
+                    slide.first_move.get_or_insert(now);
+                }
+                slide.last = Some(at);
+            }
+            TransitionEvent::End => {
+                if let Some(slide) = self.transition.as_mut() {
+                    slide.ended.get_or_insert(now);
+                }
+            }
+        }
+    }
+
+    fn transition_metrics(&self) -> serde_json::Value {
+        let Some(slide) = &self.transition else {
+            return serde_json::Value::Null;
+        };
+        let ms = |span: Duration| span.as_secs_f64() * 1000.0;
+        serde_json::json!({
+            "kind": if slide.pop { "pop" } else { "push" },
+            "durationMs": slide.ended.map(|ended| ms(ended.saturating_sub(slide.started))),
+            "frames": slide.frames,
+            "movingFrames": slide.moving,
+            "firstMoveMs": slide.first_move.map(|first| ms(first.saturating_sub(slide.started))),
+            "atMs": self.since_open(Some(slide.started)),
+        })
+    }
+
     fn since_open(&self, at: Option<Duration>) -> serde_json::Value {
         at.map_or(serde_json::Value::Null, |at| {
             (at.saturating_sub(self.opened).as_millis() as u64).into()
@@ -229,6 +306,7 @@ impl<A: PlatformAdapter> Inner<A> {
             "animationFrames": telemetry.animation_frames,
             "wakeups": telemetry.wakeups,
             "reveal": main.reveal.metrics(telemetry.opened),
+            "transition": telemetry.transition_metrics(),
             "budget": { "overruns": telemetry.overruns },
             "hud": main.hud,
             // Nodes the presented frame laid out: a virtual list mounts only rows near the viewport.
@@ -240,5 +318,39 @@ impl<A: PlatformAdapter> Inner<A> {
                 now.saturating_sub(window.unwrap_or(super::frame_stats::DEFAULT_WINDOW)),
             ),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Telemetry, TransitionEvent};
+    use std::time::Duration;
+
+    #[test]
+    fn a_slide_counts_frames_that_moved_the_page_on_the_host_clock() {
+        let ms = Duration::from_millis;
+        let mut telemetry = Telemetry::default();
+        telemetry.opened(ms(1000));
+        assert!(telemetry.transition_metrics().is_null());
+
+        telemetry.transition(ms(1100), TransitionEvent::Start { pop: false });
+        telemetry.transition(ms(1116), TransitionEvent::Frame { at: 400.0 });
+        for (step, at) in [(2, 300.0), (3, 150.0), (4, 0.0)] {
+            telemetry.transition(ms(1100 + step * 16), TransitionEvent::Frame { at });
+        }
+        telemetry.transition(ms(1180), TransitionEvent::Frame { at: 0.0 });
+        telemetry.transition(ms(1400), TransitionEvent::End);
+        telemetry.transition(ms(1416), TransitionEvent::Frame { at: 10.0 });
+
+        let slide = telemetry.transition_metrics();
+        assert_eq!(slide["kind"], "push");
+        assert_eq!(slide["frames"], 5);
+        assert_eq!(slide["movingFrames"], 3);
+        assert_eq!(slide["firstMoveMs"], 32.0);
+        assert_eq!(slide["durationMs"], 300.0);
+        assert_eq!(slide["atMs"], 100);
+
+        telemetry.opened(ms(2000));
+        assert!(telemetry.transition_metrics().is_null());
     }
 }

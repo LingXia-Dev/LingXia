@@ -440,6 +440,22 @@ export interface PageUiFrame {
   backdropCache: PageBackdropCache | null;
   /** Median preparation cost of the frames presented in `windowMs`; `null` when none presented. */
   stagesMs: PageStageMedians | null;
+  /** The host's latest push or pop slide of this page; `null` before one or from an older host. */
+  transition?: PageTransition | null;
+}
+
+/** A host push or pop slide, timed on the same clock as `firstPresentAt`. */
+export interface PageTransition {
+  kind: 'push' | 'pop';
+  /** Start to end of the slide; `null` while it runs. */
+  durationMs: number | null;
+  /** Display frames sampled during the slide, and those where the page had moved. */
+  frames: number;
+  movingFrames: number;
+  /** Start to the first frame that moved the page; `null` if none did. */
+  firstMoveMs: number | null;
+  /** Milliseconds from the page opening to the slide's start. */
+  atMs: number;
 }
 
 /** Per-stage medians, ms, of presented frames: `build` is the presenter's scene encode. */

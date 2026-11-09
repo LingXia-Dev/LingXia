@@ -25,7 +25,7 @@ import { NavigationBar, NavigationBarState, NAVBAR_TOTAL_HEIGHT, isColorDark } f
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';
 import { TabBar, tabBarExtraBottomHeight } from './TabBar';
 import { TabBarPosition, TabBarItem, UiEventType } from 'liblingxia.so';
-import liblingxia, { gpuPageCloseRequest, TabBarState, getNavigationBarState, isPullDownRefreshEnabled, reportPullRefreshIndicator, onPageShow, onLxappEvent, setSurfaceViewport, setSurfaceWidth, pageBackgroundColor, refreshIndicatorColor, syncLxappHostUI } from 'liblingxia.so';
+import liblingxia, { gpuPageCloseRequest, gpuPageTransitionStart, gpuPageTransitionFrame, gpuPageTransitionEnd, TabBarState, getNavigationBarState, isPullDownRefreshEnabled, reportPullRefreshIndicator, onPageShow, onLxappEvent, setSurfaceViewport, setSurfaceWidth, pageBackgroundColor, refreshIndicatorColor, syncLxappHostUI } from 'liblingxia.so';
 import { notePageOrigin, setCapsuleGeometryListener } from './capsuleGeometry';
 import { NAVIGATION_ACTION_BACK, NAVIGATION_ACTION_HOME, CAPSULE_ACTION_CLOSE } from '../app/NativeBridge';
 import { AnimationType, EDGE_BACK_SWIPE_ZONE_WIDTH_VP } from './LxAppNavigation';
@@ -142,6 +142,23 @@ interface RenderableWebEntry {
   generation: string;
 }
 
+/** The GPU page whose slide is being reported, by token; 0 when none. */
+let slideProbeToken = 0;
+
+function slideProbeFrame(progress: number): ResourceColor {
+  // Progress scaled so the core's half-unit motion threshold sees an eased slide's slowest frames.
+  if (progress >= 0 && slideProbeToken !== 0) {
+    gpuPageTransitionFrame(slideProbeToken, progress * 1000);
+  }
+  return Color.Transparent;
+}
+
+/** Runs on each frame the slide animation renders, with the progress that frame shows. */
+@AnimatableExtend(Stack)
+function slideProbe(progress: number) {
+  .backgroundColor(slideProbeFrame(progress))
+}
+
 @Component
 export struct LxAppContainer {
   @Prop appId: string
@@ -232,6 +249,9 @@ export struct LxAppContainer {
   @State private currentAnimationType: AnimationType = AnimationType.None
   @State private currentWebViewTranslateX: number = 0
   @State private previousWebViewTranslateX: number = 0
+  /** The incoming GPU page's slide, 0 to 1, animated with the translation so the probe sees each frame. */
+  @State private slideProgress: number = 1
+  @State private slideProbeTag: string = ''
   @State private navbarTranslateX: number = 0
   // Fullscreen state - when set, only the fullscreen component is rendered
   @State private fullscreenWebTag: string = ''
@@ -1782,12 +1802,25 @@ export struct LxAppContainer {
     this.loadPullDownRefreshState(path);
     this.loadTabBarState();
 
+    const incoming = this.gpuPages.get(newWebTag);
+    if (incoming !== undefined) {
+      slideProbeToken = incoming.token;
+      gpuPageTransitionStart(incoming.token, isBackward);
+      this.slideProbeTag = newWebTag;
+      this.slideProgress = 0;
+    }
+
     // Start slide animation
     animateTo({
       duration: ANIMATION_DURATION_STANDARD,
       curve: ANIMATION_CURVE_EASE_IN_OUT,
       playMode: PlayMode.Normal,
       onFinish: () => {
+        if (incoming !== undefined) {
+          gpuPageTransitionEnd(incoming.token);
+          slideProbeToken = 0;
+          this.slideProbeTag = '';
+        }
         this.finishTransition(newWebTag, path, oldWebTag);
       }
     }, () => {
@@ -1795,6 +1828,7 @@ export struct LxAppContainer {
       this.currentWebViewTranslateX = 0;
       this.navbarTranslateX = 0;
       this.previousWebViewTranslateX = isBackward ? 100 : -100;
+      this.slideProgress = 1;
     });
   }
 
@@ -2004,6 +2038,7 @@ export struct LxAppContainer {
     .height('100%')
     .hitTestBehavior(HitTestMode.Transparent)
     .zIndex(this.getRenderZIndex(page.webTag))
+    .slideProbe(page.webTag === this.slideProbeTag ? this.slideProgress : -1)
   }
 
   /**
