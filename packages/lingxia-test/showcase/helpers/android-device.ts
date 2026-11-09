@@ -51,6 +51,9 @@ export function androidDevice(t: Fixture) {
     /** Turn the phone as a user does with auto-rotate off; `auto` gives the sensor back. */
     rotate: (orientation: 'portrait' | 'landscape' | 'auto') => request('rotate', { orientation }),
     swipe: (input: { x1: number; y1: number; x2: number; y2: number; duration: number }) => request('swipe', input),
+    /** Colours of the composited screen (every window and surface) at screen pixels, as `[r, g, b]`. */
+    pixels: async (points: readonly (readonly [number, number])[]) =>
+      (await request<{ pixels: [number, number, number][] }>('pixels', { points })).pixels,
     async tapText(text: string | readonly string[], className?: string) {
       const labels = typeof text === 'string' ? [text] : text;
       const matchesControl = (item: AndroidNode) => labels.includes(item.text) && (!className || item.className === className);

@@ -8,6 +8,19 @@ const execute = promisify(execFile);
 const keys = { back: 'KEYCODE_BACK', enter: 'KEYCODE_ENTER', tab: 'KEYCODE_TAB', escape: 'KEYCODE_ESCAPE' };
 const coordinate = (value) => Number.isInteger(value) && value >= 0 && value <= 10000;
 
+// `screencap` without -p: a width, height and format header (plus a colour space word on newer
+// Android), then RGBA rows. The composited screen, every window and surface included.
+export function screenPixels(raw, points) {
+  const width = raw.readUInt32LE(0), height = raw.readUInt32LE(4);
+  const header = raw.length - width * height * 4;
+  if (header !== 12 && header !== 16) throw new Error('unexpected screencap layout');
+  return points.map(([x, y]) => {
+    if (x >= width || y >= height) throw new Error('point outside the screen');
+    const at = header + (y * width + x) * 4;
+    return [raw[at], raw[at + 1], raw[at + 2]];
+  });
+}
+
 // Test-only OS input, bound to one explicitly selected device. The random URL
 // is a capability: pass it with --secret-arg androidDevice, never into an app.
 export function createAndroidDeviceFixture(runAdb, token = randomBytes(24).toString('hex')) {
@@ -64,6 +77,10 @@ export function createAndroidDeviceFixture(runAdb, token = randomBytes(24).toStr
         }
         return reply(200, { ok: true });
       }
+      if (operation === 'pixels' && Array.isArray(input?.points) && input.points.length >= 1 && input.points.length <= 32
+        && input.points.every((point) => Array.isArray(point) && point.length === 2 && point.every(coordinate))) {
+        return reply(200, { pixels: screenPixels(await runAdb(['exec-out', 'screencap'], { binary: true }), input.points) });
+      }
       let args;
       if (operation === 'key' && Object.hasOwn(keys, input?.key)) {
         args = ['keyevent', keys[input.key]];
@@ -92,8 +109,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   if (!process.argv.includes('--device') || !argument('--device')) throw new Error('--device is required');
   const adb = process.argv.includes('--adb') ? argument('--adb') : 'adb';
   const serial = argument('--device');
-  const { server, token } = createAndroidDeviceFixture(async (args) => {
-    const result = await execute(adb, ['-s', serial, ...args], { timeout: 15000, maxBuffer: 2 * 1024 * 1024, windowsHide: true });
+  const { server, token } = createAndroidDeviceFixture(async (args, { binary = false } = {}) => {
+    const result = await execute(adb, ['-s', serial, ...args], { timeout: 15000, maxBuffer: (binary ? 64 : 2) * 1024 * 1024,
+      windowsHide: true, ...(binary ? { encoding: 'buffer' } : {}) });
     return result.stdout;
   });
   server.listen(process.argv.includes('--port') ? Number(argument('--port')) : 0, '127.0.0.1', () => {

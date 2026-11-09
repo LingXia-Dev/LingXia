@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
-import { createAndroidDeviceFixture } from './android-device-fixture.mjs';
+import { createAndroidDeviceFixture, screenPixels } from './android-device-fixture.mjs';
 
 test('device input requires the capability URL and rejects shell-shaped arguments', async (t) => {
   const calls = [];
@@ -60,4 +60,24 @@ test('rotate turns auto-rotate off and sets the user rotation, or gives the sens
     ['shell', 'settings', 'put', 'system', 'user_rotation', '1'],
     ['shell', 'settings', 'put', 'system', 'accelerometer_rotation', '1'],
   ]);
+});
+
+test('pixels reads the composited screen at the given points, whichever header the device writes', async (t) => {
+  const screen = (header) => {
+    const raw = Buffer.alloc(header + 2 * 2 * 4);
+    raw.writeUInt32LE(2, 0); raw.writeUInt32LE(2, 4);
+    raw.set([10, 20, 30, 255], header + (1 * 2 + 1) * 4);
+    return raw;
+  };
+  for (const header of [12, 16]) assert.deepEqual(screenPixels(screen(header), [[1, 1], [0, 0]]), [[10, 20, 30], [0, 0, 0]]);
+  assert.throws(() => screenPixels(screen(12), [[2, 0]]), /outside/);
+  const calls = [];
+  const { server, token } = createAndroidDeviceFixture(async (args, options) => { calls.push([args, options]); return screen(16); });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve) => { server.close(resolve); server.closeAllConnections(); }));
+  const post = (body) => fetch(`http://127.0.0.1:${server.address().port}/${token}/pixels`, { method: 'POST', body: JSON.stringify(body) });
+  assert.equal((await post({ points: [['1; reboot', 0]] })).status, 400);
+  const response = await post({ points: [[1, 1]] });
+  assert.deepEqual(await response.json(), { pixels: [[10, 20, 30]] });
+  assert.deepEqual(calls, [[['exec-out', 'screencap'], { binary: true }]]);
 });
