@@ -28,7 +28,7 @@ spec('an edge swipe goes back across a pager; a drag starting on the pager pages
     await expect(view.testId('motion-pager-state')).toHaveText(`page=${page}`);
   };
 
-  await app.nav.to({ page: 'motion-lab' });
+  await app.nav.to({ page: 'motion-target' });
   await view.testId('motion-pager-next').click();
   await onPage(1);
 
@@ -38,7 +38,7 @@ spec('an edge swipe goes back across a pager; a drag starting on the pager pages
   expect(start / pager.scale, 'the drag starts past the hard back zone').toBeGreaterThan(16);
   await device.swipe({ x1: start, y1: pager.y, x2: pager.right - 10, y2: pager.y, duration: 300 });
   await onPage(0);
-  expect((await app.nav.current()).name, 'a drag on the pager stays on the page').toBe('motion-lab');
+  expect((await app.nav.current()).name, 'a drag on the pager stays on the page').toBe('motion-target');
 
   await view.testId('motion-pager-next').click();
   await onPage(1);

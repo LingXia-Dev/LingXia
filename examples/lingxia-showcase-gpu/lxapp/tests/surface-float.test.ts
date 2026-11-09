@@ -23,7 +23,7 @@ spec('a float outlives its opener navigating away and stays above a page dialog'
     }, key);
     await expect((await app.page({ name: 'surface' })).view.testId('surface-counter')).toBeVisible();
 
-    await app.nav.to({ page: 'motion-lab' });
+    await app.nav.to({ page: 'motion-target' });
     await app.nav.back();
     expect(await app.logic.eval(({ lx }, key) => lx.surface.getByKey(key)?.alive === true, key)).toBe(true);
     await expect((await app.page({ name: 'surface' })).view.testId('surface-counter')).toBeVisible();

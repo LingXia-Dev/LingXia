@@ -1,0 +1,9 @@
+{
+  "navigationBar": {
+    "title": {
+      "default": "Motion target",
+      "zh-CN": "动效目标"
+    }
+  },
+  "pageOrientation": "auto"
+}

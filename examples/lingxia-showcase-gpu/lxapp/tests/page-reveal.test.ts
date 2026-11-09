@@ -12,9 +12,9 @@ spec('a page pushed again is not revealed on its previous frame', {
   if (!['harmony', 'android'].includes(platform)) t.skip(`${platform} has no host-side reveal`);
   let reveals = -1;
   for (let round = 0; round < 3; round++) {
-    await app.nav.to({ page: 'motion-lab' });
+    await app.nav.to({ page: 'motion-target' });
     // Reveal statistics outlive a reload: wait for this push's own reveal.
-    const shown = await t.waitFor(() => app.metrics({ page: 'motion-lab' }), {
+    const shown = await t.waitFor(() => app.metrics({ page: 'motion-target' }), {
       until: m => m.firstPresentAt !== null && m.reveal.lastReveal !== null && m.reveal.count > reveals,
     });
     reveals = shown.reveal.count;

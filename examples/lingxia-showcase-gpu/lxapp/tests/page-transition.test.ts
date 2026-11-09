@@ -24,8 +24,8 @@ spec('a push and a pop slide the GPU page on every display frame', {
   const platform = await runtimePlatform(app);
   if (!['harmony', 'android'].includes(platform)) t.skip(`${platform} does not report page slides`);
 
-  await app.nav.to({ page: 'motion-lab' });
-  const pushed = await t.waitFor(() => app.metrics({ page: 'motion-lab' }), { until: m => m.transition?.durationMs != null });
+  await app.nav.to({ page: 'motion-target' });
+  const pushed = await t.waitFor(() => app.metrics({ page: 'motion-target' }), { until: m => m.transition?.durationMs != null });
   await t.attach('push', pushed.transition);
   slid(pushed.transition!, 'push');
 
