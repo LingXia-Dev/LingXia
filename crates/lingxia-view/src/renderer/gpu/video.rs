@@ -1885,6 +1885,6 @@ pub unsafe fn import_hardware_buffer(
 #[cfg(not(target_vendor = "apple"))]
 mod platform {
     pub(super) fn open(_url: &str) -> Result<Box<dyn super::Player>, String> {
-        Err("no video player is installed on this platform".into())
+        Err("VIDEO_UNSUPPORTED: no video player on this platform yet".into())
     }
 }

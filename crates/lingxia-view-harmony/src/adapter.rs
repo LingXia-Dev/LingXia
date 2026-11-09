@@ -43,6 +43,8 @@ pub struct HarmonyAdapter {
     pub(crate) shell: Arc<dyn Shell>,
     started: Instant,
     pub(crate) host: OnceLock<WeakViewHost<HarmonyAdapter>>,
+    /// Display frames run for the videos of the kept frame.
+    ticking: Arc<AtomicBool>,
     /// The page's latest measurement from ArkTS; the surface size overrides its extent.
     pub(crate) facts: Mutex<Option<DeviceFacts>>,
     /// The XComponent surface in device pixels, from its surface callbacks.
@@ -71,6 +73,7 @@ impl HarmonyAdapter {
             shell,
             started: Instant::now(),
             host: OnceLock::new(),
+            ticking: Default::default(),
             facts: Mutex::new(None),
             size: Mutex::new(None),
             origin: Mutex::new([0.0; 2]),
@@ -333,8 +336,19 @@ impl Presenter for HarmonyAdapter {
                 let Some(host) = self.host.get().cloned() else {
                     return Ok(false);
                 };
+                let ticking = self.ticking.clone();
                 crate::render::present(surface, revision, drawn, move |shown, gpu| {
-                    let Some(host) = host.upgrade() else { return };
+                    let Some(strong) = host.upgrade() else { return };
+                    // The first frame that draws video starts display frames for its players.
+                    if surfaces::keeps_video(surface) && !ticking.swap(true, Ordering::AcqRel) {
+                        let weak = host.clone();
+                        strong.adapter().post(Box::new(move || {
+                            if let Some(host) = weak.upgrade() {
+                                host.tick();
+                            }
+                        }));
+                    }
+                    let host = strong;
                     match shown {
                         Ok(shown) => host.deferred_drawn(CommitTicket::new(revision), shown, gpu),
                         Err(error) => {
@@ -395,6 +409,12 @@ impl FrameScheduler for HarmonyAdapter {
     fn request_vsync(&self) {
         self.vsync.store(true, Ordering::Release);
         crate::xcomponent::request_frame(self.token);
+    }
+
+    fn tick(&self) -> bool {
+        let ticking = surfaces::tick(self.gpu.load(Ordering::Acquire));
+        self.ticking.store(ticking, Ordering::Release);
+        ticking
     }
 }
 
