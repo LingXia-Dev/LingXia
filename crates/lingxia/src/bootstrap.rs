@@ -458,6 +458,13 @@ pub(crate) fn init_with_platform(
     crate::splash::resolve_campaign();
     crate::task::release_deferred();
     crate::browser::warmup();
+    if home_app_id
+        .as_deref()
+        .and_then(lxapp::try_get)
+        .is_some_and(|app| app.renderer() == lxapp::PageRenderer::Gpu)
+    {
+        crate::gpu_page::warm();
+    }
     crate::host_addon::run_start_services();
     // Last: a tap that arrived during startup is queued until here.
     crate::navigation::mark_ready();

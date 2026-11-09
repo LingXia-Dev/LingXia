@@ -515,6 +515,13 @@ pub(crate) fn video_orientation(token: Token, orientation: Option<lxapp::PageOri
 #[path = "tests.rs"]
 mod tests;
 
+/// Builds the GPU renderer while the home page loads, so its first frame skips the pipeline
+/// compile.
+pub(crate) fn warm() {
+    #[cfg(target_os = "android")]
+    lingxia_view_android::warm();
+}
+
 /// Compiled View modules persist under `dir`, so a later open skips the QuickJS compile.
 pub(crate) fn set_bytecode_dir(dir: std::path::PathBuf) {
     #[cfg(target_os = "android")]

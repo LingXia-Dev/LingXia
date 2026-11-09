@@ -83,6 +83,12 @@ fn text(env: &mut Env, value: &JString) -> Result<String, Error> {
     Ok(value.try_to_string(env)?)
 }
 
+/// Opens the GPU device and builds the renderer ahead of the first GPU page, once per process.
+pub fn warm() {
+    #[cfg(all(feature = "gpu", target_os = "android"))]
+    gpu_surface::warm();
+}
+
 /// Bind the SDK component explicitly so static linking retains every JNI entrypoint.
 pub fn register_natives(env: &mut Env, class: &JClass) -> jni::errors::Result<()> {
     static HOOK: std::sync::Once = std::sync::Once::new();
