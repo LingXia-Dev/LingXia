@@ -56,3 +56,17 @@ gestures and OS dialogs. The fixture only accepts validated taps, swipes,
 Back/Enter/Tab/Escape keys, display size, and fresh UIAutomator hierarchies;
 it does not accept shell commands. The runner closes its process and reverse
 mapping when finished.
+
+## Harmony system input
+
+`harmony-device-fixture.mjs` does the same for one HarmonyOS device through hdc:
+validated `uitest` swipes (an edge swipe is the system back gesture), the
+`uitest dumpLayout` view tree, and composited-screen pixels from
+`snapshot_display`, which it reads through macOS `sips`. Start it and forward
+its port, then pass its URL:
+
+```bash
+node tests/harness/harmony-device-fixture.mjs --device <serial> --port 55321
+hdc -t <serial> rport tcp:55321 tcp:55321
+lxdev test tests/top-layer-device.test.ts --secret-arg harmonyDevice=<printed URL>
+```
