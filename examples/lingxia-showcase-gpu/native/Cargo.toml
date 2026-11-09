@@ -184,6 +184,9 @@ opt-level = 2
 opt-level = 2
 [profile.dev.package.wgpu-hal]
 opt-level = 2
+# Translates every WGSL shader when the first page creates its GPU renderer.
+[profile.dev.package.naga]
+opt-level = 2
 [profile.dev.package.rong_quickjs]
 opt-level = 2
 [profile.dev.package.rong_quickjs_sys]
