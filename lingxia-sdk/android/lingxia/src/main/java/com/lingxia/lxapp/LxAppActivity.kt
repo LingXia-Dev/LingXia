@@ -378,6 +378,8 @@ class LxAppActivity : AppCompatActivity() {
     private var slideShow: Runnable? = null
     private var gpuTransitionCover: android.widget.ImageView? = null
     private var gpuOutgoingCover: android.widget.ImageView? = null
+    /** The outgoing page's copy in flight and the transitions waiting on it, in arrival order. */
+    private var outgoingCapture: Pair<GpuPage, MutableList<Pair<Long, Runnable>>>? = null
     private val pendingGpuDisposals = mutableSetOf<Runnable>()
     private var systemBottomInset: Int = 0
     private var imeContentBottomInset: Int = 0
@@ -1826,16 +1828,27 @@ class LxAppActivity : AppCompatActivity() {
 
     private fun prepareGpuTransition(version: Long, navigate: Runnable) {
         val previous = currentWebView as? GpuPage ?: return navigate.run()
+        // A chrome change and the navigation after it cover the same frame: one copy serves both.
+        outgoingCapture?.takeIf { it.first === previous }?.let {
+            it.second.add(version to navigate)
+            return
+        }
+        val waiters = mutableListOf(version to navigate)
+        outgoingCapture = previous to waiters
         previous.captureReadyPreview { preview ->
-            LxLog.d(NAV_TAG, "outgoing preview ${previous.getWebTag()} ready=${preview != null} v$version now v$gpuTransitionVersion")
-            if (version != gpuTransitionVersion || isFinishing || isDestroyed) {
+            if (outgoingCapture?.second === waiters) outgoingCapture = null
+            val current = waiters.filter { it.first == gpuTransitionVersion }
+            LxLog.d(NAV_TAG, "outgoing preview ${previous.getWebTag()} ready=${preview != null} for ${waiters.map { "v${it.first}" }} now v$gpuTransitionVersion")
+            if (current.isEmpty() || isFinishing || isDestroyed) {
                 preview?.recycle()
                 return@captureReadyPreview
             }
             if (preview != null) {
                 showGpuTransitionFrame(preview, previous)
             }
-            val committed = Runnable { webViewContainer.postOnAnimation(navigate) }
+            val committed = Runnable {
+                webViewContainer.postOnAnimation { current.forEach { it.second.run() } }
+            }
             if (Build.VERSION.SDK_INT >= 29 && webViewContainer.isHardwareAccelerated) {
                 webViewContainer.viewTreeObserver.registerFrameCommitCallback(committed)
                 webViewContainer.invalidate()
