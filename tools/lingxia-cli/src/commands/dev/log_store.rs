@@ -7,6 +7,7 @@ use lingxia_control_protocol::{
     methods,
 };
 use lingxia_log::now_timestamp_ms;
+use std::collections::HashSet;
 use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
@@ -57,8 +58,9 @@ pub fn dev_dir(project_root: &Path) -> PathBuf {
 pub fn create_session(project_root: &Path) -> Result<DevLogSession> {
     let dev_dir = dev_dir(project_root);
     let logs_dir = dev_dir.join("logs");
-    cleanup_old_logs(&logs_dir, DEFAULT_LOG_RETENTION_DAYS)?;
-    prune_session_logs(&logs_dir, KEPT_SESSION_LOGS)?;
+    let live = live_session_ids();
+    cleanup_old_logs(&logs_dir, DEFAULT_LOG_RETENTION_DAYS, &live)?;
+    prune_session_logs(&logs_dir, KEPT_SESSION_LOGS, &live)?;
     fs::create_dir_all(&logs_dir)
         .with_context(|| format!("Failed to create {}", logs_dir.display()))?;
 
@@ -647,6 +649,11 @@ impl RotatingLog {
     }
 
     pub fn append(&mut self, bytes: &[u8]) -> Result<()> {
+        // Removed under the writer (a cleanup, a user): later entries would land in no file.
+        if self.file.is_some() && !self.path.exists() {
+            self.file = None;
+            self.size = 0;
+        }
         if self.size > 0 && self.size + bytes.len() as u64 > self.limit {
             self.rotate()?;
         }
@@ -689,10 +696,19 @@ fn open_append(path: &Path) -> Result<fs::File> {
         .with_context(|| format!("Failed to open {}", path.display()))
 }
 
-/// Keep the logs of the `keep` sessions written last, and remove every other
-/// session's (its current and rotated files alike). Files that are not a
-/// session's log are left alone.
-pub fn prune_session_logs(logs_dir: &Path, keep: usize) -> Result<()> {
+/// Sessions registered with the broker now; their logs are never pruned, however quiet.
+pub fn live_session_ids() -> HashSet<String> {
+    lingxia_control_protocol::dev_session::broker::list_sessions()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|session| session.session_id)
+        .collect()
+}
+
+/// Keep the logs of the `keep` ended sessions written last, and remove every
+/// other ended session's (its current and rotated files alike). `live`
+/// sessions' logs and files that are not a session's log are left alone.
+pub fn prune_session_logs(logs_dir: &Path, keep: usize, live: &HashSet<String>) -> Result<()> {
     use lingxia_control_protocol::dev_session::log_files::log_session_id;
     if !logs_dir.exists() {
         return Ok(());
@@ -708,7 +724,7 @@ pub fn prune_session_logs(logs_dir: &Path, keep: usize) -> Result<()> {
             continue;
         }
         let name = entry.file_name().to_string_lossy().into_owned();
-        let Some(session) = log_session_id(&name) else {
+        let Some(session) = log_session_id(&name).filter(|id| !live.contains(*id)) else {
             continue;
         };
         let modified = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
@@ -729,7 +745,13 @@ pub fn prune_session_logs(logs_dir: &Path, keep: usize) -> Result<()> {
     Ok(())
 }
 
-pub fn cleanup_old_logs(logs_dir: &Path, retention_days: u64) -> Result<()> {
+/// Remove files not written for `retention_days`, except `live` sessions' logs.
+pub fn cleanup_old_logs(
+    logs_dir: &Path,
+    retention_days: u64,
+    live: &HashSet<String>,
+) -> Result<()> {
+    use lingxia_control_protocol::dev_session::log_files::log_session_id;
     if retention_days == 0 || !logs_dir.exists() {
         return Ok(());
     }
@@ -744,6 +766,10 @@ pub fn cleanup_old_logs(logs_dir: &Path, retention_days: u64) -> Result<()> {
         let path = entry.path();
         let metadata = entry.metadata()?;
         let modified = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if log_session_id(&name).is_some_and(|id| live.contains(id)) {
+            continue;
+        }
         if modified < cutoff && metadata.is_file() {
             fs::remove_file(&path)
                 .with_context(|| format!("Failed to remove {}", path.display()))?;
@@ -788,7 +814,7 @@ mod tests {
         )
         .unwrap();
 
-        cleanup_old_logs(&logs_dir, 7).unwrap();
+        cleanup_old_logs(&logs_dir, 7, &HashSet::new()).unwrap();
 
         assert!(!old_log.exists());
         assert!(new_log.exists());
@@ -841,6 +867,49 @@ mod tests {
     }
 
     #[test]
+    fn a_live_session_log_survives_pruning_and_the_ended_ones_fill_the_quota() {
+        let temp = tempdir().unwrap();
+        let logs = temp.path().join("logs");
+        fs::create_dir_all(&logs).unwrap();
+        let now = SystemTime::now();
+        // `live` is the oldest and quietest, written long past the retention.
+        for (session, age_mins) in [
+            ("ended0", 0),
+            ("ended1", 1),
+            ("ended2", 2),
+            ("live", 30 * 24 * 60),
+        ] {
+            let file = logs.join(format!("{session}.jsonl"));
+            fs::write(&file, "{}\n").unwrap();
+            filetime::set_file_mtime(
+                &file,
+                filetime::FileTime::from_system_time(now - Duration::from_secs(60 * age_mins)),
+            )
+            .unwrap();
+        }
+        let live = HashSet::from(["live".to_string()]);
+        cleanup_old_logs(&logs, 7, &live).unwrap();
+        prune_session_logs(&logs, 2, &live).unwrap();
+        let mut left: Vec<String> = fs::read_dir(&logs)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        left.sort();
+        assert_eq!(left, ["ended0.jsonl", "ended1.jsonl", "live.jsonl"]);
+    }
+
+    #[test]
+    fn a_session_log_removed_under_its_writer_is_written_again() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("abc123.jsonl");
+        let mut log = RotatingLog::open(&path, 1024).unwrap();
+        log.append(b"{\"n\":1}\n").unwrap();
+        fs::remove_file(&path).unwrap();
+        log.append(b"{\"n\":2}\n").unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "{\"n\":2}\n");
+    }
+
+    #[test]
     fn old_sessions_logs_are_pruned_with_their_rotated_files() {
         let temp = tempdir().unwrap();
         let logs = temp.path().join("logs");
@@ -860,7 +929,7 @@ mod tests {
             }
         }
         fs::write(logs.join("notes.txt"), "keep me").unwrap();
-        prune_session_logs(&logs, 2).unwrap();
+        prune_session_logs(&logs, 2, &HashSet::new()).unwrap();
         let mut left: Vec<String> = fs::read_dir(&logs)
             .unwrap()
             .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())

@@ -698,7 +698,11 @@ fn start_background_session(
     // Prune old background launch logs under the same retention as session logs
     // so repeated `--background` starts don't grow `.lingxia/background/`
     // without bound.
-    let _ = log_store::cleanup_old_logs(&log_dir, log_store::DEFAULT_LOG_RETENTION_DAYS);
+    let _ = log_store::cleanup_old_logs(
+        &log_dir,
+        log_store::DEFAULT_LOG_RETENTION_DAYS,
+        &Default::default(),
+    );
     let started_at = now_timestamp_ms();
     let log_path = log_dir.join(format!("dev-{started_at}.log"));
 
