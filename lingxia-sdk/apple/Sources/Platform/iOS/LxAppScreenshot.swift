@@ -21,13 +21,17 @@ enum LxAppScreenshot {
         let image = renderer.image { ctx in
             UIColor.black.setFill()
             ctx.fill(bounds)
-            for window in windows {
+            for (index, window) in windows.enumerated() {
                 let frame = window.convert(window.bounds, to: nil)
                 ctx.cgContext.saveGState()
                 ctx.cgContext.translateBy(x: frame.minX, y: frame.minY)
                 if GpuPages.shows(in: window) {
-                    // The on-screen snapshot includes Metal drawables, in their z-order.
-                    window.drawHierarchy(in: window.bounds, afterScreenUpdates: false)
+                    if index > 0, let root = window.rootViewController?.view, !opaque(root) {
+                        drawOverlay(window, root: root, into: ctx.cgContext)
+                    } else {
+                        // The on-screen snapshot includes Metal drawables, in their z-order.
+                        window.drawHierarchy(in: window.bounds, afterScreenUpdates: false)
+                    }
                 } else {
                     window.layer.render(in: ctx.cgContext)
                 }
@@ -41,6 +45,27 @@ enum LxAppScreenshot {
             }
         }
         return image.pngData()
+    }
+
+    private static func opaque(_ view: UIView) -> Bool {
+        (view.backgroundColor?.cgColor.alpha ?? 0) >= 1
+    }
+
+    /// A window over others (a float) whose snapshot is opaque: paint its scrim, then its
+    /// snapshot only inside its cards, so the windows under it stay visible.
+    private static func drawOverlay(_ window: UIWindow, root: UIView, into context: CGContext) {
+        if let scrim = root.backgroundColor {
+            context.setFillColor(scrim.cgColor)
+            context.fill(window.bounds)
+        }
+        for card in root.subviews where !card.isHidden && card.alpha > 0.01 {
+            let rect = card.convert(card.bounds, to: window)
+            context.saveGState()
+            context.addPath(UIBezierPath(roundedRect: rect, cornerRadius: card.layer.cornerRadius).cgPath)
+            context.clip()
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: false)
+            context.restoreGState()
+        }
     }
 
     private static func captureWindows() -> [UIWindow] {
