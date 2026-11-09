@@ -22,6 +22,7 @@ use std::thread;
 use std::time::Duration;
 
 mod doctor;
+mod ds_store;
 pub use doctor::doctor_checks;
 
 const MACOS_ARM_TARGET: &str = "aarch64-apple-darwin";
@@ -1143,12 +1144,12 @@ fn create_dmg(
         anyhow::bail!("Failed to create temporary writable DMG");
     }
 
-    // Mount under /Volumes like a user would: the background alias Finder
-    // writes into .DS_Store records the mount path, and a private temp path
-    // would ship the build machine's user directory inside the DMG.
+    // Mounted only to stamp the window layout into the volume; the alias to
+    // the background needs the volume's and the file's creation dates.
     let attach = Command::new("hdiutil")
         .arg("attach")
         .arg("-plist")
+        .arg("-nobrowse")
         .arg(&rw_dmg_path)
         .arg("-readwrite")
         .arg("-noverify")
@@ -1160,24 +1161,20 @@ fn create_dmg(
     }
     let mount_point = attached_mount_point(&attach.stdout)?;
 
-    // Give the system time to register the disk with Finder before AppleScript
-    thread::sleep(Duration::from_millis(2000));
-
-    if let Err(err) = configure_dmg_layout(&mount_point, app_bundle_name, &background_name) {
-        eprintln!(
-            "  {} Failed to configure DMG Finder layout: {}",
-            "Warning:".yellow(),
-            err
-        );
-        eprintln!(
-            "  {} DMG still includes an 'Applications' link for drag-to-install.",
-            "Info:".blue()
-        );
-    }
-
-    // Give Finder a moment to persist the .DS_Store before detach.
-    thread::sleep(Duration::from_millis(500));
+    let layout = ds_store::write(
+        &mount_point,
+        &ds_store::DmgLayout {
+            volume_name: app_name,
+            app_bundle_name,
+            app_position: DMG_APP_POSITION,
+            applications_position: DMG_APPLICATIONS_POSITION,
+            window_size: DMG_WINDOW_SIZE,
+            background_name: &background_name,
+        },
+    );
+    // Detach even when the layout failed, so no image stays mounted.
     detach_mount(&mount_point)?;
+    layout?;
 
     let converted_base = temp_dir.path().join("release");
     let convert_status = Command::new("hdiutil")
@@ -1264,8 +1261,6 @@ const DMG_WINDOW_SIZE: (u32, u32) = (660, 400);
 /// Icon centres, in points, matching the arrow in [`DMG_DEFAULT_BACKGROUND`].
 const DMG_APP_POSITION: (u32, u32) = (180, 190);
 const DMG_APPLICATIONS_POSITION: (u32, u32) = (480, 190);
-/// Finder's title bar; window bounds include it, the background does not.
-const DMG_TITLE_BAR_HEIGHT: u32 = 28;
 
 /// The built-in background: a quiet floor and an arrow from the app to the
 /// Applications link. No text, so it needs no localization.
@@ -1351,69 +1346,6 @@ fn render_dmg_background(scale: u32) -> Result<Vec<u8>> {
         .context("Failed to encode the DMG background")
 }
 
-/// Address the volume by its mount path: Finder's `disk "<name>"` misses a
-/// volume mounted anywhere but /Volumes, and a same-named volume already
-/// mounted there would be picked instead.
-fn configure_dmg_layout(
-    mount_point: &Path,
-    app_bundle_name: &str,
-    background_name: &str,
-) -> Result<()> {
-    let mount_point = escape_applescript_string(&mount_point.to_string_lossy());
-    let app_bundle_name = escape_applescript_string(app_bundle_name);
-    let background_name = escape_applescript_string(background_name);
-    let (width, height) = DMG_WINDOW_SIZE;
-    let (left, top) = (120, 120);
-    let (right, bottom) = (left + width, top + height + DMG_TITLE_BAR_HEIGHT);
-    let (app_x, app_y) = DMG_APP_POSITION;
-    let (apps_x, apps_y) = DMG_APPLICATIONS_POSITION;
-    let script = format!(
-        r#"
-tell application "Finder"
-    set dmgDisk to (POSIX file "{mount_point}" as alias)
-    open dmgDisk
-    delay 0.5
-    set dmgWindow to container window of dmgDisk
-    set current view of dmgWindow to icon view
-    set toolbar visible of dmgWindow to false
-    set statusbar visible of dmgWindow to false
-    set bounds of dmgWindow to {{{left}, {top}, {right}, {bottom}}}
-    tell icon view options of dmgWindow
-        set arrangement to not arranged
-        set icon size to 128
-        set text size to 14
-        set background picture to (POSIX file "{mount_point}/.background/{background_name}" as alias)
-    end tell
-    -- Position app and Applications link (symlink should already exist)
-    set position of item "{app_bundle_name}" of dmgWindow to {{{app_x}, {app_y}}}
-    if exists item "Applications" of dmgWindow then
-        set position of item "Applications" of dmgWindow to {{{apps_x}, {apps_y}}}
-    end if
-    update dmgDisk without registering applications
-    delay 0.5
-    close dmgWindow
-end tell
-"#
-    );
-
-    let output = Command::new("osascript")
-        .arg("-e")
-        .arg(script)
-        .output()
-        .context("Failed to execute osascript for DMG layout")?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        if stderr.is_empty() {
-            anyhow::bail!("osascript returned non-zero status while setting DMG layout");
-        }
-        anyhow::bail!(
-            "osascript returned non-zero status while setting DMG layout: {}",
-            stderr
-        );
-    }
-    Ok(())
-}
-
 /// The mount point `hdiutil attach -plist` reports for the image's volume.
 fn attached_mount_point(plist_bytes: &[u8]) -> Result<PathBuf> {
     let value = plist::Value::from_reader_xml(plist_bytes)
@@ -1455,10 +1387,6 @@ fn detach_mount(mount_point: &Path) -> Result<()> {
         anyhow::bail!("Failed to detach mounted DMG volume");
     }
     Ok(())
-}
-
-fn escape_applescript_string(input: &str) -> String {
-    input.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 #[allow(clippy::too_many_arguments)]
