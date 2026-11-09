@@ -3329,6 +3329,7 @@ dependencies = [
  "rong_quickjs_sys",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "skrifa",
  "taffy",
  "vello_common",
