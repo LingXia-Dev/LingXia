@@ -241,6 +241,17 @@ impl LogicPort {
     }
 }
 
+/// Marks from any thread that the page's presented frame is no longer its own; see
+/// [`ViewHost::stale_mark`].
+#[derive(Clone)]
+pub struct StaleMark(Arc<std::sync::atomic::AtomicBool>);
+
+impl StaleMark {
+    pub fn set(&self) {
+        self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 /// A host handle that does not keep the page alive, e.g. for an adapter's
 /// completion callbacks.
 pub struct WeakViewHost<A: PlatformAdapter> {
@@ -279,6 +290,8 @@ struct Inner<A: PlatformAdapter> {
     /// Input resolved on the presented frame, oldest first; every worker frame runs it before
     /// it renders.
     input: Mutex<std::collections::VecDeque<dispatch::Queued<A>>>,
+    /// Set off the main thread when a park or reload is requested; the request itself runs later.
+    stale: StaleMark,
     main: Mutex<Main<A::Frame>>,
 }
 
@@ -507,6 +520,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                 logic,
                 page: Mutex::new(None),
                 input: Mutex::new(Default::default()),
+                stale: StaleMark(Default::default()),
                 main: Mutex::new(Main {
                     source: String::new(),
                     interaction: ViewInteraction::default(),
@@ -830,6 +844,12 @@ impl<A: PlatformAdapter> ViewHost<A> {
     /// Any thread: a typed Logic message, applied in order with state writes.
     pub fn deliver(&self, connection: ConnectionTicket, message: crate::session::logic::ToView) {
         self.inner.deliver_logic(connection, message);
+    }
+
+    /// Set it where a park or reload is requested and posted to the main thread, so a reveal
+    /// that runs before the posted call does not take the old instance's frame as current.
+    pub fn stale_mark(&self) -> StaleMark {
+        self.inner.stale.clone()
     }
 
     /// A handle for [`Self::write_state`] and [`Self::deliver`] that does not keep the page alive.
@@ -1518,6 +1538,9 @@ impl<A: PlatformAdapter> Inner<A> {
     }
 
     fn frame_is_current(&self) -> bool {
+        if self.stale.0.load(std::sync::atomic::Ordering::SeqCst) {
+            return false;
+        }
         let Some(mut environment) = self.adapter.environment() else {
             return false;
         };
@@ -1591,6 +1614,9 @@ impl<A: PlatformAdapter> Inner<A> {
             main.snapshot = None;
             // The surface still holds the previous instance's frame; it is not this page's.
             main.presented_environment = None;
+            self.stale
+                .0
+                .store(false, std::sync::atomic::Ordering::SeqCst);
             main.forget_frames();
             main.dirty = true;
             main.caret.stop();
@@ -1654,6 +1680,9 @@ impl<A: PlatformAdapter> Inner<A> {
             let page = self.lifecycle.park();
             main.snapshot = None;
             main.presented_environment = None;
+            self.stale
+                .0
+                .store(false, std::sync::atomic::Ordering::SeqCst);
             main.forget_frames();
             main.dirty = true;
             main.caret.stop();

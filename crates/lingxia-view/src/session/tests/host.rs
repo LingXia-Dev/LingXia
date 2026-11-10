@@ -1953,6 +1953,27 @@ fn a_parked_or_reloaded_page_is_not_shown_on_its_old_frame() {
 }
 
 #[test]
+fn a_reveal_before_a_requested_park_runs_is_not_shown_on_the_old_frame() {
+    let worker = ViewWorker::spawn("test-reveal-stale-mark").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = revealing_page(&platform, &worker);
+    platform.settle(&[&host]);
+    assert_eq!(last(&host), ["shown"]);
+    // The park is requested and posted; the push's reveal runs before the posted park.
+    host.stale_mark().set();
+    host.reveal(true);
+    assert!(
+        revealed(&host).is_empty(),
+        "the old instance's frame is not current once its park is requested"
+    );
+    host.park();
+    host.load(source("function render(){return h('text',{},'again')}"));
+    platform.settle(&[&host]);
+    assert_eq!(last(&host), ["again"]);
+    assert_eq!(revealed(&host), [false], "the new frame reveals it");
+}
+
+#[test]
 fn a_failed_reveal_does_not_charge_its_wait_to_the_next_load() {
     let worker = ViewWorker::spawn("test-reveal-failed-reload").unwrap();
     let platform = Platform::new(&[&worker]);

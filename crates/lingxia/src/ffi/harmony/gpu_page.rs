@@ -218,6 +218,7 @@ impl Shell for Bridge {
 struct HarmonyPage {
     token: Token,
     port: lingxia_view_harmony::lingxia_view::session::host::LogicPort,
+    stale: lingxia_view_harmony::lingxia_view::session::host::StaleMark,
 }
 
 impl NativePage for HarmonyPage {
@@ -275,6 +276,7 @@ impl NativePage for HarmonyPage {
         Ok(())
     }
     fn reload(&self, source: &str) -> std::result::Result<(), LxAppError> {
+        self.stale.set();
         let source = source.to_owned();
         on_page(self.token, move |page| {
             page.with_host(|host| host.load(source));
@@ -290,6 +292,7 @@ impl NativePage for HarmonyPage {
         Ok(())
     }
     fn park(&self) -> std::result::Result<(), LxAppError> {
+        self.stale.set();
         on_page(self.token, |page| {
             page.with_host(|host| host.park());
         });
@@ -348,14 +351,14 @@ impl NativeFactory for Factory {
             arkts(token, "create", &describe);
             let created = Page::new(token, Arc::new(Bridge), &request.worker, request.logic)
                 .and_then(|page| {
-                    let port = page
+                    let (port, stale) = page
                         .with_host(|host| {
                             host.load(request.source);
-                            host.logic_port()
+                            (host.logic_port(), host.stale_mark())
                         })
                         .ok_or_else(|| "GPU page has no host".to_string())?;
                     PAGES.with(|pages| pages.borrow_mut().insert(token, page));
-                    Ok(Arc::new(HarmonyPage { token, port }) as Arc<dyn NativePage>)
+                    Ok(Arc::new(HarmonyPage { token, port, stale }) as Arc<dyn NativePage>)
                 });
             if created.is_err() {
                 arkts(token, "dispose", "");
