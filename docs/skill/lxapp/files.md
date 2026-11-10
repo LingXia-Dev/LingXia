@@ -126,7 +126,7 @@ const { statusCode, data } = await task.result;
 
 ## Media outputs
 
-`chooseMedia`, `compressImage`, `compressVideo`, and video thumbnails return
+`pickMedia`, `compressImage`, `compressVideo`, and video thumbnails return
 temp files. `lx.fs.copy` keeps a copy; `lx.fs.rename` moves it into userdata or
 usercache.
 

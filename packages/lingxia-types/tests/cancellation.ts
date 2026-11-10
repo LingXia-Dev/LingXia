@@ -1,4 +1,4 @@
-import type { ChosenMediaEntry, Lx } from "../src/index.js";
+import type { PickedMediaEntry, Lx } from "../src/index.js";
 
 declare const lx: Lx;
 
@@ -9,10 +9,10 @@ async function payloadNeedsTheCheck(): Promise<void> {
   (await lx.showActionSheet({ items: [{ id: "a", label: "A" }] })).id;
   // @ts-expect-error pickFiles may have been dismissed
   (await lx.pickFiles()).paths;
-  // @ts-expect-error chooseDirectory may have been dismissed
-  (await lx.chooseDirectory()).path;
-  // @ts-expect-error chooseMedia may have been dismissed
-  (await lx.chooseMedia()).entries;
+  // @ts-expect-error pickDirectory may have been dismissed
+  (await lx.pickDirectory()).path;
+  // @ts-expect-error pickMedia may have been dismissed
+  (await lx.pickMedia()).entries;
   // @ts-expect-error scanCode may have been dismissed
   (await lx.scanCode()).scanResult;
 }
@@ -26,12 +26,12 @@ async function checkedResultsNarrow(): Promise<string> {
   const paths: string[] = (file.status === 'canceled') ? [] : file.paths;
   const nonEmptyPaths: [string, ...string[]] | null = (file.status === 'canceled') ? null : file.paths;
 
-  const directory = await lx.chooseDirectory();
+  const directory = await lx.pickDirectory();
   const directoryPath: string = (directory.status === 'canceled') ? "" : directory.path;
 
-  const media = await lx.chooseMedia();
+  const media = await lx.pickMedia();
   const first: string = (media.status === 'canceled') ? "" : media.entries[0].uri;
-  const nonEmptyMedia: [ChosenMediaEntry, ...ChosenMediaEntry[]] | null = (media.status === 'canceled')
+  const nonEmptyMedia: [PickedMediaEntry, ...PickedMediaEntry[]] | null = (media.status === 'canceled')
     ? null
     : media.entries;
 

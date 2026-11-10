@@ -5,7 +5,7 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 
 pub use lingxia_service::file::{
-    ChooseDirectoryRequest, ChooseFileRequest, FileDialogFilter, FileDialogResult, OpenFileRequest,
+    FileDialogFilter, FileDialogResult, OpenFileRequest, PickDirectoryRequest, PickFileRequest,
     RevealInFileManagerRequest,
 };
 
@@ -34,21 +34,21 @@ pub async fn reveal_in_file_manager(
 }
 
 /// Presents a file picker and returns the selected entries.
-pub async fn choose_file(
+pub async fn pick_file(
     app: &crate::LxApp,
-    request: ChooseFileRequest,
+    request: PickFileRequest,
 ) -> crate::Result<FileDialogResult> {
-    lingxia_service::file::choose_file(&*app.runtime, request)
+    lingxia_service::file::pick_file(&*app.runtime, request)
         .await
         .map_err(crate::Error::from)
 }
 
 /// Presents a directory picker and returns the selected entry.
-pub async fn choose_directory(
+pub async fn pick_directory(
     app: &crate::LxApp,
-    request: ChooseDirectoryRequest,
+    request: PickDirectoryRequest,
 ) -> crate::Result<FileDialogResult> {
-    lingxia_service::file::choose_directory(&*app.runtime, request)
+    lingxia_service::file::pick_directory(&*app.runtime, request)
         .await
         .map_err(crate::Error::from)
 }

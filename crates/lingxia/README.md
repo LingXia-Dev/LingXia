@@ -118,8 +118,8 @@ println!("downloaded {} to {}", file.file_name(), file.path().display());
 Use facade modules instead of platform-specific SDK calls:
 
 ```rust
-let files = lingxia::file::choose_file(&app, request).await?;
-let media = lingxia::media::choose_media(&app, request).await?;
+let files = lingxia::file::pick_file(&app, request).await?;
+let media = lingxia::media::pick(request).await?;
 lingxia::file::review(&app, open_request).await?;
 ```
 

@@ -652,14 +652,14 @@ rong::js_api! {
     onClick: () => void | Promise<void>;
 }"###;
 
-        type ChooseDirectoryOptions = r###"{
+        type PickDirectoryOptions = r###"{
     /** Initial directory the dialog opens in. Platform default if omitted. */
     defaultPath?: string;
 }"###;
 
-        /// Result of `lx.chooseDirectory`. Branch on `status` before reading
+        /// Result of `lx.pickDirectory`. Branch on `status` before reading
         /// the selected directory.
-        type ChooseDirectoryResult = r###"{
+        type PickDirectoryResult = r###"{
     status: 'ok';
     /** Native-consumable directory reference (path or URI). */
     path: string;
@@ -694,7 +694,7 @@ rong::js_api! {
     paths: [string, ...string[]];
 } | CanceledResult"###;
 
-        type ChooseMediaOptions = r###"{
+        type PickMediaOptions = r###"{
     count?: number;
     mediaType?: ('image' | 'video')[];
     sourceType?: ('album' | 'camera')[];
@@ -702,15 +702,15 @@ rong::js_api! {
     maxDurationSeconds?: number;
 }"###;
 
-        /// Result of `lx.chooseMedia`. Branch on `status` before reading the
+        /// Result of `lx.pickMedia`. Branch on `status` before reading the
         /// selected entries.
-        type ChooseMediaResult = r###"{
+        type PickMediaResult = r###"{
     status: 'ok';
     /** Picked media; always at least one entry. */
-    entries: [ChosenMediaEntry, ...ChosenMediaEntry[]];
+    entries: [PickedMediaEntry, ...PickedMediaEntry[]];
 } | CanceledResult"###;
 
-        type ChosenMediaEntry = r###"{
+        type PickedMediaEntry = r###"{
     uri: string;
     fileType: 'image' | 'video';
     isOriginal: boolean;
@@ -729,7 +729,7 @@ rong::js_api! {
     type: 'image';
     /**
      * Managed `lx://` path, or a picker result from `lx.pickFile` /
-     * `lx.chooseMedia` — the same file rules as `lx.share`. Rejects
+     * `lx.pickMedia` — the same file rules as `lx.share`. Rejects
      * `E_INVALID_ARG` when the file is not a decodable image.
      */
     filePath: string;
@@ -1379,7 +1379,7 @@ rong::js_api! {
      * File paths returned by LingXia APIs to share. Images, PDFs, and other
      * documents are all represented as file paths.
      *
-     * Use `lx.pickFiles` for system files and `lx.chooseMedia` for picked media;
+     * Use `lx.pickFiles` for system files and `lx.pickMedia` for picked media;
      * pass the returned path here without parsing it.
      * Some platforms or receivers may limit multi-file shares. Share files one
      * at a time when targeting those receivers.

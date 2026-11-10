@@ -6,7 +6,7 @@ use crate::i18n::{
 };
 use base64::{Engine as _, engine::general_purpose};
 use lingxia_service::file::{
-    ChooseDirectoryRequest, ChooseFileRequest, FileDialogFilter, OpenFileRequest,
+    FileDialogFilter, OpenFileRequest, PickDirectoryRequest, PickFileRequest,
 };
 use lxapp::LxApp;
 use rong::{
@@ -153,7 +153,7 @@ struct JSFileDialogFilter {
 
 #[derive(FromJSObject, Clone, Default)]
 #[ts_skip]
-struct JSChooseFileOptions {
+struct JSPickFileOptions {
     multiple: Option<bool>,
     filters: Option<Vec<JSFileDialogFilter>>,
     #[js_name = "defaultPath"]
@@ -162,7 +162,7 @@ struct JSChooseFileOptions {
 
 #[derive(FromJSObject, Clone, Default)]
 #[ts_skip]
-struct JSChooseDirectoryOptions {
+struct JSPickDirectoryOptions {
     #[js_name = "defaultPath"]
     default_path: Option<String>,
 }
@@ -243,7 +243,7 @@ enum ManagedPathKind {
     UserData,
     UserCache,
     /// A transient grant to a file/directory the user explicitly picked
-    /// (pickFile / chooseDirectory / chooseMedia on desktop). Read-only:
+    /// (pickFile / pickDirectory / pickMedia on desktop). Read-only:
     /// the readable resolver accepts it, the writable resolver does not.
     Granted,
 }
@@ -388,7 +388,7 @@ fn is_platform_file_reference(path: &str) -> bool {
 fn selected_directory_path_to_uri(lxapp: &LxApp, raw_path: &str) -> JSResult<String> {
     let path = raw_path.trim();
     if path.is_empty() {
-        return Err(js_internal_error("chooseDirectory returned an empty path"));
+        return Err(js_internal_error("pickDirectory returned an empty path"));
     }
 
     if let Ok(resolved) = lxapp.resolve_accessible_path(path)
@@ -404,7 +404,7 @@ fn selected_directory_path_to_uri(lxapp: &LxApp, raw_path: &str) -> JSResult<Str
             .map(|uri| uri.into_string())
             .map_err(|err| {
                 js_internal_error(format!(
-                    "chooseDirectory failed to grant temporary directory access for {}: {}",
+                    "pickDirectory failed to grant temporary directory access for {}: {}",
                     path_ref.display(),
                     err
                 ))
@@ -412,13 +412,13 @@ fn selected_directory_path_to_uri(lxapp: &LxApp, raw_path: &str) -> JSResult<Str
     }
 
     Err(js_internal_error(format!(
-        "chooseDirectory returned an inaccessible path: {}",
+        "pickDirectory returned an inaccessible path: {}",
         path
     )))
 }
 
 /// Pick one file. A successful selection returns one opaque URI.
-async fn pick_file(ctx: JSContext, options: Optional<JSChooseFileOptions>) -> JSResult<JSObject> {
+async fn pick_file(ctx: JSContext, options: Optional<JSPickFileOptions>) -> JSResult<JSObject> {
     let mut options = options.0.unwrap_or_default();
     options.multiple = Some(false);
     let result = run_file_picker(ctx, Optional(Some(options))).await?;
@@ -437,7 +437,7 @@ async fn pick_file(ctx: JSContext, options: Optional<JSChooseFileOptions>) -> JS
 }
 
 /// Pick one or more files. Dismissal is a normal outcome.
-async fn pick_files(ctx: JSContext, options: Optional<JSChooseFileOptions>) -> JSResult<JSObject> {
+async fn pick_files(ctx: JSContext, options: Optional<JSPickFileOptions>) -> JSResult<JSObject> {
     let mut options = options.0.unwrap_or_default();
     options.multiple = Some(true);
     run_file_picker(ctx, Optional(Some(options))).await
@@ -448,7 +448,7 @@ async fn pick_files(ctx: JSContext, options: Optional<JSChooseFileOptions>) -> J
 /// path. Rejects when the picker fails or returns an invalid payload.
 async fn run_file_picker(
     ctx: JSContext,
-    options: Optional<JSChooseFileOptions>,
+    options: Optional<JSPickFileOptions>,
 ) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let opts = options.as_ref().cloned().unwrap_or_default();
@@ -476,9 +476,9 @@ async fn run_file_picker(
         })
         .collect();
 
-    let result = lingxia_service::file::choose_file(
+    let result = lingxia_service::file::pick_file(
         &*lxapp.runtime,
-        ChooseFileRequest {
+        PickFileRequest {
             multiple: opts.multiple.unwrap_or(false),
             filters,
             title: None,
@@ -513,9 +513,9 @@ async fn run_file_picker(
 /// Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
 /// completed selection resolves `{ status: 'ok', path }`. Rejects when the
 /// picker fails or returns an invalid payload.
-async fn choose_directory(
+async fn pick_directory(
     ctx: JSContext,
-    options: Optional<JSChooseDirectoryOptions>,
+    options: Optional<JSPickDirectoryOptions>,
 ) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let opts = options.as_ref().cloned().unwrap_or_default();
@@ -527,9 +527,9 @@ async fn choose_directory(
         .transpose()?
         .filter(|path| !path.is_empty());
 
-    let result = lingxia_service::file::choose_directory(
+    let result = lingxia_service::file::pick_directory(
         &*lxapp.runtime,
-        ChooseDirectoryRequest {
+        PickDirectoryRequest {
             title: None,
             default_path,
         },
@@ -543,12 +543,12 @@ async fn choose_directory(
     // Same tripwire as the file picker: the union removed the type, not the state.
     if result.paths.len() != 1 {
         return Err(js_internal_error(
-            "chooseDirectory invalid payload: non-canceled result must include exactly one path",
+            "pickDirectory invalid payload: non-canceled result must include exactly one path",
         ));
     }
     let path = result.paths.into_iter().next().ok_or_else(|| {
         js_internal_error(
-            "chooseDirectory invalid payload: non-canceled result must include exactly one path",
+            "pickDirectory invalid payload: non-canceled result must include exactly one path",
         )
     })?;
 
@@ -675,7 +675,7 @@ fn resolve_managed_path(
             Some(kind) => kind,
             // The URI resolved (so the lxapp may access this path) but it is
             // not under managed storage: a transient grant to a file the
-            // user explicitly picked (pickFile / chooseMedia on desktop).
+            // user explicitly picked (pickFile / pickMedia on desktop).
             None if allow_granted => ManagedPathKind::Granted,
             None => {
                 return Err(js_invalid_parameter_error(format!(
@@ -1415,10 +1415,10 @@ rong::js_api! {
         // Precise multiple-correlated overloads remain in the curated Lx augmentation.
         fn pickFile(ts_params = "options?: PickFileOptions", ts_return = "Promise<PickFileResult>") = pick_file;
         fn pickFiles(ts_params = "options?: PickFileOptions", ts_return = "Promise<ChooseFileResult>") = pick_files;
-        fn chooseDirectory(
-            ts_params = "options?: ChooseDirectoryOptions",
-            ts_return = "Promise<ChooseDirectoryResult>"
-        ) = choose_directory;
+        fn pickDirectory(
+            ts_params = "options?: PickDirectoryOptions",
+            ts_return = "Promise<PickDirectoryResult>"
+        ) = pick_directory;
     }
 }
 

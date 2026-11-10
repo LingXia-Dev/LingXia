@@ -1,7 +1,7 @@
 use crate::host::{HostCancel, HostResult, await_or_cancel};
 use crate::platform_error::map_platform_error;
 use lingxia_app_context::app_config;
-use lingxia_service::file::ChooseDirectoryRequest;
+use lingxia_service::file::PickDirectoryRequest;
 use lxapp::LxApp;
 use serde::Serialize;
 use std::path::PathBuf;
@@ -77,9 +77,9 @@ async fn choose_download_directory(
         .to_string();
     let app_for_picker = app.clone();
     let result = await_or_cancel(&mut cancel, async move {
-        lingxia_service::file::choose_directory(
+        lingxia_service::file::pick_directory(
             &*app_for_picker.runtime,
-            ChooseDirectoryRequest {
+            PickDirectoryRequest {
                 title: Some("Choose Download Folder".to_string()),
                 default_path: Some(current_dir),
             },

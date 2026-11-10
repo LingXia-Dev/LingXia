@@ -1,11 +1,11 @@
 use super::app::Platform;
 use super::ffi::cancel_preview_media;
-use super::ffi::choose_media;
+use super::ffi::pick_media;
 use super::ffi::preview_media;
 use crate::error::PlatformError;
-use crate::traits::media_interaction::{CameraFacing, ChooseMediaMode, MediaSource};
+use crate::traits::media_interaction::{CameraFacing, MediaSource, PickMediaMode};
 use crate::traits::media_interaction::{
-    ChooseMediaRequest, MediaInteraction, MediaKind, MediaObjectFit, PreviewMediaRequest,
+    MediaInteraction, MediaKind, MediaObjectFit, PickMediaRequest, PreviewMediaRequest,
     SaveMediaRequest, ScanCodeRequest,
 };
 use crate::traits::media_runtime::{
@@ -99,8 +99,8 @@ impl MediaInteraction for Platform {
         }
     }
 
-    async fn choose_media(&self, request: ChooseMediaRequest) -> Result<String, PlatformError> {
-        crate::rt::native_call(|callback_id| choose_media_impl(request, callback_id)).await
+    async fn pick_media(&self, request: PickMediaRequest) -> Result<String, PlatformError> {
+        crate::rt::native_call(|callback_id| pick_media_impl(request, callback_id)).await
     }
 
     async fn scan_code(&self, request: ScanCodeRequest) -> Result<String, PlatformError> {
@@ -377,12 +377,12 @@ impl MediaRuntime for Platform {
     }
 }
 
-fn choose_media_impl(request: ChooseMediaRequest, callback_id: u64) -> Result<(), PlatformError> {
+fn pick_media_impl(request: PickMediaRequest, callback_id: u64) -> Result<(), PlatformError> {
     let max_count = request.max_count;
     let mode = match request.mode {
-        ChooseMediaMode::Images => "image",
-        ChooseMediaMode::Videos => "video",
-        ChooseMediaMode::Mix => "mix",
+        PickMediaMode::Images => "image",
+        PickMediaMode::Videos => "video",
+        PickMediaMode::Mix => "mix",
     };
     let source_types: Vec<String> = request
         .source_types
@@ -403,7 +403,7 @@ fn choose_media_impl(request: ChooseMediaRequest, callback_id: u64) -> Result<()
 
     let camera_facing_str = camera_facing.unwrap_or("back");
 
-    let success = choose_media(
+    let success = pick_media(
         max_count,
         mode,
         &source_types_json,

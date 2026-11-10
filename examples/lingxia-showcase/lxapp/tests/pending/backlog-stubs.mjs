@@ -15,9 +15,9 @@ export default [
   },
   {
     id: "PEND-DIRPICK-001",
-    title: "chooseDirectory returns a grant the lxapp can read",
+    title: "pickDirectory returns a grant the lxapp can read",
     mode: "external-ui",
-    covers: ["lx.chooseDirectory"],
+    covers: ["lx.pickDirectory"],
     reason: "the directory picker is an OS dialog with no in-process driver",
   },
   {
@@ -43,9 +43,9 @@ export default [
   },
   {
     id: "PEND-MEDIA-PICK-001",
-    title: "chooseMedia and scanCode pick a real file through the OS panel",
+    title: "pickMedia and scanCode pick a real file through the OS panel",
     mode: "external-ui",
-    covers: ["lx.chooseMedia", "lx.scanCode"],
+    covers: ["lx.pickMedia", "lx.scanCode"],
     reason: "the desktop file panel starves the in-process driver and hides its file rows from AX; previewMedia is DESKTOP-PREVIEW-MEDIA-001",
   },
   {
@@ -196,9 +196,9 @@ export default [
   },
   {
     id: "PEND-SWIPER-001",
-    title: "LxMediaSwiper index change and add from chooseMedia",
+    title: "LxMediaSwiper index change and add from pickMedia",
     mode: "planned",
-    covers: ["lx.chooseMedia"],
+    covers: ["lx.pickMedia"],
     reason: "add path is OS picker; index events have no contract",
   },
   {

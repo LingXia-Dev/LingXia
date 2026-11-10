@@ -1,6 +1,6 @@
 use crate::error::PlatformError;
 use crate::traits::file::{
-    ChooseDirectoryRequest, ChooseFileRequest, FileDialogFilter, FileDialogResult,
+    FileDialogFilter, FileDialogResult, PickDirectoryRequest, PickFileRequest,
 };
 
 // Async dialogs, deliberately: the sync `rfd::FileDialog` runs `runModal` on
@@ -10,8 +10,8 @@ use crate::traits::file::{
 // dialog presents the same panel through a completion-driven future instead,
 // so the runloop (and everything on it) stays live while the user decides.
 
-pub async fn choose_file_desktop(
-    request: ChooseFileRequest,
+pub async fn pick_file_desktop(
+    request: PickFileRequest,
 ) -> Result<FileDialogResult, PlatformError> {
     let dialog = apply_filters(
         apply_common_options(
@@ -44,8 +44,8 @@ pub async fn choose_file_desktop(
     }
 }
 
-pub async fn choose_directory_desktop(
-    request: ChooseDirectoryRequest,
+pub async fn pick_directory_desktop(
+    request: PickDirectoryRequest,
 ) -> Result<FileDialogResult, PlatformError> {
     let dialog = apply_common_options(
         rfd::AsyncFileDialog::new(),

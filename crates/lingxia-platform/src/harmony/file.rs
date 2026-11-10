@@ -1,7 +1,7 @@
 use super::app::Platform;
 use crate::error::PlatformError;
 use crate::traits::file::{
-    ChooseDirectoryRequest, ChooseFileRequest, FileDialogResult, FileService, OpenFileRequest,
+    FileDialogResult, FileService, OpenFileRequest, PickDirectoryRequest, PickFileRequest,
 };
 use serde::Deserialize;
 use std::path::Path;
@@ -20,10 +20,7 @@ impl FileService for Platform {
         crate::rt::blocking(move || open_external_sync(request)).await
     }
 
-    async fn choose_file(
-        &self,
-        request: ChooseFileRequest,
-    ) -> Result<FileDialogResult, PlatformError> {
+    async fn pick_file(&self, request: PickFileRequest) -> Result<FileDialogResult, PlatformError> {
         let payload = crate::rt::native_call(|callback_id| {
             let callback_id = callback_id.to_string();
             let multiple = if request.multiple { "1" } else { "0" };
@@ -47,9 +44,9 @@ impl FileService for Platform {
         parse_file_dialog_result(&payload)
     }
 
-    async fn choose_directory(
+    async fn pick_directory(
         &self,
-        request: ChooseDirectoryRequest,
+        request: PickDirectoryRequest,
     ) -> Result<FileDialogResult, PlatformError> {
         let payload = crate::rt::native_call(|callback_id| {
             let callback_id = callback_id.to_string();

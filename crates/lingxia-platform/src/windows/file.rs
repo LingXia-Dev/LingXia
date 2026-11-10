@@ -7,8 +7,8 @@ use lingxia_webview::{FileChooserFile, FileChooserResponse};
 use super::Platform;
 use crate::error::PlatformError;
 use crate::traits::file::{
-    ChooseDirectoryRequest, ChooseFileRequest, FileDialogFilter, FileDialogResult, FileService,
-    OpenFileRequest, RevealInFileManagerRequest,
+    FileDialogFilter, FileDialogResult, FileService, OpenFileRequest, PickDirectoryRequest,
+    PickFileRequest, RevealInFileManagerRequest,
 };
 
 impl Platform {
@@ -39,7 +39,7 @@ impl Platform {
         }
 
         let result = if request.allow_directories {
-            self.choose_directory(ChooseDirectoryRequest {
+            self.pick_directory(PickDirectoryRequest {
                 title: Some(crate::i18n::text(
                     "file_chooser.select_folder",
                     "Select folder",
@@ -48,7 +48,7 @@ impl Platform {
             })
             .await
         } else {
-            self.choose_file(ChooseFileRequest {
+            self.pick_file(PickFileRequest {
                 multiple: request.allow_multiple,
                 filters: filters_from_accept_types(&request.accept_types),
                 title: Some(crate::i18n::text("file_chooser.select_file", "Select file")),
@@ -105,18 +105,18 @@ impl FileService for Platform {
         }
     }
 
-    fn choose_file(
+    fn pick_file(
         &self,
-        request: ChooseFileRequest,
+        request: PickFileRequest,
     ) -> impl Future<Output = Result<FileDialogResult, PlatformError>> + Send {
-        crate::desktop::file_dialog::choose_file_desktop(request)
+        crate::desktop::file_dialog::pick_file_desktop(request)
     }
 
-    fn choose_directory(
+    fn pick_directory(
         &self,
-        request: ChooseDirectoryRequest,
+        request: PickDirectoryRequest,
     ) -> impl Future<Output = Result<FileDialogResult, PlatformError>> + Send {
-        crate::desktop::file_dialog::choose_directory_desktop(request)
+        crate::desktop::file_dialog::pick_directory_desktop(request)
     }
 }
 

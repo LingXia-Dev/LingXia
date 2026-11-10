@@ -5,7 +5,7 @@ export const SHOWCASE_PAGE_EXPECTATIONS = [
   { page: 'api', text: 'capabilities provided by LingXia' },
   { page: 'cloud', text: 'Cloud Authentication' },
   { page: 'video', text: 'HTML Video' },
-  { page: 'media', text: 'lx.chooseMedia / lx.previewMedia' },
+  { page: 'media', text: 'lx.pickMedia / lx.previewMedia' },
   { page: 'ui', text: 'navigateTo/Back, redirectTo' },
   { page: 'device', text: 'Get Device Information' },
   { page: 'wifi', text: 'WiFi Management' },

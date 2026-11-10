@@ -72,7 +72,7 @@ pub enum MediaObjectFit {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ChooseMediaMode {
+pub enum PickMediaMode {
     Images,
     Videos,
     Mix,
@@ -97,19 +97,19 @@ pub enum MediaQuality {
 }
 
 #[derive(Debug, Clone)]
-pub struct ChooseMediaRequest {
+pub struct PickMediaRequest {
     pub max_count: u32,
-    pub mode: ChooseMediaMode,
+    pub mode: PickMediaMode,
     pub source_types: Vec<MediaSource>,
     pub max_duration_seconds: Option<u32>,
     pub camera_facing: Option<CameraFacing>,
 }
 
-impl Default for ChooseMediaRequest {
+impl Default for PickMediaRequest {
     fn default() -> Self {
         Self {
             max_count: 9,
-            mode: ChooseMediaMode::Images,
+            mode: PickMediaMode::Images,
             source_types: vec![MediaSource::Album, MediaSource::Camera],
             max_duration_seconds: None,
             camera_facing: None,
@@ -150,9 +150,9 @@ pub trait MediaInteraction: Send + Sync + 'static {
     fn preview_media(&self, request: PreviewMediaRequest) -> Result<(), PlatformError>;
     fn cancel_preview(&self, callback_id: u64) -> Result<(), PlatformError>;
 
-    fn choose_media(
+    fn pick_media(
         &self,
-        request: ChooseMediaRequest,
+        request: PickMediaRequest,
     ) -> impl Future<Output = Result<String, PlatformError>> + Send;
 
     fn scan_code(

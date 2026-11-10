@@ -53,7 +53,7 @@ Page({
 
   chooseImage: async function() {
     try {
-      const result = await lx.chooseMedia({
+      const result = await lx.pickMedia({
         count: 1,
         mediaType: ["image"],
         sourceType: ["album", "camera"],
@@ -67,7 +67,7 @@ Page({
         statusText: "Image selected",
       });
     } catch (error) {
-      const message = errorMessage(error, "chooseMedia failed");
+      const message = errorMessage(error, "pickMedia failed");
       this.setData({ statusText: message });
       lx.showToast({ title: message, icon: "none" });
     }

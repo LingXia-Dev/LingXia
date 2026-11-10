@@ -1,7 +1,7 @@
 pub use lingxia_platform::PlatformError;
 pub use lingxia_platform::traits::file::{
-    ChooseDirectoryRequest, ChooseFileRequest, FileDialogFilter, FileDialogResult, FileService,
-    OpenFileRequest, RevealInFileManagerRequest,
+    FileDialogFilter, FileDialogResult, FileService, OpenFileRequest, PickDirectoryRequest,
+    PickFileRequest, RevealInFileManagerRequest,
 };
 
 pub type Result<T> = std::result::Result<T, PlatformError>;
@@ -27,16 +27,16 @@ pub async fn reveal_in_file_manager(
     runtime.reveal_in_file_manager(request).await
 }
 
-pub async fn choose_file(
+pub async fn pick_file(
     runtime: &(impl FileService + ?Sized),
-    request: ChooseFileRequest,
+    request: PickFileRequest,
 ) -> Result<FileDialogResult> {
-    runtime.choose_file(request).await
+    runtime.pick_file(request).await
 }
 
-pub async fn choose_directory(
+pub async fn pick_directory(
     runtime: &(impl FileService + ?Sized),
-    request: ChooseDirectoryRequest,
+    request: PickDirectoryRequest,
 ) -> Result<FileDialogResult> {
-    runtime.choose_directory(request).await
+    runtime.pick_directory(request).await
 }

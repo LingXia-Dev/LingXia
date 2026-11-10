@@ -11,7 +11,7 @@ use crate::host::{HostCancel, HostResult, StreamContext, await_or_cancel};
 use crate::platform_error::map_platform_error;
 use crate::url_match::normalize_url;
 use lingxia_platform::traits::app_runtime::AppRuntime;
-use lingxia_service::file::{ChooseFileRequest, FileDialogFilter};
+use lingxia_service::file::{FileDialogFilter, PickFileRequest};
 use lxapp::LxApp;
 use lxapp::LxAppError;
 use serde::{Deserialize, Serialize};
@@ -1087,9 +1087,9 @@ async fn import_html_bookmarks(
     let app_for_picker = app.clone();
     let is_chinese = display_locale_is_chinese();
     let selected = await_or_cancel(&mut cancel, async move {
-        lingxia_service::file::choose_file(
+        lingxia_service::file::pick_file(
             &*app_for_picker.runtime,
-            ChooseFileRequest {
+            PickFileRequest {
                 multiple: false,
                 filters: vec![FileDialogFilter {
                     name: Some(

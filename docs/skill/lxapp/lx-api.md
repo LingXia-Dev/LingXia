@@ -190,7 +190,7 @@ if (r.status === 'ok') await lx.surface.bringToFront({ query: { run: runId } })
 
 A rejection means the operation failed, never that the user said no.
 Dismissable APIs (`showActionSheet`, `showModal`, `pickFile`,
-`pickFiles`, `chooseDirectory`, `chooseMedia`, `scanCode`, `lx.clipboard`
+`pickFiles`, `pickDirectory`, `pickMedia`, `scanCode`, `lx.clipboard`
 reads) resolve a result discriminated on `status`. `lx.share` reports
 `outcome: 'completed' | 'dismissed' | 'unknown'`.
 

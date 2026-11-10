@@ -36,7 +36,7 @@ pub struct FileDialogFilter {
 }
 
 #[derive(Debug, Clone)]
-pub struct ChooseFileRequest {
+pub struct PickFileRequest {
     pub multiple: bool,
     pub filters: Vec<FileDialogFilter>,
     pub title: Option<String>,
@@ -44,7 +44,7 @@ pub struct ChooseFileRequest {
 }
 
 #[derive(Debug, Clone)]
-pub struct ChooseDirectoryRequest {
+pub struct PickDirectoryRequest {
     pub title: Option<String>,
     pub default_path: Option<String>,
 }
@@ -83,24 +83,24 @@ pub trait FileService: Send + Sync + 'static {
         }
     }
 
-    fn choose_file(
+    fn pick_file(
         &self,
-        _request: ChooseFileRequest,
+        _request: PickFileRequest,
     ) -> impl Future<Output = Result<FileDialogResult, PlatformError>> + Send {
         async {
             Err(PlatformError::NotSupported(
-                "choose_file is not supported on this platform".into(),
+                "pick_file is not supported on this platform".into(),
             ))
         }
     }
 
-    fn choose_directory(
+    fn pick_directory(
         &self,
-        _request: ChooseDirectoryRequest,
+        _request: PickDirectoryRequest,
     ) -> impl Future<Output = Result<FileDialogResult, PlatformError>> + Send {
         async {
             Err(PlatformError::NotSupported(
-                "choose_directory is not supported on this platform".into(),
+                "pick_directory is not supported on this platform".into(),
             ))
         }
     }

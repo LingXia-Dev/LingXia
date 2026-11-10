@@ -676,21 +676,6 @@ export type CanceledResult = {
     status: 'canceled';
 };
 
-export type ChooseDirectoryOptions = {
-    /** Initial directory the dialog opens in. Platform default if omitted. */
-    defaultPath?: string;
-};
-
-/**
- * Result of `lx.chooseDirectory`. Branch on `status` before reading
- * the selected directory.
- */
-export type ChooseDirectoryResult = {
-    status: 'ok';
-    /** Native-consumable directory reference (path or URI). */
-    path: string;
-} | CanceledResult;
-
 export type ChooseFileOptions = {
     /** Allow selecting multiple files. Default: false */
     multiple?: boolean;
@@ -719,30 +704,6 @@ export type ChooseFileResult = {
      */
     paths: [string, ...string[]];
 } | CanceledResult;
-
-export type ChooseMediaOptions = {
-    count?: number;
-    mediaType?: ('image' | 'video')[];
-    sourceType?: ('album' | 'camera')[];
-    camera?: 'back' | 'front';
-    maxDurationSeconds?: number;
-};
-
-/**
- * Result of `lx.chooseMedia`. Branch on `status` before reading the
- * selected entries.
- */
-export type ChooseMediaResult = {
-    status: 'ok';
-    /** Picked media; always at least one entry. */
-    entries: [ChosenMediaEntry, ...ChosenMediaEntry[]];
-} | CanceledResult;
-
-export type ChosenMediaEntry = {
-    uri: string;
-    fileType: 'image' | 'video';
-    isOriginal: boolean;
-};
 
 export type ClipboardApi = globalThis.ClipboardApi;
 
@@ -802,7 +763,7 @@ export type ClipboardWriteItem = {
     type: 'image';
     /**
      * Managed `lx://` path, or a picker result from `lx.pickFile` /
-     * `lx.chooseMedia` — the same file rules as `lx.share`. Rejects
+     * `lx.pickMedia` — the same file rules as `lx.share`. Rejects
      * `E_INVALID_ARG` when the file is not a decodable image.
      */
     filePath: string;
@@ -1573,9 +1534,48 @@ export type PageTargetOptions = {
     query?: PageQuery;
 };
 
+export type PickDirectoryOptions = {
+    /** Initial directory the dialog opens in. Platform default if omitted. */
+    defaultPath?: string;
+};
+
+/**
+ * Result of `lx.pickDirectory`. Branch on `status` before reading
+ * the selected directory.
+ */
+export type PickDirectoryResult = {
+    status: 'ok';
+    /** Native-consumable directory reference (path or URI). */
+    path: string;
+} | CanceledResult;
+
 export type PickFileOptions = Omit<ChooseFileOptions, 'multiple'>;
 
 export type PickFileResult = { status: 'ok'; uri: string } | CanceledResult;
+
+export type PickMediaOptions = {
+    count?: number;
+    mediaType?: ('image' | 'video')[];
+    sourceType?: ('album' | 'camera')[];
+    camera?: 'back' | 'front';
+    maxDurationSeconds?: number;
+};
+
+/**
+ * Result of `lx.pickMedia`. Branch on `status` before reading the
+ * selected entries.
+ */
+export type PickMediaResult = {
+    status: 'ok';
+    /** Picked media; always at least one entry. */
+    entries: [PickedMediaEntry, ...PickedMediaEntry[]];
+} | CanceledResult;
+
+export type PickedMediaEntry = {
+    uri: string;
+    fileType: 'image' | 'video';
+    isOriginal: boolean;
+};
 
 export type PreviewMediaAdvance = 'manual' | 'next' | 'loop';
 
@@ -1779,7 +1779,7 @@ export type ShareFilesOptions = ShareTitleOptions & {
      * File paths returned by LingXia APIs to share. Images, PDFs, and other
      * documents are all represented as file paths.
      *
-     * Use `lx.pickFiles` for system files and `lx.chooseMedia` for picked media;
+     * Use `lx.pickFiles` for system files and `lx.pickMedia` for picked media;
      * pass the returned path here without parsing it.
      * Some platforms or receivers may limit multi-file shares. Share files one
      * at a time when targeting those receivers.
@@ -3164,7 +3164,7 @@ declare global {
      * completed selection resolves `{ status: 'ok', path }`. Rejects when the
      * picker fails or returns an invalid payload.
      */
-    chooseDirectory(options?: ChooseDirectoryOptions): Promise<ChooseDirectoryResult>;
+    pickDirectory(options?: PickDirectoryOptions): Promise<PickDirectoryResult>;
     readonly fs: FileSystemApi;
     /** Subscribes to key-down events and returns the unsubscribe fn. */
     onKeyDown(callback: KeyEventCallback): () => void;
@@ -3185,7 +3185,7 @@ declare global {
      * entry. Rejects when capture or selection fails, or the host returns an invalid
      * payload.
      */
-    chooseMedia(options?: ChooseMediaOptions): Promise<ChooseMediaResult>;
+    pickMedia(options?: PickMediaOptions): Promise<PickMediaResult>;
     /**
      * Synchronously returns a JS handle so listeners can be attached before the
      * first event fires:

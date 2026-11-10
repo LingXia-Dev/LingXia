@@ -1,8 +1,8 @@
 use crate::i18n::js_invalid_parameter_error;
-use lingxia_platform::traits::media_interaction::{CameraFacing, ChooseMediaMode, MediaSource};
+use lingxia_platform::traits::media_interaction::{CameraFacing, MediaSource, PickMediaMode};
 use rong::JSResult;
 
-pub(super) fn parse_choose_mode(values: Option<Vec<String>>) -> JSResult<ChooseMediaMode> {
+pub(super) fn parse_pick_mode(values: Option<Vec<String>>) -> JSResult<PickMediaMode> {
     let raw = values.unwrap_or_else(|| vec!["image".to_string(), "video".to_string()]);
     let mut has_image = false;
     let mut has_video = false;
@@ -13,7 +13,7 @@ pub(super) fn parse_choose_mode(values: Option<Vec<String>>) -> JSResult<ChooseM
             "video" => has_video = true,
             other => {
                 return Err(js_invalid_parameter_error(format!(
-                    "chooseMedia invalid mediaType token \"{}\"",
+                    "pickMedia invalid mediaType token \"{}\"",
                     other
                 )));
             }
@@ -26,10 +26,10 @@ pub(super) fn parse_choose_mode(values: Option<Vec<String>>) -> JSResult<ChooseM
     }
 
     Ok(match (has_image, has_video) {
-        (true, true) => ChooseMediaMode::Mix,
-        (true, false) => ChooseMediaMode::Images,
-        (false, true) => ChooseMediaMode::Videos,
-        _ => ChooseMediaMode::Images,
+        (true, true) => PickMediaMode::Mix,
+        (true, false) => PickMediaMode::Images,
+        (false, true) => PickMediaMode::Videos,
+        _ => PickMediaMode::Images,
     })
 }
 
@@ -43,7 +43,7 @@ pub(super) fn parse_sources(values: Option<Vec<String>>) -> JSResult<Vec<MediaSo
             "camera" => MediaSource::Camera,
             other => {
                 return Err(js_invalid_parameter_error(format!(
-                    "chooseMedia invalid sourceType token \"{}\"",
+                    "pickMedia invalid sourceType token \"{}\"",
                     other
                 )));
             }

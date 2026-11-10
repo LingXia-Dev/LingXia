@@ -1,8 +1,8 @@
 use super::app::Platform;
 use crate::error::PlatformError;
 use crate::traits::media_interaction::{
-    CameraFacing, ChooseMediaMode, ChooseMediaRequest, MediaInteraction, MediaKind, MediaObjectFit,
-    MediaSource, PreviewMediaRequest, SaveMediaRequest, ScanCodeRequest, ScanType,
+    CameraFacing, MediaInteraction, MediaKind, MediaObjectFit, MediaSource, PickMediaMode,
+    PickMediaRequest, PreviewMediaRequest, SaveMediaRequest, ScanCodeRequest, ScanType,
 };
 use crate::traits::media_runtime::{
     CompressImageRequest, CompressVideoRequest, ExtractVideoThumbnailRequest, ImageInfo,
@@ -106,18 +106,18 @@ impl MediaInteraction for Platform {
         .map_err(|e| PlatformError::Platform(format!("Failed to cancel preview media: {}", e)))
     }
 
-    async fn choose_media(&self, request: ChooseMediaRequest) -> Result<String, PlatformError> {
+    async fn pick_media(&self, request: PickMediaRequest) -> Result<String, PlatformError> {
         if request.max_count == 0 {
             return Err(PlatformError::Platform(
-                "chooseMedia requires max_count to be greater than 0".to_string(),
+                "pickMedia requires max_count to be greater than 0".to_string(),
             ));
         }
 
         crate::rt::native_call(|callback_id| {
             let mode_str = match request.mode {
-                ChooseMediaMode::Images => "images",
-                ChooseMediaMode::Videos => "videos",
-                ChooseMediaMode::Mix => "mix",
+                PickMediaMode::Images => "images",
+                PickMediaMode::Videos => "videos",
+                PickMediaMode::Mix => "mix",
             };
 
             let allow_album = request
@@ -125,7 +125,7 @@ impl MediaInteraction for Platform {
                 .iter()
                 .any(|source| matches!(source, MediaSource::Album));
 
-            let payload = ChooseMediaPayload {
+            let payload = PickMediaPayload {
                 callback_id: callback_id.to_string(),
                 max_count: request.max_count,
                 mode: mode_str.to_string(),
@@ -142,16 +142,14 @@ impl MediaInteraction for Platform {
             };
 
             let payload_json = serde_json::to_string(&payload).map_err(|e| {
-                PlatformError::Platform(format!("Failed to serialize chooseMedia payload: {}", e))
+                PlatformError::Platform(format!("Failed to serialize pickMedia payload: {}", e))
             })?;
 
             lingxia_webview::platform::harmony::tsfn::call_arkts(
                 "chooseMedia",
                 &[payload_json.as_str()],
             )
-            .map_err(|e| {
-                PlatformError::Platform(format!("Failed to start chooseMedia flow: {}", e))
-            })
+            .map_err(|e| PlatformError::Platform(format!("Failed to start pickMedia flow: {}", e)))
         })
         .await
     }
@@ -267,7 +265,7 @@ fn save_media_resource(
 }
 
 #[derive(Serialize)]
-struct ChooseMediaPayload {
+struct PickMediaPayload {
     #[serde(rename = "callbackId")]
     callback_id: String,
     #[serde(rename = "maxCount")]

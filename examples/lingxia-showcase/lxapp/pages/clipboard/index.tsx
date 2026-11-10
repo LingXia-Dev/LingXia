@@ -102,7 +102,7 @@ export default function ClipboardPage() {
           <div className="px-4 py-4 border-b border-line-100">
             <div className="text-sm text-gray-900 font-medium">Image</div>
             <div className="text-xs text-gray-500 mt-1">
-              Write a 1×1 sample PNG, or pick one with lx.chooseMedia.
+              Write a 1×1 sample PNG, or pick one with lx.pickMedia.
             </div>
           </div>
           <div className="px-4 py-4 space-y-3">
