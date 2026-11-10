@@ -100,13 +100,16 @@ async function pickFileResults(): Promise<void> {
   const single = await lx.pickFile();
   if (single.status !== 'canceled') {
     const only: string = single.uri;
+    const name: string = single.name;
+    void name;
     void only;
   }
 
   const many = await lx.pickFiles();
   if (many.status !== 'canceled') {
-    const first: string = many.paths[0];
-    const rest: string[] = many.paths.slice(1);
+    const first: string = many.files[0].uri;
+    const names: string[] = many.files.map((file) => file.name);
+    const rest: string[] = names.slice(1);
     void first;
     void rest;
   }

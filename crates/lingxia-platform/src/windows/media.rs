@@ -11,8 +11,8 @@ use serde::Serialize;
 use super::{Platform, file, not_supported};
 use crate::error::PlatformError;
 use crate::traits::media_interaction::{
-    MediaInteraction, PickMediaMode, PickMediaRequest, PreviewMediaRequest, SaveMediaRequest,
-    ScanCodeRequest,
+    MediaInteraction, MediaSource, PickMediaMode, PickMediaRequest, PreviewMediaRequest,
+    SaveMediaRequest, ScanCodeRequest,
 };
 use crate::traits::media_runtime::{
     CompressImageRequest, CompressVideoRequest, ExtractVideoThumbnailRequest, ImageInfo,
@@ -33,17 +33,11 @@ impl MediaInteraction for Platform {
         request: PickMediaRequest,
     ) -> impl Future<Output = Result<String, PlatformError>> + Send {
         async move {
-            // Camera capture has no pipeline on desktop; like the macOS
-            // chooser, camera requests fall back to the file dialog.
-            let handle = crate::rt::spawn_blocking(move || pick_media_files(&request));
-            match handle {
-                Some(task) => task.await.map_err(|err| {
-                    PlatformError::Platform(format!("pick_media task panicked: {err}"))
-                })?,
-                None => Err(PlatformError::Platform(
-                    "pick_media: async runtime not initialized".into(),
-                )),
+            // No camera capture pipeline on Windows.
+            if matches!(request.source_types.as_slice(), [MediaSource::Camera]) {
+                return not_supported("pick_media camera capture");
             }
+            pick_media_files(request).await
         }
     }
 
@@ -75,8 +69,14 @@ const VIDEO_EXTENSIONS: [&str; 7] = ["mp4", "mov", "avi", "mkv", "webm", "m4v", 
 /// Album picking on Windows is a file dialog over the media types; the
 /// chosen paths go back as the `[{uri, fileType, isOriginal}]` array the
 /// logic layer copies into the app cache. Cancel yields an empty list.
-fn pick_media_files(request: &PickMediaRequest) -> Result<String, PlatformError> {
-    let dialog = rfd::FileDialog::new();
+///
+/// Async for its per-dialog thread: rfd initializes COM as STA, which fails on
+/// a pooled thread that Media Foundation already joined to the MTA.
+async fn pick_media_files(request: PickMediaRequest) -> Result<String, PlatformError> {
+    let mut dialog = rfd::AsyncFileDialog::new();
+    if let Some(owner) = super::file::DialogOwner::find() {
+        dialog = dialog.set_parent(&owner);
+    }
     let dialog = match request.mode {
         PickMediaMode::Images => dialog
             .set_title(crate::i18n::text(
@@ -105,17 +105,19 @@ fn pick_media_files(request: &PickMediaRequest) -> Result<String, PlatformError>
         }
     };
     let picked = if request.max_count > 1 {
-        dialog.pick_files().unwrap_or_default()
+        dialog.pick_files().await.unwrap_or_default()
     } else {
         dialog
             .pick_file()
-            .map(|path| vec![path])
+            .await
+            .map(|handle| vec![handle])
             .unwrap_or_default()
     };
     let entries: Vec<serde_json::Value> = picked
         .into_iter()
         .take(request.max_count.max(1) as usize)
-        .map(|path| {
+        .map(|handle| {
+            let path = handle.path();
             let ext = path
                 .extension()
                 .map(|ext| ext.to_string_lossy().to_lowercase())

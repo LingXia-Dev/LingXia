@@ -30,7 +30,15 @@ impl FileService for Platform {
     ) -> Result<FileDialogResult, PlatformError> {
         let payload =
             crate::rt::native_call(|callback_id| pick_directory_impl(&request, callback_id))
-                .await?;
+                .await
+                .map_err(|err| match err {
+                    PlatformError::BusinessError(6000) => PlatformError::NotSupported(
+                        "pickDirectory on Android needs a defaultPath in lxapp storage: \
+                         a system folder pick is a SAF tree URI no file API can read"
+                            .to_string(),
+                    ),
+                    other => other,
+                })?;
         parse_file_dialog_result(&payload)
     }
 }
@@ -39,6 +47,8 @@ impl FileService for Platform {
 struct AndroidFileDialogResult {
     canceled: bool,
     paths: Vec<String>,
+    #[serde(default)]
+    names: Option<Vec<Option<String>>>,
 }
 
 fn review_file_sync(request: OpenFileRequest) -> Result<(), PlatformError> {
@@ -220,8 +230,5 @@ fn pick_directory_impl(
 fn parse_file_dialog_result(payload: &str) -> Result<FileDialogResult, PlatformError> {
     let parsed: AndroidFileDialogResult = serde_json::from_str(payload)
         .map_err(|e| PlatformError::Platform(format!("parse file dialog result failed: {e}")))?;
-    Ok(FileDialogResult {
-        canceled: parsed.canceled,
-        paths: parsed.paths,
-    })
+    FileDialogResult::from_wire(parsed.canceled, parsed.paths, parsed.names)
 }

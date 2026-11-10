@@ -58,7 +58,15 @@ impl FileService for Platform {
             )
             .map_err(|e| PlatformError::Platform(format!("Failed to choose directory: {}", e)))
         })
-        .await?;
+        .await
+        .map_err(|err| match err {
+            PlatformError::BusinessError(6000) => PlatformError::NotSupported(
+                "pickDirectory on this HarmonyOS device needs a defaultPath in lxapp storage: \
+                 the system folder picker is 2-in-1 only"
+                    .to_string(),
+            ),
+            other => other,
+        })?;
         parse_file_dialog_result(&payload)
     }
 }
@@ -67,6 +75,8 @@ impl FileService for Platform {
 struct HarmonyFileDialogResult {
     canceled: bool,
     paths: Vec<String>,
+    #[serde(default)]
+    names: Option<Vec<Option<String>>>,
 }
 
 fn supports_native_review(request: &OpenFileRequest) -> bool {
@@ -119,8 +129,28 @@ fn open_external_sync(request: OpenFileRequest) -> Result<(), PlatformError> {
 fn parse_file_dialog_result(payload: &str) -> Result<FileDialogResult, PlatformError> {
     let parsed: HarmonyFileDialogResult = serde_json::from_str(payload)
         .map_err(|e| PlatformError::Platform(format!("parse file dialog result failed: {e}")))?;
-    Ok(FileDialogResult {
-        canceled: parsed.canceled,
-        paths: parsed.paths,
-    })
+    // The system picker reports URIs whose tail is the percent-encoded file
+    // name; the in-app chooser overlay reports plain paths, named by their tail
+    // in the logic layer.
+    let names = parsed.names.or_else(|| {
+        Some(
+            parsed
+                .paths
+                .iter()
+                .map(|path| uri_tail_name(path))
+                .collect(),
+        )
+    });
+    FileDialogResult::from_wire(parsed.canceled, parsed.paths, names)
+}
+
+fn uri_tail_name(uri: &str) -> Option<String> {
+    if !uri.contains("://") {
+        return None;
+    }
+    let tail = uri.trim_end_matches('/').rsplit('/').next()?;
+    let decoded = percent_encoding::percent_decode_str(tail)
+        .decode_utf8()
+        .ok()?;
+    (!decoded.is_empty()).then(|| decoded.into_owned())
 }

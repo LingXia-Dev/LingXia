@@ -1120,7 +1120,7 @@ async fn import_html_bookmarks(
     if selected.canceled {
         return Ok(None);
     }
-    let path = selected.paths.first().ok_or_else(|| {
+    let path = selected.paths().next().ok_or_else(|| {
         LxAppError::InvalidParameter("bookmark import did not return a file".to_string())
     })?;
     let metadata = std::fs::metadata(path)

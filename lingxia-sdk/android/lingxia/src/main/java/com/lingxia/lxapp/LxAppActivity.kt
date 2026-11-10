@@ -103,7 +103,8 @@ internal enum class AnimationType(val value: Int) {
 }
 
 internal sealed class HostFileDialogResult {
-    data class Selected(val paths: List<String>) : HostFileDialogResult()
+    /** `names[i]` is the display name of `paths[i]`, or null when the provider reports none. */
+    data class Selected(val paths: List<String>, val names: List<String?>) : HostFileDialogResult()
     object Canceled : HostFileDialogResult()
     object Failed : HostFileDialogResult()
 }
@@ -694,6 +695,22 @@ class LxAppActivity : AppCompatActivity() {
         return uris.distinct().takeIf { it.isNotEmpty() }?.toTypedArray()
     }
 
+    private fun queryPickedDisplayName(uri: Uri): String? {
+        return runCatching {
+            contentResolver.query(
+                uri,
+                arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                if (!cursor.moveToFirst()) return@use null
+                val index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (index >= 0) cursor.getString(index) else null
+            }
+        }.getOrNull()?.takeIf { it.isNotBlank() }
+    }
+
     private fun resolveHostFileDialogResult(resultCode: Int, data: Intent?): HostFileDialogResult {
         if (resultCode == RESULT_CANCELED) {
             return HostFileDialogResult.Canceled
@@ -702,26 +719,27 @@ class LxAppActivity : AppCompatActivity() {
             return HostFileDialogResult.Failed
         }
 
-        val values = mutableListOf<String>()
-        data?.getStringArrayListExtra("selectedPaths")?.let { values.addAll(it) }
+        // path -> display name; a local chooser path carries its name in its tail.
+        val picked = linkedMapOf<String, String?>()
+        // Not Map.putIfAbsent: it is API 24 and minSdk is 21.
+        data?.getStringArrayListExtra("selectedPaths")?.forEach { picked.getOrPut(it) { null } }
         data?.data?.let { uri ->
             persistDocumentReadPermission(data, uri)
-            values.add(uri.toString())
+            picked.getOrPut(uri.toString()) { queryPickedDisplayName(uri) }
         }
         val clipData = data?.clipData
         if (clipData != null) {
             for (index in 0 until clipData.itemCount) {
                 clipData.getItemAt(index)?.uri?.let { uri ->
                     persistDocumentReadPermission(data, uri)
-                    values.add(uri.toString())
+                    picked.getOrPut(uri.toString()) { queryPickedDisplayName(uri) }
                 }
             }
         }
-        val paths = values.distinct()
-        return if (paths.isEmpty()) {
+        return if (picked.isEmpty()) {
             HostFileDialogResult.Failed
         } else {
-            HostFileDialogResult.Selected(paths)
+            HostFileDialogResult.Selected(picked.keys.toList(), picked.values.toList())
         }
     }
 

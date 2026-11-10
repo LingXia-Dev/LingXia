@@ -154,7 +154,6 @@ struct JSFileDialogFilter {
 #[derive(FromJSObject, Clone, Default)]
 #[ts_skip]
 struct JSPickFileOptions {
-    multiple: Option<bool>,
     filters: Option<Vec<JSFileDialogFilter>>,
     #[js_name = "defaultPath"]
     default_path: Option<String>,
@@ -391,6 +390,15 @@ fn selected_directory_path_to_uri(lxapp: &LxApp, raw_path: &str) -> JSResult<Str
         return Err(js_internal_error("pickDirectory returned an empty path"));
     }
 
+    // Unlike a picked file, a directory reference has no consumer: nothing
+    // can list or read through a content:// or file:// tree.
+    if is_platform_file_reference(path) {
+        return Err(js_error_from_business_code_with_detail(
+            6000,
+            "pickDirectory returned a platform directory reference, which no file API can read",
+        ));
+    }
+
     if let Ok(resolved) = lxapp.resolve_accessible_path(path)
         && let Some(uri) = lxapp.to_uri(&resolved)
     {
@@ -417,41 +425,47 @@ fn selected_directory_path_to_uri(lxapp: &LxApp, raw_path: &str) -> JSResult<Str
     )))
 }
 
-/// Pick one file. A successful selection returns one opaque URI.
+/// Pick one file. A completed selection is `{ status: 'ok', uri, name }`.
 async fn pick_file(ctx: JSContext, options: Optional<JSPickFileOptions>) -> JSResult<JSObject> {
-    let mut options = options.0.unwrap_or_default();
-    options.multiple = Some(false);
-    let result = run_file_picker(ctx, Optional(Some(options))).await?;
-    if result.get::<_, String>("status")? == "ok" {
-        let paths = result.get::<_, Vec<String>>("paths")?;
-        result.set(
-            "uri",
-            paths
-                .first()
-                .ok_or_else(|| js_internal_error("picker returned no file"))?
-                .as_str(),
-        )?;
-        result.delete("paths")?;
-    }
+    let picked = run_file_picker(&ctx, options.0.unwrap_or_default(), false).await?;
+    let Some(mut picked) = picked else {
+        return canceled(&ctx);
+    };
+    let (uri, name) = picked
+        .pop()
+        .ok_or_else(|| js_internal_error("pickFile invalid payload: no file"))?;
+    let result = completed(&ctx)?;
+    result.set("uri", uri)?;
+    result.set("name", name)?;
     Ok(result)
 }
 
-/// Pick one or more files. Dismissal is a normal outcome.
+/// Pick one or more files. A completed selection is
+/// `{ status: 'ok', files: [{ uri, name }, ...] }` with at least one file.
 async fn pick_files(ctx: JSContext, options: Optional<JSPickFileOptions>) -> JSResult<JSObject> {
-    let mut options = options.0.unwrap_or_default();
-    options.multiple = Some(true);
-    run_file_picker(ctx, Optional(Some(options))).await
+    let Some(picked) = run_file_picker(&ctx, options.0.unwrap_or_default(), true).await? else {
+        return canceled(&ctx);
+    };
+    let files = rong::JSArray::new(&ctx)?;
+    for (uri, name) in picked {
+        let file = JSObject::new(&ctx);
+        file.set("uri", uri)?;
+        file.set("name", name)?;
+        files.push(file)?;
+    }
+    let result = completed(&ctx)?;
+    result.set("files", files)?;
+    Ok(result)
 }
 
-/// Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
-/// completed selection resolves `{ status: 'ok', paths }` with at least one
-/// path. Rejects when the picker fails or returns an invalid payload.
+/// `None` only when the user dismisses the picker; otherwise at least one
+/// `(uri, name)`. Rejects when the picker fails or returns an invalid payload.
 async fn run_file_picker(
-    ctx: JSContext,
-    options: Optional<JSPickFileOptions>,
-) -> JSResult<JSObject> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    let opts = options.as_ref().cloned().unwrap_or_default();
+    ctx: &JSContext,
+    opts: JSPickFileOptions,
+    multiple: bool,
+) -> JSResult<Option<Vec<(String, String)>>> {
+    let lxapp = LxApp::from_ctx(ctx)?;
     let default_path = opts
         .default_path
         .as_deref()
@@ -479,7 +493,7 @@ async fn run_file_picker(
     let result = lingxia_service::file::pick_file(
         &*lxapp.runtime,
         PickFileRequest {
-            multiple: opts.multiple.unwrap_or(false),
+            multiple,
             filters,
             title: None,
             default_path,
@@ -489,30 +503,45 @@ async fn run_file_picker(
     .map_err(|e| js_error_from_platform_error(&e))?;
 
     if result.canceled {
-        return canceled(&ctx);
+        return Ok(None);
     }
-    if result.paths.is_empty() {
+    if result.entries.is_empty() {
         return Err(js_internal_error(
             "pickFile invalid payload: non-canceled result must include at least one path",
         ));
     }
+    if !multiple && result.entries.len() != 1 {
+        return Err(js_internal_error(
+            "pickFile invalid payload: single selection must include exactly one path",
+        ));
+    }
 
-    let paths = result
-        .paths
+    // The name is read from the platform entry before the grant replaces the
+    // path with an opaque URI.
+    result
+        .entries
         .iter()
-        .map(|path| selected_file_path_to_uri(&lxapp, path))
-        .collect::<JSResult<Vec<_>>>()?;
-
-    let chosen = completed(&ctx)?;
-    chosen.set("paths", paths)?;
-    Ok(chosen)
+        .map(|entry| {
+            Ok((
+                selected_file_path_to_uri(&lxapp, &entry.path)?,
+                picked_name(entry.name.as_deref(), &entry.path),
+            ))
+        })
+        .collect::<JSResult<Vec<_>>>()
+        .map(Some)
 }
 
 /// Opens a directory picker.
 ///
 /// Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
-/// completed selection resolves `{ status: 'ok', path }`. Rejects when the
-/// picker fails or returns an invalid payload.
+/// completed selection resolves `{ status: 'ok', uri, name }`. Rejects when the
+/// picker fails or returns an invalid payload, and with `E_NOT_SUPPORTED` when
+/// the host has no readable system folder picker (Android, HarmonyOS phones and
+/// tablets) and `defaultPath` is not in lxapp storage.
+///
+/// The `uri` is a read-only root: `lx.fs` read APIs, and `lx.fs.copy` as a
+/// source, also take `<uri>/<relative>` with each segment percent-encoded. A
+/// child outside the directory, including through a symlink, does not resolve.
 async fn pick_directory(
     ctx: JSContext,
     options: Optional<JSPickDirectoryOptions>,
@@ -541,20 +570,65 @@ async fn pick_directory(
         return canceled(&ctx);
     }
     // Same tripwire as the file picker: the union removed the type, not the state.
-    if result.paths.len() != 1 {
+    let [entry] = result.entries.as_slice() else {
         return Err(js_internal_error(
             "pickDirectory invalid payload: non-canceled result must include exactly one path",
         ));
-    }
-    let path = result.paths.into_iter().next().ok_or_else(|| {
-        js_internal_error(
-            "pickDirectory invalid payload: non-canceled result must include exactly one path",
-        )
-    })?;
+    };
 
     let chosen = completed(&ctx)?;
-    chosen.set("path", selected_directory_path_to_uri(&lxapp, &path)?)?;
+    chosen.set("uri", selected_directory_path_to_uri(&lxapp, &entry.path)?)?;
+    chosen.set("name", picked_name(entry.name.as_deref(), &entry.path))?;
     Ok(chosen)
+}
+
+const PICKED_NAME_FALLBACK: &str = "file";
+const PICKED_NAME_MAX_BYTES: usize = 255;
+
+/// Display name for a picked item. Display-only and untrusted: the platform
+/// name wins, the tail of the platform path is the fallback, and the result is
+/// always a single non-empty path component.
+fn picked_name(platform_name: Option<&str>, raw_path: &str) -> String {
+    platform_name
+        .and_then(sanitize_picked_name)
+        .or_else(|| sanitize_picked_name(raw_path))
+        .unwrap_or_else(|| PICKED_NAME_FALLBACK.to_string())
+}
+
+fn sanitize_picked_name(raw: &str) -> Option<String> {
+    let component = raw
+        .trim_end_matches(['/', '\\'])
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or_default();
+    let cleaned: String = component
+        .chars()
+        .filter(|c| !c.is_control() && *c != ':' && !is_invisible_format_char(*c))
+        .collect();
+    let cleaned = cleaned.trim();
+    if matches!(cleaned, "" | "." | "..") {
+        return None;
+    }
+    let mut end = cleaned.len().min(PICKED_NAME_MAX_BYTES);
+    while !cleaned.is_char_boundary(end) {
+        end -= 1;
+    }
+    Some(cleaned[..end].to_string())
+}
+
+/// Bidi controls can make `invoice\u{202E}fdp.exe` display as `invoiceexe.pdf`.
+/// U+200C and U+200D stay: they are meaningful in emoji and several scripts.
+fn is_invisible_format_char(c: char) -> bool {
+    matches!(
+        c,
+        '\u{061C}'
+            | '\u{200B}'
+            | '\u{200E}'
+            | '\u{200F}'
+            | '\u{202A}'..='\u{202E}'
+            | '\u{2066}'..='\u{2069}'
+            | '\u{FEFF}'
+    )
 }
 
 fn system_time_millis(value: std::io::Result<SystemTime>) -> Option<u64> {
@@ -671,7 +745,14 @@ fn resolve_managed_path(
         let resolved = lxapp
             .resolve_accessible_path(path)
             .map_err(|err| js_error_from_lxapp_error(&err))?;
-        let kind = match classify_managed_path(lxapp, &resolved) {
+        // A picked directory can contain this lxapp's own storage; a path
+        // reached through the grant stays read-only even then.
+        let classified = if is_directory_grant_child(path) {
+            None
+        } else {
+            classify_managed_path(lxapp, &resolved)
+        };
+        let kind = match classified {
             Some(kind) => kind,
             // The URI resolved (so the lxapp may access this path) but it is
             // not under managed storage: a transient grant to a file the
@@ -701,6 +782,12 @@ fn resolve_managed_path(
         path: resolve_relative_managed_path(&lxapp.user_data_dir, path, api_name, field_name)?,
         kind: ManagedPathKind::UserData,
     })
+}
+
+/// `lx://temp/<token>/<relative>`, the only multi-segment `lx://temp` form.
+pub(crate) fn is_directory_grant_child(path: &str) -> bool {
+    path.strip_prefix("lx://temp/")
+        .is_some_and(|rest| rest.trim_matches('/').contains('/'))
 }
 
 fn resolve_readable_path(
@@ -1412,9 +1499,8 @@ rong::js_api! {
     fn register_file_api(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
         fn openFile(ts_params = "options: OpenFileOptions", ts_return = "void") = open_file;
-        // Precise multiple-correlated overloads remain in the curated Lx augmentation.
         fn pickFile(ts_params = "options?: PickFileOptions", ts_return = "Promise<PickFileResult>") = pick_file;
-        fn pickFiles(ts_params = "options?: PickFileOptions", ts_return = "Promise<ChooseFileResult>") = pick_files;
+        fn pickFiles(ts_params = "options?: PickFileOptions", ts_return = "Promise<PickFilesResult>") = pick_files;
         fn pickDirectory(
             ts_params = "options?: PickDirectoryOptions",
             ts_return = "Promise<PickDirectoryResult>"
@@ -1459,9 +1545,61 @@ rong::js_api! {
 mod tests {
     use super::{
         ManagedPathKind, READ_FILE_MAX_BYTES, ensure_managed_path_kind_allowed,
-        ensure_read_file_size, resolve_relative_managed_path,
+        ensure_read_file_size, is_directory_grant_child, picked_name,
+        resolve_relative_managed_path,
     };
     use std::path::Path;
+
+    #[test]
+    fn picked_name_is_one_sanitized_component() {
+        assert_eq!(picked_name(Some("report.pdf"), "/tmp/x"), "report.pdf");
+        assert_eq!(picked_name(None, r"C:\Users\me\a b.txt"), "a b.txt");
+        assert_eq!(picked_name(Some("a/b\\c\0d"), "/x"), "cd");
+        assert_eq!(picked_name(Some(".."), "/data/dir/"), "dir");
+        assert_eq!(picked_name(Some(" "), "/"), "file");
+        let long = "\u{4e2d}".repeat(100);
+        let name = picked_name(Some(&long), "/x");
+        assert_eq!(name.len(), 255);
+        assert!(long.starts_with(&name));
+    }
+
+    #[test]
+    fn picked_name_of_a_drive_root_is_a_plain_component() {
+        assert_eq!(picked_name(None, "D:\\"), "D");
+        assert_eq!(picked_name(Some("D:"), "/x"), "D");
+        assert_eq!(
+            picked_name(Some("report.txt:stream"), "/x"),
+            "report.txtstream"
+        );
+        assert_eq!(picked_name(Some(":"), ":"), "file");
+    }
+
+    #[test]
+    fn picked_name_drops_invisible_format_controls() {
+        assert_eq!(
+            picked_name(Some("invoice\u{202E}fdp.exe"), "/x"),
+            "invoicefdp.exe"
+        );
+        assert_eq!(
+            picked_name(Some("\u{FEFF}a\u{200B}\u{200E}\u{2066}b\u{061C}"), "/x"),
+            "ab"
+        );
+        assert_eq!(picked_name(Some("\u{202E}\u{2069}"), "\u{200F}"), "file");
+        // ZWJ keeps emoji sequences and joined scripts intact.
+        assert_eq!(
+            picked_name(Some("\u{1F468}\u{200D}\u{1F469}.png"), "/x"),
+            "\u{1F468}\u{200D}\u{1F469}.png"
+        );
+    }
+
+    #[test]
+    fn only_a_multi_segment_temp_uri_is_a_directory_grant_child() {
+        assert!(is_directory_grant_child("lx://temp/token/a.txt"));
+        assert!(is_directory_grant_child("lx://temp/token/sub/a.txt"));
+        assert!(!is_directory_grant_child("lx://temp/token"));
+        assert!(!is_directory_grant_child("lx://temp/token/"));
+        assert!(!is_directory_grant_child("lx://userdata/a/b"));
+    }
 
     #[test]
     fn writable_relative_paths_resolve_under_userdata() {

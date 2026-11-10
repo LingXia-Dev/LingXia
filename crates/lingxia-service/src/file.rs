@@ -1,7 +1,7 @@
 pub use lingxia_platform::PlatformError;
 pub use lingxia_platform::traits::file::{
     FileDialogFilter, FileDialogResult, FileService, OpenFileRequest, PickDirectoryRequest,
-    PickFileRequest, RevealInFileManagerRequest,
+    PickFileRequest, PickedPath, RevealInFileManagerRequest,
 };
 
 pub type Result<T> = std::result::Result<T, PlatformError>;

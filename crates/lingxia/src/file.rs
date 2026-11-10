@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 pub use lingxia_service::file::{
     FileDialogFilter, FileDialogResult, OpenFileRequest, PickDirectoryRequest, PickFileRequest,
-    RevealInFileManagerRequest,
+    PickedPath, RevealInFileManagerRequest,
 };
 
 /// Opens a file for in-app review using the platform's preview UI.
@@ -34,6 +34,11 @@ pub async fn reveal_in_file_manager(
 }
 
 /// Presents a file picker and returns the selected entries.
+///
+/// Each entry's `path` may be an opaque platform reference (for example an
+/// Android `content://` URI), so its tail is not a file name; use `name`.
+/// Desktop returns the original file, iOS a copy, Android and Harmony a
+/// reference to the original.
 pub async fn pick_file(
     app: &crate::LxApp,
     request: PickFileRequest,
@@ -43,7 +48,8 @@ pub async fn pick_file(
         .map_err(crate::Error::from)
 }
 
-/// Presents a directory picker and returns the selected entry.
+/// Presents a directory picker and returns the selected entry. `name` is
+/// the directory's display name; `path` may be an opaque platform reference.
 pub async fn pick_directory(
     app: &crate::LxApp,
     request: PickDirectoryRequest,

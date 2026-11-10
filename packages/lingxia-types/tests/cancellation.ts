@@ -1,4 +1,4 @@
-import type { PickedMediaEntry, Lx } from "../src/index.js";
+import type { PickedItem, PickedMediaEntry, Lx } from "../src/index.js";
 
 declare const lx: Lx;
 
@@ -8,9 +8,9 @@ async function payloadNeedsTheCheck(): Promise<void> {
   // @ts-expect-error showActionSheet may have been dismissed
   (await lx.showActionSheet({ items: [{ id: "a", label: "A" }] })).id;
   // @ts-expect-error pickFiles may have been dismissed
-  (await lx.pickFiles()).paths;
+  (await lx.pickFiles()).files;
   // @ts-expect-error pickDirectory may have been dismissed
-  (await lx.pickDirectory()).path;
+  (await lx.pickDirectory()).uri;
   // @ts-expect-error pickMedia may have been dismissed
   (await lx.pickMedia()).entries;
   // @ts-expect-error scanCode may have been dismissed
@@ -23,11 +23,13 @@ async function checkedResultsNarrow(): Promise<string> {
   const index: string = (sheet.status === 'canceled') ? "" : sheet.id;
 
   const file = await lx.pickFiles();
-  const paths: string[] = (file.status === 'canceled') ? [] : file.paths;
-  const nonEmptyPaths: [string, ...string[]] | null = (file.status === 'canceled') ? null : file.paths;
+  const uris: string[] = (file.status === 'canceled') ? [] : file.files.map((f) => f.uri);
+  const nonEmptyFiles: [PickedItem, ...PickedItem[]] | null = (file.status === 'canceled') ? null : file.files;
+  const single = await lx.pickFile();
+  const name: string = (single.status === 'canceled') ? "" : single.name;
 
   const directory = await lx.pickDirectory();
-  const directoryPath: string = (directory.status === 'canceled') ? "" : directory.path;
+  const directoryPath: string = (directory.status === 'canceled') ? "" : directory.uri;
 
   const media = await lx.pickMedia();
   const first: string = (media.status === 'canceled') ? "" : media.entries[0].uri;
@@ -43,8 +45,9 @@ async function checkedResultsNarrow(): Promise<string> {
 
   return [
     index,
-    paths.length,
-    nonEmptyPaths?.length,
+    uris.length,
+    nonEmptyFiles?.length,
+    name,
     directoryPath,
     first,
     nonEmptyMedia?.length,

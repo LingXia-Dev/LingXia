@@ -15,6 +15,10 @@ enum LxAppFile {
     fileprivate static var pickerCoordinator: IOSDocumentPickerCoordinator?
     fileprivate static var localChooserCoordinator: IOSLocalFileChooserCoordinator?
     private static var securityScopedFileURLs: [String: URL] = [:]
+    /// Picked directories keep their security-scoped access open: the runtime
+    /// reads them through plain file APIs long after the picker returns, and
+    /// the grant is only honored while access is started.
+    private static var heldDirectoryURLs: [String: URL] = [:]
 
     @discardableResult
     static func reviewDocument(path: String, mimeType: String?, showMenu: Bool = true) -> Bool {
@@ -71,6 +75,14 @@ enum LxAppFile {
 
     fileprivate static func registerSecurityScopedURL(_ url: URL) {
         securityScopedFileURLs[url.path] = url
+    }
+
+    fileprivate static func holdDirectoryAccess(_ url: URL) {
+        guard heldDirectoryURLs[url.path] == nil,
+              url.startAccessingSecurityScopedResource() else {
+            return
+        }
+        heldDirectoryURLs[url.path] = url
     }
 
     @discardableResult
@@ -352,7 +364,14 @@ private final class IOSDocumentPickerCoordinator: NSObject, UIDocumentPickerDele
             throw NSError(domain: "LxAppFile", code: 1000, userInfo: nil)
         }
 
-        let accessed = sourceURL.startAccessingSecurityScopedResource()
+        // A directory's access must outlive this call; a file is a copy that
+        // needs no access afterwards.
+        var holdsDirectory = false
+        if case .directory = mode {
+            LxAppFile.holdDirectoryAccess(sourceURL)
+            holdsDirectory = true
+        }
+        let accessed = holdsDirectory ? false : sourceURL.startAccessingSecurityScopedResource()
         defer {
             if accessed {
                 sourceURL.stopAccessingSecurityScopedResource()
@@ -365,12 +384,7 @@ private final class IOSDocumentPickerCoordinator: NSObject, UIDocumentPickerDele
         }
 
         LxAppFile.registerSecurityScopedURL(sourceURL)
-        switch mode {
-        case .file:
-            return sourceURL.path
-        case .directory:
-            return sourceURL.path
-        }
+        return sourceURL.path
     }
 
     private func sanitizedName(_ name: String, fallback: String) -> String {

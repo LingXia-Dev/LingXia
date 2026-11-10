@@ -18,7 +18,7 @@ export default [
     title: "pickDirectory returns a grant the lxapp can read",
     mode: "external-ui",
     covers: ["lx.pickDirectory"],
-    reason: "the directory picker is an OS dialog with no in-process driver",
+    reason: "the desktop / HarmonyOS 2-in-1 folder picker is an OS dialog with no in-process driver; Android and HarmonyOS phones reject without defaultPath (E_NOT_SUPPORTED) and use the in-app chooser with it",
   },
   {
     id: "PEND-DESTRUCTIVE-001",
@@ -86,10 +86,10 @@ export default [
   },
   {
     id: "PEND-FILE-PICK-001",
-    title: "openFile and pickFile cancel/error codes",
+    title: "openFile and pickFile cancel/error codes, and the picked name and copy behavior per host",
     mode: "external-ui",
     covers: ["lx.openFile", "lx.pickFile"],
-    reason: "OS file picker and viewer stay external-ui",
+    reason: "OS file picker and viewer stay external-ui; a device run must check name (Android content:// DISPLAY_NAME, Harmony decoded tail, iOS copy) and that desktop grants the live original",
   },
   {
     id: "PEND-VIDEO-CONTEXT-001",

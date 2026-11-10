@@ -586,6 +586,13 @@ fn resolve_output_path(
     };
 
     if file_path.starts_with("lx://") {
+        // A picked directory can contain this lxapp's userdata, and a path
+        // reached through the read-only grant must not become a destination.
+        if crate::fs::is_directory_grant_child(file_path) {
+            return Err(js_invalid_parameter_error(
+                "downloadFile filePath must use lx://userdata or be omitted",
+            ));
+        }
         let resolved = lxapp
             .resolve_accessible_path(file_path)
             .map_err(|err| js_error_from_lxapp_error(&err))?;

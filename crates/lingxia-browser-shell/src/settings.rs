@@ -90,7 +90,7 @@ async fn choose_download_directory(
     .await?;
 
     if !result.canceled
-        && let Some(path) = result.paths.first()
+        && let Some(path) = result.paths().next()
     {
         lingxia_service::downloads::set_dir(&app.app_data_dir(), PathBuf::from(path))
             .map_err(|e| lxapp::LxAppError::Runtime(e.to_string()))?;

@@ -1,8 +1,13 @@
 use std::future::Future;
+use std::num::NonZeroIsize;
 use std::path::PathBuf;
 use std::process::Command;
 
 use lingxia_webview::{FileChooserFile, FileChooserResponse};
+use raw_window_handle::{
+    DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, RawWindowHandle,
+    Win32WindowHandle, WindowHandle,
+};
 
 use super::Platform;
 use crate::error::PlatformError;
@@ -10,6 +15,31 @@ use crate::traits::file::{
     FileDialogFilter, FileDialogResult, FileService, OpenFileRequest, PickDirectoryRequest,
     PickFileRequest, RevealInFileManagerRequest,
 };
+
+/// Owner for system dialogs; without one they can open behind the app.
+pub(crate) struct DialogOwner(NonZeroIsize);
+
+impl DialogOwner {
+    pub(crate) fn find() -> Option<Self> {
+        let hwnd = super::update_card::find_main_window()?;
+        NonZeroIsize::new(hwnd.0 as isize).map(Self)
+    }
+}
+
+impl HasWindowHandle for DialogOwner {
+    fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
+        let raw = RawWindowHandle::Win32(Win32WindowHandle::new(self.0));
+        // SAFETY: rfd only passes the value to IFileDialog::Show, and a window
+        // closed in the meantime fails that call rather than being dereferenced.
+        Ok(unsafe { WindowHandle::borrow_raw(raw) })
+    }
+}
+
+impl HasDisplayHandle for DialogOwner {
+    fn display_handle(&self) -> Result<DisplayHandle<'_>, HandleError> {
+        Ok(DisplayHandle::windows())
+    }
+}
 
 impl Platform {
     pub fn file_chooser_handler(
@@ -61,10 +91,10 @@ impl Platform {
             Ok(result) if result.canceled => FileChooserResponse::Cancel,
             Ok(result) => FileChooserResponse::Files(
                 result
-                    .paths
+                    .entries
                     .into_iter()
-                    .map(|path| FileChooserFile {
-                        path: Some(path),
+                    .map(|entry| FileChooserFile {
+                        path: Some(entry.path),
                         uri: None,
                     })
                     .collect(),

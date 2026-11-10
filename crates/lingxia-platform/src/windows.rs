@@ -8,7 +8,7 @@ pub(crate) mod banner;
 mod clipboard;
 mod control_session_indicator;
 mod device;
-mod file;
+pub(crate) mod file;
 mod keyboard;
 mod location;
 mod media;

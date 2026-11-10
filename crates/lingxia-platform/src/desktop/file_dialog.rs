@@ -1,6 +1,6 @@
 use crate::error::PlatformError;
 use crate::traits::file::{
-    FileDialogFilter, FileDialogResult, PickDirectoryRequest, PickFileRequest,
+    FileDialogFilter, FileDialogResult, PickDirectoryRequest, PickFileRequest, PickedPath,
 };
 
 // Async dialogs, deliberately: the sync `rfd::FileDialog` runs `runModal` on
@@ -24,22 +24,13 @@ pub async fn pick_file_desktop(
 
     if request.multiple {
         match dialog.pick_files().await {
-            Some(handles) => Ok(FileDialogResult {
-                canceled: false,
-                paths: handles
-                    .iter()
-                    .map(|handle| handle.path().to_string_lossy().into_owned())
-                    .collect(),
-            }),
-            None => Ok(canceled()),
+            Some(handles) => Ok(completed(handles)),
+            None => Ok(FileDialogResult::canceled()),
         }
     } else {
         match dialog.pick_file().await {
-            Some(handle) => Ok(FileDialogResult {
-                canceled: false,
-                paths: vec![handle.path().to_string_lossy().into_owned()],
-            }),
-            None => Ok(canceled()),
+            Some(handle) => Ok(completed([handle])),
+            None => Ok(FileDialogResult::canceled()),
         }
     }
 }
@@ -53,18 +44,21 @@ pub async fn pick_directory_desktop(
         &request.default_path,
     );
     match dialog.pick_folder().await {
-        Some(handle) => Ok(FileDialogResult {
-            canceled: false,
-            paths: vec![handle.path().to_string_lossy().into_owned()],
-        }),
-        None => Ok(canceled()),
+        Some(handle) => Ok(completed([handle])),
+        None => Ok(FileDialogResult::canceled()),
     }
 }
 
-fn canceled() -> FileDialogResult {
+fn completed(handles: impl IntoIterator<Item = rfd::FileHandle>) -> FileDialogResult {
     FileDialogResult {
-        canceled: true,
-        paths: vec![],
+        canceled: false,
+        entries: handles
+            .into_iter()
+            .map(|handle| PickedPath {
+                path: handle.path().to_string_lossy().into_owned(),
+                name: Some(handle.file_name()),
+            })
+            .collect(),
     }
 }
 
@@ -78,6 +72,10 @@ fn apply_common_options(
     }
     if let Some(value) = default_path {
         dialog = dialog.set_directory(value);
+    }
+    #[cfg(target_os = "windows")]
+    if let Some(owner) = crate::windows::file::DialogOwner::find() {
+        dialog = dialog.set_parent(&owner);
     }
     dialog
 }

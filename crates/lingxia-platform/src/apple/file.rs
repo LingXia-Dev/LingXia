@@ -61,16 +61,15 @@ fn reveal_in_file_manager_sync(request: RevealInFileManagerRequest) -> Result<()
 struct AppleFileDialogResult {
     canceled: bool,
     paths: Vec<String>,
+    #[serde(default)]
+    names: Option<Vec<Option<String>>>,
 }
 
 #[cfg(target_os = "ios")]
 fn parse_file_dialog_result(payload: &str) -> Result<FileDialogResult, PlatformError> {
     let parsed: AppleFileDialogResult = serde_json::from_str(payload)
         .map_err(|e| PlatformError::Platform(format!("parse file dialog result failed: {e}")))?;
-    Ok(FileDialogResult {
-        canceled: parsed.canceled,
-        paths: parsed.paths,
-    })
+    FileDialogResult::from_wire(parsed.canceled, parsed.paths, parsed.names)
 }
 
 #[cfg(target_os = "ios")]

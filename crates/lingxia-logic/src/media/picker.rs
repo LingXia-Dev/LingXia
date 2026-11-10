@@ -4,13 +4,13 @@ mod source_picker;
 mod types;
 
 use crate::dismissal::{USER_DISMISSED, canceled, completed};
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use crate::i18n::js_invalid_parameter_error;
 use crate::i18n::{js_error_from_platform_error, js_internal_error};
 use cache::ensure_temp_media_path;
 use lingxia_platform::error::PlatformError;
 use lingxia_platform::traits::app_runtime::AppRuntime;
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use lingxia_service::media::PickMediaMode;
 use lingxia_service::media::{MediaKind, MediaSource, PickMediaRequest};
 use lxapp::LxApp;
@@ -57,7 +57,8 @@ async fn pick_media(ctx: JSContext, options: Optional<JSPickMediaOptions>) -> JS
     let sources = parse_sources(opts.source_type)?;
     // Windows has no camera capture pipeline; album+camera requests
     // degrade to the album picker instead of asking for a source that
-    // would only fail. Camera-only requests still surface NotSupported.
+    // would only fail. A camera-only request stays as it is, for the
+    // platform to reject with NotSupported.
     #[cfg(target_os = "windows")]
     let sources: Vec<MediaSource> = {
         let filtered: Vec<MediaSource> = sources
@@ -80,7 +81,9 @@ async fn pick_media(ctx: JSContext, options: Optional<JSPickMediaOptions>) -> JS
         sources.first().copied().unwrap_or(MediaSource::Album)
     };
 
-    #[cfg(not(target_os = "macos"))]
+    // Windows is excluded so a camera-only request reads as NotSupported,
+    // not as a bad mediaType.
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     if matches!(selected_source, MediaSource::Camera) && matches!(mode, PickMediaMode::Mix) {
         return Err(js_invalid_parameter_error(
             "camera source does not support selecting both image and video; specify a single mediaType entry",
