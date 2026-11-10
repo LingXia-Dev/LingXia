@@ -401,6 +401,7 @@ fn a_backdrop_is_filtered_again_only_when_what_lies_beneath_changes() {
     assert_eq!(compositor.cached_backdrops(), (0, 0));
 }
 
+#[cfg(feature = "gpu")]
 fn sibling_groups(backdrop: bool) -> DisplayList {
     let glass = if backdrop {
         ",h('column',{style:{position:'absolute',left:8,top:30,width:60,height:30,backdropFilter:'blur(3px)'}})"

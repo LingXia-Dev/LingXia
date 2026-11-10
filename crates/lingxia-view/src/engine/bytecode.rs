@@ -27,6 +27,7 @@ pub fn set_bytecode_dir(dir: PathBuf) {
 }
 
 /// Where compiled modules persist, if anywhere; the renderer keeps its pipelines beside them.
+#[cfg(feature = "gpu")]
 pub(crate) fn cache_dir() -> Option<&'static Path> {
     DIR.get().map(PathBuf::as_path)
 }
