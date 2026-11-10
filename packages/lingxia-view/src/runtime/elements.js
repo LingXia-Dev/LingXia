@@ -115,7 +115,8 @@ function nodeStyle(tag, props, data, extra, inherited, direction, structure) {
   if (props.style !== undefined || extra !== undefined || props.className === undefined) return lowerNodeStyle(tag, props, data, extra, inherited, direction, structure);
   const environment = envKey(envOf(render.view));
   if (environment !== loweredEnv) { lowered.clear(); loweredEnv = environment; }
-  const key = `${tag}\u0000${props.className}\u0000${data ? JSON.stringify(data) : ''}\u0000${props.disabled === true}\u0000${direction}\u0000${(structure ?? []).join(",")}\u0000${inherited.fontSize}\u0000${inherited.lineHeight}`;
+  // An inherited line height may be a multiplier object; it keys by value, not as "[object Object]".
+  const key = `${tag}\u0000${props.className}\u0000${data ? JSON.stringify(data) : ''}\u0000${props.disabled === true}\u0000${direction}\u0000${(structure ?? []).join(",")}\u0000${inherited.fontSize}\u0000${JSON.stringify(inherited.lineHeight)}`;
   let style = lowered.get(key);
   if (!style) {
     style = lowerNodeStyle(tag, props, data, extra, inherited, direction, structure);

@@ -2798,7 +2798,7 @@
       lowered.clear();
       loweredEnv = environment;
     }
-    const key = `${tag}\0${props.className}\0${data ? JSON.stringify(data) : ""}\0${props.disabled === true}\0${direction}\0${(structure2 ?? []).join(",")}\0${inherited.fontSize}\0${inherited.lineHeight}`;
+    const key = `${tag}\0${props.className}\0${data ? JSON.stringify(data) : ""}\0${props.disabled === true}\0${direction}\0${(structure2 ?? []).join(",")}\0${inherited.fontSize}\0${JSON.stringify(inherited.lineHeight)}`;
     let style2 = lowered.get(key);
     if (!style2) {
       style2 = lowerNodeStyle(tag, props, data, extra, inherited, direction, structure2);

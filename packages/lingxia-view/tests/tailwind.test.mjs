@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { compileUtilities } from '../compiler/tailwind.mjs';
 import { configureClasses, resolveClasses } from '../src/style/classes.js';
 import { describe, h, listTag, prepare, discard } from '../src/internal.js';
-import { rendered, decode } from './support/wire.mjs';
+import { rendered, decode, byText } from './support/wire.mjs';
 
 // Tailwind rules lower to CSS-named style; rendering then lowers that to the native box.
 const classStyle = (name, env) => resolveClasses(name, env)?.base ?? {};
@@ -727,4 +727,12 @@ test('a gradient sweep: a sized background layer and a background-position keyfr
   assert.deepEqual(rule.style.animation.backgroundPosition, { x: [{ offset: 0, value: 1 }, { offset: 1, value: -1.5 }], y: [{ offset: 0, value: 0 }, { offset: 1, value: 0 }] });
   await assert.rejects(async () => { const [bad] = await compileUtilities(new Set(['half']), `@theme inline { @keyframes half { 50% { background-position: 0 0; } } }
 @utility half { animation: half 1s; }`); if (bad.error) throw Error(bad.error.message); }, /from and to/);
+});
+
+test('children under different line-height multipliers do not share a lowered style', async () => {
+  await use(['font-bold']);
+  const root = rendered(() => h('column', {},
+    h('column', { style: { fontSize: 10, lineHeight: 1.5 } }, h('text', { className: 'font-bold' }, 'a')),
+    h('column', { style: { fontSize: 10, lineHeight: 2 } }, h('text', { className: 'font-bold' }, 'b'))));
+  assert.deepEqual(['a', 'b'].map(text => byText(root, text).props.lineHeight), [15, 20]);
 });
