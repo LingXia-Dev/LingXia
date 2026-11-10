@@ -276,43 +276,15 @@ fn managed_root(lxapp: &LxApp, kind: ManagedPathKind) -> Option<&Path> {
     }
 }
 
-#[js_class(clone)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSDirEntry {
     name: String,
+    #[js_name = "isFile"]
+    is_file: bool,
+    #[js_name = "isDirectory"]
     is_directory: bool,
+    #[js_name = "isSymlink"]
     is_symlink: bool,
-}
-
-#[js_class(rename = "DirEntry")]
-impl JSDirEntry {
-    #[js_method(constructor, private)]
-    fn _ctor() -> JSResult<()> {
-        Err(HostError::new(
-            rong::error::E_ILLEGAL_CONSTRUCTOR,
-            "Use lx.fs.readDir(path)",
-        )
-        .into())
-    }
-
-    #[js_method(getter)]
-    fn name(&self) -> String {
-        self.name.clone()
-    }
-
-    #[js_method(getter, rename = "isFile")]
-    fn is_file(&self) -> bool {
-        !self.is_directory && !self.is_symlink
-    }
-
-    #[js_method(getter, rename = "isDirectory")]
-    fn is_directory(&self) -> bool {
-        self.is_directory
-    }
-
-    #[js_method(getter, rename = "isSymlink")]
-    fn is_symlink(&self) -> bool {
-        self.is_symlink
-    }
 }
 
 fn normalize_extensions(raw: Option<Vec<String>>) -> Vec<String> {
@@ -356,16 +328,12 @@ fn selected_file_path_to_uri(lxapp: &LxApp, raw_path: &str) -> JSResult<String> 
 
     let path_ref = Path::new(path);
     if path_ref.is_absolute() {
+        // Windows multi-select does not validate typed names, so a missing
+        // path here is a user outcome rather than an internal failure.
         return lxapp
             .grant_transient_file_access(path_ref)
             .map(|uri| uri.into_string())
-            .map_err(|err| {
-                js_internal_error(format!(
-                    "pickFile failed to grant temporary file access for {}: {}",
-                    path_ref.display(),
-                    err
-                ))
-            });
+            .map_err(|err| js_error_from_lxapp_error(&err));
     }
 
     Err(js_internal_error(format!(
@@ -410,13 +378,7 @@ fn selected_directory_path_to_uri(lxapp: &LxApp, raw_path: &str) -> JSResult<Str
         return lxapp
             .grant_transient_directory_access(path_ref)
             .map(|uri| uri.into_string())
-            .map_err(|err| {
-                js_internal_error(format!(
-                    "pickDirectory failed to grant temporary directory access for {}: {}",
-                    path_ref.display(),
-                    err
-                ))
-            });
+            .map_err(|err| js_error_from_lxapp_error(&err));
     }
 
     Err(js_internal_error(format!(
@@ -1282,6 +1244,7 @@ async fn fs_read_dir(ctx: JSContext, path: String) -> JSResult<Vec<JSDirEntry>> 
             .map_err(|err| js_internal_error(format!("fs.readDir file type failed: {err}")))?;
         children.push(JSDirEntry {
             name: entry.file_name().to_string_lossy().into_owned(),
+            is_file: file_type.is_file(),
             is_directory: file_type.is_dir(),
             is_symlink: file_type.is_symlink(),
         });
@@ -1479,7 +1442,6 @@ async fn fs_remove(
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
-    ctx.register_hidden_class::<JSDirEntry>()?;
     ctx.register_hidden_class::<JSLxFile>()?;
     register_file_api(ctx)?;
     register_fs_property(ctx)?;

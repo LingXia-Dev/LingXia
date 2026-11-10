@@ -145,7 +145,8 @@ const { statusCode, data } = await task.result;
   segments, `:`, `\`, and paths leaving the directory through a symlink do
   not resolve; `lx.fs.file` throws on a missing child, so check `exists`
   first. `copy` takes one file; it is not recursive.
-- On Windows, a failed system dialog may resolve as `canceled`.
+- On Windows, a failed system dialog may resolve as `canceled`, and `pickFiles`
+  rejects with `E_NOT_FOUND` if the user types a name that does not exist.
 - Whether the file is copied differs by host, so do not assume either:
 
 | | Mobile | Desktop |

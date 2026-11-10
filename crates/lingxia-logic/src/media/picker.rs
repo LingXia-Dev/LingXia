@@ -192,13 +192,7 @@ async fn pick_media(ctx: JSContext, options: Optional<JSPickMediaOptions>) -> JS
                 }
                 _ => lxapp
                     .grant_transient_file_access(&source_path)
-                    .map_err(|e| {
-                        js_internal_error(format!(
-                            "pickMedia failed to register temporary media file {}: {}",
-                            source_path.display(),
-                            e
-                        ))
-                    })?
+                    .map_err(|err| crate::i18n::js_error_from_lxapp_error(&err))?
                     .into_string(),
             }
         } else if let Ok(path) = lxapp.resolve_accessible_path(uri) {

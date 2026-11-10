@@ -315,6 +315,9 @@ test("read directories, LxFile.exists/path, and deny escaped paths", {
       return {
         names: entries.map((entry) => entry.name).sort(),
         childIsFile: entries.some((entry) => entry.name === 'child.txt' && entry.isFile),
+        // Entries must be plain data: a class wrapper serializes to null.
+        serializedIsFile: (JSON.parse(JSON.stringify(entries)) as typeof entries)
+          .some((entry) => entry.name === 'child.txt' && entry.isFile),
         exists,
         path: file.path,
         text,
@@ -327,6 +330,7 @@ test("read directories, LxFile.exists/path, and deny escaped paths", {
   }, namespace);
 
   expect(result.childIsFile).toBeTruthy();
+  expect(result.serializedIsFile).toBeTruthy();
   expect(result.exists).toBeTruthy();
   expect(result.path).toContain(namespace);
   expect(result.text).toBe('overwritten');
