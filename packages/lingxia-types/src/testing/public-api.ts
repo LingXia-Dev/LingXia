@@ -75,7 +75,6 @@ export const LX_API_NAMES = [
   'pickFile',
   'pickFiles',
   'chooseDirectory',
-  'chooseFile',
   'chooseMedia',
   'clipboard',
   'compressImage',

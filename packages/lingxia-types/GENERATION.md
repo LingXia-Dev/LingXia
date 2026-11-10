@@ -25,7 +25,7 @@ semantic unions, callbacks, handles, and lifecycle contracts live as TS-only
 
 Rong typegen cannot yet express generic TS-only declaration names or correlated
 overloads. The generation prelude therefore holds generic page/storage
-contracts plus the `downloadFile` / `chooseFile` overloads. It is generator
+contracts plus the `downloadFile` overloads. It is generator
 input, not a second public declaration tree.
 
 `check:quality` verifies the complete legacy public-name manifest, critical

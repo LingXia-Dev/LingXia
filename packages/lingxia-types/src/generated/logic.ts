@@ -63,13 +63,6 @@ export type NoLifecycleTypos<TCustom, TNames extends string> = {
  */
 export type PageDataPath = `${string}.${string}` | `${string}[${number}]${string}`;
 
-/**
- * @deprecated Page `data` is no longer widened for `null` / `[]` initializers.
- * Annotate the field (`null as Profile | null`) when a later fill should be
- * checked.
- */
-export type LazyInitField<T> = T;
-
 type PageReadonlyDepth = [never, 0, 1, 2, 3, 4, 5, 6];
 
 type PagePrimitive = string | number | boolean | bigint | symbol | null | undefined;
@@ -263,11 +256,6 @@ export type DownloadIteratorResult<TResult extends DownloadResult = DownloadResu
 export type AppTempDownloadResult = Extract<AppDownloadResult, { storage: 'temp' }>;
 export type AppPersistedDownloadResult = Extract<AppDownloadResult, { storage: 'userdata' }>;
 
-export type ChooseFileSingleResult = {
-  status: 'ok';
-  paths: [string];
-} | CanceledResult;
-
 /** A running operation. Progress has one consumer; stopping observation does not cancel it. */
 export interface Task<TResult, TProgress> {
   readonly result: Promise<TResult>;
@@ -383,16 +371,6 @@ declare global {
     downloadFile<TDestination extends DownloadDestination = "app">(
       options: DownloadOptions<TDestination>,
     ): DownloadTask<DownloadResultForDestination<TDestination>>;
-    /** Single-file picker: a completed selection is exactly one path. */
-    chooseFile(options: ChooseFileOptions & { multiple: false }): Promise<ChooseFileSingleResult>;
-    chooseFile(options: ChooseFileOptions & { multiple: true }): Promise<ChooseFileResult>;
-    /**
-     * Opens a file picker.
-     * Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
-     * completed selection resolves `{ status: 'ok', paths }` with at least one
-     * path. Rejects when the picker fails or returns an invalid payload.
-     */
-    chooseFile(options?: ChooseFileOptions): Promise<ChooseFileResult>;
 
     /**
      * Open this lxapp's store with every key's shape pinned on the handle.
@@ -728,7 +706,7 @@ export type ChooseFileOptions = {
 };
 
 /**
- * Result of `lx.chooseFile`. Branch on `status` before reading the
+ * Result of `lx.pickFiles`. Branch on `status` before reading the
  * selected paths.
  */
 export type ChooseFileResult = {
@@ -823,7 +801,7 @@ export type ClipboardWriteItem = {
 } | {
     type: 'image';
     /**
-     * Managed `lx://` path, or a picker result from `lx.chooseFile` /
+     * Managed `lx://` path, or a picker result from `lx.pickFile` /
      * `lx.chooseMedia` — the same file rules as `lx.share`. Rejects
      * `E_INVALID_ARG` when the file is not a decodable image.
      */
@@ -1801,7 +1779,7 @@ export type ShareFilesOptions = ShareTitleOptions & {
      * File paths returned by LingXia APIs to share. Images, PDFs, and other
      * documents are all represented as file paths.
      *
-     * Use `lx.chooseFile` for system files and `lx.chooseMedia` for picked media;
+     * Use `lx.pickFiles` for system files and `lx.chooseMedia` for picked media;
      * pass the returned path here without parsing it.
      * Some platforms or receivers may limit multi-file shares. Share files one
      * at a time when targeting those receivers.
@@ -3180,12 +3158,6 @@ declare global {
     pickFile(options?: PickFileOptions): Promise<PickFileResult>;
     /** Pick one or more files. Dismissal is a normal outcome. */
     pickFiles(options?: PickFileOptions): Promise<ChooseFileResult>;
-    /**
-     * Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
-     * completed selection resolves `{ status: 'ok', paths }` with at least one
-     * path. Rejects when the picker fails or returns an invalid payload.
-     */
-    chooseFile(options: never): Promise<never>;
     /**
      * Opens a directory picker.
      * Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A

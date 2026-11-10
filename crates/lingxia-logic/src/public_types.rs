@@ -681,7 +681,7 @@ rong::js_api! {
     defaultPath?: string;
 }"###;
 
-        /// Result of `lx.chooseFile`. Branch on `status` before reading the
+        /// Result of `lx.pickFiles`. Branch on `status` before reading the
         /// selected paths.
         type ChooseFileResult = r###"{
     status: 'ok';
@@ -728,7 +728,7 @@ rong::js_api! {
 } | {
     type: 'image';
     /**
-     * Managed `lx://` path, or a picker result from `lx.chooseFile` /
+     * Managed `lx://` path, or a picker result from `lx.pickFile` /
      * `lx.chooseMedia` — the same file rules as `lx.share`. Rejects
      * `E_INVALID_ARG` when the file is not a decodable image.
      */
@@ -1379,7 +1379,7 @@ rong::js_api! {
      * File paths returned by LingXia APIs to share. Images, PDFs, and other
      * documents are all represented as file paths.
      *
-     * Use `lx.chooseFile` for system files and `lx.chooseMedia` for picked media;
+     * Use `lx.pickFiles` for system files and `lx.chooseMedia` for picked media;
      * pass the returned path here without parsing it.
      * Some platforms or receivers may limit multi-file shares. Share files one
      * at a time when targeting those receivers.

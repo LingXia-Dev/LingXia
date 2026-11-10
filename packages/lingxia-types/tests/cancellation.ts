@@ -7,8 +7,8 @@ declare const lx: Lx;
 async function payloadNeedsTheCheck(): Promise<void> {
   // @ts-expect-error showActionSheet may have been dismissed
   (await lx.showActionSheet({ items: [{ id: "a", label: "A" }] })).id;
-  // @ts-expect-error chooseFile may have been dismissed
-  (await lx.chooseFile()).paths;
+  // @ts-expect-error pickFiles may have been dismissed
+  (await lx.pickFiles()).paths;
   // @ts-expect-error chooseDirectory may have been dismissed
   (await lx.chooseDirectory()).path;
   // @ts-expect-error chooseMedia may have been dismissed
@@ -22,7 +22,7 @@ async function checkedResultsNarrow(): Promise<string> {
   const sheet = await lx.showActionSheet({ items: [{ id: "a", label: "A" }, { id: "b", label: "B" }] });
   const index: string = (sheet.status === 'canceled') ? "" : sheet.id;
 
-  const file = await lx.chooseFile();
+  const file = await lx.pickFiles();
   const paths: string[] = (file.status === 'canceled') ? [] : file.paths;
   const nonEmptyPaths: [string, ...string[]] | null = (file.status === 'canceled') ? null : file.paths;
 

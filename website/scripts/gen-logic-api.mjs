@@ -77,7 +77,7 @@ const GROUPS = [
     title: 'Files and storage',
     summary: 'Managed files, the system picker, transfers, and key-value storage.',
     members: [
-      'fs', 'openFile', 'pickFile', 'pickFiles', 'chooseFile', 'chooseDirectory',
+      'fs', 'openFile', 'pickFile', 'pickFiles', 'chooseDirectory',
       'uploadFile', 'downloadFile', 'getStorage',
     ],
   },

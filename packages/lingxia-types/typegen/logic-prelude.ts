@@ -60,13 +60,6 @@ export type NoLifecycleTypos<TCustom, TNames extends string> = {
  */
 export type PageDataPath = `${string}.${string}` | `${string}[${number}]${string}`;
 
-/**
- * @deprecated Page `data` is no longer widened for `null` / `[]` initializers.
- * Annotate the field (`null as Profile | null`) when a later fill should be
- * checked.
- */
-export type LazyInitField<T> = T;
-
 type PageReadonlyDepth = [never, 0, 1, 2, 3, 4, 5, 6];
 
 type PagePrimitive = string | number | boolean | bigint | symbol | null | undefined;
@@ -260,11 +253,6 @@ export type DownloadIteratorResult<TResult extends DownloadResult = DownloadResu
 export type AppTempDownloadResult = Extract<AppDownloadResult, { storage: 'temp' }>;
 export type AppPersistedDownloadResult = Extract<AppDownloadResult, { storage: 'userdata' }>;
 
-export type ChooseFileSingleResult = {
-  status: 'ok';
-  paths: [string];
-} | CanceledResult;
-
 /** A running operation. Progress has one consumer; stopping observation does not cancel it. */
 export interface Task<TResult, TProgress> {
   readonly result: Promise<TResult>;
@@ -380,16 +368,6 @@ declare global {
     downloadFile<TDestination extends DownloadDestination = "app">(
       options: DownloadOptions<TDestination>,
     ): DownloadTask<DownloadResultForDestination<TDestination>>;
-    /** Single-file picker: a completed selection is exactly one path. */
-    chooseFile(options: ChooseFileOptions & { multiple: false }): Promise<ChooseFileSingleResult>;
-    chooseFile(options: ChooseFileOptions & { multiple: true }): Promise<ChooseFileResult>;
-    /**
-     * Opens a file picker.
-     * Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
-     * completed selection resolves `{ status: 'ok', paths }` with at least one
-     * path. Rejects when the picker fails or returns an invalid payload.
-     */
-    chooseFile(options?: ChooseFileOptions): Promise<ChooseFileResult>;
 
     /**
      * Open this lxapp's store with every key's shape pinned on the handle.
