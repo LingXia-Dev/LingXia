@@ -130,11 +130,14 @@ spec('a tap at an element partly under the tab bar lands on its visible part wit
   const dot = view.testId('lab-kit-pager-view-dot-2');
   const center = (box: Box) => box.y + box.height / 2;
   let parked = await dot.boundingBox();
-  for (let attempt = 0; attempt < 4; attempt++) {
+  for (let attempt = 0; attempt < 8; attempt++) {
     const dy = center(parked) - (top + 1);
     if (Math.abs(dy) <= 1) break;
-    // A drag first spends the touch slop: lengthen it by about that much.
-    await view.swipe({ from: [20, 400], to: [20, 400 - dy - Math.sign(dy) * 8], durationMs: 600 });
+    // A drag first spends the touch slop: lengthen it by about that much. It starts midway above
+    // the bar and stays clear of both edges, so a short landscape page takes it in steps.
+    const from = top / 2;
+    const to = Math.min(Math.max(from - dy - Math.sign(dy) * 8, 8), top - 8);
+    await view.swipe({ from: [20, from], to: [20, to], durationMs: 600 });
     let last = Number.NaN;
     parked = await t.waitFor(() => dot.boundingBox(), {
       until: b => { const settled = b.y === last; last = b.y; return settled; }, interval: 100,
