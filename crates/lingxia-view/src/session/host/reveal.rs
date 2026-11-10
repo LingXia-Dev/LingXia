@@ -70,6 +70,9 @@ impl<A: PlatformAdapter> Inner<A> {
             (reveal.epoch, delay)
         };
         self.reveal_after(epoch, delay);
+        // Still hidden behind the outgoing page: nothing else asks for its first frame.
+        self.main().dirty = true;
+        self.schedule();
     }
 
     fn reveal_after(self: &Arc<Self>, epoch: u64, delay: Duration) {
@@ -211,6 +214,10 @@ impl<A: PlatformAdapter> Inner<A> {
 }
 
 impl Reveal {
+    pub(super) fn waiting(&self) -> bool {
+        self.pending.is_some()
+    }
+
     /// Frames this window completes count in the statistics: shown, or only covered.
     pub(super) fn counts_frames(&self) -> bool {
         !self.window_hidden || self.window_covered

@@ -1974,6 +1974,27 @@ fn a_reveal_before_a_requested_park_runs_is_not_shown_on_the_old_frame() {
 }
 
 #[test]
+fn a_hidden_page_waiting_to_be_revealed_builds_its_first_frame_without_the_deadline() {
+    let worker = ViewWorker::spawn("test-reveal-repush").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = revealing_page(&platform, &worker);
+    platform.settle(&[&host]);
+    // Popped into the cache, then pushed again: hidden until its reveal completes.
+    host.set_visible(false);
+    host.park();
+    platform.settle(&[&host]);
+    host.load(source("function render(){return h('text',{},'again')}"));
+    host.reveal(true);
+    platform.settle(&[&host]);
+    assert_eq!(last(&host), ["again"]);
+    assert_eq!(
+        revealed(&host),
+        [false],
+        "revealed by its own frame, not the deadline"
+    );
+}
+
+#[test]
 fn a_failed_reveal_does_not_charge_its_wait_to_the_next_load() {
     let worker = ViewWorker::spawn("test-reveal-failed-reload").unwrap();
     let platform = Platform::new(&[&worker]);

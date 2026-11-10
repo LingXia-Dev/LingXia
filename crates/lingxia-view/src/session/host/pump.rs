@@ -197,10 +197,12 @@ impl<A: PlatformAdapter> Inner<A> {
                 return;
             }
             let ahead = waiting;
-            let background = !main.visible;
+            // A page waiting to replace the shown one builds its first frame as shown work.
+            let revealing = main.reveal.waiting();
+            let background = !main.visible && !revealing;
             let surface = if main.visible {
                 self.lifecycle.frame()
-            } else if main.catch_up && !main.interaction.parked() {
+            } else if (main.catch_up || revealing) && !main.interaction.parked() {
                 self.lifecycle.frame_hidden()
             } else {
                 None
