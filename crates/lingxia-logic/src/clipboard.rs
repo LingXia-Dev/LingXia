@@ -265,7 +265,7 @@ fn resolve_share_like_file(lxapp: &LxApp, file: &str) -> JSResult<String> {
     }
     if is_platform_file_reference(path) || !path.starts_with("lx://") {
         return Err(js_invalid_parameter_error(
-            "clipboard image filePath must be an lx:// path or a file returned by lx.chooseFile/lx.chooseMedia",
+            "clipboard image filePath must be an lx:// path or a file returned by lx.pickFile/lx.chooseMedia",
         ));
     }
     let resolved = lxapp

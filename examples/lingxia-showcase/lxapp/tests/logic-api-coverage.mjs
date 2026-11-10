@@ -48,7 +48,7 @@ export default {
     { "api": "lx.env.USER_CACHE_PATH", "mode": "automated", "owner": "LOGIC-004" },
     { "api": "lx.downloadFile", "mode": "automated", "owner": "TRANSFER-DOWNLOAD-001" },
     { "api": "lx.openFile", "mode": "external-ui", "owner": "PEND-FILE-PICK-001" },
-    { "api": "lx.chooseFile", "mode": "external-ui", "owner": "PEND-FILE-PICK-001" },
+    { "api": "lx.pickFile", "mode": "external-ui", "owner": "PEND-FILE-PICK-001" },
     { "api": "lx.getLxAppInfo", "mode": "automated", "owner": "LOGIC-001" },
     { "api": "lx.getLocation", "mode": "automated", "owner": "MACOS-LOCATION-001", "targets": ["macos"] },
     { "api": "lx.getVideoInfo", "mode": "automated", "owner": "MEDIA-PROCESS-001" },

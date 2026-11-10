@@ -86,9 +86,9 @@ export default [
   },
   {
     id: "PEND-FILE-PICK-001",
-    title: "openFile and chooseFile cancel/error codes",
+    title: "openFile and pickFile cancel/error codes",
     mode: "external-ui",
-    covers: ["lx.openFile", "lx.chooseFile"],
+    covers: ["lx.openFile", "lx.pickFile"],
     reason: "OS file picker and viewer stay external-ui",
   },
   {

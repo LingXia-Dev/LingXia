@@ -270,12 +270,12 @@ fn resolve_share_files(lxapp: &LxApp, files: Vec<String>) -> JSResult<Vec<String
             }
             if is_platform_file_reference(path) {
                 return Err(js_invalid_parameter_error(
-                    "share file path must be returned by lx.chooseFile/lx.chooseMedia",
+                    "share file path must be returned by lx.pickFile/lx.chooseMedia",
                 ));
             }
             if !path.starts_with("lx://") {
                 return Err(js_invalid_parameter_error(
-                    "share file path must be returned by lx.chooseFile/lx.chooseMedia",
+                    "share file path must be returned by lx.pickFile/lx.chooseMedia",
                 ));
             }
             let resolved = lxapp

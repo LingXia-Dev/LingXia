@@ -406,7 +406,7 @@ Page({
 
   chooseFileFromUserCache: async function () {
     try {
-      const result = await lx.chooseFile({
+      const result = await lx.pickFile({
         defaultPath: this.data.chooseFileDefaultPath,
       });
       if (result.status === 'canceled') {
@@ -418,7 +418,7 @@ Page({
         return;
       }
 
-      const selectedPath = result.paths[0];
+      const selectedPath = result.uri;
       const fileType = detectFileTypeFromPath(selectedPath);
       this.setData({
         chooseFileStatusText: "File selected",
@@ -426,9 +426,9 @@ Page({
         chooseFileSelectedType: fileType || "unknown",
       });
     } catch (error) {
-      lx.showToast({ title: errorMessage(error, "chooseFile failed"), icon: "none" });
+      lx.showToast({ title: errorMessage(error, "pickFile failed"), icon: "none" });
       this.setData({
-        chooseFileStatusText: errorMessage(error, "chooseFile failed"),
+        chooseFileStatusText: errorMessage(error, "pickFile failed"),
       });
     }
   },
