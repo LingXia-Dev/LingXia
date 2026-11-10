@@ -46,6 +46,12 @@ pub struct ViewSession {
     uncollected: Cell<u32>,
     /// The page opted its dev clock into eval phases (`__lingxiaClock.phases = true`).
     eval_phases: bool,
+    /// The module's cache key, under which its lowered styles persist for the next isolate.
+    module: crate::engine::bytecode::Key,
+    /// The first commit ran and its lowered styles are not yet offered to the cache.
+    lowered_due: Cell<bool>,
+    /// Lowered styles were offered once; later frames only add what the seed never serves.
+    lowered_taken: Cell<bool>,
     /// Frames in a row that finished past their budget; each was dropped.
     overruns: Cell<u32>,
     environment: serde_json::Value,
@@ -143,6 +149,26 @@ pub(crate) fn eval_budget() -> Duration {
     Duration::from_millis((EVAL_BUDGET_MS * scale) as u64)
 }
 
+/// Seed the runtime with lowerings an earlier isolate of this module persisted. Only a cache:
+/// a seed the runtime refuses or fails on is dropped, never failing the page.
+fn seed_lowered(context: &crate::engine::JSContext, module: &crate::engine::bytecode::Key) {
+    let Some(text) = crate::engine::bytecode::load_lowered(module) else {
+        return;
+    };
+    let accepted = serde_json::to_string(&text)
+        .map_err(|e| e.to_string())
+        .and_then(|literal| {
+            context
+                .eval::<bool>(Source::from_bytes(format!(
+                    "typeof __lingxiaSeedLowered === 'function' && __lingxiaSeedLowered({literal})"
+                )))
+                .map_err(|e| e.to_string())
+        });
+    if !matches!(accepted, Ok(true)) {
+        crate::engine::bytecode::forget_lowered(module);
+    }
+}
+
 /// Frames of garbage a page builds before the host collects it between frames.
 const FRAMES_PER_COLLECTION: u32 = 8;
 
@@ -151,12 +177,41 @@ impl ViewSession {
     /// Collects garbage when enough frames have built up since the last collection; returns
     /// whether it did. The host calls it on the worker between frames.
     pub fn collect_between_frames(&self) -> bool {
+        if self.lowered_due.replace(false) && !self.lowered_taken.replace(true) {
+            self.persist_lowered();
+        }
         if self.uncollected.get() < FRAMES_PER_COLLECTION {
             return false;
         }
         self.uncollected.set(0);
         crate::engine::collect_between_frames(&self.context);
         true
+    }
+
+    /// Hand styles lowered since the last take to the cache, so the next isolate starts with them.
+    fn persist_lowered(&self) {
+        // Not `execute`: draining the page's microtasks outside a frame would run its updates
+        // where no frame follows them.
+        if self.poisoned.get() {
+            return;
+        }
+        let budget = eval_budget();
+        let (taken, _) = self.budget.run(budget, budget, || {
+            self.context
+                .eval::<String>(Source::from_bytes(
+                    "typeof __lingxiaTakeLowered === 'function' ? __lingxiaTakeLowered() : ''",
+                ))
+                .map_err(|e| crate::engine::js_error(&self.context, e))
+        });
+        match taken {
+            Ok(text) if !text.is_empty() => {
+                crate::engine::bytecode::store_lowered(self.module, text)
+            }
+            Ok(_) => {}
+            Err(error) => {
+                log::warn!(target: "lingxia_view", "BYTECODE_CACHE: cannot take lowered styles: {error}")
+            }
+        }
     }
 
     pub fn metrics(&self) -> &crate::FrameMetrics {
@@ -189,7 +244,8 @@ impl ViewSession {
             crate::engine::install_dev_globals(&context)?;
             video::install(&context, video_scope, video_orientation)?;
             crate::engine::defer_collections(&context);
-            <crate::engine::Active as crate::engine::Engine>::evaluate_module(&context, source)?;
+            let module =
+                <crate::engine::Active as crate::engine::Engine>::evaluate_module(&context, source)?;
             let valid: bool = context.eval(Source::from_bytes(
                 "['Render','Prepare','Commit','Discard','Reset','Dispatch','CreateView'].every(name=>typeof globalThis['__lingxia'+name]==='function')"
             )).map_err(|e| e.to_string())?;
@@ -197,14 +253,16 @@ impl ViewSession {
                 return Err("UI_MODULE: missing render or compiled UI runtime exports".into());
             }
             <crate::engine::Active as crate::engine::Engine>::drain_jobs(&context)?;
-            context
+            seed_lowered(&context, &module);
+            let phases = context
                 .eval::<bool>(Source::from_bytes(
                     "globalThis.__lingxiaClock?.phases === true",
                 ))
-                .map_err(|e| e.to_string())
+                .map_err(|e| e.to_string())?;
+            Ok((module, phases))
         });
-        let eval_phases = match initialized {
-            Ok(phases) => phases,
+        let (module, eval_phases) = match initialized {
+            Ok(initialized) => initialized,
             Err(error) => {
                 <crate::engine::Active as crate::engine::Engine>::discard_jobs(&context);
                 return Err(error);
@@ -220,6 +278,9 @@ impl ViewSession {
             warm: Cell::new(true),
             uncollected: Cell::new(0),
             eval_phases,
+            module,
+            lowered_due: Cell::new(false),
+            lowered_taken: Cell::new(false),
             overruns: Cell::new(0),
             connected: false,
             retained: None,

@@ -750,6 +750,7 @@ impl ViewSession {
                 let started = std::time::Instant::now();
                 self.eval("__lingxiaCommit()")?;
                 metrics.view_us += crate::session::metrics::micros(started);
+                self.lowered_due.set(true);
             }
             Ok(candidate)
         });

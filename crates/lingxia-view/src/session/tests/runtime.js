@@ -34,8 +34,10 @@
     receiveActionResponse: () => receiveActionResponse,
     requestLeave: () => requestLeave,
     reset: () => reset,
+    seedLowered: () => seedLowered,
     takeActionErrors: () => takeActionErrors,
     takeActionRequests: () => takeActionRequests,
+    takeLowered: () => takeLowered,
     takeMovedAnchors: () => takeMovedAnchors,
     useChannel: () => useChannel,
     useLeaveGuard: () => useLeaveGuard,
@@ -196,38 +198,38 @@
     return same3 && entries2.length === Object.keys(old).length ? old : Object.freeze(Object.fromEntries(entries2));
   }
   function applyPatch(root, ops) {
-    const fresh = /* @__PURE__ */ new Set();
+    const fresh2 = /* @__PURE__ */ new Set();
     for (const op of ops) {
       if (op.path === "") {
         root = op.op === "remove" ? Object.freeze({}) : shared(op.value, root);
         continue;
       }
       const tokens = op.path.slice(1).split("/").map((t) => t.replace(/~1/g, "/").replace(/~0/g, "~"));
-      root = patchAt(root, tokens, 0, op, fresh);
+      root = patchAt(root, tokens, 0, op, fresh2);
     }
-    for (const container2 of fresh) Object.freeze(container2);
+    for (const container2 of fresh2) Object.freeze(container2);
     return root;
   }
-  function patchAt(node, tokens, i, op, fresh) {
+  function patchAt(node, tokens, i, op, fresh2) {
     const key = tokens[i];
     const array = Array.isArray(node);
-    if (i === tokens.length - 1) return patchLeaf(node, array, key, op, fresh);
+    if (i === tokens.length - 1) return patchLeaf(node, array, key, op, fresh2);
     const slot = array ? Number(key) : key;
     const had = array || has(node, key);
     let child = had ? node[slot] : void 0;
     if (child === void 0 && !array) child = /^\d+$/.test(tokens[i + 1]) ? [] : {};
-    const next = patchAt(child, tokens, i + 1, op, fresh);
+    const next = patchAt(child, tokens, i + 1, op, fresh2);
     if (had && next === node[slot]) return node;
-    const copy2 = mutable(node, fresh);
+    const copy2 = mutable(node, fresh2);
     define(copy2, slot, next);
     if (!had) sortKeys(copy2);
     return copy2;
   }
-  function patchLeaf(node, array, key, op, fresh) {
+  function patchLeaf(node, array, key, op, fresh2) {
     if (array) {
       const index = key === "-" ? node.length : Number(key);
       if (op.op === "remove" && index >= node.length) return node;
-      const copy3 = mutable(node, fresh);
+      const copy3 = mutable(node, fresh2);
       if (op.op === "add") copy3.splice(Math.min(index, copy3.length), 0, immutable(op.value));
       else if (op.op === "remove") copy3.splice(index, 1);
       else {
@@ -239,13 +241,13 @@
     const had = has(node, key);
     if (op.op === "remove") {
       if (!had) return node;
-      const copy3 = mutable(node, fresh);
+      const copy3 = mutable(node, fresh2);
       delete copy3[key];
       return copy3;
     }
     const value = shared(op.value, had ? node[key] : void 0);
     if (had && value === node[key]) return node;
-    const copy2 = mutable(node, fresh);
+    const copy2 = mutable(node, fresh2);
     define(copy2, key, value);
     if (!had) sortKeys(copy2);
     return copy2;
@@ -263,10 +265,10 @@
     }
     return a.length - b.length;
   }
-  function mutable(node, fresh) {
-    if (fresh.has(node)) return node;
+  function mutable(node, fresh2) {
+    if (fresh2.has(node)) return node;
     const copy2 = Array.isArray(node) ? node.slice() : Object.fromEntries(Object.entries(node));
-    fresh.add(copy2);
+    fresh2.add(copy2);
     return copy2;
   }
   function define(target, key, value) {
@@ -2782,26 +2784,65 @@
   }
   var lowered = /* @__PURE__ */ new Map();
   var loweredEnv = null;
+  var fresh = /* @__PURE__ */ new Set();
+  var seeded = null;
+  var loweringFields = ["theme", "viewport", "pointer", "reducedMotion", "insets", "keyboard"];
+  var loweringEnv = (env) => Object.fromEntries(loweringFields.map((name) => [name, env?.[name]]));
   var keyedEnv = {};
   var keyedEnvKey;
   function envKey(env) {
     if (env !== keyedEnv) {
       keyedEnv = env;
-      keyedEnvKey = JSON.stringify([env?.theme, env?.viewport, env?.pointer, env?.reducedMotion, env?.insets, env?.keyboard]);
+      keyedEnvKey = JSON.stringify(loweringFields.map((name) => env?.[name]));
     }
     return keyedEnvKey;
+  }
+  function takeLowered() {
+    if (!fresh.size) return "";
+    fresh.clear();
+    if (lowered.size > 400) return "";
+    return JSON.stringify({ env: loweredEnv, entries: [...lowered].filter(([, style2]) => portable(style2)) });
+  }
+  var droppable = /* @__PURE__ */ new Set(["children", "release"]);
+  function portable(style2) {
+    return Object.entries(style2).every(([name, value]) => value === void 0 ? droppable.has(name) : name === "typography" ? Object.entries(value).every(([field2, size]) => size === void 0 ? field2 === "lineHeight" : plainJson(size)) : plainJson(value));
+  }
+  function plainJson(value) {
+    if (value === null || typeof value === "string" || typeof value === "boolean") return true;
+    if (typeof value === "number") return Number.isFinite(value) && !Object.is(value, -0);
+    if (Array.isArray(value)) return value.every(plainJson);
+    if (typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) return false;
+    return Object.values(value).every(plainJson);
+  }
+  function seedLowered(text2) {
+    let value;
+    try {
+      value = JSON.parse(text2);
+    } catch {
+      return false;
+    }
+    const entry = (item) => Array.isArray(item) && item.length === 2 && typeof item[0] === "string" && item[1] !== null && typeof item[1] === "object";
+    if (typeof value?.env !== "string" || !Array.isArray(value.entries) || !value.entries.every(entry)) return false;
+    seeded = value;
+    if (value.env === loweredEnv) {
+      for (const [key, style2] of value.entries) if (!lowered.has(key)) lowered.set(key, style2);
+    }
+    return true;
   }
   function nodeStyle(tag, props, data, extra, inherited, direction, structure2) {
     if (props.style !== void 0 || extra !== void 0 || props.className === void 0) return lowerNodeStyle(tag, props, data, extra, inherited, direction, structure2);
     const environment = envKey(envOf(render.view));
     if (environment !== loweredEnv) {
       lowered.clear();
+      fresh.clear();
       loweredEnv = environment;
+      if (seeded?.env === environment) for (const [key2, style3] of seeded.entries) lowered.set(key2, style3);
     }
     const key = `${tag}\0${props.className}\0${data ? JSON.stringify(data) : ""}\0${props.disabled === true}\0${direction}\0${(structure2 ?? []).join(",")}\0${inherited.fontSize}\0${JSON.stringify(inherited.lineHeight)}`;
     let style2 = lowered.get(key);
     if (!style2) {
       style2 = lowerNodeStyle(tag, props, data, extra, inherited, direction, structure2);
+      fresh.add(key);
       if (lowered.size >= 2048) lowered.delete(lowered.keys().next().value);
       lowered.set(key, style2);
     }
@@ -2818,7 +2859,7 @@
   var runTags = /* @__PURE__ */ new Set(["span", "link"]);
   var disabledField = { color: "text-muted", backgroundColor: "surface-sunken", borderColor: "line" };
   function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure2) {
-    const env = { ...envOf(render.view), direction, structure: structure2, data };
+    const env = { ...loweringEnv(envOf(render.view)), direction, structure: structure2, data };
     const classes = resolveClasses(props.className, env);
     if (classes?.pairedLeading && runTags.has(tag)) delete classes.base.lineHeight;
     const disabled = props.disabled === true;
@@ -3765,11 +3806,11 @@
     for (const cell of record.cells.values()) if (page.updates.has(cell)) return void 0;
     const budget = { left: compareBudget };
     if (!sameFields(props, record.props, record.arena, budget) || !same2(children, record.children, record.arena, budget) || !sameContext(parent, record.parent, record.arena)) return void 0;
-    const fresh = { ...record, props, children, parent, arena: currentArena(), result: record.lists ? reuse(record.result) : record.result };
-    keep(fresh);
+    const fresh2 = { ...record, props, children, parent, arena: currentArena(), result: record.lists ? reuse(record.result) : record.result };
+    keep(fresh2);
     const frame = render.frames[render.frames.length - 1];
     if (frame) {
-      frame.nested.push(fresh);
+      frame.nested.push(fresh2);
       for (const cell of record.reads) frame.reads.add(cell);
     }
     for (const [key, cell] of record.cells) {
@@ -3778,7 +3819,7 @@
     }
     if (record.handles) skipHandle();
     if (record.lists) render.lists++;
-    return fresh.result;
+    return fresh2.result;
   }
   function reuse(node) {
     let children = node.children;
@@ -5262,6 +5303,8 @@
       __lingxiaFrameMeasured: frameMeasured,
       __lingxiaWireAck: wireAck,
       __lingxiaEvalSpans: takeSpans,
+      __lingxiaTakeLowered: takeLowered,
+      __lingxiaSeedLowered: seedLowered,
       // Cleared when a render completes, so it names only a render that never returned.
       __lingxiaSite: () => render.site || ""
     });

@@ -7,7 +7,10 @@ impl Engine for QuickJs {
     const FEATURES: &'static [Feature] = &[Feature::CandidateTransactions, Feature::BoundedJobs];
     const PREEMPTIBLE: bool = true;
 
-    fn evaluate_module(context: &super::JSContext, source: &str) -> Result<(), String> {
+    fn evaluate_module(
+        context: &super::JSContext,
+        source: &str,
+    ) -> Result<super::bytecode::Key, String> {
         evaluate(context, source)
     }
     fn drain_jobs(context: &super::JSContext) -> Result<(), String> {
@@ -61,7 +64,7 @@ fn discard_jobs(context: &super::JSContext) {
     }
 }
 
-fn evaluate(context: &super::JSContext, source: &str) -> Result<(), String> {
+fn evaluate(context: &super::JSContext, source: &str) -> Result<super::bytecode::Key, String> {
     use super::bytecode::{self, Outcome};
     use rong_core::engine::JSContextImpl;
     use rong_quickjs_sys as qjs;
@@ -94,7 +97,7 @@ fn evaluate(context: &super::JSContext, source: &str) -> Result<(), String> {
         }
     };
     bytecode::report(outcome, size, started.elapsed());
-    unsafe { run(ctx, module) }
+    unsafe { run(ctx, module) }.map(|()| key)
 }
 
 unsafe extern "C" {

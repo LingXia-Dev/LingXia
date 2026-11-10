@@ -32,7 +32,8 @@ pub(crate) trait Engine {
     const FEATURES: &'static [Feature];
     /// Whether the budget watchdog can interrupt running script.
     const PREEMPTIBLE: bool;
-    fn evaluate_module(context: &JSContext, source: &str) -> Result<(), String>;
+    /// Returns the module's cache key, which also names what the module persists beside its bytecode.
+    fn evaluate_module(context: &JSContext, source: &str) -> Result<bytecode::Key, String>;
     fn drain_jobs(context: &JSContext) -> Result<(), String>;
     /// Drain under interruption before dropping a failed context or running a sibling page.
     fn discard_jobs(context: &JSContext);

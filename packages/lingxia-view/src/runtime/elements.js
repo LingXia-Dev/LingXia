@@ -101,25 +101,73 @@ function bind(tag, element, props) {
 // nothing but these inputs, so one lowering serves every node that shares them.
 const lowered = new Map();
 let loweredEnv = null;
+// Keys lowered since the last `takeLowered`, and the lowerings a previous isolate of this module took.
+const fresh = new Set();
+let seeded = null;
+// The only env fields lowering may read: each is in the key, so a seed from another isolate holds.
+const loweringFields = ['theme', 'viewport', 'pointer', 'reducedMotion', 'insets', 'keyboard'];
+const loweringEnv = env => Object.fromEntries(loweringFields.map(name => [name, env?.[name]]));
 // A view's environment is frozen, so its key is computed once per environment, not per node.
 let keyedEnv = {}, keyedEnvKey;
 function envKey(env) {
   if (env !== keyedEnv) {
     keyedEnv = env;
-    keyedEnvKey = JSON.stringify([env?.theme, env?.viewport, env?.pointer, env?.reducedMotion, env?.insets, env?.keyboard]);
+    keyedEnvKey = JSON.stringify(loweringFields.map(name => env?.[name]));
   }
   return keyedEnvKey;
+}
+
+/** Lowered styles for the current env once any is new since the last take, as JSON; '' otherwise. */
+export function takeLowered() {
+  if (!fresh.size) return '';
+  fresh.clear();
+  // A set this large would not be kept, so it is not serialized either.
+  if (lowered.size > 400) return '';
+  return JSON.stringify({ env: loweredEnv, entries: [...lowered].filter(([, style]) => portable(style)) });
+}
+
+// Whether JSON carries a style unchanged. The only fields it may drop are these, read solely by value.
+const droppable = new Set(['children', 'release']);
+function portable(style) {
+  return Object.entries(style).every(([name, value]) => value === undefined ? droppable.has(name)
+    : name === 'typography' ? Object.entries(value).every(([field, size]) => size === undefined ? field === 'lineHeight' : plainJson(size))
+    : plainJson(value));
+}
+
+function plainJson(value) {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value) && !Object.is(value, -0);
+  if (Array.isArray(value)) return value.every(plainJson);
+  if (typeof value !== 'object' || Object.getPrototypeOf(value) !== Object.prototype) return false;
+  return Object.values(value).every(plainJson);
+}
+
+/** Lowerings a previous isolate of this module took; false when `text` is not such a list. */
+export function seedLowered(text) {
+  let value;
+  try { value = JSON.parse(text); } catch { return false; }
+  const entry = item => Array.isArray(item) && item.length === 2 && typeof item[0] === 'string' && item[1] !== null && typeof item[1] === 'object';
+  if (typeof value?.env !== 'string' || !Array.isArray(value.entries) || !value.entries.every(entry)) return false;
+  seeded = value;
+  if (value.env === loweredEnv) for (const [key, style] of value.entries) if (!lowered.has(key)) lowered.set(key, style);
+  return true;
 }
 
 function nodeStyle(tag, props, data, extra, inherited, direction, structure) {
   if (props.style !== undefined || extra !== undefined || props.className === undefined) return lowerNodeStyle(tag, props, data, extra, inherited, direction, structure);
   const environment = envKey(envOf(render.view));
-  if (environment !== loweredEnv) { lowered.clear(); loweredEnv = environment; }
+  if (environment !== loweredEnv) {
+    lowered.clear();
+    fresh.clear();
+    loweredEnv = environment;
+    if (seeded?.env === environment) for (const [key, style] of seeded.entries) lowered.set(key, style);
+  }
   // An inherited line height may be a multiplier object; it keys by value, not as "[object Object]".
   const key = `${tag}\u0000${props.className}\u0000${data ? JSON.stringify(data) : ''}\u0000${props.disabled === true}\u0000${direction}\u0000${(structure ?? []).join(",")}\u0000${inherited.fontSize}\u0000${JSON.stringify(inherited.lineHeight)}`;
   let style = lowered.get(key);
   if (!style) {
     style = lowerNodeStyle(tag, props, data, extra, inherited, direction, structure);
+    fresh.add(key);
     if (lowered.size >= 2048) lowered.delete(lowered.keys().next().value);
     lowered.set(key, style);
   }
@@ -142,7 +190,7 @@ const disabledField = { color: 'text-muted', backgroundColor: 'surface-sunken', 
 
 // Classes, then the parent's child rule, then inline style; `disabled:` replaces the class cascade.
 function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure) {
-  const env = { ...envOf(render.view), direction, structure, data };
+  const env = { ...loweringEnv(envOf(render.view)), direction, structure, data };
   const classes = resolveClasses(props.className, env);
   // A run takes the size of `text-sm` but not the line height paired with it.
   if (classes?.pairedLeading && runTags.has(tag)) delete classes.base.lineHeight;

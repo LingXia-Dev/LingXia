@@ -6,6 +6,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 
 const MAGIC: &[u8; 8] = b"LXVBC\0\0\x01";
+const LOWERED_MAGIC: &[u8; 8] = b"LXVLS\0\0\x01";
+/// Larger lowered-style sets are not persisted: reading them back would cost what they save.
+pub(crate) const LOWERED_BYTES: usize = 256 << 10;
 const HEADER: usize = MAGIC.len() + 32 + 8;
 const MEMORY_BYTES: usize = 24 << 20;
 const DISK_BYTES: u64 = 32 << 20;
@@ -106,7 +109,7 @@ pub(crate) fn load(key: &Key) -> Option<(Arc<[u8]>, Outcome)> {
             return Some((bytes.clone(), Outcome::Memory));
         }
     }
-    let bytes: Arc<[u8]> = read_file(&path(DIR.get()?, key), key)?.into();
+    let bytes: Arc<[u8]> = read_file(&path(DIR.get()?, key), MAGIC, key, None)?.into();
     remember(*key, bytes.clone());
     Some((bytes, Outcome::Disk))
 }
@@ -122,7 +125,7 @@ pub(crate) fn store(key: Key, bytes: Vec<u8>) {
     let spawned = std::thread::Builder::new()
         .name("view-bytecode".into())
         .spawn(move || {
-            if let Err(error) = write_file(&dir, &key, &bytes) {
+            if let Err(error) = write_file(&path(&dir, &key), MAGIC, &key, &bytes) {
                 log::warn!(target: "lingxia_view", "BYTECODE_CACHE: cannot write cache: {error}");
             }
             trim(&dir, &path(&dir, &key));
@@ -144,17 +147,73 @@ pub(crate) fn forget(key: &Key) {
     }
 }
 
+/// Style lowerings an earlier isolate of module `key` persisted, as `__lingxiaSeedLowered` takes them.
+pub(crate) fn load_lowered(key: &Key) -> Option<String> {
+    let path = lowered_path(DIR.get()?, key);
+    let body = read_file(&path, LOWERED_MAGIC, key, Some(LOWERED_BYTES))?;
+    String::from_utf8(body)
+        .inspect_err(|_| {
+            let _ = std::fs::remove_file(&path);
+        })
+        .ok()
+}
+
+/// Persist the lowerings module `key` took, off the calling thread; oversized sets are dropped.
+pub(crate) fn store_lowered(key: Key, text: String) {
+    if text.len() > LOWERED_BYTES {
+        log::debug!(target: "lingxia_view", "BYTECODE_CACHE: lowered styles not kept, {} KB", text.len() / 1024);
+        return;
+    }
+    let Some(dir) = DIR.get() else {
+        return;
+    };
+    let dir = dir.clone();
+    let spawned = std::thread::Builder::new()
+        .name("view-lowered".into())
+        .spawn(move || {
+            let written = std::fs::create_dir_all(&dir).and_then(|()| {
+                write_file(&lowered_path(&dir, &key), LOWERED_MAGIC, &key, text.as_bytes())
+            });
+            if let Err(error) = written {
+                log::warn!(target: "lingxia_view", "BYTECODE_CACHE: cannot write lowered styles: {error}");
+            }
+        });
+    if let Err(error) = spawned {
+        log::warn!(target: "lingxia_view", "BYTECODE_CACHE: cannot write lowered styles: {error}");
+    }
+}
+
+/// Drop lowerings the runtime refused to seed from.
+pub(crate) fn forget_lowered(key: &Key) {
+    if let Some(dir) = DIR.get() {
+        let _ = std::fs::remove_file(lowered_path(dir, key));
+    }
+}
+
+fn hex(key: &Key) -> String {
+    key.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
 fn path(dir: &Path, key: &Key) -> PathBuf {
-    let name: String = key.iter().map(|byte| format!("{byte:02x}")).collect();
-    dir.join(format!("{name}.qbc"))
+    dir.join(format!("{}.qbc", hex(key)))
+}
+
+fn lowered_path(dir: &Path, key: &Key) -> PathBuf {
+    dir.join(format!("{}.lowered", hex(key)))
 }
 
 /// The header repeats the key and the length, so a renamed or truncated file reads as a miss.
-fn read_file(path: &Path, key: &Key) -> Option<Vec<u8>> {
+fn read_file(path: &Path, magic: &[u8; 8], key: &Key, max: Option<usize>) -> Option<Vec<u8>> {
+    if let Some(max) = max
+        && std::fs::metadata(path).ok()?.len() > (HEADER + max) as u64
+    {
+        let _ = std::fs::remove_file(path);
+        return None;
+    }
     let data = std::fs::read(path).ok()?;
     let (header, body) = data.split_at_checked(HEADER)?;
     let length = u64::from_le_bytes(header[MAGIC.len() + 32..].try_into().ok()?);
-    if &header[..MAGIC.len()] != MAGIC
+    if &header[..MAGIC.len()] != magic
         || header[MAGIC.len()..MAGIC.len() + 32] != key[..]
         || length != body.len() as u64
     {
@@ -168,12 +227,15 @@ fn read_file(path: &Path, key: &Key) -> Option<Vec<u8>> {
     Some(body.to_vec())
 }
 
-fn write_file(dir: &Path, key: &Key, bytes: &[u8]) -> std::io::Result<()> {
-    std::fs::create_dir_all(dir)?;
-    let target = path(dir, key);
-    let staging = target.with_extension(format!("{}.tmp", std::process::id()));
+fn write_file(target: &Path, magic: &[u8; 8], key: &Key, bytes: &[u8]) -> std::io::Result<()> {
+    if let Some(dir) = target.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    // Per extension, so a module's bytecode and lowered styles never share a staging file.
+    let extension = target.extension().unwrap_or_default().to_string_lossy();
+    let staging = target.with_extension(format!("{extension}.{}.tmp", std::process::id()));
     let mut data = Vec::with_capacity(HEADER + bytes.len());
-    data.extend_from_slice(MAGIC);
+    data.extend_from_slice(magic);
     data.extend_from_slice(key);
     data.extend_from_slice(&(bytes.len() as u64).to_le_bytes());
     data.extend_from_slice(bytes);
@@ -206,6 +268,18 @@ fn trim(dir: &Path, keep: &Path) {
             total -= len;
         }
     }
+    // Lowered styles belong to a module; they go when its bytecode does.
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let lowered = entry.path();
+        if lowered.extension().is_some_and(|ext| ext == "lowered")
+            && !lowered.with_extension("qbc").exists()
+        {
+            let _ = std::fs::remove_file(&lowered);
+        }
+    }
 }
 
 /// Dev sessions log where each module came from.
@@ -236,10 +310,13 @@ mod tests {
         let key = key("export const a = 1;");
         let other = super::key("export const a = 2;");
         assert_ne!(key, other);
-        write_file(&dir, &key, b"bytecode").unwrap();
-        assert_eq!(read_file(&path(&dir, &key), &key).unwrap(), b"bytecode");
+        write_file(&path(&dir, &key), MAGIC, &key, b"bytecode").unwrap();
+        assert_eq!(
+            read_file(&path(&dir, &key), MAGIC, &key, None).unwrap(),
+            b"bytecode"
+        );
         std::fs::copy(path(&dir, &key), path(&dir, &other)).unwrap();
-        assert!(read_file(&path(&dir, &other), &other).is_none());
+        assert!(read_file(&path(&dir, &other), MAGIC, &other, None).is_none());
         assert!(
             !path(&dir, &other).exists(),
             "a mismatched entry is removed"
@@ -248,7 +325,7 @@ mod tests {
         let data = std::fs::read(&file).unwrap();
         std::fs::write(&file, &data[..data.len() - 1]).unwrap();
         assert!(
-            read_file(&file, &key).is_none(),
+            read_file(&file, MAGIC, &key, None).is_none(),
             "a truncated entry is a miss"
         );
         let _ = std::fs::remove_dir_all(&dir);
@@ -260,7 +337,7 @@ mod tests {
         let big = vec![0u8; (DISK_BYTES / 2) as usize + 1];
         let keys = [key("one"), key("two"), key("three")];
         for key in &keys {
-            write_file(&dir, key, &big).unwrap();
+            write_file(&path(&dir, key), MAGIC, key, &big).unwrap();
         }
         trim(&dir, &path(&dir, &keys[2]));
         assert!(path(&dir, &keys[2]).exists());
@@ -269,6 +346,39 @@ mod tests {
             left, 1,
             "two half-budget entries do not fit beside the newest"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn lowered_styles_read_back_only_as_their_own_kind_and_size() {
+        let dir = tempfile_dir();
+        let key = key("export const a = 1;");
+        let lowered = lowered_path(&dir, &key);
+        write_file(&lowered, LOWERED_MAGIC, &key, b"{}").unwrap();
+        let read = |path: &Path, magic| read_file(path, magic, &key, Some(LOWERED_BYTES));
+        assert_eq!(read(&lowered, LOWERED_MAGIC).unwrap(), b"{}");
+        assert!(
+            read(&lowered, MAGIC).is_none(),
+            "bytecode never reads as lowered styles"
+        );
+        let big = vec![b' '; LOWERED_BYTES + 1];
+        write_file(&lowered, LOWERED_MAGIC, &key, &big).unwrap();
+        assert!(read(&lowered, LOWERED_MAGIC).is_none());
+        assert!(!lowered.exists(), "an oversized entry is removed");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn trimming_drops_lowered_styles_whose_bytecode_is_gone() {
+        let dir = tempfile_dir();
+        let (kept, gone) = (key("kept"), key("gone"));
+        write_file(&path(&dir, &kept), MAGIC, &kept, b"bytecode").unwrap();
+        for key in [&kept, &gone] {
+            write_file(&lowered_path(&dir, key), LOWERED_MAGIC, key, b"{}").unwrap();
+        }
+        trim(&dir, &path(&dir, &kept));
+        assert!(lowered_path(&dir, &kept).exists());
+        assert!(!lowered_path(&dir, &gone).exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
