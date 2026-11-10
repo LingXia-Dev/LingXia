@@ -277,7 +277,7 @@ fn managed_root(lxapp: &LxApp, kind: ManagedPathKind) -> Option<&Path> {
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
-struct JSDirEntry {
+struct DirEntry {
     name: String,
     #[js_name = "isFile"]
     is_file: bool,
@@ -1219,7 +1219,7 @@ async fn fs_stat(ctx: JSContext, path: String) -> JSResult<FileStats> {
 }
 
 /// The direct children of a managed directory.
-async fn fs_read_dir(ctx: JSContext, path: String) -> JSResult<Vec<JSDirEntry>> {
+async fn fs_read_dir(ctx: JSContext, path: String) -> JSResult<Vec<DirEntry>> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let path = resolve_readable_path(&lxapp, &path, "fs.readDir", "path")?;
     ensure_no_symlink_ancestors(&lxapp, &path, "fs.readDir", "path")?;
@@ -1242,7 +1242,7 @@ async fn fs_read_dir(ctx: JSContext, path: String) -> JSResult<Vec<JSDirEntry>> 
             .await
             .map(|metadata| metadata.file_type())
             .map_err(|err| js_internal_error(format!("fs.readDir file type failed: {err}")))?;
-        children.push(JSDirEntry {
+        children.push(DirEntry {
             name: entry.file_name().to_string_lossy().into_owned(),
             is_file: file_type.is_file(),
             is_directory: file_type.is_dir(),

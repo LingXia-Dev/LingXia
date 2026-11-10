@@ -2847,6 +2847,13 @@ export interface DeviceInfo {
   osVersion: string;
 }
 
+export interface DirEntry {
+  name: string;
+  isFile: boolean;
+  isDirectory: boolean;
+  isSymlink: boolean;
+}
+
 export interface FileStats {
   isFile: boolean;
   isDirectory: boolean;
@@ -2931,13 +2938,6 @@ export interface WifiInfo {
   signalStrength: number;
   /** Center frequency in MHz (if available) */
   frequency?: number;
-}
-
-export interface DirEntry {
-  readonly name: string;
-  readonly isFile: boolean;
-  readonly isDirectory: boolean;
-  readonly isSymlink: boolean;
 }
 
 export interface LxFile {
