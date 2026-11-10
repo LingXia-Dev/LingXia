@@ -8,7 +8,9 @@ use jni::sys::{jboolean, jdouble, jfloat, jint, jlong};
 use jni::{Env, EnvUnowned, JValue, jni_sig, jni_str};
 use lingxia_view::interaction::view::{AccessibilityAction, Key, Pointer, PointerPhase};
 use lingxia_view::platform::Task;
-use lingxia_view::session::host::{CaretState, LogicPort, TransitionEvent, ViewHost, ViewWorker};
+use lingxia_view::session::host::{
+    CaretState, LogicPort, StaleMark, TransitionEvent, ViewHost, ViewWorker,
+};
 use lingxia_view::session::lifecycle::ConnectionTicket;
 use lingxia_view::session::state::StateWrite;
 
@@ -239,22 +241,31 @@ pub extern "system" fn Java_com_lingxia_view_GpuView_initializeNative<'a>(
 }
 
 /// Hosts by owner token, for Logic state and messages that never cross JNI.
-fn ports() -> std::sync::MutexGuard<'static, std::collections::HashMap<jlong, LogicPort>> {
+fn ports()
+-> std::sync::MutexGuard<'static, std::collections::HashMap<jlong, (LogicPort, StaleMark)>> {
     static PORTS: std::sync::LazyLock<
-        std::sync::Mutex<std::collections::HashMap<jlong, LogicPort>>,
+        std::sync::Mutex<std::collections::HashMap<jlong, (LogicPort, StaleMark)>>,
     > = std::sync::LazyLock::new(Default::default);
     PORTS.lock().unwrap_or_else(|p| p.into_inner())
 }
 
+/// Any thread: a park or reload of the page `owner` names is requested and posted to the main
+/// thread; until it runs, the page's presented frame is not its own.
+pub fn mark_stale(owner: i64) {
+    if let Some((_, stale)) = ports().get(&owner) {
+        stale.set();
+    }
+}
+
 /// Any thread: a typed Logic state write for the page `owner` names; false when it has no host.
 pub fn write_state(owner: i64, connection: u64, write: StateWrite) -> bool {
-    let port = ports().get(&owner).cloned();
+    let port = ports().get(&owner).map(|(port, _)| port.clone());
     port.is_some_and(|port| port.write_state(ConnectionTicket::new(connection), write))
 }
 
 /// Any thread: a typed Logic message for the page `owner` names; false when it has no host.
 pub fn deliver(owner: i64, connection: u64, message: lingxia_view::session::logic::ToView) -> bool {
-    let port = ports().get(&owner).cloned();
+    let port = ports().get(&owner).map(|(port, _)| port.clone());
     port.is_some_and(|port| port.deliver(ConnectionTicket::new(connection), message))
 }
 
@@ -275,7 +286,7 @@ extern "system" fn host_create<'a>(
         gpu_surface::warm();
         let _ = host.adapter().host.set(host.downgrade());
         if image_owner != 0 {
-            ports().insert(image_owner, host.logic_port());
+            ports().insert(image_owner, (host.logic_port(), host.stale_mark()));
         }
         Ok(Box::into_raw(Box::new(host)) as jlong)
     })

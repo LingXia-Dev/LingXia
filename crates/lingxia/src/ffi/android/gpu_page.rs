@@ -170,12 +170,14 @@ impl NativePage for AndroidPage {
         )
     }
     fn reload(&self, source: &str) -> Result<(), LxAppError> {
+        lingxia_view_android::mark_stale(self.token);
         value_operation(self.token, source, jni_str!("reload"))
     }
     fn swap_module(&self, source: &str) -> Result<(), LxAppError> {
         value_operation(self.token, source, jni_str!("swapModule"))
     }
     fn park(&self) -> Result<(), LxAppError> {
+        lingxia_view_android::mark_stale(self.token);
         operation(self.token, jni_str!("park"))
     }
     fn retain_surface(&self, retained: bool) -> Result<(), LxAppError> {
