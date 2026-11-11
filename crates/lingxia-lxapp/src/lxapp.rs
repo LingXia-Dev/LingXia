@@ -139,7 +139,7 @@ pub(crate) const USER_DATA_DIR: &str = "userdata";
 pub(crate) const USER_CACHE_DIR: &str = "usercache";
 pub(crate) const TEMP_DIR: &str = "temp";
 
-const LXAPPS_DB_FILE: &str = "lxapps.redb";
+const LXAPPS_DB_FILE: &str = "lxapp-index.redb";
 type PendingPageServiceRestart = (PageInstance, oneshot::Receiver<Result<(), String>>);
 const DEFAULT_VERSION: &str = "0.0.1";
 
@@ -4338,10 +4338,40 @@ impl LxApp {
     }
 }
 
-/// Compute a stable hash id for lxapp-scoped data separation.
-/// Includes lxappid + release_type + device_fingerprint to ensure isolation across variants and devices.
+/// Service env whose installs and data are in use; each env keeps its own.
+pub(crate) fn service_env_scope() -> lingxia_app_context::AppEnv {
+    #[cfg(test)]
+    if let Some(scope) = test_service_env_scope::current() {
+        return scope;
+    }
+    lingxia_app_context::service_env()
+}
+
+#[cfg(test)]
+pub(crate) mod test_service_env_scope {
+    use lingxia_app_context::AppEnv;
+    use std::cell::Cell;
+
+    thread_local! {
+        static SCOPE: Cell<Option<AppEnv>> = const { Cell::new(None) };
+    }
+
+    pub(crate) fn current() -> Option<AppEnv> {
+        SCOPE.with(Cell::get)
+    }
+
+    /// Run `body` on this thread as if the service env were `scope`.
+    pub(crate) fn with<T>(scope: AppEnv, body: impl FnOnce() -> T) -> T {
+        let previous = SCOPE.with(|cell| cell.replace(Some(scope)));
+        let result = body();
+        SCOPE.with(|cell| cell.set(previous));
+        result
+    }
+}
+
+/// Stable id for lxapp-scoped installs and data: appid, channel, device, and
+/// the service env scope.
 pub(crate) fn lxapp_fingermark(lxappid: &str, release_type: Channel) -> String {
-    // Fingermark uses appid + release_type + device fingerprint (version excluded)
     let device_fp = match crate::provider::get_provider().get_fingerprint() {
         Ok(fp) => fp,
         Err(e) => {
@@ -4349,10 +4379,39 @@ pub(crate) fn lxapp_fingermark(lxappid: &str, release_type: Channel) -> String {
             String::new()
         }
     };
-    let combined = format!("{}|{}|{}", lxappid, release_type.as_str(), device_fp);
+    fingermark_of(lxappid, release_type, &device_fp, service_env_scope())
+}
+
+fn fingermark_of(
+    lxappid: &str,
+    release_type: Channel,
+    device_fp: &str,
+    scope: lingxia_app_context::AppEnv,
+) -> String {
+    let combined = format!(
+        "{}|{}|{}|{}",
+        lxappid,
+        release_type.as_str(),
+        device_fp,
+        scope.as_str()
+    );
     let mut hasher = DefaultHasher::new();
     combined.hash(&mut hasher);
     format!("{:x}", hasher.finish())
+}
+
+#[cfg(test)]
+mod fingermark_tests {
+    use super::*;
+    use lingxia_app_context::AppEnv;
+
+    #[test]
+    fn each_service_env_gets_its_own_fingermark() {
+        assert_ne!(
+            fingermark_of("app.one", Channel::Release, "device-1", AppEnv::Prod),
+            fingermark_of("app.one", Channel::Release, "device-1", AppEnv::Dev)
+        );
+    }
 }
 
 impl Drop for LxApp {

@@ -465,6 +465,52 @@ pub mod product {
         }
 
         #[test]
+        fn package_sweep_keeps_installs_of_every_service_env() {
+            use crate::lxapp::test_service_env_scope::with;
+            use lingxia_app_context::AppEnv;
+            use lingxia_update::{Channel, SemanticVersion};
+
+            metadata::init_for_tests();
+            let root = tempfile::tempdir().unwrap();
+            let roots = Roots {
+                usercache: root.path().join("usercache"),
+                temp: root.path().join("temp"),
+                icons: root.path().join("icons"),
+                installs: root.path().join("installs"),
+                downloads: root.path().join("downloads"),
+            };
+            let appid = format!("app.lingxia.sweep-scope.{}", uuid::Uuid::new_v4());
+            let old = FileTime::from_system_time(SystemTime::now() - Duration::from_secs(7200));
+            let install = |scope: AppEnv, name: &str| {
+                let dir = roots.installs.join(name);
+                fs::create_dir_all(&dir).unwrap();
+                filetime::set_file_mtime(&dir, old).unwrap();
+                with(scope, || {
+                    metadata::upsert(&metadata::LxAppRecord::new(
+                        &appid,
+                        Channel::Release,
+                        SemanticVersion::from_version(
+                            &crate::lxapp::version::Version::parse("1.0.0").unwrap(),
+                        ),
+                        name.to_string(),
+                        dir.to_string_lossy().into_owned(),
+                        0,
+                    ))
+                    .unwrap()
+                });
+                dir
+            };
+            let prod = install(AppEnv::Prod, "prod");
+            let dev = install(AppEnv::Dev, "dev");
+
+            for scope in [AppEnv::Prod, AppEnv::Dev] {
+                let orphans = with(scope, || orphaned_packages(&roots));
+                assert!(!orphans.contains(&prod), "{scope:?} swept the prod install");
+                assert!(!orphans.contains(&dev), "{scope:?} swept the dev install");
+            }
+        }
+
+        #[test]
         fn cleanup_protection_is_reference_counted_and_blocks_removal() {
             let root = tempfile::tempdir().unwrap();
             let path = root.path().join("active.part");

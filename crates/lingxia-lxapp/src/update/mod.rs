@@ -420,17 +420,6 @@ impl UpdateManager {
                 fs::remove_dir_all(&pkg_dir)?;
             }
 
-            let legacy_pkg_dir = self
-                .lxapp
-                .runtime
-                .app_data_dir()
-                .join(LINGXIA_DIR)
-                .join(LXAPPS_DIR)
-                .join(&dir_name);
-            if legacy_pkg_dir != pkg_dir && legacy_pkg_dir.exists() {
-                fs::remove_dir_all(&legacy_pkg_dir)?;
-            }
-
             let data_dir = self
                 .lxapp
                 .runtime
@@ -470,7 +459,8 @@ impl UpdateManager {
         Ok(())
     }
 
-    /// Uninstall all releases and all per-app data for the given lxappid.
+    /// Uninstall all releases and all per-app data for the given lxappid under
+    /// the running service env scope.
     pub fn uninstall_all(&self, lxappid: &str) -> Result<(), LxAppError> {
         if crate::lxapp::is_lxapp_open(lxappid) {
             return Err(LxAppError::UnsupportedOperation(
@@ -543,6 +533,8 @@ impl UpdateManager {
         use std::hash::{Hash, Hasher};
 
         let mut hasher = DefaultHasher::new();
+        // Each service env stages its own archive, even for a shared URL.
+        crate::lxapp::service_env_scope().as_str().hash(&mut hasher);
         url.hash(&mut hasher);
         format!("{:016x}", hasher.finish())
     }

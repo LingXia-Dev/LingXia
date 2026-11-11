@@ -58,8 +58,13 @@ app may call this API.
 
 The default lxapp channel is always `release`, independent of the running
 service env. Draft opens and publishes require an explicit `channel` selector.
-Installs and storage remain keyed by channel, home lxapp included. Switching
-service env does not select a different lxapp data profile by itself.
+
+Installs and data are keyed by channel and service env, home lxapp included:
+install dirs, install/download records, userdata, usercache, temp,
+`lx.getStorage`, plugin installs and cached registry answers. A dev-service
+package (possibly unsigned) therefore never runs under the prod service, and the
+two services never share login state. Uninstall acts on the running env's
+records; the orphan sweep keeps every env's referenced installs.
 
 Lxapps/plugins from the dev service may be unsigned on every channel,
 including on a prod build switched to dev and including the home lxapp. Packages from the prod service
