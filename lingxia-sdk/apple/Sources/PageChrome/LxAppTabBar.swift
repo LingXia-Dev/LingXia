@@ -85,10 +85,14 @@ enum TabBarMetrics {
     static let activeIndicatorSize: CGFloat = 36
     static let activeIndicatorOpacity: CGFloat = 0.2
     /// UIKit item: the slot (and selected circle) around a 24pt icon, and the
-    /// gap to its label. Slot + gap + label stays near 42pt so the 50pt iOS
-    /// band keeps about 4pt above and below, like the system tab bar.
+    /// gap to its label. Slot + gap + label stays near 42pt so it fits the
+    /// 50pt iOS band with room above the icon.
     static let uikitIconSlot: CGFloat = 28
     static let uikitIconLabelSpacing: CGFloat = 2
+    /// A bottom strip pins items below its top edge rather than centering
+    /// them: the 24pt icon starts 11pt down (about half its height, as in
+    /// WeChat), and the label may reach into the home-indicator inset.
+    static let uikitStripItemTopInset: CGFloat = 9
 }
 
 #if os(iOS)
@@ -862,6 +866,7 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         stackView.isUserInteractionEnabled = false
 
         let isSelected = !morePresented && item.cachedIndex == selectedIndex
+        let isVerticalRail = config.position == 1 || config.position == 2
 
         if !item.icon_path.toString().isEmpty {
             let iconView = createUIKitIcon(item: item, index: index, isSelected: isSelected)
@@ -906,7 +911,10 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
 
         NSLayoutConstraint.activate([
             stackView.centerXAnchor.constraint(equalTo: button.centerXAnchor),
-            stackView.centerYAnchor.constraint(equalTo: button.centerYAnchor),
+            isVerticalRail
+                ? stackView.centerYAnchor.constraint(equalTo: button.centerYAnchor)
+                : stackView.topAnchor.constraint(
+                    equalTo: button.topAnchor, constant: TabBarMetrics.uikitStripItemTopInset),
             stackView.leadingAnchor.constraint(greaterThanOrEqualTo: button.leadingAnchor, constant: 2),
             stackView.trailingAnchor.constraint(lessThanOrEqualTo: button.trailingAnchor, constant: -2),
 
@@ -917,7 +925,7 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         ])
         // A horizontal slot gets its width from the equal-width strip, not
         // from the icon/button dimensions used by the vertical rail.
-        if config.position == 1 || config.position == 2 {
+        if isVerticalRail {
             button.widthAnchor.constraint(equalToConstant: 60).isActive = true
             button.heightAnchor.constraint(equalToConstant: 60).isActive = true
         }
@@ -1080,7 +1088,8 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
 
         NSLayoutConstraint.activate([
             stackView.centerXAnchor.constraint(equalTo: button.centerXAnchor),
-            stackView.centerYAnchor.constraint(equalTo: button.centerYAnchor),
+            stackView.topAnchor.constraint(
+                equalTo: button.topAnchor, constant: TabBarMetrics.uikitStripItemTopInset),
             stackView.leadingAnchor.constraint(greaterThanOrEqualTo: button.leadingAnchor, constant: 2),
             stackView.trailingAnchor.constraint(lessThanOrEqualTo: button.trailingAnchor, constant: -2),
 
