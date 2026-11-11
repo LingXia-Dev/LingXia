@@ -191,10 +191,11 @@ export type SurfaceQueryGate = [typeof queryRejectsStructuredValues];
 // `lx.shell` resolves to the global `ShellApi`, not the exported alias, so a
 // member declared on only one of the two is unreachable at the call site it
 // exists for. `sidebarActions` was exactly that.
-function sidebarActionsAreReachableThroughLxShell(): void {
-  lx.shell.sidebarActions.replace([]);
-  lx.shell.sidebarActions.update("id", { label: "Renamed" });
-  lx.shell.sidebarActions.remove("id");
+async function sidebarActionsAreReachableThroughLxShell(): Promise<void> {
+  await lx.shell.sidebarActions.replace([]);
+  await lx.shell.sidebarActions.update("id", { label: "Renamed" });
+  await lx.shell.sidebarActions.remove("id");
+  // @ts-expect-error replace([]) is the one way to clear
   lx.shell.sidebarActions.clear();
 }
 

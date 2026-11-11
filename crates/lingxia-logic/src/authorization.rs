@@ -42,7 +42,6 @@ pub(crate) enum LogicRoute {
     ShellSidebarReplace,
     ShellSidebarUpdate,
     ShellSidebarRemove,
-    ShellSidebarClear,
     ShellOpenApp,
     ShellOpenBuiltin,
     ShellOpenDeclared,
@@ -115,7 +114,6 @@ impl LogicRoute {
         Self::ShellSidebarReplace,
         Self::ShellSidebarUpdate,
         Self::ShellSidebarRemove,
-        Self::ShellSidebarClear,
         Self::ShellOpenApp,
         Self::ShellOpenBuiltin,
         Self::ShellOpenDeclared,
@@ -190,7 +188,6 @@ impl LogicRoute {
             | Self::ShellSidebarReplace
             | Self::ShellSidebarUpdate
             | Self::ShellSidebarRemove
-            | Self::ShellSidebarClear
             | Self::ShellOpenApp
             | Self::ShellOpenBuiltin
             | Self::ShellOpenDeclared
@@ -265,7 +262,6 @@ impl LogicRoute {
             Self::ShellSidebarReplace => "lx.shell.sidebarActions.replace",
             Self::ShellSidebarUpdate => "lx.shell.sidebarActions.update",
             Self::ShellSidebarRemove => "lx.shell.sidebarActions.remove",
-            Self::ShellSidebarClear => "lx.shell.sidebarActions.clear",
             Self::ShellOpenApp => "lx.shell.openApp",
             Self::ShellOpenBuiltin => "lx.shell.openBuiltin",
             Self::ShellOpenDeclared => "lx.shell.openDeclared",

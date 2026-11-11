@@ -3444,27 +3444,21 @@ declare global {
      * the chrome explicitly. Declarations are process-local, so call `replace` again
      * on every Logic launch.
      */
-    replace(items: ShellSidebarAction[]): void;
+    replace(items: ShellSidebarAction[]): Promise<void>;
     /**
      * Atomically updates the icon, label, value, and/or disabled state of one stable
      * id. Only the Control app may call this API. The patch must be non-empty;
      * unknown fields are rejected. A `value` key that is present sets the value, and
-     * `undefined`, `null`, or `''` clears it. The callback and placement stay unchanged. Throws
-     * `E_NOT_FOUND` when `id` is not in the current declaration.
+     * `undefined`, `null`, or `''` clears it. The callback and placement stay unchanged. Rejects
+     * with `E_NOT_FOUND` when `id` is not in the current declaration.
      */
-    update(id: string, patch: ShellSidebarActionUpdate): void;
+    update(id: string, patch: ShellSidebarActionUpdate): Promise<void>;
     /**
      * Atomically removes one stable id and its generation-scoped callback. Only the
-     * Control app may call this API. Throws `E_NOT_FOUND` when `id` is not in the
-     * current declaration.
+     * Control app may call this API. Rejects with `E_NOT_FOUND` when `id` is not in
+     * the current declaration.
      */
-    remove(id: string): void;
-    /**
-     * Atomically clears every runtime sidebar action and callback. Only the
-     * Control app may call this API. Equivalent to `replace([])` and safe when already
-     * empty; the Control app must still redeclare actions after the next Logic launch.
-     */
-    clear(): void;
+    remove(id: string): Promise<void>;
   }
 }
 

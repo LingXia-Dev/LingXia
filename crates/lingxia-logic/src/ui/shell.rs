@@ -6,7 +6,7 @@ use lingxia_shell::{
     SidebarActionPlacement,
 };
 use lxapp::{register_app_handler, unregister_app_handler};
-use rong::{JSContext, JSContextService, JSFunc, JSObject, JSResult, JSValue};
+use rong::{JSContext, JSContextService, JSFunc, JSObject, JSResult, JSValue, Promise};
 use std::cell::RefCell;
 use std::collections::HashMap;
 
@@ -230,9 +230,14 @@ fn parse_sidebar_action(item: &JSObject) -> JSResult<ParsedSidebarAction> {
 /// projection failure leaves the previous generation active. `replace([])` clears
 /// the chrome explicitly. Declarations are process-local, so call `replace` again
 /// on every Logic launch.
-fn sidebar_actions_replace(ctx: JSContext, items: JSValue) -> JSResult<()> {
+fn sidebar_actions_replace(ctx: JSContext, items: JSValue) -> JSResult<Promise> {
+    let result = replace_now(&ctx, items);
+    settled(&ctx, result)
+}
+
+fn replace_now(ctx: &JSContext, items: JSValue) -> JSResult<()> {
     let (_, items) =
-        authorization::require_before_decode(&ctx, LogicRoute::ShellSidebarReplace, || {
+        authorization::require_before_decode(ctx, LogicRoute::ShellSidebarReplace, || {
             items.to_rust::<Vec<JSObject>>()
         })?;
     let parsed = items
@@ -244,17 +249,22 @@ fn sidebar_actions_replace(ctx: JSContext, items: JSValue) -> JSResult<()> {
         .into_iter()
         .map(|item| (item.item.id, item.handler))
         .collect();
-    commit_generation(&ctx, |next| next.replace(next_items), next_handlers)
+    commit_generation(ctx, |next| next.replace(next_items), next_handlers)
 }
 
 /// Atomically updates the icon, label, value, and/or disabled state of one stable
 /// id. Only the Control app may call this API. The patch must be non-empty;
 /// unknown fields are rejected. A `value` key that is present sets the value, and
-/// `undefined`, `null`, or `''` clears it. The callback and placement stay unchanged. Throws
-/// `E_NOT_FOUND` when `id` is not in the current declaration.
-fn sidebar_actions_update(ctx: JSContext, id: JSValue, patch: JSValue) -> JSResult<()> {
+/// `undefined`, `null`, or `''` clears it. The callback and placement stay unchanged. Rejects
+/// with `E_NOT_FOUND` when `id` is not in the current declaration.
+fn sidebar_actions_update(ctx: JSContext, id: JSValue, patch: JSValue) -> JSResult<Promise> {
+    let result = update_now(&ctx, id, patch);
+    settled(&ctx, result)
+}
+
+fn update_now(ctx: &JSContext, id: JSValue, patch: JSValue) -> JSResult<()> {
     let (_, (id, patch)) =
-        authorization::require_before_decode(&ctx, LogicRoute::ShellSidebarUpdate, || {
+        authorization::require_before_decode(ctx, LogicRoute::ShellSidebarUpdate, || {
             let id = id.to_rust::<String>()?;
             let patch = patch.into_object().ok_or_else(|| {
                 rong::HostError::new(
@@ -271,36 +281,32 @@ fn sidebar_actions_update(ctx: JSContext, id: JSValue, patch: JSValue) -> JSResu
         value: value_patch(&patch)?,
         disabled: optional_bool(&patch, "disabled")?,
     };
-    let handlers = retained_handlers(&ctx);
-    commit_generation(&ctx, |next| next.update(&id, patch), handlers)
+    let handlers = retained_handlers(ctx);
+    commit_generation(ctx, |next| next.update(&id, patch), handlers)
 }
 
 /// Atomically removes one stable id and its generation-scoped callback. Only the
-/// Control app may call this API. Throws `E_NOT_FOUND` when `id` is not in the
-/// current declaration.
-fn sidebar_actions_remove(ctx: JSContext, id: JSValue) -> JSResult<()> {
-    let (_, id) =
-        authorization::require_before_decode(&ctx, LogicRoute::ShellSidebarRemove, || {
-            id.to_rust::<String>()
-        })?;
-    let mut handlers = retained_handlers(&ctx);
-    handlers.remove(id.trim());
-    commit_generation(&ctx, |next| next.remove(&id), handlers)
+/// Control app may call this API. Rejects with `E_NOT_FOUND` when `id` is not in
+/// the current declaration.
+fn sidebar_actions_remove(ctx: JSContext, id: JSValue) -> JSResult<Promise> {
+    let result = remove_now(&ctx, id);
+    settled(&ctx, result)
 }
 
-/// Atomically clears every runtime sidebar action and callback. Only the
-/// Control app may call this API. Equivalent to `replace([])` and safe when already
-/// empty; the Control app must still redeclare actions after the next Logic launch.
-fn sidebar_actions_clear(ctx: JSContext) -> JSResult<()> {
-    authorization::require(&ctx, LogicRoute::ShellSidebarClear)?;
-    commit_generation(
-        &ctx,
-        |next| {
-            next.clear();
-            Ok(())
-        },
-        HashMap::new(),
-    )
+fn remove_now(ctx: &JSContext, id: JSValue) -> JSResult<()> {
+    let (_, id) =
+        authorization::require_before_decode(ctx, LogicRoute::ShellSidebarRemove, || {
+            id.to_rust::<String>()
+        })?;
+    let mut handlers = retained_handlers(ctx);
+    handlers.remove(id.trim());
+    commit_generation(ctx, |next| next.remove(&id), handlers)
+}
+
+/// The mutation commits at call time, so calls apply in order; the promise
+/// carries its outcome, and a refusal rejects instead of throwing.
+fn settled(ctx: &JSContext, result: JSResult<()>) -> JSResult<Promise> {
+    Promise::from_future(ctx, None, async move { result })
 }
 
 fn retained_handlers(ctx: &JSContext) -> HashMap<String, JSFunc> {
@@ -393,9 +399,14 @@ rong::js_api! {
 rong::js_api! {
     fn register_sidebar_actions_api(ctx) {
         namespace ShellSidebarActionsApi = sidebar_actions_namespace(ctx)?;
-        fn replace(ts_params = "items: ShellSidebarAction[]") = sidebar_actions_replace;
-        fn update(ts_params = "id: string, patch: ShellSidebarActionUpdate") = sidebar_actions_update;
-        fn remove(ts_params = "id: string") = sidebar_actions_remove;
-        fn clear() = sidebar_actions_clear;
+        fn replace(
+            ts_params = "items: ShellSidebarAction[]",
+            ts_return = "Promise<void>"
+        ) = sidebar_actions_replace;
+        fn update(
+            ts_params = "id: string, patch: ShellSidebarActionUpdate",
+            ts_return = "Promise<void>"
+        ) = sidebar_actions_update;
+        fn remove(ts_params = "id: string", ts_return = "Promise<void>") = sidebar_actions_remove;
     }
 }
