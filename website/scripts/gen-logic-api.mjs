@@ -118,7 +118,7 @@ const GROUPS = [
     title: 'Host app and runtime',
     summary: 'The host app around this lxapp, its environment, updates, and automation.',
     members: [
-      'host', 'env', 'getLxAppInfo', 'getUpdateManager', 'openExternal',
+      'host', 'env', 'getAppInfo', 'getUpdateManager', 'openExternal',
       'supports', 'terminal',
     ],
   },

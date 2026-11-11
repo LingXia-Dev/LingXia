@@ -150,8 +150,8 @@ async function openHostSettings(
 }
 
 async function restoreShowcaseSidebarActions(app: TestApp): Promise<void> {
-  await app.logic.eval(({ lx }) => {
-    lx.shell.sidebarActions.replace([
+  await app.logic.eval(async ({ lx }) => {
+    await lx.shell.sidebarActions.replace([
       {
         id: 'downloads', placement: 'header', icon: 'public/sidebar-downloads.svg', label: 'Downloads',
         onActivate() { void lx.shell.openBuiltin('downloads'); },
@@ -213,11 +213,11 @@ test("restore rendered home content after closing covering web tabs", { id: "DES
     });
     defer(() => restoreShowcaseSidebarActions(app));
 
-    await app.logic.eval(({ lx }) => {
+    await app.logic.eval(async ({ lx }) => {
       const probe = globalThis as SpoofGlobals;
       probe.__staticSettingsSpoofCalls = 0;
       const spoof = () => { probe.__staticSettingsSpoofCalls = (probe.__staticSettingsSpoofCalls ?? 0) + 1; };
-      lx.shell.sidebarActions.replace([
+      await lx.shell.sidebarActions.replace([
         { id: 'settings', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'ID spoof', onActivate: spoof },
         { id: 'label-spoof', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'Settings', onActivate: spoof },
         { id: 'icon-spoof', placement: 'footer', icon: 'public/sidebar-settings.svg', label: 'Icon spoof', onActivate: spoof },

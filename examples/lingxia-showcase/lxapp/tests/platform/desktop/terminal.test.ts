@@ -43,6 +43,15 @@ async function waitForSave(settings: TestApp, enabled: boolean): Promise<void> {
   else await expect(save).toBeDisabled({ timeout: 8_000 });
 }
 
+/** The runtime id of the terminal declared under `key`, read from the host layout. */
+async function terminalSurfaceId(app: TestApp, key: string): Promise<string> {
+  return await waitFor(async () => {
+    const { identities } = await app.surfaceLayout();
+    return Object.entries(identities)
+      .find(([, owner]) => owner.declaration === 'terminal' && owner.key === key)?.[0];
+  }, `terminal surface ${key} in the layout`);
+}
+
 /** Close the surface handles Logic keeps under `key`, and forget them. */
 async function closeHandles(app: TestApp, key: string): Promise<void> {
   await app.logic.eval({ timeout: 20_000 }, async (_, key) => {
@@ -62,11 +71,11 @@ test('publishes and mutates the native nested pane tree without deferred layout'
 }, async (t) => {
   const app = t.automation.lxapp(SHOWCASE_APP_ID);
   const token = `automation-terminal-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const surfaceId = await app.logic.eval({ timeout: 20_000 }, async ({ lx }, token) => {
+  await app.logic.eval({ timeout: 20_000 }, async ({ lx }, token) => {
     const handle = await lx.shell.openDeclared('terminal', { key: token, as: 'main' });
     (globalThis as unknown as Record<string, unknown>).__terminalAutomationHandles = { terminal: handle };
-    return handle.id;
   }, token);
+  const surfaceId = await terminalSurfaceId(app, token);
 
   const terminal = t.automation.terminal;
   try {
@@ -118,11 +127,11 @@ test('keeps a maximized terminal maximized when a tab opens', {
   const token = `automation-terminal-tab-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   // An aside is the shape that can be maximized: `main` already fills the
   // content area, so it could not show the state being clobbered.
-  const surfaceId = await app.logic.eval({ timeout: 20_000 }, async ({ lx }, token) => {
+  await app.logic.eval({ timeout: 20_000 }, async ({ lx }, token) => {
     const handle = await lx.shell.openDeclared('terminal', { key: token, as: 'aside', edge: 'bottom' });
     (globalThis as unknown as Record<string, unknown>).__terminalTabAutomationHandles = { terminal: handle };
-    return handle.id;
   }, token);
+  const surfaceId = await terminalSurfaceId(app, token);
 
   const terminal = t.automation.terminal;
   try {
@@ -156,20 +165,19 @@ test('applies a selected color scheme to native chrome before Apply', {
   // One surface per open. Opening both at once reports only that it timed
   // out, which says nothing about which surface never settled — and a native
   // surface and a bundled lxapp settle along different paths.
-  const terminalId = await app.logic.eval({ timeout: 20_000 }, async ({ lx }, token) => {
+  await app.logic.eval({ timeout: 20_000 }, async ({ lx }, token) => {
     const terminal = await lx.shell.openDeclared('terminal', { key: token, as: 'main' });
     (globalThis as unknown as Record<string, unknown>).__terminalThemeAutomationHandles = { terminal };
-    return terminal.id;
   }, token);
+  const terminalId = await terminalSurfaceId(app, token);
   // Opening a bundled lxapp aside has to reach the host and come back, so it
   // is slower than the native surface above and pays a cold start on CI.
-  const settingsId = await app.logic.eval({ timeout: 60_000 }, async ({ lx }, settingsAppId) => {
+  await app.logic.eval({ timeout: 60_000 }, async ({ lx }, settingsAppId) => {
     const settings = await lx.shell.openApp(settingsAppId, { as: 'aside', edge: 'right' });
     const held = globalThis as unknown as Record<string, Record<string, unknown>>;
     held.__terminalThemeAutomationHandles.settings = settings;
-    return settings.id;
   }, SETTINGS_APP_ID);
-  const refs = { terminal: terminalId, settings: settingsId };
+  const refs = { terminal: terminalId };
   const terminal = t.automation.terminal;
   const settingsApp = t.automation.lxapp(SETTINGS_APP_ID);
   let initial: TerminalWorkspaceSnapshot | undefined;

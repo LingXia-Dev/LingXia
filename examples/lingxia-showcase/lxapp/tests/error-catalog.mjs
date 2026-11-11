@@ -15,7 +15,7 @@ export const families = [
     family: 'SurfaceErrorCode', layer: 'normalization',
     owner: 'packages/lingxia-types/tests/error-runtime.mjs',
     codes: ['unsupported_placement', 'denied', 'not_declared', 'invalid_arg',
-      'already_open_other_role', 'closed', 'capability_missing', 'failed'],
+      'already_open_other_role', 'role_locked', 'closed', 'capability_missing', 'failed'],
     remaining: 'Placement, role conflicts, and host failures need the corresponding desktop/mobile presenter and fault fixture.',
   },
   {

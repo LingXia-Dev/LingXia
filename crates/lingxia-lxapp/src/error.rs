@@ -32,6 +32,11 @@ pub enum LxAppError {
     #[error("Surface conflict: {0}")]
     SurfaceConflict(String),
 
+    /// The surface's role forbids the operation: hiding a main, or closing or
+    /// moving the stable root main.
+    #[error("Surface role locked: {0}")]
+    SurfaceRoleLocked(String),
+
     /// Error for I/O operations (file access, network, etc.)
     #[error("I/O error: {0}")]
     IoError(String),

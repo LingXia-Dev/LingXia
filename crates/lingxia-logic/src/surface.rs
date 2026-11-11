@@ -54,8 +54,20 @@ struct ManagedHandleKey {
     surface_id: String,
 }
 
+/// An `AppSurface` handle per caller and app session, so every open and
+/// `lx.shell.getApp` hand back one object.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct AppHandleKey {
+    app_id: String,
+    session_id: u64,
+    target_app_id: String,
+    target_session_id: u64,
+}
+
 thread_local! {
     static MANAGED_HANDLE_CACHE: RefCell<HashMap<ManagedHandleKey, JSObject>> =
+        RefCell::new(HashMap::new());
+    static APP_HANDLE_CACHE: RefCell<HashMap<AppHandleKey, JSObject>> =
         RefCell::new(HashMap::new());
 }
 
@@ -74,6 +86,11 @@ impl JSContextService for ManagedHandleCacheScope {
                 self.session_id,
             );
         });
+        APP_HANDLE_CACHE.with(|cache| {
+            cache
+                .borrow_mut()
+                .retain(|key, _| key.app_id != self.app_id || key.session_id != self.session_id);
+        });
     }
 }
 
@@ -88,14 +105,12 @@ fn remove_managed_handles_for_session<T>(
 #[derive(Debug, Clone, IntoJSObject)]
 #[ts_skip]
 struct JSSurfaceClosed {
-    id: String,
     reason: String,
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
 #[ts_skip]
 struct JSSurfaceVisibility {
-    id: String,
     /// Which side initiated the visibility change. "opener" when the caller
     /// holds the opener-side surface, "page" when the page-side surface drove
     /// it. Lets analytics / logging distinguish without having to wire extra
@@ -226,11 +241,11 @@ rong::js_api! {
         ) = open_url;
         fn openDeclared(
             ts_params = "id: string",
-            ts_return = "Promise<DeclaredSurface>"
+            ts_return = "Promise<DeclaredSurface | AppSurface>"
         ) = open_declared;
         fn getByKey(
             ts_params = "key: string",
-            ts_return = "AnySurface | undefined"
+            ts_return = "PageSurface | TabSurface | undefined"
         ) = get_surface;
         fn watchContext(
             ts_params = "handler: (context: SurfaceContext) => void",
@@ -327,21 +342,25 @@ rong::js_api! {
     fn register_shell_surface_api(ctx) {
         namespace ShellApi = shell_namespace(ctx)?;
         fn openApp(
-            ts_params = "appId: string, options: ShellOpenAppOptions",
+            ts_params = "appId: string, options?: ShellOpenAppOptions",
             ts_return = "Promise<AppSurface>"
         ) = shell_open_app;
+        fn getApp(
+            ts_params = "appId: string",
+            ts_return = "AppSurface | undefined"
+        ) = shell_get_app;
+        fn getDeclared(
+            ts_params = "id: string, key?: string",
+            ts_return = "DeclaredSurface | AppSurface | undefined"
+        ) = shell_get_declared;
         fn openBuiltin(
             ts_params = "page: BuiltinShellPage",
             ts_return = "Promise<BuiltinSurface>"
         ) = shell_open_builtin;
         fn openDeclared(
             ts_params = "id: string, options?: ShellOpenDeclaredOptions",
-            ts_return = "Promise<DeclaredSurface>"
+            ts_return = "Promise<DeclaredSurface | AppSurface>"
         ) = shell_open_declared;
-        fn reconfigure(
-            ts_params = "id: string, patch: ShellSurfacePatch",
-            ts_return = "Promise<void>"
-        ) = shell_reconfigure;
     }
 }
 
@@ -520,7 +539,7 @@ async fn open_page(
 
     let key = read_surface_key(&options)?;
     let handle = open_page_spec(ctx.clone(), &spec).await?;
-    finish_handle(&ctx, &handle, "page", &realized, key, None)
+    finish_handle(&ctx, &handle, "page", Some(&realized), key, None)
 }
 
 /// `lx.surface.openUrl(url, options?)` — external content in the in-app
@@ -571,9 +590,8 @@ async fn open_declared(
     }
     let spec = JSObject::new(&ctx);
     spec.set("surface", id)?;
-    let handle = open_declared_surface_spec(&ctx, &spec, None).await?;
-    let realized = handle_realized_placement(&handle);
-    finish_handle(&ctx, &handle, "declared", &realized, None, None)
+    let (handle, kind) = open_declared_surface_spec(&ctx, &spec, None).await?;
+    finish_handle(&ctx, &handle, kind, None, None, None)
 }
 
 /// Find a live surface by its explicit caller-owned key. Runtime ids are not keys.
@@ -598,25 +616,25 @@ fn get_surface(ctx: JSContext, key: String) -> JSResult<JSValue> {
 
 /// `lx.shell.openApp(appId, options)` — compose another lxapp into a shell
 /// slot. Control-app only; the namespace is the privilege.
-async fn shell_open_app(ctx: JSContext, app_id: JSValue, options: JSValue) -> JSResult<JSObject> {
+async fn shell_open_app(
+    ctx: JSContext,
+    app_id: JSValue,
+    options: Optional<JSValue>,
+) -> JSResult<JSObject> {
     let (invocation, (app_id, options)) =
         authorization::require_before_decode(&ctx, LogicRoute::ShellOpenApp, || {
-            Ok((
-                shell_string_argument(app_id, "lx.shell.openApp appId")?,
-                shell_object_argument(options, "lx.shell.openApp options")?,
-            ))
+            let app_id = shell_string_argument(app_id, "lx.shell.openApp appId")?;
+            let options = options
+                .0
+                .filter(|value| !value.is_undefined() && !value.is_null())
+                .map(|value| shell_object_argument(value, "lx.shell.openApp options"))
+                .transpose()?
+                .unwrap_or_else(|| JSObject::new(&ctx));
+            Ok((app_id, options))
         })?;
     reject_unknown_options(
         &options,
-        &[
-            "as",
-            "edge",
-            "page",
-            "query",
-            "channel",
-            "targetVersion",
-            "key",
-        ],
+        &["as", "edge", "page", "query", "channel", "targetVersion"],
         "lx.shell.openApp",
     )?;
     let spec = JSObject::new(&ctx);
@@ -626,10 +644,84 @@ async fn shell_open_app(ctx: JSContext, app_id: JSValue, options: JSValue) -> JS
         &spec,
         &["as", "edge", "page", "query", "channel", "targetVersion"],
     )?;
-    let key = read_surface_key(&options)?;
     let handle = open_app_spec(ctx.clone(), &spec, &invocation).await?;
-    let realized = handle_realized_placement(&handle);
-    finish_handle(&ctx, &handle, "app", &realized, key, None)
+    finish_handle(&ctx, &handle, "app", None, None, None)
+}
+
+/// `lx.shell.getApp(appId)` — the handle of an app live as a surface of its
+/// own, declared or not. One live lxapp has one handle, its `AppSurface`.
+fn shell_get_app(ctx: JSContext, app_id: JSValue) -> JSResult<JSValue> {
+    let (invocation, app_id) =
+        authorization::require_before_decode(&ctx, LogicRoute::ShellGetApp, || {
+            shell_string_argument(app_id, "lx.shell.getApp appId")
+        })?;
+    let app_id = app_id.trim().to_string();
+    if app_id.is_empty() || !app_owns_surface(&app_id) {
+        return Ok(JSValue::undefined(&ctx));
+    }
+    let handle = lxapp_surface_handle(&ctx, invocation.lxapp(), app_id.clone(), app_id)?;
+    Ok(finish_handle(&ctx, &handle, "app", None, None, None)?.into_js_value())
+}
+
+/// `lx.shell.getDeclared(id, key?)` — the handle of a live declared surface,
+/// or of its keyed instance; a declared lxapp answers with its `AppSurface`.
+fn shell_get_declared(ctx: JSContext, id: JSValue, key: Optional<JSValue>) -> JSResult<JSValue> {
+    let (invocation, (id, key)) =
+        authorization::require_before_decode(&ctx, LogicRoute::ShellGetDeclared, || {
+            let id = shell_string_argument(id, "lx.shell.getDeclared id")?;
+            let key = key
+                .0
+                .filter(|value| !value.is_undefined() && !value.is_null())
+                .map(|value| shell_string_argument(value, "lx.shell.getDeclared key"))
+                .transpose()?
+                .map(|key| key.trim().to_string());
+            if key
+                .as_ref()
+                .is_some_and(|key| key.is_empty() || key.len() > 128)
+            {
+                return Err(surface_error(
+                    SurfaceErrorCode::InvalidArg,
+                    "key must be 1 to 128 UTF-8 bytes",
+                ));
+            }
+            Ok((id.trim().to_string(), key))
+        })?;
+    let lxapp = invocation.lxapp();
+    if !lxapp.is_declared_shell_surface(&id) {
+        return Ok(JSValue::undefined(&ctx));
+    }
+    // A declared lxapp's surface is that app's: answer with its AppSurface.
+    if let Some(app_id) = declared_lxapp(&id) {
+        if key.is_some() || !app_owns_surface(&app_id) {
+            return Ok(JSValue::undefined(&ctx));
+        }
+        let handle = lxapp_surface_handle(&ctx, lxapp, app_id.clone(), app_id)?;
+        return Ok(finish_handle(&ctx, &handle, "app", None, None, None)?.into_js_value());
+    }
+    let surface_id = match key.as_deref() {
+        Some(key) => lxapp.declared_instance_surface_id(&id, key),
+        None => Some(id.clone()),
+    };
+    let Some((surface_id, role)) = surface_id.and_then(|surface_id| {
+        lxapp
+            .shell_surface_role(&surface_id)
+            .map(|role| (surface_id, role))
+    }) else {
+        return Ok(JSValue::undefined(&ctx));
+    };
+    let handle = managed_surface_handle(&ctx, lxapp, surface_id, Some(role))?;
+    Ok(finish_handle(&ctx, &handle, "declared", None, key, None)?.into_js_value())
+}
+
+/// The lxapp a `lingxia.yaml` declaration shows.
+fn declared_lxapp(id: &str) -> Option<String> {
+    lingxia_app_context::app_config()?
+        .panels
+        .as_ref()?
+        .items
+        .iter()
+        .find(|item| item.id == id && item.content.kind.is_lxapp())
+        .map(|item| item.content.app_id.clone())
 }
 
 /// `lx.shell.openBuiltin(page)` — a host builtin page. Control-app only.
@@ -650,7 +742,7 @@ async fn shell_open_builtin(ctx: JSContext, page: JSValue) -> JSResult<JSObject>
     let spec = JSObject::new(&ctx);
     spec.set("url", url)?;
     open_url_spec(ctx.clone(), &spec, Some(&invocation)).await?;
-    builtin_surface_handle(&ctx, page.trim())
+    builtin_surface_handle(&ctx)
 }
 
 /// `lx.shell.openDeclared(id, options?)` — the declared surface, plus the
@@ -681,31 +773,8 @@ async fn shell_open_declared(
     // Overriding the declared placement is the privilege; opening first and
     // reconfiguring after would present the wrong role for a frame.
     copy_options(&options, &spec, &["as", "edge"])?;
-    let handle = open_declared_surface_spec(&ctx, &spec, Some(&invocation)).await?;
-    let realized = handle_realized_placement(&handle);
-    finish_handle(&ctx, &handle, "declared", &realized, key, None)
-}
-
-/// `lx.shell.reconfigure(id, patch)` — re-place a live declared surface.
-async fn shell_reconfigure(ctx: JSContext, id: JSValue, patch: JSValue) -> JSResult<()> {
-    let (invocation, (id, patch)) =
-        authorization::require_before_decode(&ctx, LogicRoute::ShellReconfigure, || {
-            Ok((
-                shell_string_argument(id, "lx.shell.reconfigure id")?,
-                shell_object_argument(patch, "lx.shell.reconfigure patch")?,
-            ))
-        })?;
-    reject_unknown_options(&patch, &["as", "edge"], "lx.shell.reconfigure")?;
-    let spec = JSObject::new(&ctx);
-    spec.set("surface", id)?;
-    copy_options(&patch, &spec, &["as", "edge"])?;
-    let handle = open_declared_surface_spec(&ctx, &spec, Some(&invocation)).await?;
-    // `openDeclared` hands back a cached object and stamps `realized` once, so
-    // without this the handle the caller still holds reports the placement it
-    // had before this call.
-    let realized = handle_realized_placement(&handle);
-    handle.set("realized", realized)?;
-    Ok(())
+    let (handle, kind) = open_declared_surface_spec(&ctx, &spec, Some(&invocation)).await?;
+    finish_handle(&ctx, &handle, kind, None, key, None)
 }
 
 /// Resolves an `as` option against what the host can realize. A single value
@@ -858,12 +927,14 @@ fn finish_handle(
     ctx: &JSContext,
     handle: &JSObject,
     kind: &str,
-    realized: &str,
+    realized: Option<&str>,
     key: Option<String>,
     scope: Option<&str>,
 ) -> JSResult<JSObject> {
     handle.set("kind", kind)?;
-    handle.set("realized", realized)?;
+    if let Some(realized) = realized {
+        handle.set("realized", realized)?;
+    }
     if let Some(scope) = scope {
         handle.set("scope", scope)?;
     }
@@ -877,17 +948,20 @@ fn finish_handle(
         .and_then(|inner| inner.peer.borrow().clone());
     if let Some(peer) = peer {
         peer.set("kind", kind)?;
-        peer.set("realized", realized)?;
+        if let Some(realized) = realized {
+            peer.set("realized", realized)?;
+        }
         if let Some(key) = key.as_deref() {
             peer.set("key", key)?;
         }
     }
-    // Only a keyed surface is registered. Registering every generated id kept
-    // a strong reference — with its closures, message port, and emitter — for
-    // the whole session, and nobody can look up a uuid they never chose.
+    // `getByKey` finds the caller's own pages and URLs; declared surfaces
+    // have `lx.shell.getDeclared`. Only keyed handles are kept alive here.
     if let Some(key) = key {
         handle.set("key", key.as_str())?;
-        surface_registry(ctx)?.set(key.as_str(), handle.clone())?;
+        if matches!(kind, "page" | "tab") {
+            surface_registry(ctx)?.set(key.as_str(), handle.clone())?;
+        }
     }
     Ok(handle.clone())
 }
@@ -927,16 +1001,14 @@ fn browser_tab_handle(
                 })
             })?,
         )?;
-        return finish_handle(ctx, &handle, "tab", realized, key, Some("tab"));
+        return finish_handle(ctx, &handle, "tab", Some(realized), key, Some("tab"));
     }
 
     // The browser owns the tab strip here, so the handle addresses the group.
     let handle = JSObject::new(ctx);
-    let lxapp = LxApp::from_ctx(ctx)?;
-    handle.set("id", format!("browser-group:{}", lxapp.appid))?;
     handle.set("alive", true)?;
     handle.set("visible", true)?;
-    finish_handle(ctx, &handle, "tab", realized, key, Some("group"))
+    finish_handle(ctx, &handle, "tab", Some(realized), key, Some("group"))
 }
 
 /// A `TabSurface` that owns exactly the tab `open_url` named.
@@ -979,7 +1051,6 @@ fn owned_browser_tab_handle(
     key: Option<String>,
 ) -> JSResult<JSObject> {
     let handle = JSObject::new(ctx);
-    handle.set("id", tab_id.as_str())?;
     handle.set("alive", true)?;
     handle.set("visible", true)?;
     let close_handlers = Rc::new(RefCell::new(Vec::<JSFunc>::new()));
@@ -1088,24 +1159,16 @@ fn owned_browser_tab_handle(
     })?;
     let token = register_app_handler(ctx, BROWSER_TAB_CLOSED_EVENT, native_handler)?;
     *native_unsub.borrow_mut() = Some(app_handler_unsub(ctx, BROWSER_TAB_CLOSED_EVENT, token));
-    finish_handle(ctx, &handle, "tab", realized, key, Some("tab"))
+    finish_handle(ctx, &handle, "tab", Some(realized), key, Some("tab"))
 }
 
 /// A `BuiltinSurface` for a host product page. The shell owns its lifetime,
 /// so the handle reports identity and leaves control to the shell.
-fn builtin_surface_handle(ctx: &JSContext, page: &str) -> JSResult<JSObject> {
+fn builtin_surface_handle(ctx: &JSContext) -> JSResult<JSObject> {
     let handle = JSObject::new(ctx);
-    handle.set("id", format!("builtin:{page}"))?;
     handle.set("alive", true)?;
     handle.set("visible", true)?;
-    finish_handle(ctx, &handle, "builtin", "main", None, None)
-}
-
-/// Reads back the placement the host actually produced for a managed handle.
-fn handle_realized_placement(handle: &JSObject) -> String {
-    handle
-        .get::<_, String>("role")
-        .unwrap_or_else(|_| "aside".to_string())
+    finish_handle(ctx, &handle, "builtin", Some("main"), None, None)
 }
 
 fn shell_string_argument(value: JSValue, label: &str) -> JSResult<String> {
@@ -1146,18 +1209,33 @@ async fn open_app_spec(
         ));
     }
     let edge = read_validated_edge(spec)?;
-    let as_role = read_required_string(spec, "as")?;
-    let as_role = as_role.trim();
-    if !matches!(as_role, "main" | "aside") {
+    let live_region = lxapp::open_region(&app_id);
+    let requested_role = match read_optional_string(spec, "as")?.as_deref().map(str::trim) {
+        None => None,
+        Some("main") => Some(lxapp::LxAppOpenRegion::Main),
+        Some("aside") => Some(lxapp::LxAppOpenRegion::Aside),
+        Some(other) => {
+            return Err(surface_error(
+                SurfaceErrorCode::InvalidArg,
+                format!("an app surface supports as: 'main' | 'aside'; got {other}"),
+            ));
+        }
+    };
+    let plan = AppOpenPlan::new(live_region, requested_role);
+    let requested_region = plan.region;
+    // The home app records no open region on hosts without a surface graph.
+    if requested_region == lxapp::LxAppOpenRegion::Aside
+        && lxapp::try_get(&app_id).is_some_and(|app| app.is_home_lxapp)
+    {
         return Err(surface_error(
-            SurfaceErrorCode::InvalidArg,
-            format!("an app surface supports as: 'main' | 'aside'; got {as_role}"),
+            SurfaceErrorCode::RoleLocked,
+            "the stable root main surface cannot change role",
         ));
     }
-    if edge.is_some() && as_role != "aside" {
+    if edge.is_some() && requested_region != lxapp::LxAppOpenRegion::Aside {
         return Err(surface_error(
             SurfaceErrorCode::InvalidArg,
-            "edge is only valid with as: 'aside'",
+            "edge is only valid when the app opens as an aside",
         ));
     }
 
@@ -1175,33 +1253,38 @@ async fn open_app_spec(
         channel: read_optional_string(spec, "channel")?,
         target_version: read_optional_string(spec, "targetVersion")?,
     };
-    let requested_region = match as_role {
-        "main" => lxapp::LxAppOpenRegion::Main,
-        "aside" => lxapp::LxAppOpenRegion::Aside,
-        _ => unreachable!("validated above"),
-    };
     let requested_channel = lxapp::resolve_open_channel(
         &app_id,
         lxapp::parse_requested_channel(target.channel.as_deref())
             .map_err(|error| surface_error(SurfaceErrorCode::InvalidArg, error))?,
     );
-    if let Some(current_region) = lxapp::open_region(&app_id) {
-        if current_region != requested_region {
+    if plan.reuses_live_app
+        && let Some(app) = lxapp::try_get(&app_id)
+    {
+        let same_channel = app.release_type() == requested_channel;
+        if plan.migrates && !same_channel {
             return Err(surface_error(
                 SurfaceErrorCode::AlreadyOpenOtherRole,
                 format!(
-                    "lxapp '{app_id}' is already open as {}; close it before opening as {}",
-                    current_region.as_str(),
-                    requested_region.as_str(),
+                    "lxapp '{app_id}' is live on another channel; close it before opening it as {}",
+                    requested_region.as_str()
                 ),
             ));
         }
-        if lxapp::try_get(&app_id).is_some_and(|app| app.release_type() == requested_channel) {
-            lxapp::show_lxapp_in_region(Some(&lxapp), &app_id, current_region, edge.as_deref())
+        if same_channel {
+            // Resolved before the move, so a bad page leaves the app where it was.
+            let reopen = reused_app_reopen(&app, &target)?;
+            if plan.migrates {
+                app.move_to_region(requested_region, edge.as_deref())
+                    .map_err(lxapp_open_error)?;
+            }
+            lxapp::show_lxapp_in_region(Some(&lxapp), &app_id, requested_region, edge.as_deref())
                 .await
                 .map_err(lxapp_open_error)?;
-            deliver_to_reused_app(&app_id, &target)?;
-            return lxapp_surface_handle(&ctx, lxapp, app_id.clone(), app_id, current_region);
+            if let Some(options) = reopen {
+                app.deliver_reopen(options).map_err(lxapp_open_error)?;
+            }
+            return lxapp_surface_handle(&ctx, lxapp, app_id.clone(), app_id);
         }
     }
     let (startup_options, release_type) =
@@ -1215,48 +1298,68 @@ async fn open_app_spec(
         startup_options,
     )
     .map_err(lxapp_open_error)?;
-    let (region, shell_surface_id) = (requested_region, app_id.clone());
     lxapp::schedule_lxapp_update_check(&app_id, release_type);
-    lxapp_surface_handle(&ctx, lxapp, app_id, shell_surface_id, region)
+    lxapp_surface_handle(&ctx, lxapp, app_id.clone(), app_id)
+}
+
+/// How `lx.shell.openApp` treats the app's live role.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct AppOpenPlan {
+    region: lxapp::LxAppOpenRegion,
+    /// The running app is focused rather than started, so `page` / `query`
+    /// are delivered as a reopen.
+    reuses_live_app: bool,
+    /// The live app changes role in place: Logic, page stack and WebViews stay.
+    migrates: bool,
+}
+
+impl AppOpenPlan {
+    fn new(
+        live: Option<lxapp::LxAppOpenRegion>,
+        requested: Option<lxapp::LxAppOpenRegion>,
+    ) -> Self {
+        // Omitted, a live app keeps its role; a new one opens in main.
+        let region = requested.or(live).unwrap_or(lxapp::LxAppOpenRegion::Main);
+        Self {
+            region,
+            reuses_live_app: live.is_some(),
+            migrates: live.is_some_and(|live| live != region),
+        }
+    }
 }
 
 /// A reused surface still gets what this open asked for: the named page and
 /// the query reach the running lxapp's Logic as App `onShow`
 /// (`reason: 'switch_back'`, with `path` and `query`). Its page stack is kept.
 /// An open that names neither is a plain reveal and says nothing.
-fn deliver_to_reused_app(
-    app_id: &str,
+fn reused_app_reopen(
+    app: &LxApp,
     target: &crate::navigator::NavigateToAppOptions,
-) -> JSResult<()> {
+) -> JSResult<Option<lxapp::LxAppStartupOptions>> {
     if target.page.is_none() && target.query.is_none() {
-        return Ok(());
+        return Ok(None);
     }
-    let app = lxapp::try_get(app_id).ok_or_else(|| {
-        surface_error(
-            SurfaceErrorCode::NotDeclared,
-            format!("lxapp is not active: {app_id}"),
-        )
-    })?;
     let (options, _) =
-        crate::navigator::build_startup_options(&app, target).map_err(lxapp_open_error)?;
-    app.deliver_reopen(options).map_err(lxapp_open_error)
+        crate::navigator::build_startup_options(app, target).map_err(lxapp_open_error)?;
+    Ok(Some(options))
 }
 
 fn lxapp_open_error(err: LxAppError) -> rong::RongJSError {
-    match err {
-        LxAppError::SurfaceConflict(message) => {
-            surface_error(SurfaceErrorCode::AlreadyOpenOtherRole, message)
-        }
-        other => surface_error(SurfaceErrorCode::NotDeclared, other.to_string()),
+    // An operator takedown keeps its business error, whose `data.code` says
+    // `maintain` or `suspended`.
+    if lxapp::registry_unavailable_status(&err).is_some() {
+        return js_error_from_lxapp_error(&err);
     }
+    surface_lifecycle_error("open", err)
 }
 
 /// Declaration-id form. Provider kinds stay behind the declaration boundary.
+/// Returns the handle and its `kind`: a declared lxapp is its `AppSurface`.
 async fn open_declared_surface_spec(
     ctx: &JSContext,
     spec: &JSObject,
     privileged_invocation: Option<&lxapp::host::HostInvocationContext>,
-) -> JSResult<JSObject> {
+) -> JSResult<(JSObject, &'static str)> {
     let id = read_required_string(spec, "surface")?;
     let key = read_optional_string(spec, "key")?.map(|key| key.trim().to_string());
     if key.as_deref().is_some_and(str::is_empty) || key.as_ref().is_some_and(|key| key.len() > 128)
@@ -1292,7 +1395,7 @@ async fn open_declared_surface_spec(
         && lxapp.surface_switcher_snapshot().root_surface_id.as_deref() == Some(id)
     {
         return Err(surface_error(
-            SurfaceErrorCode::AlreadyOpenOtherRole,
+            SurfaceErrorCode::RoleLocked,
             "the stable root main surface cannot change role",
         ));
     }
@@ -1313,8 +1416,8 @@ async fn open_declared_surface_spec(
             "key is supported only for declared native surfaces",
         ));
     }
-    if let Some(app_id) = declared_app_id {
-        lxapp::prepare_lxapp_open(&app_id, lxapp::resolve_open_channel(&app_id, None))
+    if let Some(app_id) = declared_app_id.as_deref() {
+        lxapp::prepare_lxapp_open(app_id, lxapp::resolve_open_channel(app_id, None))
             .await
             .map_err(|err| {
                 if lxapp::registry_unavailable_status(&err).is_some() {
@@ -1329,13 +1432,48 @@ async fn open_declared_surface_spec(
             .open_shell_native_surface(id, key.as_deref(), requested_role, edge.as_deref())
             .await
             .map_err(|err| surface_lifecycle_error("open", err))?;
-        return managed_surface_handle(ctx, lxapp, resolved.surface_id, Some(resolved.role));
+        let handle = managed_surface_handle(ctx, lxapp, resolved.surface_id, Some(resolved.role))?;
+        return Ok((handle, "declared"));
     }
     lxapp
         .set_shell_surface_visible(id, true, role, edge.as_deref())
         .await
         .map_err(|err| surface_lifecycle_error("open", err))?;
-    managed_surface_handle(ctx, lxapp, id.to_string(), role)
+    if let Some(app_id) = declared_app_id
+        && wait_for_app_surface(&app_id).await
+    {
+        let visible = lxapp.shell_surface_visible(id).unwrap_or(true);
+        let handle = lxapp_surface_handle(ctx, lxapp, app_id.clone(), app_id)?;
+        // The app can still be presenting; the surface it opens in is shown.
+        mark_visible(&handle, visible, "opener")?;
+        return Ok((handle, "app"));
+    }
+    Ok((
+        managed_surface_handle(ctx, lxapp, id.to_string(), role)?,
+        "declared",
+    ))
+}
+
+/// Whether `app_id` is live as a shell surface of its own.
+fn app_owns_surface(app_id: &str) -> bool {
+    lxapp::try_get(app_id).is_some_and(|app| app.owns_shell_surface())
+}
+
+/// A declared lxapp can start a few frames after its provider accepted the
+/// open; wait so the open hands back the handle later lookups return.
+async fn wait_for_app_surface(app_id: &str) -> bool {
+    const STEP: std::time::Duration = std::time::Duration::from_millis(20);
+    for _ in 0..250 {
+        if app_owns_surface(app_id) {
+            return true;
+        }
+        // Open, but inside another surface's app navigation: it will not move.
+        if lxapp::open_region(app_id).is_some() {
+            return false;
+        }
+        tokio::time::sleep(STEP).await;
+    }
+    app_owns_surface(app_id)
 }
 
 fn has_declared_surface_orchestration_override(
@@ -1352,13 +1490,7 @@ fn declared_lxapp_app_id(lxapp: &LxApp, surface_id: &str) -> Option<String> {
     {
         return Some(app_id);
     }
-    lingxia_app_context::app_config()?
-        .panels
-        .as_ref()?
-        .items
-        .iter()
-        .find(|item| item.id == surface_id && item.content.kind.is_lxapp())
-        .map(|item| item.content.app_id.clone())
+    declared_lxapp(surface_id)
 }
 
 fn read_optional_managed_role(spec: &JSObject) -> JSResult<Option<lingxia_surface::Role>> {
@@ -1609,51 +1741,79 @@ fn open_external(ctx: JSContext, url: String) -> JSResult<()> {
     Ok(())
 }
 
-/// Handle for a live lxapp presentation. Hide preserves the claimed region;
-/// close tears the runtime down and releases it so a later open may choose a
-/// different role.
+/// Handle for a live lxapp presentation. It names the app's session, not a
+/// region: the user may move the app between main and aside, and the handle
+/// follows it until that session closes.
 fn lxapp_surface_handle(
     ctx: &JSContext,
     shell: Arc<LxApp>,
     app_id: String,
     shell_surface_id: String,
-    region: lxapp::LxAppOpenRegion,
 ) -> JSResult<JSObject> {
     let session_id = lxapp::try_get(&app_id)
         .map(|app| app.session_id())
         .unwrap_or_default();
+    ensure_handle_cache_scope(ctx, &shell);
+    let visible =
+        lxapp::shell_presence(&app_id).is_none_or(|presence| presence.presentation.shown());
+    let cache_key = AppHandleKey {
+        app_id: shell.appid.clone(),
+        session_id: shell.session_id(),
+        target_app_id: app_id.clone(),
+        target_session_id: session_id,
+    };
+    let placed = live_lxapp_placement(&app_id, session_id).is_some();
+    let cached = APP_HANDLE_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        cache.retain(|_, handle| {
+            handle
+                .borrow::<JSSurface>()
+                .ok()
+                .is_some_and(|surface| surface.alive.get())
+        });
+        // A session that holds no placement ended that handle's surface, even
+        // when no close reached it; a later open of the session gets a new one.
+        if placed {
+            cache.get(&cache_key).cloned()
+        } else {
+            cache.remove(&cache_key)
+        }
+    });
+    match cached {
+        Some(cached) if placed => {
+            mark_visible(&cached, visible, "shell")?;
+            refresh_realized(&cached);
+            return Ok(cached);
+        }
+        Some(stale) => emit_lxapp_handle_close(&stale, "app_closed")?,
+        None => {}
+    }
     let (message_port, _) = crate::message_port::pair(ctx)?;
     let handle = Class::lookup::<JSSurface>(ctx)?.instance(JSSurface {
         id: app_id.clone(),
         message_port,
         event_emitter: EventEmitter::default(),
         peer: RefCell::new(None),
-        visible: Cell::new(true),
+        visible: Cell::new(visible),
         alive: Cell::new(true),
     });
-    handle.set("id", app_id.clone())?;
-    handle.set(
-        "role",
-        match region {
-            lxapp::LxAppOpenRegion::Main => "main",
-            lxapp::LxAppOpenRegion::Aside => "aside",
-        },
-    )?;
-    handle.set(
-        "presentation",
-        match region {
-            lxapp::LxAppOpenRegion::Main => "main",
-            lxapp::LxAppOpenRegion::Aside => shell
-                .shell_surface_presentation(&shell_surface_id)
-                .unwrap_or("dock"),
-        },
-    )?;
-    handle.set("visible", true)?;
+    let realized_id = app_id.clone();
+    let last_region = Rc::new(Cell::new(
+        live_lxapp_placement(&app_id, session_id)
+            .map(|(region, _)| region)
+            .unwrap_or(lxapp::LxAppOpenRegion::Main),
+    ));
+    define_realized(ctx, &handle, move || {
+        if let Some((region, _)) = live_lxapp_placement(&realized_id, session_id) {
+            last_region.set(region);
+        }
+        last_region.get().as_str()
+    })?;
+    handle.set("visible", visible)?;
     handle.set("alive", true)?;
 
     let show_shell = shell.clone();
     let show_id = app_id.clone();
-    let show_session_id = session_id;
     let show_handle = handle.clone();
     handle.set(
         "show",
@@ -1662,7 +1822,7 @@ fn lxapp_surface_handle(
             let id = show_id.clone();
             let handle = show_handle.clone();
             Promise::from_future(&ctx, None, async move {
-                ensure_lxapp_surface_open(&handle, &id, region, show_session_id)?;
+                let (region, _) = ensure_lxapp_surface_open(&handle, &id, session_id)?;
                 lxapp::show_lxapp_in_region(Some(&shell), &id, region, None)
                     .await
                     .map_err(lxapp_open_error)?;
@@ -1673,24 +1833,20 @@ fn lxapp_surface_handle(
 
     let hide_shell = shell.clone();
     let hide_id = app_id.clone();
-    let hide_surface_id = shell_surface_id.clone();
-    let hide_session_id = session_id;
     let hide_handle = handle.clone();
     handle.set(
         "hide",
         JSFunc::new(ctx, move |ctx: JSContext| {
             let shell = hide_shell.clone();
             let id = hide_id.clone();
-            let surface_id = hide_surface_id.clone();
             let handle = hide_handle.clone();
             Promise::from_future(&ctx, None, async move {
-                ensure_lxapp_surface_open(&handle, &id, region, hide_session_id)?;
-                match region {
-                    lxapp::LxAppOpenRegion::Main => Err(surface_error(
-                        SurfaceErrorCode::UnsupportedPlacement,
+                match ensure_lxapp_surface_open(&handle, &id, session_id)? {
+                    (lxapp::LxAppOpenRegion::Main, _) => Err(surface_error(
+                        SurfaceErrorCode::RoleLocked,
                         "a main surface cannot be hidden; select another main or close it",
                     )),
-                    lxapp::LxAppOpenRegion::Aside => {
+                    (lxapp::LxAppOpenRegion::Aside, surface_id) => {
                         hide_lxapp_aside(&shell, &id, &surface_id).await?;
                         mark_visible(&handle, false, "opener")
                     }
@@ -1701,29 +1857,26 @@ fn lxapp_surface_handle(
 
     let close_shell = shell;
     let close_id = app_id;
-    let close_surface_id = shell_surface_id.clone();
-    let close_session_id = session_id;
     let close_handle = handle.clone();
     handle.set(
         "close",
         JSFunc::new(ctx, move |ctx: JSContext| {
             let shell = close_shell.clone();
             let id = close_id.clone();
-            let surface_id = close_surface_id.clone();
             let handle = close_handle.clone();
             Promise::from_future(&ctx, None, async move {
                 if !handle.borrow::<JSSurface>()?.alive.get() {
                     return Ok(());
                 }
-                if !lxapp_surface_session_is_current(&id, region, close_session_id) {
-                    return emit_lxapp_handle_close(&handle, &id, "app_closed");
-                }
+                let Some((region, surface_id)) = live_lxapp_placement(&id, session_id) else {
+                    return emit_lxapp_handle_close(&handle, "app_closed");
+                };
                 if region == lxapp::LxAppOpenRegion::Main
                     && shell.surface_switcher_snapshot().root_surface_id.as_deref()
                         == Some(surface_id.as_str())
                 {
                     return Err(surface_error(
-                        SurfaceErrorCode::UnsupportedPlacement,
+                        SurfaceErrorCode::RoleLocked,
                         "the stable root main surface cannot be closed",
                     ));
                 }
@@ -1737,7 +1890,7 @@ fn lxapp_surface_handle(
                 // same operation so the successor and every retained handle
                 // converge before the promise resolves.
                 let _ = shell.forget_surface_with_reason(&surface_id, "programmatic");
-                emit_lxapp_handle_close(&handle, &id, "programmatic")?;
+                emit_lxapp_handle_close(&handle, "programmatic")?;
                 let _ = notify_surface_closed(&surface_id, "programmatic");
                 Ok(())
             })
@@ -1754,54 +1907,60 @@ fn lxapp_surface_handle(
         )?;
     }
 
-    attach_host_surface_lifecycle(ctx, &handle, shell_surface_id, true, None)?;
+    attach_host_surface_lifecycle(ctx, &handle, shell_surface_id, visible, None)?;
+    APP_HANDLE_CACHE.with(|cache| {
+        cache.borrow_mut().insert(cache_key, handle.clone());
+    });
 
     Ok(handle)
 }
 
+/// The region and shell surface the handle's session occupies now.
 fn ensure_lxapp_surface_open(
     handle: &JSObject,
     app_id: &str,
-    region: lxapp::LxAppOpenRegion,
     session_id: u64,
-) -> JSResult<()> {
+) -> JSResult<(lxapp::LxAppOpenRegion, String)> {
     if !handle.borrow::<JSSurface>()?.alive.get() {
         return Err(closed_surface_error());
     }
-    if !lxapp_surface_session_is_current(app_id, region, session_id) {
-        emit_lxapp_handle_close(handle, app_id, "app_closed")?;
-        return Err(closed_surface_error());
+    match live_lxapp_placement(app_id, session_id) {
+        Some(placement) => Ok(placement),
+        None => {
+            emit_lxapp_handle_close(handle, "app_closed")?;
+            Err(closed_surface_error())
+        }
     }
-    Ok(())
 }
 
-fn lxapp_surface_session_is_current(
-    app_id: &str,
-    region: lxapp::LxAppOpenRegion,
-    session_id: u64,
-) -> bool {
-    lxapp_surface_identity_matches(
-        region,
+/// Where the app sits now, while the session the handle was made for is
+/// still the live one.
+fn live_lxapp_placement(app_id: &str, session_id: u64) -> Option<(lxapp::LxAppOpenRegion, String)> {
+    let app = lxapp::try_get(app_id)?;
+    let region = lxapp_handle_live_region(
         session_id,
         lxapp::open_region(app_id),
-        lxapp::try_get(app_id).map(|app| app.session_id()),
-    )
+        Some(app.session_id()),
+    )?;
+    let surface_id = match region {
+        lxapp::LxAppOpenRegion::Main => app_id.to_string(),
+        lxapp::LxAppOpenRegion::Aside => app.open_panel_id().unwrap_or_else(|| app_id.to_string()),
+    };
+    Some((region, surface_id))
 }
 
-fn lxapp_surface_identity_matches(
-    expected_region: lxapp::LxAppOpenRegion,
+fn lxapp_handle_live_region(
     expected_session_id: u64,
     current_region: Option<lxapp::LxAppOpenRegion>,
     current_session_id: Option<u64>,
-) -> bool {
-    current_region == Some(expected_region) && current_session_id == Some(expected_session_id)
+) -> Option<lxapp::LxAppOpenRegion> {
+    current_region.filter(|_| current_session_id == Some(expected_session_id))
 }
 
-fn emit_lxapp_handle_close(handle: &JSObject, app_id: &str, reason: &str) -> JSResult<()> {
+fn emit_lxapp_handle_close(handle: &JSObject, reason: &str) -> JSResult<()> {
     emit_close(
         handle,
         &JSSurfaceClosed {
-            id: app_id.to_string(),
             reason: reason.to_string(),
         },
     )
@@ -1828,6 +1987,15 @@ async fn hide_lxapp_aside(shell: &LxApp, app_id: &str, shell_surface_id: &str) -
     Ok(())
 }
 
+fn ensure_handle_cache_scope(ctx: &JSContext, caller: &LxApp) {
+    if ctx.get_service::<ManagedHandleCacheScope>().is_none() {
+        ctx.set_service(ManagedHandleCacheScope {
+            app_id: caller.appid.clone(),
+            session_id: caller.session_id(),
+        });
+    }
+}
+
 /// Lifecycle-complete handle for a host-managed native surface. Native
 /// capabilities without messaging omit only postMessage/onMessage.
 fn managed_surface_handle(
@@ -1836,27 +2004,10 @@ fn managed_surface_handle(
     id: String,
     role: Option<lingxia_surface::Role>,
 ) -> JSResult<JSObject> {
-    if ctx.get_service::<ManagedHandleCacheScope>().is_none() {
-        ctx.set_service(ManagedHandleCacheScope {
-            app_id: lxapp.appid.clone(),
-            session_id: lxapp.session_id(),
-        });
-    }
-    let role = role.or_else(|| lxapp.shell_surface_role(&id));
-    let is_main = role == Some(lingxia_surface::Role::Main);
-    let kind = if is_main { "window" } else { "overlay" };
-    let surface_role = match role {
-        Some(lingxia_surface::Role::Main) => "main",
-        Some(lingxia_surface::Role::Float) => "float",
-        Some(lingxia_surface::Role::Aside) | None => "aside",
-    };
-    let presentation = lxapp.shell_surface_presentation(&id).unwrap_or(if is_main {
-        "main"
-    } else if role == Some(lingxia_surface::Role::Float) {
-        "popover"
-    } else {
-        "dock"
-    });
+    ensure_handle_cache_scope(ctx, &lxapp);
+    let role = role
+        .or_else(|| lxapp.shell_surface_role(&id))
+        .unwrap_or(lingxia_surface::Role::Aside);
     let visible = lxapp.shell_surface_visible(&id).unwrap_or(true);
     let cache_key = ManagedHandleKey {
         app_id: lxapp.appid.clone(),
@@ -1874,9 +2025,8 @@ fn managed_surface_handle(
         .ok()
         .is_some_and(|surface| surface.alive.get())
     {
-        cached.set("role", surface_role)?;
-        cached.set("presentation", presentation)?;
         mark_visible(&cached, visible, "shell")?;
+        refresh_realized(&cached);
         return Ok(cached);
     }
     let (message_port, _) = crate::message_port::pair(ctx)?;
@@ -1888,10 +2038,15 @@ fn managed_surface_handle(
         visible: Cell::new(visible),
         alive: Cell::new(true),
     });
-    handle.set("id", id.clone())?;
-    handle.set("kind", kind)?;
-    handle.set("role", surface_role)?;
-    handle.set("presentation", presentation)?;
+    let realized_lxapp = lxapp.clone();
+    let realized_id = id.clone();
+    let last_role = Rc::new(Cell::new(role));
+    define_realized(ctx, &handle, move || {
+        if let Some(role) = realized_lxapp.shell_surface_role(&realized_id) {
+            last_role.set(role);
+        }
+        surface_role_label(last_role.get())
+    })?;
     handle.set("visible", visible)?;
     handle.set("alive", true)?;
 
@@ -1930,7 +2085,7 @@ fn managed_surface_handle(
                 let role = lxapp.shell_surface_role(&id);
                 if role == Some(lingxia_surface::Role::Main) {
                     return Err(surface_error(
-                        SurfaceErrorCode::UnsupportedPlacement,
+                        SurfaceErrorCode::RoleLocked,
                         "a main surface cannot be hidden; close it instead",
                     ));
                 }
@@ -1967,7 +2122,6 @@ fn managed_surface_handle(
                     emit_close(
                         &handle,
                         &JSSurfaceClosed {
-                            id: id.clone(),
                             reason: normalize_close_reason(&id, Some("programmatic")),
                         },
                     )?;
@@ -1998,6 +2152,24 @@ fn managed_surface_handle(
     });
 
     Ok(handle)
+}
+
+/// `realized` reads the live placement, so a handle held across a move reports
+/// where the surface is now.
+fn define_realized(
+    ctx: &JSContext,
+    handle: &JSObject,
+    placement: impl Fn() -> &'static str + 'static,
+) -> JSResult<()> {
+    rong::PropertyDescriptor::from_getter(JSFunc::new(ctx, placement)?)
+        .enumerable()
+        .define_on(handle, "realized")
+}
+
+/// Reads `realized` while the surface is live, so a handle closed later keeps
+/// the placement of its last open rather than of its last read.
+fn refresh_realized(handle: &JSObject) {
+    let _ = handle.get::<_, String>("realized");
 }
 
 /// Mirror authoritative host close/visibility publications into a retained JS
@@ -2287,7 +2459,6 @@ async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     if surface_id != requested_surface_id {
         move_closed_senders(&requested_surface_id, &surface_id);
     }
-    let surface_id_for_closed = surface_id.clone();
     if let Some(page_instance_id) = opened_surface.page_instance_id.as_deref() {
         let page_path = opened_surface.page_path.clone().or_else(|| {
             lxapp
@@ -2355,9 +2526,6 @@ async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         visible: Cell::new(true),
         alive: Cell::new(true),
     });
-    surface.set("id", opened_surface.id.clone())?;
-    surface.set("role", surface_role_label(opened_surface.role))?;
-    surface.set("presentation", opened_surface.presentation.clone())?;
     surface.set("visible", true)?;
     surface.set("alive", true)?;
     attach_surface_methods(
@@ -2378,9 +2546,6 @@ async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
             visible: Cell::new(true),
             alive: Cell::new(true),
         });
-        page_surface.set("id", surface_id.clone())?;
-        page_surface.set("role", surface_role_label(opened_surface.role))?;
-        page_surface.set("presentation", opened_surface.presentation.clone())?;
         page_surface.set("visible", true)?;
         page_surface.set("alive", true)?;
         attach_surface_methods(
@@ -2415,7 +2580,6 @@ async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         let event = match closed_rx.await {
             Ok(event) => event,
             Err(_) => JSSurfaceClosed {
-                id: surface_id_for_closed,
                 reason: "unknown".to_string(),
             },
         };
@@ -2584,21 +2748,35 @@ fn closed_surface_error() -> rong::RongJSError {
 }
 
 fn surface_lifecycle_error(operation: &str, error: LxAppError) -> rong::RongJSError {
-    match error {
-        LxAppError::InvalidParameter(detail) => surface_error(SurfaceErrorCode::InvalidArg, detail),
-        LxAppError::ResourceNotFound(detail) => {
-            surface_error(SurfaceErrorCode::NotDeclared, detail)
-        }
-        LxAppError::UnsupportedOperation(detail) => {
-            surface_error(SurfaceErrorCode::UnsupportedPlacement, detail)
-        }
-        LxAppError::SurfaceConflict(detail) => {
-            surface_error(SurfaceErrorCode::AlreadyOpenOtherRole, detail)
-        }
-        other => surface_error(
+    match surface_code_for(&error) {
+        SurfaceErrorCode::Failed => surface_error(
             SurfaceErrorCode::Failed,
-            format!("surface {operation} failed: {other}"),
+            format!("surface {operation} failed: {error}"),
         ),
+        code => surface_error(code, lxapp_error_detail(error)),
+    }
+}
+
+/// The surface category of a runtime failure.
+fn surface_code_for(error: &LxAppError) -> SurfaceErrorCode {
+    match error {
+        LxAppError::InvalidParameter(_) => SurfaceErrorCode::InvalidArg,
+        LxAppError::ResourceNotFound(_) => SurfaceErrorCode::NotDeclared,
+        LxAppError::UnsupportedOperation(_) => SurfaceErrorCode::UnsupportedPlacement,
+        LxAppError::SurfaceConflict(_) => SurfaceErrorCode::AlreadyOpenOtherRole,
+        LxAppError::SurfaceRoleLocked(_) => SurfaceErrorCode::RoleLocked,
+        _ => SurfaceErrorCode::Failed,
+    }
+}
+
+fn lxapp_error_detail(error: LxAppError) -> String {
+    match error {
+        LxAppError::InvalidParameter(detail)
+        | LxAppError::ResourceNotFound(detail)
+        | LxAppError::UnsupportedOperation(detail)
+        | LxAppError::SurfaceConflict(detail)
+        | LxAppError::SurfaceRoleLocked(detail) => detail,
+        other => other.to_string(),
     }
 }
 
@@ -2624,7 +2802,7 @@ fn mark_visible(surface: &JSObject, visible: bool, source: &str) -> JSResult<()>
     }
     surface.set("visible", visible)?;
     record_surface_visibility(&id, visible);
-    emit_visibility(surface, &id, visible, source)?;
+    emit_visibility(surface, visible, source)?;
     if let Some(peer_obj) = peer {
         let peer_changed = {
             let inner = peer_obj.borrow::<JSSurface>()?;
@@ -2643,15 +2821,14 @@ fn mark_visible(surface: &JSObject, visible: bool, source: &str) -> JSResult<()>
         // Always emit on the peer when self transitioned, even if peer's flag
         // was already in sync — observers on the peer should see the event in
         // lockstep with observers on self.
-        emit_visibility(&peer_obj, &id, visible, source)?;
+        emit_visibility(&peer_obj, visible, source)?;
     }
     Ok(())
 }
 
-fn emit_visibility(surface: &JSObject, id: &str, visible: bool, source: &str) -> JSResult<()> {
+fn emit_visibility(surface: &JSObject, visible: bool, source: &str) -> JSResult<()> {
     let ctx = surface.context();
     let detail = JSSurfaceVisibility {
-        id: id.to_string(),
         source: source.to_string(),
     };
     let value = JSValue::from_rust(&ctx, detail);
@@ -2708,7 +2885,6 @@ pub(crate) fn notify_surface_closed(id: &str, reason: &str) -> bool {
     let reason = normalize_close_reason(id, Some(reason));
     for registration in registrations {
         let _ = registration.sender.send(JSSurfaceClosed {
-            id: id.to_string(),
             reason: reason.clone(),
         });
     }
@@ -3316,6 +3492,7 @@ pub(crate) enum SurfaceErrorCode {
     NotDeclared,
     InvalidArg,
     AlreadyOpenOtherRole,
+    RoleLocked,
     Closed,
     CapabilityMissing,
     Failed,
@@ -3330,14 +3507,15 @@ impl SurfaceErrorCode {
             Self::NotDeclared => "not_declared",
             Self::InvalidArg => "invalid_arg",
             Self::AlreadyOpenOtherRole => "already_open_other_role",
+            Self::RoleLocked => "role_locked",
             Self::Closed => "closed",
             Self::CapabilityMissing => "capability_missing",
             Self::Failed => "failed",
         }
     }
 
-    /// The transport-level host code, kept so existing error plumbing and the
-    /// i18n registry keep working unchanged.
+    /// The transport-level `error.code`. Distinct per refusal a caller acts
+    /// on differently, so `error.code` alone tells them apart.
     const fn host_code(self) -> &'static str {
         match self {
             Self::UnsupportedPlacement => rong::error::E_NOT_SUPPORTED,
@@ -3346,8 +3524,9 @@ impl SurfaceErrorCode {
             Self::InvalidArg => rong::error::E_INVALID_ARG,
             // Documented in the shell UI spec and asserted by hosts.
             Self::AlreadyOpenOtherRole => "E_SURFACE_CONFLICT",
+            Self::RoleLocked => "E_SURFACE_ROLE_LOCKED",
             Self::Closed => "E_SURFACE_CLOSED",
-            Self::CapabilityMissing => rong::error::E_NOT_SUPPORTED,
+            Self::CapabilityMissing => "E_CAPABILITY_MISSING",
             Self::Failed => rong::error::E_INTERNAL,
         }
     }
@@ -3367,6 +3546,7 @@ const SURFACE_ERROR_CODES: &[&str] = &[
     SurfaceErrorCode::NotDeclared.as_str(),
     SurfaceErrorCode::InvalidArg.as_str(),
     SurfaceErrorCode::AlreadyOpenOtherRole.as_str(),
+    SurfaceErrorCode::RoleLocked.as_str(),
     SurfaceErrorCode::Closed.as_str(),
     SurfaceErrorCode::CapabilityMissing.as_str(),
     SurfaceErrorCode::Failed.as_str(),
@@ -3388,6 +3568,48 @@ mod tests {
             .expect("SurfaceErrorCode literal");
         let declared: Vec<&str> = block.split('\'').skip(1).step_by(2).collect();
         assert_eq!(declared, SURFACE_ERROR_CODES);
+    }
+
+    #[test]
+    fn error_code_alone_tells_role_capability_and_lookup_failures_apart() {
+        let codes = [
+            SurfaceErrorCode::UnsupportedPlacement,
+            SurfaceErrorCode::Denied,
+            SurfaceErrorCode::NotDeclared,
+            SurfaceErrorCode::InvalidArg,
+            SurfaceErrorCode::AlreadyOpenOtherRole,
+            SurfaceErrorCode::RoleLocked,
+            SurfaceErrorCode::Closed,
+            SurfaceErrorCode::CapabilityMissing,
+            SurfaceErrorCode::Failed,
+        ];
+        let host: std::collections::HashSet<_> =
+            codes.iter().map(|code| code.host_code()).collect();
+        assert_eq!(host.len(), codes.len());
+    }
+
+    #[test]
+    fn an_open_failure_keeps_its_category() {
+        assert_eq!(
+            surface_code_for(&LxAppError::UnsupportedOperation("no aside here".into())),
+            SurfaceErrorCode::UnsupportedPlacement
+        );
+        assert_eq!(
+            surface_code_for(&LxAppError::InvalidParameter("bad page".into())),
+            SurfaceErrorCode::InvalidArg
+        );
+        assert_eq!(
+            surface_code_for(&LxAppError::SurfaceRoleLocked("root".into())),
+            SurfaceErrorCode::RoleLocked
+        );
+        assert_eq!(
+            surface_code_for(&LxAppError::Runtime("boom".into())),
+            SurfaceErrorCode::Failed
+        );
+        assert_eq!(
+            surface_code_for(&LxAppError::ResourceNotFound("app".into())),
+            SurfaceErrorCode::NotDeclared
+        );
     }
 
     #[test]
@@ -3464,22 +3686,52 @@ mod tests {
     }
 
     #[test]
-    fn stale_lxapp_handle_does_not_match_a_reopened_region_or_session() {
+    fn an_app_handle_follows_its_session_across_a_role_change() {
         use lxapp::LxAppOpenRegion::{Aside, Main};
 
-        assert!(lxapp_surface_identity_matches(Main, 7, Some(Main), Some(7)));
-        assert!(!lxapp_surface_identity_matches(
-            Main,
-            7,
-            Some(Aside),
-            Some(8)
-        ));
-        assert!(!lxapp_surface_identity_matches(
-            Main,
-            7,
-            Some(Main),
-            Some(8)
-        ));
+        assert_eq!(lxapp_handle_live_region(7, Some(Main), Some(7)), Some(Main));
+        // The user dragged the app from main into the side panel: same session.
+        assert_eq!(
+            lxapp_handle_live_region(7, Some(Aside), Some(7)),
+            Some(Aside)
+        );
+        // Closed, or reopened as a new session: the old handle is done.
+        assert_eq!(lxapp_handle_live_region(7, None, Some(7)), None);
+        assert_eq!(lxapp_handle_live_region(7, Some(Main), Some(8)), None);
+        assert_eq!(lxapp_handle_live_region(7, Some(Main), None), None);
+    }
+
+    #[test]
+    fn open_app_keeps_or_migrates_the_live_role_and_still_delivers_the_reopen() {
+        use lxapp::LxAppOpenRegion::{Aside, Main};
+
+        let fresh = AppOpenPlan::new(None, None);
+        assert_eq!(
+            (fresh.region, fresh.reuses_live_app, fresh.migrates),
+            (Main, false, false)
+        );
+        let fresh_aside = AppOpenPlan::new(None, Some(Aside));
+        assert_eq!(fresh_aside.region, Aside);
+        assert!(!fresh_aside.reuses_live_app);
+
+        let kept = AppOpenPlan::new(Some(Aside), None);
+        assert_eq!(
+            (kept.region, kept.reuses_live_app, kept.migrates),
+            (Aside, true, false)
+        );
+
+        // A different `as` moves the same app and is still a reuse, so the
+        // call's page and query reach its Logic as App onShow.
+        let moved = AppOpenPlan::new(Some(Aside), Some(Main));
+        assert_eq!(
+            (moved.region, moved.reuses_live_app, moved.migrates),
+            (Main, true, true)
+        );
+        let demoted = AppOpenPlan::new(Some(Main), Some(Aside));
+        assert_eq!(
+            (demoted.region, demoted.reuses_live_app, demoted.migrates),
+            (Aside, true, true)
+        );
     }
 
     #[test]
@@ -3518,7 +3770,6 @@ mod tests {
                 .try_recv()
                 .expect("close sender must stay connected")
                 .expect("close event must be delivered");
-            assert_eq!(event.id, surface_id);
             assert_eq!(event.reason, "user");
         }
         assert!(!notify_surface_closed(surface_id, "user"));

@@ -42,11 +42,12 @@ pub(crate) enum LogicRoute {
     ShellSidebarReplace,
     ShellSidebarUpdate,
     ShellSidebarRemove,
-    ShellSidebarClear,
     ShellOpenApp,
     ShellOpenBuiltin,
     ShellOpenDeclared,
-    ShellReconfigure,
+    ShellGetApp,
+    ShellGetDeclared,
+    ShellSetAppDisplay,
     ShellOpenHostTerminalSettings,
     SurfaceBringToFront,
     #[cfg(feature = "terminal")]
@@ -114,11 +115,12 @@ impl LogicRoute {
         Self::ShellSidebarReplace,
         Self::ShellSidebarUpdate,
         Self::ShellSidebarRemove,
-        Self::ShellSidebarClear,
         Self::ShellOpenApp,
         Self::ShellOpenBuiltin,
         Self::ShellOpenDeclared,
-        Self::ShellReconfigure,
+        Self::ShellGetApp,
+        Self::ShellGetDeclared,
+        Self::ShellSetAppDisplay,
         Self::ShellOpenHostTerminalSettings,
         Self::SurfaceBringToFront,
         #[cfg(feature = "terminal")]
@@ -188,11 +190,12 @@ impl LogicRoute {
             | Self::ShellSidebarReplace
             | Self::ShellSidebarUpdate
             | Self::ShellSidebarRemove
-            | Self::ShellSidebarClear
             | Self::ShellOpenApp
             | Self::ShellOpenBuiltin
             | Self::ShellOpenDeclared
-            | Self::ShellReconfigure
+            | Self::ShellGetApp
+            | Self::ShellGetDeclared
+            | Self::ShellSetAppDisplay
             | Self::ShellOpenHostTerminalSettings => RouteAudience::ControlAppOnly,
             Self::AppNotificationGetPermission
             | Self::AppNotificationRequestPermission
@@ -262,11 +265,12 @@ impl LogicRoute {
             Self::ShellSidebarReplace => "lx.shell.sidebarActions.replace",
             Self::ShellSidebarUpdate => "lx.shell.sidebarActions.update",
             Self::ShellSidebarRemove => "lx.shell.sidebarActions.remove",
-            Self::ShellSidebarClear => "lx.shell.sidebarActions.clear",
             Self::ShellOpenApp => "lx.shell.openApp",
             Self::ShellOpenBuiltin => "lx.shell.openBuiltin",
             Self::ShellOpenDeclared => "lx.shell.openDeclared",
-            Self::ShellReconfigure => "lx.shell.reconfigure",
+            Self::ShellGetApp => "lx.shell.getApp",
+            Self::ShellGetDeclared => "lx.shell.getDeclared",
+            Self::ShellSetAppDisplay => "lx.shell.setAppDisplay",
             Self::ShellOpenHostTerminalSettings => "lx.shell.openApp.hostTerminalSettings",
             Self::SurfaceBringToFront => "lx.surface.bringToFront",
             #[cfg(feature = "terminal")]
@@ -680,6 +684,11 @@ mod tests {
         // Composing other lxapps into the shell stays with the Control app.
         assert_eq!(
             LogicRoute::ShellOpenApp.audience(),
+            RouteAudience::ControlAppOnly
+        );
+        // A guest renaming itself in host chrome is a spoofing vector.
+        assert_eq!(
+            LogicRoute::ShellSetAppDisplay.audience(),
             RouteAudience::ControlAppOnly
         );
     }

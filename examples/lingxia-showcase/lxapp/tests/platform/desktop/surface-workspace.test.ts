@@ -27,25 +27,19 @@ function isLocalizedExpandSidebarLabel(name: string): boolean {
 }
 
 interface VisibilityEvent {
-  id: string;
   source: string;
 }
 
-/** Shell handles carry `role` and `presentation` at run time; the published type leaves them out. */
-type WithRole<T> = T & { readonly role?: string; readonly presentation?: string };
-
 interface CloseEvent {
-  id: string;
   reason: string;
 }
 
 interface RetainedAppSurfaceState {
-  id: string;
+  realized: string;
   visible: boolean;
   alive: boolean;
   events: Array<{
     type: 'show' | 'hide' | 'close';
-    id: string;
     source?: string;
     reason?: string;
   }>;
@@ -1082,9 +1076,9 @@ async function ensureHostForeground(
 }
 
 async function openChatAsMainWorkspace(t: Fixture, app: TestApp): Promise<void> {
-  // Opens Chat as a fresh main workspace. `lx.shell.reconfigure(..., { as: 'main' })`
-  // and `openDeclared(..., { as: 'main' })` go through the declared aside
-  // surface and the host rejects them with "managed surface request rejected".
+  // Opens Chat as a fresh main workspace. `openDeclared(..., { as: 'main' })`
+  // goes through the declared aside surface and the host rejects it with
+  // "managed surface request rejected".
   await closeChatSurface(t, app);
   await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
     await lx.shell.openApp('lingxia-chat', { as: 'main' });
@@ -1178,7 +1172,7 @@ async function retainDynamicChatHandle(app: TestApp): Promise<RetainedAppSurface
       handle.onClose((event) => events.push({ type: 'close', ...event })),
     ];
     probe.__surfaceSwitcherDynamicHandleGate = { handle, events, unsubscribe };
-    return { id: handle.id, visible: handle.visible, alive: handle.alive, events };
+    return { realized: handle.realized, visible: handle.visible, alive: handle.alive, events };
   });
 }
 
@@ -1189,7 +1183,7 @@ async function readRetainedDynamicChatHandle(
     const gate = (globalThis as unknown as DynamicHandleGlobals).__surfaceSwitcherDynamicHandleGate;
     if (!gate) throw new Error('dynamic Chat handle gate is not installed');
     return {
-      id: gate.handle.id,
+      realized: gate.handle.realized,
       visible: gate.handle.visible,
       alive: gate.handle.alive,
       events: gate.events.map((event) => ({ ...event })),
@@ -1216,7 +1210,7 @@ test('projects the declared terminal aside and restores its baseline state', {
     'PageSurface.close',
     'PageSurface.onShow',
     'PageSurface.onHide',
-    'PageSurface.id',
+    'PageSurface.realized',
   ],
 }, async (t) => {
   const app = await desktopApp(t);
@@ -1245,9 +1239,9 @@ test('projects the declared terminal aside and restores its baseline state', {
       await settle();
       const shown = await snapshot();
       output = {
-        id: terminal.id,
-        role: (terminal as WithRole<typeof terminal>).role ?? null,
-        presentation: (terminal as WithRole<typeof terminal>).presentation ?? null,
+        id: Object.entries(opened.identities)
+          .find(([, owner]) => owner.declaration === 'terminal' && owner.key === undefined)?.[0] ?? null,
+        realized: terminal.realized,
         opened,
         hidden,
         shown,
@@ -1268,8 +1262,7 @@ test('projects the declared terminal aside and restores its baseline state', {
     return { ...output!, afterCleanup: await snapshot() };
   }) as {
     id: string;
-    role: string;
-    presentation: string;
+    realized: string;
     opened: SurfaceLayoutSnapshot;
     hidden: SurfaceLayoutSnapshot;
     shown: SurfaceLayoutSnapshot;
@@ -1278,8 +1271,7 @@ test('projects the declared terminal aside and restores its baseline state', {
   };
 
   expect(result.id).toBe('terminal');
-  expect(result.role).toBe('aside');
-  expect(['dock', 'overlay']).toContain(result.presentation);
+  expect(result.realized).toBe('aside');
   expect(result.opened.asides.some((surface) => (
     surface.id === result.id && surface.edge === 'bottom'
   ))).toBeTruthy();
@@ -1290,12 +1282,8 @@ test('projects the declared terminal aside and restores its baseline state', {
   expect(nativeSlot(result.hidden)?.activeChild === result.id).toBeFalsy();
   expect(result.shown.asides.some((surface) => surface.id === result.id)).toBeTruthy();
   expect(nativeSlot(result.shown)?.activeChild).toBe(result.id);
-  expect(result.visibility.hide).toEqual([
-    { id: result.id, source: 'opener' },
-  ]);
-  expect(result.visibility.show).toEqual([
-    { id: result.id, source: 'opener' },
-  ]);
+  expect(result.visibility.hide).toEqual([{ source: 'opener' }]);
+  expect(result.visibility.show).toEqual([{ source: 'opener' }]);
   expect(topology(result.afterCleanup)).toEqual(topology(before));
 });
 
@@ -1460,10 +1448,10 @@ test('gates medium sidebar reveal and compact aside chrome on every desktop', {
 
     const opened = await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
       const handle = await lx.surface.openDeclared('lingxia-chat');
-      return { id: handle.id, visible: handle.visible, alive: handle.alive };
-    }) as { id: string; visible: boolean; alive: boolean };
+      return { visible: handle.visible, alive: handle.alive };
+    }) as { visible: boolean; alive: boolean };
     chatOpened = true;
-    expect(opened).toEqual({ id: 'lingxia-chat', visible: true, alive: true });
+    expect(opened).toEqual({ visible: true, alive: true });
 
     const compactOverlay = await waitForValue(async () => {
       const layout = await app.surfaceLayout();
@@ -1939,7 +1927,7 @@ test('keeps a dynamic app handle synchronized and closes its workspace atomicall
     : undefined;
 
   type DynamicSetup = {
-    id: string;
+    realized: string;
     rejected: Record<'path' | 'navigatePath' | 'float' | 'mainEdge' | 'pageEdge', {
       code: string;
       detail: string;
@@ -2023,13 +2011,13 @@ test('keeps a dynamic app handle synchronized and closes its workspace atomicall
         handle.onClose((event) => events.push({ type: 'close', ...event })),
       ];
       (globalThis as unknown as DynamicHandleGlobals).__surfaceSwitcherDynamicHandleGate = { handle, events, unsubscribe };
-      return { id: handle.id };
-    })) as Pick<DynamicSetup, 'id'>;
+      return { realized: handle.realized };
+    })) as Pick<DynamicSetup, 'realized'>;
     const opened = await automationPhase(
       'snapshot graph after dynamic Chat main open',
       () => app.surfaceLayout(),
     );
-    setup = { id: openedHandle.id, rejected, afterRejected, opened };
+    setup = { realized: openedHandle.realized, rejected, afterRejected, opened };
 
     await waitForChatInput(desktop, host!, 'dynamic Chat physical main after open');
     if (baselineMain) {
@@ -2056,7 +2044,7 @@ test('keeps a dynamic app handle synchronized and closes its workspace atomicall
         await new Promise<void>((resolve) => setTimeout(() => resolve(), 25));
       }
       return {
-        id: gate.handle.id,
+        realized: gate.handle.realized,
         visible: gate.handle.visible,
         alive: gate.handle.alive,
         events: gate.events.map((event) => ({ ...event })),
@@ -2093,7 +2081,7 @@ test('keeps a dynamic app handle synchronized and closes its workspace atomicall
         await new Promise<void>((resolve) => setTimeout(() => resolve(), 25));
       }
       return {
-        id: gate.handle.id,
+        realized: gate.handle.realized,
         visible: gate.handle.visible,
         alive: gate.handle.alive,
         events: gate.events.map((event) => ({ ...event })),
@@ -2153,7 +2141,7 @@ test('keeps a dynamic app handle synchronized and closes its workspace atomicall
       if (!gate) throw new Error('dynamic Chat handle gate is not installed');
       await gate.handle.show();
       return {
-        id: gate.handle.id,
+        realized: gate.handle.realized,
         visible: gate.handle.visible,
         alive: gate.handle.alive,
         events: gate.events.map((event) => ({ ...event })),
@@ -2193,7 +2181,7 @@ test('keeps a dynamic app handle synchronized and closes its workspace atomicall
         await new Promise<void>((resolve) => setTimeout(() => resolve(), 25));
       }
       return {
-        id: gate.handle.id,
+        realized: gate.handle.realized,
         visible: gate.handle.visible,
         alive: gate.handle.alive,
         events: gate.events.map((event) => ({ ...event })),
@@ -2256,14 +2244,15 @@ test('keeps a dynamic app handle synchronized and closes its workspace atomicall
     throw new Error('dynamic main gate did not complete every lifecycle stage');
   }
 
-  expect(setup.id).toBe('lingxia-chat');
+  expect(setup.realized).toBe('main');
+  expect(setup.opened.identities['lingxia-chat']?.appId).toBe('lingxia-chat');
   expect(Object.values(setup.rejected).every((error) => (
     error.code === 'E_INVALID_ARG'
   ))).toBeTruthy();
   expect(setup.rejected.path.detail).toContain('path is not supported');
   expect(setup.rejected.navigatePath.detail).toContain('path is not supported');
   expect(setup.rejected.float.detail).toContain("supports as: 'main' | 'aside'");
-  expect(setup.rejected.mainEdge.detail).toContain("edge is only valid with as: 'aside'");
+  expect(setup.rejected.mainEdge.detail).toContain('edge is only valid when the app opens as an aside');
   expect(setup.rejected.pageEdge.detail).toContain("use position with as: 'float'");
   expect(topology(setup.afterRejected)).toEqual(topology(before));
   expect(setup.afterRejected.mainSwitcher.revision).toBe(before.mainSwitcher.revision);
@@ -2272,13 +2261,13 @@ test('keeps a dynamic app handle synchronized and closes its workspace atomicall
   expect(hidden.visible).toBeFalsy();
   expect(hidden.alive).toBeTruthy();
   expect(hidden.events).toEqual([
-    { type: 'hide', id: 'lingxia-chat', source: 'shell' },
+    { type: 'hide', source: 'shell' },
   ]);
   expect(shown.visible).toBeTruthy();
   expect(shown.alive).toBeTruthy();
   expect(shown.events).toEqual([
-    { type: 'hide', id: 'lingxia-chat', source: 'shell' },
-    { type: 'show', id: 'lingxia-chat', source: 'opener' },
+    { type: 'hide', source: 'shell' },
+    { type: 'show', source: 'opener' },
   ]);
   expect(shownOverBrowser.visible).toBeTruthy();
   expect(shownOverBrowser.alive).toBeTruthy();
@@ -2286,9 +2275,9 @@ test('keeps a dynamic app handle synchronized and closes its workspace atomicall
   expect(closed.closed.visible).toBeFalsy();
   expect(closed.closed.alive).toBeFalsy();
   expect(closed.closed.events).toEqual([
-    { type: 'hide', id: 'lingxia-chat', source: 'shell' },
-    { type: 'show', id: 'lingxia-chat', source: 'opener' },
-    { type: 'close', id: 'lingxia-chat', reason: 'programmatic' },
+    { type: 'hide', source: 'shell' },
+    { type: 'show', source: 'opener' },
+    { type: 'close', reason: 'programmatic' },
   ]);
   expect(containsSurface(closed.afterClose, 'lingxia-chat')).toBeFalsy();
   expect(closed.afterClose.activeMainId).toBe(closed.afterClose.mainSwitcher.rootSurfaceId);
@@ -2600,7 +2589,7 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
     // alive/visible/onClose without leaving a ghost workspace.
     const retainedInitial = await retainDynamicChatHandle(app);
     expect(retainedInitial).toEqual({
-      id: 'lingxia-chat', visible: true, alive: true, events: [],
+      realized: 'main', visible: true, alive: true, events: [],
     });
 
     host = await ensureHostForeground(desktop, host);
@@ -2619,7 +2608,7 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
     }, 'dynamic Chat handle hidden by native root switch');
     expect(retainedHidden.alive).toBeTruthy();
     expect(retainedHidden.events).toEqual([
-      { type: 'hide', id: 'lingxia-chat', source: 'shell' },
+      { type: 'hide', source: 'shell' },
     ]);
 
     host = await ensureHostForeground(desktop, host);
@@ -2647,8 +2636,8 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
     }, 'dynamic Chat handle shown by native workspace switch');
     expect(retainedShown.alive).toBeTruthy();
     expect(retainedShown.events).toEqual([
-      { type: 'hide', id: 'lingxia-chat', source: 'shell' },
-      { type: 'show', id: 'lingxia-chat', source: 'shell' },
+      { type: 'hide', source: 'shell' },
+      { type: 'show', source: 'shell' },
     ]);
 
     const workspaceClosePoint = activeGuestGroupClosePoint(
@@ -2672,9 +2661,9 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
         : undefined;
     }, 'dynamic Chat handle closed by native workspace control');
     expect(retainedClosed.events).toEqual([
-      { type: 'hide', id: 'lingxia-chat', source: 'shell' },
-      { type: 'show', id: 'lingxia-chat', source: 'shell' },
-      { type: 'close', id: 'lingxia-chat', reason: 'user' },
+      { type: 'hide', source: 'shell' },
+      { type: 'show', source: 'shell' },
+      { type: 'close', reason: 'user' },
     ]);
     await waitForValue(async () => {
       const chat = (await automation.lxapps.list()).find((candidate) => (
@@ -2880,7 +2869,7 @@ test('rejects stable-root mutations without changing the host model', {
       rootId,
       closeError,
       roleError,
-      role: (root as WithRole<typeof root>).role ?? null,
+      realized: root.realized,
       visible: root.visible,
       alive: root.alive,
       beforeRejections,
@@ -2890,7 +2879,7 @@ test('rejects stable-root mutations without changing the host model', {
     rootId: string;
     closeError: string;
     roleError: string;
-    role: string;
+    realized: string;
     visible: boolean;
     alive: boolean;
     beforeRejections: SurfaceLayoutSnapshot;
@@ -2899,7 +2888,7 @@ test('rejects stable-root mutations without changing the host model', {
 
   expect(result.closeError).toContain('stable root main surface cannot be closed');
   expect(result.roleError).toContain('stable root main surface cannot change role');
-  expect(result.role).toBe('main');
+  expect(result.realized).toBe('main');
   expect(result.visible).toBeTruthy();
   expect(result.alive).toBeTruthy();
   expect(result.afterRejections.mainSwitcher.revision)
@@ -3017,7 +3006,7 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
   skip: desktopSkip,
   id: 'DESKTOP-ASIDE-NAV-001',
   timeout: DESKTOP_CASE_MS,
-  covers: ['lx.shell.openApp', 'lx.navigateTo', 'lx.navigateBack', 'lx.surface.openPage', 'lx.surface.getByKey'],
+  covers: ['lx.shell.openApp', 'lx.shell.getApp', 'lx.navigateTo', 'lx.navigateBack', 'lx.surface.openPage', 'lx.surface.getByKey'],
 }, async (t) => {
   const app = await desktopApp(t);
   const platform = await runtimePlatform(app);
@@ -3189,10 +3178,9 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
     // Opening another lxapp as the main afterwards leaves both alive and in
     // their own regions: the new main takes the main area, Chat keeps its
     // aside and its page.
-    const otherMainId = await app.logic.eval({ timeout: 60_000 }, async ({ lx }, appId) => {
+    await app.logic.eval({ timeout: 60_000 }, async ({ lx }, appId) => {
       const handle = await lx.shell.openApp(appId, { as: 'main' });
       (globalThis as unknown as Record<string, unknown>).__asideNavOtherMain = handle;
-      return handle.id;
     }, ASIDE_NAV_OTHER_APP_ID);
     try {
       const withOtherMain = await waitForValue(async () => {
@@ -3200,9 +3188,15 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
         const slot = layout.asideSlots.find((candidate) => (
           candidate.children.includes('lingxia-chat')
         ));
-        return layout.activeMainId === otherMainId && slot?.visible ? layout : undefined;
+        const activeOwner = layout.activeMainId ? layout.identities[layout.activeMainId] : undefined;
+        return activeOwner?.appId === ASIDE_NAV_OTHER_APP_ID && slot?.visible ? layout : undefined;
       }, 'second lxapp as the active main beside the Chat aside');
       expect(withOtherMain.mains.includes('lingxia-chat')).toBeFalsy();
+      // The live app answers lookup with the handle its opener holds.
+      expect(await app.logic.eval(({ lx }, appId) => {
+        const held = (globalThis as unknown as Record<string, unknown>).__asideNavOtherMain;
+        return lx.shell.getApp(appId) === held;
+      }, ASIDE_NAV_OTHER_APP_ID)).toBeTruthy();
       const lxapps = await t.automation.lxapps.list();
       for (const appId of ['lingxia-chat', ASIDE_NAV_OTHER_APP_ID]) {
         expect({ appId, status: lxapps.find((row) => row.appId === appId)?.status })
@@ -3488,7 +3482,7 @@ test('migrates one keyed workspace across aside edges and main exactly once', {
   skip: desktopSkip,
   id: 'DESKTOP-MIGRATE-001',
   timeout: DESKTOP_CASE_MS,
-  covers: ['lx.shell.openDeclared'],
+  covers: ['lx.shell.openDeclared', 'lx.shell.getDeclared'],
 }, async (t) => {
   const app = await desktopApp(t);
   const before = await app.surfaceLayout();
@@ -3514,7 +3508,7 @@ test('migrates one keyed workspace across aside edges and main exactly once', {
       const aside = await snapshot();
       const main = await lx.shell.openDeclared('terminal', { key, as: 'main' });
       const mainLayout = await snapshot();
-      const roleAfterMain = (main as WithRole<typeof main>).role ?? null;
+      const roleAfterMain = main.realized;
       let hideError = '';
       try { await main.hide(); } catch (error) { hideError = String(error); }
       const afterRejectedHide = await snapshot();
@@ -3522,6 +3516,7 @@ test('migrates one keyed workspace across aside edges and main exactly once', {
         key, as: 'aside', edge: 'bottom',
       });
       const dockedLayout = await snapshot();
+      const lookedUp = lx.shell.getDeclared('terminal', key);
       await docked.hide();
       await docked.hide();
       const hiddenLayout = await snapshot();
@@ -3536,14 +3531,13 @@ test('migrates one keyed workspace across aside edges and main exactly once', {
       await settle();
       const afterRepeatedClose = await snapshot();
       output = {
-        id: surface.id,
-        sameMainId: main.id === surface.id,
+        id: Object.entries(aside.identities)
+          .find(([, owner]) => owner.declaration === 'terminal' && owner.key === key)?.[0] ?? null,
         sameMainHandle: main === surface,
-        sameAsideId: docked.id === surface.id,
         sameAsideHandle: docked === surface,
+        sameLookupHandle: lookedUp === surface,
         roleAfterMain,
-        roleAfterDock: (docked as WithRole<typeof docked>).role ?? null,
-        presentationAfterDock: (docked as WithRole<typeof docked>).presentation ?? null,
+        roleAfterDock: docked.realized,
         hideError,
         aliveAfterClose: docked.alive,
         visibleAfterClose: docked.visible,
@@ -3569,13 +3563,11 @@ test('migrates one keyed workspace across aside edges and main exactly once', {
     return { ...output!, afterCleanup: await snapshot() };
   }, key) as {
     id: string;
-    sameMainId: boolean;
     sameMainHandle: boolean;
-    sameAsideId: boolean;
     sameAsideHandle: boolean;
+    sameLookupHandle: boolean;
     roleAfterMain: string;
     roleAfterDock: string;
-    presentationAfterDock: string;
     hideError: string;
     aliveAfterClose: boolean;
     visibleAfterClose: boolean;
@@ -3593,10 +3585,9 @@ test('migrates one keyed workspace across aside edges and main exactly once', {
     closed: CloseEvent[];
   };
 
-  expect(result.sameMainId).toBeTruthy();
   expect(result.sameMainHandle).toBeTruthy();
-  expect(result.sameAsideId).toBeTruthy();
   expect(result.sameAsideHandle).toBeTruthy();
+  expect(result.sameLookupHandle).toBeTruthy();
   expect(result.aside.mains.includes(result.id)).toBeFalsy();
   expect(result.aside.asides.some((surface) => (
     surface.id === result.id && surface.edge === 'right'
@@ -3627,19 +3618,12 @@ test('migrates one keyed workspace across aside edges and main exactly once', {
   expect(nativeSlot(result.dockedLayout)?.edge).toBe('bottom');
   expect(nativeSlot(result.dockedLayout)?.activeChild).toBe(result.id);
   expect(result.roleAfterDock).toBe('aside');
-  expect(['dock', 'overlay']).toContain(result.presentationAfterDock);
   expect(result.hiddenLayout.asides.some((surface) => surface.id === result.id)).toBeFalsy();
   expect(nativeSlot(result.hiddenLayout)?.children.includes(result.id)).toBeTruthy();
   expect(result.shownLayout.asides.some((surface) => surface.id === result.id)).toBeTruthy();
-  expect(result.visibility.hide).toEqual([
-    { id: result.id, source: 'opener' },
-  ]);
-  expect(result.visibility.show).toEqual([
-    { id: result.id, source: 'opener' },
-  ]);
-  expect(result.closed).toEqual([
-    { id: result.id, reason: 'programmatic' },
-  ]);
+  expect(result.visibility.hide).toEqual([{ source: 'opener' }]);
+  expect(result.visibility.show).toEqual([{ source: 'opener' }]);
+  expect(result.closed).toEqual([{ reason: 'programmatic' }]);
   expect(result.aliveAfterClose).toBeFalsy();
   expect(result.visibleAfterClose).toBeFalsy();
   expect(containsSurface(result.afterClose, result.id)).toBeFalsy();
@@ -3733,22 +3717,20 @@ test('switches, deduplicates concurrent opens, and leaves no ghost rows', {
       await settle();
       const afterRepeatedClose = await snapshot();
 
+      const idOf = (layout: typeof baseline, key: string) => Object.entries(layout.identities)
+        .find(([, owner]) => owner.declaration === 'terminal' && owner.key === key)?.[0] ?? '';
+      const ids = {
+        first: idOf(afterFirst, keys.first),
+        second: idOf(afterSecond, keys.second),
+        concurrent: idOf(afterConcurrent, keys.concurrent),
+      };
       output = {
         baseline,
-        ids: {
-          first: first.id,
-          second: second.id,
-          concurrent: concurrentFirst.id,
-        },
-        firstState: {
-          role: (first as WithRole<typeof first>).role ?? null,
-          presentation: (first as WithRole<typeof first>).presentation ?? null,
-          alive: first.alive,
-        },
-        distinctIds: first.id !== second.id && second.id !== concurrentFirst.id,
-        reopenedSameId: reopened.id === first.id,
+        ids,
+        firstState: { realized: first.realized, alive: first.alive },
+        distinctIds: ids.first !== ids.second && ids.second !== ids.concurrent,
+        reopenedSameId: idOf(afterReopen, keys.first) === ids.first,
         reopenedSameHandle: reopened === first,
-        concurrentSameId: concurrentFirst.id === concurrentSecond.id,
         concurrentSameHandle: concurrentFirst === concurrentSecond,
         concurrentAliveAfterClose: concurrentFirst.alive,
         concurrentVisibleAfterClose: concurrentFirst.visible,
@@ -3775,11 +3757,10 @@ test('switches, deduplicates concurrent opens, and leaves no ghost rows', {
   }, keys) as {
     baseline: SurfaceLayoutSnapshot;
     ids: { first: string; second: string; concurrent: string };
-    firstState: { role: string; presentation: string; alive: boolean };
+    firstState: { realized: string; alive: boolean };
     distinctIds: boolean;
     reopenedSameId: boolean;
     reopenedSameHandle: boolean;
-    concurrentSameId: boolean;
     concurrentSameHandle: boolean;
     concurrentAliveAfterClose: boolean;
     concurrentVisibleAfterClose: boolean;
@@ -3800,11 +3781,10 @@ test('switches, deduplicates concurrent opens, and leaves no ghost rows', {
 
   const baselineIds = switcherIds(result.baseline);
   expect(topology(result.baseline)).toEqual(topology(before));
-  expect(result.firstState).toEqual({ role: 'main', presentation: 'main', alive: true });
+  expect(result.firstState).toEqual({ realized: 'main', alive: true });
   expect(result.distinctIds).toBeTruthy();
   expect(result.reopenedSameId).toBeTruthy();
   expect(result.reopenedSameHandle).toBeTruthy();
-  expect(result.concurrentSameId).toBeTruthy();
   expect(result.concurrentSameHandle).toBeTruthy();
   expect(switcherIds(result.afterFirst)).toEqual([...baselineIds, result.ids.first]);
   expect(result.afterFirst.activeMainId).toBe(result.ids.first);
@@ -3835,19 +3815,10 @@ test('switches, deduplicates concurrent opens, and leaves no ghost rows', {
   expect(result.afterRepeatedClose.mainSwitcher.revision)
     .toBe(result.afterClose.mainSwitcher.revision);
   expect(topology(result.afterRepeatedClose)).toEqual(topology(result.afterClose));
-  expect(result.events.firstHide).toEqual([
-    { id: result.ids.first, source: 'shell' },
-    { id: result.ids.first, source: 'shell' },
-  ]);
-  expect(result.events.firstShow).toEqual([
-    { id: result.ids.first, source: 'shell' },
-  ]);
-  expect(result.events.secondHide).toEqual([
-    { id: result.ids.second, source: 'shell' },
-  ]);
-  expect(result.events.concurrentClose).toEqual([
-    { id: result.ids.concurrent, reason: 'programmatic' },
-  ]);
+  expect(result.events.firstHide).toEqual([{ source: 'shell' }, { source: 'shell' }]);
+  expect(result.events.firstShow).toEqual([{ source: 'shell' }]);
+  expect(result.events.secondHide).toEqual([{ source: 'shell' }]);
+  expect(result.events.concurrentClose).toEqual([{ reason: 'programmatic' }]);
   expect(topology(result.afterCleanup)).toEqual(topology(before));
 });
 
@@ -4002,10 +3973,17 @@ async function openBrowserAside(
   key: string,
   edge: BrowserAsideEdge,
 ): Promise<OpenedBrowserAside> {
-  return app.logic.eval({ timeout: 20_000 }, async ({ lx }, url, key, edge) => {
+  const childrenOf = (layout: SurfaceLayoutSnapshot) => layout.asideSlots.flatMap((slot) => slot.children);
+  const before = new Set(childrenOf(await app.surfaceLayout()));
+  const opened = await app.logic.eval({ timeout: 20_000 }, async ({ lx }, url, key, edge) => {
     const tab = await lx.surface.openUrl(url, { as: 'aside', edge, key });
-    return { id: tab.id, realized: String(tab.realized), alive: tab.alive };
+    return { realized: String(tab.realized), alive: tab.alive };
   }, url, key, edge);
+  // Handles carry no runtime id; the new aside child is this tab.
+  const id = await waitForValue(async () => (
+    childrenOf(await app.surfaceLayout()).find((child) => !before.has(child))
+  ), `browser aside ${key} in the layout`);
+  return { id, ...opened };
 }
 
 async function closeNewBrowserTabs(browser: BrowserDriver, before: Set<string>): Promise<void> {
@@ -4442,6 +4420,159 @@ test('promotes a dragged lxapp aside to a main without reloading it', {
     await app.nav.switchTab({ page: 'home' }).catch(() => undefined);
     if (host) await restoreHostBounds(desktop, host.id, originalBounds).catch(() => undefined);
   }
+});
+
+/** What DESKTOP-OPENAPP-MOVE-001 keeps on Logic's `globalThis` between evals. */
+interface OpenAppMoveGlobals {
+  __openAppMoveProbe?: {
+    handle: AppSurface;
+    closes: string[];
+    unsubscribe: () => void;
+  };
+}
+
+interface OpenAppMoveOptions {
+  as: 'main' | 'aside';
+  edge?: 'right';
+  page?: string;
+  query?: Record<string, string>;
+}
+
+interface MovedHandleState {
+  same: boolean;
+  /** `getApp` and `getDeclared` of the declared Chat return that same object. */
+  lookedUp: boolean;
+  realized: string;
+  visible: boolean;
+  alive: boolean;
+  closes: string[];
+}
+
+/** The last App `onShow` Chat's Logic saw, as its `lxapp.ts` records it. */
+async function chatLastShow(
+  t: Fixture,
+): Promise<{ reason?: string; path?: string; query?: Record<string, string> } | null> {
+  return t.automation.lxapp('lingxia-chat').logic.eval(({ getApp }) => {
+    const instance = getApp() as unknown as {
+      globalData?: { lastShow?: { reason?: string; path?: string; query?: Record<string, string> } };
+    } | null;
+    return instance?.globalData?.lastShow ?? null;
+  });
+}
+
+test('moves a live lxapp between aside and main through lx.shell.openApp', {
+  skip: desktopSkip,
+  id: 'DESKTOP-OPENAPP-MOVE-001',
+  timeout: DESKTOP_CASE_MS,
+  covers: ['lx.shell.openApp', 'lx.shell.getApp', 'lx.shell.getDeclared', 'lx.shell.openDeclared'],
+}, async (t) => {
+  const app = await desktopApp(t);
+  await closeChatSurface(t, app);
+  const before = await app.surfaceLayout();
+  // The same call moves and reopens, so each step reports where the handle
+  // it returned says the app is, and whether a close reached the first one.
+  const move = (options: OpenAppMoveOptions) => app.logic.eval(
+    { timeout: 20_000 },
+    async ({ lx }, options): Promise<MovedHandleState> => {
+      const probe = (globalThis as unknown as OpenAppMoveGlobals).__openAppMoveProbe;
+      if (!probe) throw new Error('openApp move probe is not installed');
+      const handle = await lx.shell.openApp('lingxia-chat', options);
+      return {
+        same: handle === probe.handle,
+        lookedUp: lx.shell.getApp('lingxia-chat') === handle
+          && lx.shell.getDeclared('lingxia-chat') === handle,
+        realized: handle.realized,
+        visible: handle.visible,
+        alive: handle.alive,
+        closes: [...probe.closes],
+      };
+    },
+    options,
+  );
+  try {
+    await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+      const handle = await lx.shell.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
+      const closes: string[] = [];
+      const unsubscribe = handle.onClose((event) => closes.push(event.reason));
+      (globalThis as unknown as OpenAppMoveGlobals).__openAppMoveProbe = { handle, closes, unsubscribe };
+    });
+    await waitForValue(async () => {
+      const layout = await app.surfaceLayout();
+      return chatAsideSlot(layout)?.visible ? layout : undefined;
+    }, 'Chat docked as an aside');
+    // Chat is declared in lingxia.yaml: its declaration and the app lookup
+    // answer with the handle openApp returned.
+    const identity = await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+      const probe = (globalThis as unknown as OpenAppMoveGlobals).__openAppMoveProbe;
+      if (!probe) throw new Error('openApp move probe is not installed');
+      const declared = await lx.shell.openDeclared('lingxia-chat');
+      return {
+        getApp: lx.shell.getApp('lingxia-chat') === probe.handle,
+        getDeclared: lx.shell.getDeclared('lingxia-chat') === probe.handle,
+        openDeclared: declared === probe.handle,
+        kind: declared.kind,
+      };
+    });
+    expect(identity).toEqual({ getApp: true, getDeclared: true, openDeclared: true, kind: 'app' });
+
+    // A page Chat does not configure is refused before anything moves.
+    const refused = await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+      try {
+        await lx.shell.openApp('lingxia-chat', { as: 'main', page: 'nowhere' as never });
+        return 'resolved';
+      } catch (error) {
+        return (error as { code?: string }).code ?? String(error);
+      }
+    });
+    expect(refused).toBe('E_NOT_FOUND');
+    const afterRefused = await app.surfaceLayout();
+    expect({
+      inSwitcher: switcherIds(afterRefused).includes('lingxia-chat'),
+      asideVisible: chatAsideSlot(afterRefused)?.visible ?? false,
+    }).toEqual({ inSwitcher: false, asideVisible: true });
+
+    const toMain = await move({ as: 'main', page: 'about', query: { step: 'main' } });
+    expect(toMain).toEqual({
+      same: true, lookedUp: true, realized: 'main', visible: true, alive: true, closes: [],
+    });
+    const mainLayout = await waitForValue(async () => {
+      const layout = await app.surfaceLayout();
+      return layout.activeMainId === 'lingxia-chat' && !chatAsideSlot(layout) ? layout : undefined;
+    }, 'Chat moved into the main');
+    expect(switcherIds(mainLayout).includes('lingxia-chat')).toBeTruthy();
+    const shownInMain = await waitForValue(async () => {
+      const last = await chatLastShow(t);
+      return last?.query?.step === 'main' ? last : undefined;
+    }, 'Chat App onShow for the move into main');
+    expect(shownInMain.reason).toBe('switch_back');
+    expect(shownInMain.path).toContain('about');
+
+    const toAside = await move({ as: 'aside', edge: 'right', query: { step: 'aside' } });
+    expect(toAside).toEqual({
+      same: true, lookedUp: true, realized: 'aside', visible: true, alive: true, closes: [],
+    });
+    const asideLayout = await waitForValue(async () => {
+      const layout = await app.surfaceLayout();
+      return chatAsideSlot(layout)?.visible && !switcherIds(layout).includes('lingxia-chat')
+        ? layout
+        : undefined;
+    }, 'Chat moved back into the aside');
+    expect(asideLayout.mains.includes('lingxia-chat')).toBeFalsy();
+    const shownInAside = await waitForValue(async () => {
+      const last = await chatLastShow(t);
+      return last?.query?.step === 'aside' ? last : undefined;
+    }, 'Chat App onShow for the move into the aside');
+    expect(shownInAside.reason).toBe('switch_back');
+  } finally {
+    await app.logic.eval(() => {
+      const globals = globalThis as unknown as OpenAppMoveGlobals;
+      globals.__openAppMoveProbe?.unsubscribe();
+      delete globals.__openAppMoveProbe;
+    }).catch(() => undefined);
+    await closeChatSurface(t, app).catch(() => undefined);
+  }
+  const afterCleanup = await app.surfaceLayout();
+  expect(topology(afterCleanup)).toEqual(topology(before));
 });
 
 test('moves a dragged URL aside tab into the main browser without reloading it', {

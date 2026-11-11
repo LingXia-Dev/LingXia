@@ -144,7 +144,7 @@ Page({
     this.stopWatchingLanguagePreference =
       lx.host.control?.displayLanguage.watchPreference(() => this._syncLanguage()) ?? null;
     try {
-      const info = lx.getLxAppInfo();
+      const info = lx.getAppInfo();
       const suffix =
         info.channel && info.channel !== "release"
           ? ` (${info.channel})`

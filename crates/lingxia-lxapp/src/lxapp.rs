@@ -33,6 +33,7 @@ use crate::startup::{LxAppStartupOptions, Scene};
 use crate::update::UpdateManager;
 use crate::{debug, error, info, warn};
 
+pub mod app_display;
 pub mod config;
 #[doc(hidden)]
 pub mod data_profile;
@@ -122,10 +123,11 @@ pub use runtime_registry::{
 pub(crate) use surface::SurfaceRecord;
 pub use surface::{
     HostMainSurfaceRegistration, HostSurfaceMenuExecution, LxAppRuntimeSurfaceInfo,
-    ManagedNativeSurface, PageSurface, PageSurfaceRequest, PageSurfaceTarget, UrlCallbackSurface,
-    UrlCallbackWaitError, next_surface_context_revision, register_surface_active_main_observer,
-    register_surface_close_observer, register_surface_context_observer,
-    register_surface_context_snapshot, register_surface_visibility_observer,
+    ManagedNativeSurface, PageSurface, PageSurfaceRequest, PageSurfaceTarget, ShellSurfaceIdentity,
+    UrlCallbackSurface, UrlCallbackWaitError, next_surface_context_revision,
+    register_surface_active_main_observer, register_surface_close_observer,
+    register_surface_context_observer, register_surface_context_snapshot,
+    register_surface_visibility_observer,
 };
 pub(crate) use surface::{SurfaceRecords, view_surface_context_script};
 use version::Version;
@@ -4338,6 +4340,38 @@ impl LxApp {
     }
 }
 
+/// Whether `icon` is shaped like a chrome icon an lxapp may name: a bundled
+/// relative path or an `lx://` path. Resolve it with
+/// [`LxApp::resolve_accessible_path`].
+pub fn is_declared_icon_reference(icon: &str) -> bool {
+    let icon = icon.trim();
+    if icon.starts_with("lx://") {
+        return true;
+    }
+    let path = Path::new(icon);
+    !(has_uri_scheme(icon)
+        || path.is_absolute()
+        || path.components().any(|component| {
+            matches!(
+                component,
+                std::path::Component::ParentDir
+                    | std::path::Component::RootDir
+                    | std::path::Component::Prefix(_)
+            )
+        }))
+}
+
+fn has_uri_scheme(value: &str) -> bool {
+    let Some((scheme, _)) = value.split_once(':') else {
+        return false;
+    };
+    !scheme.is_empty()
+        && scheme.as_bytes()[0].is_ascii_alphabetic()
+        && scheme
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'-' | b'.'))
+}
+
 /// Service env whose installs and data are in use; each env keeps its own.
 pub(crate) fn service_env_scope() -> lingxia_app_context::AppEnv {
     #[cfg(test)]
@@ -4767,6 +4801,58 @@ mod delayed_destroy_tests {
             .startup_options
             .launch_options_value();
         assert_eq!(launch["query"]["session"], "s2");
+
+        app.state.lock().unwrap().open_region = None;
+        manager.retire_lxapp(&appid).unwrap();
+    }
+
+    #[test]
+    fn a_host_that_cannot_move_a_live_lxapp_refuses_before_changing_anything() {
+        use lingxia_platform::traits::app_runtime::{LxAppOpenMode, LxAppRegionMoves};
+        #[cfg(target_vendor = "apple")]
+        let _host = crate::apple_host_stubs::headless_lifecycle();
+        let appid = format!("app.lingxia.region-move.{}", Uuid::new_v4());
+        register_synthetic_lxapp(appid.clone());
+        let runtime = class_test_runtime();
+        let manager = LxApps::new((*runtime).clone(), LxAppWorkers::init(1), 2);
+        let app = manager
+            .ensure_lxapp(appid.clone(), Channel::Release)
+            .unwrap();
+        app.state.lock().unwrap().open_region = Some(LxAppOpenRegion::Main);
+
+        for region in [LxAppOpenRegion::Aside, LxAppOpenRegion::Main] {
+            assert!(matches!(
+                app.move_to_region_on(LxAppRegionMoves::Unsupported, region, Some("left")),
+                Err(LxAppError::UnsupportedOperation(_))
+            ));
+        }
+        assert_eq!(app.current_open_region(), Some(LxAppOpenRegion::Main));
+        assert_eq!(app.open_panel_id(), None);
+        assert!(app.presentation_open_lock.try_lock().is_ok());
+
+        // A drag never waits on an open or move holding the guard.
+        {
+            let _open = app.presentation_open_lock.lock().unwrap();
+            assert!(matches!(
+                app.demote_main_to_aside(""),
+                Err(LxAppError::SurfaceConflict(_))
+            ));
+        }
+        assert_eq!(app.current_open_region(), Some(LxAppOpenRegion::Main));
+
+        // A rollback restores only the region its own move wrote.
+        let aside_startup = (LxAppOpenMode::Panel, appid.clone());
+        app.state.lock().unwrap().open_region = None;
+        app.roll_back_region(
+            LxAppOpenRegion::Main,
+            LxAppOpenRegion::Aside,
+            aside_startup.clone(),
+        );
+        assert_eq!(app.current_open_region(), None, "a close that landed stays");
+        app.state.lock().unwrap().open_region = Some(LxAppOpenRegion::Main);
+        app.roll_back_region(LxAppOpenRegion::Main, LxAppOpenRegion::Aside, aside_startup);
+        assert_eq!(app.current_open_region(), Some(LxAppOpenRegion::Aside));
+        assert_eq!(app.open_panel_id().as_deref(), Some(appid.as_str()));
 
         app.state.lock().unwrap().open_region = None;
         manager.retire_lxapp(&appid).unwrap();

@@ -33,6 +33,10 @@ static WINDOWS_BUILTIN_BROWSER_DOWNLOADS_HANDLER: Mutex<
 pub type WindowsShellPinsHandler = Arc<dyn Fn(&[ShellPin]) -> bool + Send + Sync>;
 static WINDOWS_SHELL_PINS_HANDLER: Mutex<Option<WindowsShellPinsHandler>> = Mutex::new(None);
 pub type WindowsLxAppMainActivationHandler = Arc<dyn Fn(&str) + Send + Sync>;
+/// `(appid, to_main, edge)`: the shell's own drag path, run for the API.
+pub type WindowsLxAppRegionMoveHandler = Arc<dyn Fn(&str, bool, &str) -> bool + Send + Sync>;
+static WINDOWS_LXAPP_REGION_MOVE_HANDLER: Mutex<Option<WindowsLxAppRegionMoveHandler>> =
+    Mutex::new(None);
 static WINDOWS_LXAPP_MAIN_ACTIVATION_HANDLER: Mutex<Option<WindowsLxAppMainActivationHandler>> =
     Mutex::new(None);
 /// Fired after `hide_lxapp` has hidden that session's webtags. Windows has no
@@ -68,6 +72,12 @@ pub fn set_windows_shell_pins_handler(handler: WindowsShellPinsHandler) {
 
 pub fn set_windows_lxapp_main_activation_handler(handler: WindowsLxAppMainActivationHandler) {
     if let Ok(mut slot) = WINDOWS_LXAPP_MAIN_ACTIVATION_HANDLER.lock() {
+        *slot = Some(handler);
+    }
+}
+
+pub fn set_windows_lxapp_region_move_handler(handler: WindowsLxAppRegionMoveHandler) {
+    if let Ok(mut slot) = WINDOWS_LXAPP_REGION_MOVE_HANDLER.lock() {
         *slot = Some(handler);
     }
 }
@@ -555,6 +565,25 @@ impl AppRuntime for Platform {
 
     fn request_lxapp_main_activation(&self, appid: &str) {
         invoke_windows_lxapp_main_activation_handler(appid);
+    }
+
+    fn lxapp_region_moves(&self) -> crate::traits::app_runtime::LxAppRegionMoves {
+        let installed = WINDOWS_LXAPP_REGION_MOVE_HANDLER
+            .lock()
+            .is_ok_and(|slot| slot.is_some());
+        if installed {
+            crate::traits::app_runtime::LxAppRegionMoves::Shell
+        } else {
+            crate::traits::app_runtime::LxAppRegionMoves::Unsupported
+        }
+    }
+
+    fn move_lxapp_region(&self, appid: &str, to_main: bool, edge: &str) -> bool {
+        let handler = WINDOWS_LXAPP_REGION_MOVE_HANDLER
+            .lock()
+            .ok()
+            .and_then(|slot| slot.clone());
+        handler.is_some_and(|handler| handler(appid, to_main, edge))
     }
 
     fn hide_lxapp(&self, appid: String, session_id: u64) -> Result<(), PlatformError> {

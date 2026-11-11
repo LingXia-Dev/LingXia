@@ -172,16 +172,18 @@ enum LxIcon {
     ).flatMap { NSImage(contentsOf: $0) }
 
     /// Artwork for an lxapp anywhere the shell lists one (sidebar, pins, tab
-    /// strips). Home is the product itself, so it always uses the host icon.
-    /// Other apps use the registry file, then the host icon — inside a
-    /// branded product an lxapp without artwork still reads as that product
-    /// (as on Windows) — and the SDK mark only when the host has none.
+    /// strips), ranked by Rust: the icon the app set for itself, the host
+    /// product icon for home, or registry artwork. Without any, the host icon
+    /// — inside a branded product an lxapp still reads as that product (as on
+    /// Windows) — and the SDK mark only when the host has none.
     @MainActor
-    static func lxappImage(appId: String, path: String) -> NSImage? {
-        if LxAppCore.isHomeLxApp(appId) {
-            return hostAppImage() ?? image(at: path) ?? defaultLxappMark()
+    static func lxappImage(appId: String) -> NSImage? {
+        let icon = getLxAppDisplayIcon(appId)
+        let file = image(at: icon.path.toString())
+        if icon.product {
+            return hostAppImage() ?? file ?? defaultLxappMark()
         }
-        return image(at: path) ?? hostAppImage() ?? defaultLxappMark()
+        return file ?? hostAppImage() ?? defaultLxappMark()
     }
 
     /// Decoded lxapp artwork by path + file stamp. Sidebar rows, pins, and the

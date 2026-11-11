@@ -216,7 +216,7 @@ fn business_code_from_lxapp_error(error: &LxAppError) -> u32 {
         LxAppError::InvalidParameter(_) => 1002,
         LxAppError::ResourceExhausted(_) => 1002,
         LxAppError::ResourceNotFound(_) | LxAppError::PluginNotConfigured(_) => 1003,
-        LxAppError::UnsupportedOperation(_) => 6000,
+        LxAppError::UnsupportedOperation(_) | LxAppError::SurfaceRoleLocked(_) => 6000,
         LxAppError::IoError(_) => 1001,
         LxAppError::RongJSHost { code, data, .. } => code
             .parse::<u32>()
@@ -243,6 +243,7 @@ fn detail_suffix(error: &LxAppError) -> Option<&str> {
         | LxAppError::IoError(detail)
         | LxAppError::Runtime(detail)
         | LxAppError::SurfaceConflict(detail)
+        | LxAppError::SurfaceRoleLocked(detail)
         | LxAppError::ChannelError(detail)
         | LxAppError::ResourceExhausted(detail)
         | LxAppError::Bridge(detail)

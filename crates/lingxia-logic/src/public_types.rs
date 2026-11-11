@@ -1570,7 +1570,6 @@ true
 }"###;
 
         type SurfaceClosedEvent = r###"{
-    id: string;
     reason: SurfaceCloseReason;
 }"###;
 
@@ -1593,7 +1592,7 @@ true
         ///
         type WindowChrome = r###"'system' | 'full'"###;
 
-        /// Why a surface operation was refused. Carried as `code` on every
+        /// Why a surface operation was refused. Carried on `data.code` of every
         /// `SurfaceError`, so no caller has to match on message text.
         ///
         type SurfaceErrorCode = r###"/** The placement cannot be realized by this host build. */
@@ -1606,6 +1605,9 @@ true
  | 'invalid_arg'
 /** The target is already open in a role this call cannot change. */
  | 'already_open_other_role'
+/** The role forbids this: a main cannot be hidden, and the stable
+ * root main cannot be closed or leave `main`. */
+ | 'role_locked'
 /** The surface has been closed; the handle is detached. */
  | 'closed'
 /** The host lacks a capability the request needs, such as an instantiable
@@ -1614,10 +1616,12 @@ true
 /** The operation reached the host and failed there. */
  | 'failed'"###;
 
-        /// A surface rejection. The runtime carries the surface code on
-        /// `data.code` — `code` itself is the transport-level host code, shared
-        /// with every other `lx` rejection — so read it with
-        /// `surfaceErrorCode(error)` and never parse the message.
+        /// A surface rejection. `code` is the host code: `E_SURFACE_CONFLICT`,
+        /// `E_SURFACE_ROLE_LOCKED`, `E_SURFACE_CLOSED`, `E_CAPABILITY_MISSING`,
+        /// `E_NOT_SUPPORTED`, `E_NOT_FOUND`, `E_INVALID_ARG`,
+        /// `E_PERMISSION_DENIED`, or `E_INTERNAL`. `data.code` carries the finer
+        /// `SurfaceErrorCode`; read it with `surfaceErrorCode(error)` and never
+        /// parse the message.
         ///
         /// ```ts
         /// import { surfaceErrorCode } from 'lingxia-types/error';
@@ -1635,13 +1639,12 @@ true
         ///
         type SurfaceBase = r###"{
     readonly kind: SurfaceKind;
-    readonly id: string;
     /** The caller-supplied identity, when this surface was opened with one. */
     readonly key?: string;
     /**
      * The placement the host produced, which an ordered preference may narrow.
-     * Live rather than a snapshot: `lx.shell.reconfigure` updates it on the
-     * handle you already hold.
+     * Live rather than a snapshot: a later open that moves the surface, or the
+     * user dragging it, updates the handle you already hold.
      */
     readonly realized: SurfacePlacement;
     /** True until `close()` fires; afterwards the page instance is torn down. */
@@ -1696,7 +1699,8 @@ true
     readonly realized: 'float' | 'window';
 }"###;
 
-        /// A surface declared by the host in `lingxia.yaml`.
+        /// A surface declared by the host in `lingxia.yaml`. A declaration that
+        /// shows an lxapp is that app's `AppSurface` instead.
         ///
         type DeclaredSurface = r###"SurfaceBase & SurfaceShowable & {
     readonly kind: 'declared';
@@ -1796,27 +1800,43 @@ true
         ///
         type ShellOpenDeclaredOptions = r###"{
     /**
-     * Caller-owned identity, for `lx.surface.getByKey(key)` later — the same key
-     * every opener takes. It carries one extra power here: a declaration can
-     * be opened more than once, and the key is which instance you mean, so a
-     * new key creates one. 1 to 128 UTF-8 bytes. Declarations without
-     * instantiable native providers reject it with `capability_missing`.
+     * Which instance of the declaration: a declaration can be opened more than
+     * once, and a new key creates one. Find it again with
+     * `lx.shell.getDeclared(id, key)`. 1 to 128 UTF-8 bytes. Declarations
+     * without instantiable native providers reject it with `capability_missing`.
      */
     key?: string;
     /**
-     * Open with a role other than the declaration's. Must be realizable by the
-     * declared provider; a stable root rejects anything but `main`. Prefer this
-     * over opening and then calling `reconfigure`, which would present the
-     * wrong role first.
+     * Open with a role other than the declaration's, or move the live instance
+     * to it. Must be realizable by the declared provider; a stable root rejects
+     * anything but `main`.
      */
     as?: 'main' | 'aside' | 'float';
     /** Preferred docking side when the effective role is `aside`. */
     edge?: SurfaceEdge;
 }"###;
 
+        /// What `lx.shell.setAppDisplay` changes. Each key it carries is set;
+        /// `undefined`, `null` or `''` restores the default, and a key left out
+        /// keeps its value.
+        type AppDisplayPatch = r###"{
+    /** One line, 1 to 64 characters after trimming; blank restores the default. */
+    name?: string | null;
+    /**
+     * A bundled path or `lx://` file: PNG, JPEG, WebP or SVG of at most 1 MiB,
+     * raster images at most 4096 px on a side; SVG content is not validated.
+     * Copied, so the source may go.
+     */
+    icon?: string | null;
+}"###;
+
         type ShellOpenAppOptions = r###"{
-    /** `main` occupies the primary content area; `aside` a companion region. */
-    as: 'main' | 'aside';
+    /**
+     * `main` occupies the primary content area; `aside` a companion region.
+     * Omitted, a live app keeps its role and a closed one opens in main. A live
+     * app asked for the other role moves there without restarting.
+     */
+    as?: 'main' | 'aside';
     /** Preferred docking side. Only meaningful with `as: 'aside'`. */
     edge?: SurfaceEdge;
     /**
@@ -1825,10 +1845,10 @@ true
      */
     page?: ExternalPageName;
     /**
-     * Startup query. When the lxapp is already open in this role, the surface
-     * is focused, not reopened: `page` and `query` reach its Logic as App
-     * `onShow` with `reason: 'switch_back'`, `path` and `query`, and its page
-     * stack is kept.
+     * Startup query. When the lxapp is already open, the surface is focused
+     * (and moved, if `as` names the other role), not reopened: `page` and
+     * `query` reach its Logic as App `onShow` with `reason: 'switch_back'`,
+     * `path` and `query`, and its page stack is kept.
      */
     query?: PageQuery;
     /**
@@ -1836,16 +1856,6 @@ true
      */
     channel?: LxAppEnvVersion;
     targetVersion?: string;
-    /** Stable identity for `lx.surface.getByKey(key)`. */
-    key?: string;
-}"###;
-
-        /// Role and edge overrides the native-assigned Control app may apply to a live declared
-        /// surface. A stable root rejects non-main roles.
-        ///
-        type ShellSurfacePatch = r###"{
-    as?: 'main' | 'aside' | 'float';
-    edge?: SurfaceEdge;
 }"###;
 
         /// Content-keyed surface composition, callable by any lxapp. Privileged
@@ -1859,14 +1869,16 @@ true
     /**
      * Open a surface the host declared in `lingxia.yaml`, with the placement
      * the declaration chose. Instance keys and placement overrides are shell
-     * composition; they live on `lx.shell.openDeclared`.
+     * composition; they live on `lx.shell.openDeclared`. A declaration that
+     * shows an lxapp resolves to that app's `AppSurface`.
      */
-    openDeclared(id: string): Promise<DeclaredSurface>;
+    openDeclared(id: string): Promise<DeclaredSurface | AppSurface>;
     /**
-     * Find a live surface by the explicit key passed when opening it.
-     * Runtime-assigned ids are not lookup keys.
+     * Find one of this lxapp's own live pages or browser tabs by the key passed
+     * to `openPage` / `openUrl`. Declared surfaces and other lxapps are found
+     * with `lx.shell.getDeclared` and `lx.shell.getApp`.
      */
-    getByKey(key: string): AnySurface | undefined;
+    getByKey(key: string): PageSurface | TabSurface | undefined;
     /**
      * Observe this presentation's viewport. Invoked immediately with the
      * current context, then again whenever it changes. Returns an unsubscribe
@@ -1943,7 +1955,6 @@ true
         /// toggled visibility). `shell` identifies a host-driven main switch.
         ///
         type SurfaceVisibilityEvent = r###"{
-    id: string;
     source: 'opener' | 'page' | 'shell';
 }"###;
 
@@ -2272,18 +2283,40 @@ true
      * navigation and all other behavior.
      */
     sidebarActions: ShellSidebarActionsApi;
-    /** Compose another lxapp into a shell slot. */
-    openApp(appId: string, options: ShellOpenAppOptions): Promise<AppSurface>;
+    /**
+     * Open another lxapp in main or a companion slot, focus it if it is open,
+     * or move it to the role `as` names.
+     */
+    openApp(appId: string, options?: ShellOpenAppOptions): Promise<AppSurface>;
+    /**
+     * The handle of an lxapp live as a surface of its own, declared or not;
+     * `undefined` when it is not. A live lxapp has one handle: `openApp`,
+     * `getApp`, and `openDeclared` / `getDeclared` of the declaration that
+     * shows it all return the same `AppSurface`.
+     */
+    getApp(appId: string): AppSurface | undefined;
+    /**
+     * The handle of a live declared surface, or of its keyed instance, the
+     * same object on every call; `undefined` when it is not live. A
+     * declaration that shows an lxapp answers with that app's `AppSurface`.
+     */
+    getDeclared(id: string, key?: string): DeclaredSurface | AppSurface | undefined;
     /** Open a host builtin page such as downloads. */
     openBuiltin(page: BuiltinShellPage): Promise<BuiltinSurface>;
     /**
+     * Change the name and icon the host shows for this app, above the
+     * registry's and `lxapp.json`'s. Kept per service env and dropped on
+     * uninstall; identical values are a no-op, so calling it on every launch
+     * is cheap. `lx.getAppInfo().name` keeps the `lxapp.json` name.
+     */
+    setAppDisplay(patch: AppDisplayPatch): Promise<void>;
+    /**
      * Open a declared surface with shell privileges — the same declaration
      * `lx.surface.openDeclared` opens, plus the keyed multi-instance form and
-     * placement overrides.
+     * placement overrides; `as` and `edge` also move a live instance. A
+     * declaration that shows an lxapp resolves to that app's `AppSurface`.
      */
-    openDeclared(id: string, options?: ShellOpenDeclaredOptions): Promise<DeclaredSurface>;
-    /** Re-place a live declared surface: change its role or its edge. */
-    reconfigure(id: string, patch: ShellSurfacePatch): Promise<void>;
+    openDeclared(id: string, options?: ShellOpenDeclaredOptions): Promise<DeclaredSurface | AppSurface>;
 }"###;
 
         /// Where an action lives in the desktop sidebar.

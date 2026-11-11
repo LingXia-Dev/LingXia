@@ -162,7 +162,7 @@ fn map_lxapp_error_to_downloads(err: LxAppError) -> transfer::DownloadsError {
         LxAppError::ResourceNotFound(message) => {
             transfer::DownloadsError::ResourceNotFound(message)
         }
-        LxAppError::UnsupportedOperation(message) => {
+        LxAppError::UnsupportedOperation(message) | LxAppError::SurfaceRoleLocked(message) => {
             transfer::DownloadsError::UnsupportedOperation(message)
         }
         LxAppError::IoError(message)

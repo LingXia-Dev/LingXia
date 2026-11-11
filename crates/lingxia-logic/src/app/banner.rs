@@ -59,7 +59,7 @@ async fn show(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         name: Some(app.listing_name())
             .filter(|name| !name.trim().is_empty())
             .unwrap_or_else(|| app_id.to_string()),
-        icon_path: lxapp::lxapp_display_icon_path(app_id),
+        icon_path: lxapp::lxapp_display_icon(app_id).file().map(str::to_string),
     });
     let turn = call_order::take();
     let outcome = spawn_blocking(move || {

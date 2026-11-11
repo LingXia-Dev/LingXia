@@ -459,7 +459,7 @@ enum LxAppLayoutReconciler {
                 // human-facing app name + icon; fall back to the raw id.
                 let info = getLxAppInfo(child)
                 let name = info.app_name.toString()
-                let icon = getLxAppDisplayIconPath(child).toString()
+                let icon = getLxAppDisplayIcon(child).path.toString()
                 return AsideSlotTab(
                     id: child,
                     title: name.isEmpty ? child : name,

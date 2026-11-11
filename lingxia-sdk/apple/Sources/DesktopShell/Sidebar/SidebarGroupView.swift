@@ -536,11 +536,10 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         applyColors()
     }
 
-    /// Show the lxapp's icon (`path` is an absolute file path from the
-    /// registry cache). Home uses the host product icon; other apps fall
-    /// back to the bundled default mark. The shell clips the square tile.
-    private func loadAppIcon(path: String) {
-        let source = LxIcon.lxappImage(appId: providerAppId, path: path)
+    /// Show the lxapp's icon as `LxIcon.lxappImage` ranks it. The shell clips
+    /// the square tile.
+    private func loadAppIcon() {
+        let source = LxIcon.lxappImage(appId: providerAppId)
         appIconView.image = source.map { TabBarHelper.appTileIcon($0, size: Layout.appIconSize) }
     }
 
@@ -552,7 +551,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         }
         let info = getLxAppInfo(providerAppId)
         appNameLabel.stringValue = info.app_name.toString().uppercased()
-        loadAppIcon(path: getLxAppDisplayIconPath(providerAppId).toString())
+        loadAppIcon()
 
         // Hide close button for home lxapp
         let isHome = LxAppCore.isHomeLxApp(providerAppId)
@@ -613,7 +612,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         if !isRenaming {
             appNameLabel.stringValue = (managedLabel ?? appId).uppercased()
         }
-        appIconView.image = (managedIcon ?? LxIcon.lxappImage(appId: providerAppId, path: "")).map {
+        appIconView.image = (managedIcon ?? LxIcon.lxappImage(appId: providerAppId)).map {
             TabBarHelper.appTileIcon($0, size: Layout.appIconSize)
         }
         closeButton.isHidden = true

@@ -5,8 +5,8 @@ import AppKit
 struct AsideSlotTab: Equatable {
     let id: String
     let title: String
-    /// The lxapp's registry icon file; nil falls back like every other lxapp
-    /// row (`LxIcon.lxappImage`): the host icon, then the SDK mark.
+    /// The lxapp's icon file, kept so a changed icon redraws the tab; the
+    /// strip draws it through `LxIcon.lxappImage` like every lxapp row.
     var iconPath: String? = nil
     /// A browser tab of the side panel: its favicon is `image`, and dragging
     /// it onto the sidebar moves the page into the main browser.
@@ -233,7 +233,7 @@ final class AsideSlotTabStripView: NSView {
         if tab.isBrowser {
             return LxIcon.image(named: "icon_globe", size: size)
         }
-        return LxIcon.lxappImage(appId: tab.id, path: tab.iconPath ?? "")
+        return LxIcon.lxappImage(appId: tab.id)
             .map { TabBarHelper.appTileIcon($0, size: ChromeTabMetrics.iconSize) }
     }
 

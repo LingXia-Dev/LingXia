@@ -1,12 +1,14 @@
 //! `lx.shell.sidebarActions` — app-declared host-shell entries (Control app only).
 
 use crate::authorization::{self, LogicRoute};
+use crate::i18n::{js_error_from_lxapp_error, js_internal_error, js_invalid_parameter_error};
 use lingxia_shell::{
     ShellError, ShellSidebarAction, ShellSidebarActionUpdate, SidebarActionCollection,
     SidebarActionPlacement,
 };
+use lxapp::app_display::{self, AppDisplayPatch, FieldPatch};
 use lxapp::{register_app_handler, unregister_app_handler};
-use rong::{JSContext, JSContextService, JSFunc, JSObject, JSResult, JSValue};
+use rong::{JSContext, JSContextService, JSFunc, JSObject, JSResult, JSValue, Promise};
 use std::cell::RefCell;
 use std::collections::HashMap;
 
@@ -230,9 +232,14 @@ fn parse_sidebar_action(item: &JSObject) -> JSResult<ParsedSidebarAction> {
 /// projection failure leaves the previous generation active. `replace([])` clears
 /// the chrome explicitly. Declarations are process-local, so call `replace` again
 /// on every Logic launch.
-fn sidebar_actions_replace(ctx: JSContext, items: JSValue) -> JSResult<()> {
+fn sidebar_actions_replace(ctx: JSContext, items: JSValue) -> JSResult<Promise> {
+    let result = replace_now(&ctx, items);
+    settled(&ctx, result)
+}
+
+fn replace_now(ctx: &JSContext, items: JSValue) -> JSResult<()> {
     let (_, items) =
-        authorization::require_before_decode(&ctx, LogicRoute::ShellSidebarReplace, || {
+        authorization::require_before_decode(ctx, LogicRoute::ShellSidebarReplace, || {
             items.to_rust::<Vec<JSObject>>()
         })?;
     let parsed = items
@@ -244,17 +251,22 @@ fn sidebar_actions_replace(ctx: JSContext, items: JSValue) -> JSResult<()> {
         .into_iter()
         .map(|item| (item.item.id, item.handler))
         .collect();
-    commit_generation(&ctx, |next| next.replace(next_items), next_handlers)
+    commit_generation(ctx, |next| next.replace(next_items), next_handlers)
 }
 
 /// Atomically updates the icon, label, value, and/or disabled state of one stable
 /// id. Only the Control app may call this API. The patch must be non-empty;
 /// unknown fields are rejected. A `value` key that is present sets the value, and
-/// `undefined`, `null`, or `''` clears it. The callback and placement stay unchanged. Throws
-/// `E_NOT_FOUND` when `id` is not in the current declaration.
-fn sidebar_actions_update(ctx: JSContext, id: JSValue, patch: JSValue) -> JSResult<()> {
+/// `undefined`, `null`, or `''` clears it. The callback and placement stay unchanged. Rejects
+/// with `E_NOT_FOUND` when `id` is not in the current declaration.
+fn sidebar_actions_update(ctx: JSContext, id: JSValue, patch: JSValue) -> JSResult<Promise> {
+    let result = update_now(&ctx, id, patch);
+    settled(&ctx, result)
+}
+
+fn update_now(ctx: &JSContext, id: JSValue, patch: JSValue) -> JSResult<()> {
     let (_, (id, patch)) =
-        authorization::require_before_decode(&ctx, LogicRoute::ShellSidebarUpdate, || {
+        authorization::require_before_decode(ctx, LogicRoute::ShellSidebarUpdate, || {
             let id = id.to_rust::<String>()?;
             let patch = patch.into_object().ok_or_else(|| {
                 rong::HostError::new(
@@ -271,36 +283,118 @@ fn sidebar_actions_update(ctx: JSContext, id: JSValue, patch: JSValue) -> JSResu
         value: value_patch(&patch)?,
         disabled: optional_bool(&patch, "disabled")?,
     };
-    let handlers = retained_handlers(&ctx);
-    commit_generation(&ctx, |next| next.update(&id, patch), handlers)
+    let handlers = retained_handlers(ctx);
+    commit_generation(ctx, |next| next.update(&id, patch), handlers)
 }
 
 /// Atomically removes one stable id and its generation-scoped callback. Only the
-/// Control app may call this API. Throws `E_NOT_FOUND` when `id` is not in the
-/// current declaration.
-fn sidebar_actions_remove(ctx: JSContext, id: JSValue) -> JSResult<()> {
-    let (_, id) =
-        authorization::require_before_decode(&ctx, LogicRoute::ShellSidebarRemove, || {
-            id.to_rust::<String>()
-        })?;
-    let mut handlers = retained_handlers(&ctx);
-    handlers.remove(id.trim());
-    commit_generation(&ctx, |next| next.remove(&id), handlers)
+/// Control app may call this API. Rejects with `E_NOT_FOUND` when `id` is not in
+/// the current declaration.
+fn sidebar_actions_remove(ctx: JSContext, id: JSValue) -> JSResult<Promise> {
+    let result = remove_now(&ctx, id);
+    settled(&ctx, result)
 }
 
-/// Atomically clears every runtime sidebar action and callback. Only the
-/// Control app may call this API. Equivalent to `replace([])` and safe when already
-/// empty; the Control app must still redeclare actions after the next Logic launch.
-fn sidebar_actions_clear(ctx: JSContext) -> JSResult<()> {
-    authorization::require(&ctx, LogicRoute::ShellSidebarClear)?;
-    commit_generation(
-        &ctx,
-        |next| {
-            next.clear();
-            Ok(())
-        },
-        HashMap::new(),
-    )
+fn remove_now(ctx: &JSContext, id: JSValue) -> JSResult<()> {
+    let (_, id) =
+        authorization::require_before_decode(ctx, LogicRoute::ShellSidebarRemove, || {
+            id.to_rust::<String>()
+        })?;
+    let mut handlers = retained_handlers(ctx);
+    handlers.remove(id.trim());
+    commit_generation(ctx, |next| next.remove(&id), handlers)
+}
+
+/// The mutation commits at call time, so calls apply in order; the promise
+/// carries its outcome, and a refusal rejects instead of throwing.
+fn settled(ctx: &JSContext, result: JSResult<()>) -> JSResult<Promise> {
+    Promise::from_future(ctx, None, async move { result })
+}
+
+const SET_APP_DISPLAY: &str = "lx.shell.setAppDisplay";
+
+/// Change the name and icon the host shows for the calling app. Only the
+/// Control app may call this API. Resolves once stored; the host repaints only
+/// when a value changed, so calling it on every launch is cheap.
+async fn set_app_display(ctx: JSContext, patch: JSValue) -> JSResult<()> {
+    let (invocation, patch) =
+        authorization::require_before_decode(&ctx, LogicRoute::ShellSetAppDisplay, || {
+            patch.into_object().ok_or_else(|| {
+                js_invalid_parameter_error(format!("{SET_APP_DISPLAY} patch must be an object"))
+            })
+        })?;
+    let app = invocation.lxapp();
+    let request = decode_app_display(&patch, &app)?;
+    drop(patch);
+    let appid = app.appid.clone();
+    tokio::task::spawn_blocking(move || app_display::set(&appid, request))
+        .await
+        .map_err(|err| js_internal_error(format!("{SET_APP_DISPLAY} failed: {err}")))?
+        .map_err(|err| js_error_from_lxapp_error(&err))?;
+    Ok(())
+}
+
+fn decode_app_display(patch: &JSObject, app: &lxapp::LxApp) -> JSResult<AppDisplayPatch> {
+    let keys = patch.keys_as::<String>()?;
+    if keys.is_empty() {
+        return Err(js_invalid_parameter_error(format!(
+            "{SET_APP_DISPLAY} patch must not be empty"
+        )));
+    }
+    if let Some(key) = keys
+        .iter()
+        .find(|key| !matches!(key.as_str(), "name" | "icon"))
+    {
+        return Err(js_invalid_parameter_error(format!(
+            "unknown {SET_APP_DISPLAY} field '{key}'"
+        )));
+    }
+    let has = |field: &str| keys.iter().any(|key| key == field);
+    let name = if has("name") {
+        match display_field(patch, "name")? {
+            None => FieldPatch::Clear,
+            Some(name) => match app_display::normalize_name(&name)
+                .map_err(|err| js_error_from_lxapp_error(&err))?
+            {
+                Some(name) => FieldPatch::Set(name),
+                None => FieldPatch::Clear,
+            },
+        }
+    } else {
+        FieldPatch::Keep
+    };
+    let icon = if has("icon") {
+        match display_field(patch, "icon")? {
+            None => FieldPatch::Clear,
+            Some(icon) => {
+                let invalid = || {
+                    js_invalid_parameter_error(format!(
+                        "{SET_APP_DISPLAY} icon '{icon}' is not an accessible local file"
+                    ))
+                };
+                if !lxapp::is_declared_icon_reference(&icon) {
+                    return Err(invalid());
+                }
+                FieldPatch::Set(app.resolve_accessible_path(&icon).map_err(|_| invalid())?)
+            }
+        }
+    } else {
+        FieldPatch::Keep
+    };
+    Ok(AppDisplayPatch { name, icon })
+}
+
+/// A present key set to `undefined`, `null` or `''` clears; `{ name: brand?.name }`
+/// must restore the default when `brand` is missing.
+fn display_field(patch: &JSObject, field: &str) -> JSResult<Option<String>> {
+    let value = patch.get::<_, JSValue>(field)?;
+    if value.is_undefined() || value.is_null() {
+        return Ok(None);
+    }
+    let value = value.to_rust::<String>().map_err(|_| {
+        js_invalid_parameter_error(format!("{SET_APP_DISPLAY} {field} must be a string"))
+    })?;
+    Ok(Some(value).filter(|value| !value.is_empty()))
 }
 
 fn retained_handlers(ctx: &JSContext) -> HashMap<String, JSFunc> {
@@ -372,6 +466,7 @@ fn js_error(error: ShellError) -> rong::HostError {
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let _ = handler_registry(ctx);
     register_shell_property(ctx)?;
+    register_shell_api(ctx)?;
     register_sidebar_actions_property(ctx)?;
     register_sidebar_actions_api(ctx)
 }
@@ -380,6 +475,16 @@ rong::js_api! {
     fn register_shell_property(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
         const shell: "ShellApi" = shell_namespace(ctx)?;
+    }
+}
+
+rong::js_api! {
+    fn register_shell_api(ctx) {
+        namespace ShellApi = shell_namespace(ctx)?;
+        fn setAppDisplay(
+            ts_params = "patch: AppDisplayPatch",
+            ts_return = "Promise<void>"
+        ) = set_app_display;
     }
 }
 
@@ -393,9 +498,14 @@ rong::js_api! {
 rong::js_api! {
     fn register_sidebar_actions_api(ctx) {
         namespace ShellSidebarActionsApi = sidebar_actions_namespace(ctx)?;
-        fn replace(ts_params = "items: ShellSidebarAction[]") = sidebar_actions_replace;
-        fn update(ts_params = "id: string, patch: ShellSidebarActionUpdate") = sidebar_actions_update;
-        fn remove(ts_params = "id: string") = sidebar_actions_remove;
-        fn clear() = sidebar_actions_clear;
+        fn replace(
+            ts_params = "items: ShellSidebarAction[]",
+            ts_return = "Promise<void>"
+        ) = sidebar_actions_replace;
+        fn update(
+            ts_params = "id: string, patch: ShellSidebarActionUpdate",
+            ts_return = "Promise<void>"
+        ) = sidebar_actions_update;
+        fn remove(ts_params = "id: string", ts_return = "Promise<void>") = sidebar_actions_remove;
     }
 }

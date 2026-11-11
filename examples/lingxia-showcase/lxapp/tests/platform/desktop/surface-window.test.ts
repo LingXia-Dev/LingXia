@@ -13,7 +13,6 @@ const selectedGate = testArgs.gate?.toLocaleLowerCase();
 const FULL_DRAG_STRIP_HEIGHT = 28;
 
 interface OpenedWindow {
-  id: string;
   key: string | null;
   kind: string;
   realized: string;
@@ -24,19 +23,18 @@ interface OpenedWindow {
 
 /** The members of a page surface handle these probes use. */
 interface SurfaceHandle {
-  readonly id: string;
   readonly alive: boolean;
   readonly visible: boolean;
   close(): Promise<void>;
   postMessage(message: unknown): void;
-  onClose(handler: (event: { id?: string }) => void): () => void;
+  onClose(handler: (event: { reason?: string }) => void): () => void;
   onMessage(handler: (message: { message?: string; timestamp?: number }) => void): () => void;
 }
 
 /** What a spec keeps on Logic's `globalThis` between evals. */
 interface HeldSurface {
   handle?: SurfaceHandle | null;
-  closed?: number | Array<{ id?: string }>;
+  closed?: number | Array<{ reason?: string }>;
   messages?: Array<{ message?: string; timestamp?: number }>;
   off?: (() => void) | null;
 }
@@ -82,7 +80,6 @@ async function openWindow(
       query: { fixture: key, chrome },
     });
     return {
-      id: handle.id,
       key: handle.key ?? null,
       kind: handle.kind,
       realized: handle.realized,
@@ -203,7 +200,6 @@ test('open a page window with system chrome and with full chrome', {
     'lx.supports',
     'PageSurface.kind',
     'PageSurface.realized',
-    'PageSurface.id',
     'PageSurface.key',
     'PageSurface.alive',
     'PageSurface.visible',
@@ -561,7 +557,7 @@ test('push a message from the opener into its page window', {
   // close lands — after close() itself resolves, so observe rather than read.
   await app.logic.eval({ timeout: 15_000 }, async ({ lx }, key, stateKey) => {
     const handle = lx.surface.getByKey(key) as unknown as SurfaceHandle;
-    const closed: Array<{ id?: string }> = [];
+    const closed: Array<{ reason?: string }> = [];
     handle.onClose((event) => closed.push(event));
     (globalThis as unknown as Record<string, HeldSurface | undefined>)[stateKey] = { handle, closed };
     await handle.close();
@@ -576,12 +572,12 @@ test('push a message from the opener into its page window', {
       return {
         alive: state.handle!.alive,
         visible: state.handle!.visible,
-        closed: (state.closed as Array<{ id?: string }>).map((event) => ({ id: event.id ?? null })),
+        closed: (state.closed as Array<{ reason?: string }>).map((event) => ({ reason: event.reason ?? null })),
       };
     }, stateKey),
     (state) => !state.alive && !state.visible && state.closed.length >= 1,
     { describe: 'closed surface handle to report alive=false, visible=false, and fire onClose', timeoutMs: 10_000 },
   );
   expect(closed.closed.length).toBe(1);
-  expect(closed.closed[0]?.id).toBe(opened.id);
+  expect(closed.closed[0]?.reason).toBe('programmatic');
 });

@@ -227,6 +227,11 @@ impl AppRuntime for Platform {
         ffi::request_lxapp_main_activation(appid);
     }
 
+    #[cfg(target_os = "macos")]
+    fn lxapp_region_moves(&self) -> crate::traits::app_runtime::LxAppRegionMoves {
+        crate::traits::app_runtime::LxAppRegionMoves::FromPlan
+    }
+
     fn set_shell_pins(&self, items: &[lingxia_shell::ShellPin]) -> Result<(), PlatformError> {
         let json = serde_json::to_string(items)
             .map_err(|error| PlatformError::Platform(error.to_string()))?;
