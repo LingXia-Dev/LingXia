@@ -970,16 +970,18 @@ class LxAppActivity : AppCompatActivity() {
             // Runtime chrome events precede navigation. Cover the old geometry
             // before changing it; navigation will own the cover if it follows.
             prepareGpuTransition(version, Runnable {
+                // A navigation in the same batch replaced the page and owns the cover and its slide.
+                val owned = { version == gpuTransitionVersion && currentWebView === page }
                 page.afterNextPresentation { success ->
-                    if (version == gpuTransitionVersion) {
+                    if (owned()) {
                         if (!success) clearGpuTransitionCover()
                         else page.capturePreview { frame ->
-                            if (version != gpuTransitionVersion || isFinishing || isDestroyed) frame?.recycle()
+                            if (!owned() || isFinishing || isDestroyed) frame?.recycle()
                             else if (frame == null) clearGpuTransitionCover()
                             else {
                                 showGpuTransitionFrame(frame, page)
                                 val committed = Runnable { rootContainer.postOnAnimation {
-                                    if (version == gpuTransitionVersion) clearGpuTransitionCover()
+                                    if (owned()) clearGpuTransitionCover()
                                 } }
                                 if (Build.VERSION.SDK_INT >= 29 && rootContainer.isHardwareAccelerated) {
                                     rootContainer.viewTreeObserver.registerFrameCommitCallback(committed)
