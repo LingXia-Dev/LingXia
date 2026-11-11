@@ -125,21 +125,10 @@ spec('a finger on any group tab opens its group, wrapped line included', { start
 spec('kit video controls show the player full screen and Escape brings it back', { start: { page: 'view-lab' } }, async (t) => {
   const view = t.app.view;
   await view.testId('lab-tab-media').click();
-  const wide = async () => { const area = await view.viewport(); return area.width > area.height; };
-  // Just after launch a window the sensor turned can still report its old shape: read it settled.
-  let before = await wide();
-  for (let i = 0; i < 6; i++) {
-    await new Promise<void>(resolve => setTimeout(resolve, 500));
-    const now = await wide();
-    if (now === before) break;
-    before = now;
-  }
   await view.testId('lab-video-controls-play').click();
   await view.testId('lab-video-controls-fullscreen').click();
   const layer = view.getByRole('dialog', { name: 'Full screen video' });
   await expect(layer).toBeVisible();
-  // A landscape picture turns the window to it.
-  await expect.poll(wide, { timeout: 5_000 }).toBe(true);
   // The same player, so the full screen bar reads its time as it plays on.
   const time = view.testId('lx-fullscreen-controls-time');
   const seconds = async () => Number(/^\d+:(\d+)/.exec(await time.textContent())?.[1] ?? NaN);
@@ -155,6 +144,27 @@ spec('kit video controls show the player full screen and Escape brings it back',
   await expect(layer).toBeVisible();
   await view.testId('lx-fullscreen-controls-fullscreen').click();
   await expect(layer).not.toBeAttached();
-  // Leaving gives the window back to the page's own orientation.
+});
+
+// A desktop window keeps the shape its user gave it; a phone turns to the picture.
+spec('a landscape full-screen video turns the window and leaving gives it back', { start: { page: 'view-lab' }, requires: { input: ['touch'] } }, async (t) => {
+  const view = t.app.view;
+  await view.testId('lab-tab-media').click();
+  const wide = async () => { const area = await view.viewport(); return area.width > area.height; };
+  // Just after launch a window the sensor turned can still report its old shape: read it settled.
+  let before = await wide();
+  for (let i = 0; i < 6; i++) {
+    await new Promise<void>(resolve => setTimeout(resolve, 500));
+    const now = await wide();
+    if (now === before) break;
+    before = now;
+  }
+  await view.testId('lab-video-controls-play').click();
+  await view.testId('lab-video-controls-fullscreen').click();
+  const layer = view.getByRole('dialog', { name: 'Full screen video' });
+  await expect(layer).toBeVisible();
+  await expect.poll(wide, { timeout: 5_000 }).toBe(true);
+  await view.testId('lx-fullscreen-controls-fullscreen').click();
+  await expect(layer).not.toBeAttached();
   await expect.poll(wide, { timeout: 5_000 }).toBe(before);
 });
