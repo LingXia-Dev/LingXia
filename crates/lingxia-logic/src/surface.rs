@@ -520,7 +520,7 @@ async fn open_page(
 
     let key = read_surface_key(&options)?;
     let handle = open_page_spec(ctx.clone(), &spec).await?;
-    finish_handle(&ctx, &handle, "page", &realized, key, None)
+    finish_handle(&ctx, &handle, "page", Some(&realized), key, None)
 }
 
 /// `lx.surface.openUrl(url, options?)` — external content in the in-app
@@ -573,7 +573,7 @@ async fn open_declared(
     spec.set("surface", id)?;
     let handle = open_declared_surface_spec(&ctx, &spec, None).await?;
     let realized = handle_realized_placement(&handle);
-    finish_handle(&ctx, &handle, "declared", &realized, None, None)
+    finish_handle(&ctx, &handle, "declared", Some(&realized), None, None)
 }
 
 /// Find a live surface by its explicit caller-owned key. Runtime ids are not keys.
@@ -628,8 +628,8 @@ async fn shell_open_app(ctx: JSContext, app_id: JSValue, options: JSValue) -> JS
     )?;
     let key = read_surface_key(&options)?;
     let handle = open_app_spec(ctx.clone(), &spec, &invocation).await?;
-    let realized = handle_realized_placement(&handle);
-    finish_handle(&ctx, &handle, "app", &realized, key, None)
+    // An app handle reads `realized` live, so it is not stamped here.
+    finish_handle(&ctx, &handle, "app", None, key, None)
 }
 
 /// `lx.shell.openBuiltin(page)` — a host builtin page. Control-app only.
@@ -683,7 +683,7 @@ async fn shell_open_declared(
     copy_options(&options, &spec, &["as", "edge"])?;
     let handle = open_declared_surface_spec(&ctx, &spec, Some(&invocation)).await?;
     let realized = handle_realized_placement(&handle);
-    finish_handle(&ctx, &handle, "declared", &realized, key, None)
+    finish_handle(&ctx, &handle, "declared", Some(&realized), key, None)
 }
 
 /// `lx.shell.reconfigure(id, patch)` — re-place a live declared surface.
@@ -858,12 +858,14 @@ fn finish_handle(
     ctx: &JSContext,
     handle: &JSObject,
     kind: &str,
-    realized: &str,
+    realized: Option<&str>,
     key: Option<String>,
     scope: Option<&str>,
 ) -> JSResult<JSObject> {
     handle.set("kind", kind)?;
-    handle.set("realized", realized)?;
+    if let Some(realized) = realized {
+        handle.set("realized", realized)?;
+    }
     if let Some(scope) = scope {
         handle.set("scope", scope)?;
     }
@@ -877,7 +879,9 @@ fn finish_handle(
         .and_then(|inner| inner.peer.borrow().clone());
     if let Some(peer) = peer {
         peer.set("kind", kind)?;
-        peer.set("realized", realized)?;
+        if let Some(realized) = realized {
+            peer.set("realized", realized)?;
+        }
         if let Some(key) = key.as_deref() {
             peer.set("key", key)?;
         }
@@ -927,7 +931,7 @@ fn browser_tab_handle(
                 })
             })?,
         )?;
-        return finish_handle(ctx, &handle, "tab", realized, key, Some("tab"));
+        return finish_handle(ctx, &handle, "tab", Some(realized), key, Some("tab"));
     }
 
     // The browser owns the tab strip here, so the handle addresses the group.
@@ -936,7 +940,7 @@ fn browser_tab_handle(
     handle.set("id", format!("browser-group:{}", lxapp.appid))?;
     handle.set("alive", true)?;
     handle.set("visible", true)?;
-    finish_handle(ctx, &handle, "tab", realized, key, Some("group"))
+    finish_handle(ctx, &handle, "tab", Some(realized), key, Some("group"))
 }
 
 /// A `TabSurface` that owns exactly the tab `open_url` named.
@@ -1088,7 +1092,7 @@ fn owned_browser_tab_handle(
     })?;
     let token = register_app_handler(ctx, BROWSER_TAB_CLOSED_EVENT, native_handler)?;
     *native_unsub.borrow_mut() = Some(app_handler_unsub(ctx, BROWSER_TAB_CLOSED_EVENT, token));
-    finish_handle(ctx, &handle, "tab", realized, key, Some("tab"))
+    finish_handle(ctx, &handle, "tab", Some(realized), key, Some("tab"))
 }
 
 /// A `BuiltinSurface` for a host product page. The shell owns its lifetime,
@@ -1098,7 +1102,7 @@ fn builtin_surface_handle(ctx: &JSContext, page: &str) -> JSResult<JSObject> {
     handle.set("id", format!("builtin:{page}"))?;
     handle.set("alive", true)?;
     handle.set("visible", true)?;
-    finish_handle(ctx, &handle, "builtin", "main", None, None)
+    finish_handle(ctx, &handle, "builtin", Some("main"), None, None)
 }
 
 /// Reads back the placement the host actually produced for a managed handle.
@@ -1201,7 +1205,7 @@ async fn open_app_spec(
                 .await
                 .map_err(lxapp_open_error)?;
             deliver_to_reused_app(&app_id, &target)?;
-            return lxapp_surface_handle(&ctx, lxapp, app_id.clone(), app_id, current_region);
+            return lxapp_surface_handle(&ctx, lxapp, app_id.clone(), app_id);
         }
     }
     let (startup_options, release_type) =
@@ -1215,9 +1219,8 @@ async fn open_app_spec(
         startup_options,
     )
     .map_err(lxapp_open_error)?;
-    let (region, shell_surface_id) = (requested_region, app_id.clone());
     lxapp::schedule_lxapp_update_check(&app_id, release_type);
-    lxapp_surface_handle(&ctx, lxapp, app_id, shell_surface_id, region)
+    lxapp_surface_handle(&ctx, lxapp, app_id.clone(), app_id)
 }
 
 /// A reused surface still gets what this open asked for: the named page and
@@ -1609,15 +1612,14 @@ fn open_external(ctx: JSContext, url: String) -> JSResult<()> {
     Ok(())
 }
 
-/// Handle for a live lxapp presentation. Hide preserves the claimed region;
-/// close tears the runtime down and releases it so a later open may choose a
-/// different role.
+/// Handle for a live lxapp presentation. It names the app's session, not a
+/// region: the user may move the app between main and aside, and the handle
+/// follows it until that session closes.
 fn lxapp_surface_handle(
     ctx: &JSContext,
     shell: Arc<LxApp>,
     app_id: String,
     shell_surface_id: String,
-    region: lxapp::LxAppOpenRegion,
 ) -> JSResult<JSObject> {
     let session_id = lxapp::try_get(&app_id)
         .map(|app| app.session_id())
@@ -1632,28 +1634,42 @@ fn lxapp_surface_handle(
         alive: Cell::new(true),
     });
     handle.set("id", app_id.clone())?;
-    handle.set(
-        "role",
-        match region {
-            lxapp::LxAppOpenRegion::Main => "main",
-            lxapp::LxAppOpenRegion::Aside => "aside",
+    let role_id = app_id.clone();
+    let role = JSFunc::new(ctx, move |ctx: JSContext| -> JSResult<JSValue> {
+        Ok(match live_lxapp_placement(&role_id, session_id) {
+            Some((region, _)) => JSValue::from_rust(&ctx, region.as_str()),
+            None => JSValue::undefined(&ctx),
+        })
+    })?;
+    for field in ["role", "realized"] {
+        rong::PropertyDescriptor::from_getter(role.clone())
+            .enumerable()
+            .define_on(&handle, field)?;
+    }
+    let presentation_shell = shell.clone();
+    let presentation_id = app_id.clone();
+    rong::PropertyDescriptor::from_getter(JSFunc::new(
+        ctx,
+        move |ctx: JSContext| -> JSResult<JSValue> {
+            Ok(match live_lxapp_placement(&presentation_id, session_id) {
+                Some((lxapp::LxAppOpenRegion::Main, _)) => JSValue::from_rust(&ctx, "main"),
+                Some((lxapp::LxAppOpenRegion::Aside, surface_id)) => JSValue::from_rust(
+                    &ctx,
+                    presentation_shell
+                        .shell_surface_presentation(&surface_id)
+                        .unwrap_or("dock"),
+                ),
+                None => JSValue::undefined(&ctx),
+            })
         },
-    )?;
-    handle.set(
-        "presentation",
-        match region {
-            lxapp::LxAppOpenRegion::Main => "main",
-            lxapp::LxAppOpenRegion::Aside => shell
-                .shell_surface_presentation(&shell_surface_id)
-                .unwrap_or("dock"),
-        },
-    )?;
+    )?)
+    .enumerable()
+    .define_on(&handle, "presentation")?;
     handle.set("visible", true)?;
     handle.set("alive", true)?;
 
     let show_shell = shell.clone();
     let show_id = app_id.clone();
-    let show_session_id = session_id;
     let show_handle = handle.clone();
     handle.set(
         "show",
@@ -1662,7 +1678,7 @@ fn lxapp_surface_handle(
             let id = show_id.clone();
             let handle = show_handle.clone();
             Promise::from_future(&ctx, None, async move {
-                ensure_lxapp_surface_open(&handle, &id, region, show_session_id)?;
+                let (region, _) = ensure_lxapp_surface_open(&handle, &id, session_id)?;
                 lxapp::show_lxapp_in_region(Some(&shell), &id, region, None)
                     .await
                     .map_err(lxapp_open_error)?;
@@ -1673,24 +1689,20 @@ fn lxapp_surface_handle(
 
     let hide_shell = shell.clone();
     let hide_id = app_id.clone();
-    let hide_surface_id = shell_surface_id.clone();
-    let hide_session_id = session_id;
     let hide_handle = handle.clone();
     handle.set(
         "hide",
         JSFunc::new(ctx, move |ctx: JSContext| {
             let shell = hide_shell.clone();
             let id = hide_id.clone();
-            let surface_id = hide_surface_id.clone();
             let handle = hide_handle.clone();
             Promise::from_future(&ctx, None, async move {
-                ensure_lxapp_surface_open(&handle, &id, region, hide_session_id)?;
-                match region {
-                    lxapp::LxAppOpenRegion::Main => Err(surface_error(
+                match ensure_lxapp_surface_open(&handle, &id, session_id)? {
+                    (lxapp::LxAppOpenRegion::Main, _) => Err(surface_error(
                         SurfaceErrorCode::UnsupportedPlacement,
                         "a main surface cannot be hidden; select another main or close it",
                     )),
-                    lxapp::LxAppOpenRegion::Aside => {
+                    (lxapp::LxAppOpenRegion::Aside, surface_id) => {
                         hide_lxapp_aside(&shell, &id, &surface_id).await?;
                         mark_visible(&handle, false, "opener")
                     }
@@ -1701,23 +1713,20 @@ fn lxapp_surface_handle(
 
     let close_shell = shell;
     let close_id = app_id;
-    let close_surface_id = shell_surface_id.clone();
-    let close_session_id = session_id;
     let close_handle = handle.clone();
     handle.set(
         "close",
         JSFunc::new(ctx, move |ctx: JSContext| {
             let shell = close_shell.clone();
             let id = close_id.clone();
-            let surface_id = close_surface_id.clone();
             let handle = close_handle.clone();
             Promise::from_future(&ctx, None, async move {
                 if !handle.borrow::<JSSurface>()?.alive.get() {
                     return Ok(());
                 }
-                if !lxapp_surface_session_is_current(&id, region, close_session_id) {
+                let Some((region, surface_id)) = live_lxapp_placement(&id, session_id) else {
                     return emit_lxapp_handle_close(&handle, &id, "app_closed");
-                }
+                };
                 if region == lxapp::LxAppOpenRegion::Main
                     && shell.surface_switcher_snapshot().root_surface_id.as_deref()
                         == Some(surface_id.as_str())
@@ -1759,42 +1768,46 @@ fn lxapp_surface_handle(
     Ok(handle)
 }
 
+/// The region and shell surface the handle's session occupies now.
 fn ensure_lxapp_surface_open(
     handle: &JSObject,
     app_id: &str,
-    region: lxapp::LxAppOpenRegion,
     session_id: u64,
-) -> JSResult<()> {
+) -> JSResult<(lxapp::LxAppOpenRegion, String)> {
     if !handle.borrow::<JSSurface>()?.alive.get() {
         return Err(closed_surface_error());
     }
-    if !lxapp_surface_session_is_current(app_id, region, session_id) {
-        emit_lxapp_handle_close(handle, app_id, "app_closed")?;
-        return Err(closed_surface_error());
+    match live_lxapp_placement(app_id, session_id) {
+        Some(placement) => Ok(placement),
+        None => {
+            emit_lxapp_handle_close(handle, app_id, "app_closed")?;
+            Err(closed_surface_error())
+        }
     }
-    Ok(())
 }
 
-fn lxapp_surface_session_is_current(
-    app_id: &str,
-    region: lxapp::LxAppOpenRegion,
-    session_id: u64,
-) -> bool {
-    lxapp_surface_identity_matches(
-        region,
+/// Where the app sits now, while the session the handle was made for is
+/// still the live one.
+fn live_lxapp_placement(app_id: &str, session_id: u64) -> Option<(lxapp::LxAppOpenRegion, String)> {
+    let app = lxapp::try_get(app_id)?;
+    let region = lxapp_handle_live_region(
         session_id,
         lxapp::open_region(app_id),
-        lxapp::try_get(app_id).map(|app| app.session_id()),
-    )
+        Some(app.session_id()),
+    )?;
+    let surface_id = match region {
+        lxapp::LxAppOpenRegion::Main => app_id.to_string(),
+        lxapp::LxAppOpenRegion::Aside => app.open_panel_id().unwrap_or_else(|| app_id.to_string()),
+    };
+    Some((region, surface_id))
 }
 
-fn lxapp_surface_identity_matches(
-    expected_region: lxapp::LxAppOpenRegion,
+fn lxapp_handle_live_region(
     expected_session_id: u64,
     current_region: Option<lxapp::LxAppOpenRegion>,
     current_session_id: Option<u64>,
-) -> bool {
-    current_region == Some(expected_region) && current_session_id == Some(expected_session_id)
+) -> Option<lxapp::LxAppOpenRegion> {
+    current_region.filter(|_| current_session_id == Some(expected_session_id))
 }
 
 fn emit_lxapp_handle_close(handle: &JSObject, app_id: &str, reason: &str) -> JSResult<()> {
@@ -3464,22 +3477,19 @@ mod tests {
     }
 
     #[test]
-    fn stale_lxapp_handle_does_not_match_a_reopened_region_or_session() {
+    fn an_app_handle_follows_its_session_across_a_role_change() {
         use lxapp::LxAppOpenRegion::{Aside, Main};
 
-        assert!(lxapp_surface_identity_matches(Main, 7, Some(Main), Some(7)));
-        assert!(!lxapp_surface_identity_matches(
-            Main,
-            7,
-            Some(Aside),
-            Some(8)
-        ));
-        assert!(!lxapp_surface_identity_matches(
-            Main,
-            7,
-            Some(Main),
-            Some(8)
-        ));
+        assert_eq!(lxapp_handle_live_region(7, Some(Main), Some(7)), Some(Main));
+        // The user dragged the app from main into the side panel: same session.
+        assert_eq!(
+            lxapp_handle_live_region(7, Some(Aside), Some(7)),
+            Some(Aside)
+        );
+        // Closed, or reopened as a new session: the old handle is done.
+        assert_eq!(lxapp_handle_live_region(7, None, Some(7)), None);
+        assert_eq!(lxapp_handle_live_region(7, Some(Main), Some(8)), None);
+        assert_eq!(lxapp_handle_live_region(7, Some(Main), None), None);
     }
 
     #[test]
