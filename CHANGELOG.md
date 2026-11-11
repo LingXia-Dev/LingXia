@@ -19,6 +19,35 @@ written out in full in that release's notes on GitHub.
 
 <!-- releases below -->
 
+## 0.30.0 — 2026-11-11
+
+### Breaking
+
+- **Breaking** — **logic**: make lx.shell.sidebarActions mutations return promises (33a28ca74)
+- **Breaking** — **logic**: look up shell surfaces by identity instead of handle ids (1f91d6378)
+- **Breaking** — **logic**: let lx.shell.openApp move a live app instead of lx.shell.reconfigure (a69479005)
+- **Breaking** — **logic**: give surface refusals their own error codes (d9d046874)
+- **Breaking** — **logic**: rename lx.getLxAppInfo to lx.getAppInfo (3190a11b0)
+- **Breaking** — **lxapp**: keep lxapp installs and data apart per service env (9c2968b7a)
+- **Breaking** — **logic**: return the picked file name from pickFile, pickFiles and pickDirectory (053a80765)
+- **Breaking** — **logic**: rename chooseDirectory and chooseMedia to pickDirectory and pickMedia (8a6dca2e3)
+- **Breaking** — **logic**: remove lx.chooseFile in favor of pickFile/pickFiles (4f6efb8e0)
+
+### Writing an lxapp
+
+- **logic**: add lx.shell.setAppDisplay for the name and icon the host shows (67ec1bfa0)
+- **logic**: keep app surface handles alive across a role change (e49fa7537)
+- **logic**: keep the DirEntry type name for readDir entries (615a3e06f)
+- **logic**: report missing picked paths as not found and serialize readDir entries (280a4c3c3)
+
+### Embedding a host app
+
+- **ios**: give tab bar icons room below the bar's top edge (517d33511)
+- **desktop**: navbar refresh button for pull-down refresh pages (a163e6617)
+- **macos**: bring an lxapp tab back over the browser control page (812d9c52f)
+- **ios**: size the tab bar like the system one, above the home indicator (b4db2828e)
+- **windows**: open pick dialogs with IFileOpenDialog owned by the calling page (5e0279522)
+
 ## 0.29.0 — 2026-11-09
 
 ### Breaking
