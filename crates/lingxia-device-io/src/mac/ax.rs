@@ -16,6 +16,15 @@ fn role_name(role: Option<String>) -> String {
         .unwrap_or_default()
 }
 
+/// Normalize an AX action like a role ("AXShowMenu" → "showmenu"); a custom action's
+/// entry ("Name:Delete\nTarget:…") becomes its name.
+fn action_name(raw: &str) -> String {
+    if let Some(custom) = raw.strip_prefix("Name:") {
+        return custom.lines().next().unwrap_or_default().to_string();
+    }
+    raw.strip_prefix("AX").unwrap_or(raw).to_lowercase()
+}
+
 fn node_rect(el: &AxEl) -> Rect {
     use objc2_core_foundation::{CGPoint, CGSize};
     let pos = el
@@ -51,6 +60,11 @@ fn node_data(el: &AxEl, id: String) -> AxNode {
         enabled: el.attr_bool("AXEnabled").unwrap_or(true),
         focused: el.attr_bool("AXFocused").unwrap_or(false),
         rect: node_rect(el),
+        actions: el
+            .action_names()
+            .iter()
+            .map(|raw| action_name(raw))
+            .collect(),
         children: Vec::new(),
     }
 }
@@ -251,4 +265,20 @@ fn describe(q: &AxQuery) -> String {
         .or_else(|| q.text.clone())
         .or_else(|| q.id.clone())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::action_name;
+
+    #[test]
+    fn action_names_read_like_roles() {
+        assert_eq!(action_name("AXPress"), "press");
+        assert_eq!(action_name("AXShowMenu"), "showmenu");
+        assert_eq!(
+            action_name("Name:Delete row\nTarget:0x0\nSelector:(null)"),
+            "Delete row"
+        );
+        assert_eq!(action_name("custom"), "custom");
+    }
 }

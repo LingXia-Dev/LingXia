@@ -945,13 +945,22 @@ fn wait_window_hidden(
 }
 
 fn print_ax_node_line(n: &device_io::AxNode) {
+    println!("{}", ax_node_line(n));
+}
+
+fn ax_node_line(n: &device_io::AxNode) -> String {
     let value = n
         .value
         .as_deref()
         .map(|v| format!("  =\"{v}\""))
         .unwrap_or_default();
-    println!(
-        "{}  [{}] {:?}{}  ({},{} {}x{}){}",
+    let actions = if n.actions.is_empty() {
+        String::new()
+    } else {
+        format!("  actions: {}", n.actions.join(", "))
+    };
+    format!(
+        "{}  [{}] {:?}{}  ({},{} {}x{}){}{}",
         n.id,
         n.role,
         n.name,
@@ -961,7 +970,8 @@ fn print_ax_node_line(n: &device_io::AxNode) {
         n.rect.w,
         n.rect.h,
         if n.enabled { "" } else { "  (disabled)" },
-    );
+        actions,
+    )
 }
 
 fn print_ax_tree(n: &device_io::AxNode, indent: usize) {
@@ -1495,6 +1505,35 @@ mod tests {
     struct Cli {
         #[command(subcommand)]
         command: DesktopCommand,
+    }
+
+    #[test]
+    fn an_ax_line_lists_the_node_actions() {
+        let mut node = device_io::AxNode {
+            id: "ax:0/1".into(),
+            role: "button".into(),
+            name: "Save".into(),
+            value: None,
+            enabled: true,
+            focused: false,
+            rect: device_io::Rect {
+                x: 1,
+                y: 2,
+                w: 30,
+                h: 20,
+            },
+            actions: vec!["press".into(), "showmenu".into()],
+            children: Vec::new(),
+        };
+        assert_eq!(
+            ax_node_line(&node),
+            "ax:0/1  [button] \"Save\"  (1,2 30x20)  actions: press, showmenu"
+        );
+        node.actions.clear();
+        assert_eq!(
+            ax_node_line(&node),
+            "ax:0/1  [button] \"Save\"  (1,2 30x20)"
+        );
     }
 
     #[test]

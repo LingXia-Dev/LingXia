@@ -141,6 +141,7 @@ fn node_data(el: &IUIAutomationElement, id: String) -> AxNode {
             enabled,
             focused,
             rect,
+            actions: Vec::new(),
             children: Vec::new(),
         }
     }

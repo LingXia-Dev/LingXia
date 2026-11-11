@@ -37,6 +37,7 @@ unsafe extern "C" {
         value: *const c_void,
     ) -> i32;
     fn AXUIElementPerformAction(element: *mut c_void, action: *const c_void) -> i32;
+    fn AXUIElementCopyActionNames(element: *mut c_void, names: *mut *const c_void) -> i32;
     fn AXUIElementGetPid(element: *mut c_void, pid: *mut libc::pid_t) -> i32;
     fn AXUIElementCopyElementAtPosition(
         application: *mut c_void,
@@ -290,6 +291,26 @@ impl AxEl {
                     && !out.iter().any(|child| child.raw() == button.raw())
                 {
                     out.push(button);
+                }
+            }
+        }
+        out
+    }
+
+    /// Raw action names the element accepts (`AXPress`, custom `Name:…` entries).
+    pub(super) fn action_names(&self) -> Vec<String> {
+        let mut names: *const c_void = std::ptr::null();
+        let rc = unsafe { AXUIElementCopyActionNames(self.0, &mut names) };
+        if rc != AX_SUCCESS || names.is_null() {
+            return Vec::new();
+        }
+        let names = Cf(names);
+        let mut out = Vec::new();
+        unsafe {
+            for i in 0..CFArrayGetCount(names.0).max(0) {
+                let name = CFArrayGetValueAtIndex(names.0, i);
+                if !name.is_null() && CFGetTypeID(name) == CFStringGetTypeID() {
+                    out.push((*(name as *const CFString)).to_string());
                 }
             }
         }

@@ -162,6 +162,9 @@ pub struct AxNode {
     pub enabled: bool,
     pub focused: bool,
     pub rect: Rect,
+    /// Actions the node accepts, in the role's lowercase form (`press`, `showmenu`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub actions: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<AxNode>,
 }
@@ -382,10 +385,12 @@ mod tests {
                 w: 10,
                 h: 10,
             },
+            actions: Vec::new(),
             children: Vec::new(),
         };
         let text = serde_json::to_string(&node).unwrap();
         assert!(!text.contains("children"), "empty children are omitted");
+        assert!(!text.contains("actions"), "empty actions are omitted");
         let back: AxNode = serde_json::from_str(&text).unwrap();
         assert_eq!(back.role, "AXButton");
         assert!(back.children.is_empty());
@@ -481,6 +486,7 @@ mod tests {
                 w: 0,
                 h: 0,
             },
+            actions: vec![],
             children: vec![],
         };
         assert!(AxQuery::parse("name:ok").matches(&node));
