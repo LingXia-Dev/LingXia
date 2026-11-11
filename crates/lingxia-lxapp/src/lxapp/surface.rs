@@ -1,6 +1,7 @@
 use super::*;
 use crate::LxAppDelegate;
 use lingxia_platform::Platform;
+use lingxia_platform::traits::app_runtime::LxAppRegionMoves;
 use lingxia_platform::traits::ui::{
     ManagedSurfaceProvider, ManagedSurfaceProviderDestroyRequest, ManagedSurfaceProviderRequest,
     SurfaceContent, SurfaceContentKind, SurfaceKind, SurfacePosition, SurfacePresenter,
@@ -2467,10 +2468,120 @@ impl LxApp {
         self.set_active_main();
     }
 
+    /// Move this live lxapp to `region` without restarting it, for an API
+    /// open that names the other role. A no-op when it is already there.
+    pub fn move_to_region(
+        &self,
+        region: LxAppOpenRegion,
+        edge: Option<&str>,
+    ) -> Result<(), LxAppError> {
+        self.move_to_region_on(self.runtime.lxapp_region_moves(), region, edge)
+    }
+
+    pub(super) fn move_to_region_on(
+        &self,
+        moves: LxAppRegionMoves,
+        region: LxAppOpenRegion,
+        edge: Option<&str>,
+    ) -> Result<(), LxAppError> {
+        if moves == LxAppRegionMoves::Unsupported {
+            return Err(LxAppError::UnsupportedOperation(
+                "this host cannot move a live lxapp between main and aside".to_string(),
+            ));
+        }
+        // The shell's own move re-enters the drag entry points, which take
+        // this guard themselves.
+        let _guard = (moves == LxAppRegionMoves::FromPlan).then(|| {
+            self.presentation_open_lock
+                .lock()
+                .unwrap_or_else(|err| err.into_inner())
+        });
+        let current = self.current_open_region().ok_or_else(|| {
+            LxAppError::ResourceNotFound(format!("lxapp is not open: {}", self.appid))
+        })?;
+        if current == region {
+            return Ok(());
+        }
+        let controller = window_controller(PRIMARY_WINDOW, &self.runtime);
+        match region {
+            LxAppOpenRegion::Aside => {
+                if controller.is_root_main(&self.appid) {
+                    return Err(LxAppError::SurfaceRoleLocked(
+                        "the stable root main surface cannot change role".to_string(),
+                    ));
+                }
+                if controller.managed_surface_role(&self.appid) != Some(SurfaceRole::Main) {
+                    // A shell with mains that does not list this app shows it
+                    // inside another surface's app navigation.
+                    return Err(
+                        if controller.switcher_snapshot().root_surface_id.is_some() {
+                            LxAppError::SurfaceConflict(format!(
+                                "lxapp '{}' is open only inside another surface's app navigation",
+                                self.appid
+                            ))
+                        } else {
+                            LxAppError::UnsupportedOperation(
+                                "this host cannot move a live lxapp out of main".to_string(),
+                            )
+                        },
+                    );
+                }
+            }
+            LxAppOpenRegion::Main => {
+                let panel = self.open_panel_id().unwrap_or_else(|| self.appid.clone());
+                if controller.managed_surface_role(&panel) != Some(SurfaceRole::Aside) {
+                    return Err(LxAppError::UnsupportedOperation(
+                        "this host cannot move a live aside into main".to_string(),
+                    ));
+                }
+            }
+        }
+        let edge = edge.unwrap_or("").trim();
+        match moves {
+            LxAppRegionMoves::Shell => {
+                if self.runtime.move_lxapp_region(
+                    &self.appid,
+                    region == LxAppOpenRegion::Main,
+                    edge,
+                ) {
+                    Ok(())
+                } else {
+                    Err(LxAppError::Runtime(format!(
+                        "the shell could not move lxapp '{}' to {}",
+                        self.appid,
+                        region.as_str()
+                    )))
+                }
+            }
+            _ => match region {
+                LxAppOpenRegion::Main => self.promote_aside_to_main_guarded(),
+                LxAppOpenRegion::Aside => self.demote_main_to_aside_guarded(edge),
+            },
+        }
+    }
+
+    /// The open guard for a move a UI thread started. It never waits: an open
+    /// holding the guard may itself be waiting on that UI thread.
+    fn try_presentation_guard(&self) -> Result<std::sync::MutexGuard<'_, ()>, LxAppError> {
+        match self.presentation_open_lock.try_lock() {
+            Ok(guard) => Ok(guard),
+            Err(std::sync::TryLockError::Poisoned(poisoned)) => Ok(poisoned.into_inner()),
+            Err(std::sync::TryLockError::WouldBlock) => Err(LxAppError::SurfaceConflict(format!(
+                "lxapp '{}' is being opened or moved",
+                self.appid
+            ))),
+        }
+    }
+
     /// Move this lxapp's live aside presentation into the main region without
     /// restarting it: Logic, the page stack and every WebView stay as they
     /// are, and the platform re-hosts the current page in the main area.
     pub fn promote_aside_to_main(&self) -> Result<(), LxAppError> {
+        let _guard = self.try_presentation_guard()?;
+        self.promote_aside_to_main_guarded()
+    }
+
+    fn promote_aside_to_main_guarded(&self) -> Result<(), LxAppError> {
         let controller = window_controller(PRIMARY_WINDOW, &self.runtime);
         let surface_id = self
             .open_panel_id()
@@ -2508,12 +2619,11 @@ impl LxApp {
             if let Some(manager) = get_lxapps_manager() {
                 manager.remove_from_stack(&self.appid);
             }
-            let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
-            state.open_region = Some(LxAppOpenRegion::Aside);
-            (
-                state.startup_options.open_mode,
-                state.startup_options.panel_id,
-            ) = previous_startup;
+            self.roll_back_region(
+                LxAppOpenRegion::Main,
+                LxAppOpenRegion::Aside,
+                previous_startup,
+            );
             return Err(LxAppError::InvalidParameter(format!(
                 "surface '{surface_id}' is no longer an aside"
             )));
@@ -2539,6 +2649,11 @@ impl LxApp {
     /// the current page in the panel. An empty `edge` keeps the panel where
     /// it is. The root main never moves.
     pub fn demote_main_to_aside(&self, edge: &str) -> Result<(), LxAppError> {
+        let _guard = self.try_presentation_guard()?;
+        self.demote_main_to_aside_guarded(edge)
+    }
+
+    fn demote_main_to_aside_guarded(&self, edge: &str) -> Result<(), LxAppError> {
         let controller = window_controller(PRIMARY_WINDOW, &self.runtime);
         if self.current_open_region() != Some(LxAppOpenRegion::Main)
             || controller.managed_surface_role(&self.appid) != Some(SurfaceRole::Main)
@@ -2565,12 +2680,11 @@ impl LxApp {
             previous
         };
         let Some(successor) = controller.demote_main_to_aside(&self.appid, edge) else {
-            let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
-            state.open_region = Some(LxAppOpenRegion::Main);
-            (
-                state.startup_options.open_mode,
-                state.startup_options.panel_id,
-            ) = previous_startup;
+            self.roll_back_region(
+                LxAppOpenRegion::Aside,
+                LxAppOpenRegion::Main,
+                previous_startup,
+            );
             return Err(LxAppError::InvalidParameter(format!(
                 "surface '{}' is no longer a main",
                 self.appid
@@ -2589,6 +2703,25 @@ impl LxApp {
             self.runtime.request_lxapp_main_activation(&successor);
         }
         Ok(())
+    }
+
+    /// Undo a refused move, but only while the region still holds what the
+    /// move wrote: a close that landed meanwhile must not be revived.
+    pub(super) fn roll_back_region(
+        &self,
+        wrote: LxAppOpenRegion,
+        previous: LxAppOpenRegion,
+        previous_startup: (lingxia_platform::traits::app_runtime::LxAppOpenMode, String),
+    ) {
+        let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
+        if state.open_region != Some(wrote) {
+            return;
+        }
+        state.open_region = Some(previous);
+        (
+            state.startup_options.open_mode,
+            state.startup_options.panel_id,
+        ) = previous_startup;
     }
 
     pub fn replace_host_mains(

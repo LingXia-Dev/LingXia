@@ -809,16 +809,16 @@ test('declare, patch, and retract runtime sidebar actions atomically', {
   });
 });
 
-test('reject shell surface reconfigure for an id the shell never realized', {
-  id: 'HOSTAPP-SHELL-RECONFIG-001',
-  covers: ['lx.shell.reconfigure'],
+test('refuse to move the root main out of main', {
+  id: 'HOSTAPP-SHELL-OPENAPP-ROOT-001',
+  covers: ['lx.shell.openApp'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
-  const { app } = bindFixture(t, 'HOSTAPP-SHELL-RECONFIG-001');
+  const { app } = bindFixture(t, 'HOSTAPP-SHELL-OPENAPP-ROOT-001');
 
   const result = await app.logic.eval(async ({ lx }): Promise<Caught> => {
     try {
-      await lx.shell.reconfigure('surface-that-was-never-opened', { as: 'aside', edge: 'right' });
+      await lx.shell.openApp(lx.getAppInfo().appId, { as: 'aside' });
       return { ok: true };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -827,8 +827,7 @@ test('reject shell surface reconfigure for an id the shell never realized', {
   });
 
   expect(result.ok).toBeFalsy();
-  expect(typeof result.code).toBe('string');
-  expect(String(result.code).length).toBeGreaterThan(0);
+  expect(result.code).toBe('E_SURFACE_ROLE_LOCKED');
 });
 
 test('subscribe to and release the surface context listener', {

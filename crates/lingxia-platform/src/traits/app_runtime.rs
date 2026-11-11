@@ -44,6 +44,18 @@ pub fn unwrap_activation(payload: &str) -> Option<&str> {
         .filter(|token| !token.is_empty())
 }
 
+/// How a host moves a live lxapp between main and the side panel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LxAppRegionMoves {
+    /// The host cannot move a live lxapp; a move is refused before any state
+    /// changes.
+    Unsupported,
+    /// The skin follows the layout plan, so the caller moves the surface graph.
+    FromPlan,
+    /// The shell runs its own move through `AppRuntime::move_lxapp_region`.
+    Shell,
+}
+
 /// One local notification to post or replace.
 #[derive(Debug, Clone)]
 pub struct LocalNotificationShow {
@@ -368,6 +380,19 @@ pub trait AppRuntime:
     /// the layout plan; Windows uses the intent to replace a browser cover
     /// without treating unrelated resize/aside publications as activations.
     fn request_lxapp_main_activation(&self, _appid: &str) {}
+
+    /// Whether and how this host moves a live lxapp between main and the side
+    /// panel without restarting it.
+    fn lxapp_region_moves(&self) -> LxAppRegionMoves {
+        LxAppRegionMoves::Unsupported
+    }
+
+    /// Re-host a live lxapp between main (`to_main`) and the side panel at
+    /// `edge`. Called only when [`Self::lxapp_region_moves`] is `Shell`;
+    /// returns whether it moved.
+    fn move_lxapp_region(&self, _appid: &str, _to_main: bool, _edge: &str) -> bool {
+        false
+    }
 
     /// Hide the UI container for the given LxApp (does not destroy its runtime state).
     fn hide_lxapp(&self, appid: String, session_id: u64) -> Result<(), PlatformError>;

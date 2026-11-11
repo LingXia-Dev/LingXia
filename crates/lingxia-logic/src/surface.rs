@@ -327,7 +327,7 @@ rong::js_api! {
     fn register_shell_surface_api(ctx) {
         namespace ShellApi = shell_namespace(ctx)?;
         fn openApp(
-            ts_params = "appId: string, options: ShellOpenAppOptions",
+            ts_params = "appId: string, options?: ShellOpenAppOptions",
             ts_return = "Promise<AppSurface>"
         ) = shell_open_app;
         fn openBuiltin(
@@ -338,10 +338,6 @@ rong::js_api! {
             ts_params = "id: string, options?: ShellOpenDeclaredOptions",
             ts_return = "Promise<DeclaredSurface>"
         ) = shell_open_declared;
-        fn reconfigure(
-            ts_params = "id: string, patch: ShellSurfacePatch",
-            ts_return = "Promise<void>"
-        ) = shell_reconfigure;
     }
 }
 
@@ -598,13 +594,21 @@ fn get_surface(ctx: JSContext, key: String) -> JSResult<JSValue> {
 
 /// `lx.shell.openApp(appId, options)` — compose another lxapp into a shell
 /// slot. Control-app only; the namespace is the privilege.
-async fn shell_open_app(ctx: JSContext, app_id: JSValue, options: JSValue) -> JSResult<JSObject> {
+async fn shell_open_app(
+    ctx: JSContext,
+    app_id: JSValue,
+    options: Optional<JSValue>,
+) -> JSResult<JSObject> {
     let (invocation, (app_id, options)) =
         authorization::require_before_decode(&ctx, LogicRoute::ShellOpenApp, || {
-            Ok((
-                shell_string_argument(app_id, "lx.shell.openApp appId")?,
-                shell_object_argument(options, "lx.shell.openApp options")?,
-            ))
+            let app_id = shell_string_argument(app_id, "lx.shell.openApp appId")?;
+            let options = options
+                .0
+                .filter(|value| !value.is_undefined() && !value.is_null())
+                .map(|value| shell_object_argument(value, "lx.shell.openApp options"))
+                .transpose()?
+                .unwrap_or_else(|| JSObject::new(&ctx));
+            Ok((app_id, options))
         })?;
     reject_unknown_options(
         &options,
@@ -684,28 +688,6 @@ async fn shell_open_declared(
     let handle = open_declared_surface_spec(&ctx, &spec, Some(&invocation)).await?;
     let realized = handle_realized_placement(&handle);
     finish_handle(&ctx, &handle, "declared", Some(&realized), key, None)
-}
-
-/// `lx.shell.reconfigure(id, patch)` — re-place a live declared surface.
-async fn shell_reconfigure(ctx: JSContext, id: JSValue, patch: JSValue) -> JSResult<()> {
-    let (invocation, (id, patch)) =
-        authorization::require_before_decode(&ctx, LogicRoute::ShellReconfigure, || {
-            Ok((
-                shell_string_argument(id, "lx.shell.reconfigure id")?,
-                shell_object_argument(patch, "lx.shell.reconfigure patch")?,
-            ))
-        })?;
-    reject_unknown_options(&patch, &["as", "edge"], "lx.shell.reconfigure")?;
-    let spec = JSObject::new(&ctx);
-    spec.set("surface", id)?;
-    copy_options(&patch, &spec, &["as", "edge"])?;
-    let handle = open_declared_surface_spec(&ctx, &spec, Some(&invocation)).await?;
-    // `openDeclared` hands back a cached object and stamps `realized` once, so
-    // without this the handle the caller still holds reports the placement it
-    // had before this call.
-    let realized = handle_realized_placement(&handle);
-    handle.set("realized", realized)?;
-    Ok(())
 }
 
 /// Resolves an `as` option against what the host can realize. A single value
@@ -1150,18 +1132,33 @@ async fn open_app_spec(
         ));
     }
     let edge = read_validated_edge(spec)?;
-    let as_role = read_required_string(spec, "as")?;
-    let as_role = as_role.trim();
-    if !matches!(as_role, "main" | "aside") {
+    let live_region = lxapp::open_region(&app_id);
+    let requested_role = match read_optional_string(spec, "as")?.as_deref().map(str::trim) {
+        None => None,
+        Some("main") => Some(lxapp::LxAppOpenRegion::Main),
+        Some("aside") => Some(lxapp::LxAppOpenRegion::Aside),
+        Some(other) => {
+            return Err(surface_error(
+                SurfaceErrorCode::InvalidArg,
+                format!("an app surface supports as: 'main' | 'aside'; got {other}"),
+            ));
+        }
+    };
+    let plan = AppOpenPlan::new(live_region, requested_role);
+    let requested_region = plan.region;
+    // The home app records no open region on hosts without a surface graph.
+    if requested_region == lxapp::LxAppOpenRegion::Aside
+        && lxapp::try_get(&app_id).is_some_and(|app| app.is_home_lxapp)
+    {
         return Err(surface_error(
-            SurfaceErrorCode::InvalidArg,
-            format!("an app surface supports as: 'main' | 'aside'; got {as_role}"),
+            SurfaceErrorCode::RoleLocked,
+            "the stable root main surface cannot change role",
         ));
     }
-    if edge.is_some() && as_role != "aside" {
+    if edge.is_some() && requested_region != lxapp::LxAppOpenRegion::Aside {
         return Err(surface_error(
             SurfaceErrorCode::InvalidArg,
-            "edge is only valid with as: 'aside'",
+            "edge is only valid when the app opens as an aside",
         ));
     }
 
@@ -1179,32 +1176,37 @@ async fn open_app_spec(
         channel: read_optional_string(spec, "channel")?,
         target_version: read_optional_string(spec, "targetVersion")?,
     };
-    let requested_region = match as_role {
-        "main" => lxapp::LxAppOpenRegion::Main,
-        "aside" => lxapp::LxAppOpenRegion::Aside,
-        _ => unreachable!("validated above"),
-    };
     let requested_channel = lxapp::resolve_open_channel(
         &app_id,
         lxapp::parse_requested_channel(target.channel.as_deref())
             .map_err(|error| surface_error(SurfaceErrorCode::InvalidArg, error))?,
     );
-    if let Some(current_region) = lxapp::open_region(&app_id) {
-        if current_region != requested_region {
+    if plan.reuses_live_app
+        && let Some(app) = lxapp::try_get(&app_id)
+    {
+        let same_channel = app.release_type() == requested_channel;
+        if plan.migrates && !same_channel {
             return Err(surface_error(
                 SurfaceErrorCode::AlreadyOpenOtherRole,
                 format!(
-                    "lxapp '{app_id}' is already open as {}; close it before opening as {}",
-                    current_region.as_str(),
-                    requested_region.as_str(),
+                    "lxapp '{app_id}' is live on another channel; close it before opening it as {}",
+                    requested_region.as_str()
                 ),
             ));
         }
-        if lxapp::try_get(&app_id).is_some_and(|app| app.release_type() == requested_channel) {
-            lxapp::show_lxapp_in_region(Some(&lxapp), &app_id, current_region, edge.as_deref())
+        if same_channel {
+            // Resolved before the move, so a bad page leaves the app where it was.
+            let reopen = reused_app_reopen(&app, &target)?;
+            if plan.migrates {
+                app.move_to_region(requested_region, edge.as_deref())
+                    .map_err(lxapp_open_error)?;
+            }
+            lxapp::show_lxapp_in_region(Some(&lxapp), &app_id, requested_region, edge.as_deref())
                 .await
                 .map_err(lxapp_open_error)?;
-            deliver_to_reused_app(&app_id, &target)?;
+            if let Some(options) = reopen {
+                app.deliver_reopen(options).map_err(lxapp_open_error)?;
+            }
             return lxapp_surface_handle(&ctx, lxapp, app_id.clone(), app_id);
         }
     }
@@ -1223,26 +1225,46 @@ async fn open_app_spec(
     lxapp_surface_handle(&ctx, lxapp, app_id.clone(), app_id)
 }
 
+/// How `lx.shell.openApp` treats the app's live role.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct AppOpenPlan {
+    region: lxapp::LxAppOpenRegion,
+    /// The running app is focused rather than started, so `page` / `query`
+    /// are delivered as a reopen.
+    reuses_live_app: bool,
+    /// The live app changes role in place: Logic, page stack and WebViews stay.
+    migrates: bool,
+}
+
+impl AppOpenPlan {
+    fn new(
+        live: Option<lxapp::LxAppOpenRegion>,
+        requested: Option<lxapp::LxAppOpenRegion>,
+    ) -> Self {
+        // Omitted, a live app keeps its role; a new one opens in main.
+        let region = requested.or(live).unwrap_or(lxapp::LxAppOpenRegion::Main);
+        Self {
+            region,
+            reuses_live_app: live.is_some(),
+            migrates: live.is_some_and(|live| live != region),
+        }
+    }
+}
+
 /// A reused surface still gets what this open asked for: the named page and
 /// the query reach the running lxapp's Logic as App `onShow`
 /// (`reason: 'switch_back'`, with `path` and `query`). Its page stack is kept.
 /// An open that names neither is a plain reveal and says nothing.
-fn deliver_to_reused_app(
-    app_id: &str,
+fn reused_app_reopen(
+    app: &LxApp,
     target: &crate::navigator::NavigateToAppOptions,
-) -> JSResult<()> {
+) -> JSResult<Option<lxapp::LxAppStartupOptions>> {
     if target.page.is_none() && target.query.is_none() {
-        return Ok(());
+        return Ok(None);
     }
-    let app = lxapp::try_get(app_id).ok_or_else(|| {
-        surface_error(
-            SurfaceErrorCode::NotDeclared,
-            format!("lxapp is not active: {app_id}"),
-        )
-    })?;
     let (options, _) =
-        crate::navigator::build_startup_options(&app, target).map_err(lxapp_open_error)?;
-    app.deliver_reopen(options).map_err(lxapp_open_error)
+        crate::navigator::build_startup_options(app, target).map_err(lxapp_open_error)?;
+    Ok(Some(options))
 }
 
 fn lxapp_open_error(err: LxAppError) -> rong::RongJSError {
@@ -3550,6 +3572,39 @@ mod tests {
         assert_eq!(lxapp_handle_live_region(7, None, Some(7)), None);
         assert_eq!(lxapp_handle_live_region(7, Some(Main), Some(8)), None);
         assert_eq!(lxapp_handle_live_region(7, Some(Main), None), None);
+    }
+
+    #[test]
+    fn open_app_keeps_or_migrates_the_live_role_and_still_delivers_the_reopen() {
+        use lxapp::LxAppOpenRegion::{Aside, Main};
+
+        let fresh = AppOpenPlan::new(None, None);
+        assert_eq!(
+            (fresh.region, fresh.reuses_live_app, fresh.migrates),
+            (Main, false, false)
+        );
+        let fresh_aside = AppOpenPlan::new(None, Some(Aside));
+        assert_eq!(fresh_aside.region, Aside);
+        assert!(!fresh_aside.reuses_live_app);
+
+        let kept = AppOpenPlan::new(Some(Aside), None);
+        assert_eq!(
+            (kept.region, kept.reuses_live_app, kept.migrates),
+            (Aside, true, false)
+        );
+
+        // A different `as` moves the same app and is still a reuse, so the
+        // call's page and query reach its Logic as App onShow.
+        let moved = AppOpenPlan::new(Some(Aside), Some(Main));
+        assert_eq!(
+            (moved.region, moved.reuses_live_app, moved.migrates),
+            (Main, true, true)
+        );
+        let demoted = AppOpenPlan::new(Some(Main), Some(Aside));
+        assert_eq!(
+            (demoted.region, demoted.reuses_live_app, demoted.migrates),
+            (Aside, true, true)
+        );
     }
 
     #[test]

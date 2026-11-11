@@ -46,7 +46,6 @@ pub(crate) enum LogicRoute {
     ShellOpenApp,
     ShellOpenBuiltin,
     ShellOpenDeclared,
-    ShellReconfigure,
     ShellOpenHostTerminalSettings,
     SurfaceBringToFront,
     #[cfg(feature = "terminal")]
@@ -118,7 +117,6 @@ impl LogicRoute {
         Self::ShellOpenApp,
         Self::ShellOpenBuiltin,
         Self::ShellOpenDeclared,
-        Self::ShellReconfigure,
         Self::ShellOpenHostTerminalSettings,
         Self::SurfaceBringToFront,
         #[cfg(feature = "terminal")]
@@ -192,7 +190,6 @@ impl LogicRoute {
             | Self::ShellOpenApp
             | Self::ShellOpenBuiltin
             | Self::ShellOpenDeclared
-            | Self::ShellReconfigure
             | Self::ShellOpenHostTerminalSettings => RouteAudience::ControlAppOnly,
             Self::AppNotificationGetPermission
             | Self::AppNotificationRequestPermission
@@ -266,7 +263,6 @@ impl LogicRoute {
             Self::ShellOpenApp => "lx.shell.openApp",
             Self::ShellOpenBuiltin => "lx.shell.openBuiltin",
             Self::ShellOpenDeclared => "lx.shell.openDeclared",
-            Self::ShellReconfigure => "lx.shell.reconfigure",
             Self::ShellOpenHostTerminalSettings => "lx.shell.openApp.hostTerminalSettings",
             Self::SurfaceBringToFront => "lx.surface.bringToFront",
             #[cfg(feature = "terminal")]

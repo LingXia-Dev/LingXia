@@ -1082,9 +1082,9 @@ async function ensureHostForeground(
 }
 
 async function openChatAsMainWorkspace(t: Fixture, app: TestApp): Promise<void> {
-  // Opens Chat as a fresh main workspace. `lx.shell.reconfigure(..., { as: 'main' })`
-  // and `openDeclared(..., { as: 'main' })` go through the declared aside
-  // surface and the host rejects them with "managed surface request rejected".
+  // Opens Chat as a fresh main workspace. `openDeclared(..., { as: 'main' })`
+  // goes through the declared aside surface and the host rejects it with
+  // "managed surface request rejected".
   await closeChatSurface(t, app);
   await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
     await lx.shell.openApp('lingxia-chat', { as: 'main' });
@@ -2263,7 +2263,7 @@ test('keeps a dynamic app handle synchronized and closes its workspace atomicall
   expect(setup.rejected.path.detail).toContain('path is not supported');
   expect(setup.rejected.navigatePath.detail).toContain('path is not supported');
   expect(setup.rejected.float.detail).toContain("supports as: 'main' | 'aside'");
-  expect(setup.rejected.mainEdge.detail).toContain("edge is only valid with as: 'aside'");
+  expect(setup.rejected.mainEdge.detail).toContain('edge is only valid when the app opens as an aside');
   expect(setup.rejected.pageEdge.detail).toContain("use position with as: 'float'");
   expect(topology(setup.afterRejected)).toEqual(topology(before));
   expect(setup.afterRejected.mainSwitcher.revision).toBe(before.mainSwitcher.revision);
@@ -4442,6 +4442,137 @@ test('promotes a dragged lxapp aside to a main without reloading it', {
     await app.nav.switchTab({ page: 'home' }).catch(() => undefined);
     if (host) await restoreHostBounds(desktop, host.id, originalBounds).catch(() => undefined);
   }
+});
+
+/** What DESKTOP-OPENAPP-MOVE-001 keeps on Logic's `globalThis` between evals. */
+interface OpenAppMoveGlobals {
+  __openAppMoveProbe?: {
+    handle: AppSurface;
+    closes: string[];
+    unsubscribe: () => void;
+  };
+}
+
+interface OpenAppMoveOptions {
+  as: 'main' | 'aside';
+  edge?: 'right';
+  page?: string;
+  query?: Record<string, string>;
+}
+
+interface MovedHandleState {
+  same: boolean;
+  realized: string;
+  visible: boolean;
+  alive: boolean;
+  closes: string[];
+}
+
+/** The last App `onShow` Chat's Logic saw, as its `lxapp.ts` records it. */
+async function chatLastShow(
+  t: Fixture,
+): Promise<{ reason?: string; path?: string; query?: Record<string, string> } | null> {
+  return t.automation.lxapp('lingxia-chat').logic.eval(({ getApp }) => {
+    const instance = getApp() as unknown as {
+      globalData?: { lastShow?: { reason?: string; path?: string; query?: Record<string, string> } };
+    } | null;
+    return instance?.globalData?.lastShow ?? null;
+  });
+}
+
+test('moves a live lxapp between aside and main through lx.shell.openApp', {
+  skip: desktopSkip,
+  id: 'DESKTOP-OPENAPP-MOVE-001',
+  timeout: DESKTOP_CASE_MS,
+  covers: ['lx.shell.openApp'],
+}, async (t) => {
+  const app = await desktopApp(t);
+  await closeChatSurface(t, app);
+  const before = await app.surfaceLayout();
+  // The same call moves and reopens, so each step reports where the handle
+  // it returned says the app is, and whether a close reached the first one.
+  const move = (options: OpenAppMoveOptions) => app.logic.eval(
+    { timeout: 20_000 },
+    async ({ lx }, options): Promise<MovedHandleState> => {
+      const probe = (globalThis as unknown as OpenAppMoveGlobals).__openAppMoveProbe;
+      if (!probe) throw new Error('openApp move probe is not installed');
+      const handle = await lx.shell.openApp('lingxia-chat', options);
+      return {
+        same: handle === probe.handle,
+        realized: handle.realized,
+        visible: handle.visible,
+        alive: handle.alive,
+        closes: [...probe.closes],
+      };
+    },
+    options,
+  );
+  try {
+    await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+      const handle = await lx.shell.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
+      const closes: string[] = [];
+      const unsubscribe = handle.onClose((event) => closes.push(event.reason));
+      (globalThis as unknown as OpenAppMoveGlobals).__openAppMoveProbe = { handle, closes, unsubscribe };
+    });
+    await waitForValue(async () => {
+      const layout = await app.surfaceLayout();
+      return chatAsideSlot(layout)?.visible ? layout : undefined;
+    }, 'Chat docked as an aside');
+
+    // A page Chat does not configure is refused before anything moves.
+    const refused = await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+      try {
+        await lx.shell.openApp('lingxia-chat', { as: 'main', page: 'nowhere' as never });
+        return 'resolved';
+      } catch (error) {
+        return (error as { code?: string }).code ?? String(error);
+      }
+    });
+    expect(refused).toBe('E_NOT_FOUND');
+    const afterRefused = await app.surfaceLayout();
+    expect({
+      inSwitcher: switcherIds(afterRefused).includes('lingxia-chat'),
+      asideVisible: chatAsideSlot(afterRefused)?.visible ?? false,
+    }).toEqual({ inSwitcher: false, asideVisible: true });
+
+    const toMain = await move({ as: 'main', page: 'about', query: { step: 'main' } });
+    expect(toMain).toEqual({ same: true, realized: 'main', visible: true, alive: true, closes: [] });
+    const mainLayout = await waitForValue(async () => {
+      const layout = await app.surfaceLayout();
+      return layout.activeMainId === 'lingxia-chat' && !chatAsideSlot(layout) ? layout : undefined;
+    }, 'Chat moved into the main');
+    expect(switcherIds(mainLayout).includes('lingxia-chat')).toBeTruthy();
+    const shownInMain = await waitForValue(async () => {
+      const last = await chatLastShow(t);
+      return last?.query?.step === 'main' ? last : undefined;
+    }, 'Chat App onShow for the move into main');
+    expect(shownInMain.reason).toBe('switch_back');
+    expect(shownInMain.path).toContain('about');
+
+    const toAside = await move({ as: 'aside', edge: 'right', query: { step: 'aside' } });
+    expect(toAside).toEqual({ same: true, realized: 'aside', visible: true, alive: true, closes: [] });
+    const asideLayout = await waitForValue(async () => {
+      const layout = await app.surfaceLayout();
+      return chatAsideSlot(layout)?.visible && !switcherIds(layout).includes('lingxia-chat')
+        ? layout
+        : undefined;
+    }, 'Chat moved back into the aside');
+    expect(asideLayout.mains.includes('lingxia-chat')).toBeFalsy();
+    const shownInAside = await waitForValue(async () => {
+      const last = await chatLastShow(t);
+      return last?.query?.step === 'aside' ? last : undefined;
+    }, 'Chat App onShow for the move into the aside');
+    expect(shownInAside.reason).toBe('switch_back');
+  } finally {
+    await app.logic.eval(() => {
+      const globals = globalThis as unknown as OpenAppMoveGlobals;
+      globals.__openAppMoveProbe?.unsubscribe();
+      delete globals.__openAppMoveProbe;
+    }).catch(() => undefined);
+    await closeChatSurface(t, app).catch(() => undefined);
+  }
+  const afterCleanup = await app.surfaceLayout();
+  expect(topology(afterCleanup)).toEqual(topology(before));
 });
 
 test('moves a dragged URL aside tab into the main browser without reloading it', {

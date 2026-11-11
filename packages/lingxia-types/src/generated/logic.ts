@@ -1898,23 +1898,28 @@ export type ShellApi = {
      * navigation and all other behavior.
      */
     sidebarActions: ShellSidebarActionsApi;
-    /** Compose another lxapp into a shell slot. */
-    openApp(appId: string, options: ShellOpenAppOptions): Promise<AppSurface>;
+    /**
+     * Open another lxapp in main or a companion slot, focus it if it is open,
+     * or move it to the role `as` names.
+     */
+    openApp(appId: string, options?: ShellOpenAppOptions): Promise<AppSurface>;
     /** Open a host builtin page such as downloads. */
     openBuiltin(page: BuiltinShellPage): Promise<BuiltinSurface>;
     /**
      * Open a declared surface with shell privileges — the same declaration
      * `lx.surface.openDeclared` opens, plus the keyed multi-instance form and
-     * placement overrides.
+     * placement overrides; `as` and `edge` also move a live instance.
      */
     openDeclared(id: string, options?: ShellOpenDeclaredOptions): Promise<DeclaredSurface>;
-    /** Re-place a live declared surface: change its role or its edge. */
-    reconfigure(id: string, patch: ShellSurfacePatch): Promise<void>;
 };
 
 export type ShellOpenAppOptions = {
-    /** `main` occupies the primary content area; `aside` a companion region. */
-    as: 'main' | 'aside';
+    /**
+     * `main` occupies the primary content area; `aside` a companion region.
+     * Omitted, a live app keeps its role and a closed one opens in main. A live
+     * app asked for the other role moves there without restarting.
+     */
+    as?: 'main' | 'aside';
     /** Preferred docking side. Only meaningful with `as: 'aside'`. */
     edge?: SurfaceEdge;
     /**
@@ -1923,10 +1928,10 @@ export type ShellOpenAppOptions = {
      */
     page?: ExternalPageName;
     /**
-     * Startup query. When the lxapp is already open in this role, the surface
-     * is focused, not reopened: `page` and `query` reach its Logic as App
-     * `onShow` with `reason: 'switch_back'`, `path` and `query`, and its page
-     * stack is kept.
+     * Startup query. When the lxapp is already open, the surface is focused
+     * (and moved, if `as` names the other role), not reopened: `page` and
+     * `query` reach its Logic as App `onShow` with `reason: 'switch_back'`,
+     * `path` and `query`, and its page stack is kept.
      */
     query?: PageQuery;
     /**
@@ -1955,10 +1960,9 @@ export type ShellOpenDeclaredOptions = {
      */
     key?: string;
     /**
-     * Open with a role other than the declaration's. Must be realizable by the
-     * declared provider; a stable root rejects anything but `main`. Prefer this
-     * over opening and then calling `reconfigure`, which would present the
-     * wrong role first.
+     * Open with a role other than the declaration's, or move the live instance
+     * to it. Must be realizable by the declared provider; a stable root rejects
+     * anything but `main`.
      */
     as?: 'main' | 'aside' | 'float';
     /** Preferred docking side when the effective role is `aside`. */
@@ -2055,15 +2059,6 @@ export type ShellSidebarActionUpdate = {
     value?: string | null;
     /** Whether the action remains visible but rejects activation. */
     disabled?: boolean;
-};
-
-/**
- * Role and edge overrides the native-assigned Control app may apply to a live declared
- * surface. A stable root rejects non-main roles.
- */
-export type ShellSurfacePatch = {
-    as?: 'main' | 'aside' | 'float';
-    edge?: SurfaceEdge;
 };
 
 export type ShowActionSheetOptions = {
@@ -2181,8 +2176,8 @@ export type SurfaceBase = {
     readonly key?: string;
     /**
      * The placement the host produced, which an ordered preference may narrow.
-     * Live rather than a snapshot: `lx.shell.reconfigure` updates it on the
-     * handle you already hold.
+     * Live rather than a snapshot: a later open that moves the surface, or the
+     * user dragging it, updates the handle you already hold.
      */
     readonly realized: SurfacePlacement;
     /** True until `close()` fires; afterwards the page instance is torn down. */
@@ -3400,7 +3395,7 @@ declare global {
      * `lx.shell.openApp(appId, options)` — compose another lxapp into a shell
      * slot. Control-app only; the namespace is the privilege.
      */
-    openApp(appId: string, options: ShellOpenAppOptions): Promise<AppSurface>;
+    openApp(appId: string, options?: ShellOpenAppOptions): Promise<AppSurface>;
     /** `lx.shell.openBuiltin(page)` — a host builtin page. Control-app only. */
     openBuiltin(page: BuiltinShellPage): Promise<BuiltinSurface>;
     /**
@@ -3408,8 +3403,6 @@ declare global {
      * keyed multi-instance form and placement overrides. Control-app only.
      */
     openDeclared(id: string, options?: ShellOpenDeclaredOptions): Promise<DeclaredSurface>;
-    /** `lx.shell.reconfigure(id, patch)` — re-place a live declared surface. */
-    reconfigure(id: string, patch: ShellSurfacePatch): Promise<void>;
     readonly sidebarActions: ShellSidebarActionsApi;
   }
 }

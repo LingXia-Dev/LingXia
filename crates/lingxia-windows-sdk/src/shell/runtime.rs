@@ -1264,6 +1264,7 @@ pub(super) fn install() {
     lingxia_platform::set_windows_lxapp_main_activation_handler(Arc::new(
         request_lxapp_main_activation,
     ));
+    lingxia_platform::set_windows_lxapp_region_move_handler(Arc::new(move_lxapp_region_for_api));
     // hide_lxapp on Windows is synchronous (HWND hide only). Apple/Android/
     // Harmony ack close from the native container; without this, restart
     // always waits out the 1.5s Closed timeout and logs `forcing recreate`.
@@ -4577,6 +4578,24 @@ fn promote_lxapp_aside(surface_id: &str) -> bool {
 /// Side Panel"): the mirror of `promote_lxapp_aside`. Logic, the page stack
 /// and the current page's WebView are kept; the plan sync docks the page.
 pub(crate) fn demote_lxapp_main(appid: &str) -> bool {
+    demote_lxapp_main_at(appid, "")
+}
+
+/// `lx.shell.openApp` asking a live app to change role: the same moves as a
+/// sidebar drag.
+fn move_lxapp_region_for_api(appid: &str, to_main: bool, edge: &str) -> bool {
+    if to_main {
+        let surface_id = lxapp::try_get(appid)
+            .and_then(|app| app.open_panel_id())
+            .unwrap_or_else(|| appid.to_string());
+        promote_lxapp_aside(&surface_id)
+    } else {
+        demote_lxapp_main_at(appid, edge)
+    }
+}
+
+/// [`demote_lxapp_main`] onto the panel at `edge`; empty keeps its edge.
+fn demote_lxapp_main_at(appid: &str, edge: &str) -> bool {
     let Some(app) = lxapp::try_get(appid) else {
         return false;
     };
@@ -4594,7 +4613,7 @@ pub(crate) fn demote_lxapp_main(appid: &str) -> bool {
     // Before the commit: the plan sync that follows must already know which
     // page the slot shows.
     lingxia_platform::windows::adopt_windows_lxapp_main_as_aside(appid, page.webtag(), title);
-    if let Err(err) = app.demote_main_to_aside("") {
+    if let Err(err) = app.demote_main_to_aside(edge) {
         log::warn!("main demotion refused for {appid}: {err}");
         let _ = lingxia_platform::windows::release_windows_lxapp_aside(appid);
         return false;

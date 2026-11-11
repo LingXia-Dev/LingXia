@@ -39,9 +39,9 @@ pub use app::{
     set_windows_app_exit_handler, set_windows_builtin_browser_downloads_handler,
     set_windows_close_browser_tab_handler, set_windows_exclusive_update_ready_handler,
     set_windows_lxapp_hidden_handler, set_windows_lxapp_main_activation_handler,
-    set_windows_open_url_handler, set_windows_shell_pins_handler,
-    set_windows_sidebar_actions_handler, set_windows_tray_click_intercept_handler,
-    set_windows_tray_menu_handler,
+    set_windows_lxapp_region_move_handler, set_windows_open_url_handler,
+    set_windows_shell_pins_handler, set_windows_sidebar_actions_handler,
+    set_windows_tray_click_intercept_handler, set_windows_tray_menu_handler,
 };
 pub use media_preview::{
     WindowsMediaPreviewCancel, WindowsMediaPreviewOpen, register_windows_media_preview_host,
