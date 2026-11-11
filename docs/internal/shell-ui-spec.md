@@ -124,6 +124,9 @@ enters the main window's surface graph.
 - An explicit `as` may migrate an existing non-root Surface between supported
   roles. Migration preserves provider state and runtime identity; it never
   clones the Surface. The stable root main cannot migrate away from `main`.
+- Runtime ids stay inside the shell. Logic addresses a live Surface by
+  identity — appId, declaration id and key, or its own page/URL key — and the
+  handle it gets back is the same object for the Surface's whole life.
 - `page` content MUST NOT be an aside. For a companion panel, use a separate
   lxapp, a native capability, or a URL; auxiliary UI internal to an app belongs
   in the app's own layout.
@@ -431,6 +434,11 @@ crammed in the moment the window crosses 840.
   only feedback.
   The root main never moves. Implemented on macOS and Windows; other
   platforms have no sidebar.
+- A move holds the lxapp's open guard, so it never interleaves with an open,
+  a restart, or another move of that app. A drag or menu move runs on the UI
+  thread and never waits for the guard (an open holding it may be waiting on
+  that thread): while it is held, the gesture is refused. A refused move
+  restores the app's region only if a close has not cleared it meanwhile.
 - While the main window has tabs, exactly one tab MUST be selected.
 - lxapp, browser, and native mains interleave in stable graph order; pins and
   sidebar actions stay fixed, outside the main navigation scroll region.
@@ -657,7 +665,7 @@ Declaration model (owned by the single runtime writer, §7.2):
 - Hosts do not infer target metadata, open lxapps, toggle providers, or render
   fallback glyphs. A callback explicitly opens a declared Surface with
   `lx.shell.openDeclared(id, options?)`, a dynamic business app with
-  `lx.shell.openApp(appId, { as, ... })`, or performs app navigation with
+  `lx.shell.openApp(appId, options?)`, or performs app navigation with
   `lx.navigateToApp({ appId: ... })`.
 - The declaration is a **full-generation atomic replace**: the shell validates
   the complete generation before touching handlers or chrome — a
@@ -665,8 +673,12 @@ Declaration model (owned by the single runtime writer, §7.2):
   update label/icon/value/disabled state and are validated against the whole
   patched generation. A `value` key present in a patch sets it; `undefined`,
   `null`, or `''` clears it (presence is the own key, since `{ value:
-  brand?.name }` must clear). Removing or clearing entries are atomic
-  transformations of the same generation, not separate mutation protocols.
+  brand?.name }` must clear). Removing an entry, or clearing with
+  `replace([])`, is an atomic transformation of the same generation, not a
+  separate mutation protocol.
+- `replace`, `update` and `remove` commit at call time, in call order, and
+  return a promise; a refused generation or unknown id rejects it rather than
+  throwing.
 - Callback registration is generation-scoped: replacing or removing an item
   unregisters its previous callback.
 - Sidebar actions are runtime-scoped because callbacks are not serializable. The
@@ -1097,11 +1109,11 @@ semantics every language surface MUST share.
   'aside' }` opens/reuses a distinct workspace in the native aside slot. The
   same keyed workspace may later migrate to main without losing PTYs, cwd, or
   running processes.
-- `lx.shell.openApp(appId, { as, page?, query?, channel?, targetVersion?,
-  edge? })` creates or focuses a dynamic business-app Surface and
-  does not require a YAML declaration. `as` is required because the caller is
-  creating shell composition rather than using declaration defaults; it is
-  `main` or `aside`. A float lxapp must be host-declared and opened with
+- `lx.shell.openApp(appId, { as?, page?, query?, channel?, targetVersion?,
+  edge? }?)` ensures a dynamic business-app Surface: it creates, focuses or
+  migrates one and does not require a YAML declaration. `as` is `main` or
+  `aside`; omitted, a live app keeps its role and a closed one opens in main.
+  A float lxapp must be host-declared and opened with
   `{ surface }` so its tray anchor, dismissal policy, and presentation contract
   exist. `page` is the configured page name; full routes are not JS API input.
   `query`, `channel`, and `targetVersion` are optional startup inputs, and
@@ -1115,11 +1127,21 @@ semantics every language surface MUST share.
   or its page stack; a `page` or `query` on that call is delivered to its Logic
   as App `onShow` (`reason: 'switch_back'`, `path`, `query`). A notification or
   menu `app` target that names an lxapp docked as an aside brings that aside
-  back and delivers the same way, instead of failing to take main. A live
-  main/aside role change through the API fails with `E_SURFACE_CONFLICT`;
-  close it before reopening in the other role. Only the user promotes a live
-  aside to main (sidebar drop or Pin, §4.2).
+  back and delivers the same way, instead of failing to take main. An `as`
+  naming the other role migrates the live app in place — the same move as a
+  sidebar drop or Pin (§4.2): Logic, page stack and WebViews survive, and
+  `page` / `query` still arrive as App `onShow`. The stable root main rejects
+  with `E_SURFACE_ROLE_LOCKED`; an app live only inside another Surface's app
+  navigation rejects with `E_SURFACE_CONFLICT`; a host that cannot move a live
+  app (iOS, Android, HarmonyOS) rejects with `E_NOT_SUPPORTED` before any state
+  changes. An invalid `page` or a `channel` other than the live one rejects
+  before the move, leaving the app where it was.
   It returns a lifecycle handle and, when main, owns an independent switcher item.
+- One live lxapp Surface has one handle, an `AppSurface`. `openApp`,
+  `lx.shell.getApp(appId)` (declared or not), and `openDeclared` /
+  `getDeclared` of the declaration that shows it (an lxapp declaration's id is
+  its appId) all return that same object; a declaration whose app is not live
+  returns `undefined` from `getDeclared`.
 - `lx.surface.openPage(page, options?)` opens the caller's own page as a float
   or standalone window. `lx.surface.openUrl(url, options?)` opens browser
   content; a URL without `as` becomes a main browser tab.
@@ -1150,7 +1172,7 @@ semantics every language surface MUST share.
 |---|---|---|---|---|
 | `lx.navigateToApp({ appId, ... })` | Pushes an app onto the current lxapp Surface's app-navigation stack | Reuses the current item | `lx.navigateBackApp()` pops to the previous app | `Promise<void>` |
 | `lx.shell.openApp(appId, { as: 'main', ... })` | Creates/focuses a dynamic app-owned Surface | Own independent item | Closing destroys that Surface and its app stack | `AppSurface` |
-| `lx.shell.openDeclared(id, { as: 'main' })` where the declaration contains an lxapp | Creates/focuses that host-declared Surface | Own declaration-backed item | Closing destroys the live Surface; reopening uses declaration defaults | `DeclaredSurface` |
+| `lx.shell.openDeclared(id, { as: 'main' })` where the declaration contains an lxapp | Creates/focuses that host-declared Surface | Own declaration-backed item | Closing destroys the live Surface; reopening uses declaration defaults | the app's `AppSurface` |
 
 Therefore a declared lxapp Surface opened as main is still different from
 `navigateToApp`: the former is a parallel shell workspace with its own runtime
@@ -1168,9 +1190,14 @@ Surface, navigation fails with
 
 ### 7.2 Handles, messaging, and context
 
-- An open returns a handle bound to the runtime id, carrying role,
-  presentation, visibility, and liveness, with show/hide/close and lifecycle
-  events per §2.1. URL mains return no handle. A medium/expanded URL aside uses
+- An open returns a handle bound to the runtime id, carrying the live
+  `realized` placement, visibility, and liveness, with show/hide/close and
+  lifecycle events per §2.1 (`onShow`/`onHide` carry `source`, `onClose`
+  `reason`). The runtime id is not exposed: `lx.shell.getApp(appId)`,
+  `lx.shell.getDeclared(id, key?)` and `lx.surface.getByKey(key)` (the caller's
+  own pages and URLs) return the same handle object again. Automation reads
+  each runtime id's owner from `surfaceLayout().identities`. URL mains return
+  no handle. A medium/expanded URL aside uses
   the generic surface graph and returns a tab-scoped visibility handle; its
   compact projection is owned by browser chrome and returns no handle.
 - lxapp and page surfaces support instance-bound messaging: messages address a
@@ -1195,7 +1222,9 @@ Shell chrome always has exactly one writer:
 - On a native-only host there is no home Logic; host Rust uses the semantically
   equivalent `lingxia::shell()` facade.
 - Both facades MUST share the state machines and errors of §2 and this
-  section. The writer declares sidebar actions (§4.5) and, under
+  section. The writer declares sidebar actions (§4.5), sets the name and icon
+  the shell shows for its own app (`lx.shell.setAppDisplay`, ranked above the
+  registry and `lxapp.json`, kept per service env), and, under
   `frameless + controls: content`, drives window controls
   (minimize/maximize/close/state); in other modes window-control calls fail
   with `E_NOT_SUPPORTED`.
@@ -1331,7 +1360,7 @@ lowercase keys). Synonyms are not allowed.
 | YAML provider content | `lxapp / page / url / native` | not exposed as provider selectors | `ContentKey` enum | render |
 | open selector | `surface / app_id / page / url` | `surface / appId / page / url` | typed open-spec variants | native, lxapp |
 | surface key | `key` | `key` | `SurfaceKey` | instanceKey, workspaceId |
-| runtime id | `surface_id` | `handle.id` | `SurfaceId` | — |
+| runtime id | `surface_id` | not exposed to Logic; automation `surfaceLayout().identities` keys | `SurfaceId` | — |
 | app navigation | `navigate_to_app / navigate_back_app` | `navigateToApp / navigateBackApp` | same roots | navigateToLxApp, openApp |
 | session entry id | `session_entry` | `sessionEntryId` | `SessionEntryId` | never conflated with runtime id |
 | role | `role` | `SurfaceRole` | `SurfaceRole` | mode, kind |

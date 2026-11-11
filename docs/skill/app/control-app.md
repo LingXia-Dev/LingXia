@@ -42,7 +42,8 @@ These act on the product, not on the calling lxapp:
 - `lx.host.autostart.*`
 - `lx.host.control.displayLanguage` / `.appearance` — the setting writers
   ([Product settings](../lxapp/lx-api.md#product-settings))
-- `lx.shell.*` mutations (sidebar actions, opening declared surfaces)
+- `lx.shell.*`: sidebar actions, `setAppDisplay`, opening or moving apps and
+  declared surfaces, and `getApp` / `getDeclared` to find a live one
 
 Reading the resolved settings (`lx.host.displayLanguage.get()`,
 `lx.host.appearance.get()`) is open to every lxapp.
