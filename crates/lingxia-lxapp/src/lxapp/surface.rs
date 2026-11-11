@@ -742,6 +742,58 @@ impl WindowSurfaceController {
         self.manager.lock().unwrap().graph().role_of(id)
     }
 
+    fn surface_content(&self, id: &str) -> Option<lingxia_surface::SurfaceContent> {
+        self.manager
+            .lock()
+            .unwrap()
+            .graph()
+            .get(id)
+            .map(|surface| surface.content.clone())
+    }
+
+    fn native_declaration_capability(&self, declaration_id: &str) -> Option<String> {
+        self.native_declarations
+            .lock()
+            .unwrap()
+            .get(declaration_id)
+            .and_then(|declaration| {
+                declaration
+                    .surface
+                    .content
+                    .native_identity()
+                    .map(|(capability, _)| capability.to_string())
+            })
+    }
+
+    /// The declaration a keyed native instance was made from.
+    fn native_declaration_for_capability(&self, capability: &str) -> Option<String> {
+        let declarations = self.native_declarations.lock().unwrap();
+        let mut ids: Vec<&String> = declarations
+            .iter()
+            .filter(|(_, declaration)| {
+                declaration
+                    .surface
+                    .content
+                    .native_identity()
+                    .is_some_and(|(cap, _)| cap == capability)
+            })
+            .map(|(id, _)| id)
+            .collect();
+        ids.sort();
+        ids.first().map(|id| id.to_string())
+    }
+
+    fn native_instance_surface_id(&self, capability: &str, key: &str) -> Option<String> {
+        self.manager
+            .lock()
+            .unwrap()
+            .graph()
+            .surfaces()
+            .iter()
+            .find(|surface| surface.content.native_identity() == Some((capability, Some(key))))
+            .map(|surface| surface.id.clone())
+    }
+
     fn managed_surface_visible(&self, id: &str) -> Option<bool> {
         let manager = self.manager.lock().unwrap();
         let graph = manager.graph();
@@ -1499,6 +1551,18 @@ pub struct PageSurface {
 pub struct ManagedNativeSurface {
     pub surface_id: String,
     pub role: lingxia_surface::Role,
+}
+
+/// See [`LxApp::shell_surface_identity`].
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShellSurfaceIdentity {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub declaration: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -2466,6 +2530,66 @@ impl LxApp {
     pub fn activate_main(&self) {
         self.runtime.request_lxapp_main_activation(&self.appid);
         self.set_active_main();
+    }
+
+    /// Whether `id` names a surface the host declared: a `lingxia.yaml` panel
+    /// item or a registered native declaration.
+    pub fn is_declared_shell_surface(&self, id: &str) -> bool {
+        let id = id.trim();
+        !id.is_empty()
+            && (window_controller(PRIMARY_WINDOW, &self.runtime)
+                .native_declaration_capability(id)
+                .is_some()
+                || lingxia_app_context::app_config()
+                    .and_then(|config| config.panels.as_ref())
+                    .is_some_and(|panels| panels.items.iter().any(|item| item.id == id)))
+    }
+
+    /// The live surface of a declaration's keyed instance.
+    pub fn declared_instance_surface_id(&self, declaration_id: &str, key: &str) -> Option<String> {
+        let controller = window_controller(PRIMARY_WINDOW, &self.runtime);
+        let capability = controller.native_declaration_capability(declaration_id.trim())?;
+        controller.native_instance_surface_id(&capability, key.trim())
+    }
+
+    /// Who a live surface is, for test automation: the lxapp it shows, the
+    /// declaration it came from, and that declaration's instance key.
+    pub fn shell_surface_identity(&self, surface_id: &str) -> Option<ShellSurfaceIdentity> {
+        let controller = window_controller(PRIMARY_WINDOW, &self.runtime);
+        let content = controller.surface_content(surface_id)?;
+        let mut identity = ShellSurfaceIdentity::default();
+        match content {
+            lingxia_surface::SurfaceContent::Lxapp { app_id, .. }
+            | lingxia_surface::SurfaceContent::Page { app_id, .. } => {
+                identity.app_id = Some(app_id);
+            }
+            lingxia_surface::SurfaceContent::Native {
+                capability,
+                instance_key: Some(key),
+            } => {
+                identity.declaration = controller.native_declaration_for_capability(&capability);
+                identity.key = Some(key);
+            }
+            _ => {}
+        }
+        if identity.declaration.is_none() && self.is_declared_shell_surface(surface_id) {
+            identity.declaration = Some(surface_id.to_string());
+        }
+        Some(identity)
+    }
+
+    /// Whether this app is live as a surface of its own, rather than only
+    /// inside another surface's app navigation.
+    pub fn owns_shell_surface(&self) -> bool {
+        let controller = window_controller(PRIMARY_WINDOW, &self.runtime);
+        match self.current_open_region() {
+            None => false,
+            Some(LxAppOpenRegion::Aside) => true,
+            Some(LxAppOpenRegion::Main) => {
+                controller.managed_surface_role(&self.appid) == Some(SurfaceRole::Main)
+                    || controller.switcher_snapshot().root_surface_id.is_none()
+            }
+        }
     }
 
     /// Move this live lxapp to `region` without restarting it, for an API

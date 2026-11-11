@@ -122,10 +122,11 @@ pub use runtime_registry::{
 pub(crate) use surface::SurfaceRecord;
 pub use surface::{
     HostMainSurfaceRegistration, HostSurfaceMenuExecution, LxAppRuntimeSurfaceInfo,
-    ManagedNativeSurface, PageSurface, PageSurfaceRequest, PageSurfaceTarget, UrlCallbackSurface,
-    UrlCallbackWaitError, next_surface_context_revision, register_surface_active_main_observer,
-    register_surface_close_observer, register_surface_context_observer,
-    register_surface_context_snapshot, register_surface_visibility_observer,
+    ManagedNativeSurface, PageSurface, PageSurfaceRequest, PageSurfaceTarget, ShellSurfaceIdentity,
+    UrlCallbackSurface, UrlCallbackWaitError, next_surface_context_revision,
+    register_surface_active_main_observer, register_surface_close_observer,
+    register_surface_context_observer, register_surface_context_snapshot,
+    register_surface_visibility_observer,
 };
 pub(crate) use surface::{SurfaceRecords, view_surface_context_script};
 use version::Version;

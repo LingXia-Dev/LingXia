@@ -890,7 +890,10 @@ export type ControlDisplayLanguageApi = {
     watchPreference(callback: (preference: DisplayLanguagePreference) => void): () => void;
 };
 
-/** A surface declared by the host in `lingxia.yaml`. */
+/**
+ * A surface declared by the host in `lingxia.yaml`. A declaration that
+ * shows an lxapp is that app's `AppSurface` instead.
+ */
 export type DeclaredSurface = SurfaceBase & SurfaceShowable & {
     readonly kind: 'declared';
 };
@@ -1903,14 +1906,28 @@ export type ShellApi = {
      * or move it to the role `as` names.
      */
     openApp(appId: string, options?: ShellOpenAppOptions): Promise<AppSurface>;
+    /**
+     * The handle of an lxapp live as a surface of its own, declared or not;
+     * `undefined` when it is not. A live lxapp has one handle: `openApp`,
+     * `getApp`, and `openDeclared` / `getDeclared` of the declaration that
+     * shows it all return the same `AppSurface`.
+     */
+    getApp(appId: string): AppSurface | undefined;
+    /**
+     * The handle of a live declared surface, or of its keyed instance, the
+     * same object on every call; `undefined` when it is not live. A
+     * declaration that shows an lxapp answers with that app's `AppSurface`.
+     */
+    getDeclared(id: string, key?: string): DeclaredSurface | AppSurface | undefined;
     /** Open a host builtin page such as downloads. */
     openBuiltin(page: BuiltinShellPage): Promise<BuiltinSurface>;
     /**
      * Open a declared surface with shell privileges — the same declaration
      * `lx.surface.openDeclared` opens, plus the keyed multi-instance form and
-     * placement overrides; `as` and `edge` also move a live instance.
+     * placement overrides; `as` and `edge` also move a live instance. A
+     * declaration that shows an lxapp resolves to that app's `AppSurface`.
      */
-    openDeclared(id: string, options?: ShellOpenDeclaredOptions): Promise<DeclaredSurface>;
+    openDeclared(id: string, options?: ShellOpenDeclaredOptions): Promise<DeclaredSurface | AppSurface>;
 };
 
 export type ShellOpenAppOptions = {
@@ -1939,8 +1956,6 @@ export type ShellOpenAppOptions = {
      */
     channel?: LxAppEnvVersion;
     targetVersion?: string;
-    /** Stable identity for `lx.surface.getByKey(key)`. */
-    key?: string;
 };
 
 /**
@@ -1952,11 +1967,10 @@ export type ShellOpenAppOptions = {
  */
 export type ShellOpenDeclaredOptions = {
     /**
-     * Caller-owned identity, for `lx.surface.getByKey(key)` later — the same key
-     * every opener takes. It carries one extra power here: a declaration can
-     * be opened more than once, and the key is which instance you mean, so a
-     * new key creates one. 1 to 128 UTF-8 bytes. Declarations without
-     * instantiable native providers reject it with `capability_missing`.
+     * Which instance of the declaration: a declaration can be opened more than
+     * once, and a new key creates one. Find it again with
+     * `lx.shell.getDeclared(id, key)`. 1 to 128 UTF-8 bytes. Declarations
+     * without instantiable native providers reject it with `capability_missing`.
      */
     key?: string;
     /**
@@ -2140,14 +2154,16 @@ export type SurfaceApi = {
     /**
      * Open a surface the host declared in `lingxia.yaml`, with the placement
      * the declaration chose. Instance keys and placement overrides are shell
-     * composition; they live on `lx.shell.openDeclared`.
+     * composition; they live on `lx.shell.openDeclared`. A declaration that
+     * shows an lxapp resolves to that app's `AppSurface`.
      */
-    openDeclared(id: string): Promise<DeclaredSurface>;
+    openDeclared(id: string): Promise<DeclaredSurface | AppSurface>;
     /**
-     * Find a live surface by the explicit key passed when opening it.
-     * Runtime-assigned ids are not lookup keys.
+     * Find one of this lxapp's own live pages or browser tabs by the key passed
+     * to `openPage` / `openUrl`. Declared surfaces and other lxapps are found
+     * with `lx.shell.getDeclared` and `lx.shell.getApp`.
      */
-    getByKey(key: string): AnySurface | undefined;
+    getByKey(key: string): PageSurface | TabSurface | undefined;
     /**
      * Observe this presentation's viewport. Invoked immediately with the
      * current context, then again whenever it changes. Returns an unsubscribe
@@ -2171,7 +2187,6 @@ export type SurfaceApi = {
 /** What every surface handle carries, whatever opened it. */
 export type SurfaceBase = {
     readonly kind: SurfaceKind;
-    readonly id: string;
     /** The caller-supplied identity, when this surface was opened with one. */
     readonly key?: string;
     /**
@@ -2209,7 +2224,6 @@ export type SurfaceCloseReason = 'user' | 'programmatic' | 'owner_closed' | 'app
  | 'reclaimed' | 'unknown';
 
 export type SurfaceClosedEvent = {
-    id: string;
     reason: SurfaceCloseReason;
 };
 
@@ -2348,7 +2362,6 @@ export type SurfaceShowable = {
  * toggled visibility). `shell` identifies a host-driven main switch.
  */
 export type SurfaceVisibilityEvent = {
-    id: string;
     source: 'opener' | 'page' | 'shell';
 };
 
@@ -3396,13 +3409,23 @@ declare global {
      * slot. Control-app only; the namespace is the privilege.
      */
     openApp(appId: string, options?: ShellOpenAppOptions): Promise<AppSurface>;
+    /**
+     * `lx.shell.getApp(appId)` — the handle of an app live as a surface of its
+     * own, declared or not. One live lxapp has one handle, its `AppSurface`.
+     */
+    getApp(appId: string): AppSurface | undefined;
+    /**
+     * `lx.shell.getDeclared(id, key?)` — the handle of a live declared surface,
+     * or of its keyed instance; a declared lxapp answers with its `AppSurface`.
+     */
+    getDeclared(id: string, key?: string): DeclaredSurface | AppSurface | undefined;
     /** `lx.shell.openBuiltin(page)` — a host builtin page. Control-app only. */
     openBuiltin(page: BuiltinShellPage): Promise<BuiltinSurface>;
     /**
      * `lx.shell.openDeclared(id, options?)` — the declared surface, plus the
      * keyed multi-instance form and placement overrides. Control-app only.
      */
-    openDeclared(id: string, options?: ShellOpenDeclaredOptions): Promise<DeclaredSurface>;
+    openDeclared(id: string, options?: ShellOpenDeclaredOptions): Promise<DeclaredSurface | AppSurface>;
     readonly sidebarActions: ShellSidebarActionsApi;
   }
 }
@@ -3462,9 +3485,9 @@ declare global {
      * `lx.surface.openDeclared(id, options?)` — a surface the host declared in
      * `lingxia.yaml`, opened with the declaration's own presentation.
      */
-    openDeclared(id: string): Promise<DeclaredSurface>;
+    openDeclared(id: string): Promise<DeclaredSurface | AppSurface>;
     /** Find a live surface by its explicit caller-owned key. Runtime ids are not keys. */
-    getByKey(key: string): AnySurface | undefined;
+    getByKey(key: string): PageSurface | TabSurface | undefined;
     /**
      * `lx.surface.watchContext(handler)` — register a JS callback (scoped to this
      * lxapp's JS context), invoke it immediately, then again whenever that

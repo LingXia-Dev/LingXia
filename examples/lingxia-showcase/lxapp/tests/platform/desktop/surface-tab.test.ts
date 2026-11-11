@@ -11,7 +11,6 @@ interface OpenedTab {
   kind: string;
   realized: string;
   scope: string;
-  id: string;
   key: string | null;
   alive: boolean;
   visible: boolean;
@@ -47,7 +46,6 @@ test('open a browser tab from Logic and control it through TabSurface', {
     'TabSurface.kind',
     'TabSurface.realized',
     'TabSurface.scope',
-    'TabSurface.id',
     'TabSurface.key',
     'TabSurface.alive',
     'TabSurface.visible',
@@ -120,18 +118,15 @@ test('open a browser tab from Logic and control it through TabSurface', {
       kind: tab.kind,
       realized: tab.realized,
       scope: tab.scope,
-      id: tab.id,
       key: tab.key ?? null,
       alive: tab.alive,
       visible: tab.visible,
-      registered: registered != null && registered.id === tab.id,
+      registered: registered === tab,
     };
   }, url, key, stateKey);
   expect(opened.kind).toBe('tab');
   expect(['tab', 'aside']).toContain(opened.realized);
   expect(['tab', 'group']).toContain(opened.scope);
-  expect(typeof opened.id).toBe('string');
-  expect(opened.id.length).toBeGreaterThan(0);
   expect(opened.key).toBe(key);
   expect(opened.alive).toBeTruthy();
   expect(opened.visible).toBeTruthy();

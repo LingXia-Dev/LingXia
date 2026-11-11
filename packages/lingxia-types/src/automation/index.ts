@@ -148,7 +148,7 @@ export interface HostRunAutomation extends Automation {
 export type TerminalSplitDirection = 'left' | 'right' | 'up' | 'down';
 
 export interface TerminalSurfaceRef {
-  /** Stable id returned by `lx.shell.openDeclared('terminal', { key })`. */
+  /** Runtime surface id, looked up in `surfaceLayout().identities`. */
   surface: string;
 }
 
@@ -726,6 +726,13 @@ export interface SurfaceLayoutFloat {
 }
 
 /** Id-only surface tree emitted by the shared layout core. */
+/** Who owns a surface in the layout: an app, or a declaration and its key. */
+export interface SurfaceLayoutIdentity {
+  appId?: string;
+  declaration?: string;
+  key?: string;
+}
+
 export type SurfaceLayoutTree =
   | { kind: 'leaf'; surfaceId: string }
   | {
@@ -754,6 +761,8 @@ export interface SurfaceLayoutSnapshot {
   asideSlots: SurfaceLayoutAsideSlot[];
   floats: SurfaceLayoutFloat[];
   tree?: SurfaceLayoutTree;
+  /** Owner identity of every surface above, keyed by surface id. */
+  identities: Record<string, SurfaceLayoutIdentity>;
 }
 
 // ======================= test network routing =======================

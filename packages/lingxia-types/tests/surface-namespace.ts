@@ -35,7 +35,7 @@ function narrowsByKind(surface: AnySurface): string {
   if (surface.kind === "tab") {
     return surface.scope;
   }
-  return surface.id;
+  return surface.kind;
 }
 
 // Probe 4: a url open returns a handle that can close what it opened.
@@ -81,7 +81,20 @@ async function builtinReportsIdentityOnly(): Promise<string> {
   const downloads = await lx.shell.openBuiltin("downloads");
   // @ts-expect-error the shell owns a builtin page's visibility
   downloads.show;
-  return downloads.id;
+  return downloads.kind;
+}
+
+// Shell-owned surfaces are looked up by identity, not by a handle id.
+function shellLookups(): boolean {
+  const app = lx.shell.getApp("com.example.agent");
+  const terminal = lx.shell.getDeclared("terminal", "project-a");
+  // @ts-expect-error handles carry no runtime id
+  app?.id;
+  // A declaration that shows an lxapp answers with that app's handle.
+  const chat = lx.shell.getDeclared("chat");
+  const chatRealized: "main" | "aside" | undefined =
+    chat?.kind === "app" ? chat.realized : undefined;
+  return Boolean(app?.alive && terminal?.alive && chatRealized);
 }
 
 // Host-wide Settings is bootstrap-owned native chrome, never Logic.

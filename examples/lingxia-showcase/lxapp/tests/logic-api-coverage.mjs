@@ -110,7 +110,6 @@ export default {
     { "api": "PageSurface.close", "mode": "automated", "owner": "DESKTOP-SURFACE-DECLARED-001", "targets": ["windows", "macos"] },
     { "api": "PageSurface.kind", "mode": "automated", "owner": "DESKTOP-SURFACE-WINDOW-001", "targets": ["windows", "macos"] },
     { "api": "PageSurface.realized", "mode": "automated", "owner": "DESKTOP-SURFACE-WINDOW-001", "targets": ["windows", "macos"] },
-    { "api": "PageSurface.id", "mode": "automated", "owner": "DESKTOP-SURFACE-WINDOW-001", "targets": ["windows", "macos"] },
     { "api": "PageSurface.onShow", "mode": "automated", "owner": "DESKTOP-SURFACE-DECLARED-001", "targets": ["windows", "macos"] },
     { "api": "PageSurface.onHide", "mode": "automated", "owner": "DESKTOP-SURFACE-DECLARED-001", "targets": ["windows", "macos"] },
     { "api": "PageSurface.onClose", "mode": "automated", "owner": "DESKTOP-DYNAMIC-MAIN-001", "targets": ["windows", "macos"] },
