@@ -819,11 +819,21 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         let toolbar = MacNavigationToolbar()
         toolbar.translatesAutoresizingMaskIntoConstraints = false
         toolbar.onNavigationAction = { [weak self] action in
-            guard let appId = self?.tabManager.activeTab?.appId else { return }
-            if action == "back" {
+            // The bar shows the state of the app that last published it; a
+            // declared surface (e.g. the host's home) does not move the tab
+            // manager, so its active tab can name another app.
+            guard let appId = NavigationBarStateManager.shared.currentAppId
+                ?? self?.tabManager.activeTab?.appId
+            else { return }
+            switch action {
+            case "back":
                 let _ = onLxappEvent(appId, LxAppEvent.navigationClick, LxAppEvent.navigationActionBack)
-            } else if action == "home" {
+            case "home":
                 let _ = onLxappEvent(appId, LxAppEvent.navigationClick, LxAppEvent.navigationActionHome)
+            case "refresh":
+                let _ = onLxappEvent(appId, LxAppEvent.navigationClick, LxAppEvent.navigationActionRefresh)
+            default:
+                break
             }
         }
         toolbar.onHostAction = { [weak self] actionID in

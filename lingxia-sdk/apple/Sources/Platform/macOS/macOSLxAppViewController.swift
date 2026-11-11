@@ -96,9 +96,12 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
             bar.translatesAutoresizingMaskIntoConstraints = false
             bar.onNavigationAction = { [weak self] action in
                 guard let self else { return }
-                let event = action == "home"
-                    ? LxAppEvent.navigationActionHome
-                    : LxAppEvent.navigationActionBack
+                let event: String
+                switch action {
+                case "home": event = LxAppEvent.navigationActionHome
+                case "refresh": event = LxAppEvent.navigationActionRefresh
+                default: event = LxAppEvent.navigationActionBack
+                }
                 _ = onLxappEvent(self.appId, LxAppEvent.navigationClick, event)
             }
             view.addSubview(bar)

@@ -29,6 +29,9 @@ mod bridge {
         pub show_navbar: bool,
         pub show_back_button: bool,
         pub show_home_button: bool,
+        /// Desktop hosts put a refresh button in the bar of a page that
+        /// declared `enablePullDownRefresh`; mobile pulls instead.
+        pub show_refresh_button: bool,
         pub capsule_background_color: u32,
         pub capsule_foreground_color: u32,
         pub capsule_divider_color: u32,
@@ -2477,6 +2480,7 @@ pub fn get_navigation_bar_state(appid: &str, path: &str) -> self::bridge::Naviga
             show_navbar: nav_state.show_navbar,
             show_back_button: nav_state.show_back_button,
             show_home_button: nav_state.home_button_visible(),
+            show_refresh_button: lxapp.is_pull_down_refresh_enabled(path),
             capsule_background_color: capsule.background_color.argb(),
             capsule_foreground_color: capsule.foreground_color.argb(),
             capsule_divider_color: capsule.divider_color.argb(),
@@ -2492,6 +2496,7 @@ pub fn get_navigation_bar_state(appid: &str, path: &str) -> self::bridge::Naviga
             show_navbar: false,
             show_back_button: false,
             show_home_button: false,
+            show_refresh_button: false,
             capsule_background_color: 0xFFFFFFFF,
             capsule_foreground_color: 0xFF000000,
             capsule_divider_color: 0xFFD1D1D6,

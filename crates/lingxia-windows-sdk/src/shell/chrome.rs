@@ -366,6 +366,7 @@ pub(super) mod command_id {
     pub(super) const STATIC_SETTINGS_CLICK: &str = "static-settings.click";
     pub(super) const NAVIGATION_BACK: &str = "navigation.back";
     pub(super) const NAVIGATION_HOME: &str = "navigation.home";
+    pub(super) const NAVIGATION_REFRESH: &str = "navigation.refresh";
     pub(super) const BROWSER_NEW_TAB: &str = "browser.new-tab";
     pub(super) const MAIN_WORKSPACE_ADD: &str = "main-workspace.add";
     pub(super) const BROWSER_TABS_CYCLE: &str = "browser.tabs.cycle";
@@ -384,6 +385,7 @@ pub(super) mod command_id {
     pub(super) const ASIDE_PANEL_MAXIMIZE: &str = "aside-panel.maximize";
     pub(super) const ASIDE_PANEL_NAV_BACK: &str = "aside-panel.nav.back";
     pub(super) const ASIDE_PANEL_NAV_HOME: &str = "aside-panel.nav.home";
+    pub(super) const ASIDE_PANEL_NAV_REFRESH: &str = "aside-panel.nav.refresh";
     pub(super) const ASIDE_PANEL_RESTORE: &str = "aside-panel.restore";
     pub(super) const ASIDE_PANEL_TABBAR_CLICK: &str = "aside-panel.tabbar.click";
     pub(super) const ASIDE_PANEL_TABBAR_MENU: &str = "aside-panel.tabbar.menu";
@@ -788,6 +790,12 @@ fn chrome_hover_rect(
         if navbar.show_home_button {
             let index = if navbar.show_back_button { 1 } else { 0 };
             let rect = nav_button_rect(navbar_rect, buttons_left, index);
+            if rect_contains(&rect, point) {
+                return Some(rect);
+            }
+        }
+        if navbar.show_refresh_button {
+            let rect = nav_button_rect(navbar_rect, buttons_left, navbar.refresh_button_index());
             if rect_contains(&rect, point) {
                 return Some(rect);
             }
@@ -2808,6 +2816,14 @@ pub(super) fn chrome_hit_test(
         {
             return Some(chrome_command(command_id::NAVIGATION_HOME, json!({})));
         }
+        if navbar.show_refresh_button
+            && rect_contains(
+                &nav_button_rect(navbar_rect, buttons_left, navbar.refresh_button_index()),
+                point,
+            )
+        {
+            return Some(chrome_command(command_id::NAVIGATION_REFRESH, json!({})));
+        }
         return Some(WindowsChromeHit::Caption);
     }
 
@@ -4506,6 +4522,7 @@ mod scroll_tests {
             text_color: 0,
             show_back_button: false,
             show_home_button: false,
+            show_refresh_button: false,
             height: 38,
         });
         let rects = compute_chrome_rects(client, &layout);
@@ -4562,6 +4579,7 @@ mod scroll_tests {
                 text_color: 0,
                 show_back_button: false,
                 show_home_button: false,
+                show_refresh_button: false,
                 height: 38,
             }),
             tab_bar: Some(bottom_tabbar(true, false)),
@@ -4641,6 +4659,7 @@ mod scroll_tests {
                 text_color: 0,
                 show_back_button: false,
                 show_home_button: false,
+                show_refresh_button: false,
                 height: 38,
             }),
             ..Default::default()
@@ -4716,6 +4735,7 @@ mod scroll_tests {
                 text_color: 0,
                 show_back_button: true,
                 show_home_button: true,
+                show_refresh_button: false,
                 height: 38,
             }),
             tab_bar: Some(sidebar),
@@ -4975,6 +4995,7 @@ mod corner_tests {
                 text_color: 0,
                 show_back_button: false,
                 show_home_button: false,
+                show_refresh_button: false,
                 height: 38,
             }),
             ..Default::default()

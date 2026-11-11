@@ -1330,6 +1330,7 @@ fn handle_aside_panel_event(event: WindowsAsidePanelEvent) {
         | WindowsAsidePanelEvent::ToggleMaximize { panel_id }
         | WindowsAsidePanelEvent::Restore { panel_id }
         | WindowsAsidePanelEvent::NavHome { panel_id }
+        | WindowsAsidePanelEvent::NavRefresh { panel_id }
         | WindowsAsidePanelEvent::TabBarClick { panel_id, .. }
         | WindowsAsidePanelEvent::NavBack { panel_id }
         | WindowsAsidePanelEvent::NavForward { panel_id }

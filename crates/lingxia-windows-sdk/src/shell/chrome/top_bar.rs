@@ -590,6 +590,21 @@ pub(super) fn draw_navigation_bar(
         );
         left_controls_width = home_rect.right - rect.left;
     }
+    if navbar.show_refresh_button {
+        let refresh_rect = nav_button_rect(rect, buttons_left, navbar.refresh_button_index());
+        let slot = leading_icon_slot(refresh_rect);
+        if cursor.is_some_and(|point| rect_contains(&refresh_rect, point)) {
+            fill_round_rect_overlay(hdc, nav_hover_rect(slot, refresh_rect), 5, hover_overlay());
+        }
+        draw_design_icon_button(
+            hdc,
+            slot,
+            WindowsDesignIcon::BrowserRefresh,
+            text_color,
+            nav_icon_size(),
+        );
+        left_controls_width = refresh_rect.right - rect.left;
+    }
 
     if !navbar.title.trim().is_empty() {
         let title_inset = left_controls_width + px(8);

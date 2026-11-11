@@ -202,12 +202,14 @@ fn aside_panel_navigation_layout(
             text_color: navigation.text_color,
             show_back_button: navigation.show_back_button,
             show_home_button: navigation.show_home_button,
+            show_refresh_button: navigation.show_refresh_button,
             height: rect_height(&rect),
         },
     ))
 }
 
-/// Back sits first; Home follows it, or takes its place at the stack root.
+/// Back sits first; Home follows it, or takes its place at the stack root;
+/// Refresh comes after either, or first when neither shows.
 fn aside_panel_navigation_button_rects(
     rect: RECT,
     navigation: &WindowsShellNavigationBarLayout,
@@ -223,6 +225,12 @@ fn aside_panel_navigation_button_rects(
     if navigation.show_home_button {
         out.push((
             command_id::ASIDE_PANEL_NAV_HOME,
+            nav_button_rect(rect, buttons_left, out.len() as i32),
+        ));
+    }
+    if navigation.show_refresh_button {
+        out.push((
+            command_id::ASIDE_PANEL_NAV_REFRESH,
             nav_button_rect(rect, buttons_left, out.len() as i32),
         ));
     }

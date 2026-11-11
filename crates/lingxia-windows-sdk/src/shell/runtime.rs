@@ -512,6 +512,7 @@ mod chrome_command {
     pub(super) const STATIC_SETTINGS_CLICK: &str = "static-settings.click";
     pub(super) const NAVIGATION_BACK: &str = "navigation.back";
     pub(super) const NAVIGATION_HOME: &str = "navigation.home";
+    pub(super) const NAVIGATION_REFRESH: &str = "navigation.refresh";
     pub(super) const BROWSER_NEW_TAB: &str = "browser.new-tab";
     pub(super) const MAIN_WORKSPACE_ADD: &str = "main-workspace.add";
     pub(super) const BROWSER_TAB_CLICK: &str = "browser.tab.click";
@@ -529,6 +530,7 @@ mod chrome_command {
     pub(super) const ASIDE_PANEL_MAXIMIZE: &str = "aside-panel.maximize";
     pub(super) const ASIDE_PANEL_NAV_BACK: &str = "aside-panel.nav.back";
     pub(super) const ASIDE_PANEL_NAV_HOME: &str = "aside-panel.nav.home";
+    pub(super) const ASIDE_PANEL_NAV_REFRESH: &str = "aside-panel.nav.refresh";
     pub(super) const ASIDE_PANEL_RESTORE: &str = "aside-panel.restore";
     pub(super) const ASIDE_PANEL_TABBAR_CLICK: &str = "aside-panel.tabbar.click";
     pub(super) const ASIDE_PANEL_TABBAR_MENU: &str = "aside-panel.tabbar.menu";
@@ -2395,6 +2397,7 @@ fn build_navigation_bar_layout(app: &LxApp, path: &str) -> WindowsShellNavigatio
         text_color,
         show_back_button: navbar.show_back_button,
         show_home_button: navbar.home_button_visible(),
+        show_refresh_button: navbar.show_navbar && app.is_pull_down_refresh_enabled(path),
         height: crate::dpi::px(DEFAULT_NAV_BAR_HEIGHT),
     }
 }
@@ -3961,6 +3964,11 @@ fn handle_managed_aside_event(event: WindowsAsidePanelEvent) {
         {
             lxapp_aside_navigation_click("home");
         }
+        WindowsAsidePanelEvent::NavRefresh { panel_id }
+            if panel_id == lingxia_windows_contract::ASIDE_PANEL_ID =>
+        {
+            lxapp_aside_navigation_click("refresh");
+        }
         WindowsAsidePanelEvent::TabBarClick { panel_id, index }
             if panel_id == lingxia_windows_contract::ASIDE_PANEL_ID =>
         {
@@ -3970,6 +3978,7 @@ fn handle_managed_aside_event(event: WindowsAsidePanelEvent) {
         }
         WindowsAsidePanelEvent::NavBack { .. }
         | WindowsAsidePanelEvent::NavHome { .. }
+        | WindowsAsidePanelEvent::NavRefresh { .. }
         | WindowsAsidePanelEvent::TabBarClick { .. }
         | WindowsAsidePanelEvent::NavForward { .. }
         | WindowsAsidePanelEvent::NavReload { .. } => {}
@@ -4021,7 +4030,8 @@ fn lxapp_aside_navigation_click(action: &str) {
 
 /// Publish the lxapp aside's navigation bar for the page its active child
 /// shows. Like the macOS aside bar it shows only while Back or Home has
-/// somewhere to go: at the stack root the slot tab already names the app.
+/// somewhere to go, or the page offers Refresh: at the stack root the slot
+/// tab already names the app.
 fn sync_lxapp_aside_navigation() {
     let app = lxapp_aside_active_app();
     let navigation = app.as_deref().and_then(|app| {
@@ -4034,6 +4044,7 @@ fn sync_lxapp_aside_navigation() {
                 background_color: navbar.background_color,
                 text_color: navbar.text_color,
                 show_back_button: navbar.show_back_button,
+                show_refresh_button: navbar.show_refresh_button,
             },
         )
     });
@@ -4195,7 +4206,8 @@ fn aside_tabbar_item_label(app: &LxApp, item: &lxapp::tabbar::TabBarItem) -> Str
 }
 
 fn lxapp_aside_shows_navigation(navbar: &WindowsShellNavigationBarLayout) -> bool {
-    navbar.visible && (navbar.show_back_button || navbar.show_home_button)
+    navbar.visible
+        && (navbar.show_back_button || navbar.show_home_button || navbar.show_refresh_button)
 }
 
 /// Slot kind behind a well-known aside panel id. The lxapp and browser
@@ -4711,6 +4723,9 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
         chrome_command::NAVIGATION_BACK => {
             app.on_lxapp_event(LxAppUiEventType::NavigationClick, "back".to_string())
         }
+        chrome_command::NAVIGATION_REFRESH => {
+            app.on_lxapp_event(LxAppUiEventType::NavigationClick, "refresh".to_string())
+        }
         chrome_command::NAVIGATION_HOME => {
             let returning_from_browser = clear_browser_presentation();
             let handled = app.on_lxapp_event(LxAppUiEventType::NavigationClick, "home".to_string());
@@ -4997,6 +5012,13 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
                 return;
             };
             dispatch_aside_panel_event(WindowsAsidePanelEvent::NavHome { panel_id });
+            return;
+        }
+        chrome_command::ASIDE_PANEL_NAV_REFRESH => {
+            let Some(panel_id) = payload_string(&event, "panel_id") else {
+                return;
+            };
+            dispatch_aside_panel_event(WindowsAsidePanelEvent::NavRefresh { panel_id });
             return;
         }
         chrome_command::ASIDE_PANEL_RESTORE => {
@@ -5289,6 +5311,7 @@ fn chrome_command_is_page_scoped(command: &str) -> bool {
         command,
         chrome_command::NAVIGATION_BACK
             | chrome_command::NAVIGATION_HOME
+            | chrome_command::NAVIGATION_REFRESH
             | chrome_command::TAB_BAR_CLICK
             | chrome_command::TAB_BAR_MORE_CLICK
     )

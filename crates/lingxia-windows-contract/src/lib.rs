@@ -70,6 +70,8 @@ pub struct WindowsAsidePanelNavigation {
     pub text_color: u32,
     pub show_back_button: bool,
     pub show_home_button: bool,
+    /// The page declared `enablePullDownRefresh`.
+    pub show_refresh_button: bool,
 }
 
 /// The tabBar of the lxapp an aside slot shows, drawn as a row of page tabs
@@ -111,6 +113,11 @@ pub enum WindowsAsidePanelEvent {
     },
     /// The lxapp slot's navigation bar Home button.
     NavHome {
+        panel_id: String,
+    },
+    /// The lxapp slot's navigation bar Refresh button: the page's
+    /// pull-down refresh, not a WebView reload.
+    NavRefresh {
         panel_id: String,
     },
     /// A segment of the lxapp slot's tabBar row, by its `lxapp.json` index.
