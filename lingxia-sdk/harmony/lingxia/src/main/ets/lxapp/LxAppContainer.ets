@@ -1312,7 +1312,10 @@ export struct LxAppContainer {
       ForEach(this.getRenderableWebEntries(), (entry: RenderableWebEntry) => {
         this.buildWebViewComponent(entry.webTag, entry.controller)
       }, (entry: RenderableWebEntry) => `${entry.webTag}@${entry.generation}`)
-      ForEach(Array.from(this.gpuPages.values()), (page: GpuPageModel) => {
+      // A float's GPU page is mounted by its sub-window; one XComponent per page.
+      ForEach(Array.from(this.gpuPages.values())
+        .filter((page: GpuPageModel) => !LxAppSurface.isSurfacePageWebView(this.appId, page.webTag)),
+        (page: GpuPageModel) => {
         this.buildGpuPageComponent(page)
       }, (page: GpuPageModel) => `${page.webTag}#${page.token}`)
       // Overlay mask on top

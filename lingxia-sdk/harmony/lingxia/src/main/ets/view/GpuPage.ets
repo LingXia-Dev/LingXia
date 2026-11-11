@@ -53,12 +53,23 @@ export struct GpuPage {
       onMemoryLevel: (_level: number): void => {}
     };
     this.environment = context.getApplicationContext().on('environment', callback);
-    window.getLastWindow(context).then((win: window.Window) => {
+    // This component's own window: the last-created one is a float's sub-window while it exists.
+    const named: window.Window | undefined = this.ownWindow();
+    (named !== undefined ? Promise.resolve(named) : window.getLastWindow(context)).then((win: window.Window) => {
       this.win = win;
       win.on('avoidAreaChange', () => this.remeasure());
       win.on('windowVisibilityChange', (visible: boolean) => gpuPageWindowVisible(this.page.token, visible));
       this.remeasure();
     });
+  }
+
+  private ownWindow(): window.Window | undefined {
+    try {
+      const name: string | undefined = this.getUIContext().getWindowName();
+      return name ? window.findWindow(name) : undefined;
+    } catch (_) {
+      return undefined;
+    }
   }
 
   aboutToDisappear(): void {

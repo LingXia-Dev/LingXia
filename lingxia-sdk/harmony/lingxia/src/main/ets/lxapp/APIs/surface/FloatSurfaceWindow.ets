@@ -25,6 +25,8 @@ import type { SurfaceLayoutConfig } from './SurfaceModel';
 import { isExternalWindowUrl, isFileUrl, isHttpUrl } from './SurfaceUrlPolicy';
 import { SurfaceCloseButton } from './SurfaceChrome';
 import { DevServiceMarkWindow } from '../../DevServiceMarkWindow';
+import { GpuPage } from '../../../view/GpuPage';
+import { GpuPageModel, GpuPages } from '../../../view/GpuPages';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.FloatSurfaceWindow';
@@ -205,6 +207,11 @@ struct LingXiaFloatSurfacePage {
   @State private pageWebTag: string = '';
   @State private layout: SurfaceLayoutConfig | null = null;
   @State private appearanceDark: boolean = false;
+  /** A GPU page shown in this float: its XComponent lives here, not in the main window. */
+  @State private gpuPage: GpuPageModel | undefined = undefined;
+  private gpuCreated = (page: GpuPageModel): void => {
+    if (page.webTag === this.layout?.webTag) this.showGpuPage(page);
+  };
   private pageController: webview.WebviewController = new webview.WebviewController();
   private urlController: webview.WebviewController = new webview.WebviewController();
   private webViewUiCallback = (action: string, info: WebViewInfo): void => {
@@ -228,9 +235,15 @@ struct LingXiaFloatSurfacePage {
     FloatSurfaceWindowManager.addAppearanceHandler(this.appearanceHandler);
     this.tryAttachPage();
     this.tryAttachUrl();
+    if (this.layout?.content === FLOAT_CONTENT_PAGE) {
+      const page = GpuPages.byWebTag(this.layout.webTag);
+      if (page !== undefined) this.showGpuPage(page);
+      GpuPages.onCreated(this.gpuCreated);
+    }
   }
 
   aboutToDisappear() {
+    GpuPages.off(this.gpuCreated);
     removeWebViewUiCallback(this.webViewUiCallback);
     FloatSurfaceWindowManager.removeAppearanceHandler(this.appearanceHandler);
   }
@@ -276,6 +289,12 @@ struct LingXiaFloatSurfacePage {
         return;
       }
     }
+  }
+
+  /** Nothing is on screen under a float: its page shows from its first frame. */
+  private showGpuPage(page: GpuPageModel): void {
+    this.gpuPage = page;
+    GpuPages.reveal(page, () => {});
   }
 
   private isFullscreen(): boolean {
@@ -356,6 +375,12 @@ struct LingXiaFloatSurfacePage {
               })
               .width('100%')
               .height('100%')
+          } else if (this.gpuPage !== undefined) {
+            GpuPage({
+              page: this.gpuPage,
+              pageVisible: true,
+              floor: this.appearanceDark ? Color.Black : Color.White
+            })
           } else if (this.pageWebTag.length > 0) {
             LingXiaWebView({
               webTag: this.pageWebTag,
