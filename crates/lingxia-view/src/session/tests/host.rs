@@ -3308,6 +3308,18 @@ fn run_timed(platform: &Platform, host: &ViewHost<Fake>, frames: u32) {
     }
 }
 
+#[test]
+fn a_frame_asked_for_while_a_flight_lands_starts_after_it() {
+    // A landing flight's Logic update asks for a frame before the landing frame is stored;
+    // a flight started then would queue a third frame behind the two already waiting.
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = costly_spinner(&platform, &worker, true);
+    assert_eq!(host.schedule_while_landing(), (false, true));
+    run_timed(&platform, &host, 20);
+    assert_eq!(host.ahead_refusals(), 0);
+}
+
 fn costly_spinner(platform: &Platform, worker: &Arc<ViewWorker>, ahead: bool) -> ViewHost<Fake> {
     // The button darkens while pressed, as the lab's buttons do: pressing relays the page out.
     let page = source(&format!(

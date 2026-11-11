@@ -320,6 +320,11 @@ struct Main<F> {
     deferred: Option<pump::Deferred>,
     /// The frame the worker is preparing; a completion of any other is stale.
     in_flight: Option<pump::Flight>,
+    /// A finished flight's result is being stored: a frame started meanwhile would queue
+    /// behind it uncounted. `landing.1` records a start that was held back.
+    landing: (bool, bool),
+    #[cfg(test)]
+    ahead_refusals: u32,
     next_flight: u64,
     /// The flight of the last presented frame, and of the last whose animation state the
     /// session acknowledged.
@@ -541,6 +546,9 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     prepared: None,
                     deferred: None,
                     in_flight: None,
+                    landing: (false, false),
+                    #[cfg(test)]
+                    ahead_refusals: 0,
                     next_flight: 0,
                     presented_flight: 0,
                     acked_flight: 0,
@@ -743,6 +751,28 @@ impl<A: PlatformAdapter> ViewHost<A> {
     #[cfg(test)]
     pub(crate) fn disable_frames_ahead(&self) {
         self.inner.main().no_frames_ahead = true;
+    }
+
+    /// Ahead frames the session refused because two frames already waited.
+    #[cfg(test)]
+    pub(crate) fn ahead_refusals(&self) -> u32 {
+        self.inner.main().ahead_refusals
+    }
+
+    /// Ask for a frame while a finished flight lands: whether a flight started then, and
+    /// once the landing ended.
+    #[cfg(test)]
+    pub(crate) fn schedule_while_landing(&self) -> (bool, bool) {
+        {
+            let mut main = self.inner.main();
+            main.landing = (true, false);
+            main.dirty = true;
+        }
+        self.inner.schedule();
+        let during = self.inner.main().in_flight.is_some();
+        drop(pump::Landed(self.inner.clone()));
+        let after = self.inner.main().in_flight.is_some();
+        (during, after)
     }
 
     /// Every build takes `build`, as a device's worker would report it.

@@ -26,6 +26,21 @@ pub(super) struct Prepared<F> {
     flight: u64,
 }
 
+/// Ends a flight's landing: a frame start held back meanwhile runs now.
+pub(super) struct Landed<A: PlatformAdapter>(pub(super) Arc<Inner<A>>);
+
+impl<A: PlatformAdapter> Drop for Landed<A> {
+    fn drop(&mut self) {
+        let owed = {
+            let mut main = self.0.main();
+            std::mem::replace(&mut main.landing, (false, false)).1
+        };
+        if owed {
+            self.0.schedule();
+        }
+    }
+}
+
 /// A frame job on the worker.
 #[derive(Clone, Copy)]
 pub(super) struct Flight {
@@ -188,6 +203,10 @@ impl<A: PlatformAdapter> Inner<A> {
             // One frame on the worker at a time, and at most one waiting behind the next vsync.
             // A deferred frame on its way to the screen counts as the one waiting.
             let waiting = main.prepared.is_some() || main.deferred.is_some();
+            if main.landing.0 {
+                main.landing.1 = true;
+                return;
+            }
             if main.in_flight.is_some()
                 || main.next_prepared.is_some()
                 || (main.deferred.is_some() && main.prepared.is_some())
@@ -291,6 +310,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 Ok((input, rebuild, prepared, reads))
             },
             move |inner, result| {
+                let _landed = Landed(inner.clone());
                 let measures = std::mem::take(&mut inner.main().frame_measures);
                 for (token, ms) in measures {
                     inner.frame_measure(token, ms);
@@ -300,6 +320,7 @@ impl<A: PlatformAdapter> Inner<A> {
                     let current = main.in_flight.is_some_and(|f| f.id == flight.id);
                     if current {
                         main.in_flight = None;
+                        main.landing = (true, false);
                     }
                     // Input came after it started while another frame still waits: drawing
                     // that input now beats queueing this one behind it.
@@ -402,6 +423,10 @@ impl<A: PlatformAdapter> Inner<A> {
                         // The session holds frames this host dropped: a fresh frame replaces them.
                         {
                             let mut main = inner.main();
+                            #[cfg(test)]
+                            {
+                                main.ahead_refusals += 1;
+                            }
                             main.release_input(pacing.input);
                             main.drop_prepared();
                             if let Some(next) = main.next_prepared.take() {
