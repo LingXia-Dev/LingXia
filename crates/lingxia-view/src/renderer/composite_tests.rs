@@ -431,6 +431,10 @@ fn sibling_groups_share_one_pass_into_the_surface_they_sit_in() {
         let display = sibling_groups(backdrop);
         let output = compositor.render_display(&display, device, queue).unwrap();
         assert_eq!(compositor.stats().draws, draws, "backdrop={backdrop}");
+        let records = compositor.draws();
+        assert_eq!(records.len(), draws as usize, "backdrop={backdrop}");
+        assert_eq!(records.last().map(|r| r.kind), Some("root"));
+        assert!(records.iter().any(|r| r.kind == "layer"));
         let actual = crate::renderer::backdrop_tests::readback(device, queue, output.texture());
         let expected = display.rasterize().unwrap();
         for (index, (a, b)) in actual

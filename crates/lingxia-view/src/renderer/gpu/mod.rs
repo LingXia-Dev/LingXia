@@ -850,6 +850,13 @@ impl Presenter {
             .map(|compositor| compositor.stats())
     }
 
+    /// The last composited frame's scene draws; empty when the frame drew without composition.
+    pub fn composite_draws(&self) -> &[crate::renderer::gpu::composite::DrawRecord] {
+        self.compositor
+            .as_ref()
+            .map_or(&[], |compositor| compositor.draws())
+    }
+
     /// Backdrops captured and filtered so far, and the filtered images held for later frames:
     /// `(filtered, cached, cached_bytes)`.
     pub fn backdrop_cache_stats(&self) -> (u64, usize, u64) {

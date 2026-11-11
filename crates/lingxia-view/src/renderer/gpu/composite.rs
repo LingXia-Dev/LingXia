@@ -38,6 +38,25 @@ pub struct CompositeStats {
     pub filter_pixels: u64,
     /// Nested groups the texture budget drew flattened; nonzero means a visual downgrade.
     pub flattened: u32,
+    /// Planning the frame and keying its backdrops, cache lookups, and the clear, copy and
+    /// filter submits: what the counters above leave out of the frame's wall time.
+    pub plan_us: u64,
+    pub lookup_us: u64,
+    pub other_submit_us: u64,
+    pub total_us: u64,
+}
+
+/// One scene draw of a composited frame: which step issued it, its target size and CPU µs.
+#[derive(Clone, Copy, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DrawRecord {
+    /// `root` draws into the frame's output; `layer` into a group's surface; `backdrop` places
+    /// a filtered backdrop.
+    pub kind: &'static str,
+    pub width: u16,
+    pub height: u16,
+    pub encode_us: u64,
+    pub submit_us: u64,
 }
 
 /// Device-bound pipelines and scratch reused across frames. A draw callback and
@@ -58,6 +77,7 @@ pub struct Compositor {
     backdrop_filters: u64,
     /// The last rendered plan's work.
     stats: CompositeStats,
+    draws: Vec<DrawRecord>,
 }
 
 impl Compositor {
@@ -100,6 +120,7 @@ impl Compositor {
             backdrops: Default::default(),
             backdrop_filters: 0,
             stats: CompositeStats::default(),
+            draws: Vec::new(),
         }
     }
 
@@ -212,6 +233,7 @@ impl Compositor {
         F: FnMut(Range<usize>, (u16, u16), &mut Scene, &mut TextureBindings) -> Result<(), String>,
     {
         self.stats = CompositeStats::default();
+        self.draws.clear();
         let mut gpu = Gpu {
             device,
             queue,
@@ -220,9 +242,15 @@ impl Compositor {
             backdrops,
             uncleared: Vec::new(),
             pending: Vec::new(),
+            targets: Vec::new(),
         };
         let surface = plan.render(&mut gpu)?;
         gpu.settle(&surface)?;
+        for (target, record) in gpu.targets.iter().zip(&mut gpu.resources.draws) {
+            if target.same(&surface) {
+                record.kind = "root";
+            }
+        }
         Ok(surface)
     }
 
@@ -241,6 +269,11 @@ impl Compositor {
         self.stats
     }
 
+    /// The last rendered plan's scene draws, in order.
+    pub fn draws(&self) -> &[DrawRecord] {
+        &self.draws
+    }
+
     /// Render a retained display using the same text/image encoders as Presenter.
     pub fn render_display(
         &mut self,
@@ -248,8 +281,10 @@ impl Compositor {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Result<Surface, String> {
+        let started = std::time::Instant::now();
         let (plan, flattened) = self.fit(display.composition_plan()?);
         let backdrops = crate::renderer::gpu::backdrop_cache::keys(&plan, display);
+        let plan_us = crate::session::metrics::micros(started);
         // Move caches out for the callback's lifetime; restore them on errors too.
         let mut images = std::mem::take(&mut self.images);
         let mut glyph_cache = std::mem::take(&mut self.glyph_cache);
@@ -297,9 +332,11 @@ impl Compositor {
             backdrops,
         );
         self.stats.flattened = flattened;
+        self.stats.plan_us = plan_us;
         glyph_cache.maintain();
         self.images = images;
         self.glyph_cache = glyph_cache;
+        self.stats.total_us = crate::session::metrics::micros(started);
         result
     }
 }
@@ -315,6 +352,8 @@ struct Gpu<'a, F> {
     uncleared: Vec<Surface>,
     /// Work recorded for a surface and not drawn yet: one pass draws it when the surface is read.
     pending: Vec<Pending>,
+    /// Each draw's target, beside its record, to mark the output's draws once it is known.
+    targets: Vec<Surface>,
 }
 
 /// A surface's recorded work. Each pass loads and stores the whole surface, so content spans,
@@ -391,7 +430,13 @@ impl<F> Gpu<'_, F> {
             for (id, view) in pending.placed {
                 bindings.insert(id, view);
             }
-            return self.render(&pending.scene, &bindings, surface, TargetInit::SrcOver);
+            return self.render(
+                &pending.scene,
+                &bindings,
+                surface,
+                TargetInit::SrcOver,
+                "layer",
+            );
         }
         if !self.take_uncleared(surface) {
             return Ok(());
@@ -413,7 +458,9 @@ impl<F> Gpu<'_, F> {
             occlusion_query_set: None,
             multiview_mask: None,
         }));
+        let started = std::time::Instant::now();
         self.queue.submit([encoder.finish()]);
+        self.resources.stats.other_submit_us += crate::session::metrics::micros(started);
         self.resources.stats.clears += 1;
         self.resources.stats.submits += 1;
         Ok(())
@@ -433,6 +480,7 @@ impl<F> Gpu<'_, F> {
         bindings: &TextureBindings,
         target: &Surface,
         init: TargetInit<'_>,
+        kind: &'static str,
     ) -> Result<(), String> {
         let init = match init {
             TargetInit::SrcOver if self.take_uncleared(target) => {
@@ -441,7 +489,8 @@ impl<F> Gpu<'_, F> {
             init => init,
         };
         let size = target.size();
-        let pixels = u64::from(size.width) * u64::from(size.height);
+        let (width, height) = (size.width, size.height);
+        let pixels = u64::from(width) * u64::from(height);
         let depth = self.resources.depth_view(self.device, &size);
         let [encode, submit] = self.resources.renderer.draw(
             self.device,
@@ -460,6 +509,14 @@ impl<F> Gpu<'_, F> {
         stats.draw_pixels += pixels;
         stats.encode_us += encode;
         stats.submit_us += submit;
+        self.resources.draws.push(DrawRecord {
+            kind,
+            width,
+            height,
+            encode_us: encode,
+            submit_us: submit,
+        });
+        self.targets.push(target.clone());
         Ok(())
     }
 }
@@ -574,7 +631,9 @@ where
             target.texture().as_image_copy(),
             source.texture().size(),
         );
+        let started = std::time::Instant::now();
         self.queue.submit([encoder.finish()]);
+        self.resources.stats.other_submit_us += crate::session::metrics::micros(started);
         let stats = &mut self.resources.stats;
         stats.copies += 1;
         stats.submits += 1;
@@ -723,11 +782,13 @@ where
         let Layer::Backdrop { clip, blur, .. } = layer else {
             return Ok(None);
         };
-        let Some(filtered) = self
+        let started = std::time::Instant::now();
+        let filtered = self
             .backdrops
             .front()
-            .and_then(|key| self.resources.backdrops.get(key))
-        else {
+            .and_then(|key| self.resources.backdrops.get(key));
+        self.resources.stats.lookup_us += crate::session::metrics::micros(started);
+        let Some(filtered) = filtered else {
             return Ok(None);
         };
         let Some(region) = crate::scene::backdrop_region::Region::new(*clip, width, height, *blur)?
@@ -766,9 +827,11 @@ impl<F> Gpu<'_, F> {
         else {
             return Ok(None);
         };
+        let started = std::time::Instant::now();
         let cached = key
             .as_ref()
             .and_then(|key| self.resources.backdrops.get(key));
+        self.resources.stats.lookup_us += crate::session::metrics::micros(started);
         if let Some(filtered) = cached {
             self.resources.stats.backdrop_hits += 1;
             return Ok(Some((filtered, region)));
@@ -781,9 +844,11 @@ impl<F> Gpu<'_, F> {
             // A quarter of the frame's lease budget, itself under `compositeBytes`;
             // `fit` evicts them before a frame would flatten.
             let budget = crate::renderer::gpu::surface::lease_budget(frame.0, frame.1) / 4;
+            let started = std::time::Instant::now();
             self.resources
                 .backdrops
                 .insert(key, filtered.clone(), bytes, budget);
+            self.resources.stats.lookup_us += crate::session::metrics::micros(started);
         }
         Ok(Some((filtered, region)))
     }
@@ -812,6 +877,7 @@ impl<F> Gpu<'_, F> {
             &bindings,
             &output,
             TargetInit::Clear(Default::default()),
+            "backdrop",
         )?;
         Ok(output)
     }
@@ -874,7 +940,9 @@ impl<F> Gpu<'_, F> {
                     saturation,
                 )?;
         }
+        let started = std::time::Instant::now();
         self.queue.submit([encoder.finish()]);
+        self.resources.stats.other_submit_us += crate::session::metrics::micros(started);
         let stats = &mut self.resources.stats;
         stats.submits += 1;
         stats.capture_pixels += u64::from(region.width) * u64::from(region.height);
@@ -909,7 +977,9 @@ impl<F> Gpu<'_, F> {
                 radius / scale,
                 Edge::Transparent,
             )?;
+        let started = std::time::Instant::now();
         self.queue.submit([encoder.finish()]);
+        self.resources.stats.other_submit_us += crate::session::metrics::micros(started);
         let stats = &mut self.resources.stats;
         stats.submits += 1;
         stats.filter_pixels += u64::from(width) * u64::from(height);

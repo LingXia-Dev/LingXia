@@ -285,6 +285,7 @@ impl<A: PlatformAdapter> Inner<A> {
             "composite": presenter("composite"),
             "backdropCache": presenter("backdropCache"),
             "passes": presenter("passes"),
+            "presentUs": presenter("acquireEncodeSubmitPresentUs"),
             "video": crate::renderer::video_stats(),
             "renderer": "gpu",
             // Frame budgets hold for an optimized core only.

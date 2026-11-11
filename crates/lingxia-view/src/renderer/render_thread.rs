@@ -213,21 +213,21 @@ pub fn present(
                     if timings.is_none() {
                         log::debug!(target: "lingxia_view", "gpu present refused surface={surface} revision={revision}");
                     }
-                    (timings.is_some(), Some(metrics))
+                    (timings, Some(metrics))
                 })
             }
             Some(Ok(None)) => {
                 log::debug!(target: "lingxia_view", "gpu draw declined surface={surface} revision={revision}");
-                Ok((false, None))
+                Ok((None, None))
             }
             None => {
                 log::debug!(target: "lingxia_view", "gpu present before draw surface={surface} revision={revision}");
-                Ok((false, None))
+                Ok((None, None))
             }
             Some(Err(error)) => Err(error),
         };
         match outcome {
-            Ok((shown, metrics)) => {
+            Ok((timings, metrics)) => {
                 let us = |key: &str| {
                     metrics
                         .as_ref()
@@ -244,10 +244,11 @@ pub fn present(
                         "composite": m.get("composite"),
                         "backdropCache": m.get("backdropCache"),
                         "passes": m.get("passes"),
+                        "acquireEncodeSubmitPresentUs": timings,
                     })
                 });
                 report(
-                    Ok(shown),
+                    Ok(timings.is_some()),
                     crate::session::host::DrawStats {
                         gpu_us: [us("sceneUs"), us("encodeUs"), us("submitUs"), present],
                         presenter,
