@@ -2,7 +2,7 @@
   "appId": "lingxia-showcase",
   "appName": "LingXia Showcase",
   "version": "1.6.15",
-  "minRuntime": "0.29.0",
+  "minRuntime": "0.30.0",
   "pages": [
     {
       "name": "home",
