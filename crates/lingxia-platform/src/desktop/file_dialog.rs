@@ -73,10 +73,6 @@ fn apply_common_options(
     if let Some(value) = default_path {
         dialog = dialog.set_directory(value);
     }
-    #[cfg(target_os = "windows")]
-    if let Some(owner) = crate::windows::file::DialogOwner::find() {
-        dialog = dialog.set_parent(&owner);
-    }
     dialog
 }
 

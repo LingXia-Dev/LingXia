@@ -328,8 +328,8 @@ fn selected_file_path_to_uri(lxapp: &LxApp, raw_path: &str) -> JSResult<String> 
 
     let path_ref = Path::new(path);
     if path_ref.is_absolute() {
-        // Windows multi-select does not validate typed names, so a missing
-        // path here is a user outcome rather than an internal failure.
+        // A file removed between the pick and the grant is not found, not an
+        // internal failure.
         return lxapp
             .grant_transient_file_access(path_ref)
             .map(|uri| uri.into_string())
@@ -459,6 +459,7 @@ async fn run_file_picker(
             filters,
             title: None,
             default_path,
+            owner: lxapp.dialog_owner(),
         },
     )
     .await
@@ -523,6 +524,7 @@ async fn pick_directory(
         PickDirectoryRequest {
             title: None,
             default_path,
+            owner: lxapp.dialog_owner(),
         },
     )
     .await

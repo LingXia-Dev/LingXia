@@ -8,6 +8,7 @@ use std::thread;
 
 use serde::Serialize;
 
+use super::file_dialog::{self, DialogFilter, DialogKind, OpenDialog};
 use super::{Platform, file, not_supported};
 use crate::error::PlatformError;
 use crate::traits::media_interaction::{
@@ -69,55 +70,47 @@ const VIDEO_EXTENSIONS: [&str; 7] = ["mp4", "mov", "avi", "mkv", "webm", "m4v", 
 /// Album picking on Windows is a file dialog over the media types; the
 /// chosen paths go back as the `[{uri, fileType, isOriginal}]` array the
 /// logic layer copies into the app cache. Cancel yields an empty list.
-///
-/// Async for its per-dialog thread: rfd initializes COM as STA, which fails on
-/// a pooled thread that Media Foundation already joined to the MTA.
 async fn pick_media_files(request: PickMediaRequest) -> Result<String, PlatformError> {
-    let mut dialog = rfd::AsyncFileDialog::new();
-    if let Some(owner) = super::file::DialogOwner::find() {
-        dialog = dialog.set_parent(&owner);
-    }
-    let dialog = match request.mode {
-        PickMediaMode::Images => dialog
-            .set_title(crate::i18n::text(
-                "file_chooser.choose_images",
-                "Choose Images",
-            ))
-            .add_filter("Images", &IMAGE_EXTENSIONS),
-        PickMediaMode::Videos => dialog
-            .set_title(crate::i18n::text(
-                "file_chooser.choose_videos",
-                "Choose Videos",
-            ))
-            .add_filter("Videos", &VIDEO_EXTENSIONS),
+    let filter = |name: &str, extensions: &[&str]| DialogFilter {
+        name: name.to_string(),
+        extensions: extensions.iter().map(|ext| ext.to_string()).collect(),
+    };
+    let (title, filters) = match request.mode {
+        PickMediaMode::Images => (
+            crate::i18n::text("file_chooser.choose_images", "Choose Images"),
+            vec![filter("Images", &IMAGE_EXTENSIONS)],
+        ),
+        PickMediaMode::Videos => (
+            crate::i18n::text("file_chooser.choose_videos", "Choose Videos"),
+            vec![filter("Videos", &VIDEO_EXTENSIONS)],
+        ),
         PickMediaMode::Mix => {
-            let mut all: Vec<&str> = Vec::new();
-            all.extend_from_slice(&IMAGE_EXTENSIONS);
-            all.extend_from_slice(&VIDEO_EXTENSIONS);
-            dialog
-                .set_title(crate::i18n::text(
-                    "file_chooser.choose_media",
-                    "Choose Media",
-                ))
-                .add_filter("Media", &all)
-                .add_filter("Images", &IMAGE_EXTENSIONS)
-                .add_filter("Videos", &VIDEO_EXTENSIONS)
+            let all = [&IMAGE_EXTENSIONS[..], &VIDEO_EXTENSIONS[..]].concat();
+            (
+                crate::i18n::text("file_chooser.choose_media", "Choose Media"),
+                vec![
+                    filter("Media", &all),
+                    filter("Images", &IMAGE_EXTENSIONS),
+                    filter("Videos", &VIDEO_EXTENSIONS),
+                ],
+            )
         }
     };
-    let picked = if request.max_count > 1 {
-        dialog.pick_files().await.unwrap_or_default()
-    } else {
-        dialog
-            .pick_file()
-            .await
-            .map(|handle| vec![handle])
-            .unwrap_or_default()
-    };
+    let picked = file_dialog::show(OpenDialog {
+        kind: DialogKind::File {
+            multiple: request.max_count > 1,
+        },
+        title: Some(title),
+        default_path: None,
+        filters,
+        owner: request.owner,
+    })
+    .await?
+    .unwrap_or_default();
     let entries: Vec<serde_json::Value> = picked
         .into_iter()
         .take(request.max_count.max(1) as usize)
-        .map(|handle| {
-            let path = handle.path();
+        .map(|path| {
             let ext = path
                 .extension()
                 .map(|ext| ext.to_string_lossy().to_lowercase())

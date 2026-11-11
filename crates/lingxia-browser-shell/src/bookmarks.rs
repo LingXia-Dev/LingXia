@@ -1111,6 +1111,7 @@ async fn import_html_bookmarks(
                     .to_string(),
                 ),
                 default_path: None,
+                owner: app_for_picker.dialog_owner(),
             },
         )
         .await

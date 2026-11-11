@@ -41,12 +41,16 @@ pub struct PickFileRequest {
     pub filters: Vec<FileDialogFilter>,
     pub title: Option<String>,
     pub default_path: Option<String>,
+    /// Key of the WebView whose window owns the dialog; used on Windows.
+    pub owner: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct PickDirectoryRequest {
     pub title: Option<String>,
     pub default_path: Option<String>,
+    /// Key of the WebView whose window owns the dialog; used on Windows.
+    pub owner: Option<String>,
 }
 
 /// One picked item. `name` is the platform display name when the picker

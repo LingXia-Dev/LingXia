@@ -106,6 +106,7 @@ pub(crate) async fn browser_choose_files(
             .pick_directory(PickDirectoryRequest {
                 title: Some("Choose folder".to_string()),
                 default_path: None,
+                owner: owner.dialog_owner(),
             })
             .await
         {
@@ -141,6 +142,7 @@ pub(crate) async fn browser_choose_files(
             filters: file_filters_from_accept_types(&request.accept_types),
             title: Some("Choose file".to_string()),
             default_path: None,
+            owner: owner.dialog_owner(),
         })
         .await
     {

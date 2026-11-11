@@ -82,6 +82,7 @@ async fn choose_download_directory(
             PickDirectoryRequest {
                 title: Some("Choose Download Folder".to_string()),
                 default_path: Some(current_dir),
+                owner: app_for_picker.dialog_owner(),
             },
         )
         .await

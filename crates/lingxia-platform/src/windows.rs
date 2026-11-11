@@ -9,6 +9,7 @@ mod clipboard;
 mod control_session_indicator;
 mod device;
 pub(crate) mod file;
+mod file_dialog;
 mod keyboard;
 mod location;
 mod media;

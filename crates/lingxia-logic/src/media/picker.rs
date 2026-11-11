@@ -102,6 +102,7 @@ async fn pick_media(ctx: JSContext, options: Optional<JSPickMediaOptions>) -> JS
         source_types,
         max_duration_seconds,
         camera_facing: parse_camera(opts.camera),
+        owner: lxapp.dialog_owner(),
     };
 
     let data = match lingxia_service::media::pick_media(&*lxapp.runtime, request).await {

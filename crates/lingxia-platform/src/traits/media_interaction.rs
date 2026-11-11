@@ -103,6 +103,8 @@ pub struct PickMediaRequest {
     pub source_types: Vec<MediaSource>,
     pub max_duration_seconds: Option<u32>,
     pub camera_facing: Option<CameraFacing>,
+    /// Key of the WebView whose window owns the picker; used on Windows.
+    pub owner: Option<String>,
 }
 
 impl Default for PickMediaRequest {
@@ -113,6 +115,7 @@ impl Default for PickMediaRequest {
             source_types: vec![MediaSource::Album, MediaSource::Camera],
             max_duration_seconds: None,
             camera_facing: None,
+            owner: None,
         }
     }
 }

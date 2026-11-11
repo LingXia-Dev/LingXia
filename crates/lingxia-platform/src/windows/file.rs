@@ -1,45 +1,16 @@
 use std::future::Future;
-use std::num::NonZeroIsize;
 use std::path::PathBuf;
 use std::process::Command;
 
 use lingxia_webview::{FileChooserFile, FileChooserResponse};
-use raw_window_handle::{
-    DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, RawWindowHandle,
-    Win32WindowHandle, WindowHandle,
-};
 
 use super::Platform;
+use super::file_dialog::{self, DialogFilter, DialogKind, OpenDialog};
 use crate::error::PlatformError;
 use crate::traits::file::{
     FileDialogFilter, FileDialogResult, FileService, OpenFileRequest, PickDirectoryRequest,
-    PickFileRequest, RevealInFileManagerRequest,
+    PickFileRequest, PickedPath, RevealInFileManagerRequest,
 };
-
-/// Owner for system dialogs; without one they can open behind the app.
-pub(crate) struct DialogOwner(NonZeroIsize);
-
-impl DialogOwner {
-    pub(crate) fn find() -> Option<Self> {
-        let hwnd = super::update_card::find_main_window()?;
-        NonZeroIsize::new(hwnd.0 as isize).map(Self)
-    }
-}
-
-impl HasWindowHandle for DialogOwner {
-    fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
-        let raw = RawWindowHandle::Win32(Win32WindowHandle::new(self.0));
-        // SAFETY: rfd only passes the value to IFileDialog::Show, and a window
-        // closed in the meantime fails that call rather than being dereferenced.
-        Ok(unsafe { WindowHandle::borrow_raw(raw) })
-    }
-}
-
-impl HasDisplayHandle for DialogOwner {
-    fn display_handle(&self) -> Result<DisplayHandle<'_>, HandleError> {
-        Ok(DisplayHandle::windows())
-    }
-}
 
 impl Platform {
     pub fn file_chooser_handler(
@@ -75,6 +46,7 @@ impl Platform {
                     "Select folder",
                 )),
                 default_path: None,
+                owner: None,
             })
             .await
         } else {
@@ -83,6 +55,7 @@ impl Platform {
                 filters: filters_from_accept_types(&request.accept_types),
                 title: Some(crate::i18n::text("file_chooser.select_file", "Select file")),
                 default_path: None,
+                owner: None,
             })
             .await
         };
@@ -139,15 +112,54 @@ impl FileService for Platform {
         &self,
         request: PickFileRequest,
     ) -> impl Future<Output = Result<FileDialogResult, PlatformError>> + Send {
-        crate::desktop::file_dialog::pick_file_desktop(request)
+        pick(OpenDialog {
+            kind: DialogKind::File {
+                multiple: request.multiple,
+            },
+            title: request.title,
+            default_path: request.default_path,
+            filters: request
+                .filters
+                .into_iter()
+                .map(|filter| DialogFilter {
+                    name: filter.name.unwrap_or_else(|| "Files".to_string()),
+                    extensions: filter.extensions,
+                })
+                .collect(),
+            owner: request.owner,
+        })
     }
 
     fn pick_directory(
         &self,
         request: PickDirectoryRequest,
     ) -> impl Future<Output = Result<FileDialogResult, PlatformError>> + Send {
-        crate::desktop::file_dialog::pick_directory_desktop(request)
+        pick(OpenDialog {
+            kind: DialogKind::Folder,
+            title: request.title,
+            default_path: request.default_path,
+            filters: Vec::new(),
+            owner: request.owner,
+        })
     }
+}
+
+async fn pick(dialog: OpenDialog) -> Result<FileDialogResult, PlatformError> {
+    let Some(paths) = file_dialog::show(dialog).await? else {
+        return Ok(FileDialogResult::canceled());
+    };
+    Ok(FileDialogResult {
+        canceled: false,
+        entries: paths
+            .into_iter()
+            .map(|path| PickedPath {
+                name: path
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned()),
+                path: path.to_string_lossy().into_owned(),
+            })
+            .collect(),
+    })
 }
 
 fn filters_from_accept_types(accept_types: &[String]) -> Vec<FileDialogFilter> {
