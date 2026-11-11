@@ -670,7 +670,15 @@ final class LxAppViewController: UIViewController, ObservableObject {
 
     private func standardTabBarInset(for appId: String) -> CGFloat {
         guard let config = lingxia.getTabBar(appId), config.is_visible else { return 0 }
-        return config.presentation == 1 ? 0 : CGFloat(config.dimension)
+        // The bar's band sits above the home-indicator inset, not inside it.
+        return config.presentation == 1 ? 0 : config.dimensionPoints + view.safeAreaInsets.bottom
+    }
+
+    public override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        if let appId = LxAppCore.currentAppId {
+            updateWebViewBottomInset(for: appId)
+        }
     }
 
     private func updateWebViewBottomInset(for appId: String) {
@@ -1067,7 +1075,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
 
     private func applyTabBarLayoutParams(tabBar: LingXiaTabBar, config: TabBar, for appId: String) {
         let isVertical = config.position == 1 || config.position == 2 // 1=left, 2=right
-        let tabBarSize = CGFloat(config.dimension)
+        let tabBarSize = config.dimensionPoints
 
         tabBar.translatesAutoresizingMaskIntoConstraints = false
 
@@ -1084,14 +1092,15 @@ final class LxAppViewController: UIViewController, ObservableObject {
                 tabBar.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor).isActive = true
             }
         } else {
+            // The band holds the items above the safe area; the background
+            // runs on to the screen edge under the home indicator.
             NSLayoutConstraint.activate([
-                tabBar.heightAnchor.constraint(equalToConstant: tabBarSize),
+                tabBar.topAnchor.constraint(
+                    equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -tabBarSize),
                 tabBar.leadingAnchor.constraint(equalTo: rootContainer.leadingAnchor),
-                tabBar.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor)
+                tabBar.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor),
+                tabBar.bottomAnchor.constraint(equalTo: view.bottomAnchor)
             ])
-
-            // For bottom position, extend to view.bottomAnchor to cover safe area
-            tabBar.bottomAnchor.constraint(equalTo: view.bottomAnchor).isActive = true
         }
     }
 

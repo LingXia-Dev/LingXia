@@ -2558,7 +2558,8 @@ pub fn get_tab_bar(appid: &str) -> Option<self::bridge::TabBar> {
             presentation: i32::from(
                 tabbar.presentation == lxapp::page_chrome::TabBarPresentation::Immersive,
             ),
-            dimension: 64,
+            // iOS adds the home-indicator inset below this band.
+            dimension: if cfg!(target_os = "ios") { 50 } else { 64 },
             items_count: tabbar.visible_items().count() as i32,
             is_visible: tabbar.is_effectively_visible(),
             is_api_hidden: tabbar.visibility
