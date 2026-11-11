@@ -1,10 +1,12 @@
 //! `lx.shell.sidebarActions` — app-declared host-shell entries (Control app only).
 
 use crate::authorization::{self, LogicRoute};
+use crate::i18n::{js_error_from_lxapp_error, js_internal_error, js_invalid_parameter_error};
 use lingxia_shell::{
     ShellError, ShellSidebarAction, ShellSidebarActionUpdate, SidebarActionCollection,
     SidebarActionPlacement,
 };
+use lxapp::app_display::{self, AppDisplayPatch, FieldPatch};
 use lxapp::{register_app_handler, unregister_app_handler};
 use rong::{JSContext, JSContextService, JSFunc, JSObject, JSResult, JSValue, Promise};
 use std::cell::RefCell;
@@ -309,6 +311,92 @@ fn settled(ctx: &JSContext, result: JSResult<()>) -> JSResult<Promise> {
     Promise::from_future(ctx, None, async move { result })
 }
 
+const SET_APP_DISPLAY: &str = "lx.shell.setAppDisplay";
+
+/// Change the name and icon the host shows for the calling app. Only the
+/// Control app may call this API. Resolves once stored; the host repaints only
+/// when a value changed, so calling it on every launch is cheap.
+async fn set_app_display(ctx: JSContext, patch: JSValue) -> JSResult<()> {
+    let (invocation, patch) =
+        authorization::require_before_decode(&ctx, LogicRoute::ShellSetAppDisplay, || {
+            patch.into_object().ok_or_else(|| {
+                js_invalid_parameter_error(format!("{SET_APP_DISPLAY} patch must be an object"))
+            })
+        })?;
+    let app = invocation.lxapp();
+    let request = decode_app_display(&patch, &app)?;
+    drop(patch);
+    let appid = app.appid.clone();
+    tokio::task::spawn_blocking(move || app_display::set(&appid, request))
+        .await
+        .map_err(|err| js_internal_error(format!("{SET_APP_DISPLAY} failed: {err}")))?
+        .map_err(|err| js_error_from_lxapp_error(&err))?;
+    Ok(())
+}
+
+fn decode_app_display(patch: &JSObject, app: &lxapp::LxApp) -> JSResult<AppDisplayPatch> {
+    let keys = patch.keys_as::<String>()?;
+    if keys.is_empty() {
+        return Err(js_invalid_parameter_error(format!(
+            "{SET_APP_DISPLAY} patch must not be empty"
+        )));
+    }
+    if let Some(key) = keys
+        .iter()
+        .find(|key| !matches!(key.as_str(), "name" | "icon"))
+    {
+        return Err(js_invalid_parameter_error(format!(
+            "unknown {SET_APP_DISPLAY} field '{key}'"
+        )));
+    }
+    let has = |field: &str| keys.iter().any(|key| key == field);
+    let name = if has("name") {
+        match display_field(patch, "name")? {
+            None => FieldPatch::Clear,
+            Some(name) => match app_display::normalize_name(&name)
+                .map_err(|err| js_error_from_lxapp_error(&err))?
+            {
+                Some(name) => FieldPatch::Set(name),
+                None => FieldPatch::Clear,
+            },
+        }
+    } else {
+        FieldPatch::Keep
+    };
+    let icon = if has("icon") {
+        match display_field(patch, "icon")? {
+            None => FieldPatch::Clear,
+            Some(icon) => {
+                let invalid = || {
+                    js_invalid_parameter_error(format!(
+                        "{SET_APP_DISPLAY} icon '{icon}' is not an accessible local file"
+                    ))
+                };
+                if !lxapp::is_declared_icon_reference(&icon) {
+                    return Err(invalid());
+                }
+                FieldPatch::Set(app.resolve_accessible_path(&icon).map_err(|_| invalid())?)
+            }
+        }
+    } else {
+        FieldPatch::Keep
+    };
+    Ok(AppDisplayPatch { name, icon })
+}
+
+/// A present key set to `undefined`, `null` or `''` clears; `{ name: brand?.name }`
+/// must restore the default when `brand` is missing.
+fn display_field(patch: &JSObject, field: &str) -> JSResult<Option<String>> {
+    let value = patch.get::<_, JSValue>(field)?;
+    if value.is_undefined() || value.is_null() {
+        return Ok(None);
+    }
+    let value = value.to_rust::<String>().map_err(|_| {
+        js_invalid_parameter_error(format!("{SET_APP_DISPLAY} {field} must be a string"))
+    })?;
+    Ok(Some(value).filter(|value| !value.is_empty()))
+}
+
 fn retained_handlers(ctx: &JSContext) -> HashMap<String, JSFunc> {
     handler_registry(ctx).state.borrow().handlers.clone()
 }
@@ -378,6 +466,7 @@ fn js_error(error: ShellError) -> rong::HostError {
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let _ = handler_registry(ctx);
     register_shell_property(ctx)?;
+    register_shell_api(ctx)?;
     register_sidebar_actions_property(ctx)?;
     register_sidebar_actions_api(ctx)
 }
@@ -386,6 +475,16 @@ rong::js_api! {
     fn register_shell_property(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
         const shell: "ShellApi" = shell_namespace(ctx)?;
+    }
+}
+
+rong::js_api! {
+    fn register_shell_api(ctx) {
+        namespace ShellApi = shell_namespace(ctx)?;
+        fn setAppDisplay(
+            ts_params = "patch: AppDisplayPatch",
+            ts_return = "Promise<void>"
+        ) = set_app_display;
     }
 }
 

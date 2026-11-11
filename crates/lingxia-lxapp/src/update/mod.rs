@@ -472,6 +472,7 @@ impl UpdateManager {
         let _ = self.uninstall_installed(lxappid, Channel::Draft);
         let _ = metadata::remove_all(lxappid);
         lxapp_runtime::registry::clear(lxappid);
+        lxapp_runtime::app_display::clear(lxappid);
         Ok(())
     }
 

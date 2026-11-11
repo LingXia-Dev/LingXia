@@ -113,6 +113,14 @@ mod bridge {
         ControlSessionStopClick,
     }
 
+    // Artwork for an lxapp: the host product icon first when `product` is
+    // set, then `path` (empty for none), then the default mark.
+    #[swift_bridge(swift_repr = "struct")]
+    pub struct LxAppDisplayIcon {
+        pub path: String,
+        pub product: bool,
+    }
+
     // Current LxApp info from Rust stack
     #[swift_bridge(swift_repr = "struct")]
     pub struct CurrentLxApp {
@@ -255,8 +263,8 @@ mod bridge {
         #[swift_bridge(swift_name = "getLxAppInfo")]
         fn get_lxapp_info(appid: &str) -> LxAppInfo;
 
-        #[swift_bridge(swift_name = "getLxAppDisplayIconPath")]
-        fn get_lxapp_display_icon_path(appid: &str) -> String;
+        #[swift_bridge(swift_name = "getLxAppDisplayIcon")]
+        fn get_lxapp_display_icon(appid: &str) -> LxAppDisplayIcon;
 
         #[swift_bridge(swift_name = "getLxAppMoreActions")]
         fn get_lxapp_more_actions(appid: &str) -> String;
@@ -2414,9 +2422,9 @@ pub fn on_surface_closed(appid: &str, id: &str, reason: &str) -> bool {
 ///
 /// This works around a swift-bridge `Option<struct with String>` limitation.
 pub fn get_lxapp_info(appid: &str) -> self::bridge::LxAppInfo {
-    // Registry first even when the package is not running — pins and a
-    // closed switcher row still have a server-owned name. `lxapp.json` is
-    // only the fallback once a running app can supply it.
+    // The display name first even when the package is not running — pins and
+    // a closed switcher row still have the app's chosen or server-owned name.
+    // `lxapp.json` is only the fallback once a running app can supply it.
     let registry_name = lxapp::lxapp_display_name(appid);
     if let Some(lxapp) = lxapp::try_get(appid) {
         let lxapp_info = lxapp.get_lxapp_info();
@@ -2436,19 +2444,18 @@ pub fn get_lxapp_info(appid: &str) -> self::bridge::LxAppInfo {
     }
 }
 
-/// Absolute path to the icon to show for an lxapp, or empty when none is
-/// cached yet and the host should draw its default mark.
+/// The icon to show for an lxapp, ranked by `lxapp_display_icon`.
 ///
-/// Separate from `getLxAppInfo` because the icon is no longer part of the
-/// package the way the name and version are: it comes from the registry, and a
-/// running app is not a precondition for having one.
-pub fn get_lxapp_display_icon_path(appid: &str) -> String {
-    // Asking for the icon is also what schedules the refresh that keeps it
-    // current — the native chrome has no other moment that would notice a
-    // rename or a new icon. `refresh_lxapp_registry` returns immediately and
-    // rate-limits itself, so calling it per row per repaint is safe.
-    lxapp::refresh_lxapp_registry(std::slice::from_ref(&appid.to_string()));
-    lxapp::lxapp_display_icon_path(appid).unwrap_or_default()
+/// Separate from `getLxAppInfo` because the icon is not part of the package:
+/// it comes from the app's own choice or the registry, and a running app is
+/// not a precondition for having one. Asking is also what schedules the
+/// rate-limited registry refresh that keeps it current.
+pub fn get_lxapp_display_icon(appid: &str) -> self::bridge::LxAppDisplayIcon {
+    let icon = lxapp::lxapp_display_icon(appid);
+    self::bridge::LxAppDisplayIcon {
+        path: icon.file().unwrap_or_default().to_string(),
+        product: matches!(icon, lxapp::LxAppIcon::Product { .. }),
+    }
 }
 
 pub fn get_lxapp_more_actions(appid: &str) -> String {

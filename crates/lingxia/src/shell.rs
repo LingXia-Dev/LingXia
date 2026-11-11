@@ -4,7 +4,6 @@ use lingxia_shell::{
     ResolvedShellSidebarAction, ShellError, ShellHost, ShellPin, ShellPinTarget, ShellResult,
     ShellSidebarAction, SidebarActionIntent,
 };
-use std::path::{Component, Path};
 use std::sync::Arc;
 
 struct HostShell {
@@ -76,18 +75,7 @@ impl ShellHost for HostShell {
 
 fn resolve_declared_icon(owner: Option<&lxapp::LxApp>, icon: &str) -> ShellResult<String> {
     let icon = icon.trim();
-    let path = Path::new(icon);
-    let is_lx_uri = icon.starts_with("lx://");
-    if !is_lx_uri
-        && (has_uri_scheme(icon)
-            || path.is_absolute()
-            || path.components().any(|component| {
-                matches!(
-                    component,
-                    Component::ParentDir | Component::RootDir | Component::Prefix(_)
-                )
-            }))
-    {
+    if !lxapp::is_declared_icon_reference(icon) {
         return Err(ShellError::InvalidSidebarActionIcon {
             icon: icon.to_string(),
         });
@@ -99,17 +87,6 @@ fn resolve_declared_icon(owner: Option<&lxapp::LxApp>, icon: &str) -> ShellResul
             icon: icon.to_string(),
         })?;
     Ok(resolved.to_string_lossy().into_owned())
-}
-
-fn has_uri_scheme(value: &str) -> bool {
-    let Some((scheme, _)) = value.split_once(':') else {
-        return false;
-    };
-    !scheme.is_empty()
-        && scheme.as_bytes()[0].is_ascii_alphabetic()
-        && scheme
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'-' | b'.'))
 }
 
 pub(crate) fn visible_shell_pins(items: &[ShellPin], home_appid: Option<&str>) -> Vec<ShellPin> {

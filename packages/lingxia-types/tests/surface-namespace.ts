@@ -221,3 +221,17 @@ export type ShellSidebarGate = [
   typeof sidebarActionsAreReachableThroughLxShell,
   typeof sidebarActionValueIsFooterOnly,
 ];
+
+// A present key clears even when its value is undefined; only strings or a
+// clear are accepted.
+async function appDisplayPatchClears(): Promise<void> {
+  const brand = Math.random() > 0.5 ? { name: "Acme", icon: "public/acme.png" } : undefined;
+  await lx.shell.setAppDisplay({ name: brand?.name, icon: brand?.icon });
+  await lx.shell.setAppDisplay({ name: null });
+  // @ts-expect-error the patch takes no other keys
+  await lx.shell.setAppDisplay({ title: "Acme" });
+  // @ts-expect-error the icon is a path, not image data
+  await lx.shell.setAppDisplay({ icon: new Uint8Array(1) });
+}
+
+export type AppDisplayGate = [typeof appDisplayPatchClears];

@@ -3658,6 +3658,7 @@ dependencies = [
  "futures",
  "http",
  "http-body-util",
+ "image",
  "language-tags",
  "lingxia-app-context",
  "lingxia-log",

@@ -816,6 +816,62 @@ test('declare, patch, and retract runtime sidebar actions atomically', {
   });
 });
 
+test('set and restore the name and icon the host shows for this app', {
+  id: 'HOSTAPP-APP-DISPLAY-001',
+  covers: ['lx.shell.setAppDisplay'],
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  const { app } = bindFixture(t, 'HOSTAPP-APP-DISPLAY-001');
+  // The choice persists across launches; restore the defaults however the spec ends.
+  t.defer(async () => {
+    await app.logic.eval(async ({ lx }) => {
+      try { await lx.shell.setAppDisplay({ name: null, icon: null }); } catch {}
+      return true;
+    });
+  });
+
+  const result = await app.logic.eval(async ({ lx }) => {
+    const setDisplay = lx.shell.setAppDisplay as (patch: unknown) => Promise<void>;
+    const attempt = async (patch: unknown) => {
+      try {
+        await setDisplay(patch);
+        return { ok: true, code: '' };
+      } catch (error) {
+        return { ok: false, code: (error as { code?: string }).code ?? '' };
+      }
+    };
+    const packageName = lx.getAppInfo().name;
+    const set = await attempt({ name: '  Showcase Brand  ', icon: 'public/showcase-icon.png' });
+    const again = await attempt({ name: 'Showcase Brand', icon: 'public/showcase-icon.png' });
+    return {
+      set,
+      again,
+      svg: await attempt({ icon: 'public/showcase-icon.svg' }),
+      nameAfterSet: lx.getAppInfo().name === packageName,
+      empty: await attempt({}),
+      unknown: await attempt({ title: 'x' }),
+      notObject: await attempt('x'),
+      multiline: await attempt({ name: 'a\nb' }),
+      tooLong: await attempt({ name: 'x'.repeat(65) }),
+      remote: await attempt({ icon: 'https://example.com/a.png' }),
+      traversal: await attempt({ icon: '../a.png' }),
+      notImage: await attempt({ icon: 'lxapp.json' }),
+      blankClears: await attempt({ name: '   ', icon: '' }),
+    };
+  });
+  expect(result.set.ok).toBeTruthy();
+  expect(result.again.ok).toBeTruthy();
+  expect(result.svg.ok).toBeTruthy();
+  expect(result.nameAfterSet).toBeTruthy();
+  for (const refused of [
+    result.empty, result.unknown, result.notObject, result.multiline, result.tooLong,
+    result.remote, result.traversal, result.notImage,
+  ]) {
+    expect(refused).toEqual({ ok: false, code: 'E_INVALID_ARG' });
+  }
+  expect(result.blankClears.ok).toBeTruthy();
+});
+
 test('refuse to move the root main out of main', {
   id: 'HOSTAPP-SHELL-OPENAPP-ROOT-001',
   covers: ['lx.shell.openApp'],

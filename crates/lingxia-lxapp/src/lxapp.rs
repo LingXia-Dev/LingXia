@@ -33,6 +33,7 @@ use crate::startup::{LxAppStartupOptions, Scene};
 use crate::update::UpdateManager;
 use crate::{debug, error, info, warn};
 
+pub mod app_display;
 pub mod config;
 #[doc(hidden)]
 pub mod data_profile;
@@ -4337,6 +4338,38 @@ impl LxApp {
     pub fn listing_name(&self) -> String {
         registry::display_name(&self.appid).unwrap_or_else(|| self.get_lxapp_info().app_name)
     }
+}
+
+/// Whether `icon` is shaped like a chrome icon an lxapp may name: a bundled
+/// relative path or an `lx://` path. Resolve it with
+/// [`LxApp::resolve_accessible_path`].
+pub fn is_declared_icon_reference(icon: &str) -> bool {
+    let icon = icon.trim();
+    if icon.starts_with("lx://") {
+        return true;
+    }
+    let path = Path::new(icon);
+    !(has_uri_scheme(icon)
+        || path.is_absolute()
+        || path.components().any(|component| {
+            matches!(
+                component,
+                std::path::Component::ParentDir
+                    | std::path::Component::RootDir
+                    | std::path::Component::Prefix(_)
+            )
+        }))
+}
+
+fn has_uri_scheme(value: &str) -> bool {
+    let Some((scheme, _)) = value.split_once(':') else {
+        return false;
+    };
+    !scheme.is_empty()
+        && scheme.as_bytes()[0].is_ascii_alphabetic()
+        && scheme
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'-' | b'.'))
 }
 
 /// Service env whose installs and data are in use; each env keeps its own.

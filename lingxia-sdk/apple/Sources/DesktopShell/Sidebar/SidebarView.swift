@@ -1412,8 +1412,7 @@ class SidebarView: NSView {
             switch pin.kind {
             case "lxapp":
                 let info = getLxAppInfo(pin.key)
-                let iconPath = getLxAppDisplayIconPath(pin.key).toString()
-                let image = LxIcon.lxappImage(appId: pin.key, path: iconPath)
+                let image = LxIcon.lxappImage(appId: pin.key)
                 let name = info.app_name.toString()
                 let key = "pin-lxapp:\(pin.key)"
                 let button = makeRailButton(
@@ -1482,12 +1481,11 @@ class SidebarView: NSView {
                 tooltip = group.managedLabel ?? group.appId
                 let iconAppId = group.contentAppId ?? group.appId
                 image = group.managedIcon
-                    ?? LxIcon.lxappImage(appId: iconAppId, path: "")
+                    ?? LxIcon.lxappImage(appId: iconAppId)
             } else {
                 let info = getLxAppInfo(group.appId)
-                let iconPath = getLxAppDisplayIconPath(group.appId).toString()
                 tooltip = info.app_name.toString()
-                image = LxIcon.lxappImage(appId: group.appId, path: iconPath)
+                image = LxIcon.lxappImage(appId: group.appId)
             }
             let key = "app:\(group.appId)"
             let isTemplate = group.isManagedMain && group.contentAppId == nil

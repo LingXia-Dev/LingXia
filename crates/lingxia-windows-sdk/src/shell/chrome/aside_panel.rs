@@ -995,6 +995,6 @@ fn draw_aside_panel_tab_icon(hdc: HDC, tab: &WindowsAsidePanelTab, rect: RECT) {
         );
         return;
     }
-    let path = lxapp::lxapp_display_icon_path(&tab.surface_id).unwrap_or_default();
+    let path = crate::shell::runtime::lxapp_icon_path(&tab.surface_id).unwrap_or_default();
     draw_icon_or_default(hdc, &path, rect, aside_panel_tab_icon_size().max(1) as u32);
 }

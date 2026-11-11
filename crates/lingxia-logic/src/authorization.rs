@@ -47,6 +47,7 @@ pub(crate) enum LogicRoute {
     ShellOpenDeclared,
     ShellGetApp,
     ShellGetDeclared,
+    ShellSetAppDisplay,
     ShellOpenHostTerminalSettings,
     SurfaceBringToFront,
     #[cfg(feature = "terminal")]
@@ -119,6 +120,7 @@ impl LogicRoute {
         Self::ShellOpenDeclared,
         Self::ShellGetApp,
         Self::ShellGetDeclared,
+        Self::ShellSetAppDisplay,
         Self::ShellOpenHostTerminalSettings,
         Self::SurfaceBringToFront,
         #[cfg(feature = "terminal")]
@@ -193,6 +195,7 @@ impl LogicRoute {
             | Self::ShellOpenDeclared
             | Self::ShellGetApp
             | Self::ShellGetDeclared
+            | Self::ShellSetAppDisplay
             | Self::ShellOpenHostTerminalSettings => RouteAudience::ControlAppOnly,
             Self::AppNotificationGetPermission
             | Self::AppNotificationRequestPermission
@@ -267,6 +270,7 @@ impl LogicRoute {
             Self::ShellOpenDeclared => "lx.shell.openDeclared",
             Self::ShellGetApp => "lx.shell.getApp",
             Self::ShellGetDeclared => "lx.shell.getDeclared",
+            Self::ShellSetAppDisplay => "lx.shell.setAppDisplay",
             Self::ShellOpenHostTerminalSettings => "lx.shell.openApp.hostTerminalSettings",
             Self::SurfaceBringToFront => "lx.surface.bringToFront",
             #[cfg(feature = "terminal")]
@@ -680,6 +684,11 @@ mod tests {
         // Composing other lxapps into the shell stays with the Control app.
         assert_eq!(
             LogicRoute::ShellOpenApp.audience(),
+            RouteAudience::ControlAppOnly
+        );
+        // A guest renaming itself in host chrome is a spoofing vector.
+        assert_eq!(
+            LogicRoute::ShellSetAppDisplay.audience(),
             RouteAudience::ControlAppOnly
         );
     }

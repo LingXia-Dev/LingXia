@@ -222,7 +222,7 @@ pub fn notify_open_blocked(error: &LxAppError) {
     crate::warn!("lxapp open blocked: {}", error);
 }
 
-fn notify_changed(appids: &[String]) {
+pub(crate) fn notify_changed(appids: &[String]) {
     if appids.is_empty() {
         return;
     }
@@ -813,8 +813,8 @@ fn sweep_orphan_icons(candidates: &[String], icons_dir: &Path) {
     }
 }
 
-/// The name to show for an lxapp anywhere it is listed: the registry's answer,
-/// else the name the installed package declares.
+/// The name to show for an lxapp anywhere it is listed: the name it set for
+/// itself, else the registry's answer, else the name its package declares.
 ///
 /// One entry point on purpose — a sidebar row and the window title reading
 /// different sources is how the same app ends up with two names on screen.
@@ -822,19 +822,49 @@ fn sweep_orphan_icons(candidates: &[String], icons_dir: &Path) {
 /// refresh, so a server-side rename does not wait on an unrelated relayout.
 pub fn display_name(appid: &str) -> Option<String> {
     ensure_fresh(&[appid]);
-    name(appid)
+    super::app_display::name(appid)
+        .or_else(|| name(appid))
         .or_else(|| runtime_registry::try_get(appid).map(|app| app.get_lxapp_info().app_name))
         .filter(|name| !name.trim().is_empty())
 }
 
-/// The icon to show for an lxapp: the cached registry artwork, or nothing.
-///
-/// The registry is the only source — a package declares no icon. Before the
-/// first fetch lands, and for a local project the registry has never heard of,
-/// callers get `None` and draw their own default mark.
-pub fn display_icon_path(appid: &str) -> Option<String> {
+/// Which artwork an lxapp shows, ranked once for every host.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LxAppIcon {
+    /// Draw this file: the icon the app set for itself, or registry artwork.
+    File(String),
+    /// The home lxapp is the product: draw the host's product icon, or
+    /// `fallback` (registry artwork) when the host has none.
+    Product { fallback: Option<String> },
+    /// Nothing to draw; the host uses its default mark.
+    Default,
+}
+
+impl LxAppIcon {
+    /// A file a host without a product icon of its own can draw.
+    pub fn file(&self) -> Option<&str> {
+        match self {
+            Self::File(path) => Some(path),
+            Self::Product { fallback } => fallback.as_deref(),
+            Self::Default => None,
+        }
+    }
+}
+
+/// The icon to show for an lxapp: the one it set for itself, else the host
+/// product icon for home, else the cached registry artwork. A package
+/// declares no icon, so a local project the registry has never heard of gets
+/// [`LxAppIcon::Default`] until it sets one.
+pub fn display_icon(appid: &str) -> LxAppIcon {
     ensure_fresh(&[appid]);
-    icon_path(appid).filter(|path| !path.trim().is_empty())
+    if let Some(path) = super::app_display::icon_path(appid) {
+        return LxAppIcon::File(path);
+    }
+    let registry = icon_path(appid).filter(|path| !path.trim().is_empty());
+    if lingxia_app_context::home_app_id() == Some(appid) {
+        return LxAppIcon::Product { fallback: registry };
+    }
+    registry.map_or(LxAppIcon::Default, LxAppIcon::File)
 }
 
 /// Registry state for an lxapp, for callers deciding whether to still offer it.

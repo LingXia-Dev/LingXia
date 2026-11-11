@@ -2634,18 +2634,19 @@ fn build_tab_bar_layout(
         app_name: this_item.map(surface_switcher_title).unwrap_or_else(|| {
             lxapp::lxapp_display_name(&app.appid).unwrap_or(runtime_info.app_name)
         }),
-        app_icon_path: if is_home_lxapp(&app.appid) {
-            host_app_icon_path().unwrap_or_else(|| {
-                this_item
-                    .map(|item| surface_switcher_icon_path(switcher_app, item))
-                    .unwrap_or_else(|| {
-                        lxapp::lxapp_display_icon_path(&app.appid).unwrap_or_default()
-                    })
-            })
-        } else {
-            this_item
-                .map(|item| surface_switcher_icon_path(switcher_app, item))
-                .unwrap_or_else(|| lxapp::lxapp_display_icon_path(&app.appid).unwrap_or_default())
+        app_icon_path: {
+            let item_icon = || this_item.map(|item| surface_switcher_icon_path(switcher_app, item));
+            match lxapp::lxapp_display_icon(&app.appid) {
+                // Home is the product: the icon it chose ranks above its row item.
+                lxapp::LxAppIcon::File(path) if is_home_lxapp(&app.appid) => path,
+                lxapp::LxAppIcon::Product { fallback } => host_app_icon_path()
+                    .or_else(item_icon)
+                    .or(fallback)
+                    .unwrap_or_default(),
+                icon => item_icon()
+                    .or_else(|| icon.file().map(str::to_string))
+                    .unwrap_or_default(),
+            }
         },
         group_id: app.appid.clone(),
         group_target_id,
@@ -3308,6 +3309,16 @@ fn lxapp_rail_tabs(appid: &str) -> Option<WindowsShellAuxiliaryTabs> {
     })
 }
 
+/// An lxapp's icon file as `lxapp_display_icon` ranks it, with the host
+/// product icon drawn for home; `None` leaves the host / LingXia mark.
+pub(crate) fn lxapp_icon_path(appid: &str) -> Option<String> {
+    match lxapp::lxapp_display_icon(appid) {
+        lxapp::LxAppIcon::File(path) => Some(path),
+        lxapp::LxAppIcon::Product { fallback } => host_app_icon_path().or(fallback),
+        lxapp::LxAppIcon::Default => None,
+    }
+}
+
 fn host_app_icon_path() -> Option<String> {
     if let Some(path) = crate::app_icon::current_chrome_icon_path() {
         return Some(path.to_string_lossy().into_owned());
@@ -3317,17 +3328,11 @@ fn host_app_icon_path() -> Option<String> {
         .filter(|path| !path.is_empty())
 }
 
-/// Sidebar row icon for an open lxapp: the host product icon for home, else
-/// the registry's cached artwork, else the icon of its configured surface/panel
-/// slot (matching the panel footer action), else empty so the row falls back to
-/// the host / LingXia mark.
+/// Sidebar row icon for an open lxapp: [`lxapp_icon_path`], else the icon of
+/// its configured surface/panel slot (matching the panel footer action), else
+/// empty so the row falls back to the host / LingXia mark.
 fn lxapp_auxiliary_icon_path(appid: &str) -> String {
-    if is_home_lxapp(appid)
-        && let Some(icon) = host_app_icon_path()
-    {
-        return icon;
-    }
-    if let Some(icon) = lxapp::lxapp_display_icon_path(appid) {
+    if let Some(icon) = lxapp_icon_path(appid) {
         return icon;
     }
     let panel_icon = lingxia_app_context::app_config()
@@ -7494,7 +7499,7 @@ fn show_app_menu(appid: &str, app: &LxApp, screen_x: i32, screen_y: i32) {
         let icon_path = crate::app_icon::current_app_icon_path()
             .map(|path| path.to_string_lossy().into_owned())
             .filter(|path| !path.is_empty())
-            .unwrap_or_else(|| lxapp::lxapp_display_icon_path(&app.appid).unwrap_or_default());
+            .unwrap_or_else(|| lxapp_icon_path(&app.appid).unwrap_or_default());
         let about_label = lingxia_logic::i18n::t(lingxia_logic::I18nKey::CommonAbout);
         let exit_label = lingxia_logic::i18n::t(lingxia_logic::I18nKey::CommonExit);
         let version_label = lingxia_logic::i18n::t(lingxia_logic::I18nKey::CommonVersion);

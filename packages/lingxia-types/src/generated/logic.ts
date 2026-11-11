@@ -463,6 +463,22 @@ export type AppConfig = {
     onUserCaptureScreen?: () => void | Promise<void>;
 };
 
+/**
+ * What `lx.shell.setAppDisplay` changes. Each key it carries is set;
+ * `undefined`, `null` or `''` restores the default, and a key left out
+ * keeps its value.
+ */
+export type AppDisplayPatch = {
+    /** One line, 1 to 64 characters after trimming; blank restores the default. */
+    name?: string | null;
+    /**
+     * A bundled path or `lx://` file: PNG, JPEG, WebP or SVG of at most 1 MiB,
+     * raster images at most 4096 px on a side; SVG content is not validated.
+     * Copied, so the source may go.
+     */
+    icon?: string | null;
+};
+
 /** Runtime-managed app download path, usually under `lx://userdata`. */
 export type AppDownloadFilePath = string & {
     readonly [appDownloadPathBrand]: 'app-download-file-path';
@@ -1921,6 +1937,13 @@ export type ShellApi = {
     getDeclared(id: string, key?: string): DeclaredSurface | AppSurface | undefined;
     /** Open a host builtin page such as downloads. */
     openBuiltin(page: BuiltinShellPage): Promise<BuiltinSurface>;
+    /**
+     * Change the name and icon the host shows for this app, above the
+     * registry's and `lxapp.json`'s. Kept per service env and dropped on
+     * uninstall; identical values are a no-op, so calling it on every launch
+     * is cheap. `lx.getAppInfo().name` keeps the `lxapp.json` name.
+     */
+    setAppDisplay(patch: AppDisplayPatch): Promise<void>;
     /**
      * Open a declared surface with shell privileges — the same declaration
      * `lx.surface.openDeclared` opens, plus the keyed multi-instance form and
@@ -3426,6 +3449,12 @@ declare global {
      * keyed multi-instance form and placement overrides. Control-app only.
      */
     openDeclared(id: string, options?: ShellOpenDeclaredOptions): Promise<DeclaredSurface | AppSurface>;
+    /**
+     * Change the name and icon the host shows for the calling app. Only the
+     * Control app may call this API. Resolves once stored; the host repaints only
+     * when a value changed, so calling it on every launch is cheap.
+     */
+    setAppDisplay(patch: AppDisplayPatch): Promise<void>;
     readonly sidebarActions: ShellSidebarActionsApi;
   }
 }

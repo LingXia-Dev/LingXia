@@ -13,6 +13,7 @@ use crate::LxAppError;
 const INSTALLED_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("installed");
 const DOWNLOADED_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("downloaded");
 const REGISTRY_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("registry");
+const APP_DISPLAY_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("app_display");
 
 static DATABASE: OnceLock<Arc<Database>> = OnceLock::new();
 
@@ -83,6 +84,9 @@ pub(crate) fn init(db_path: PathBuf) -> Result<(), LxAppError> {
         let _registry = write_txn
             .open_table(REGISTRY_TABLE)
             .map_err(|e| metadata_error("open registry table", e))?;
+        let _app_display = write_txn
+            .open_table(APP_DISPLAY_TABLE)
+            .map_err(|e| metadata_error("open app display table", e))?;
     }
     write_txn
         .commit()
@@ -443,6 +447,108 @@ pub(crate) fn registry_referenced_icon_files() -> Result<BTreeSet<String>, LxApp
     Ok(files)
 }
 
+/// The name and icon an app set for itself, outranking the registry's.
+/// `icon_file` names a file in the display icon directory under app data.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct AppDisplayRecord {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub icon_file: Option<String>,
+}
+
+/// Each service env keeps its own choice, like the registry answer it beats.
+pub(crate) fn app_display_key(appid: &str) -> String {
+    registry_key(appid)
+}
+
+pub(crate) fn app_display_get(appid: &str) -> Result<Option<AppDisplayRecord>, LxAppError> {
+    let db = database()?;
+    let txn = db
+        .begin_read()
+        .map_err(|e| metadata_error("begin read transaction", e))?;
+    let table = txn
+        .open_table(APP_DISPLAY_TABLE)
+        .map_err(|e| metadata_error("open app display table", e))?;
+    let Some(value) = table
+        .get(app_display_key(appid).as_str())
+        .map_err(|e| metadata_error("read app display record", e))?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(serde_json::from_slice(value.value())?))
+}
+
+pub(crate) fn app_display_put(appid: &str, record: &AppDisplayRecord) -> Result<(), LxAppError> {
+    let key = app_display_key(appid);
+    let db = database()?;
+    let txn = db
+        .begin_write()
+        .map_err(|e| metadata_error("begin write transaction", e))?;
+    {
+        let mut table = txn
+            .open_table(APP_DISPLAY_TABLE)
+            .map_err(|e| metadata_error("open app display table", e))?;
+        if *record == AppDisplayRecord::default() {
+            table
+                .remove(key.as_str())
+                .map_err(|e| metadata_error("delete app display record", e))?;
+        } else {
+            let serialized = serde_json::to_vec(record)?;
+            table
+                .insert(key.as_str(), serialized.as_slice())
+                .map_err(|e| metadata_error("write app display record", e))?;
+        }
+    }
+    txn.commit()
+        .map_err(|e| metadata_error("commit app display write", e))?;
+    Ok(())
+}
+
+pub(crate) fn app_display_remove(appid: &str) -> Result<Option<AppDisplayRecord>, LxAppError> {
+    let key = app_display_key(appid);
+    let db = database()?;
+    let txn = db
+        .begin_write()
+        .map_err(|e| metadata_error("begin write transaction", e))?;
+    let removed = {
+        let mut table = txn
+            .open_table(APP_DISPLAY_TABLE)
+            .map_err(|e| metadata_error("open app display table", e))?;
+        table
+            .remove(key.as_str())
+            .map_err(|e| metadata_error("delete app display record", e))?
+            .and_then(|value| serde_json::from_slice::<AppDisplayRecord>(value.value()).ok())
+    };
+    txn.commit()
+        .map_err(|e| metadata_error("commit app display delete", e))?;
+    Ok(removed)
+}
+
+/// Every display icon some app's record still names, across service envs.
+pub(crate) fn app_display_referenced_icon_files() -> Result<BTreeSet<String>, LxAppError> {
+    let db = database()?;
+    let txn = db
+        .begin_read()
+        .map_err(|e| metadata_error("begin read transaction", e))?;
+    let table = txn
+        .open_table(APP_DISPLAY_TABLE)
+        .map_err(|e| metadata_error("open app display table", e))?;
+    let mut files = BTreeSet::new();
+    for entry in table
+        .iter()
+        .map_err(|e| metadata_error("iterate app display records", e))?
+    {
+        let (_, value) = entry.map_err(|e| metadata_error("read app display record", e))?;
+        if let Ok(record) = serde_json::from_slice::<AppDisplayRecord>(value.value())
+            && let Some(file) = record.icon_file
+        {
+            files.insert(file);
+        }
+    }
+    Ok(files)
+}
+
 /// Every install directory some record still points at. The survivor set for
 /// sweeping orphaned installs: an extraction that outlived its record — a
 /// crash between unpack and upsert, or an old version whose best-effort removal
@@ -554,6 +660,40 @@ mod tests {
             );
         });
         assert!(installed_paths().unwrap().contains("dev-install"));
+    }
+
+    #[test]
+    fn app_display_choices_do_not_cross_service_envs() {
+        init_for_tests();
+        let appid = format!("app.lingxia.display-scope.{}", uuid::Uuid::new_v4());
+        let record = |name: &str| AppDisplayRecord {
+            name: Some(name.to_string()),
+            icon_file: Some(format!("{name}.png")),
+        };
+        with(AppEnv::Prod, || {
+            app_display_put(&appid, &record("prod")).unwrap()
+        });
+        with(AppEnv::Dev, || {
+            assert!(app_display_get(&appid).unwrap().is_none());
+            app_display_put(&appid, &record("dev")).unwrap();
+            assert!(
+                app_display_referenced_icon_files()
+                    .unwrap()
+                    .contains("prod.png")
+            );
+            assert_eq!(app_display_remove(&appid).unwrap(), Some(record("dev")));
+        });
+        with(AppEnv::Prod, || {
+            assert_eq!(app_display_get(&appid).unwrap(), Some(record("prod")));
+            // An empty choice is no record at all.
+            app_display_put(&appid, &AppDisplayRecord::default()).unwrap();
+            assert!(app_display_get(&appid).unwrap().is_none());
+        });
+        assert!(
+            !app_display_referenced_icon_files()
+                .unwrap()
+                .contains("dev.png")
+        );
     }
 
     #[test]

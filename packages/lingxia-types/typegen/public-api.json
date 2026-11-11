@@ -3,6 +3,7 @@
     "ActionSheetResult",
     "AppBaseInfo",
     "AppInfo",
+    "AppDisplayPatch",
     "AppConfig",
     "AppDownloadFilePath",
     "AppDownloadOptions",

@@ -1816,6 +1816,20 @@ true
     edge?: SurfaceEdge;
 }"###;
 
+        /// What `lx.shell.setAppDisplay` changes. Each key it carries is set;
+        /// `undefined`, `null` or `''` restores the default, and a key left out
+        /// keeps its value.
+        type AppDisplayPatch = r###"{
+    /** One line, 1 to 64 characters after trimming; blank restores the default. */
+    name?: string | null;
+    /**
+     * A bundled path or `lx://` file: PNG, JPEG, WebP or SVG of at most 1 MiB,
+     * raster images at most 4096 px on a side; SVG content is not validated.
+     * Copied, so the source may go.
+     */
+    icon?: string | null;
+}"###;
+
         type ShellOpenAppOptions = r###"{
     /**
      * `main` occupies the primary content area; `aside` a companion region.
@@ -2289,6 +2303,13 @@ true
     getDeclared(id: string, key?: string): DeclaredSurface | AppSurface | undefined;
     /** Open a host builtin page such as downloads. */
     openBuiltin(page: BuiltinShellPage): Promise<BuiltinSurface>;
+    /**
+     * Change the name and icon the host shows for this app, above the
+     * registry's and `lxapp.json`'s. Kept per service env and dropped on
+     * uninstall; identical values are a no-op, so calling it on every launch
+     * is cheap. `lx.getAppInfo().name` keeps the `lxapp.json` name.
+     */
+    setAppDisplay(patch: AppDisplayPatch): Promise<void>;
     /**
      * Open a declared surface with shell privileges — the same declaration
      * `lx.surface.openDeclared` opens, plus the keyed multi-instance form and
