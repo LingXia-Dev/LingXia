@@ -8,7 +8,7 @@
     "pages/native-components.test.ts": "WebView native components (video, map, input overlays) have no GPU page",
     "pages/navigator.test.ts": "the GPU showcase has no navigator page",
     "pages/render.test.ts": "waits for each page's WebView document and compares the React showcase's page list",
-    "pages/video-playback.test.ts": "the GPU showcase has no video page"
+    "pages/video-playback.test.ts": "drives the React showcase's video page (its video-page and video-event elements); the GPU video page has its own specs in tests/video.test.ts"
   },
   "keyed": {
     "channel-symbol": "one button per symbol: channel-symbol-<symbol>",
