@@ -2181,3 +2181,25 @@ fn the_view_isolate_replays_writes_into_its_own_data() {
         .unwrap();
     assert_eq!(rendered(&mut session), json!({"only":true}));
 }
+
+#[test]
+fn stripping_animations_copies_only_animated_records() {
+    use crate::protocol::{Fields, field};
+    use crate::scene::test_prelude::node;
+    use serde_json::json;
+    let records = vec![
+        node(0, None, "root", &[(6, json!("#ffffff"))]),
+        node(
+            0,
+            Some(0),
+            "moving",
+            &[(1, json!(20)), (field::ANIMATION, json!("{}"))],
+        ),
+    ];
+    let mut render = records.clone();
+    super::prepare::strip_record_animations(&mut render);
+    assert!(Fields::ptr_eq(&records[0].fields, &render[0].fields));
+    assert!(!Fields::ptr_eq(&records[1].fields, &render[1].fields));
+    assert_eq!(*render[1].fields, vec![(1, json!(20))]);
+    assert_eq!(records[1].fields.len(), 2);
+}

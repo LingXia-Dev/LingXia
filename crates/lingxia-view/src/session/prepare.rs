@@ -849,11 +849,13 @@ fn same_structure(old: &[crate::protocol::Record], new: &[crate::protocol::Recor
         })
 }
 
-fn strip_record_animations(records: &mut [crate::protocol::Record]) {
+pub(super) fn strip_record_animations(records: &mut [crate::protocol::Record]) {
+    let stripped = |id: usize| matches!(id, field::ANIMATION | field::LIST_ITEM_KEYS);
     for record in records {
-        record
-            .fields
-            .retain(|(id, _)| !matches!(*id, field::ANIMATION | field::LIST_ITEM_KEYS));
+        // Writing through `fields` copies it; leave records without these fields shared.
+        if record.fields.iter().any(|(id, _)| stripped(*id)) {
+            record.fields.retain(|(id, _)| !stripped(*id));
+        }
     }
 }
 

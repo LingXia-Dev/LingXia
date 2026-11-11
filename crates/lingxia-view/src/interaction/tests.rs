@@ -1139,3 +1139,41 @@ fn rebound_controls_match_fresh_geometry_paint_and_event_handles() {
         assert!(first.retained.rebind(&records, &different).is_none());
     }
 }
+
+#[test]
+fn shared_fields_paint_like_deep_copies_and_rebind_without_comparing() {
+    let records = page();
+    let deep: Vec<Record> = records
+        .iter()
+        .map(|record| Record {
+            fields: record.fields.to_vec().into(),
+            ..record.clone()
+        })
+        .collect();
+    let mut renderer = Renderer::default();
+    let shared = renderer.layout(&records, 240, 400, 1.0).unwrap();
+    let copied = renderer.layout(&deep, 240, 400, 1.0).unwrap();
+    assert_eq!(
+        serde_json::to_value(&shared.nodes).unwrap(),
+        serde_json::to_value(&copied.nodes).unwrap()
+    );
+    let rebound = shared
+        .retained
+        .rebind(&records, &records.to_vec())
+        .unwrap()
+        .compose(&HashMap::new())
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(&rebound.nodes).unwrap(),
+        serde_json::to_value(&shared.nodes).unwrap()
+    );
+    assert_eq!(
+        rebound.rasterize().unwrap().pixels.data_as_u8_slice(),
+        copied.rasterize().unwrap().pixels.data_as_u8_slice()
+    );
+    // A shared record edited by a later frame no longer takes the fast path.
+    let mut edited = records.to_vec();
+    edited[3].fields.push((5, json!("#00ff00")));
+    assert!(shared.retained.rebind(&records, &edited).is_none());
+    assert_eq!(records[3].fields.len(), 4);
+}

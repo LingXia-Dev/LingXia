@@ -577,7 +577,7 @@ fn node_identity_tracks_keyed_ancestry_and_tag_not_callback_or_label() {
     ];
     let initial = renderer.layout(&records, 200, 200, 1.0).unwrap();
     let id = initial.nodes[1].identity.clone();
-    records[1].fields = vec![(8, json!(99))];
+    records[1].fields = vec![(8, json!(99))].into();
     records[1].text = "Saved".into();
     records.insert(1, node(4, Some(0), "new", &[(1, json!(10))]));
     let reordered = renderer.layout(&records, 200, 200, 1.0).unwrap();

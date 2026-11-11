@@ -135,7 +135,7 @@ mod tests {
             key: key.into(),
             test_id: String::new(),
             text: String::new(),
-            fields,
+            fields: fields.into(),
         }
     }
     #[test]

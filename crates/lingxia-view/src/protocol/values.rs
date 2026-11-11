@@ -61,7 +61,7 @@ pub(crate) fn focus_style(value: &Value) -> Result<Vec<(usize, Value)>, String> 
         serde_json::json!(pairs.len() / 2),
     ];
     record.extend(pairs);
-    Ok(super::decode(&record)?.remove(0).fields)
+    Ok(super::decode(&record)?.remove(0).fields.into_vec())
 }
 
 /// A wire color; default tokens resolve to their light value.

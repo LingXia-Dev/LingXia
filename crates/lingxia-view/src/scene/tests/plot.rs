@@ -411,7 +411,8 @@ fn record(kind: &str, values: &str) -> Record {
             (51, values.into()),
             (52, kind.into()),
             (53, "[\"#435DD9\",\"#10B981\"]".into()),
-        ],
+        ]
+        .into(),
     }
 }
 #[test]

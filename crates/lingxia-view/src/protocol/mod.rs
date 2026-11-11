@@ -1,4 +1,5 @@
 use serde_json::Value;
+use std::sync::Arc;
 
 mod admission;
 mod decode;
@@ -64,7 +65,71 @@ pub struct Record {
     pub key: String,
     pub test_id: String,
     pub text: String,
-    pub fields: Vec<(usize, Value)>,
+    pub fields: Fields,
+}
+
+/// A record's fields, shared by every frame that reuses the record until one edits them.
+#[derive(Clone, Default, PartialEq)]
+pub struct Fields(Arc<Vec<(usize, Value)>>);
+
+impl Fields {
+    /// Same allocation: the fields were carried over, not decoded again.
+    pub fn ptr_eq(a: &Self, b: &Self) -> bool {
+        Arc::ptr_eq(&a.0, &b.0)
+    }
+    pub fn into_vec(self) -> Vec<(usize, Value)> {
+        Arc::try_unwrap(self.0).unwrap_or_else(|shared| (*shared).clone())
+    }
+}
+
+impl std::ops::Deref for Fields {
+    type Target = Vec<(usize, Value)>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+/// Copies on first write so a frame's overrides never reach the decoded records it shares.
+impl std::ops::DerefMut for Fields {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        Arc::make_mut(&mut self.0)
+    }
+}
+
+impl From<Vec<(usize, Value)>> for Fields {
+    fn from(fields: Vec<(usize, Value)>) -> Self {
+        Self(Arc::new(fields))
+    }
+}
+
+impl std::fmt::Debug for Fields {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl<'a> IntoIterator for &'a Fields {
+    type Item = &'a (usize, Value);
+    type IntoIter = std::slice::Iter<'a, (usize, Value)>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a mut Fields {
+    type Item = &'a mut (usize, Value);
+    type IntoIter = std::slice::IterMut<'a, (usize, Value)>;
+    fn into_iter(self) -> Self::IntoIter {
+        Arc::make_mut(&mut self.0).iter_mut()
+    }
+}
+
+impl IntoIterator for Fields {
+    type Item = (usize, Value);
+    type IntoIter = std::vec::IntoIter<(usize, Value)>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.into_vec().into_iter()
+    }
 }
 
 impl Record {

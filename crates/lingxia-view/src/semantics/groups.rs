@@ -71,7 +71,7 @@ pub(crate) fn control_groups(records: &[Record]) -> Result<ControlGroups, String
             record.key.hash(hash);
             record.text.hash(hash);
             record.parent.hash(hash);
-            serde_json::to_string(&record.fields)
+            serde_json::to_string(record.fields.as_slice())
                 .map_err(|error| error.to_string())?
                 .hash(hash);
         }

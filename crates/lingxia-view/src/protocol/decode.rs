@@ -182,7 +182,7 @@ fn walk(buffer: &[Value], previous: Option<&Wire>) -> Result<(Vec<Record>, Wire)
             key,
             test_id,
             text,
-            fields,
+            fields: fields.into(),
         });
         cursor += count * 2;
     }

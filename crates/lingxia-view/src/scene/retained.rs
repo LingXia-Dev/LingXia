@@ -97,6 +97,9 @@ impl RetainedLayout {
             {
                 return None;
             }
+            if crate::protocol::Fields::ptr_eq(&old.fields, &new.fields) {
+                continue;
+            }
             // Anchors affect scroll reconciliation; callback identities do not affect paint.
             let mut a = old
                 .fields

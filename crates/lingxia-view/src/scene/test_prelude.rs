@@ -23,7 +23,7 @@ pub(crate) fn node(
         key: key.into(),
         test_id: key.into(),
         text: String::new(),
-        fields: fields.to_vec(),
+        fields: fields.to_vec().into(),
     }
 }
 
