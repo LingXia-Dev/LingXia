@@ -87,7 +87,7 @@ spec('a finger on the covered tab bar strip in full screen stays with the video'
   await expect.poll(async () => { const area = await view.viewport(); return area.width > area.height; }, { timeout: 5_000 }).toBe(true);
   await new Promise<void>(resolve => setTimeout(() => resolve(), 500));
   // The tab items still lie under the layer: a finger on each label, More included.
-  const labels = ['Home', '首页', 'API', '接口', 'Perf', '性能', 'More', '更多'];
+  const labels = ['Home', '首页', 'API', '接口', 'Motion', '动效', 'More', '更多'];
   const items = (await device.nodes()).filter(node => labels.includes(node.text));
   expect(items.length, 'the covered tab labels').toBe(4);
   for (const item of items) {
