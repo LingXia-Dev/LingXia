@@ -74,7 +74,8 @@ impl From<lxapp::LxAppError> for Error {
             lxapp::LxAppError::InvalidJsonFile(detail)
             | lxapp::LxAppError::InvalidParameter(detail)
             | lxapp::LxAppError::SurfaceConflict(detail) => Self::InvalidRequest(detail),
-            lxapp::LxAppError::UnsupportedOperation(detail) => Self::InvalidRequest(detail),
+            lxapp::LxAppError::UnsupportedOperation(detail)
+            | lxapp::LxAppError::SurfaceRoleLocked(detail) => Self::InvalidRequest(detail),
             lxapp::LxAppError::IoError(detail) => Self::Internal(detail),
             lxapp::LxAppError::WebView(detail)
             | lxapp::LxAppError::Runtime(detail)

@@ -5,7 +5,9 @@ pub(super) fn lxapp_error_to_update_error(error: LxAppError) -> UpdateError {
     let is_runtime_gate = error.is_requires_runtime_upgrade();
     match error {
         LxAppError::InvalidParameter(detail) => UpdateError::invalid_parameter(detail),
-        LxAppError::UnsupportedOperation(detail) => UpdateError::unsupported(detail),
+        LxAppError::UnsupportedOperation(detail) | LxAppError::SurfaceRoleLocked(detail) => {
+            UpdateError::unsupported(detail)
+        }
         LxAppError::ResourceNotFound(detail) => UpdateError::not_found(detail),
         LxAppError::IoError(detail) => UpdateError::io(detail),
         LxAppError::WebView(detail)

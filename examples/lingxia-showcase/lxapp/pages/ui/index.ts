@@ -39,6 +39,7 @@ const SURFACE_ERROR_CODES: readonly SurfaceErrorCode[] = [
   "not_declared",
   "invalid_arg",
   "already_open_other_role",
+  "role_locked",
   "closed",
   "capability_missing",
   "failed",

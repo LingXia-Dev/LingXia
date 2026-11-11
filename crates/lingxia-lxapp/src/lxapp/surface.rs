@@ -251,7 +251,7 @@ impl WindowSurfaceController {
                     if manager.graph().is_root_main(&surface.id)
                         && role != lingxia_surface::Role::Main
                     {
-                        return Err(LxAppError::UnsupportedOperation(
+                        return Err(LxAppError::SurfaceRoleLocked(
                             "the stable root main surface cannot change role".to_string(),
                         ));
                     }
@@ -613,7 +613,7 @@ impl WindowSurfaceController {
             )
         };
         if is_root_main && role.is_some_and(|role| role != lingxia_surface::Role::Main) {
-            return Err(LxAppError::UnsupportedOperation(
+            return Err(LxAppError::SurfaceRoleLocked(
                 "the stable root main surface cannot change role".to_string(),
             ));
         }
@@ -693,7 +693,7 @@ impl WindowSurfaceController {
                 self.commit();
             }
             lingxia_surface::CloseOutcome::RejectedRoot { .. } => {
-                return Err(LxAppError::UnsupportedOperation(
+                return Err(LxAppError::SurfaceRoleLocked(
                     "the stable root main surface cannot be closed".to_string(),
                 ));
             }
@@ -2178,7 +2178,7 @@ impl LxApp {
             return Ok(());
         }
         if controller.is_root_main(id) {
-            return Err(LxAppError::UnsupportedOperation(format!(
+            return Err(LxAppError::SurfaceRoleLocked(format!(
                 "root main surface '{id}' cannot be closed"
             )));
         }
@@ -2549,7 +2549,7 @@ impl LxApp {
             )));
         }
         if controller.is_root_main(&self.appid) {
-            return Err(LxAppError::UnsupportedOperation(
+            return Err(LxAppError::SurfaceRoleLocked(
                 "the stable root main surface cannot change role".to_string(),
             ));
         }

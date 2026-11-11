@@ -2246,10 +2246,12 @@ export type SurfaceContext = {
 export type SurfaceEdge = 'left' | 'right' | 'top' | 'bottom';
 
 /**
- * A surface rejection. The runtime carries the surface code on
- * `data.code` — `code` itself is the transport-level host code, shared
- * with every other `lx` rejection — so read it with
- * `surfaceErrorCode(error)` and never parse the message.
+ * A surface rejection. `code` is the host code: `E_SURFACE_CONFLICT`,
+ * `E_SURFACE_ROLE_LOCKED`, `E_SURFACE_CLOSED`, `E_CAPABILITY_MISSING`,
+ * `E_NOT_SUPPORTED`, `E_NOT_FOUND`, `E_INVALID_ARG`,
+ * `E_PERMISSION_DENIED`, or `E_INTERNAL`. `data.code` carries the finer
+ * `SurfaceErrorCode`; read it with `surfaceErrorCode(error)` and never
+ * parse the message.
  * ```ts
  * import { surfaceErrorCode } from 'lingxia-types/error';
  * catch (error) {
@@ -2262,7 +2264,7 @@ export type SurfaceError = Error & {
 };
 
 /**
- * Why a surface operation was refused. Carried as `code` on every
+ * Why a surface operation was refused. Carried on `data.code` of every
  * `SurfaceError`, so no caller has to match on message text.
  */
 export type SurfaceErrorCode = /** The placement cannot be realized by this host build. */
@@ -2275,6 +2277,9 @@ export type SurfaceErrorCode = /** The placement cannot be realized by this host
  | 'invalid_arg'
 /** The target is already open in a role this call cannot change. */
  | 'already_open_other_role'
+/** The role forbids this: a main cannot be hidden, and the stable
+ * root main cannot be closed or leave `main`. */
+ | 'role_locked'
 /** The surface has been closed; the handle is detached. */
  | 'closed'
 /** The host lacks a capability the request needs, such as an instantiable

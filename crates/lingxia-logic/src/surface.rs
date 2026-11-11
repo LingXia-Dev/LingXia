@@ -1246,12 +1246,12 @@ fn deliver_to_reused_app(
 }
 
 fn lxapp_open_error(err: LxAppError) -> rong::RongJSError {
-    match err {
-        LxAppError::SurfaceConflict(message) => {
-            surface_error(SurfaceErrorCode::AlreadyOpenOtherRole, message)
-        }
-        other => surface_error(SurfaceErrorCode::NotDeclared, other.to_string()),
+    // An operator takedown keeps its business error, whose `data.code` says
+    // `maintain` or `suspended`.
+    if lxapp::registry_unavailable_status(&err).is_some() {
+        return js_error_from_lxapp_error(&err);
     }
+    surface_lifecycle_error("open", err)
 }
 
 /// Declaration-id form. Provider kinds stay behind the declaration boundary.
@@ -1295,7 +1295,7 @@ async fn open_declared_surface_spec(
         && lxapp.surface_switcher_snapshot().root_surface_id.as_deref() == Some(id)
     {
         return Err(surface_error(
-            SurfaceErrorCode::AlreadyOpenOtherRole,
+            SurfaceErrorCode::RoleLocked,
             "the stable root main surface cannot change role",
         ));
     }
@@ -1699,7 +1699,7 @@ fn lxapp_surface_handle(
             Promise::from_future(&ctx, None, async move {
                 match ensure_lxapp_surface_open(&handle, &id, session_id)? {
                     (lxapp::LxAppOpenRegion::Main, _) => Err(surface_error(
-                        SurfaceErrorCode::UnsupportedPlacement,
+                        SurfaceErrorCode::RoleLocked,
                         "a main surface cannot be hidden; select another main or close it",
                     )),
                     (lxapp::LxAppOpenRegion::Aside, surface_id) => {
@@ -1732,7 +1732,7 @@ fn lxapp_surface_handle(
                         == Some(surface_id.as_str())
                 {
                     return Err(surface_error(
-                        SurfaceErrorCode::UnsupportedPlacement,
+                        SurfaceErrorCode::RoleLocked,
                         "the stable root main surface cannot be closed",
                     ));
                 }
@@ -1943,7 +1943,7 @@ fn managed_surface_handle(
                 let role = lxapp.shell_surface_role(&id);
                 if role == Some(lingxia_surface::Role::Main) {
                     return Err(surface_error(
-                        SurfaceErrorCode::UnsupportedPlacement,
+                        SurfaceErrorCode::RoleLocked,
                         "a main surface cannot be hidden; close it instead",
                     ));
                 }
@@ -2597,21 +2597,35 @@ fn closed_surface_error() -> rong::RongJSError {
 }
 
 fn surface_lifecycle_error(operation: &str, error: LxAppError) -> rong::RongJSError {
-    match error {
-        LxAppError::InvalidParameter(detail) => surface_error(SurfaceErrorCode::InvalidArg, detail),
-        LxAppError::ResourceNotFound(detail) => {
-            surface_error(SurfaceErrorCode::NotDeclared, detail)
-        }
-        LxAppError::UnsupportedOperation(detail) => {
-            surface_error(SurfaceErrorCode::UnsupportedPlacement, detail)
-        }
-        LxAppError::SurfaceConflict(detail) => {
-            surface_error(SurfaceErrorCode::AlreadyOpenOtherRole, detail)
-        }
-        other => surface_error(
+    match surface_code_for(&error) {
+        SurfaceErrorCode::Failed => surface_error(
             SurfaceErrorCode::Failed,
-            format!("surface {operation} failed: {other}"),
+            format!("surface {operation} failed: {error}"),
         ),
+        code => surface_error(code, lxapp_error_detail(error)),
+    }
+}
+
+/// The surface category of a runtime failure.
+fn surface_code_for(error: &LxAppError) -> SurfaceErrorCode {
+    match error {
+        LxAppError::InvalidParameter(_) => SurfaceErrorCode::InvalidArg,
+        LxAppError::ResourceNotFound(_) => SurfaceErrorCode::NotDeclared,
+        LxAppError::UnsupportedOperation(_) => SurfaceErrorCode::UnsupportedPlacement,
+        LxAppError::SurfaceConflict(_) => SurfaceErrorCode::AlreadyOpenOtherRole,
+        LxAppError::SurfaceRoleLocked(_) => SurfaceErrorCode::RoleLocked,
+        _ => SurfaceErrorCode::Failed,
+    }
+}
+
+fn lxapp_error_detail(error: LxAppError) -> String {
+    match error {
+        LxAppError::InvalidParameter(detail)
+        | LxAppError::ResourceNotFound(detail)
+        | LxAppError::UnsupportedOperation(detail)
+        | LxAppError::SurfaceConflict(detail)
+        | LxAppError::SurfaceRoleLocked(detail) => detail,
+        other => other.to_string(),
     }
 }
 
@@ -3329,6 +3343,7 @@ pub(crate) enum SurfaceErrorCode {
     NotDeclared,
     InvalidArg,
     AlreadyOpenOtherRole,
+    RoleLocked,
     Closed,
     CapabilityMissing,
     Failed,
@@ -3343,14 +3358,15 @@ impl SurfaceErrorCode {
             Self::NotDeclared => "not_declared",
             Self::InvalidArg => "invalid_arg",
             Self::AlreadyOpenOtherRole => "already_open_other_role",
+            Self::RoleLocked => "role_locked",
             Self::Closed => "closed",
             Self::CapabilityMissing => "capability_missing",
             Self::Failed => "failed",
         }
     }
 
-    /// The transport-level host code, kept so existing error plumbing and the
-    /// i18n registry keep working unchanged.
+    /// The transport-level `error.code`. Distinct per refusal a caller acts
+    /// on differently, so `error.code` alone tells them apart.
     const fn host_code(self) -> &'static str {
         match self {
             Self::UnsupportedPlacement => rong::error::E_NOT_SUPPORTED,
@@ -3359,8 +3375,9 @@ impl SurfaceErrorCode {
             Self::InvalidArg => rong::error::E_INVALID_ARG,
             // Documented in the shell UI spec and asserted by hosts.
             Self::AlreadyOpenOtherRole => "E_SURFACE_CONFLICT",
+            Self::RoleLocked => "E_SURFACE_ROLE_LOCKED",
             Self::Closed => "E_SURFACE_CLOSED",
-            Self::CapabilityMissing => rong::error::E_NOT_SUPPORTED,
+            Self::CapabilityMissing => "E_CAPABILITY_MISSING",
             Self::Failed => rong::error::E_INTERNAL,
         }
     }
@@ -3380,6 +3397,7 @@ const SURFACE_ERROR_CODES: &[&str] = &[
     SurfaceErrorCode::NotDeclared.as_str(),
     SurfaceErrorCode::InvalidArg.as_str(),
     SurfaceErrorCode::AlreadyOpenOtherRole.as_str(),
+    SurfaceErrorCode::RoleLocked.as_str(),
     SurfaceErrorCode::Closed.as_str(),
     SurfaceErrorCode::CapabilityMissing.as_str(),
     SurfaceErrorCode::Failed.as_str(),
@@ -3401,6 +3419,48 @@ mod tests {
             .expect("SurfaceErrorCode literal");
         let declared: Vec<&str> = block.split('\'').skip(1).step_by(2).collect();
         assert_eq!(declared, SURFACE_ERROR_CODES);
+    }
+
+    #[test]
+    fn error_code_alone_tells_role_capability_and_lookup_failures_apart() {
+        let codes = [
+            SurfaceErrorCode::UnsupportedPlacement,
+            SurfaceErrorCode::Denied,
+            SurfaceErrorCode::NotDeclared,
+            SurfaceErrorCode::InvalidArg,
+            SurfaceErrorCode::AlreadyOpenOtherRole,
+            SurfaceErrorCode::RoleLocked,
+            SurfaceErrorCode::Closed,
+            SurfaceErrorCode::CapabilityMissing,
+            SurfaceErrorCode::Failed,
+        ];
+        let host: std::collections::HashSet<_> =
+            codes.iter().map(|code| code.host_code()).collect();
+        assert_eq!(host.len(), codes.len());
+    }
+
+    #[test]
+    fn an_open_failure_keeps_its_category() {
+        assert_eq!(
+            surface_code_for(&LxAppError::UnsupportedOperation("no aside here".into())),
+            SurfaceErrorCode::UnsupportedPlacement
+        );
+        assert_eq!(
+            surface_code_for(&LxAppError::InvalidParameter("bad page".into())),
+            SurfaceErrorCode::InvalidArg
+        );
+        assert_eq!(
+            surface_code_for(&LxAppError::SurfaceRoleLocked("root".into())),
+            SurfaceErrorCode::RoleLocked
+        );
+        assert_eq!(
+            surface_code_for(&LxAppError::Runtime("boom".into())),
+            SurfaceErrorCode::Failed
+        );
+        assert_eq!(
+            surface_code_for(&LxAppError::ResourceNotFound("app".into())),
+            SurfaceErrorCode::NotDeclared
+        );
     }
 
     #[test]

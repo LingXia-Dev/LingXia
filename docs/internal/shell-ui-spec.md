@@ -181,7 +181,7 @@ Main is special:
 - `show()` on a main is equivalent to selecting its tab;
 - when the user switches tabs, the shell MAY turn the previous main hidden; but
   a main handle does not support explicit `hide()` — such a call MUST fail with
-  `E_NOT_SUPPORTED`, guaranteeing there is always a selected main;
+  `E_SURFACE_ROLE_LOCKED`, guaranteeing there is always a selected main;
 - the first admitted main is a stable root and ordinary close MUST reject it;
 - the window close button never closes the root: on macOS it hides the window
   and the Dock icon restores it, tray or not; on Windows it hides the window
@@ -224,9 +224,14 @@ independent by default.
 | `E_INVALID_ARG` | Invalid field, combination, URL, or size |
 | `E_PERMISSION_DENIED` | Caller lacks permission |
 | `E_NOT_FOUND` | appId, page, URL target, or declaration does not exist |
-| `E_NOT_SUPPORTED` | Platform, capability, or current window mode does not support the operation |
+| `E_NOT_SUPPORTED` | Platform or current window mode does not support the operation |
+| `E_CAPABILITY_MISSING` | The declaration's provider lacks a capability the request needs, e.g. keyed instances |
 | `E_SURFACE_CONFLICT` | The same logical content is already live under an incompatible role/presentation |
+| `E_SURFACE_ROLE_LOCKED` | The role forbids the operation: hiding a main, closing the stable root, or moving it out of main |
 | `E_SURFACE_CLOSED` | Operation on a destroyed handle |
+
+`data.code` carries the finer `SurfaceErrorCode`; external callers also read
+it for open refusals (`maintain` / `suspended`).
 
 ### 2.4 Open pipeline
 
