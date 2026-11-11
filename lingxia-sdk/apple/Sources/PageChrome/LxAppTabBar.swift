@@ -84,6 +84,11 @@ fileprivate func tabBarMoreLabel() -> String {
 enum TabBarMetrics {
     static let activeIndicatorSize: CGFloat = 36
     static let activeIndicatorOpacity: CGFloat = 0.2
+    /// UIKit item: the slot (and selected circle) around a 24pt icon, and the
+    /// gap to its label. Slot + gap + label stays near 42pt so the 50pt iOS
+    /// band keeps about 4pt above and below, like the system tab bar.
+    static let uikitIconSlot: CGFloat = 28
+    static let uikitIconLabelSpacing: CGFloat = 2
 }
 
 #if os(iOS)
@@ -515,8 +520,9 @@ struct MacOSLxAppTabBar: View {
 /// Protocol for tab bar implementations
 extension TabBar {
     /// Configured bar thickness in points (height when horizontal, width when
-    /// vertical). Rust guarantees a positive default; the theme constant is a
-    /// last-resort fallback so a malformed config can't collapse the bar.
+    /// vertical), excluding any safe-area inset. Rust guarantees a positive
+    /// default; the theme constant is a last-resort fallback so a malformed
+    /// config can't collapse the bar.
     var dimensionPoints: CGFloat {
         dimension > 0 ? CGFloat(dimension) : LxAppTheme.Metrics.tabBarHeight
     }
@@ -831,7 +837,8 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
             stackView.topAnchor.constraint(equalTo: containerView.topAnchor),
             stackView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
             stackView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            stackView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
+            // Items stay clear of the home indicator; the bar itself runs under it.
+            stackView.bottomAnchor.constraint(equalTo: containerView.safeAreaLayoutGuide.bottomAnchor)
         ])
     }
 
@@ -850,7 +857,7 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         let stackView = UIStackView()
         stackView.axis = .vertical
         stackView.alignment = .center
-        stackView.spacing = 4
+        stackView.spacing = TabBarMetrics.uikitIconLabelSpacing
         stackView.translatesAutoresizingMaskIntoConstraints = false
         stackView.isUserInteractionEnabled = false
 
@@ -884,7 +891,7 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
             let indicator = UIView()
             indicator.backgroundColor = PlatformColor(argb: config.selected_color)
                 .withAlphaComponent(TabBarMetrics.activeIndicatorOpacity)
-            indicator.layer.cornerRadius = 16
+            indicator.layer.cornerRadius = TabBarMetrics.uikitIconSlot / 2
             // Decoration only: inside the button it would take the tap on the icon.
             indicator.isUserInteractionEnabled = false
             indicator.translatesAutoresizingMaskIntoConstraints = false
@@ -892,8 +899,8 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
             NSLayoutConstraint.activate([
                 indicator.centerXAnchor.constraint(equalTo: iconContainer.centerXAnchor),
                 indicator.centerYAnchor.constraint(equalTo: iconContainer.centerYAnchor),
-                indicator.widthAnchor.constraint(equalToConstant: 32),
-                indicator.heightAnchor.constraint(equalToConstant: 32)
+                indicator.widthAnchor.constraint(equalToConstant: TabBarMetrics.uikitIconSlot),
+                indicator.heightAnchor.constraint(equalToConstant: TabBarMetrics.uikitIconSlot)
             ])
         }
 
@@ -969,8 +976,8 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         }
 
         NSLayoutConstraint.activate([
-            iconContainer.widthAnchor.constraint(equalToConstant: 32),
-            iconContainer.heightAnchor.constraint(equalToConstant: 32),
+            iconContainer.widthAnchor.constraint(equalToConstant: TabBarMetrics.uikitIconSlot),
+            iconContainer.heightAnchor.constraint(equalToConstant: TabBarMetrics.uikitIconSlot),
 
             iconView.centerXAnchor.constraint(equalTo: iconContainer.centerXAnchor),
             iconView.centerYAnchor.constraint(equalTo: iconContainer.centerYAnchor),
@@ -1018,7 +1025,7 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         let stackView = UIStackView()
         stackView.axis = .vertical
         stackView.alignment = .center
-        stackView.spacing = 4
+        stackView.spacing = TabBarMetrics.uikitIconLabelSpacing
         stackView.translatesAutoresizingMaskIntoConstraints = false
         stackView.isUserInteractionEnabled = false
 
@@ -1058,7 +1065,7 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
             let indicator = UIView()
             indicator.backgroundColor = PlatformColor(argb: config.selected_color)
                 .withAlphaComponent(TabBarMetrics.activeIndicatorOpacity)
-            indicator.layer.cornerRadius = 16
+            indicator.layer.cornerRadius = TabBarMetrics.uikitIconSlot / 2
             // Decoration only: inside the button it would take the tap on the icon.
             indicator.isUserInteractionEnabled = false
             indicator.translatesAutoresizingMaskIntoConstraints = false
@@ -1066,8 +1073,8 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
             NSLayoutConstraint.activate([
                 indicator.centerXAnchor.constraint(equalTo: iconContainer.centerXAnchor),
                 indicator.centerYAnchor.constraint(equalTo: iconContainer.centerYAnchor),
-                indicator.widthAnchor.constraint(equalToConstant: 32),
-                indicator.heightAnchor.constraint(equalToConstant: 32)
+                indicator.widthAnchor.constraint(equalToConstant: TabBarMetrics.uikitIconSlot),
+                indicator.heightAnchor.constraint(equalToConstant: TabBarMetrics.uikitIconSlot)
             ])
         }
 
@@ -1077,8 +1084,8 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
             stackView.leadingAnchor.constraint(greaterThanOrEqualTo: button.leadingAnchor, constant: 2),
             stackView.trailingAnchor.constraint(lessThanOrEqualTo: button.trailingAnchor, constant: -2),
 
-            iconContainer.widthAnchor.constraint(equalToConstant: 32),
-            iconContainer.heightAnchor.constraint(equalToConstant: 32),
+            iconContainer.widthAnchor.constraint(equalToConstant: TabBarMetrics.uikitIconSlot),
+            iconContainer.heightAnchor.constraint(equalToConstant: TabBarMetrics.uikitIconSlot),
             iconView.centerXAnchor.constraint(equalTo: iconContainer.centerXAnchor),
             iconView.centerYAnchor.constraint(equalTo: iconContainer.centerYAnchor),
             iconView.widthAnchor.constraint(equalToConstant: 24),
