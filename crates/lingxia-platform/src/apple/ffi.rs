@@ -389,7 +389,7 @@ mod bridge {
         fn open_document_external(file_path: &str, mime_type: &str, show_menu: bool) -> bool;
 
         #[swift_bridge(swift_name = "LxApp.chooseFile")]
-        fn choose_file(
+        fn pick_file(
             title: &str,
             default_path: &str,
             multiple: bool,
@@ -398,13 +398,13 @@ mod bridge {
         ) -> bool;
 
         #[swift_bridge(swift_name = "LxApp.chooseDirectory")]
-        fn choose_directory(title: &str, default_path: &str, callback_id: u64) -> bool;
+        fn pick_directory(title: &str, default_path: &str, callback_id: u64) -> bool;
 
         #[swift_bridge(swift_name = "LxApp.revealInFileManager")]
         fn reveal_in_file_manager(path: &str) -> bool;
 
         #[swift_bridge(swift_name = "LxAppMedia.chooseMedia")]
-        fn choose_media(
+        fn pick_media(
             max_count: u32,
             mode: &str,
             source_types_json: &str,
@@ -575,7 +575,7 @@ pub use bridge::{
     scan_code, stop_stream_decoder,
 };
 #[cfg(target_os = "ios")]
-pub use bridge::{choose_directory, choose_file};
+pub use bridge::{pick_directory, pick_file};
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 #[allow(unused_imports)]
@@ -583,7 +583,7 @@ pub use bridge::{dispatch_video_command, set_video_player_callback};
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 #[allow(unused_imports)]
-pub use bridge::{choose_media, start_pull_down_refresh, stop_pull_down_refresh};
+pub use bridge::{pick_media, start_pull_down_refresh, stop_pull_down_refresh};
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 #[allow(unused_imports)]

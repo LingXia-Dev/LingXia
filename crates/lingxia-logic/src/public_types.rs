@@ -652,24 +652,43 @@ rong::js_api! {
     onClick: () => void | Promise<void>;
 }"###;
 
-        type ChooseDirectoryOptions = r###"{
-    /** Initial directory the dialog opens in. Platform default if omitted. */
+        type PickDirectoryOptions = r###"{
+    /**
+     * Initial directory the dialog opens in. Platform default if omitted. On
+     * Android and HarmonyOS phones and tablets, only a directory in lxapp
+     * storage works (it opens the in-app chooser); otherwise the call rejects
+     * with `E_NOT_SUPPORTED`.
+     */
     defaultPath?: string;
 }"###;
 
-        /// Result of `lx.chooseDirectory`. Branch on `status` before reading
-        /// the selected directory.
-        type ChooseDirectoryResult = r###"{
-    status: 'ok';
-    /** Native-consumable directory reference (path or URI). */
-    path: string;
-} | CanceledResult"###;
+        /// One picked file or directory. `uri` is opaque: never parse it, and pass
+        /// it only to APIs that take a picked file such as `lx.share`. `name` is the
+        /// display name the picker reported, reduced to one path component:
+        /// display-only, not unique, and it may lack an extension or disagree
+        /// with the content type.
+        ///
+        /// A picked `uri` is read-only and valid for the current session only;
+        /// `lx.fs.copy` it to keep the file. Whether the file was copied is
+        /// host-specific: desktop grants the live original, mobile may hand
+        /// over a copy (iOS) or a reference to the original (Android, Harmony).
+        ///
+        /// A `pickDirectory` `uri` is a read-only root: `lx.fs.exists`, `stat`,
+        /// `readDir` and `file()` reads, and `lx.fs.copy` as a source, also take
+        /// `<uri>/<relative>` with each segment percent-encoded. Empty, `.` or
+        /// `..` segments, `:`, `\`, and any path that leaves the directory
+        /// through a symlink do not resolve; writes through the grant are
+        /// rejected.
+        type PickedItem = r###"{
+    uri: string;
+    name: string;
+}"###;
 
-        type PickFileOptions = r###"Omit<ChooseFileOptions, 'multiple'>"###;
-        type PickFileResult = r###"{ status: 'ok'; uri: string } | CanceledResult"###;
-        type ChooseFileOptions = r###"{
-    /** Allow selecting multiple files. Default: false */
-    multiple?: boolean;
+        /// Result of `lx.pickDirectory`. Branch on `status` before reading
+        /// the selected directory.
+        type PickDirectoryResult = r###"({ status: 'ok' } & PickedItem) | CanceledResult"###;
+
+        type PickFileOptions = r###"{
     /** Optional file filters. Empty or omitted means all file types. */
     filters?: FileDialogFilter[];
     /**
@@ -681,20 +700,22 @@ rong::js_api! {
     defaultPath?: string;
 }"###;
 
+        /// Result of `lx.pickFile`. Branch on `status` before reading the file.
+        type PickFileResult = r###"({ status: 'ok' } & PickedItem) | CanceledResult"###;
+
         /// Result of `lx.pickFiles`. Branch on `status` before reading the
-        /// selected paths.
-        type ChooseFileResult = r###"{
+        /// selected files.
+        type PickFilesResult = r###"{
     status: 'ok';
-    /**
-     * File paths returned by LingXia; always at least one. Values may be
-     * app-local paths, `lx://...` paths, or platform system-picker references.
-     * Treat them as opaque strings and pass them back to LingXia APIs such as
-     * `lx.share`.
-     */
-    paths: [string, ...string[]];
+    /** Always at least one file. */
+    files: [PickedItem, ...PickedItem[]];
 } | CanceledResult"###;
 
-        type ChooseMediaOptions = r###"{
+        type PickMediaOptions = r###"{
+    /**
+     * Maximum entries to return (default 9). Where the system picker cannot
+     * enforce it (desktop), entries beyond it are dropped from the result.
+     */
     count?: number;
     mediaType?: ('image' | 'video')[];
     sourceType?: ('album' | 'camera')[];
@@ -702,15 +723,19 @@ rong::js_api! {
     maxDurationSeconds?: number;
 }"###;
 
-        /// Result of `lx.chooseMedia`. Branch on `status` before reading the
+        /// Result of `lx.pickMedia`. Branch on `status` before reading the
         /// selected entries.
-        type ChooseMediaResult = r###"{
+        ///
+        /// On mobile each entry is a copy in the lxapp temp directory (counted
+        /// against its quota); on desktop it is a read-only grant on the
+        /// original file.
+        type PickMediaResult = r###"{
     status: 'ok';
     /** Picked media; always at least one entry. */
-    entries: [ChosenMediaEntry, ...ChosenMediaEntry[]];
+    entries: [PickedMediaEntry, ...PickedMediaEntry[]];
 } | CanceledResult"###;
 
-        type ChosenMediaEntry = r###"{
+        type PickedMediaEntry = r###"{
     uri: string;
     fileType: 'image' | 'video';
     isOriginal: boolean;
@@ -729,7 +754,7 @@ rong::js_api! {
     type: 'image';
     /**
      * Managed `lx://` path, or a picker result from `lx.pickFile` /
-     * `lx.chooseMedia` — the same file rules as `lx.share`. Rejects
+     * `lx.pickMedia` — the same file rules as `lx.share`. Rejects
      * `E_INVALID_ARG` when the file is not a decodable image.
      */
     filePath: string;
@@ -957,7 +982,7 @@ rong::js_api! {
 }"###;
 
         type FileDialogFilter = r###"{
-    /** Optional label shown in the native dialog. */
+    /** Optional label shown in the native dialog (desktop only). */
     name?: string;
     /** Allowed extensions without dots, e.g. ['pdf', 'txt']. */
     extensions: string[];
@@ -1379,7 +1404,7 @@ rong::js_api! {
      * File paths returned by LingXia APIs to share. Images, PDFs, and other
      * documents are all represented as file paths.
      *
-     * Use `lx.pickFiles` for system files and `lx.chooseMedia` for picked media;
+     * Use `lx.pickFiles` for system files and `lx.pickMedia` for picked media;
      * pass the returned path here without parsing it.
      * Some platforms or receivers may limit multi-file shares. Share files one
      * at a time when targeting those receivers.

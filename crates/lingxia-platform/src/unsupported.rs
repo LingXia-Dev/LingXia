@@ -13,13 +13,13 @@ use crate::traits::clipboard::{
 };
 use crate::traits::device::{Device, DeviceHardware};
 use crate::traits::file::{
-    ChooseDirectoryRequest, ChooseFileRequest, FileDialogResult, FileService, OpenFileRequest,
+    FileDialogResult, FileService, OpenFileRequest, PickDirectoryRequest, PickFileRequest,
     RevealInFileManagerRequest,
 };
 use crate::traits::keyboard::AppKeyboard;
 use crate::traits::location::{Location, LocationRequestConfig};
 use crate::traits::media_interaction::{
-    ChooseMediaRequest, MediaInteraction, PreviewMediaRequest, SaveMediaRequest, ScanCodeRequest,
+    MediaInteraction, PickMediaRequest, PreviewMediaRequest, SaveMediaRequest, ScanCodeRequest,
 };
 use crate::traits::media_runtime::{
     CompressImageRequest, CompressVideoRequest, CompressedVideo, ExtractVideoThumbnailRequest,
@@ -138,18 +138,18 @@ impl FileService for Platform {
         async { not_supported("reveal_in_file_manager") }
     }
 
-    fn choose_file(
+    fn pick_file(
         &self,
-        _request: ChooseFileRequest,
+        _request: PickFileRequest,
     ) -> impl Future<Output = Result<FileDialogResult, PlatformError>> + Send {
-        async { not_supported("choose_file") }
+        async { not_supported("pick_file") }
     }
 
-    fn choose_directory(
+    fn pick_directory(
         &self,
-        _request: ChooseDirectoryRequest,
+        _request: PickDirectoryRequest,
     ) -> impl Future<Output = Result<FileDialogResult, PlatformError>> + Send {
-        async { not_supported("choose_directory") }
+        async { not_supported("pick_directory") }
     }
 }
 
@@ -175,11 +175,11 @@ impl MediaInteraction for Platform {
         not_supported("cancel_preview")
     }
 
-    fn choose_media(
+    fn pick_media(
         &self,
-        _request: ChooseMediaRequest,
+        _request: PickMediaRequest,
     ) -> impl Future<Output = Result<String, PlatformError>> + Send {
-        async { not_supported("choose_media") }
+        async { not_supported("pick_media") }
     }
 
     fn scan_code(

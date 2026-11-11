@@ -1,4 +1,4 @@
-import type { ChosenMediaEntry, Lx } from "../src/index.js";
+import type { PickedItem, PickedMediaEntry, Lx } from "../src/index.js";
 
 declare const lx: Lx;
 
@@ -8,11 +8,11 @@ async function payloadNeedsTheCheck(): Promise<void> {
   // @ts-expect-error showActionSheet may have been dismissed
   (await lx.showActionSheet({ items: [{ id: "a", label: "A" }] })).id;
   // @ts-expect-error pickFiles may have been dismissed
-  (await lx.pickFiles()).paths;
-  // @ts-expect-error chooseDirectory may have been dismissed
-  (await lx.chooseDirectory()).path;
-  // @ts-expect-error chooseMedia may have been dismissed
-  (await lx.chooseMedia()).entries;
+  (await lx.pickFiles()).files;
+  // @ts-expect-error pickDirectory may have been dismissed
+  (await lx.pickDirectory()).uri;
+  // @ts-expect-error pickMedia may have been dismissed
+  (await lx.pickMedia()).entries;
   // @ts-expect-error scanCode may have been dismissed
   (await lx.scanCode()).scanResult;
 }
@@ -23,15 +23,17 @@ async function checkedResultsNarrow(): Promise<string> {
   const index: string = (sheet.status === 'canceled') ? "" : sheet.id;
 
   const file = await lx.pickFiles();
-  const paths: string[] = (file.status === 'canceled') ? [] : file.paths;
-  const nonEmptyPaths: [string, ...string[]] | null = (file.status === 'canceled') ? null : file.paths;
+  const uris: string[] = (file.status === 'canceled') ? [] : file.files.map((f) => f.uri);
+  const nonEmptyFiles: [PickedItem, ...PickedItem[]] | null = (file.status === 'canceled') ? null : file.files;
+  const single = await lx.pickFile();
+  const name: string = (single.status === 'canceled') ? "" : single.name;
 
-  const directory = await lx.chooseDirectory();
-  const directoryPath: string = (directory.status === 'canceled') ? "" : directory.path;
+  const directory = await lx.pickDirectory();
+  const directoryPath: string = (directory.status === 'canceled') ? "" : directory.uri;
 
-  const media = await lx.chooseMedia();
+  const media = await lx.pickMedia();
   const first: string = (media.status === 'canceled') ? "" : media.entries[0].uri;
-  const nonEmptyMedia: [ChosenMediaEntry, ...ChosenMediaEntry[]] | null = (media.status === 'canceled')
+  const nonEmptyMedia: [PickedMediaEntry, ...PickedMediaEntry[]] | null = (media.status === 'canceled')
     ? null
     : media.entries;
 
@@ -43,8 +45,9 @@ async function checkedResultsNarrow(): Promise<string> {
 
   return [
     index,
-    paths.length,
-    nonEmptyPaths?.length,
+    uris.length,
+    nonEmptyFiles?.length,
+    name,
     directoryPath,
     first,
     nonEmptyMedia?.length,

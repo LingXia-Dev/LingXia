@@ -1031,6 +1031,13 @@ impl LxApp {
             .ok_or_else(|| LxAppError::WebView(format!("Current page instance not found: {id}")))
     }
 
+    /// WebView key of the current page, whose window owns a system dialog.
+    pub fn dialog_owner(&self) -> Option<String> {
+        self.current_page()
+            .ok()
+            .map(|page| page.webtag().key().to_string())
+    }
+
     /// Return a page by path or an error when that page is not currently alive.
     pub fn require_page(&self, path: &str) -> Result<PageInstance, LxAppError> {
         self.get_page(path)

@@ -4,23 +4,23 @@ mod source_picker;
 mod types;
 
 use crate::dismissal::{USER_DISMISSED, canceled, completed};
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use crate::i18n::js_invalid_parameter_error;
 use crate::i18n::{js_error_from_platform_error, js_internal_error};
 use cache::ensure_temp_media_path;
 use lingxia_platform::error::PlatformError;
 use lingxia_platform::traits::app_runtime::AppRuntime;
-#[cfg(not(target_os = "macos"))]
-use lingxia_service::media::ChooseMediaMode;
-use lingxia_service::media::{ChooseMediaRequest, MediaKind, MediaSource};
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+use lingxia_service::media::PickMediaMode;
+use lingxia_service::media::{MediaKind, MediaSource, PickMediaRequest};
 use lxapp::LxApp;
-use parser::{parse_camera, parse_choose_mode, parse_sources};
+use parser::{parse_camera, parse_pick_mode, parse_sources};
 use rong::{JSContext, JSObject, JSResult, JSValue, JsonToJSValue, function::Optional};
 use serde_json::Value;
 use source_picker::present_source_picker;
 use std::fs;
 use std::path::{Path, PathBuf};
-use types::{ChosenMediaEntry, JSChooseMediaOptions, MediaKey};
+use types::{JSPickMediaOptions, MediaKey, PickedMediaEntry};
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     register_api(ctx)
@@ -29,10 +29,10 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 rong::js_api! {
     fn register_api(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn chooseMedia(
-            ts_params = "options?: ChooseMediaOptions",
-            ts_return = "Promise<ChooseMediaResult>"
-        ) = choose_media;
+        fn pickMedia(
+            ts_params = "options?: PickMediaOptions",
+            ts_return = "Promise<PickMediaResult>"
+        ) = pick_media;
     }
 }
 
@@ -42,13 +42,10 @@ rong::js_api! {
 /// completed selection resolves `{ status: 'ok', entries }` with at least one
 /// entry. Rejects when capture or selection fails, or the host returns an invalid
 /// payload.
-async fn choose_media(
-    ctx: JSContext,
-    options: Optional<JSChooseMediaOptions>,
-) -> JSResult<JSObject> {
+async fn pick_media(ctx: JSContext, options: Optional<JSPickMediaOptions>) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
-    let opts = options.as_ref().cloned().unwrap_or(JSChooseMediaOptions {
+    let opts = options.as_ref().cloned().unwrap_or(JSPickMediaOptions {
         count: None,
         media_type: None,
         source_type: None,
@@ -56,11 +53,12 @@ async fn choose_media(
         max_duration: None,
     });
 
-    let mode = parse_choose_mode(opts.media_type)?;
+    let mode = parse_pick_mode(opts.media_type)?;
     let sources = parse_sources(opts.source_type)?;
     // Windows has no camera capture pipeline; album+camera requests
     // degrade to the album picker instead of asking for a source that
-    // would only fail. Camera-only requests still surface NotSupported.
+    // would only fail. A camera-only request stays as it is, for the
+    // platform to reject with NotSupported.
     #[cfg(target_os = "windows")]
     let sources: Vec<MediaSource> = {
         let filtered: Vec<MediaSource> = sources
@@ -83,8 +81,10 @@ async fn choose_media(
         sources.first().copied().unwrap_or(MediaSource::Album)
     };
 
-    #[cfg(not(target_os = "macos"))]
-    if matches!(selected_source, MediaSource::Camera) && matches!(mode, ChooseMediaMode::Mix) {
+    // Windows is excluded so a camera-only request reads as NotSupported,
+    // not as a bad mediaType.
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    if matches!(selected_source, MediaSource::Camera) && matches!(mode, PickMediaMode::Mix) {
         return Err(js_invalid_parameter_error(
             "camera source does not support selecting both image and video; specify a single mediaType entry",
         ));
@@ -96,15 +96,16 @@ async fn choose_media(
         .map(|v| v.min(u32::MAX as f64).round() as u32);
     let source_types = vec![selected_source];
 
-    let request = ChooseMediaRequest {
+    let request = PickMediaRequest {
         max_count: opts.count.unwrap_or(9),
         mode,
         source_types,
         max_duration_seconds,
         camera_facing: parse_camera(opts.camera),
+        owner: lxapp.dialog_owner(),
     };
 
-    let data = match lingxia_service::media::choose_media(&*lxapp.runtime, request).await {
+    let data = match lingxia_service::media::pick_media(&*lxapp.runtime, request).await {
         Ok(data) => data,
         // Business code 2000 is the platform's "user dismissed the picker";
         // every other platform error stays a rejection.
@@ -113,31 +114,30 @@ async fn choose_media(
     };
 
     let parsed: Value = serde_json::from_str(&data)
-        .map_err(|e| js_internal_error(format!("chooseMedia invalid payload: {}", e)))?;
+        .map_err(|e| js_internal_error(format!("pickMedia invalid payload: {}", e)))?;
 
     if parsed.is_null() {
         return Err(js_internal_error(
-            "chooseMedia invalid payload: expected array",
+            "pickMedia invalid payload: expected array",
         ));
     }
 
     if parsed.as_object().is_some() {
         return Err(js_internal_error(
-            "chooseMedia invalid payload: expected array",
+            "pickMedia invalid payload: expected array",
         ));
     }
 
     if !parsed.is_array() {
         return Err(js_internal_error(
-            "chooseMedia invalid payload: expected array",
+            "pickMedia invalid payload: expected array",
         ));
     }
 
-    let arr: Vec<MediaKey> = serde_json::from_str(&data).map_err(|e| {
-        js_internal_error(format!("chooseMedia invalid media array payload: {}", e))
-    })?;
+    let arr: Vec<MediaKey> = serde_json::from_str(&data)
+        .map_err(|e| js_internal_error(format!("pickMedia invalid media array payload: {}", e)))?;
 
-    let mut out: Vec<ChosenMediaEntry> = Vec::new();
+    let mut out: Vec<PickedMediaEntry> = Vec::new();
     let offered = arr.len();
     for key in arr.into_iter() {
         let uri = key.uri.trim();
@@ -146,7 +146,7 @@ async fn choose_media(
         }
         if uri.eq_ignore_ascii_case("[object Object]") {
             return Err(js_internal_error(
-                "chooseMedia invalid payload: media uri must be string path, got [object Object]",
+                "pickMedia invalid payload: media uri must be string path, got [object Object]",
             ));
         }
         let kind = key.kind.as_str();
@@ -181,7 +181,7 @@ async fn choose_media(
                             let result = fs::copy(&source_path, dest_path);
                             result.map(|_| ()).map_err(|e| {
                                 js_internal_error(format!(
-                                    "chooseMedia failed to copy temp file into cache (src={}, dest={}): {}",
+                                    "pickMedia failed to copy temp file into cache (src={}, dest={}): {}",
                                     source_path.display(),
                                     dest_path.display(),
                                     e
@@ -193,13 +193,7 @@ async fn choose_media(
                 }
                 _ => lxapp
                     .grant_transient_file_access(&source_path)
-                    .map_err(|e| {
-                        js_internal_error(format!(
-                            "chooseMedia failed to register temporary media file {}: {}",
-                            source_path.display(),
-                            e
-                        ))
-                    })?
+                    .map_err(|err| crate::i18n::js_error_from_lxapp_error(&err))?
                     .into_string(),
             }
         } else if let Ok(path) = lxapp.resolve_accessible_path(uri) {
@@ -217,7 +211,7 @@ async fn choose_media(
             .and_then(|path| response_path_for_media(&lxapp, &path))?
         };
 
-        out.push(ChosenMediaEntry {
+        out.push(PickedMediaEntry {
             path: final_uri,
             kind: key.kind,
             is_original,
@@ -229,19 +223,16 @@ async fn choose_media(
         // choose — say so instead of laundering an adapter bug into a cancel.
         if offered > 0 {
             return Err(js_internal_error(
-                "chooseMedia invalid payload: every selected entry was unusable",
+                "pickMedia invalid payload: every selected entry was unusable",
             ));
         }
         return canceled(&ctx);
     }
 
     let json = serde_json::to_string(&out)
-        .map_err(|e| js_internal_error(format!("chooseMedia failed to serialize result: {}", e)))?;
+        .map_err(|e| js_internal_error(format!("pickMedia failed to serialize result: {}", e)))?;
     let entries: JSValue = json.as_str().json_to_js_value(&ctx).map_err(|e| {
-        js_internal_error(format!(
-            "chooseMedia failed to materialize JS result: {}",
-            e
-        ))
+        js_internal_error(format!("pickMedia failed to materialize JS result: {}", e))
     })?;
 
     let result = completed(&ctx)?;
@@ -255,7 +246,7 @@ fn response_path_for_media(lxapp: &LxApp, path: &Path) -> JSResult<String> {
     }
 
     Err(js_internal_error(
-        "chooseMedia failed to convert output path to lx:// uri",
+        "pickMedia failed to convert output path to lx:// uri",
     ))
 }
 

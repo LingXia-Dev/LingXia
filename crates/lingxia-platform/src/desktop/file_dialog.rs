@@ -1,6 +1,6 @@
 use crate::error::PlatformError;
 use crate::traits::file::{
-    ChooseDirectoryRequest, ChooseFileRequest, FileDialogFilter, FileDialogResult,
+    FileDialogFilter, FileDialogResult, PickDirectoryRequest, PickFileRequest, PickedPath,
 };
 
 // Async dialogs, deliberately: the sync `rfd::FileDialog` runs `runModal` on
@@ -10,8 +10,8 @@ use crate::traits::file::{
 // dialog presents the same panel through a completion-driven future instead,
 // so the runloop (and everything on it) stays live while the user decides.
 
-pub async fn choose_file_desktop(
-    request: ChooseFileRequest,
+pub async fn pick_file_desktop(
+    request: PickFileRequest,
 ) -> Result<FileDialogResult, PlatformError> {
     let dialog = apply_filters(
         apply_common_options(
@@ -24,28 +24,19 @@ pub async fn choose_file_desktop(
 
     if request.multiple {
         match dialog.pick_files().await {
-            Some(handles) => Ok(FileDialogResult {
-                canceled: false,
-                paths: handles
-                    .iter()
-                    .map(|handle| handle.path().to_string_lossy().into_owned())
-                    .collect(),
-            }),
-            None => Ok(canceled()),
+            Some(handles) => Ok(completed(handles)),
+            None => Ok(FileDialogResult::canceled()),
         }
     } else {
         match dialog.pick_file().await {
-            Some(handle) => Ok(FileDialogResult {
-                canceled: false,
-                paths: vec![handle.path().to_string_lossy().into_owned()],
-            }),
-            None => Ok(canceled()),
+            Some(handle) => Ok(completed([handle])),
+            None => Ok(FileDialogResult::canceled()),
         }
     }
 }
 
-pub async fn choose_directory_desktop(
-    request: ChooseDirectoryRequest,
+pub async fn pick_directory_desktop(
+    request: PickDirectoryRequest,
 ) -> Result<FileDialogResult, PlatformError> {
     let dialog = apply_common_options(
         rfd::AsyncFileDialog::new(),
@@ -53,18 +44,21 @@ pub async fn choose_directory_desktop(
         &request.default_path,
     );
     match dialog.pick_folder().await {
-        Some(handle) => Ok(FileDialogResult {
-            canceled: false,
-            paths: vec![handle.path().to_string_lossy().into_owned()],
-        }),
-        None => Ok(canceled()),
+        Some(handle) => Ok(completed([handle])),
+        None => Ok(FileDialogResult::canceled()),
     }
 }
 
-fn canceled() -> FileDialogResult {
+fn completed(handles: impl IntoIterator<Item = rfd::FileHandle>) -> FileDialogResult {
     FileDialogResult {
-        canceled: true,
-        paths: vec![],
+        canceled: false,
+        entries: handles
+            .into_iter()
+            .map(|handle| PickedPath {
+                path: handle.path().to_string_lossy().into_owned(),
+                name: Some(handle.file_name()),
+            })
+            .collect(),
     }
 }
 

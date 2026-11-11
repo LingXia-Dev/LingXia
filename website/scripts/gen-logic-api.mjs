@@ -77,7 +77,7 @@ const GROUPS = [
     title: 'Files and storage',
     summary: 'Managed files, the system picker, transfers, and key-value storage.',
     members: [
-      'fs', 'openFile', 'pickFile', 'pickFiles', 'chooseDirectory',
+      'fs', 'openFile', 'pickFile', 'pickFiles', 'pickDirectory',
       'uploadFile', 'downloadFile', 'getStorage',
     ],
   },
@@ -86,7 +86,7 @@ const GROUPS = [
     title: 'Media',
     summary: 'Pick, preview, transcode, and save images and video; read a code.',
     members: [
-      'chooseMedia', 'previewMedia', 'getImageInfo', 'compressImage',
+      'pickMedia', 'previewMedia', 'getImageInfo', 'compressImage',
       'saveImageToPhotosAlbum', 'saveVideoToPhotosAlbum',
       'createVideoContext', 'getVideoInfo', 'extractVideoThumbnail', 'compressVideo',
       'scanCode',

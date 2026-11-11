@@ -152,7 +152,8 @@ static LXAPP_SOURCE_OVERRIDES: OnceLock<Mutex<HashMap<String, LxAppBundleSource>
     OnceLock::new();
 #[cfg(feature = "dev-bundles")]
 static DEV_BUNDLE_PREPARER: OnceLock<fn(&str)> = OnceLock::new();
-static TRANSIENT_FILE_GRANTS: OnceLock<DashMap<(String, LxAppSessionId, String), PathBuf>> =
+type TransientGrantKey = (String, LxAppSessionId, String);
+static TRANSIENT_FILE_GRANTS: OnceLock<DashMap<TransientGrantKey, (PathBuf, TransientPathKind)>> =
     OnceLock::new();
 static TRANSIENT_FILE_REFERENCE_GRANTS: OnceLock<DashMap<(String, LxAppSessionId, String), ()>> =
     OnceLock::new();
@@ -179,6 +180,25 @@ fn normalize_transient_path(path: &Path, kind: TransientPathKind) -> Result<Path
         )));
     }
     Ok(normalized)
+}
+
+/// Resolve `<relative>` under a picked directory's canonical `root`. Only the
+/// canonical target is returned, so a symlink or junction inside the directory
+/// cannot lead outside it.
+fn resolve_transient_directory_child(root: &Path, relative: &str) -> Result<PathBuf, LxAppError> {
+    let not_found = || LxAppError::ResourceNotFound(format!("temporary grant path: {relative}"));
+    if Path::new(relative).is_absolute()
+        || relative
+            .split('/')
+            .any(|segment| matches!(segment, "" | "." | "..") || segment.contains([':', '\\']))
+    {
+        return Err(not_found());
+    }
+    let canonical = std::fs::canonicalize(root.join(relative)).map_err(|_| not_found())?;
+    if !canonical.starts_with(root) {
+        return Err(not_found());
+    }
+    Ok(canonical)
 }
 
 fn normalize_transient_file_reference(reference: &str) -> Result<String, LxAppError> {
@@ -1629,7 +1649,7 @@ impl LxApp {
         let token = Uuid::new_v4().simple().to_string();
         TRANSIENT_FILE_GRANTS.get_or_init(DashMap::new).insert(
             (self.appid.clone(), self.session_id(), token.clone()),
-            normalized,
+            (normalized, kind),
         );
         uri::LxUri::from_str(&format!(
             "{}://{}/{}",
@@ -1640,7 +1660,7 @@ impl LxApp {
         .map_err(LxAppError::InvalidParameter)
     }
 
-    fn resolve_transient_file(&self, token: &str) -> Option<PathBuf> {
+    fn resolve_transient_grant(&self, token: &str) -> Option<(PathBuf, TransientPathKind)> {
         TRANSIENT_FILE_GRANTS
             .get_or_init(DashMap::new)
             .get(&(self.appid.clone(), self.session_id(), token.to_string()))
@@ -3098,16 +3118,30 @@ impl LxApp {
                 if uri.query().is_some() {
                     return Err(LxAppError::ResourceNotFound(lx_uri.as_str().to_string()));
                 }
-                let token = uri.path().trim_matches('/');
-                if token.is_empty() || token.contains('/') || token.contains('\\') {
+                let raw = uri.path().trim_matches('/');
+                let (token, relative) = match raw.split_once('/') {
+                    Some((token, relative)) => (token, Some(relative)),
+                    None => (raw, None),
+                };
+                if token.is_empty() || token.contains('\\') {
                     return Err(LxAppError::ResourceNotFound(lx_uri.as_str().to_string()));
                 }
-                self.resolve_transient_file(token).ok_or_else(|| {
+                let (root, kind) = self.resolve_transient_grant(token).ok_or_else(|| {
                     LxAppError::ResourceNotFound(format!(
                         "temporary file grant not found: {}",
                         lx_uri.as_str()
                     ))
-                })
+                })?;
+                match (relative, kind) {
+                    (None, _) => Ok(root),
+                    // Only a picked directory has children; a file grant stays one token.
+                    (Some(relative), TransientPathKind::Directory) => {
+                        resolve_transient_directory_child(&root, &uri::decode_lx_path(relative))
+                    }
+                    (Some(_), TransientPathKind::File) => {
+                        Err(LxAppError::ResourceNotFound(lx_uri.as_str().to_string()))
+                    }
+                }
             }
             Some(uri::HOST_USER_CACHE) | Some(uri::HOST_USER_DATA) => {
                 let base_dir = match uri.host() {

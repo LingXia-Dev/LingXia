@@ -68,7 +68,7 @@ export default function ComponentsPage() {
               </div>
               <div>
                 <div className="text-sm font-medium text-gray-900">Media Swiper</div>
-                <div className="text-xs text-gray-500">Image/video carousel via chooseMedia</div>
+                <div className="text-xs text-gray-500">Image/video carousel via pickMedia</div>
               </div>
             </div>
             <div className="w-5 h-5 text-gray-400 group-hover:text-rose-500 dark:group-hover:text-rose-400 transition-colors">

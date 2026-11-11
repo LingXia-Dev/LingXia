@@ -2,7 +2,7 @@ use super::app::Platform;
 use super::with_env;
 use crate::error::PlatformError;
 use crate::traits::media_interaction::{
-    ChooseMediaRequest, MediaInteraction, MediaKind, MediaObjectFit, PreviewMediaRequest,
+    MediaInteraction, MediaKind, MediaObjectFit, PickMediaRequest, PreviewMediaRequest,
     SaveMediaRequest, ScanCodeRequest, ScanType,
 };
 use crate::traits::media_runtime::{
@@ -50,9 +50,9 @@ impl MediaInteraction for Platform {
         .map_err(|err| PlatformError::Platform(format!("Failed to cancel previewMedia: {}", err)))
     }
 
-    async fn choose_media(&self, request: ChooseMediaRequest) -> Result<String, PlatformError> {
+    async fn pick_media(&self, request: PickMediaRequest) -> Result<String, PlatformError> {
         crate::rt::native_call(|callback_id| {
-            choose_media_impl(request, callback_id)
+            pick_media_impl(request, callback_id)
                 .map_err(|e| PlatformError::Platform(format!("Failed to choose media: {}", e)))
         })
         .await
@@ -272,17 +272,17 @@ fn save_media_impl(
     Ok(())
 }
 
-fn choose_media_impl(
-    request: ChooseMediaRequest,
+fn pick_media_impl(
+    request: PickMediaRequest,
     callback_id: u64,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia)?;
 
     // Map enums to integers expected by Android side
     let mode_value: jint = match request.mode {
-        crate::traits::media_interaction::ChooseMediaMode::Images => 0,
-        crate::traits::media_interaction::ChooseMediaMode::Videos => 1,
-        crate::traits::media_interaction::ChooseMediaMode::Mix => 2,
+        crate::traits::media_interaction::PickMediaMode::Images => 0,
+        crate::traits::media_interaction::PickMediaMode::Videos => 1,
+        crate::traits::media_interaction::PickMediaMode::Mix => 2,
     };
 
     let mut has_album = false;

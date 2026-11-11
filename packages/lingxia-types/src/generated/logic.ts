@@ -676,74 +676,6 @@ export type CanceledResult = {
     status: 'canceled';
 };
 
-export type ChooseDirectoryOptions = {
-    /** Initial directory the dialog opens in. Platform default if omitted. */
-    defaultPath?: string;
-};
-
-/**
- * Result of `lx.chooseDirectory`. Branch on `status` before reading
- * the selected directory.
- */
-export type ChooseDirectoryResult = {
-    status: 'ok';
-    /** Native-consumable directory reference (path or URI). */
-    path: string;
-} | CanceledResult;
-
-export type ChooseFileOptions = {
-    /** Allow selecting multiple files. Default: false */
-    multiple?: boolean;
-    /** Optional file filters. Empty or omitted means all file types. */
-    filters?: FileDialogFilter[];
-    /**
-     * Initial directory the dialog opens in.
-     *
-     * When this resolves to an app-local directory, LingXia may use its internal
-     * file picker. When omitted, the platform system file picker is used.
-     */
-    defaultPath?: string;
-};
-
-/**
- * Result of `lx.pickFiles`. Branch on `status` before reading the
- * selected paths.
- */
-export type ChooseFileResult = {
-    status: 'ok';
-    /**
-     * File paths returned by LingXia; always at least one. Values may be
-     * app-local paths, `lx://...` paths, or platform system-picker references.
-     * Treat them as opaque strings and pass them back to LingXia APIs such as
-     * `lx.share`.
-     */
-    paths: [string, ...string[]];
-} | CanceledResult;
-
-export type ChooseMediaOptions = {
-    count?: number;
-    mediaType?: ('image' | 'video')[];
-    sourceType?: ('album' | 'camera')[];
-    camera?: 'back' | 'front';
-    maxDurationSeconds?: number;
-};
-
-/**
- * Result of `lx.chooseMedia`. Branch on `status` before reading the
- * selected entries.
- */
-export type ChooseMediaResult = {
-    status: 'ok';
-    /** Picked media; always at least one entry. */
-    entries: [ChosenMediaEntry, ...ChosenMediaEntry[]];
-} | CanceledResult;
-
-export type ChosenMediaEntry = {
-    uri: string;
-    fileType: 'image' | 'video';
-    isOriginal: boolean;
-};
-
 export type ClipboardApi = globalThis.ClipboardApi;
 
 export type ClipboardItem = {
@@ -802,7 +734,7 @@ export type ClipboardWriteItem = {
     type: 'image';
     /**
      * Managed `lx://` path, or a picker result from `lx.pickFile` /
-     * `lx.chooseMedia` — the same file rules as `lx.share`. Rejects
+     * `lx.pickMedia` — the same file rules as `lx.share`. Rejects
      * `E_INVALID_ARG` when the file is not a decodable image.
      */
     filePath: string;
@@ -1092,7 +1024,7 @@ export type ExtractVideoThumbnailResult = {
 };
 
 export type FileDialogFilter = {
-    /** Optional label shown in the native dialog. */
+    /** Optional label shown in the native dialog (desktop only). */
     name?: string;
     /** Allowed extensions without dots, e.g. ['pdf', 'txt']. */
     extensions: string[];
@@ -1573,9 +1505,99 @@ export type PageTargetOptions = {
     query?: PageQuery;
 };
 
-export type PickFileOptions = Omit<ChooseFileOptions, 'multiple'>;
+export type PickDirectoryOptions = {
+    /**
+     * Initial directory the dialog opens in. Platform default if omitted. On
+     * Android and HarmonyOS phones and tablets, only a directory in lxapp
+     * storage works (it opens the in-app chooser); otherwise the call rejects
+     * with `E_NOT_SUPPORTED`.
+     */
+    defaultPath?: string;
+};
 
-export type PickFileResult = { status: 'ok'; uri: string } | CanceledResult;
+/**
+ * Result of `lx.pickDirectory`. Branch on `status` before reading
+ * the selected directory.
+ */
+export type PickDirectoryResult = ({ status: 'ok' } & PickedItem) | CanceledResult;
+
+export type PickFileOptions = {
+    /** Optional file filters. Empty or omitted means all file types. */
+    filters?: FileDialogFilter[];
+    /**
+     * Initial directory the dialog opens in.
+     *
+     * When this resolves to an app-local directory, LingXia may use its internal
+     * file picker. When omitted, the platform system file picker is used.
+     */
+    defaultPath?: string;
+};
+
+/** Result of `lx.pickFile`. Branch on `status` before reading the file. */
+export type PickFileResult = ({ status: 'ok' } & PickedItem) | CanceledResult;
+
+/**
+ * Result of `lx.pickFiles`. Branch on `status` before reading the
+ * selected files.
+ */
+export type PickFilesResult = {
+    status: 'ok';
+    /** Always at least one file. */
+    files: [PickedItem, ...PickedItem[]];
+} | CanceledResult;
+
+export type PickMediaOptions = {
+    /**
+     * Maximum entries to return (default 9). Where the system picker cannot
+     * enforce it (desktop), entries beyond it are dropped from the result.
+     */
+    count?: number;
+    mediaType?: ('image' | 'video')[];
+    sourceType?: ('album' | 'camera')[];
+    camera?: 'back' | 'front';
+    maxDurationSeconds?: number;
+};
+
+/**
+ * Result of `lx.pickMedia`. Branch on `status` before reading the
+ * selected entries.
+ * On mobile each entry is a copy in the lxapp temp directory (counted
+ * against its quota); on desktop it is a read-only grant on the
+ * original file.
+ */
+export type PickMediaResult = {
+    status: 'ok';
+    /** Picked media; always at least one entry. */
+    entries: [PickedMediaEntry, ...PickedMediaEntry[]];
+} | CanceledResult;
+
+/**
+ * One picked file or directory. `uri` is opaque: never parse it, and pass
+ * it only to APIs that take a picked file such as `lx.share`. `name` is the
+ * display name the picker reported, reduced to one path component:
+ * display-only, not unique, and it may lack an extension or disagree
+ * with the content type.
+ * A picked `uri` is read-only and valid for the current session only;
+ * `lx.fs.copy` it to keep the file. Whether the file was copied is
+ * host-specific: desktop grants the live original, mobile may hand
+ * over a copy (iOS) or a reference to the original (Android, Harmony).
+ * A `pickDirectory` `uri` is a read-only root: `lx.fs.exists`, `stat`,
+ * `readDir` and `file()` reads, and `lx.fs.copy` as a source, also take
+ * `<uri>/<relative>` with each segment percent-encoded. Empty, `.` or
+ * `..` segments, `:`, `\`, and any path that leaves the directory
+ * through a symlink do not resolve; writes through the grant are
+ * rejected.
+ */
+export type PickedItem = {
+    uri: string;
+    name: string;
+};
+
+export type PickedMediaEntry = {
+    uri: string;
+    fileType: 'image' | 'video';
+    isOriginal: boolean;
+};
 
 export type PreviewMediaAdvance = 'manual' | 'next' | 'loop';
 
@@ -1779,7 +1801,7 @@ export type ShareFilesOptions = ShareTitleOptions & {
      * File paths returned by LingXia APIs to share. Images, PDFs, and other
      * documents are all represented as file paths.
      *
-     * Use `lx.pickFiles` for system files and `lx.chooseMedia` for picked media;
+     * Use `lx.pickFiles` for system files and `lx.pickMedia` for picked media;
      * pass the returned path here without parsing it.
      * Some platforms or receivers may limit multi-file shares. Share files one
      * at a time when targeting those receivers.
@@ -2825,6 +2847,13 @@ export interface DeviceInfo {
   osVersion: string;
 }
 
+export interface DirEntry {
+  name: string;
+  isFile: boolean;
+  isDirectory: boolean;
+  isSymlink: boolean;
+}
+
 export interface FileStats {
   isFile: boolean;
   isDirectory: boolean;
@@ -2909,13 +2938,6 @@ export interface WifiInfo {
   signalStrength: number;
   /** Center frequency in MHz (if available) */
   frequency?: number;
-}
-
-export interface DirEntry {
-  readonly name: string;
-  readonly isFile: boolean;
-  readonly isDirectory: boolean;
-  readonly isSymlink: boolean;
 }
 
 export interface LxFile {
@@ -3154,17 +3176,25 @@ declare global {
      * `mode: "auto"`.
      */
     openFile(options: OpenFileOptions): Promise<void>;
-    /** Pick one file. A successful selection returns one opaque URI. */
+    /** Pick one file. A completed selection is `{ status: 'ok', uri, name }`. */
     pickFile(options?: PickFileOptions): Promise<PickFileResult>;
-    /** Pick one or more files. Dismissal is a normal outcome. */
-    pickFiles(options?: PickFileOptions): Promise<ChooseFileResult>;
+    /**
+     * Pick one or more files. A completed selection is
+     * `{ status: 'ok', files: [{ uri, name }, ...] }` with at least one file.
+     */
+    pickFiles(options?: PickFileOptions): Promise<PickFilesResult>;
     /**
      * Opens a directory picker.
      * Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
-     * completed selection resolves `{ status: 'ok', path }`. Rejects when the
-     * picker fails or returns an invalid payload.
+     * completed selection resolves `{ status: 'ok', uri, name }`. Rejects when the
+     * picker fails or returns an invalid payload, and with `E_NOT_SUPPORTED` when
+     * the host has no readable system folder picker (Android, HarmonyOS phones and
+     * tablets) and `defaultPath` is not in lxapp storage.
+     * The `uri` is a read-only root: `lx.fs` read APIs, and `lx.fs.copy` as a
+     * source, also take `<uri>/<relative>` with each segment percent-encoded. A
+     * child outside the directory, including through a symlink, does not resolve.
      */
-    chooseDirectory(options?: ChooseDirectoryOptions): Promise<ChooseDirectoryResult>;
+    pickDirectory(options?: PickDirectoryOptions): Promise<PickDirectoryResult>;
     readonly fs: FileSystemApi;
     /** Subscribes to key-down events and returns the unsubscribe fn. */
     onKeyDown(callback: KeyEventCallback): () => void;
@@ -3185,7 +3215,7 @@ declare global {
      * entry. Rejects when capture or selection fails, or the host returns an invalid
      * payload.
      */
-    chooseMedia(options?: ChooseMediaOptions): Promise<ChooseMediaResult>;
+    pickMedia(options?: PickMediaOptions): Promise<PickMediaResult>;
     /**
      * Synchronously returns a JS handle so listeners can be attached before the
      * first event fires:

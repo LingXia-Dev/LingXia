@@ -15,10 +15,10 @@ export default [
   },
   {
     id: "PEND-DIRPICK-001",
-    title: "chooseDirectory returns a grant the lxapp can read",
+    title: "pickDirectory returns a grant the lxapp can read",
     mode: "external-ui",
-    covers: ["lx.chooseDirectory"],
-    reason: "the directory picker is an OS dialog with no in-process driver",
+    covers: ["lx.pickDirectory"],
+    reason: "the desktop / HarmonyOS 2-in-1 folder picker is an OS dialog with no in-process driver; Android and HarmonyOS phones reject without defaultPath (E_NOT_SUPPORTED) and use the in-app chooser with it",
   },
   {
     id: "PEND-DESTRUCTIVE-001",
@@ -43,9 +43,9 @@ export default [
   },
   {
     id: "PEND-MEDIA-PICK-001",
-    title: "chooseMedia and scanCode pick a real file through the OS panel",
+    title: "pickMedia and scanCode pick a real file through the OS panel",
     mode: "external-ui",
-    covers: ["lx.chooseMedia", "lx.scanCode"],
+    covers: ["lx.pickMedia", "lx.scanCode"],
     reason: "the desktop file panel starves the in-process driver and hides its file rows from AX; previewMedia is DESKTOP-PREVIEW-MEDIA-001",
   },
   {
@@ -86,10 +86,10 @@ export default [
   },
   {
     id: "PEND-FILE-PICK-001",
-    title: "openFile and pickFile cancel/error codes",
+    title: "openFile and pickFile cancel/error codes, and the picked name and copy behavior per host",
     mode: "external-ui",
     covers: ["lx.openFile", "lx.pickFile"],
-    reason: "OS file picker and viewer stay external-ui",
+    reason: "OS file picker and viewer stay external-ui; a device run must check name (Android content:// DISPLAY_NAME, Harmony decoded tail, iOS copy) and that desktop grants the live original",
   },
   {
     id: "PEND-VIDEO-CONTEXT-001",
@@ -196,9 +196,9 @@ export default [
   },
   {
     id: "PEND-SWIPER-001",
-    title: "LxMediaSwiper index change and add from chooseMedia",
+    title: "LxMediaSwiper index change and add from pickMedia",
     mode: "planned",
-    covers: ["lx.chooseMedia"],
+    covers: ["lx.pickMedia"],
     reason: "add path is OS picker; index events have no contract",
   },
   {

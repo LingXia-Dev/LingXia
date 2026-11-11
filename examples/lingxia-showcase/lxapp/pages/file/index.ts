@@ -419,7 +419,7 @@ Page({
       }
 
       const selectedPath = result.uri;
-      const fileType = detectFileTypeFromPath(selectedPath);
+      const fileType = detectFileTypeFromPath(result.name);
       this.setData({
         chooseFileStatusText: "File selected",
         chooseFileSelectedPath: selectedPath,

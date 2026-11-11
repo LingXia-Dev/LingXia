@@ -1882,6 +1882,90 @@ mod tests {
     }
 
     #[test]
+    fn picked_directory_grant_resolves_children_but_not_escapes() {
+        let (root, standard, control) = same_app_id_with_different_classes();
+        let picked = root.path().join("picked");
+        std::fs::create_dir_all(picked.join("sub dir")).unwrap();
+        std::fs::write(picked.join("sub dir/a.txt"), b"a").unwrap();
+        std::fs::write(root.path().join("outside.txt"), b"secret").unwrap();
+        let file = picked.join("sub dir/a.txt");
+
+        let dir_grant = standard
+            .grant_transient_directory_access(&picked)
+            .unwrap()
+            .to_string();
+        let file_grant = standard
+            .grant_transient_file_access(&file)
+            .unwrap()
+            .to_string();
+        let canonical_file = file.canonicalize().unwrap();
+
+        assert_eq!(
+            standard
+                .resolve_accessible_path(&format!("{dir_grant}/sub%20dir/a.txt"))
+                .unwrap(),
+            canonical_file
+        );
+        assert_eq!(
+            standard
+                .resolve_accessible_path(&format!("{dir_grant}/sub%20dir/"))
+                .unwrap(),
+            picked.join("sub dir").canonicalize().unwrap()
+        );
+        for escape in [
+            "../outside.txt",
+            "sub%20dir/../../outside.txt",
+            "sub%20dir/..%2F..%2Foutside.txt",
+            "./sub%20dir/a.txt",
+            "sub%20dir//a.txt",
+            "sub%20dir%5Ca.txt",
+            "C:/outside.txt",
+            "missing.txt",
+        ] {
+            assert!(
+                standard
+                    .resolve_accessible_path(&format!("{dir_grant}/{escape}"))
+                    .is_err(),
+                "{escape} must not resolve"
+            );
+        }
+        assert!(
+            standard
+                .resolve_accessible_path(&format!("{file_grant}/a.txt"))
+                .is_err(),
+            "a file grant has no children"
+        );
+        assert!(
+            control
+                .resolve_accessible_path(&format!("{dir_grant}/sub%20dir/a.txt"))
+                .is_err(),
+            "a directory grant stays session-scoped"
+        );
+
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(root.path().join("outside.txt"), picked.join("link"))
+                .unwrap();
+            std::os::unix::fs::symlink(root.path(), picked.join("up")).unwrap();
+            std::os::unix::fs::symlink(picked.join("sub dir/a.txt"), picked.join("inner")).unwrap();
+            for escape in ["link", "up/outside.txt"] {
+                assert!(
+                    standard
+                        .resolve_accessible_path(&format!("{dir_grant}/{escape}"))
+                        .is_err(),
+                    "symlink {escape} must not escape the grant"
+                );
+            }
+            assert_eq!(
+                standard
+                    .resolve_accessible_path(&format!("{dir_grant}/inner"))
+                    .unwrap(),
+                canonical_file
+            );
+        }
+    }
+
+    #[test]
     fn privileged_resource_grants_are_native_session_bound_and_expire_on_teardown() {
         let (_root, standard, takeover) = same_app_id_with_different_classes();
         let declared_downloads = crate::LxAppSecurityPrivilege::new("downloads").unwrap();
