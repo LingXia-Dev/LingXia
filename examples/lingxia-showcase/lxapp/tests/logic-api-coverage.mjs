@@ -49,7 +49,7 @@ export default {
     { "api": "lx.downloadFile", "mode": "automated", "owner": "TRANSFER-DOWNLOAD-001" },
     { "api": "lx.openFile", "mode": "external-ui", "owner": "PEND-FILE-PICK-001" },
     { "api": "lx.pickFile", "mode": "external-ui", "owner": "PEND-FILE-PICK-001" },
-    { "api": "lx.getLxAppInfo", "mode": "automated", "owner": "LOGIC-001" },
+    { "api": "lx.getAppInfo", "mode": "automated", "owner": "LOGIC-001" },
     { "api": "lx.getLocation", "mode": "automated", "owner": "MACOS-LOCATION-001", "targets": ["macos"] },
     { "api": "lx.getVideoInfo", "mode": "automated", "owner": "MEDIA-PROCESS-001" },
     { "api": "lx.pickMedia", "mode": "external-ui", "owner": "PEND-MEDIA-PICK-001" },

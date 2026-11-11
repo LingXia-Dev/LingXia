@@ -5,7 +5,7 @@ import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
 
 test("read core app, device, screen, network, and system state", { id: "LOGIC-001", covers: [
-    'lx.getLxAppInfo',
+    'lx.getAppInfo',
     'lx.getDeviceInfo',
     'lx.getScreenInfo',
     'lx.getNetworkInfo',
@@ -16,7 +16,7 @@ test("read core app, device, screen, network, and system state", { id: "LOGIC-00
   const { app } = bindFixture(t, "LOGIC-001");
 
   const result = await app.logic.eval(async ({ lx }) => {
-    const app = lx.getLxAppInfo();
+    const app = lx.getAppInfo();
     const device = lx.getDeviceInfo();
     const screen = lx.getScreenInfo();
     const network = await lx.getNetworkInfo();

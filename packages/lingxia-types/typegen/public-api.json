@@ -2,6 +2,7 @@
   "types": [
     "ActionSheetResult",
     "AppBaseInfo",
+    "AppInfo",
     "AppConfig",
     "AppDownloadFilePath",
     "AppDownloadOptions",
@@ -89,7 +90,6 @@
     "KeyEventCallback",
     "LocationInfo",
     "LxAppEnvVersion",
-    "LxAppInfo",
     "LxAppReleaseType",
     "LxEnv",
     "LxFile",

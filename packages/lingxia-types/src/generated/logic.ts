@@ -2838,6 +2838,13 @@ export interface AppBaseInfo {
   sdkVersion: string;
 }
 
+export interface AppInfo {
+  appId: string;
+  name: string;
+  version: string;
+  channel: LxAppReleaseType;
+}
+
 /** Device info APIs. */
 export interface DeviceInfo {
   brand: string;
@@ -2904,13 +2911,6 @@ export interface LocationInfo {
   verticalAccuracy?: number;
   /** Horizontal accuracy in meters */
   horizontalAccuracy?: number;
-}
-
-export interface LxAppInfo {
-  appId: string;
-  appName: string;
-  version: string;
-  channel: LxAppReleaseType;
 }
 
 export interface ScreenInfo {
@@ -3203,7 +3203,7 @@ declare global {
     /** Get location function */
     getLocation(options?: GetLocationOptions): Promise<LocationInfo>;
     /** Identify the running lxapp: its id, display name, version, and channel. */
-    getLxAppInfo(): LxAppInfo;
+    getAppInfo(): AppInfo;
     /** Read an image's dimensions, type, and orientation without decoding it into a view. */
     getImageInfo(options: GetImageInfoOptions): Promise<ImageInfo>;
     /** Re-encode an image at a lower quality or size, writing a new managed file. */
