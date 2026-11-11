@@ -62,7 +62,8 @@ lxdev test cancel                 # release a run left by a dead client (--cance
 lxdev test report --failures      # reprint the last run, no session needed
 ```
 
-Iterate with `--changed` or a file path; run everything at handoff and in CI.
+Iterate with `--changed` or a file path, and fix with `--last-failed`. Run
+everything once before pushing; CI runs it again.
 
 - Reports go to `test-results/<run-id>/` (`report.html`, `report.json`,
   `junit.xml`); `test-results/latest` is the last run, set after its reports.
@@ -74,6 +75,8 @@ Iterate with `--changed` or a file path; run everything at handoff and in CI.
 - A failed test prints a `Rerun:` line.
 - `--changed` picks tests that import a changed file or name its page
   (`'home'`); it prints why. A page reached only by tapping is missed: name it.
+- `--changed` ignores files outside the test project (host Rust,
+  `lingxia.yaml`): after a host change, pick tests with `--grep` or `--tag`.
 - `lxdev test list` with a session loads the test modules in the app (their
   top-level code runs) and holds the session like a run. Without one, or with
   `--offline`, it reads the tests from the source; `~` marks a computed title,

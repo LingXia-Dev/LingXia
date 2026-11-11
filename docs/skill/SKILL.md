@@ -78,6 +78,9 @@ lingxia dev stop
 On failure, fix and repeat. Report what you observed, not what the edit should
 do. Keep regressions as `lxdev test` cases: [Testing](./lxapp/testing.md).
 
+A bare `lxdev test` runs every test. Run `lxdev test --changed` after an edit
+and `lxdev test --last-failed` while fixing; run everything once before pushing.
+
 ## Shapes
 
 ```
@@ -178,6 +181,7 @@ never add them to a project.
 | `lingxia.yaml` change ignored after rebuild | [`lingxia clean`](./cli/lingxia.md#lingxia-clean) |
 | iOS dev app can't reach the Mac | [`lingxia dev`](./cli/lingxia.md#lingxia-dev) |
 | A save did not update the running lxapp | [dev-reload.md](./cli/dev-reload.md) |
+| `lxdev test` takes too long / runs unrelated tests | [testing.md → Running](./lxapp/testing.md#running) |
 | TS doesn't know `lx.foo()` / `Page({})` | [Install typing](./lxapp/lx-api.md#install-typing) |
 | `<LxPicker>` / `<LxMediaSwiper>` prop not recognized | [components.md](./lxapp/components.md) |
 | Handler gets an event instead of a payload (or vice versa) | [Callback shapes](./lxapp/components.md#callback-shapes) |
