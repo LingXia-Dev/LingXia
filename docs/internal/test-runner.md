@@ -1044,7 +1044,7 @@ test: no test writes into its storage and app code has no test branch.
 - `lxapp::data_profile` keeps a process-memory override per appid.
   `initialize_paths` reads it once per `LxApp` instance and resolves
   `storage.redb`, `userdata`, `usercache` and `temp` under the profile's
-  `live/` root; the bundle, fingermark and every shared store (`lxapps.redb`,
+  `live/` root; the bundle, fingermark and every shared store (`lxapp-index.redb`,
   downloads, settings) are unchanged. Page WebViews are already ephemeral
   (`StrictDefault`); `BrowserRelaxed` tabs still share the Runner's store.
 - Every switch is close → change → reopen (`with_app_closed`, serialized by

@@ -196,9 +196,14 @@ fn is_safe_plugin_entry(entry: &str) -> bool {
         .all(|c| matches!(c, std::path::Component::Normal(_)))
 }
 
-/// Get the plugins directory path.
+/// Get the plugins directory path. Each service env has its own: dev-service
+/// plugins may be unsigned and an installed version is never re-fetched.
 pub fn get_plugins_dir(runtime: &Arc<Platform>) -> PathBuf {
-    runtime.app_data_dir().join(LINGXIA_DIR).join(PLUGINS_DIR)
+    runtime
+        .app_data_dir()
+        .join(LINGXIA_DIR)
+        .join(PLUGINS_DIR)
+        .join(crate::lxapp::service_env_scope().as_str())
 }
 
 /// Get the installation directory for a specific plugin and version.

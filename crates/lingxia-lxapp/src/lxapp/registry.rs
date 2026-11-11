@@ -784,8 +784,8 @@ pub(crate) fn clear(appid: &str) {
     // Records go first and unconditionally: an unavailable icon directory must
     // not leave an uninstalled app's name and status answering lookups.
     invalidate_record(appid);
-    let orphan_candidates = match metadata::registry_remove_all(appid) {
-        Ok(files) => files,
+    let orphan_candidate = match metadata::registry_remove(appid) {
+        Ok(file) => file,
         Err(err) => {
             crate::warn!("Failed to clear registry cache for {}: {}", appid, err);
             return;
@@ -793,13 +793,13 @@ pub(crate) fn clear(appid: &str) {
     };
     // A lookup between the first invalidation and the removal re-cached the old record.
     invalidate_record(appid);
-    if orphan_candidates.is_empty() {
+    let Some(file) = orphan_candidate else {
         return;
-    }
+    };
     let Some(dir) = icons_dir() else {
         return;
     };
-    sweep_orphan_icons(&orphan_candidates, &dir);
+    sweep_orphan_icons(&[file], &dir);
 }
 
 fn sweep_orphan_icons(candidates: &[String], icons_dir: &Path) {
@@ -1047,7 +1047,10 @@ mod tests {
             metadata::registry_upsert(&record_for("com.example.leaver", Some(shared))).unwrap();
             metadata::registry_upsert(&record_for("com.example.other", Some(solo))).unwrap();
 
-            let orphans = metadata::registry_remove_all("com.example.leaver").unwrap();
+            let orphans: Vec<String> = metadata::registry_remove("com.example.leaver")
+                .unwrap()
+                .into_iter()
+                .collect();
             sweep_orphan_icons(&orphans, icons);
 
             assert!(
@@ -1061,11 +1064,17 @@ mod tests {
             );
             assert!(icons.join(solo).exists(), "still referenced by the other");
 
-            let orphans = metadata::registry_remove_all("com.example.other").unwrap();
+            let orphans: Vec<String> = metadata::registry_remove("com.example.other")
+                .unwrap()
+                .into_iter()
+                .collect();
             sweep_orphan_icons(&orphans, icons);
             assert!(!icons.join(solo).exists(), "last reference went away");
 
-            let orphans = metadata::registry_remove_all("com.example.keeper").unwrap();
+            let orphans: Vec<String> = metadata::registry_remove("com.example.keeper")
+                .unwrap()
+                .into_iter()
+                .collect();
             sweep_orphan_icons(&orphans, icons);
             assert!(!icons.join(shared).exists());
         });

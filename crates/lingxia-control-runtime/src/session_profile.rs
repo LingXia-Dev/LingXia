@@ -218,7 +218,7 @@ fn finish_upload(
         && manifest.is_for_another_install(expected)
     {
         return Err(format!(
-            "(stale): profile snapshot of {} was taken for another channel or device \
+            "(stale): profile snapshot of {} was taken for another channel, service env or device \
              fingerprint (a reinstalled host counts as another device)",
             manifest.appid
         ));
