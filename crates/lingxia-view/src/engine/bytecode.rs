@@ -240,7 +240,7 @@ fn write_file(target: &Path, magic: &[u8; 8], key: &Key, bytes: &[u8]) -> std::i
     data.extend_from_slice(&(bytes.len() as u64).to_le_bytes());
     data.extend_from_slice(bytes);
     std::fs::write(&staging, data)?;
-    std::fs::rename(&staging, &target).inspect_err(|_| {
+    std::fs::rename(&staging, target).inspect_err(|_| {
         let _ = std::fs::remove_file(&staging);
     })
 }

@@ -18,7 +18,7 @@ fn page() -> ViewSession {
 fn eval(session: &ViewSession, source: &str) -> i32 {
     session
         .context
-        .eval::<i32>(Source::from_bytes(source.to_owned()))
+        .eval::<i32>(Source::from_bytes(source))
         .unwrap_or(0)
 }
 
