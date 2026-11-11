@@ -2679,7 +2679,6 @@ dependencies = [
  "ohos_hilog",
  "oslog",
  "percent-encoding",
- "raw-window-handle",
  "rfd",
  "rong_rt",
  "rxing",
