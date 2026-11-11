@@ -328,6 +328,7 @@ impl<A: PlatformAdapter> Inner<A> {
                         if let Some((connection, update)) = update {
                             inner.publish(connection, update);
                         }
+                        inner.main().retarget = false;
                         if !current || missed {
                             // Built on a frame that will not present, or both it and the frame
                             // under it miss newer input: a fresh frame replaces them.
@@ -384,7 +385,8 @@ impl<A: PlatformAdapter> Inner<A> {
                             let retry = (main.animating || flight.ahead)
                                 && !main.declined
                                 && !main.disposed;
-                            (retry, main.pending && !main.disposed)
+                            let owed = std::mem::take(&mut main.retarget);
+                            (retry, (main.pending || owed) && !main.disposed)
                         };
                         if retry {
                             let host = inner.clone();

@@ -387,6 +387,9 @@ struct Main<F> {
     catch_up: bool,
     dirty: bool,
     pending: bool,
+    /// The target changed under a frame in flight; if that frame comes back declined, the
+    /// page still owes one for the new target.
+    retarget: bool,
     number_busy: bool,
     disposed: bool,
     /// Bumped to revoke a pending animation or bootstrap deadline.
@@ -580,6 +583,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     catch_up: false,
                     dirty: true,
                     pending: false,
+                    retarget: false,
                     number_busy: false,
                     disposed: false,
                     animation_timer: 0,
@@ -664,6 +668,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
             main.presented_environment = None;
             main.catch_up = !main.visible && !main.interaction.parked();
             let kept = fits && (main.prepared.is_some() || main.in_flight.is_some());
+            main.retarget |= kept && main.in_flight.is_some();
             (main.catch_up, kept)
         };
         // A hidden page's catch-up frame runs as background work, behind the shown page's frame.

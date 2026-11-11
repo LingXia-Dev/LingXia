@@ -751,6 +751,42 @@ fn a_page_whose_target_is_attaching_waits_without_holding_up_its_worker() {
 }
 
 #[test]
+fn a_target_attached_while_its_declined_frame_is_in_flight_still_gets_a_frame() {
+    let worker = ViewWorker::spawn("test-attach-race").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source("function render(){return h('text',{},'B')}"),
+        false,
+    );
+    host.adapter()
+        .pending
+        .store(true, std::sync::atomic::Ordering::Release);
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    assert!(host.adapter().log.lock().unwrap().presented.is_empty());
+    // A frame for the attaching target is in flight when the attach lands: the worker
+    // declines it, but its result has not reached the main thread yet.
+    host.request_frame();
+    let (done, ran) = std::sync::mpsc::channel();
+    worker.run_background(move |_| {
+        let _ = done.send(());
+    });
+    ran.recv_timeout(Duration::from_secs(30)).unwrap();
+    // The attach lands first and reports the target as changed.
+    host.adapter()
+        .pending
+        .store(false, std::sync::atomic::Ordering::Release);
+    host.surface_changed();
+    platform.settle(&[&host]);
+    assert_eq!(
+        last(&host),
+        ["B"],
+        "the declined frame is built again for the new target"
+    );
+}
+
+#[test]
 fn a_stalled_image_decode_never_holds_up_another_page_on_the_worker() {
     let worker = ViewWorker::shared("test:decode").unwrap();
     let platform = Platform::new(&[&worker]);
