@@ -14,7 +14,11 @@ function copy(value) {
   return value;
 }
 
+/** Bumped with each class table: anything lowered under an older one is stale. */
+export let classGeneration = 0;
+
 export function configureClasses(compiled) {
+  classGeneration++;
   byName = new Map();
   cache.clear();
   compiled.forEach((rule, order) => {

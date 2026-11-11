@@ -821,7 +821,9 @@
     if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, copy(item)]));
     return value;
   }
+  var classGeneration = 0;
   function configureClasses(compiled) {
+    classGeneration++;
     byName = /* @__PURE__ */ new Map();
     cache.clear();
     compiled.forEach((rule, order) => {
@@ -2784,6 +2786,7 @@
   }
   var lowered = /* @__PURE__ */ new Map();
   var loweredEnv = null;
+  var loweredClasses = classGeneration;
   var fresh = /* @__PURE__ */ new Set();
   var seeded = null;
   var loweringFields = ["theme", "viewport", "pointer", "reducedMotion", "insets", "keyboard"];
@@ -2824,6 +2827,10 @@
     const entry = (item) => Array.isArray(item) && item.length === 2 && typeof item[0] === "string" && item[1] !== null && typeof item[1] === "object";
     if (typeof value?.env !== "string" || !Array.isArray(value.entries) || !value.entries.every(entry)) return false;
     seeded = value;
+    if (loweredClasses !== classGeneration) {
+      loweredClasses = classGeneration;
+      loweredEnv = null;
+    }
     if (value.env === loweredEnv) {
       for (const [key, style2] of value.entries) if (!lowered.has(key)) lowered.set(key, style2);
     }
@@ -2832,6 +2839,11 @@
   function nodeStyle(tag, props, data, extra, inherited, direction, structure2) {
     if (props.style !== void 0 || extra !== void 0 || props.className === void 0) return lowerNodeStyle(tag, props, data, extra, inherited, direction, structure2);
     const environment = envKey(envOf(render.view));
+    if (loweredClasses !== classGeneration) {
+      loweredClasses = classGeneration;
+      seeded = null;
+      loweredEnv = null;
+    }
     if (environment !== loweredEnv) {
       lowered.clear();
       fresh.clear();

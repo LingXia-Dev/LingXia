@@ -1,5 +1,5 @@
 import { elements, admission, limits, commonProps } from '../generated/contract.js';
-import { resolveClasses } from '../style/classes.js';
+import { resolveClasses, classGeneration } from '../style/classes.js';
 import { classElementProblem } from '../style/hints.js';
 import { lowerStyle, paintOnly, mergeStyle } from '../style/lower.js';
 import { h, readNode, isNode, isFragment, entries } from './nodes.js';
@@ -100,7 +100,7 @@ function bind(tag, element, props) {
 // The lowered style of class-only nodes repeats across a page; it depends on
 // nothing but these inputs, so one lowering serves every node that shares them.
 const lowered = new Map();
-let loweredEnv = null;
+let loweredEnv = null, loweredClasses = classGeneration;
 // Keys lowered since the last `takeLowered`, and the lowerings a previous isolate of this module took.
 const fresh = new Set();
 let seeded = null;
@@ -149,6 +149,11 @@ export function seedLowered(text) {
   const entry = item => Array.isArray(item) && item.length === 2 && typeof item[0] === 'string' && item[1] !== null && typeof item[1] === 'object';
   if (typeof value?.env !== 'string' || !Array.isArray(value.entries) || !value.entries.every(entry)) return false;
   seeded = value;
+  // A module configures its class table before it is seeded, and the seed was taken under that table.
+  if (loweredClasses !== classGeneration) {
+    loweredClasses = classGeneration;
+    loweredEnv = null;
+  }
   if (value.env === loweredEnv) for (const [key, style] of value.entries) if (!lowered.has(key)) lowered.set(key, style);
   return true;
 }
@@ -156,6 +161,12 @@ export function seedLowered(text) {
 function nodeStyle(tag, props, data, extra, inherited, direction, structure) {
   if (props.style !== undefined || extra !== undefined || props.className === undefined) return lowerNodeStyle(tag, props, data, extra, inherited, direction, structure);
   const environment = envKey(envOf(render.view));
+  if (loweredClasses !== classGeneration) {
+    // A new class table: what was lowered, here or by a previous isolate, read the old one.
+    loweredClasses = classGeneration;
+    seeded = null;
+    loweredEnv = null;
+  }
   if (environment !== loweredEnv) {
     lowered.clear();
     fresh.clear();

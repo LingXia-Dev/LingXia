@@ -54,3 +54,26 @@ test('a lowered set too large to keep is not serialized', () => {
   describe(many(401), env(332));
   assert.equal(takeLowered(), '');
 });
+
+test('a seed survives the class table its module configures before seeding', async () => {
+  const first = wire(env(351));
+  const taken = takeLowered();
+  assert.notEqual(taken, '');
+  // A new isolate of the module: its evaluation configures the same table, then the host seeds it.
+  configureClasses(await compileUtilities(new Set(classes)));
+  assert.equal(seedLowered(taken), true);
+  assert.deepEqual(wire(env(351)), first);
+  assert.equal(takeLowered(), '', 'every lowering came from the seed');
+});
+
+test('a new class table drops what the old one lowered, and the old seed with it', () => {
+  configureClasses([{ name: 'p-2', when: {}, style: { paddingTop: 8 } }]);
+  const padding = () => decode(describe(() => h('column', { className: 'p-2' }), env(341)))[0].props.paddingTop;
+  assert.equal(padding(), 8);
+  const taken = takeLowered();
+  configureClasses([{ name: 'p-2', when: {}, style: { paddingTop: 12 } }]);
+  assert.equal(padding(), 12);
+  assert.equal(seedLowered(taken), true);
+  configureClasses([{ name: 'p-2', when: {}, style: { paddingTop: 16 } }]);
+  assert.equal(padding(), 16, 'a seed taken under an older table is not applied');
+});
