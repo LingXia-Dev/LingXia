@@ -3,7 +3,10 @@ import AppKit
 import Combine
 import CLingXiaRustAPI
 
-/// Content-area top toolbar with back/home buttons and page title.
+/// Content-area top toolbar with back/home/refresh buttons and page title.
+/// Refresh follows Back (or Home), or takes the leading slot alone, on pages
+/// that declared `enablePullDownRefresh`: a desktop has no pull gesture to
+/// discover.
 /// Subscribes to NavigationBarStateManager for live updates.
 /// Collapses to zero height when the Rust state says show_navbar == false.
 @MainActor
@@ -19,6 +22,10 @@ class MacNavigationToolbar: NSView {
     private let contentContainer = NSView()
     private let backButton = NSButton()
     private let homeButton = NSButton()
+    private let refreshButton = NSButton()
+    /// Refresh sits at the leading edge alone, or after the visible nav button.
+    private var refreshAtLeading: NSLayoutConstraint!
+    private var refreshAfterNav: NSLayoutConstraint!
     private let titleLabel = NSTextField(labelWithString: "")
     private let hostActionsStack = NSStackView()
     private let separator = NSView()
@@ -38,10 +45,10 @@ class MacNavigationToolbar: NSView {
     private var hasHostActions: Bool { !hostActionButtons.isEmpty }
     /// An aside's bar has nothing to add at the root of its stack: the slot
     /// tab already names the app. It shows only while Back or Home has
-    /// somewhere to go.
+    /// somewhere to go, or the page offers Refresh.
     var collapsesWithoutNavigation = false
 
-    /// Called with "back" or "home" when user clicks a nav button
+    /// Called with "back", "home" or "refresh" when user clicks a nav button
     var onNavigationAction: ((String) -> Void)?
     var onHostAction: ((String) -> Void)?
 
@@ -105,6 +112,19 @@ class MacNavigationToolbar: NSView {
         homeButton.isHidden = true
         contentContainer.addSubview(homeButton)
 
+        refreshButton.translatesAutoresizingMaskIntoConstraints = false
+        refreshButton.image = LxIcon.image(named: "icon_browser_refresh", size: CGSize(width: 16, height: 16))
+        refreshButton.isBordered = false
+        refreshButton.bezelStyle = .regularSquare
+        refreshButton.imagePosition = .imageOnly
+        refreshButton.contentTintColor = LxAppHostTheme.foreground.withAlphaComponent(0.8)
+        refreshButton.target = self
+        refreshButton.action = #selector(refreshClicked)
+        refreshButton.toolTip = L10n.string("lx_menu_refresh")
+        refreshButton.setAccessibilityLabel(L10n.string("lx_menu_refresh"))
+        refreshButton.isHidden = true
+        contentContainer.addSubview(refreshButton)
+
         // Title (centered in full toolbar width)
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .medium)
@@ -138,15 +158,27 @@ class MacNavigationToolbar: NSView {
             homeButton.widthAnchor.constraint(equalToConstant: Layout.buttonSize),
             homeButton.heightAnchor.constraint(equalToConstant: Layout.buttonSize),
 
+            refreshButton.centerYAnchor.constraint(equalTo: contentContainer.centerYAnchor),
+            refreshButton.widthAnchor.constraint(equalToConstant: Layout.buttonSize),
+            refreshButton.heightAnchor.constraint(equalToConstant: Layout.buttonSize),
+
             titleLabel.centerXAnchor.constraint(equalTo: contentContainer.centerXAnchor),
             titleLabel.centerYAnchor.constraint(equalTo: contentContainer.centerYAnchor),
             titleLabel.leadingAnchor.constraint(greaterThanOrEqualTo: backButton.trailingAnchor, constant: Layout.titleLeading),
+            titleLabel.leadingAnchor.constraint(greaterThanOrEqualTo: refreshButton.trailingAnchor, constant: Layout.titleLeading),
             titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: hostActionsStack.leadingAnchor, constant: -12),
 
             hostActionsStack.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor, constant: -12),
             hostActionsStack.centerYAnchor.constraint(equalTo: contentContainer.centerYAnchor),
             hostActionsStack.leadingAnchor.constraint(greaterThanOrEqualTo: titleLabel.trailingAnchor, constant: 12),
         ])
+
+        // Back and Home share the leading slot, so either one is the anchor.
+        refreshAtLeading = refreshButton.leadingAnchor.constraint(
+            equalTo: contentContainer.leadingAnchor, constant: Layout.leadingPadding)
+        refreshAfterNav = refreshButton.leadingAnchor.constraint(
+            equalTo: backButton.trailingAnchor, constant: 2)
+        refreshAtLeading.isActive = true
 
         // Bottom separator
         separator.translatesAutoresizingMaskIntoConstraints = false
@@ -174,13 +206,15 @@ class MacNavigationToolbar: NSView {
     private func updateFromState(_ state: NavigationBarState?) {
         showNavbar = state.map { state in
             state.show_navbar
-                && (!collapsesWithoutNavigation || state.show_back_button || state.show_home_button)
+                && (!collapsesWithoutNavigation || state.show_back_button || state.show_home_button
+                    || state.show_refresh_button)
         } ?? false
         updateHeight()
 
         guard let state = state, showNavbar else {
             backButton.isHidden = true
             homeButton.isHidden = true
+            refreshButton.isHidden = true
             titleLabel.stringValue = ""
             layer?.backgroundColor = nil
             return
@@ -197,11 +231,22 @@ class MacNavigationToolbar: NSView {
         homeButton.isHidden = !showHome
         homeButton.isEnabled = showHome
 
+        let showRefresh = state.show_refresh_button
+        refreshButton.isHidden = !showRefresh
+        refreshButton.isEnabled = showRefresh
+        let followsNav = showBack || showHome
+        if refreshAfterNav.isActive != followsNav {
+            refreshAtLeading.isActive = false
+            refreshAfterNav.isActive = false
+            (followsNav ? refreshAfterNav : refreshAtLeading).isActive = true
+        }
+
         titleLabel.stringValue = state.title_text.toString()
 
         let foregroundColor = PlatformColor(argb: state.foreground_color)
         backButton.contentTintColor = foregroundColor
         homeButton.contentTintColor = foregroundColor
+        refreshButton.contentTintColor = foregroundColor
         titleLabel.textColor = foregroundColor
         separator.layer?.backgroundColor = PlatformColor(argb: state.divider_color).cgColor
 
@@ -295,6 +340,10 @@ class MacNavigationToolbar: NSView {
 
     @objc private func homeClicked() {
         onNavigationAction?("home")
+    }
+
+    @objc private func refreshClicked() {
+        onNavigationAction?("refresh")
     }
 
     @objc private func hostActionClicked(_ sender: NSButton) {

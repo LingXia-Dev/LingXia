@@ -565,8 +565,31 @@ impl LxApp {
         match data.as_str() {
             "back" => self.user_leave(LeaveReason::Back).is_ok(),
             "home" => self.navigate_to_initial_route(),
+            "refresh" => self.start_current_page_refresh(),
             _ => {
                 error!("Unknown navigation action: {}", data).with_appid(self.appid.clone());
+                false
+            }
+        }
+    }
+
+    /// The desktop navbar's refresh button: runs the same refresh as the pull
+    /// gesture and `lx.startPullDownRefresh()`, so the host indicator shows
+    /// and `onPullDownRefresh` fires. Only pages that opted in get the button.
+    fn start_current_page_refresh(self: &Arc<Self>) -> bool {
+        let Ok(page) = self.current_page() else {
+            return false;
+        };
+        if !page.is_pull_down_refresh_enabled() {
+            return false;
+        }
+        match self
+            .runtime
+            .start_pull_down_refresh(&self.appid, page.webtag().key())
+        {
+            Ok(()) => true,
+            Err(err) => {
+                error!("start_pull_down_refresh failed: {}", err).with_appid(self.appid.clone());
                 false
             }
         }

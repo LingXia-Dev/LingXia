@@ -22,6 +22,7 @@ struct LxAppEvent {
     static let capsuleActionClose = "close"
     static let navigationActionBack = "back"
     static let navigationActionHome = "home"
+    static let navigationActionRefresh = "refresh"
 }
 
 struct AppEvent {
