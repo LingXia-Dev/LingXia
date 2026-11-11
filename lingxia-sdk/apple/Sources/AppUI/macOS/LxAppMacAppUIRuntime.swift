@@ -998,6 +998,14 @@ final class LxAppMacAppUIRuntime: NSObject {
             LXLog.error("AppUI cannot activate undeclared surface=\(id)", category: "MacAppUI")
             return
         }
+        // A click is an explicit request for this app. Without it a browser
+        // tab covering the main (e.g. the Settings control page) stays on
+        // screen: the reconciler only uncovers on request, so a tab click on
+        // the current tab did nothing and one on another tab navigated a
+        // detached view (blank). Same request `switchToTab` makes for
+        // unmanaged apps; kept off `activateMainLxAppProvider`, whose
+        // close/restore callers must not knock a browser tab off screen.
+        LxAppLayoutReconciler.requestLxappMainActivation(appId: appId, raiseHost: false)
         shell.activateMainLxAppProvider(appId: appId)
         _ = setActiveMainSurface(ownerAppId, id)
     }
