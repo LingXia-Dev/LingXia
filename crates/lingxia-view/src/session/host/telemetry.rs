@@ -269,11 +269,13 @@ impl<A: PlatformAdapter> Inner<A> {
         sorted.sort_unstable();
         let p50 = sorted.get(sorted.len() / 2).copied().unwrap_or(0);
         let (bytes, entries) = super::decode::retained();
-        // The presenter's own counters ride in the presented frame's metrics.
-        let presented = main
-            .snapshot
-            .as_ref()
-            .map(|snapshot| snapshot.reported.clone());
+        // The presenter's own counters ride in the presented frame's metrics, or arrive with
+        // the draw when the frame was drawn off the worker.
+        let presented = main.drawn.clone().or_else(|| {
+            main.snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.reported.clone())
+        });
         let presenter = |key: &str| {
             presented
                 .as_ref()
@@ -282,6 +284,7 @@ impl<A: PlatformAdapter> Inner<A> {
         serde_json::json!({
             "composite": presenter("composite"),
             "backdropCache": presenter("backdropCache"),
+            "passes": presenter("passes"),
             "video": crate::renderer::video_stats(),
             "renderer": "gpu",
             // Frame budgets hold for an optimized core only.

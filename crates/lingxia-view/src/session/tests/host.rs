@@ -3163,6 +3163,49 @@ fn a_spinning_decoration_sends_accessibility_no_content_changes() {
 }
 
 #[test]
+fn a_frame_drawn_off_the_worker_reports_its_presenter_counters() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source("function render(){return h('column',{},h('text',{},'drawn'))}"),
+        false,
+    );
+    host.adapter()
+        .defer
+        .store(true, std::sync::atomic::Ordering::Release);
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let generation = *host
+        .adapter()
+        .log
+        .lock()
+        .unwrap()
+        .generations
+        .last()
+        .unwrap();
+    host.deferred_drawn(
+        generation,
+        true,
+        crate::session::host::DrawStats {
+            gpu_us: [0, 900, 0, 100],
+            presenter: Some(serde_json::json!({
+                "composite": {"draws": 3},
+                "backdropCache": {"filtered": 1},
+                "passes": [[500, 50]],
+            })),
+        },
+    );
+    platform.settle(&[&host]);
+    let metrics = host
+        .automation_request(&serde_json::json!({"op": "frame"}))
+        .unwrap();
+    assert_eq!(metrics["composite"]["draws"], 3);
+    assert_eq!(metrics["backdropCache"]["filtered"], 1);
+    assert_eq!(metrics["passes"], serde_json::json!([[500, 50]]));
+}
+
+#[test]
 fn a_deferred_present_holds_the_next_frame_until_it_reaches_the_screen() {
     let worker = ViewWorker::spawn("test-view").unwrap();
     let platform = Platform::new(&[&worker]);

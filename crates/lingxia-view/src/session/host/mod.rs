@@ -88,6 +88,15 @@ impl FrameSnapshot {
     }
 }
 
+/// What drawing and presenting a deferred frame took, as the adapter that drew it measured.
+#[derive(Clone, Debug, Default)]
+pub struct DrawStats {
+    /// Scene, encode, submit and present µs.
+    pub gpu_us: [u64; 4],
+    /// The presenter's counters for the draw: `composite`, `backdropCache`, `passes`.
+    pub presenter: Option<serde_json::Value>,
+}
+
 /// How one presented frame was produced, for diagnostics.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct FrameTiming {
@@ -408,6 +417,9 @@ struct Main<F> {
     bootstrap_timer: u64,
     reveal: reveal::Reveal,
     telemetry: telemetry::Telemetry,
+    /// The presenter's counters for the last frame drawn off the worker; a frame drawn on
+    /// the worker carries them in its snapshot.
+    drawn: Option<serde_json::Value>,
     text_menu: text_menu::MenuState,
     edits: edits::Edits,
 }
@@ -601,6 +613,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     bootstrap_timer: 0,
                     reveal: Default::default(),
                     telemetry: Default::default(),
+                    drawn: None,
                     text_menu: Default::default(),
                     edits: Default::default(),
                 }),
@@ -838,17 +851,16 @@ impl<A: PlatformAdapter> ViewHost<A> {
     /// A deferred frame of `generation` reached the screen, or `shown: false` when the
     /// target dropped it. Any thread.
     pub fn deferred_presented(&self, generation: CommitTicket, shown: bool) {
-        self.deferred_drawn(generation, shown, [0; 4]);
+        self.deferred_drawn(generation, shown, DrawStats::default());
     }
 
-    /// [`Self::deferred_presented`] from an adapter that drew the frame itself, with its
-    /// scene, encode, submit and present µs.
-    pub fn deferred_drawn(&self, generation: CommitTicket, shown: bool, gpu_us: [u64; 4]) {
+    /// [`Self::deferred_presented`] from an adapter that drew the frame itself.
+    pub fn deferred_drawn(&self, generation: CommitTicket, shown: bool, stats: DrawStats) {
         // Stamped here, not on main: the post back is not part of presenting.
         let done = self.inner.adapter.now();
         let inner = self.inner.clone();
         self.inner.adapter.post(Box::new(move || {
-            inner.deferred_presented(generation, shown, gpu_us, done)
+            inner.deferred_presented(generation, shown, stats, done)
         }));
     }
 

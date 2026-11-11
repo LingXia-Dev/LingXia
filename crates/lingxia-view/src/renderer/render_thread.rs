@@ -194,12 +194,12 @@ pub fn draw(backend: Backend, surface: u64, revision: u64, display: DisplayList)
 
 /// Presents `revision` once it is drawn: before any frame queued after its draw, so a frame
 /// built ahead never delays the one already due. `report` gets whether it reached the screen
-/// and the draw's scene, encode, submit and present µs.
+/// and what the draw took.
 pub fn present(
     surface: u64,
     revision: u64,
     drawn: Arc<Drawn>,
-    report: impl FnOnce(Result<bool, String>, [u64; 4]) + Send + 'static,
+    report: impl FnOnce(Result<bool, String>, crate::session::host::DrawStats) + Send + 'static,
 ) {
     let target = drawn.clone();
     let task: Task = Box::new(move || {
@@ -239,12 +239,22 @@ pub fn present(
                 } else {
                     0
                 };
+                let presenter = metrics.as_ref().map(|m| {
+                    serde_json::json!({
+                        "composite": m.get("composite"),
+                        "backdropCache": m.get("backdropCache"),
+                        "passes": m.get("passes"),
+                    })
+                });
                 report(
                     Ok(shown),
-                    [us("sceneUs"), us("encodeUs"), us("submitUs"), present],
+                    crate::session::host::DrawStats {
+                        gpu_us: [us("sceneUs"), us("encodeUs"), us("submitUs"), present],
+                        presenter,
+                    },
                 )
             }
-            Err(error) => report(Err(error), [0; 4]),
+            Err(error) => report(Err(error), Default::default()),
         }
     });
     // The draw runs before the present: queued behind it when still waiting, else first.

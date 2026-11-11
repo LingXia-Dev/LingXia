@@ -920,7 +920,7 @@ impl<A: PlatformAdapter> Inner<A> {
         self: &Arc<Self>,
         generation: CommitTicket,
         shown: bool,
-        gpu_us: [u64; 4],
+        stats: super::DrawStats,
         done: Duration,
     ) {
         let Some(deferred) = ({
@@ -947,12 +947,15 @@ impl<A: PlatformAdapter> Inner<A> {
                 mut pacing,
                 flight,
             } = deferred;
-            timing.gpu_us = gpu_us;
+            timing.gpu_us = stats.gpu_us;
             pacing.done = done;
             {
                 let mut main = self.main();
                 main.presented_environment = Some(environment);
                 main.catch_up = false;
+                if stats.presenter.is_some() {
+                    main.drawn = stats.presenter;
+                }
             }
             self.presented(
                 snapshot, surface, page, revision, offsets, timing, vsync, pacing, flight,
