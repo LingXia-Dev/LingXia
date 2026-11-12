@@ -42,14 +42,15 @@ export const tabsRecipe = {
     } satisfies Record<TabsVariant, string>,
   },
   tab: {
-    base: 'grow shrink basis-0 flex-row items-center justify-center px-3 transition-colors duration-150 ease-out disabled:opacity-40',
+    base: 'grow shrink basis-0 min-w-0 flex-row items-center justify-center px-2 transition-colors duration-150 ease-out disabled:opacity-40',
     variant: {
       underline: 'h-control-md',
       segmented: 'h-8 rounded-segment',
     } satisfies Record<TabsVariant, string>,
   },
+  /** A label too long for its share of the row is cut short rather than spilling into the next tab. */
   label: {
-    base: 'text-footnote font-medium',
+    base: 'text-footnote font-medium truncate',
     selected: 'text-text',
     unselected: 'text-muted',
   },

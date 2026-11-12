@@ -71,7 +71,7 @@ export function Filter() {
 }
 
 export function StateUnderline() {
-  return <Tabs label="Sections" items={sections.slice(0, 2)} value="overview" onChange={() => {}} />;
+  return <Tabs label="Sections" items={[{ value: 'notes', label: 'Notes' }, { value: 'files', label: 'Files' }]} value="notes" onChange={() => {}} />;
 }
 
 export function StateSegmented() {
@@ -82,8 +82,8 @@ export function StateDisabled() {
   return (
     <Tabs
       label="Sections"
-      items={[{ value: 'overview', label: 'Overview' }, { value: 'billing', label: 'Billing', isDisabled: true }]}
-      value="overview"
+      items={[{ value: 'notes', label: 'Notes' }, { value: 'billing', label: 'Billing', isDisabled: true }]}
+      value="notes"
       onChange={() => {}}
     />
   );
