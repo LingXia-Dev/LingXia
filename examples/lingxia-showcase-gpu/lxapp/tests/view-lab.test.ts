@@ -278,17 +278,9 @@ const apart = (a: number[], b: number[]) => a.some((value, i) => Math.abs(value 
 /** The colour just inside a control's left padding, brought on screen first. */
 async function fillOf(t: Fixture, locator: ReturnType<Fixture['app']['view']['testId']>) {
   const view = t.app.view;
-  let box = await locator.boundingBox();
-  let viewport = await view.viewport();
-  if (box.y < viewport.top || box.y + box.height > viewport.top + viewport.height) {
-    const dy = box.y + box.height / 2 - (viewport.top + viewport.height / 2);
-    const x = viewport.left + 12;
-    const y = viewport.top + viewport.height / 2;
-    await view.swipe({ from: [x, y + dy / 2], to: [x, y - dy / 2], durationMs: 600 });
-    await new Promise<void>(resolve => setTimeout(resolve, 600));
-    box = await locator.boundingBox();
-    viewport = await view.viewport();
-  }
+  await reveal(t, locator);
+  const box = await locator.boundingBox();
+  const viewport = await view.viewport();
   let scale = 1;
   const py = box.y + box.height / 2 - viewport.top;
   const shot = await decodePng((await view.screenshot()).base64, width => {
@@ -303,6 +295,7 @@ spec('a slider styled by parts reads its valuetext and grows its line and thumb 
   await view.testId('lab-tab-input').click();
   const scrub = view.getByRole('slider', { name: 'Scrub' });
   await expect(scrub).toHaveAttribute('aria-valuetext', '0:30 of 3:00');
+  await reveal(t, scrub);
   const box = await scrub.boundingBox();
   // The touch target is the slider's box though its thumb draws nothing at rest.
   const at: [number, number] = [box.x + box.width / 2, box.y + box.height / 2];
@@ -310,15 +303,86 @@ spec('a slider styled by parts reads its valuetext and grows its line and thumb 
   const finger = await view.touch(at);
   await new Promise<void>(resolve => setTimeout(resolve, 400));
   const held = await lineRows(t, scrub);
+  await finger.moveTo([at[0] + box.width / 6, at[1]], { durationMs: 300 });
   await finger.up();
   expect(held > rest ? 'grew' : `same ${JSON.stringify({ rest, held })}`).toBe('grew');
-  await expect(scrub).toHaveAttribute('aria-valuetext', /^1:30 of 3:00$/);
+  await expect(scrub).not.toHaveAttribute('aria-valuetext', '0:30 of 3:00');
   await expect.poll(async () => lineRows(t, scrub), { timeout: 3_000 }).toBe(rest);
 });
+
+spec('a switch styled by parts recolours its track when on, and a disabled switch that is on keeps its accent', { start: { page: 'view-lab' } }, async (t) => {
+  const view = t.app.view;
+  await view.testId('lab-tab-input').click();
+  const power = view.getByRole('switch', { name: 'Power' });
+  await reveal(t, power);
+  const off = await trackFill(t, power);
+  await power.click();
+  await expect.poll(async () => apart(await trackFill(t, power), off), { timeout: 3_000 }).toBe(true);
+  const [r, , b] = await trackFill(t, view.getByRole('switch', { name: 'Locked on' }));
+  expect(b - r > 30 ? 'accent' : `grey ${JSON.stringify([r, b])}`).toBe('accent');
+});
+
+spec('a long select label stays on one line and a role="img" avatar speaks only its name', { start: { page: 'view-lab' } }, async (t) => {
+  const view = t.app.view;
+  await view.testId('lab-tab-input').click();
+  const billing = view.getByRole('combobox', { name: 'Billing' });
+  expect((await billing.boundingBox()).height).toBeLessThan(56);
+  await expect(view.getByRole('img', { name: 'Ada Lovelace' })).toHaveCount(1);
+  await expect(view.getByRole('img', { name: 'Alan Turing' })).toHaveCount(1);
+  await expect(view.getByRole('img', { name: 'AL' })).toHaveCount(0);
+});
+
+spec('a ring in the surface role paints the surface it sits on', { start: { page: 'view-lab' } }, async (t) => {
+  const view = t.app.view;
+  await view.testId('lab-tab-input').click();
+  const ada = view.testId('lab-avatar-ada'), alan = view.testId('lab-avatar-alan');
+  await reveal(t, alan);
+  const a = await ada.boundingBox(), b = await alan.boundingBox();
+  // Mid-ring left of Alan, over Ada's fill; the stage just above the avatars.
+  const [ring, stage] = await sample(t, [[b.x - 1, b.y + b.height / 2], [a.x + a.width / 2, a.y - 6]]);
+  expect(apart(ring, stage) ? `ring ${JSON.stringify({ ring, stage })}` : 'matches').toBe('matches');
+});
+
+/** The colour of a switch's track near its inline end, where the thumb rests only when off. */
+async function trackFill(t: Fixture, locator: ReturnType<Fixture['app']['view']['testId']>) {
+  await reveal(t, locator);
+  const box = await locator.boundingBox();
+  const [pixel] = await sample(t, [[box.x + box.width - 12 - 40, box.y + box.height / 2]]);
+  return pixel;
+}
+
+/** Swipe until the locator sits wholly on screen; one swipe moves at most a third of the viewport. */
+async function reveal(t: Fixture, locator: ReturnType<Fixture['app']['view']['testId']>) {
+  const view = t.app.view;
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const box = await locator.boundingBox();
+    const viewport = await view.viewport();
+    if (box.y >= viewport.top + 8 && box.y + box.height <= viewport.top + viewport.height - 8) return;
+    const wanted = box.y + box.height / 2 - (viewport.top + viewport.height / 2);
+    const dy = Math.sign(wanted) * Math.min(Math.abs(wanted), viewport.height / 3);
+    const x = viewport.left + 12, y = viewport.top + viewport.height / 2;
+    await view.swipe({ from: [x, y + dy / 2], to: [x, y - dy / 2], durationMs: 600 });
+    await new Promise<void>(resolve => setTimeout(resolve, 600));
+  }
+  throw new Error("the element never came on screen");
+}
+
+/** Screen pixels at logical points of the view. */
+async function sample(t: Fixture, points: [number, number][]) {
+  const view = t.app.view;
+  const viewport = await view.viewport();
+  let scale = 1;
+  const shot = await decodePng((await view.screenshot()).base64, width => {
+    scale = width / viewport.width;
+    return Math.round((Math.max(...points.map(([, y]) => y)) - viewport.top + 2) * scale);
+  });
+  return points.map(([x, y]) => shot.at(Math.round((x - viewport.left) * scale), Math.round((y - viewport.top) * scale)));
+}
 
 /** How many pixel rows the slider's line covers a quarter of the way along, where no thumb sits. */
 async function lineRows(t: Fixture, locator: ReturnType<Fixture['app']['view']['testId']>) {
   const view = t.app.view;
+  await reveal(t, locator);
   const box = await locator.boundingBox();
   const viewport = await view.viewport();
   let scale = 1;

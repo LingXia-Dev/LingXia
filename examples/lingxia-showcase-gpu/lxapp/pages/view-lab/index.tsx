@@ -590,6 +590,8 @@ function Controls() {
   const size = useLocal('controls-size', 'm');
   const volume = useLocal('controls-volume', 40);
   const scrub = useLocal('controls-scrub', 30);
+  const power = useLocal('controls-power', false);
+  const billing = useLocal('controls-billing', 'q');
   const notes = useLocal('controls-notes', '');
   const query = useLocal('controls-query', '');
   const picked = useLocal('controls-picked', '');
@@ -603,6 +605,18 @@ function Controls() {
       <slider data-testid="lab-controls-scrub" bind={scrub} max={180} secondaryValue={Math.min(180, scrub.value + 45)} aria-label="Scrub"
         aria-valuetext={`${Math.floor(scrub.value / 60)}:${String(scrub.value % 60).padStart(2, '0')} of 3:00`}
         className="text-accent px-0 track:h-[3px] active:track:h-[6px] thumb:size-0 active:thumb:size-4 focus-visible:thumb:size-4 focus-visible:thumb:ring-2 focus-visible:thumb:ring-accent/40" />
+      <switch data-testid="lab-controls-power" bind={power} className="text-sm track:w-11 track:h-6 checked:track:bg-success thumb:size-5 active:thumb:w-6">Power</switch>
+      <switch data-testid="lab-controls-locked" value disabled onChange={() => {}} className="text-sm">Locked on</switch>
+      <select data-testid="lab-controls-billing" bind={billing} aria-label="Billing" className={`${field} w-40`}
+        options={[{ value: 'q', label: 'Quarterly billing with the annual discount applied' }, { value: 'm', label: 'Monthly' }]} />
+      <view data-testid="lab-controls-avatars" className="flex-row p-3 bg-surface rounded-lg">
+        <view data-testid="lab-avatar-ada" role="img" aria-label="Ada Lovelace" className="size-10 rounded-full bg-accent items-center justify-center ring-2 ring-surface">
+          <text className="text-on-accent text-sm">AL</text>
+        </view>
+        <view data-testid="lab-avatar-alan" role="img" aria-label="Alan Turing" className="size-10 -ml-3 rounded-full bg-success items-center justify-center ring-2 ring-surface">
+          <text className="text-on-success text-sm">AT</text>
+        </view>
+      </view>
       <textarea data-testid="lab-controls-notes" bind={notes} rows={3} maxRows={6} aria-label="Notes" placeholder="Several lines" className={field} />
       <input type="search" data-testid="lab-controls-search" bind={query} aria-label="Filter rows" placeholder="Filter rows" className={field} />
       <List data-testid="lab-controls-list" className="h-48 rounded-lg border border-line"
