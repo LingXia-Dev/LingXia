@@ -280,18 +280,21 @@ function Media() {
   const source = packaged
     ? { src: 'public/video/fractal.mp4', poster: 'public/video/fractal-poster.jpg', 'aria-label': 'Fractal zoom' }
     : { sources: PUBLIC_VIDEO, 'aria-label': 'Big Buck Bunny' };
-  // Waits for a tap; the kit bar drives it, its menu picking the quality.
+  // Waits for a tap; the kit overlay drives it, its menu picking the quality.
   return (
     <Section title="Media" testId="lab-video">
-      <video data-testid="lab-video-player" player={clip} {...source} className="rounded-xl" />
-      <VideoControls player={clip} data-testid="lab-video-controls" />
-      {/* A spinner beside the player commits the page every frame; the bar must still follow it. */}
-      <Progress variant="ring" size={24} aria-label="Loading next" data-testid="lab-video-spinner" />
-      {packaged ? null : (
+      <view className="relative rounded-xl overflow-hidden">
+        <video data-testid="lab-video-player" player={clip} {...source} loop={!packaged} />
+        <VideoControls player={clip} overlay data-testid="lab-video-controls" />
+      </view>
+      {/* Specs only: a spinner beside the player commits the page every frame; the bar must still follow it. */}
+      {packaged ? <Progress variant="ring" size={24} aria-label="Loading next" data-testid="lab-video-spinner" /> : (
         <view className="gap-2">
           <text className="text-sm text-muted">HLS: the stream's renditions are its qualities.</text>
-          <video data-testid="lab-stream-player" player={stream} src={PUBLIC_STREAM} aria-label="HLS test stream" className="rounded-xl" />
-          <VideoControls player={stream} data-testid="lab-stream-controls" />
+          <view className="relative rounded-xl overflow-hidden">
+            <video data-testid="lab-stream-player" player={stream} src={PUBLIC_STREAM} aria-label="HLS test stream" />
+            <VideoControls player={stream} overlay data-testid="lab-stream-controls" />
+          </view>
         </view>
       )}
       <Button testId="lab-video-page" variant="secondary" onClick={() => actions.openVideoPage()}>
