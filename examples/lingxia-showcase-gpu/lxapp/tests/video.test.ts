@@ -164,15 +164,36 @@ spec('public renditions switch quality over the network', { start: { page: 'vide
     await expect(view.testId('video-public-state')).toContainText(`${quality} · ${quality}`, { timeout: 30_000 });
   }
   // HLS: the platform lists the stream's renditions and pins the one chosen.
-  // HarmonyOS's player plays the stream but does not list or pin its renditions yet.
-  const harmony = await t.app.logic.eval(({ lx }) => String(lx.host.getBaseInfo().os || '').toLowerCase()) === 'harmony';
-  const renditions = await settle('video-stream-state', text => harmony ? /· [1-9]\d*p ·/.test(text) : text.includes('1080p/720p/540p/360p/234p'));
-  if (harmony) {
-    expect(renditions).toMatch(/· [1-9]\d*p ·/);
-    await expectPicture(t, view.testId('video-stream'));
-    t.skip('HarmonyOS does not list HLS renditions yet');
-  }
+  const renditions = await settle('video-stream-state', text => text.includes('1080p/720p/540p/360p/234p'));
   expect(renditions).toContain('1080p/720p/540p/360p/234p');
-  await view.testId('video-stream-540p').click();
-  await expect(view.testId('video-stream-state')).toContainText('540p · 540p', { timeout: 30_000 });
+  // A pin keeps the position: the decoded height follows and the clock does not go back.
+  const seconds = async () => Number((await view.testId('video-stream-state').textContent()).match(/([\d.]+)s/)?.[1]);
+  for (const quality of ['540p', '360p', '1080p']) {
+    const before = await seconds();
+    await view.testId(`video-stream-${quality}`).click();
+    await expect(view.testId('video-stream-state')).toContainText(`${quality} · ${quality}`, { timeout: 30_000 });
+    expect(await seconds()).toBeGreaterThanOrEqual(before - 0.5);
+  }
+  await view.testId('video-stream-auto').click();
+  await expect(view.testId('video-stream-state')).toContainText('auto · ', { timeout: 30_000 });
+  await expect(view.testId('video-stream-state')).toContainText('1080p/720p/540p/360p/234p');
+});
+
+// A pin while the stream still prepares (its row revealed by the tap) waits for it, then plays the
+// rendition from the start.
+spec('an HLS quality pinned before the first frame plays that rendition', { start: { page: 'video' }, tags: ['network'], timeout: 90_000 }, async (t) => {
+  await skipWhenCovered(t, 'video');
+  const view = t.app.view;
+  const state = view.testId('video-stream-state');
+  const deadline = Date.now() + 20_000;
+  while (!(await state.textContent()).includes('234p') && Date.now() < deadline) {
+    if ((await state.textContent()).includes('VIDEO_NETWORK')) t.skip('needs the network: the HLS host is unreachable');
+    await new Promise<void>(resolve => setTimeout(resolve, 250));
+  }
+  await expect(state).not.toContainText('· 1080p ·');
+  await view.testId('video-stream-360p').click();
+  await expect(state).toContainText('360p · 360p', { timeout: 30_000 });
+  const seconds = async () => Number((await state.textContent()).match(/([\d.]+)s/)?.[1]);
+  const start = await seconds();
+  await expect.poll(seconds, { timeout: 10_000 }).toBeGreaterThan(start + 1);
 });

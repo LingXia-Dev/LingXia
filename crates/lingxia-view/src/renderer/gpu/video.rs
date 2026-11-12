@@ -66,6 +66,10 @@ pub trait Player: Send {
     fn qualities(&self) -> Vec<String> {
         Vec::new()
     }
+    /// Whether a pin applies to the playing player rather than through a second one of the stream.
+    fn pins_in_place(&self) -> bool {
+        false
+    }
     /// Pins the rendition `label`, or gives the choice back to the player with `None`.
     fn set_quality(&mut self, label: Option<&str>) -> Result<(), VideoError> {
         let _ = label;
@@ -309,7 +313,8 @@ fn set_quality(key: &str, entry: &mut Entry, label: Option<String>) -> Result<()
             return Ok(());
         }
         let now = player.status();
-        if label.is_none() || (now.paused && now.current_time == 0.0) {
+        let pin_now = label.is_some() && player.pins_in_place();
+        if pin_now || label.is_none() || (now.paused && now.current_time == 0.0) {
             player.set_quality(label.as_deref())?;
             entry.quality = label;
             return Ok(());

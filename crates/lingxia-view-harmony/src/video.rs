@@ -2,16 +2,18 @@
 //! render thread, inside wgpu's own GLES context, each new frame is latched into an external
 //! texture and drawn into an RGBA texture wgpu samples. Commands in one context run in order,
 //! so no fence sits between the draw and wgpu's use of the texture.
+use lingxia_view::renderer::gpu::hls;
 use lingxia_view::renderer::gpu::video::{Player, install as install_opener};
 use lingxia_view::renderer::gpu::wgpu;
 use lingxia_view::renderer::render_thread;
 use lingxia_view::scene::video::{Settings, Status, VideoError, VideoOp};
+use std::collections::HashMap;
 use std::ffi::{CStr, CString, c_char, c_void};
 use std::fs::File;
 use std::num::NonZeroU32;
 use std::os::fd::AsRawFd;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicU32, Ordering};
-use std::sync::{Mutex, Once};
+use std::sync::{LazyLock, Mutex, Once};
 
 /// Frames in flight: the one wgpu samples and the one being drawn.
 const SLOTS: usize = 2;
@@ -19,6 +21,30 @@ const SLOTS: usize = 2;
 pub(crate) fn install() {
     static ONCE: Once = Once::new();
     ONCE.call_once(|| install_opener(open));
+}
+
+/// Master playlists' renditions by URL: OH_AVPlayer pins by bitrate and lists no heights.
+static MANIFESTS: LazyLock<Mutex<HashMap<String, Vec<hls::Rendition>>>> =
+    LazyLock::new(Default::default);
+
+/// Records the playlist read for `url`; players of it list and pin its renditions from now on.
+pub(crate) fn store_manifest(url: &str, playlist: &str) {
+    let renditions = hls::renditions(playlist);
+    log::debug!(target: "lingxia_view", "video renditions {url}: {renditions:?}");
+    lock(&MANIFESTS).insert(url.to_owned(), renditions);
+}
+
+pub(crate) fn has_manifest(url: &str) -> bool {
+    lock(&MANIFESTS).contains_key(url)
+}
+
+fn renditions(url: Option<&str>) -> Vec<hls::Rendition> {
+    url.and_then(|url| lock(&MANIFESTS).get(url).cloned())
+        .unwrap_or_default()
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(|p| p.into_inner())
 }
 
 /// What the player's callback threads report; read without locks from the registry's calls.
@@ -40,6 +66,13 @@ struct Shared {
     window: *mut c_void,
     deferred: AtomicBool,
     error: Mutex<Option<String>>,
+    /// The network source, whose playlist names the renditions.
+    url: Option<String>,
+    /// The rendition playing, by label; `None` plays the master playlist (auto).
+    rendition: Mutex<Option<String>>,
+    /// A rendition URL asked while the player still prepares: a reset then loses the prepare in
+    /// flight and the player never plays, so it reopens once prepared.
+    pending: Mutex<Option<String>>,
 }
 
 // The raw handles are thread-safe NDK objects; the rest is atomics.
@@ -99,6 +132,9 @@ fn open(source: &str) -> Result<Box<dyn Player>, String> {
             window,
             deferred: AtomicBool::new(false),
             error: Mutex::new(None),
+            url: url.as_ref().map(|_| source.to_owned()),
+            rendition: Mutex::new(None),
+            pending: Mutex::new(None),
         }));
         let context = shared.cast::<c_void>();
         OH_NativeImage_SetOnFrameAvailableListener(
@@ -277,6 +313,36 @@ impl Video {
 
     fn player(&self) -> *mut c_void {
         self.shared().player
+    }
+
+    /// Reopens the player on `target`, resuming where it is, as it was: the prepared callback
+    /// seeks and plays.
+    fn reopen(&self, target: String) -> Result<(), String> {
+        let shared = self.shared();
+        let url = CString::new(target).map_err(|_| "VIDEO_SOURCE: invalid URL".to_owned())?;
+        let at = self.status().current_time;
+        shared
+            .seek
+            .store((at * 1000.0).round() as i64, Ordering::Release);
+        shared
+            .play
+            .store(shared.wants.load(Ordering::Acquire), Ordering::Release);
+        shared.ended.store(false, Ordering::Release);
+        shared.deferred.store(true, Ordering::Release);
+        shared.state.store(0, Ordering::Release);
+        let mut code = unsafe { OH_AVPlayer_Reset(self.player()) };
+        if code == 0 {
+            code = unsafe { OH_AVPlayer_SetURLSource(self.player(), url.as_ptr()) };
+        }
+        if code != 0 {
+            return Err(format!(
+                "VIDEO_DECODE: the player did not reopen the rendition ({code})"
+            ));
+        }
+        if shared.state.load(Ordering::Acquire) == STATE_INITIALIZED {
+            unsafe { bind_and_prepare(shared) };
+        }
+        Ok(())
     }
 
     fn play(&self) {
@@ -493,18 +559,61 @@ impl Player for Video {
         Ok(())
     }
 
+    fn qualities(&self) -> Vec<String> {
+        renditions(self.shared().url.as_deref())
+            .into_iter()
+            .map(|r| r.label)
+            .collect()
+    }
+
+    // A second player of the same HLS stream never delivers a frame, and SelectBitRate is
+    // acknowledged without a switch: a pin reopens this player on the variant playlist.
+    fn pins_in_place(&self) -> bool {
+        true
+    }
+
     fn set_quality(&mut self, label: Option<&str>) -> Result<(), VideoError> {
-        match label {
-            None => Ok(()),
-            Some(_) => Err(VideoError::new(
+        let shared = self.shared();
+        let Some(master) = shared.url.clone() else {
+            return Err(VideoError::new(
                 "VIDEO_UNSUPPORTED",
-                "HarmonyOS cannot pin a stream rendition yet; give `sources` to choose between files",
-            )),
+                "this source has one quality",
+            ));
+        };
+        if lock(&shared.rendition).as_deref() == label {
+            return Ok(());
         }
+        let target = match label {
+            Some(label) => {
+                let rendition = renditions(Some(&master))
+                    .into_iter()
+                    .find(|r| r.label == label)
+                    .ok_or_else(|| {
+                        VideoError::new("VIDEO_SOURCE", format!("no quality \"{label}\""))
+                    })?;
+                hls::resolve(&master, &rendition.uri)
+            }
+            None => master,
+        };
+        *lock(&shared.rendition) = label.map(str::to_owned);
+        if !shared.prepared() {
+            *lock(&shared.pending) = Some(target);
+            return Ok(());
+        }
+        self.reopen(target)
+            .map_err(|message| VideoError::from_message(&message))
     }
 
     fn status(&self) -> Status {
         let shared = self.shared();
+        if shared.prepared() {
+            let pending = lock(&shared.pending).take();
+            if let Some(target) = pending
+                && let Err(message) = self.reopen(target)
+            {
+                shared.fail(message);
+            }
+        }
         let error = shared
             .error
             .lock()
@@ -517,6 +626,9 @@ impl Player for Video {
                 OH_AVPlayer_GetCurrentTime(self.player(), &mut time);
                 OH_AVPlayer_GetDuration(self.player(), &mut duration);
             }
+        } else {
+            // Reopening on another rendition: the position it resumes at.
+            time = shared.seek.load(Ordering::Acquire).max(0) as i32;
         }
         let duration = (duration > 0).then(|| f64::from(duration) / 1000.0);
         let playing = shared.wants.load(Ordering::Acquire);
@@ -936,6 +1048,7 @@ unsafe extern "C" {
     fn OH_AVPlayer_Seek(player: *mut c_void, ms: i32, mode: i32) -> i32;
     fn OH_AVPlayer_SetVolume(player: *mut c_void, left: f32, right: f32) -> i32;
     fn OH_AVPlayer_SetPlaybackSpeed(player: *mut c_void, speed: i32) -> i32;
+    fn OH_AVPlayer_Reset(player: *mut c_void) -> i32;
     fn OH_AVPlayer_SetLooping(player: *mut c_void, looping: bool) -> i32;
     fn OH_AVPlayer_GetCurrentTime(player: *mut c_void, time: *mut i32) -> i32;
     fn OH_AVPlayer_GetDuration(player: *mut c_void, duration: *mut i32) -> i32;

@@ -4,6 +4,7 @@ pub mod color_filter;
 pub mod composite;
 mod device;
 mod encode;
+pub mod hls;
 pub(crate) mod images;
 pub(crate) mod pass;
 mod pipeline_cache;
