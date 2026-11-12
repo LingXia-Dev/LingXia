@@ -15,3 +15,5 @@ import '../platform/desktop/clipboard-interop.test.js';
 import '../platform/macos/location-permission.test.js';
 import '../platform/desktop/browser-page.test.js';
 
+// Last: it hops between lxapps, so keep it after the workspace cases.
+import '../platform/desktop/navigate-app-reentry.test.js';

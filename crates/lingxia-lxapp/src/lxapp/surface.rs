@@ -2884,6 +2884,24 @@ impl LxApp {
         true
     }
 
+    /// The lxapp the desktop window's active main shows: `None` where no host
+    /// drives the graph (mobile) or no main is active, `Some(None)` for a
+    /// browser or native main.
+    pub(crate) fn desktop_active_main_appid(&self) -> Option<Option<String>> {
+        if !cfg!(any(target_os = "windows", target_os = "macos")) {
+            return None;
+        }
+        let controller = window_controller(PRIMARY_WINDOW, &self.runtime);
+        let active = controller.switcher_snapshot().active_surface_id?;
+        Some(match controller.main_surface_content(&active) {
+            Some(
+                lingxia_surface::SurfaceContent::Lxapp { app_id, .. }
+                | lingxia_surface::SurfaceContent::Page { app_id, .. },
+            ) => Some(app_id),
+            _ => None,
+        })
+    }
+
     pub fn surface_switcher_snapshot(&self) -> lingxia_surface::SurfaceSwitcherSnapshot {
         window_controller(PRIMARY_WINDOW, &self.runtime).switcher_snapshot()
     }
