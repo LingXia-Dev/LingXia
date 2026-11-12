@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { h, describe, dispatch, useVideo, reset, VideoControls } from '../src/internal.js';
+import { h, describe, prepare, commit, dispatch, useVideo, reset, VideoControls } from '../src/internal.js';
 import { decode } from './support/wire.mjs';
 import { escapeOverlay } from '../src/runtime/overlay.js';
 
@@ -155,4 +155,39 @@ test('VideoControls full screen shows the player again in the top layer and a cl
   void nodes;
   delete globalThis.__lingxiaVideoCommand;
   delete globalThis.__lingxiaVideoOrientation;
+});
+
+test('the overlay rings while a play waits, then hides after a stretch of playback on touch', () => {
+  reset();
+  globalThis.__lingxiaVideoCommand = () => '';
+  const render = () => {
+    const hero = useVideo('hero');
+    return h('view', {}, h('video', { player: hero, src: 'a.mp4' }), h(VideoControls, { player: hero, overlay: true, 'data-testid': 'bar' }));
+  };
+  const nodes = () => { const out = decode(prepare(render, { env: { pointer: 'coarse' } })); commit(); return out; };
+  const by = (list, testId) => list.find(node => node.testId === testId);
+  const report = next => {
+    const video = nodes().find(node => node.tag === 'video');
+    dispatch(video.props.onVideoEvent, JSON.stringify({ status: { ...status, ...next }, events: [] }));
+  };
+  report({ paused: true, readyState: 'metadata', currentTime: 0 });
+  let list = nodes();
+  assert.equal(by(list, 'bar-loading'), undefined, 'a paused player waits for no frame');
+  dispatch(by(list, 'bar-play').props.onClick);
+  assert.ok(by(nodes(), 'bar-loading'), 'a play asked for rings until the first frame');
+  report({ readyState: 'ready', currentTime: 1 });
+  list = nodes();
+  assert.equal(by(list, 'bar-loading'), undefined);
+  assert.equal(by(list, 'bar-bar').props.opacity, 1);
+  report({ currentTime: 3.5 });
+  list = nodes();
+  assert.equal(by(list, 'bar-bar').props.opacity, 0, 'hidden after three seconds of playback');
+  assert.ok(by(list, 'bar-play'), 'still in the tree for a screen reader');
+  dispatch(by(list, 'bar-surface').props.onClick);
+  assert.equal(by(nodes(), 'bar-bar').props.opacity, 1, 'a tap brings it back');
+  dispatch(by(nodes(), 'bar-surface').props.onClick);
+  assert.equal(by(nodes(), 'bar-bar').props.opacity, 0, 'and another puts it away');
+  report({ paused: true });
+  assert.equal(by(nodes(), 'bar-bar').props.opacity, 1, 'a paused player shows it');
+  delete globalThis.__lingxiaVideoCommand;
 });

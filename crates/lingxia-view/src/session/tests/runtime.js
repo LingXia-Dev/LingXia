@@ -4976,6 +4976,80 @@
     results = [];
   }
 
+  // src/runtime/progress.js
+  var fillMotion = { properties: ["layout"], durationMs: 200, delayMs: 0, easing: [0.4, 0, 0.2, 1] };
+  var slide = {
+    name: "lx-progress-slide",
+    durationMs: 1200,
+    delayMs: 0,
+    iterations: null,
+    whenReduced: "base",
+    easing: [0.42, 0, 0.58, 1],
+    opacity: null,
+    transforms: [{ kind: "translate", x: [{ offset: 0, value: -1 }, { offset: 1, value: 2.5 }], y: [{ offset: 0, value: 0 }, { offset: 1, value: 0 }], relative: true }]
+  };
+  var spin2 = {
+    name: "lx-progress-spin",
+    durationMs: 900,
+    delayMs: 0,
+    iterations: null,
+    whenReduced: "base",
+    easing: "linear",
+    opacity: null,
+    transforms: [{ kind: "rotate", angle: [{ offset: 0, value: 0 }, { offset: 1, value: 360 }] }]
+  };
+  var circle = "M12 2a10 10 0 1 1 0 20a10 10 0 1 1 0-20";
+  var around = 2 * Math.PI * 10;
+  function Progress({
+    value,
+    max = 100,
+    variant = "bar",
+    size = 40,
+    "aria-label": label2,
+    "aria-valuetext": text2,
+    className,
+    "data-testid": testId
+  }) {
+    if (typeof label2 !== "string" || !label2) throw Error("UI_PROP: aria-label is required");
+    if (typeof max !== "number" || !Number.isFinite(max) || max <= 0) throw Error("UI_PROP: max must be a positive number");
+    if (value !== void 0 && (typeof value !== "number" || !Number.isFinite(value))) throw Error("UI_PROP: value must be a finite number");
+    if (variant !== "bar" && variant !== "ring") throw Error('UI_PROP: variant is "bar" or "ring"');
+    const share = value === void 0 ? void 0 : Math.min(1, Math.max(0, value / max));
+    const semantics2 = {
+      role: "progressbar",
+      "aria-label": label2,
+      "data-testid": testId,
+      ...value === void 0 ? {} : { "aria-valuenow": Math.min(max, Math.max(0, value)), "aria-valuemin": 0, "aria-valuemax": max },
+      ...text2 === void 0 || value === void 0 ? {} : { "aria-valuetext": text2 }
+    };
+    if (variant === "ring") {
+      const arc = share === void 0 ? around / 4 : around * share;
+      return h(
+        "view",
+        { ...semantics2, className, style: { width: size, height: size } },
+        h("vector", {
+          "aria-hidden": true,
+          "data-testid": testId && `${testId}-arc`,
+          style: { width: size, height: size, ...share === void 0 ? { animation: spin2 } : {} },
+          paths: [
+            { d: circle, fill: "none", stroke: "line", strokeWidth: 2.5 },
+            { d: circle, fill: "none", stroke: "accent", strokeWidth: 2.5, strokeLinecap: "round", strokeDasharray: [arc, around] }
+          ]
+        })
+      );
+    }
+    return h(
+      "view",
+      {
+        ...semantics2,
+        className,
+        style: { height: 4, borderRadius: 2, backgroundColor: "surface-sunken", overflow: "hidden" }
+      },
+      h("view", { "data-testid": testId && `${testId}-fill`, style: share === void 0 ? { width: "40%", height: "100%", borderRadius: 2, backgroundColor: "accent", animation: slide } : { width: `${share * 100}%`, height: "100%", borderRadius: 2, backgroundColor: "accent", transition: fillMotion } })
+    );
+  }
+  Progress.__lxid = "@lingxia/view#Progress";
+
   // src/runtime/video-controls.js
   var glyph = (d, filled = true) => filled ? [{ d, fill: "currentColor" }] : [{ d, fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }];
   var speaker = "M4 9v6h4l5 4V5L8 9z";
@@ -4988,7 +5062,6 @@
     enter: glyph("M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5", false),
     exit: glyph("M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5", false)
   };
-  var tone = Symbol("tone");
   var HOLD_MS = 1500;
   var reached = /* @__PURE__ */ new WeakSet();
   var clock3 = (seconds) => {
@@ -5008,10 +5081,18 @@
     },
     h("vector", { "aria-hidden": true, paths: icons2[icon], viewBox: [0, 0, 24, 24], style: { width: 22, height: 22 } })
   );
-  function VideoControls({ player, className, "data-testid": testId, [tone]: color = "text" }) {
+  var fill2 = { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 };
+  var scrim = { direction: "bottom", stops: [{ offset: 0, color: "#00000000" }, { offset: 1, color: "#000000b3" }] };
+  var fade2 = { properties: ["opacity"], durationMs: 300, delayMs: 0, easing: [0.4, 0, 0.2, 1] };
+  var SHOWN_S = 3;
+  var edges = Symbol("edges");
+  function VideoControls({ player, overlay = false, className, "data-testid": testId, [edges]: edge }) {
     if (playerName(player) === void 0) throw Error("UI_PROP: player must be a useVideo handle");
+    if (typeof overlay !== "boolean") throw Error("UI_PROP: overlay must be boolean");
     const id = (part) => testId && `${testId}-${part}`;
     const held = useLocal("held", null);
+    const asked = useLocal("asked", false);
+    const shown = useLocal("shown", { since: 0, hidden: false });
     const { paused, ended, muted, duration, readyState, qualities, buffering, error, fullscreen } = player;
     const live = duration === null && readyState !== "empty";
     const known = typeof duration === "number" && duration > 0;
@@ -5020,58 +5101,108 @@
     if (hold !== null && Math.abs(now2 - hold.value) <= 0.5) reached.add(hold);
     const holding = hold !== null && !reached.has(hold) && Date.now() - hold.at < HOLD_MS;
     const at = known ? Math.min(holding ? hold.value : now2, duration) : 0;
-    const scrub = (value) => {
+    const loading = !error && ((!paused || asked.value) && readyState !== "ready" || !paused && buffering);
+    const wake = (fn) => (...args) => {
+      if (overlay) shown.set({ since: player.currentTime, hidden: false });
+      return fn(...args);
+    };
+    const scrub = wake((value) => {
       held.set({ value, at: Date.now() });
       player.seek(value).catch(() => held.set(null));
-    };
-    const toggle2 = () => ended ? player.seek(0).then(() => player.play()) : paused ? player.play() : player.pause();
+    });
+    const toggle2 = wake(() => {
+      asked.set(paused || ended);
+      return ended ? player.seek(0).then(() => player.play()) : paused ? player.play() : player.pause();
+    });
     const label2 = ended ? "Replay" : paused ? "Play" : "Pause";
+    const fg = overlay ? "#ffffff" : "text";
+    const errorRow = error && h(
+      "view",
+      { "data-testid": id("error"), role: "alert", style: { flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 11, paddingRight: 11 } },
+      h("text", { style: { flexGrow: 1, flexBasis: 0, fontSize: 12, color: "danger" } }, error.message),
+      error.recoverable && h("button", { "data-testid": id("retry"), onClick: wake(() => player.retry()), style: { fontSize: 12, color: fg } }, "Retry")
+    );
+    const play = iconButton(fg, id("play"), label2, ended ? "replay" : paused ? "play" : "pause", toggle2, { "aria-busy": loading || buffering });
+    const track = live ? h("text", { "data-testid": id("live"), style: { flexGrow: 1, fontSize: 12, fontWeight: 600, color: "accent" } }, "LIVE") : h("slider", {
+      "data-testid": id("scrub"),
+      "aria-label": "Seek",
+      min: 0,
+      max: known ? duration : 1,
+      step: 0.1,
+      value: at,
+      disabled: !known,
+      onChange: scrub,
+      style: { flexGrow: 1, flexBasis: 0 }
+    });
+    const time = !live && h(
+      "text",
+      { "data-testid": id("time"), style: { fontSize: 12, color: overlay ? "#ffffffcc" : "text-muted", fontVariantNumeric: "tabular-nums" } },
+      `${clock3(at)} / ${known ? clock3(duration) : "--:--"}`
+    );
+    const mute = iconButton(fg, id("mute"), muted ? "Unmute" : "Mute", muted ? "muted" : "sound", wake(() => player.setMuted(!muted)), { "aria-pressed": muted });
+    const quality = qualities.length > 0 && h("select", {
+      "data-testid": id("quality"),
+      "aria-label": "Quality",
+      value: player.quality,
+      options: [{ value: "auto", label: "Auto" }, ...qualities.map((name) => ({ value: name, label: name }))],
+      onChange: wake((quality2) => player.setQuality(quality2)),
+      style: { fontSize: 12, ...overlay ? { color: fg, backgroundColor: "#ffffff2e", borderWidth: 0 } : {} }
+    });
+    const screen = iconButton(
+      fg,
+      id("fullscreen"),
+      fullscreen ? "Exit full screen" : "Full screen",
+      fullscreen ? "exit" : "enter",
+      wake(() => fullscreen ? player.exitFullscreen() : player.requestFullscreen()),
+      { "aria-pressed": fullscreen }
+    );
+    if (!overlay) {
+      return h(
+        "view",
+        { className, "data-testid": testId, ...className ? {} : { style: { color: fg } } },
+        errorRow,
+        h("view", { style: { flexDirection: "row", alignItems: "center", gap: 2 } }, play, track, time, mute, quality, screen)
+      );
+    }
+    const autoHide = useView().env?.pointer === "coarse";
+    const { since, hidden } = shown.value;
+    const elapsed = now2 >= since ? now2 - since : now2;
+    const playing = !paused && !ended;
+    const up = loading || !!error || !playing || !hidden && !(autoHide && elapsed >= SHOWN_S);
+    const pad2 = edge ?? { left: 0, right: 0, bottom: 0 };
     return h(
       "view",
-      { className, "data-testid": testId, ...className ? {} : { style: { color } } },
-      error && h(
+      { className, "data-testid": testId, style: { ...fill2, color: fg } },
+      h("button", {
+        "data-testid": id("surface"),
+        "aria-hidden": true,
+        onClick: () => shown.set(up && playing ? { since: player.currentTime, hidden: true } : { since: player.currentTime, hidden: false }),
+        style: { ...fill2, zIndex: up ? 0 : 2, backgroundColor: "transparent" }
+      }),
+      loading && h(
         "view",
-        { "data-testid": id("error"), role: "alert", style: { flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 11, paddingRight: 11 } },
-        h("text", { style: { flexGrow: 1, flexBasis: 0, fontSize: 12, color: "danger" } }, error.message),
-        error.recoverable && h("button", { "data-testid": id("retry"), onClick: () => player.retry(), style: { fontSize: 12 } }, "Retry")
+        { style: { ...fill2, alignItems: "center", justifyContent: "center" } },
+        h(Progress, { variant: "ring", size: 36, "aria-label": "Loading", "data-testid": id("loading") })
       ),
       h(
         "view",
-        { style: { flexDirection: "row", alignItems: "center", gap: 2 } },
-        iconButton(color, id("play"), label2, ended ? "replay" : paused ? "play" : "pause", toggle2, { "aria-busy": buffering }),
-        live ? h("text", { "data-testid": id("live"), style: { flexGrow: 1, fontSize: 12, fontWeight: 600, color: "accent" } }, "LIVE") : h("slider", {
-          "data-testid": id("scrub"),
-          "aria-label": "Seek",
-          min: 0,
-          max: known ? duration : 1,
-          step: 0.1,
-          value: at,
-          disabled: !known,
-          onChange: scrub,
-          style: { flexGrow: 1, flexBasis: 0 }
-        }),
-        !live && h(
-          "text",
-          { "data-testid": id("time"), style: { fontSize: 12, color: "text-muted", fontVariantNumeric: "tabular-nums" } },
-          `${clock3(at)} / ${known ? clock3(duration) : "--:--"}`
-        ),
-        iconButton(color, id("mute"), muted ? "Unmute" : "Mute", muted ? "muted" : "sound", () => player.setMuted(!muted), { "aria-pressed": muted }),
-        qualities.length > 0 && h("select", {
-          "data-testid": id("quality"),
-          "aria-label": "Quality",
-          value: player.quality,
-          options: [{ value: "auto", label: "Auto" }, ...qualities.map((name) => ({ value: name, label: name }))],
-          onChange: (quality) => player.setQuality(quality),
-          style: { fontSize: 12 }
-        }),
-        iconButton(
-          color,
-          id("fullscreen"),
-          fullscreen ? "Exit full screen" : "Full screen",
-          fullscreen ? "exit" : "enter",
-          () => fullscreen ? player.exitFullscreen() : player.requestFullscreen(),
-          { "aria-pressed": fullscreen }
-        )
+        { "data-testid": id("bar"), style: {
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 1,
+          opacity: up ? 1 : 0,
+          transition: fade2,
+          backgroundImage: scrim,
+          paddingTop: 24,
+          paddingLeft: pad2.left,
+          paddingRight: pad2.right,
+          paddingBottom: pad2.bottom
+        } },
+        errorRow,
+        h("view", { style: { flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 11, paddingRight: 11 } }, track, time),
+        h("view", { style: { flexDirection: "row", alignItems: "center" } }, play, mute, h("view", { style: { flexGrow: 1 } }), quality, screen)
       )
     );
   }
@@ -5108,12 +5239,8 @@
         "view",
         { style: { flexGrow: 1, justifyContent: "center" } },
         // Until the player has a frame the full screen view shows what the page's view does.
-        h("video", { player, poster: posterOf(name), style: { width: "100%", flexGrow: 1, objectFit: "contain" } })
-      ),
-      h(
-        "view",
-        { style: { paddingLeft: safeArea.left, paddingRight: safeArea.right, paddingBottom: safeArea.bottom } },
-        h(VideoControls, { player, [tone]: "#ffffff", "data-testid": "lx-fullscreen-controls" })
+        h("video", { player, poster: posterOf(name), style: { width: "100%", flexGrow: 1, objectFit: "contain" } }),
+        h(VideoControls, { player, overlay: true, [edges]: safeArea, "data-testid": "lx-fullscreen-controls" })
       )
     );
   }
