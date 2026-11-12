@@ -2,33 +2,45 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { described, renderExample } from '../testing/harness.mjs';
 
-test('Volume: named by its label, described by the value in words, and the value follows the slider', async () => {
+test('Volume: named by its label, the words are its value, and they follow the slider', async () => {
   const screen = await renderExample('Slider/Slider', 'Volume');
   const slider = screen.getByTestId('volume');
   assert.equal(slider.tag, 'slider');
   assert.equal(slider.props.accessibilityLabel, 'Volume');
-  assert.deepEqual(described(screen, slider), ['40%']);
+  assert.equal(slider.props.ariaValueText, '40%');
+  assert.deepEqual(described(screen, slider), []);
   screen.slide(slider, 72);
-  assert.deepEqual(described(screen, screen.getByTestId('volume')), ['72%']);
+  assert.equal(screen.getByTestId('volume').props.ariaValueText, '72%');
 });
 
-test('Stepped: snaps to whole steps and reads the step name, then the help text', async () => {
+test('Stepped: snaps to whole steps, reads the step name as the value and the help text as the description', async () => {
   const screen = await renderExample('Slider/Slider', 'Stepped');
   const slider = screen.getByTestId('text-size');
   screen.slide(slider, 4.4);
-  assert.deepEqual(described(screen, screen.getByTestId('text-size')), ['Large', 'Applies to notes and the reader.']);
+  const moved = screen.getByTestId('text-size');
+  assert.equal(moved.props.sliderValue, 4);
+  assert.equal(moved.props.ariaValueText, 'Large');
+  assert.deepEqual(described(screen, moved), ['Applies to notes and the reader.']);
 });
 
-test('Position: a hidden label stays the name, the visible time is the description', async () => {
+test('Position: a hidden label stays the name, the visible time is the value, and the loaded part is drawn', async () => {
   const screen = await renderExample('Slider/Slider', 'Position');
   const slider = screen.getByTestId('position');
   assert.equal(slider.props.accessibilityLabel, 'Position');
-  assert.deepEqual(described(screen, slider), ['1:24 of 3:10']);
+  assert.equal(slider.props.ariaValueText, '1:24 of 3:10');
+  assert.ok(slider.props.secondaryStyle);
 });
 
-test('InList: the row variant takes the list row label style and keeps the value as the description', async () => {
+test('InList: the row variant keeps the words as the value', async () => {
   const screen = await renderExample('Slider/Slider', 'InList');
   const slider = screen.getByTestId('speed');
   assert.equal(slider.props.accessibilityLabel, 'Speed');
-  assert.deepEqual(described(screen, slider), ['Normal']);
+  assert.equal(slider.props.ariaValueText, 'Normal');
+});
+
+test('the thumb grows while pressed and rings on keyboard focus', async () => {
+  const screen = await renderExample('Slider/Slider', 'Volume');
+  const slider = screen.getByTestId('volume');
+  assert.notEqual(slider.props.pressedStyle.thumbStyle, slider.props.thumbStyle);
+  assert.match(slider.props.focusVisibleStyle.thumbStyle, /"color\\?":\\?"focus/);
 });

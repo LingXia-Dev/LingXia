@@ -7,34 +7,38 @@ export const doc: ComponentDoc = {
   summary: 'A value picked along a track, with its label and the value in words',
   description:
     'Slider picks one number from a range: a volume, a size, a position in a recording. ' +
-    'A label row names it and can show the value in words the app writes; the track and thumb are the primitive slider.',
+    'A label row names it and can show the value in words the app writes, which is also what a screen reader says. ' +
+    'A second, quieter range can show how much of a recording has loaded.',
   keywords: ['slider', 'range', 'scrubber', 'volume', 'seek', 'position', 'track', 'thumb'],
   propsType: 'SliderProps',
   recipe: { map: 'sliderRecipe', parts: 'sliderParts' },
   anatomy: [
     { part: 'label', required: true, description: 'The visible label; visually hidden with `isLabelHidden`, still the name.' },
-    { part: 'value', required: false, description: 'The value in words, from `valueLabel`; read as the description.' },
-    { part: 'control', required: true, description: 'The slider primitive: track, filled part and thumb, and the accessible node.' },
-    { part: 'description', required: false, description: 'Help text, read after the value.' },
+    { part: 'value', required: false, description: 'The value in words, from `valueLabel`; read as the slider\'s value.' },
+    { part: 'control', required: true, description: 'The slider primitive: track, range, the optional secondary range, the thumb, and the accessible node.' },
+    { part: 'description', required: false, description: 'Help text, read as the description.' },
   ],
   accessibility: {
     pattern: 'slider',
     name: 'label',
-    description: ['valueLabel', 'description'],
+    description: ['description'],
     states: [{ state: 'disabled', from: 'isDisabled' }],
     keyboard: [
       { keys: 'Left / Down, Right / Up', effect: 'One step down or up.' },
       { keys: 'Home, End', effect: 'The minimum or the maximum.' },
     ],
-    target: { md: 40 },
+    target: { sm: 32, md: 40 },
     contrast: [
       { what: 'filled range', pair: ['accent', 'surface'], minimum: '3:1' },
-      { what: 'thumb', pair: ['accent', 'surface'], minimum: '3:1' },
+      { what: 'thumb against the range', pair: ['surface-raised', 'accent'], minimum: '3:1' },
+      { what: 'keyboard focus ring', pair: ['focus', 'surface'], minimum: '3:1' },
     ],
     notes: [
-      'The device reads the number as the value; the words in `valueLabel` follow as the description until sliders take a value text.',
-      'One size until the primitive takes thumb and track styling; the press area is 40 px tall.',
-      'The empty track is decorative and has no contrast minimum: the value is carried by the filled range and the thumb.',
+      '`valueLabel` is the spoken value: "Large" in place of 4, "1:24 of 3:10" in place of 84.',
+      'The press area is the whole control, 40 px tall (32 at `sm`), whatever the thumb\'s drawn size.',
+      'The empty track and the secondary range are decorative and have no contrast minimum: the value is carried by the range and the thumb.',
+      'The thumb is drawn on the raised surface, not the accent, so it reads on the range and the track alike; its edge is a hairline plus a contact shadow.',
+      'Disabled, the range keeps its accent at reduced strength, so the value still shows as the filled part.',
     ],
   },
   guidance: {
@@ -51,28 +55,14 @@ export const doc: ComponentDoc = {
     { name: 'Volume', title: 'With the value in words' },
     { name: 'Stepped', title: 'Whole steps, with help text' },
     { name: 'InList', title: 'As a list row' },
-    { name: 'Position', title: 'A position in a recording' },
+    { name: 'Position', title: 'A position in a recording, with what has loaded' },
+    { name: 'Sizes', title: 'Small and medium' },
   ],
   gaps: [
     {
-      missing: 'A second, quieter range on the track for what is loaded (buffered media).',
-      needs: 'a secondary range value on the slider primitive, painted between track and fill',
-      today: 'Not drawn; a media scrubber shows no buffer.',
-    },
-    {
-      missing: 'Liuli\'s own thumb: a surface disc with a hairline and shadow that grows slightly while pressed.',
-      needs: 'slider thumb and track styling (fill, border, shadow, size, pressed state) on the primitive',
-      today: 'The primitive\'s solid 24 px accent thumb and 4 px track, tinted with text-accent.',
-    },
-    {
-      missing: 'A spoken value in words ("Large") in place of the number.',
-      needs: 'aria-valuetext on the slider primitive, as progressbar has',
-      today: 'The words are read as the description, after the number.',
-    },
-    {
-      missing: 'The track lined up with the label above it.',
-      needs: 'the slider inset to read per-side padding (`p-0` sets the sides, not the shorthand)',
-      today: 'The track starts 12 px in from the label; `p-0` falls back to the default 12 px inset.',
+      missing: 'The pressed thumb staying grown while it is dragged.',
+      needs: 'active part styles held for the whole drag on the slider primitive',
+      today: 'The thumb grows on a press that has not moved yet, and returns to its rest size once it moves.',
     },
   ],
   related: ['ProgressBar'],
@@ -87,11 +77,12 @@ export const doc: ComponentDoc = {
         { name: 'Stepped', title: 'Whole steps, named in words' },
         { name: 'InList', title: 'As a row in a list, beside Item rows' },
       ],
+      sizes: [{ name: 'Sizes', title: 'Small for dense rows and media, medium by default' }],
       states: [
         { name: 'StateDefault', title: 'Default' },
         { name: 'StateDisabled', title: 'Disabled' },
       ],
-      inContext: [{ name: 'Position', title: 'A position in a recording' }],
+      inContext: [{ name: 'Position', title: 'A position in a recording, with what has loaded' }],
     },
   },
 };

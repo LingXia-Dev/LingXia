@@ -1,8 +1,9 @@
 import { cx, useId, type Local } from '@lingxia/view';
-import { describedBy } from '../internal/describedBy';
 import { sliderRecipe as r } from './Slider.recipe';
 
 export type SliderVariant = 'standalone' | 'row';
+
+export type SliderSize = 'sm' | 'md';
 
 export type SliderBinding =
   | {
@@ -25,10 +26,12 @@ export type SliderProps = SliderBinding & {
   /** Hides the visible label; the slider keeps it as its name. @default false */
   isLabelHidden?: boolean;
   /**
-   * The value in words, drawn at the end of the label row and read after the name: "40%",
+   * The value in words, drawn at the end of the label row and read as the value: "40%",
    * "1:24 of 3:10". Liuli formats no numbers.
    */
   valueLabel?: string;
+  /** A second, quieter range from `min`, such as how much of a recording has loaded. */
+  secondaryValue?: number;
   /** Help text under the slider, read as its description. */
   description?: string;
   /** @default 0 */
@@ -37,6 +40,8 @@ export type SliderProps = SliderBinding & {
   max?: number;
   /** The value snaps to it. @default 1 */
   step?: number;
+  /** `sm` for dense rows and media controls. @default 'md' */
+  size?: SliderSize;
   /**
    * `row` sits in a list group among `Item` rows: the row's padding, the Item label style, the
    * value at the end in muted. @default 'standalone'
@@ -52,29 +57,30 @@ export type SliderProps = SliderBinding & {
 /** A value picked along a track, with a label row that can show the value in words. */
 export function Slider(props: SliderProps) {
   const {
-    label, isLabelHidden = false, valueLabel, description, min = 0, max = 100, step = 1, variant = 'standalone', isDisabled = false,
-    className, 'data-testid': testId,
+    label, isLabelHidden = false, valueLabel, secondaryValue, description, min = 0, max = 100, step = 1, size = 'md',
+    variant = 'standalone', isDisabled = false, className, 'data-testid': testId,
   } = props;
   const id = useId();
-  const valueId = `${id}-value`;
   const helpId = `${id}-help`;
   const semantics = {
     'aria-label': label,
-    'aria-describedby': describedBy(valueLabel !== undefined && valueId, description !== undefined && helpId),
+    'aria-valuetext': valueLabel,
+    'aria-describedby': description !== undefined ? helpId : undefined,
     min,
     max,
     step,
+    secondaryValue,
     disabled: isDisabled,
     'data-testid': testId,
-    className: r.control.base,
+    className: cx(r.control.base, r.control.size[size]),
   };
   return (
     <view className={cx(r.root.base, r.root.variant[variant], className)}>
       {(!isLabelHidden || valueLabel !== undefined) && (
         <view className={r.header.base}>
-          {/* The slider carries the label as its name, so the visible one is not read again. */}
+          {/* The slider carries the label as its name and the words as its value, so neither is read twice. */}
           <text aria-hidden className={cx(r.label.base, r.label.variant[variant], isDisabled && r.label.disabled, isLabelHidden && r.label.hidden)}>{label}</text>
-          {valueLabel !== undefined && <text id={valueId} className={cx(r.value.base, r.value.variant[variant])}>{valueLabel}</text>}
+          {valueLabel !== undefined && <text aria-hidden className={cx(r.value.base, r.value.variant[variant])}>{valueLabel}</text>}
         </view>
       )}
       {props.bind ? <slider bind={props.bind} {...semantics} /> : <slider value={props.value} onChange={props.onChange} {...semantics} />}

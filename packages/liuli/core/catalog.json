@@ -3350,7 +3350,7 @@
       "category": "inputs",
       "status": "preview",
       "summary": "A value picked along a track, with its label and the value in words",
-      "description": "Slider picks one number from a range: a volume, a size, a position in a recording. A label row names it and can show the value in words the app writes; the track and thumb are the primitive slider.",
+      "description": "Slider picks one number from a range: a volume, a size, a position in a recording. A label row names it and can show the value in words the app writes, which is also what a screen reader says. A second, quieter range can show how much of a recording has loaded.",
       "keywords": [
         "slider",
         "range",
@@ -3397,7 +3397,13 @@
           "name": "valueLabel",
           "type": "string",
           "required": false,
-          "description": "The value in words, drawn at the end of the label row and read after the name: \"40%\", \"1:24 of 3:10\". Liuli formats no numbers."
+          "description": "The value in words, drawn at the end of the label row and read as the value: \"40%\", \"1:24 of 3:10\". Liuli formats no numbers."
+        },
+        {
+          "name": "secondaryValue",
+          "type": "number",
+          "required": false,
+          "description": "A second, quieter range from `min`, such as how much of a recording has loaded."
         },
         {
           "name": "description",
@@ -3425,6 +3431,13 @@
           "required": false,
           "description": "The value snaps to it.",
           "default": "1"
+        },
+        {
+          "name": "size",
+          "type": "SliderSize",
+          "required": false,
+          "description": "`sm` for dense rows and media controls.",
+          "default": "'md'"
         },
         {
           "name": "variant",
@@ -3466,7 +3479,6 @@
         "pattern": "slider",
         "name": "label",
         "description": [
-          "valueLabel",
           "description"
         ],
         "states": [
@@ -3486,6 +3498,7 @@
           }
         ],
         "target": {
+          "sm": 32,
           "md": 40
         },
         "contrast": [
@@ -3498,18 +3511,28 @@
             "minimum": "3:1"
           },
           {
-            "what": "thumb",
+            "what": "thumb against the range",
             "pair": [
-              "accent",
+              "surface-raised",
+              "accent"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "keyboard focus ring",
+            "pair": [
+              "focus",
               "surface"
             ],
             "minimum": "3:1"
           }
         ],
         "notes": [
-          "The device reads the number as the value; the words in `valueLabel` follow as the description until sliders take a value text.",
-          "One size until the primitive takes thumb and track styling; the press area is 40 px tall.",
-          "The empty track is decorative and has no contrast minimum: the value is carried by the filled range and the thumb."
+          "`valueLabel` is the spoken value: \"Large\" in place of 4, \"1:24 of 3:10\" in place of 84.",
+          "The press area is the whole control, 40 px tall (32 at `sm`), whatever the thumb's drawn size.",
+          "The empty track and the secondary range are decorative and have no contrast minimum: the value is carried by the range and the thumb.",
+          "The thumb is drawn on the raised surface, not the accent, so it reads on the range and the track alike; its edge is a hairline plus a contact shadow.",
+          "Disabled, the range keeps its accent at reduced strength, so the value still shows as the filled part."
         ]
       },
       "examples": [
@@ -3530,30 +3553,20 @@
         },
         {
           "name": "Position",
-          "title": "A position in a recording",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Slider } from '@liulidesign/core/Slider';\n\n/** A position in a recording: the label is hidden, the times stay visible. */\nexport function Position() {\n  const at = useLocal('at', 84);\n  const time = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;\n  return (\n    <view className=\"gap-1\">\n      <text className=\"text-body font-medium text-text\">Interview with the architect</text>\n      <Slider bind={at} label=\"Position\" isLabelHidden valueLabel={`${time(at.value)} of 3:10`} max={190} data-testid=\"position\" />\n    </view>\n  );\n}"
+          "title": "A position in a recording, with what has loaded",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Slider } from '@liulidesign/core/Slider';\n\n/** A position in a recording: the label is hidden, the times stay visible, the loaded part is quieter. */\nexport function Position() {\n  const at = useLocal('at', 84);\n  const time = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;\n  return (\n    <view className=\"gap-1\">\n      <text className=\"text-body font-medium text-text\">Interview with the architect</text>\n      <Slider bind={at} label=\"Position\" isLabelHidden valueLabel={`${time(at.value)} of 3:10`} max={190} secondaryValue={132} size=\"sm\" data-testid=\"position\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Sizes",
+          "title": "Small and medium",
+          "source": "import { Slider } from '@liulidesign/core/Slider';\n\nexport function Sizes() {\n  return (\n    <view className=\"gap-4\">\n      <Slider value={30} onChange={() => {}} label=\"Small\" size=\"sm\" />\n      <Slider value={60} onChange={() => {}} label=\"Medium\" />\n    </view>\n  );\n}"
         }
       ],
       "gaps": [
         {
-          "missing": "A second, quieter range on the track for what is loaded (buffered media).",
-          "needs": "a secondary range value on the slider primitive, painted between track and fill",
-          "today": "Not drawn; a media scrubber shows no buffer."
-        },
-        {
-          "missing": "Liuli's own thumb: a surface disc with a hairline and shadow that grows slightly while pressed.",
-          "needs": "slider thumb and track styling (fill, border, shadow, size, pressed state) on the primitive",
-          "today": "The primitive's solid 24 px accent thumb and 4 px track, tinted with text-accent."
-        },
-        {
-          "missing": "A spoken value in words (\"Large\") in place of the number.",
-          "needs": "aria-valuetext on the slider primitive, as progressbar has",
-          "today": "The words are read as the description, after the number."
-        },
-        {
-          "missing": "The track lined up with the label above it.",
-          "needs": "the slider inset to read per-side padding (`p-0` sets the sides, not the shorthand)",
-          "today": "The track starts 12 px in from the label; `p-0` falls back to the default 12 px inset."
+          "missing": "The pressed thumb staying grown while it is dragged.",
+          "needs": "active part styles held for the whole drag on the slider primitive",
+          "today": "The thumb grows on a press that has not moved yet, and returns to its rest size once it moves."
         }
       ],
       "related": [
@@ -3576,6 +3589,12 @@
               "title": "As a row in a list, beside Item rows"
             }
           ],
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "Small for dense rows and media, medium by default"
+            }
+          ],
           "states": [
             {
               "name": "StateDefault",
@@ -3589,7 +3608,7 @@
           "inContext": [
             {
               "name": "Position",
-              "title": "A position in a recording"
+              "title": "A position in a recording, with what has loaded"
             }
           ]
         }

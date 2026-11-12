@@ -35,14 +35,23 @@ export function InList() {
   );
 }
 
-/** A position in a recording: the label is hidden, the times stay visible. */
+/** A position in a recording: the label is hidden, the times stay visible, the loaded part is quieter. */
 export function Position() {
   const at = useLocal('at', 84);
   const time = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   return (
     <view className="gap-1">
       <text className="text-body font-medium text-text">Interview with the architect</text>
-      <Slider bind={at} label="Position" isLabelHidden valueLabel={`${time(at.value)} of 3:10`} max={190} data-testid="position" />
+      <Slider bind={at} label="Position" isLabelHidden valueLabel={`${time(at.value)} of 3:10`} max={190} secondaryValue={132} size="sm" data-testid="position" />
+    </view>
+  );
+}
+
+export function Sizes() {
+  return (
+    <view className="gap-4">
+      <Slider value={30} onChange={() => {}} label="Small" size="sm" />
+      <Slider value={60} onChange={() => {}} label="Medium" />
     </view>
   );
 }

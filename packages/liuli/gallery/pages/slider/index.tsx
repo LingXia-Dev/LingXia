@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Volume, Stepped, InList, StateDefault, StateDisabled, Position } from '../../../core/src/Slider/Slider.examples';
+import { Volume, Stepped, InList, Sizes, StateDefault, StateDisabled, Position } from '../../../core/src/Slider/Slider.examples';
 import { GalleryPage, Lead, PageSection, Stage, StageGrid } from '../../shared/Layout';
 
 export function render() {
@@ -16,6 +16,11 @@ export function render() {
           <InList />
         </Stage>
       </PageSection>
+      <PageSection title={"Sizes"}>
+        <Stage caption={"Small for dense rows and media, medium by default"}>
+          <Sizes />
+        </Stage>
+      </PageSection>
       <PageSection title={"States"}>
         <StageGrid>
           <Stage caption={"Default"}>
@@ -27,7 +32,7 @@ export function render() {
         </StageGrid>
       </PageSection>
       <PageSection title={"In context"}>
-        <Stage caption={"A position in a recording"}>
+        <Stage caption={"A position in a recording, with what has loaded"}>
           <Position />
         </Stage>
       </PageSection>
