@@ -44,7 +44,7 @@ impl Device for Platform {
         DeviceInfo {
             brand,
             model,
-            market_name: self.market_name.clone(),
+            market_name: platform_market_name(),
             os_name,
             os_version,
         }
@@ -279,7 +279,23 @@ fn sysctl_string(name: &[u8]) -> Option<String> {
     }
 }
 
-pub(super) fn load_platform_market_name() -> String {
+static MARKET_NAME: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// Looked up once per process; a caller that arrives before the warm-up finishes waits for it.
+fn platform_market_name() -> String {
+    MARKET_NAME.get_or_init(load_platform_market_name).clone()
+}
+
+/// macOS asks `system_profiler` (hundreds of ms), so launch starts it off the calling thread.
+pub(super) fn prewarm_platform_market_name() {
+    if MARKET_NAME.get().is_none() {
+        let _ = std::thread::Builder::new()
+            .name("market-name".into())
+            .spawn(|| drop(platform_market_name()));
+    }
+}
+
+fn load_platform_market_name() -> String {
     #[cfg(target_os = "ios")]
     {
         let model_identifier = get_device_model();
