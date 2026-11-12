@@ -4,6 +4,7 @@ import { Button } from '@liulidesign/core/Button';
 import { Dialog } from '@liulidesign/core/Dialog';
 import { DropdownMenu, DropdownMenuDivider, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';
 import { Item } from '@liulidesign/core/Item';
+import { Slider } from '@liulidesign/core/Slider';
 import { GalleryPage } from '../../shared/Layout';
 
 const dots: VectorPath[] = [{ d: 'M5 12h.01M12 12h.01M19 12h.01', fill: 'none', stroke: 'currentColor', strokeWidth: 3, strokeLinecap: 'round' }];
@@ -48,6 +49,7 @@ function ChoiceRow({ label, help, value, options, onChange, testId }: { label: s
 export function render() {
   const appearance = useLocal('appearance', 'System');
   const digest = useLocal('digest', 'Weekly');
+  const textSize = useLocal('textSize', 3);
   const devices = useLocal('devices', initialDevices.map(device => device.id));
   const confirming = useLocal('confirming', false);
   const scheduled = useLocal('scheduled', false);
@@ -85,6 +87,16 @@ export function render() {
           onChange={next => digest.set(next)}
           testId="digest"
         />
+        <view className="px-4 pt-3 pb-2">
+          <Slider
+            bind={textSize}
+            label="Text size"
+            valueLabel={['Smallest', 'Small', 'Default', 'Large', 'Largest'][textSize.value - 1]}
+            min={1}
+            max={5}
+            data-testid="text-size"
+          />
+        </view>
         <Item label="Offline notes" endContent={<Badge label="Synced" tone="success" size="sm" />} />
       </Group>
 

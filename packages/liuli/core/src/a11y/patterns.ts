@@ -4,12 +4,13 @@
 export type PatternName = keyof typeof patterns;
 
 /** Roles `@lingxia/test`'s `getByRole` resolves today. */
-export type LocatorRole = 'button' | 'textbox' | 'checkbox' | 'switch' | 'dialog' | 'menu' | 'menuitem' | 'combobox' | 'heading' | 'status' | 'alert';
+export type LocatorRole = 'button' | 'textbox' | 'checkbox' | 'switch' | 'dialog' | 'menu' | 'menuitem' | 'combobox' | 'heading' | 'status' | 'alert'
+  | 'slider' | 'tablist' | 'tab' | 'tabpanel' | 'radiogroup' | 'radio';
 
 export type Step =
   | { readonly do: 'find'; readonly role: LocatorRole; readonly name: 'label' | 'menu label' }
   | { readonly do: 'tab-to'; readonly role: LocatorRole }
-  | { readonly do: 'press-key'; readonly key: 'enter' | 'space' | 'escape' | 'down' | 'up' | 'home' | 'end' | 'tab' }
+  | { readonly do: 'press-key'; readonly key: 'enter' | 'space' | 'escape' | 'down' | 'up' | 'left' | 'right' | 'home' | 'end' | 'tab' }
   | { readonly do: 'tap'; readonly role: LocatorRole }
   | { readonly do: 'dismiss' }
   | { readonly expect: 'focused'; readonly role: LocatorRole; readonly which?: 'first' | 'last' | 'invoker' }
@@ -92,6 +93,18 @@ export const patterns = {
         { do: 'press-key', key: 'up' }, { expect: 'focused', role: 'menuitem', which: 'last' },
         { do: 'press-key', key: 'escape' }, { expect: 'detached', role: 'menu' },
         { expect: 'focused', role: 'button', which: 'invoker' },
+      ],
+    },
+  },
+  slider: {
+    role: 'slider',
+    checks: {
+      'is found by its label': [{ do: 'find', role: 'slider', name: 'label' }],
+    },
+    keyboardChecks: {
+      'is reachable with Tab; Right and Up raise it, Home and End jump to the ends': [
+        { do: 'tab-to', role: 'slider' }, { expect: 'focused', role: 'slider' },
+        { do: 'press-key', key: 'right' }, { do: 'press-key', key: 'home' }, { do: 'press-key', key: 'end' },
       ],
     },
   },

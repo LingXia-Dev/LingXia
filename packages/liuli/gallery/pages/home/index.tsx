@@ -9,6 +9,7 @@ import { Specimen as DropdownMenuSpecimen } from '../../../core/src/DropdownMenu
 import { Specimen as FieldSpecimen } from '../../../core/src/Field/Field.examples';
 import { Specimen as ItemSpecimen } from '../../../core/src/Item/Item.examples';
 import { Specimen as ProgressBarSpecimen } from '../../../core/src/ProgressBar/ProgressBar.examples';
+import { Specimen as SliderSpecimen } from '../../../core/src/Slider/Slider.examples';
 import { Specimen as TextInputSpecimen } from '../../../core/src/TextInput/TextInput.examples';
 import { Category, GalleryPage, Masthead, Tile } from '../../shared/Layout';
 import { ColourSpecimen, TypographySpecimen, ShapeAndSpacingSpecimen, ElevationSpecimen, MotionSpecimen, SignInSpecimen, SettingsSpecimen, UploadsSpecimen } from '../../shared/Specimens';
@@ -91,9 +92,16 @@ export function render({ actions }: View<Actions>) {
           <CheckboxInputSpecimen />
         </Tile>
         <Tile
+          name={"Slider"}
+          tagline={"A value along a track"}
+          onOpen={() => actions.open({ page: "slider" })}
+          testId={"open-slider"}
+        >
+          <SliderSpecimen />
+        </Tile>
+        <Tile
           name={"Field"}
           tagline={"Label, help and status"}
-          isWide
           onOpen={() => actions.open({ page: "field" })}
           testId={"open-field"}
         >

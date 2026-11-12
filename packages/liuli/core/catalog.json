@@ -971,7 +971,7 @@
       "gallery": {
         "specimen": "Specimen",
         "tagline": "One on/off choice",
-        "order": 2,
+        "order": 3,
         "page": {
           "lead": "Use a checkbox for one on/off choice that takes effect when the form is sent.",
           "hero": "Basic",
@@ -1744,7 +1744,7 @@
       "gallery": {
         "specimen": "Specimen",
         "tagline": "Label, help and status",
-        "order": 3,
+        "order": 9,
         "page": {
           "lead": "Use a field to give a control Liuli's label, help text and status when Liuli has no component for it yet.",
           "hero": "WrappedSelect",
@@ -2251,6 +2251,264 @@
             {
               "name": "Compact",
               "title": "Thin, under its own heading"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Slider",
+      "import": "@liulidesign/core/Slider",
+      "exports": [
+        "Slider"
+      ],
+      "category": "inputs",
+      "status": "preview",
+      "summary": "A value picked along a track, with its label and the value in words",
+      "description": "Slider picks one number from a range: a volume, a size, a position in a recording. A label row names it and can show the value in words the app writes; the track and thumb are the primitive slider.",
+      "keywords": [
+        "slider",
+        "range",
+        "scrubber",
+        "volume",
+        "seek",
+        "position",
+        "track",
+        "thumb"
+      ],
+      "props": [
+        {
+          "name": "bind",
+          "type": "Local<number>",
+          "required": false,
+          "description": "A View-local cell the slider reads and writes; use it or `value` with `onChange`."
+        },
+        {
+          "name": "value",
+          "type": "number",
+          "required": false,
+          "description": "The app's value; pass `onChange` with it."
+        },
+        {
+          "name": "onChange",
+          "type": "((value: number) => void)",
+          "required": false,
+          "description": "Runs with each new value while dragging, snapped to `step`."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The visible label and the slider's accessible name."
+        },
+        {
+          "name": "isLabelHidden",
+          "type": "boolean",
+          "required": false,
+          "description": "Hides the visible label; the slider keeps it as its name.",
+          "default": "false"
+        },
+        {
+          "name": "valueLabel",
+          "type": "string",
+          "required": false,
+          "description": "The value in words, drawn at the end of the label row and read after the name: \"40%\", \"1:24 of 3:10\". Liuli formats no numbers."
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "description": "Help text under the slider, read as its description."
+        },
+        {
+          "name": "min",
+          "type": "number",
+          "required": false,
+          "description": "",
+          "default": "0"
+        },
+        {
+          "name": "max",
+          "type": "number",
+          "required": false,
+          "description": "",
+          "default": "100"
+        },
+        {
+          "name": "step",
+          "type": "number",
+          "required": false,
+          "description": "The value snaps to it.",
+          "default": "1"
+        },
+        {
+          "name": "size",
+          "type": "SliderSize",
+          "required": false,
+          "description": "",
+          "default": "'md'"
+        },
+        {
+          "name": "isDisabled",
+          "type": "boolean",
+          "required": false,
+          "description": "",
+          "default": "false"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the slider."
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "header": "view",
+        "label": "text",
+        "value": "text",
+        "control": "slider",
+        "description": "text"
+      },
+      "accessibility": {
+        "pattern": "slider",
+        "name": "label",
+        "description": [
+          "valueLabel",
+          "description"
+        ],
+        "states": [
+          {
+            "state": "disabled",
+            "from": "isDisabled"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Left / Down, Right / Up",
+            "effect": "One step down or up."
+          },
+          {
+            "keys": "Home, End",
+            "effect": "The minimum or the maximum."
+          }
+        ],
+        "target": {
+          "sm": 32,
+          "md": 40
+        },
+        "contrast": [
+          {
+            "what": "thumb and filled track",
+            "pair": [
+              "accent",
+              "surface"
+            ],
+            "minimum": "3:1",
+            "proven": true
+          },
+          {
+            "what": "empty track",
+            "pair": [
+              "line",
+              "surface"
+            ],
+            "minimum": "3:1",
+            "proven": false
+          }
+        ],
+        "notes": [
+          "The device reads the number as the value; the words in `valueLabel` follow as the description until sliders take a value text.",
+          "The thumb is 24 px at both sizes; the size changes the press area and the label row."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Volume",
+          "title": "With the value in words",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Slider } from '@liulidesign/core/Slider';\n\n/** The value in words at the end of the label row; the app writes it. */\nexport function Volume() {\n  const volume = useLocal('volume', 40);\n  return <Slider bind={volume} label=\"Volume\" valueLabel={`${volume.value}%`} data-testid=\"volume\" />;\n}"
+        },
+        {
+          "name": "Stepped",
+          "title": "Whole steps, with help text",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Slider } from '@liulidesign/core/Slider';\n\n/** Whole steps: the value snaps to each one. */\nexport function Stepped() {\n  const size = useLocal('size', 3);\n  return (\n    <Slider\n      bind={size}\n      label=\"Text size\"\n      valueLabel={['Smallest', 'Small', 'Default', 'Large', 'Largest'][size.value - 1]}\n      min={1}\n      max={5}\n      description=\"Applies to notes and the reader.\"\n      data-testid=\"text-size\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Sizes",
+          "title": "Sizes",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Slider } from '@liulidesign/core/Slider';\n\nexport function Sizes() {\n  const level = useLocal('level', 60);\n  return (\n    <view className=\"gap-4\">\n      <Slider bind={level} label=\"Small\" size=\"sm\" valueLabel={`${level.value}%`} />\n      <Slider bind={level} label=\"Medium\" valueLabel={`${level.value}%`} />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Position",
+          "title": "A position in a recording",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Slider } from '@liulidesign/core/Slider';\n\n/** A position in a recording: the label is hidden, the times stay visible. */\nexport function Position() {\n  const at = useLocal('at', 84);\n  const time = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;\n  return (\n    <view className=\"gap-1\">\n      <text className=\"text-body font-medium text-text\">Interview with the architect</text>\n      <Slider bind={at} label=\"Position\" isLabelHidden valueLabel={`${time(at.value)} of 3:10`} max={190} data-testid=\"position\" />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "A second, quieter range on the track for what is loaded (buffered media).",
+          "needs": "a secondary range value on the slider primitive, painted between track and fill",
+          "today": "Not drawn; a media scrubber shows no buffer."
+        },
+        {
+          "missing": "Liuli's own thumb: a surface disc with a hairline and shadow that grows slightly while pressed.",
+          "needs": "slider thumb and track styling (fill, border, shadow, size, pressed state) on the primitive",
+          "today": "The primitive's solid 24 px accent thumb and 4 px track, tinted with text-accent."
+        },
+        {
+          "missing": "A spoken value in words (\"Large\") in place of the number.",
+          "needs": "aria-valuetext on the slider primitive, as progressbar has",
+          "today": "The words are read as the description, after the number."
+        },
+        {
+          "missing": "The track lined up with the label above it.",
+          "needs": "the slider inset to read per-side padding (`p-0` sets the sides, not the shorthand)",
+          "today": "The track starts 12 px in from the label; `p-0` falls back to the default 12 px inset."
+        }
+      ],
+      "related": [
+        "ProgressBar"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "A value along a track",
+        "order": 6,
+        "page": {
+          "lead": "Use a slider when the value is easier to feel than to type: a volume, a size, a place in a recording.",
+          "hero": "Volume",
+          "variants": [
+            {
+              "name": "Stepped",
+              "title": "Whole steps, named in words"
+            }
+          ],
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "Small and medium"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateDefault",
+              "title": "Default"
+            },
+            {
+              "name": "StateDisabled",
+              "title": "Disabled"
+            }
+          ],
+          "inContext": [
+            {
+              "name": "Position",
+              "title": "A position in a recording"
             }
           ]
         }

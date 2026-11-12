@@ -14,6 +14,7 @@
     { "name": "button", "path": "pages/button/index" },
     { "name": "text-input", "path": "pages/text-input/index" },
     { "name": "checkbox-input", "path": "pages/checkbox-input/index" },
+    { "name": "slider", "path": "pages/slider/index" },
     { "name": "field", "path": "pages/field/index" },
     { "name": "badge", "path": "pages/badge/index" },
     { "name": "progress-bar", "path": "pages/progress-bar/index" },

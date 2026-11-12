@@ -67,7 +67,7 @@ export const doc: ComponentDoc = {
   gallery: {
     specimen: 'Specimen',
     tagline: 'One on/off choice',
-    order: 2,
+    order: 3,
     page: {
       lead: 'Use a checkbox for one on/off choice that takes effect when the form is sent.',
       hero: 'Basic',

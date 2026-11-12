@@ -59,7 +59,7 @@ export const doc: ComponentDoc = {
   gallery: {
     specimen: 'Specimen',
     tagline: 'Label, help and status',
-    order: 3,
+    order: 9,
     page: {
       lead: 'Use a field to give a control Liuli\'s label, help text and status when Liuli has no component for it yet.',
       hero: 'WrappedSelect',

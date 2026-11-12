@@ -26,6 +26,8 @@
     "./Card/recipe": "./src/Card/Card.recipe.ts",
     "./Badge": "./src/Badge/Badge.tsx",
     "./Badge/recipe": "./src/Badge/Badge.recipe.ts",
+    "./Slider": "./src/Slider/Slider.tsx",
+    "./Slider/recipe": "./src/Slider/Slider.recipe.ts",
     "./package.json": "./package.json"
   },
   "lingxia": {
