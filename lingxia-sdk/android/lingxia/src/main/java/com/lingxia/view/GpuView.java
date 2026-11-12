@@ -1157,7 +1157,11 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 return true;
             }
             int action = event.getActionMasked();
-            if (action == MotionEvent.ACTION_DOWN) refreshingGesture = false;
+            if (action == MotionEvent.ACTION_DOWN) {
+                refreshingGesture = false;
+                // A finger on a device that also has a mouse leaves no hover behind.
+                if (event.getToolType(0) == MotionEvent.TOOL_TYPE_FINGER) nativeHover(host, false, 0, 0);
+            }
             boolean refreshConsumed = pullToRefresh != null && pullToRefresh.onTouch(event);
             if (refreshConsumed || refreshingGesture) {
                 if (!refreshingGesture) {

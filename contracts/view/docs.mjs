@@ -258,7 +258,7 @@ function variants(schema, system, rules) {
     thumb: '`<slider>` and `<switch>`; its thumb: `bg-*`, `size-*`, `rounded-*`, `border-*`, `shadow-*`, `ring-*`, `scale-*`; after a state like the track' };
   const admission = {
     focus: `${on('focusStyle')}; paint only`, 'focus-visible': `${on('focusVisibleStyle')}; while focused from a key, switch or assistive tool (editors on any focus); paint only`, active: `${on('pressedStyle')}; paint only`,
-    hover: 'any element, only when `env.pointer` is `fine`; paint only', disabled: `${disableable}; replaces the whole class cascade`,
+    hover: 'any element, while a mouse, stylus or trackpad is over it; paint only', disabled: `${disableable}; replaces the whole class cascade`,
     placeholder: `editors; \`text-*\` color only`,
     dark: 'any element; not on colours, which follow appearance',
     backdrop: '`<dialog>` only; styles its scrim',

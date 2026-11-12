@@ -134,13 +134,13 @@ function changed(full, base) {
 /**
  * The class cascade for one node: `base`, the full style under `disabled`,
  * paint deltas under `focus`/`active`/`hover`, and the style its non-last
- * children receive. Hover applies only to fine pointers.
+ * children receive. Only a mouse, stylus or trackpad hovers, so `hover:` needs no pointer gate.
  */
 export function resolveClasses(className, env = {}) {
   if (className === undefined) return undefined;
   if (typeof className !== 'string') throw Error('UI_CLASS: className must be a string');
   if (className.length > 16384) throw Error('UI_CLASS: className exceeds 16384 characters');
-  const environment = `${env.theme ?? 'light'}|${env.viewport?.width}|${env.viewport?.height}|${env.pointer}|${env.direction ?? 'ltr'}|${(env.structure ?? []).join(',')}|${env.reducedMotion === true}|${env.data ? JSON.stringify(env.data) : ''}|${env.checked === true}`;
+  const environment = `${env.theme ?? 'light'}|${env.viewport?.width}|${env.viewport?.height}|${env.direction ?? 'ltr'}|${(env.structure ?? []).join(',')}|${env.reducedMotion === true}|${env.data ? JSON.stringify(env.data) : ''}|${env.checked === true}`;
   // Keyed by environment too: sibling structure changes it node to node, so clearing on change thrashed.
   const key = `${environment}\u0000${className}`;
   if (cache.has(key)) return copy(cache.get(key));
@@ -180,7 +180,7 @@ export function resolveClasses(className, env = {}) {
   const result = { base, ...(meta.pairedLeading ? { pairedLeading: true } : {}), ...(meta.release ? { release: meta.release } : {}) };
   for (const state of states) {
     const extra = own.filter(rule => rule.when?.state === state);
-    if (!extra.length || (state === 'hover' && env.pointer !== 'fine')) continue;
+    if (!extra.length) continue;
     const full = cascade([...plain, ...extra]);
     result[state] = state === 'disabled' ? full : changed(full, base);
   }
@@ -193,7 +193,7 @@ export function resolveClasses(className, env = {}) {
     if (Object.keys(rest).length) base[key] = rest;
     for (const state of ['focusVisible', 'active', 'hover', 'disabled']) {
       const extra = rules.filter(rule => rule.when.state === state);
-      if (!extra.length || (state === 'hover' && env.pointer !== 'fine')) continue;
+      if (!extra.length) continue;
       const full = cascade([...plainPart, ...extra]);
       if (state === 'disabled') (result.disabled ??= { ...base })[key] = full;
       else if (JSON.stringify(full) !== JSON.stringify(rest)) (result[state] ??= {})[key] = full;

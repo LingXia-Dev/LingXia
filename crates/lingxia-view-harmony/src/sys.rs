@@ -67,6 +67,7 @@ pub const UI_TOUCH_EVENT_ACTION_DOWN: i32 = 1;
 pub const UI_TOUCH_EVENT_ACTION_MOVE: i32 = 2;
 pub const UI_TOUCH_EVENT_ACTION_UP: i32 = 3;
 pub const UI_MOUSE_EVENT_ACTION_CANCEL: i32 = 13;
+pub const UI_INPUT_EVENT_TOOL_TYPE_FINGER: i32 = 1;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -169,6 +170,7 @@ unsafe extern "C" {
     ) -> *mut ArkUI_NodeComponentEvent;
     pub fn OH_ArkUI_UIInputEvent_GetAction(event: *const ArkUI_UIInputEvent) -> i32;
     pub fn OH_ArkUI_MouseEvent_GetMouseAction(event: *const ArkUI_UIInputEvent) -> i32;
+    pub fn OH_ArkUI_UIInputEvent_GetToolType(event: *const ArkUI_UIInputEvent) -> i32;
     pub fn OH_ArkUI_UIInputEvent_GetEventTime(event: *const ArkUI_UIInputEvent) -> i64;
     pub fn OH_ArkUI_UIInputEvent_GetModifierKeyStates(
         event: *const ArkUI_UIInputEvent,

@@ -964,7 +964,7 @@
     if (className === void 0) return void 0;
     if (typeof className !== "string") throw Error("UI_CLASS: className must be a string");
     if (className.length > 16384) throw Error("UI_CLASS: className exceeds 16384 characters");
-    const environment = `${env.theme ?? "light"}|${env.viewport?.width}|${env.viewport?.height}|${env.pointer}|${env.direction ?? "ltr"}|${(env.structure ?? []).join(",")}|${env.reducedMotion === true}|${env.data ? JSON.stringify(env.data) : ""}|${env.checked === true}`;
+    const environment = `${env.theme ?? "light"}|${env.viewport?.width}|${env.viewport?.height}|${env.direction ?? "ltr"}|${(env.structure ?? []).join(",")}|${env.reducedMotion === true}|${env.data ? JSON.stringify(env.data) : ""}|${env.checked === true}`;
     const key = `${environment}\0${className}`;
     if (cache.has(key)) return copy(cache.get(key));
     const matched = [];
@@ -1001,7 +1001,7 @@
     const result = { base, ...meta.pairedLeading ? { pairedLeading: true } : {}, ...meta.release ? { release: meta.release } : {} };
     for (const state of states) {
       const extra = own2.filter((rule) => rule.when?.state === state);
-      if (!extra.length || state === "hover" && env.pointer !== "fine") continue;
+      if (!extra.length) continue;
       const full = cascade([...plain3, ...extra]);
       result[state] = state === "disabled" ? full : changed(full, base);
     }
@@ -1013,7 +1013,7 @@
       if (Object.keys(rest).length) base[key2] = rest;
       for (const state of ["focusVisible", "active", "hover", "disabled"]) {
         const extra = rules.filter((rule) => rule.when.state === state);
-        if (!extra.length || state === "hover" && env.pointer !== "fine") continue;
+        if (!extra.length) continue;
         const full = cascade([...plainPart, ...extra]);
         if (state === "disabled") (result.disabled ?? (result.disabled = { ...base }))[key2] = full;
         else if (JSON.stringify(full) !== JSON.stringify(rest)) (result[state] ?? (result[state] = {}))[key2] = full;

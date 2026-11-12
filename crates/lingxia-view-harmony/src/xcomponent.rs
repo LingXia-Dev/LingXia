@@ -428,6 +428,13 @@ fn touch(host: &pages::Host, input: *mut sys::ArkUI_UIInputEvent) {
     };
     if matches!(phase, PointerPhase::Down) {
         adapter.begin_gesture();
+        // A finger on a device that also has a mouse leaves no hover behind.
+        // SAFETY: as above.
+        if unsafe { sys::OH_ArkUI_UIInputEvent_GetToolType(input) }
+            == sys::UI_INPUT_EVENT_TOOL_TYPE_FINGER
+        {
+            host.hover(None);
+        }
     }
     let velocity = {
         let mut tracker = adapter.velocity();

@@ -263,7 +263,7 @@ test('state variants lower to state styles and disabled replaces the cascade', a
   assert.deepEqual(Object.keys(states.active), ['backgroundColor']);
   assert.deepEqual(Object.keys(states.hover), ['backgroundColor']);
   assert.equal(states.disabled.opacity, 0.5);
-  assert.equal(resolveClasses('hover:bg-surface-sunken', { pointer: 'coarse' }).hover, undefined);
+  assert.ok(resolveClasses('hover:bg-surface-sunken', { pointer: 'coarse' }).hover, 'a coarse device can still hover with a mouse');
   const button = rendered(() => h('button', { className: 'bg-surface active:bg-surface-sunken disabled:opacity-50', disabled: true }, 'Save')).props;
   assert.deepEqual([button.opacity, button.pressedStyle, button.enabled], [0.5, undefined, 0]);
   assert.ok(rendered(() => h('input', { className: 'focus:bg-danger' })).props.focusStyle.background);
@@ -768,8 +768,7 @@ test('slider parts lower to part records, and a state before the part carries it
   assert.deepEqual(Object.values(pairs(base.thumbStyle)).sort(), [16, 16, 'surface'].sort());
   assert.deepEqual(Object.values(pairs(base.pressedStyle.thumbStyle)).sort(), [20, 20, 'surface'].sort());
   assert.ok(base.focusVisibleStyle);
-  assert.equal(slider('hover:thumb:bg-accent').hoverStyle, undefined);
-  assert.ok(slider('hover:thumb:bg-accent', {}, { env: { pointer: 'fine' } }).hoverStyle);
+  assert.ok(slider('hover:thumb:bg-accent').hoverStyle);
   assert.ok(slider('disabled:range:bg-line', { disabled: true }).rangeStyle);
   for (const [name, message] of [['thumb:active:size-4', /a state goes before the part: active:thumb:/], ['thumb:p-2', /thumb: takes bg-\*/],
     ['thumb:transition', /eases its own state changes over 150 ms/], ['range:shadow-md', /range: takes bg-\*, h-\* and rounded-\*/]])

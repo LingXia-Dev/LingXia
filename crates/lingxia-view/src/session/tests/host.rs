@@ -5443,10 +5443,8 @@ fn hover_styles_follow_the_pointer_and_end_when_the_window_loses_focus_or_the_pa
         "__lingxiaPublish(render);",
         "configureClasses([{name:'cold',style:{backgroundColor:'#0000ff'}},{name:'hover:hot',when:{state:'hover'},style:{backgroundColor:'#ff0000'}}]);__lingxiaPublish(render);",
     );
+    // A coarse primary pointer: a plugged-in mouse still hovers.
     let host = platform.host(&worker, &page, false);
-    if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
-        environment.value["pointer"] = "fine".into();
-    }
     host.set_visible(true);
     platform.settle(&[&host]);
     let hot = |host: &ViewHost<Fake>| {

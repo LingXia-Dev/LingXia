@@ -41,7 +41,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   the rest comes from the default pack. A palette the host pushes wins. `env.highContrast` picks the
   pack's high-contrast palette; `shadow-*` layers use the `shadow` role.
 - Supported variants: `dark:`, `rtl:`/`ltr:`, `first:`/`last:`/`odd:`/`even:`/`only:`/`empty:`, `sm:`–`2xl:`, `focus:` (editors), `focus-visible:` (keyboard focus; replaces the ring), `active:`
-  (controls), `hover:` (fine pointers), `disabled:`, `placeholder:`, slider parts `track:`/`range:`/`secondary:`/`thumb:`
+  (controls), `hover:` (mouse, stylus or trackpad), `disabled:`, `placeholder:`, slider parts `track:`/`range:`/`secondary:`/`thumb:`
   (a state goes first: `active:thumb:size-4`; the touch target stays the slider's box), switch parts `track:`/`thumb:`
   (`checked:track:bg-success`, `track:w-11 track:h-6`),
   `space-*`/`divide-*`. `data-*`, `has-*`, `focus-within:`, `group-active:`. `*:`, `**:`, `in-*:`, other `group-*:`, `peer-*:` fail naming the TS-side form.

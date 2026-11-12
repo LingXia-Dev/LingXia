@@ -132,12 +132,13 @@ test('every style property is checked against the element that renders it', () =
 
 const rules = list => configureClasses(list.map(([name, style, when = {}]) => ({ name, when, style })));
 
-test('active and hover variants become paint deltas; hover only for fine pointers', () => {
+test('active and hover variants become paint deltas whatever the primary pointer', () => {
   rules([['bg-surface', { backgroundColor: 'surface' }], ['active:bg-line-strong', { backgroundColor: 'line-strong' }, { state: 'active' }],
     ['hover:bg-accent', { backgroundColor: 'accent' }, { state: 'hover' }], ['active:p-2', { paddingTop: 8 }, { state: 'active' }]]);
   const touch = rendered(() => h('button', { className: 'bg-surface active:bg-line-strong hover:bg-accent' }, 'Go'), { env: { pointer: 'coarse' } });
   assert.deepEqual(touch.props.pressedStyle, { background: 'line-strong' });
-  assert.equal(touch.props.hoverStyle, undefined);
+  // A coarse device can still have a mouse plugged in; touch never hovers.
+  assert.deepEqual(touch.props.hoverStyle, { background: 'accent' });
   const mouse = rendered(() => h('button', { className: 'bg-surface hover:bg-accent' }, 'Go'), { env: { pointer: 'fine' } });
   assert.deepEqual(mouse.props.hoverStyle, { background: 'accent' });
   assert.throws(() => describe(() => h('view', { className: 'active:bg-line-strong' }), {}), /UI_STYLE: active: requires a control, not <view>/);

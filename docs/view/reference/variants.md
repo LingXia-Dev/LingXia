@@ -18,7 +18,7 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 | `even:` | any element |
 | `empty:` | any element |
 | `focus-within:` | any element; while it or a descendant has focus; paint only |
-| `hover:` | any element, only when `env.pointer` is `fine`; paint only |
+| `hover:` | any element, while a mouse, stylus or trackpad is over it; paint only |
 | `focus:` | `<input>` `<textarea>` `<select>`; paint only |
 | `focus-visible:` | `<button>` `<input>` `<textarea>` `<checkbox>` `<switch>` `<radio>` `<slider>` `<link>` `<select>`; while focused from a key, switch or assistive tool (editors on any focus); paint only |
 | `active:` | `<button>` `<checkbox>` `<switch>` `<radio>` `<slider>` `<link>`; paint only |
