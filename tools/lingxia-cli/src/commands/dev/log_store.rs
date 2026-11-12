@@ -227,11 +227,12 @@ fn check_registered_name(registered: &SessionInfo, name: &str) -> Result<()> {
 }
 
 /// The per-user broker outlives the `lingxia` that spawned it, so it can be
-/// a stale build (another checkout, rebuilt or upgraded since) — and a stale
-/// broker drops the record fields it does not know, such as `--name`.
-/// Replace it: asked to exit when idle, else terminated; its live sessions
-/// re-register with the new broker by themselves. When it cannot be
-/// replaced, `required` (a `--name` depends on it) makes that an error.
+/// a stale build of this executable (rebuilt or upgraded in place since), or
+/// one too old to report its build, which drops record fields such as
+/// `--name`. Replace those: asked to exit when idle, else terminated; its live
+/// sessions re-register with the new broker by themselves. A broker another
+/// install runs is kept (see [`replaceable`]). When it cannot be replaced,
+/// `required` (a `--name` depends on it) makes that an error.
 pub fn ensure_current_broker(required: bool) -> Result<()> {
     use lingxia_control_protocol::dev_session::broker;
     let current = broker::BrokerBuild::current(env!("CARGO_PKG_VERSION"));
@@ -300,7 +301,7 @@ fn stale_broker(
         }),
         BrokerProbe::Running(info) => {
             // Only a broker started as a library reports no build.
-            let why = info.build.as_ref()?.mismatch(current)?;
+            let why = replaceable(info.build.as_ref()?, current)?;
             Some(StaleBroker {
                 why,
                 pid: Some(info.pid),
@@ -308,6 +309,33 @@ fn stale_broker(
             })
         }
     }
+}
+
+/// Why `running` should give way to this CLI's build, if it should.
+///
+/// Every broker that reports its build speaks the same protocol and passes
+/// unknown record fields through, so only a stale build of this very
+/// executable is replaced. A broker another install runs (a release beside a
+/// checkout, another checkout) or a newer one keeps serving its sessions:
+/// replacing it would cut them off, and that install would replace ours back.
+fn replaceable(
+    running: &lingxia_control_protocol::dev_session::broker::BrokerBuild,
+    current: &lingxia_control_protocol::dev_session::broker::BrokerBuild,
+) -> Option<String> {
+    if running.executable != current.executable {
+        return None;
+    }
+    let newer = match (
+        semver::Version::parse(&running.version),
+        semver::Version::parse(&current.version),
+    ) {
+        (Ok(running), Ok(current)) => running > current,
+        _ => false,
+    };
+    if newer {
+        return None;
+    }
+    running.mismatch(current)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -980,6 +1008,45 @@ mod tests {
             broker_restart_plan(&legacy),
             BrokerRestart::FindAndTerminate
         );
+    }
+
+    #[test]
+    fn a_broker_another_install_runs_is_never_replaced() {
+        use lingxia_control_protocol::dev_session::broker::{BrokerBuild, BrokerInfo, BrokerProbe};
+        let checkout = BrokerBuild {
+            version: "0.28.0".into(),
+            executable: "/src/LingXia/target/debug/lingxia".into(),
+            modified_ms: 2,
+        };
+        let running = |build: BrokerBuild| {
+            BrokerProbe::Running(BrokerInfo {
+                build: Some(build),
+                pid: 77,
+                sessions: 1,
+            })
+        };
+        // A release install serving another session, newer or older.
+        for version in ["0.30.0", "0.27.0"] {
+            let release = BrokerBuild {
+                version: version.into(),
+                executable: "/home/me/.local/bin/lingxia".into(),
+                modified_ms: 1,
+            };
+            assert!(stale_broker(running(release), &checkout).is_none());
+        }
+        // This executable, upgraded in place to an older version than the
+        // broker it once started: the broker stays.
+        let newer_here = BrokerBuild {
+            version: "0.29.0".into(),
+            ..checkout.clone()
+        };
+        assert!(stale_broker(running(newer_here), &checkout).is_none());
+        let older_here = BrokerBuild {
+            version: "0.27.0".into(),
+            ..checkout.clone()
+        };
+        let stale = stale_broker(running(older_here), &checkout).unwrap();
+        assert!(stale.why.contains("0.27.0"), "{}", stale.why);
     }
 
     #[test]
