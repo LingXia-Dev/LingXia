@@ -2,13 +2,17 @@ use crate::protocol::Record;
 use crate::protocol::field;
 use serde::Serialize;
 
+/// The default thumb's diameter.
+pub const THUMB: f32 = 24.0;
+
 #[derive(Clone, Debug, Serialize)]
 pub struct SliderSnapshot {
     pub min: f64,
     pub max: f64,
     pub step: f64,
     pub value: f64,
-    pub inset: f32,
+    /// Track ends inside the control box: left and right padding plus the thumb's half width.
+    pub inset: [f32; 2],
     pub enabled: bool,
     pub on_change: Option<u64>,
 }
@@ -51,7 +55,7 @@ impl SliderSnapshot {
             max,
             step,
             value,
-            inset: record.number(field::PADDING).unwrap_or(12.0) + 12.0,
+            inset: [THUMB / 2.0; 2],
             enabled,
             on_change: enabled
                 .then(|| {

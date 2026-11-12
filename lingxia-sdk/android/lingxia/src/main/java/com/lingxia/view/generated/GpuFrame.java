@@ -340,8 +340,8 @@ public final class GpuFrame {
         public double step() { return json.optDouble("step"); }
         /** `value`: f64 */
         public double value() { return json.optDouble("value"); }
-        /** `inset`: f32 */
-        public float inset() { return (float) json.optDouble("inset"); }
+        /** `inset`: f32[2] */
+        public float[] inset() { return (float[]) GpuFrame.array(json.optJSONArray("inset"), 1, "float"); }
         /** `enabled`: bool */
         public boolean enabled() { return json.optBoolean("enabled"); }
         /** `on_change`: u64? */

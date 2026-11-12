@@ -358,7 +358,7 @@ fn slider_node() -> NodeSnapshot {
         max: 10.0,
         step: 3.0,
         value: 3.0,
-        inset: 24.0,
+        inset: [24.0; 2],
         enabled: true,
         on_change: Some(7),
     });

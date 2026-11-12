@@ -263,7 +263,7 @@ export interface GpuFrameSlider {
   max: number;
   step: number;
   value: number;
-  inset: number;
+  inset: number[];
   enabled: boolean;
   on_change?: number | null;
 }

@@ -1722,7 +1722,10 @@
         "radius": 0.0,
         "range": {
           "enabled": true,
-          "inset": 24.0,
+          "inset": [
+            24.0,
+            24.0
+          ],
           "max": 10.0,
           "min": 0.0,
           "on_change": 3,

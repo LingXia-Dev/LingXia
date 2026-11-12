@@ -24,11 +24,11 @@ fn track(node: &NodeSnapshot) -> [f32; 4] {
 pub fn value_at(node: &NodeSnapshot, x: f32) -> Option<f64> {
     let range = node.range.as_ref()?;
     let [left, _, width, _] = track(node);
-    let width = f64::from(width - 2.0 * range.inset);
+    let width = f64::from(width - range.inset[0] - range.inset[1]);
     if width <= 0.0 {
         return Some(range.value);
     }
-    let fraction = f64::from(x - left - range.inset) / width;
+    let fraction = f64::from(x - left - range.inset[0]) / width;
     Some(normalize(
         range,
         range.min + (range.max - range.min) * fraction,

@@ -341,7 +341,7 @@ public struct GpuFrameSlider: Decodable, Sendable {
     public let max: Double
     public let step: Double
     public let value: Double
-    public let inset: Float
+    public let inset: [Float]
     public let enabled: Bool
     public let onChange: UInt64?
 

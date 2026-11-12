@@ -353,7 +353,7 @@
       "Scroll": {"rtl": "bool?", "contain": "bool?", "axis": "ScrollAxis", "on_reach_start": "u64?", "on_reach_end": "u64?", "id": "string", "parent": "string?", "offset": "f32", "max_offset": "f32"},
       "ScrollAxis": {"enum": ["horizontal", "vertical"]},
       "InputGeometry": {"anchor": "f32[4]", "caret": "f32[4]", "content_bounds": "f32[4]", "selection": "f32[4][]", "composition": "f32[4][]"},
-      "Slider": {"min": "f64", "max": "f64", "step": "f64", "value": "f64", "inset": "f32", "enabled": "bool", "on_change": "u64?"},
+      "Slider": {"min": "f64", "max": "f64", "step": "f64", "value": "f64", "inset": "f32[2]", "enabled": "bool", "on_change": "u64?"},
       "Plot": {"kind": "string", "values": "f64[]", "domain": "f64[2]", "pie_layout": "PieLayout", "selected_index": "i64", "on_select": "u64?"},
       "PieLayout": {"center": "f64[2]", "innerRadius": "f64", "outerRadius": "f64", "emphasisScale": "f64"},
       "Select": {"options": "SelectOption[]", "selected": "usize?", "on_select": "u64?"},

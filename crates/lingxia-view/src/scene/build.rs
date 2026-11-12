@@ -553,14 +553,20 @@ impl Renderer {
                 }
             }
             let range = if record.tag == tag::SLIDER {
-                Some(crate::SliderSnapshot::from_record(record)?)
+                let mut range = crate::SliderSnapshot::from_record(record)?;
+                let half = crate::scene::slider::THUMB / 2.0;
+                range.inset = [layout.padding.left + half, layout.padding.right + half];
+                Some(range)
             } else {
                 None
             };
             if let Some(range) = &range {
-                let left = control_bounds[0] + range.inset;
-                let track_width = (control_bounds[2] - 2.0 * range.inset).max(0.0);
-                let center = control_bounds[1] + control_bounds[3] / 2.0;
+                let left = control_bounds[0] + range.inset[0];
+                let track_width = (control_bounds[2] - range.inset[0] - range.inset[1]).max(0.0);
+                let center = control_bounds[1]
+                    + layout.padding.top
+                    + (control_bounds[3] - layout.padding.top - layout.padding.bottom).max(0.0)
+                        / 2.0;
                 let fraction = ((range.value - range.min) / (range.max - range.min)) as f32;
                 let accent = if range.enabled {
                     match record.string(field::COLOR) {
@@ -586,12 +592,12 @@ impl Renderer {
                     corners: None,
                     color: accent,
                     bounds: [
-                        left + track_width * fraction - 12.0,
-                        center - 12.0,
-                        24.0,
-                        24.0,
+                        left + track_width * fraction - crate::scene::slider::THUMB / 2.0,
+                        center - crate::scene::slider::THUMB / 2.0,
+                        crate::scene::slider::THUMB,
+                        crate::scene::slider::THUMB,
                     ],
-                    radius: 12.0,
+                    radius: crate::scene::slider::THUMB / 2.0,
                 });
             }
             if record.tag == tag::SEARCH {
