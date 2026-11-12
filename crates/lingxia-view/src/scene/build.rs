@@ -1100,8 +1100,8 @@ impl Renderer {
                                 paused: flag(field::VIDEO_PAUSED),
                                 muted: flag(field::VIDEO_MUTED),
                                 looped: flag(field::VIDEO_LOOP),
-                                rate: record.number(field::VIDEO_RATE).unwrap_or(1.0) as f32,
-                                volume: record.number(field::VIDEO_VOLUME).unwrap_or(1.0) as f32,
+                                rate: record.number(field::VIDEO_RATE).unwrap_or(1.0),
+                                volume: record.number(field::VIDEO_VOLUME).unwrap_or(1.0),
                             },
                         });
                     crate::renderer::video_configure(&key, source);

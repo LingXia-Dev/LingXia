@@ -1474,9 +1474,11 @@ fn a_state_write_is_acknowledged_once_a_frame_showing_it_is_built() {
     host.set_visible(true);
     let connection = ConnectionTicket::new(1);
     host.connect(connection);
-    for frame in [serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"count":3}})] {
-        deliver(&host, connection, frame);
-    }
+    deliver(
+        &host,
+        connection,
+        serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"count":3}}),
+    );
     platform.settle(&[&host]);
     assert_eq!(last(&host), ["count 3"]);
     let acks = |host: &ViewHost<Fake>| {
@@ -2231,9 +2233,11 @@ fn automation_calls_page_actions_and_reads_data_once_the_frame_commits() {
     host.set_visible(true);
     let connection = ConnectionTicket::new(1);
     host.connect(connection);
-    for frame in [serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"count":1}})] {
-        deliver(&host, connection, frame);
-    }
+    deliver(
+        &host,
+        connection,
+        serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"count":1}}),
+    );
     platform.settle(&[&host]);
     let ask = |request: serde_json::Value| host.automation_request(&request);
     let poll = |call: &serde_json::Value| {
@@ -2347,9 +2351,11 @@ fn fill_and_pick(dev: bool, swap: bool, logic: bool) {
     if logic {
         let connection = ConnectionTicket::new(1);
         host.connect(connection);
-        for frame in [serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"n":0}})] {
-            deliver(&host, connection, frame);
-        }
+        deliver(
+            &host,
+            connection,
+            serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"n":0}}),
+        );
     }
     platform.settle(&[&host]);
     #[cfg(feature = "hot-swap")]
@@ -2391,7 +2397,7 @@ fn fill_and_pick(dev: bool, swap: bool, logic: bool) {
     host.request_frame();
     platform.settle(&[&host]);
     let generation: serde_json::Value = serde_json::from_str::<serde_json::Value>(
-        &host.snapshot().unwrap().json(),
+        host.snapshot().unwrap().json(),
     )
     .unwrap()["generation"]
         .clone();
@@ -2433,9 +2439,11 @@ fn logic_feedback_calls_draw_in_the_view_and_answer_like_the_webview() {
     host.set_visible(true);
     let connection = ConnectionTicket::new(1);
     host.connect(connection);
-    for frame in [serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"n":0}})] {
-        deliver(&host, connection, frame);
-    }
+    deliver(
+        &host,
+        connection,
+        serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"n":0}}),
+    );
     platform.settle(&[&host]);
     let replies = || -> Vec<serde_json::Value> {
         host.adapter()
@@ -2589,9 +2597,11 @@ fn abandoned_automation_calls_expire_instead_of_exhausting_the_slots() {
     host.set_visible(true);
     let connection = ConnectionTicket::new(1);
     host.connect(connection);
-    for frame in [serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"n":0}})] {
-        deliver(&host, connection, frame);
-    }
+    deliver(
+        &host,
+        connection,
+        serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"n":0}}),
+    );
     platform.settle(&[&host]);
     // Logic never answers and no caller polls: 100 timed-out calls in a row.
     let mut first = None;
@@ -3689,7 +3699,7 @@ fn every_message_adapters_receive_matches_the_frame_schema() {
     // The adapter renders when the edit reply asks for it.
     host.request_frame();
     platform.settle(&[&host]);
-    let generation = serde_json::from_str::<serde_json::Value>(&host.snapshot().unwrap().json())
+    let generation = serde_json::from_str::<serde_json::Value>(host.snapshot().unwrap().json())
         .unwrap()["generation"]
         .clone();
     input.push(ask(

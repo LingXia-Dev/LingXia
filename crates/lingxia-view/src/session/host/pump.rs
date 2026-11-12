@@ -33,7 +33,7 @@ impl<A: PlatformAdapter> Drop for Landed<A> {
     fn drop(&mut self) {
         let owed = {
             let mut main = self.0.main();
-            std::mem::replace(&mut main.landing, (false, false)).1
+            std::mem::take(&mut main.landing).1
         };
         if owed {
             self.0.schedule();
