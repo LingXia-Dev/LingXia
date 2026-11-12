@@ -4,6 +4,9 @@ import { h, describe, prepare, commit, dispatch, useVideo, reset, VideoControls 
 import { decode } from './support/wire.mjs';
 import { escapeOverlay } from '../src/runtime/overlay.js';
 
+// The overlay writes the time as two runs, the elapsed part brighter.
+const textOf = node => node.text || (node.children ?? []).map(child => child.text).join('');
+
 const status = { readyState: 'ready', currentTime: 12, duration: 90, paused: false, ended: false, buffering: false, seeking: false,
   buffered: 4, videoWidth: 640, videoHeight: 360, playbackRate: 1, volume: 1, muted: false, quality: 'auto', qualities: [], error: null };
 
@@ -134,7 +137,7 @@ test('VideoControls full screen shows the player again in the top layer and a cl
   assert.deepEqual(turns, ['landscape']);
   list = all();
   // The full screen bar starts from the player's last state.
-  assert.equal(by(list, 'lx-fullscreen-controls-time').text, '0:12 / 1:30');
+  assert.equal(textOf(by(list, 'lx-fullscreen-controls-time')), '0:12 / 1:30');
   dispatch(by(list, 'lx-fullscreen-controls-fullscreen').props.onClick);
   list = all();
   assert.equal(read, false);
@@ -173,21 +176,90 @@ test('the overlay rings while a play waits, then hides after a stretch of playba
   report({ paused: true, readyState: 'metadata', currentTime: 0 });
   let list = nodes();
   assert.equal(by(list, 'bar-loading'), undefined, 'a paused player waits for no frame');
+  assert.ok(by(list, 'bar-start'), 'a large play in the middle before the first play');
   dispatch(by(list, 'bar-play').props.onClick);
   assert.ok(by(nodes(), 'bar-loading'), 'a play asked for rings until the first frame');
   report({ readyState: 'ready', currentTime: 1 });
   list = nodes();
   assert.equal(by(list, 'bar-loading'), undefined);
-  assert.equal(by(list, 'bar-bar').props.opacity, 1);
+  assert.equal(by(list, 'bar-chrome').props.opacity, 1);
   report({ currentTime: 3.5 });
   list = nodes();
-  assert.equal(by(list, 'bar-bar').props.opacity, 0, 'hidden after three seconds of playback');
+  assert.equal(by(list, 'bar-chrome').props.opacity, 0, 'hidden after three seconds of playback');
   assert.ok(by(list, 'bar-play'), 'still in the tree for a screen reader');
   dispatch(by(list, 'bar-surface').props.onClick);
-  assert.equal(by(nodes(), 'bar-bar').props.opacity, 1, 'a tap brings it back');
+  assert.equal(by(nodes(), 'bar-chrome').props.opacity, 1, 'a tap brings it back');
   dispatch(by(nodes(), 'bar-surface').props.onClick);
-  assert.equal(by(nodes(), 'bar-bar').props.opacity, 0, 'and another puts it away');
+  assert.equal(by(nodes(), 'bar-chrome').props.opacity, 0, 'and another puts it away');
+  dispatch(by(nodes(), 'bar-surface').props.onClick);
+  dispatch(by(nodes(), 'bar-scrub').props.onSliderChange, 60);
+  report({ currentTime: 60 });
+  assert.equal(by(nodes(), 'bar-chrome').props.opacity, 1, 'a seek far ahead keeps it up');
+  dispatch(by(nodes(), 'bar-scrub').props.onSliderChange, 20);
+  report({ currentTime: 20 });
+  assert.equal(by(nodes(), 'bar-chrome').props.opacity, 1, 'and so does one back');
+  report({ currentTime: 23.5 });
+  assert.equal(by(nodes(), 'bar-chrome').props.opacity, 0, 'the stretch counts from where it landed');
   report({ paused: true });
-  assert.equal(by(nodes(), 'bar-bar').props.opacity, 1, 'a paused player shows it');
+  assert.equal(by(nodes(), 'bar-chrome').props.opacity, 1, 'a paused player shows it');
   delete globalThis.__lingxiaVideoCommand;
+});
+
+test('the overlay menu picks a speed or a quality and closes, and a tap beside it closes it too', () => {
+  reset();
+  const commands = [];
+  globalThis.__lingxiaVideoCommand = (player, op, number, text) => { commands.push([op, number, text]); return ''; };
+  const render = () => {
+    const hero = useVideo('hero');
+    return h('view', {}, h('video', { player: hero, src: 'a.mp4' }),
+      h(VideoControls, { player: hero, overlay: true, labels: { settings: 'Réglages' }, 'data-testid': 'bar' }));
+  };
+  const nodes = () => { const out = decode(prepare(render, { env: { pointer: 'coarse' } })); commit(); return out; };
+  const by = (list, testId) => list.find(node => node.testId === testId);
+  const video = nodes().find(node => node.tag === 'video');
+  dispatch(video.props.onVideoEvent, JSON.stringify({ status: { ...status, qualities: ['720p', '360p'] }, events: [] }));
+  let list = nodes();
+  assert.equal(by(list, 'bar-menu'), undefined);
+  assert.equal(by(list, 'bar-settings').props.accessibilityLabel, 'Réglages');
+  dispatch(by(list, 'bar-settings').props.onClick);
+  list = nodes();
+  assert.ok(by(list, 'bar-menu'), 'the settings button opens the menu');
+  assert.equal(by(list, 'bar-chrome').props.opacity, 1, 'an open menu keeps the bar up');
+  assert.ok(by(list, 'bar-rate-1') && by(list, 'bar-quality-720p') && by(list, 'bar-quality-auto'));
+  dispatch(by(list, 'bar-rate-1.5').props.onClick);
+  assert.deepEqual(commands.at(-1).slice(0, 2), ['rate', 1.5]);
+  assert.equal(by(nodes(), 'bar-menu'), undefined, 'a pick closes it');
+  dispatch(by(nodes(), 'bar-settings').props.onClick);
+  dispatch(by(nodes(), 'bar-menu-dismiss').props.onClick);
+  assert.equal(by(nodes(), 'bar-menu'), undefined, 'a tap beside it closes it');
+  delete globalThis.__lingxiaVideoCommand;
+});
+
+test('the overlay shows an error in the middle with Retry, and full screen has a way out and the page labels', () => {
+  reset();
+  const commands = [];
+  globalThis.__lingxiaVideoCommand = (player, op) => { commands.push(op); return ''; };
+  globalThis.__lingxiaVideoOrientation = () => '';
+  const render = () => {
+    const hero = useVideo('hero');
+    return h('view', {}, h('video', { player: hero, src: 'a.mp4' }),
+      h(VideoControls, { player: hero, overlay: true, labels: { exitFullscreen: 'Quitter' }, 'data-testid': 'bar' }));
+  };
+  const nodes = () => { const out = decode(prepare(render, { env: { pointer: 'coarse' } })); commit(); return out; };
+  const by = (list, testId) => list.find(node => node.testId === testId);
+  const video = nodes().find(node => node.tag === 'video');
+  dispatch(video.props.onVideoEvent, JSON.stringify({ status: { ...status, error: { code: 'VIDEO_NETWORK', message: 'VIDEO_NETWORK: x', recoverable: true } }, events: [] }));
+  let list = nodes();
+  assert.ok(by(list, 'bar-error'));
+  assert.equal(by(list, 'bar-chrome').props.opacity, 1, 'an error keeps the bar up');
+  dispatch(by(list, 'bar-retry').props.onClick);
+  assert.equal(commands.at(-1), 'retry');
+  dispatch(by(list, 'bar-fullscreen').props.onClick);
+  list = nodes();
+  const close = by(list, 'lx-fullscreen-controls-close');
+  assert.equal(close.props.accessibilityLabel, 'Quitter', 'full screen speaks the page labels');
+  dispatch(close.props.onClick);
+  assert.equal(by(nodes(), 'lx-fullscreen-video'), undefined);
+  delete globalThis.__lingxiaVideoCommand;
+  delete globalThis.__lingxiaVideoOrientation;
 });
