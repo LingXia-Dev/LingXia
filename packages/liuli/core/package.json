@@ -28,6 +28,8 @@
     "./Badge/recipe": "./src/Badge/Badge.recipe.ts",
     "./RadioGroup": "./src/RadioGroup/RadioGroup.tsx",
     "./RadioGroup/recipe": "./src/RadioGroup/RadioGroup.recipe.ts",
+    "./Select": "./src/Select/Select.tsx",
+    "./Select/recipe": "./src/Select/Select.recipe.ts",
     "./Slider": "./src/Slider/Slider.tsx",
     "./Slider/recipe": "./src/Slider/Slider.recipe.ts",
     "./Tabs": "./src/Tabs/Tabs.tsx",

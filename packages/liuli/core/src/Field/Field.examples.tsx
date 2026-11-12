@@ -38,7 +38,7 @@ export function WrappedSelect() {
 /** The home tile. */
 export function Specimen() {
   return (
-    <Field label="Plan" size="sm" className="w-52">
+    <Field label="Plan" size="sm" className="w-36">
       {control => (
         <select
           value="yearly"

@@ -108,6 +108,15 @@ export const patterns = {
       ],
     },
   },
+  select: {
+    role: 'combobox',
+    checks: {
+      'is found by its label, not its placeholder': [{ do: 'find', role: 'combobox', name: 'label' }],
+    },
+    keyboardChecks: {
+      'is reachable with Tab': [{ do: 'tab-to', role: 'combobox' }, { expect: 'focused', role: 'combobox' }],
+    },
+  },
   radioGroup: {
     role: 'radiogroup',
     checks: {

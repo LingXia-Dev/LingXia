@@ -2549,6 +2549,283 @@
       }
     },
     {
+      "name": "Select",
+      "import": "@liulidesign/core/Select",
+      "exports": [
+        "Select"
+      ],
+      "category": "inputs",
+      "status": "preview",
+      "summary": "One choice from a list that opens on demand",
+      "description": "Select picks one option from a list too long to show in place: a country, a role, a sort order. It is a Field around the select primitive, which opens the platform's own list or menu.",
+      "keywords": [
+        "select",
+        "dropdown",
+        "picker",
+        "combo box",
+        "choose",
+        "options",
+        "menu",
+        "single select"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The visible label and the control's accessible name."
+        },
+        {
+          "name": "isLabelHidden",
+          "type": "boolean",
+          "required": false,
+          "description": "Hides the visible label; the control keeps it as its name.",
+          "default": "false"
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "description": "Help text under the control, read as the control's description."
+        },
+        {
+          "name": "status",
+          "type": "FieldStatus",
+          "required": false,
+          "description": "An `error` status marks the control invalid; its message is read as the control's description."
+        },
+        {
+          "name": "isRequired",
+          "type": "boolean",
+          "required": false,
+          "description": "Marks the label with an asterisk and the control as required. Validation is the app's.",
+          "default": "false"
+        },
+        {
+          "name": "hasRequiredMark",
+          "type": "boolean",
+          "required": false,
+          "description": "Draws the asterisk on a required label; turn it off on a form where every field is required.",
+          "default": "true"
+        },
+        {
+          "name": "isDisabled",
+          "type": "boolean",
+          "required": false,
+          "description": "",
+          "default": "false"
+        },
+        {
+          "name": "disabledMessage",
+          "type": "string",
+          "required": false,
+          "description": "Shown in place of `description` while disabled."
+        },
+        {
+          "name": "size",
+          "type": "FieldSize",
+          "required": false,
+          "description": "",
+          "default": "'md'"
+        },
+        {
+          "name": "bind",
+          "type": "Local<string>",
+          "required": false,
+          "description": "A View-local cell the select reads and writes; use it or `value` with `onChange`."
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "required": false,
+          "description": "The chosen option's value; `''` shows the placeholder."
+        },
+        {
+          "name": "onChange",
+          "type": "((value: string) => void)",
+          "required": false,
+          "description": "Runs with the chosen option's value."
+        },
+        {
+          "name": "options",
+          "type": "readonly SelectOption[]",
+          "required": true,
+          "description": "The choices, in order; the platform shows them as a list or a menu."
+        },
+        {
+          "name": "placeholder",
+          "type": "string",
+          "required": false,
+          "description": "Shown in the box while nothing is chosen."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the select."
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "field": "Field",
+        "control": "select"
+      },
+      "accessibility": {
+        "pattern": "select",
+        "name": "label",
+        "description": [
+          "description, or disabledMessage while disabled",
+          "the status message"
+        ],
+        "states": [
+          {
+            "state": "disabled",
+            "from": "isDisabled"
+          },
+          {
+            "state": "invalid",
+            "from": "status.type === 'error'"
+          },
+          {
+            "state": "required",
+            "from": "isRequired"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Enter, Space",
+            "effect": "Opens the list."
+          },
+          {
+            "keys": "Up, Down",
+            "effect": "Moves through the open list; Enter chooses, Escape closes."
+          }
+        ],
+        "target": {
+          "sm": 32,
+          "md": 40,
+          "lg": 48
+        },
+        "contrast": [
+          {
+            "what": "box boundary",
+            "pair": [
+              "line-strong",
+              "surface"
+            ],
+            "minimum": "3:1",
+            "proven": true
+          },
+          {
+            "what": "chosen label",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1",
+            "proven": true
+          },
+          {
+            "what": "placeholder",
+            "pair": [
+              "muted",
+              "surface"
+            ],
+            "minimum": "4.5:1",
+            "proven": true
+          }
+        ],
+        "notes": [
+          "The placeholder is never the name: the label is, and it stays when the label is hidden.",
+          "The open list is the platform's, so it reads and scrolls as the device's own pickers do."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Country",
+          "title": "With a placeholder and help text",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Select } from '@liulidesign/core/Select';\n\nconst countries = [\n  { value: 'de', label: 'Germany' },\n  { value: 'fr', label: 'France' },\n  { value: 'it', label: 'Italy' },\n  { value: 'nl', label: 'Netherlands' },\n  { value: 'es', label: 'Spain' },\n];\n\n/** A label, a placeholder until chosen, and help text. */\nexport function Country() {\n  const country = useLocal('country', '');\n  return (\n    <Select\n      bind={country}\n      label=\"Country\"\n      placeholder=\"Choose a country\"\n      description=\"Sets the currency and the tax on your invoices.\"\n      options={countries}\n      data-testid=\"country\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Required",
+          "title": "Required, with an error and a disabled option",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Select } from '@liulidesign/core/Select';\n\n/** Required: an error after a send with nothing chosen, cleared by a choice. */\nexport function Required() {\n  const role = useLocal('role', '');\n  const tried = useLocal('tried', true);\n  return (\n    <Select\n      bind={role}\n      label=\"Role\"\n      isRequired\n      placeholder=\"Choose a role\"\n      options={[{ value: 'viewer', label: 'Can view' }, { value: 'editor', label: 'Can edit' }, { value: 'owner', label: 'Owner', isDisabled: true }]}\n      status={tried.value && role.value === '' ? { type: 'error', message: 'Choose a role for the invite.' } : undefined}\n      description=\"Only an owner can add another owner.\"\n      data-testid=\"role\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Sizes",
+          "title": "Sizes",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Select } from '@liulidesign/core/Select';\n\nexport function Sizes() {\n  const zone = useLocal('zone', 'cet');\n  const options = [{ value: 'cet', label: 'Central European Time' }, { value: 'utc', label: 'Coordinated Universal Time' }];\n  return (\n    <view className=\"gap-4\">\n      <Select bind={zone} label=\"Small\" size=\"sm\" options={options} />\n      <Select bind={zone} label=\"Medium\" options={options} />\n      <Select bind={zone} label=\"Large\" size=\"lg\" options={options} />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "A placeholder colour set the usual way.",
+          "needs": "the class compiler to accept `placeholder:` on `<select>`; the renderer already reads the select's placeholder colour",
+          "today": "Liuli tints the whole box text muted while nothing is chosen."
+        },
+        {
+          "missing": "A quieter chevron than the chosen label.",
+          "needs": "a chevron colour on the select primitive apart from its text colour",
+          "today": "The chevron takes the text colour."
+        },
+        {
+          "missing": "A long chosen label cut short with an ellipsis.",
+          "needs": "the select to paint its label on one line and truncate, as its layout already measures it",
+          "today": "Liuli sets `whitespace-nowrap`, so the label stays on one line; one wider than the box is clipped, not ellipsized."
+        }
+      ],
+      "related": [
+        "RadioGroup",
+        "DropdownMenu",
+        "Field"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "One choice from a long list",
+        "order": 2,
+        "page": {
+          "lead": "Use a select when there are too many options to show at once, or the choice matters less than the space.",
+          "hero": "Country",
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "Small, medium and large"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateEmpty",
+              "title": "Nothing chosen"
+            },
+            {
+              "name": "StateChosen",
+              "title": "Chosen"
+            },
+            {
+              "name": "StateInvalid",
+              "title": "Invalid"
+            },
+            {
+              "name": "StateDisabled",
+              "title": "Disabled"
+            }
+          ],
+          "inContext": [
+            {
+              "name": "Required",
+              "title": "Inviting someone, after a send with no role"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "Slider",
       "import": "@liulidesign/core/Slider",
       "exports": [

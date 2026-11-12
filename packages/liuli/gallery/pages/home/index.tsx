@@ -10,6 +10,7 @@ import { Specimen as FieldSpecimen } from '../../../core/src/Field/Field.example
 import { Specimen as ItemSpecimen } from '../../../core/src/Item/Item.examples';
 import { Specimen as ProgressBarSpecimen } from '../../../core/src/ProgressBar/ProgressBar.examples';
 import { Specimen as RadioGroupSpecimen } from '../../../core/src/RadioGroup/RadioGroup.examples';
+import { Specimen as SelectSpecimen } from '../../../core/src/Select/Select.examples';
 import { Specimen as SliderSpecimen } from '../../../core/src/Slider/Slider.examples';
 import { Specimen as TabsSpecimen } from '../../../core/src/Tabs/Tabs.examples';
 import { Specimen as TextInputSpecimen } from '../../../core/src/TextInput/TextInput.examples';
@@ -97,6 +98,14 @@ export function render({ actions }: View<Actions>) {
           <TextInputSpecimen />
         </Tile>
         <Tile
+          name={"Select"}
+          tagline={"One choice from a long list"}
+          onOpen={() => actions.open({ page: "select" })}
+          testId={"open-select"}
+        >
+          <SelectSpecimen />
+        </Tile>
+        <Tile
           name={"CheckboxInput"}
           tagline={"One on/off choice"}
           onOpen={() => actions.open({ page: "checkbox-input" })}
@@ -123,7 +132,6 @@ export function render({ actions }: View<Actions>) {
         <Tile
           name={"Field"}
           tagline={"Label, help and status"}
-          isWide
           onOpen={() => actions.open({ page: "field" })}
           testId={"open-field"}
         >

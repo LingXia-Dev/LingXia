@@ -14,6 +14,7 @@
     { "name": "button", "path": "pages/button/index" },
     { "name": "tabs", "path": "pages/tabs/index" },
     { "name": "text-input", "path": "pages/text-input/index" },
+    { "name": "select", "path": "pages/select/index" },
     { "name": "checkbox-input", "path": "pages/checkbox-input/index" },
     { "name": "radio-group", "path": "pages/radio-group/index" },
     { "name": "slider", "path": "pages/slider/index" },
