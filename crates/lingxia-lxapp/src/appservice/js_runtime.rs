@@ -721,6 +721,19 @@ pub(crate) async fn lxapp_service_handler(
     message: ServiceMessage,
     current_ctx: &mut Option<JSContext>,
 ) {
+    handle_service_message(worker_id, runtime.clone(), message, current_ctx).await;
+    // A JS function called from native (a setData ack, channel data) only
+    // queues its promise continuations; Rong drains those on a 50 ms interval
+    // otherwise, which capped `await this.flush()` loops at 20 per second.
+    let _ = runtime.run_pending_jobs();
+}
+
+async fn handle_service_message(
+    worker_id: usize,
+    runtime: JSRuntime,
+    message: ServiceMessage,
+    current_ctx: &mut Option<JSContext>,
+) {
     match message {
         ServiceMessage::CreateAppSvc { lxapp } => {
             if lxapp
@@ -1686,6 +1699,67 @@ mod worker_assignment_tests {
                         .unwrap(),
                     "\"seven\""
                 );
+            })
+            .await;
+    }
+
+    /// A JS function native calls (a setData ack resolving `page.flush()`)
+    /// only queues its promise continuations, and Rong's own fallback drains
+    /// them every 50 ms. The pump must run them before taking the next message.
+    #[tokio::test(flavor = "current_thread")]
+    async fn the_pump_runs_continuations_queued_by_native_js_calls() {
+        use rong::{JSEngine, JSFunc, RongJS, Source};
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let root = tempfile::tempdir().unwrap();
+                let platform = Arc::new(
+                    lingxia_platform::Platform::new(
+                        root.path().join("data").display().to_string(),
+                        root.path().join("cache").display().to_string(),
+                        "en-US".to_string(),
+                    )
+                    .unwrap(),
+                );
+                let appid = format!("app.lingxia.logic-drain.{}", uuid::Uuid::new_v4());
+                crate::lxapp::register_synthetic_lxapp(appid.clone());
+                let app = Arc::new(
+                    crate::LxApp::new_with_session_class_for_test(
+                        appid,
+                        platform,
+                        crate::appservice::LxAppWorkers::init(1),
+                        crate::lxapp::AppSessionClass::StandardApp,
+                    )
+                    .unwrap(),
+                );
+                app.bind_arc();
+                let runtime = RongJS::runtime();
+                let ctx = runtime.context();
+                super::register_app_ctx(&ctx, &app);
+                ctx.eval::<()>(Source::from_bytes(
+                    "globalThis.__done = false; \
+                     new Promise((resolve) => { globalThis.__resolve = resolve; }) \
+                         .then(() => { globalThis.__done = true; });",
+                ))
+                .unwrap();
+                let done = || ctx.global().get::<_, bool>("__done").unwrap();
+
+                let resolve = ctx.global().get::<_, JSFunc>("__resolve").unwrap();
+                resolve.call::<_, ()>(None, ()).unwrap();
+                assert!(
+                    !done(),
+                    "a native call queues the continuation without running it"
+                );
+
+                let (tx, _rx) = tokio::sync::oneshot::channel();
+                let message = super::ServiceMessage::Eval {
+                    capture_calls: false,
+                    lxapp: app.clone(),
+                    script: "0".to_string(),
+                    tx,
+                };
+                let mut current = Some(ctx.clone());
+                super::lxapp_service_handler(0, runtime.clone(), message, &mut current).await;
+                assert!(done());
             })
             .await;
     }
