@@ -1,5 +1,5 @@
 import { render as rendering } from './runtime/state.js';
-import { describe, prepare, prepareWindows, takeMovedAnchors, commit, discard, reset, dispatch, probeListRow } from './runtime/tree.js';
+import { describe, prepare, prepareWindows, takeMovedAnchors, takeThrown, commit, discard, reset, dispatch, probeListRow } from './runtime/tree.js';
 import { createView, syncData, hasLocalUpdates, readsHostContext } from './runtime/hooks.js';
 import { configureActions, takeViewEvents, receiveActionResponse, takeActionErrors, requestLeave, automationAction, takeAutomationResults } from './runtime/actions.js';
 import { viewCall, overlayTimer, takeOverlayTimers, escapeOverlay } from './runtime/overlay.js';
@@ -29,6 +29,7 @@ export function publishHost(render, catalog) {
     __lingxiaTakeLowered: takeLowered, __lingxiaSeedLowered: seedLowered,
     // Cleared when a render completes, so it names only a render that never returned.
     __lingxiaSite: () => rendering.site || '',
+    __lingxiaThrown: takeThrown,
   });
   if (catalog !== undefined) globalThis.__lingxiaActionCatalog = catalog;
 }

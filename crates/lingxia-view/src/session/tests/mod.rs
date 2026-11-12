@@ -2111,6 +2111,47 @@ fn a_run_past_the_limit_is_interrupted_at_once_and_a_first_render_gets_the_warm_
 }
 
 #[test]
+fn a_render_that_throws_and_then_passes_the_limit_reports_its_own_error() {
+    use crate::protocol::limits::EVAL_LIMIT_MULTIPLIER;
+    let Some(clock) = crate::engine::thread_clock::ThreadClock::current() else {
+        return;
+    };
+    if !bounded_jobs() || !<crate::engine::Active as crate::engine::Engine>::PREEMPTIBLE {
+        return;
+    }
+    let module = source(
+        "function render(){return h('view',{},h('text',{key:'a'},'x'),h('text',{key:'a'},'y'))}",
+    );
+    let mut session = ViewSession::new_with_logic(&module, true).unwrap();
+    session
+        .write_state(state_write(
+            &serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{}}),
+        ))
+        .unwrap();
+    let ordinary = session.render(300, 500, 1.0).err().unwrap();
+    assert!(ordinary.starts_with("UI_KEY"), "{ordinary}");
+    // The same throw, with the time limit passing while it unwinds outside the render.
+    let limit = super::eval_budget() * EVAL_LIMIT_MULTIPLIER as u32;
+    let late = session
+        .execute_frame(|| {
+            let thrown = session
+                .context
+                .eval::<()>(Source::from_bytes(
+                    "__lingxiaPrepare(__lingxiaRender, __lingxiaCreateView({}, {}, 0), {}, true)",
+                ))
+                .map_err(|e| crate::engine::js_error(&session.context, e));
+            let start = clock.elapsed().unwrap();
+            while clock.elapsed().unwrap().saturating_sub(start) < limit * 2 {
+                std::hint::black_box(0u64);
+            }
+            thrown
+        })
+        .unwrap_err();
+    assert_eq!(late, ordinary);
+    assert!(!session.poisoned.get(), "a render error is not a hang");
+}
+
+#[test]
 fn a_replayed_write_keeps_untouched_subtrees_the_same_objects() {
     use serde_json::json;
     let source = source(

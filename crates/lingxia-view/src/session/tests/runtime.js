@@ -39,6 +39,7 @@
     takeActionRequests: () => takeActionRequests,
     takeLowered: () => takeLowered,
     takeMovedAnchors: () => takeMovedAnchors,
+    takeThrown: () => takeThrown,
     useChannel: () => useChannel,
     useLeaveGuard: () => useLeaveGuard,
     useLocal: () => useLocal,
@@ -57,6 +58,7 @@
     lookupLocals: null,
     collectors: [],
     site: null,
+    thrown: "",
     // Memo: committed subtrees to recall, open component frames, and counters subtrees compare.
     recall: null,
     frames: [],
@@ -5042,6 +5044,7 @@
   }
   function runCandidate(view, lookup, build, recall2 = null) {
     if (render.active) throw Error("UI_RENDER: recursive render");
+    render.thrown = "";
     resetArena();
     Object.assign(render, { active: true, view, lookupLocals: lookup, recall: recall2?.memo, recallClosures: recall2?.closures });
     render.candidate = {
@@ -5060,6 +5063,7 @@
       render.scope = "root";
       return build(render.candidate);
     } catch (error) {
+      render.thrown = error instanceof Error ? error.message : "JavaScript threw a value";
       discard();
       throw error;
     } finally {
@@ -5068,6 +5072,11 @@
     }
   }
   var movedAnchors = "";
+  function takeThrown() {
+    const thrown = render.thrown;
+    render.thrown = "";
+    return thrown;
+  }
   function takeMovedAnchors() {
     const moved = movedAnchors;
     movedAnchors = "";
@@ -5318,7 +5327,8 @@
       __lingxiaTakeLowered: takeLowered,
       __lingxiaSeedLowered: seedLowered,
       // Cleared when a render completes, so it names only a render that never returned.
-      __lingxiaSite: () => render.site || ""
+      __lingxiaSite: () => render.site || "",
+      __lingxiaThrown: takeThrown
     });
     if (catalog !== void 0) globalThis.__lingxiaActionCatalog = catalog;
   }

@@ -42,6 +42,7 @@ function warnUnfrozen(props, renderItem) {
 
 function runCandidate(view, lookup, build, recall = null) {
   if (render.active) throw Error('UI_RENDER: recursive render');
+  render.thrown = '';
   resetArena();
   Object.assign(render, { active: true, view, lookupLocals: lookup, recall: recall?.memo, recallClosures: recall?.closures });
   render.candidate = { locals: new Map(), declarations: new Set(), callbacks: new Map(), lists: new Map(), resources: new Map(), resourceNames: new Set(), view,
@@ -49,13 +50,18 @@ function runCandidate(view, lookup, build, recall = null) {
   try { render.scope = 'root'; return build(render.candidate); }
   // A render that throws reverts to the committed page: every pending update is dropped,
   // not only the one that threw, so state that makes render fail cannot wedge each retry.
-  catch (error) { discard(); throw error; }
+  // Recorded first: an interrupt cannot be caught, so this is the render's own error even if
+  // native finds the time limit passed while it unwound.
+  catch (error) { render.thrown = error instanceof Error ? error.message : 'JavaScript threw a value'; discard(); throw error; }
   finally { clearArena(); Object.assign(render, { active: false, scope: null, view: null, lookupLocals: null, collectors: [], recall: null, recallClosures: null, frames: [], site: null }); }
 }
 
 // With `deferAnchors`, a render whose list anchors moved returns no buffer: native picks their
 // destination windows first (`takeMovedAnchors`), then encodes once through `prepareWindows`.
 let movedAnchors = '';
+/** The error the last render threw itself, once. */
+export function takeThrown() { const thrown = render.thrown; render.thrown = ''; return thrown; }
+
 export function takeMovedAnchors() { const moved = movedAnchors; movedAnchors = ''; return moved; }
 
 export function prepare(renderPage, view, windows = {}, deferAnchors = false) {

@@ -423,6 +423,20 @@ impl ViewSession {
         self.evaluate(true, work)
     }
 
+    /// The error the frame's render threw itself, read under its own budget so a hung
+    /// isolate yields nothing.
+    fn recorded_throw(&self) -> Option<String> {
+        let budget = eval_budget();
+        let (thrown, _) = self.budget.run(budget, budget, || {
+            self.context
+                .eval::<String>(Source::from_bytes(
+                    "typeof __lingxiaThrown === 'function' ? __lingxiaThrown() : ''",
+                ))
+                .map_err(|e| e.to_string())
+        });
+        thrown.ok().filter(|thrown| !thrown.is_empty())
+    }
+
     fn evaluate<T>(
         &self,
         frame: bool,
@@ -477,6 +491,10 @@ impl ViewSession {
             .as_ref()
             .is_err_and(|error| error.starts_with("UI_TIMEOUT:"))
         {
+            // A render that threw on its own and only then passed the limit is that throw.
+            if frame && let Some(thrown) = self.recorded_throw() {
+                return Err(thrown);
+            }
             self.poisoned.set(true);
             // A render that ran out of time names the element it was building.
             let site = self

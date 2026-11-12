@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {h, listTag, List, prepare, prepareWindows, takeMovedAnchors, commit, discard, dispatch, useLocal, reset} from '../src/internal.js';
+import {h, listTag, List, prepare, prepareWindows, takeMovedAnchors, takeThrown, commit, discard, dispatch, useLocal, reset} from '../src/internal.js';
 import {decode} from './support/wire.mjs';
 const records=buffer=>decode(buffer).map(node=>({tag:node.tag,id:node.testId,text:node.text,fields:new Map(Object.entries(node.props))}));
 function window(start,end) { return {root:{start,end,leading:start*100,trailing:(1000-end)*100}}; }
@@ -186,6 +186,18 @@ test('invalid descriptions and windows cannot replace a committed list',()=>{
  assert.equal(dispatch(handle),true);
  assert.throws(()=>prepare(()=>h(listTag,{count:2,row:()=>h('text',{key:'duplicate'},'x')}),{},window(0,2)),/UI_KEY/);
  assert.equal(dispatch(handle),true);
+});
+
+test('a render that throws leaves its own error for native once, and the next render clears it',()=>{
+ reset();
+ const duplicate=()=>h(listTag,{count:2,row:()=>h('text',{key:'duplicate'},'x')});
+ assert.throws(()=>prepare(duplicate,{},window(0,2)),/UI_KEY/);
+ assert.match(takeThrown(),/^UI_KEY: duplicate list row/);
+ assert.equal(takeThrown(),'');
+ assert.throws(()=>prepare(duplicate,{},window(0,2)),/UI_KEY/);
+ prepare(()=>h('view',{},h('text',{},'ok')),{});
+ discard();
+ assert.equal(takeThrown(),'');
 });
 
 test('reach callbacks are retained handles and never run during candidate preparation',()=>{
