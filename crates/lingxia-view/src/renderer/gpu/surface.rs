@@ -9,6 +9,14 @@ pub(crate) fn lease_budget(width: u16, height: u16) -> u64 {
         .min(crate::protocol::limits::COMPOSITE_BYTES as u64)
 }
 
+/// Whether one composition texture may be `width`×`height`: a frame-sized layer always fits
+/// (an unfolded or tablet screen is past 16 MiB), within the device's texture limit.
+fn leasable(width: u16, height: u16, budget: u64, max_side: u32) -> bool {
+    let bytes = u64::from(width) * u64::from(height) * 4;
+    let cap = (budget / crate::protocol::limits::LEASE_FRAMES as u64).max(16 * 1024 * 1024);
+    width > 0 && height > 0 && u32::from(width.max(height)) <= max_side && bytes <= cap
+}
+
 #[derive(Clone)]
 struct Texture {
     texture: wgpu::Texture,
@@ -145,10 +153,14 @@ impl Pool {
         height: u16,
     ) -> Result<Surface, String> {
         let bytes = u64::from(width) * u64::from(height) * 4;
-        if width == 0 || height == 0 || width > 4096 || height > 4096 || bytes > 16 * 1024 * 1024 {
-            return Err("UI_COMPOSITE: invalid texture dimensions".into());
-        }
         let mut state = self.state.lock().unwrap();
+        let max_side = device.limits().max_texture_dimension_2d;
+        if !leasable(width, height, state.budget, max_side) {
+            return Err(format!(
+                "UI_COMPOSITE: a {width}x{height} layer is past what this frame and device allow \
+                 ({max_side} px a side)"
+            ));
+        }
         let resource = if let Some(index) = state.free.iter().position(|entry| {
             entry.texture.width() == u32::from(width) && entry.texture.height() == u32::from(height)
         }) {
@@ -208,6 +220,22 @@ mod tests {
             lease_budget(4096, 4096),
             crate::protocol::limits::COMPOSITE_BYTES as u64
         );
+    }
+
+    #[test]
+    fn a_frame_sized_layer_is_leasable_on_large_screens() {
+        // An unfolded Mate X5 and a 12.9-inch iPad: both past 16 MiB a frame.
+        for (width, height) in [(2224, 2496), (2732, 2048), RETINA, (1080, 2504)] {
+            let budget = lease_budget(width, height);
+            assert!(leasable(width, height, budget, 8192), "{width}x{height}");
+        }
+        assert!(!leasable(0, 10, lease_budget(10, 10), 8192));
+        assert!(
+            !leasable(2224, 2496, lease_budget(2224, 2496), 2048),
+            "past the device limit"
+        );
+        // A layer is never larger than its frame, so the cap follows the frame's budget.
+        assert!(!leasable(4096, 4096, lease_budget(1080, 2504), 8192));
     }
 
     #[test]
