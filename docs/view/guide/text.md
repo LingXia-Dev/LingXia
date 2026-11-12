@@ -79,7 +79,8 @@ is a face file bundled with the lxapp and declared in the page's theme styleshee
 ```
 
 `font-brand` (or `fontFamily: 'Brand Serif, serif'`) then sets it, with the generic after it as the
-fallback. Keep face files in a static directory such as `public/`; `src` is one `.ttf`, `.otf` or `.ttc`
+fallback. Redefining `--font-sans` (`--font-sans: "Brand Sans", sans-serif;`) makes the face the page's
+default: the root takes it, so every text without its own family does. Keep face files in a static directory such as `public/`; `src` is one `.ttf`, `.otf` or `.ttc`
 of at most 8 MiB, so subset large CJK faces. Faces load after the first frame: text shows in the
 fallback until its face arrives. An undeclared family is a `UI_FONT` build error, and a file that fails
 to load is a `UI_FONT` warning. Each file's own metadata picks it by weight and style. `font-thin` …

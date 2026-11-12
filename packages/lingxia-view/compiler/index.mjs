@@ -439,7 +439,11 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     // Packages' tokens sit below the app's own, so the app's stylesheet overrides any of them.
     const theme = [...await packageTokens(root, tokenPackages, problems), ...themes.values()].join('\n');
     warm &&= tailwindWarm(theme);
-    const classes = await compileUtilities(candidates, theme, { literalColors });
+    // `font-sans` lowers the theme's `--font-sans`; a non-default one is the page's family.
+    const classes = await compileUtilities(new Set([...candidates, 'font-sans']), theme, { literalColors });
+    const sans = classes.find(rule => rule.name === 'font-sans');
+    if (sans?.error && !candidates.has('font-sans')) problems.push(`${page}: UI_FONT: --font-sans: ${sans.error.message}`);
+    const pageFamily = sans?.style?.fontFamily === 'sans-serif' ? undefined : sans?.style?.fontFamily;
     const checker = moduleChecker(sourceFiles);
     const rulesByName = new Map();
     for (const rule of classes) rulesByName.set(rule.name, [...(rulesByName.get(rule.name) ?? []), rule]);
@@ -475,7 +479,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     const code = bundled.outputFiles.find(file => !file.path.endsWith('.map'));
     const map = bundled.outputFiles.find(file => file.path.endsWith('.map'));
     let module = code.text.replace(/\n\/\/# sourceMappingURL=.*\n?$/, '\n') + `\nconfigureClasses(${JSON.stringify(classes)});\n` +
-      (fonts.length ? `configureFonts(${JSON.stringify(fonts)});\n` : '');
+      (fonts.length || pageFamily ? `configureFonts(${JSON.stringify(fonts)}${pageFamily ? `, ${JSON.stringify(pageFamily)}` : ''});\n` : '');
     if (map) {
       const { sources, mappings } = JSON.parse(map.text);
       // The lxapp's files and other packages' are named as in build problems; the View runtime stays anonymous.

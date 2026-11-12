@@ -338,6 +338,34 @@ test('@font-face declares bundled faces the page names by family, with a generic
   });
 });
 
+test('a theme that redefines --font-sans re-fonts the whole page from its root', async () => {
+  await project({
+    'brand.ttf': 'face bytes',
+    'theme.css': '@font-face { font-family: Brand; src: url("./brand.ttf"); }\n@theme { --font-sans: Brand, sans-serif; }',
+    'page.tsx': `
+      import './theme.css';
+      export function render() { return <view><text>A</text><button>B</button></view>; }
+    `,
+  }, async (root, build) => {
+    await build();
+    assert.match(await load(root), /configureFonts\(\[\{"family":"Brand","src":"brand.ttf"\}\], "Brand, sans-serif"\)/);
+    const page = tree(describePage());
+    assert.equal(page.props.fontFamily, 'Brand,sans');
+    assert.deepEqual(page.children.map(child => child.props.fontFamily), [undefined, undefined], 'children inherit natively');
+    await writeFile(join(root, 'page.tsx'), `import './theme.css';\nexport function render() { return <view className="font-mono"><text>A</text></view>; }`);
+    await build();
+    await load(root);
+    assert.equal(tree(describePage()).props.fontFamily, 'mono', "the root's own class wins");
+    await writeFile(join(root, 'theme.css'), '@theme { --font-display: serif; }');
+    await writeFile(join(root, 'page.tsx'), `import './theme.css';\nexport function render() { return <view><text>A</text></view>; }`);
+    await build();
+    assert.doesNotMatch(await load(root), /configureFonts\(\[/);
+    assert.equal(tree(describePage()).props.fontFamily, undefined, 'the default stack leaves the engine default');
+    await writeFile(join(root, 'theme.css'), '@theme { --font-sans: Missing, sans-serif; }');
+    await assert.rejects(build(), /UI_FONT: --font-sans: unsupported font-family: Missing, sans-serif/);
+  });
+});
+
 // The exact colour diagnostics the docs reference quotes.
 test('page colours are roles: palette classes, dark: colours and hex literals fail naming the role to use', async () => {
   await project({ 'page.tsx': '' }, async (root, build) => {

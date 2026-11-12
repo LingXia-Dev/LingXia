@@ -6,6 +6,7 @@ import { h, readNode, isNode, isFragment, entries } from './nodes.js';
 import { render, page } from './state.js';
 import { cellOf, envOf } from './hooks.js';
 import { located } from './errors.js';
+import { pageFamily } from './fonts.js';
 import { has, validInputText } from './data.js';
 import { fieldOptions, field as fieldIds, ignorableFields } from '../generated/wire.js';
 import * as check from './validate.js';
@@ -382,7 +383,9 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   const authored = entries(children), flat = authored.map(entry => entry.child);
   // The data-* props as variants and automation read them; nothing below changes them.
   const data = dataOf(props);
-  const style = nodeStyle(tag, props, data, parent.extra, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat), parent.every);
+  // The root takes the theme's `--font-sans`, as preflight gives the document's root; its classes and style still win.
+  const rootFamily = !parent.typography && pageFamily && element.style.includes('fontFamily') ? { fontFamily: pageFamily } : undefined;
+  const style = nodeStyle(tag, props, data, parent.extra ?? rootFamily, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat), parent.every);
   const inline = child => typeof child === 'string' || typeof child === 'number';
   if ((tag === 'span' || tag === 'link') && !parent.inText) throw Error(`UI_TEXT: <${tag}> belongs inside <text>`);
   if (tag === 'link' && parent.inLink) throw Error('UI_TEXT: links do not nest');

@@ -299,9 +299,12 @@
 
   // src/runtime/fonts.js
   var declared = [];
-  function configureFonts(faces) {
+  var pageFamily;
+  function configureFonts(faces, family2) {
     if (!Array.isArray(faces) || faces.length > 32) throw Error("UI_FONT: invalid font list");
-    declared = faces.map(({ family: family2, src, weight, style: style2 }) => ({ family: String(family2), src: String(src), ...weight ? { weight: String(weight) } : {}, ...style2 ? { style: String(style2) } : {} }));
+    if (family2 !== void 0 && typeof family2 !== "string") throw Error("UI_FONT: invalid page family");
+    declared = faces.map(({ family: family3, src, weight, style: style2 }) => ({ family: String(family3), src: String(src), ...weight ? { weight: String(weight) } : {}, ...style2 ? { style: String(style2) } : {} }));
+    pageFamily = family2;
   }
   var declaredFamily = (name) => declared.some((face) => face.family === name);
   var takeFonts = () => JSON.stringify(declared);
@@ -3120,7 +3123,8 @@
     const direction = own2 ?? parent.direction ?? (envOf(render.view)?.direction === "rtl" ? "rtl" : "ltr");
     const authored = entries(children), flat = authored.map((entry) => entry.child);
     const data = dataOf(props);
-    const style2 = nodeStyle(tag, props, data, parent.extra, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat), parent.every);
+    const rootFamily = !parent.typography && pageFamily && element.style.includes("fontFamily") ? { fontFamily: pageFamily } : void 0;
+    const style2 = nodeStyle(tag, props, data, parent.extra ?? rootFamily, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat), parent.every);
     const inline = (child) => typeof child === "string" || typeof child === "number";
     if ((tag === "span" || tag === "link") && !parent.inText) throw Error(`UI_TEXT: <${tag}> belongs inside <text>`);
     if (tag === "link" && parent.inLink) throw Error("UI_TEXT: links do not nest");
