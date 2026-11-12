@@ -3081,6 +3081,210 @@
       }
     },
     {
+      "name": "Switch",
+      "import": "@liulidesign/core/Switch",
+      "exports": [
+        "Switch"
+      ],
+      "category": "inputs",
+      "status": "preview",
+      "summary": "A setting that turns on or off the moment it flips",
+      "description": "Switch turns one setting on or off and applies it at once, with no Save. The label and the track are one press target; help text below is read as the description.",
+      "keywords": [
+        "switch",
+        "toggle",
+        "on off",
+        "setting",
+        "preference",
+        "enable",
+        "disable"
+      ],
+      "props": [
+        {
+          "name": "bind",
+          "type": "Local<boolean>",
+          "required": false,
+          "description": "A View-local cell the switch reads and writes; use it or `value` with `onChange`."
+        },
+        {
+          "name": "value",
+          "type": "boolean",
+          "required": false,
+          "description": "The app's value; pass `onChange` with it."
+        },
+        {
+          "name": "onChange",
+          "type": "((value: boolean) => void)",
+          "required": false,
+          "description": "Runs with the new value; the app passes it back as `value`."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The visible label and the switch's name. Say what is on, not the action: \"Wi-Fi\", \"Sync over mobile data\"."
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "description": "Help text under the label, read as the switch's description."
+        },
+        {
+          "name": "isDisabled",
+          "type": "boolean",
+          "required": false,
+          "description": "",
+          "default": "false"
+        },
+        {
+          "name": "variant",
+          "type": "SwitchVariant",
+          "required": false,
+          "description": "`row` sits in a list group among `Item` rows, with the row's padding and height.",
+          "default": "'standalone'"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the switch."
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "control": "switch",
+        "description": "text"
+      },
+      "accessibility": {
+        "pattern": "switch",
+        "name": "label",
+        "description": [
+          "description"
+        ],
+        "states": [
+          {
+            "state": "checked",
+            "from": "value or bind"
+          },
+          {
+            "state": "disabled",
+            "from": "isDisabled"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Space",
+            "effect": "Flips it."
+          }
+        ],
+        "target": {
+          "md": 32
+        },
+        "contrast": [
+          {
+            "what": "track, on",
+            "pair": [
+              "accent",
+              "surface"
+            ],
+            "minimum": "3:1",
+            "proven": true
+          },
+          {
+            "what": "track, off",
+            "pair": [
+              "line-strong",
+              "surface"
+            ],
+            "minimum": "3:1",
+            "proven": true
+          },
+          {
+            "what": "label",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1",
+            "proven": true
+          }
+        ],
+        "notes": [
+          "On and off differ in the thumb's side as well as the track colour, never in colour alone.",
+          "The standalone switch is 32 px tall; the row variant gives it a 48 px row."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Basic",
+          "title": "With help text",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Switch } from '@liulidesign/core/Switch';\n\n/** A setting that applies the moment it flips. */\nexport function Basic() {\n  const sync = useLocal('sync', true);\n  return <Switch bind={sync} label=\"Sync over mobile data\" description=\"Photos wait for Wi-Fi either way.\" data-testid=\"sync\" />;\n}"
+        },
+        {
+          "name": "InList",
+          "title": "As list rows",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Item } from '@liulidesign/core/Item';\nimport { Switch } from '@liulidesign/core/Switch';\n\n/** Among list rows: the row's padding and height. The stage's own padding is undone so the rows meet its edges. */\nexport function InList() {\n  const alerts = useLocal('alerts', true);\n  const digest = useLocal('digest', false);\n  return (\n    <view className=\"-m-5 divide-y divide-text/8\">\n      <Item label=\"Sound\" endContent={<text className=\"text-body\">Chime</text>} onClick={() => {}} hasChevron />\n      <Switch bind={alerts} label=\"Mentions\" variant=\"row\" data-testid=\"mentions\" />\n      <Switch bind={digest} label=\"Weekly digest\" variant=\"row\" data-testid=\"digest\" />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "Liuli's own track and thumb: a thumb with a hairline and contact shadow, a smaller track for dense rows.",
+          "needs": "switch track and thumb styling (size, fill, border, shadow) on the primitive",
+          "today": "The primitive's 52 by 32 track and plain white thumb, at one size."
+        },
+        {
+          "missing": "Help text that toggles the switch when tapped.",
+          "needs": "a switch that takes element children, as a checkbox does",
+          "today": "Only the label row is the press target; the help text sits outside it."
+        }
+      ],
+      "related": [
+        "CheckboxInput",
+        "Item"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "On or off, at once",
+        "order": 5,
+        "page": {
+          "lead": "Use a switch for a setting that takes effect the moment it flips. On a form that is sent later, use a checkbox.",
+          "hero": "Basic",
+          "variants": [
+            {
+              "name": "InList",
+              "title": "As rows in a list, beside an Item"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateOff",
+              "title": "Off"
+            },
+            {
+              "name": "StateOn",
+              "title": "On"
+            },
+            {
+              "name": "StateDisabledOff",
+              "title": "Disabled, off"
+            },
+            {
+              "name": "StateDisabledOn",
+              "title": "Disabled, on"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "Tabs",
       "import": "@liulidesign/core/Tabs",
       "exports": [

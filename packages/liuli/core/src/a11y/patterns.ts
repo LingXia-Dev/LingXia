@@ -108,6 +108,16 @@ export const patterns = {
       ],
     },
   },
+  switch: {
+    role: 'switch',
+    checks: {
+      'is found by its label': [{ do: 'find', role: 'switch', name: 'label' }],
+      'a tap flips it': [{ do: 'tap', role: 'switch' }, { expect: 'checked', checked: true }, { do: 'tap', role: 'switch' }, { expect: 'checked', checked: false }],
+    },
+    keyboardChecks: {
+      'Space flips it': [{ do: 'tab-to', role: 'switch' }, { do: 'press-key', key: 'space' }, { expect: 'checked', checked: true }],
+    },
+  },
   select: {
     role: 'combobox',
     checks: {

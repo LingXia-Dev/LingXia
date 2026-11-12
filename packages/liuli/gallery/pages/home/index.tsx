@@ -12,6 +12,7 @@ import { Specimen as ProgressBarSpecimen } from '../../../core/src/ProgressBar/P
 import { Specimen as RadioGroupSpecimen } from '../../../core/src/RadioGroup/RadioGroup.examples';
 import { Specimen as SelectSpecimen } from '../../../core/src/Select/Select.examples';
 import { Specimen as SliderSpecimen } from '../../../core/src/Slider/Slider.examples';
+import { Specimen as SwitchSpecimen } from '../../../core/src/Switch/Switch.examples';
 import { Specimen as TabsSpecimen } from '../../../core/src/Tabs/Tabs.examples';
 import { Specimen as TextInputSpecimen } from '../../../core/src/TextInput/TextInput.examples';
 import { Category, GalleryPage, Masthead, Tile } from '../../shared/Layout';
@@ -122,6 +123,14 @@ export function render({ actions }: View<Actions>) {
           <RadioGroupSpecimen />
         </Tile>
         <Tile
+          name={"Switch"}
+          tagline={"On or off, at once"}
+          onOpen={() => actions.open({ page: "switch" })}
+          testId={"open-switch"}
+        >
+          <SwitchSpecimen />
+        </Tile>
+        <Tile
           name={"Slider"}
           tagline={"A value along a track"}
           onOpen={() => actions.open({ page: "slider" })}
@@ -132,6 +141,7 @@ export function render({ actions }: View<Actions>) {
         <Tile
           name={"Field"}
           tagline={"Label, help and status"}
+          isWide
           onOpen={() => actions.open({ page: "field" })}
           testId={"open-field"}
         >

@@ -6,6 +6,7 @@ import { DropdownMenu, DropdownMenuDivider, DropdownMenuItem } from '@liulidesig
 import { Item } from '@liulidesign/core/Item';
 import { RadioGroup } from '@liulidesign/core/RadioGroup';
 import { Slider } from '@liulidesign/core/Slider';
+import { Switch } from '@liulidesign/core/Switch';
 import { GalleryPage } from '../../shared/Layout';
 
 const dots: VectorPath[] = [{ d: 'M5 12h.01M12 12h.01M19 12h.01', fill: 'none', stroke: 'currentColor', strokeWidth: 3, strokeLinecap: 'round' }];
@@ -58,6 +59,7 @@ export function render() {
   const digest = useLocal('digest', 'Weekly');
   const textSize = useLocal('textSize', 3);
   const plan = useLocal<string | null>('plan', 'Pro');
+  const cellular = useLocal('cellular', false);
   const devices = useLocal('devices', initialDevices.map(device => device.id));
   const confirming = useLocal('confirming', false);
   const scheduled = useLocal('scheduled', false);
@@ -110,6 +112,7 @@ export function render() {
           data-testid="text-size"
         />
         <Item label="Offline notes" endContent={<Badge label="Synced" tone="success" size="sm" />} />
+        <Switch bind={cellular} label="Sync over mobile data" variant="row" data-testid="cellular" />
       </Group>
 
       <Group title="Signed-in devices" footer="Signing a device out removes its offline copy.">

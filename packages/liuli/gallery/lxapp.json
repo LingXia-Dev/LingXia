@@ -17,6 +17,7 @@
     { "name": "select", "path": "pages/select/index" },
     { "name": "checkbox-input", "path": "pages/checkbox-input/index" },
     { "name": "radio-group", "path": "pages/radio-group/index" },
+    { "name": "switch", "path": "pages/switch/index" },
     { "name": "slider", "path": "pages/slider/index" },
     { "name": "field", "path": "pages/field/index" },
     { "name": "badge", "path": "pages/badge/index" },

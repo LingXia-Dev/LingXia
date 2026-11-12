@@ -32,6 +32,8 @@
     "./Select/recipe": "./src/Select/Select.recipe.ts",
     "./Slider": "./src/Slider/Slider.tsx",
     "./Slider/recipe": "./src/Slider/Slider.recipe.ts",
+    "./Switch": "./src/Switch/Switch.tsx",
+    "./Switch/recipe": "./src/Switch/Switch.recipe.ts",
     "./Tabs": "./src/Tabs/Tabs.tsx",
     "./Tabs/recipe": "./src/Tabs/Tabs.recipe.ts",
     "./package.json": "./package.json"
