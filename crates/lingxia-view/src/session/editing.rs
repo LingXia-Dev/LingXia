@@ -244,6 +244,10 @@ impl ViewSession {
             edits.push(crate::text::input::Edit::FinishComposition);
         }
         let committed = inputs.edit(identity, &edits, &mut self.renderer)?;
+        // Typing into an editor scrolled out of view brings it back, as native fields do.
+        if !edits.is_empty() && !inputs.visible(identity) {
+            self.reveal_input = true;
+        }
         let mut rebuild = self.input_rebuild;
         if let (Some(text), Some(handle)) = (committed, inputs.handler(identity, false)) {
             if !self.text_event(self.generation, handle, &text)? {

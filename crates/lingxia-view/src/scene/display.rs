@@ -181,7 +181,10 @@ impl DisplayList {
             let Some(shaped) = &self.retained.inputs[*index] else {
                 continue;
             };
-            if !state.focused || state.text != input.value {
+            // A focused editor scrolled out of view keeps focus, but draws no caret and reports
+            // no caret rect until it is back.
+            let off_screen = node.visible_bounds[2] <= 0.0 || node.visible_bounds[3] <= 0.0;
+            if !state.focused || state.text != input.value || off_screen {
                 input.scroll_offset = [0.0; 2];
                 continue;
             }

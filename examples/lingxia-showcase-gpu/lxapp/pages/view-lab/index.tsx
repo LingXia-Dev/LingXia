@@ -21,9 +21,9 @@ type Group = keyof typeof groups;
 
 export function render() {
   const group = useLocal<Group>('group', 'paint');
-  // The bottom inset (bars and home indicator) specs measure overlays and the page scroll against.
-  const { insets, safeArea } = useView().env;
-  const data = { 'data-inset-bottom': String(insets.bottom), 'data-safe-bottom': String(safeArea.bottom) } as const;
+  // The bottom inset (bars and home indicator) and the keyboard height specs measure against.
+  const { insets, safeArea, keyboard } = useView().env;
+  const data = { 'data-inset-bottom': String(insets.bottom), 'data-safe-bottom': String(safeArea.bottom), 'data-keyboard': String(keyboard.height) } as const;
   return (
     <Page testId="view-lab" data={data}>
       <view className="flex-row gap-2 flex-wrap">

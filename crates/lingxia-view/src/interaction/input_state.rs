@@ -62,6 +62,11 @@ pub(crate) struct TextSelection {
 }
 
 impl Inputs {
+    /// Whether `identity` was on screen in the last decorated frame.
+    pub fn visible(&self, identity: &str) -> bool {
+        self.entries.get(identity).is_some_and(|e| e.visible)
+    }
+
     pub fn focused(&self) -> Option<&str> {
         self.focused.as_deref()
     }
@@ -221,11 +226,14 @@ impl Inputs {
                 entry.visible = node.visible_bounds[2] > 0.0 && node.visible_bounds[3] > 0.0;
             }
         }
-        if self
-            .focused
-            .as_ref()
-            .is_some_and(|id| !self.entries[id].visible)
-        {
+        // An editor scrolled out of view keeps focus and its keyboard, as on iOS and Android;
+        // only leaving the display ends it.
+        if self.focused.as_ref().is_some_and(|id| {
+            !display
+                .nodes
+                .iter()
+                .any(|node| &*node.identity == id.as_str())
+        }) {
             self.blur(renderer)?;
         }
         for node in &display.nodes {

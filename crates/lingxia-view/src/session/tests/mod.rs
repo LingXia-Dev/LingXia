@@ -1033,16 +1033,39 @@ fn viewport_reveal_preserves_editor_and_rolls_back_failed_frames() {
             .is_some()
         );
         let scroll = frame.nodes[0].scroll.as_ref().unwrap().id.clone();
-        page.prepare_native(
-            width,
-            (120.0 * scale) as u16,
-            scale,
-            false,
-            Some(&HashMap::from([(scroll, 0.0)])),
-            Ok,
-        )
-        .unwrap();
-        assert!(page.input_state(token, &id).is_none());
+        let away = page
+            .prepare_native(
+                width,
+                (120.0 * scale) as u16,
+                scale,
+                false,
+                Some(&HashMap::from([(scroll, 0.0)])),
+                Ok,
+            )
+            .unwrap();
+        // Scrolled away it keeps focus, without a caret rect; the next keystroke brings it back.
+        let input = away.nodes[2].input.as_ref().unwrap();
+        assert!(input.edit_token.is_some() && input.geometry.is_none());
+        let token = input.edit_token.unwrap();
+        assert!(
+            page.edit_input(
+                token,
+                &id,
+                &[crate::text::input::Edit::Replace {
+                    text: "?".into(),
+                    cursor: 1,
+                    composing: false
+                }],
+                false
+            )
+            .unwrap()
+            .is_some()
+        );
+        let back = page
+            .prepare_native(width, (120.0 * scale) as u16, scale, false, None, Ok)
+            .unwrap();
+        assert_eq!(back.nodes[0].scroll.as_ref().unwrap().offset, 224.0);
+        assert!(back.nodes[2].input.as_ref().unwrap().geometry.is_some());
     }
 }
 
@@ -1143,7 +1166,8 @@ fn editor_focus_paint_recomputes_when_scrolling_changes_visibility() {
     let mut page = ViewSession::new(&module).unwrap();
     let first = page.layout(200, 100, 1.0).unwrap();
     let scroll = first.nodes[0].scroll.as_ref().unwrap().id.clone();
-    for (offset, focused) in [(200.0, true), (0.0, false), (200.0, false)] {
+    // Scrolled out of view, the editor keeps focus; its focus style is back when it returns.
+    for (offset, focused) in [(200.0, true), (0.0, true), (200.0, true)] {
         let display = page
             .prepare_native(
                 200,
@@ -1225,7 +1249,10 @@ fn autofocus_waits_for_visibility_and_does_not_repeat_after_blur() {
         Ok,
     )
     .unwrap();
-    assert!(page.input_state(focused.token, &id).is_none());
+    // Off screen it keeps focus and the composition; a blur there ends both.
+    assert!(page.input_state(focused.token, &id).is_some());
+    assert!(page.blur_input(focused.token, &id).unwrap());
+    page.prepare_native(200, 100, 1.0, false, None, Ok).unwrap();
     let visible = page
         .prepare_native(
             200,

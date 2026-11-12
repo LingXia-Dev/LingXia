@@ -128,3 +128,30 @@ fn focus_within_styles_the_ancestors_of_the_focused_editor() {
         "focus moved outside it"
     );
 }
+
+#[test]
+fn an_editor_scrolled_out_of_view_keeps_focus() {
+    let mut page = ViewSession::new(&super::source(
+        "function render(){const a=useLocal('a','');return h('scroll',{style:{height:200}},h('input',{key:'a',bind:a,autoFocus:true}),h('view',{style:{height:2000}}))}",
+    ))
+    .unwrap();
+    let frame = page.layout(300, 400, 1.0).unwrap();
+    assert_eq!(focused(&frame), [1]);
+    let region = frame.nodes[0].identity.to_string();
+    let frame = page
+        .prepare_native(
+            300,
+            400,
+            1.0,
+            false,
+            Some(&std::collections::HashMap::from([(region, 1500.0)])),
+            Ok,
+        )
+        .unwrap();
+    let input = frame.nodes[1].visible_bounds;
+    assert!(
+        input[3] <= 0.0 || input[2] <= 0.0,
+        "the editor is off screen: {input:?}"
+    );
+    assert_eq!(focused(&frame), [1], "and still focused");
+}
