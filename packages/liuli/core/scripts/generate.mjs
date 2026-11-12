@@ -189,6 +189,9 @@ function galleryPage(doc) {
 // The package's own status, shown once on the home page; a tile shows only a status that differs.
 const packageStatus = 'preview';
 const statusTitles = { preview: 'Preview', stable: 'Stable' };
+// A tagline fits one line of a half-width home tile on a 360 pt screen at footnote size.
+const taglineLimit = 22;
+
 const categoryTitles = { actions: 'Actions', navigation: 'Navigation', inputs: 'Inputs', feedback: 'Feedback', overlays: 'Overlays', content: 'Content' };
 
 // Foundations and Patterns are hand-written gallery pages listed in gallery/guides.json; each has a
@@ -278,7 +281,7 @@ for (const name of names) {
   };
   if (!(doc.category in categoryTitles)) problems.push(`src/${name}/${name}.doc.ts: category ${doc.category} is not a gallery category`);
   const tagline = doc.gallery.tagline ?? '';
-  if (!tagline || tagline.length > 32 || tagline.endsWith('.')) problems.push(`src/${name}/${name}.doc.ts: gallery.tagline must be 1 to 32 characters without a trailing period`);
+  if (!tagline || tagline.length > taglineLimit || tagline.endsWith('.')) problems.push(`src/${name}/${name}.doc.ts: gallery.tagline must be 1 to ${taglineLimit} characters without a trailing period`);
   if (!Number.isInteger(doc.gallery.order) || doc.gallery.order < 1) problems.push(`src/${name}/${name}.doc.ts: gallery.order must be a whole number from 1`);
   for (const shown of [doc.gallery.specimen, ...galleryNames(doc)])
     if (!sources.has(shown)) problems.push(`src/${name}/${name}.doc.ts: gallery shows ${shown}, which ${name}.examples.tsx does not export`);
@@ -302,7 +305,7 @@ const specimensPath = join(gallery, 'shared', 'Specimens.tsx');
 const specimens = existsSync(specimensPath) ? readFileSync(specimensPath, 'utf8') : '';
 for (const guide of [...guides.foundations, ...guides.patterns]) {
   const where = `gallery/guides.json: ${guide.page}`;
-  if (!guide.tagline || guide.tagline.length > 32 || guide.tagline.endsWith('.')) problems.push(`${where}: tagline must be 1 to 32 characters without a trailing period`);
+  if (!guide.tagline || guide.tagline.length > taglineLimit || guide.tagline.endsWith('.')) problems.push(`${where}: tagline must be 1 to ${taglineLimit} characters without a trailing period`);
   for (const file of ['index.tsx', 'index.ts', 'index.json'])
     if (!existsSync(join(gallery, 'pages', guide.page, file))) problems.push(`${where}: pages/${guide.page}/${file} is missing`);
   if (!new RegExp(`export function ${guideSpecimen(guide)}\\b`).test(specimens)) problems.push(`${where}: shared/Specimens.tsx does not export ${guideSpecimen(guide)}`);

@@ -87,7 +87,7 @@ export interface ExampleRef {
 export interface GalleryDoc {
   /** A small, still specimen for the home tile; it is drawn on a 96 px stage. */
   readonly specimen: string;
-  /** The tile's line: at most 32 characters, no trailing period. */
+  /** The tile's line: at most 22 characters, so it fits one line of a half-width tile; no trailing period. */
   readonly tagline: string;
   /** Position within its category on the home page and in the manifest, from 1. */
   readonly order: number;

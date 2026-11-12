@@ -74,7 +74,7 @@ export const doc: ComponentDoc = {
   related: ['RadioGroup', 'DropdownMenu', 'Field'],
   gallery: {
     specimen: 'Specimen',
-    tagline: 'One choice from a long list',
+    tagline: 'One from a long list',
     order: 2,
     page: {
       lead: 'Use a select when there are too many options to show at once, or the choice matters less than the space.',

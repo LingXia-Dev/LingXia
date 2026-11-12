@@ -29,7 +29,7 @@ export function render({ actions }: View<Actions>) {
       <Category title={"Foundations"}>
         <Tile
           name={"Colour"}
-          tagline={"Theme roles, light and dark"}
+          tagline={"Light and dark roles"}
           onOpen={() => actions.open({ page: "colour" })}
           testId={"open-colour"}
         >
@@ -37,7 +37,7 @@ export function render({ actions }: View<Actions>) {
         </Tile>
         <Tile
           name={"Typography"}
-          tagline={"Six sizes, three weights"}
+          tagline={"Sizes and weights"}
           onOpen={() => actions.open({ page: "typography" })}
           testId={"open-typography"}
         >
@@ -45,7 +45,7 @@ export function render({ actions }: View<Actions>) {
         </Tile>
         <Tile
           name={"Shape & spacing"}
-          tagline={"Corners, heights and steps"}
+          tagline={"Corners and heights"}
           onOpen={() => actions.open({ page: "shape-and-spacing" })}
           testId={"open-shape-and-spacing"}
         >
@@ -61,7 +61,7 @@ export function render({ actions }: View<Actions>) {
         </Tile>
         <Tile
           name={"Motion"}
-          tagline={"How things enter and react"}
+          tagline={"Enter, move, react"}
           isWide
           onOpen={() => actions.open({ page: "motion" })}
           testId={"open-motion"}
@@ -102,7 +102,7 @@ export function render({ actions }: View<Actions>) {
         </Tile>
         <Tile
           name={"Select"}
-          tagline={"One choice from a long list"}
+          tagline={"One from a long list"}
           onOpen={() => actions.open({ page: "select" })}
           testId={"open-select"}
         >
@@ -171,7 +171,7 @@ export function render({ actions }: View<Actions>) {
       <Category title={"Overlays"}>
         <Tile
           name={"Dialog"}
-          tagline={"A decision over the page"}
+          tagline={"A decision, on top"}
           onOpen={() => actions.open({ page: "dialog" })}
           testId={"open-dialog"}
         >
@@ -223,7 +223,7 @@ export function render({ actions }: View<Actions>) {
       <Category title={"Patterns"}>
         <Tile
           name={"Sign in"}
-          tagline={"A form that checks itself"}
+          tagline={"A self-checking form"}
           onOpen={() => actions.open({ page: "sign-in" })}
           testId={"open-sign-in"}
         >
@@ -231,7 +231,7 @@ export function render({ actions }: View<Actions>) {
         </Tile>
         <Tile
           name={"Settings"}
-          tagline={"Rows, menus and a confirm"}
+          tagline={"Rows, menus, a confirm"}
           onOpen={() => actions.open({ page: "settings" })}
           testId={"open-settings"}
         >
@@ -239,7 +239,7 @@ export function render({ actions }: View<Actions>) {
         </Tile>
         <Tile
           name={"Uploads"}
-          tagline={"Tasks that take a while"}
+          tagline={"Work that takes time"}
           isWide
           onOpen={() => actions.open({ page: "uploads" })}
           testId={"open-uploads"}

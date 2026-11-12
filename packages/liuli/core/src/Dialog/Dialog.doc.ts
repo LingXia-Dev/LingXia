@@ -66,7 +66,7 @@ export const doc: ComponentDoc = {
   related: ['Button', 'DropdownMenu'],
   gallery: {
     specimen: 'Specimen',
-    tagline: 'A decision over the page',
+    tagline: 'A decision, on top',
     order: 1,
     page: {
       lead: 'Use a dialog for a decision or a short task that must be finished before going on.',
