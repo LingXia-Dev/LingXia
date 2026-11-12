@@ -84,6 +84,11 @@ export class Lingxia {
   private static backgroundGrace: Map<number, number> = new Map<number, number>();
   private static lastGraceToken: number = 0;
   private static pendingNotificationWant: Want | null = null;
+  // Last orientation asked of the window, and the shape it had when a force replaced the free one.
+  private static appliedOrientation: window.Orientation = window.Orientation.UNSPECIFIED;
+  private static freeShape: window.Orientation | null = null;
+  private static releaseTimer: number = -1;
+  private static releaseListener: ((size: window.Size) => void) | null = null;
 
   /**
    * Product-app entry point, paired with `LxAppNavigation`. Only stages the
@@ -362,16 +367,80 @@ export class Lingxia {
         hilog.warn(DOMAIN, TAG, `updateOrientationUI skipped: mainWindow unavailable (${appId})`);
         return false;
       }
-      mainWindow.setPreferredOrientation(targetOrientation)
-        .catch((error: Error) => {
-          const message: string = error?.message ?? String(error);
-          LxLog.e(TAG, `updateOrientationUI failed: ${message}`);
-        });
+      Lingxia.applyOrientation(mainWindow, targetOrientation);
       return true;
     } catch (error) {
       LxLog.e(TAG, `updateOrientationUI failed: ${error}`);
       return false;
     }
+  }
+
+  // A lifted force first turns the window back to the shape it had, since releasing alone leaves a flat phone where the force put it.
+  private static applyOrientation(mainWindow: window.Window, target: window.Orientation): void {
+    const free: number = window.Orientation.UNSPECIFIED;
+    const wasFree: boolean = Lingxia.appliedOrientation === free;
+    if (target !== free) {
+      const returning: boolean = Lingxia.releaseListener !== null;
+      Lingxia.stopRelease(mainWindow);
+      if (wasFree && !returning) {
+        Lingxia.freeShape = Lingxia.windowShape(mainWindow);
+      }
+      Lingxia.setOrientation(mainWindow, target);
+      return;
+    }
+    if (Lingxia.releaseListener !== null) {
+      return;
+    }
+    const recorded: window.Orientation | null = Lingxia.freeShape;
+    Lingxia.freeShape = null;
+    if (wasFree || recorded === null || Lingxia.windowShape(mainWindow) === recorded) {
+      Lingxia.setOrientation(mainWindow, free);
+      return;
+    }
+    const listener = (size: window.Size): void => {
+      const shape = size.width > size.height ? window.Orientation.LANDSCAPE : window.Orientation.PORTRAIT;
+      if (shape === recorded) {
+        Lingxia.release(mainWindow);
+      }
+    };
+    Lingxia.releaseListener = listener;
+    mainWindow.on('windowSizeChange', listener);
+    Lingxia.releaseTimer = setTimeout(() => Lingxia.release(mainWindow), 1500);
+    Lingxia.setOrientation(mainWindow, recorded);
+  }
+
+  private static release(mainWindow: window.Window): void {
+    Lingxia.stopRelease(mainWindow);
+    Lingxia.setOrientation(mainWindow, window.Orientation.UNSPECIFIED);
+  }
+
+  private static stopRelease(mainWindow: window.Window): void {
+    if (Lingxia.releaseListener !== null) {
+      try {
+        mainWindow.off('windowSizeChange', Lingxia.releaseListener);
+      } catch (error) {
+        hilog.warn(DOMAIN, TAG, `orientation listener off failed: ${error}`);
+      }
+      Lingxia.releaseListener = null;
+    }
+    if (Lingxia.releaseTimer !== -1) {
+      clearTimeout(Lingxia.releaseTimer);
+      Lingxia.releaseTimer = -1;
+    }
+  }
+
+  private static windowShape(mainWindow: window.Window): window.Orientation {
+    const rect = mainWindow.getWindowProperties().windowRect;
+    return rect.width > rect.height ? window.Orientation.LANDSCAPE : window.Orientation.PORTRAIT;
+  }
+
+  private static setOrientation(mainWindow: window.Window, orientation: window.Orientation): void {
+    Lingxia.appliedOrientation = orientation;
+    mainWindow.setPreferredOrientation(orientation)
+      .catch((error: Error) => {
+        const message: string = error?.message ?? String(error);
+        LxLog.e(TAG, `updateOrientationUI failed: ${message}`);
+      });
   }
 
   /**
