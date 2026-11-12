@@ -112,7 +112,7 @@ export function Independent() {
 | --- | --- | --- | --- | --- |
 | summary text | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
 
-Ratios are computed from crates/lingxia-theme/packs/default.json and rounded down.
+Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Guidance
 

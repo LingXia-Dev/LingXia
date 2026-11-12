@@ -192,7 +192,7 @@ export function Value() {
 | item text | `text` on `surface-raised` | 4.5:1 | 16.26:1 | 11.83:1 |
 | destructive icon | `danger` on `surface-raised` | 3:1 | 5.21:1 | 4.62:1 |
 
-Ratios are computed from crates/lingxia-theme/packs/default.json and rounded down.
+Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Guidance
 

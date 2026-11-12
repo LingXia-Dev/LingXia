@@ -121,9 +121,9 @@ export function WithName() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
-| initials | `on-accent-soft` on `accent-soft` | 4.5:1 | needs the resolved palette | needs the resolved palette |
+| initials | `on-accent-soft` on `accent-soft` | 4.5:1 | 8.44:1 | 9.49:1 |
 
-Ratios are computed from crates/lingxia-theme/packs/default.json and rounded down.
+Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Guidance
 

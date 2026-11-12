@@ -94,7 +94,7 @@ export function WrappedSelect() {
 | help text | `text-muted` on `canvas` | 4.5:1 | 5.50:1 | 7.33:1 |
 | status icon | `danger` on `canvas` | 3:1 | 4.87:1 | 5.98:1 |
 
-Ratios are computed from crates/lingxia-theme/packs/default.json and rounded down.
+Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Guidance
 

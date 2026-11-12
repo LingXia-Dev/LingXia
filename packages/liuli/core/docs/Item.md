@@ -179,7 +179,7 @@ export function Destructive() {
 | second line and end values | `text-muted` on `surface` | 4.5:1 | 5.89:1 | 6.64:1 |
 | chevron | `text-faint` on `surface` | 3:1 | 3.09:1 | 4.42:1 |
 
-Ratios are computed from crates/lingxia-theme/packs/default.json and rounded down.
+Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Guidance
 

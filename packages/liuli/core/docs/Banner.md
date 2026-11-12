@@ -121,12 +121,12 @@ export function OverList() {
 | --- | --- | --- | --- | --- |
 | title and message on neutral | `text` on `surface-sunken` | 4.5:1 | 14.36:1 | 14.46:1 |
 | neutral icon | `text-muted` on `surface-sunken` | 3:1 | 5.20:1 | 6.93:1 |
-| title and message on info | `text` on `accent-soft` | 4.5:1 | needs the resolved palette | needs the resolved palette |
+| title and message on info | `text` on `accent-soft` | 4.5:1 | 14.09:1 | 11.26:1 |
 | title and message on success | `text` on `success-soft` | 4.5:1 | 14.34:1 | 11.76:1 |
 | title and message on warning | `text` on `warning-soft` | 4.5:1 | 14.59:1 | 11.36:1 |
 | title and message on danger | `text` on `danger-soft` | 4.5:1 | 14.24:1 | 12.84:1 |
 
-Ratios are computed from crates/lingxia-theme/packs/default.json and rounded down.
+Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Guidance
 

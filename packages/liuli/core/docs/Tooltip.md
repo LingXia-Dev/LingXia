@@ -119,7 +119,7 @@ export function Sizes() {
 | note text | `surface` on `text` | 4.5:1 | 16.26:1 | 13.87:1 |
 | info glyph | `text-muted` on `surface` | 3:1 | 5.89:1 | 6.64:1 |
 
-Ratios are computed from crates/lingxia-theme/packs/default.json and rounded down.
+Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Guidance
 

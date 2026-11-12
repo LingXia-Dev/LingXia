@@ -123,12 +123,12 @@ export function Spinners() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
-| fill against the track | `accent` on `surface-sunken` | 3:1 | needs the resolved palette | needs the resolved palette |
-| fill and spinner on a card | `accent` on `surface` | 3:1 | needs the resolved palette | needs the resolved palette |
+| fill against the track | `accent` on `surface-sunken` | 3:1 | 4.97:1 | 6.46:1 |
+| fill and spinner on a card | `accent` on `surface` | 3:1 | 5.62:1 | 6.19:1 |
 | label | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
 | value | `text-muted` on `surface` | 4.5:1 | 5.89:1 | 6.64:1 |
 
-Ratios are computed from crates/lingxia-theme/packs/default.json and rounded down.
+Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Guidance
 

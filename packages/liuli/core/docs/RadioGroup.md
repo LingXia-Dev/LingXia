@@ -159,10 +159,10 @@ export function Sizes() {
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
 | circle boundary, not chosen | `line-strong` on `surface` | 3:1 | 3.66:1 | 3.69:1 |
-| circle fill, chosen | `accent` on `surface` | 3:1 | needs the resolved palette | needs the resolved palette |
-| chosen card edge | `accent` on `surface` | 3:1 | needs the resolved palette | needs the resolved palette |
+| circle fill, chosen | `accent` on `surface` | 3:1 | 5.62:1 | 6.19:1 |
+| chosen card edge | `accent` on `surface` | 3:1 | 5.62:1 | 6.19:1 |
 
-Ratios are computed from crates/lingxia-theme/packs/default.json and rounded down.
+Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Guidance
 

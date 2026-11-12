@@ -134,9 +134,9 @@ export function Choice() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
-| selected border | `accent` on `surface` | 3:1 | needs the resolved palette | needs the resolved palette |
+| selected border | `accent` on `surface` | 3:1 | 5.62:1 | 6.19:1 |
 
-Ratios are computed from crates/lingxia-theme/packs/default.json and rounded down.
+Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Guidance
 

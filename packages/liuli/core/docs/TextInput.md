@@ -135,9 +135,9 @@ export function Disabled() {
 | text | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
 | placeholder | `text-muted` on `surface` | 4.5:1 | 5.89:1 | 6.64:1 |
 | box boundary | `line-strong` on `surface` | 3:1 | 3.66:1 | 3.69:1 |
-| focus boundary | `focus` on `surface` | 3:1 | needs the resolved palette | needs the resolved palette |
+| focus boundary | `focus` on `surface` | 3:1 | 5.62:1 | 6.19:1 |
 
-Ratios are computed from crates/lingxia-theme/packs/default.json and rounded down.
+Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Guidance
 
