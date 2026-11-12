@@ -121,6 +121,9 @@ pub struct NodeSnapshot {
     /// A control's `id`, which a swipe row's `aria-actions` names.
     #[serde(skip)]
     pub element_id: Option<String>,
+    /// The hint popover a pointer resting on this button or a key focusing it shows.
+    #[serde(skip)]
+    pub interest_for: Option<String>,
     /// The ids of the controls behind a swipe row, offered as its own actions.
     #[serde(skip)]
     pub aria_actions: Vec<String>,

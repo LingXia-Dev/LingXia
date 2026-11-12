@@ -271,6 +271,21 @@ spec('focus-visible paints after a key moves focus and clears after a finger tap
   await expect.poll(async () => apart(await fillOf(t, ring), plain), { timeout: 3_000 }).toBe(false);
 });
 
+spec('a hint shows after a key rests focus on its trigger and Escape hides it', { start: { page: 'view-lab' } }, async (t) => {
+  const view = t.app.view;
+  await view.testId('lab-tab-input').click();
+  const hint = view.testId('lab-interest-hint');
+  await expect(hint).toHaveCount(0);
+  await view.testId('lab-focus-visible').press('Tab');
+  const trigger = view.testId('lab-interest');
+  await expect(trigger).toBeFocused();
+  await expect(hint).toBeVisible();
+  await expect(trigger).toHaveAttribute('aria-describedby', 'lab-interest-hint');
+  await trigger.press('Escape');
+  await expect(hint).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+});
+
 type Fixture = Parameters<Parameters<typeof spec>[2]>[0];
 
 const apart = (a: number[], b: number[]) => a.some((value, i) => Math.abs(value - b[i]) > 40);

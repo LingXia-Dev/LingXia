@@ -1,6 +1,6 @@
 //! Hardware keyboard focus order. Radio groups and composites take one tab stop each.
 use super::composite::Composites;
-use super::frame::{PresentedFrame, interactive};
+use super::frame::PresentedFrame;
 use crate::scene::node::NodeSnapshot;
 
 fn option(node: &NodeSnapshot) -> bool {
@@ -57,7 +57,7 @@ pub fn candidate(
     let Some(node) = frame.nodes.get(index) else {
         return false;
     };
-    (interactive(node) || super::frame::draggable(node))
+    super::frame::focusable(node)
         && node.accessibility_hidden != Some(true)
         && node.bounds[2] > 0.0
         && node.bounds[3] > 0.0

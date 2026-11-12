@@ -8,6 +8,7 @@ import { takeFonts } from './runtime/fonts.js';
 import { takeFrameMeasures, frameMeasured } from './runtime/frames.js';
 import { wireAck } from './runtime/encode.js';
 import { takeLowered, seedLowered } from './runtime/elements.js';
+import { interest } from './runtime/toplayer.js';
 import { takeSpans } from './runtime/profile.js';
 
 // The native session calls only these globals; module code stays unreachable from the host.
@@ -22,7 +23,7 @@ export function publishHost(render, catalog) {
     __lingxiaReadsHostContext: readsHostContext,
     __lingxiaAutomationAction: automationAction, __lingxiaTakeAutomationResults: takeAutomationResults,
     __lingxiaViewCall: viewCall, __lingxiaOverlayTimer: overlayTimer, __lingxiaTakeOverlayTimers: takeOverlayTimers,
-    __lingxiaEscape: escapeOverlay, __lingxiaFonts: takeFonts, __lingxiaProbeListRow: probeListRow,
+    __lingxiaEscape: escapeOverlay, __lingxiaInterest: interest, __lingxiaFonts: takeFonts, __lingxiaProbeListRow: probeListRow,
     __lingxiaOpenPicker: openPicker, __lingxiaPickerKey: pickerKey, __lingxiaClosePicker: closePicker,
     __lingxiaTakePickerResults: takePickerResults, __lingxiaPickerIdentity: pickerIdentity,
     __lingxiaTakeFrameMeasures: takeFrameMeasures, __lingxiaFrameMeasured: frameMeasured, __lingxiaWireAck: wireAck, __lingxiaEvalSpans: takeSpans,

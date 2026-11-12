@@ -12,7 +12,7 @@ import { fieldOptions, field as fieldIds, ignorableFields } from '../generated/w
 import * as check from './validate.js';
 import { defaultSeries } from '../style/color.js';
 import { keyPositions } from './keys.js';
-import { expand, invokerHandler, popoverScope, dragClose, scrimMark } from './toplayer.js';
+import { expand, invokerHandler, interestTrigger, popoverScope, dragClose, scrimMark } from './toplayer.js';
 import { recall, enter, leave, remember } from './memo.js';
 import { isProvider, provide } from './context.js';
 import { playerName, videoStatus, fullscreenHandler, videoPoster } from './video.js';
@@ -461,6 +461,8 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       if (props.onClick !== undefined && typeof props.onClick !== 'function') throw Error('UI_PROP: onClick');
       if (props.accessibilityLabel !== undefined) wire('accessibilityLabel', props.accessibilityLabel);
       const click = invokerHandler(props, identity, parent.popovers ?? []);
+      interestTrigger(props, identity, parent.popovers ?? []);
+      if (props.interestFor !== undefined) wire('interestFor', props.interestFor);
       if (click && !disabled) on('onClick', click);
       break;
     }

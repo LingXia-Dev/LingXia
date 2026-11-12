@@ -1211,6 +1211,7 @@ impl Renderer {
                 close_request: record.number(field::TOP_LAYER) == Some(1.0),
                 drag_scrim: record.number(field::DRAG_SCRIM) == Some(1.0),
                 element_id: record.string(field::ELEMENT_ID).map(str::to_owned),
+                interest_for: record.string(field::INTEREST_FOR).map(str::to_owned),
                 aria_actions: record
                     .string(field::ARIA_ACTIONS)
                     .map(|ids| ids.split(' ').map(str::to_owned).collect())

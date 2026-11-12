@@ -401,7 +401,11 @@ function Focus() {
       <view className="flex-row gap-2 items-center">
         <Button testId="lab-focus-open" onClick={() => open.set(true)}>Open dialog</Button>
         <button data-testid="lab-focus-visible" onClick={() => {}} className="rounded-xl px-4 py-2 bg-surface-sunken focus-visible:bg-accent focus-visible:text-on-accent">Ring by key</button>
+        <button data-testid="lab-interest" interestFor="lab-interest-hint" aria-label="About focus" className="rounded-full w-8 h-8 items-center justify-center bg-surface-sunken focus-visible:bg-accent focus-visible:text-on-accent"><text className="text-sm">?</text></button>
         <text data-testid="lab-focus-choice" className="text-sm">{`chosen: ${choice.value}`}</text>
+      </view>
+      <view id="lab-interest-hint" popover="hint" role="tooltip" data-testid="lab-interest-hint" className="max-w-56 px-3 py-2 rounded-lg border border-line bg-surface-raised">
+        <text className="text-xs text-text">Rest the pointer here, or Tab to it, to read this.</text>
       </view>
       <dialog open={open.value} onClose={() => close('escape')} data-testid="lab-focus-dialog" aria-label="Confirm payment" className="w-72 gap-3 p-4 rounded-xl border border-line bg-surface">
         <text role="heading" headingLevel={3} className="text-sm font-semibold">Confirm payment</text>

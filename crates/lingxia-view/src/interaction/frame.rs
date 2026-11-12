@@ -83,6 +83,17 @@ impl PresentedFrame {
             .map(|(index, _)| index)
     }
 
+    /// The topmost `interestFor` trigger under a logical point, or the popover with id `hint`.
+    pub fn interest_hit(&self, point: [f32; 2], hint: Option<&str>) -> Option<usize> {
+        self.hit_order()
+            .find(|(_, node)| {
+                (node.interest_for.is_some()
+                    || (hint.is_some() && node.element_id.as_deref() == hint))
+                    && contains(node, point, false)
+            })
+            .map(|(index, _)| index)
+    }
+
     /// The topmost selectable static text under a logical point.
     pub fn selectable_hit(&self, point: [f32; 2]) -> Option<usize> {
         self.hit_order()
@@ -195,6 +206,12 @@ pub fn draggable(node: &NodeSnapshot) -> bool {
 /// Targets of pointer activation and keyboard focus.
 pub fn interactive(node: &NodeSnapshot) -> bool {
     activatable(node) || editable(node) || slider_enabled(node)
+}
+
+/// Keyboard focus may rest here; an `interestFor` button with no click still takes focus,
+/// so a key can show its hint.
+pub fn focusable(node: &NodeSnapshot) -> bool {
+    interactive(node) || draggable(node) || node.interest_for.is_some()
 }
 
 /// Inside the visible box, optionally the node's own rounded shape, and every ancestor clip.

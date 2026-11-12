@@ -30,7 +30,7 @@ export function resetTopLayer() {
 }
 
 function collected() {
-  return render.candidate.topLayer ??= { entries: [], popovers: new Map(), invokers: [] };
+  return render.candidate.topLayer ??= { entries: [], popovers: new Map(), invokers: [], interests: [] };
 }
 
 // An open overlay takes a place in the layer, or is refused past the budget and stays closed.
@@ -106,8 +106,8 @@ function dialog(props, children, identity, parent) {
 function popover(tag, props, children, identity, parent) {
   common(props, parent, 'popover');
   const { popover: type, id, open, onToggle, ...rest } = props;
-  const kind = type === true || type === '' || type === 'auto' ? 'auto' : type === 'manual' ? 'manual' : null;
-  if (!kind) throw Error('UI_PROP: popover is "auto" or "manual"');
+  const kind = type === true || type === '' || type === 'auto' ? 'auto' : type === 'manual' || type === 'hint' ? type : null;
+  if (!kind) throw Error('UI_PROP: popover is "auto", "manual" or "hint"');
   if (typeof id !== 'string' || !id.length || id.length > 256) throw Error('UI_ID: a popover needs an id of 1..256 characters');
   if (onToggle !== undefined && typeof onToggle !== 'function') throw Error('UI_PROP: onToggle');
   const top = collected();
@@ -122,7 +122,7 @@ function popover(tag, props, children, identity, parent) {
   // The invoker that opened it anchors it; one opened from code is placed by its classes.
   if (!anchors.has(id)) anchors.set(id, invoker?.id === id ? invoker.identity : null);
   const anchor = anchors.get(id);
-  top.entries.push({ identity, kind, sequence: opened.get(identity), close: kind === 'auto' ? () => toggle(id, false) : null });
+  top.entries.push({ identity, kind, sequence: opened.get(identity), close: kind === 'manual' ? null : () => toggle(id, false) });
   const env = envOf(render.view);
   const style = anchor ? { ...rest.style, position: 'absolute', top: 0, left: 0 } : { ...placement(rest, env), ...rest.style };
   const testId = props['data-testid'];
@@ -132,8 +132,8 @@ function popover(tag, props, children, identity, parent) {
         style: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'transparent' } }),
       h(tag, { ...rest, id, key: 'panel', [panelMark]: true, [popoverScope]: [...scope, id], style }, ...children)),
     finish: result => {
-      // A manual popover is in the top layer but takes no close request.
-      result.wire.push(['topLayer', kind === 'auto' ? 1 : 2]);
+      // A manual popover is in the top layer but takes no close request; a hint takes Escape.
+      result.wire.push(['topLayer', kind === 'manual' ? 2 : 1]);
       const panel = result.children.find(child => child.props?.key === 'panel');
       if (anchor && panel) panel.wire.push(['anchorTo', anchorName(id)]);
     },
@@ -147,10 +147,12 @@ export function toggle(id, next, from) {
   const top = page.committed?.topLayer;
   const entry = top?.popovers.get(id);
   if (!entry || entry.open === next) return false;
-  if (next && entry.kind === 'auto') {
-    // Opening one auto popover closes the others, except those it sits in or opens from.
+  if (next && entry.kind !== 'manual') {
+    // Opening an auto popover closes the other autos and hints; a hint closes only other hints.
+    // Those it sits in or opens from stay.
     for (const [other, state] of top.popovers)
-      if (other !== id && state.open && state.kind === 'auto' && !entry.ancestors.includes(other) && !(from?.scope ?? []).includes(other))
+      if (other !== id && state.open && (state.kind === 'hint' || (entry.kind === 'auto' && state.kind === 'auto'))
+        && !entry.ancestors.includes(other) && !(from?.scope ?? []).includes(other))
         toggle(other, false);
   }
   if (next) invoker = from ? { id, identity: from.identity } : null;
@@ -176,13 +178,37 @@ export function invokerHandler(props, identity, scope) {
   };
 }
 
+/** A button's `interestFor`: hovering it or focusing it from a key shows that hint, as the core times it. */
+export function interestTrigger(props, identity, scope) {
+  const target = props.interestFor;
+  if (target === undefined) return;
+  if (typeof target !== 'string' || !target.length || target.length > 256 || /\s/.test(target)) throw Error('UI_ID: interestFor names a popover id');
+  collected().interests.push({ target, identity, scope });
+}
+
+/** The core's interest timer ran out for the `nth` trigger, in tree order, of hint `target`: show or hide it. True when it changed. */
+export function interest(target, nth, show) {
+  const entry = page.committed?.topLayer?.interests.filter(candidate => candidate.target === target)[nth];
+  return entry ? toggle(target, show, { identity: entry.identity, scope: entry.scope }) : false;
+}
+
 /** After resolution: invokers name popovers that exist and announce whether they are open. */
 export function finishTopLayer(tree) {
   const top = render.candidate.topLayer;
   for (const identity of [...opened.keys()]) if (!top?.entries.some(entry => entry.identity === identity)) opened.delete(identity);
   if (!top) return;
   const invokers = new Map(top.invokers.map(entry => [entry.identity, entry]));
+  const interests = new Map(top.interests.map(entry => [entry.identity, entry]));
   const walk = node => {
+    const interest = interests.get(node.identity);
+    if (interest) {
+      const target = top.popovers.get(interest.target);
+      if (!target) throw Error(`UI_ID: interestFor "${interest.target}" names no popover on this page`);
+      // While it shows, the hint describes its trigger; the trigger keeps its own description if it has one.
+      if (target.open && node.props['aria-describedby'] === undefined) node.wire.push(['ariaDescribedBy', interest.target]);
+      if (!invokers.has(node.identity) && target.open && anchors.get(interest.target) === node.identity)
+        node.wire.push(['anchorName', anchorName(interest.target)]);
+    }
     const entry = invokers.get(node.identity);
     if (entry && node.element === 'button') {
       const target = top.popovers.get(entry.target);

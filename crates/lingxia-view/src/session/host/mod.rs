@@ -30,6 +30,7 @@ mod hot_swap;
 #[cfg(feature = "hot-swap")]
 pub use hot_swap::{SwapReporter, set_swap_reporter};
 mod images;
+mod interest;
 mod pump;
 mod reveal;
 mod snap;
@@ -405,6 +406,7 @@ struct Main<F> {
     stalled_at: Option<(u16, u16)>,
     styled_press: Option<String>,
     styled_hover: Option<String>,
+    interest: interest::Interest,
     styled_focus: Option<String>,
     caret: Caret,
     visible: bool,
@@ -611,6 +613,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     stalled_at: None,
                     styled_press: None,
                     styled_hover: None,
+                    interest: Default::default(),
                     styled_focus: None,
                     caret: Caret::default(),
                     visible: false,
@@ -683,6 +686,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
     pub fn set_visible(&self, visible: bool) {
         if !visible {
             self.inner.set_hovered(None);
+            self.inner.lose_interest();
         }
         self.inner.set_visible(visible);
     }
@@ -1020,16 +1024,40 @@ impl<A: PlatformAdapter> ViewHost<A> {
         if !self.inner.lifecycle.accepts_input() {
             return;
         }
-        let identity = {
+        let (identity, trigger) = {
             let main = self.inner.main();
-            point.and_then(|[x, y]| {
-                let frame = main.interaction.frame()?;
-                let scale = if frame.scale > 0.0 { frame.scale } else { 1.0 };
-                let index = frame.hover_hit([x / scale, y / scale])?;
-                frame.nodes.get(index).map(|node| node.identity.clone())
-            })
+            let shown = main.interest.shown().map(str::to_owned);
+            point
+                .and_then(|[x, y]| {
+                    let frame = main.interaction.frame()?;
+                    let scale = if frame.scale > 0.0 { frame.scale } else { 1.0 };
+                    let point = [x / scale, y / scale];
+                    let identity = frame
+                        .hover_hit(point)
+                        .and_then(|index| frame.nodes.get(index))
+                        .map(|node| node.identity.to_string());
+                    // Resting on the shown hint keeps its trigger's interest.
+                    let target = shown.as_deref().and_then(|trigger| {
+                        frame
+                            .nodes
+                            .iter()
+                            .find(|node| &*node.identity == trigger)?
+                            .interest_for
+                            .clone()
+                    });
+                    let trigger = frame
+                        .interest_hit(point, target.as_deref())
+                        .and_then(|index| frame.nodes.get(index))
+                        .and_then(|node| match node.interest_for {
+                            Some(_) => Some(node.identity.to_string()),
+                            None => shown.clone(),
+                        });
+                    Some((identity, trigger))
+                })
+                .unwrap_or_default()
         };
-        self.inner.set_hovered(identity.map(String::from));
+        self.inner.set_hovered(identity);
+        self.inner.interest_hovered(trigger);
     }
 
     /// A wheel or trackpad scroll; returns whether a region moved.
@@ -1086,6 +1114,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
             self.cancel();
             // Not every platform reports the pointer leaving a window that lost focus.
             self.inner.set_hovered(None);
+            self.inner.lose_interest();
         }
     }
 
@@ -1743,6 +1772,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.styled_press = None;
             main.styled_hover = None;
             main.styled_focus = None;
+            main.interest.reset();
             let effects = main.interaction.reset();
             main.interaction.set_inert(false);
             let mut cancelled = main.images.inflight_tokens();
@@ -1818,6 +1848,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.styled_press = None;
             main.styled_hover = None;
             main.styled_focus = None;
+            main.interest.reset();
             // Input stops; automation reads a parked page as blank.
             let effects = main.interaction.park();
             for slot in main.automation_calls.values_mut() {

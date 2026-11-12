@@ -19,6 +19,7 @@ pub(crate) fn node(identity: &str, tag: &'static str, bounds: [f32; 4]) -> NodeS
         close_request: false,
         drag_scrim: false,
         element_id: None,
+        interest_for: None,
         aria_actions: Vec::new(),
         described_by: Vec::new(),
         rtl: false,

@@ -197,6 +197,21 @@ impl ViewSession {
         serde_json::from_str(&json).map_err(|e| e.to_string())
     }
 
+    /// An interest delay ran out for the `nth` trigger of hint `target`: show or hide it. True when it changed.
+    pub fn interest(&self, target: &str, nth: usize, show: bool) -> Result<bool, String> {
+        let target = serde_json::to_string(target).map_err(|e| e.to_string())?;
+        self.execute(|| {
+            self.context
+                .eval(Source::from_bytes(
+                    format!(
+                        "typeof __lingxiaInterest === 'function' && __lingxiaInterest({target}, {nth}, {show})"
+                    )
+                    .as_bytes(),
+                ))
+                .map_err(|e| crate::engine::js_error(&self.context, e))
+        })
+    }
+
     /// A toast deadline passed; true when it hid the toast still showing.
     pub fn overlay_timer(&self, token: u64) -> Result<bool, String> {
         self.execute(|| {

@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { h, prepare, commit, dispatch, useLocal, reset } from '../src/internal.js';
 import { escapeOverlay } from '../src/runtime/overlay.js';
+import { interest } from '../src/runtime/toplayer.js';
+import { page } from '../src/runtime/state.js';
 import { hasLocalUpdates } from '../src/runtime/hooks.js';
 import { takeActionErrors } from '../src/runtime/actions.js';
 import { compileUtilities } from '../compiler/tailwind.mjs';
@@ -122,4 +124,40 @@ test('backdrop: styles a dialog backdrop and nothing else', async () => {
   assert.notEqual(byId(nodes, 'd-backdrop').props.backgroundColor, 'scrim');
   assert.throws(() => render(() => h('page', {}, h('view', { className: 'backdrop:bg-text/40' }))), /UI_STYLE: backdrop:/);
   configureClasses([]);
+});
+
+test('interestFor shows a hint on the core\'s word; a hint closes other hints, an auto popover closes hints', () => {
+  reset();
+  const view = () => h('page', {},
+    h('button', { interestFor: 'tip', 'data-testid': 'info', 'aria-label': 'About' }),
+    h('button', { interestFor: 'other', 'data-testid': 'more-info', 'aria-label': 'More' }),
+    h('button', { popoverTarget: 'menu', 'data-testid': 'menu-button' }, 'Menu'),
+    h('view', { id: 'tip', popover: 'hint', role: 'tooltip', 'data-testid': 'tip' }, h('text', {}, 'Storage you have left')),
+    h('view', { id: 'other', popover: 'hint', role: 'tooltip', 'data-testid': 'other' }, h('text', {}, 'More')),
+    h('view', { id: 'menu', popover: true, 'data-testid': 'menu' }));
+  let nodes = render(view);
+  const info = byId(nodes, 'info');
+  assert.equal(info.props.interestFor, 'tip');
+  assert.equal(info.props.stateExpanded, undefined, 'a hint trigger is not a disclosure');
+  assert.equal(interest('tip', 0, true), true);
+  nodes = render(view);
+  assert.ok(byId(nodes, 'tip'));
+  assert.equal(byId(nodes, 'tip-backdrop'), undefined, 'a hint takes no taps');
+  assert.equal(byId(nodes, 'tip').props.anchorTo, '--lx-popover-tip');
+  assert.equal(byId(nodes, 'info').props.anchorName, '--lx-popover-tip');
+  assert.equal(byId(nodes, 'info').props.ariaDescribedBy, 'tip', 'the shown hint describes its trigger');
+  assert.equal(interest('other', 0, true), true);
+  nodes = render(view);
+  assert.equal(byId(nodes, 'tip'), undefined, 'a new hint closes the previous one');
+  dispatch(byId(nodes, 'menu-button').props.onClick);
+  nodes = render(view);
+  assert.ok(byId(nodes, 'menu'));
+  assert.equal(byId(nodes, 'other'), undefined, 'an auto popover closes hints');
+  assert.equal(interest('tip', 0, true), true);
+  nodes = render(view);
+  assert.ok(byId(nodes, 'menu'), 'a hint leaves auto popovers open');
+  assert.equal(escapeOverlay(), true);
+  assert.equal(byId(render(view), 'tip'), undefined, 'Escape closes the newest, the hint');
+  assert.equal(interest('tip', 0, false), false, 'already hidden');
+  assert.throws(() => render(() => h('page', {}, h('button', { interestFor: 'nope' }, 'X'))), /UI_ID: interestFor "nope"/);
 });

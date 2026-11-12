@@ -46,23 +46,33 @@ impl<A: PlatformAdapter> Inner<A> {
         let (mut redraw, mut dispatch, mut number) = (false, false, false);
         let mut press = None;
         let mut focus = None;
+        let mut interest = None;
         for effect in effects {
             match effect {
                 // A styled `<select>` repaints its `focus:` delta in the session; the ring still
                 // draws. An indicator control rings itself in the scene instead.
                 Effect::FocusRing { node } => {
-                    let (styled, own) = {
+                    let (styled, own, trigger) = {
                         let main = self.main();
+                        let trigger = main
+                            .interaction
+                            .frame()
+                            .and_then(|frame| frame.nodes.get(node))
+                            .filter(|node| node.interest_for.is_some())
+                            .map(|node| node.identity.to_string());
                         (
                             main.interaction.styled_focus(node),
                             main.interaction.rings_itself(node),
+                            trigger,
                         )
                     };
                     focus = Some(styled);
+                    interest = Some(trigger);
                     platform.push(if own { Effect::ClearFocusRing } else { effect });
                 }
                 Effect::ClearFocusRing => {
                     focus = Some(None);
+                    interest = Some(None);
                     platform.push(effect);
                 }
                 Effect::Redraw => redraw = true,
@@ -93,6 +103,9 @@ impl<A: PlatformAdapter> Inner<A> {
         }
         if let Some(identity) = focus {
             self.set_control_focus(identity);
+        }
+        if let Some(trigger) = interest {
+            self.interest_focused(trigger);
         }
         if dispatch {
             self.drain_dispatch();

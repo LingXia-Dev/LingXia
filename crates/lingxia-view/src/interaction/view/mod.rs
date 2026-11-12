@@ -551,9 +551,7 @@ impl ViewInteraction {
             }
             if let Some(identity) = focused
                 && let Some(index) = next.nodes.iter().position(|node| {
-                    node.identity == identity
-                        && (frame::interactive(node) || frame::draggable(node))
-                        && frame::visible(node)
+                    node.identity == identity && frame::focusable(node) && frame::visible(node)
                 })
             {
                 self.keyboard_focus = Some(index);

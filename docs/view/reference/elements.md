@@ -41,7 +41,7 @@ Children: any elements and text. Renders as `column`.
 | Prop | Type | Required |
 | --- | --- | --- |
 | `aria-label` | `string` |  |
-| `popover` | `boolean \| "auto" \| "manual"` |  |
+| `popover` | `boolean \| "auto" \| "manual" \| "hint"` |  |
 | `open` | `boolean` |  |
 | `onToggle` | `(open: boolean) => void` |  |
 | `drag` | `"x" \| "y"` |  |
@@ -77,6 +77,7 @@ Children: text, or noninteractive content elements (a composed control).
 | `disabled` | `boolean` |  |
 | `aria-label` | `string` |  |
 | `popoverTarget` | `string` |  |
+| `interestFor` | `string` |  |
 | `drag` | `"x" \| "y"` |  |
 | `dragSnapPoints` | `` readonly (number \| `${number}%`)[] `` |  |
 | `bind` | `Local<number>` |  |

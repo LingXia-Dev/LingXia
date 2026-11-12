@@ -5511,3 +5511,67 @@ fn hover_styles_follow_the_pointer_and_end_when_the_window_loses_focus_or_the_pa
     run_frames(&platform, &host, 4);
     assert!(!hot(&host), "the page hid");
 }
+
+#[test]
+fn an_interest_trigger_shows_its_hint_after_a_rest_and_hides_it_after_the_grace() {
+    let worker = ViewWorker::spawn("test-interest").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let page = source(
+        "function render(){return h('page',{},h('button',{interestFor:'tip','aria-label':'About','data-testid':'about',style:{width:100,height:40}}),h('view',{id:'tip',popover:'hint',style:{width:60,height:30,backgroundColor:'#ff0000'}}))}",
+    );
+    let host = platform.host(&worker, &page, false);
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let shown = |host: &ViewHost<Fake>| {
+        let rects = host.adapter().log.lock().unwrap().rects.clone();
+        rects.iter().any(|(color, _)| color[..3] == [255, 0, 0])
+    };
+    assert!(!shown(&host));
+    let about = host
+        .automation_request(&serde_json::json!({"op": "query", "css": "[data-testid=\"about\"]"}))
+        .unwrap();
+    assert_eq!(
+        about["enabled"], true,
+        "a click-less trigger is not disabled: {about}"
+    );
+    host.hover(Some([20.0, 20.0]));
+    platform.advance(Duration::from_millis(400));
+    run_frames(&platform, &host, 2);
+    assert!(!shown(&host), "the pointer has not rested long enough");
+    platform.advance(Duration::from_millis(100));
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 4);
+    assert!(shown(&host), "the hint shows after the rest");
+    host.hover(None);
+    platform.advance(Duration::from_millis(100));
+    host.hover(Some([20.0, 20.0]));
+    platform.advance(Duration::from_millis(500));
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 4);
+    assert!(shown(&host), "returning within the grace keeps the hint");
+    host.window_focus(false);
+    platform.advance(Duration::from_millis(250));
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 4);
+    assert!(!shown(&host), "the window lost focus");
+    host.window_focus(true);
+    assert!(
+        host.key(crate::interaction::view::Key::Tab, false, false),
+        "a click-less trigger takes focus"
+    );
+    platform.advance(Duration::from_millis(500));
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 4);
+    assert!(shown(&host), "keyboard focus shows the hint");
+    platform.advance(Duration::from_millis(300));
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 8);
+    assert!(shown(&host), "the hint stays while its trigger keeps focus");
+    assert!(
+        host.key(crate::interaction::view::Key::Escape, false, false),
+        "Escape is consumed while a hint shows"
+    );
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 4);
+    assert!(!shown(&host), "Escape closes the hint");
+}

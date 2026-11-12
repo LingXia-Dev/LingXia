@@ -499,7 +499,13 @@ impl Projection<'_> {
         let mut enabled = match input {
             Some(input) => input.enabled,
             None if select.is_some() => select.is_some_and(|select| select.on_select.is_some()),
-            None => !(button || check) || activatable || node.drag.is_some(),
+            // An `interestFor` trigger acts by showing its hint, so it is not a disabled button.
+            None => {
+                !(button || check)
+                    || activatable
+                    || node.drag.is_some()
+                    || node.interest_for.is_some()
+            }
         };
         let mut actions = Vec::new();
         let mut focusable = button || check || input.is_some() || select.is_some();
