@@ -2047,7 +2047,7 @@ fn a_frame_past_its_budget_is_dropped_and_the_page_renders_again() {
     };
     let committed = page.generation();
     let error = spin_for(&mut page, &mut per_ms, 2.0, 1, "slow").unwrap_err();
-    assert!(error.starts_with(super::OVERRUN), "{error}");
+    assert!(error.starts_with("UI_OVERRUN:"), "{error}");
     assert_eq!(
         page.generation(),
         committed,

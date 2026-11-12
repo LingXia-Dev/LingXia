@@ -50,6 +50,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_LIST` | runtime, native | Invalid list description, keys, anchor or row height. |
 | `UI_LOCAL` | runtime | A duplicate `useLocal` name in one component, or `set` on an unmounted cell. |
 | `UI_MODULE` | native | The compiled page module failed to load. |
+| `UI_OVERRUN` | native | A render ran past its time budget; the frame is dropped and the page renders again (`UI_TIMEOUT` after several in a row). |
 | `UI_PAGE` | native | A call reached a page that was already discarded. |
 | `UI_PARENT` | native | A node listed before its parent reached the native decoder. |
 | `UI_PATCH` | native | An invalid state patch from Logic. |

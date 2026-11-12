@@ -395,6 +395,7 @@ const untestable = {
 
 const errorNotes = {
   UI_A11Y: 'An image without `alt`, or a control, editor, plot, select or dialog without an accessible name.',
+  UI_OVERRUN: 'A render ran past its time budget; the frame is dropped and the page renders again (`UI_TIMEOUT` after several in a row).',
   UI_SELECT: 'Invalid `<select>` options, value or selection reply.',
   UI_FONT: 'A family is not declared with `@font-face`, a declared face file is missing, outside the lxapp or too large, or a face or system font could not be read; text falls back to the next font.',
   UI_FRAME: 'The platform presenter kept refusing frames prepared ahead; the page falls back to one frame at a time.',
@@ -481,8 +482,9 @@ async function files(dir, test) {
   return out.sort();
 }
 
-// Native modules keep their tests after `#[cfg(test)]`; only shipped code raises codes.
-const shipped = (path, text) => path.endsWith('.rs') ? text.split(/^#\[cfg\(test\)\]/m)[0] : text;
+// Native modules keep their tests in a trailing `#[cfg(test)] mod … {`; only shipped code raises
+// codes. A `#[cfg(test)]` on a module declaration hides nothing.
+const shipped = (path, text) => path.endsWith('.rs') ? text.split(/^#\[cfg\(test\)\]\s*(?:pub(?:\(crate\))? )?mod \w+ \{/m)[0] : text;
 
 // Test sources: Rust test modules and files, JS tests and the compiled docs examples.
 async function testText() {
