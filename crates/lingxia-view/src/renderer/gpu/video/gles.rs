@@ -35,6 +35,8 @@ pub struct Frames {
     slots: Vec<wgpu::Texture>,
     next: usize,
     size: [u32; 2],
+    /// A GL error left pending in the context was logged once.
+    drained: bool,
 }
 
 /// Whether `device` runs on GLES, where frames take this path.
@@ -82,6 +84,12 @@ impl Frames {
                 for _ in 0..SLOTS {
                     created.push(unsafe { color_texture(size) });
                 }
+            }
+            // A latch reports and clears any error pending in the context (Android logs it per
+            // frame); what wgpu left behind is drained first and logged once.
+            let pending = unsafe { drain_errors() };
+            if pending != 0 && !std::mem::replace(&mut self.drained, true) {
+                log::debug!(target: "lingxia_view", "video frame path: GL error {pending:#x} pending before the latch");
             }
             image.latch()?
         };
@@ -288,6 +296,20 @@ impl Blit {
     }
 }
 
+/// Clears the context's error flags: the first one, or 0.
+unsafe fn drain_errors() -> u32 {
+    unsafe {
+        let first = glGetError();
+        // Bounded: each call clears one flag, and a lost context keeps reporting.
+        for _ in 0..8 {
+            if glGetError() == 0 {
+                break;
+            }
+        }
+        first
+    }
+}
+
 /// Copies tight RGBA `rows` of `size` into texture `name`.
 unsafe fn upload(name: u32, size: [u32; 2], rows: &[u8]) -> Result<(), String> {
     if rows.len() != size[0] as usize * size[1] as usize * 4 {
@@ -486,4 +508,5 @@ unsafe extern "C" {
     fn glColorMask(red: u8, green: u8, blue: u8, alpha: u8);
     fn glDrawArrays(mode: u32, first: i32, count: i32);
     fn glFlush();
+    fn glGetError() -> u32;
 }
