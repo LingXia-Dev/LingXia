@@ -8,7 +8,7 @@ entry in `package.json` `exports`:
 | File | Holds |
 | --- | --- |
 | `X.tsx` | The component and its exported `XProps` type. Prop comments become the reference. |
-| `X.recipe.ts` | Class maps, `as const`. Every leaf is one string literal. |
+| `X.recipe.ts` | Class maps, `as const`; a map keyed by a prop's values is `satisfies Record<ThatType, string>`. Every leaf is one string literal. |
 | `X.doc.ts` | Summary, anatomy, accessibility contract, guidance, gaps, and the list of examples. |
 | `X.examples.tsx` | One exported function per example named in the doc. The gallery shows them; the tests render them. |
 | `X.test.mjs` | Node tests that build and render the examples through `src/testing/harness.mjs`. |

@@ -1,3 +1,5 @@
+import type { ButtonSize, ButtonVariant, ButtonWidth } from './Button';
+
 /** The element each part lands on. */
 export const buttonParts = { root: 'button', icon: 'view', spinner: 'vector', label: 'text', reason: 'text' } as const;
 
@@ -13,33 +15,33 @@ export const buttonRecipe = {
       secondary: 'bg-surface text-text border border-line-strong hover:bg-surface-sunken active:bg-surface-sunken',
       ghost: 'bg-transparent text-text hover:bg-surface-sunken active:bg-surface-sunken',
       destructive: 'bg-danger text-on-danger hover:opacity-90 active:opacity-80',
-    },
+    } satisfies Record<ButtonVariant, string>,
     size: {
       sm: 'min-h-control-sm px-3 gap-1.5',
       md: 'min-h-control-md px-4 gap-2',
       lg: 'min-h-control-lg px-5 gap-2',
-    },
+    } satisfies Record<ButtonSize, string>,
     /** Square, for a trigger that shows only its icon. */
     square: {
       sm: 'size-control-sm px-0',
       md: 'size-control-md px-0',
       lg: 'size-control-lg px-0',
-    },
+    } satisfies Record<ButtonSize, string>,
     width: {
       content: 'self-start',
       fill: 'self-stretch',
-    },
+    } satisfies Record<ButtonWidth, string>,
   },
   icon: {
     base: 'items-center justify-center',
   },
   spinner: {
     base: 'motion-safe:animate-spin',
-    size: { sm: 'size-4', md: 'size-4', lg: 'size-5' },
+    size: { sm: 'size-4', md: 'size-4', lg: 'size-5' } satisfies Record<ButtonSize, string>,
   },
   label: {
     base: 'font-medium text-center',
-    size: { sm: 'text-sm', md: 'text-sm', lg: 'text-base' },
+    size: { sm: 'text-sm', md: 'text-sm', lg: 'text-base' } satisfies Record<ButtonSize, string>,
   },
   /** The disabled reason: not drawn, read as the description. */
   reason: {

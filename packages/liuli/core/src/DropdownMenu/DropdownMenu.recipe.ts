@@ -1,3 +1,6 @@
+import type { ButtonSize } from '../Button/Button';
+import type { DropdownMenuItemVariant, DropdownMenuPlacement } from './DropdownMenu';
+
 export const dropdownMenuParts = {
   chevron: 'vector',
   menu: 'view',
@@ -17,15 +20,15 @@ export const dropdownMenuRecipe = {
   menu: {
     base: 'min-w-48 p-1 gap-0.5 rounded-container border border-line bg-surface-raised shadow-lg transition duration-150 ease-out starting:opacity-0 exit:opacity-0 motion-safe:starting:scale-95',
     /** The gap between the trigger and the menu, on the side the menu opens to. */
-    offset: { bottom: 'mt-1', top: 'mb-1' },
+    offset: { bottom: 'mt-1', top: 'mb-1' } satisfies Record<DropdownMenuPlacement, string>,
   },
   item: {
     base: 'flex-row items-center gap-3 px-3 py-2 rounded-lg text-start text-text hover:bg-surface-sunken active:bg-surface-sunken disabled:opacity-40',
-    size: { sm: 'min-h-control-sm', md: 'min-h-control-md', lg: 'min-h-control-lg' },
+    size: { sm: 'min-h-control-sm', md: 'min-h-control-md', lg: 'min-h-control-lg' } satisfies Record<ButtonSize, string>,
   },
   itemIcon: {
     base: 'items-center justify-center',
-    variant: { default: 'text-muted', destructive: 'text-danger' },
+    variant: { default: 'text-muted', destructive: 'text-danger' } satisfies Record<DropdownMenuItemVariant, string>,
   },
   itemText: {
     base: 'grow basis-0 gap-0.5',

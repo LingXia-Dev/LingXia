@@ -3,10 +3,6 @@ import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
 import { described, renderExample } from '../testing/harness.mjs';
 
-// The checkbox's change handler is a toggle that takes no value; `screen.toggle(node, checked)`
-// sends one and is refused, so these tests call it with the node alone.
-const flip = (screen, node) => screen.toggle(node);
-
 const mark = node => node.children.length > 0 && JSON.stringify(node).includes('M5 12.5l4.5 4.5L19 7.5');
 
 test('Basic: named by the label, described by the help text; toggling draws and removes the mark', async () => {
@@ -16,7 +12,7 @@ test('Basic: named by the label, described by the help text; toggling draws and 
   assert.equal(box().props.accessibilityLabel, 'Weekly digest');
   assert.deepEqual(described(screen, box()), ['A summary of your notes every Monday.']);
   assert.ok(mark(box()));
-  flip(screen, box());
+  screen.toggle(box(), false);
   assert.equal(box().props.checked, 0);
   assert.ok(!mark(box()));
 });
@@ -29,7 +25,7 @@ test('Controlled: required and invalid until checked; the error is the descripti
   assert.equal(terms().props.stateRequired, 1);
   assert.equal(terms().props.stateInvalid, 1);
   assert.deepEqual(described(screen, terms()), ['Accept the terms to create the account.']);
-  flip(screen, terms());
+  screen.toggle(terms(), true);
   assert.equal(terms().props.checked, 1);
   assert.equal(terms().props.stateInvalid, undefined);
   assert.equal(terms().props.ariaDescribedBy, undefined);

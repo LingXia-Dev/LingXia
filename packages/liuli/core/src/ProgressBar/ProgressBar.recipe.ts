@@ -1,3 +1,5 @@
+import type { ProgressBarSize, SpinnerSize } from './ProgressBar';
+
 export const progressBarParts = {
   root: 'view',
   header: 'view',
@@ -24,7 +26,7 @@ export const progressBarRecipe = {
   },
   track: {
     base: 'self-stretch overflow-hidden rounded-full bg-surface-sunken',
-    size: { sm: 'h-1', md: 'h-2' },
+    size: { sm: 'h-1', md: 'h-2' } satisfies Record<ProgressBarSize, string>,
   },
   fill: {
     base: 'h-full rounded-full bg-accent',
@@ -33,6 +35,6 @@ export const progressBarRecipe = {
   },
   spinner: {
     base: 'text-accent motion-safe:animate-spin',
-    size: { sm: 'size-4', md: 'size-6', lg: 'size-8' },
+    size: { sm: 'size-4', md: 'size-6', lg: 'size-8' } satisfies Record<SpinnerSize, string>,
   },
 } as const;

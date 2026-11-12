@@ -1,3 +1,5 @@
+import type { FieldSize, FieldStatusType } from './Field';
+
 export const fieldParts = {
   root: 'view',
   label: 'text',
@@ -18,7 +20,7 @@ export const fieldRecipe = {
   },
   label: {
     base: 'font-medium text-text',
-    size: { sm: 'text-xs', md: 'text-sm', lg: 'text-base' },
+    size: { sm: 'text-xs', md: 'text-sm', lg: 'text-base' } satisfies Record<FieldSize, string>,
     disabled: 'text-faint',
   },
   required: {
@@ -33,7 +35,7 @@ export const fieldRecipe = {
   },
   statusIcon: {
     base: 'size-4 shrink-0',
-    type: { error: 'text-danger', warning: 'text-warning', success: 'text-success' },
+    type: { error: 'text-danger', warning: 'text-warning', success: 'text-success' } satisfies Record<FieldStatusType, string>,
   },
   statusText: {
     base: 'grow basis-0 text-xs text-text',

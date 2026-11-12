@@ -17,7 +17,6 @@ test('WrappedSelect: the visible label is hidden from assistive tech, the contro
 });
 
 test('the status region stays mounted and empties when the status goes', async () => {
-  // The testing screen cannot choose a select option, so a button sets the value.
   const screen = await renderPage(`
     import { useLocal } from '@lingxia/view';
     import { Field } from '@liulidesign/core/Field';
@@ -28,7 +27,6 @@ test('the status region stays mounted and empties when the status goes', async (
           {control => <select bind={period} aria-label={control['aria-label']} aria-describedby={control['aria-describedby']}
             aria-invalid={control['aria-invalid']} data-testid="period" options={[{ value: 'yearly', label: 'Yearly' }]} />}
         </Field>
-        <button data-testid="choose" onClick={() => period.set('yearly')}>Choose</button>
       </page>;
     }
   `);
@@ -38,7 +36,7 @@ test('the status region stays mounted and empties when the status goes', async (
   assert.deepEqual(described(screen, screen.getByTestId('period')), ['Choose a period.']);
   assert.equal(screen.getByTestId('period').props.stateInvalid, 1);
   assert.ok(region()[0].children.some(node => node.tag === 'vector' && node.props.accessibilityHidden === 1), 'icon, hidden');
-  screen.press(screen.getByTestId('choose'));
+  screen.select(screen.getByTestId('period'), 'yearly');
   assert.equal(region().length, 1, 'still mounted');
   assert.equal(textOf(region()[0]), '');
   assert.equal(region()[0].props.opacity, 0, 'visually hidden while empty');

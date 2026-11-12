@@ -1,3 +1,5 @@
+import type { DialogSize } from './Dialog';
+
 export const dialogParts = {
   panel: 'dialog',
   header: 'view',
@@ -16,7 +18,7 @@ export const dialogParts = {
 export const dialogRecipe = {
   panel: {
     base: 'w-[90%] max-h-[85vh] p-5 gap-4 rounded-dialog border border-line bg-surface-raised shadow-xl transition duration-200 ease-out starting:opacity-0 exit:opacity-0 motion-safe:starting:scale-95 motion-safe:exit:scale-95',
-    size: { sm: 'max-w-[360px]', md: 'max-w-[480px]', lg: 'max-w-[640px]' },
+    size: { sm: 'max-w-[360px]', md: 'max-w-[480px]', lg: 'max-w-[640px]' } satisfies Record<DialogSize, string>,
   },
   header: {
     base: 'flex-row items-start gap-3',

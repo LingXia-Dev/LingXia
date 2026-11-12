@@ -9,9 +9,6 @@ import { render, textOf } from '@lingxia/view/testing';
 
 const core = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
-// A phone-sized environment: the testing entry supplies none, and `vh` classes need a viewport.
-const phone = { viewport: { width: 390, height: 844 }, pointer: 'coarse', direction: 'ltr', theme: 'light' };
-
 /**
  * Builds and renders a one-page lxapp. `page` is its source, or a function from the linked
  * package's directory to the source; it may import `@liulidesign/core/…`.
@@ -24,7 +21,7 @@ export async function renderPage(page, view = {}) {
     await mkdir(dirname(linked), { recursive: true });
     await symlink(core, linked, 'dir');
     await writeFile(join(app, 'page.tsx'), typeof page === 'function' ? page(linked) : page);
-    return await render(join(app, 'page.tsx'), { ...view, env: { ...phone, ...view.env } }, { root: app });
+    return await render(join(app, 'page.tsx'), view, { root: app });
   } finally {
     await rm(app, { recursive: true, force: true });
   }
