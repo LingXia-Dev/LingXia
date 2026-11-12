@@ -5,6 +5,7 @@ import { GalleryPage, PageSection } from '../../shared/Layout';
 
 const levels = [
   { name: 'Flat', use: 'Cards and lists: a hairline, no shadow', className: 'rounded-container border border-text/10 bg-surface' },
+  { name: 'Resting', use: 'A thumb on its track: a contact shadow, no lift', className: 'rounded-container border border-text/10 bg-surface shadow-contact' },
   { name: 'Raised', use: 'Menus and anything that floats over the page', className: 'rounded-container border border-text/10 bg-surface-raised shadow-raised' },
 ];
 

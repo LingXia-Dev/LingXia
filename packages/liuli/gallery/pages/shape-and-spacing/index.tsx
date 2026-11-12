@@ -4,7 +4,7 @@ import { GalleryPage, PageSection, Stage, StageGrid } from '../../shared/Layout'
 
 const corners = [
   { name: 'Checkbox', value: '6', shape: 'size-10 rounded-checkbox' },
-  { name: 'Control', value: '10', shape: 'h-10 rounded-control' },
+  { name: 'Control', value: '10, a segment inside 8', shape: 'h-10 rounded-control p-0.5', inner: 'grow w-1/2 rounded-segment border border-accent/40 bg-surface' },
   { name: 'Container', value: '14', shape: 'h-16 rounded-container' },
   { name: 'Dialog', value: '20', shape: 'h-20 rounded-dialog' },
 ];
@@ -46,7 +46,9 @@ export function render() {
         <StageGrid>
           {corners.map(corner => (
             <Stage key={corner.name} caption={`${corner.name} · ${corner.value}`}>
-              <view className={`border border-accent/40 bg-accent-soft ${corner.shape}`} />
+              <view className={`border border-accent/40 bg-accent-soft ${corner.shape}`}>
+                {'inner' in corner && <view className={corner.inner} />}
+              </view>
             </Stage>
           ))}
         </StageGrid>

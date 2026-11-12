@@ -12,6 +12,7 @@
     { "name": "elevation", "path": "pages/elevation/index" },
     { "name": "motion", "path": "pages/motion/index" },
     { "name": "button", "path": "pages/button/index" },
+    { "name": "tabs", "path": "pages/tabs/index" },
     { "name": "text-input", "path": "pages/text-input/index" },
     { "name": "checkbox-input", "path": "pages/checkbox-input/index" },
     { "name": "slider", "path": "pages/slider/index" },

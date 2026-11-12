@@ -189,7 +189,7 @@ function galleryPage(doc) {
 // The package's own status, shown once on the home page; a tile shows only a status that differs.
 const packageStatus = 'preview';
 const statusTitles = { preview: 'Preview', stable: 'Stable' };
-const categoryTitles = { actions: 'Actions', inputs: 'Inputs', feedback: 'Feedback', overlays: 'Overlays', content: 'Content' };
+const categoryTitles = { actions: 'Actions', navigation: 'Navigation', inputs: 'Inputs', feedback: 'Feedback', overlays: 'Overlays', content: 'Content' };
 
 // Foundations and Patterns are hand-written gallery pages listed in gallery/guides.json; each has a
 // tile specimen in gallery/shared/Specimens.tsx named after its page.

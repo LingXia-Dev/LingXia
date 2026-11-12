@@ -10,6 +10,7 @@ import { Specimen as FieldSpecimen } from '../../../core/src/Field/Field.example
 import { Specimen as ItemSpecimen } from '../../../core/src/Item/Item.examples';
 import { Specimen as ProgressBarSpecimen } from '../../../core/src/ProgressBar/ProgressBar.examples';
 import { Specimen as SliderSpecimen } from '../../../core/src/Slider/Slider.examples';
+import { Specimen as TabsSpecimen } from '../../../core/src/Tabs/Tabs.examples';
 import { Specimen as TextInputSpecimen } from '../../../core/src/TextInput/TextInput.examples';
 import { Category, GalleryPage, Masthead, Tile } from '../../shared/Layout';
 import { ColourSpecimen, TypographySpecimen, ShapeAndSpacingSpecimen, ElevationSpecimen, MotionSpecimen, SignInSpecimen, SettingsSpecimen, UploadsSpecimen } from '../../shared/Specimens';
@@ -72,6 +73,17 @@ export function render({ actions }: View<Actions>) {
           testId={"open-button"}
         >
           <ButtonSpecimen />
+        </Tile>
+      </Category>
+      <Category title={"Navigation"}>
+        <Tile
+          name={"Tabs"}
+          tagline={"One area, a few peers"}
+          isWide
+          onOpen={() => actions.open({ page: "tabs" })}
+          testId={"open-tabs"}
+        >
+          <TabsSpecimen />
         </Tile>
       </Category>
       <Category title={"Inputs"}>

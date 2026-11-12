@@ -2,7 +2,7 @@
   "name": "@liulidesign/core",
   "version": "0.1.0",
   "private": true,
-  "description": "Liuli (琉璃): LingXia's design system for GPU pages, as TSX source components.",
+  "description": "Liuli (\u7409\u7483): LingXia's design system for GPU pages, as TSX source components.",
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -28,6 +28,8 @@
     "./Badge/recipe": "./src/Badge/Badge.recipe.ts",
     "./Slider": "./src/Slider/Slider.tsx",
     "./Slider/recipe": "./src/Slider/Slider.recipe.ts",
+    "./Tabs": "./src/Tabs/Tabs.tsx",
+    "./Tabs/recipe": "./src/Tabs/Tabs.recipe.ts",
     "./package.json": "./package.json"
   },
   "lingxia": {

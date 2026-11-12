@@ -108,4 +108,18 @@ export const patterns = {
       ],
     },
   },
+  tabs: {
+    role: 'tablist',
+    checks: {
+      'the list is found by its label': [{ do: 'find', role: 'tablist', name: 'label' }],
+      'a tap on a tab chooses it once': [{ do: 'tap', role: 'tab' }, { expect: 'handler-ran', times: 1 }],
+    },
+    keyboardChecks: {
+      'one Tab stop on the chosen tab; arrows choose on arrival': [
+        { do: 'tab-to', role: 'tab' }, { expect: 'focused', role: 'tab' },
+        { do: 'press-key', key: 'right' }, { expect: 'handler-ran', times: 1 },
+        { do: 'press-key', key: 'home' }, { expect: 'handler-ran', times: 2 },
+      ],
+    },
+  },
 } as const satisfies Record<string, Pattern>;

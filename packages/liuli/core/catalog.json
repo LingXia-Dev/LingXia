@@ -2512,6 +2512,230 @@
       }
     },
     {
+      "name": "Tabs",
+      "import": "@liulidesign/core/Tabs",
+      "exports": [
+        "Tabs"
+      ],
+      "category": "navigation",
+      "status": "preview",
+      "summary": "A row of tabs over one panel, as an underline or a segmented control",
+      "description": "Tabs switch one area between a few peers: sections of a page, or modes of one view. The tabs share the row equally, and a single indicator slides to the chosen one.",
+      "keywords": [
+        "tabs",
+        "tab bar",
+        "segmented control",
+        "segments",
+        "switcher",
+        "sections",
+        "filter",
+        "range"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "Names the tab list for assistive tech: \"Range\", \"Sections\"."
+        },
+        {
+          "name": "items",
+          "type": "readonly TabItem[]",
+          "required": true,
+          "description": "The tabs, in order; they share the row equally."
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "required": true,
+          "description": "The chosen tab's value."
+        },
+        {
+          "name": "onChange",
+          "type": "(value: string) => void",
+          "required": true,
+          "description": "Runs with the tab chosen by a tap or by arrowing onto it."
+        },
+        {
+          "name": "variant",
+          "type": "TabsVariant",
+          "required": false,
+          "description": "`underline` switches between sections of a page; `segmented` switches one view between modes.",
+          "default": "'underline'"
+        },
+        {
+          "name": "children",
+          "type": "Child",
+          "required": false,
+          "description": "The chosen tab's panel."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the tab list; each tab gets `<testid>-<value>`, the panel `<testid>-panel`."
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "frame": "view",
+        "list": "view",
+        "track": "view",
+        "indicator": "view",
+        "tab": "button",
+        "label": "text",
+        "panel": "view"
+      },
+      "accessibility": {
+        "pattern": "tabs",
+        "name": "label",
+        "description": [],
+        "states": [
+          {
+            "state": "selected",
+            "from": "value"
+          },
+          {
+            "state": "disabled",
+            "from": "items[].isDisabled"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "effect": "Into the row, on the chosen tab; again, on to the panel."
+          },
+          {
+            "keys": "Left, Right",
+            "effect": "The previous or next tab, chosen on arrival; wraps at the ends."
+          },
+          {
+            "keys": "Home, End",
+            "effect": "The first or last tab."
+          }
+        ],
+        "target": {
+          "md": 40
+        },
+        "contrast": [
+          {
+            "what": "chosen tab text",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1",
+            "proven": true
+          },
+          {
+            "what": "other tabs' text",
+            "pair": [
+              "muted",
+              "surface"
+            ],
+            "minimum": "4.5:1",
+            "proven": true
+          },
+          {
+            "what": "underline",
+            "pair": [
+              "accent",
+              "surface"
+            ],
+            "minimum": "3:1",
+            "proven": true
+          },
+          {
+            "what": "segmented thumb edge",
+            "pair": [
+              "surface-raised",
+              "surface-sunken"
+            ],
+            "minimum": "3:1",
+            "proven": false
+          }
+        ],
+        "notes": [
+          "The chosen state is in the text weight and colour and in the indicator, never in colour alone.",
+          "The segmented control is 36 px tall, with its 32 px segments; it suits pointer and compact layouts."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Sections",
+          "title": "Sections of a page",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Tabs } from '@liulidesign/core/Tabs';\n\nconst sections = [\n  { value: 'overview', label: 'Overview' },\n  { value: 'activity', label: 'Activity' },\n  { value: 'members', label: 'Members' },\n];\nconst summaries: Record<string, string> = {\n  overview: 'Three notebooks, 128 notes, last edited this morning.',\n  activity: 'Ana edited \"Q3 plan\" and two others today.',\n  members: 'Ana Lima, Kai Chen and Mira Patel can edit.',\n};\n\n/** Sections of one page: the underline slides to the chosen tab. */\nexport function Sections() {\n  const section = useLocal('section', 'overview');\n  return (\n    <Tabs label=\"Project\" items={sections} value={section.value} onChange={next => section.set(next)} data-testid=\"project\">\n      <text className=\"text-body text-muted\">{summaries[section.value]}</text>\n    </Tabs>\n  );\n}"
+        },
+        {
+          "name": "Segmented",
+          "title": "Modes of one view",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Tabs } from '@liulidesign/core/Tabs';\n\nconst ranges = [\n  { value: 'day', label: 'Day' },\n  { value: 'week', label: 'Week' },\n  { value: 'month', label: 'Month' },\n];\n\n/** Modes of one view: the thumb slides to the chosen segment. */\nexport function Segmented() {\n  const range = useLocal('range', 'week');\n  const totals: Record<string, string> = { day: '42 minutes', week: '5 hours 10 minutes', month: '21 hours' };\n  return (\n    <Tabs label=\"Range\" items={ranges} value={range.value} onChange={next => range.set(next)} variant=\"segmented\" data-testid=\"range\">\n      <view className=\"gap-0.5\">\n        <text className=\"text-footnote text-muted\">Time spent writing</text>\n        <text className=\"text-title font-semibold text-text tabular-nums\">{totals[range.value]}</text>\n      </view>\n    </Tabs>\n  );\n}"
+        },
+        {
+          "name": "Filter",
+          "title": "A segmented filter over a list",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Item } from '@liulidesign/core/Item';\nimport { Tabs } from '@liulidesign/core/Tabs';\n\nconst notes = {\n  all: ['Q3 plan', 'Reading list', 'Interview notes'],\n  pinned: ['Q3 plan'],\n  shared: ['Interview notes'],\n};\n\n/** A list filtered by a segmented control above it. */\nexport function Filter() {\n  const filter = useLocal('filter', 'all');\n  return (\n    <Tabs\n      label=\"Show\"\n      items={[{ value: 'all', label: 'All' }, { value: 'pinned', label: 'Pinned' }, { value: 'shared', label: 'Shared' }]}\n      value={filter.value}\n      onChange={next => filter.set(next)}\n      variant=\"segmented\"\n      className=\"gap-3\"\n      data-testid=\"filter\"\n    >\n      <view className=\"-mx-5 -mb-5 divide-y divide-text/8 border-t border-text/8\">\n        {notes[filter.value as keyof typeof notes].map(note => <Item key={note} label={note} />)}\n      </view>\n    </Tabs>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "Tabs as wide as their labels, scrolling when they overflow, with the indicator following.",
+          "needs": "a way to read a laid-out box's position and width from View, or a shared-element layout motion between siblings",
+          "today": "Tabs share the row equally, so the indicator moves by a tab's width."
+        }
+      ],
+      "related": [
+        "Button",
+        "DropdownMenu"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "One area, a few peers",
+        "order": 1,
+        "page": {
+          "lead": "Use tabs to switch one area between a few peers. Each tab is a place, not an action.",
+          "hero": "Sections",
+          "variants": [
+            {
+              "name": "Segmented",
+              "title": "Segmented: modes of one view"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateUnderline",
+              "title": "Underline"
+            },
+            {
+              "name": "StateSegmented",
+              "title": "Segmented"
+            },
+            {
+              "name": "StateDisabled",
+              "title": "A disabled tab"
+            },
+            {
+              "name": "StateSegmentedDisabled",
+              "title": "A disabled segment"
+            }
+          ],
+          "inContext": [
+            {
+              "name": "Filter",
+              "title": "Filtering a list"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "TextInput",
       "import": "@liulidesign/core/TextInput",
       "exports": [

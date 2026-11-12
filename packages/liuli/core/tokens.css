@@ -20,6 +20,9 @@
   --text-display: 1.75rem;
   --text-display--line-height: 2.125rem;
 
+  /* A thumb resting on its track: the contact shadow alone. */
+  --shadow-contact: 0 1px 2px rgb(0 0 0 / 0.10), 0 0 1px rgb(0 0 0 / 0.06);
+
   /* Two elevations, each a tight contact shadow under a wide soft one. */
   --shadow-raised: 0 1px 2px rgb(0 0 0 / 0.06), 0 8px 24px rgb(0 0 0 / 0.10);
   --shadow-modal: 0 2px 6px rgb(0 0 0 / 0.08), 0 24px 64px rgb(0 0 0 / 0.18);
@@ -29,6 +32,8 @@
   --radius-container: 0.875rem;
   --radius-dialog: 1.25rem;
   --radius-checkbox: 0.375rem;
+  /* A segment inside a control: the control's corner less its 2 px inset. */
+  --radius-segment: 0.5rem;
 
   /* An indeterminate ProgressBar: a fill two-fifths of the track wide sweeps it end to end. */
   --animate-progress-sweep: progress-sweep 1.2s ease-in-out infinite;
