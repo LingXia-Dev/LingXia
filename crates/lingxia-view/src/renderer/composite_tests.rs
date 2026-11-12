@@ -142,17 +142,27 @@ fn display_plan_preserves_gpu_text_images_clipping_opacity_and_retained_scroll()
                         )
                     })
                     .collect();
+                // Text goes through the glyph atlas as in the composed render: this compares
+                // compositing, not two text rasterisers.
+                let renderer = compositor.scene_renderer();
                 let flat = compositor
                     .render(&plan, device, queue, |_, _, scene, bindings| {
-                        display.sparse_scene(
-                            &mut crate::renderer::gpu::text::Glyphs {
-                                prep: &mut glyph_cache,
-                                atlas: None,
+                        renderer.with_resources(
+                            device,
+                            scene.width(),
+                            scene.height(),
+                            |resources| {
+                                display.sparse_scene(
+                                    &mut crate::renderer::gpu::text::Glyphs {
+                                        prep: &mut glyph_cache,
+                                        atlas: Some(resources),
+                                    },
+                                    scene,
+                                    &image_ids,
+                                    &mut glyph_images,
+                                )
                             },
-                            scene,
-                            &image_ids,
-                            &mut glyph_images,
-                        )?;
+                        )??;
                         *bindings = textures.bindings(
                             device,
                             queue,

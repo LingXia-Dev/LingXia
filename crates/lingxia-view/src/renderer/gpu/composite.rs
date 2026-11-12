@@ -81,6 +81,12 @@ pub struct Compositor {
 }
 
 impl Compositor {
+    /// The scene renderer, so a test's reference can draw text through the same glyph atlas.
+    #[cfg(test)]
+    pub(crate) fn scene_renderer(&self) -> SceneRenderer {
+        self.renderer.clone()
+    }
+
     /// Discard idle textures and depth on suspend. Older leases cannot refill the pool.
     pub fn clear(&mut self) {
         self.backdrops.clear();
