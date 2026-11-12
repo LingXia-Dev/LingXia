@@ -20,6 +20,8 @@
     "./Details/recipe": "./src/Details/Details.recipe.ts",
     "./DropdownMenu": "./src/DropdownMenu/DropdownMenu.tsx",
     "./DropdownMenu/recipe": "./src/DropdownMenu/DropdownMenu.recipe.ts",
+    "./Tooltip": "./src/Tooltip/Tooltip.tsx",
+    "./Tooltip/recipe": "./src/Tooltip/Tooltip.recipe.ts",
     "./ProgressBar": "./src/ProgressBar/ProgressBar.tsx",
     "./ProgressBar/recipe": "./src/ProgressBar/ProgressBar.recipe.ts",
     "./Item": "./src/Item/Item.tsx",

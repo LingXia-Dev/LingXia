@@ -17,6 +17,7 @@ import { Specimen as SliderSpecimen } from '../../../core/src/Slider/Slider.exam
 import { Specimen as SwitchSpecimen } from '../../../core/src/Switch/Switch.examples';
 import { Specimen as TabsSpecimen } from '../../../core/src/Tabs/Tabs.examples';
 import { Specimen as TextInputSpecimen } from '../../../core/src/TextInput/TextInput.examples';
+import { Specimen as TooltipSpecimen } from '../../../core/src/Tooltip/Tooltip.examples';
 import { Category, GalleryPage, Masthead, Tile } from '../../shared/Layout';
 import { ColourSpecimen, TypographySpecimen, ShapeAndSpacingSpecimen, ElevationSpecimen, MotionSpecimen, SignInSpecimen, SettingsSpecimen, UploadsSpecimen } from '../../shared/Specimens';
 
@@ -184,6 +185,15 @@ export function render({ actions }: View<Actions>) {
           testId={"open-dropdown-menu"}
         >
           <DropdownMenuSpecimen />
+        </Tile>
+        <Tile
+          name={"Tooltip"}
+          tagline={"A short note on demand"}
+          isWide
+          onOpen={() => actions.open({ page: "tooltip" })}
+          testId={"open-tooltip"}
+        >
+          <TooltipSpecimen />
         </Tile>
       </Category>
       <Category title={"Content"}>

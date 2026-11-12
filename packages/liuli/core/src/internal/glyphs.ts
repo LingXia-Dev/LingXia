@@ -26,6 +26,11 @@ export const glyphs = {
     { d: 'M12 9.5v4.5', ...line },
     { d: 'M12 17v0.01', ...line, strokeWidth: 2.5 },
   ],
+  info: [
+    { d: 'M12 2.75a9.25 9.25 0 1 0 0 18.5a9.25 9.25 0 1 0 0-18.5z', ...line },
+    { d: 'M12 11v5.5', ...line },
+    { d: 'M12 7.5v0.01', ...line, strokeWidth: 2.5 },
+  ],
   success: [
     { d: 'M12 2.75a9.25 9.25 0 1 0 0 18.5a9.25 9.25 0 1 0 0-18.5z', ...line },
     { d: 'M8 12.5l3 3 5-6', ...line },

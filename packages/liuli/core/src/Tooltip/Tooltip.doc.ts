@@ -1,0 +1,81 @@
+import type { ComponentDoc } from '../doc';
+
+export const doc: ComponentDoc = {
+  name: 'Tooltip',
+  category: 'overlays',
+  status: 'preview',
+  summary: 'An info button that opens a short note about what is beside it',
+  description:
+    'Tooltip explains something the screen cannot say in place: why a limit applies, what a term means. ' +
+    'Today it opens on a press (a tap, Enter or Space), not on hover or focus, so it works the same with touch, mouse and keyboard.',
+  keywords: ['tooltip', 'toggletip', 'info', 'help', 'hint', 'explain', 'popover', 'note'],
+  propsType: 'TooltipProps',
+  recipe: { map: 'tooltipRecipe', parts: 'tooltipParts' },
+  anatomy: [
+    { part: 'trigger', required: true, description: 'The info button, named by `label`; it reports whether the note is open.' },
+    { part: 'icon', required: true, description: 'The info glyph.' },
+    { part: 'bubble', required: true, description: 'The note: a tooltip popover beside the button, in the inverse of the page.' },
+    { part: 'text', required: true, description: 'The note\'s text; the button is described by it while open.' },
+  ],
+  accessibility: {
+    pattern: 'button',
+    name: 'label',
+    description: ['the note, while open'],
+    states: [{ state: 'expanded', from: 'isOpen, or a press' }],
+    keyboard: [
+      { keys: 'Enter, Space', effect: 'Opens or closes the note; focus alone does not open it.' },
+      { keys: 'Escape', effect: 'Closes it.' },
+    ],
+    target: { sm: 32, md: 40 },
+    contrast: [
+      { what: 'note text', pair: ['surface', 'text'], minimum: '4.5:1', proven: true },
+      { what: 'info glyph', pair: ['muted', 'surface'], minimum: '3:1', proven: true },
+    ],
+    notes: [
+      'A tap anywhere else closes the note, and that tap reaches nothing else.',
+      'Put only words in the note; anything to press belongs in a DropdownMenu or a Dialog.',
+    ],
+  },
+  guidance: {
+    do: [
+      'Name the button for its subject: "About storage".',
+      'Keep the note to one or two short sentences.',
+    ],
+    dont: [
+      'Hide what someone needs to finish a task in a note; write it on the page.',
+      'Give every label a note; add one only where people get stuck.',
+    ],
+  },
+  examples: [
+    { name: 'Storage', title: 'Beside the thing it explains' },
+    { name: 'Below', title: 'Opening below' },
+    { name: 'InForm', title: 'Next to a field label' },
+    { name: 'Sizes', title: 'Sizes' },
+  ],
+  gaps: [
+    {
+      missing: 'Opening on hover with a mouse, after a short delay, and on keyboard focus.',
+      needs: 'pointer enter and leave events, or a hover-triggered popover (HTML\'s interest invokers)',
+      today: 'The note opens on a press only.',
+    },
+  ],
+  related: ['DropdownMenu', 'Dialog'],
+  gallery: {
+    specimen: 'Specimen',
+    tagline: 'A short note on demand',
+    order: 3,
+    page: {
+      lead: 'Use a tooltip for a short note that explains what is beside it. Tap the info button to open it.',
+      hero: 'Storage',
+      parts: { name: 'Parts', title: 'The note over its button' },
+      variants: [{ name: 'Below', title: 'Opening below, where there is no room above' }],
+      states: [
+        { name: 'StateClosed', title: 'Closed' },
+        { name: 'StatePressed', title: 'Pressed' },
+        { name: 'StateOpen', title: 'Open' },
+      ],
+      sizes: [{ name: 'Sizes', title: 'Small and medium' }],
+      inContext: [{ name: 'InForm', title: 'Next to a field label' }],
+    },
+  },
+};

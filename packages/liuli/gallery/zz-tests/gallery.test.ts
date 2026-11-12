@@ -9,7 +9,7 @@ const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const pages = [
   'colour', 'typography', 'shape-and-spacing', 'elevation', 'motion',
   'button', 'tabs', 'text-input', 'select', 'checkbox-input', 'radio-group', 'switch', 'slider', 'field',
-  'badge', 'progress-bar', 'dialog', 'dropdown-menu', 'card', 'item', 'details', 'avatar',
+  'badge', 'progress-bar', 'dialog', 'dropdown-menu', 'tooltip', 'card', 'item', 'details', 'avatar',
   'sign-in', 'settings', 'uploads',
 ];
 
@@ -188,4 +188,19 @@ spec('details: a row opens and closes; an accordion keeps one open', { start: { 
   await summary('export').click();
   await expect(summary('export')).toHaveAttribute('data-state', 'open');
   await expect(summary('refunds')).toHaveAttribute('data-state', 'closed');
+});
+
+spec('tooltip: a press opens the note; a tap outside closes it', { start: { page: 'tooltip' }, timeout: 60_000 }, async (t) => {
+  const view = t.app.view;
+  const button = view.getByRole('button', { name: 'About storage' });
+  const note = view.testId('storage-content');
+  await expect(note).toHaveCount(0);
+  await button.click();
+  await expect(note).toBeVisible();
+  await expect(note).toContainText('Attachments count');
+  await expect(button).toHaveAttribute('data-state', 'open');
+  const vp = await view.viewport();
+  await view.swipe({ from: [vp.width / 2, vp.height - 40], to: [vp.width / 2, vp.height - 40], durationMs: 60 });
+  await expect(note).toHaveCount(0);
+  await expect(button).toHaveAttribute('data-state', 'closed');
 });
