@@ -107,10 +107,19 @@ pub fn maybe_auto_update() -> bool {
 /// does not. `create` is for a run that is itself a request for the skill --
 /// `lingxia new`, `lingxia upgrade` -- and writes one where none exists.
 pub fn sync_installed_skill(create: bool) {
+    report_skill_sync(crate::commands::skill::sync_home_skill(create));
+}
+
+/// The reconcile every command runs; a no-op outside release builds.
+pub fn sync_installed_skill_automatically() {
+    report_skill_sync(crate::commands::skill::sync_home_skill_automatically());
+}
+
+fn report_skill_sync(result: anyhow::Result<crate::commands::skill::Sync>) {
     use crate::commands::skill::Sync;
 
-    match crate::commands::skill::sync_home_skill(create) {
-        Ok(Sync::Skipped | Sync::Current) => {}
+    match result {
+        Ok(Sync::Skipped | Sync::Current | Sync::Newer { .. }) => {}
         Ok(Sync::Created) => eprintln!(
             "Installed the LingXia agent skill ({}).",
             env!("CARGO_PKG_VERSION")

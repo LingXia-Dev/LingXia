@@ -80,7 +80,8 @@ fn skill_install_links_claude_to_the_shared_copy_and_leaves_the_project_alone() 
     assert!(String::from_utf8_lossy(&again.stdout).contains("is current"));
     assert!(linked());
 
-    // A normal command also migrates an old copy, without touching the project.
+    // A normal command from a dev build (this test binary) syncs nothing; the
+    // release-build migration is covered by the unit tests.
     std::fs::remove_dir_all(&canonical).unwrap();
     std::fs::remove_file(&claude).unwrap();
     std::fs::create_dir_all(&claude).unwrap();
@@ -92,9 +93,12 @@ fn skill_install_links_claude_to_the_shared_copy_and_leaves_the_project_alone() 
         String::from_utf8_lossy(&synced.stderr)
     );
     serde_json::from_slice::<serde_json::Value>(&synced.stdout)
-        .expect("sync must not pollute JSON output");
-    assert!(canonical.join("SKILL.md").is_file());
-    assert!(linked());
+        .expect("a command must not pollute JSON output");
+    assert!(!canonical.exists());
+    assert_eq!(
+        std::fs::read_to_string(claude.join("SKILL.md")).unwrap(),
+        "old"
+    );
     assert_eq!(
         std::fs::read_to_string(project.join("AGENTS.md")).unwrap(),
         stale

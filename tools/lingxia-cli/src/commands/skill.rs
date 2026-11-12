@@ -38,6 +38,10 @@ pub enum Sync {
     Rewritten {
         previous: String,
     },
+    /// Left alone: a newer CLI wrote it, and this one would roll it back.
+    Newer {
+        installed: String,
+    },
 }
 
 /// Reconcile the copy under the home directory with the embedded skill.
@@ -49,6 +53,19 @@ pub enum Sync {
 /// an agent does not grow a `~/.agents` because a build ran.
 pub fn sync_home_skill(create_if_missing: bool) -> Result<Sync> {
     sync_for_home(&home_dir()?, create_if_missing)
+}
+
+/// The reconcile every command runs. Only a release build takes part: a dev
+/// build carries its checkout's skill, which is not what the user installed.
+pub fn sync_home_skill_automatically() -> Result<Sync> {
+    auto_sync_for_home(&home_dir()?, !env!("LINGXIA_RELEASE_BUILD").is_empty())
+}
+
+fn auto_sync_for_home(home: &Path, release: bool) -> Result<Sync> {
+    if !release {
+        return Ok(Sync::Skipped);
+    }
+    sync_for_home(home, false)
 }
 
 pub(crate) fn skills_root(home: &Path) -> PathBuf {
@@ -265,6 +282,9 @@ fn sync(dest: &Path, create_if_missing: bool) -> Result<Sync> {
     if installed && field("digest").as_deref() == Some(embedded_digest()) {
         return Ok(Sync::Current);
     }
+    if installed && let Some(version) = field("version").filter(|version| is_newer(version)) {
+        return Ok(Sync::Newer { installed: version });
+    }
 
     write_skill(dest, &embedded_files())?;
     Ok(if installed {
@@ -274,6 +294,16 @@ fn sync(dest: &Path, create_if_missing: bool) -> Result<Sync> {
     } else {
         Sync::Created
     })
+}
+
+/// Whether `version` is a release later than this binary's. An unreadable one
+/// is not: it cannot have come from a newer CLI.
+fn is_newer(version: &str) -> bool {
+    let current = semver::Version::parse(env!("CARGO_PKG_VERSION"));
+    matches!(
+        (semver::Version::parse(version), current),
+        (Ok(installed), Ok(current)) if installed > current
+    )
 }
 
 /// Whether the agent tooling's skills root is already on this machine. Its
@@ -290,6 +320,11 @@ pub fn install(cwd: &Path) -> Result<()> {
     match sync_for_home(&home_dir()?, true)? {
         Sync::Current => println!("The LingXia skill at {} is current", dest.display()),
         Sync::Rewritten { .. } => println!("Updated the LingXia skill at {}", dest.display()),
+        Sync::Newer { installed } => println!(
+            "Kept the LingXia skill at {}: it is {installed}, newer than this CLI ({})",
+            dest.display(),
+            env!("CARGO_PKG_VERSION")
+        ),
         Sync::Created | Sync::Skipped => {
             println!("Installed the LingXia skill to {}", dest.display())
         }
@@ -331,6 +366,10 @@ pub fn install_for_new_project(project_dir: &Path) -> Result<()> {
     let dest = user_destination()?;
     match sync_for_home(&home_dir()?, true)? {
         Sync::Current => println!("The LingXia skill at {} is current", dest.display()),
+        Sync::Newer { installed } => println!(
+            "Kept the newer LingXia skill ({installed}) at {}",
+            dest.display()
+        ),
         _ => println!("Installed the LingXia skill to {}", dest.display()),
     }
     write_agents_pointer(project_dir, &dest)
@@ -804,6 +843,67 @@ mod tests {
             Sync::Rewritten { .. }
         ));
         assert_ne!(fs::read_to_string(dest.join("SKILL.md")).unwrap(), "stale");
+    }
+
+    fn claim(dest: &Path, version: &str) {
+        fs::write(dest.join("SKILL.md"), "claimed").unwrap();
+        fs::write(
+            dest.join(MANIFEST_NAME),
+            serde_json::json!({ "version": version, "digest": "other" }).to_string(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn a_newer_install_is_never_rolled_back() {
+        let home = TempDir::new().unwrap();
+        let dest = skill_dir(home.path());
+        sync(&dest, true).unwrap();
+        claim(&dest, "999.0.0");
+        assert!(matches!(
+            sync_for_home(home.path(), true).unwrap(),
+            Sync::Newer { installed } if installed == "999.0.0"
+        ));
+        assert_eq!(
+            fs::read_to_string(dest.join("SKILL.md")).unwrap(),
+            "claimed"
+        );
+    }
+
+    #[test]
+    fn an_older_install_is_updated() {
+        let home = TempDir::new().unwrap();
+        let dest = skill_dir(home.path());
+        sync(&dest, true).unwrap();
+        claim(&dest, "0.0.1");
+        assert!(matches!(
+            sync_for_home(home.path(), true).unwrap(),
+            Sync::Rewritten { previous } if previous == "0.0.1"
+        ));
+        assert_ne!(
+            fs::read_to_string(dest.join("SKILL.md")).unwrap(),
+            "claimed"
+        );
+    }
+
+    #[test]
+    fn only_a_release_build_syncs_on_its_own() {
+        let home = TempDir::new().unwrap();
+        let dest = skill_dir(home.path());
+        sync(&dest, true).unwrap();
+        claim(&dest, "0.0.1");
+        assert!(matches!(
+            auto_sync_for_home(home.path(), false).unwrap(),
+            Sync::Skipped
+        ));
+        assert_eq!(
+            fs::read_to_string(dest.join("SKILL.md")).unwrap(),
+            "claimed"
+        );
+        assert!(matches!(
+            auto_sync_for_home(home.path(), true).unwrap(),
+            Sync::Rewritten { .. }
+        ));
     }
 
     #[test]

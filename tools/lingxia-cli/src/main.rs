@@ -961,7 +961,7 @@ fn run() -> Result<()> {
     ) {
         // The new binary already wrote its skill; this one would roll it back.
         if !replaced {
-            update::sync_installed_skill(false);
+            update::sync_installed_skill_automatically();
             pin::sync_project_skill_if_pinned();
         }
         // Templates come from git, so this only reads state and hands any
