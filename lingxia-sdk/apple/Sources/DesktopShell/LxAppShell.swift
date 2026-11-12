@@ -1240,6 +1240,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     // MARK: - Sidebar peek
 
     private func beginSidebarPeek() {
+        // A peek still sliding shut is finished now, so asking again opens it rather than being ignored.
+        if sidebarPeek?.isDismissing == true { endSidebarPeek(animated: false) }
         guard sidebarPeek == nil, sidebarChromeEnabled, let sidebar = sidebarView, sidebar.isCompact,
               let window, let contentView = window.contentView,
               let widthConstraint = sidebarPeekWidthConstraint,

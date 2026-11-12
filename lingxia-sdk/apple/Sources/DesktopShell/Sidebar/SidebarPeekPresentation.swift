@@ -21,6 +21,7 @@ final class SidebarPeekPresentation {
     private var resignObserver: NSObjectProtocol?
     private(set) var isDismissing = false
     private var isPinned = false
+    private var isTornDown = false
 
     var onDismissRequested: (() -> Void)?
 
@@ -104,6 +105,9 @@ final class SidebarPeekPresentation {
     }
 
     private func tearDown() {
+        // A slide cut short still completes later; the constraints may belong to a newer peek by then.
+        guard !isTornDown else { return }
+        isTornDown = true
         widthConstraint.isActive = false
         followsSlot.isActive = true
         sidebar?.setPeeking(false)
