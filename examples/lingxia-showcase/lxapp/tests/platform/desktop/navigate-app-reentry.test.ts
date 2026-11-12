@@ -22,13 +22,26 @@ test('navigateToApp presents an open lxapp again after the caller came back to t
   const { app, defer } = bindFixture(t, 'NAV-APP-DESKTOP-002');
   const manager = t.automation.lxapps;
 
+  const inAsideSlot = async (): Promise<boolean> => (
+    (await app.surfaceLayout()).asideSlots.some((slot) => slot.children.includes(CHAT_APP_ID))
+  );
+  // Chat is also the host's declared right aside. Once an earlier spec opened
+  // that slot it outlives the lxapp, and navigateToApp would reopen chat into
+  // the aside instead of the main this spec walks.
   const closeChat = async (): Promise<void> => {
+    if (await inAsideSlot()) {
+      await app.logic.eval({ timeout: 20_000 }, async ({ lx }, id) => {
+        await (await lx.surface.openDeclared(id)).close();
+      }, CHAT_APP_ID);
+    }
     if (isOpen(await manager.list(), CHAT_APP_ID)) {
       await manager.close({ app: CHAT_APP_ID }).catch(() => undefined);
     }
-    await eventually(() => manager.list(), (list) => !isOpen(list, CHAT_APP_ID), {
-      describe: 'chat to close',
-    });
+    await eventually(
+      async () => ({ open: isOpen(await manager.list(), CHAT_APP_ID), aside: await inAsideSlot() }),
+      ({ open, aside }) => !open && !aside,
+      { describe: 'chat and its aside slot to close' },
+    );
   };
   await closeChat();
   defer(closeChat);
