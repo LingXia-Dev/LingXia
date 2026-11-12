@@ -780,7 +780,13 @@ fn open_switch(key: &str, url: &str) {
     let target = if now.paused {
         now.current_time
     } else {
-        lead(url, now.current_time, now.playback_rate, now.duration)
+        lead(
+            url,
+            now.current_time,
+            now.playback_rate,
+            now.duration,
+            source.settings.looped,
+        )
     };
     let _ = next.command(&VideoOp::Seek(target));
     match &mut entry.switch {
@@ -793,11 +799,61 @@ fn open_switch(key: &str, url: &str) {
     }
 }
 
-/// The position a lead ahead of `time`, kept short of the end.
-fn lead(url: &str, time: f64, rate: f32, duration: Option<f64>) -> f64 {
+/// The position a lead ahead of `time`: past the end of a looping source it lies in the next
+/// loop, otherwise it stops short of the end.
+fn lead(url: &str, time: f64, rate: f32, duration: Option<f64>, looped: bool) -> f64 {
     let seconds = f64::from(switch_lead(url).load(Ordering::Relaxed)) / 1000.0;
-    let ahead = time + seconds * f64::from(rate.max(0.25));
-    duration.map_or(ahead, |duration| ahead.min((duration - 0.05).max(0.0)))
+    park(time + seconds * f64::from(rate.max(0.25)), duration, looped)
+}
+
+fn park(ahead: f64, duration: Option<f64>, looped: bool) -> f64 {
+    match duration {
+        Some(duration) if looped && duration > 0.1 => ahead.rem_euclid(duration),
+        Some(duration) => ahead.min((duration - 0.05).max(0.0)),
+        None => ahead,
+    }
+}
+
+/// Media seconds from `now` until the playing one reaches `target`; negative once past it. A
+/// looping source reaches a target behind it on its next loop.
+fn until(now: f64, target: f64, duration: Option<f64>, looped: bool) -> f64 {
+    let gap = target - now;
+    match duration {
+        Some(duration) if looped && duration > 0.1 => {
+            let gap = gap.rem_euclid(duration);
+            if gap > duration / 2.0 {
+                gap - duration
+            } else {
+                gap
+            }
+        }
+        _ => gap,
+    }
+}
+
+/// What a switch does at a refresh while the playing one plays.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Step {
+    Wait,
+    /// It passed the parked position before the next player was ready.
+    Repark,
+    /// Start the parked player so its frames are ready as the position arrives.
+    Start,
+    /// The started player takes over.
+    Bind,
+}
+
+fn step(now: &Status, target: f64, started: bool, looped: bool) -> Step {
+    let ahead = until(now.current_time, target, now.duration, looped);
+    if started {
+        if ahead > 0.0 { Step::Wait } else { Step::Bind }
+    } else if ahead < -0.05 {
+        Step::Repark
+    } else if ahead > SWITCH_START * f64::from(now.playback_rate) {
+        Step::Wait
+    } else {
+        Step::Start
+    }
 }
 
 /// Moves a switch on at a refresh: starts the next player just before the playing one reaches
@@ -813,36 +869,43 @@ fn advance_switch(key: &str, entry: &mut Entry, device: &wgpu::Device) {
         State::Ready(playing) => playing.status(),
         _ => Status::default(),
     };
+    let looped = entry
+        .applied
+        .as_ref()
+        .is_some_and(|settings| settings.looped);
     if now.paused {
         if (now.current_time - switch.target).abs() > 0.02 {
             switch.target = now.current_time;
             let _ = next.command(&VideoOp::Seek(switch.target));
             return;
         }
-    } else if !switch.started {
-        if now.current_time > switch.target + 0.05 {
-            // The playing one passed the parked position before it was ready: park further on.
-            tune_lead(&switch.url, 2.0);
-            switch.target = lead(
-                &switch.url,
-                now.current_time,
-                now.playback_rate,
-                now.duration,
-            );
-            let _ = next.command(&VideoOp::Seek(switch.target));
-            return;
+    } else {
+        match step(&now, switch.target, switch.started, looped) {
+            Step::Wait => return,
+            Step::Repark => {
+                // The playing one passed the parked position before it was ready: park further on.
+                tune_lead(&switch.url, 2.0);
+                switch.target = lead(
+                    &switch.url,
+                    now.current_time,
+                    now.playback_rate,
+                    now.duration,
+                    looped,
+                );
+                let _ = next.command(&VideoOp::Seek(switch.target));
+                return;
+            }
+            Step::Start => {
+                // Ready in time (its parked frame is decoded): the next switch parks closer.
+                let parked =
+                    (next.status().current_time - switch.target).abs() < 0.05 && next.has_new();
+                tune_lead(&switch.url, if parked { 0.8 } else { 1.5 });
+                let _ = next.command(&VideoOp::Play);
+                switch.started = true;
+                return;
+            }
+            Step::Bind => {}
         }
-        if now.current_time < switch.target - SWITCH_START * f64::from(now.playback_rate) {
-            return;
-        }
-        // Ready in time (its parked frame is decoded): the next switch parks closer.
-        let parked = (next.status().current_time - switch.target).abs() < 0.05 && next.has_new();
-        tune_lead(&switch.url, if parked { 0.8 } else { 1.5 });
-        let _ = next.command(&VideoOp::Play);
-        switch.started = true;
-        return;
-    } else if now.current_time < switch.target {
-        return;
     }
     let Ok(Some((texture, size))) = next.next_frame(device) else {
         return;
@@ -2064,5 +2127,48 @@ pub unsafe fn import_hardware_buffer(
 mod platform {
     pub(super) fn open(_url: &str) -> Result<Box<dyn super::Player>, String> {
         Err("VIDEO_UNSUPPORTED: no video player on this platform yet".into())
+    }
+}
+
+#[cfg(test)]
+mod switch_tests {
+    use super::{Status, Step, park, step, until};
+
+    fn playing(at: f64) -> Status {
+        Status {
+            current_time: at,
+            duration: Some(8.0),
+            playback_rate: 1.0,
+            ..Status::default()
+        }
+    }
+
+    #[test]
+    fn a_looping_player_past_the_seam_reaches_its_parked_switch() {
+        // Parked at 7.95 s of an 8 s loop, the playing one looped to 0.3 s: it passed the park.
+        assert_eq!(step(&playing(0.3), 7.95, false, true), Step::Repark);
+        assert_eq!(step(&playing(0.3), 7.95, true, true), Step::Bind);
+        // Not looping, 0.3 s is still before 7.95 s.
+        assert_eq!(step(&playing(0.3), 7.95, true, false), Step::Wait);
+        assert_eq!(step(&playing(7.9), 7.95, false, true), Step::Start);
+    }
+
+    #[test]
+    fn a_looping_park_past_the_end_lies_in_the_next_loop() {
+        assert!((park(9.5, Some(8.0), true) - 1.5).abs() < 1e-9);
+        assert!((park(9.5, Some(8.0), false) - 7.95).abs() < 1e-9);
+        assert!((park(9.5, None, true) - 9.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_looping_target_ahead_across_the_seam_is_still_ahead() {
+        // Playing at 7.5 s of an 8 s loop, parked at 1.5 s: 2 s to go, not 6 s past.
+        assert!((until(7.5, 1.5, Some(8.0), true) - 2.0).abs() < 1e-9);
+        // Just past the target, across the seam.
+        assert!((until(0.2, 7.9, Some(8.0), true) + 0.3).abs() < 1e-9);
+        // The bug: parked at 7.95 s, the playing one looped to 0.3 s; a non-looping reading
+        // waits 7.65 s, a whole loop.
+        assert!((until(0.3, 7.95, Some(8.0), false) - 7.65).abs() < 1e-9);
+        assert!((until(0.3, 7.95, Some(8.0), true) + 0.35).abs() < 1e-9);
     }
 }
