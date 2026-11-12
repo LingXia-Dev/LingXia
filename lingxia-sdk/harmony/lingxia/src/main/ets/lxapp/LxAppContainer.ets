@@ -1,7 +1,8 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxLog } from '../app/LxLog';
 import { webview } from '@kit.ArkWeb';
-import { window, display, FrameCallback } from '@kit.ArkUI';
+import { window, display, FrameCallback, componentSnapshot, componentUtils } from '@kit.ArkUI';
+import { image } from '@kit.ImageKit';
 import { common, ConfigurationConstant } from '@kit.AbilityKit';
 import { LxApp } from './LxApp';
 import { Lingxia } from '../app/Lingxia';
@@ -25,7 +26,7 @@ import { NavigationBar, NavigationBarState, NAVBAR_TOTAL_HEIGHT, isColorDark } f
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';
 import { TabBar, tabBarExtraBottomHeight } from './TabBar';
 import { TabBarPosition, TabBarItem, UiEventType } from 'liblingxia.so';
-import liblingxia, { gpuPageCloseRequest, gpuPageScrollsRightAt, tabBarVisibleOn, gpuPageTransitionStart, gpuPageTransitionFrame, gpuPageTransitionEnd, TabBarState, getNavigationBarState, isPullDownRefreshEnabled, reportPullRefreshIndicator, onPageShow, onLxappEvent, setSurfaceViewport, setSurfaceWidth, pageBackgroundColor, refreshIndicatorColor, syncLxappHostUI } from 'liblingxia.so';
+import liblingxia, { gpuPageChromeSnapshot, gpuPageDeclineChromeSnapshot, gpuPageCloseRequest, gpuPageScrollsRightAt, tabBarVisibleOn, gpuPageTransitionStart, gpuPageTransitionFrame, gpuPageTransitionEnd, TabBarState, getNavigationBarState, isPullDownRefreshEnabled, reportPullRefreshIndicator, onPageShow, onLxappEvent, setSurfaceViewport, setSurfaceWidth, pageBackgroundColor, refreshIndicatorColor, syncLxappHostUI } from 'liblingxia.so';
 import { notePageOrigin, setCapsuleGeometryListener } from './capsuleGeometry';
 import { NAVIGATION_ACTION_BACK, NAVIGATION_ACTION_HOME, CAPSULE_ACTION_CLOSE } from '../app/NativeBridge';
 import { AnimationType, EDGE_BACK_SWIPE_ZONE_WIDTH_VP } from './LxAppNavigation';
@@ -42,6 +43,10 @@ const SYSTEM_STATUS_BAR_HEIGHT = 44;     // Default status bar height
 const TAB_BAR_HORIZONTAL_HEIGHT = 72;    // Match TabBar default height
 // Above the navigation bar (10) and tab bar (11): an open GPU dialog covers both.
 const GPU_TOP_LAYER_Z = 12;
+/** A page that never reports its bar snapshots on screen is raised over the bars anyway. */
+const BAR_RAISE_FALLBACK_MS = 250;
+const BAR_TOP = 0;
+const BAR_BOTTOM = 1;
 
 const COLOR_BLACK = '#000000';
 const COLOR_TRANSPARENT = Color.Transparent;
@@ -195,6 +200,12 @@ export struct LxAppContainer {
   private pendingRevealTag: string = ''
   private gpuCreated = (page: GpuPageModel): void => this.handleGpuPage('create', page);
   private gpuDisposed = (page: GpuPageModel): void => {
+    if (this.barPage === page) {
+      this.barPage = null;
+      this.barSnapshots.clear();
+      this.clearRaiseFallback();
+      this.gpuRaised = false;
+    }
     this.gpuTopLayers.delete(page.token);
     this.gpuChromes.delete(page.token);
     this.handleGpuPage('destroy', page);
@@ -209,6 +220,9 @@ export struct LxAppContainer {
     }
     const layered = this.gpuTopLayers.has(page.token) !== page.topLayer;
     const repainted = (this.gpuChromes.get(page.token) ?? null) !== page.chrome;
+    if (page === this.barPage && !layered) {
+      this.barSnapshotShown(page);
+    }
     if (!layered && !repainted) {
       return;
     }
@@ -218,6 +232,9 @@ export struct LxAppContainer {
       this.gpuTopLayers.delete(page.token);
     }
     this.gpuChromes.set(page.token, page.chrome);
+    if (layered && page.webTag === this.currentWebTag) {
+      this.applyBarHandoff(page);
+    }
     this.gpuChangeKey++;
     if (repainted && page.webTag === this.currentWebTag) {
       this.applyStatusBarContentColor();
@@ -624,6 +641,7 @@ export struct LxAppContainer {
     }
 
     this.tabBarRefreshKey++;
+    this.barsRedrawn();
     const bg: number | undefined = this.tabBarState?.backgroundColor;
     const dim: number | undefined = this.tabBarState?.dimension;
     const pos: TabBarPosition | undefined = this.tabBarState?.position;
@@ -691,6 +709,7 @@ export struct LxAppContainer {
       container.navbarRefreshKey++;
       container.applyStatusBarContentColor();
       container.reportCurrentPageViewport();
+      container.barsRedrawn();
       return true;
     }
     return false;
@@ -719,6 +738,7 @@ export struct LxAppContainer {
       container.navbarRefreshKey++;
       container.tabBarRefreshKey++;
       container.applyStatusBarContentColor();
+      container.barsRedrawn();
     }
     return true;
   }
@@ -1113,6 +1133,7 @@ export struct LxAppContainer {
         })
           // Above the left-edge swipe strip so the first tab stays tappable.
           .zIndex(11)
+          .id(this.barId(BAR_BOTTOM))
           .accessibilityLevel(this.isGpuTopLayer() ? 'no-hide-descendants' : 'auto')
       }, (key: number) => `lx-tabbar-${this.appId}-${key}`)
     }
@@ -1156,6 +1177,7 @@ export struct LxAppContainer {
       .width('100%')
       .position({ x: 0, y: 0 })
       .height(this.getNavigationBarHeight())
+      .id(this.barId(BAR_TOP))
       .zIndex(this.shouldRenderOverlayMask() ? 10002 : 10)
       .hitTestBehavior(HitTestMode.Transparent)
       .accessibilityLevel(this.isGpuTopLayer() ? 'no-hide-descendants' : 'auto')
@@ -1398,6 +1420,7 @@ export struct LxAppContainer {
       try {
         this.webAreaWidthVp = Number(newValue.width) || 0;
         this.webAreaHeightVp = Number(newValue.height) || 0;
+        this.barsRedrawn();
         notePageOrigin(
           Number((newValue.globalPosition?.x as number) ?? 0),
           Number((newValue.globalPosition?.y as number) ?? 0)
@@ -1408,7 +1431,7 @@ export struct LxAppContainer {
       }
     })
     .hitTestBehavior(HitTestMode.Transparent)
-    .zIndex(this.shouldRenderOverlayMask() ? 10004 : this.isGpuTopLayer() ? GPU_TOP_LAYER_Z : 0)
+    .zIndex(this.shouldRenderOverlayMask() ? 10004 : this.gpuRaised ? GPU_TOP_LAYER_Z : 0)
     // CUTOUT included so the web area reaches y=0 on cutout devices like the
     // other mobile hosts; the camera zone is covered by the status-bar inset.
     .expandSafeArea([SafeAreaType.SYSTEM, SafeAreaType.CUTOUT], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
@@ -1418,6 +1441,13 @@ export struct LxAppContainer {
   /** Every way a page comes to the front (relaunch, create, destroy, overlay) re-reads its route state. */
   onCurrentPage(): void {
     this.reportRefreshIndicator();
+    const gpu: GpuPageModel | undefined = this.gpuPages.get(this.currentWebTag);
+    if (gpu?.topLayer === true) {
+      this.applyBarHandoff(gpu);
+    } else if (this.barPage !== null || this.gpuRaised) {
+      this.dropBarSnapshots();
+      this.gpuRaised = false;
+    }
     const path: string = extractWebTag(this.currentWebTag)?.path ?? '';
     if (path !== '' && path !== this.path) {
       this.path = path;
@@ -1660,6 +1690,7 @@ export struct LxAppContainer {
     this.pageConfig = getNavigationBarState(this.appId, path);
     this.navbarShownByPath.set(path, this.pageConfig?.showNavbar === true);
     this.applyStatusBarContentColor();
+    this.barsRedrawn();
     // The web area no longer resizes with navbar visibility, so the surface
     // viewport must be re-reported explicitly on page changes.
     this.reportCurrentPageViewport();
@@ -2017,6 +2048,157 @@ export struct LxAppContainer {
   private isGpuTopLayer(): boolean {
     void this.gpuChangeKey;
     return this.gpuPages.get(this.currentWebTag)?.topLayer === true;
+  }
+
+  /** The page lies over the bars: only once a frame on screen draws them under its top layer. */
+  @State private gpuRaised: boolean = false
+  /** The page whose top layer the bars lie under, and each bar's snapshot generation by edge. */
+  private barPage: GpuPageModel | null = null;
+  private barSnapshots: Map<number, number> = new Map();
+  private raiseFallback: number = -1;
+  private recapturePending: boolean = false;
+
+  private barId(edge: number): string {
+    return `lx-bar-${edge}-${this.appId}`;
+  }
+
+  private applyBarHandoff(page: GpuPageModel): void {
+    if (!page.topLayer) {
+      this.dropBarSnapshots();
+      this.gpuRaised = false;
+      return;
+    }
+    if (this.barPage === page) {
+      return;
+    }
+    this.dropBarSnapshots();
+    this.barPage = page;
+    if (this.captureBars(page)) {
+      this.armRaise();
+    } else {
+      this.raiseGpuPage();
+    }
+  }
+
+  private barSnapshotShown(page: GpuPageModel): void {
+    if (this.barSnapshots.size === 0) {
+      return;
+    }
+    if (page.chromeSnapshot === 0) {
+      // The page dropped them (its surface changed): the real bars show until it has new ones.
+      this.barSnapshots.clear();
+      this.gpuRaised = false;
+      if (this.captureBars(page)) {
+        this.armRaise();
+      } else {
+        this.raiseGpuPage();
+      }
+    } else if (page.chromeSnapshot >= Math.max(...Array.from(this.barSnapshots.values()))) {
+      this.raiseGpuPage();
+    }
+  }
+
+  private raiseGpuPage(): void {
+    this.clearRaiseFallback();
+    this.gpuRaised = true;
+  }
+
+  private armRaise(): void {
+    if (this.raiseFallback !== -1) {
+      return;
+    }
+    this.raiseFallback = setTimeout(() => {
+      this.raiseFallback = -1;
+      if (this.barPage !== null) {
+        this.raiseGpuPage();
+      }
+    }, BAR_RAISE_FALLBACK_MS);
+  }
+
+  private clearRaiseFallback(): void {
+    if (this.raiseFallback !== -1) {
+      clearTimeout(this.raiseFallback);
+      this.raiseFallback = -1;
+    }
+  }
+
+  private dropBarSnapshots(): void {
+    this.clearRaiseFallback();
+    const page = this.barPage;
+    this.barPage = null;
+    if (page !== null && this.barSnapshots.size > 0) {
+      this.barSnapshots.clear();
+      gpuPageDeclineChromeSnapshot(page.token);
+    }
+  }
+
+  /** A bar under the top layer redrew (selection, badge, title, colours, size): its copy follows. */
+  barsRedrawn(): void {
+    if (this.barPage === null || this.recapturePending) {
+      return;
+    }
+    this.recapturePending = true;
+    // After the redraw lands, so the copy shows it; the page stays raised meanwhile.
+    setTimeout(() => {
+      this.recapturePending = false;
+      const page = this.barPage;
+      if (page !== null && page.webTag === this.currentWebTag && this.captureBars(page) && !this.gpuRaised) {
+        this.armRaise();
+      }
+    }, 32);
+  }
+
+  /** Copies each shown bar into the page under its top layer; true when one was handed over. */
+  private captureBars(page: GpuPageModel): boolean {
+    const surface = page.onScreen;
+    if (surface === null) {
+      return false;
+    }
+    let handed = false;
+    for (const edge of [BAR_TOP, BAR_BOTTOM]) {
+      const generation = this.captureBar(page, edge, surface.x, surface.y);
+      if (generation > 0) {
+        this.barSnapshots.set(edge, generation);
+        handed = true;
+      }
+    }
+    return handed;
+  }
+
+  private captureBar(page: GpuPageModel, edge: number, originX: number, originY: number): number {
+    const id = this.barId(edge);
+    // The page draws top and bottom bars only; a side tab bar stays under the raised page.
+    if ((edge === BAR_TOP && !(this.pageConfig?.showNavbar === true)) ||
+      (edge === BAR_BOTTOM && (!this.shouldShowTabBar() || this.isTabBarVertical()))) {
+      return 0;
+    }
+    try {
+      const rect = componentUtils.getRectangleById(id);
+      if (rect.size.width <= 0 || rect.size.height <= 0) {
+        return 0;
+      }
+      const pixels: image.PixelMap = componentSnapshot.getSync(id);
+      const info = pixels.getImageInfoSync();
+      const width = info.size.width;
+      const height = info.size.height;
+      if (pixels.getBytesNumberPerRow() !== width * 4) {
+        pixels.release();
+        return 0;
+      }
+      const rows = new ArrayBuffer(width * height * 4);
+      pixels.readPixelsToBufferSync(rows);
+      const premultiplied = info.alphaType === image.AlphaType.PREMUL;
+      const bgra = info.pixelFormat === image.PixelMapFormat.BGRA_8888;
+      pixels.release();
+      if (bgra || !premultiplied) {
+        toPremultipliedRgba(new Uint8Array(rows), bgra, premultiplied);
+      }
+      return gpuPageChromeSnapshot(page.token, edge, rows, width, height,
+        rect.windowOffset.x - originX, rect.windowOffset.y - originY, rect.size.width, rect.size.height);
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, `bar ${edge} snapshot failed: ${error}`);
+      return 0;
+    }
   }
 
   /** Host bars over a GPU page (top, right, bottom, left), device pixels. */
@@ -2439,5 +2621,22 @@ class RunOnFrame extends FrameCallback {
 
   onFrame(_frameTimeInNano: number): void {
     this.run();
+  }
+}
+
+/** Premultiplied RGBA in place, from BGRA and/or straight alpha. */
+function toPremultipliedRgba(bytes: Uint8Array, bgra: boolean, premultiplied: boolean): void {
+  for (let i = 0; i + 3 < bytes.length; i += 4) {
+    if (bgra) {
+      const blue = bytes[i];
+      bytes[i] = bytes[i + 2];
+      bytes[i + 2] = blue;
+    }
+    if (!premultiplied) {
+      const alpha = bytes[i + 3];
+      bytes[i] = Math.round(bytes[i] * alpha / 255);
+      bytes[i + 1] = Math.round(bytes[i + 1] * alpha / 255);
+      bytes[i + 2] = Math.round(bytes[i + 2] * alpha / 255);
+    }
   }
 }

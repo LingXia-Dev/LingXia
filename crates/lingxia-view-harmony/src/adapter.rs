@@ -66,6 +66,8 @@ pub struct HarmonyAdapter {
     images: Mutex<HashMap<u64, Box<dyn Send>>>,
     highlights: Mutex<[Option<usize>; 2]>,
     modal: AtomicBool,
+    /// The bar-snapshot generation the last presented frame draws; 0 when none.
+    chrome_snapshot: AtomicU64,
     /// The static-text selection the handles sit on: its identity, its node as frame JSON, and
     /// the handles last sent to ArkTS.
     selection: Mutex<Option<(String, String, String)>>,
@@ -134,6 +136,7 @@ impl HarmonyAdapter {
             images: Mutex::new(HashMap::new()),
             highlights: Mutex::new([None; 2]),
             modal: AtomicBool::new(false),
+            chrome_snapshot: AtomicU64::new(0),
             selection: Mutex::new(None),
             orientation: Mutex::new(None),
             vsync: AtomicBool::new(false),
@@ -750,6 +753,11 @@ impl HostEvents for HarmonyAdapter {
         let modal = frame.metrics.top_layer_open;
         if self.modal.swap(modal, Ordering::Relaxed) != modal {
             self.shell.top_layer(self.token, modal);
+        }
+        // The host hides a bar only once a frame on screen draws its snapshot.
+        let chrome = frame.metrics.chrome_snapshot;
+        if self.chrome_snapshot.swap(chrome, Ordering::Relaxed) != chrome {
+            self.shell.chrome_snapshot(self.token, chrome);
         }
         self.place_handles(frame);
         let orientation = frame.metrics.video_orientation;

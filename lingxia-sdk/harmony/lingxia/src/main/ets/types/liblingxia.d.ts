@@ -627,6 +627,9 @@ declare module 'liblingxia.so' {
   /** The page's facts (`GpuFacts` JSON) and its top-left on screen, device pixels. */
   export function gpuPageMeasured(token: number, facts: string, originX: number, originY: number): void;
   export function gpuPageSetVisible(token: number, visible: boolean): void;
+  /** A host bar's premultiplied RGBA rows under the open top layer, surface pixels; edge 0 top, 1 bottom. Returns its generation, or 0. */
+  export function gpuPageChromeSnapshot(token: number, edge: number, rows: ArrayBuffer, width: number, height: number, x: number, y: number, w: number, h: number): number;
+  export function gpuPageDeclineChromeSnapshot(token: number): void;
   export function gpuPageWindowVisible(token: number, visible: boolean): void;
   export function gpuPageWindowFocus(token: number, focused: boolean): void;
   export function gpuPageReveal(token: number, surfaceHoldsFrame: boolean): void;

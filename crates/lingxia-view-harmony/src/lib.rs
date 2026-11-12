@@ -61,6 +61,10 @@ pub trait Shell: Send + Sync + 'static {
     fn haptic(&self, token: i64);
     /// A top-layer dialog opened or closed; while open the page covers the host's bars.
     fn top_layer(&self, token: i64, modal: bool);
+    /// The presented frame draws the host's bar snapshots up to `generation`; 0 when none.
+    fn chrome_snapshot(&self, token: i64, generation: u64) {
+        let _ = (token, generation);
+    }
     /// A full-screen video asks the window for its orientation, or gives it back (`None`).
     fn video_orientation(
         &self,

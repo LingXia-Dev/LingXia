@@ -65,6 +65,8 @@ export class GpuPageModel {
   textMenu: GpuFrameTextMenu | null = null;
   handles: GpuSelectionHandles | null = null;
   topLayer: boolean = false;
+  /** The bar-snapshot generation the frame on screen draws; 0 when none. */
+  chromeSnapshot: number = 0;
   recovery: GpuRecovery | null = null;
   holdSurface: boolean = false;
   /** Revealed at least once: its surface has shown a frame and keeps it while the page lives. */
@@ -188,6 +190,9 @@ export class GpuPages {
         break;
       case 'topLayer':
         page.topLayer = payload === 'true';
+        break;
+      case 'chromeSnapshot':
+        page.chromeSnapshot = Number(payload) || 0;
         break;
       case 'recovery':
         page.recovery = payload.length > 0 ? JSON.parse(payload) as GpuRecovery : null;

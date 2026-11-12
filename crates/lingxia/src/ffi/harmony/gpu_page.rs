@@ -187,6 +187,9 @@ impl Shell for Bridge {
     fn top_layer(&self, token: i64, modal: bool) {
         arkts(token, "topLayer", if modal { "true" } else { "false" });
     }
+    fn chrome_snapshot(&self, token: i64, generation: u64) {
+        arkts(token, "chromeSnapshot", &generation.to_string());
+    }
     fn video_orientation(
         &self,
         token: i64,
@@ -453,6 +456,49 @@ pub fn gpu_page_measured(token: i64, facts: String, origin_x: f64, origin_y: f64
     };
     with_page(token, |page| {
         page.measured(facts, [origin_x as f32, origin_y as f32])
+    });
+}
+
+/// A host bar's premultiplied RGBA8 rows (top row first) to draw under the open top layer at
+/// `x, y, w, h` in surface pixels; `edge` 0 top, 1 bottom. Returns the generation a presented
+/// frame reports once it shows the bar, or 0 when the rows do not match the size.
+#[napi]
+#[allow(clippy::too_many_arguments)]
+pub fn gpu_page_chrome_snapshot(
+    token: i64,
+    edge: i32,
+    rows: ArrayBuffer,
+    width: u32,
+    height: u32,
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+) -> i64 {
+    if rows.len() as u64 != u64::from(width) * u64::from(height) * 4 {
+        return 0;
+    }
+    let edge = if edge == 0 {
+        lingxia_view_harmony::lingxia_view::ChromeEdge::Top
+    } else {
+        lingxia_view_harmony::lingxia_view::ChromeEdge::Bottom
+    };
+    let rgba = rows.to_vec();
+    let rect = [x as f32, y as f32, w as f32, h as f32];
+    with_page(token, |page| {
+        page.with_host(|host| host.set_chrome_snapshot(edge, rgba, width, height, rect))
+    })
+    .flatten()
+    .map_or(0, |generation| {
+        i64::try_from(generation).unwrap_or(i64::MAX)
+    })
+}
+
+/// The bars show again before the top layer closed: the page drops their snapshots.
+#[napi]
+pub fn gpu_page_decline_chrome_snapshot(token: i64) {
+    with_page(token, |page| {
+        page.with_host(|host| host.decline_chrome_snapshot())
     });
 }
 
