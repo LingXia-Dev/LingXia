@@ -722,8 +722,8 @@ pub(crate) async fn lxapp_service_handler(
     current_ctx: &mut Option<JSContext>,
 ) {
     handle_service_message(worker_id, runtime.clone(), message, current_ctx).await;
-    // A JS function called from native (a setData ack, channel data) only
-    // queues its promise continuations; Rong drains those on a 50 ms interval
+    // A JS function called inline by a message (the setData ack) only queues
+    // its promise continuations; Rong drains those on a 50 ms interval
     // otherwise, which capped `await this.flush()` loops at 20 per second.
     let _ = runtime.run_pending_jobs();
 }
@@ -1706,6 +1706,8 @@ mod worker_assignment_tests {
     /// A JS function native calls (a setData ack resolving `page.flush()`)
     /// only queues its promise continuations, and Rong's own fallback drains
     /// them every 50 ms. The pump must run them before taking the next message.
+    /// JavaScriptCore drains on its own when the outermost call returns.
+    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
     #[tokio::test(flavor = "current_thread")]
     async fn the_pump_runs_continuations_queued_by_native_js_calls() {
         use rong::{JSEngine, JSFunc, RongJS, Source};
