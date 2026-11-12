@@ -552,8 +552,25 @@ fn hot_swap(
         .iter()
         .position(|compiler| compiler.dir() == dir)
         .unwrap();
-    let compiled_run = match compilers[index].compile(&pages) {
-        Ok(compiled) => compiled,
+    let (compiled_run, pages) = match compilers[index].compile_each(pages) {
+        Ok(super::gpu_swap::Batch {
+            compiled,
+            built,
+            failed,
+        }) => {
+            // A page that does not build keeps running; the next save tries it again.
+            for (page, err) in failed {
+                eprintln!(
+                    "  {} {}: {err:#}",
+                    "✗".red(),
+                    super::gpu_swap::page_path(&page)
+                );
+            }
+            match compiled {
+                Some(compiled) => (compiled, built),
+                None => return true,
+            }
+        }
         Err(err) => {
             // The running page stays; the next save tries again.
             eprintln!("  {} {app_id}: {err:#}", "✗".red());

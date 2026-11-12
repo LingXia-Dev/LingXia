@@ -15,6 +15,10 @@ fn inputs(dir: &Path) -> Option<BTreeMap<PathBuf, BTreeSet<String>>> {
     let inputs: BTreeMap<String, Vec<String>> = serde_json::from_str(&text).ok()?;
     let mut by_file: BTreeMap<PathBuf, BTreeSet<String>> = BTreeMap::new();
     for (page, files) in inputs {
+        // A page deleted since its last build: the record outlives it until the next dev build.
+        if !dir.join(&page).is_file() {
+            continue;
+        }
         for file in files {
             by_file
                 .entry(canonical(&dir.join(file)))
@@ -181,6 +185,46 @@ impl Compiler {
     }
 }
 
+/// What [`Compiler::compile_each`] built.
+pub(super) struct Batch {
+    /// The last successful compile, if any page built.
+    pub compiled: Option<Compiled>,
+    pub built: Vec<String>,
+    pub failed: Vec<(String, anyhow::Error)>,
+}
+
+impl Compiler {
+    /// Compile `pages` together; when that fails and there are several, each alone, so one
+    /// page that does not build does not hold the others back.
+    pub(super) fn compile_each(&mut self, pages: Vec<String>) -> Result<Batch> {
+        match self.compile(&pages) {
+            Ok(compiled) => Ok(Batch {
+                compiled: Some(compiled),
+                built: pages,
+                failed: Vec::new(),
+            }),
+            Err(err) if pages.len() < 2 => Err(err),
+            Err(_) => {
+                let mut batch = Batch {
+                    compiled: None,
+                    built: Vec::new(),
+                    failed: Vec::new(),
+                };
+                for page in pages {
+                    match self.compile(std::slice::from_ref(&page)) {
+                        Ok(compiled) => {
+                            batch.compiled = Some(compiled);
+                            batch.built.push(page);
+                        }
+                        Err(err) => batch.failed.push((page, err)),
+                    }
+                }
+                Ok(batch)
+            }
+        }
+    }
+}
+
 impl Drop for Compiler {
     fn drop(&mut self) {
         let _ = self.child.kill();
@@ -256,6 +300,34 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn a_page_that_does_not_build_leaves_the_others_to_swap() {
+        let lxapp = gpu_lxapp();
+        std::fs::create_dir_all(lxapp.path().join("pages/b")).unwrap();
+        std::fs::write(
+            lxapp.path().join("pages/b/index.tsx"),
+            "export function render() { return <view>missing</view; }\n",
+        )
+        .unwrap();
+        let mut compiler = Compiler::spawn(lxapp.path()).unwrap();
+        let batch = compiler
+            .compile_each(vec![
+                "pages/a/index.tsx".to_owned(),
+                "pages/b/index.tsx".to_owned(),
+            ])
+            .unwrap();
+        assert!(batch.compiled.is_some());
+        assert_eq!(batch.built, ["pages/a/index.tsx"]);
+        assert_eq!(batch.failed.len(), 1);
+        assert_eq!(batch.failed[0].0, "pages/b/index.tsx");
+        assert!(
+            format!("{:#}", batch.failed[0].1).contains("pages/b/index.tsx"),
+            "{:#}",
+            batch.failed[0].1
+        );
+    }
+
     #[test]
     fn a_linked_package_edit_swaps_the_pages_that_import_it() {
         let base = tempfile::tempdir().unwrap();
@@ -303,9 +375,13 @@ mod tests {
         std::fs::create_dir_all(dir.path().join(".lingxia")).unwrap();
         std::fs::write(
             dir.path().join(".lingxia/gpu-inputs.json"),
-            r#"{"pages/a/index.tsx":["pages/a/index.tsx","shared/ui.tsx","theme/index.css"],"pages/b/index.tsx":["pages/b/index.tsx","shared/ui.tsx"]}"#,
+            r#"{"pages/a/index.tsx":["pages/a/index.tsx","shared/ui.tsx","theme/index.css"],"pages/b/index.tsx":["pages/b/index.tsx","shared/ui.tsx"],"pages/gone/index.tsx":["pages/gone/index.tsx","shared/ui.tsx"]}"#,
         )
         .unwrap();
+        for page in ["pages/a/index.tsx", "pages/b/index.tsx"] {
+            std::fs::create_dir_all(dir.path().join(page).parent().unwrap()).unwrap();
+            std::fs::write(dir.path().join(page), "").unwrap();
+        }
         let changed = |paths: &[&str]| -> BTreeSet<PathBuf> {
             paths.iter().map(|path| dir.path().join(path)).collect()
         };
@@ -313,6 +389,7 @@ mod tests {
             plan(dir.path(), &changed(&["pages/a/index.tsx"])),
             Some(vec!["pages/a/index.tsx".to_owned()])
         );
+        // `pages/gone` was deleted after its last build: a shared edit no longer plans it.
         assert_eq!(
             plan(dir.path(), &changed(&["shared/ui.tsx"])),
             Some(vec![
