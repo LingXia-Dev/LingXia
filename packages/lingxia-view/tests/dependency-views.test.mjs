@@ -69,3 +69,22 @@ test("a dependency's components are identified by package name and path inside i
     }, { install });
   }
 });
+
+test("a dev build names a dependency's lines by package name and path, linked or installed", async () => {
+  const files = {
+    ...kit,
+    '../kit/src/total.tsx': 'export function Total({ items }) {\n  const first = items[0];\n  return <view><text>{first.price.toFixed(2)}</text></view>;\n}\n',
+    '../kit/package.json': JSON.stringify({ name: 'view-kit', type: 'module', exports: { './card': './src/card.tsx', './total': './src/total.tsx' } }),
+    'page.tsx': "import { Total } from 'view-kit/total';\nexport function render() {\n  return <view><Total items={[{}]} /></view>;\n}\n",
+  };
+  for (const install of ['link', 'copy']) {
+    await project(files, async (root, build) => {
+      await build({ dev: true });
+      // The kit's own JSX sites carry the same names.
+      assert.match(await load(root), /__loc: "view-kit\/src\/total\.tsx:3:10"/, install);
+      const error = (() => { try { records(); } catch (error) { return error; } })();
+      assert.match(error.message, /\n  at view-kit\/src\/total\.tsx:3:\d+\n  at Total \(page\.tsx:3:16\)/, install);
+      assert.doesNotMatch(error.message, /node_modules|\.\.\//, install);
+    }, { install });
+  }
+});

@@ -276,7 +276,7 @@ function analyse(path, contents, label, id, loader, literalColors) {
   collect(file);
   const analysed = {
     contents, file, names, problems: audit(contents, path, { literalColors }),
-    annotated: identify(loader.endsWith('x') ? stabilizeClosures(annotate(contents, path, label), path, id) : contents, path, id),
+    annotated: identify(loader.endsWith('x') ? stabilizeClosures(annotate(contents, path, id), path, id) : contents, path, id),
   };
   analyses.delete(key);
   if (analyses.size >= 512) analyses.delete(analyses.keys().next().value);
@@ -399,9 +399,12 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
       (fonts.length ? `configureFonts(${JSON.stringify(fonts)});\n` : '');
     if (map) {
       const { sources, mappings } = JSON.parse(map.text);
-      // Only the author's files are named; the runtime and packages stay anonymous.
-      const authored = sources.map(path => path.startsWith('..') || path.includes('node_modules') || path === '<stdin>' ? null : path.split('\\').join('/'));
-      module += `configureSourceMap(${JSON.stringify({ sources: authored, mappings })});\n`;
+      // The lxapp's files and other packages' are named as in build problems; the View runtime stays anonymous.
+      const named = sources.map(path => {
+        const file = resolve(root, path);
+        return path === '<stdin>' || file.toLowerCase().startsWith(runtimeRoot) ? null : sourceLabel(root, file);
+      });
+      module += `configureSourceMap(${JSON.stringify({ sources: named, mappings })});\n`;
       module += 'enableHotSwap();\n';
     }
     await writeFile(dest, module);

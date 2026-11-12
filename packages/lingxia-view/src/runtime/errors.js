@@ -29,7 +29,7 @@ export function resourceError(error) {
 }
 
 // Dev builds carry the page bundle's source map: `{ sources, mappings }`, with
-// runtime and package sources left out (`null`), decoded on the first error.
+// the View runtime's sources left out (`null`), decoded on the first error.
 let sourceMap = null, decoded = null;
 export function configureSourceMap(map) { sourceMap = map; decoded = null; }
 
@@ -60,7 +60,7 @@ function decode() {
   return lines;
 }
 
-/** `file:line:col` of the first stack frame inside the author's sources. */
+/** `file:line:col` of the first stack frame outside the View runtime: the lxapp's or a package's. */
 export function authorSite(stack) {
   if (!sourceMap || typeof stack !== 'string') return undefined;
   decoded ??= decode();
