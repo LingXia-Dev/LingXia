@@ -2,9 +2,11 @@
 //! thread latches each frame, draws it into an RGBA AHardwareBuffer with GLES and hands the
 //! buffer to Vulkan, which samples the same memory. A buffer goes to Vulkan only once the EGL
 //! fence after its GL draw has signalled, a refresh later, so the render thread never waits on
-//! the GPU.
+//! the GPU. On a GLES device (a Vulkan driver the crash sentinel blocks) the SurfaceTexture
+//! attaches to wgpu's own context instead and frames are drawn there.
 use jni::objects::{Global, JByteBuffer, JClass, JDoubleArray, JFloatArray, JObject, JString};
 use jni::{Env, JValue, JavaVM, jni_sig, jni_str};
+use lingxia_view::renderer::gpu::video::gles::{self, Drawn, Frames};
 use lingxia_view::renderer::gpu::video::{Player, import_hardware_buffer, install};
 use lingxia_view::renderer::gpu::wgpu;
 use lingxia_view::scene::video::{Settings, Status, VideoError, VideoOp};
@@ -62,6 +64,7 @@ fn open(source: &str) -> Result<Box<dyn Player>, String> {
         pending: None,
         latched: false,
         posted: false,
+        frames: Frames::default(),
     }))
 }
 
@@ -77,6 +80,8 @@ struct Video {
     latched: bool,
     /// Frame 0 decoded at open was drawn, or will not be.
     posted: bool,
+    /// Frames drawn in wgpu's context, on a GLES device.
+    frames: Frames,
 }
 
 // The GL names and buffers are used on the render thread only; drop defers their GL half.
@@ -111,15 +116,10 @@ impl Player for Video {
         &mut self,
         device: &wgpu::Device,
     ) -> Result<Option<(wgpu::Texture, [u16; 2])>, String> {
-        let size = java(|env| {
-            let width = env
-                .call_method(&*self.java, jni_str!("width"), jni_sig!("()I"), &[])?
-                .i()?;
-            let height = env
-                .call_method(&*self.java, jni_str!("height"), jni_sig!("()I"), &[])?
-                .i()?;
-            Ok([width.max(0) as u32, height.max(0) as u32])
-        })?;
+        if gles::applies(device) {
+            return self.next_gles_frame(device);
+        }
+        let size = self.player_size()?;
         // Until the player has a frame, frame 0 decoded at open stands in, in the same slots.
         let poster = if self.posted {
             None
@@ -297,6 +297,84 @@ impl Player for Video {
 }
 
 impl Video {
+    fn player_size(&self) -> Result<[u32; 2], String> {
+        java(|env| {
+            let width = env
+                .call_method(&*self.java, jni_str!("width"), jni_sig!("()I"), &[])?
+                .i()?;
+            let height = env
+                .call_method(&*self.java, jni_str!("height"), jni_sig!("()I"), &[])?
+                .i()?;
+            Ok([width.max(0) as u32, height.max(0) as u32])
+        })
+    }
+
+    /// The GLES path: the newest frame, or frame 0 until the player has one, drawn in wgpu's
+    /// context.
+    fn next_gles_frame(
+        &mut self,
+        device: &wgpu::Device,
+    ) -> Result<Option<(wgpu::Texture, [u16; 2])>, String> {
+        let player = self.player_size()?;
+        let poster = if self.posted {
+            None
+        } else {
+            self.poster_size()
+        };
+        let size = match poster {
+            _ if player[0] != 0 && player[1] != 0 => player,
+            Some(poster) => poster,
+            None => return Ok(None),
+        };
+        // A frame of another shape would jump when the player's own arrives.
+        if poster.is_some_and(|poster| poster != size) {
+            self.drop_poster();
+        }
+        let still = if self.posted {
+            None
+        } else {
+            self.poster_rows(size)
+        };
+        let drawn = self
+            .frames
+            .next(device, &mut Texture(&self.java), size, still)?;
+        match drawn.as_ref().map(|(drawn, ..)| *drawn) {
+            Some(Drawn::Frame) if !self.latched => {
+                self.latched = true;
+                self.drop_poster();
+            }
+            // The slot holds frame 0 now.
+            Some(Drawn::Still) => self.drop_poster(),
+            _ => {}
+        }
+        Ok(drawn.map(|(_, texture, size)| (texture, size)))
+    }
+
+    /// Frame 0's rows, when they are `size`. They stay valid until `drop_poster`, which only
+    /// this player calls: the Java side holds the buffer until then.
+    fn poster_rows(&self, size: [u32; 2]) -> Option<&'static [u8]> {
+        let (address, length) = java(|env| {
+            let rows = env
+                .call_method(
+                    &*self.java,
+                    jni_str!("poster"),
+                    jni_sig!("()Ljava/nio/ByteBuffer;"),
+                    &[],
+                )?
+                .l()?;
+            if rows.is_null() {
+                return Ok((0, 0));
+            }
+            let rows = env.cast_local::<JByteBuffer>(rows)?;
+            let length = env.get_direct_buffer_capacity(&rows)?;
+            let address = env.get_direct_buffer_address(&rows)?;
+            Ok((address as usize, length))
+        })
+        .ok()?;
+        (address != 0 && length == size[0] as usize * size[1] as usize * 4)
+            .then(|| unsafe { std::slice::from_raw_parts(address as *const u8, length) })
+    }
+
     fn renditions(&self) -> Vec<String> {
         java(|env| {
             let text = env
@@ -487,16 +565,73 @@ impl Video {
 
 impl Drop for Video {
     fn drop(&mut self) {
+        if self.frames.bound() {
+            // The SurfaceTexture detaches in wgpu's context, on the render thread, before the
+            // player closes.
+            let mut frames = std::mem::take(&mut self.frames);
+            if let Ok(java) = java(|env| env.new_global_ref(&*self.java)) {
+                lingxia_view::renderer::render_thread::run(move || {
+                    frames.release(&mut Texture(&java));
+                    close(&java);
+                });
+                return;
+            }
+        }
         self.release_slots();
         if let Some(gl) = self.gl.take() {
             defer(Garbage::Texture(gl.external));
             defer(Garbage::Program(gl.program));
             defer(Garbage::Framebuffer(gl.framebuffer));
         }
+        close(&self.java);
+    }
+}
+
+fn close(player: &Global<JObject<'static>>) {
+    let _ = java(|env| {
+        env.call_method(&**player, jni_str!("close"), jni_sig!("()V"), &[])
+            .map(drop)
+    });
+}
+
+/// The player's SurfaceTexture, driven in the current GL context.
+struct Texture<'a>(&'a Global<JObject<'static>>);
+
+impl gles::Image for Texture<'_> {
+    fn attach(&mut self, external: u32) -> Result<(), String> {
+        java(|env| {
+            env.call_method(
+                &**self.0,
+                jni_str!("attach"),
+                jni_sig!("(I)V"),
+                &[JValue::Int(external as i32)],
+            )
+            .map(drop)
+        })
+        .map_err(|error| format!("VIDEO_DECODE: {error}"))
+    }
+
+    fn detach(&mut self) {
         let _ = java(|env| {
-            env.call_method(&*self.java, jni_str!("close"), jni_sig!("()V"), &[])
+            env.call_method(&**self.0, jni_str!("detach"), jni_sig!("()V"), &[])
                 .map(drop)
         });
+    }
+
+    fn latch(&mut self) -> Result<Option<[f32; 16]>, String> {
+        let mut matrix = [0f32; 16];
+        let latched = java(|env| {
+            let array = env
+                .call_method(&**self.0, jni_str!("update"), jni_sig!("()[F"), &[])?
+                .l()?;
+            if array.is_null() {
+                return Ok(false);
+            }
+            let array = env.cast_local::<JFloatArray>(array)?;
+            array.get_region(env, 0, &mut matrix)?;
+            Ok(true)
+        })?;
+        Ok(latched.then_some(matrix))
     }
 }
 

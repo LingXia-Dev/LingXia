@@ -347,6 +347,14 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
         }
     }
 
+    /** Detaches from the current GL context, which deletes the attached texture. */
+    void detach() {
+        if (attached) {
+            texture.detachFromGLContext();
+            attached = false;
+        }
+    }
+
     /** Latches the newest frame into the attached texture; its transform, or null with none. */
     float[] update() {
         if (!attached || !available) {

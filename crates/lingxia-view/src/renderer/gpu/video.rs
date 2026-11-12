@@ -15,6 +15,9 @@ const IDLE: Duration = Duration::from_secs(2);
 /// path that cannot work would otherwise fail and redraw at frame rate.
 const FRAME_FAILURES: u8 = 3;
 
+#[cfg(target_os = "android")]
+pub mod gles;
+
 /// Bumped when a frame size changes: cached scenes encode the video's source region.
 static EPOCH: AtomicU64 = AtomicU64::new(0);
 
