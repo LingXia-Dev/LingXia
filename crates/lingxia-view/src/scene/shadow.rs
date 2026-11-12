@@ -443,4 +443,73 @@ mod tests {
         assert!(BoxShadow::parse("none").unwrap().is_empty());
         assert!(BoxShadow::parse("[]").unwrap().is_empty());
     }
+
+    #[test]
+    fn a_ring_in_a_role_paints_the_same_pixels_as_a_fill_of_that_role() {
+        use crate::protocol::field::{BACKGROUND, BOX_SHADOW, DISPLAY, GRID_COLUMN, GRID_ROW};
+        use crate::protocol::field::{HEIGHT, INSET_LEFT, INSET_TOP, RADIUS, WIDTH};
+        use crate::protocol::tag::COLUMN;
+        use serde_json::json;
+        let ring = r#"[{"spread":2,"color":"surface"}]"#;
+        let avatar = |left: f32| {
+            json!([
+                COLUMN,
+                0,
+                "",
+                "",
+                "",
+                9,
+                WIDTH,
+                40,
+                HEIGHT,
+                40,
+                RADIUS,
+                20,
+                BACKGROUND,
+                "accent",
+                BOX_SHADOW,
+                ring,
+                INSET_LEFT,
+                left,
+                INSET_TOP,
+                20.25,
+                GRID_COLUMN,
+                "1",
+                GRID_ROW,
+                "1"
+            ])
+        };
+        let mut wire = json!([
+            COLUMN, -1, "", "", "", 4, WIDTH, 120, HEIGHT, 80, BACKGROUND, "surface", DISPLAY,
+            "grid"
+        ])
+        .as_array()
+        .unwrap()
+        .clone();
+        for left in [20.5, 50.5] {
+            wire.extend(avatar(left).as_array().unwrap().iter().cloned());
+        }
+        let records = crate::protocol::decode(&wire).unwrap();
+        for dark in [false, true] {
+            let mut renderer = crate::Renderer::default();
+            renderer.dark = dark;
+            renderer.palette = crate::theme::Palette::builtin(dark);
+            let surface = renderer.palette.role(lingxia_theme::Role::Surface);
+            let frame = renderer.layout(&records, 360, 240, 3.0).unwrap();
+            let frame = frame.rasterize().unwrap();
+            let (width, pixels) = (
+                frame.pixels.width() as usize,
+                frame.pixels.data_as_u8_slice(),
+            );
+            // The left ring over the stage, the top ring, and the second ring over the first avatar.
+            for [x, y] in [[19.5f32, 40.25], [40.5, 19.25], [49.5, 40.25]] {
+                let at = ((y * 3.0) as usize * width + (x * 3.0) as usize) * 4;
+                let pixel = &pixels[at..at + 4];
+                assert!(
+                    pixel.iter().zip(surface).all(|(a, b)| a.abs_diff(b) <= 1),
+                    "dark {dark}: ring at ({x},{y}) is {pixel:?}, surface is {surface:?}"
+                );
+            }
+        }
+    }
 }
