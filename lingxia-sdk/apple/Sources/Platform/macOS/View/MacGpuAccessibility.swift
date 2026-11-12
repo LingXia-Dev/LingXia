@@ -88,6 +88,8 @@ final class MacGpuAccessibilityElement: NSAccessibilityElement {
         setAccessibilityLabel(node.name.isEmpty ? (node.textField?.hint ?? node.text) : node.name)
         setAccessibilityValue(Self.value(node))
         setAccessibilityRole(Self.role(node))
+        setAccessibilityHelp(node.description)
+        setAccessibilityRequired(node.required == true)
         setAccessibilityEnabled(node.enabled)
         setAccessibilitySelected(node.selected == true || node.checked == true)
         // A swipe row's `aria-actions`: the same actions VoiceOver's rotor and automation perform.
@@ -136,7 +138,8 @@ final class MacGpuAccessibilityElement: NSAccessibilityElement {
         case "grid-cell", "option": return .cell
         case "menu": return .menu
         case "menu-item": return .menuItem
-        case "dialog", "alert", "list-item", "status": return .group
+        case "dialog", "alert-dialog", "alert", "list-item", "status", "group": return .group
+        case "tooltip": return .staticText
         default:
             // A role the core added without a mapping here is a bug, never a silent group.
             assertionFailure("unmapped semantic role \(node.role)")

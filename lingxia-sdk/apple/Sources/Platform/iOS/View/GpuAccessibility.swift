@@ -81,6 +81,7 @@ final class GpuAccessibilityElement: UIAccessibilityElement {
         accessibilityLabel = node.name.isEmpty ? (node.textField?.hint ?? node.text) : node.name
         accessibilityValue = Self.value(node)
         accessibilityTraits = Self.traits(node)
+        accessibilityHint = node.description
         if node.bounds.count == 4 {
             accessibilityFrameInContainerSpace = CGRect(
                 x: CGFloat(node.bounds[0]), y: CGFloat(node.bounds[1]),
@@ -126,10 +127,10 @@ final class GpuAccessibilityElement: UIAccessibilityElement {
         case "image": traits.insert(.image)
         case "video": traits.formUnion([.image, .startsMediaSession])
         case "slider": traits.insert(.adjustable)
-        case "text": traits.insert(.staticText)
+        case "text", "tooltip": traits.insert(.staticText)
         // A day of a month or a choice of a picker column: pressable, and selected when chosen.
         case "grid-cell", "option", "menu-item": traits.insert(.button)
-        case "grid", "list-box", "list", "list-item", "dialog", "alert", "status", "text-field", "menu",
+        case "grid", "list-box", "list", "list-item", "dialog", "alert-dialog", "alert", "status", "group", "text-field", "menu",
              "scroll-view", "horizontal-scroll-view", "radio-group": break
         // As UIProgressView: no trait, its share spoken as the value.
         case "progress-bar": traits.insert(.updatesFrequently)
