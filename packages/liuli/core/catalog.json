@@ -3076,7 +3076,7 @@
       "category": "inputs",
       "status": "preview",
       "summary": "One choice from a list that opens on demand",
-      "description": "Select picks one option from a list too long to show in place: a country, a role, a sort order. It is a Field around the select primitive, which opens the platform's own list or menu.",
+      "description": "Select picks one option from a list too long to show in place: a country, a role, a sort order. It is a Field around the select primitive, which opens the View's own list: under the box with a mouse or trackpad, as a sheet with Cancel and Done on touch.",
       "keywords": [
         "select",
         "dropdown",
@@ -3259,7 +3259,7 @@
         ],
         "notes": [
           "The placeholder is never the name: the label is, and it stays when the label is hidden.",
-          "The open list is the platform's, so it reads and scrolls as the device's own pickers do."
+          "The open list is a listbox of options: a popover under the box with a fine pointer, a modal sheet on touch, where a tap picks and Done commits."
         ]
       },
       "examples": [
@@ -3279,23 +3279,7 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { Select } from '@liulidesign/core/Select';\n\nexport function Sizes() {\n  const zone = useLocal('zone', 'cet');\n  const options = [{ value: 'cet', label: 'Central European Time' }, { value: 'utc', label: 'Coordinated Universal Time' }];\n  return (\n    <view className=\"gap-4\">\n      <Select bind={zone} label=\"Small\" size=\"sm\" options={options} />\n      <Select bind={zone} label=\"Medium\" options={options} />\n      <Select bind={zone} label=\"Large\" size=\"lg\" options={options} />\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [
-        {
-          "missing": "A placeholder colour set the usual way.",
-          "needs": "the class compiler to accept `placeholder:` on `<select>`; the renderer already reads the select's placeholder colour",
-          "today": "Liuli tints the whole box text muted while nothing is chosen."
-        },
-        {
-          "missing": "A quieter chevron than the chosen label.",
-          "needs": "a chevron colour on the select primitive apart from its text colour",
-          "today": "The chevron takes the text colour."
-        },
-        {
-          "missing": "A long chosen label cut short with an ellipsis.",
-          "needs": "the select to paint its label on one line and truncate, as its layout already measures it",
-          "today": "Liuli sets `whitespace-nowrap`, so the label stays on one line; one wider than the box is clipped, not ellipsized."
-        }
-      ],
+      "gaps": [],
       "related": [
         "RadioGroup",
         "DropdownMenu",

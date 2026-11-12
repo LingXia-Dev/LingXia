@@ -8,7 +8,7 @@ One choice from a list that opens on demand. Status: preview.
 import { Select } from '@liulidesign/core/Select';
 ```
 
-Select picks one option from a list too long to show in place: a country, a role, a sort order. It is a Field around the select primitive, which opens the platform's own list or menu.
+Select picks one option from a list too long to show in place: a country, a role, a sort order. It is a Field around the select primitive, which opens the View's own list: under the box with a mouse or trackpad, as a sheet with Cancel and Done on touch.
 
 ## Examples
 
@@ -112,7 +112,7 @@ export function Sizes() {
 | Part | Element | Required | Description |
 | --- | --- | --- | --- |
 | field | `<Field>` | yes | Field: the label, help text and status. |
-| control | `<select>` | yes | The select primitive: the box, the chosen label or placeholder, the chevron, and the platform list. |
+| control | `<select>` | yes | The select primitive: the box, the chosen label or placeholder, the chevron, and the list it opens. |
 
 ## Accessibility
 
@@ -124,7 +124,7 @@ export function Sizes() {
 - Up, Down: Moves through the open list; Enter chooses, Escape closes..
 - Press target: sm 32 px, md 40 px, lg 48 px.
 - The placeholder is never the name: the label is, and it stays when the label is hidden.
-- The open list is the platform's, so it reads and scrolls as the device's own pickers do.
+- The open list is a listbox of options: a popover under the box with a fine pointer, a modal sheet on touch, where a tap picks and Done commits.
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
@@ -140,13 +140,5 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Write the placeholder as an instruction ("Choose a country"), not as an option.
 - Don't: Use a select for two to six options that fit; use a RadioGroup so they can be compared.
 - Don't: Use a select to run an action; use a DropdownMenu.
-
-## Not yet
-
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| A placeholder colour set the usual way. | the class compiler to accept `placeholder:` on `<select>`; the renderer already reads the select's placeholder colour | Liuli tints the whole box text muted while nothing is chosen. |
-| A quieter chevron than the chosen label. | a chevron colour on the select primitive apart from its text colour | The chevron takes the text colour. |
-| A long chosen label cut short with an ellipsis. | the select to paint its label on one line and truncate, as its layout already measures it | Liuli sets `whitespace-nowrap`, so the label stays on one line; one wider than the box is clipped, not ellipsized. |
 
 Related: RadioGroup, DropdownMenu, Field.

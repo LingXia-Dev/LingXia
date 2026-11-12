@@ -7,13 +7,13 @@ export const doc: ComponentDoc = {
   summary: 'One choice from a list that opens on demand',
   description:
     'Select picks one option from a list too long to show in place: a country, a role, a sort order. ' +
-    'It is a Field around the select primitive, which opens the platform\'s own list or menu.',
+    'It is a Field around the select primitive, which opens the View\'s own list: under the box with a mouse or trackpad, as a sheet with Cancel and Done on touch.',
   keywords: ['select', 'dropdown', 'picker', 'combo box', 'choose', 'options', 'menu', 'single select'],
   propsType: 'SelectProps',
   recipe: { map: 'selectRecipe', parts: 'selectParts' },
   anatomy: [
     { part: 'field', required: true, description: 'Field: the label, help text and status.' },
-    { part: 'control', required: true, description: 'The select primitive: the box, the chosen label or placeholder, the chevron, and the platform list.' },
+    { part: 'control', required: true, description: 'The select primitive: the box, the chosen label or placeholder, the chevron, and the list it opens.' },
   ],
   accessibility: {
     pattern: 'select',
@@ -36,7 +36,7 @@ export const doc: ComponentDoc = {
     ],
     notes: [
       'The placeholder is never the name: the label is, and it stays when the label is hidden.',
-      'The open list is the platform\'s, so it reads and scrolls as the device\'s own pickers do.',
+      'The open list is a listbox of options: a popover under the box with a fine pointer, a modal sheet on touch, where a tap picks and Done commits.',
     ],
   },
   guidance: {
@@ -54,23 +54,7 @@ export const doc: ComponentDoc = {
     { name: 'Required', title: 'Required, with an error and a disabled option' },
     { name: 'Sizes', title: 'Sizes' },
   ],
-  gaps: [
-    {
-      missing: 'A placeholder colour set the usual way.',
-      needs: 'the class compiler to accept `placeholder:` on `<select>`; the renderer already reads the select\'s placeholder colour',
-      today: 'Liuli tints the whole box text muted while nothing is chosen.',
-    },
-    {
-      missing: 'A quieter chevron than the chosen label.',
-      needs: 'a chevron colour on the select primitive apart from its text colour',
-      today: 'The chevron takes the text colour.',
-    },
-    {
-      missing: 'A long chosen label cut short with an ellipsis.',
-      needs: 'the select to paint its label on one line and truncate, as its layout already measures it',
-      today: 'Liuli sets `whitespace-nowrap`, so the label stays on one line; one wider than the box is clipped, not ellipsized.',
-    },
-  ],
+  gaps: [],
   related: ['RadioGroup', 'DropdownMenu', 'Field'],
   gallery: {
     specimen: 'Specimen',

@@ -43,8 +43,7 @@ export function Select(props: SelectProps) {
     options, placeholder, className, 'data-testid': testId,
   } = props;
   const choices = options.map(option => ({ value: option.value, label: option.label, disabled: option.isDisabled }));
-  const chosen = props.bind ? props.bind.value : props.value;
-  const controlClass = cx(r.control.base, r.control.size[size], chosen === '' && r.control.empty, status && r.control.status[status.type]);
+  const controlClass = cx(r.control.base, r.control.size[size], status && r.control.status[status.type]);
   return (
     <Field
       label={label}
