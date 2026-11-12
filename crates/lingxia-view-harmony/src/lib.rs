@@ -77,6 +77,9 @@ pub trait Shell: Send + Sync + 'static {
     fn paste(&self, done: Box<dyn FnOnce(Option<String>) + Send>);
     /// Show or move the text menu (frame-contract `TextMenu` JSON), or close it (empty).
     fn text_menu(&self, token: i64, menu: &str);
+    /// Place the handles of a static-text selection (`{identity, color, ends}`), or remove
+    /// them (empty).
+    fn selection_handles(&self, token: i64, handles: &str);
     fn host_chrome(&self, token: i64, chrome: &HostChrome);
 }
 
@@ -328,6 +331,30 @@ impl Page {
             host.can_scroll_horizontally_at([screen[0] - origin[0], screen[1] - origin[1]], -1)
         })
         .unwrap_or(false)
+    }
+
+    /// A selection handle dragged to a page point (vp): the selection end `which` follows it.
+    pub fn move_text_selection(&self, which: u8, point: [f32; 2]) {
+        use lingxia_view::interaction::chrome::{ChromeNode, drag_point};
+        pages::with(self.token, |host| {
+            let Some((identity, json)) = host.adapter().selection() else {
+                return;
+            };
+            let Some(drag) = ChromeNode::parse(&json)
+                .ok()
+                .and_then(|node| drag_point(&node, f64::from(point[0]), f64::from(point[1])))
+            else {
+                return;
+            };
+            if drag.visible {
+                host.move_text_selection(identity, which.min(1), drag.point.map(|v| v as f32));
+            }
+        });
+    }
+
+    /// A handle was grabbed or let go; the core hides the text menu meanwhile.
+    pub fn text_handle_drag(&self, active: bool) {
+        pages::with(self.token, |host| host.text_handle_drag(active));
     }
 
     /// The newest GPU frame as a PNG, for automation screenshots.

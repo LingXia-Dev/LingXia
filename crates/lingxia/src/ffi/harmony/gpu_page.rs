@@ -207,6 +207,9 @@ impl Shell for Bridge {
     fn text_menu(&self, token: i64, menu: &str) {
         arkts(token, "textMenu", menu);
     }
+    fn selection_handles(&self, token: i64, handles: &str) {
+        arkts(token, "selectionHandles", handles);
+    }
     fn host_chrome(&self, token: i64, chrome: &HostChrome) {
         let argb = |[r, g, b, a]: [u8; 4]| u32::from_be_bytes([a, r, g, b]);
         let payload = serde_json::json!({
@@ -561,6 +564,18 @@ pub fn gpu_page_text_menu_action(token: i64, action: i32) -> bool {
 pub fn gpu_page_text_menu_dismissed(token: i64) {
     with_page(token, |page| {
         page.with_host(|host| host.text_menu_dismissed())
+    });
+}
+
+#[napi]
+pub fn gpu_page_text_handle_drag(token: i64, active: bool) {
+    with_page(token, |page| page.text_handle_drag(active));
+}
+
+#[napi]
+pub fn gpu_page_move_text_selection(token: i64, which: i32, x: f64, y: f64) {
+    with_page(token, |page| {
+        page.move_text_selection(which.clamp(0, 1) as u8, [x as f32, y as f32])
     });
 }
 

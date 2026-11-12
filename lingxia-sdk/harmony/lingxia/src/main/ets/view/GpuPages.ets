@@ -1,4 +1,5 @@
 import { NodeContent } from '@kit.ArkUI';
+import { pasteboard } from '@kit.BasicServicesKit';
 import { LxLog } from '../app/LxLog';
 import { GpuFrameTextMenu } from './generated/GpuFrame';
 import { gpuPageReveal } from 'liblingxia.so';
@@ -23,6 +24,14 @@ export class GpuFeedback {
   shape: number[] = [];
   color: number = 0;
   width: number = 0;
+}
+
+/** Handles over a static-text selection, page vp: each end is [center x, line bottom, line
+ *  middle], or null while that end is scrolled out or clipped. */
+export class GpuSelectionHandles {
+  identity: string = '';
+  color: number = 0;
+  ends: (number[] | null)[] = [];
 }
 
 class GpuPageIdentity {
@@ -54,6 +63,7 @@ export class GpuPageModel {
   press: GpuFeedback | null = null;
   focusRing: GpuFeedback | null = null;
   textMenu: GpuFrameTextMenu | null = null;
+  handles: GpuSelectionHandles | null = null;
   topLayer: boolean = false;
   recovery: GpuRecovery | null = null;
   holdSurface: boolean = false;
@@ -173,6 +183,9 @@ export class GpuPages {
       case 'textMenu':
         page.textMenu = payload.length > 0 ? JSON.parse(payload) as GpuFrameTextMenu : null;
         break;
+      case 'selectionHandles':
+        page.handles = payload.length > 0 ? JSON.parse(payload) as GpuSelectionHandles : null;
+        break;
       case 'topLayer':
         page.topLayer = payload === 'true';
         break;
@@ -200,7 +213,7 @@ export class GpuPages {
   }
 
   private static copy(text: string): void {
-    // The clipboard write goes through LxAppClipboard once the container integration lands.
-    LxLog.d(TAG, `copy ${text.length} chars`);
+    pasteboard.getSystemPasteboard().setData(pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text))
+      .catch((error: Object) => LxLog.e(TAG, `copy failed: ${error}`));
   }
 }

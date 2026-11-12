@@ -66,6 +66,9 @@ pub struct HarmonyAdapter {
     images: Mutex<HashMap<u64, Box<dyn Send>>>,
     highlights: Mutex<[Option<usize>; 2]>,
     modal: AtomicBool,
+    /// The static-text selection the handles sit on: its identity, its node as frame JSON, and
+    /// the handles last sent to ArkTS.
+    selection: Mutex<Option<(String, String, String)>>,
     orientation: Mutex<Option<lingxia_view::scene::video::Orientation>>,
     vsync: AtomicBool,
     long_press: AtomicU64,
@@ -75,6 +78,42 @@ pub struct HarmonyAdapter {
 }
 
 impl HarmonyAdapter {
+    /// Handles follow a static-text selection in each presented frame, or go with it.
+    fn place_handles(&self, frame: &FrameSnapshot) {
+        use lingxia_view::interaction::chrome::{ChromeNode, endpoint};
+        let next = frame
+            .frame
+            .nodes
+            .iter()
+            .find(|node| node.input.is_none() && node.text_selection.is_some())
+            .and_then(|node| {
+                let json = serde_json::to_string(node).ok()?;
+                let chrome = ChromeNode::parse(&json).ok()?;
+                let ends = [endpoint(&chrome, 0), endpoint(&chrome, 1)];
+                let handles = serde_json::json!({
+                    "identity": &*node.identity,
+                    "color": frame.feedback.selection_handle,
+                    "ends": ends,
+                })
+                .to_string();
+                Some((node.identity.to_string(), json, handles))
+            });
+        let mut selection = lock(&self.selection);
+        let sent = |s: &Option<(String, String, String)>| s.as_ref().map(|(.., h)| h.clone());
+        if sent(&selection) != sent(&next) {
+            let handles = sent(&next).unwrap_or_default();
+            self.shell.selection_handles(self.token, &handles);
+        }
+        *selection = next;
+    }
+
+    /// The selection's identity and node JSON, for a handle drag.
+    pub(crate) fn selection(&self) -> Option<(String, String)> {
+        lock(&self.selection)
+            .as_ref()
+            .map(|(identity, json, _)| (identity.clone(), json.clone()))
+    }
+
     pub(crate) fn new(token: i64, shell: Arc<dyn Shell>) -> Self {
         Self {
             token,
@@ -95,6 +134,7 @@ impl HarmonyAdapter {
             images: Mutex::new(HashMap::new()),
             highlights: Mutex::new([None; 2]),
             modal: AtomicBool::new(false),
+            selection: Mutex::new(None),
             orientation: Mutex::new(None),
             vsync: AtomicBool::new(false),
             long_press: AtomicU64::new(0),
@@ -615,6 +655,7 @@ impl HostEvents for HarmonyAdapter {
         if self.modal.swap(modal, Ordering::Relaxed) != modal {
             self.shell.top_layer(self.token, modal);
         }
+        self.place_handles(frame);
         let orientation = frame.metrics.video_orientation;
         if std::mem::replace(&mut *lock(&self.orientation), orientation) != orientation {
             self.shell.video_orientation(self.token, orientation);

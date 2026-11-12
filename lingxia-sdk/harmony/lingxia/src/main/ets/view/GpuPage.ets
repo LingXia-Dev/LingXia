@@ -1,7 +1,8 @@
 import { window } from '@kit.ArkUI';
 import { common, Configuration, EnvironmentCallback } from '@kit.AbilityKit';
 import { Lingxia } from '../app/Lingxia';
-import { GpuFeedback, GpuPageModel, GpuRecovery } from './GpuPages';
+import { GpuFeedback, GpuPageModel, GpuRecovery, GpuSelectionHandles } from './GpuPages';
+import { GpuFrameTextMenu, GpuFrameTextMenuTargetKinds } from './generated/GpuFrame';
 import { HostOverlays } from '../lxapp/HostOverlays';
 import { GpuRect, sampleFacts } from './GpuEnvironment';
 import {
@@ -10,13 +11,30 @@ import {
   gpuPageSetVisible,
   gpuPageWindowVisible,
   gpuPageRetry,
+  gpuPageTextMenuAction,
+  gpuPageTextMenuDismissed,
+  gpuPageTextHandleDrag,
+  gpuPageMoveTextSelection,
   getDisplayLanguage,
 } from 'liblingxia.so';
 
+/** Core menu actions in `MenuAction` order, and their labels. */
+const MENU_ACTIONS: string[] = ['cut', 'copy', 'paste', 'select_all', 'undo', 'redo'];
+const MENU_LABELS: Resource[] = [$r('app.string.lx_text_menu_cut'), $r('app.string.lx_text_menu_copy'),
+  $r('app.string.lx_text_menu_paste'), $r('app.string.lx_text_menu_select_all'),
+  $r('app.string.lx_text_menu_undo'), $r('app.string.lx_text_menu_redo')];
+/** Text menu height and its gap to the selection, vp. */
+const MENU_HEIGHT = 40;
+const MENU_GAP = 8;
+/** A handle's knob radius, and the touch target around it, vp. */
+const KNOB = 7;
+const HANDLE_TOUCH = 40;
+
 /**
  * A GPU page: the `ContentSlot` Rust mounts its XComponent node into, and the chrome a
- * native renderer cannot draw itself (press feedback, text menu, recovery). Spans the
- * window; host bars overlap it and arrive as `chromeInsets` in device pixels.
+ * native renderer cannot draw itself (press feedback, selection handles and text menu,
+ * recovery). Spans the window; host bars overlap it and arrive as `chromeInsets` in device
+ * pixels.
  */
 @Component
 export struct GpuPage {
@@ -33,6 +51,12 @@ export struct GpuPage {
   private environment: number = -1;
   /** The failure whose action was pressed: its button waits for the next report. */
   @State retried: GpuRecovery | null = null;
+  @State menuWidth: number = 0;
+  /** The page's size, vp, for keeping the menu on screen. */
+  @State pageWidth: number = 0;
+  /** The grabbed handle: which end, and the finger's offset from its line middle. */
+  private grabbed: number = -1;
+  private grabOffset: number[] = [0, 0];
   private messages: Resource[] = [$r('app.string.lx_gpu_update_required'), $r('app.string.lx_gpu_session_failed'),
     $r('app.string.lx_gpu_update_failed'), $r('app.string.lx_gpu_display_failed')];
   private actions: Resource[] = [$r('app.string.lx_gpu_retry'), $r('app.string.lx_gpu_reload')];
@@ -174,6 +198,104 @@ export struct GpuPage {
       .hitTestBehavior(HitTestMode.None)
   }
 
+  /** Static-text menus only: an editor's actions run through its input connection, not here. */
+  private menuShown(): GpuFrameTextMenu | null {
+    const menu = this.page.textMenu;
+    return menu !== null && menu.target.kind === GpuFrameTextMenuTargetKinds.TEXT ? menu : null;
+  }
+
+  /** Above the selection, or below it when the top inset leaves no room; kept on the page. */
+  private menuPosition(menu: GpuFrameTextMenu): Position {
+    const x = menu.anchor[0], y = menu.anchor[1], width = menu.anchor[2], height = menu.anchor[3];
+    const top = px2vp(this.chromeInsets[0]);
+    const above = y - MENU_GAP - MENU_HEIGHT;
+    const left = Math.min(Math.max(x + width / 2 - this.menuWidth / 2, 8), Math.max(this.pageWidth - this.menuWidth - 8, 8));
+    return { x: left, y: above >= top ? above : y + height + MENU_GAP };
+  }
+
+  private menuContains(menu: GpuFrameTextMenu, x: number, y: number): boolean {
+    const at = this.menuPosition(menu);
+    const left = Number(at.x), top = Number(at.y);
+    return x >= left && x <= left + this.menuWidth && y >= top && y <= top + MENU_HEIGHT;
+  }
+
+  @Builder
+  textMenu(menu: GpuFrameTextMenu) {
+    Row() {
+      ForEach(menu.actions.filter((action: string) => MENU_ACTIONS.indexOf(action) >= 0), (action: string) => {
+        Text(MENU_LABELS[MENU_ACTIONS.indexOf(action)])
+          .fontSize(14)
+          .fontColor(this.page.chrome?.dark ? Color.White : '#202226')
+          .padding({ left: 12, right: 12 })
+          .height(MENU_HEIGHT)
+          .onClick(() => gpuPageTextMenuAction(this.page.token, MENU_ACTIONS.indexOf(action)))
+      }, (action: string) => action)
+    }
+    .height(MENU_HEIGHT)
+    .borderRadius(MENU_HEIGHT / 2)
+    .backgroundColor(this.page.chrome?.dark ? '#2C2E33' : Color.White)
+    .shadow(ShadowStyle.OUTER_DEFAULT_SM)
+    .position(this.menuPosition(menu))
+    .onAreaChange((_: Area, area: Area) => {
+      this.menuWidth = Number(area.width);
+    })
+  }
+
+  @Builder
+  handle(handles: GpuSelectionHandles, which: number, end: number[]) {
+    // The knob hangs below the line end; the touch target is centred on the knob.
+    Stack() {
+      Column()
+        .width(2)
+        .height(KNOB + 1)
+        .backgroundColor(handles.color)
+        .position({ x: HANDLE_TOUCH / 2 - 1, y: HANDLE_TOUCH / 2 - KNOB - 9 })
+      Circle()
+        .width(KNOB * 2)
+        .height(KNOB * 2)
+        .fill(handles.color)
+        .position({ x: HANDLE_TOUCH / 2 - KNOB, y: HANDLE_TOUCH / 2 - KNOB })
+    }
+    .width(HANDLE_TOUCH)
+    .height(HANDLE_TOUCH)
+    .position({ x: end[0] - HANDLE_TOUCH / 2, y: end[1] + 8 - HANDLE_TOUCH / 2 })
+    .onTouch((event: TouchEvent) => this.dragHandle(which, end, event))
+  }
+
+  /** A touch in page vp, whichever component reports it. */
+  private pagePoint(touch: TouchObject): number[] {
+    return [touch.windowX - px2vp(this.rect.x), touch.windowY - px2vp(this.rect.y)];
+  }
+
+  private dragHandle(which: number, end: number[], event: TouchEvent): void {
+    event.stopPropagation();
+    const touch = event.touches[0];
+    if (touch === undefined) {
+      return;
+    }
+    const point = this.pagePoint(touch);
+    const x = point[0], y = point[1];
+    switch (event.type) {
+      case TouchType.Down:
+        this.grabbed = which;
+        this.grabOffset = [x - end[0], y - end[2]];
+        gpuPageTextHandleDrag(this.page.token, true);
+        break;
+      case TouchType.Move:
+        if (this.grabbed >= 0) {
+          gpuPageMoveTextSelection(this.page.token, this.grabbed, x - this.grabOffset[0], y - this.grabOffset[1]);
+        }
+        break;
+      case TouchType.Up:
+      case TouchType.Cancel:
+        if (this.grabbed >= 0) {
+          this.grabbed = -1;
+          gpuPageTextHandleDrag(this.page.token, false);
+        }
+        break;
+    }
+  }
+
   build() {
     Stack() {
       ContentSlot(this.page.content)
@@ -190,18 +312,40 @@ export struct GpuPage {
       if (this.page.focusRing !== null) {
         this.feedback(this.page.focusRing)
       }
+      if (this.page.handles !== null) {
+        ForEach(this.page.handles.ends, (end: number[] | null, which: number) => {
+          if (end !== null) {
+            this.handle(this.page.handles as GpuSelectionHandles, which, end)
+          }
+        }, (end: number[] | null, which: number) => `${which}:${end?.join(',') ?? ''}`)
+      }
+      if (this.menuShown() !== null) {
+        this.textMenu(this.menuShown() as GpuFrameTextMenu)
+      }
       if (this.page.recovery !== null) {
         this.recoveryPanel(this.page.recovery)
       }
     }
     .width('100%')
     .height('100%')
+    .onTouch((event: TouchEvent) => {
+      // A touch outside the menu closes it, as the system's floating menus do.
+      const menu = this.menuShown();
+      const touch = event.touches[0];
+      if (event.type === TouchType.Down && menu !== null && touch !== undefined
+        && !this.menuContains(menu, this.pagePoint(touch)[0], this.pagePoint(touch)[1])) {
+        // The core takes a reported dismissal as already closed and sends no update.
+        this.page.textMenu = null;
+        gpuPageTextMenuDismissed(this.page.token);
+      }
+    })
     .onAreaChange((_: Area, area: Area) => {
       const vp2px = (v: Length) => this.getUIContext().vp2px(Number(v));
       this.rect.x = vp2px(area.globalPosition.x ?? 0);
       this.rect.y = vp2px(area.globalPosition.y ?? 0);
       this.rect.width = vp2px(area.width);
       this.rect.height = vp2px(area.height);
+      this.pageWidth = Number(area.width);
       this.trackOnScreen();
       this.remeasure();
     })

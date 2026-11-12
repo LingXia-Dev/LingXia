@@ -643,6 +643,8 @@ declare module 'liblingxia.so' {
   export function gpuPageScrollsRightAt(token: number, screenX: number, screenY: number): boolean;
   export function gpuPageTextMenuAction(token: number, action: number): boolean;
   export function gpuPageTextMenuDismissed(token: number): void;
+  export function gpuPageTextHandleDrag(token: number, active: boolean): void;
+  export function gpuPageMoveTextSelection(token: number, which: number, x: number, y: number): void;
   export function gpuPageInputBlocked(token: number): boolean;
   /** The GPU token of a page instance, or 0 for a WebView page. */
   export function gpuPageToken(pageInstanceId: string): number;

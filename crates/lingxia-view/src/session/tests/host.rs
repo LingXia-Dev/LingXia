@@ -2828,6 +2828,31 @@ fn a_static_selection_shows_its_menu_which_hides_while_dragging_and_clears_on_di
     );
 }
 
+#[test]
+fn copying_a_static_selection_clears_it_and_closes_its_menu() {
+    use crate::session::host::MenuAction;
+    let worker = ViewWorker::spawn("test-static-copy").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source("function render(){return h('text',{'data-testid':'p',style:{userSelect:'text'}},'hello brave world')}"),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let identity = host.snapshot().unwrap().frame.nodes[0].identity.clone();
+    host.set_text_selection(identity.to_string(), 0, 5);
+    platform.settle(&[&host]);
+    assert!(menu(&host).is_some());
+    assert!(host.text_menu_action(MenuAction::Copy));
+    platform.settle(&[&host]);
+    assert_eq!(
+        host.snapshot().unwrap().frame.nodes[0].selection_range,
+        None
+    );
+    assert!(menu(&host).is_none(), "the menu goes with its selection");
+}
+
 fn fine_pointer_text_host(platform: &Platform, worker: &Arc<ViewWorker>) -> ViewHost<Fake> {
     let host = platform.host(
         worker,
