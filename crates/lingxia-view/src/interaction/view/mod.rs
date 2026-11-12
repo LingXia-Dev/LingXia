@@ -29,6 +29,18 @@ pub use effects::{AccessibilityEffect, Dispatch, Effect};
 pub use keyboard::Key;
 pub use pointer::{Pointer, PointerPhase};
 
+/// What drove the last input. Core owns it so every platform agrees on when focus is visible:
+/// only a pointer hides it. Focus a page moves itself (a dialog opening) keeps the last origin.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum FocusOrigin {
+    #[default]
+    Pointer,
+    /// A key; switch control arrives as keys.
+    Keyboard,
+    /// A screen reader or other assistive tool acting on the semantics tree.
+    Assistive,
+}
+
 /// A user activation that resolved to nothing; the host reports it, it is never silent.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DroppedActivation {
@@ -109,8 +121,8 @@ pub struct ViewInteraction {
     composite_focus: std::collections::HashMap<String, String>,
     /// A mouse or trackpad drives the pointer: drags select text instead of scrolling.
     fine_pointer: bool,
-    /// The last input was a key, not a pointer: focus moves (and its ring) follow it.
-    keyboard_used: bool,
+    /// What drove the last input; focus moves, their ring and `focus-visible:` follow it.
+    origin: FocusOrigin,
     /// Activations that could not be resolved against the presented frame.
     dropped: Vec<DroppedActivation>,
     /// Geometry-only frames of one layout since the last content-changed event.
@@ -127,10 +139,17 @@ pub struct Presented {
 
 impl ViewInteraction {
     /// The identity of `node` when it is a `<select>` whose `focus:` delta the session paints.
+    /// What drove the last input.
+    pub fn focus_origin(&self) -> FocusOrigin {
+        self.origin
+    }
+
     pub fn styled_focus(&self, node: usize) -> Option<String> {
         let frame = self.frame.as_ref()?;
         let snapshot = frame.nodes.get(node)?;
-        (snapshot.focus_style.then(|| snapshot.identity.clone())).map(String::from)
+        ((snapshot.focus_style || snapshot.focus_visible_style)
+            .then(|| snapshot.identity.clone()))
+        .map(String::from)
     }
 
     /// Whether `node` draws its own keyboard focus ring (around a switch, checkbox or radio
@@ -140,8 +159,9 @@ impl ViewInteraction {
             .as_ref()
             .and_then(|frame| frame.nodes.get(node))
             .is_some_and(|snapshot| {
-                snapshot.focus_style
-                    && matches!(snapshot.tag, "checkbox" | "switch" | "radio-option")
+                snapshot.focus_visible_style
+                    || snapshot.focus_style
+                        && matches!(snapshot.tag, "checkbox" | "switch" | "radio-option")
             })
     }
 

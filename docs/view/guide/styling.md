@@ -143,6 +143,7 @@ Colours and faces stay the app's; two packages giving one token different values
 | `first:` `last:` `only:` `odd:` `even:` `empty:` | the node's position among its rendered siblings; `empty:` a node with no children |
 | `active:` | a pressed `<button>`, `<checkbox>`, `<switch>`, `<radio>` or `<link>` |
 | `focus:` | a focused `<input>` or `<textarea>` |
+| `focus-visible:` | a focused editor, or a control focused by key, switch or assistive input; it replaces the default focus ring |
 | `hover:` | a hovered element, only when `env.pointer` is `fine` |
 | `disabled:` | an element with `disabled` set; it replaces the whole class cascade |
 | `placeholder:` | an editor's placeholder; `text-*` color only |
@@ -152,14 +153,14 @@ Colours and faces stay the app's; two packages giving one token different values
 | `focus-within:`, `has-focus:` | it or an element below it has focus |
 | `group-active:` | the control the element sits in is pressed (mark it `group`) |
 
-`data-*` resolves at render, so it may set any utility. `active:`, `focus:`, `hover:`, `has-*`,
-`group-active:` and `focus-within:` may change paint only: color, background color and image, opacity,
+`data-*` resolves at render, so it may set any utility. `active:`, `focus:`, `focus-visible:`, `hover:`,
+`has-*`, `group-active:` and `focus-within:` may change paint only: color, background color and image, opacity,
 border color, box shadow, placeholder color and the static transforms (`active:scale-95`). They cannot
 change size or spacing (`UI_CLASS_ELEMENT`). The change is immediate unless a `transition-*` utility
 animates it ([motion](motion.md)).
 
 Variants that test DOM state are refused with the alternative named in the message: other `group-*`, `peer-*`,
-other `has-[…]` selectors and `has-*` combined with another state, `aria-*`, `checked:`, `focus-visible:`,
+other `has-[…]` selectors and `has-*` combined with another state, `aria-*`, `checked:`,
 `nth-*`, `before:`, `after:` and container queries (`@md:`). Compute the condition in TypeScript and pick the class.
 The full list is in [variants](../reference/variants.md).
 

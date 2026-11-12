@@ -535,6 +535,7 @@ impl ViewSession {
                     && self.input_records.as_ref().is_some_and(|records| {
                         records.iter().any(|r| {
                             r.string(field::FOCUS_STYLE).is_some()
+                                || r.string(field::FOCUS_VISIBLE_STYLE).is_some()
                                 || r.string(field::FOCUS_WITHIN_STYLE).is_some()
                         })
                     });
@@ -702,6 +703,7 @@ impl ViewSession {
                 if old_focus.as_deref() != inputs.focused()
                     && records.iter().any(|r| {
                         r.string(field::FOCUS_STYLE).is_some()
+                            || r.string(field::FOCUS_VISIBLE_STYLE).is_some()
                             || r.string(field::FOCUS_WITHIN_STYLE).is_some()
                     })
                 {

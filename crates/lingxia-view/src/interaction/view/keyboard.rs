@@ -103,14 +103,14 @@ impl ViewInteraction {
     }
 
     /// A dialog or menu that opened takes keyboard focus on its first control; one that closed
-    /// returns it to what had it before. Only while the keyboard is in use, so pointers see no ring.
+    /// returns it to what had it before. Only when the last input was not a pointer, so taps see no ring.
     fn track_dialogs(&mut self, page: PageTicket) -> Vec<Effect> {
         let Some(frame) = self.frame.clone() else {
             return Vec::new();
         };
         let overlay = navigation::active_overlay(&frame);
         let open = overlay.map(|index| frame.nodes[index].identity.clone());
-        let keyboard = self.keyboard_used;
+        let keyboard = self.origin != super::FocusOrigin::Pointer;
         let mut effects = Vec::new();
         // Dialogs no longer shown hand focus back, innermost first.
         while let Some((dialog, _)) = self.dialogs.last() {
@@ -223,7 +223,7 @@ impl ViewInteraction {
         let Some(frame) = self.frame.clone() else {
             return (false, Vec::new());
         };
-        self.keyboard_used = true;
+        self.origin = super::FocusOrigin::Keyboard;
         // The View's picker takes the keys while it is open: arrows, pages, Return, Escape, digits.
         if frame.nodes.iter().any(|node| node.test_id == "lx-picker") {
             let name = match key {
@@ -427,7 +427,7 @@ impl ViewInteraction {
         let Some(frame) = self.frame.clone() else {
             return Vec::new();
         };
-        self.keyboard_used = true;
+        self.origin = super::FocusOrigin::Keyboard;
         match navigation::next(
             &frame,
             self.keyboard_origin(),

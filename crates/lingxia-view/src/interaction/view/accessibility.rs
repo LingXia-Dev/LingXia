@@ -99,6 +99,7 @@ impl ViewInteraction {
         }
         self.pending_focus = None;
         self.slider.end();
+        self.origin = super::FocusOrigin::Assistive;
         let visible = frame::visible(node);
         match action {
             AccessibilityAction::Focus | AccessibilityAction::ClearFocus => {

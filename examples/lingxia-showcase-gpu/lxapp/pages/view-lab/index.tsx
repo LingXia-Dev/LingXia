@@ -400,6 +400,7 @@ function Focus() {
       <text className="text-xs text-muted">With a keyboard: Tab to Open, press Enter; focus stays in the dialog and returns to Open when it closes.</text>
       <view className="flex-row gap-2 items-center">
         <Button testId="lab-focus-open" onClick={() => open.set(true)}>Open dialog</Button>
+        <button data-testid="lab-focus-visible" onClick={() => {}} className="rounded-xl px-4 py-2 bg-surface-sunken focus-visible:bg-accent focus-visible:text-on-accent">Ring by key</button>
         <text data-testid="lab-focus-choice" className="text-sm">{`chosen: ${choice.value}`}</text>
       </view>
       <dialog open={open.value} onClose={() => close('escape')} data-testid="lab-focus-dialog" aria-label="Confirm payment" className="w-72 gap-3 p-4 rounded-xl border border-line bg-surface">

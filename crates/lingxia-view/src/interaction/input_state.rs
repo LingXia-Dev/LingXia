@@ -207,6 +207,8 @@ impl Inputs {
         match self.focused.as_deref() {
             Some(identity) => {
                 apply_state_style(records, identity, field::FOCUS_STYLE)?;
+                // An editor shows focus however it got it, as CSS `:focus-visible` does.
+                apply_state_style(records, identity, field::FOCUS_VISIBLE_STYLE)?;
                 apply_focus_within(records, identity)
             }
             None => Ok(()),

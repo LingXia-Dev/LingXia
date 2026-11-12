@@ -100,12 +100,12 @@ test('class diagnostics separate unknown, unsupported and wrong-element utilitie
   await project({ 'page.tsx': `export function render(view) {
   return <view className="grid-cols-2 not-a-utility transition-[width]">
     <text className={view.data.on ? "grid-cols-2" : "items-center"}>A</text>
-    <view className="active:bg-danger hover:p-4"/>
+    <view className="active:bg-danger hover:p-4 focus-visible:bg-danger"/>
   </view>;
 }` }, async (root, build) => {
     const error = await build().catch(error => error);
     const lines = error.message.split('\n');
-    assert.match(lines[0], /page.tsx: 6 authoring problems/);
+    assert.match(lines[0], /page.tsx: 7 authoring problems/);
     for (const pattern of [
       /^page.tsx:3:\d+: UI_CLASS_ELEMENT: grid-cols-2 does not apply to <text>; layout classes go on the element that holds it$/,
       /^page.tsx:2:\d+: UI_CLASS_UNKNOWN: not-a-utility is not a Tailwind utility$/,
@@ -113,6 +113,7 @@ test('class diagnostics separate unknown, unsupported and wrong-element utilitie
       /^page.tsx:3:\d+: UI_CLASS_ELEMENT: items-center does not apply to <text>; layout classes go on the element that holds it$/,
       /^page.tsx:4:\d+: UI_CLASS_ELEMENT: active:bg-danger needs a control; <view> is never pressed$/,
       /^page.tsx:4:\d+: UI_CLASS_ELEMENT: hover:p-4: hover styles change paint only, not paddingTop, paddingRight, paddingBottom, paddingLeft$/,
+      /^page.tsx:4:\d+: UI_CLASS_ELEMENT: focus-visible:bg-danger needs an element that takes focus; <view> never does$/,
     ]) assert.ok(lines.some(line => pattern.test(line)), `${pattern} in\n${error.message}`);
     await assert.rejects(readFile(join(root, 'dist/page.js')), { code: 'ENOENT' });
   });

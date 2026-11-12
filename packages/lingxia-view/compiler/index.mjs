@@ -28,6 +28,7 @@ const has = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 const common = new Set(commonProps);
 const editors = new Set(['input', 'textarea']);
 const controls = new Set(['button', 'checkbox', 'switch', 'radio', 'link']);
+const focusables = new Set([...editors, ...controls, 'select', 'slider']);
 // Elements that take input of their own; they may sit inside a pressable control.
 const interactiveTags = new Set(['button', 'link', 'checkbox', 'switch', 'radio', 'input', 'textarea', 'select', 'slider']);
 
@@ -253,6 +254,7 @@ function classProblems(rule, name, tag, suggestions, grid) {
   const flexOnly = grid && !Object.keys(rule.when ?? {}).length && gridRefuses(props);
   if (flexOnly) problems.push(gridProblem(name, flexOnly));
   if (state === 'focus' && !editors.has(tag) && tag !== 'select') problems.push(`UI_CLASS_ELEMENT: ${name} needs an editor or <select>; <${tag}> never takes focus`);
+  if (state === 'focusVisible' && !focusables.has(tag)) problems.push(`UI_CLASS_ELEMENT: ${name} needs an element that takes focus; <${tag}> never does`);
   if (state === 'active' && !controls.has(tag)) problems.push(`UI_CLASS_ELEMENT: ${name} needs a control; <${tag}> is never pressed`);
   const layout = state && state !== 'disabled' ? props.filter(prop => !styleTable[prop]?.paint) : [];
   if (layout.length) problems.push(`UI_CLASS_ELEMENT: ${name}: ${state} styles change paint only, not ${layout.join(', ')}`);

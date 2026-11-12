@@ -9,7 +9,7 @@ import { tags, field, maxField } from './generated/wire.js';
 
 const tagNames = Object.fromEntries(Object.entries(tags).map(([name, id]) => [id, name]));
 const fieldNames = Object.fromEntries(Object.entries(field).map(([name, id]) => [id, name]));
-const states = new Set(['focusStyle', 'pressedStyle', 'hoverStyle']);
+const states = new Set(['focusStyle', 'focusVisibleStyle', 'pressedStyle', 'hoverStyle']);
 
 /** Loads a compiled page module into its own context, announcing what a current native host does. */
 export function installHost(source) {

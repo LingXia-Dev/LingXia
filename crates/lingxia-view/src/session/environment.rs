@@ -119,6 +119,12 @@ impl ViewSession {
                 identity,
                 crate::protocol::field::FOCUS_STYLE,
             )?;
+            // Only key, switch and assistive focus reaches here, so it is always visible.
+            crate::interaction::input_state::apply_state_style(
+                records,
+                identity,
+                crate::protocol::field::FOCUS_VISIBLE_STYLE,
+            )?;
             crate::interaction::input_state::apply_focus_within(records, identity)?;
         }
         if let Some(identity) = &self.hovered {

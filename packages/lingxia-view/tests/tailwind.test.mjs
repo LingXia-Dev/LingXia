@@ -258,7 +258,7 @@ test('space and divide utilities target non-last children', async () => {
 });
 
 test('state variants lower to state styles and disabled replaces the cascade', async () => {
-  await use(['bg-surface', 'active:bg-surface-sunken', 'hover:bg-surface-sunken', 'disabled:opacity-50', 'focus:bg-danger']);
+  await use(['bg-surface', 'active:bg-surface-sunken', 'hover:bg-surface-sunken', 'disabled:opacity-50', 'focus:bg-danger', 'focus-visible:ring-2']);
   const states = resolveClasses('bg-surface active:bg-surface-sunken hover:bg-surface-sunken disabled:opacity-50', { pointer: 'fine' });
   assert.deepEqual(Object.keys(states.active), ['backgroundColor']);
   assert.deepEqual(Object.keys(states.hover), ['backgroundColor']);
@@ -267,6 +267,8 @@ test('state variants lower to state styles and disabled replaces the cascade', a
   const button = rendered(() => h('button', { className: 'bg-surface active:bg-surface-sunken disabled:opacity-50', disabled: true }, 'Save')).props;
   assert.deepEqual([button.opacity, button.pressedStyle, button.enabled], [0.5, undefined, 0]);
   assert.ok(rendered(() => h('input', { className: 'focus:bg-danger' })).props.focusStyle.background);
+  assert.equal(resolveClasses('focus-visible:ring-2').focusVisible.boxShadow[0].spread, 2);
+  assert.ok(rendered(() => h('button', { className: 'focus-visible:ring-2' }, 'Save')).props.focusVisibleStyle);
 });
 
 test('starting and exit variants lower to presence states', async () => {

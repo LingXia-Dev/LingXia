@@ -32,7 +32,7 @@ impl ViewInteraction {
         let mut effects = Vec::new();
         match event.phase {
             PointerPhase::Down => {
-                self.keyboard_used = false;
+                self.origin = super::FocusOrigin::Pointer;
                 self.slider.cancel();
                 self.pending_focus = None;
                 effects.extend(self.cancel_press());

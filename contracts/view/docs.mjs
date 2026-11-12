@@ -253,7 +253,7 @@ function variants(schema, system, rules) {
   const on = field => Object.entries(schema.elements).filter(([, element]) => wireTags(field).includes(element.wire)).map(([name]) => code(`<${shown(schema, name)}>`)).join(' ');
   const disableable = Object.entries(schema.elements).filter(([, element]) => element.props.disabled).map(([name]) => code(`<${name}>`)).join(' ');
   const admission = {
-    focus: `${on('focusStyle')}; paint only`, active: `${on('pressedStyle')}; paint only`,
+    focus: `${on('focusStyle')}; paint only`, 'focus-visible': `${on('focusVisibleStyle')}; while focused from a key, switch or assistive tool (editors on any focus); paint only`, active: `${on('pressedStyle')}; paint only`,
     hover: 'any element, only when `env.pointer` is `fine`; paint only', disabled: `${disableable}; replaces the whole class cascade`,
     placeholder: `editors; \`text-*\` color only`,
     dark: 'any element; not on colours, which follow appearance',

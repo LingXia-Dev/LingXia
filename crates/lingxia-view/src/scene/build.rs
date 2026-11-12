@@ -1250,6 +1250,10 @@ impl Renderer {
                         .iter()
                         .any(|(id, _)| *id == field::FOCUS_STYLE))
                     || indicator_control,
+                focus_visible_style: record
+                    .fields
+                    .iter()
+                    .any(|(id, _)| *id == field::FOCUS_VISIBLE_STYLE),
                 order: 0,
                 radii: corners,
                 plot: plot_snapshot,

@@ -208,6 +208,10 @@ pub struct NodeSnapshot {
     /// A `<select>` with a `focus:` paint delta; the session repaints it while it holds focus.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub focus_style: bool,
+    /// A `focus-visible:` paint delta exists; the session repaints it while focus is visible.
+    /// The node then draws its own ring, so the platform ring stays off. In-process only.
+    #[serde(skip)]
+    pub focus_visible_style: bool,
     /// Position in paint order; later nodes draw above and receive hits first.
     pub order: u32,
     #[serde(skip)]

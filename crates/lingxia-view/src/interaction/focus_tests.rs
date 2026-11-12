@@ -379,3 +379,67 @@ fn a_list_box_stops_at_its_ends_and_a_tree_walks_levels() {
     );
     assert_eq!(press(&mut interaction, "t-3", "ArrowUp"), Some(7));
 }
+
+fn tap(interaction: &mut ViewInteraction, y: f32) {
+    use crate::interaction::view::{Pointer, PointerPhase};
+    let at = |phase| Pointer {
+        phase,
+        x: 10.0,
+        y,
+        slop: 8.0,
+        velocity: [0.0; 2],
+        min_fling: 50.0,
+    };
+    interaction.pointer(at(PointerPhase::Down), PageTicket::new(1));
+    interaction.pointer(at(PointerPhase::Up), PageTicket::new(1));
+}
+
+#[test]
+fn focus_origin_follows_the_last_input_and_only_a_pointer_hides_focus() {
+    use crate::interaction::view::FocusOrigin;
+    use crate::interaction::view::AccessibilityAction;
+    let mut interaction = ViewInteraction::default();
+    present(&mut interaction, vec![button("/a", 0.0), button("/b", 50.0)], 1);
+    assert_eq!(interaction.focus_origin(), FocusOrigin::Pointer);
+    assert_eq!(tab(&mut interaction), Some(0));
+    assert_eq!(interaction.focus_origin(), FocusOrigin::Keyboard);
+    tap(&mut interaction, 60.0);
+    assert_eq!(interaction.focus_origin(), FocusOrigin::Pointer);
+    let id = interaction.semantics().unwrap().roots()[0];
+    interaction.accessibility(id, AccessibilityAction::Focus, PageTicket::new(1));
+    assert_eq!(interaction.focus_origin(), FocusOrigin::Assistive);
+}
+
+#[test]
+fn focus_the_page_moves_itself_keeps_the_last_origin_visible_after_keys_hidden_after_a_pointer() {
+    use crate::interaction::view::AccessibilityAction;
+    let page = || vec![button("/open", 0.0)];
+    let with_dialog = || vec![button("/open", 0.0), dialog("/d"), button("/d/ok", 220.0)];
+    // After a key: the dialog's first control takes focus, visibly.
+    let mut keyed = ViewInteraction::default();
+    present(&mut keyed, page(), 1);
+    tab(&mut keyed);
+    assert_eq!(ring(&present(&mut keyed, with_dialog(), 2)), Some(2));
+    // After a pointer: no focus moves, nothing shows.
+    let mut tapped = ViewInteraction::default();
+    present(&mut tapped, page(), 1);
+    tap(&mut tapped, 10.0);
+    assert_eq!(ring(&present(&mut tapped, with_dialog(), 2)), None);
+    // After an assistive action: visible, as after a key.
+    let mut assisted = ViewInteraction::default();
+    present(&mut assisted, page(), 1);
+    let id = assisted.semantics().unwrap().roots()[0];
+    assisted.accessibility(id, AccessibilityAction::Focus, PageTicket::new(1));
+    assert_eq!(ring(&present(&mut assisted, with_dialog(), 2)), Some(2));
+}
+
+#[test]
+fn a_node_with_a_focus_visible_style_paints_its_own_ring() {
+    let mut styled = button("/a", 0.0);
+    styled.focus_visible_style = true;
+    let mut interaction = ViewInteraction::default();
+    present(&mut interaction, vec![styled, button("/b", 50.0)], 1);
+    assert!(interaction.rings_itself(0) && !interaction.rings_itself(1));
+    assert_eq!(interaction.styled_focus(0).as_deref(), Some("/a"));
+    assert_eq!(interaction.styled_focus(1), None);
+}

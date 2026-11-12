@@ -40,7 +40,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - `theme/pack.json` gives the lxapp its own palette; it may set only `accent` (`{"seed":"#…","derive":true}`),
   the rest comes from the default pack. A palette the host pushes wins. `env.highContrast` picks the
   pack's high-contrast palette; `shadow-*` layers use the `shadow` role.
-- Supported variants: `dark:`, `rtl:`/`ltr:`, `first:`/`last:`/`odd:`/`even:`/`only:`/`empty:`, `sm:`–`2xl:`, `focus:` (editors), `active:`
+- Supported variants: `dark:`, `rtl:`/`ltr:`, `first:`/`last:`/`odd:`/`even:`/`only:`/`empty:`, `sm:`–`2xl:`, `focus:` (editors), `focus-visible:` (keyboard focus; replaces the ring), `active:`
   (controls), `hover:` (fine pointers), `disabled:`, `placeholder:`,
   `space-*`/`divide-*`. `data-*`, `has-*`, `focus-within:`, `group-active:`. `*:`, `**:`, `in-*:`, other `group-*:`, `peer-*:` fail naming the TS-side form.
 - `translate`/`rotate`/`scale`/`origin` are static and state variants may set them; skew and 3D fail.

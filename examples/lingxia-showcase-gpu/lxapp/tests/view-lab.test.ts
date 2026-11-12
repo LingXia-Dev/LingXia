@@ -1,5 +1,6 @@
 import { expect, spec } from '@lingxia/test';
 import { skipWhenCovered } from './covered.js';
+import { decodePng } from './png.js';
 
 // GPU-only fixtures read through role and accessible name, the way a screen reader does.
 spec('view lab answers locators by role and name', { start: { page: 'view-lab' } }, async (t) => {
@@ -255,3 +256,44 @@ spec('composites take one Tab stop, arrows move between items and tabs activate 
   await expect(view.testId('lab-tree-src')).toBeFocused();
   await expect(view.getByRole('treeitem', { name: 'main.ts' })).toHaveCount(1);
 });
+
+spec('focus-visible paints after a key moves focus and clears after a finger tap', { start: { page: 'view-lab' } }, async (t) => {
+  const view = t.app.view;
+  await view.testId('lab-tab-input').click();
+  const ring = view.testId('lab-focus-visible');
+  const plain = await fillOf(t, ring);
+  await view.testId('lab-focus-open').press('Tab');
+  await expect(ring).toBeFocused();
+  const keyed = await fillOf(t, ring);
+  expect(apart(keyed, plain) ? 'painted' : `plain ${JSON.stringify({ keyed, plain })}`).toBe('painted');
+  // A finger, not click(): automation clicks arrive as assistive input, which keeps focus visible.
+  await (await view.touch(ring)).up();
+  await expect.poll(async () => apart(await fillOf(t, ring), plain), { timeout: 3_000 }).toBe(false);
+});
+
+type Fixture = Parameters<Parameters<typeof spec>[2]>[0];
+
+const apart = (a: number[], b: number[]) => a.some((value, i) => Math.abs(value - b[i]) > 40);
+
+/** The colour just inside a control's left padding, brought on screen first. */
+async function fillOf(t: Fixture, locator: ReturnType<Fixture['app']['view']['testId']>) {
+  const view = t.app.view;
+  let box = await locator.boundingBox();
+  let viewport = await view.viewport();
+  if (box.y < viewport.top || box.y + box.height > viewport.top + viewport.height) {
+    const dy = box.y + box.height / 2 - (viewport.top + viewport.height / 2);
+    const x = viewport.left + 12;
+    const y = viewport.top + viewport.height / 2;
+    await view.swipe({ from: [x, y + dy / 2], to: [x, y - dy / 2], durationMs: 600 });
+    await new Promise<void>(resolve => setTimeout(resolve, 600));
+    box = await locator.boundingBox();
+    viewport = await view.viewport();
+  }
+  let scale = 1;
+  const py = box.y + box.height / 2 - viewport.top;
+  const shot = await decodePng((await view.screenshot()).base64, width => {
+    scale = width / viewport.width;
+    return Math.round(py * scale);
+  });
+  return shot.at(Math.round((box.x + 6 - viewport.left) * scale), Math.round(py * scale));
+}

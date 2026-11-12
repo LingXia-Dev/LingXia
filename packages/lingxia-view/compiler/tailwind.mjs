@@ -896,7 +896,8 @@ function selectorParts(selector) {
   if (remaining === ':where(.lx-exit)') return { name, state: 'exit', ...extra };
   // `group-active:` paints while the control the element sits in is pressed.
   if (remaining === ':is(:where(.group):active *)') return { name, state: 'groupActive', ...extra };
-  const state = remaining.match(/^:(focus|active|hover|disabled)$/)?.[1];
+  const matched = remaining.match(/^:(focus-visible|focus|active|hover|disabled)$/)?.[1];
+  const state = matched === 'focus-visible' ? 'focusVisible' : matched;
   if (!remaining || state) return { name, ...(state ? { state } : {}), ...extra };
   return { name, error: relatives(selector) ?? `selector ${rest}${alternative(rest)}` };
 }

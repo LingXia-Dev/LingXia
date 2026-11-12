@@ -291,7 +291,8 @@
     {"id": 221, "key": "stateInvalid", "wire": "stateInvalid", "ignorable": true, "kind": "semantic-state"},
     {"id": 222, "key": "stateRequired", "wire": "stateRequired", "ignorable": true, "kind": "semantic-state"},
     {"id": 223, "key": "ariaDescribedBy", "wire": "ariaDescribedBy", "ignorable": true, "kind": "element-ids", "tags": ["column", "text", "button", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "vector", "page", "select", "video"]},
-    {"id": 224, "key": "stateChecked", "wire": "stateChecked", "kind": "semantic-state"}
+    {"id": 224, "key": "stateChecked", "wire": "stateChecked", "kind": "semantic-state"},
+    {"id": 225, "key": "focusVisibleStyle", "wire": "focusVisibleStyle", "kind": "state-style", "tags": ["button", "checkbox", "switch", "radio", "slider", "link", "select", "input", "textarea", "search"]}
   ],
   "input": {
     "autofill": {"username": "username", "current-password": "password", "new-password": "newPassword", "one-time-code": "smsOTPCode", "email": "emailAddress", "tel": "phone", "name": "personName", "given-name": "personGivenName", "family-name": "personFamilyName", "street-address": "postalAddress", "postal-code": "postalCode", "country": "addressCountry", "cc-number": "creditCardNumber", "cc-exp": "creditCardExpirationDate", "cc-csc": "creditCardSecurityCode", "bday": "birthDateFull"},

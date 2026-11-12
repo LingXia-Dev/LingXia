@@ -243,6 +243,7 @@ function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure
     states[wire] = lowerStyle(tag, delta, env, { fontSize: typography.fontSize }).fields;
   };
   state('focus', 'focusStyle', accepts('focusStyle', tag), 'an editor or <select>');
+  state('focusVisible', 'focusVisibleStyle', accepts('focusVisibleStyle', tag), 'an element that takes focus');
   if (!disabled) {
     state('active', 'pressedStyle', accepts('pressedStyle', tag), 'a control');
     state('hover', 'hoverStyle', true);

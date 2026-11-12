@@ -169,6 +169,13 @@ test('has-checked and has-disabled follow descendants; focus-within reaches nati
   assert.throws(() => describe(() => h('view', { className: 'has-checked:p-2' }), {}), /has-checked: supports paint properties only, not paddingTop/);
 });
 
+test('focus-visible reaches native on focusable elements and is refused elsewhere', () => {
+  rules([['focus-visible:bg-accent', { backgroundColor: 'accent' }, { state: 'focusVisible' }]]);
+  assert.ok(rendered(() => h('button', { className: 'focus-visible:bg-accent', onClick() {} }, 'Go')).props.focusVisibleStyle);
+  assert.ok(rendered(() => h('input', { className: 'focus-visible:bg-accent', value: '' })).props.focusVisibleStyle);
+  assert.throws(() => describe(() => h('view', { className: 'focus-visible:bg-accent' }), {}), /focusVisible: requires an element that takes focus, not <view>/);
+});
+
 test('disabled variants replace the cascade only while disabled', () => {
   rules([['opacity-100', { opacity: 1 }], ['disabled:opacity-50', { opacity: 0.5 }, { state: 'disabled' }]]);
   const render = disabled => () => h('button', { className: 'opacity-100 disabled:opacity-50', disabled }, 'Save');

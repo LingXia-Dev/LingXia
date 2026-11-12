@@ -20,6 +20,7 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 | `focus-within:` | any element; while it or a descendant has focus; paint only |
 | `hover:` | any element, only when `env.pointer` is `fine`; paint only |
 | `focus:` | `<input>` `<textarea>` `<select>`; paint only |
+| `focus-visible:` | `<button>` `<input>` `<textarea>` `<checkbox>` `<switch>` `<radio>` `<slider>` `<link>` `<select>`; while focused from a key, switch or assistive tool (editors on any focus); paint only |
 | `active:` | `<button>` `<checkbox>` `<switch>` `<radio>` `<link>`; paint only |
 | `disabled:` | `<button>` `<input>` `<textarea>` `<checkbox>` `<switch>` `<radio>` `<slider>` `<link>` `<select>`; replaces the whole class cascade |
 | `has:` | any element, alone; `has-checked:`, `has-disabled:` (a descendant checkbox, switch, answered radio or disabled element) and `has-focus:`; paint only |
@@ -79,7 +80,6 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 | `in-range:` | `in-range:` | selector :in-range |
 | `out-of-range:` | `out-of-range:` | selector :out-of-range |
 | `read-only:` | `read-only:` | selector :read-only |
-| `focus-visible:` | `focus-visible:` | selector :focus-visible |
 | `enabled:` | `enabled:` | selector :enabled |
 | `inert:` | `inert:` | selector :is([inert], [inert] *) |
 | `in:` | `in-focus:` | ancestor-state variants (in-*; use focus-within: on the ancestor, or track the state in TS and choose the classes from it) |

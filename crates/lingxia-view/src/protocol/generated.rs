@@ -259,6 +259,7 @@ pub mod field {
     pub const STATE_REQUIRED: usize = 222;
     pub const ARIA_DESCRIBED_BY: usize = 223;
     pub const STATE_CHECKED: usize = 224;
+    pub const FOCUS_VISIBLE_STYLE: usize = 225;
 }
 
 pub const TAGS: &[&str] = &["column", "reserved-1", "text", "button", "reserved-4", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "reserved-16", "reserved-17", "plot", "vector", "page", "span", "link", "select", "video"];
@@ -490,6 +491,7 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("stateRequired", "semantic-state"),
     ("ariaDescribedBy", "element-ids"),
     ("stateChecked", "semantic-state"),
+    ("focusVisibleStyle", "state-style"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -917,4 +919,5 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::COLUMN, tag::TEXT, tag::BUTTON, tag::SCROLL, tag::LIST, tag::IMAGE, tag::INPUT, tag::TEXTAREA, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::SEARCH, tag::SLIDER, tag::PLOT, tag::VECTOR, tag::PAGE, tag::SELECT, tag::VIDEO]), parent: None },
     FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: Some(&[tag::BUTTON, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::SLIDER, tag::LINK, tag::SELECT, tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
 ];
