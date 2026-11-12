@@ -26,6 +26,8 @@ struct Mirror {
     return_key: ReturnKey,
     secure: bool,
     multiline: bool,
+    /// The caret on screen, device pixels: left, top, width, height.
+    cursor: Option<[f64; 4]>,
 }
 
 /// The keyboard configuration of a frame node's input, by field (the input type is not exported).
@@ -63,6 +65,7 @@ impl Mirror {
             return_key: ReturnKey::Done,
             secure: false,
             multiline: false,
+            cursor: None,
         };
         mirror.take_state(state);
         if let Some(ime) = ime {
@@ -183,8 +186,20 @@ fn select_edits(m: &mut Mirror, start: u32, end: u32) -> Vec<Value> {
     edits
 }
 
+/// A caret rect in surface dp on screen, device pixels, for the IME's candidate window.
+fn cursor_on_screen(caret: Option<[f32; 4]>, scale: f32, origin: [f32; 2]) -> Option<[f64; 4]> {
+    let [x, y, w, h] = caret?;
+    let px = |v: f32, o: f32| f64::from(v * scale + o);
+    Some([
+        px(x, origin[0]),
+        px(y, origin[1]),
+        f64::from((w * scale).max(1.0)),
+        f64::from(h * scale),
+    ])
+}
+
 /// A presented frame: follow the core's focused editor, connecting, refreshing or dropping.
-pub(crate) fn reconcile(page: i64, frame: &FrameSnapshot) {
+pub(crate) fn reconcile(page: i64, frame: &FrameSnapshot, origin: [f32; 2]) {
     if FOCUSING.lock().unwrap_or_else(|p| p.into_inner()).is_some() {
         return;
     }
@@ -203,6 +218,11 @@ pub(crate) fn reconcile(page: i64, frame: &FrameSnapshot) {
                 state,
                 input.value.clone(),
                 input.raise_keyboard,
+                cursor_on_screen(
+                    input.geometry.as_ref().map(|g| g.caret),
+                    frame.scale,
+                    origin,
+                ),
             )
         })
     });
@@ -211,11 +231,12 @@ pub(crate) fn reconcile(page: i64, frame: &FrameSnapshot) {
         (None, Some(m)) if m.page == page => {
             drop_connection(page);
         }
-        (Some((identity, token, ime, state, ..)), Some(m))
+        (Some((identity, token, ime, state, .., cursor)), Some(m))
             if m.page == page && m.identity == identity && m.token == token =>
         {
             mirror(|m| {
                 m.configure(ime);
+                m.cursor = cursor;
                 if m.in_flight == 0
                     && let Some(state) = &state
                 {
@@ -224,19 +245,15 @@ pub(crate) fn reconcile(page: i64, frame: &FrameSnapshot) {
             });
             os::update();
         }
-        (Some((identity, token, ime, state, value, raise)), current)
+        (Some((identity, token, ime, state, value, raise, cursor)), current)
             if (raise
                 && *BLURRED.lock().unwrap_or_else(|p| p.into_inner()) != Some((page, token)))
                 || current.is_some() =>
         {
             let state = state.unwrap_or_else(|| json!({"text": value}));
-            connect(Mirror::from_state(
-                page,
-                &identity,
-                token,
-                &state,
-                Some(ime),
-            ));
+            let mut mirror = Mirror::from_state(page, &identity, token, &state, Some(ime));
+            mirror.cursor = cursor;
+            connect(mirror);
         }
         _ => {}
     }
@@ -437,6 +454,8 @@ mod os {
     struct Connection {
         editor: *mut sys::InputMethod_TextEditorProxy,
         proxy: *mut sys::InputMethod_InputMethodProxy,
+        /// The caret rect the IME last got.
+        cursor: Option<[f64; 4]>,
     }
     // SAFETY: both are IPC proxies the IME service allows from any thread.
     unsafe impl Send for Connection {}
@@ -758,21 +777,28 @@ mod os {
                 sys::OH_TextEditorProxy_Destroy(editor);
                 return log::warn!(target: "lingxia_view", "UI_INPUT: input method attach failed ({code})");
             }
-            *connection = Some(Connection { editor, proxy });
+            *connection = Some(Connection {
+                editor,
+                proxy,
+                cursor: None,
+            });
         }
+        drop(connection);
+        update();
     }
 
     /// The mirror changed outside the IME (a frame, an automation edit): tell the IME.
     pub(super) fn update() {
-        let connection = CONNECTION.lock().unwrap_or_else(|p| p.into_inner());
-        let Some(connection) = connection.as_ref() else {
+        let mut connection = CONNECTION.lock().unwrap_or_else(|p| p.into_inner());
+        let Some(connection) = connection.as_mut() else {
             return;
         };
-        let Some((mut text, start, end)) = mirror(|m| {
+        let Some((mut text, start, end, cursor)) = mirror(|m| {
             (
                 m.text.clone(),
                 m.anchor.min(m.focus) as i32,
                 m.anchor.max(m.focus) as i32,
+                m.cursor,
             )
         }) else {
             return;
@@ -786,6 +812,19 @@ mod os {
                 start,
                 end,
             );
+        }
+        if cursor.is_some() && cursor != connection.cursor {
+            connection.cursor = cursor;
+            let [left, top, width, height] = cursor.unwrap_or_default();
+            // SAFETY: a live controller proxy; the cursor info is ours until destroyed.
+            unsafe {
+                let info = sys::OH_CursorInfo_Create(left, top, width, height);
+                if !info.is_null() {
+                    let code = sys::OH_InputMethodProxy_NotifyCursorUpdate(connection.proxy, info);
+                    log::debug!(target: "lingxia_view", "ime cursor {left:.0},{top:.0} {width:.0}x{height:.0} ({code})");
+                    sys::OH_CursorInfo_Destroy(info);
+                }
+            }
         }
     }
 

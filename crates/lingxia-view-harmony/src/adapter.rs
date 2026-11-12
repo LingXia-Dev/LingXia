@@ -557,7 +557,7 @@ impl AccessibilitySink for HarmonyAdapter {
 
 impl InputMethod for HarmonyAdapter {
     fn reconcile(&self, frame: &FrameSnapshot) {
-        ime::reconcile(self.token, frame);
+        ime::reconcile(self.token, frame, *lock(&self.origin));
     }
     fn focus(&self, editor: &Dispatch, frame: &FrameSnapshot) {
         let Dispatch::Editor { node, commit, .. } = editor else {
