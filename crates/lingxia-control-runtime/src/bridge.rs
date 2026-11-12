@@ -7,7 +7,7 @@
 
 use lingxia_control_protocol::dev_session::{
     DEV_SESSION_PROTOCOL_VERSION, DevSessionEvent, DevSessionLog, DevSessionLogLevel,
-    DevSessionMessage, DevSessionRole, PeerBuild, capabilities,
+    DevSessionMessage, DevSessionRole, PeerBuild, ViewWire, capabilities,
 };
 use lingxia_control_protocol::{ControlRequest, ControlResponse};
 use lingxia_log::{AttachedLogStream, LogLevel, LogMessage, LogTag, attach_log_stream_default};
@@ -178,7 +178,10 @@ fn run_dev_bridge(ws_url: String) {
                             capabilities::REQUESTS.to_string(),
                             capabilities::LOG_EVENTS.to_string(),
                         ],
-                        build: Some(PeerBuild::current()),
+                        build: Some(PeerBuild::current(
+                            lingxia::dev::view_wire()
+                                .map(|(ui_abi, max_field)| ViewWire { ui_abi, max_field }),
+                        )),
                     },
                 ) {
                     #[cfg(feature = "test-runtime")]

@@ -4,7 +4,7 @@ use anyhow::{Context, Result, anyhow};
 use lingxia_control_protocol::{
     ControlRequest,
     dev_session::{
-        DEV_SESSION_MAX_MESSAGE_BYTES, DevSessionEvent, DevSessionMessage, DevSessionRole,
+        DEV_SESSION_MAX_MESSAGE_BYTES, DevSessionEvent, DevSessionMessage, DevSessionRole, ViewWire,
     },
 };
 use std::io::{Read, Write};
@@ -686,6 +686,65 @@ impl DevServerState {
             .runtime_build
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = build;
+    }
+
+    /// The View wire each GPU lxapp this session serves was compiled for.
+    fn view_needs(&self) -> Vec<(String, ViewWire)> {
+        let mut dists = Vec::new();
+        if self.project_root.join("lingxia.yaml").is_file() {
+            if let Ok(config) = crate::config::LingXiaConfig::load(&self.project_root) {
+                for bundle in config
+                    .resources
+                    .iter()
+                    .flat_map(|resources| &resources.bundles)
+                {
+                    if let Some(path) = bundle
+                        .path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|path| !path.is_empty())
+                    {
+                        dists.push((
+                            bundle.app_id.clone(),
+                            self.project_root.join(path).join("dist"),
+                        ));
+                    }
+                }
+            }
+        } else if let Ok(app_id) = super::lxapp_watch::read_app_id(&self.project_root) {
+            dists.push((app_id, self.project_root.join("dist")));
+        }
+        for item in self.lock_attached().iter() {
+            dists.push((item.app_id.clone(), item.source.join("dist")));
+        }
+        dists
+            .into_iter()
+            .filter_map(|(app_id, dist)| {
+                super::lxapp_manifest::view_requirement(&dist).map(|need| (app_id, need))
+            })
+            .collect()
+    }
+
+    /// At a runtime's hello: say which served GPU lxapps its View cannot render, rather than
+    /// leave each page to fail with UI_COMPAT.
+    fn report_view_wire(&self, build: Option<&lingxia_control_protocol::dev_session::PeerBuild>) {
+        let needs = self.view_needs();
+        if needs.is_empty() {
+            return;
+        }
+        match build.and_then(|build| build.view) {
+            Some(have) => {
+                for (app_id, need) in needs {
+                    if !have.renders(&need) {
+                        eprintln!("  ✗ {}", view_mismatch(&app_id, have, need));
+                    }
+                }
+            }
+            None => eprintln!(
+                "  • This app build predates the View wire check: if its GPU pages fail with \
+                 UI_COMPAT, rebuild and reinstall it with `lingxia dev`."
+            ),
+        }
     }
 
     fn runtime_build(&self) -> Option<lingxia_control_protocol::dev_session::PeerBuild> {
@@ -1705,6 +1764,7 @@ fn handle_connection(
     match role {
         DevSessionRole::Runtime => {
             state.runtime_rejected.store(false, Ordering::Release);
+            state.report_view_wire(peer_build.as_ref());
             state.set_runtime_build(peer_build);
             handle_devtool_connection(websocket, writer, state)
         }
@@ -2220,6 +2280,13 @@ fn handle_lxapp_attach(
     if let Err(err) = state.build_attached(&app_id) {
         return finish_attach_error(&mut websocket, id, format!("{err:#}"));
     }
+    // A View that predates the build's wire would refuse every page; a WebView lxapp needs none.
+    if let Some(need) = super::lxapp_manifest::view_requirement(&spec.source.join("dist"))
+        && let Some(have) = state.runtime_build().and_then(|build| build.view)
+        && !have.renders(&need)
+    {
+        return finish_attach_error(&mut websocket, id, view_mismatch(&app_id, have, need));
+    }
     let connected = state.runtime_sender().is_some();
     if let Err(err) = state.present(&app_id) {
         return finish_attach_error(&mut websocket, id, format!("{err:#}"));
@@ -2233,6 +2300,24 @@ fn handle_lxapp_attach(
     )?;
     hold_attach(&mut websocket);
     Ok(())
+}
+
+/// Why the app's View cannot render `app_id`'s compiled pages, and what to do.
+fn view_mismatch(app_id: &str, have: ViewWire, need: ViewWire) -> String {
+    let why = if have.ui_abi != need.ui_abi {
+        format!(
+            "The app's View speaks UI ABI {}, but {app_id} was compiled for UI ABI {}",
+            have.ui_abi, need.ui_abi
+        )
+    } else {
+        format!(
+            "The app's View knows wire fields up to {}, but {app_id} was compiled for field {}",
+            have.max_field, need.max_field
+        )
+    };
+    format!(
+        "{why}, so its GPU pages would be refused. Rebuild and reinstall the app with `lingxia dev`."
+    )
 }
 
 fn validate_attach(
@@ -2799,6 +2884,23 @@ mod tests {
             &mut false,
         )
         .unwrap();
+    }
+
+    #[test]
+    fn a_view_mismatch_names_the_wire_and_the_rebuild() {
+        let wire = |ui_abi, max_field| super::ViewWire { ui_abi, max_field };
+        let message = super::view_mismatch("demo", wire(1, 223), wire(1, 230));
+        assert!(message.contains("fields up to 223"), "{message}");
+        assert!(
+            message.contains("demo was compiled for field 230"),
+            "{message}"
+        );
+        assert!(message.ends_with("Rebuild and reinstall the app with `lingxia dev`."));
+        let message = super::view_mismatch("demo", wire(1, 300), wire(2, 10));
+        assert!(
+            message.contains("UI ABI 1, but demo was compiled for UI ABI 2"),
+            "{message}"
+        );
     }
 
     #[test]

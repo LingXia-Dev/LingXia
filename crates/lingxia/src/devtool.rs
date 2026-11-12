@@ -412,6 +412,35 @@ fn prepare_dev_bundle_for_open(app_id: &str) {
 static SYNCING: std::sync::Mutex<std::collections::BTreeSet<String>> =
     std::sync::Mutex::new(std::collections::BTreeSet::new());
 
+/// The GPU View wire this build renders, `(UI ABI, newest field id)`, for the dev session to
+/// tell whether its compiled pages run here; `None` on a platform without a View.
+#[cfg(any(
+    target_os = "android",
+    target_os = "ios",
+    target_os = "macos",
+    target_env = "ohos"
+))]
+pub fn view_wire() -> Option<(u32, u32)> {
+    #[cfg(target_os = "android")]
+    use lingxia_view_android::lingxia_view::protocol;
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    use lingxia_view_apple::lingxia_view::protocol;
+    #[cfg(target_env = "ohos")]
+    use lingxia_view_harmony::lingxia_view::protocol;
+    Some((protocol::UI_ABI, (protocol::FIELDS.len() - 1) as u32))
+}
+
+/// No View on this platform.
+#[cfg(not(any(
+    target_os = "android",
+    target_os = "ios",
+    target_os = "macos",
+    target_env = "ohos"
+)))]
+pub fn view_wire() -> Option<(u32, u32)> {
+    None
+}
+
 /// The dev session (re)connected: what it publishes, and whether it is
 /// reachable, may have changed.
 pub fn dev_session_connected() {

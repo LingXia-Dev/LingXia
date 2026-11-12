@@ -1,5 +1,6 @@
 use crate::config::LingXiaConfig;
 use anyhow::{Context, Result, anyhow};
+use lingxia_control_protocol::dev_session::ViewWire;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use std::collections::BTreeSet;
@@ -69,6 +70,57 @@ pub(crate) fn write_configured_manifests(
         written.push(manifest);
     }
     Ok(written)
+}
+
+/// The View wire the compiled GPU pages in `dist_dir` need: their UI ABI and the newest field
+/// any header declares. `None` for an lxapp without compiled GPU pages.
+pub(crate) fn view_requirement(dist_dir: &Path) -> Option<ViewWire> {
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(dist_dir.join("lxapp.json")).ok()?).ok()?;
+    let pages: Vec<&str> = match manifest.get("pages")? {
+        serde_json::Value::Array(pages) => pages
+            .iter()
+            .filter_map(|page| page.get("path").and_then(serde_json::Value::as_str))
+            .collect(),
+        serde_json::Value::Object(pages) => pages
+            .values()
+            .filter_map(serde_json::Value::as_str)
+            .collect(),
+        _ => return None,
+    };
+    let mut need: Option<ViewWire> = None;
+    for page in pages {
+        let Some(header) = module_header(&dist_dir.join(page)) else {
+            continue;
+        };
+        let (Some(ui_abi), Some(field)) = (header["uiAbi"].as_u64(), header["minField"].as_u64())
+        else {
+            continue;
+        };
+        let (ui_abi, field) = (ui_abi as u32, field as u32);
+        need = Some(match need {
+            Some(seen) => ViewWire {
+                ui_abi: seen.ui_abi.max(ui_abi),
+                max_field: seen.max_field.max(field),
+            },
+            None => ViewWire {
+                ui_abi,
+                max_field: field,
+            },
+        });
+    }
+    need
+}
+
+/// The capability manifest on a compiled GPU page's first line.
+fn module_header(page: &Path) -> Option<serde_json::Value> {
+    use std::io::Read;
+    let mut head = [0u8; 4096];
+    let read = fs::File::open(page).ok()?.read(&mut head).ok()?;
+    let head = String::from_utf8_lossy(&head[..read]);
+    let line = head.lines().next()?;
+    let json = line.strip_prefix(crate::lxapp::UI_MODULE_HEADER)?;
+    serde_json::from_str(json).ok()
 }
 
 /// Whether this session publishes `app_id`: its manifest has been written.
@@ -517,6 +569,44 @@ fn hex_lower(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
     use crate::config::{LingXiaConfig, ResourceBundleConfig, ResourcesConfig};
+
+    #[test]
+    fn view_requirement_is_the_newest_field_any_compiled_page_declares() {
+        let temp = tempfile::tempdir().unwrap();
+        let dist = temp.path();
+        fs::create_dir_all(dist.join("pages/a")).unwrap();
+        fs::create_dir_all(dist.join("pages/b")).unwrap();
+        let header = |field: u32| {
+            format!(
+                "{}{{\"uiAbi\":1,\"minField\":{field},\"requiredFeatures\":[],\"compiler\":\"0.28.0\"}}\n(function(){{}})()",
+                crate::lxapp::UI_MODULE_HEADER
+            )
+        };
+        fs::write(dist.join("pages/a/index.js"), header(224)).unwrap();
+        fs::write(dist.join("pages/b/index.js"), header(230)).unwrap();
+        fs::write(
+            dist.join("lxapp.json"),
+            r#"{"appId":"demo","renderer":"gpu","pages":[{"name":"a","path":"pages/a/index.js"},{"name":"b","path":"pages/b/index.js"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            view_requirement(dist),
+            Some(ViewWire {
+                ui_abi: 1,
+                max_field: 230
+            })
+        );
+
+        let web = temp.path().join("web");
+        fs::create_dir_all(web.join("pages/home")).unwrap();
+        fs::write(web.join("pages/home/index.html"), "<!doctype html>").unwrap();
+        fs::write(
+            web.join("lxapp.json"),
+            r#"{"appId":"web","pages":{"home":"pages/home/index.html"}}"#,
+        )
+        .unwrap();
+        assert_eq!(view_requirement(&web), None, "WebView pages need no View");
+    }
 
     #[test]
     fn writes_manifest_outside_dist_for_path_bundle() {

@@ -16,6 +16,7 @@ use std::path::Path;
 
 pub(crate) use bundle::is_built_bundle_dir;
 pub(crate) use framework::ProjectFramework;
+pub(crate) use framework::UI_MODULE_HEADER;
 pub(crate) use logic::{MocksBundle, build_mocks};
 pub(crate) use media::audit_output_media;
 pub(crate) use project::Project;

@@ -834,14 +834,34 @@ pub mod dev_session {
         pub version: String,
         /// [`DEV_SESSION_PROTOCOL_VERSION`] the peer speaks.
         pub protocol: u32,
+        /// The GPU View wire it renders; none from a build without a View, or an older one.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub view: Option<ViewWire>,
+    }
+
+    /// A GPU View wire: its UI ABI and the newest field id. A compiled page runs on a View
+    /// with the same ABI whose newest field is at least the page's.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ViewWire {
+        pub ui_abi: u32,
+        pub max_field: u32,
+    }
+
+    impl ViewWire {
+        /// Whether a View with this wire runs pages that need `need`.
+        pub fn renders(&self, need: &ViewWire) -> bool {
+            self.ui_abi == need.ui_abi && self.max_field >= need.max_field
+        }
     }
 
     impl PeerBuild {
-        /// This build of the LingXia control runtime.
-        pub fn current() -> Self {
+        /// This build of the LingXia control runtime, rendering `view`.
+        pub fn current(view: Option<ViewWire>) -> Self {
             Self {
                 version: env!("CARGO_PKG_VERSION").to_string(),
                 protocol: DEV_SESSION_PROTOCOL_VERSION,
+                view,
             }
         }
     }
@@ -952,6 +972,29 @@ mod tests {
         assert_eq!(role, DevSessionRole::Controller);
         assert_eq!(capabilities, [capabilities::REQUESTS]);
         assert_eq!(build, None);
+    }
+
+    #[test]
+    fn a_peer_build_without_a_view_reads_as_none_and_a_view_round_trips() {
+        let old: PeerBuild =
+            serde_json::from_value(serde_json::json!({ "version": "0.27.0", "protocol": 3 }))
+                .unwrap();
+        assert_eq!(old.view, None);
+        let wire = ViewWire {
+            ui_abi: 1,
+            max_field: 230,
+        };
+        let build = PeerBuild::current(Some(wire));
+        let json = serde_json::to_value(&build).unwrap();
+        assert_eq!(
+            json["view"],
+            serde_json::json!({ "uiAbi": 1, "maxField": 230 })
+        );
+        assert_eq!(serde_json::from_value::<PeerBuild>(json).unwrap(), build);
+        let need = |ui_abi, max_field| ViewWire { ui_abi, max_field };
+        assert!(wire.renders(&need(1, 224)));
+        assert!(!wire.renders(&need(1, 231)));
+        assert!(!wire.renders(&need(2, 1)));
     }
 
     #[test]
