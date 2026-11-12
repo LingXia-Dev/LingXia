@@ -35,7 +35,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   display language) or a `dir` prop. Mirror icons with `rtl:-scale-x-100`.
 - Colours are theme roles, never hex: `bg-surface`, `text-muted`, `border-line` (decorative) or
   `border-line-strong` (editors, controls), `bg-accent text-on-accent`, `bg-text/8`; plot series
-  `chart-1`..`chart-5`. Roles follow appearance, so `dark:` on a colour fails (`UI_COLOR`).
+  `chart-1`..`chart-5`; controls over video `bg-media text-on-media` (tracks `on-media/25`). Roles follow appearance, so `dark:` on a colour fails (`UI_COLOR`).
 - `lingxia gen tokens` writes the theme pack's type, radius and spacing scales to `theme/tokens.css`.
 - `theme/pack.json` gives the lxapp its own palette; it may set only `accent` (`{"seed":"#…","derive":true}`),
   the rest comes from the default pack. A palette the host pushes wins. `env.highContrast` picks the

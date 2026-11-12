@@ -246,3 +246,5 @@ listed contrast minimums.
 | `line-strong` | 3:1 on `surface`, 3:1 on `canvas` | Interactive boundaries: editor borders and control outlines. |
 | `selection` | 3:1 on `surface`, 3:1 on `canvas` | Selected-text background; derived from the accent when a pack omits it. |
 | `shadow` |  | Elevation shadow ink; `shadow-*` layers take it at their alpha. |
+| `media` |  | Translucent dock over video and images; the same in both appearances. |
+| `on-media` | 4.5:1 on `media` | Text and icons over media; tracks and buffered ranges take it at an alpha (`on-media/25`). |

@@ -341,7 +341,9 @@
     {"name": "chart-5", "on": {"surface": 3, "canvas": 3}, "doc": "Fifth categorical series."},
     {"name": "line-strong", "on": {"surface": 3, "canvas": 3}, "doc": "Interactive boundaries: editor borders and control outlines."},
     {"name": "selection", "on": {"surface": 3, "canvas": 3}, "doc": "Selected-text background; derived from the accent when a pack omits it."},
-    {"name": "shadow", "doc": "Elevation shadow ink; `shadow-*` layers take it at their alpha."}
+    {"name": "shadow", "doc": "Elevation shadow ink; `shadow-*` layers take it at their alpha."},
+    {"name": "media", "doc": "Translucent dock over video and images; the same in both appearances."},
+    {"name": "on-media", "on": {"media": 4.5}, "doc": "Text and icons over media; tracks and buffered ranges take it at an alpha (`on-media/25`)."}
   ],
   "frame": {
     "doc": "Every message the core hands a platform adapter: the presented frame snapshot, semantic nodes, automation exchanges, input-protocol replies and the text menu. Type grammar: string, bool, u8, u32, u64, i64, usize, f32, f64, any; T? may be absent or null; T[] is a list; T[n] a fixed list; other names refer to types below.",

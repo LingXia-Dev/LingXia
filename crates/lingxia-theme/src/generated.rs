@@ -66,9 +66,13 @@ pub enum Role {
     Selection = 29,
     /// Elevation shadow ink; `shadow-*` layers take it at their alpha.
     Shadow = 30,
+    /// Translucent dock over video and images; the same in both appearances.
+    Media = 31,
+    /// Text and icons over media; tracks and buffered ranges take it at an alpha (`on-media/25`).
+    OnMedia = 32,
 }
 
-pub const ROLE_COUNT: usize = 31;
+pub const ROLE_COUNT: usize = 33;
 
 impl Role {
     pub const ALL: [Role; ROLE_COUNT] = [
@@ -103,6 +107,8 @@ impl Role {
         Role::LineStrong,
         Role::Selection,
         Role::Shadow,
+        Role::Media,
+        Role::OnMedia,
     ];
 
     pub const fn name(self) -> &'static str {
@@ -138,6 +144,8 @@ impl Role {
             Role::LineStrong => "line-strong",
             Role::Selection => "selection",
             Role::Shadow => "shadow",
+            Role::Media => "media",
+            Role::OnMedia => "on-media",
         }
     }
 
@@ -184,4 +192,5 @@ pub const CONTRAST: &[(Role, Role, f32)] = &[
     (Role::LineStrong, Role::Canvas, 3.0),
     (Role::Selection, Role::Surface, 3.0),
     (Role::Selection, Role::Canvas, 3.0),
+    (Role::OnMedia, Role::Media, 4.5),
 ];

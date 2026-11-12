@@ -190,3 +190,29 @@ fn the_selection_highlight_stands_off_the_page_and_keeps_text_readable() {
         }
     }
 }
+
+#[test]
+fn media_roles_ignore_appearance_and_an_app_pack_may_override_them() {
+    let pack = default_pack();
+    let dark = Prefs {
+        appearance: Appearance::Dark,
+        ..Prefs::default()
+    };
+    let light = resolve(&pack, &Prefs::default()).unwrap();
+    let night = resolve(&pack, &dark).unwrap();
+    for role in [Role::Media, Role::OnMedia] {
+        assert_eq!(light.color(role), night.color(role), "{}", role.name());
+    }
+    let brand: Pack = serde_json::from_str(
+        r##"{"name":"brand","version":1,"appearance":{"light":{"media":"#101820cc","on-media":"#fff8e7"},"dark":{}}}"##,
+    )
+    .unwrap();
+    let brand = complete(brand);
+    assert_eq!(check(&brand), vec![]);
+    let theme = resolve(&brand, &Prefs::default()).unwrap();
+    assert_eq!(theme.color(Role::OnMedia), hex("#fff8e7"));
+    assert_eq!(
+        resolve(&brand, &dark).unwrap().color(Role::OnMedia),
+        hex("#ffffff")
+    );
+}
