@@ -245,4 +245,48 @@ mod tests {
         worker.release();
         ran.recv_timeout(Duration::from_millis(250)).unwrap();
     }
+
+    /// Shared workers started and released many times run what was queued, stop their thread and
+    /// leave no live entry behind.
+    #[test]
+    fn shared_workers_drain_and_stop_after_their_last_owner() {
+        use std::sync::mpsc::channel;
+        const CYCLES: usize = 100;
+        const DEADLINE: Duration = Duration::from_secs(5);
+        for cycle in 0..CYCLES {
+            let key = format!("leak-worker:{cycle}");
+            let worker = ViewWorker::shared(&key).unwrap();
+            let again = ViewWorker::shared(&key).unwrap();
+            assert!(Arc::ptr_eq(&worker, &again));
+            let (done, ran) = channel();
+            let shown = done.clone();
+            worker.run(move |_| {
+                let _ = shown.send("shown");
+            });
+            worker.hold();
+            worker.run_background(move |_| {
+                let _ = done.send("background");
+            });
+            let queue = worker.queue.clone();
+            drop(worker);
+            drop(again);
+            // Closing still runs what was queued, held work included, then the thread lets go.
+            assert_eq!(ran.recv_timeout(DEADLINE).unwrap(), "shown");
+            assert_eq!(ran.recv_timeout(DEADLINE).unwrap(), "background");
+            let until = Instant::now() + DEADLINE;
+            while Arc::strong_count(&queue) > 1 {
+                assert!(Instant::now() < until, "worker {cycle} kept running");
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            let queue = queue.0.lock().unwrap();
+            assert!(queue.closed && queue.jobs.is_empty() && queue.background.is_empty());
+        }
+        let shared = SHARED.lock().unwrap();
+        assert!(
+            shared
+                .iter()
+                .filter(|(key, _)| key.starts_with("leak-worker:"))
+                .all(|(_, worker)| worker.strong_count() == 0)
+        );
+    }
 }

@@ -406,3 +406,6 @@ fn a_stale_frame_keeps_the_platform_reporting_until_the_current_view_presents() 
         "an unknown page needs no more"
     );
 }
+
+#[path = "leak_tests.rs"]
+mod leak;
