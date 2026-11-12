@@ -211,6 +211,8 @@ function authoredClass(className, key, env) {
 const fieldTags = new Set(['input', 'textarea', 'select']);
 const runTags = new Set(['span', 'link']);
 const disabledField = { color: 'text-muted', backgroundColor: 'surface-sunken', borderColor: 'line' };
+// A player's box is black before its first frame and behind letterboxing, as native players are.
+const videoBacking = { backgroundColor: '#000000' };
 
 // Classes, then the parent's child rule, then inline style; `disabled:` replaces the class cascade.
 function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure, every) {
@@ -224,7 +226,7 @@ function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure
   const base = disabled && classes?.disabled ? classes.disabled : classes?.base;
   const stray = base && Object.keys(base).find(key => !elements[tag].style.includes(key) && !(props.style && key in props.style));
   if (stray) throw Error(classElementProblem(authoredClass(props.className, stray, env), stray, tag));
-  const author = mergeStyle(direction, extra, base, every, muted, props.style);
+  const author = mergeStyle(direction, tag === 'video' ? videoBacking : undefined, extra, base, every, muted, props.style);
   const flexOnly = author?.display === 'grid' && base && gridRefuses(Object.keys(base).filter(key => !(props.style && key in props.style)));
   if (flexOnly) throw Error(gridProblem(authoredClass(props.className, flexOnly, env), flexOnly));
   // A box is a flex column; `flex` alone asks for a row, as `display: flex` does in CSS.

@@ -2945,6 +2945,7 @@
   var fieldTags = /* @__PURE__ */ new Set(["input", "textarea", "select"]);
   var runTags = /* @__PURE__ */ new Set(["span", "link"]);
   var disabledField = { color: "text-muted", backgroundColor: "surface-sunken", borderColor: "line" };
+  var videoBacking = { backgroundColor: "#000000" };
   function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure2, every) {
     const env = { ...loweringEnv(envOf(render.view)), direction, structure: structure2, data };
     const classes = resolveClasses(props.className, env);
@@ -2954,7 +2955,7 @@
     const base = disabled && classes?.disabled ? classes.disabled : classes?.base;
     const stray = base && Object.keys(base).find((key) => !elements[tag].style.includes(key) && !(props.style && key in props.style));
     if (stray) throw Error(classElementProblem(authoredClass(props.className, stray, env), stray, tag));
-    const author = mergeStyle(direction, extra, base, every, muted, props.style);
+    const author = mergeStyle(direction, tag === "video" ? videoBacking : void 0, extra, base, every, muted, props.style);
     const flexOnly = author?.display === "grid" && base && gridRefuses(Object.keys(base).filter((key) => !(props.style && key in props.style)));
     if (flexOnly) throw Error(gridProblem(authoredClass(props.className, flexOnly, env), flexOnly));
     if ((tag === "view" || tag === "page") && (author?.display === "flex" || author?.display === "inline-flex") && author.flexDirection === void 0)

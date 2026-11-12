@@ -206,10 +206,25 @@ fn settings_of(key: &str) -> Option<Settings> {
         .map(|s| s.settings.clone())
 }
 
+/// A play that shows no picture in this long fails as a network error, so the page can retry or
+/// fall back instead of spinning.
+const START_DEADLINE: Duration = Duration::from_secs(15);
+
 /// The state of player `key`, while a page draws it.
 pub(crate) fn status(key: &str) -> Option<Status> {
-    let players = players();
-    let entry = players.get(key)?;
+    let mut players = players();
+    let entry = players.get_mut(key)?;
+    if start_overdue(entry) {
+        let error = VideoError::new(
+            "VIDEO_NETWORK",
+            format!("no picture {} s after play", START_DEADLINE.as_secs()),
+        );
+        log::warn!(target: "lingxia_view", "video {key}: {}", error.message);
+        entry.switch = None;
+        let closed = std::mem::replace(&mut entry.state, State::Failed(error));
+        // Closing a player can wait on its decoder; the render thread does not.
+        std::thread::spawn(move || drop(closed));
+    }
     let mut status = match &entry.state {
         State::Ready(player) => player.status(),
         State::Opening => Status::default(),
@@ -248,6 +263,37 @@ pub(crate) fn status(key: &str) -> Option<Status> {
     Some(status)
 }
 
+/// Times a play waiting for its first picture; only while pages poll, so a hidden page's wait does
+/// not count.
+fn start_overdue(entry: &mut Entry) -> bool {
+    let waiting = match &entry.state {
+        State::Ready(player) => entry.frame.is_none() && !entry.resume && !player.status().paused,
+        _ => false,
+    };
+    let overdue;
+    (entry.waiting, overdue) = start_wait(entry.waiting, waiting, Instant::now());
+    overdue
+}
+
+fn start_wait(
+    wait: Option<(Instant, Instant)>,
+    waiting: bool,
+    now: Instant,
+) -> (Option<(Instant, Instant)>, bool) {
+    if !waiting {
+        return (None, false);
+    }
+    let since = match wait {
+        // Not polled for a while (its page was away): the wait starts again.
+        Some((since, seen)) if now.duration_since(seen) < Duration::from_secs(1) => since,
+        _ => now,
+    };
+    (
+        Some((since, now)),
+        now.duration_since(since) >= START_DEADLINE,
+    )
+}
+
 /// Applies `op` to player `key`, or queues it while the player opens.
 pub(crate) fn command(key: &str, op: VideoOp) -> Result<(), VideoError> {
     let mut players = players();
@@ -273,6 +319,7 @@ pub(crate) fn command(key: &str, op: VideoOp) -> Result<(), VideoError> {
             entry.applied = None;
             entry.switch = None;
             entry.frame_errors = 0;
+            entry.waiting = None;
             let _closed = std::mem::replace(&mut entry.state, State::Opening);
             request(key, &mut entry.state);
             Ok(())
@@ -457,6 +504,8 @@ struct Entry {
     resume: bool,
     /// Frames that failed in a row.
     frame_errors: u8,
+    /// A play waiting for its first picture: since when, and when a page last polled it.
+    waiting: Option<(Instant, Instant)>,
 }
 
 static PLAYERS: LazyLock<Mutex<HashMap<String, Entry>>> = LazyLock::new(Default::default);
@@ -1078,6 +1127,7 @@ fn touch<'a>(players: &'a mut HashMap<String, Entry>, key: &str) -> Option<&'a m
                 frames: 0,
                 import_us: [0; 2],
                 frame_errors: 0,
+                waiting: None,
             },
         );
         return None;
@@ -2170,6 +2220,33 @@ pub unsafe fn import_hardware_buffer(
 mod platform {
     pub(super) fn open(_url: &str) -> Result<Box<dyn super::Player>, String> {
         Err("VIDEO_UNSUPPORTED: no video player on this platform yet".into())
+    }
+}
+
+#[cfg(test)]
+mod start_deadline_tests {
+    use super::{START_DEADLINE, start_wait};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn a_play_without_a_picture_fails_after_the_deadline_of_polled_time() {
+        let t0 = Instant::now();
+        let step = Duration::from_millis(500);
+        let mut wait = None;
+        let mut at = t0;
+        let mut overdue = false;
+        while at.duration_since(t0) <= START_DEADLINE {
+            assert!(!overdue, "overdue before the deadline");
+            (wait, overdue) = start_wait(wait, true, at);
+            at += step;
+        }
+        assert!(overdue, "overdue at the deadline");
+        // A picture, or a pause, ends the wait.
+        assert_eq!(start_wait(wait, false, at), (None, false));
+        // A gap in polling (the page was away) starts it again.
+        let (wait, overdue) = start_wait(Some((t0, t0)), true, t0 + START_DEADLINE * 2);
+        assert!(!overdue);
+        assert_eq!(wait.unwrap().0, t0 + START_DEADLINE * 2);
     }
 }
 
