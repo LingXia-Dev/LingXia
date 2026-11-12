@@ -2566,7 +2566,7 @@ fn logic_feedback_calls_draw_in_the_view_and_answer_like_the_webview() {
         replies().iter().all(|r| r["id"] != "lv_3"),
         "waits for a choice"
     );
-    let dialog = query("[role=\"dialog\"]");
+    let dialog = query("[role=\"alertdialog\"]");
     assert_eq!(dialog["aria_label"], "Delete?");
     host.automation_request(&serde_json::json!({"op":"act","css":"[data-testid=\"lx-modal-confirm\"]","action":{"kind":"click"}})).unwrap();
     platform.settle(&[&host]);
