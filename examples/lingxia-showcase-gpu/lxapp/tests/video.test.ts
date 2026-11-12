@@ -139,29 +139,40 @@ spec('a page under another holds its videos still and plays the playing ones aga
   expect(await at()).toBe(paused);
 });
 
-// Needs the network: the row streams Apple's public HLS test stream, so an unreachable stream skips.
-spec('an HLS source offers its renditions as qualities', { start: { page: 'video' } }, async (t) => {
+// Needs the network: one public row plays Big Buck Bunny as three progressive files, the other
+// Apple's HLS test stream with six renditions; an unreachable host skips.
+spec('public renditions switch quality over the network', { start: { page: 'video' }, tags: ['network'], timeout: 90_000 }, async (t) => {
   await skipWhenCovered(t, 'video');
   const view = t.app.view;
-  const state = view.testId('video-stream-state');
-  const offline = () => t.skip('needs the network: the public HLS test stream is unreachable');
+  const offline = () => t.skip('needs the network: the public video hosts are unreachable');
+  const settle = async (id: string, done: (text: string) => boolean) => {
+    const state = view.testId(id);
+    const deadline = Date.now() + 20_000;
+    let text = await state.textContent();
+    while (!done(text) && !text.includes('VIDEO_NETWORK') && Date.now() < deadline) {
+      await new Promise<void>(resolve => setTimeout(resolve, 250));
+      text = await state.textContent();
+    }
+    if (text.includes('VIDEO_NETWORK')) offline();
+    return text;
+  };
+  // Progressive: each label is its own file, so a switch changes the decoded height.
+  const files = await settle('video-public-state', text => /· [1-9]\d*p ·/.test(text));
+  expect(files).toContain('360p/720p/1080p');
+  for (const quality of ['1080p', '360p']) {
+    await view.testId(`video-public-${quality}`).click();
+    await expect(view.testId('video-public-state')).toContainText(`${quality} · ${quality}`, { timeout: 30_000 });
+  }
+  // HLS: the platform lists the stream's renditions and pins the one chosen.
   // HarmonyOS's player plays the stream but does not list or pin its renditions yet.
   const harmony = await t.app.logic.eval(({ lx }) => String(lx.host.getBaseInfo().os || '').toLowerCase()) === 'harmony';
-  const done = (text: string) => harmony ? /· [1-9]\d*p ·/.test(text) : text.includes('1080p/720p/540p/360p');
-  const deadline = Date.now() + 20_000;
-  let text = await state.textContent();
-  while (!done(text) && Date.now() < deadline) {
-    if (text.includes('VIDEO_NETWORK')) offline();
-    await new Promise<void>(resolve => setTimeout(resolve, 250));
-    text = await state.textContent();
-  }
-  if (text.includes('VIDEO_NETWORK')) offline();
+  const renditions = await settle('video-stream-state', text => harmony ? /· [1-9]\d*p ·/.test(text) : text.includes('1080p/720p/540p/432p/360p/270p'));
   if (harmony) {
-    expect(text).toMatch(/· [1-9]\d*p ·/);
+    expect(renditions).toMatch(/· [1-9]\d*p ·/);
     await expectPicture(t, view.testId('video-stream'));
     t.skip('HarmonyOS does not list HLS renditions yet');
   }
-  expect(text).toContain('1080p/720p/540p/360p');
-  await view.testId('video-stream-360p').click();
-  await expect(state).toContainText('360p · 360p', { timeout: 30_000 });
+  expect(renditions).toContain('1080p/720p/540p/432p/360p/270p');
+  await view.testId('video-stream-540p').click();
+  await expect(view.testId('video-stream-state')).toContainText('540p · 540p', { timeout: 30_000 });
 });

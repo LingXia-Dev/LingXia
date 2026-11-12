@@ -4,7 +4,7 @@ import '../../theme/index.css';
 const clips = ['public/video/pattern.mp4', 'public/video/fractal.mp4'];
 // Every third row plays a clip under a text overlay, so a scroll moves video between plain rows.
 const rows = Array.from({ length: 24 }, (_, index) => ({ id: String(index), clip: index % 3 === 1 ? clips[(index / 3) % 2 | 0] : null }));
-const items = [{ id: 'hero', clip: null }, { id: 'quality', clip: null }, { id: 'stream', clip: null }, ...rows];
+const items = [{ id: 'hero', clip: null }, { id: 'quality', clip: null }, { id: 'public', clip: null }, { id: 'stream', clip: null }, ...rows];
 const sources = [{ src: 'public/video/q360.mp4', label: '360p' }, { src: 'public/video/q720.mp4', label: '720p' }];
 
 function Hero({ actions }: { actions: View['actions'] }) {
@@ -69,9 +69,41 @@ function Quality({ actions }: { actions: View['actions'] }) {
   );
 }
 
-// One adaptive HLS source: its renditions become the qualities.
-// AVFoundation plays HLS only over http(s), so the adaptive row streams Apple's public test stream.
-const STREAM = 'https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_16x9/bipbop_16x9_variant.m3u8';
+// Big Buck Bunny (c) Blender Foundation, CC BY 3.0: one 10 s clip as three progressive files, so a
+// switch changes real resolution over the network.
+const PUBLIC = [360, 720, 1080].map(height => ({
+  src: `https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/${height}/Big_Buck_Bunny_${height}_10s_1MB.mp4`,
+  label: `${height}p`,
+}));
+
+function PublicQuality() {
+  const video = useVideo('public');
+  return (
+    <view className="gap-2">
+      <video data-testid="video-public" player={video} sources={PUBLIC} autoPlay muted loop aria-label="Big Buck Bunny" className="rounded-2xl" />
+      <text data-testid="video-public-state" className="text-muted">
+        {video.quality} · {video.videoHeight}p · {video.qualities.join('/')}{video.error ? ` · ${video.error.code}` : ''}
+      </text>
+      <view className="flex-row flex-wrap gap-2">
+        {['auto', ...video.qualities].map(quality => (
+          <button
+            key={quality}
+            data-testid={`video-public-${quality}`}
+            aria-pressed={video.quality === quality}
+            onClick={() => video.setQuality(quality)}
+            className={video.quality === quality ? 'px-3 py-2 rounded-xl bg-accent text-on-accent' : 'px-3 py-2 rounded-xl bg-surface text-text'}
+          >
+            <text>{quality}</text>
+          </button>
+        ))}
+      </view>
+    </view>
+  );
+}
+
+// One adaptive HLS source: its renditions become the qualities. Apple's advanced test stream
+// lists six, 1080p down to 270p.
+const STREAM = 'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8';
 
 function Stream() {
   const video = useVideo('stream');
@@ -79,7 +111,7 @@ function Stream() {
     <column className="gap-2">
       <video data-testid="video-stream" player={video} src={STREAM} autoPlay muted loop aria-label="HLS test" className="rounded-2xl" />
       <text data-testid="video-stream-state" className="text-muted">
-        {video.quality} · {video.videoHeight}p · {video.qualities.join('/')}{video.error ? ` · ${video.error.code}` : ''}
+        {video.quality} · {video.videoHeight}p · {video.qualities.join('/')} · {video.currentTime.toFixed(1)}s{video.error ? ` · ${video.error.code}` : ''}
       </text>
       <row className="flex-wrap gap-2">
         {['auto', ...video.qualities].map(quality => (
@@ -104,6 +136,8 @@ export function render({ actions }: View) {
             <Hero actions={actions} />
           ) : row.id === 'quality' ? (
             <Quality actions={actions} />
+          ) : row.id === 'public' ? (
+            <PublicQuality />
           ) : row.id === 'stream' ? (
             <Stream />
           ) : row.clip ? (
