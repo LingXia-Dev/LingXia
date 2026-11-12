@@ -21,6 +21,15 @@ export function InList() {
   );
 }
 
+export function Sizes() {
+  return (
+    <view className="gap-3">
+      <Switch value onChange={() => {}} label="Small, for dense rows" size="sm" />
+      <Switch value onChange={() => {}} label="Medium" />
+    </view>
+  );
+}
+
 export function StateOff() {
   return <Switch value={false} onChange={() => {}} label="Wi-Fi" />;
 }

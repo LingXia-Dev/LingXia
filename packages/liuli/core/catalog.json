@@ -3672,6 +3672,13 @@
           "default": "false"
         },
         {
+          "name": "size",
+          "type": "SwitchSize",
+          "required": false,
+          "description": "`sm` for dense rows.",
+          "default": "'md'"
+        },
+        {
           "name": "variant",
           "type": "SwitchVariant",
           "required": false,
@@ -3720,6 +3727,7 @@
           }
         ],
         "target": {
+          "sm": 32,
           "md": 32
         },
         "contrast": [
@@ -3732,9 +3740,17 @@
             "minimum": "3:1"
           },
           {
-            "what": "track, off",
+            "what": "thumb against the track, on",
             "pair": [
-              "line-strong",
+              "surface-raised",
+              "accent"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "keyboard focus ring",
+            "pair": [
+              "focus",
               "surface"
             ],
             "minimum": "3:1"
@@ -3750,7 +3766,9 @@
         ],
         "notes": [
           "On and off differ in the thumb's side as well as the track colour, never in colour alone.",
-          "The standalone switch is 32 px tall; the row variant gives it a 48 px row."
+          "The standalone switch is 32 px tall at both sizes; the row variant gives it a 48 px row.",
+          "The off track is decorative and has no contrast minimum: off is carried by the thumb at the start and the missing accent.",
+          "Disabled and on, the track keeps its accent at reduced strength, so the state still reads."
         ]
       },
       "examples": [
@@ -3763,14 +3781,14 @@
           "name": "InList",
           "title": "As list rows",
           "source": "import { useLocal } from '@lingxia/view';\nimport { Item } from '@liulidesign/core/Item';\nimport { Switch } from '@liulidesign/core/Switch';\n\n/** Among list rows: the row's padding and height. The stage's own padding is undone so the rows meet its edges. */\nexport function InList() {\n  const alerts = useLocal('alerts', true);\n  const digest = useLocal('digest', false);\n  return (\n    <view className=\"-m-5 divide-y divide-text/8\">\n      <Item label=\"Sound\" endContent={<text className=\"text-body\">Chime</text>} onClick={() => {}} hasChevron />\n      <Switch bind={alerts} label=\"Mentions\" variant=\"row\" data-testid=\"mentions\" />\n      <Switch bind={digest} label=\"Weekly digest\" variant=\"row\" data-testid=\"digest\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Sizes",
+          "title": "Small and medium",
+          "source": "import { Switch } from '@liulidesign/core/Switch';\n\nexport function Sizes() {\n  return (\n    <view className=\"gap-3\">\n      <Switch value onChange={() => {}} label=\"Small, for dense rows\" size=\"sm\" />\n      <Switch value onChange={() => {}} label=\"Medium\" />\n    </view>\n  );\n}"
         }
       ],
       "gaps": [
-        {
-          "missing": "Liuli's own track and thumb: a thumb with a hairline and contact shadow, a smaller track for dense rows.",
-          "needs": "switch track and thumb styling (size, fill, border, shadow) on the primitive",
-          "today": "The primitive's 52 by 32 track and plain white thumb, at one size."
-        },
         {
           "missing": "Help text that toggles the switch when tapped.",
           "needs": "a switch that takes element children, as a checkbox does",
@@ -3792,6 +3810,12 @@
             {
               "name": "InList",
               "title": "As rows in a list, beside an Item"
+            }
+          ],
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "Small (36 by 20) for dense rows, medium (44 by 26) by default"
             }
           ],
           "states": [

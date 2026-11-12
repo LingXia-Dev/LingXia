@@ -24,15 +24,18 @@ export const doc: ComponentDoc = {
       { state: 'disabled', from: 'isDisabled' },
     ],
     keyboard: [{ keys: 'Space', effect: 'Flips it.' }],
-    target: { md: 32 },
+    target: { sm: 32, md: 32 },
     contrast: [
       { what: 'track, on', pair: ['accent', 'surface'], minimum: '3:1' },
-      { what: 'track, off', pair: ['line-strong', 'surface'], minimum: '3:1' },
+      { what: 'thumb against the track, on', pair: ['surface-raised', 'accent'], minimum: '3:1' },
+      { what: 'keyboard focus ring', pair: ['focus', 'surface'], minimum: '3:1' },
       { what: 'label', pair: ['text', 'surface'], minimum: '4.5:1' },
     ],
     notes: [
       'On and off differ in the thumb\'s side as well as the track colour, never in colour alone.',
-      'The standalone switch is 32 px tall; the row variant gives it a 48 px row.',
+      'The standalone switch is 32 px tall at both sizes; the row variant gives it a 48 px row.',
+      'The off track is decorative and has no contrast minimum: off is carried by the thumb at the start and the missing accent.',
+      'Disabled and on, the track keeps its accent at reduced strength, so the state still reads.',
     ],
   },
   guidance: {
@@ -48,13 +51,9 @@ export const doc: ComponentDoc = {
   examples: [
     { name: 'Basic', title: 'With help text' },
     { name: 'InList', title: 'As list rows' },
+    { name: 'Sizes', title: 'Small and medium' },
   ],
   gaps: [
-    {
-      missing: 'Liuli\'s own track and thumb: a thumb with a hairline and contact shadow, a smaller track for dense rows.',
-      needs: 'switch track and thumb styling (size, fill, border, shadow) on the primitive',
-      today: 'The primitive\'s 52 by 32 track and plain white thumb, at one size.',
-    },
     {
       missing: 'Help text that toggles the switch when tapped.',
       needs: 'a switch that takes element children, as a checkbox does',
@@ -70,6 +69,7 @@ export const doc: ComponentDoc = {
       lead: 'Use a switch for a setting that takes effect the moment it flips. On a form that is sent later, use a checkbox.',
       hero: 'Basic',
       variants: [{ name: 'InList', title: 'As rows in a list, beside an Item' }],
+      sizes: [{ name: 'Sizes', title: 'Small (36 by 20) for dense rows, medium (44 by 26) by default' }],
       states: [
         { name: 'StateOff', title: 'Off' },
         { name: 'StateOn', title: 'On' },

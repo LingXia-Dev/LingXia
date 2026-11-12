@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Basic, InList, StateOff, StateOn, StateDisabledOff, StateDisabledOn } from '../../../core/src/Switch/Switch.examples';
+import { Basic, InList, Sizes, StateOff, StateOn, StateDisabledOff, StateDisabledOn } from '../../../core/src/Switch/Switch.examples';
 import { GalleryPage, Lead, PageSection, Stage, StageGrid } from '../../shared/Layout';
 
 export function render() {
@@ -11,6 +11,11 @@ export function render() {
       <PageSection title={"Variants"}>
         <Stage caption={"As rows in a list, beside an Item"}>
           <InList />
+        </Stage>
+      </PageSection>
+      <PageSection title={"Sizes"}>
+        <Stage caption={"Small (36 by 20) for dense rows, medium (44 by 26) by default"}>
+          <Sizes />
         </Stage>
       </PageSection>
       <PageSection title={"States"}>

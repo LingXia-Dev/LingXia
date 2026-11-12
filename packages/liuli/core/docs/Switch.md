@@ -46,6 +46,21 @@ export function InList() {
 }
 ```
 
+### Small and medium
+
+```tsx
+import { Switch } from '@liulidesign/core/Switch';
+
+export function Sizes() {
+  return (
+    <view className="gap-3">
+      <Switch value onChange={() => {}} label="Small, for dense rows" size="sm" />
+      <Switch value onChange={() => {}} label="Medium" />
+    </view>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -56,6 +71,7 @@ export function InList() {
 | `label` (required) | `string` |  | The visible label and the switch's name. Say what is on, not the action: "Wi-Fi", "Sync over mobile data". |
 | `description` | `string` |  | Help text under the label, read as the switch's description. |
 | `isDisabled` | `boolean` | `false` |  |
+| `size` | `SwitchSize` | `'md'` | `sm` for dense rows. |
 | `variant` | `SwitchVariant` | `'standalone'` | `row` sits in a list group among `Item` rows, with the row's padding and height. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the switch. |
@@ -74,14 +90,17 @@ export function InList() {
 - Description: description.
 - States: checked (from value or bind); disabled (from isDisabled).
 - Space: Flips it..
-- Press target: md 32 px.
+- Press target: sm 32 px, md 32 px.
 - On and off differ in the thumb's side as well as the track colour, never in colour alone.
-- The standalone switch is 32 px tall; the row variant gives it a 48 px row.
+- The standalone switch is 32 px tall at both sizes; the row variant gives it a 48 px row.
+- The off track is decorative and has no contrast minimum: off is carried by the thumb at the start and the missing accent.
+- Disabled and on, the track keeps its accent at reduced strength, so the state still reads.
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
 | track, on | `accent` on `surface` | 3:1 | 5.62:1 | 6.19:1 |
-| track, off | `line-strong` on `surface` | 3:1 | 3.66:1 | 3.69:1 |
+| thumb against the track, on | `surface-raised` on `accent` | 3:1 | 5.62:1 | 5.28:1 |
+| keyboard focus ring | `focus` on `surface` | 3:1 | 5.62:1 | 6.19:1 |
 | label | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
@@ -97,7 +116,6 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
-| Liuli's own track and thumb: a thumb with a hairline and contact shadow, a smaller track for dense rows. | switch track and thumb styling (size, fill, border, shadow) on the primitive | The primitive's 52 by 32 track and plain white thumb, at one size. |
 | Help text that toggles the switch when tapped. | a switch that takes element children, as a checkbox does | Only the label row is the press target; the help text sits outside it. |
 
 Related: CheckboxInput, Item.
