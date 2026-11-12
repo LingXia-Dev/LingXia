@@ -175,6 +175,17 @@ impl<A: PlatformAdapter> Inner<A> {
             if environment.width == 0 || environment.height == 0 {
                 return;
             }
+            match main.stalled_at {
+                Some(size) if size == (environment.width, environment.height) => {
+                    main.pending = false;
+                    return;
+                }
+                Some(_) => {
+                    main.stalled_at = None;
+                    main.failure_repeats = 0;
+                }
+                None => {}
+            }
             let fine = environment.value["pointer"] == "fine";
             main.interaction.set_fine_pointer(fine);
             main.text_menu.set_fine_pointer(fine);
@@ -1002,6 +1013,9 @@ impl<A: PlatformAdapter> Inner<A> {
             main.presented_flight = flight;
             // Repainting an old frame (caret, scroll) is not recovery.
             let recovered = rebuild && main.failure.take().is_some();
+            if recovered {
+                main.failure_repeats = 0;
+            }
             let presented =
                 main.interaction
                     .presented(snapshot.frame.clone(), revision, &offsets, page);

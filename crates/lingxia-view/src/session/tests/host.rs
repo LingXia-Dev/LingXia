@@ -60,6 +60,8 @@ struct Log {
     /// Deferred frames handed to the fake raster thread, in order.
     handed: Vec<CommitTicket>,
     debug: Vec<String>,
+    /// Lines the page's `console` wrote.
+    console: Vec<String>,
     released_transient: usize,
     /// Whether each prepared frame carried the HUD overlay.
     hud: Vec<bool>,
@@ -363,6 +365,9 @@ impl HostEvents for Fake {
     // Warnings may come from the worker, so they skip the main-thread record.
     fn warn(&self, message: &str) {
         self.log.lock().unwrap().warnings.push(message.to_owned());
+    }
+    fn console(&self, _: log::Level, message: &str) {
+        self.log.lock().unwrap().console.push(message.to_owned());
     }
     fn debug(&self, message: &str) {
         self.log.lock().unwrap().debug.push(message.to_owned());
@@ -1893,6 +1898,56 @@ fn a_stopped_window_pauses_the_deadline_and_a_failure_reveals_at_once() {
     );
     platform.advance(crate::session::host::FIRST_FRAME_WATCHDOG);
     assert_eq!(revealed(&first), [false]);
+}
+
+#[test]
+fn the_same_render_failure_three_times_stops_rendering_until_a_retry_or_a_new_size() {
+    // The View's console drops lines past the logger's maximum level.
+    log::set_max_level(log::LevelFilter::Trace);
+    let worker = ViewWorker::spawn("test-failure-stall").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source("let n=0;function render(){n++;console.log('render');if(n>1)throw Error('steady failure');return h('text',{},'ok')}"),
+        false,
+    );
+    let renders = || host.adapter().log.lock().unwrap().console.len();
+    let shown = || {
+        let log = host.adapter().log.lock().unwrap();
+        let recoveries = log.recovery.iter().filter(|r| r.is_some()).count();
+        let warned = log.warnings.iter().filter(|w| w.contains("steady failure")).count();
+        (recoveries, warned)
+    };
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    assert_eq!(last(&host), ["ok"]);
+    for _ in 0..6 {
+        host.request_frame();
+        platform.settle(&[&host]);
+    }
+    assert_eq!(renders(), 1 + 3, "rendering stalled");
+    assert_eq!(shown(), (1, 2), "recovery shown once; logged once and at the stall");
+    // Another size may render: it tries again.
+    resize(&host, 180);
+    host.surface_changed();
+    platform.settle(&[&host]);
+    assert_eq!(renders(), 2 + 3);
+    for _ in 0..6 {
+        host.request_frame();
+        platform.settle(&[&host]);
+    }
+    let stalled = renders();
+    host.retry();
+    platform.settle(&[&host]);
+    assert_eq!(renders(), stalled + 1, "a retry renders again");
+    for _ in 0..6 {
+        host.request_frame();
+        platform.settle(&[&host]);
+    }
+    // Another page at the stalled size renders.
+    host.load(source("function render(){return h('text',{},'fresh')}"));
+    platform.settle(&[&host]);
+    assert_eq!(last(&host), ["fresh"]);
 }
 
 #[test]

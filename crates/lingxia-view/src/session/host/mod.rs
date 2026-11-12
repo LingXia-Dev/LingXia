@@ -48,6 +48,9 @@ pub use worker::ViewWorker;
 
 const BOOTSTRAP: Duration = Duration::from_secs(5);
 const CARET_BLINK: Duration = Duration::from_millis(500);
+/// The same failure this many times in a row stops rendering until a retry or a new size: a
+/// deterministic error would otherwise re-render and fail at frame rate.
+const STALL_AFTER: u32 = 3;
 
 /// A presented frame as the adapter sees it.
 pub struct FrameSnapshot {
@@ -392,6 +395,10 @@ struct Main<F> {
     #[cfg(test)]
     modelled_build: Option<Duration>,
     failure: Option<Failure>,
+    /// How many times in a row the current failure's error repeated.
+    failure_repeats: u32,
+    /// The target size rendering stalled at after repeated failures; another size renders again.
+    stalled_at: Option<(u16, u16)>,
     styled_press: Option<String>,
     styled_hover: Option<String>,
     styled_focus: Option<String>,
@@ -595,6 +602,8 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     #[cfg(test)]
                     modelled_build: None,
                     failure: None,
+                    failure_repeats: 0,
+                    stalled_at: None,
                     styled_press: None,
                     styled_hover: None,
                     styled_focus: None,
@@ -1656,6 +1665,8 @@ impl<A: PlatformAdapter> Inner<A> {
             main.animation_timer += 1;
             main.bootstrap_timer += 1;
             main.failure = None;
+            main.failure_repeats = 0;
+            main.stalled_at = None;
             let page = self.lifecycle.load();
             main.telemetry.opened(self.adapter.now());
             main.snapshot = None;
@@ -1730,6 +1741,8 @@ impl<A: PlatformAdapter> Inner<A> {
             main.animation_timer += 1;
             main.bootstrap_timer += 1;
             main.failure = None;
+            main.failure_repeats = 0;
+            main.stalled_at = None;
             main.telemetry.stats.abandon_reveal();
             let page = self.lifecycle.park();
             main.snapshot = None;
@@ -1890,6 +1903,11 @@ impl<A: PlatformAdapter> Inner<A> {
         let Some(failure) = self.main().failure.clone() else {
             return;
         };
+        {
+            let mut main = self.main();
+            main.stalled_at = None;
+            main.failure_repeats = 0;
+        }
         match failure.recovery.retry {
             Retry::None => {}
             Retry::Redraw => {
@@ -1912,7 +1930,7 @@ impl<A: PlatformAdapter> Inner<A> {
 
     /// Record a failure, stop scheduling and show recovery chrome.
     fn fail(self: &Arc<Self>, error: String) {
-        let (failure, effects) = {
+        let (failure, effects, repeats) = {
             let mut main = self.main();
             if main.disposed {
                 return;
@@ -1921,6 +1939,14 @@ impl<A: PlatformAdapter> Inner<A> {
             main.bootstrap_timer += 1;
             main.pending = false;
             main.telemetry.stats.abandon_reveal();
+            let repeated = main.failure.as_ref().is_some_and(|last| last.error == error);
+            main.failure_repeats = if repeated { main.failure_repeats + 1 } else { 1 };
+            if main.failure_repeats >= STALL_AFTER {
+                main.stalled_at = self
+                    .adapter
+                    .environment()
+                    .map(|environment| (environment.width, environment.height));
+            }
             let recovery = self.lifecycle.fail(&error);
             let effects = if recovery.kind == FailureKind::Session {
                 main.interaction.set_inert(true);
@@ -1931,15 +1957,23 @@ impl<A: PlatformAdapter> Inner<A> {
             };
             let failure = Failure::new(error, recovery, main.snapshot.is_some());
             main.failure = Some(failure.clone());
-            (failure, effects)
+            (failure, effects, main.failure_repeats)
         };
         if failure.recovery.kind == FailureKind::Session {
             self.adapter.reset();
         }
         self.deliver(effects);
         self.adapter.bootstrap_overdue(false);
-        self.adapter.warn(&failure.error);
-        self.adapter.recovery(Some(&failure));
+        // A repeat is already shown and logged; the stall is said once.
+        if repeats == 1 {
+            self.adapter.warn(&failure.error);
+            self.adapter.recovery(Some(&failure));
+        } else if repeats == STALL_AFTER {
+            self.adapter.warn(&format!(
+                "{} (failed {STALL_AFTER} times in a row; rendering stops until a retry)",
+                failure.error
+            ));
+        }
         self.revealed_by_failure();
     }
 
