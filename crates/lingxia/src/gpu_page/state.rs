@@ -156,3 +156,9 @@ pub(crate) fn message_to_view(message: GpuViewMessage) -> ToView {
         },
     }
 }
+
+/// Dev sessions: the View says how each module swap ended, for the swap waiting on it.
+#[cfg(feature = "devtool")]
+pub(crate) fn install_swap_reporter() {
+    lingxia_view::session::host::set_swap_reporter(super::swap_reports::report);
+}

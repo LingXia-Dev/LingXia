@@ -26,7 +26,7 @@ impl ViewSession {
             }
             // Render once now so a module that cannot render never replaces one that can.
             if let Some((width, height, scale)) = self.viewport {
-                self.prepare_native(width, height, scale, true, None, |_| Ok(()))?;
+                self.prepare_trial(width, height, scale)?;
             }
             Ok(())
         })();

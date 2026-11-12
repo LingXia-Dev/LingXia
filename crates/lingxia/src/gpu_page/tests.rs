@@ -336,6 +336,38 @@ fn a_hot_swap_reaches_only_the_selected_live_pages() {
 }
 
 #[test]
+fn a_swap_that_reloaded_is_reported_and_a_silent_one_counts_as_landed() {
+    use super::swap_reports::{Swaps, report};
+    let swaps = Swaps::new();
+    swaps.expect("module-a");
+    swaps.expect("module-a");
+    report("module-a", Ok(()));
+    report("module-a", Err("UI_ANIMATION: refused".into()));
+    // Nobody waits for another module.
+    report("module-b", Err("unrelated".into()));
+    let error = swaps
+        .outcome(2, std::time::Duration::from_secs(1))
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("UI_ANIMATION: refused"), "{error}");
+    assert!(!error.contains("unrelated"), "{error}");
+
+    let swaps = Swaps::new();
+    swaps.expect("module-c");
+    assert!(
+        swaps
+            .outcome(1, std::time::Duration::from_millis(20))
+            .is_ok()
+    );
+    // The registration left with its call.
+    let swaps = Swaps::new();
+    report("module-c", Err("late".into()));
+    swaps.expect("module-c");
+    report("module-c", Ok(()));
+    assert!(swaps.outcome(1, std::time::Duration::from_secs(1)).is_ok());
+}
+
+#[test]
 fn hot_swap_matches_routes_with_or_without_module_extension() {
     for path in [
         "pages/view-lab/index",

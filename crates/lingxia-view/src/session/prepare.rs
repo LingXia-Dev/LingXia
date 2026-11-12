@@ -115,6 +115,29 @@ impl ViewSession {
         Ok(frame)
     }
 
+    /// Render once and throw the frame away, so a module that cannot render is refused
+    /// before it replaces one that can; its animations need no presentation.
+    pub(super) fn prepare_trial(
+        &mut self,
+        width: u16,
+        height: u16,
+        scale: f32,
+    ) -> Result<(), String> {
+        self.prepare_native_visuals(
+            width,
+            height,
+            scale,
+            true,
+            None,
+            &mut FrameAnimations::Trial,
+            |_| Ok(()),
+        )?;
+        // The next real frame starts the new module's animations afresh.
+        self.pending_animation = None;
+        self.presenting_animation = None;
+        Ok(())
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(super) fn prepare_native_visuals<T>(
         &mut self,

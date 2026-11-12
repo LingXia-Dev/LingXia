@@ -392,15 +392,125 @@ fn swap_pages(select: impl Fn(&str) -> Option<String>) -> Result<usize, LxAppErr
     Ok(swapped)
 }
 
-/// Dev sessions: the pages of `appid` at `path` take the module now in the bundle.
+/// Dev sessions: the pages of `appid` at `path` take the module now in the bundle. A page
+/// that could not swap in place reloads with it, and that is returned as the error.
 #[cfg_attr(not(feature = "devtool"), allow(dead_code))]
 pub(crate) fn hot_swap(appid: &str, path: &str) -> Result<usize, LxAppError> {
-    swap_pages(|id| {
+    #[cfg(all(
+        feature = "devtool",
+        any(
+            target_os = "android",
+            target_os = "ios",
+            target_os = "macos",
+            target_env = "ohos"
+        )
+    ))]
+    state::install_swap_reporter();
+    let swaps = swap_reports::Swaps::new();
+    let swapped = swap_pages(|id| {
         let page = lxapp::find_page_by_instance_id(id)?;
         (page.appid() == appid && page_key(&page.path()) == page_key(path))
             .then(|| page.gpu_module_source().ok())
             .flatten()
-    })
+            .inspect(|source| swaps.expect(source))
+    })?;
+    swaps.outcome(swapped, swap_reports::WAIT)?;
+    Ok(swapped)
+}
+
+/// Dev sessions: swaps waiting to hear from the View how they ended, by the module they
+/// swap in.
+#[cfg_attr(not(feature = "devtool"), allow(dead_code))]
+mod swap_reports {
+    use lxapp::LxAppError;
+    use std::hash::{Hash, Hasher};
+    use std::sync::{
+        Mutex,
+        atomic::{AtomicU64, Ordering},
+        mpsc,
+    };
+    use std::time::{Duration, Instant};
+
+    /// Within the dev server's wait for the swap's reply.
+    pub(super) const WAIT: Duration = Duration::from_secs(5);
+
+    type Outcome = Result<(), String>;
+    /// `(module key, swap call, its channel)`
+    static WAITING: Mutex<Vec<(u64, u64, mpsc::Sender<Outcome>)>> = Mutex::new(Vec::new());
+    static CALLS: AtomicU64 = AtomicU64::new(0);
+
+    fn key(source: &str) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        source.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    fn waiting() -> std::sync::MutexGuard<'static, Vec<(u64, u64, mpsc::Sender<Outcome>)>> {
+        WAITING
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// The View swapped `source` into one page, or loaded it afresh.
+    pub(crate) fn report(source: &str, outcome: Outcome) {
+        let key = key(source);
+        let mut waiting = waiting();
+        if let Some(index) = waiting.iter().position(|(k, ..)| *k == key) {
+            let (_, _, sender) = waiting.remove(index);
+            let _ = sender.send(outcome);
+        }
+    }
+
+    pub(super) struct Swaps {
+        call: u64,
+        sender: mpsc::Sender<Outcome>,
+        receiver: mpsc::Receiver<Outcome>,
+    }
+
+    impl Swaps {
+        pub(super) fn new() -> Self {
+            let (sender, receiver) = mpsc::channel();
+            Self {
+                call: CALLS.fetch_add(1, Ordering::Relaxed),
+                sender,
+                receiver,
+            }
+        }
+
+        /// Registered before the swap starts: a fast worker may report before it returns.
+        pub(super) fn expect(&self, source: &str) {
+            waiting().push((key(source), self.call, self.sender.clone()));
+        }
+
+        /// How `pages` swaps ended; one that has not reported by `wait` counts as landed.
+        pub(super) fn outcome(self, pages: usize, wait: Duration) -> Result<(), LxAppError> {
+            let deadline = Instant::now() + wait;
+            let mut errors = Vec::new();
+            for _ in 0..pages {
+                let left = deadline.saturating_duration_since(Instant::now());
+                match self.receiver.recv_timeout(left) {
+                    Ok(Ok(())) => {}
+                    Ok(Err(error)) => errors.push(error),
+                    Err(_) => break,
+                }
+            }
+            if errors.is_empty() {
+                return Ok(());
+            }
+            errors.dedup();
+            Err(LxAppError::Runtime(format!(
+                "could not update in place, reloaded (local state lost): {}",
+                errors.join("; ")
+            )))
+        }
+    }
+
+    impl Drop for Swaps {
+        fn drop(&mut self) {
+            let call = self.call;
+            waiting().retain(|(_, c, _)| *c != call);
+        }
+    }
 }
 
 /// A page route without query, leading slash or module extension: the runtime knows

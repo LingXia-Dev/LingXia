@@ -302,3 +302,40 @@ fn component_state_follows_the_compile_time_id_not_the_function_name() {
         "a moved declaration starts fresh"
     );
 }
+
+#[test]
+fn a_page_with_keyframe_animations_swaps_in_place() {
+    use crate::session::lifecycle::SurfaceTicket;
+    use std::time::Duration;
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../../packages/lingxia-view/tests/fixtures/animations.json"
+    ))
+    .unwrap();
+    let payload = fixture["chart-in"].to_string();
+    let module = |label: &str| {
+        super::source(&format!(
+            "function render(){{return h('view',{{}},h('view',{{style:{{width:40,height:40,animation:{payload}}}}}),h('text',{{'data-testid':'t'}},'{label}'))}}"
+        )) + "\nenableHotSwap();"
+    };
+    let mut page = ViewSession::new(&module("before")).unwrap();
+    page.set_animation_surface(Some(SurfaceTicket::new(1)), Duration::ZERO)
+        .unwrap();
+    let label = |page: &mut ViewSession, at: Duration| {
+        page.prepare_view_animated(80, 80, 1.0, true, None, at, |display| {
+            Ok(display
+                .nodes
+                .iter()
+                .find(|n| n.test_id == "t")
+                .unwrap()
+                .text
+                .clone())
+        })
+        .unwrap()
+    };
+    assert_eq!(label(&mut page, Duration::ZERO), "before");
+    page.swap_module(&module("after")).unwrap();
+    assert_eq!(label(&mut page, Duration::from_millis(16)), "after");
+    // An animation the runtime cannot decode still refuses the swap.
+    let broken = module("broken").replace(&payload, "'not an animation'");
+    assert!(page.swap_module(&broken).is_err());
+}

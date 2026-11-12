@@ -11,6 +11,9 @@ use std::{
 
 pub(super) enum FrameAnimations<'a> {
     Disabled,
+    /// A frame that only proves the View renders: nobody presents it, so animations are
+    /// decoded, not sampled.
+    Trial,
     Explicit(&'a Prepared),
     Collected {
         inventory: Inventory,
@@ -29,6 +32,10 @@ impl FrameAnimations<'_> {
     pub(super) fn validate(&self, records: &[crate::protocol::Record]) -> Result<(), String> {
         match self {
             Self::Disabled => validate_record_animations(records, None),
+            Self::Trial => records
+                .iter()
+                .filter_map(|record| record.string(field::ANIMATION))
+                .try_for_each(|source| crate::animation::decode_definition(source).map(|_| ())),
             Self::Explicit(frame) => validate_record_animations(records, Some(frame)),
             Self::Collected { .. } => Ok(()),
         }
@@ -42,7 +49,7 @@ impl FrameAnimations<'_> {
         palette: &crate::theme::Palette,
     ) -> Result<(DisplayList, bool), String> {
         match self {
-            Self::Disabled => Ok((display, false)),
+            Self::Disabled | Self::Trial => Ok((display, false)),
             Self::Explicit(frame) => compose(display, offsets, frame)
                 .map(|display| (display, !frame.visuals().is_empty())),
             Self::Collected {

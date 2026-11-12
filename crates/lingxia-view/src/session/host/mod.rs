@@ -27,6 +27,8 @@ mod frame_stats;
 mod glide;
 #[cfg(feature = "hot-swap")]
 mod hot_swap;
+#[cfg(feature = "hot-swap")]
+pub use hot_swap::{SwapReporter, set_swap_reporter};
 mod images;
 mod pump;
 mod reveal;
@@ -654,7 +656,8 @@ impl<A: PlatformAdapter> ViewHost<A> {
         self.inner.load(Some(source));
     }
 
-    /// Dev sessions: replace the page module in place, keeping its state.
+    /// Dev sessions: replace the page module in place, keeping its state; a module that cannot
+    /// swap in loads afresh. [`set_swap_reporter`] hears which.
     #[cfg(feature = "hot-swap")]
     pub fn swap_module(&self, source: String) {
         self.inner.swap_module(source);
