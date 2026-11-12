@@ -527,6 +527,21 @@ pub(crate) fn page_of(token: Token) -> Option<PageInstance> {
     live(token).and_then(|endpoint| lxapp::find_page_by_instance_id(&endpoint.lease.page))
 }
 
+/// A line page `token`'s View `console` wrote, tagged as that page's console like a WebView's.
+pub(crate) fn console(token: Token, level: log::Level, message: &str) {
+    let level = match level {
+        log::Level::Error => lingxia_log::LogLevel::Error,
+        log::Level::Warn => lingxia_log::LogLevel::Warn,
+        log::Level::Info => lingxia_log::LogLevel::Info,
+        log::Level::Debug | log::Level::Trace => lingxia_log::LogLevel::Debug,
+    };
+    let builder = lingxia_log::LogBuilder::new(lingxia_log::LogTag::WebViewConsole, message)
+        .with_level(level);
+    if let Some(page) = page_of(token) {
+        builder.with_path(&page.path()).with_appid(page.appid());
+    }
+}
+
 /// A full-screen video on page `token` locks the window to its shape, or (`None`) gives the
 /// window back to the page's own orientation. The lock lives on the page, so the host's
 /// own reapplies (page switches, resume) keep it while that page shows.

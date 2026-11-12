@@ -1695,7 +1695,14 @@ impl<A: PlatformAdapter> Inner<A> {
                 if !inner.lifecycle.is_current_page(page) {
                     return Ok(false);
                 }
-                *slot = Some(app.create(&source, logic)?);
+                let host = std::sync::Arc::downgrade(&inner);
+                let console: crate::engine::console::ConsoleSink =
+                    std::sync::Arc::new(move |level, message: &str| {
+                        if let Some(host) = host.upgrade() {
+                            host.adapter.console(level, message);
+                        }
+                    });
+                *slot = Some(app.create_with_console(&source, logic, Some(console))?);
                 Ok(true)
             }))
             .unwrap_or_else(|_| Err("UI_RENDER: native panic".into()));

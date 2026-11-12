@@ -50,6 +50,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - Utilities that would draw nothing (filters but `blur-*`, radial masks, text shadows, cursors, outlines) fail naming what to use.
 - In `lingxia dev`, saving View code of GPU pages swaps those pages in place, keeping `useLocal`, scroll
   and focus; Logic or config edits rebuild and reopen. Dev builds' runtime errors name `file:line:col`.
+- `console.log`/`info`/`warn`/`error`/`debug` in View code go to the app log tagged with the page (`lxdev logs`); arguments join as text and a call never throws.
 - The build reports every problem with `file:line:col`, split into unknown
   utilities, ones the renderer cannot draw, and ones the element ignores.
 - `useLocal(value)` state is keyed by call order and component identity; `useLocal(name, value)` by name (survives reorders and hot edits).

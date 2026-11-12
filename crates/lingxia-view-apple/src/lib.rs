@@ -51,6 +51,11 @@ pub trait Shell: Send + Sync + 'static {
         token: i64,
         orientation: Option<lingxia_view::scene::video::Orientation>,
     );
+    /// The View worker thread: a line page `token`'s `console` wrote.
+    fn console(&self, token: i64, level: log::Level, message: &str) {
+        let _ = token;
+        log::log!(target: "lingxia_view::console", level, "{message}");
+    }
     /// The View takes the gesture under the finger (`true`) or lets it go: while it holds it,
     /// enclosing scroll views and the back swipe stand down.
     fn claim(&self, token: i64, exclusive: bool);

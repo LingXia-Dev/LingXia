@@ -273,6 +273,9 @@ impl lingxia_view_android::StateListener for States {
     ) {
         gpu_page::video_orientation(owner, orientation.map(gpu_page::state::page_orientation));
     }
+    fn console(&self, owner: i64, level: log::Level, message: &str) {
+        gpu_page::console(owner, level, message);
+    }
 }
 
 struct Factory;

@@ -14,7 +14,7 @@ impl ViewSession {
             .map_err(|e| crate::engine::js_error(&self.context, e))?;
         let runtime = RongJS::runtime();
         let budget = crate::engine::budget::Budget::new(&runtime);
-        let mut fresh = Self::with_runtime(runtime, budget, source, false)?;
+        let mut fresh = Self::with_runtime(runtime, budget, source, false, self.console.clone())?;
         self.exchange_isolate(&mut fresh);
         let imported = (|| {
             let state = serde_json::to_string(&state).map_err(|e| e.to_string())?;

@@ -2,6 +2,7 @@
 pub(crate) mod budget;
 pub(crate) mod bytecode;
 pub(crate) mod compatibility;
+pub(crate) mod console;
 mod quickjs;
 pub(crate) mod thread_clock;
 

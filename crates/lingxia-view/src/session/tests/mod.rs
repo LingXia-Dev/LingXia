@@ -1786,15 +1786,44 @@ fn a_render_that_runs_out_of_time_names_the_element_it_was_building() {
 
 #[test]
 fn a_handler_that_throws_reports_its_own_message() {
-    // The View has no console; the engine's ReferenceError must reach the host as written.
+    // The engine's ReferenceError must reach the host as written.
     let module = source(
-        "function render(){return h('button',{onClick:()=>{console.log('x')},style:{height:40}},'log')}",
+        "function render(){return h('button',{onClick:()=>{missingHelper('x')},style:{height:40}},'run')}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     let frame = page.layout(200, 200, 1.0).unwrap();
+    let run = frame.nodes.iter().find_map(|n| n.on_click).unwrap();
+    let error = page.click(page.generation(), run).unwrap_err();
+    assert!(error.contains("missingHelper"), "{error}");
+}
+
+#[test]
+fn console_lines_from_module_code_and_handlers_reach_the_host() {
+    log::set_max_level(log::LevelFilter::Trace);
+    let lines = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let sink = {
+        let lines = lines.clone();
+        Arc::new(move |level, message: &str| {
+            lines.lock().unwrap().push((level, message.to_owned()))
+        }) as crate::engine::console::ConsoleSink
+    };
+    let module = source(
+        "console.info('loaded');function render(){return h('button',{onClick:()=>{console.log('clicked',{n:1});console.error('oops')},style:{height:40}},'log')}",
+    );
+    let runtime = RongJS::runtime();
+    let budget = crate::engine::budget::Budget::new(&runtime);
+    let mut page = ViewSession::with_runtime(runtime, budget, &module, false, Some(sink)).unwrap();
+    let frame = page.layout(200, 200, 1.0).unwrap();
     let log = frame.nodes.iter().find_map(|n| n.on_click).unwrap();
-    let error = page.click(page.generation(), log).unwrap_err();
-    assert!(error.contains("console"), "{error}");
+    assert!(page.click(page.generation(), log).unwrap());
+    assert_eq!(
+        *lines.lock().unwrap(),
+        [
+            (log::Level::Info, "loaded".to_owned()),
+            (log::Level::Info, "clicked {\"n\":1}".to_owned()),
+            (log::Level::Error, "oops".to_owned()),
+        ]
+    );
 }
 
 #[test]

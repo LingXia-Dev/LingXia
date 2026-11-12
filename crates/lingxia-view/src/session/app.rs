@@ -35,6 +35,16 @@ impl ViewApp {
     }
 
     pub fn create(&mut self, source: &str, logic: bool) -> Result<ViewPageId, String> {
+        self.create_with_console(source, logic, None)
+    }
+
+    /// As [`Self::create`], with the page's `console` lines going to `console`.
+    pub(crate) fn create_with_console(
+        &mut self,
+        source: &str,
+        logic: bool,
+        console: Option<crate::engine::console::ConsoleSink>,
+    ) -> Result<ViewPageId, String> {
         if self.pages.len() >= self.limit {
             return Err("UI_LIMIT: discard a page before creating another context".into());
         }
@@ -42,8 +52,13 @@ impl ViewApp {
             .next
             .checked_add(1)
             .ok_or("UI_LIMIT: page identities exhausted")?;
-        let session =
-            ViewSession::with_runtime(self.runtime.clone(), self.budget.clone(), source, logic)?;
+        let session = ViewSession::with_runtime(
+            self.runtime.clone(),
+            self.budget.clone(),
+            source,
+            logic,
+            console,
+        )?;
         let id = ViewPageId(self.next);
         self.next = next;
         self.pages.insert(id, session);

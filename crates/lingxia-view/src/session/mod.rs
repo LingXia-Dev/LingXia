@@ -38,6 +38,9 @@ pub struct ViewSession {
     generation: lifecycle::CommitTicket,
     state: crate::session::state::StateReplica,
     budget: Arc<crate::engine::budget::Budget>,
+    /// Kept so a hot-swapped module logs to the same place.
+    #[cfg_attr(not(feature = "hot-swap"), allow(dead_code))]
+    console: Option<crate::engine::console::ConsoleSink>,
     poisoned: Cell<bool>,
     /// The next frame is the module's first since it loaded or was swapped in: it also warms
     /// the engine, so it gets the warm-up budget.
@@ -225,7 +228,7 @@ impl ViewSession {
     pub fn new_with_logic(source: &str, logic: bool) -> Result<Self, String> {
         let runtime = RongJS::runtime();
         let budget = crate::engine::budget::Budget::new(&runtime);
-        Self::with_runtime(runtime, budget, source, logic)
+        Self::with_runtime(runtime, budget, source, logic, None)
     }
 
     pub(crate) fn with_runtime(
@@ -233,6 +236,7 @@ impl ViewSession {
         budget: Arc<crate::engine::budget::Budget>,
         source: &str,
         logic: bool,
+        console: Option<crate::engine::console::ConsoleSink>,
     ) -> Result<Self, String> {
         crate::engine::compatibility::validate(source)?;
         let context = runtime.context();
@@ -242,6 +246,7 @@ impl ViewSession {
         let (initialized, _) = budget.run(Duration::from_secs(1), Duration::from_secs(1), || {
             crate::engine::compatibility::install(&context)?;
             crate::engine::install_dev_globals(&context)?;
+            crate::engine::console::install(&context, console.clone())?;
             video::install(&context, video_scope, video_orientation)?;
             crate::engine::defer_collections(&context);
             let module =
@@ -274,6 +279,7 @@ impl ViewSession {
             renderer,
             generation: lifecycle::CommitTicket::new(0),
             budget,
+            console,
             poisoned: Cell::new(false),
             warm: Cell::new(true),
             uncollected: Cell::new(0),

@@ -164,6 +164,10 @@ pub trait HostEvents {
         let _ = menu;
     }
     fn warn(&self, message: &str);
+    /// The View worker thread: a line the page's `console` wrote.
+    fn console(&self, level: log::Level, message: &str) {
+        log::log!(target: "lingxia_view::console", level, "{message}");
+    }
     /// Diagnostic detail (one line per executed click, say); adapters log it at debug level.
     fn debug(&self, _message: &str) {}
     /// Main thread: the host chrome this page's palette asks for, on change and before the

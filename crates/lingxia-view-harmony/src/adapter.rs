@@ -686,6 +686,9 @@ impl HostEvents for HarmonyAdapter {
     fn warn(&self, message: &str) {
         log::warn!(target: "lingxia_view", "{message}");
     }
+    fn console(&self, level: log::Level, message: &str) {
+        self.shell.console(self.token, level, message);
+    }
     fn debug(&self, message: &str) {
         log::debug!(target: "lingxia_view", "{message}");
     }

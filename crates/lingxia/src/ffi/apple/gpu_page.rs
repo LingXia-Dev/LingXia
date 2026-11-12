@@ -897,6 +897,9 @@ mod live {
         ) {
             gpu_page::video_orientation(token, orientation.map(gpu_page::state::page_orientation));
         }
+        fn console(&self, token: i64, level: log::Level, message: &str) {
+            gpu_page::console(token, level, message);
+        }
         fn claim(&self, token: i64, exclusive: bool) {
             super::bridge::gpu_pages_claim(token, exclusive);
         }

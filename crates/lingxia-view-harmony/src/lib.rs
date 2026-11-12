@@ -67,6 +67,11 @@ pub trait Shell: Send + Sync + 'static {
         token: i64,
         orientation: Option<lingxia_view::scene::video::Orientation>,
     );
+    /// The View worker thread: a line page `token`'s `console` wrote.
+    fn console(&self, token: i64, level: log::Level, message: &str) {
+        let _ = token;
+        log::log!(target: "lingxia_view::console", level, "{message}");
+    }
     fn copy_text(&self, text: &str);
     /// Read the clipboard; `done` runs once, on any thread.
     fn paste(&self, done: Box<dyn FnOnce(Option<String>) + Send>);

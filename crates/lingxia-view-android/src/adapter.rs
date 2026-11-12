@@ -56,6 +56,11 @@ pub trait StateListener: Send + Sync + 'static {
         owner: i64,
         orientation: Option<lingxia_view::scene::video::Orientation>,
     );
+    /// The View worker thread: a line page `owner`'s `console` wrote.
+    fn console(&self, owner: i64, level: log::Level, message: &str) {
+        let _ = owner;
+        log::log!(target: "lingxia_view::console", level, "{message}");
+    }
 }
 
 static STATE_LISTENER: OnceLock<Arc<dyn StateListener>> = OnceLock::new();
@@ -931,6 +936,13 @@ impl HostEvents for AndroidAdapter {
     }
     fn warn(&self, message: &str) {
         log(message);
+    }
+
+    fn console(&self, level: log::Level, message: &str) {
+        match STATE_LISTENER.get().filter(|_| self.owner != 0) {
+            Some(listener) => listener.console(self.owner, level, message),
+            None => log::log!(target: "lingxia_view::console", level, "{message}"),
+        }
     }
 
     fn debug(&self, message: &str) {

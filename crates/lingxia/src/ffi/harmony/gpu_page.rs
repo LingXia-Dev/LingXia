@@ -194,6 +194,9 @@ impl Shell for Bridge {
     ) {
         gpu_page::video_orientation(token, orientation.map(gpu_page::state::page_orientation));
     }
+    fn console(&self, token: i64, level: log::Level, message: &str) {
+        gpu_page::console(token, level, message);
+    }
     fn copy_text(&self, text: &str) {
         arkts(0, "copy", text);
     }
