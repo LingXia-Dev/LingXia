@@ -156,8 +156,15 @@ accent color. `secondaryValue` draws a second range behind the value, such as bu
 Style its parts with `track:`, `range:`, `secondary:` and `thumb:`, after a state when needed:
 
 ```tsx
-<slider bind={at} max={duration} secondaryValue={buffered} aria-label="Seek"
-  className="track:h-[3px] active:track:h-[5px] thumb:size-0 active:thumb:size-3 focus-visible:thumb:size-3 focus-visible:thumb:ring-2" />
+import { useLocal } from '@lingxia/view';
+
+export function render() {
+  const at = useLocal('at', 80);
+  return (
+    <slider bind={at} max={185} secondaryValue={120} aria-label="Seek" aria-valuetext="1:20 of 3:05"
+      className="track:h-[3px] active:track:h-[5px] thumb:size-0 active:thumb:size-3 focus-visible:thumb:size-3 focus-visible:thumb:ring-2" />
+  );
+}
 ```
 
 State changes on parts ease over 150 ms; the thumb follows the value directly. The touch target is the
