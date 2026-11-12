@@ -1355,7 +1355,6 @@ pub struct LxAppRuntimeInfo {
 pub struct LxAppRuntimeTabBarInfo {
     pub presentation: TabBarPresentation,
     pub visibility: TabBarVisibilityPreference,
-    pub route_visible: bool,
     pub effective_visible: bool,
     pub selected_index: i32,
     pub items: Vec<LxAppRuntimeTabBarItemInfo>,
@@ -1747,8 +1746,7 @@ impl LxApp {
         let tab_bar = self.get_tabbar().map(|tabbar| LxAppRuntimeTabBarInfo {
             presentation: tabbar.presentation,
             visibility: tabbar.visibility,
-            route_visible: tabbar.route_visible,
-            effective_visible: tabbar.is_effectively_visible(),
+            effective_visible: self.tabbar_visible_now(),
             selected_index: tabbar.selected_index,
             items: tabbar
                 .items
@@ -5599,6 +5597,63 @@ mod manifest_reload_tests {
             PageConfig::from_json(&app, "pages/home/index.js").is_err(),
             "a page config no longer names a renderer"
         );
+    }
+
+    #[test]
+    fn the_tab_bar_shows_over_the_current_page_by_its_route_however_it_was_entered() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let appid = format!("app.lingxia.tabbar-route.{}", Uuid::new_v4());
+        write_manifest(
+            root,
+            &appid,
+            r#"{
+              "appId": "APPID",
+              "appName": "Tab route",
+              "version": "1.0.0",
+              "security": {"network":{"trustedDomains":[]},"privileges":[]},
+              "pages": [
+                {"name": "home", "path": "pages/home/index"},
+                {"name": "api", "path": "pages/api/index"},
+                {"name": "detail", "path": "pages/detail/index"}
+              ],
+              "tabBar": {
+                "items": [
+                  {"page": "home", "text": "Home"},
+                  {"page": "api", "text": "API"}
+                ]
+              }
+            }"#,
+        );
+        let app = dev_app(root, &appid);
+        // Open, relaunch and an app link all end with one page at the head of the stack.
+        let front = |path: &str| {
+            let page = PageInstance::new_headless(app.appid.clone(), path.into(), &app);
+            let state = app.state.lock().unwrap();
+            state
+                .pages_by_id
+                .lock()
+                .unwrap()
+                .insert(page.instance_id_string(), page.clone());
+            let mut stack = state.page_stack.lock().unwrap();
+            stack.clear();
+            stack.push_back(page.instance_id_string());
+        };
+        assert!(!app.tabbar_visible_now(), "no page yet, no bar");
+        front("pages/detail/index");
+        assert!(
+            !app.tabbar_visible_now(),
+            "entered on a page outside the tab bar"
+        );
+        front("pages/home/index");
+        assert!(app.tabbar_visible_now());
+
+        app.with_tabbar_mut(|tabbar| tabbar.set_api_hidden(true));
+        assert!(!app.tabbar_visible_now(), "hidden by the app on a tab page");
+        app.with_tabbar_mut(|tabbar| tabbar.set_api_hidden(false));
+        assert!(app.tabbar_visible_now(), "shown again on a tab page");
+        front("pages/detail/index");
+        assert!(!app.tabbar_visible_now(), "shown, but still off its route");
     }
 
     #[test]

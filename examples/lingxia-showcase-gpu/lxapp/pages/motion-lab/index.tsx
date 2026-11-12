@@ -1,4 +1,4 @@
-import { useLocal, type View } from '@lingxia/view';
+import { useLocal, useView, type View } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Page, Section } from '../../shared/ui';
 
@@ -13,8 +13,10 @@ export function render({ data, actions }: View<Actions, { dipped: boolean }>) {
   const order = useLocal('order', ['One', 'Two', 'Three', 'Four']);
   const pager = useLocal('pager', 0);
   const visible = shown.value && !data.dipped;
+  // The bottom inset specs compare with the safe area: as a pushed or relaunched copy no bar sits below.
+  const { insets, safeArea } = useView().env;
   return (
-    <Page testId="motion-lab">
+    <Page testId="motion-lab" data={{ 'data-inset-bottom': String(insets.bottom), 'data-safe-bottom': String(safeArea.bottom) }}>
       <Section title="Pager" testId="motion-pager">
         <scroll data-testid="motion-pager-scroll" bind={pager} className="w-72 overflow-x-auto snap-x snap-always rounded-xl bg-surface-sunken">
           <view className="flex-row">

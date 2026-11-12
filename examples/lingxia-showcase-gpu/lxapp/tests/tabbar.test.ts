@@ -150,3 +150,18 @@ spec('a tap at an element partly under the tab bar lands on its visible part wit
   await expect(state).toHaveText('page=2');
   expect((await dot.boundingBox()).y).toBe(parked.y);
 });
+
+spec('a relaunch onto a page outside the tab bar hides the bar and keeps no room for it, and back onto a tab page shows it', { start: { page: 'view-lab' } }, async (t) => {
+  const before = await tabItems(t);
+  console.log(`tab items readable before: ${before?.length ?? 'unsupported'}`);
+  await t.app.nav.relaunch({ page: 'motion-target' });
+  const page = t.app.view.testId('motion-lab');
+  await expect(page).toBeVisible();
+  const inset = Number(await page.getAttribute('data-inset-bottom'));
+  const safe = Number(await page.getAttribute('data-safe-bottom'));
+  expect(inset, 'no room kept for a bar').toBe(safe);
+  if (before?.length) await t.waitFor(() => tabItems(t), { until: items => items?.length === 0 });
+  await t.app.nav.relaunch({ page: 'view-lab' });
+  await bars(t);
+  if (before?.length) await t.waitFor(() => tabItems(t), { until: items => items?.length === before.length });
+});

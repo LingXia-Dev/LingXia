@@ -350,7 +350,7 @@ impl LxApp {
             .get_tabbar()
             .filter(|tabbar| {
                 tabbar.presentation == TabBarPresentation::Immersive
-                    && tabbar.is_effectively_visible()
+                    && tabbar.is_visible_on(&page.path())
             })
             .map_or(0.0, |_| immersive_tabbar_inset());
         let capsule_inline_end_inset = capsule_rect

@@ -2526,7 +2526,6 @@ impl PageInstance {
         }
 
         // 3. Handle UI state based on navigation type (TabBar, NavBar)
-        lxapp.with_tabbar_mut(|t| t.set_visible(is_tab_switch));
         if is_tab_switch
             && let Some(Some(index)) = lxapp.with_tabbar_mut(|t| t.find_index_by_path(&path))
         {
@@ -2961,9 +2960,7 @@ impl Drop for PageInstanceInner {
 }
 
 fn restore_tabbar_after_back(tabbar: &mut crate::lxapp::tabbar::TabBar, path: &str) -> bool {
-    let index = tabbar.find_index_by_path(path);
-    tabbar.set_visible(index.is_some());
-    if let Some(index) = index {
+    if let Some(index) = tabbar.find_index_by_path(path) {
         tabbar.set_selected_index(index);
         true
     } else {
@@ -3202,10 +3199,9 @@ mod tests {
             .validate(&[("home", "pages/home/index"), ("api", "pages/api/index")])
             .unwrap();
         tabbar.clear_selected_index();
-        tabbar.set_visible(false);
 
         assert!(restore_tabbar_after_back(&mut tabbar, "pages/api/index"));
-        assert!(tabbar.is_effectively_visible());
+        assert!(tabbar.is_visible_on("pages/api/index"));
         assert_eq!(tabbar.get_selected_index(), 1);
     }
 

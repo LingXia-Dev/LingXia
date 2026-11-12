@@ -55,7 +55,6 @@ pub(crate) fn runtime_info(mut value: Value) -> Value {
     rename(
         &mut value["tabBar"],
         &[
-            ("route_visible", "routeVisible"),
             ("effective_visible", "effectiveVisible"),
             ("selected_index", "selectedIndex"),
         ],
@@ -157,7 +156,7 @@ mod tests {
     #[test]
     fn runtime_chrome_converts_each_nested_record() {
         let js = runtime_info(json!({
-            "tab_bar": {"presentation": "standard", "visibility": "auto", "route_visible": true,
+            "tab_bar": {"presentation": "standard", "visibility": "auto",
                 "effective_visible": true, "selected_index": 0,
                 "items": [{"index": 0, "text": "home_button", "icon_path": "my_icon.png", "badge": null, "red_dot": false}]},
             "navigation_bar": {"title": "Home", "home_button": "auto", "home_button_visible": true,
@@ -166,7 +165,7 @@ mod tests {
         assert_eq!(
             js,
             json!({
-                "tabBar": {"presentation": "standard", "visibility": "auto", "routeVisible": true,
+                "tabBar": {"presentation": "standard", "visibility": "auto",
                     "effectiveVisible": true, "selectedIndex": 0,
                     "items": [{"index": 0, "text": "home_button", "iconPath": "my_icon.png", "badge": null, "redDot": false}]},
                 "navigationBar": {"title": "Home", "homeButton": "auto", "homeButtonVisible": true,

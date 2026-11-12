@@ -105,8 +105,8 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
   await ui.view.testId('tabbar-show').waitFor({ state: 'visible', timeout: 30_000 });
 
   const automaticDetail = await waitForTabBar(
-    ({ visibility, routeVisible, effectiveVisible }) => (
-      visibility === 'auto' && !routeVisible && !effectiveVisible
+    ({ visibility, effectiveVisible }) => (
+      visibility === 'auto' && !effectiveVisible
     ),
     'automatic TabBar visibility on a non-tab route',
   );
@@ -114,8 +114,8 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
 
   await ui.view.testId('tabbar-show').click();
   const forced = await waitForTabBar(
-    ({ visibility, routeVisible, effectiveVisible }) => (
-      visibility === 'visible' && !routeVisible && effectiveVisible
+    ({ visibility, effectiveVisible }) => (
+      visibility === 'visible' && effectiveVisible
     ),
     'forced TabBar visibility on a non-tab route',
   );
@@ -177,8 +177,8 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
     await lx.tabBar.update({ visibility: 'auto' });
   });
   await waitForTabBar(
-    ({ visibility, routeVisible, effectiveVisible }) => (
-      visibility === 'auto' && !routeVisible && !effectiveVisible
+    ({ visibility, effectiveVisible }) => (
+      visibility === 'auto' && !effectiveVisible
     ),
     'restored automatic visibility on a non-tab route',
   );
@@ -187,8 +187,8 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
   const home = await app.page({ name: 'home' }, { timeout: 30_000 });
   await home.view.testId('home-page').waitFor({ state: 'attached', timeout: 30_000 });
   await waitForTabBar(
-    ({ visibility, routeVisible, effectiveVisible, selectedIndex }) => (
-      visibility === 'auto' && routeVisible && effectiveVisible && selectedIndex === 0
+    ({ visibility, effectiveVisible, selectedIndex }) => (
+      visibility === 'auto' && effectiveVisible && selectedIndex === 0
     ),
     'automatic visibility after entering a tab route',
   );

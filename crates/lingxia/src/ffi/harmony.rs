@@ -537,7 +537,7 @@ fn get_tab_bar(appid: String) -> Option<TabBarState> {
                     .unwrap_or(0),
                 position: TabBarPosition::Bottom,
                 dimension: 72,
-                is_visible: tabbar.is_effectively_visible(),
+                is_visible: lxapp.tabbar_visible_now(),
                 items,
                 selected_index: tabbar.selected_index,
                 overflow_start_index: tabbar.compact_overflow_slot_index(),

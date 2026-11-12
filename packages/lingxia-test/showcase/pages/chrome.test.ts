@@ -485,7 +485,7 @@ spec("assert tabBar failure codes, resets, and button-driven patches", {
     await waitForCurrentPage(app, 'todo');
     const state = await waitForTabBar(
       app,
-      (item) => item.selectedIndex === todoIndex && item.routeVisible,
+      (item) => item.selectedIndex === todoIndex && item.effectiveVisible,
       'todo tab selected',
     );
     expect(state.items[1]?.text === 'API+' || state.items[1]?.text === 'Second' || state.items[1]?.text === 'First')

@@ -2537,10 +2537,7 @@ fn build_tab_bar_layout(
         visible: if desktop_sidebar {
             true
         } else {
-            tabbar
-                .as_ref()
-                .map(|tabbar| tabbar.is_effectively_visible())
-                .unwrap_or(true)
+            tabbar.is_none() || app.tabbar_visible_now()
         },
         position,
         dimension,
@@ -3912,7 +3909,7 @@ fn show_lxapp_aside_tabbar_menu(panel_id: &str, screen_x: i32, screen_y: i32) {
 /// which an aside never enters.
 fn lxapp_aside_tabbar(app: &LxApp) -> Option<lingxia_windows_contract::WindowsAsidePanelTabBar> {
     let tabbar = app.get_tabbar()?;
-    if !tabbar.is_effectively_visible() {
+    if !app.tabbar_visible_now() {
         return None;
     }
     // An item without `text` (icon only) still needs a label in a text-only

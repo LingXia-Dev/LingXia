@@ -1267,7 +1267,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getTabBarState<'a>(
                 dimension.into(),
                 (&position_enum).into(),
                 (&tab_items_list).into(),
-                tab_bar_config.is_effectively_visible().into(),
+                lxapp.tabbar_visible_now().into(),
                 tab_bar_config.selected_index.into(),
                 tab_bar_config.compact_overflow_slot_index().into(),
             ],

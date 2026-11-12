@@ -181,8 +181,6 @@ pub struct TabBar {
     #[serde(skip)]
     pub visibility: TabBarVisibilityPreference,
     #[serde(skip)]
-    pub route_visible: bool,
-    #[serde(skip)]
     pub selected_index: i32,
 }
 
@@ -260,7 +258,6 @@ impl TabBar {
     pub(crate) fn with_absolute_paths(&self, base_path: &Path) -> Self {
         let mut result = self.clone();
         result.visibility = TabBarVisibilityPreference::Auto;
-        result.route_visible = true;
         result.selected_index = 0;
         for item in &mut result.items {
             item.initialize_runtime(base_path);
@@ -380,14 +377,6 @@ impl TabBar {
             .and_then(|index| self.items.get(index))
     }
 
-    pub fn is_effectively_visible(&self) -> bool {
-        match self.visibility {
-            TabBarVisibilityPreference::Auto => self.route_visible,
-            TabBarVisibilityPreference::Visible => true,
-            TabBarVisibilityPreference::Hidden => false,
-        }
-    }
-
     /// Whether the bar shows over the page at `path`, whichever page is current.
     pub fn is_visible_on(&self, path: &str) -> bool {
         match self.visibility {
@@ -399,10 +388,6 @@ impl TabBar {
 
     pub fn is_desktop_group_visible(&self) -> bool {
         self.visibility != TabBarVisibilityPreference::Hidden
-    }
-
-    pub fn set_visible(&mut self, visible: bool) {
-        self.route_visible = visible;
     }
 
     pub fn set_api_hidden(&mut self, hidden: bool) {
@@ -714,6 +699,13 @@ fn theme_color(color: lingxia_app_context::ThemeColor) -> PageChromeColor {
 }
 
 impl LxApp {
+    /// Whether the tab bar shows over the current page: the app's show/hide first, then the page's route.
+    pub fn tabbar_visible_now(&self) -> bool {
+        self.get_tabbar().is_some_and(|tabbar| {
+            tabbar.is_visible_on(&self.peek_current_page_path().unwrap_or_default())
+        })
+    }
+
     pub fn get_tabbar(&self) -> Option<TabBar> {
         let state = self.state.lock().unwrap();
         state
@@ -890,7 +882,6 @@ mod patch_tests {
         let mut state = tabbar();
         let home = "pages/home/index".to_string();
         state.items[0].page_path = home.clone();
-        state.set_visible(false);
         assert!(state.is_visible_on(&home));
         assert!(!state.is_visible_on("pages/detail/index"));
 
@@ -901,30 +892,29 @@ mod patch_tests {
     }
 
     #[test]
-    fn visibility_preference_can_force_an_off_route_tabbar_visible() {
+    fn the_show_hide_api_hides_a_tab_page_bar_and_showing_returns_it_to_its_route() {
         let mut state = tabbar();
-        state.set_visible(false);
-        assert!(!state.is_effectively_visible());
+        let home = "pages/home/index".to_string();
+        state.items[0].page_path = home.clone();
+        assert!(state.is_visible_on(&home));
 
-        state.set_visibility(TabBarVisibilityPreference::Visible);
-        assert!(state.is_effectively_visible());
-        assert!(state.is_desktop_group_visible());
-
-        state.set_visibility(TabBarVisibilityPreference::Hidden);
-        assert!(!state.is_effectively_visible());
+        state.set_api_hidden(true);
+        assert!(!state.is_visible_on(&home));
         assert!(!state.is_desktop_group_visible());
 
-        state.set_visible(true);
-        assert!(!state.is_effectively_visible());
-        state.set_visibility(TabBarVisibilityPreference::Auto);
-        assert!(state.is_effectively_visible());
+        state.set_api_hidden(false);
+        assert!(state.is_visible_on(&home));
+        assert!(!state.is_visible_on("pages/detail/index"));
+        assert!(state.is_desktop_group_visible());
+
+        state.set_visibility(TabBarVisibilityPreference::Visible);
+        assert!(state.is_visible_on("pages/detail/index"));
     }
 
     #[test]
     fn patch_and_rollback_preserve_navigation_owned_runtime_fields() {
         let mut state = tabbar();
         state.selected_index = 1;
-        state.route_visible = false;
         let original = state.clone();
         let patch: TabBarPatch = serde_json::from_value(serde_json::json!({
             "visibility": "hidden",
@@ -934,14 +924,11 @@ mod patch_tests {
 
         apply(&mut state, &patch).unwrap();
         assert_eq!(state.selected_index, 1);
-        assert!(!state.route_visible);
 
         state.selected_index = 0;
-        state.route_visible = true;
         state.restore_patchable_from(&original);
         assert_eq!(state.items[0].text.as_deref(), Some("Home"));
         assert_eq!(state.selected_index, 0);
-        assert!(state.route_visible);
     }
 }
 

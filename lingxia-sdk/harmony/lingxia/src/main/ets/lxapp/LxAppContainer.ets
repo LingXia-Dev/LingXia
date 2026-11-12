@@ -187,7 +187,7 @@ export struct LxAppContainer {
   @State navbarRefreshKey: number = 0  // Force NavigationBar refresh when data changes
   @State appearanceDark: boolean = false
   @State webViewComponents: Map<string, webview.WebviewController> = new Map() // Store Web components for each WebView
-  @Watch('reportRefreshIndicator') @State currentWebTag: string = '' // Current active WebView tag
+  @Watch('onCurrentPage') @State currentWebTag: string = '' // Current active WebView tag
   @State webViewKeys: string[] = [] // Array of WebView keys for ForEach
   /** GPU pages by webtag; they take a page's place where a WebView would. */
   @State gpuPages: Map<string, GpuPageModel> = new Map()
@@ -1122,14 +1122,9 @@ export struct LxAppContainer {
     return [this.tabBarRefreshKey];
   }
 
-  /**
-   * Check if TabBar should be shown
-   * Only SwitchTab navigation type shows tabbar
-   */
+  /** The same rule as getTabBarCoverage, so the bar never shows where no room was kept for it. */
   private shouldShowTabBar(): boolean {
-    // Reflect visibility from Rust state only
-    const isVisibleFromRust = this.tabBarState?.isVisible === true;
-    return isVisibleFromRust && (this.tabBarState?.items?.length > 0);
+    return (this.tabBarState?.items?.length ?? 0) > 0 && tabBarVisibleOn(this.appId, this.path);
   }
 
   /**
@@ -1420,6 +1415,19 @@ export struct LxAppContainer {
   }
   
   /** The indicator as automation reads it, in the phases the other shells use. */
+  /** Every way a page comes to the front (relaunch, create, destroy, overlay) re-reads its route state. */
+  onCurrentPage(): void {
+    this.reportRefreshIndicator();
+    const path: string = extractWebTag(this.currentWebTag)?.path ?? '';
+    if (path !== '' && path !== this.path) {
+      this.path = path;
+      LxAppContainer.updateTabSelection(this.appId, path);
+      this.loadNavbarState(path);
+      this.loadPullDownRefreshState(path);
+    }
+    this.loadTabBarState();
+  }
+
   reportRefreshIndicator(): void {
     let phase = '';
     if (this.enablePullDownRefresh) {

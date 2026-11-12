@@ -1715,7 +1715,6 @@ export interface LxAppRuntimeNavigationBarInfo {
 export interface LxAppRuntimeTabBarInfo {
   presentation: 'standard' | 'immersive';
   visibility: 'auto' | 'visible' | 'hidden';
-  routeVisible: boolean;
   effectiveVisible: boolean;
   selectedIndex: number;
   items: Array<{

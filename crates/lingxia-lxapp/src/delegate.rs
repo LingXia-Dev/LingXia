@@ -173,9 +173,7 @@ impl LxAppDelegate for LxApp {
                 page.set_query(query);
             }
             if page.is_tabbar_page() {
-                // Ensure TabBar is visible and selected index matches the resolved path.
                 self.with_tabbar_mut(|t| {
-                    t.set_visible(true);
                     if let Some(index) = t.find_index_by_path(&resolved_path) {
                         t.set_selected_index(index);
                     }
