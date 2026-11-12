@@ -5161,6 +5161,51 @@ fn a_close_request_closes_the_topmost_dialog_or_popover_and_is_refused_without_o
 }
 
 #[test]
+fn escape_pressed_on_any_match_closes_an_open_light_dismiss_popover() {
+    let worker = ViewWorker::spawn("test-escape-popover").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){return h('page',{},h('button',{popoverTarget:'tip','data-testid':'trigger'},'Info'),h('view',{id:'tip',popover:'auto',role:'tooltip','data-testid':'tip'},h('text',{'data-testid':'note'},'Saved locally')))}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let act = |css: &str, action: serde_json::Value| {
+        host.automation_request(&serde_json::json!({"op":"act","css":css,"action":action}))
+    };
+    let open = || {
+        host.automation_request(&serde_json::json!({"op":"query","css":"[data-testid=\"tip\"]"}))
+            .unwrap()["exists"]
+            .as_bool()
+            .unwrap()
+    };
+    for target in ["[data-testid=\"trigger\"]", "[data-testid=\"note\"]"] {
+        act(
+            "[data-testid=\"trigger\"]",
+            serde_json::json!({"kind":"click"}),
+        )
+        .unwrap();
+        platform.settle(&[&host]);
+        assert!(open(), "the invoker opens the popover");
+        act(target, serde_json::json!({"kind":"press","key":"Escape"}))
+            .unwrap_or_else(|err| panic!("Escape on {target}: {err}"));
+        platform.settle(&[&host]);
+        assert!(!open(), "Escape on {target} closes the popover");
+    }
+    assert!(
+        act(
+            "[data-testid=\"trigger\"]",
+            serde_json::json!({"kind":"press","key":"Escape"})
+        )
+        .is_err(),
+        "with nothing open, Escape is the platform's"
+    );
+}
+
+#[test]
 fn a_select_sheet_is_drivable_and_a_choice_made_elsewhere_closes_it() {
     let worker = ViewWorker::spawn("test-select-sheet").unwrap();
     let platform = Platform::new(&[&worker]);

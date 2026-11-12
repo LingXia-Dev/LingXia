@@ -244,9 +244,12 @@ impl ViewInteraction {
             }
         }
         if key == Key::Escape {
-            // Consumed only while a dialog or menu is open; otherwise the platform may use it too.
+            // Consumed only while a dialog, menu or light-dismiss popover is open; otherwise the
+            // platform may use it too.
+            let open =
+                !self.dialogs.is_empty() || frame.nodes.iter().any(|node| node.close_request);
             self.dispatches.push(super::Dispatch::Escape);
-            return (!self.dialogs.is_empty(), vec![Effect::Dispatch]);
+            return (open, vec![Effect::Dispatch]);
         }
         let origin = self.keyboard_origin();
         if let Some(index) = origin
