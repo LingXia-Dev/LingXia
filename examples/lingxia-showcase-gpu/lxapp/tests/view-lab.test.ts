@@ -64,6 +64,9 @@ spec('the controls take a tap, a drag, typing and a fling as a user gives them',
   await expect(values).toContainText('picked=Row 31');
 
   await search.fill('');
+  // The edit can present before the View run that unfilters the list; a fling on the filtered
+  // list, already at its end, would hand its distance to the page.
+  await expect(values).toContainText('query= picked=Row 31');
   const list = view.testId('lab-controls-list');
   await expect(list).toBeInViewport();
   await view.fling('up', 3000, { at: list });
