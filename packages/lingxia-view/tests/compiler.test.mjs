@@ -188,6 +188,17 @@ test('class usage follows cx arguments, class maps and template pieces', async (
   });
 });
 
+test('dev builds name the author column of a runtime error on a JSX line', { todo: 'the source map maps the __loc-annotated text, so columns after a JSX site drift right' }, async () => {
+  const line = '  return <view><text>{first.price.toFixed(2)}</text></view>;';
+  await project({ 'page.tsx': `function Total() {\n  const first = {};\n${line}\n}\nexport function render() {\n  return <view><Total/></view>;\n}` }, async root => {
+    await buildPages(root, ['page.tsx'], join(root, 'dist'), {}, { dev: true });
+    await load(root);
+    const error = (() => { try { describePage(); } catch (error) { return error; } })();
+    const column = Number(/\n {2}at page\.tsx:3:(\d+)/.exec(error.message)?.[1]);
+    assert.ok(column > line.indexOf('first') && column <= line.indexOf('(2)') + 1, `column ${column} of ${JSON.stringify(line)}`);
+  });
+});
+
 test('runtime errors in compiled pages name the JSX site and component chain', async () => {
   await project({ 'page.tsx': `function Card({ children }) {
   return <view>{children}</view>;
