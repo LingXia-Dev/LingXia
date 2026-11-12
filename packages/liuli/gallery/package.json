@@ -1,0 +1,15 @@
+{
+  "name": "@liulidesign/gallery",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Liuli's gallery lxapp: one page per component, rendering its examples. Hosts Liuli's device specs.",
+  "type": "module",
+  "scripts": {
+    "build": "lingxia build",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@lingxia/view": "*",
+    "@liulidesign/core": "*"
+  }
+}

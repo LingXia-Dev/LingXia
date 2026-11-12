@@ -1,0 +1,16 @@
+{
+  "appId": "liuli-gallery",
+  "renderer": "gpu",
+  "appName": "Liuli Gallery",
+  "version": "0.1.0",
+  "minRuntime": "0.28.0",
+  "pages": [
+    { "name": "home", "path": "pages/home/index" },
+    { "name": "button", "path": "pages/button/index" },
+    { "name": "field", "path": "pages/field/index" },
+    { "name": "text-input", "path": "pages/text-input/index" },
+    { "name": "checkbox-input", "path": "pages/checkbox-input/index" },
+    { "name": "dialog", "path": "pages/dialog/index" },
+    { "name": "dropdown-menu", "path": "pages/dropdown-menu/index" }
+  ]
+}
