@@ -562,7 +562,7 @@ fn hot_swap(
     };
     let compiled = started.elapsed();
     // The manifest hash moves with the new module, so a cold start serves it too.
-    if let Err(err) = state.refresh_manifests() {
+    if let Err(err) = state.refresh_manifests(app_id) {
         eprintln!("  {} {app_id}: {err:#}", "✗".red());
         return false;
     }

@@ -1143,8 +1143,15 @@ impl DevServerState {
         }
     }
 
-    pub(super) fn refresh_manifests(&self) -> Result<()> {
-        refresh_lxapp_manifests(&self.project_root)
+    /// After a hot swap of `app_id`: an attached lxapp republishes its own dist, which the
+    /// project's bundles do not list, so the app does not keep its cached bundle.
+    pub(super) fn refresh_manifests(&self, app_id: &str) -> Result<()> {
+        match self.attached_dist(app_id) {
+            Some(dist) => {
+                super::lxapp_manifest::publish_dist(&self.project_root, &dist).map(|_| ())
+            }
+            None => refresh_lxapp_manifests(&self.project_root),
+        }
     }
 
     fn forward_restart(&self, appid: &str) -> Result<RestartOutcome> {
@@ -2729,7 +2736,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        DevServerState, RelayWait, TEST_RUN_LEASE, accept_websocket, dev_port,
+        AttachedLxapp, DevServerState, RelayWait, TEST_RUN_LEASE, accept_websocket, dev_port,
         handle_watch_request, persist_runtime_events, read_wire_message, refresh_lxapp_manifests,
         resolve_lxapp_dir, route_runtime_message, send_wire_message, wait_for_result,
     };
@@ -3301,6 +3308,43 @@ mod tests {
             serde_json::from_slice(&std::fs::read(&manifest_path).unwrap()).unwrap();
 
         assert_ne!(first["distHash"], second["distHash"]);
+    }
+
+    #[test]
+    fn a_hot_swap_republishes_an_attached_lxapps_dist() {
+        let temp = tempfile::tempdir().unwrap();
+        let project = temp.path().join("host");
+        let source = temp.path().join("kit");
+        let dist = source.join("dist");
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::create_dir_all(&dist).unwrap();
+        std::fs::write(
+            dist.join("lxapp.json"),
+            r#"{"appId":"kit","version":"1.0.0","pages":{}}"#,
+        )
+        .unwrap();
+        std::fs::write(dist.join("logic.js"), "Page({ value: 1 })").unwrap();
+        let state = DevServerState::new(
+            project.clone(),
+            Arc::new(AtomicBool::new(false)),
+            None,
+            false,
+        );
+        state
+            .insert_attached(AttachedLxapp {
+                app_id: "kit".into(),
+                source: source.clone(),
+                release: false,
+            })
+            .unwrap();
+        state.refresh_manifests("kit").unwrap();
+        let first = super::super::lxapp_manifest::load_manifest(&project, "kit").unwrap();
+
+        std::fs::write(dist.join("logic.js"), "Page({ value: 2 })").unwrap();
+        state.refresh_manifests("kit").unwrap();
+        let second = super::super::lxapp_manifest::load_manifest(&project, "kit").unwrap();
+
+        assert_ne!(first.dist_hash, second.dist_hash);
     }
 
     #[test]
