@@ -432,6 +432,8 @@ export interface PageUiFrame {
   hud: boolean;
   /** Nodes the presented frame laid out; `null` before the first frame. */
   nodes: number | null;
+  /** The host-bar snapshot generation the presented frame draws under its top layer; 0 when none, absent from an older host. */
+  chromeSnapshot?: number;
   /** Frames shown in the last `windowMs`. */
   pacing: PageFramePacing;
   /** The presented frame's composition work; `null` when it drew without composition. */

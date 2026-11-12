@@ -5401,3 +5401,33 @@ fn a_dragged_slider_keeps_its_active_parts_until_release() {
     run_frames(&platform, &host, 20);
     assert_eq!(track(&host), Some(3.0), "released, the track rests");
 }
+
+#[test]
+fn the_frame_reply_reports_the_bar_snapshot_the_presented_frame_draws() {
+    let worker = ViewWorker::spawn("test-chrome-snapshot").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){return h('page',{},h('text',{},'behind'),h('dialog',{open:true,'aria-label':'Confirm'},h('text',{},'sure?')))}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let reported = || {
+        host.automation_request(&serde_json::json!({"op": "frame"}))
+            .unwrap()["chromeSnapshot"]
+            .as_u64()
+    };
+    assert_eq!(reported(), Some(0), "no bars captured yet");
+    let generation = host.set_chrome_snapshot(
+        crate::scene::display::ChromeEdge::Top,
+        vec![255; 4 * 4 * 2],
+        4,
+        2,
+        [0.0, 0.0, 40.0, 20.0],
+    );
+    run_frames(&platform, &host, 4);
+    assert_eq!(reported(), Some(generation));
+}
