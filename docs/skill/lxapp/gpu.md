@@ -76,7 +76,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   runs take text paint only; links are accent + underline by default. `select-text` lets users
   long-press to select the nearest word and copy; there a long-press on a link selects, elsewhere it presses.
 - Semantics: `role="heading" headingLevel={2}`, `list`/`listitem`, `menu`/`menuitem`, `alert`/`status`
-  (announced), `aria-hidden` for decoration. A layout element with a role, or a scroll,
+  (announced), `aria-hidden` for decoration, `role="img" aria-label` on a drawn picture (avatar, rating) speaks only the label. A layout element with a role, or a scroll,
   groups its content for screen readers ("item 2 of 3"); plain wrappers collapse.
   `aria-pressed`, `aria-selected`, `aria-expanded`, `aria-busy` announce states (e.g. `aria-busy={req.pending}`).
 - `<dialog open onClose closedby aria-label>` is modal, above the page (`backdrop:` styles its scrim;

@@ -339,3 +339,24 @@ fn composite_roles_project_with_positions_checked_states_and_tree_levels() {
     );
     assert_eq!(semantic(&frame, "zoom").unwrap().role, Role::MenuItemRadio);
 }
+
+#[test]
+fn an_img_role_speaks_its_label_in_place_of_what_it_draws() {
+    let frame = frame(
+        "h('view',{},h('view',{'data-testid':'avatar',role:'img','aria-label':'Ada Lovelace',style:{width:40,height:40}},h('text',{'data-testid':'initials'},'AL')),h('text',{'data-testid':'stars',role:'img','aria-label':'4 of 5 stars'},'★★★★☆'))",
+    );
+    let avatar = semantic(&frame, "avatar").unwrap();
+    assert_eq!(
+        (avatar.role, avatar.name.as_str()),
+        (Role::Image, "Ada Lovelace")
+    );
+    assert!(
+        semantic(&frame, "initials").is_none(),
+        "the initials are not spoken again"
+    );
+    let stars = semantic(&frame, "stars").unwrap();
+    assert_eq!(
+        (stars.role, stars.name.as_str()),
+        (Role::Image, "4 of 5 stars")
+    );
+}

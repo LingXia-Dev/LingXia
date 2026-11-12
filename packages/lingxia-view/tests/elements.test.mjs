@@ -464,6 +464,13 @@ test('composite roles: items on buttons, containers on views, aria-checked and a
   ]) assert.throws(() => describe(render, {}), pattern);
 });
 
+test('role="img" takes a <view> or <text> with an aria-label', () => {
+  assert.equal(rendered(() => h('view', { role: 'img', 'aria-label': 'Ada Lovelace' }, h('text', {}, 'AL'))).props.role, 'img');
+  assert.equal(rendered(() => h('text', { role: 'img', 'aria-label': '4 of 5 stars' }, '★★★★☆')).props.role, 'img');
+  for (const render of [() => h('view', { role: 'img' }), () => h('view', { role: 'img', 'aria-label': ' ' }), () => h('button', { role: 'img', 'aria-label': 'x', onClick() {} }, 'x')])
+    assert.throws(() => describe(render, {}), /role="img" goes on a <view> or <text> with an aria-label/);
+});
+
 test('select sends its options and shows the chosen label or its placeholder', () => {
   const options = [{ value: 'm', label: 'Monthly' }, { value: 'y', label: 'Yearly', disabled: true }];
   const chosen = rendered(() => h('select', { options, value: 'm', 'aria-label': 'Plan', onChange() {} }));

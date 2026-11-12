@@ -724,6 +724,8 @@ function semantics(tag, props, wire) {
     if (!fieldOptions.role.includes(role)) throw Error(`UI_PROP: role must be one of ${fieldOptions.role.join(', ')}`);
     if (itemRoles.has(role) && role !== 'option' && tag !== 'button') throw Error(`UI_PROP: role="${role}" belongs on a <button>`);
     if (containerRoles.has(role) && tag !== 'view') throw Error(`UI_PROP: role="${role}" belongs on a <view>`);
+    if (role === 'img' && (!['view', 'text'].includes(tag) || typeof props.accessibilityLabel !== 'string' || !props.accessibilityLabel.trim()))
+      throw Error('UI_PROP: role="img" goes on a <view> or <text> with an aria-label, which is spoken in place of its content');
     // A <dialog> wires its own role.
     if (tag !== 'dialog') wire('role', role);
   }

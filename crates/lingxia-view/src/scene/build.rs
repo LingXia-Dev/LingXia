@@ -82,12 +82,15 @@ impl Renderer {
         let parents = crate::layout::style::layout_parents(records);
         let hidden = crate::layout::style::hidden(records);
         let directions = crate::layout::style::directions(records, self.rtl);
-        // `accessibilityHidden` removes a whole subtree from semantics.
+        // `accessibilityHidden` removes a whole subtree from semantics; a `role="img"` speaks for
+        // its content, so what it draws is not spoken again.
         let mut unspoken: Vec<bool> = Vec::with_capacity(records.len());
         for record in records {
             unspoken.push(
                 record.number(field::ACCESSIBILITY_HIDDEN) == Some(1.0)
-                    || record.parent.is_some_and(|parent| unspoken[parent]),
+                    || record.parent.is_some_and(|parent| {
+                        unspoken[parent] || records[parent].string(field::ROLE) == Some("img")
+                    }),
             );
         }
         // A dialog in the top layer is modal: assistive tech reaches only it and its containers.

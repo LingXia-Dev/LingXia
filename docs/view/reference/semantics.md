@@ -35,6 +35,7 @@ the `role` prop sets one of the authored roles on any non-control element.
 | `row` | `row` |
 | `menuitemcheckbox` | `menu-item-check-box` |
 | `menuitemradio` | `menu-item-radio` |
+| `img` | `image` |
 
 `headingLevel` (1..6) applies only to `role="heading"`.
 

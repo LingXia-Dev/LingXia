@@ -378,7 +378,7 @@ function semantics(schema) {
   const { roles, liveRegions, actions } = schema.semantics;
   // `dialog` is the <dialog> element's own role; page code cannot set it.
   const authored = schema.options.role.filter(role => role !== 'dialog');
-  const projected = role => roles.includes(role) ? role : roles.find(name => name.replace(/-/g, '') === role);
+  const projected = role => role === 'img' ? 'image' : roles.includes(role) ? role : roles.find(name => name.replace(/-/g, '') === role);
   return [header, '# Semantics', '',
     'The accessibility tree the platform adapter exposes. Elements get their role from what they are;',
     'the `role` prop sets one of the authored roles on any non-control element.', '',

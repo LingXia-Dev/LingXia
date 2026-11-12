@@ -428,6 +428,7 @@ impl Projection<'_> {
                 "alertdialog" => Role::AlertDialog,
                 "group" => Role::Group,
                 "tooltip" => Role::Tooltip,
+                "img" => Role::Image,
                 "tablist" => Role::TabList,
                 "tab" => Role::Tab,
                 "tabpanel" => Role::TabPanel,
