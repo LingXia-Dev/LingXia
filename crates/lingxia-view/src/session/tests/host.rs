@@ -65,6 +65,25 @@ struct Log {
     hud: Vec<bool>,
 }
 
+/// What a phone adapter reports, built as adapters build it, so the fake never lacks a key a
+/// real host sends.
+fn fake_environment() -> FrameEnvironment {
+    let mut environment = crate::platform::DeviceFacts {
+        width: 200,
+        height: 400,
+        scale: 2.0,
+        os: "test".into(),
+        smallest_width: 100.0,
+        locale: "en".into(),
+        animation_scale: 1.0,
+        ..Default::default()
+    }
+    .environment()
+    .unwrap();
+    environment.value["canDock"] = false.into();
+    environment
+}
+
 struct Fake {
     log: Mutex<Log>,
     tasks: Mutex<Sender<Task>>,
@@ -383,20 +402,7 @@ impl Platform {
                 tasks: Mutex::new(self.sender.clone()),
                 timers: self.timers.clone(),
                 clock: Mutex::new(Duration::ZERO),
-                environment: Mutex::new(Some(FrameEnvironment {
-                    width: 200,
-                    height: 400,
-                    scale: 2.0,
-                    value: serde_json::json!({
-                        "theme": "light",
-                        "insets": {"top": 0, "right": 0, "bottom": 0, "left": 0},
-                        "keyboard": {"height": 0},
-                        "os": "test",
-                        "formFactor": "phone",
-                        "displayLanguage": "en",
-                        "canDock": false,
-                    }),
-                })),
+                environment: Mutex::new(Some(fake_environment())),
                 restart: false,
                 pending: Default::default(),
                 defer: Default::default(),
