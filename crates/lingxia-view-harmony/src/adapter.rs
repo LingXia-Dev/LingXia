@@ -5,7 +5,7 @@ use crate::{Shell, accessibility, dispatch, ime, pages, surface::NativeWindow};
 use lingxia_view::DisplayList;
 use lingxia_view::interaction::view::{AccessibilityEffect, Dispatch, Effect};
 use lingxia_view::platform::*;
-use lingxia_view::renderer::gpu::SurfaceSource;
+use lingxia_view::renderer::gpu::{SURFACE_REFUSED, SurfaceSource};
 use lingxia_view::renderer::pool::Mailbox;
 use lingxia_view::renderer::surfaces::{self, Route, Target};
 use lingxia_view::session::host::{Failure, FrameSnapshot, FrameTiming, WeakViewHost};
@@ -293,6 +293,20 @@ impl HarmonyAdapter {
 /// Bind `window` to a GLES presenter on the render thread; frames wait for it, then use
 /// the CPU when it fails.
 fn attach(host: &pages::Host, window: Arc<NativeWindow>, width: u32, height: u32) {
+    attach_after(host, window, width, height, 0);
+}
+
+/// Binds a window refused (still rotating, or its previous surface not yet let go) again this
+/// many times, waiting longer each time, on a timer thread rather than the main or render one.
+const SURFACE_RETRIES: u32 = 6;
+
+fn attach_after(
+    host: &pages::Host,
+    window: Arc<NativeWindow>,
+    width: u32,
+    height: u32,
+    refused: u32,
+) {
     let adapter = host.adapter();
     let existing = adapter.gpu.load(Ordering::Acquire);
     *lock(&adapter.target) = Target::Waiting;
@@ -305,11 +319,24 @@ fn attach(host: &pages::Host, window: Arc<NativeWindow>, width: u32, height: u32
             return;
         }
         let attached = surfaces::attach(
-            SurfaceSource::window(Arc::new(SharedWindow(window))),
+            SurfaceSource::window(Arc::new(SharedWindow(window.clone()))),
             width,
             height,
             existing,
         );
+        if let Err(error) = &attached
+            && error.starts_with(SURFACE_REFUSED)
+        {
+            if refused < SURFACE_RETRIES {
+                log::debug!(target: "lingxia_view", "{error}; binding again (attempt {})", refused + 1);
+                retry(host, window, refused + 1);
+            } else {
+                // The CPU path does not present on every GLES device: the page keeps its last
+                // frame and binds again at the window's next size or surface callback.
+                log::warn!(target: "lingxia_view", "{error}; refused {} times over {} ms, waiting for the window to change", refused + 1, refusal_ms(refused));
+            }
+            return;
+        }
         dispatch::post_main(Box::new(move || {
             let Some(host) = host.upgrade() else { return };
             let adapter = host.adapter();
@@ -317,6 +344,9 @@ fn attach(host: &pages::Host, window: Arc<NativeWindow>, width: u32, height: u32
                 Ok(id) => {
                     adapter.gpu.store(*id, Ordering::Release);
                     let (record, backend) = surfaces::describe(*id).unwrap_or_default();
+                    if refused > 0 {
+                        log::warn!(target: "lingxia_view", "UI_SURFACE: the window took a surface after {refused} refusals over {} ms", refusal_ms(refused));
+                    }
                     log::info!(target: "lingxia_view", "backend={backend} surface={id} adapter={record}");
                     Target::Ready
                 }
@@ -326,6 +356,35 @@ fn attach(host: &pages::Host, window: Arc<NativeWindow>, width: u32, height: u32
                 }
             };
             host.surface_changed();
+        }));
+    });
+}
+
+/// The pause before bind attempt `refused` (1-based): 32 ms doubling to about a second.
+fn pause_ms(refused: u32) -> u64 {
+    16 << refused
+}
+
+/// The time paused across the first `refused` retries.
+fn refusal_ms(refused: u32) -> u64 {
+    (1..=refused).map(pause_ms).sum()
+}
+
+/// Binds `window` again after a pause, at the page's size then, unless the page or its window
+/// went meanwhile. The last presented frame stays up until then.
+fn retry(host: WeakViewHost<HarmonyAdapter>, window: Arc<NativeWindow>, refused: u32) {
+    let pause = Duration::from_millis(pause_ms(refused));
+    std::thread::spawn(move || {
+        std::thread::sleep(pause);
+        dispatch::post_main(Box::new(move || {
+            let Some(host) = host.upgrade() else { return };
+            let adapter = host.adapter();
+            let current = lock(&adapter.window)
+                .as_ref()
+                .is_some_and(|current| Arc::ptr_eq(current, &window));
+            if let (true, Some((width, height))) = (current, *lock(&adapter.size)) {
+                attach_after(&host, window, width, height, refused);
+            }
         }));
     });
 }

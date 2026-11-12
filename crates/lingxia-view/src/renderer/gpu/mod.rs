@@ -17,6 +17,7 @@ pub(crate) mod video_quad;
 
 pub use wgpu;
 
+pub use device::SURFACE_REFUSED;
 use device::{Devices, RenderSurface};
 use std::{
     collections::HashMap,
@@ -64,9 +65,11 @@ impl Context {
     }
 
     pub(crate) fn lock(&self) -> Result<MutexGuard<'_, Devices>, String> {
-        self.0
+        // A panic while binding a surface leaves the device list whole; the next bind starts over.
+        Ok(self
+            .0
             .lock()
-            .map_err(|_| "UI_SURFACE: poisoned GPU context".into())
+            .unwrap_or_else(|poisoned| poisoned.into_inner()))
     }
 
     /// Ok when some adapter offers the limits the renderer's device requests; else
@@ -767,7 +770,7 @@ impl Presenter {
         };
         let context = self.context.lock()?;
         if surface.config.width != width || surface.config.height != height {
-            context.resize_surface(surface, width, height);
+            context.resize_surface(surface, width, height)?;
             self.depth = Some(depth_view(surface, &context.devices[surface.dev_id].device));
             self.prepared = [None; 2];
             self.drawn = [None; 2];
@@ -1068,7 +1071,7 @@ impl Presenter {
             wgpu::CurrentSurfaceTexture::Success(texture)
             | wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
             wgpu::CurrentSurfaceTexture::Outdated => {
-                context.resize_surface(surface, width, height);
+                context.resize_surface(surface, width, height)?;
                 self.depth = Some(depth_view(surface, &context.devices[self.device_id].device));
                 return Ok(false);
             }

@@ -38,9 +38,10 @@ pub(crate) fn presenter(id: u64) -> Result<Option<Shared>, String> {
 }
 
 fn lock(presenter: &Shared) -> Result<MutexGuard<'_, Presenter>, String> {
-    presenter
+    // A panic mid-draw or mid-bind leaves a presenter its next bind or frame can start over from.
+    Ok(presenter
         .lock()
-        .map_err(|_| "UI_SURFACE: poisoned presenter".into())
+        .unwrap_or_else(|poisoned| poisoned.into_inner()))
 }
 
 /// Where a page's GPU target stands; see [`route`].

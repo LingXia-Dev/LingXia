@@ -91,7 +91,7 @@ impl Devices {
             alpha_mode: wgpu::CompositeAlphaMode::Auto,
             view_formats: vec![],
         };
-        surface.configure(&handle.device, &config);
+        configure(&surface, &handle.device, &config)?;
         Ok(RenderSurface {
             target_views: [0; 2].map(|_| target_view(&handle.device, width, height)),
             blitter: TextureBlitter::new(&handle.device, format),
@@ -101,12 +101,17 @@ impl Devices {
         })
     }
 
-    pub fn resize_surface(&self, surface: &mut RenderSurface<'_>, width: u32, height: u32) {
+    pub fn resize_surface(
+        &self,
+        surface: &mut RenderSurface<'_>,
+        width: u32,
+        height: u32,
+    ) -> Result<(), String> {
         let device = &self.devices[surface.dev_id].device;
         surface.config.width = width;
         surface.config.height = height;
         surface.target_views = [0; 2].map(|_| target_view(device, width, height));
-        surface.surface.configure(device, &surface.config);
+        configure(&surface.surface, device, &surface.config)
     }
 
     /// A device whose adapter supports `compatible`, created on first need.
@@ -211,6 +216,24 @@ fn video_device(
         adapter.create_device_from_hal(opened, descriptor).ok()
     }
 }
+
+/// Configures `surface`, reporting a failure instead of wgpu's default panic: a window that
+/// still carries another EGL surface (`BadAlloc`) refuses one while it rotates.
+fn configure(
+    surface: &wgpu::Surface<'_>,
+    device: &wgpu::Device,
+    config: &wgpu::SurfaceConfiguration,
+) -> Result<(), String> {
+    let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+    surface.configure(device, config);
+    match pollster::block_on(scope.pop()) {
+        None => Ok(()),
+        Some(error) => Err(format!("{SURFACE_REFUSED}: {error}")),
+    }
+}
+
+/// Prefix of the error for a window that refused its surface; binding again later may succeed.
+pub const SURFACE_REFUSED: &str = "UI_SURFACE: the window refused a surface";
 
 /// The offscreen target: drawn by render passes, sampled by the blit and composition.
 pub(crate) fn target_view(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureView {
