@@ -231,3 +231,23 @@ test("rawAutomation hands the host tiers out as the native objects", () => {
   assert.equal(typeof root.lxapp, "function");
   assert.equal(typeof root.lxapp().eval, "function");
 });
+
+test("a spec that names an lxapp covered by another brings it forward and says so", async () => {
+  const world = createWorld();
+  let front = "gallery";
+  const opened = [];
+  const lxapps = {
+    async list() { return [{ appId: "demo-app", status: "opened" }, { appId: "gallery", status: "opened" }]; },
+    async current() { return { appId: front, currentPage: null }; },
+    async open({ appId }) { opened.push(appId); front = appId; return { appId, path: "home" }; },
+  };
+  const { events } = installFakeHost(world, { lxapps });
+  spec("on the covered app", { app: "demo-app", start: { page: "home" } }, async () => {});
+  spec("again, now in front", { app: "demo-app", start: { page: "home" } }, async () => {});
+
+  const report = await run();
+  assert.deepEqual(report.cases.map((c) => c.status), ["passed", "passed"]);
+  assert.deepEqual(opened, ["demo-app"], "only the covered start reorders the stack");
+  const notes = events.filter((e) => e.type === "diagnostic" && e.phase === "app").map((e) => e.message);
+  assert.deepEqual(notes, ["brought demo-app forward over gallery"]);
+});

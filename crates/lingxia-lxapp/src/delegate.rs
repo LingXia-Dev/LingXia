@@ -573,7 +573,7 @@ impl LxApp {
     }
 
     /// Handle back button press (system or navigation)
-    fn handle_back_press(self: &Arc<Self>) -> bool {
+    pub(crate) fn handle_back_press(self: &Arc<Self>) -> bool {
         let stack_size = self.get_page_stack_size();
         info!("BackPress trigered, page stack size: {}", stack_size).with_appid(self.appid.clone());
 

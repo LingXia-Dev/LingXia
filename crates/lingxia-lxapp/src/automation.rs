@@ -396,25 +396,59 @@ pub async fn user_leave(
     Ok((page, name))
 }
 
-/// Navigate back `delta` pages and return the landed page (+ configured name).
+/// Navigate back `delta` pages and return the app and page it landed on (+
+/// configured name). At the root of an lxapp other than the home one, back
+/// leaves it through the user's back path (iOS closes it) and lands on the
+/// lxapp it reveals.
 /// See [`navigate`] for the `wait_ready` contract.
 pub async fn navigate_back(
     app: &Arc<LxApp>,
     delta: u32,
     wait_ready: bool,
-) -> Result<(PageInstance, Option<String>), String> {
-    app.current_page()
-        .map_err(|err| err.to_string())?
-        .navigate_back(delta)
-        .map_err(|err| err.to_string())?;
-    let (page, name) = resolve_page(app, None)?;
+) -> Result<(Arc<LxApp>, PageInstance, Option<String>), String> {
+    let landed = if app.get_page_stack_size() <= 1 {
+        if app.is_home_lxapp {
+            return Err("already at the root of the home lxapp".to_string());
+        }
+        app.handle_back_press();
+        resolve_lxapp("current")?
+    } else {
+        app.current_page()
+            .map_err(|err| err.to_string())?
+            .navigate_back(delta)
+            .map_err(|err| err.to_string())?;
+        app.clone()
+    };
+    let (page, name) = resolve_page(&landed, None)?;
     if wait_ready {
         page.wait_webview_ready()
             .await
             .map_err(|err| err.to_string())?;
     }
-    Ok((page, name))
+    Ok((landed, page, name))
 }
+
+/// The lxapp in front of `app` while `app` is covered: another lxapp tops the
+/// navigation stack. `None` when `app` is in front or nothing is.
+pub fn covering_lxapp(app: &LxApp) -> Option<String> {
+    let (front, _, _) = crate::lxapp::get_current_lxapp();
+    (!front.is_empty() && front != app.appid).then_some(front)
+}
+
+/// Bring `app` in front when another lxapp covers it, as reopening it from a
+/// link does. Returns the lxapp it was brought over.
+pub fn bring_forward(app: &Arc<LxApp>) -> Result<Option<String>, String> {
+    let Some(front) = covering_lxapp(app) else {
+        return Ok(None);
+    };
+    crate::lxapp::open_lxapp(&app.appid, crate::LxAppStartupOptions::new(""))
+        .map_err(|err| format!("failed to bring {} forward: {err}", app.appid))?;
+    Ok(Some(front))
+}
+
+/// How long a page may sit unshown under another lxapp before the wait gives
+/// up: a recall that just ran shows the page a few frames later.
+const COVERED_GRACE: Duration = Duration::from_millis(1000);
 
 /// Wait until `page` has dispatched `onReady`, bounded by `timeout`.
 ///
@@ -428,6 +462,7 @@ pub async fn wait_page_runtime_ready(
 ) -> Result<(), String> {
     let deadline = tokio::time::Instant::now() + timeout;
     let instance_id = page.instance_id_string();
+    let mut covered_since = None;
     loop {
         let state = page.automation_state();
         if let Some(error) = state.webview_error {
@@ -437,6 +472,19 @@ pub async fn wait_page_runtime_ready(
         }
         if state.ready {
             return Ok(());
+        }
+        // A page under another lxapp is never shown, so it never becomes ready.
+        match covering_lxapp(app).filter(|_| state.lifecycle != "visible") {
+            Some(front) => {
+                let since = *covered_since.get_or_insert_with(tokio::time::Instant::now);
+                if since.elapsed() >= COVERED_GRACE {
+                    return Err(format!(
+                        "another lxapp ({front}) is in front of {}; pass --app {} to bring it forward, or close {front}",
+                        app.appid, app.appid
+                    ));
+                }
+            }
+            None => covered_since = None,
         }
         if app.get_page_by_instance_id_str(&instance_id).is_none() {
             let current = app

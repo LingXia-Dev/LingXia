@@ -597,6 +597,21 @@ async function recoverAppUnderTest(appId: string | undefined): Promise<string | 
   }
 }
 
+/**
+ * Bring the app a spec names in front when another lxapp covers it: its pages
+ * are never shown, so a start there would wait out its timeout. Resolves the
+ * lxapp it was brought over, or `undefined` when nothing moved.
+ */
+async function bringForward(appId: string): Promise<string | undefined> {
+  let root: HostRunAutomation;
+  try { root = automationRoot(); } catch { return undefined; }
+  let front: string | undefined;
+  try { front = (await root.lxapps.current()).appId; } catch { return undefined; }
+  if (!front || front === appId) return undefined;
+  await root.lxapps.open({ appId });
+  return front;
+}
+
 /** Relaunch on the spec's `start` page, or the app's home page. */
 async function relaunchHome(app: LxAppDriver, start?: SpecStart): Promise<void> {
   const page = start?.page ?? (await app.pages())[0]?.name ?? "home";
@@ -1015,6 +1030,10 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
           }
         });
         phase = "body";
+      }
+      if (shouldRelaunch && item.app) {
+        const over = await bringForward(item.app);
+        if (over) await fixture.diagnostic("app", `brought ${item.app} forward over ${over}`);
       }
       if (shouldRelaunch) await relaunchHome(fixture.raw, item.start);
       phase = "beforeEach";

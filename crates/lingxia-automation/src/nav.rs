@@ -228,7 +228,7 @@ impl JSNavDriver {
             options.as_ref().and_then(|o| o.timeout_ms),
         )?;
         let delta = options.and_then(|o| o.delta).unwrap_or(1);
-        let (page, name) = auto::navigate_back(&app, delta, false)
+        let (app, page, name) = auto::navigate_back(&app, delta, false)
             .await
             .map_err(auto_err)?;
         landed(&app, page, name, wait).await

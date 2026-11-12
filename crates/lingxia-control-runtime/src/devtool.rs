@@ -759,9 +759,25 @@ pub(crate) async fn lxapp_dev_nav_back(
     appid: Option<&str>,
     delta: u32,
 ) -> Result<LxAppDevPageInfo, String> {
-    let app = auto::resolve_lxapp(appid.unwrap_or("current"))?;
-    let (page, name) = auto::navigate_back(&app, delta, false).await?;
+    let app = resolve_nav_lxapp(appid)?;
+    let (app, page, name) = auto::navigate_back(&app, delta, false).await?;
     wait_dev_page_runtime_ready(&app, &page, name.as_deref()).await
+}
+
+/// The lxapp a nav command acts on. One named explicitly is brought in front
+/// first when another lxapp covers it, as the user reopening it would.
+fn resolve_nav_lxapp(appid: Option<&str>) -> Result<std::sync::Arc<lxapp::LxApp>, String> {
+    let explicit = appid.filter(|id| {
+        let id = id.trim();
+        !id.is_empty() && !id.eq_ignore_ascii_case("current")
+    });
+    let app = auto::resolve_lxapp(explicit.unwrap_or("current"))?;
+    if explicit.is_some()
+        && let Some(front) = auto::bring_forward(&app)?
+    {
+        log::info!("brought {} forward over {front}", app.appid);
+    }
+    Ok(app)
 }
 
 async fn lxapp_dev_nav_with_kind(
@@ -770,7 +786,7 @@ async fn lxapp_dev_nav_with_kind(
     query: Option<serde_json::Value>,
     kind: lxapp::NavigationType,
 ) -> Result<LxAppDevPageInfo, String> {
-    let app = auto::resolve_lxapp(appid.unwrap_or("current"))?;
+    let app = resolve_nav_lxapp(appid)?;
     let (page, name) = auto::navigate(&app, page_name, query.as_ref(), kind, false).await?;
     wait_dev_page_runtime_ready(&app, &page, name.as_deref()).await
 }
