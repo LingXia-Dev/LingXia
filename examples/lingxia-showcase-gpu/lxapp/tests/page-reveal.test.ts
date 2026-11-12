@@ -9,20 +9,29 @@ spec('a page pushed again is not revealed on its previous frame', {
 }, async (t) => {
   const app = t.app;
   const platform = await runtimePlatform(app);
-  if (!['harmony', 'android'].includes(platform)) t.skip(`${platform} has no host-side reveal`);
+  // Without a host-side reveal the host shows the page itself; its first present still says
+  // whether it showed a frame already on the surface.
+  const hostReveal = ['harmony', 'android'].includes(platform);
   let reveals = -1;
   for (let round = 0; round < 3; round++) {
     await app.nav.to({ page: 'motion-target' });
     // Reveal statistics outlive a reload: wait for this push's own reveal.
     const shown = await t.waitFor(() => app.metrics({ page: 'motion-target' }), {
-      until: m => m.firstPresentAt !== null && m.reveal.lastReveal !== null && m.reveal.count > reveals,
+      until: m => m.firstPresentAt !== null && m.reveal.count > reveals
+        && (hostReveal ? m.reveal.lastReveal !== null : m.firstPresentReason !== null),
     });
     reveals = shown.reveal.count;
-    await t.attach(`push-${round}`, { reveal: shown.reveal, firstPresentAt: shown.firstPresentAt });
-    const { reason, atMs } = shown.reveal.lastReveal!;
-    if (round > 0) expect(reason, `push ${round + 1}`).not.toBe('current');
-    // Revealed on a frame means on this instance's first one, never before it.
-    if (reason === 'frame') expect(atMs, `push ${round + 1}`).toBeGreaterThanOrEqual(shown.firstPresentAt!);
+    await t.attach(`push-${round}`, {
+      reveal: shown.reveal, firstPresentAt: shown.firstPresentAt, firstPresentReason: shown.firstPresentReason,
+    });
+    if (!hostReveal) {
+      if (round > 0) expect(shown.firstPresentReason, `push ${round + 1}`).not.toBe('current');
+    } else {
+      const { reason, atMs } = shown.reveal.lastReveal!;
+      if (round > 0) expect(reason, `push ${round + 1}`).not.toBe('current');
+      // Revealed on a frame means on this instance's first one, never before it.
+      if (reason === 'frame') expect(atMs, `push ${round + 1}`).toBeGreaterThanOrEqual(shown.firstPresentAt!);
+    }
     await app.nav.back();
     await expect.poll(async () => (await app.nav.current()).name).toBe('view-lab');
   }
