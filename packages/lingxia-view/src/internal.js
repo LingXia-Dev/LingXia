@@ -6,7 +6,7 @@ export { listTag, takeLowered, seedLowered } from './runtime/elements.js';
 export { List, prepare, prepareWindows, takeMovedAnchors, takeThrown, commit, discard, reset, dispatch, describe } from './runtime/tree.js';
 export { useVideo } from './runtime/video.js';
 export { VideoControls } from './runtime/video-controls.js';
-export { useLocal, useView, useRequest, useStream, useChannel, useLeaveGuard, hasLocalUpdates, createView, readsHostContext } from './runtime/hooks.js';
+export { useLocal, useView, useId, useRequest, useStream, useChannel, useLeaveGuard, hasLocalUpdates, createView, readsHostContext } from './runtime/hooks.js';
 export { configureActions, takeActionRequests, receiveActionResponse, takeActionErrors, requestLeave } from './runtime/actions.js';
 export { measureFrames } from './runtime/frames.js';
 export { configureClasses } from './style/classes.js';

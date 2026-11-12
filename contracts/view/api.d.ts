@@ -16,6 +16,8 @@ export declare function childrenToArray(children: Child): readonly Exclude<Child
 /** `dir` sets the inline direction of a subtree; otherwise it follows `env.direction`. Editors also take `"auto"` (first strong character). */
 export interface Props {
   style?: Style; className?: string; key?: string; "data-testid"?: string; dir?: "ltr" | "rtl" | "auto"; children?: Child;
+  /** Unique on the page (`UI_ID`); what `popoverTarget` and `aria-actions` name. Build one with `useId()`. */
+  id?: string;
   /** Semantic role; controls keep their own. Headings take `headingLevel` 1..6. */
   role?: "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "menuitem" | "progressbar"; headingLevel?: 1 | 2 | 3 | 4 | 5 | 6;
   /** A progressbar's value between `aria-valuemin` (0) and `aria-valuemax` (100); leave it out while the amount is unknown. `aria-valuetext` replaces the spoken percentage. */
@@ -87,6 +89,8 @@ export interface Context<T> {
 export declare function createContext<T>(defaultValue: T): Context<T>;
 /** The nearest enclosing `Provider`'s value, during render only. */
 export declare function useContext<T>(context: Context<T>): T;
+/** An element `id` unique to this component instance (and list row), stable across renders and hot swaps. */
+export declare function useId(): string;
 
 export interface RequestResource<T> {
   /** A load is in flight; `value` keeps the previous result until it settles. */

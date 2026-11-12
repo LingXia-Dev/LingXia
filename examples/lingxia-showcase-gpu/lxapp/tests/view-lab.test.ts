@@ -200,3 +200,12 @@ spec('a provided value reaches List rows under rtl and follows its changes', { c
   await expect(view.testId('lab-choice-gamma-state')).toHaveText('md on');
   await expect(view.testId('lab-choice-alpha-state')).toHaveText('md');
 });
+
+spec('a popover opens from a List row that names it by a useId id', { covers: ['view:popover', 'view:list'], start: { page: 'view-lab' } }, async (t) => {
+  const view = t.app.view;
+  await view.testId('lab-tab-layout').click();
+  await view.testId('lab-choice-beta').click();
+  await view.testId('lab-choice-gamma-more').click();
+  await expect(view.testId('lab-choices-menu')).toBeVisible();
+  await expect(view.testId('lab-choices-menu')).toContainText('menu for beta');
+});

@@ -2313,3 +2313,19 @@ fn stripping_animations_copies_only_animated_records() {
     assert_eq!(*render[1].fields, vec![(1, json!(20))]);
     assert_eq!(records[1].fields.len(), 2);
 }
+
+#[test]
+fn element_ids_are_one_namespace_across_list_rows() {
+    let page = |rows: &str| {
+        ViewSession::new(&source(&format!(
+            "function render(){{return h('view',{{}},h('text',{{id:'title'}},'t'),h(List,{{items:{rows},getKey:x=>x,renderItem:x=>h('text',{{id:x}},x)}}))}}"
+        )))
+        .unwrap()
+    };
+    assert!(page("['a','b']").layout(300, 400, 1.0).is_ok());
+    let error = page("['title','a']").layout(300, 400, 1.0).err().unwrap();
+    assert!(
+        error.contains("UI_ID: two elements have the id \"title\""),
+        "{error}"
+    );
+}

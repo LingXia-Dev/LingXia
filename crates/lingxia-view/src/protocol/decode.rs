@@ -190,6 +190,7 @@ fn walk(buffer: &[Value], previous: Option<&Wire>) -> Result<(Vec<Record>, Wire)
         return Err("UI_ROOT: empty buffer".into());
     }
     budgets(&records)?;
+    element_ids(&records)?;
     let wire = Wire {
         serial,
         records: Default::default(),
@@ -197,6 +198,17 @@ fn walk(buffer: &[Value], previous: Option<&Wire>) -> Result<(Vec<Record>, Wire)
         depths,
     };
     Ok((records, wire))
+}
+
+/// Element ids are one page-wide namespace, list rows included.
+fn element_ids(records: &[Record]) -> Result<(), String> {
+    let mut seen = HashSet::new();
+    for id in records.iter().filter_map(|r| r.string(field::ELEMENT_ID)) {
+        if !seen.insert(id) {
+            return Err(format!("UI_ID: two elements have the id \"{id}\""));
+        }
+    }
+    Ok(())
 }
 
 /// Copies the subtree a reuse header names from the previous buffer, checking what its new place

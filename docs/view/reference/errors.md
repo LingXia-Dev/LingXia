@@ -42,7 +42,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_GPU_LOST` | native | The GPU device failed mid-frame. The first time, every page moves to a new device and redraws; after a second, the page shows its recovery screen. |
 | `UI_GRADIENT` | runtime, native | A gradient with geometry its kind does not take, or invalid stops. |
 | `UI_GRID` | native | An invalid grid track list or line. |
-| `UI_ID` | runtime | A popover without an id, two popovers with one id, or a `popoverTarget` naming no popover on the page. |
+| `UI_ID` | runtime, native | Two elements with one `id` (list rows included), a popover without an id, an id with spaces, or a `popoverTarget` naming no popover on the page. |
 | `UI_IMAGE` | runtime, native | Invalid image source, alt, retry key or callback, or a failed load. |
 | `UI_INPUT` | runtime, native | Invalid editor prop, binding or text. |
 | `UI_KEY` | build, runtime, native | A non-string or duplicate sibling key, or a component keyed by its own function name. |

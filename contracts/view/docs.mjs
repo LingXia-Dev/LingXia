@@ -428,7 +428,7 @@ const errorNotes = {
   UI_FIELDS: 'A malformed field list reached the native decoder.',
   UI_FILTER: 'A backdrop filter outside its bounds.',
   UI_FRAGMENT: 'A page that returns a fragment; the page root is one element.',
-  UI_ID: 'A popover without an id, two popovers with one id, or a `popoverTarget` naming no popover on the page.',
+  UI_ID: 'Two elements with one `id` (list rows included), a popover without an id, an id with spaces, or a `popoverTarget` naming no popover on the page.',
   UI_GRADIENT: 'A gradient with geometry its kind does not take, or invalid stops.',
   UI_GRID: 'An invalid grid track list or line.',
   UI_IMAGE: 'Invalid image source, alt, retry key or callback, or a failed load.',

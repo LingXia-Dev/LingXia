@@ -1,4 +1,4 @@
-import { createContext, Details, Fragment, List, Pager as KitPagerView, Progress, Summary, useContext, useLocal, useVideo, useView, VideoControls, type Local, type VectorPath } from '@lingxia/view';
+import { createContext, Details, Fragment, List, Pager as KitPagerView, Progress, Summary, useContext, useId, useLocal, useVideo, useView, VideoControls, type Local, type VectorPath } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Icon, Page, Section } from '../../shared/ui';
 import type { LabPageData } from '../../shared/lab-types';
@@ -477,17 +477,26 @@ function StateVariants() {
   );
 }
 // A compound control: the group provides size and selection; options read them, here as rows of an rtl List.
-type ChoiceState = { size: 'sm' | 'md'; picked: Local<string> | null };
-const ChoiceGroup = createContext<ChoiceState>({ size: 'md', picked: null });
+type ChoiceState = { size: 'sm' | 'md'; picked: Local<string> | null; menu: string; clash: boolean };
+const ChoiceGroup = createContext<ChoiceState>({ size: 'md', picked: null, menu: '', clash: false });
 const choices = Object.freeze(['alpha', 'beta', 'gamma']);
 
 function Choices() {
   const size = useLocal<'sm' | 'md'>('choices-size', 'md');
   const picked = useLocal('choices-picked', 'alpha');
+  // An id clash inside a list row fails the render with UI_ID.
+  const clash = useLocal('choices-clash', false);
+  const menu = useId();
   return (
     <Section title="Context" testId="lab-choices">
-      <Button testId="lab-choices-size" size="sm" variant="secondary" onClick={() => size.set(size.value === 'md' ? 'sm' : 'md')}>Toggle size</Button>
-      <ChoiceGroup.Provider value={{ size: size.value, picked }}>
+      <view className="flex-row gap-2">
+        <Button testId="lab-choices-size" size="sm" variant="secondary" onClick={() => size.set(size.value === 'md' ? 'sm' : 'md')}>Toggle size</Button>
+        <Button testId="lab-choices-clash" size="sm" variant="secondary" onClick={() => clash.set(true)}>Clash ids</Button>
+      </view>
+      <view popover id={menu} aria-label="Choice menu" data-testid="lab-choices-menu" className="p-3 rounded-lg bg-surface border border-line">
+        <text id="lab-choices-menu-text">{`menu for ${picked.value}`}</text>
+      </view>
+      <ChoiceGroup.Provider value={{ size: size.value, picked, menu, clash: clash.value }}>
         <view dir="rtl">
           <List data-testid="lab-choices-list" className="h-36 rounded-lg border border-line" items={choices} getKey={item => item}
             renderItem={item => <Choice value={item} />} />
@@ -499,13 +508,17 @@ function Choices() {
 
 function Choice({ value }: { value: string }) {
   const group = useContext(ChoiceGroup);
+  const id = useId();
   const on = group.picked?.value === value;
   return (
-    <button data-testid={`lab-choice-${value}`} onClick={() => group.picked?.set(value)}
-      className={`flex-row justify-between px-3 border-b border-line ${group.size === 'sm' ? 'py-1 text-xs' : 'py-3 text-sm'} ${on ? 'bg-accent-soft' : ''}`}>
-      <text data-testid={`lab-choice-${value}-label`}>{value}</text>
-      <text data-testid={`lab-choice-${value}-state`}>{`${group.size}${on ? ' on' : ''}`}</text>
-    </button>
+    <view className="flex-row items-center border-b border-line">
+      <button id={group.clash && value === 'gamma' ? 'lab-choices-menu-text' : id} data-testid={`lab-choice-${value}`} onClick={() => group.picked?.set(value)}
+        className={`grow flex-row justify-between px-3 ${group.size === 'sm' ? 'py-1 text-xs' : 'py-3 text-sm'} ${on ? 'bg-accent-soft' : ''}`}>
+        <text data-testid={`lab-choice-${value}-label`}>{value}</text>
+        <text data-testid={`lab-choice-${value}-state`}>{`${group.size}${on ? ' on' : ''}`}</text>
+      </button>
+      <button data-testid={`lab-choice-${value}-more`} popoverTarget={group.menu} aria-label={`More for ${value}`} className="px-3 py-2 text-sm">⋯</button>
+    </view>
   );
 }
 

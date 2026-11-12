@@ -13,6 +13,7 @@ Styles each element accepts are in [styles.md](styles.md).
 | `key` | `string` |  |
 | `"data-testid"` | `string` |  |
 | `dir` | `"ltr" \| "rtl" \| "auto"` |  |
+| `id` | `string` | Unique on the page (`UI_ID`); what `popoverTarget` and `aria-actions` name. Build one with `useId()`. |
 | `role` | `"heading" \| "list" \| "listitem" \| "alert" \| "status" \| "grid" \| "gridcell" \| "listbox" \| "option" \| "menu" \| "menuitem" \| "progressbar"` | Semantic role; controls keep their own. Headings take `headingLevel` 1..6. |
 | `headingLevel` | `1 \| 2 \| 3 \| 4 \| 5 \| 6` |  |
 | `"aria-valuenow"` | `number` | A progressbar's value between `aria-valuemin` (0) and `aria-valuemax` (100); leave it out while the amount is unknown. `aria-valuetext` replaces the spoken percentage. |
@@ -35,7 +36,6 @@ Children: any elements and text. Renders as `column`.
 | Prop | Type | Required |
 | --- | --- | --- |
 | `aria-label` | `string` |  |
-| `id` | `string` |  |
 | `popover` | `boolean \| "auto" \| "manual"` |  |
 | `open` | `boolean` |  |
 | `onToggle` | `(open: boolean) => void` |  |
@@ -72,7 +72,6 @@ Children: text, or noninteractive content elements (a composed control).
 | `disabled` | `boolean` |  |
 | `aria-label` | `string` |  |
 | `popoverTarget` | `string` |  |
-| `id` | `string` |  |
 | `drag` | `"x" \| "y"` |  |
 | `dragSnapPoints` | `` readonly (number \| `${number}%`)[] `` |  |
 | `bind` | `Local<number>` |  |

@@ -67,7 +67,7 @@ const backdropFade = { opacity: 1, transition: { properties: ['opacity'], durati
  * `<dialog>` and popovers expand to a top-layer box holding a backdrop and the panel; `null`
  * when closed, `undefined` for any other node. `finish` decorates the resolved layer.
  */
-const popoverProps = ['open', 'onToggle', 'id'];
+const popoverProps = ['open', 'onToggle'];
 export function expand(tag, props, children, identity, parent) {
   if (props[panelMark]) return undefined;
   if (tag === 'dialog') return dialog(props, children, identity, parent);
@@ -130,7 +130,7 @@ function popover(tag, props, children, identity, parent) {
     node: layer(identity, env,
       kind === 'auto' && h('button', { key: 'backdrop', 'aria-hidden': true, 'data-testid': testId && `${testId}-backdrop`, onClick: () => toggle(id, false),
         style: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'transparent' } }),
-      h(tag, { ...rest, key: 'panel', [panelMark]: true, [popoverScope]: [...scope, id], style }, ...children)),
+      h(tag, { ...rest, id, key: 'panel', [panelMark]: true, [popoverScope]: [...scope, id], style }, ...children)),
     finish: result => {
       // A manual popover is in the top layer but takes no close request.
       result.wire.push(['topLayer', kind === 'auto' ? 1 : 2]);

@@ -183,6 +183,30 @@ export function annotate(source, filename, label) {
 }
 
 /**
+ * Gives each `useId()` call its site, `<enclosing function>#<ordinal>`: ids then survive edits
+ * elsewhere in the module and hot swaps.
+ */
+export function stampIds(source, filename) {
+  if (!source.includes('useId(')) return source;
+  const file = parseSource(filename, source);
+  const inserts = [], counts = new Map();
+  const visit = node => {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'useId' && !node.arguments.length) {
+      const owner = ts.findAncestor(node.parent, n => ts.isFunctionLike(n));
+      const name = owner?.name?.getText(file) ?? (owner && ts.isVariableDeclaration(owner.parent) ? owner.parent.name.getText(file) : '') ?? '';
+      const ordinal = counts.get(owner) ?? 0;
+      counts.set(owner, ordinal + 1);
+      inserts.push([node.arguments.end, JSON.stringify(`${name}#${ordinal}`)]);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  let output = source;
+  for (const [at, text] of inserts.sort((a, b) => b[0] - a[0])) output = output.slice(0, at) + text + output.slice(at);
+  return output;
+}
+
+/**
  * Stamps each top-level component (a capitalized function declaration, or a const bound to a
  * function) and each module-level context with `__lxid`, `<module path without extension>#<name>`:
  * local state and context lookup are keyed by it, so minified and dev builds of one source agree.
@@ -276,7 +300,7 @@ function analyse(path, contents, label, id, loader, literalColors) {
   collect(file);
   const analysed = {
     contents, file, names, problems: audit(contents, path, { literalColors }),
-    annotated: identify(loader.endsWith('x') ? stabilizeClosures(annotate(contents, path, id), path, id) : contents, path, id),
+    annotated: identify(loader.endsWith('x') ? stabilizeClosures(annotate(stampIds(contents, path), path, id), path, id) : stampIds(contents, path), path, id),
   };
   analyses.delete(key);
   if (analyses.size >= 512) analyses.delete(analyses.keys().next().value);

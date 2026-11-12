@@ -410,8 +410,9 @@ function resolveElement(tag, original, children, identity, depth, parent) {
     if (!ids.length || ids.length > 8 || ids.some(id => !id || id.length > 256)) throw Error('UI_PROP: aria-actions lists 1..8 element ids');
     wire('ariaActions', ids.join(' '));
   }
-  if (tag === 'button' && props.id !== undefined) {
-    if (typeof props.id !== 'string' || !props.id.length || props.id.length > 256) throw Error('UI_ID: an id is 1..256 characters');
+  if (props.id !== undefined) {
+    if (tag === 'span' || tag === 'link') throw Error(`UI_ID: <${tag}> is a run of its <text>; put the id on the <text>`);
+    if (typeof props.id !== 'string' || !props.id.length || props.id.length > 256 || /\s/.test(props.id)) throw Error('UI_ID: an id is 1..256 characters without spaces');
     wire('elementId', props.id);
   }
   if (tag === 'dialog') {

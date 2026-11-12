@@ -57,6 +57,27 @@ export function useLocal(...args) {
   counts.set(render.scope, order + 1);
   return local(`#${order}`, args[0], '', order);
 }
+// Two 32-bit FNV-1a passes with different seeds: an id collision would fail the page with UI_ID.
+function hashId(text) {
+  let a = 0x811c9dc5, b = 0x9747b28c;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    a = Math.imul(a ^ c, 0x01000193) >>> 0;
+    b = Math.imul(b ^ c, 0x01000193) >>> 0;
+  }
+  return a.toString(36) + b.toString(36);
+}
+
+/** `site` is the compiler's stamp for the call; uncompiled code is keyed by call order instead. */
+export function useId(site) {
+  if (!render.active || render.scope === null) throw Error('UI_SCOPE: useId outside render');
+  const counts = render.candidate.idOrder ??= new Map();
+  const base = `${render.scope}\u0000${site ?? '#'}`;
+  const seen = counts.get(base) ?? 0;
+  counts.set(base, seen + 1);
+  return `lx-${hashId(seen ? `${base}\u0000${seen}` : base)}`;
+}
+
 export function hasLocalUpdates() { return page.updates.size > 0 || page.invalidated === true; }
 
 export function useView() {

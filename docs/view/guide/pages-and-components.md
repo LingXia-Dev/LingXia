@@ -172,6 +172,10 @@ element; `useContext(X)` returns the nearest provider's value, or the default. V
 functions or handles such as a `Local`; to change one, provide a `Local` and `set` it from a handler.
 A changed value re-runs only the components that read it, including `List` rows.
 
+Every element takes an `id`, unique on the page (`UI_ID`). Inside a component, build ids with
+`useId()`: it is unique per component instance and list row, and stable across renders and hot swaps,
+so a compound control can name its parts (`` `${id}-panel` ``).
+
 ```tsx
 import { createContext, useContext, useLocal, type Child, type Local } from '@lingxia/view';
 
