@@ -138,13 +138,16 @@ test("a dependency's token file holds @theme and @utility only, and two packages
   });
 });
 
-test("a dev build lists a linked package's sources and token file as page inputs, not an installed copy's", async () => {
+test("a dev build lists a linked package's sources and token file, and a linked View runtime, as page inputs, not an installed copy's", async () => {
   const files = { ...tokenKit, 'page.tsx': "import { Chip } from 'view-kit/chip';\nexport function render() { return <view><Chip /></view>; }\n" };
   for (const [install, kitInputs] of [['link', ['../kit/src/chip.tsx', '../kit/tokens.css']], ['copy', []]]) {
     await project(files, async (root, build) => {
       await build({ dev: true });
       const inputs = JSON.parse(await readFile(join(root, '.lingxia/gpu-inputs.json'), 'utf8'));
-      assert.deepEqual(inputs['page.tsx'].sort(), ['page.tsx', ...kitInputs].sort(), install);
+      const runtime = inputs['page.tsx'].filter(path => path.endsWith('/lingxia-view/src/runtime/tree.js'));
+      assert.deepEqual(inputs['page.tsx'].filter(path => !path.includes('/lingxia-view/src/')).sort(), ['page.tsx', ...kitInputs].sort(), install);
+      // This View is a workspace copy, not an installed one, so its runtime is an input too.
+      assert.equal(runtime.length, 1, install);
     }, { install });
   }
 });

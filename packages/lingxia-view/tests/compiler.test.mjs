@@ -451,12 +451,19 @@ export function render() {
     await buildPages(root, ['page.tsx'], join(root, 'dist'), {}, { dev: true });
     const source = await load(root);
     const inputs = JSON.parse(await readFile(join(root, '.lingxia/gpu-inputs.json'), 'utf8'));
-    assert.deepEqual(inputs['page.tsx'], ['page.tsx']);
+    // Besides the page, only this workspace View's own sources.
+    assert.deepEqual(inputs['page.tsx'].filter(path => !path.includes('/lingxia-view/src/')), ['page.tsx']);
     assert.match(source, /\nconfigureSourceMap\(\{/);
     const error = (() => { try { describePage(); } catch (error) { return error; } })();
     assert.match(error.message, /\n  at page.tsx:3:\d+\n  at Total \(page.tsx:8:5\)/);
     await buildPages(root, ['page.tsx'], join(root, 'dist'));
     assert.doesNotMatch(await readFile(join(root, 'dist/page.js'), 'utf8'), /\nconfigureSourceMap\(\{/);
+    // A page deleted since its last dev build leaves the record, so no later edit plans it.
+    await writeFile(join(root, 'gone.tsx'), 'export function render() { return <view />; }');
+    await buildPages(root, ['gone.tsx'], join(root, 'dist'), {}, { dev: true });
+    await rm(join(root, 'gone.tsx'));
+    await buildPages(root, ['page.tsx'], join(root, 'dist'), {}, { dev: true });
+    assert.deepEqual(Object.keys(JSON.parse(await readFile(join(root, '.lingxia/gpu-inputs.json'), 'utf8'))), ['page.tsx']);
   });
 });
 

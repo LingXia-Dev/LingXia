@@ -492,19 +492,21 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     }
     await writeFile(dest, module);
     // Dev builds record each page's inputs so `lingxia dev` can rebuild only the pages an edit touches:
-    // the lxapp's files, and a linked package's sources and token file (`../kit/src/x.tsx`). Installed
-    // packages and the View runtime do not change under a session.
+    // the lxapp's files, a linked package's sources and token file (`../kit/src/x.tsx`), and a linked
+    // View runtime's. Installed packages, the View included, do not change under a session.
     if (bundled.metafile) {
       const tokenFiles = [...tokenPackages.values()].filter(owner => typeof owner.tokens === 'string').map(owner => relative(root, resolve(owner.dir, owner.tokens)));
       inputs[page] = [...Object.keys(bundled.metafile.inputs), ...tokenFiles]
-        .filter(path => path !== '<stdin>' && !path.split(/[\\/]/).includes('node_modules') && !resolve(root, path).toLowerCase().startsWith(runtimeRoot))
+        .filter(path => path !== '<stdin>' && !path.split(/[\\/]/).includes('node_modules'))
         .map(path => path.split('\\').join('/'));
     }
     if (config) await copyFile(configPath, join(output, `${base}.json`));
   }
   if (Object.keys(inputs).length) {
     const path = join(root, '.lingxia', 'gpu-inputs.json');
-    const previous = JSON.parse(await readFile(path, 'utf8').catch(() => '{}'));
+    // A page deleted since its last build leaves the record; an edit it shared would plan it again.
+    const previous = Object.fromEntries(Object.entries(JSON.parse(await readFile(path, 'utf8').catch(() => '{}')))
+      .filter(([page]) => existsSync(resolve(root, page))));
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, JSON.stringify({ ...previous, ...inputs }, null, 1) + '\n');
   }
