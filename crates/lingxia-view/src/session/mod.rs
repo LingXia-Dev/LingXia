@@ -162,7 +162,7 @@ fn seed_lowered(context: &crate::engine::JSContext, module: &crate::engine::byte
                 .eval::<bool>(Source::from_bytes(format!(
                     "typeof __lingxiaSeedLowered === 'function' && __lingxiaSeedLowered({literal})"
                 )))
-                .map_err(|e| e.to_string())
+                .map_err(|e| crate::engine::js_error(context, e))
         });
     if !matches!(accepted, Ok(true)) {
         crate::engine::bytecode::forget_lowered(module);

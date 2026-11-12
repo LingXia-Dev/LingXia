@@ -17,7 +17,7 @@ impl ViewSession {
                 .eval(Source::from_bytes(
                     "typeof __lingxiaFonts === 'function' ? __lingxiaFonts() : '[]'",
                 ))
-                .map_err(|e| e.to_string())
+                .map_err(|e| crate::engine::js_error(&self.context, e))
         })?;
         serde_json::from_str(&json).map_err(|e| e.to_string())
     }

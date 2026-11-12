@@ -95,7 +95,7 @@ impl ViewSession {
                 .eval(Source::from_bytes(
                     format!("__lingxiaDispatch({handle})").as_bytes(),
                 ))
-                .map_err(|e| e.to_string())
+                .map_err(|e| crate::engine::js_error(&self.context, e))
         })
     }
 
@@ -176,7 +176,7 @@ impl ViewSession {
                 .eval(Source::from_bytes(
                     format!("__lingxiaDispatch({handle},{encoded})").as_bytes(),
                 ))
-                .map_err(|e| e.to_string())
+                .map_err(|e| crate::engine::js_error(&self.context, e))
         })
     }
 
@@ -320,7 +320,7 @@ impl ViewSession {
                 .eval(Source::from_bytes(
                     format!("__lingxiaDispatch({handle},{encoded})").as_bytes(),
                 ))
-                .map_err(|e| e.to_string())
+                .map_err(|e| crate::engine::js_error(&self.context, e))
         })
     }
 }
@@ -335,7 +335,7 @@ impl ViewSession {
                 .eval(Source::from_bytes(
                     format!("typeof __lingxiaProbeListRow === 'function' ? __lingxiaProbeListRow({encoded}) : 'null'").as_bytes(),
                 ))
-                .map_err(|e| e.to_string())
+                .map_err(|e| crate::engine::js_error(&self.context, e))
         })?;
         #[derive(serde::Deserialize)]
         struct Found {

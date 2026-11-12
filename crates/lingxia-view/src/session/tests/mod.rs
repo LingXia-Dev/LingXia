@@ -1785,6 +1785,19 @@ fn a_render_that_runs_out_of_time_names_the_element_it_was_building() {
 }
 
 #[test]
+fn a_handler_that_throws_reports_its_own_message() {
+    // The View has no console; the engine's ReferenceError must reach the host as written.
+    let module = source(
+        "function render(){return h('button',{onClick:()=>{console.log('x')},style:{height:40}},'log')}",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    let frame = page.layout(200, 200, 1.0).unwrap();
+    let log = frame.nodes.iter().find_map(|n| n.on_click).unwrap();
+    let error = page.click(page.generation(), log).unwrap_err();
+    assert!(error.contains("console"), "{error}");
+}
+
+#[test]
 fn a_handler_that_runs_out_of_time_names_no_element() {
     if !bounded_jobs() {
         return;

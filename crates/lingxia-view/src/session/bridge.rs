@@ -99,7 +99,7 @@ impl ViewSession {
                 .eval(Source::from_bytes(
                     "typeof __lingxiaTakeOverlayTimers === 'function' ? __lingxiaTakeOverlayTimers() : '[]'",
                 ))
-                .map_err(|e| e.to_string())
+                .map_err(|e| crate::engine::js_error(&self.context, e))
         })?;
         serde_json::from_str(&json).map_err(|e| e.to_string())
     }
@@ -111,7 +111,7 @@ impl ViewSession {
                 .eval(Source::from_bytes(
                     "typeof __lingxiaTakeFrameMeasures === 'function' ? __lingxiaTakeFrameMeasures() : '[]'",
                 ))
-                .map_err(|e| e.to_string())
+                .map_err(|e| crate::engine::js_error(&self.context, e))
         })?;
         serde_json::from_str(&json).map_err(|e| e.to_string())
     }
@@ -128,7 +128,7 @@ impl ViewSession {
                 .eval(Source::from_bytes(
                     format!("typeof __lingxiaFrameMeasured === 'function' && __lingxiaFrameMeasured({token}, JSON.parse({json}))").as_bytes(),
                 ))
-                .map_err(|e| e.to_string())
+                .map_err(|e| crate::engine::js_error(&self.context, e))
         })
     }
 
@@ -139,7 +139,7 @@ impl ViewSession {
                 .eval(Source::from_bytes(
                     "typeof __lingxiaEscape === 'function' && __lingxiaEscape()",
                 ))
-                .map_err(|e| e.to_string())
+                .map_err(|e| crate::engine::js_error(&self.context, e))
         })
     }
 
@@ -151,7 +151,7 @@ impl ViewSession {
                 .eval(Source::from_bytes(
                     format!("typeof __lingxiaOpenPicker === 'function' && __lingxiaOpenPicker(JSON.parse({request}))").as_bytes(),
                 ))
-                .map_err(|e| e.to_string())
+                .map_err(|e| crate::engine::js_error(&self.context, e))
         })
     }
 
@@ -166,7 +166,7 @@ impl ViewSession {
                     )
                     .as_bytes(),
                 ))
-                .map_err(|e| e.to_string())
+                .map_err(|e| crate::engine::js_error(&self.context, e))
         })
     }
 
@@ -177,7 +177,7 @@ impl ViewSession {
                 .eval(Source::from_bytes(
                     "typeof __lingxiaTakePickerResults === 'function' ? __lingxiaTakePickerResults() : '[]'",
                 ))
-                .map_err(|e| e.to_string())
+                .map_err(|e| crate::engine::js_error(&self.context, e))
         })?;
         serde_json::from_str(&json).map_err(|e| e.to_string())
     }
@@ -189,7 +189,7 @@ impl ViewSession {
                 .eval(Source::from_bytes(
                     format!("__lingxiaOverlayTimer({token})").as_bytes(),
                 ))
-                .map_err(|e| e.to_string())
+                .map_err(|e| crate::engine::js_error(&self.context, e))
         })
     }
 
@@ -213,7 +213,7 @@ impl ViewSession {
                 .eval(Source::from_bytes(
                     "typeof __lingxiaHasLocalUpdates === 'function' && __lingxiaHasLocalUpdates()",
                 ))
-                .map_err(|e| e.to_string())
+                .map_err(|e| crate::engine::js_error(&self.context, e))
         })
     }
 
@@ -223,14 +223,14 @@ impl ViewSession {
             let queued: rong::quickjs::JSArray = self
                 .context
                 .eval(Source::from_bytes("__lingxiaTakeViewEvents()"))
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| crate::engine::js_error(&self.context, e))?;
             let len = queued.len().map_err(|e| e.to_string())?;
             (0..len)
                 .map(|index| {
                     queued
                         .get_value(index)
                         .and_then(crate::session::logic::ToLogic::from_js)
-                        .map_err(|e| e.to_string())
+                        .map_err(|e| crate::engine::js_error(&self.context, e))
                 })
                 .collect()
         })
@@ -240,7 +240,7 @@ impl ViewSession {
         self.execute(|| {
             self.context
                 .eval(Source::from_bytes("__lingxiaTakeActionErrors()"))
-                .map_err(|e| e.to_string())
+                .map_err(|e| crate::engine::js_error(&self.context, e))
         })
     }
 
@@ -274,7 +274,7 @@ impl ViewSession {
                 .eval(Source::from_bytes(
                     "typeof __lingxiaTakeAutomationResults === 'function' ? __lingxiaTakeAutomationResults() : '[]'",
                 ))
-                .map_err(|e| e.to_string())
+                .map_err(|e| crate::engine::js_error(&self.context, e))
         })?;
         let entries: Vec<serde_json::Value> =
             serde_json::from_str(&json).map_err(|e| e.to_string())?;

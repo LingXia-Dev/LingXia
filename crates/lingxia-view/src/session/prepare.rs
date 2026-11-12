@@ -587,7 +587,7 @@ impl ViewSession {
                     let moved: String = self.execute(|| {
                         self.context
                             .eval(Source::from_bytes("__lingxiaTakeMovedAnchors()"))
-                            .map_err(|e| e.to_string())
+                            .map_err(|e| crate::engine::js_error(&self.context, e))
                     })?;
                     let moved: HashMap<String, String> =
                         serde_json::from_str(&moved).map_err(|e| e.to_string())?;
@@ -623,7 +623,7 @@ impl ViewSession {
                         .eval::<bool>(Source::from_bytes(
                             "typeof __lingxiaReadsHostContext !== 'function' || __lingxiaReadsHostContext()",
                         ))
-                        .map_err(|e| e.to_string())
+                        .map_err(|e| crate::engine::js_error(&self.context, e))
                 })?;
                 records
             };
