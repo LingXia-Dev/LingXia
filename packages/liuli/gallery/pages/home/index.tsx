@@ -1,15 +1,7 @@
 import type { View } from '@lingxia/view';
+import { components } from '../../shared/components';
 
 type Actions = { open(target: { page: string }): Promise<void> };
-
-const components = [
-  { page: 'button', name: 'Button', summary: 'Runs an action, with variants, sizes and a loading state' },
-  { page: 'field', name: 'Field', summary: 'Label, help text and status around a control' },
-  { page: 'text-input', name: 'TextInput', summary: 'One-line text editor, bound or controlled' },
-  { page: 'checkbox-input', name: 'CheckboxInput', summary: 'One on/off choice with help text' },
-  { page: 'dialog', name: 'Dialog', summary: 'Modal panel for a decision or a short task' },
-  { page: 'dropdown-menu', name: 'DropdownMenu', summary: 'A button that opens a menu of actions' },
-] as const;
 
 export function render({ actions }: View<Actions>) {
   return (

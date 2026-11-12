@@ -89,8 +89,21 @@ function projectOf(file) {
   }
 }
 
+/** What a phone reports by default; a test overrides any field through `view.env`. */
+export function defaultEnv(overrides = {}) {
+  const viewport = overrides.viewport ?? { width: 390, height: 844 };
+  const edges = { top: 0, right: 0, bottom: 0, left: 0 };
+  return {
+    theme: 'light', viewport, insets: edges, safeArea: edges, keyboard: { height: 0 }, pointer: 'coarse', os: 'node',
+    formFactor: 'phone', sizeClass: viewport.width < 600 ? 'compact' : 'regular', displayLanguage: 'en-US',
+    reducedMotion: false, highContrast: false, animatorDurationScale: 1, hourCycle: 'h12', firstWeekday: 1,
+    direction: 'ltr', canDock: false, ...overrides,
+  };
+}
+
 function screen(host, view) {
-  let current = { data: {}, env: {}, ...view };
+  let given = view.env ?? {};
+  let current = { data: {}, ...view, env: defaultEnv(given) };
   let nodes = decode(describePage(host, current));
   const refresh = () => { nodes = decode(describePage(host, current)); };
   const single = (matches, what, onScreen) => {
@@ -98,15 +111,24 @@ function screen(host, view) {
     if (matches.length === 0) throw Error(`no node has ${what}; on screen: ${onScreen() || 'none'}`);
     throw Error(`${matches.length} nodes have ${what}:\n${matches.map(node => `  ${label(node)} at ${path(node)}`).join('\n')}`);
   };
+  // The same element after a re-render, found by its position.
+  const again = node => {
+    const steps = [];
+    for (let at = node; at.parent; at = at.parent) steps.unshift(at.parent.children.indexOf(at));
+    return steps.reduce((at, index) => at?.children[index], nodes[0]);
+  };
   const fire = (node, prop, value) => {
     const handle = node.props[prop];
     if (handle === undefined || handle === 0) throw Error(`${label(node)} has no ${prop}`);
-    if (!dispatch(host, handle, value)) throw Error(`${label(node)} refused ${prop}(${JSON.stringify(value)})`);
+    if (!dispatch(host, handle, value)) throw Error(`${label(node)} refused ${prop}(${value === undefined ? '' : JSON.stringify(value)})`);
     refresh();
   };
+  const json = (node, prop, payload) => fire(node, prop, JSON.stringify(payload));
   return {
     get root() { return nodes[0]; },
     get nodes() { return nodes; },
+    /** The page's runtime, for `dispatch` and the other low-level calls. */
+    host,
     wire: () => describePage(host, current),
     getByTestId: id => single(nodes.filter(node => node.testId === id), `data-testid="${id}"`,
       () => list(nodes.filter(node => node.testId).map(node => node.testId))),
@@ -114,11 +136,31 @@ function screen(host, view) {
     getByText: text => single(nodes.filter(node => textOf(node) === text && !node.children.some(child => textOf(child) === text)),
       `text ${JSON.stringify(text)}`, () => list(nodes.filter(node => node.text).map(node => JSON.stringify(node.text)))),
     queryAll: test => nodes.filter(test),
+    fire,
     press: node => fire(node, 'onClick'),
     type: (node, text) => fire(node, 'onInput', text),
-    toggle: (node, checked) => fire(node, 'onCheckedChange', checked),
-    rerender(next) {
-      current = { ...current, ...next, data: { ...current.data, ...next?.data }, env: { ...current.env, ...next?.env } };
+    submit: (node, text = node.props.inputValue ?? '') => fire(node, 'onSubmit', text),
+    toggle(node, checked) {
+      const was = node.props.checked === 1;
+      if (checked !== undefined && was === checked) throw Error(`${label(node)} is already ${checked ? 'checked' : 'unchecked'}`);
+      fire(node, 'onCheckedChange');
+      const now = again(node);
+      if (checked !== undefined && (now?.props.checked === 1) !== checked)
+        throw Error(`${label(node)} stayed ${was ? 'checked' : 'unchecked'}: its onChange did not update value`);
+    },
+    slide: (node, value) => fire(node, 'onSliderChange', value),
+    select: (node, value) => fire(node, 'onSelect', value),
+    selectPoint: (node, index) => fire(node, 'onPlotSelect', index),
+    reach: (node, edge) => fire(node, edge === 'start' ? 'onReachStart' : 'onReachEnd'),
+    image: (node, outcome) => fire(node, outcome === 'error' ? 'onImageError' : 'onImageLoad'),
+    snap: (node, index) => fire(node, 'onSnapChange', String(index)),
+    drag: (node, event) => json(node, 'onDragEvent', event),
+    video: (node, status, events = []) => json(node, 'onVideoEvent', { status, events }),
+    /** The Back or Escape a device sends: closes the topmost overlay; false when none was open. */
+    escape() { const closed = host.__lingxiaEscape(); refresh(); return closed; },
+    rerender(next = {}) {
+      given = { ...given, ...next.env };
+      current = { ...current, ...next, data: { ...current.data, ...next.data }, env: defaultEnv(given) };
       refresh();
     },
   };

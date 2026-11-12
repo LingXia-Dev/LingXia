@@ -5,13 +5,29 @@ import { textInputRecipe as r } from './TextInput.recipe';
 
 /** Controlled by the app (`value` + `onChange`), or bound to a View-local cell (`bind`). */
 export type TextInputBinding =
-  | { bind: Local<string>; value?: never; onChange?: never }
-  | { bind?: never; value: string; onChange: (value: string) => void };
+  | {
+      /** A View-local cell the control reads and writes; use it or `value` with `onChange`. */
+      bind: Local<string>;
+      value?: never;
+      onChange?: never;
+    }
+  | {
+      bind?: never;
+      /** The app's value; pass `onChange` with it. */
+      value: string;
+      /** Runs with the new value; the app passes it back as `value`. */
+      onChange: (value: string) => void;
+    };
 
 /** The clear button needs its accessible name from the app, so turning it on asks for one. */
 export type TextInputClear =
   | { hasClear?: false; clearLabel?: never }
-  | { hasClear: true; clearLabel: string };
+  | {
+      /** A button that empties the text, shown while there is text. @default false */
+      hasClear: true;
+      /** The clear button's accessible name; required with `hasClear`. */
+      clearLabel: string;
+    };
 
 export type TextInputProps = FieldOwnProps & TextInputBinding & TextInputClear & {
   /** A hint shown while empty; never a substitute for `label`. */

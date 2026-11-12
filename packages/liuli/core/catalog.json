@@ -1,0 +1,1355 @@
+{
+  "generated": "Generated from the doc file by scripts/generate.mjs; do not edit.",
+  "components": [
+    {
+      "name": "Button",
+      "import": "@liulidesign/core/Button",
+      "exports": [
+        "Button"
+      ],
+      "category": "action",
+      "status": "lab",
+      "summary": "Runs an action when pressed, with variants, sizes and a loading state",
+      "description": "Button starts an action: save, send, delete, open a dialog. Its `label` is both its text and its accessible name, and it can wait on an async action with `clickAction`. To open a menu use DropdownMenu.",
+      "keywords": [
+        "button",
+        "action",
+        "submit",
+        "cta",
+        "primary",
+        "destructive",
+        "loading",
+        "press",
+        "tap"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The visible text and the accessible name. Name the outcome: \"Save changes\", not \"OK\"."
+        },
+        {
+          "name": "variant",
+          "type": "ButtonVariant",
+          "required": false,
+          "description": "`primary` for the one main action in view, `destructive` for an action that loses data.",
+          "default": "'secondary'"
+        },
+        {
+          "name": "size",
+          "type": "ButtonSize",
+          "required": false,
+          "description": "",
+          "default": "'md'"
+        },
+        {
+          "name": "startIcon",
+          "type": "Child",
+          "required": false,
+          "description": "Drawn before the label; hidden from assistive tech, since the label names the button."
+        },
+        {
+          "name": "endContent",
+          "type": "Child",
+          "required": false,
+          "description": "Drawn after the label: a count, a shortcut hint. Hidden from assistive tech."
+        },
+        {
+          "name": "width",
+          "type": "ButtonWidth",
+          "required": false,
+          "description": "`content` keeps its own width in a column; `fill` stretches across. Unset follows the parent."
+        },
+        {
+          "name": "isDisabled",
+          "type": "boolean",
+          "required": false,
+          "description": "",
+          "default": "false"
+        },
+        {
+          "name": "disabledMessage",
+          "type": "string",
+          "required": false,
+          "description": "Why it is disabled: read as the button's description while disabled; not drawn."
+        },
+        {
+          "name": "isLoading",
+          "type": "boolean",
+          "required": false,
+          "description": "Shows a spinner and ignores presses; the button stays focusable and reports busy.",
+          "default": "false"
+        },
+        {
+          "name": "onClick",
+          "type": "(() => void)",
+          "required": false,
+          "description": "Runs on press, before `clickAction`."
+        },
+        {
+          "name": "clickAction",
+          "type": "(() => Promise<unknown>)",
+          "required": false,
+          "description": "An async action, such as a Logic action. The button shows loading until it settles."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": "Merged last, so its classes win over the recipe's."
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "parts": {
+        "root": "button",
+        "icon": "view",
+        "spinner": "vector",
+        "label": "text",
+        "reason": "text"
+      },
+      "accessibility": {
+        "pattern": "button",
+        "name": "label",
+        "description": [
+          "disabledMessage, while disabled"
+        ],
+        "states": [
+          {
+            "state": "disabled",
+            "from": "isDisabled"
+          },
+          {
+            "state": "busy",
+            "from": "isLoading, or a pending clickAction"
+          }
+        ],
+        "keyboard": [],
+        "target": {
+          "sm": 32,
+          "md": 40,
+          "lg": 48
+        },
+        "contrast": [
+          {
+            "what": "primary label",
+            "pair": [
+              "on-accent",
+              "accent"
+            ],
+            "minimum": "4.5:1",
+            "proven": true
+          },
+          {
+            "what": "destructive label",
+            "pair": [
+              "on-danger",
+              "danger"
+            ],
+            "minimum": "4.5:1",
+            "proven": true
+          },
+          {
+            "what": "secondary label",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1",
+            "proven": true
+          },
+          {
+            "what": "secondary boundary",
+            "pair": [
+              "line-strong",
+              "surface"
+            ],
+            "minimum": "3:1",
+            "proven": true
+          }
+        ],
+        "notes": [
+          "A loading button stays enabled and focusable, reports busy, and ignores presses.",
+          "Sizes sm (32) and md (40) are below the 44 pt touch minimum; on touch layouts prefer lg until hit slop lets the press area extend past the paint."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Variants",
+          "title": "Variants",
+          "source": "import { Button } from '@liulidesign/core/Button';\n\nexport function Variants() {\n  return (\n    <view className=\"flex-row flex-wrap gap-2\">\n      <Button label=\"Save changes\" variant=\"primary\" data-testid=\"primary\" />\n      <Button label=\"Preview\" />\n      <Button label=\"Skip\" variant=\"ghost\" />\n      <Button label=\"Delete draft\" variant=\"destructive\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Sizes",
+          "title": "Sizes",
+          "source": "import { Button } from '@liulidesign/core/Button';\n\nexport function Sizes() {\n  return (\n    <view className=\"flex-row flex-wrap items-center gap-2\">\n      <Button label=\"Small\" size=\"sm\" />\n      <Button label=\"Medium\" />\n      <Button label=\"Large\" size=\"lg\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "AsyncAction",
+          "title": "Waiting on a Logic action",
+          "source": "import { useView, type View } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\n\ntype Actions = { publish(): Promise<void> };\n\n/** `clickAction` takes a Logic action as it is; the button shows loading until it settles. */\nexport function AsyncAction() {\n  const { actions } = useView() as View<Actions>;\n  return <Button label=\"Publish\" variant=\"primary\" width=\"content\" clickAction={() => actions.publish()} data-testid=\"publish\" />;\n}"
+        },
+        {
+          "name": "DisabledWithReason",
+          "title": "Disabled, with the reason",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\n\n/** The reason is read after the label while disabled. Pass translated copy; Liuli ships none. */\nexport function DisabledWithReason() {\n  const agreed = useLocal('agreed', false);\n  return (\n    <view className=\"gap-2\">\n      <Button\n        label=\"Continue\"\n        variant=\"primary\"\n        width=\"fill\"\n        isDisabled={!agreed.value}\n        disabledMessage=\"Accept the terms first\"\n        data-testid=\"continue\"\n      />\n      <Button\n        label={agreed.value ? 'Withdraw consent' : 'Accept the terms'}\n        variant=\"ghost\"\n        onClick={() => agreed.set(!agreed.value)}\n        data-testid=\"toggle-terms\"\n      />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "A 44 px press target around the sm and md sizes.",
+          "needs": "hit slop: a press area larger than the painted box",
+          "today": "The press area equals the box; the docs steer touch layouts to lg."
+        },
+        {
+          "missing": "The disabled reason shown to sighted users.",
+          "needs": "a focusable disabled state and a hint popover opened by focus or long press",
+          "today": "The reason is read as the description; nothing is drawn."
+        },
+        {
+          "missing": "Announcing that loading started.",
+          "needs": "an announcement without a mounted live region",
+          "today": "Busy state only; a page that needs speech keeps its own status line."
+        }
+      ],
+      "related": [
+        "DropdownMenu",
+        "Dialog"
+      ]
+    },
+    {
+      "name": "CheckboxInput",
+      "import": "@liulidesign/core/CheckboxInput",
+      "exports": [
+        "CheckboxInput"
+      ],
+      "category": "form",
+      "status": "lab",
+      "summary": "One on/off choice with a label, help text and status",
+      "description": "CheckboxInput is a single yes/no choice: opt-ins, terms, settings that take effect on save. The box, label and help text form one control, so a tap anywhere on them toggles it.",
+      "keywords": [
+        "checkbox",
+        "check",
+        "tick",
+        "opt in",
+        "agree",
+        "terms",
+        "toggle",
+        "boolean"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The visible label and the control's accessible name."
+        },
+        {
+          "name": "isLabelHidden",
+          "type": "boolean",
+          "required": false,
+          "description": "Hides the visible label; the control keeps it as its name.",
+          "default": "false"
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "description": "Help text under the control, read as the control's description."
+        },
+        {
+          "name": "status",
+          "type": "FieldStatus",
+          "required": false,
+          "description": "An `error` status marks the control invalid; its message is read as the control's description."
+        },
+        {
+          "name": "isRequired",
+          "type": "boolean",
+          "required": false,
+          "description": "Marks the label with an asterisk and the control as required. Validation is the app's.",
+          "default": "false"
+        },
+        {
+          "name": "isDisabled",
+          "type": "boolean",
+          "required": false,
+          "description": "",
+          "default": "false"
+        },
+        {
+          "name": "disabledMessage",
+          "type": "string",
+          "required": false,
+          "description": "Shown in place of `description` while disabled."
+        },
+        {
+          "name": "size",
+          "type": "FieldSize",
+          "required": false,
+          "description": "",
+          "default": "'md'"
+        },
+        {
+          "name": "bind",
+          "type": "Local<boolean>",
+          "required": false,
+          "description": "A View-local cell the control reads and writes; use it or `value` with `onChange`."
+        },
+        {
+          "name": "value",
+          "type": "boolean",
+          "required": false,
+          "description": "The app's value; pass `onChange` with it."
+        },
+        {
+          "name": "onChange",
+          "type": "((value: boolean) => void)",
+          "required": false,
+          "description": "Runs with the new value; the app passes it back as `value`."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the checkbox."
+        }
+      ],
+      "parts": {
+        "root": "view",
+        "control": "checkbox",
+        "row": "view",
+        "box": "view",
+        "mark": "vector",
+        "text": "view",
+        "label": "text",
+        "description": "text"
+      },
+      "accessibility": {
+        "pattern": "checkbox",
+        "name": "label",
+        "description": [
+          "description, or disabledMessage while disabled",
+          "the status message"
+        ],
+        "states": [
+          {
+            "state": "checked",
+            "from": "value or bind"
+          },
+          {
+            "state": "disabled",
+            "from": "isDisabled"
+          },
+          {
+            "state": "invalid",
+            "from": "status.type === 'error'"
+          },
+          {
+            "state": "required",
+            "from": "isRequired"
+          }
+        ],
+        "keyboard": [],
+        "contrast": [
+          {
+            "what": "box boundary, unchecked",
+            "pair": [
+              "line-strong",
+              "surface"
+            ],
+            "minimum": "3:1",
+            "proven": true
+          },
+          {
+            "what": "box fill, checked",
+            "pair": [
+              "accent",
+              "surface"
+            ],
+            "minimum": "3:1",
+            "proven": true
+          },
+          {
+            "what": "check mark",
+            "pair": [
+              "on-accent",
+              "accent"
+            ],
+            "minimum": "3:1",
+            "proven": true
+          },
+          {
+            "what": "label",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1",
+            "proven": true
+          }
+        ],
+        "notes": [
+          "The help text sits inside the control so a tap on it toggles, but it is read as the description, not the name.",
+          "The status message sits outside the control in a polite live region and is also read as the description.",
+          "The box is 16 to 24 px, but the press target is the whole row, label and help text included."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Basic",
+          "title": "With help text",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { CheckboxInput } from '@liulidesign/core/CheckboxInput';\n\nexport function Basic() {\n  const digest = useLocal('digest', true);\n  return <CheckboxInput bind={digest} label=\"Weekly digest\" description=\"A summary of your notes every Monday.\" data-testid=\"digest\" />;\n}"
+        },
+        {
+          "name": "Controlled",
+          "title": "Owned by the app, with an error",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { CheckboxInput } from '@liulidesign/core/CheckboxInput';\n\n/** Owned by the app: the checkbox reports, the app decides. */\nexport function Controlled() {\n  const accepted = useLocal('accepted', false);\n  return (\n    <CheckboxInput\n      value={accepted.value}\n      onChange={next => accepted.set(next)}\n      label=\"I accept the terms of service\"\n      isRequired\n      status={accepted.value ? undefined : { type: 'error', message: 'Accept the terms to create the account.' }}\n      data-testid=\"terms\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Sizes",
+          "title": "Sizes",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { CheckboxInput } from '@liulidesign/core/CheckboxInput';\n\nexport function Sizes() {\n  const small = useLocal('small', false);\n  const medium = useLocal('medium', true);\n  const large = useLocal('large', false);\n  return (\n    <view className=\"gap-2\">\n      <CheckboxInput bind={small} label=\"Small\" size=\"sm\" />\n      <CheckboxInput bind={medium} label=\"Medium\" />\n      <CheckboxInput bind={large} label=\"Large\" size=\"lg\" />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "A mixed state for a select-all box.",
+          "needs": "a mixed checked state on the checkbox primitive",
+          "today": "Two states only."
+        }
+      ],
+      "related": [
+        "Field"
+      ]
+    },
+    {
+      "name": "Dialog",
+      "import": "@liulidesign/core/Dialog",
+      "exports": [
+        "Dialog"
+      ],
+      "category": "overlay",
+      "status": "lab",
+      "summary": "Modal panel over the page for a decision or a short task",
+      "description": "Dialog interrupts the page to ask for a decision or a short piece of input, and keeps focus and assistive tech inside until it closes. It is controlled: `isOpen` shows it, `onOpenChange(false)` reports every close request.",
+      "keywords": [
+        "dialog",
+        "modal",
+        "confirm",
+        "alert",
+        "popup",
+        "overlay",
+        "prompt"
+      ],
+      "props": [
+        {
+          "name": "isOpen",
+          "type": "boolean",
+          "required": true,
+          "description": "Whether it is shown. A closed dialog renders nothing, so local state inside starts over."
+        },
+        {
+          "name": "onOpenChange",
+          "type": "(isOpen: boolean) => void",
+          "required": true,
+          "description": "Called with `false` on a close request: Escape, back, the backdrop per `dismissOn`, the close button."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The title, and the dialog's accessible name."
+        },
+        {
+          "name": "isLabelHidden",
+          "type": "boolean",
+          "required": false,
+          "description": "Keeps `label` as the name without drawing it as a title.",
+          "default": "false"
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "description": "One or two sentences under the title, read as the dialog's description."
+        },
+        {
+          "name": "isAlert",
+          "type": "boolean",
+          "required": false,
+          "description": "Interrupts with something to confirm or acknowledge; screen readers announce it as an alert dialog. Pair it with `dismissOn=\"closeRequest\"` or `\"none\"`.",
+          "default": "false"
+        },
+        {
+          "name": "children",
+          "type": "Child",
+          "required": false,
+          "description": "The body; it scrolls when the panel reaches its maximum height."
+        },
+        {
+          "name": "actions",
+          "type": "Child",
+          "required": false,
+          "description": "The footer, typically Buttons, the main action last."
+        },
+        {
+          "name": "closeLabel",
+          "type": "string",
+          "required": false,
+          "description": "Shows a close button in the header, named by this text."
+        },
+        {
+          "name": "dismissOn",
+          "type": "DialogDismissOn",
+          "required": false,
+          "description": "Which requests close it: `any` adds a backdrop tap to `closeRequest` (Escape, back); `none` leaves closing to your code, for a step that must finish.",
+          "default": "'any'"
+        },
+        {
+          "name": "size",
+          "type": "DialogSize",
+          "required": false,
+          "description": "Maximum width: 360, 480 or 640.",
+          "default": "'md'"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": "Classes for the panel."
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "parts": {
+        "panel": "dialog",
+        "header": "view",
+        "title": "text",
+        "close": "button",
+        "closeIcon": "vector",
+        "description": "text",
+        "body": "scroll",
+        "footer": "view"
+      },
+      "accessibility": {
+        "pattern": "dialog",
+        "name": "label",
+        "description": [
+          "description"
+        ],
+        "states": [
+          {
+            "state": "modal",
+            "from": "isOpen; announced as an alert dialog with isAlert"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Escape",
+            "effect": "onOpenChange(false), unless dismissOn is none"
+          }
+        ],
+        "contrast": [
+          {
+            "what": "title",
+            "pair": [
+              "text",
+              "surface-raised"
+            ],
+            "minimum": "4.5:1",
+            "proven": true
+          },
+          {
+            "what": "description",
+            "pair": [
+              "text-muted",
+              "surface-raised"
+            ],
+            "minimum": "4.5:1",
+            "proven": false
+          }
+        ],
+        "notes": [
+          "Opened from a hardware keyboard, focus moves to the first control and returns to the opener on close; opened by touch, focus stays put.",
+          "Android back and the screen reader dismiss gesture are close requests, like Escape.",
+          "The close button is 32 px; it is below the 44 pt touch minimum until hit slop exists, so always offer an action button too."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Confirm",
+          "title": "Confirm a destructive action, as an alert dialog",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Dialog } from '@liulidesign/core/Dialog';\n\n/** A confirmation that interrupts: Escape and back cancel, a backdrop tap does not; the destructive action is last. */\nexport function Confirm() {\n  const open = useLocal('open', false);\n  const deleted = useLocal('deleted', false);\n  return (\n    <view className=\"gap-2\">\n      <Button label=\"Delete note\" variant=\"destructive\" width=\"content\" onClick={() => open.set(true)} data-testid=\"open\" />\n      <text role=\"status\" data-testid=\"outcome\" className=\"text-sm text-muted\">{deleted.value ? 'Deleted' : 'Not deleted'}</text>\n      <Dialog\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Delete this note?\"\n        description=\"It leaves every device you are signed in on.\"\n        size=\"sm\"\n        isAlert\n        dismissOn=\"closeRequest\"\n        data-testid=\"dialog\"\n        actions={\n          <>\n            <Button label=\"Cancel\" onClick={() => open.set(false)} data-testid=\"cancel\" />\n            <Button label=\"Delete\" variant=\"destructive\" onClick={() => { deleted.set(true); open.set(false); }} data-testid=\"confirm\" />\n          </>\n        }\n      />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Form",
+          "title": "A short form",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { TextInput } from '@liulidesign/core/TextInput';\nimport { Dialog } from '@liulidesign/core/Dialog';\n\n/**\n * A short form. The draft lives outside the dialog, since closing discards the dialog's own state.\n * Only Escape and back cancel, so a stray backdrop tap does not lose the typing.\n */\nexport function Form() {\n  const open = useLocal('open', false);\n  const name = useLocal('name', '');\n  return (\n    <view className=\"gap-2\">\n      <Button label=\"Rename\" width=\"content\" onClick={() => open.set(true)} data-testid=\"open\" />\n      <Dialog\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Rename notebook\"\n        closeLabel=\"Close\"\n        dismissOn=\"closeRequest\"\n        data-testid=\"dialog\"\n        actions={<Button label=\"Save\" variant=\"primary\" isDisabled={name.value.trim() === ''} onClick={() => open.set(false)} data-testid=\"save\" />}\n      >\n        <TextInput bind={name} label=\"Name\" hasAutoFocus enterKeyHint=\"done\" onSubmit={() => open.set(false)} data-testid=\"name\" />\n      </Dialog>\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "A theme-wide motion token for the enter and exit timing.",
+          "needs": "duration and easing tokens in the theme pack",
+          "today": "duration-200 ease-out in the recipe."
+        },
+        {
+          "missing": "Muted description text proven against the raised surface.",
+          "needs": "a text-muted on surface-raised contrast pair in the theme pack",
+          "today": "The pair is not checked by the build."
+        }
+      ],
+      "related": [
+        "Button",
+        "DropdownMenu"
+      ]
+    },
+    {
+      "name": "DropdownMenu",
+      "import": "@liulidesign/core/DropdownMenu",
+      "exports": [
+        "DropdownMenu",
+        "DropdownMenuItem",
+        "DropdownMenuDivider"
+      ],
+      "category": "action",
+      "status": "lab",
+      "summary": "Button that opens a short menu of actions",
+      "description": "DropdownMenu groups a few related actions behind one button: sort options, a \"more\" menu on a row, account actions. Its children are DropdownMenuItems and DropdownMenuDividers; choosing an item runs its onClick and closes the menu.",
+      "keywords": [
+        "dropdown",
+        "menu",
+        "more",
+        "overflow",
+        "kebab",
+        "actions",
+        "popover",
+        "context"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The trigger's text, the trigger's accessible name and the menu's accessible name."
+        },
+        {
+          "name": "isLabelHidden",
+          "type": "boolean",
+          "required": false,
+          "description": "Draws only `icon` on a square trigger; `label` stays the name.",
+          "default": "false"
+        },
+        {
+          "name": "icon",
+          "type": "Child",
+          "required": false,
+          "description": "An icon on the trigger, before the label."
+        },
+        {
+          "name": "hasChevron",
+          "type": "boolean",
+          "required": false,
+          "description": "A down chevron after the label. Defaults to shown unless the label is hidden."
+        },
+        {
+          "name": "variant",
+          "type": "ButtonVariant",
+          "required": false,
+          "description": "The trigger's look, from Button.",
+          "default": "'secondary'"
+        },
+        {
+          "name": "size",
+          "type": "ButtonSize",
+          "required": false,
+          "description": "The trigger's and the items' height.",
+          "default": "'md'"
+        },
+        {
+          "name": "children",
+          "type": "Child",
+          "required": true,
+          "description": "`DropdownMenuItem`s and `DropdownMenuDivider`s, in order."
+        },
+        {
+          "name": "isOpen",
+          "type": "boolean",
+          "required": false,
+          "description": "Controls whether the menu is open; leave it out to let the trigger own it. Opened from code, the menu is placed by its classes, not under the trigger."
+        },
+        {
+          "name": "onOpenChange",
+          "type": "((isOpen: boolean) => void)",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "placement",
+          "type": "DropdownMenuPlacement",
+          "required": false,
+          "description": "Which side of the trigger the menu opens on.",
+          "default": "'bottom'"
+        },
+        {
+          "name": "alignment",
+          "type": "DropdownMenuAlignment",
+          "required": false,
+          "description": "Which edge of the trigger the menu lines up with.",
+          "default": "'start'"
+        },
+        {
+          "name": "isDisabled",
+          "type": "boolean",
+          "required": false,
+          "description": "",
+          "default": "false"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": "Classes for the trigger."
+        },
+        {
+          "name": "menuClassName",
+          "type": "string",
+          "required": false,
+          "description": "Classes for the menu panel."
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the trigger."
+        }
+      ],
+      "parts": {
+        "chevron": "vector",
+        "menu": "view",
+        "item": "button",
+        "itemIcon": "view",
+        "itemText": "view",
+        "itemLabel": "text",
+        "itemDescription": "text",
+        "divider": "view"
+      },
+      "accessibility": {
+        "pattern": "menuButton",
+        "name": "label",
+        "description": [],
+        "states": [
+          {
+            "state": "expanded",
+            "from": "the trigger, while the menu is open (set by the View)"
+          },
+          {
+            "state": "disabled",
+            "from": "isDisabled; an item's isDisabled"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Enter, Space on the trigger",
+            "effect": "opens the menu on its first item"
+          },
+          {
+            "keys": "Up, Down",
+            "effect": "moves between items, wrapping"
+          },
+          {
+            "keys": "Home, End",
+            "effect": "first and last item"
+          },
+          {
+            "keys": "a letter",
+            "effect": "the next item whose name starts with it"
+          },
+          {
+            "keys": "Escape",
+            "effect": "closes and returns focus to the trigger"
+          }
+        ],
+        "target": {
+          "sm": 32,
+          "md": 40,
+          "lg": 48
+        },
+        "contrast": [
+          {
+            "what": "item text",
+            "pair": [
+              "text",
+              "surface-raised"
+            ],
+            "minimum": "4.5:1",
+            "proven": true
+          },
+          {
+            "what": "destructive icon",
+            "pair": [
+              "danger",
+              "surface-raised"
+            ],
+            "minimum": "3:1",
+            "proven": false
+          }
+        ],
+        "notes": [
+          "An item is named by its label and then its description, both inside the item.",
+          "Sizes sm (32) and md (40) are below the 44 pt touch minimum; on touch layouts prefer lg until hit slop lets the press area extend past the paint.",
+          "A tap outside, Escape and back close the menu; that tap reaches nothing else."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Basic",
+          "title": "Labelled trigger",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\n\n/** A labelled trigger; the menu lines up with its start edge. */\nexport function Basic() {\n  const order = useLocal('order', 'Name');\n  return (\n    <view className=\"flex-row items-center gap-3\">\n      <DropdownMenu label=\"Sort by\" data-testid=\"sort\">\n        <DropdownMenuItem label=\"Name\" onClick={() => order.set('Name')} data-testid=\"sort-name\" />\n        <DropdownMenuItem label=\"Last updated\" description=\"Newest first\" onClick={() => order.set('Last updated')} data-testid=\"sort-updated\" />\n        <DropdownMenuItem label=\"Size\" onClick={() => order.set('Size')} />\n      </DropdownMenu>\n      <text data-testid=\"order\" className=\"text-sm text-muted\">{order.value}</text>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "More",
+          "title": "Icon-only \"more\" menu on a row",
+          "source": "import { useLocal, type VectorPath } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuDivider, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\n\nconst dots: VectorPath[] = [{ d: 'M5 12h.01M12 12h.01M19 12h.01', fill: 'none', stroke: 'currentColor', strokeWidth: 3, strokeLinecap: 'round' }];\nconst trash: VectorPath[] = [{ d: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinejoin: 'round' }];\n\n/** An icon-only \"more\" menu at the end of a row, aligned to the row's end edge. */\nexport function More() {\n  const removed = useLocal('removed', false);\n  return (\n    <view className=\"flex-row items-center gap-3\">\n      <text className=\"grow basis-0 text-base font-medium\">{removed.value ? 'Removed' : 'Groceries'}</text>\n      <DropdownMenu\n        label=\"More actions\"\n        isLabelHidden\n        icon={<vector aria-hidden paths={dots} viewBox={[0, 0, 24, 24]} className=\"size-5\" />}\n        variant=\"ghost\"\n        alignment=\"end\"\n        data-testid=\"more\"\n      >\n        <DropdownMenuItem label=\"Rename\" onClick={() => {}} />\n        <DropdownMenuItem label=\"Share\" onClick={() => {}} isDisabled />\n        <DropdownMenuDivider />\n        <DropdownMenuItem\n          label=\"Delete\"\n          variant=\"destructive\"\n          icon={<vector aria-hidden paths={trash} viewBox={[0, 0, 24, 24]} className=\"size-4\" />}\n          onClick={() => removed.set(true)}\n          data-testid=\"delete\"\n        />\n      </DropdownMenu>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "InList",
+          "title": "A menu on every row",
+          "source": "import { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\n\n/** Rows that each carry a menu: every menu gets its own id, so no row needs one. */\nexport function InList() {\n  const rows = ['Inbox', 'Archive'];\n  return (\n    <view className=\"gap-2\">\n      {rows.map(row => (\n        <view key={row} className=\"flex-row items-center gap-3\">\n          <text className=\"grow basis-0 text-base\">{row}</text>\n          <DropdownMenu label={`${row} actions`} size=\"sm\" data-testid={`menu-${row}`}>\n            <DropdownMenuItem label=\"Open\" onClick={() => {}} />\n          </DropdownMenu>\n        </view>\n      ))}\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "Checkbox and radio items.",
+          "needs": "checkable menu item roles",
+          "today": "Plain items; show the current choice in the trigger label instead."
+        },
+        {
+          "missing": "Submenus and side placement.",
+          "needs": "inline-start and inline-end position areas, and hover or focus opening",
+          "today": "One level; top or bottom only."
+        },
+        {
+          "missing": "Opening by long press or secondary click.",
+          "needs": "a long-press and secondary-click invoker",
+          "today": "Tap on the trigger only."
+        },
+        {
+          "missing": "Anchoring when opened from code with isOpen.",
+          "needs": "a popover anchor that does not depend on which control opened it",
+          "today": "Opened from code it is placed by its classes; the trigger is the normal way in."
+        },
+        {
+          "missing": "A destructive item in danger-coloured text.",
+          "needs": "a text-grade danger role (4.5:1 on surface-raised)",
+          "today": "The icon carries the danger colour; the text stays in the text role."
+        }
+      ],
+      "related": [
+        "Button"
+      ]
+    },
+    {
+      "name": "Field",
+      "import": "@liulidesign/core/Field",
+      "exports": [
+        "Field"
+      ],
+      "category": "form",
+      "status": "lab",
+      "summary": "Label, help text and validation status around one form control",
+      "description": "Field lays out the parts every form control shares: a label, the control, help text and a status message. Liuli form controls use it inside; wrap a raw primitive in it only when Liuli has no component for that control yet.",
+      "keywords": [
+        "field",
+        "form",
+        "label",
+        "help text",
+        "error",
+        "validation",
+        "required"
+      ],
+      "props": [
+        {
+          "name": "children",
+          "type": "(control: FieldControl) => Child",
+          "required": true,
+          "description": "Renders the control from the props Field gives it; pass each one on to the control element."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The visible label and the control's accessible name."
+        },
+        {
+          "name": "isLabelHidden",
+          "type": "boolean",
+          "required": false,
+          "description": "Hides the visible label; the control keeps it as its name.",
+          "default": "false"
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "description": "Help text under the control, read as the control's description."
+        },
+        {
+          "name": "status",
+          "type": "FieldStatus",
+          "required": false,
+          "description": "An `error` status marks the control invalid; its message is read as the control's description."
+        },
+        {
+          "name": "isRequired",
+          "type": "boolean",
+          "required": false,
+          "description": "Marks the label with an asterisk and the control as required. Validation is the app's.",
+          "default": "false"
+        },
+        {
+          "name": "isDisabled",
+          "type": "boolean",
+          "required": false,
+          "description": "",
+          "default": "false"
+        },
+        {
+          "name": "disabledMessage",
+          "type": "string",
+          "required": false,
+          "description": "Shown in place of `description` while disabled."
+        },
+        {
+          "name": "size",
+          "type": "FieldSize",
+          "required": false,
+          "description": "",
+          "default": "'md'"
+        }
+      ],
+      "parts": {
+        "root": "view",
+        "label": "text",
+        "required": "span",
+        "description": "text",
+        "status": "view",
+        "statusIcon": "vector",
+        "statusText": "text"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [
+          "description, or disabledMessage while disabled",
+          "the status message"
+        ],
+        "states": [
+          {
+            "state": "disabled",
+            "from": "isDisabled"
+          },
+          {
+            "state": "invalid",
+            "from": "status.type === 'error'"
+          },
+          {
+            "state": "required",
+            "from": "isRequired"
+          }
+        ],
+        "keyboard": [],
+        "contrast": [
+          {
+            "what": "label",
+            "pair": [
+              "text",
+              "canvas"
+            ],
+            "minimum": "4.5:1",
+            "proven": true
+          },
+          {
+            "what": "help text",
+            "pair": [
+              "text-muted",
+              "canvas"
+            ],
+            "minimum": "4.5:1",
+            "proven": true
+          },
+          {
+            "what": "status icon",
+            "pair": [
+              "danger",
+              "canvas"
+            ],
+            "minimum": "3:1",
+            "proven": false
+          }
+        ],
+        "notes": [
+          "Field hands its control the name, the description ids and the states; pass each one on to the control element.",
+          "The status region also announces a message politely when it appears or changes."
+        ]
+      },
+      "examples": [
+        {
+          "name": "WrappedSelect",
+          "title": "Wrapping a primitive select",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Field } from '@liulidesign/core/Field';\n\nconst periods = [\n  { value: 'monthly', label: 'Monthly' },\n  { value: 'yearly', label: 'Yearly' },\n] as const;\n\n/** A raw select takes Field's label, help and status until Liuli has its own. */\nexport function WrappedSelect() {\n  const period = useLocal('period', '');\n  return (\n    <Field\n      label=\"Billing period\"\n      description=\"You can change it later.\"\n      status={period.value ? undefined : { type: 'warning', message: 'Choose a period to see the price.' }}\n      isRequired\n      data-testid=\"field\"\n    >\n      {control => (\n        <select\n          bind={period}\n          aria-label={control['aria-label']}\n          aria-describedby={control['aria-describedby']}\n          aria-invalid={control['aria-invalid']}\n          aria-required={control['aria-required']}\n          disabled={control.disabled}\n          placeholder=\"Choose…\"\n          options={periods}\n          data-testid=\"period\"\n          className=\"min-h-control-md px-3 rounded-control border border-line-strong bg-surface text-sm text-text\"\n        />\n      )}\n    </Field>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "Validation when the user leaves a field.",
+          "needs": "focus and blur events on editors",
+          "today": "Validate on change or on submit."
+        }
+      ],
+      "related": [
+        "TextInput",
+        "CheckboxInput"
+      ]
+    },
+    {
+      "name": "TextInput",
+      "import": "@liulidesign/core/TextInput",
+      "exports": [
+        "TextInput"
+      ],
+      "category": "form",
+      "status": "lab",
+      "summary": "Single-line text field with label, help text, status and an optional clear button",
+      "description": "TextInput is a labelled one-line editor for names, emails, codes, amounts and searches. Bind it to a `useLocal` cell for View-local drafts, or pass `value` and `onChange` when the app owns the text.",
+      "keywords": [
+        "text input",
+        "text field",
+        "input",
+        "textbox",
+        "email",
+        "password",
+        "search",
+        "form"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The visible label and the control's accessible name."
+        },
+        {
+          "name": "isLabelHidden",
+          "type": "boolean",
+          "required": false,
+          "description": "Hides the visible label; the control keeps it as its name.",
+          "default": "false"
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "description": "Help text under the control, read as the control's description."
+        },
+        {
+          "name": "status",
+          "type": "FieldStatus",
+          "required": false,
+          "description": "An `error` status marks the control invalid; its message is read as the control's description."
+        },
+        {
+          "name": "isRequired",
+          "type": "boolean",
+          "required": false,
+          "description": "Marks the label with an asterisk and the control as required. Validation is the app's.",
+          "default": "false"
+        },
+        {
+          "name": "isDisabled",
+          "type": "boolean",
+          "required": false,
+          "description": "",
+          "default": "false"
+        },
+        {
+          "name": "disabledMessage",
+          "type": "string",
+          "required": false,
+          "description": "Shown in place of `description` while disabled."
+        },
+        {
+          "name": "size",
+          "type": "FieldSize",
+          "required": false,
+          "description": "",
+          "default": "'md'"
+        },
+        {
+          "name": "bind",
+          "type": "Local<string>",
+          "required": false,
+          "description": "A View-local cell the control reads and writes; use it or `value` with `onChange`."
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "required": false,
+          "description": "The app's value; pass `onChange` with it."
+        },
+        {
+          "name": "onChange",
+          "type": "((value: string) => void)",
+          "required": false,
+          "description": "Runs with the new value; the app passes it back as `value`."
+        },
+        {
+          "name": "hasClear",
+          "type": "boolean",
+          "required": false,
+          "description": "A button that empties the text, shown while there is text.",
+          "default": "false"
+        },
+        {
+          "name": "clearLabel",
+          "type": "string",
+          "required": false,
+          "description": "The clear button's accessible name; required with `hasClear`."
+        },
+        {
+          "name": "placeholder",
+          "type": "string",
+          "required": false,
+          "description": "A hint shown while empty; never a substitute for `label`."
+        },
+        {
+          "name": "type",
+          "type": "\"number\" | \"text\" | \"password\" | \"email\" | \"tel\" | \"search\"",
+          "required": false,
+          "description": "",
+          "default": "'text'"
+        },
+        {
+          "name": "inputMode",
+          "type": "\"text\" | \"email\" | \"tel\" | \"numeric\" | \"decimal\"",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "autoComplete",
+          "type": "AutoComplete",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "enterKeyHint",
+          "type": "\"search\" | \"enter\" | \"done\" | \"go\" | \"next\" | \"previous\" | \"send\"",
+          "required": false,
+          "description": "The label of the keyboard's action key; `onSubmit` runs on it."
+        },
+        {
+          "name": "autoCapitalize",
+          "type": "\"none\" | \"sentences\" | \"words\" | \"characters\"",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "hasSpellCheck",
+          "type": "boolean",
+          "required": false,
+          "description": "Unset follows the platform."
+        },
+        {
+          "name": "hasAutoFocus",
+          "type": "boolean",
+          "required": false,
+          "description": "Focus it when it first appears.",
+          "default": "false"
+        },
+        {
+          "name": "maxLength",
+          "type": "number",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "startIcon",
+          "type": "Child",
+          "required": false,
+          "description": "An icon inside the box, before the text."
+        },
+        {
+          "name": "onSubmit",
+          "type": "((value: string) => void)",
+          "required": false,
+          "description": "The keyboard's action key, or Enter."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": "Classes for the field column."
+        },
+        {
+          "name": "controlClassName",
+          "type": "string",
+          "required": false,
+          "description": "Classes for the bordered box."
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the editor."
+        }
+      ],
+      "parts": {
+        "box": "view",
+        "icon": "view",
+        "input": "input",
+        "clear": "button",
+        "clearIcon": "vector"
+      },
+      "accessibility": {
+        "pattern": "textbox",
+        "name": "label",
+        "description": [
+          "description, or disabledMessage while disabled",
+          "the status message"
+        ],
+        "states": [
+          {
+            "state": "disabled",
+            "from": "isDisabled"
+          },
+          {
+            "state": "invalid",
+            "from": "status.type === 'error'"
+          },
+          {
+            "state": "required",
+            "from": "isRequired"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "the keyboard action key, Enter",
+            "effect": "runs onSubmit"
+          }
+        ],
+        "target": {
+          "sm": 32,
+          "md": 40,
+          "lg": 48
+        },
+        "contrast": [
+          {
+            "what": "text",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1",
+            "proven": true
+          },
+          {
+            "what": "placeholder",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "4.5:1",
+            "proven": true
+          },
+          {
+            "what": "box boundary",
+            "pair": [
+              "line-strong",
+              "surface"
+            ],
+            "minimum": "3:1",
+            "proven": true
+          },
+          {
+            "what": "focus boundary",
+            "pair": [
+              "focus",
+              "surface"
+            ],
+            "minimum": "3:1",
+            "proven": true
+          }
+        ],
+        "notes": [
+          "The clear button is a separate control named by `clearLabel`.",
+          "Sizes sm (32) and md (40) are below the 44 pt touch minimum; on touch layouts prefer lg until hit slop lets the press area extend past the paint."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Bound",
+          "title": "Bound to local state, with validation",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { TextInput } from '@liulidesign/core/TextInput';\n\n/** Bound to a View-local cell: no Logic round trip per keystroke. */\nexport function Bound() {\n  const email = useLocal('email', '');\n  const invalid = email.value !== '' && !email.value.includes('@');\n  return (\n    <TextInput\n      bind={email}\n      label=\"Email\"\n      placeholder=\"you@example.com\"\n      type=\"email\"\n      autoComplete=\"email\"\n      autoCapitalize=\"none\"\n      enterKeyHint=\"next\"\n      description=\"We send the receipt here.\"\n      status={invalid ? { type: 'error', message: 'Add the part after @, such as example.com.' } : undefined}\n      isRequired\n      data-testid=\"email\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Search",
+          "title": "Search with a clear button",
+          "source": "import { useLocal, type VectorPath } from '@lingxia/view';\nimport { TextInput } from '@liulidesign/core/TextInput';\n\nconst magnifier: VectorPath[] = [\n  { d: 'M10.5 4a6.5 6.5 0 1 0 0 13a6.5 6.5 0 1 0 0-13z', fill: 'none', stroke: 'currentColor', strokeWidth: 2 },\n  { d: 'M15.5 15.5L20 20', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' },\n];\n\n/** Controlled (`value` + `onChange`), with a leading icon and a clear button the app names. */\nexport function Search() {\n  const query = useLocal('query', '');\n  return (\n    <TextInput\n      value={query.value}\n      onChange={next => query.set(next)}\n      label=\"Search notes\"\n      isLabelHidden\n      placeholder=\"Search notes\"\n      type=\"search\"\n      enterKeyHint=\"search\"\n      startIcon={<vector aria-hidden paths={magnifier} viewBox={[0, 0, 24, 24]} className=\"size-4\" />}\n      hasClear\n      clearLabel=\"Clear search\"\n      data-testid=\"search\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Disabled",
+          "title": "Disabled, with the reason",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { TextInput } from '@liulidesign/core/TextInput';\n\nexport function Disabled() {\n  const code = useLocal('code', 'LX-2041');\n  return <TextInput bind={code} label=\"Invite code\" isDisabled disabledMessage=\"Codes are fixed once sent.\" data-testid=\"code\" />;\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "Validation on leaving the field; dirty tracking.",
+          "needs": "focus and blur events on editors",
+          "today": "Validate as the value changes, or on submit."
+        },
+        {
+          "missing": "Read-only text that can still be selected and copied.",
+          "needs": "readOnly on editors",
+          "today": "Show the value as selectable text instead."
+        },
+        {
+          "missing": "Moving focus to the next field from code when the app owns the value.",
+          "needs": "a focus handle for controlled editors",
+          "today": "Bound fields chain with enterKeyHint=\"next\" or cell.focus()."
+        }
+      ],
+      "related": [
+        "Field"
+      ]
+    }
+  ]
+}

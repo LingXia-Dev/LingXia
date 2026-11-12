@@ -47,7 +47,8 @@ export function render() {
 | `@liulidesign/core/DropdownMenu` | DropdownMenu, DropdownMenuItem, DropdownMenuDivider |
 
 Each also exports its class recipe at `@liulidesign/core/<Name>/recipe`, for styling a raw primitive
-to match.
+to match. The full reference for each component (props, anatomy, accessibility, examples) is in
+`docs/<Name>.md`; `catalog.json` holds the same for agents.
 
 ## Conventions
 
@@ -66,6 +67,7 @@ the gallery shows and the tests render) and `X.test.mjs`.
 
 ```sh
 npm test            # unit tests: each example built by the View compiler and rendered in Node
-npm run check       # boundary rules (imports, engine globals, class assembly, layout tags, files)
+npm run check       # boundary rules, and generated files up to date
+npm run generate    # rewrite docs/, catalog.json and the gallery's component pages from the doc files
 npm run typecheck
 ```

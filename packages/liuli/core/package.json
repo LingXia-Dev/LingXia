@@ -25,7 +25,8 @@
   },
   "scripts": {
     "test": "node --test \"src/**/*.test.mjs\"",
-    "check": "node scripts/check.mjs",
+    "check": "node scripts/check.mjs && node scripts/generate.mjs --check",
+    "generate": "node scripts/generate.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "peerDependencies": {

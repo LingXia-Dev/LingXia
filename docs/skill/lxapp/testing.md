@@ -389,8 +389,9 @@ Pure Logic helpers are plain TypeScript: import them into a Node test runner
 app running.
 
 A GPU View component is unit-tested in Node with `@lingxia/view/testing`: `render(page, view)`
-compiles a page and runs it on the real View runtime. Query by test id, text or the props you wrote;
-roles, names, layout and gestures need a device, so check those with `lxdev test`.
+compiles a page and runs it on the real View runtime, with a phone `env` you can override. Query by
+test id, text or the props you wrote; every element event has a screen method (`press`, `type`,
+`toggle`, `select`, `slide`, `escape`, …). Roles, names and layout need a device: use `lxdev test`.
 
 ```js
 import { render, textOf } from '@lingxia/view/testing';

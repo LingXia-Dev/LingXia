@@ -148,3 +148,15 @@ test("a dev build lists a linked package's sources and token file as page inputs
     }, { install });
   }
 });
+
+test("a dependency's build problems name its file by package, linked or installed", async () => {
+  const files = { ...kit, '../kit/src/card.tsx': 'export function Card() { return <text className="text-sm bg-acent">x</text>; }\n',
+    'page.tsx': "import { Card } from 'view-kit/card';\nexport function render() { return <view><Card /></view>; }\n" };
+  for (const install of ['link', 'copy']) {
+    await project(files, async (root, build) => {
+      const message = (await build().catch(error => error)).message;
+      assert.match(message, /^view-kit\/src\/card\.tsx:1:\d+: UI_CLASS_UNKNOWN: bg-acent/m, install);
+      assert.doesNotMatch(message, /\/(tmp|var|private)\//, install);
+    }, { install });
+  }
+});

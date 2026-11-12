@@ -7,8 +7,19 @@ import { hasMessage, StatusRegion } from '../internal/StatusRegion';
 import { checkboxInputRecipe as r } from './CheckboxInput.recipe';
 
 export type CheckboxInputBinding =
-  | { bind: Local<boolean>; value?: never; onChange?: never }
-  | { bind?: never; value: boolean; onChange: (value: boolean) => void };
+  | {
+      /** A View-local cell the control reads and writes; use it or `value` with `onChange`. */
+      bind: Local<boolean>;
+      value?: never;
+      onChange?: never;
+    }
+  | {
+      bind?: never;
+      /** The app's value; pass `onChange` with it. */
+      value: boolean;
+      /** Runs with the new value; the app passes it back as `value`. */
+      onChange: (value: boolean) => void;
+    };
 
 export type CheckboxInputProps = FieldOwnProps & CheckboxInputBinding & {
   className?: string;

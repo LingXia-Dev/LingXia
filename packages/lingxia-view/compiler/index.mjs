@@ -308,6 +308,12 @@ function analyse(path, contents, label, id, loader, literalColors) {
   return analysed;
 }
 
+// Problems name a file as runtime errors do: the lxapp's by path, another package's by its name.
+function packageRelative(root, line) {
+  const match = /^(.+?\.(?:[cm]?[jt]sx?|css)):(\d+)/.exec(line);
+  return match && isAbsolute(match[1]) ? sourceLabel(root, match[1]) + line.slice(match[1].length) : line;
+}
+
 /**
  * The `@theme` tokens of each package a page bundles that declares them (`"lingxia": { "tokens": … }`),
  * in package-name order. A package adds scale and motion tokens and `@utility` classes; colours are
@@ -449,18 +455,18 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
       }
     }
     if (problems.length) {
-      const lines = report(problems.map(line => line.startsWith(root + sep) ? line.slice(root.length + 1) : line), rel);
+      const lines = report(problems.map(line => packageRelative(root, line)), rel);
       throw Error(`${page}: ${lines.count} authoring problem${lines.count === 1 ? '' : 's'}\n${lines.text}`);
     }
     const perf = await perfWarnings(root, sourceFiles, checker, rulesByName);
     if (perf.length) {
-      const lines = report(perf.map(line => line.startsWith(root + sep) ? line.slice(root.length + 1) : line), rel);
+      const lines = report(perf.map(line => packageRelative(root, line)), rel);
       warnings.push(...lines.text.split('\n'));
       console.warn(`${page}: ${lines.count} performance warning${lines.count === 1 ? '' : 's'}\n${lines.text}`);
     }
     const statics = staticStyleWarnings(sourceFiles.filter(file => !file.fileName.includes(`${sep}node_modules${sep}`)));
     if (statics.length) {
-      const lines = report(statics.map(line => line.startsWith(root + sep) ? line.slice(root.length + 1) : line), rel);
+      const lines = report(statics.map(line => packageRelative(root, line)), rel);
       warnings.push(...lines.text.split('\n'));
       console.warn(`${page}: ${lines.count} style warning${lines.count === 1 ? '' : 's'}\n${lines.text}`);
     }
