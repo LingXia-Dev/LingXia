@@ -13,7 +13,11 @@
       "types": "./src/testing.d.ts",
       "default": "./src/testing.js"
     },
-    "./compiler": "./compiler/index.mjs"
+    "./compiler": "./compiler/index.mjs",
+    "./theme": {
+      "types": "./src/generated/palette.d.ts",
+      "default": "./src/generated/palette.js"
+    }
   },
   "scripts": {
     "test": "node --test tests/*.test.mjs"

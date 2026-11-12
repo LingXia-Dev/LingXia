@@ -204,7 +204,7 @@ fn media_roles_ignore_appearance_and_an_app_pack_may_override_them() {
         assert_eq!(light.color(role), night.color(role), "{}", role.name());
     }
     let brand: Pack = serde_json::from_str(
-        r##"{"name":"brand","version":1,"appearance":{"light":{"media":"#101820cc","on-media":"#fff8e7"},"dark":{}}}"##,
+        r##"{"name":"brand","version":1,"accent":{"seed":"#365cdd","derive":true},"appearance":{"light":{"media":"#101820cc","on-media":"#fff8e7"},"dark":{}}}"##,
     )
     .unwrap();
     let brand = complete(brand);
@@ -214,5 +214,40 @@ fn media_roles_ignore_appearance_and_an_app_pack_may_override_them() {
     assert_eq!(
         resolve(&brand, &dark).unwrap().color(Role::OnMedia),
         hex("#ffffff")
+    );
+}
+
+#[test]
+fn the_resolved_default_palette_is_recorded_for_javascript() {
+    // contracts/view/palette.json feeds @lingxia/view/theme; re-record with LINGXIA_UPDATE_PALETTE=1.
+    let pack = default_pack();
+    let appearances =
+        [("light", Appearance::Light), ("dark", Appearance::Dark)].map(|(name, appearance)| {
+            let prefs = Prefs {
+                appearance,
+                ..Prefs::default()
+            };
+            let theme = resolve(&pack, &prefs).unwrap();
+            let roles: Vec<String> = Role::ALL
+                .iter()
+                .map(|role| {
+                    let [r, g, b, a] = theme.color(*role).0;
+                    format!("    \"{}\": \"#{r:02x}{g:02x}{b:02x}{a:02x}\"", role.name())
+                })
+                .collect();
+            format!("  \"{name}\": {{\n{}\n  }}", roles.join(",\n"))
+        });
+    let recorded = format!("{{\n{}\n}}\n", appearances.join(",\n"));
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../contracts/view/palette.json"
+    );
+    if std::env::var_os("LINGXIA_UPDATE_PALETTE").is_some() {
+        std::fs::write(path, &recorded).unwrap();
+    }
+    let committed = std::fs::read_to_string(path).unwrap_or_default();
+    assert!(
+        committed.replace("\r\n", "\n") == recorded,
+        "contracts/view/palette.json is stale; re-record with LINGXIA_UPDATE_PALETTE=1 cargo test -p lingxia-theme, then run node contracts/view/generate.mjs"
     );
 }

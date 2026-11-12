@@ -211,7 +211,8 @@ Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:`
 
 Every colour is one of these roles, optionally with an alpha percent (`accent/12`). The utility drops a `text-`
 prefix (`text-muted`, not `text-text-muted`). The theme pack resolves each role per appearance and proves the
-listed contrast minimums.
+listed contrast minimums. `defaultPalette` from `@lingxia/view/theme` holds the default pack resolved for light and
+dark, derived accent roles included, for proving contrast in code.
 
 | Role | Minimum contrast | Use |
 | --- | --- | --- |

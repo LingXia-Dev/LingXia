@@ -108,7 +108,7 @@ function styles(schema) {
   out.push('## Colour roles', '',
     'Every colour is one of these roles, optionally with an alpha percent (`accent/12`). The utility drops a `text-`',
     'prefix (`text-muted`, not `text-text-muted`). The theme pack resolves each role per appearance and proves the',
-    'listed contrast minimums.', '',
+    'listed contrast minimums. `defaultPalette` from `@lingxia/view/theme` holds the default pack resolved for light and', 'dark, derived accent roles included, for proving contrast in code.', '',
     table(['Role', 'Minimum contrast', 'Use'], schema.roles.map(role => [code(role.name),
       Object.entries(role.on ?? {}).map(([background, ratio]) => `${ratio}:1 on ${code(background)}`).join(', '), role.doc])), '');
   return out.join('\n');
