@@ -2,7 +2,7 @@
 
 # ProgressBar
 
-How much of a task is done, or a spinner while the amount is unknown. Status: lab.
+How much of a task is done, or a spinner while the amount is unknown. Status: preview.
 
 ```ts
 import { ProgressBar, Spinner } from '@liulidesign/core/ProgressBar';
@@ -57,7 +57,7 @@ import { ProgressBar } from '@liulidesign/core/ProgressBar';
 export function Compact() {
   return (
     <view className="gap-2">
-      <text className="text-sm font-medium text-text">Storage</text>
+      <text className="text-footnote font-medium text-text">Storage</text>
       <ProgressBar label="Storage used" isLabelHidden size="sm" value={72} valueLabel="7.2 of 10 GB" data-testid="storage" />
     </view>
   );

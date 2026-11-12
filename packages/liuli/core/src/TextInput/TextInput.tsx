@@ -32,7 +32,7 @@ export type TextInputClear =
 export type TextInputProps = FieldOwnProps & TextInputBinding & TextInputClear & {
   /** A hint shown while empty; never a substitute for `label`. */
   placeholder?: string;
-  /** @default 'text' */
+  /** `search` draws Liuli's magnifier, not the platform's, and defaults `enterKeyHint` to `search`. @default 'text' */
   type?: 'text' | 'password' | 'email' | 'number' | 'tel' | 'search';
   inputMode?: 'text' | 'numeric' | 'decimal' | 'tel' | 'email';
   autoComplete?: AutoComplete;
@@ -44,7 +44,7 @@ export type TextInputProps = FieldOwnProps & TextInputBinding & TextInputClear &
   /** Focus it when it first appears. @default false */
   hasAutoFocus?: boolean;
   maxLength?: number;
-  /** An icon inside the box, before the text. */
+  /** An icon inside the box, before the text; drawn 16 px in the muted colour. Replaces the search magnifier. */
   startIcon?: Child;
   /** The keyboard's action key, or Enter. */
   onSubmit?: (value: string) => void;
@@ -59,11 +59,17 @@ export type TextInputProps = FieldOwnProps & TextInputBinding & TextInputClear &
 /** A labelled one-line text editor. */
 export function TextInput(props: TextInputProps) {
   const {
-    label, isLabelHidden, description, status, isRequired, isDisabled = false, disabledMessage, size = 'md',
+    label, isLabelHidden, description, status, isRequired, hasRequiredMark, isDisabled = false, disabledMessage, size = 'md',
     placeholder, type, inputMode, autoComplete, enterKeyHint, autoCapitalize, hasSpellCheck, hasAutoFocus = false, maxLength,
     startIcon, onSubmit, className, controlClassName, 'data-testid': testId,
   } = props;
   const text = props.bind ? props.bind.value : props.value;
+  // The platform search field draws its own magnifier at its own size and colour, so search is a
+  // plain editor with Liuli's icon.
+  const isSearch = type === 'search';
+  const editorType = isSearch ? undefined : type;
+  const keyHint = enterKeyHint ?? (isSearch ? 'search' : undefined);
+  const leading = startIcon ?? (isSearch ? <vector aria-hidden paths={glyphs.search} viewBox={glyphBox} className={r.searchIcon.base} /> : undefined);
   const clear = () => (props.bind ? props.bind.set('') : props.onChange(''));
   const inputClass = cx(r.input.base, r.input.size[size]);
   return (
@@ -73,6 +79,7 @@ export function TextInput(props: TextInputProps) {
       description={description}
       status={status}
       isRequired={isRequired}
+      hasRequiredMark={hasRequiredMark}
       isDisabled={isDisabled}
       disabledMessage={disabledMessage}
       size={size}
@@ -80,7 +87,7 @@ export function TextInput(props: TextInputProps) {
     >
       {control => (
         <view className={cx(r.box.base, r.box.size[size], status && r.box.status[status.type], isDisabled && r.box.disabled, controlClassName)}>
-          {startIcon !== undefined && <view aria-hidden className={r.icon.base}>{startIcon}</view>}
+          {leading !== undefined && <view aria-hidden className={r.icon.base}>{leading}</view>}
           {props.bind ? (
             <input
               bind={props.bind}
@@ -90,10 +97,10 @@ export function TextInput(props: TextInputProps) {
               aria-required={control['aria-required']}
               data-testid={testId}
               placeholder={placeholder}
-              type={type}
+              type={editorType}
               inputMode={inputMode}
               autoComplete={autoComplete}
-              enterKeyHint={enterKeyHint}
+              enterKeyHint={keyHint}
               autoCapitalize={autoCapitalize}
               spellCheck={hasSpellCheck}
               autoFocus={hasAutoFocus}
@@ -112,10 +119,10 @@ export function TextInput(props: TextInputProps) {
               aria-required={control['aria-required']}
               data-testid={testId}
               placeholder={placeholder}
-              type={type}
+              type={editorType}
               inputMode={inputMode}
               autoComplete={autoComplete}
-              enterKeyHint={enterKeyHint}
+              enterKeyHint={keyHint}
               autoCapitalize={autoCapitalize}
               spellCheck={hasSpellCheck}
               autoFocus={hasAutoFocus}

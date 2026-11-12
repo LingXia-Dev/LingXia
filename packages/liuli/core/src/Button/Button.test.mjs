@@ -59,3 +59,36 @@ test('clickAction: busy with a spinner until the action settles, and presses mea
   assert.equal(screen.getByTestId('publish').props.stateBusy, undefined);
   assert.equal(screen.getByText('1').tag, 'text', 'the action ran once');
 });
+
+test('disabled: a neutral fill with muted text for every variant, never a faded accent', async () => {
+  const screen = await renderPage(`
+    import { Button } from '@liulidesign/core/Button';
+    export function render() {
+      return <page>
+        <Button label="A" variant="primary" isDisabled data-testid="primary" />
+        <Button label="B" variant="destructive" isDisabled data-testid="destructive" />
+        <Button label="C" isDisabled data-testid="secondary" />
+        <Button label="D" variant="primary" data-testid="enabled" />
+      </page>;
+    }
+  `);
+  for (const id of ['primary', 'destructive', 'secondary']) {
+    const button = screen.getByTestId(id);
+    assert.deepEqual([button.props.background, button.props.color, button.props.opacity], ['text/6', 'text-muted', undefined], id);
+  }
+  const enabled = screen.getByTestId('enabled');
+  assert.equal(enabled.props.borderTopWidth, screen.getByTestId('primary').props.borderTopWidth, 'same box size either way');
+});
+
+test('labels start-align when they wrap, and a content-width button in a column sits at the start', async () => {
+  const screen = await renderExample('Button/Button', 'DisabledWithReason');
+  assert.equal(screen.getByTestId('continue').children[0].props.textAlign, 'start');
+  assert.equal(screen.getByTestId('toggle-terms').props.alignSelf, 'start');
+});
+
+test('link: accent text at regular weight, no fill at rest', async () => {
+  const screen = await renderExample('Button/Button', 'VariantLink');
+  const link = screen.getByTestId('forgot');
+  assert.equal(link.props.color, 'accent');
+  assert.equal(screen.getByText('Forgot password?').props.fontWeight, 400);
+});

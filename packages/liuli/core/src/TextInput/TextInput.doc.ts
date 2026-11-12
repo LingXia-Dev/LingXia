@@ -2,8 +2,8 @@ import type { ComponentDoc } from '../doc';
 
 export const doc: ComponentDoc = {
   name: 'TextInput',
-  category: 'form',
-  status: 'lab',
+  category: 'inputs',
+  status: 'preview',
   summary: 'Single-line text field with label, help text, status and an optional clear button',
   description:
     'TextInput is a labelled one-line editor for names, emails, codes, amounts and searches. ' +
@@ -13,7 +13,7 @@ export const doc: ComponentDoc = {
   recipe: { map: 'textInputRecipe', parts: 'textInputParts' },
   anatomy: [
     { part: 'box', required: true, description: 'The bordered box; it takes the focus colour while the editor has focus and the status colour otherwise.' },
-    { part: 'icon', required: false, description: '`startIcon`, hidden from assistive tech.' },
+    { part: 'icon', required: false, description: '`startIcon`, or the magnifier when `type` is `search`; 16 px, muted, hidden from assistive tech.' },
     { part: 'input', required: true, description: 'The editor; it fills the box height so taps above and below the text land in it.' },
     { part: 'clear', required: false, description: 'Empties the text; shown while there is text and `hasClear` is on.' },
   ],
@@ -73,4 +73,25 @@ export const doc: ComponentDoc = {
     },
   ],
   related: ['Field'],
+  gallery: {
+    specimen: 'Specimen',
+    tagline: 'One line of text',
+    order: 1,
+    page: {
+      lead: 'Use a text input for one line the person types: a name, an email, a code or a search.',
+      hero: 'Bound',
+      variants: [
+        { name: 'Plain', title: 'Label and placeholder' },
+        { name: 'Search', title: 'Search, with a clear button' },
+      ],
+      sizes: [{ name: 'Sizes', title: 'Small, medium and large' }],
+      states: [
+        { name: 'StateEmpty', title: 'Empty' },
+        { name: 'StateFilled', title: 'Filled' },
+        { name: 'StateInvalid', title: 'Invalid' },
+        { name: 'StateDisabled', title: 'Disabled' },
+      ],
+      inContext: [{ name: 'Disabled', title: 'A fixed value, with the reason' }],
+    },
+  },
 };

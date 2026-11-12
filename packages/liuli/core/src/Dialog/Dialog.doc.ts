@@ -2,8 +2,8 @@ import type { ComponentDoc } from '../doc';
 
 export const doc: ComponentDoc = {
   name: 'Dialog',
-  category: 'overlay',
-  status: 'lab',
+  category: 'overlays',
+  status: 'preview',
   summary: 'Modal panel over the page for a decision or a short task',
   description:
     'Dialog interrupts the page to ask for a decision or a short piece of input, and keeps focus and assistive tech inside until it closes. ' +
@@ -64,4 +64,15 @@ export const doc: ComponentDoc = {
     },
   ],
   related: ['Button', 'DropdownMenu'],
+  gallery: {
+    specimen: 'Specimen',
+    tagline: 'A decision over the page',
+    order: 1,
+    page: {
+      lead: 'Use a dialog for a decision or a short task that must be finished before going on.',
+      hero: 'Confirm',
+      parts: { name: 'Parts', title: 'Title, then the body, then the actions with the main one last' },
+      variants: [{ name: 'Form', title: 'A short task: renaming' }],
+    },
+  },
 };

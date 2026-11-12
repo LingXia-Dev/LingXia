@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
-import { described, renderExample } from '../testing/harness.mjs';
+import { described, renderExample, renderPage } from '../testing/harness.mjs';
 
 test('Navigation: each row is one button named by its title, described by its second line, and runs once', async () => {
   const screen = await renderExample('Item/Item', 'Navigation');
@@ -11,8 +11,22 @@ test('Navigation: each row is one button named by its title, described by its se
   assert.deepEqual(described(screen, row), ['Edited yesterday']);
   assert.ok(row.children.some(node => node.tag === 'vector' && node.props.accessibilityHidden), 'a hidden chevron');
   assert.equal(row.props.minHeight, 48);
-  screen.press(row);
-  assert.equal(textOf(screen.getByTestId('opened')), 'Trip to the coast');
+});
+
+test('a pressable row runs its onClick once per press', async () => {
+  const screen = await renderPage(`
+    import { Item } from '@liulidesign/core/Item';
+    let presses = 0;
+    export function render() {
+      return <page>
+        <Item label="Wi-Fi" onClick={() => { presses++; }} data-testid="row" />
+        <text data-testid="presses">{String(presses)}</text>
+      </page>;
+    }
+  `);
+  screen.press(screen.getByTestId('row'));
+  screen.rerender({});
+  assert.equal(textOf(screen.getByTestId('presses')), '1');
 });
 
 test('Values: a plain row is not a button, and its end content stays readable', async () => {
@@ -40,4 +54,12 @@ test('Disabled: takes no press and is described by the reason instead of its sec
   assert.equal(row.props.onClick, undefined);
   assert.deepEqual(described(screen, row), ['Available once a change is saved']);
   assert.equal(screen.queryAll(node => textOf(node) === 'Download every change as a file').length, 0);
+});
+
+test('Destructive: the danger tone colours the label only', async () => {
+  const screen = await renderExample('Item/Item', 'Destructive');
+  const row = screen.getByTestId('delete-row');
+  assert.equal(row.props.accessibilityLabel, 'Delete account');
+  assert.equal(screen.getByText('Delete account').props.color, 'danger');
+  assert.equal(screen.getByText('Removes your notes from every device').props.color, 'text-muted');
 });

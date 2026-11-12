@@ -11,6 +11,11 @@ export type DropdownMenuAlignment = 'start' | 'center' | 'end';
 export interface DropdownMenuProps {
   /** The trigger's text, the trigger's accessible name and the menu's accessible name. */
   label: string;
+  /**
+   * For a menu that sets a value: the current choice, drawn on the trigger in place of `label` and
+   * read after it as the trigger's description (label "Appearance", value "System").
+   */
+  value?: string;
   /** Draws only `icon` on a square trigger; `label` stays the name. @default false */
   isLabelHidden?: boolean;
   /** An icon on the trigger, before the label. */
@@ -44,9 +49,9 @@ export interface DropdownMenuProps {
 }
 
 export interface DropdownMenuItemProps {
-  /** The item's text and the start of its accessible name. */
+  /** The item's text and its accessible name. */
   label: string;
-  /** A second line, read after the label. */
+  /** A second line, read as the item's description. */
   description?: string;
   /** Drawn before the label; hidden from assistive tech. */
   icon?: Child;
@@ -74,6 +79,7 @@ const MenuSize = createContext<ButtonSize | null>(null);
  */
 export function DropdownMenu({
   label,
+  value,
   isLabelHidden = false,
   icon,
   hasChevron = !isLabelHidden,
@@ -90,17 +96,19 @@ export function DropdownMenu({
   'data-testid': testId,
 }: DropdownMenuProps) {
   const id = useId();
+  const valueId = `${id}-value`;
   return (
     <>
       <button
         popoverTarget={id}
         aria-label={label}
+        aria-describedby={value !== undefined && !isLabelHidden ? valueId : undefined}
         disabled={isDisabled}
         data-testid={testId}
-        className={cx(b.root.base, b.root.variant[variant], isLabelHidden ? b.root.square[size] : b.root.size[size], className)}
+        className={cx(b.root.base, b.root.variant[variant], b.root.disabled[variant], isLabelHidden ? b.root.square[size] : b.root.size[size], className)}
       >
         {icon !== undefined && <view aria-hidden className={b.icon.base}>{icon}</view>}
-        {!isLabelHidden && <text className={cx(b.label.base, b.label.size[size])}>{label}</text>}
+        {!isLabelHidden && <text id={value !== undefined ? valueId : undefined} className={cx(b.label.base, b.label.weight[variant], b.label.size[size])}>{value ?? label}</text>}
         {hasChevron && <vector aria-hidden paths={glyphs.chevronDown} viewBox={glyphBox} className={r.chevron.base} />}
       </button>
       <MenuSize.Provider value={size}>
@@ -132,10 +140,13 @@ export function DropdownMenuItem({
   'data-testid': testId,
 }: DropdownMenuItemProps) {
   const size = useContext(MenuSize);
+  const descriptionId = `${useId()}-description`;
   if (size === null) throw Error('DropdownMenuItem: place it inside a DropdownMenu');
   return (
     <button
       role="menuitem"
+      aria-label={label}
+      aria-describedby={description !== undefined ? descriptionId : undefined}
       disabled={isDisabled}
       onClick={onClick}
       data-testid={testId}
@@ -144,7 +155,7 @@ export function DropdownMenuItem({
       {icon !== undefined && <view aria-hidden className={cx(r.itemIcon.base, r.itemIcon.variant[variant])}>{icon}</view>}
       <view className={r.itemText.base}>
         <text className={r.itemLabel.base}>{label}</text>
-        {description !== undefined && <text className={r.itemDescription.base}>{description}</text>}
+        {description !== undefined && <text id={descriptionId} className={r.itemDescription.base}>{description}</text>}
       </view>
     </button>
   );

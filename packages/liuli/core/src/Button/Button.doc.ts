@@ -2,8 +2,8 @@ import type { ComponentDoc } from '../doc';
 
 export const doc: ComponentDoc = {
   name: 'Button',
-  category: 'action',
-  status: 'lab',
+  category: 'actions',
+  status: 'preview',
   summary: 'Runs an action when pressed, with variants, sizes and a loading state',
   description:
     'Button starts an action: save, send, delete, open a dialog. Its `label` is both its text and its accessible name, ' +
@@ -32,9 +32,12 @@ export const doc: ComponentDoc = {
       { what: 'destructive label', pair: ['on-danger', 'danger'], minimum: '4.5:1', proven: true },
       { what: 'secondary label', pair: ['text', 'surface'], minimum: '4.5:1', proven: true },
       { what: 'secondary boundary', pair: ['line-strong', 'surface'], minimum: '3:1', proven: true },
+      { what: 'link label', pair: ['accent', 'canvas'], minimum: '4.5:1', proven: false },
+      { what: 'disabled label on its 6% ink fill', pair: ['text-muted', 'canvas'], minimum: '4.5:1', proven: true },
     ],
     notes: [
       'A loading button stays enabled and focusable, reports busy, and ignores presses.',
+      'Disabled, every variant turns to a faint ink fill with muted text, so the label stays readable in both themes.',
       'Sizes sm (32) and md (40) are below the 44 pt touch minimum; on touch layouts prefer lg until hit slop lets the press area extend past the paint.',
     ],
   },
@@ -75,4 +78,29 @@ export const doc: ComponentDoc = {
     },
   ],
   related: ['DropdownMenu', 'Dialog'],
+  gallery: {
+    specimen: 'Specimen',
+    tagline: 'Starts an action',
+    order: 1,
+    page: {
+      lead: 'Use a button to start an action: save, send, delete or open a dialog. Keep one primary button per view.',
+      hero: 'Hero',
+      variants: [
+        { name: 'VariantsEveryday', title: 'Primary for the main action, secondary and ghost for the rest' },
+        { name: 'VariantDestructive', title: 'Destructive, for loss' },
+        { name: 'VariantLink', title: 'Link, a quiet way out beside a form' },
+      ],
+      sizes: [{ name: 'Sizes', title: 'Small, medium and large; prefer large on touch layouts' }],
+      states: [
+        { name: 'StateDefault', title: 'Default' },
+        { name: 'StateBusy', title: 'Busy' },
+        { name: 'StateDisabled', title: 'Disabled' },
+        { name: 'StateSecondaryDisabled', title: 'Disabled, secondary' },
+      ],
+      inContext: [
+        { name: 'DisabledWithReason', title: 'A form footer that waits for consent' },
+        { name: 'AsyncAction', title: 'Waiting on a Logic action' },
+      ],
+    },
+  },
 };

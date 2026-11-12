@@ -9,10 +9,10 @@ const statusGlyph = { error: glyphs.error, warning: glyphs.warning, success: gly
  * A form control's validation message, and the element its control names in `aria-describedby`.
  * Always mounted: a live region announces changes, not its first appearance.
  */
-export function StatusRegion({ id, status }: { id: string; status: FieldStatus | undefined }) {
+export function StatusRegion({ id, status, className }: { id: string; status: FieldStatus | undefined; className?: string }) {
   const message = status?.message;
   return (
-    <view id={id} role="status" className={status && message ? r.status.shown : r.status.empty}>
+    <view id={id} role="status" className={cx(status && message ? r.status.shown : r.status.empty, className)}>
       {status && message ? (
         <>
           <vector aria-hidden paths={statusGlyph[status.type]} viewBox={glyphBox} className={cx(r.statusIcon.base, r.statusIcon.type[status.type])} />

@@ -19,13 +19,13 @@ export const progressBarRecipe = {
     base: 'flex-row items-baseline justify-between gap-3',
   },
   label: {
-    base: 'grow basis-0 text-sm font-medium text-text',
+    base: 'grow basis-0 text-footnote font-medium text-text',
   },
   value: {
-    base: 'text-sm text-muted tabular-nums',
+    base: 'text-footnote text-muted tabular-nums',
   },
   track: {
-    base: 'self-stretch overflow-hidden rounded-full bg-surface-sunken',
+    base: 'self-stretch overflow-hidden rounded-full bg-text/10',
     size: { sm: 'h-1', md: 'h-2' } satisfies Record<ProgressBarSize, string>,
   },
   fill: {

@@ -2,7 +2,7 @@
 
 # Card
 
-A surface that groups related content, or one pressable choice. Status: lab.
+A surface that groups related content, or one pressable choice. Status: preview.
 
 ```ts
 import { Card, ClickableCard } from '@liulidesign/core/Card';
@@ -21,16 +21,16 @@ export function Variants() {
   return (
     <view className="gap-3">
       <Card data-testid="outlined">
-        <text className="text-base font-semibold text-text">Outlined</text>
-        <text className="text-sm text-muted">Sits on the page.</text>
+        <text className="text-callout font-semibold text-text">Outlined</text>
+        <text className="text-footnote text-muted">Sits on the page.</text>
       </Card>
       <Card variant="raised">
-        <text className="text-base font-semibold text-text">Raised</text>
-        <text className="text-sm text-muted">Floats above the page.</text>
+        <text className="text-callout font-semibold text-text">Raised</text>
+        <text className="text-footnote text-muted">Floats above the page.</text>
       </Card>
       <Card variant="sunken">
-        <text className="text-base font-semibold text-text">Sunken</text>
-        <text className="text-sm text-muted">Groups content inside another surface.</text>
+        <text className="text-callout font-semibold text-text">Sunken</text>
+        <text className="text-footnote text-muted">Groups content inside another surface.</text>
       </Card>
     </view>
   );
@@ -47,8 +47,8 @@ import { Card, ClickableCard } from '@liulidesign/core/Card';
 export function WithActions() {
   return (
     <Card>
-      <text role="heading" headingLevel={3} className="text-base font-semibold text-text">Back up your notes</text>
-      <text className="text-sm text-muted">Keep a copy on another device in case this one is lost.</text>
+      <text role="heading" headingLevel={3} className="text-callout font-semibold text-text">Back up your notes</text>
+      <text className="text-footnote text-muted">Keep a copy on another device in case this one is lost.</text>
       <view className="flex-row justify-end gap-2">
         <Button label="Not now" variant="ghost" size="sm" />
         <Button label="Turn on" variant="primary" size="sm" data-testid="turn-on" />
@@ -65,8 +65,8 @@ import { useLocal } from '@lingxia/view';
 import { ClickableCard } from '@liulidesign/core/Card';
 
 const plans = [
-  { id: 'monthly', name: 'Monthly', price: '4 a month' },
-  { id: 'yearly', name: 'Yearly', price: '40 a year' },
+  { id: 'monthly', name: 'Monthly', price: '€4 a month' },
+  { id: 'yearly', name: 'Yearly', price: '€40 a year' },
 ] as const;
 
 /** Choosing one of several: the chosen card is reported as selected. */
@@ -83,8 +83,8 @@ export function Choice() {
           className="grow basis-0"
           data-testid={`plan-${item.id}`}
         >
-          <text className="text-base font-semibold text-text">{item.name}</text>
-          <text className="text-sm text-muted">{item.price}</text>
+          <text className="text-callout font-semibold text-text">{item.name}</text>
+          <text className="text-footnote text-muted">{item.price}</text>
         </ClickableCard>
       ))}
     </view>

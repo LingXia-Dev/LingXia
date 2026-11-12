@@ -9,12 +9,24 @@ export const buttonParts = { root: 'button', icon: 'view', spinner: 'vector', la
  */
 export const buttonRecipe = {
   root: {
-    base: 'flex-row items-center justify-center rounded-control transition-colors duration-150 disabled:opacity-40',
+    base: 'flex-row items-center justify-center rounded-control transition-colors duration-150 ease-out',
     variant: {
-      primary: 'bg-accent text-on-accent hover:opacity-90 active:opacity-80',
-      secondary: 'bg-surface text-text border border-line-strong hover:bg-surface-sunken active:bg-surface-sunken',
-      ghost: 'bg-transparent text-text hover:bg-surface-sunken active:bg-surface-sunken',
-      destructive: 'bg-danger text-on-danger hover:opacity-90 active:opacity-80',
+      primary: 'bg-accent text-on-accent border border-transparent shadow-[0_1px_2px_rgb(0_0_0/0.10)] hover:bg-accent/92 active:bg-accent/88',
+      secondary: 'bg-surface text-text border border-text/12 shadow-[0_1px_2px_rgb(0_0_0/0.05)] hover:bg-text/5 active:bg-text/8',
+      ghost: 'bg-transparent text-text border border-transparent hover:bg-text/5 active:bg-text/8',
+      link: 'bg-transparent text-accent border border-transparent hover:bg-accent/6 active:bg-accent/10',
+      destructive: 'bg-danger text-on-danger border border-transparent shadow-[0_1px_2px_rgb(0_0_0/0.10)] hover:bg-danger/92 active:bg-danger/88',
+    } satisfies Record<ButtonVariant, string>,
+    /**
+     * Disabled drops the variant's colour for a faint ink fill and muted text, which stays above
+     * 4.5:1 in both themes; fading the variant would leave its label below 3:1.
+     */
+    disabled: {
+      primary: 'disabled:bg-text/6 disabled:text-muted disabled:border-transparent disabled:shadow-none',
+      secondary: 'disabled:bg-text/6 disabled:text-muted disabled:border-transparent disabled:shadow-none',
+      ghost: 'disabled:text-muted',
+      link: 'disabled:text-muted',
+      destructive: 'disabled:bg-text/6 disabled:text-muted disabled:border-transparent disabled:shadow-none',
     } satisfies Record<ButtonVariant, string>,
     size: {
       sm: 'min-h-control-sm px-3 gap-1.5',
@@ -40,8 +52,10 @@ export const buttonRecipe = {
     size: { sm: 'size-4', md: 'size-4', lg: 'size-5' } satisfies Record<ButtonSize, string>,
   },
   label: {
-    base: 'font-medium text-center',
-    size: { sm: 'text-sm', md: 'text-sm', lg: 'text-base' } satisfies Record<ButtonSize, string>,
+    base: 'text-start',
+    /** A link reads as text in a sentence, so it keeps the regular weight. */
+    weight: { primary: 'font-medium', secondary: 'font-medium', ghost: 'font-medium', link: 'font-normal', destructive: 'font-medium' } satisfies Record<ButtonVariant, string>,
+    size: { sm: 'text-footnote', md: 'text-body', lg: 'text-base' } satisfies Record<ButtonSize, string>,
   },
   /** The disabled reason: not drawn, read as the description. */
   reason: {

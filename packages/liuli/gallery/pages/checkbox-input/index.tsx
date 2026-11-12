@@ -1,19 +1,39 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Basic, Controlled, Sizes } from '../../../core/src/CheckboxInput/CheckboxInput.examples';
-import { GalleryPage, Section } from '../../shared/Section';
+import { Basic, Sizes, StateOff, StateOn, StateInvalid, StateDisabled, Controlled } from '../../../core/src/CheckboxInput/CheckboxInput.examples';
+import { GalleryPage, Lead, PageSection, Stage, StageGrid } from '../../shared/Layout';
 
 export function render() {
   return (
     <GalleryPage>
-      <Section title={"With help text"}>
+      <Lead text={"Use a checkbox for one on/off choice that takes effect when the form is sent."}>
         <Basic />
-      </Section>
-      <Section title={"Owned by the app, with an error"}>
-        <Controlled />
-      </Section>
-      <Section title={"Sizes"}>
-        <Sizes />
-      </Section>
+      </Lead>
+      <PageSection title={"Sizes"}>
+        <Stage caption={"Small, medium and large"}>
+          <Sizes />
+        </Stage>
+      </PageSection>
+      <PageSection title={"States"}>
+        <StageGrid>
+          <Stage caption={"Off"}>
+            <StateOff />
+          </Stage>
+          <Stage caption={"On"}>
+            <StateOn />
+          </Stage>
+          <Stage caption={"Invalid"}>
+            <StateInvalid />
+          </Stage>
+          <Stage caption={"Disabled"}>
+            <StateDisabled />
+          </Stage>
+        </StageGrid>
+      </PageSection>
+      <PageSection title={"In context"}>
+        <Stage caption={"Terms on a sign-up form, with an error"}>
+          <Controlled />
+        </Stage>
+      </PageSection>
     </GalleryPage>
   );
 }

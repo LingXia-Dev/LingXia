@@ -2,6 +2,7 @@ import { useLocal } from '@lingxia/view';
 import { Button } from '../Button/Button';
 import { TextInput } from '../TextInput/TextInput';
 import { Dialog } from './Dialog';
+import { dialogRecipe } from './Dialog.recipe';
 
 /** A confirmation that interrupts: Escape and back cancel, a backdrop tap does not; the destructive action is last. */
 export function Confirm() {
@@ -9,8 +10,8 @@ export function Confirm() {
   const deleted = useLocal('deleted', false);
   return (
     <view className="gap-2">
-      <Button label="Delete note" variant="destructive" width="content" onClick={() => open.set(true)} data-testid="open" />
-      <text role="status" data-testid="outcome" className="text-sm text-muted">{deleted.value ? 'Deleted' : 'Not deleted'}</text>
+      <Button label="Delete note" variant="destructive" width="content" onClick={() => open.set(true)} data-testid="confirm-open" />
+      <text role="status" data-testid="outcome" className="text-footnote text-muted">{deleted.value ? 'Deleted' : 'Not deleted'}</text>
       <Dialog
         isOpen={open.value}
         onOpenChange={next => open.set(next)}
@@ -19,7 +20,7 @@ export function Confirm() {
         size="sm"
         isAlert
         dismissOn="closeRequest"
-        data-testid="dialog"
+        data-testid="confirm-dialog"
         actions={
           <>
             <Button label="Cancel" onClick={() => open.set(false)} data-testid="cancel" />
@@ -40,18 +41,55 @@ export function Form() {
   const name = useLocal('name', '');
   return (
     <view className="gap-2">
-      <Button label="Rename" width="content" onClick={() => open.set(true)} data-testid="open" />
+      <Button label="Rename" width="content" onClick={() => open.set(true)} data-testid="rename-open" />
       <Dialog
         isOpen={open.value}
         onOpenChange={next => open.set(next)}
         label="Rename notebook"
         closeLabel="Close"
         dismissOn="closeRequest"
-        data-testid="dialog"
+        data-testid="rename-dialog"
         actions={<Button label="Save" variant="primary" isDisabled={name.value.trim() === ''} onClick={() => open.set(false)} data-testid="save" />}
       >
         <TextInput bind={name} label="Name" hasAutoFocus enterKeyHint="done" onSubmit={() => open.set(false)} data-testid="name" />
       </Dialog>
+    </view>
+  );
+}
+
+/**
+ * The home tile: a still drawing of the panel, since a real dialog covers the page. Drawn at tile
+ * scale, with shadow-modal's two layers scaled down and the panel lifted so the shadow fits the stage.
+ */
+export function Specimen() {
+  return (
+    <view className="mb-4 w-30 p-2.5 gap-1.5 rounded-control border border-text/10 bg-surface-raised shadow-[0_2px_4px_rgb(0_0_0/0.10),0_8px_18px_rgb(0_0_0/0.22)]">
+      <text className="text-caption font-semibold text-text">Delete this note?</text>
+      <view className="flex-row justify-end gap-1">
+        <view className="h-6 justify-center rounded-md bg-text/6 px-2"><text className="text-caption font-medium text-text">Keep</text></view>
+        <view className="h-6 justify-center rounded-md bg-danger px-2"><text className="text-caption font-medium text-on-danger">Delete</text></view>
+      </view>
+    </view>
+  );
+}
+
+/**
+ * The panel drawn at rest on a scrim, for the gallery's parts stage: Dialog's own part classes,
+ * without the overlay, so it sits in the page.
+ */
+export function Parts() {
+  return (
+    <view className="items-center rounded-container bg-scrim px-4 py-8">
+      <view className="w-full max-w-[360px] p-5 gap-4 rounded-dialog border border-text/10 bg-surface-raised shadow-modal">
+        <view className={dialogRecipe.header.base}>
+          <text className={dialogRecipe.title.base}>Delete this note?</text>
+        </view>
+        <text className={dialogRecipe.description.base}>It leaves every device you are signed in on.</text>
+        <view className={dialogRecipe.footer.base}>
+          <Button label="Cancel" />
+          <Button label="Delete" variant="destructive" />
+        </view>
+      </view>
     </view>
   );
 }

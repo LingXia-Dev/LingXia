@@ -17,9 +17,13 @@ export type ItemAction =
     }
   | { onClick?: never; hasChevron?: never; isDisabled?: never; disabledMessage?: never };
 
+export type ItemTone = 'default' | 'danger';
+
 export type ItemProps = ItemAction & {
   /** The row's main text, and its accessible name when it is pressable. */
   label: string;
+  /** `danger` draws the label in the danger role, for a row that deletes or ends something. @default 'default' */
+  tone?: ItemTone;
   /** A second line under the label; read as the row's description when it is pressable. */
   description?: string;
   /** Before the text: an icon or an avatar. Hidden from assistive tech on a pressable row. */
@@ -32,7 +36,7 @@ export type ItemProps = ItemAction & {
 
 /** One row of a list: a label, an optional second line, and content at either end. */
 export function Item(props: ItemProps) {
-  const { label, description, startContent, endContent, className, 'data-testid': testId } = props;
+  const { label, tone = 'default', description, startContent, endContent, className, 'data-testid': testId } = props;
   const descriptionId = `${useId()}-description`;
   const isDisabled = props.isDisabled ?? false;
   const help = isDisabled && props.disabledMessage !== undefined ? props.disabledMessage : description;
@@ -41,7 +45,7 @@ export function Item(props: ItemProps) {
     <>
       {startContent !== undefined && <view aria-hidden={pressable || undefined} className={r.start.base}>{startContent}</view>}
       <view className={r.text.base}>
-        <text className={r.label.base}>{label}</text>
+        <text className={cx(r.label.base, r.label.tone[tone])}>{label}</text>
         {help !== undefined && <text id={pressable ? descriptionId : undefined} className={r.description.base}>{help}</text>}
       </view>
       {endContent !== undefined && <view aria-hidden={pressable || undefined} className={r.end.base}>{endContent}</view>}

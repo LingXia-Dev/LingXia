@@ -33,3 +33,24 @@ export function Sizes() {
     </view>
   );
 }
+
+/** The home tile. */
+export function Specimen() {
+  return <CheckboxInput value onChange={() => {}} label="Remember me" size="sm" />;
+}
+
+export function StateOff() {
+  return <CheckboxInput value={false} onChange={() => {}} label="Updates" />;
+}
+
+export function StateOn() {
+  return <CheckboxInput value onChange={() => {}} label="Updates" />;
+}
+
+export function StateInvalid() {
+  return <CheckboxInput value={false} onChange={() => {}} label="Terms" status={{ type: 'error', message: 'Required.' }} />;
+}
+
+export function StateDisabled() {
+  return <CheckboxInput value onChange={() => {}} label="Backups" isDisabled />;
+}

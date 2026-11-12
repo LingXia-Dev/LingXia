@@ -2,7 +2,7 @@
 
 # Button
 
-Runs an action when pressed, with variants, sizes and a loading state. Status: lab.
+Runs an action when pressed, with variants, sizes and a loading state. Status: preview.
 
 ```ts
 import { Button } from '@liulidesign/core/Button';
@@ -82,6 +82,7 @@ export function DisabledWithReason() {
       <Button
         label={agreed.value ? 'Withdraw consent' : 'Accept the terms'}
         variant="ghost"
+        width="content"
         onClick={() => agreed.set(!agreed.value)}
         data-testid="toggle-terms"
       />
@@ -95,7 +96,7 @@ export function DisabledWithReason() {
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
 | `label` (required) | `string` |  | The visible text and the accessible name. Name the outcome: "Save changes", not "OK". |
-| `variant` | `ButtonVariant` | `'secondary'` | `primary` for the one main action in view, `destructive` for an action that loses data. |
+| `variant` | `ButtonVariant` | `'secondary'` | `primary` for the one main action in view, `destructive` for an action that loses data, `link` for a quiet way out beside a form's main action ("Forgot password?"). |
 | `size` | `ButtonSize` | `'md'` |  |
 | `startIcon` | `Child` |  | Drawn before the label; hidden from assistive tech, since the label names the button. |
 | `endContent` | `Child` |  | Drawn after the label: a count, a shortcut hint. Hidden from assistive tech. |
@@ -125,6 +126,7 @@ export function DisabledWithReason() {
 - States: disabled (from isDisabled); busy (from isLoading, or a pending clickAction).
 - Press target: sm 32 px, md 40 px, lg 48 px.
 - A loading button stays enabled and focusable, reports busy, and ignores presses.
+- Disabled, every variant turns to a faint ink fill with muted text, so the label stays readable in both themes.
 - Sizes sm (32) and md (40) are below the 44 pt touch minimum; on touch layouts prefer lg until hit slop lets the press area extend past the paint.
 
 | Contrast | Pair | Minimum | Proven by the theme pack |
@@ -133,6 +135,8 @@ export function DisabledWithReason() {
 | destructive label | `on-danger` on `danger` | 4.5:1 | yes |
 | secondary label | `text` on `surface` | 4.5:1 | yes |
 | secondary boundary | `line-strong` on `surface` | 3:1 | yes |
+| link label | `accent` on `canvas` | 4.5:1 | no |
+| disabled label on its 6% ink fill | `text-muted` on `canvas` | 4.5:1 | yes |
 
 ## Guidance
 

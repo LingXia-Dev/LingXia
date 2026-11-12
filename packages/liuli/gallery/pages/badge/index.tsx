@@ -1,22 +1,26 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Tones, Solid, Sizes, InARow } from '../../../core/src/Badge/Badge.examples';
-import { GalleryPage, Section } from '../../shared/Section';
+import { InARow, Tones, Solid, Sizes } from '../../../core/src/Badge/Badge.examples';
+import { GalleryPage, Lead, PageSection, Stage } from '../../shared/Layout';
 
 export function render() {
   return (
     <GalleryPage>
-      <Section title={"Soft tones"}>
-        <Tones />
-      </Section>
-      <Section title={"Solid, to stand out"}>
-        <Solid />
-      </Section>
-      <Section title={"Sizes and an icon"}>
-        <Sizes />
-      </Section>
-      <Section title={"At the end of a row"}>
+      <Lead text={"Use a badge to mark the status or kind of the thing beside it, in a word or two."}>
         <InARow />
-      </Section>
+      </Lead>
+      <PageSection title={"Variants"}>
+        <Stage caption={"Soft, in five tones"}>
+          <Tones />
+        </Stage>
+        <Stage caption={"Solid, for the one label that must stand out"}>
+          <Solid />
+        </Stage>
+      </PageSection>
+      <PageSection title={"Sizes"}>
+        <Stage caption={"Small and medium, with an icon"}>
+          <Sizes />
+        </Stage>
+      </PageSection>
     </GalleryPage>
   );
 }

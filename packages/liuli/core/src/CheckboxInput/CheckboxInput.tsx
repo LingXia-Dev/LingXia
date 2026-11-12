@@ -92,7 +92,7 @@ export function CheckboxInput(props: CheckboxInputProps) {
           {content}
         </checkbox>
       )}
-      <StatusRegion id={statusId} status={status} />
+      <StatusRegion id={statusId} status={status} className={r.status.size[size]} />
     </view>
   );
 }

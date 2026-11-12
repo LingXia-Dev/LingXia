@@ -51,3 +51,13 @@ export function InARow() {
     </view>
   );
 }
+
+/** The home tile. */
+export function Specimen() {
+  return (
+    <view className="flex-row gap-1.5">
+      <Badge label="Paid" tone="success" />
+      <Badge label="New" tone="accent" emphasis="solid" />
+    </view>
+  );
+}

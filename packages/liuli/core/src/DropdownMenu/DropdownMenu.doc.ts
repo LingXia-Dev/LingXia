@@ -2,8 +2,8 @@ import type { ComponentDoc } from '../doc';
 
 export const doc: ComponentDoc = {
   name: 'DropdownMenu',
-  category: 'action',
-  status: 'lab',
+  category: 'overlays',
+  status: 'preview',
   summary: 'Button that opens a short menu of actions',
   description:
     'DropdownMenu groups a few related actions behind one button: sort options, a "more" menu on a row, account actions. ' +
@@ -59,6 +59,7 @@ export const doc: ComponentDoc = {
     { name: 'Basic', title: 'Labelled trigger' },
     { name: 'More', title: 'Icon-only "more" menu on a row' },
     { name: 'InList', title: 'A menu on every row' },
+    { name: 'Value', title: 'A menu that sets a value' },
   ],
   gaps: [
     {
@@ -88,4 +89,23 @@ export const doc: ComponentDoc = {
     },
   ],
   related: ['Button'],
+  gallery: {
+    specimen: 'Specimen',
+    tagline: 'A menu of actions',
+    order: 2,
+    page: {
+      lead: 'Use a dropdown menu for a short list of actions that do not need to stay on screen.',
+      hero: 'Basic',
+      variants: [
+        { name: 'More', title: 'Icon only, at the end of a row' },
+        { name: 'Value', title: 'Showing the current choice' },
+      ],
+      sizes: [{ name: 'Sizes', title: 'Small, medium and large triggers' }],
+      states: [
+        { name: 'StateEnabled', title: 'Default' },
+        { name: 'StateDisabled', title: 'Disabled' },
+      ],
+      inContext: [{ name: 'InList', title: 'A menu on every row' }],
+    },
+  },
 };

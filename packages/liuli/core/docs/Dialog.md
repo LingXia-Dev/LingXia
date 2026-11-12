@@ -2,7 +2,7 @@
 
 # Dialog
 
-Modal panel over the page for a decision or a short task. Status: lab.
+Modal panel over the page for a decision or a short task. Status: preview.
 
 ```ts
 import { Dialog } from '@liulidesign/core/Dialog';
@@ -25,8 +25,8 @@ export function Confirm() {
   const deleted = useLocal('deleted', false);
   return (
     <view className="gap-2">
-      <Button label="Delete note" variant="destructive" width="content" onClick={() => open.set(true)} data-testid="open" />
-      <text role="status" data-testid="outcome" className="text-sm text-muted">{deleted.value ? 'Deleted' : 'Not deleted'}</text>
+      <Button label="Delete note" variant="destructive" width="content" onClick={() => open.set(true)} data-testid="confirm-open" />
+      <text role="status" data-testid="outcome" className="text-footnote text-muted">{deleted.value ? 'Deleted' : 'Not deleted'}</text>
       <Dialog
         isOpen={open.value}
         onOpenChange={next => open.set(next)}
@@ -35,7 +35,7 @@ export function Confirm() {
         size="sm"
         isAlert
         dismissOn="closeRequest"
-        data-testid="dialog"
+        data-testid="confirm-dialog"
         actions={
           <>
             <Button label="Cancel" onClick={() => open.set(false)} data-testid="cancel" />
@@ -65,14 +65,14 @@ export function Form() {
   const name = useLocal('name', '');
   return (
     <view className="gap-2">
-      <Button label="Rename" width="content" onClick={() => open.set(true)} data-testid="open" />
+      <Button label="Rename" width="content" onClick={() => open.set(true)} data-testid="rename-open" />
       <Dialog
         isOpen={open.value}
         onOpenChange={next => open.set(next)}
         label="Rename notebook"
         closeLabel="Close"
         dismissOn="closeRequest"
-        data-testid="dialog"
+        data-testid="rename-dialog"
         actions={<Button label="Save" variant="primary" isDisabled={name.value.trim() === ''} onClick={() => open.set(false)} data-testid="save" />}
       >
         <TextInput bind={name} label="Name" hasAutoFocus enterKeyHint="done" onSubmit={() => open.set(false)} data-testid="name" />

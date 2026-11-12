@@ -1,0 +1,120 @@
+import { Badge } from '@liulidesign/core/Badge';
+import type { Child } from '@lingxia/view';
+
+// The gallery's one page skeleton: every page takes its rhythm from these, never its own classes.
+
+/** A gallery page: a scrolling column with the page gutter and section spacing. */
+export function GalleryPage({ children }: { children: Child }) {
+  return (
+    <page className="bg-canvas">
+      <scroll className="grow">
+        <view className="px-4 pt-4 pb-10 gap-8">{children}</view>
+      </scroll>
+    </page>
+  );
+}
+
+/** One section of a page: a small heading, its content 12 below, blocks 24 apart. */
+export function PageSection({ title, children }: { title: string; children: Child }) {
+  return (
+    <view className="gap-3">
+      <text role="heading" headingLevel={2} className="text-footnote font-medium text-muted">{title}</text>
+      <view className="gap-6">{children}</view>
+    </view>
+  );
+}
+
+/**
+ * The quiet surface a specimen sits on, one step off the page, with an optional caption below.
+ * `bare` drops the surface for containers (cards, lists) that would otherwise sit in a second frame.
+ */
+export function Stage({ caption, bare = false, children }: { caption?: string; bare?: boolean; children: Child }) {
+  return (
+    <view className="gap-2">
+      <view className={bare ? 'grow gap-3' : 'grow gap-3 rounded-container border border-text/10 bg-surface p-5'}>{children}</view>
+      {caption !== undefined && <text className="text-footnote text-muted">{caption}</text>}
+    </view>
+  );
+}
+
+/** Stages side by side, two to a row; used for a component's states. */
+export function StageGrid({ children }: { children: Child }) {
+  return <view className="grid grid-cols-2 gap-x-3 gap-y-6">{children}</view>;
+}
+
+/** A component page's opening: when to use it, then the hero specimen. */
+export function Lead({ text, bare = false, children }: { text: string; bare?: boolean; children: Child }) {
+  return (
+    <view className="gap-4">
+      <text className="text-body text-muted">{text}</text>
+      <Stage bare={bare}>{children}</Stage>
+    </view>
+  );
+}
+
+/** The home page's opening block. */
+export function Masthead({ version, status }: { version: string; status: string }) {
+  return (
+    <view className="gap-1.5">
+      <view className="flex-row items-baseline gap-2">
+        <text className="text-display font-semibold tracking-tight text-text">Liuli</text>
+        <text className="text-title text-muted">琉璃</text>
+      </view>
+      <text className="text-body text-muted">
+        LingXia's design system for GPU pages: components drawn from theme roles, the same on every platform.
+      </text>
+      <text className="text-footnote text-faint">{`Version ${version} · ${status}`}</text>
+    </view>
+  );
+}
+
+/** One category on the home page: its heading and a grid of tiles. */
+export function Category({ title, children }: { title: string; children: Child }) {
+  return (
+    <view className="gap-3">
+      <text role="heading" headingLevel={2} className="text-footnote font-medium text-muted">{title}</text>
+      <view className="grid grid-cols-1 min-[360px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">{children}</view>
+    </view>
+  );
+}
+
+export interface TileProps {
+  name: string;
+  /** One line, never cut. */
+  tagline: string;
+  /** Shown only when it differs from the package's status. */
+  status?: string;
+  /** The last tile of an odd row spans both columns of the phone grid. */
+  isWide?: boolean;
+  onOpen: () => void;
+  testId: string;
+  /** The live specimen, drawn on the tile's stage and hidden from assistive tech. */
+  children: Child;
+}
+
+/**
+ * A home tile: a specimen on a stage, the name and one line. The press target is a transparent
+ * button laid over the whole tile, since a specimen may hold buttons of its own.
+ */
+export function Tile({ name, tagline, status, isWide = false, onOpen, testId, children }: TileProps) {
+  return (
+    <view className={isWide ? 'relative overflow-hidden rounded-container border border-text/10 bg-surface min-[360px]:col-span-2 md:col-span-1' : 'relative overflow-hidden rounded-container border border-text/10 bg-surface'}>
+      <view aria-hidden className="h-24 items-center justify-center overflow-hidden p-3 bg-surface-sunken border-b border-text/8">
+        {children}
+      </view>
+      <view className="px-3 pt-2.5 pb-3 gap-0.5">
+        <view className="flex-row items-center gap-1.5">
+          <text className="text-body font-medium text-text">{name}</text>
+          {status !== undefined && <Badge label={status} tone="accent" size="sm" />}
+        </view>
+        <text className="text-footnote text-muted">{tagline}</text>
+      </view>
+      <button
+        aria-label={name}
+        onClick={onOpen}
+        data-testid={testId}
+        className="absolute inset-0 rounded-container transition-colors duration-150 ease-out hover:bg-text/3 active:bg-text/6"
+      />
+    </view>
+  );
+}

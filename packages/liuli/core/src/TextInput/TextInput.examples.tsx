@@ -1,4 +1,4 @@
-import { useLocal, type VectorPath } from '@lingxia/view';
+import { useLocal } from '@lingxia/view';
 import { TextInput } from './TextInput';
 
 /** Bound to a View-local cell: no Logic round trip per keystroke. */
@@ -22,12 +22,7 @@ export function Bound() {
   );
 }
 
-const magnifier: VectorPath[] = [
-  { d: 'M10.5 4a6.5 6.5 0 1 0 0 13a6.5 6.5 0 1 0 0-13z', fill: 'none', stroke: 'currentColor', strokeWidth: 2 },
-  { d: 'M15.5 15.5L20 20', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' },
-];
-
-/** Controlled (`value` + `onChange`), with a leading icon and a clear button the app names. */
+/** Controlled (`value` + `onChange`), as a search field with a clear button the app names. */
 export function Search() {
   const query = useLocal('query', '');
   return (
@@ -38,8 +33,6 @@ export function Search() {
       isLabelHidden
       placeholder="Search notes"
       type="search"
-      enterKeyHint="search"
-      startIcon={<vector aria-hidden paths={magnifier} viewBox={[0, 0, 24, 24]} className="size-4" />}
       hasClear
       clearLabel="Clear search"
       data-testid="search"
@@ -50,4 +43,41 @@ export function Search() {
 export function Disabled() {
   const code = useLocal('code', 'LX-2041');
   return <TextInput bind={code} label="Invite code" isDisabled disabledMessage="Codes are fixed once sent." data-testid="code" />;
+}
+
+/** The home tile. */
+export function Specimen() {
+  return <TextInput value="Ana Lima" onChange={() => {}} label="Name" isLabelHidden size="sm" className="w-28" />;
+}
+
+export function Plain() {
+  const name = useLocal('name', '');
+  return <TextInput bind={name} label="Full name" placeholder="As it appears on your card" autoComplete="name" />;
+}
+
+export function Sizes() {
+  const query = useLocal('query', '');
+  return (
+    <view className="gap-3">
+      <TextInput bind={query} label="Small" size="sm" placeholder="Filter" />
+      <TextInput bind={query} label="Medium" placeholder="Filter" />
+      <TextInput bind={query} label="Large" size="lg" placeholder="Filter" />
+    </view>
+  );
+}
+
+export function StateEmpty() {
+  return <TextInput value="" onChange={() => {}} label="City" placeholder="Lisbon" />;
+}
+
+export function StateFilled() {
+  return <TextInput value="Lisbon" onChange={() => {}} label="City" />;
+}
+
+export function StateInvalid() {
+  return <TextInput value="ana@" onChange={() => {}} label="Work email" status={{ type: 'error', message: 'Add the part after @.' }} />;
+}
+
+export function StateDisabled() {
+  return <TextInput value="LX-2041" onChange={() => {}} label="Code" isDisabled />;
 }

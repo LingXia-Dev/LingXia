@@ -23,6 +23,8 @@ export interface FieldOwnProps {
   status?: FieldStatus;
   /** Marks the label with an asterisk and the control as required. Validation is the app's. @default false */
   isRequired?: boolean;
+  /** Draws the asterisk on a required label; turn it off on a form where every field is required. @default true */
+  hasRequiredMark?: boolean;
   /** @default false */
   isDisabled?: boolean;
   /** Shown in place of `description` while disabled. */
@@ -57,6 +59,7 @@ export function Field({
   description,
   status,
   isRequired = false,
+  hasRequiredMark = true,
   isDisabled = false,
   disabledMessage,
   size = 'md',
@@ -81,7 +84,7 @@ export function Field({
         // The control carries the same text as its name, so the visible label is not read again.
         <text aria-hidden className={cx(r.label.base, r.label.size[size], isDisabled && r.label.disabled)}>
           {label}
-          {isRequired && <span className={r.required.base}>{' *'}</span>}
+          {isRequired && hasRequiredMark && <span className={r.required.base}>{' *'}</span>}
         </text>
       )}
       {children(control)}

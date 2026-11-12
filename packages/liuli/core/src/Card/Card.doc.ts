@@ -2,8 +2,8 @@ import type { ComponentDoc } from '../doc';
 
 export const doc: ComponentDoc = {
   name: 'Card',
-  category: 'container',
-  status: 'lab',
+  category: 'content',
+  status: 'preview',
   summary: 'A surface that groups related content, or one pressable choice',
   description:
     'Card groups a heading, text and actions that belong together. ClickableCard, from the same import, makes the whole ' +
@@ -59,4 +59,21 @@ export const doc: ComponentDoc = {
     },
   ],
   related: ['Item', 'Button'],
+  gallery: {
+    specimen: 'Specimen',
+    tagline: 'Groups related content',
+    order: 1,
+    page: {
+      stage: 'bare',
+      lead: 'Use a card to group content that belongs together, and a clickable card when the whole card opens or chooses something.',
+      hero: 'WithActions',
+      variants: [{ name: 'Variants', title: 'Outlined, raised and sunken' }],
+      states: [
+        { name: 'StateUnselected', title: 'Clickable' },
+        { name: 'StateSelected', title: 'Selected' },
+        { name: 'StateDisabled', title: 'Disabled' },
+      ],
+      inContext: [{ name: 'Choice', title: 'Choosing a plan' }],
+    },
+  },
 };

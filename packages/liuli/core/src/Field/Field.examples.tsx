@@ -28,9 +28,62 @@ export function WrappedSelect() {
           placeholder="Choose…"
           options={periods}
           data-testid="period"
-          className="min-h-control-md px-3 rounded-control border border-line-strong bg-surface text-sm text-text"
+          className="min-h-control-md px-3 rounded-control border border-line-strong bg-surface text-body text-text"
         />
       )}
     </Field>
   );
+}
+
+/** The home tile. */
+export function Specimen() {
+  return (
+    <Field label="Plan" size="sm" className="w-52">
+      {control => (
+        <select
+          value="yearly"
+          onChange={() => {}}
+          aria-label={control['aria-label']}
+          disabled={control.disabled}
+          options={periods}
+          className="min-h-control-sm px-3 rounded-control border border-line-strong bg-surface text-footnote text-text"
+        />
+      )}
+    </Field>
+  );
+}
+
+function PeriodField({ status, isDisabled = false }: { status?: { type: 'error' | 'warning' | 'success'; message: string }; isDisabled?: boolean }) {
+  return (
+    <Field label="Billing" description="Change it any time." status={status} isDisabled={isDisabled}>
+      {control => (
+        <select
+          value="yearly"
+          onChange={() => {}}
+          aria-label={control['aria-label']}
+          aria-describedby={control['aria-describedby']}
+          aria-invalid={control['aria-invalid']}
+          disabled={control.disabled}
+          options={periods}
+          className="min-h-control-md px-3 rounded-control border border-line-strong bg-surface text-body text-text"
+        />
+      )}
+    </Field>
+  );
+}
+
+export function StateHelp() {
+  return <PeriodField />;
+}
+
+export function StateWarning() {
+  return <PeriodField status={{ type: 'warning', message: 'Prices rise next month.' }} />;
+}
+
+export function StateError() {
+  return <PeriodField status={{ type: 'error', message: 'Choose a period.' }} />;
+}
+
+export function StateDisabled() {
+  return <PeriodField isDisabled />;
 }

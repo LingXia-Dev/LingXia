@@ -2,8 +2,8 @@ import type { ComponentDoc } from '../doc';
 
 export const doc: ComponentDoc = {
   name: 'Field',
-  category: 'form',
-  status: 'lab',
+  category: 'inputs',
+  status: 'preview',
   summary: 'Label, help text and validation status around one form control',
   description:
     'Field lays out the parts every form control shares: a label, the control, help text and a status message. ' +
@@ -56,4 +56,19 @@ export const doc: ComponentDoc = {
     },
   ],
   related: ['TextInput', 'CheckboxInput'],
+  gallery: {
+    specimen: 'Specimen',
+    tagline: 'Label, help and status',
+    order: 3,
+    page: {
+      lead: 'Use a field to give a control Liuli\'s label, help text and status when Liuli has no component for it yet.',
+      hero: 'WrappedSelect',
+      states: [
+        { name: 'StateHelp', title: 'With help' },
+        { name: 'StateWarning', title: 'Warning' },
+        { name: 'StateError', title: 'Error' },
+        { name: 'StateDisabled', title: 'Disabled' },
+      ],
+    },
+  },
 };

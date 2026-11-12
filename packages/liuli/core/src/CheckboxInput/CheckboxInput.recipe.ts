@@ -9,6 +9,7 @@ export const checkboxInputParts = {
   text: 'view',
   label: 'text',
   description: 'text',
+  status: 'view',
 } as const;
 
 /**
@@ -20,17 +21,18 @@ export const checkboxInputRecipe = {
     base: 'gap-1',
   },
   control: {
-    base: 'rounded-control disabled:opacity-40',
+    base: 'p-0 rounded-control disabled:opacity-40',
   },
   row: {
     base: 'flex-row items-start gap-3 py-1',
   },
   box: {
-    base: 'items-center justify-center rounded-md border-2 transition-colors duration-150',
-    size: { sm: 'size-4 mt-0.5', md: 'size-5 mt-0.5', lg: 'size-6 mt-0.5' } satisfies Record<FieldSize, string>,
+    base: 'items-center justify-center rounded-checkbox border-2 transition-colors duration-150 ease-out',
+    /** Centred on the label's first line. */
+    size: { sm: 'size-4 mt-px', md: 'size-5 mt-px', lg: 'size-6' } satisfies Record<FieldSize, string>,
     state: {
       on: 'bg-accent border-accent text-on-accent',
-      off: 'bg-surface border-line-strong',
+      off: 'bg-surface border-line-strong shadow-[0_1px_2px_rgb(0_0_0/0.05)]',
     } satisfies Record<'on' | 'off', string>,
     invalid: 'border-danger',
   },
@@ -38,14 +40,18 @@ export const checkboxInputRecipe = {
     size: { sm: 'size-3', md: 'size-3.5', lg: 'size-4' } satisfies Record<FieldSize, string>,
   },
   text: {
-    base: 'grow basis-0 gap-0.5',
+    base: 'grow shrink min-w-0 gap-0.5',
   },
   label: {
     base: 'text-text',
-    size: { sm: 'text-sm', md: 'text-base', lg: 'text-lg' } satisfies Record<FieldSize, string>,
+    size: { sm: 'text-footnote', md: 'text-body', lg: 'text-base' } satisfies Record<FieldSize, string>,
     hidden: 'sr-only',
   },
   description: {
-    base: 'text-sm text-muted',
+    base: 'text-footnote text-muted',
+  },
+  /** The status message starts under the label: the box width plus the row gap. */
+  status: {
+    size: { sm: 'ps-7', md: 'ps-8', lg: 'ps-9' } satisfies Record<FieldSize, string>,
   },
 } as const;

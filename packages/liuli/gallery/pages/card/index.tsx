@@ -1,19 +1,36 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Variants, WithActions, Choice } from '../../../core/src/Card/Card.examples';
-import { GalleryPage, Section } from '../../shared/Section';
+import { WithActions, Variants, StateUnselected, StateSelected, StateDisabled, Choice } from '../../../core/src/Card/Card.examples';
+import { GalleryPage, Lead, PageSection, Stage, StageGrid } from '../../shared/Layout';
 
 export function render() {
   return (
     <GalleryPage>
-      <Section title={"Outlined, raised and sunken"}>
-        <Variants />
-      </Section>
-      <Section title={"A card with actions"}>
+      <Lead text={"Use a card to group content that belongs together, and a clickable card when the whole card opens or chooses something."} bare>
         <WithActions />
-      </Section>
-      <Section title={"Choosing one card of several"}>
-        <Choice />
-      </Section>
+      </Lead>
+      <PageSection title={"Variants"}>
+        <Stage caption={"Outlined, raised and sunken"} bare>
+          <Variants />
+        </Stage>
+      </PageSection>
+      <PageSection title={"States"}>
+        <StageGrid>
+          <Stage caption={"Clickable"} bare>
+            <StateUnselected />
+          </Stage>
+          <Stage caption={"Selected"} bare>
+            <StateSelected />
+          </Stage>
+          <Stage caption={"Disabled"} bare>
+            <StateDisabled />
+          </Stage>
+        </StageGrid>
+      </PageSection>
+      <PageSection title={"In context"}>
+        <Stage caption={"Choosing a plan"} bare>
+          <Choice />
+        </Stage>
+      </PageSection>
     </GalleryPage>
   );
 }

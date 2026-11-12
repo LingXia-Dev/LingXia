@@ -46,9 +46,65 @@ export function DisabledWithReason() {
       <Button
         label={agreed.value ? 'Withdraw consent' : 'Accept the terms'}
         variant="ghost"
+        width="content"
         onClick={() => agreed.set(!agreed.value)}
         data-testid="toggle-terms"
       />
     </view>
   );
+}
+
+/** The home tile. */
+export function Specimen() {
+  return (
+    <view className="flex-row gap-2">
+      <Button label="Cancel" size="sm" />
+      <Button label="Save" variant="primary" size="sm" />
+    </view>
+  );
+}
+
+/** The page's hero: the one main action beside a quiet one. */
+export function Hero() {
+  return (
+    <view className="flex-row gap-2">
+      <Button label="Discard" variant="ghost" />
+      <Button label="Save changes" variant="primary" />
+    </view>
+  );
+}
+
+export function StateDefault() {
+  return <Button label="Continue" variant="primary" width="content" />;
+}
+
+export function StateDisabled() {
+  return <Button label="Continue" variant="primary" width="content" isDisabled disabledMessage="Accept the terms first" />;
+}
+
+export function StateBusy() {
+  return <Button label="Publishing" variant="primary" width="content" isLoading />;
+}
+
+export function StateSecondaryDisabled() {
+  return <Button label="Preview" width="content" isDisabled />;
+}
+
+export function VariantsEveryday() {
+  return (
+    <view className="flex-row gap-2">
+      <Button label="Save" variant="primary" />
+      <Button label="Preview" />
+      <Button label="Skip" variant="ghost" />
+    </view>
+  );
+}
+
+export function VariantDestructive() {
+  return <Button label="Delete draft" variant="destructive" width="content" />;
+}
+
+/** A quiet way out beside a form's main action: accent text at regular weight, still a button. */
+export function VariantLink() {
+  return <Button label="Forgot password?" variant="link" width="content" data-testid="forgot" />;
 }

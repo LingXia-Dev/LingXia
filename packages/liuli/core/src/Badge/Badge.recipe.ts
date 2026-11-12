@@ -30,6 +30,6 @@ export const badgeRecipe = {
   },
   label: {
     base: 'font-medium',
-    size: { sm: 'text-xs', md: 'text-sm' } satisfies Record<BadgeSize, string>,
+    size: { sm: 'text-caption', md: 'text-footnote' } satisfies Record<BadgeSize, string>,
   },
 } as const;

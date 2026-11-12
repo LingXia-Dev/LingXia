@@ -2,7 +2,7 @@
 
 # TextInput
 
-Single-line text field with label, help text, status and an optional clear button. Status: lab.
+Single-line text field with label, help text, status and an optional clear button. Status: preview.
 
 ```ts
 import { TextInput } from '@liulidesign/core/TextInput';
@@ -43,15 +43,10 @@ export function Bound() {
 ### Search with a clear button
 
 ```tsx
-import { useLocal, type VectorPath } from '@lingxia/view';
+import { useLocal } from '@lingxia/view';
 import { TextInput } from '@liulidesign/core/TextInput';
 
-const magnifier: VectorPath[] = [
-  { d: 'M10.5 4a6.5 6.5 0 1 0 0 13a6.5 6.5 0 1 0 0-13z', fill: 'none', stroke: 'currentColor', strokeWidth: 2 },
-  { d: 'M15.5 15.5L20 20', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' },
-];
-
-/** Controlled (`value` + `onChange`), with a leading icon and a clear button the app names. */
+/** Controlled (`value` + `onChange`), as a search field with a clear button the app names. */
 export function Search() {
   const query = useLocal('query', '');
   return (
@@ -62,8 +57,6 @@ export function Search() {
       isLabelHidden
       placeholder="Search notes"
       type="search"
-      enterKeyHint="search"
-      startIcon={<vector aria-hidden paths={magnifier} viewBox={[0, 0, 24, 24]} className="size-4" />}
       hasClear
       clearLabel="Clear search"
       data-testid="search"
@@ -93,6 +86,7 @@ export function Disabled() {
 | `description` | `string` |  | Help text under the control, read as the control's description. |
 | `status` | `FieldStatus` |  | An `error` status marks the control invalid; its message is read as the control's description. |
 | `isRequired` | `boolean` | `false` | Marks the label with an asterisk and the control as required. Validation is the app's. |
+| `hasRequiredMark` | `boolean` | `true` | Draws the asterisk on a required label; turn it off on a form where every field is required. |
 | `isDisabled` | `boolean` | `false` |  |
 | `disabledMessage` | `string` |  | Shown in place of `description` while disabled. |
 | `size` | `FieldSize` | `'md'` |  |
@@ -102,7 +96,7 @@ export function Disabled() {
 | `hasClear` | `boolean` | `false` | A button that empties the text, shown while there is text. |
 | `clearLabel` | `string` |  | The clear button's accessible name; required with `hasClear`. |
 | `placeholder` | `string` |  | A hint shown while empty; never a substitute for `label`. |
-| `type` | `"number" \| "text" \| "password" \| "email" \| "tel" \| "search"` | `'text'` |  |
+| `type` | `"number" \| "text" \| "password" \| "email" \| "tel" \| "search"` | `'text'` | `search` draws Liuli's magnifier, not the platform's, and defaults `enterKeyHint` to `search`. |
 | `inputMode` | `"text" \| "email" \| "tel" \| "numeric" \| "decimal"` |  |  |
 | `autoComplete` | `AutoComplete` |  |  |
 | `enterKeyHint` | `"search" \| "enter" \| "done" \| "go" \| "next" \| "previous" \| "send"` |  | The label of the keyboard's action key; `onSubmit` runs on it. |
@@ -110,7 +104,7 @@ export function Disabled() {
 | `hasSpellCheck` | `boolean` |  | Unset follows the platform. |
 | `hasAutoFocus` | `boolean` | `false` | Focus it when it first appears. |
 | `maxLength` | `number` |  |  |
-| `startIcon` | `Child` |  | An icon inside the box, before the text. |
+| `startIcon` | `Child` |  | An icon inside the box, before the text; drawn 16 px in the muted colour. Replaces the search magnifier. |
 | `onSubmit` | `((value: string) => void)` |  | The keyboard's action key, or Enter. |
 | `className` | `string` |  | Classes for the field column. |
 | `controlClassName` | `string` |  | Classes for the bordered box. |
@@ -121,7 +115,7 @@ export function Disabled() {
 | Part | Element | Required | Description |
 | --- | --- | --- | --- |
 | box | `<view>` | yes | The bordered box; it takes the focus colour while the editor has focus and the status colour otherwise. |
-| icon | `<view>` | no | `startIcon`, hidden from assistive tech. |
+| icon | `<view>` | no | `startIcon`, or the magnifier when `type` is `search`; 16 px, muted, hidden from assistive tech. |
 | input | `<input>` | yes | The editor; it fills the box height so taps above and below the text land in it. |
 | clear | `<button>` | no | Empties the text; shown while there is text and `hasClear` is on. |
 

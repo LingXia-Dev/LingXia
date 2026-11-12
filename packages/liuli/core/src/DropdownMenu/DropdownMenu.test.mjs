@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
-import { renderExample, renderPage } from '../testing/harness.mjs';
+import { described, renderExample, renderPage } from '../testing/harness.mjs';
 
 const menus = screen => screen.queryAll(node => node.props.role === 'menu');
 
@@ -50,4 +50,33 @@ test('an item outside a DropdownMenu fails, naming the fix', async () => {
     `),
     /DropdownMenuItem: place it inside a DropdownMenu/,
   );
+});
+
+test('an item is named by its label alone; its second line is its description', async () => {
+  const screen = await renderExample('DropdownMenu/DropdownMenu', 'Basic');
+  screen.press(screen.getByTestId('sort'));
+  const item = screen.getByTestId('sort-updated');
+  assert.equal(item.props.accessibilityLabel, 'Last updated');
+  assert.deepEqual(described(screen, item), ['Newest first']);
+  assert.equal(screen.getByTestId('sort-name').props.ariaDescribedBy, undefined);
+});
+
+test('the menu panel is the raised surface with a hairline border and the raised shadow, so it separates from the page in dark themes', async () => {
+  const screen = await renderExample('DropdownMenu/DropdownMenu', 'Basic');
+  screen.press(screen.getByTestId('sort'));
+  const menu = menus(screen)[0];
+  assert.equal(menu.props.background, 'surface-raised');
+  assert.equal(menu.props.borderColor, 'text/12');
+  assert.equal(menu.props.borderTopWidth, 1);
+  assert.equal(JSON.parse(menu.props.boxShadow).length, 2, 'contact and ambient layers');
+});
+
+test('Value: the trigger shows the choice, is named by its label and described by the choice', async () => {
+  const screen = await renderExample('DropdownMenu/DropdownMenu', 'Value');
+  const trigger = screen.getByTestId('appearance');
+  assert.equal(trigger.props.accessibilityLabel, 'Appearance');
+  assert.deepEqual(described(screen, trigger), ['System']);
+  screen.press(trigger);
+  screen.press(screen.getByTestId('appearance-Dark'));
+  assert.deepEqual(described(screen, screen.getByTestId('appearance')), ['Dark']);
 });

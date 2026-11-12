@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
-import { described, renderExample } from '../testing/harness.mjs';
+import { described, renderExample, renderPage } from '../testing/harness.mjs';
 
 const status = screen => screen.queryAll(node => node.props.role === 'status')[0];
 
@@ -40,4 +40,34 @@ test('Disabled: the editor takes no input and the reason replaces the help text'
   assert.equal(code.props.onInput, undefined);
   assert.equal(code.props.inputValue, 'LX-2041');
   assert.deepEqual(described(screen, code), ['Codes are fixed once sent.']);
+});
+
+test('the editor has no inset of its own and matches the Button label size', async () => {
+  const screen = await renderExample('TextInput/TextInput', 'Bound');
+  const editor = screen.getByTestId('email');
+  assert.deepEqual([editor.props.paddingLeft, editor.props.paddingRight], [0, 0], 'the box\'s px-3 is the only inset');
+  assert.equal(editor.props.fontSize, 15);
+});
+
+test('Search: one muted 16 px magnifier and a plain editor, never the platform search field', async () => {
+  const screen = await renderExample('TextInput/TextInput', 'Search');
+  const editor = screen.getByTestId('search');
+  assert.equal(editor.tag, 'input', 'the search wire tag draws a second magnifier');
+  assert.equal(editor.props.enterKeyHint, 'search');
+  const box = editor.parent;
+  const icons = box.children.filter(node => node.props.accessibilityHidden && node !== editor);
+  assert.equal(icons.length, 1);
+  assert.equal(icons[0].props.color, 'text-muted');
+  assert.deepEqual([icons[0].props.width, icons[0].props.height], [16, 16]);
+});
+
+test('hasRequiredMark={false}: no asterisk is drawn, the editor is still required', async () => {
+  const screen = await renderPage(`
+    import { TextInput } from '@liulidesign/core/TextInput';
+    export function render() {
+      return <page><TextInput value="" onChange={() => {}} label="Email" isRequired hasRequiredMark={false} data-testid="email" /></page>;
+    }
+  `);
+  assert.equal(screen.queryAll(node => node.text?.includes('*')).length, 0);
+  assert.equal(screen.getByTestId('email').props.stateRequired, 1);
 });

@@ -3,7 +3,7 @@ import { glyphBox, glyphs } from '../internal/glyphs';
 import { settleFlag } from '../internal/settle';
 import { buttonRecipe as r } from './Button.recipe';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'destructive';
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'link' | 'destructive';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 export type ButtonWidth = 'content' | 'fill';
 
@@ -11,7 +11,8 @@ export interface ButtonProps {
   /** The visible text and the accessible name. Name the outcome: "Save changes", not "OK". */
   label: string;
   /**
-   * `primary` for the one main action in view, `destructive` for an action that loses data.
+   * `primary` for the one main action in view, `destructive` for an action that loses data, `link`
+   * for a quiet way out beside a form's main action ("Forgot password?").
    * @default 'secondary'
    */
   variant?: ButtonVariant;
@@ -78,14 +79,14 @@ export function Button({
       aria-busy={busy || undefined}
       disabled={isDisabled}
       onClick={press}
-      className={cx(r.root.base, r.root.variant[variant], r.root.size[size], width && r.root.width[width], className)}
+      className={cx(r.root.base, r.root.variant[variant], r.root.disabled[variant], r.root.size[size], width && r.root.width[width], className)}
     >
       {busy ? (
         <vector aria-hidden paths={glyphs.spinner} viewBox={glyphBox} className={cx(r.spinner.base, r.spinner.size[size])} />
       ) : (
         startIcon !== undefined && <view aria-hidden className={r.icon.base}>{startIcon}</view>
       )}
-      <text className={cx(r.label.base, r.label.size[size])}>{label}</text>
+      <text className={cx(r.label.base, r.label.weight[variant], r.label.size[size])}>{label}</text>
       {endContent !== undefined && <view aria-hidden className={r.icon.base}>{endContent}</view>}
       {hasReason && <text id={reasonId} aria-hidden className={r.reason.base}>{disabledMessage}</text>}
     </button>

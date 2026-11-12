@@ -4,7 +4,8 @@ import type { VectorPath } from '@lingxia/view';
 
 export const glyphBox = [0, 0, 24, 24] as const;
 
-const line = { fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
+// 1.8 units on the 24-unit grid is a 1.5 px stroke at 20 px.
+const line = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
 
 export const glyphs = {
   /** A quarter arc; spun by `animate-spin`. */
@@ -14,6 +15,7 @@ export const glyphs = {
   /** Points toward the inline end in LTR; mirror it with the recipe's `rtl:` class. */
   chevronEnd: [{ d: 'M9 6l6 6-6 6', ...line }],
   close: [{ d: 'M6 6l12 12M18 6L6 18', ...line }],
+  search: [{ d: 'M10.5 4a6.5 6.5 0 1 0 0 13a6.5 6.5 0 1 0 0-13z', ...line }, { d: 'M15.5 15.5L20 20', ...line }],
   error: [
     { d: 'M12 2.75a9.25 9.25 0 1 0 0 18.5a9.25 9.25 0 1 0 0-18.5z', ...line },
     { d: 'M12 7.5v5.5', ...line },

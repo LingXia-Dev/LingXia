@@ -153,6 +153,8 @@ for (const name of readdirSync(src)) {
   const examples = readFileSync(join(dir, parts.examples), 'utf8');
   const exported = new Set([...examples.matchAll(/^export function (\w+)/gm)].map(match => match[1]));
   const listed = new Set([...doc.matchAll(/\{ name: '(\w+)', title:/g)].map(match => match[1]));
+  // The gallery may show exports the reference does not list: the tile specimen and the page's hero.
+  for (const match of doc.matchAll(/(?:specimen|hero): '(\w+)'/g)) listed.add(match[1]);
   if (!new RegExp(`name: '${name}'`).test(doc)) problems.push(`src/${name}/${parts.doc}: doc: name is not '${name}'`);
   for (const example of listed) if (!exported.has(example)) problems.push(`src/${name}/${parts.doc}: doc: lists example ${example}, which ${parts.examples} does not export`);
   for (const example of exported) if (!listed.has(example)) problems.push(`src/${name}/${parts.examples}: doc: ${example} is not listed in the doc`);

@@ -3,15 +3,16 @@
 
 import type { PatternName } from './a11y/patterns';
 
-export type Category =
-  | 'action' | 'container' | 'content' | 'feedback' | 'form' | 'layout' | 'list' | 'navigation' | 'overlay';
+/** The gallery's sections, in the order the home page shows them. */
+export const categories = ['actions', 'inputs', 'feedback', 'overlays', 'content'] as const;
+export type Category = (typeof categories)[number];
 
 export interface ComponentDoc {
   /** Component name, equal to its export and its folder. */
   readonly name: string;
   readonly category: Category;
-  /** `lab` may still change; `stable` once its accessibility contract passes on all four platforms. */
-  readonly status: 'stable' | 'lab';
+  /** `preview` may still change; `stable` once its accessibility contract passes on all four platforms. */
+  readonly status: 'stable' | 'preview';
   /** One line for the catalog and the skill index; no trailing period. */
   readonly summary: string;
   /** What it is for, in two or three sentences. */
@@ -32,6 +33,8 @@ export interface ComponentDoc {
   /** What the component cannot do yet, the primitive capability that unblocks it, and today's form. */
   readonly gaps: readonly Gap[];
   readonly related?: readonly string[];
+  /** What the gallery shows, by example export name. */
+  readonly gallery: GalleryDoc;
   /** Optional translations of the prose fields, keyed by BCP 47 tag (`zh-Hans`). */
   readonly translations?: Readonly<Record<string, Partial<Pick<ComponentDoc, 'summary' | 'description' | 'guidance'>>>>;
 }
@@ -79,6 +82,30 @@ export interface ExampleRef {
   readonly name: string;
   readonly title: string;
   readonly description?: string;
+}
+
+export interface GalleryDoc {
+  /** A small, still specimen for the home tile; it is drawn on a 96 px stage. */
+  readonly specimen: string;
+  /** The tile's line: at most 32 characters, no trailing period. */
+  readonly tagline: string;
+  /** Position within its category on the home page and in the manifest, from 1. */
+  readonly order: number;
+  /** The component page; until set, the page lists `examples` in order. */
+  readonly page?: {
+    /** One sentence on when to use it. */
+    readonly lead: string;
+    /** `bare` puts examples straight on the page, for containers that draw their own surface. @default 'framed' */
+    readonly stage?: 'framed' | 'bare';
+    readonly hero: string;
+    /** A still drawing of a component that is hard to see at rest (an open dialog), on its own bare stage. */
+    readonly parts?: ExampleRef;
+    readonly variants?: readonly ExampleRef[];
+    readonly sizes?: readonly ExampleRef[];
+    /** Each state drawn on its own stage, forced by props rather than by interaction. */
+    readonly states?: readonly ExampleRef[];
+    readonly inContext?: readonly ExampleRef[];
+  };
 }
 
 export interface Gap {

@@ -28,7 +28,7 @@ export function Indeterminate() {
 export function Compact() {
   return (
     <view className="gap-2">
-      <text className="text-sm font-medium text-text">Storage</text>
+      <text className="text-footnote font-medium text-text">Storage</text>
       <ProgressBar label="Storage used" isLabelHidden size="sm" value={72} valueLabel="7.2 of 10 GB" data-testid="storage" />
     </view>
   );
@@ -42,4 +42,39 @@ export function Spinners() {
       <Spinner label="Loading" size="lg" />
     </view>
   );
+}
+
+/** The home tile. */
+export function Specimen() {
+  return (
+    <view className="flex-row items-center gap-3">
+      <ProgressBar label="Uploading" isLabelHidden value={62} className="w-20" />
+      <Spinner label="Loading" size="sm" />
+    </view>
+  );
+}
+
+export function SizesBar() {
+  return (
+    <view className="gap-4">
+      <ProgressBar label="Small" size="sm" value={40} />
+      <ProgressBar label="Medium" value={40} />
+    </view>
+  );
+}
+
+export function StateStarted() {
+  return <ProgressBar label="Sync" value={20} />;
+}
+
+export function StateHalf() {
+  return <ProgressBar label="Sync" value={50} />;
+}
+
+export function StateDone() {
+  return <ProgressBar label="Sync" value={100} />;
+}
+
+export function StateUnknown() {
+  return <ProgressBar label="Sync" />;
 }

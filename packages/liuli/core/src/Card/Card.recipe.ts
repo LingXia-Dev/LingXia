@@ -7,8 +7,8 @@ export const cardRecipe = {
   root: {
     base: 'rounded-container text-start',
     variant: {
-      outlined: 'bg-surface border border-line',
-      raised: 'bg-surface-raised border border-line shadow-md',
+      outlined: 'bg-surface border border-text/10',
+      raised: 'bg-surface-raised border border-text/8 shadow-raised',
       sunken: 'bg-surface-sunken border border-transparent',
     } satisfies Record<CardVariant, string>,
     padding: {
@@ -17,7 +17,7 @@ export const cardRecipe = {
       md: 'p-4 gap-3',
       lg: 'p-6 gap-4',
     } satisfies Record<CardPadding, string>,
-    pressable: 'items-stretch transition-colors duration-150 hover:border-line-strong active:bg-surface-sunken disabled:opacity-40',
+    pressable: 'items-stretch transition-colors duration-150 ease-out hover:border-text/20 active:bg-surface-sunken disabled:opacity-40',
     /** A wider accent border; it swaps colour and width, never the card's size. */
     selected: 'border-accent ring-1 ring-accent',
   },

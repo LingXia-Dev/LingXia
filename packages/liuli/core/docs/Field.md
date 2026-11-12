@@ -2,7 +2,7 @@
 
 # Field
 
-Label, help text and validation status around one form control. Status: lab.
+Label, help text and validation status around one form control. Status: preview.
 
 ```ts
 import { Field } from '@liulidesign/core/Field';
@@ -45,7 +45,7 @@ export function WrappedSelect() {
           placeholder="Choose…"
           options={periods}
           data-testid="period"
-          className="min-h-control-md px-3 rounded-control border border-line-strong bg-surface text-sm text-text"
+          className="min-h-control-md px-3 rounded-control border border-line-strong bg-surface text-body text-text"
         />
       )}
     </Field>
@@ -65,6 +65,7 @@ export function WrappedSelect() {
 | `description` | `string` |  | Help text under the control, read as the control's description. |
 | `status` | `FieldStatus` |  | An `error` status marks the control invalid; its message is read as the control's description. |
 | `isRequired` | `boolean` | `false` | Marks the label with an asterisk and the control as required. Validation is the app's. |
+| `hasRequiredMark` | `boolean` | `true` | Draws the asterisk on a required label; turn it off on a form where every field is required. |
 | `isDisabled` | `boolean` | `false` |  |
 | `disabledMessage` | `string` |  | Shown in place of `description` while disabled. |
 | `size` | `FieldSize` | `'md'` |  |

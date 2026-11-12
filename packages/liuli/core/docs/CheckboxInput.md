@@ -2,7 +2,7 @@
 
 # CheckboxInput
 
-One on/off choice with a label, help text and status. Status: lab.
+One on/off choice with a label, help text and status. Status: preview.
 
 ```ts
 import { CheckboxInput } from '@liulidesign/core/CheckboxInput';
@@ -75,6 +75,7 @@ export function Sizes() {
 | `description` | `string` |  | Help text under the control, read as the control's description. |
 | `status` | `FieldStatus` |  | An `error` status marks the control invalid; its message is read as the control's description. |
 | `isRequired` | `boolean` | `false` | Marks the label with an asterisk and the control as required. Validation is the app's. |
+| `hasRequiredMark` | `boolean` | `true` | Draws the asterisk on a required label; turn it off on a form where every field is required. |
 | `isDisabled` | `boolean` | `false` |  |
 | `disabledMessage` | `string` |  | Shown in place of `description` while disabled. |
 | `size` | `FieldSize` | `'md'` |  |

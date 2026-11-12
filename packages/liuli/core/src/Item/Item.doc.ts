@@ -2,8 +2,8 @@ import type { ComponentDoc } from '../doc';
 
 export const doc: ComponentDoc = {
   name: 'Item',
-  category: 'list',
-  status: 'lab',
+  category: 'content',
+  status: 'preview',
   summary: 'One row of a list: a label, a second line, and content at either end',
   description:
     'Item is the row of a settings screen, an inbox or a file list. With `onClick` the whole row is one button that ' +
@@ -55,6 +55,7 @@ export const doc: ComponentDoc = {
     { name: 'Values', title: 'Read-only rows with values' },
     { name: 'WithControl', title: 'A control at the end' },
     { name: 'Disabled', title: 'Disabled, with the reason' },
+    { name: 'Destructive', title: 'A destructive row' },
   ],
   gaps: [
     {
@@ -69,4 +70,24 @@ export const doc: ComponentDoc = {
     },
   ],
   related: ['DropdownMenu', 'Card'],
+  gallery: {
+    specimen: 'Specimen',
+    tagline: 'One row of a list',
+    order: 2,
+    page: {
+      stage: 'bare',
+      lead: 'Use an item for one row of a list: a setting, a message, a file.',
+      hero: 'Navigation',
+      variants: [
+        { name: 'Values', title: 'Read-only, with a value at the end' },
+        { name: 'WithControl', title: 'Holding its own control' },
+        { name: 'Destructive', title: 'Danger tone, for a row that deletes' },
+      ],
+      states: [
+        { name: 'StatePressable', title: 'Pressable' },
+        { name: 'StateDisabled', title: 'Disabled' },
+      ],
+      inContext: [{ name: 'Disabled', title: 'Disabled, with the reason' }],
+    },
+  },
 };

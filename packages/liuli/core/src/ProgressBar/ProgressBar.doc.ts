@@ -3,7 +3,7 @@ import type { ComponentDoc } from '../doc';
 export const doc: ComponentDoc = {
   name: 'ProgressBar',
   category: 'feedback',
-  status: 'lab',
+  status: 'preview',
   summary: 'How much of a task is done, or a spinner while the amount is unknown',
   description:
     'ProgressBar shows a task that runs for a while: an upload, an export, storage used. Without `value` it sweeps to say ' +
@@ -69,4 +69,25 @@ export const doc: ComponentDoc = {
     },
   ],
   related: ['Button'],
+  gallery: {
+    specimen: 'Specimen',
+    tagline: 'Progress, or a wait',
+    order: 2,
+    page: {
+      lead: 'Use a progress bar for a task that takes a while, and a spinner for a short wait.',
+      hero: 'Determinate',
+      variants: [
+        { name: 'Indeterminate', title: 'Amount unknown' },
+        { name: 'Spinners', title: 'Spinner, for a short wait' },
+      ],
+      sizes: [{ name: 'SizesBar', title: 'Small and medium tracks' }],
+      states: [
+        { name: 'StateStarted', title: 'Started' },
+        { name: 'StateHalf', title: 'Halfway' },
+        { name: 'StateDone', title: 'Done' },
+        { name: 'StateUnknown', title: 'Unknown' },
+      ],
+      inContext: [{ name: 'Compact', title: 'Thin, under its own heading' }],
+    },
+  },
 };

@@ -2,7 +2,7 @@
 
 # DropdownMenu
 
-Button that opens a short menu of actions. Status: lab.
+Button that opens a short menu of actions. Status: preview.
 
 ```ts
 import { DropdownMenu, DropdownMenuItem, DropdownMenuDivider } from '@liulidesign/core/DropdownMenu';
@@ -28,7 +28,7 @@ export function Basic() {
         <DropdownMenuItem label="Last updated" description="Newest first" onClick={() => order.set('Last updated')} data-testid="sort-updated" />
         <DropdownMenuItem label="Size" onClick={() => order.set('Size')} />
       </DropdownMenu>
-      <text data-testid="order" className="text-sm text-muted">{order.value}</text>
+      <text data-testid="order" className="text-footnote text-muted">{order.value}</text>
     </view>
   );
 }
@@ -48,7 +48,7 @@ export function More() {
   const removed = useLocal('removed', false);
   return (
     <view className="flex-row items-center gap-3">
-      <text className="grow basis-0 text-base font-medium">{removed.value ? 'Removed' : 'Groceries'}</text>
+      <text className="grow basis-0 text-body font-medium text-text">{removed.value ? 'Removed' : 'Groceries'}</text>
       <DropdownMenu
         label="More actions"
         isLabelHidden
@@ -76,7 +76,10 @@ export function More() {
 ### A menu on every row
 
 ```tsx
+import { type VectorPath } from '@lingxia/view';
 import { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';
+
+const dots: VectorPath[] = [{ d: 'M5 12h.01M12 12h.01M19 12h.01', fill: 'none', stroke: 'currentColor', strokeWidth: 3, strokeLinecap: 'round' }];
 
 /** Rows that each carry a menu: every menu gets its own id, so no row needs one. */
 export function InList() {
@@ -85,12 +88,42 @@ export function InList() {
     <view className="gap-2">
       {rows.map(row => (
         <view key={row} className="flex-row items-center gap-3">
-          <text className="grow basis-0 text-base">{row}</text>
-          <DropdownMenu label={`${row} actions`} size="sm" data-testid={`menu-${row}`}>
+          <text className="grow basis-0 text-body text-text">{row}</text>
+          <DropdownMenu
+            label={`${row} actions`}
+            isLabelHidden
+            icon={<vector aria-hidden paths={dots} viewBox={[0, 0, 24, 24]} className="size-5" />}
+            variant="ghost"
+            size="sm"
+            alignment="end"
+            data-testid={`menu-${row}`}
+          >
             <DropdownMenuItem label="Open" onClick={() => {}} />
           </DropdownMenu>
         </view>
       ))}
+    </view>
+  );
+}
+```
+
+### A menu that sets a value
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';
+
+/** A menu that sets a value: the trigger shows the choice, and the label stays its name. */
+export function Value() {
+  const appearance = useLocal('appearance', 'System');
+  return (
+    <view className="flex-row items-center gap-3">
+      <text className="grow basis-0 text-body text-text">Appearance</text>
+      <DropdownMenu label="Appearance" value={appearance.value} variant="ghost" size="sm" alignment="end" data-testid="appearance">
+        {['System', 'Light', 'Dark'].map(option => (
+          <DropdownMenuItem key={option} label={option} onClick={() => appearance.set(option)} data-testid={`appearance-${option}`} />
+        ))}
+      </DropdownMenu>
     </view>
   );
 }
@@ -101,6 +134,7 @@ export function InList() {
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
 | `label` (required) | `string` |  | The trigger's text, the trigger's accessible name and the menu's accessible name. |
+| `value` | `string` |  | For a menu that sets a value: the current choice, drawn on the trigger in place of `label` and read after it as the trigger's description (label "Appearance", value "System"). |
 | `isLabelHidden` | `boolean` | `false` | Draws only `icon` on a square trigger; `label` stays the name. |
 | `icon` | `Child` |  | An icon on the trigger, before the label. |
 | `hasChevron` | `boolean` |  | A down chevron after the label. Defaults to shown unless the label is hidden. |
@@ -120,8 +154,8 @@ export function InList() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `label` (required) | `string` |  | The item's text and the start of its accessible name. |
-| `description` | `string` |  | A second line, read after the label. |
+| `label` (required) | `string` |  | The item's text and its accessible name. |
+| `description` | `string` |  | A second line, read as the item's description. |
 | `icon` | `Child` |  | Drawn before the label; hidden from assistive tech. |
 | `onClick` (required) | `() => void` |  | Runs on choice; the menu then closes. |
 | `isDisabled` | `boolean` | `false` |  |

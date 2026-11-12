@@ -14,7 +14,7 @@ export function Basic() {
         <DropdownMenuItem label="Last updated" description="Newest first" onClick={() => order.set('Last updated')} data-testid="sort-updated" />
         <DropdownMenuItem label="Size" onClick={() => order.set('Size')} />
       </DropdownMenu>
-      <text data-testid="order" className="text-sm text-muted">{order.value}</text>
+      <text data-testid="order" className="text-footnote text-muted">{order.value}</text>
     </view>
   );
 }
@@ -24,7 +24,7 @@ export function More() {
   const removed = useLocal('removed', false);
   return (
     <view className="flex-row items-center gap-3">
-      <text className="grow basis-0 text-base font-medium">{removed.value ? 'Removed' : 'Groceries'}</text>
+      <text className="grow basis-0 text-body font-medium text-text">{removed.value ? 'Removed' : 'Groceries'}</text>
       <DropdownMenu
         label="More actions"
         isLabelHidden
@@ -55,12 +55,80 @@ export function InList() {
     <view className="gap-2">
       {rows.map(row => (
         <view key={row} className="flex-row items-center gap-3">
-          <text className="grow basis-0 text-base">{row}</text>
-          <DropdownMenu label={`${row} actions`} size="sm" data-testid={`menu-${row}`}>
+          <text className="grow basis-0 text-body text-text">{row}</text>
+          <DropdownMenu
+            label={`${row} actions`}
+            isLabelHidden
+            icon={<vector aria-hidden paths={dots} viewBox={[0, 0, 24, 24]} className="size-5" />}
+            variant="ghost"
+            size="sm"
+            alignment="end"
+            data-testid={`menu-${row}`}
+          >
             <DropdownMenuItem label="Open" onClick={() => {}} />
           </DropdownMenu>
         </view>
       ))}
+    </view>
+  );
+}
+
+/** The home tile. */
+export function Specimen() {
+  return (
+    <DropdownMenu label="Sort by" size="sm">
+      <DropdownMenuItem label="Name" onClick={() => {}} />
+    </DropdownMenu>
+  );
+}
+
+export function Sizes() {
+  return (
+    <view className="flex-row items-center gap-2">
+      <DropdownMenu label="Small" size="sm">
+        <DropdownMenuItem label="Rename" onClick={() => {}} />
+      </DropdownMenu>
+      <DropdownMenu label="Medium">
+        <DropdownMenuItem label="Rename" onClick={() => {}} />
+      </DropdownMenu>
+      <DropdownMenu label="Large" size="lg">
+        <DropdownMenuItem label="Rename" onClick={() => {}} />
+      </DropdownMenu>
+    </view>
+  );
+}
+
+export function StateDisabled() {
+  return (
+    <view className="flex-row">
+      <DropdownMenu label="Share" isDisabled>
+        <DropdownMenuItem label="Copy link" onClick={() => {}} />
+      </DropdownMenu>
+    </view>
+  );
+}
+
+export function StateEnabled() {
+  return (
+    <view className="flex-row">
+      <DropdownMenu label="Share">
+        <DropdownMenuItem label="Copy link" onClick={() => {}} />
+      </DropdownMenu>
+    </view>
+  );
+}
+
+/** A menu that sets a value: the trigger shows the choice, and the label stays its name. */
+export function Value() {
+  const appearance = useLocal('appearance', 'System');
+  return (
+    <view className="flex-row items-center gap-3">
+      <text className="grow basis-0 text-body text-text">Appearance</text>
+      <DropdownMenu label="Appearance" value={appearance.value} variant="ghost" size="sm" alignment="end" data-testid="appearance">
+        {['System', 'Light', 'Dark'].map(option => (
+          <DropdownMenuItem key={option} label={option} onClick={() => appearance.set(option)} data-testid={`appearance-${option}`} />
+        ))}
+      </DropdownMenu>
     </view>
   );
 }

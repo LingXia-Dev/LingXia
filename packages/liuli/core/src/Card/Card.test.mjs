@@ -21,7 +21,7 @@ test('Choice: each card is one button named by its label; pressing one moves the
   const screen = await renderExample('Card/Card', 'Choice');
   const card = id => screen.getByTestId(`plan-${id}`);
   assert.equal(card('monthly').tag, 'button');
-  assert.equal(card('yearly').props.accessibilityLabel, 'Yearly, 40 a year');
+  assert.equal(card('yearly').props.accessibilityLabel, 'Yearly, €40 a year');
   assert.equal(card('monthly').props.stateSelected, 1);
   assert.equal(card('yearly').props.stateSelected, undefined);
   screen.press(card('yearly'));

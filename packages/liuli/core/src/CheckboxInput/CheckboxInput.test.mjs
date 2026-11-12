@@ -36,3 +36,12 @@ test('Sizes: three independent boxes', async () => {
   const screen = await renderExample('CheckboxInput/CheckboxInput', 'Sizes');
   assert.deepEqual(screen.queryAll(node => node.tag === 'checkbox').map(node => node.props.checked), [0, 1, 0]);
 });
+
+test('the status message starts under the label, past the box and the row gap', async () => {
+  const screen = await renderExample('CheckboxInput/CheckboxInput', 'Controlled');
+  const region = screen.queryAll(node => node.props.role === 'status')[0];
+  const row = screen.getByTestId('terms').children[0];
+  const box = row.children[0];
+  assert.equal(region.props.paddingLeft ?? region.props.paddingInlineStart, box.props.width + row.props.gap);
+  assert.equal(screen.getByTestId('terms').props.paddingLeft, 0, 'no inset before the box');
+});

@@ -2,7 +2,7 @@
 
 # Item
 
-One row of a list: a label, a second line, and content at either end. Status: lab.
+One row of a list: a label, a second line, and content at either end. Status: preview.
 
 ```ts
 import { Item } from '@liulidesign/core/Item';
@@ -15,7 +15,6 @@ Item is the row of a settings screen, an inbox or a file list. With `onClick` th
 ### Rows that open a page
 
 ```tsx
-import { useLocal } from '@lingxia/view';
 import { Item } from '@liulidesign/core/Item';
 
 const notes = [
@@ -26,22 +25,11 @@ const notes = [
 
 /** Rows that open a page: each is one button named by its title, with the second line as its description. */
 export function Navigation() {
-  const opened = useLocal('opened', '');
   return (
-    <view className="gap-2">
-      <view className="rounded-container border border-line bg-surface divide-y divide-line">
-        {notes.map(note => (
-          <Item
-            key={note.id}
-            label={note.title}
-            description={note.updated}
-            hasChevron
-            onClick={() => opened.set(note.title)}
-            data-testid={`note-${note.id}`}
-          />
-        ))}
-      </view>
-      <text data-testid="opened" className="text-sm text-muted">{opened.value}</text>
+    <view className="rounded-container border border-line bg-surface divide-y divide-line">
+      {notes.map(note => (
+        <Item key={note.id} label={note.title} description={note.updated} hasChevron onClick={() => {}} data-testid={`note-${note.id}`} />
+      ))}
     </view>
   );
 }
@@ -60,14 +48,14 @@ export function Values() {
     <view className="rounded-container border border-line bg-surface divide-y divide-line">
       <Item
         label="Version"
-        endContent={<text className="text-sm text-muted">2.4.1</text>}
+        endContent={<text className="text-footnote text-muted">2.4.1</text>}
         data-testid="version"
       />
       <Item
         label="Storage"
         description="Photos and documents"
         startContent={<vector aria-hidden paths={folder} viewBox={[0, 0, 24, 24]} className="size-5" />}
-        endContent={<text className="text-sm text-muted">7.2 GB</text>}
+        endContent={<text className="text-footnote text-muted">7.2 GB</text>}
       />
     </view>
   );
@@ -126,6 +114,27 @@ export function Disabled() {
 }
 ```
 
+### A destructive row
+
+```tsx
+import { Item } from '@liulidesign/core/Item';
+
+const notes = [
+  { id: 'n1', title: 'Groceries', updated: 'Edited today' },
+  { id: 'n2', title: 'Trip to the coast', updated: 'Edited yesterday' },
+  { id: 'n3', title: 'Reading list', updated: 'Edited last week' },
+] as const;
+
+/** A row that deletes or ends something; the danger tone marks it before it is pressed. */
+export function Destructive() {
+  return (
+    <view className="rounded-container border border-line bg-surface">
+      <Item label="Delete account" description="Removes your notes from every device" tone="danger" hasChevron onClick={() => {}} data-testid="delete-row" />
+    </view>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -135,6 +144,7 @@ export function Disabled() {
 | `isDisabled` | `boolean` | `false` |  |
 | `disabledMessage` | `string` |  | Shown in place of `description` while disabled. |
 | `label` (required) | `string` |  | The row's main text, and its accessible name when it is pressable. |
+| `tone` | `ItemTone` | `'default'` | `danger` draws the label in the danger role, for a row that deletes or ends something. |
 | `description` | `string` |  | A second line under the label; read as the row's description when it is pressable. |
 | `startContent` | `Child` |  | Before the text: an icon or an avatar. Hidden from assistive tech on a pressable row. |
 | `endContent` | `Child` |  | After the text: a value, a badge, or, on a row without `onClick`, a control such as a Button. |

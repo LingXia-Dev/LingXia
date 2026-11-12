@@ -7,8 +7,8 @@
       "exports": [
         "Badge"
       ],
-      "category": "content",
-      "status": "lab",
+      "category": "feedback",
+      "status": "preview",
       "summary": "A short status or category label in a tinted pill",
       "description": "Badge marks the state or kind of the thing next to it: Draft, Paid, Overdue, New. It is text, not a control, and is read as it is shown. Five tones come soft; the four status tones also come solid for the one label that must stand out.",
       "keywords": [
@@ -205,7 +205,32 @@
       "related": [
         "Item",
         "Card"
-      ]
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "A short status label",
+        "order": 1,
+        "page": {
+          "lead": "Use a badge to mark the status or kind of the thing beside it, in a word or two.",
+          "hero": "InARow",
+          "variants": [
+            {
+              "name": "Tones",
+              "title": "Soft, in five tones"
+            },
+            {
+              "name": "Solid",
+              "title": "Solid, for the one label that must stand out"
+            }
+          ],
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "Small and medium, with an icon"
+            }
+          ]
+        }
+      }
     },
     {
       "name": "Button",
@@ -213,8 +238,8 @@
       "exports": [
         "Button"
       ],
-      "category": "action",
-      "status": "lab",
+      "category": "actions",
+      "status": "preview",
       "summary": "Runs an action when pressed, with variants, sizes and a loading state",
       "description": "Button starts an action: save, send, delete, open a dialog. Its `label` is both its text and its accessible name, and it can wait on an async action with `clickAction`. To open a menu use DropdownMenu.",
       "keywords": [
@@ -239,7 +264,7 @@
           "name": "variant",
           "type": "ButtonVariant",
           "required": false,
-          "description": "`primary` for the one main action in view, `destructive` for an action that loses data.",
+          "description": "`primary` for the one main action in view, `destructive` for an action that loses data, `link` for a quiet way out beside a form's main action (\"Forgot password?\").",
           "default": "'secondary'"
         },
         {
@@ -378,10 +403,29 @@
             ],
             "minimum": "3:1",
             "proven": true
+          },
+          {
+            "what": "link label",
+            "pair": [
+              "accent",
+              "canvas"
+            ],
+            "minimum": "4.5:1",
+            "proven": false
+          },
+          {
+            "what": "disabled label on its 6% ink fill",
+            "pair": [
+              "text-muted",
+              "canvas"
+            ],
+            "minimum": "4.5:1",
+            "proven": true
           }
         ],
         "notes": [
           "A loading button stays enabled and focusable, reports busy, and ignores presses.",
+          "Disabled, every variant turns to a faint ink fill with muted text, so the label stays readable in both themes.",
           "Sizes sm (32) and md (40) are below the 44 pt touch minimum; on touch layouts prefer lg until hit slop lets the press area extend past the paint."
         ]
       },
@@ -404,7 +448,7 @@
         {
           "name": "DisabledWithReason",
           "title": "Disabled, with the reason",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\n\n/** The reason is read after the label while disabled. Pass translated copy; Liuli ships none. */\nexport function DisabledWithReason() {\n  const agreed = useLocal('agreed', false);\n  return (\n    <view className=\"gap-2\">\n      <Button\n        label=\"Continue\"\n        variant=\"primary\"\n        width=\"fill\"\n        isDisabled={!agreed.value}\n        disabledMessage=\"Accept the terms first\"\n        data-testid=\"continue\"\n      />\n      <Button\n        label={agreed.value ? 'Withdraw consent' : 'Accept the terms'}\n        variant=\"ghost\"\n        onClick={() => agreed.set(!agreed.value)}\n        data-testid=\"toggle-terms\"\n      />\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\n\n/** The reason is read after the label while disabled. Pass translated copy; Liuli ships none. */\nexport function DisabledWithReason() {\n  const agreed = useLocal('agreed', false);\n  return (\n    <view className=\"gap-2\">\n      <Button\n        label=\"Continue\"\n        variant=\"primary\"\n        width=\"fill\"\n        isDisabled={!agreed.value}\n        disabledMessage=\"Accept the terms first\"\n        data-testid=\"continue\"\n      />\n      <Button\n        label={agreed.value ? 'Withdraw consent' : 'Accept the terms'}\n        variant=\"ghost\"\n        width=\"content\"\n        onClick={() => agreed.set(!agreed.value)}\n        data-testid=\"toggle-terms\"\n      />\n    </view>\n  );\n}"
         }
       ],
       "gaps": [
@@ -427,7 +471,64 @@
       "related": [
         "DropdownMenu",
         "Dialog"
-      ]
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Starts an action",
+        "order": 1,
+        "page": {
+          "lead": "Use a button to start an action: save, send, delete or open a dialog. Keep one primary button per view.",
+          "hero": "Hero",
+          "variants": [
+            {
+              "name": "VariantsEveryday",
+              "title": "Primary for the main action, secondary and ghost for the rest"
+            },
+            {
+              "name": "VariantDestructive",
+              "title": "Destructive, for loss"
+            },
+            {
+              "name": "VariantLink",
+              "title": "Link, a quiet way out beside a form"
+            }
+          ],
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "Small, medium and large; prefer large on touch layouts"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateDefault",
+              "title": "Default"
+            },
+            {
+              "name": "StateBusy",
+              "title": "Busy"
+            },
+            {
+              "name": "StateDisabled",
+              "title": "Disabled"
+            },
+            {
+              "name": "StateSecondaryDisabled",
+              "title": "Disabled, secondary"
+            }
+          ],
+          "inContext": [
+            {
+              "name": "DisabledWithReason",
+              "title": "A form footer that waits for consent"
+            },
+            {
+              "name": "AsyncAction",
+              "title": "Waiting on a Logic action"
+            }
+          ]
+        }
+      }
     },
     {
       "name": "Card",
@@ -436,8 +537,8 @@
         "Card",
         "ClickableCard"
       ],
-      "category": "container",
-      "status": "lab",
+      "category": "content",
+      "status": "preview",
       "summary": "A surface that groups related content, or one pressable choice",
       "description": "Card groups a heading, text and actions that belong together. ClickableCard, from the same import, makes the whole card one button, for opening an item or choosing one of a few options; it is named by a short `label` and must not contain other controls.",
       "keywords": [
@@ -586,17 +687,17 @@
         {
           "name": "Variants",
           "title": "Outlined, raised and sunken",
-          "source": "import { Card } from '@liulidesign/core/Card';\n\nexport function Variants() {\n  return (\n    <view className=\"gap-3\">\n      <Card data-testid=\"outlined\">\n        <text className=\"text-base font-semibold text-text\">Outlined</text>\n        <text className=\"text-sm text-muted\">Sits on the page.</text>\n      </Card>\n      <Card variant=\"raised\">\n        <text className=\"text-base font-semibold text-text\">Raised</text>\n        <text className=\"text-sm text-muted\">Floats above the page.</text>\n      </Card>\n      <Card variant=\"sunken\">\n        <text className=\"text-base font-semibold text-text\">Sunken</text>\n        <text className=\"text-sm text-muted\">Groups content inside another surface.</text>\n      </Card>\n    </view>\n  );\n}"
+          "source": "import { Card } from '@liulidesign/core/Card';\n\nexport function Variants() {\n  return (\n    <view className=\"gap-3\">\n      <Card data-testid=\"outlined\">\n        <text className=\"text-callout font-semibold text-text\">Outlined</text>\n        <text className=\"text-footnote text-muted\">Sits on the page.</text>\n      </Card>\n      <Card variant=\"raised\">\n        <text className=\"text-callout font-semibold text-text\">Raised</text>\n        <text className=\"text-footnote text-muted\">Floats above the page.</text>\n      </Card>\n      <Card variant=\"sunken\">\n        <text className=\"text-callout font-semibold text-text\">Sunken</text>\n        <text className=\"text-footnote text-muted\">Groups content inside another surface.</text>\n      </Card>\n    </view>\n  );\n}"
         },
         {
           "name": "WithActions",
           "title": "A card with actions",
-          "source": "import { Button } from '@liulidesign/core/Button';\nimport { Card, ClickableCard } from '@liulidesign/core/Card';\n\n/** Actions go in a plain Card, never in a ClickableCard. */\nexport function WithActions() {\n  return (\n    <Card>\n      <text role=\"heading\" headingLevel={3} className=\"text-base font-semibold text-text\">Back up your notes</text>\n      <text className=\"text-sm text-muted\">Keep a copy on another device in case this one is lost.</text>\n      <view className=\"flex-row justify-end gap-2\">\n        <Button label=\"Not now\" variant=\"ghost\" size=\"sm\" />\n        <Button label=\"Turn on\" variant=\"primary\" size=\"sm\" data-testid=\"turn-on\" />\n      </view>\n    </Card>\n  );\n}"
+          "source": "import { Button } from '@liulidesign/core/Button';\nimport { Card, ClickableCard } from '@liulidesign/core/Card';\n\n/** Actions go in a plain Card, never in a ClickableCard. */\nexport function WithActions() {\n  return (\n    <Card>\n      <text role=\"heading\" headingLevel={3} className=\"text-callout font-semibold text-text\">Back up your notes</text>\n      <text className=\"text-footnote text-muted\">Keep a copy on another device in case this one is lost.</text>\n      <view className=\"flex-row justify-end gap-2\">\n        <Button label=\"Not now\" variant=\"ghost\" size=\"sm\" />\n        <Button label=\"Turn on\" variant=\"primary\" size=\"sm\" data-testid=\"turn-on\" />\n      </view>\n    </Card>\n  );\n}"
         },
         {
           "name": "Choice",
           "title": "Choosing one card of several",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { ClickableCard } from '@liulidesign/core/Card';\n\nconst plans = [\n  { id: 'monthly', name: 'Monthly', price: '4 a month' },\n  { id: 'yearly', name: 'Yearly', price: '40 a year' },\n] as const;\n\n/** Choosing one of several: the chosen card is reported as selected. */\nexport function Choice() {\n  const plan = useLocal('plan', 'monthly');\n  return (\n    <view className=\"flex-row gap-3\">\n      {plans.map(item => (\n        <ClickableCard\n          key={item.id}\n          label={`${item.name}, ${item.price}`}\n          isSelected={plan.value === item.id}\n          onClick={() => plan.set(item.id)}\n          className=\"grow basis-0\"\n          data-testid={`plan-${item.id}`}\n        >\n          <text className=\"text-base font-semibold text-text\">{item.name}</text>\n          <text className=\"text-sm text-muted\">{item.price}</text>\n        </ClickableCard>\n      ))}\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { ClickableCard } from '@liulidesign/core/Card';\n\nconst plans = [\n  { id: 'monthly', name: 'Monthly', price: '€4 a month' },\n  { id: 'yearly', name: 'Yearly', price: '€40 a year' },\n] as const;\n\n/** Choosing one of several: the chosen card is reported as selected. */\nexport function Choice() {\n  const plan = useLocal('plan', 'monthly');\n  return (\n    <view className=\"flex-row gap-3\">\n      {plans.map(item => (\n        <ClickableCard\n          key={item.id}\n          label={`${item.name}, ${item.price}`}\n          isSelected={plan.value === item.id}\n          onClick={() => plan.set(item.id)}\n          className=\"grow basis-0\"\n          data-testid={`plan-${item.id}`}\n        >\n          <text className=\"text-callout font-semibold text-text\">{item.name}</text>\n          <text className=\"text-footnote text-muted\">{item.price}</text>\n        </ClickableCard>\n      ))}\n    </view>\n  );\n}"
         }
       ],
       "gaps": [
@@ -609,7 +710,43 @@
       "related": [
         "Item",
         "Button"
-      ]
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Groups related content",
+        "order": 1,
+        "page": {
+          "stage": "bare",
+          "lead": "Use a card to group content that belongs together, and a clickable card when the whole card opens or chooses something.",
+          "hero": "WithActions",
+          "variants": [
+            {
+              "name": "Variants",
+              "title": "Outlined, raised and sunken"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateUnselected",
+              "title": "Clickable"
+            },
+            {
+              "name": "StateSelected",
+              "title": "Selected"
+            },
+            {
+              "name": "StateDisabled",
+              "title": "Disabled"
+            }
+          ],
+          "inContext": [
+            {
+              "name": "Choice",
+              "title": "Choosing a plan"
+            }
+          ]
+        }
+      }
     },
     {
       "name": "CheckboxInput",
@@ -617,8 +754,8 @@
       "exports": [
         "CheckboxInput"
       ],
-      "category": "form",
-      "status": "lab",
+      "category": "inputs",
+      "status": "preview",
       "summary": "One on/off choice with a label, help text and status",
       "description": "CheckboxInput is a single yes/no choice: opt-ins, terms, settings that take effect on save. The box, label and help text form one control, so a tap anywhere on them toggles it.",
       "keywords": [
@@ -663,6 +800,13 @@
           "required": false,
           "description": "Marks the label with an asterisk and the control as required. Validation is the app's.",
           "default": "false"
+        },
+        {
+          "name": "hasRequiredMark",
+          "type": "boolean",
+          "required": false,
+          "description": "Draws the asterisk on a required label; turn it off on a form where every field is required.",
+          "default": "true"
         },
         {
           "name": "isDisabled",
@@ -724,7 +868,8 @@
         "mark": "vector",
         "text": "view",
         "label": "text",
-        "description": "text"
+        "description": "text",
+        "status": "view"
       },
       "accessibility": {
         "pattern": "checkbox",
@@ -822,7 +967,46 @@
       ],
       "related": [
         "Field"
-      ]
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "One on/off choice",
+        "order": 2,
+        "page": {
+          "lead": "Use a checkbox for one on/off choice that takes effect when the form is sent.",
+          "hero": "Basic",
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "Small, medium and large"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateOff",
+              "title": "Off"
+            },
+            {
+              "name": "StateOn",
+              "title": "On"
+            },
+            {
+              "name": "StateInvalid",
+              "title": "Invalid"
+            },
+            {
+              "name": "StateDisabled",
+              "title": "Disabled"
+            }
+          ],
+          "inContext": [
+            {
+              "name": "Controlled",
+              "title": "Terms on a sign-up form, with an error"
+            }
+          ]
+        }
+      }
     },
     {
       "name": "Dialog",
@@ -830,8 +1014,8 @@
       "exports": [
         "Dialog"
       ],
-      "category": "overlay",
-      "status": "lab",
+      "category": "overlays",
+      "status": "preview",
       "summary": "Modal panel over the page for a decision or a short task",
       "description": "Dialog interrupts the page to ask for a decision or a short piece of input, and keeps focus and assistive tech inside until it closes. It is controlled: `isOpen` shows it, `onOpenChange(false)` reports every close request.",
       "keywords": [
@@ -986,12 +1170,12 @@
         {
           "name": "Confirm",
           "title": "Confirm a destructive action, as an alert dialog",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Dialog } from '@liulidesign/core/Dialog';\n\n/** A confirmation that interrupts: Escape and back cancel, a backdrop tap does not; the destructive action is last. */\nexport function Confirm() {\n  const open = useLocal('open', false);\n  const deleted = useLocal('deleted', false);\n  return (\n    <view className=\"gap-2\">\n      <Button label=\"Delete note\" variant=\"destructive\" width=\"content\" onClick={() => open.set(true)} data-testid=\"open\" />\n      <text role=\"status\" data-testid=\"outcome\" className=\"text-sm text-muted\">{deleted.value ? 'Deleted' : 'Not deleted'}</text>\n      <Dialog\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Delete this note?\"\n        description=\"It leaves every device you are signed in on.\"\n        size=\"sm\"\n        isAlert\n        dismissOn=\"closeRequest\"\n        data-testid=\"dialog\"\n        actions={\n          <>\n            <Button label=\"Cancel\" onClick={() => open.set(false)} data-testid=\"cancel\" />\n            <Button label=\"Delete\" variant=\"destructive\" onClick={() => { deleted.set(true); open.set(false); }} data-testid=\"confirm\" />\n          </>\n        }\n      />\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Dialog } from '@liulidesign/core/Dialog';\n\n/** A confirmation that interrupts: Escape and back cancel, a backdrop tap does not; the destructive action is last. */\nexport function Confirm() {\n  const open = useLocal('open', false);\n  const deleted = useLocal('deleted', false);\n  return (\n    <view className=\"gap-2\">\n      <Button label=\"Delete note\" variant=\"destructive\" width=\"content\" onClick={() => open.set(true)} data-testid=\"confirm-open\" />\n      <text role=\"status\" data-testid=\"outcome\" className=\"text-footnote text-muted\">{deleted.value ? 'Deleted' : 'Not deleted'}</text>\n      <Dialog\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Delete this note?\"\n        description=\"It leaves every device you are signed in on.\"\n        size=\"sm\"\n        isAlert\n        dismissOn=\"closeRequest\"\n        data-testid=\"confirm-dialog\"\n        actions={\n          <>\n            <Button label=\"Cancel\" onClick={() => open.set(false)} data-testid=\"cancel\" />\n            <Button label=\"Delete\" variant=\"destructive\" onClick={() => { deleted.set(true); open.set(false); }} data-testid=\"confirm\" />\n          </>\n        }\n      />\n    </view>\n  );\n}"
         },
         {
           "name": "Form",
           "title": "A short form",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { TextInput } from '@liulidesign/core/TextInput';\nimport { Dialog } from '@liulidesign/core/Dialog';\n\n/**\n * A short form. The draft lives outside the dialog, since closing discards the dialog's own state.\n * Only Escape and back cancel, so a stray backdrop tap does not lose the typing.\n */\nexport function Form() {\n  const open = useLocal('open', false);\n  const name = useLocal('name', '');\n  return (\n    <view className=\"gap-2\">\n      <Button label=\"Rename\" width=\"content\" onClick={() => open.set(true)} data-testid=\"open\" />\n      <Dialog\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Rename notebook\"\n        closeLabel=\"Close\"\n        dismissOn=\"closeRequest\"\n        data-testid=\"dialog\"\n        actions={<Button label=\"Save\" variant=\"primary\" isDisabled={name.value.trim() === ''} onClick={() => open.set(false)} data-testid=\"save\" />}\n      >\n        <TextInput bind={name} label=\"Name\" hasAutoFocus enterKeyHint=\"done\" onSubmit={() => open.set(false)} data-testid=\"name\" />\n      </Dialog>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { TextInput } from '@liulidesign/core/TextInput';\nimport { Dialog } from '@liulidesign/core/Dialog';\n\n/**\n * A short form. The draft lives outside the dialog, since closing discards the dialog's own state.\n * Only Escape and back cancel, so a stray backdrop tap does not lose the typing.\n */\nexport function Form() {\n  const open = useLocal('open', false);\n  const name = useLocal('name', '');\n  return (\n    <view className=\"gap-2\">\n      <Button label=\"Rename\" width=\"content\" onClick={() => open.set(true)} data-testid=\"rename-open\" />\n      <Dialog\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Rename notebook\"\n        closeLabel=\"Close\"\n        dismissOn=\"closeRequest\"\n        data-testid=\"rename-dialog\"\n        actions={<Button label=\"Save\" variant=\"primary\" isDisabled={name.value.trim() === ''} onClick={() => open.set(false)} data-testid=\"save\" />}\n      >\n        <TextInput bind={name} label=\"Name\" hasAutoFocus enterKeyHint=\"done\" onSubmit={() => open.set(false)} data-testid=\"name\" />\n      </Dialog>\n    </view>\n  );\n}"
         }
       ],
       "gaps": [
@@ -1009,7 +1193,26 @@
       "related": [
         "Button",
         "DropdownMenu"
-      ]
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "A decision over the page",
+        "order": 1,
+        "page": {
+          "lead": "Use a dialog for a decision or a short task that must be finished before going on.",
+          "hero": "Confirm",
+          "parts": {
+            "name": "Parts",
+            "title": "Title, then the body, then the actions with the main one last"
+          },
+          "variants": [
+            {
+              "name": "Form",
+              "title": "A short task: renaming"
+            }
+          ]
+        }
+      }
     },
     {
       "name": "DropdownMenu",
@@ -1019,8 +1222,8 @@
         "DropdownMenuItem",
         "DropdownMenuDivider"
       ],
-      "category": "action",
-      "status": "lab",
+      "category": "overlays",
+      "status": "preview",
       "summary": "Button that opens a short menu of actions",
       "description": "DropdownMenu groups a few related actions behind one button: sort options, a \"more\" menu on a row, account actions. Its children are DropdownMenuItems and DropdownMenuDividers; choosing an item runs its onClick and closes the menu.",
       "keywords": [
@@ -1039,6 +1242,12 @@
           "type": "string",
           "required": true,
           "description": "The trigger's text, the trigger's accessible name and the menu's accessible name."
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "required": false,
+          "description": "For a menu that sets a value: the current choice, drawn on the trigger in place of `label` and read after it as the trigger's description (label \"Appearance\", value \"System\")."
         },
         {
           "name": "isLabelHidden",
@@ -1137,13 +1346,13 @@
             "name": "label",
             "type": "string",
             "required": true,
-            "description": "The item's text and the start of its accessible name."
+            "description": "The item's text and its accessible name."
           },
           {
             "name": "description",
             "type": "string",
             "required": false,
-            "description": "A second line, read after the label."
+            "description": "A second line, read as the item's description."
           },
           {
             "name": "icon",
@@ -1260,17 +1469,22 @@
         {
           "name": "Basic",
           "title": "Labelled trigger",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\n\n/** A labelled trigger; the menu lines up with its start edge. */\nexport function Basic() {\n  const order = useLocal('order', 'Name');\n  return (\n    <view className=\"flex-row items-center gap-3\">\n      <DropdownMenu label=\"Sort by\" data-testid=\"sort\">\n        <DropdownMenuItem label=\"Name\" onClick={() => order.set('Name')} data-testid=\"sort-name\" />\n        <DropdownMenuItem label=\"Last updated\" description=\"Newest first\" onClick={() => order.set('Last updated')} data-testid=\"sort-updated\" />\n        <DropdownMenuItem label=\"Size\" onClick={() => order.set('Size')} />\n      </DropdownMenu>\n      <text data-testid=\"order\" className=\"text-sm text-muted\">{order.value}</text>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\n\n/** A labelled trigger; the menu lines up with its start edge. */\nexport function Basic() {\n  const order = useLocal('order', 'Name');\n  return (\n    <view className=\"flex-row items-center gap-3\">\n      <DropdownMenu label=\"Sort by\" data-testid=\"sort\">\n        <DropdownMenuItem label=\"Name\" onClick={() => order.set('Name')} data-testid=\"sort-name\" />\n        <DropdownMenuItem label=\"Last updated\" description=\"Newest first\" onClick={() => order.set('Last updated')} data-testid=\"sort-updated\" />\n        <DropdownMenuItem label=\"Size\" onClick={() => order.set('Size')} />\n      </DropdownMenu>\n      <text data-testid=\"order\" className=\"text-footnote text-muted\">{order.value}</text>\n    </view>\n  );\n}"
         },
         {
           "name": "More",
           "title": "Icon-only \"more\" menu on a row",
-          "source": "import { useLocal, type VectorPath } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuDivider, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\n\nconst dots: VectorPath[] = [{ d: 'M5 12h.01M12 12h.01M19 12h.01', fill: 'none', stroke: 'currentColor', strokeWidth: 3, strokeLinecap: 'round' }];\nconst trash: VectorPath[] = [{ d: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinejoin: 'round' }];\n\n/** An icon-only \"more\" menu at the end of a row, aligned to the row's end edge. */\nexport function More() {\n  const removed = useLocal('removed', false);\n  return (\n    <view className=\"flex-row items-center gap-3\">\n      <text className=\"grow basis-0 text-base font-medium\">{removed.value ? 'Removed' : 'Groceries'}</text>\n      <DropdownMenu\n        label=\"More actions\"\n        isLabelHidden\n        icon={<vector aria-hidden paths={dots} viewBox={[0, 0, 24, 24]} className=\"size-5\" />}\n        variant=\"ghost\"\n        alignment=\"end\"\n        data-testid=\"more\"\n      >\n        <DropdownMenuItem label=\"Rename\" onClick={() => {}} />\n        <DropdownMenuItem label=\"Share\" onClick={() => {}} isDisabled />\n        <DropdownMenuDivider />\n        <DropdownMenuItem\n          label=\"Delete\"\n          variant=\"destructive\"\n          icon={<vector aria-hidden paths={trash} viewBox={[0, 0, 24, 24]} className=\"size-4\" />}\n          onClick={() => removed.set(true)}\n          data-testid=\"delete\"\n        />\n      </DropdownMenu>\n    </view>\n  );\n}"
+          "source": "import { useLocal, type VectorPath } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuDivider, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\n\nconst dots: VectorPath[] = [{ d: 'M5 12h.01M12 12h.01M19 12h.01', fill: 'none', stroke: 'currentColor', strokeWidth: 3, strokeLinecap: 'round' }];\nconst trash: VectorPath[] = [{ d: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinejoin: 'round' }];\n\n/** An icon-only \"more\" menu at the end of a row, aligned to the row's end edge. */\nexport function More() {\n  const removed = useLocal('removed', false);\n  return (\n    <view className=\"flex-row items-center gap-3\">\n      <text className=\"grow basis-0 text-body font-medium text-text\">{removed.value ? 'Removed' : 'Groceries'}</text>\n      <DropdownMenu\n        label=\"More actions\"\n        isLabelHidden\n        icon={<vector aria-hidden paths={dots} viewBox={[0, 0, 24, 24]} className=\"size-5\" />}\n        variant=\"ghost\"\n        alignment=\"end\"\n        data-testid=\"more\"\n      >\n        <DropdownMenuItem label=\"Rename\" onClick={() => {}} />\n        <DropdownMenuItem label=\"Share\" onClick={() => {}} isDisabled />\n        <DropdownMenuDivider />\n        <DropdownMenuItem\n          label=\"Delete\"\n          variant=\"destructive\"\n          icon={<vector aria-hidden paths={trash} viewBox={[0, 0, 24, 24]} className=\"size-4\" />}\n          onClick={() => removed.set(true)}\n          data-testid=\"delete\"\n        />\n      </DropdownMenu>\n    </view>\n  );\n}"
         },
         {
           "name": "InList",
           "title": "A menu on every row",
-          "source": "import { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\n\n/** Rows that each carry a menu: every menu gets its own id, so no row needs one. */\nexport function InList() {\n  const rows = ['Inbox', 'Archive'];\n  return (\n    <view className=\"gap-2\">\n      {rows.map(row => (\n        <view key={row} className=\"flex-row items-center gap-3\">\n          <text className=\"grow basis-0 text-base\">{row}</text>\n          <DropdownMenu label={`${row} actions`} size=\"sm\" data-testid={`menu-${row}`}>\n            <DropdownMenuItem label=\"Open\" onClick={() => {}} />\n          </DropdownMenu>\n        </view>\n      ))}\n    </view>\n  );\n}"
+          "source": "import { type VectorPath } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\n\nconst dots: VectorPath[] = [{ d: 'M5 12h.01M12 12h.01M19 12h.01', fill: 'none', stroke: 'currentColor', strokeWidth: 3, strokeLinecap: 'round' }];\n\n/** Rows that each carry a menu: every menu gets its own id, so no row needs one. */\nexport function InList() {\n  const rows = ['Inbox', 'Archive'];\n  return (\n    <view className=\"gap-2\">\n      {rows.map(row => (\n        <view key={row} className=\"flex-row items-center gap-3\">\n          <text className=\"grow basis-0 text-body text-text\">{row}</text>\n          <DropdownMenu\n            label={`${row} actions`}\n            isLabelHidden\n            icon={<vector aria-hidden paths={dots} viewBox={[0, 0, 24, 24]} className=\"size-5\" />}\n            variant=\"ghost\"\n            size=\"sm\"\n            alignment=\"end\"\n            data-testid={`menu-${row}`}\n          >\n            <DropdownMenuItem label=\"Open\" onClick={() => {}} />\n          </DropdownMenu>\n        </view>\n      ))}\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Value",
+          "title": "A menu that sets a value",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\n\n/** A menu that sets a value: the trigger shows the choice, and the label stays its name. */\nexport function Value() {\n  const appearance = useLocal('appearance', 'System');\n  return (\n    <view className=\"flex-row items-center gap-3\">\n      <text className=\"grow basis-0 text-body text-text\">Appearance</text>\n      <DropdownMenu label=\"Appearance\" value={appearance.value} variant=\"ghost\" size=\"sm\" alignment=\"end\" data-testid=\"appearance\">\n        {['System', 'Light', 'Dark'].map(option => (\n          <DropdownMenuItem key={option} label={option} onClick={() => appearance.set(option)} data-testid={`appearance-${option}`} />\n        ))}\n      </DropdownMenu>\n    </view>\n  );\n}"
         }
       ],
       "gaps": [
@@ -1302,7 +1516,48 @@
       ],
       "related": [
         "Button"
-      ]
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "A menu of actions",
+        "order": 2,
+        "page": {
+          "lead": "Use a dropdown menu for a short list of actions that do not need to stay on screen.",
+          "hero": "Basic",
+          "variants": [
+            {
+              "name": "More",
+              "title": "Icon only, at the end of a row"
+            },
+            {
+              "name": "Value",
+              "title": "Showing the current choice"
+            }
+          ],
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "Small, medium and large triggers"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateEnabled",
+              "title": "Default"
+            },
+            {
+              "name": "StateDisabled",
+              "title": "Disabled"
+            }
+          ],
+          "inContext": [
+            {
+              "name": "InList",
+              "title": "A menu on every row"
+            }
+          ]
+        }
+      }
     },
     {
       "name": "Field",
@@ -1310,8 +1565,8 @@
       "exports": [
         "Field"
       ],
-      "category": "form",
-      "status": "lab",
+      "category": "inputs",
+      "status": "preview",
       "summary": "Label, help text and validation status around one form control",
       "description": "Field lays out the parts every form control shares: a label, the control, help text and a status message. Liuli form controls use it inside; wrap a raw primitive in it only when Liuli has no component for that control yet.",
       "keywords": [
@@ -1373,6 +1628,13 @@
           "required": false,
           "description": "Marks the label with an asterisk and the control as required. Validation is the app's.",
           "default": "false"
+        },
+        {
+          "name": "hasRequiredMark",
+          "type": "boolean",
+          "required": false,
+          "description": "Draws the asterisk on a required label; turn it off on a form where every field is required.",
+          "default": "true"
         },
         {
           "name": "isDisabled",
@@ -1465,7 +1727,7 @@
         {
           "name": "WrappedSelect",
           "title": "Wrapping a primitive select",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Field } from '@liulidesign/core/Field';\n\nconst periods = [\n  { value: 'monthly', label: 'Monthly' },\n  { value: 'yearly', label: 'Yearly' },\n] as const;\n\n/** A raw select takes Field's label, help and status until Liuli has its own. */\nexport function WrappedSelect() {\n  const period = useLocal('period', '');\n  return (\n    <Field\n      label=\"Billing period\"\n      description=\"You can change it later.\"\n      status={period.value ? undefined : { type: 'warning', message: 'Choose a period to see the price.' }}\n      isRequired\n      data-testid=\"field\"\n    >\n      {control => (\n        <select\n          bind={period}\n          aria-label={control['aria-label']}\n          aria-describedby={control['aria-describedby']}\n          aria-invalid={control['aria-invalid']}\n          aria-required={control['aria-required']}\n          disabled={control.disabled}\n          placeholder=\"Choose…\"\n          options={periods}\n          data-testid=\"period\"\n          className=\"min-h-control-md px-3 rounded-control border border-line-strong bg-surface text-sm text-text\"\n        />\n      )}\n    </Field>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Field } from '@liulidesign/core/Field';\n\nconst periods = [\n  { value: 'monthly', label: 'Monthly' },\n  { value: 'yearly', label: 'Yearly' },\n] as const;\n\n/** A raw select takes Field's label, help and status until Liuli has its own. */\nexport function WrappedSelect() {\n  const period = useLocal('period', '');\n  return (\n    <Field\n      label=\"Billing period\"\n      description=\"You can change it later.\"\n      status={period.value ? undefined : { type: 'warning', message: 'Choose a period to see the price.' }}\n      isRequired\n      data-testid=\"field\"\n    >\n      {control => (\n        <select\n          bind={period}\n          aria-label={control['aria-label']}\n          aria-describedby={control['aria-describedby']}\n          aria-invalid={control['aria-invalid']}\n          aria-required={control['aria-required']}\n          disabled={control.disabled}\n          placeholder=\"Choose…\"\n          options={periods}\n          data-testid=\"period\"\n          className=\"min-h-control-md px-3 rounded-control border border-line-strong bg-surface text-body text-text\"\n        />\n      )}\n    </Field>\n  );\n}"
         }
       ],
       "gaps": [
@@ -1478,7 +1740,34 @@
       "related": [
         "TextInput",
         "CheckboxInput"
-      ]
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Label, help and status",
+        "order": 3,
+        "page": {
+          "lead": "Use a field to give a control Liuli's label, help text and status when Liuli has no component for it yet.",
+          "hero": "WrappedSelect",
+          "states": [
+            {
+              "name": "StateHelp",
+              "title": "With help"
+            },
+            {
+              "name": "StateWarning",
+              "title": "Warning"
+            },
+            {
+              "name": "StateError",
+              "title": "Error"
+            },
+            {
+              "name": "StateDisabled",
+              "title": "Disabled"
+            }
+          ]
+        }
+      }
     },
     {
       "name": "Item",
@@ -1486,8 +1775,8 @@
       "exports": [
         "Item"
       ],
-      "category": "list",
-      "status": "lab",
+      "category": "content",
+      "status": "preview",
       "summary": "One row of a list: a label, a second line, and content at either end",
       "description": "Item is the row of a settings screen, an inbox or a file list. With `onClick` the whole row is one button that opens or selects something; without it the row is plain content and its `endContent` may hold its own control. Rows carry no border or fill, so the container decides how a list is grouped and divided.",
       "keywords": [
@@ -1532,6 +1821,13 @@
           "type": "string",
           "required": true,
           "description": "The row's main text, and its accessible name when it is pressable."
+        },
+        {
+          "name": "tone",
+          "type": "ItemTone",
+          "required": false,
+          "description": "`danger` draws the label in the danger role, for a row that deletes or ends something.",
+          "default": "'default'"
         },
         {
           "name": "description",
@@ -1629,12 +1925,12 @@
         {
           "name": "Navigation",
           "title": "Rows that open a page",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Item } from '@liulidesign/core/Item';\n\nconst notes = [\n  { id: 'n1', title: 'Groceries', updated: 'Edited today' },\n  { id: 'n2', title: 'Trip to the coast', updated: 'Edited yesterday' },\n  { id: 'n3', title: 'Reading list', updated: 'Edited last week' },\n] as const;\n\n/** Rows that open a page: each is one button named by its title, with the second line as its description. */\nexport function Navigation() {\n  const opened = useLocal('opened', '');\n  return (\n    <view className=\"gap-2\">\n      <view className=\"rounded-container border border-line bg-surface divide-y divide-line\">\n        {notes.map(note => (\n          <Item\n            key={note.id}\n            label={note.title}\n            description={note.updated}\n            hasChevron\n            onClick={() => opened.set(note.title)}\n            data-testid={`note-${note.id}`}\n          />\n        ))}\n      </view>\n      <text data-testid=\"opened\" className=\"text-sm text-muted\">{opened.value}</text>\n    </view>\n  );\n}"
+          "source": "import { Item } from '@liulidesign/core/Item';\n\nconst notes = [\n  { id: 'n1', title: 'Groceries', updated: 'Edited today' },\n  { id: 'n2', title: 'Trip to the coast', updated: 'Edited yesterday' },\n  { id: 'n3', title: 'Reading list', updated: 'Edited last week' },\n] as const;\n\n/** Rows that open a page: each is one button named by its title, with the second line as its description. */\nexport function Navigation() {\n  return (\n    <view className=\"rounded-container border border-line bg-surface divide-y divide-line\">\n      {notes.map(note => (\n        <Item key={note.id} label={note.title} description={note.updated} hasChevron onClick={() => {}} data-testid={`note-${note.id}`} />\n      ))}\n    </view>\n  );\n}"
         },
         {
           "name": "Values",
           "title": "Read-only rows with values",
-          "source": "import { Item } from '@liulidesign/core/Item';\n\nconst folder = [{ d: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinejoin: 'round' }] as const;\n\n/** A value at the end of a read-only row, and an icon at the start. */\nexport function Values() {\n  return (\n    <view className=\"rounded-container border border-line bg-surface divide-y divide-line\">\n      <Item\n        label=\"Version\"\n        endContent={<text className=\"text-sm text-muted\">2.4.1</text>}\n        data-testid=\"version\"\n      />\n      <Item\n        label=\"Storage\"\n        description=\"Photos and documents\"\n        startContent={<vector aria-hidden paths={folder} viewBox={[0, 0, 24, 24]} className=\"size-5\" />}\n        endContent={<text className=\"text-sm text-muted\">7.2 GB</text>}\n      />\n    </view>\n  );\n}"
+          "source": "import { Item } from '@liulidesign/core/Item';\n\nconst folder = [{ d: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinejoin: 'round' }] as const;\n\n/** A value at the end of a read-only row, and an icon at the start. */\nexport function Values() {\n  return (\n    <view className=\"rounded-container border border-line bg-surface divide-y divide-line\">\n      <Item\n        label=\"Version\"\n        endContent={<text className=\"text-footnote text-muted\">2.4.1</text>}\n        data-testid=\"version\"\n      />\n      <Item\n        label=\"Storage\"\n        description=\"Photos and documents\"\n        startContent={<vector aria-hidden paths={folder} viewBox={[0, 0, 24, 24]} className=\"size-5\" />}\n        endContent={<text className=\"text-footnote text-muted\">7.2 GB</text>}\n      />\n    </view>\n  );\n}"
         },
         {
           "name": "WithControl",
@@ -1645,6 +1941,11 @@
           "name": "Disabled",
           "title": "Disabled, with the reason",
           "source": "import { Item } from '@liulidesign/core/Item';\n\nexport function Disabled() {\n  return (\n    <view className=\"rounded-container border border-line bg-surface\">\n      <Item\n        label=\"Export history\"\n        description=\"Download every change as a file\"\n        disabledMessage=\"Available once a change is saved\"\n        isDisabled\n        hasChevron\n        onClick={() => {}}\n        data-testid=\"export\"\n      />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Destructive",
+          "title": "A destructive row",
+          "source": "import { Item } from '@liulidesign/core/Item';\n\nconst notes = [\n  { id: 'n1', title: 'Groceries', updated: 'Edited today' },\n  { id: 'n2', title: 'Trip to the coast', updated: 'Edited yesterday' },\n  { id: 'n3', title: 'Reading list', updated: 'Edited last week' },\n] as const;\n\n/** A row that deletes or ends something; the danger tone marks it before it is pressed. */\nexport function Destructive() {\n  return (\n    <view className=\"rounded-container border border-line bg-surface\">\n      <Item label=\"Delete account\" description=\"Removes your notes from every device\" tone=\"danger\" hasChevron onClick={() => {}} data-testid=\"delete-row\" />\n    </view>\n  );\n}"
         }
       ],
       "gaps": [
@@ -1662,7 +1963,47 @@
       "related": [
         "DropdownMenu",
         "Card"
-      ]
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "One row of a list",
+        "order": 2,
+        "page": {
+          "stage": "bare",
+          "lead": "Use an item for one row of a list: a setting, a message, a file.",
+          "hero": "Navigation",
+          "variants": [
+            {
+              "name": "Values",
+              "title": "Read-only, with a value at the end"
+            },
+            {
+              "name": "WithControl",
+              "title": "Holding its own control"
+            },
+            {
+              "name": "Destructive",
+              "title": "Danger tone, for a row that deletes"
+            }
+          ],
+          "states": [
+            {
+              "name": "StatePressable",
+              "title": "Pressable"
+            },
+            {
+              "name": "StateDisabled",
+              "title": "Disabled"
+            }
+          ],
+          "inContext": [
+            {
+              "name": "Disabled",
+              "title": "Disabled, with the reason"
+            }
+          ]
+        }
+      }
     },
     {
       "name": "ProgressBar",
@@ -1672,7 +2013,7 @@
         "Spinner"
       ],
       "category": "feedback",
-      "status": "lab",
+      "status": "preview",
       "summary": "How much of a task is done, or a spinner while the amount is unknown",
       "description": "ProgressBar shows a task that runs for a while: an upload, an export, storage used. Without `value` it sweeps to say the task is running. Spinner, from the same import, is the small form for a wait inside a control or a list. Both are drawn from plain views and vectors, so they look the same on every OS.",
       "keywords": [
@@ -1842,7 +2183,7 @@
         {
           "name": "Compact",
           "title": "Thin, under its own heading",
-          "source": "import { ProgressBar } from '@liulidesign/core/ProgressBar';\n\n/** A thin bar under a heading that already says what is happening. */\nexport function Compact() {\n  return (\n    <view className=\"gap-2\">\n      <text className=\"text-sm font-medium text-text\">Storage</text>\n      <ProgressBar label=\"Storage used\" isLabelHidden size=\"sm\" value={72} valueLabel=\"7.2 of 10 GB\" data-testid=\"storage\" />\n    </view>\n  );\n}"
+          "source": "import { ProgressBar } from '@liulidesign/core/ProgressBar';\n\n/** A thin bar under a heading that already says what is happening. */\nexport function Compact() {\n  return (\n    <view className=\"gap-2\">\n      <text className=\"text-footnote font-medium text-text\">Storage</text>\n      <ProgressBar label=\"Storage used\" isLabelHidden size=\"sm\" value={72} valueLabel=\"7.2 of 10 GB\" data-testid=\"storage\" />\n    </view>\n  );\n}"
         },
         {
           "name": "Spinners",
@@ -1864,7 +2205,56 @@
       ],
       "related": [
         "Button"
-      ]
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Progress, or a wait",
+        "order": 2,
+        "page": {
+          "lead": "Use a progress bar for a task that takes a while, and a spinner for a short wait.",
+          "hero": "Determinate",
+          "variants": [
+            {
+              "name": "Indeterminate",
+              "title": "Amount unknown"
+            },
+            {
+              "name": "Spinners",
+              "title": "Spinner, for a short wait"
+            }
+          ],
+          "sizes": [
+            {
+              "name": "SizesBar",
+              "title": "Small and medium tracks"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateStarted",
+              "title": "Started"
+            },
+            {
+              "name": "StateHalf",
+              "title": "Halfway"
+            },
+            {
+              "name": "StateDone",
+              "title": "Done"
+            },
+            {
+              "name": "StateUnknown",
+              "title": "Unknown"
+            }
+          ],
+          "inContext": [
+            {
+              "name": "Compact",
+              "title": "Thin, under its own heading"
+            }
+          ]
+        }
+      }
     },
     {
       "name": "TextInput",
@@ -1872,8 +2262,8 @@
       "exports": [
         "TextInput"
       ],
-      "category": "form",
-      "status": "lab",
+      "category": "inputs",
+      "status": "preview",
       "summary": "Single-line text field with label, help text, status and an optional clear button",
       "description": "TextInput is a labelled one-line editor for names, emails, codes, amounts and searches. Bind it to a `useLocal` cell for View-local drafts, or pass `value` and `onChange` when the app owns the text.",
       "keywords": [
@@ -1918,6 +2308,13 @@
           "required": false,
           "description": "Marks the label with an asterisk and the control as required. Validation is the app's.",
           "default": "false"
+        },
+        {
+          "name": "hasRequiredMark",
+          "type": "boolean",
+          "required": false,
+          "description": "Draws the asterisk on a required label; turn it off on a form where every field is required.",
+          "default": "true"
         },
         {
           "name": "isDisabled",
@@ -1980,7 +2377,7 @@
           "name": "type",
           "type": "\"number\" | \"text\" | \"password\" | \"email\" | \"tel\" | \"search\"",
           "required": false,
-          "description": "",
+          "description": "`search` draws Liuli's magnifier, not the platform's, and defaults `enterKeyHint` to `search`.",
           "default": "'text'"
         },
         {
@@ -2030,7 +2427,7 @@
           "name": "startIcon",
           "type": "Child",
           "required": false,
-          "description": "An icon inside the box, before the text."
+          "description": "An icon inside the box, before the text; drawn 16 px in the muted colour. Replaces the search magnifier."
         },
         {
           "name": "onSubmit",
@@ -2061,6 +2458,7 @@
       "parts": {
         "box": "view",
         "icon": "view",
+        "searchIcon": "vector",
         "input": "input",
         "clear": "button",
         "clearIcon": "vector"
@@ -2149,7 +2547,7 @@
         {
           "name": "Search",
           "title": "Search with a clear button",
-          "source": "import { useLocal, type VectorPath } from '@lingxia/view';\nimport { TextInput } from '@liulidesign/core/TextInput';\n\nconst magnifier: VectorPath[] = [\n  { d: 'M10.5 4a6.5 6.5 0 1 0 0 13a6.5 6.5 0 1 0 0-13z', fill: 'none', stroke: 'currentColor', strokeWidth: 2 },\n  { d: 'M15.5 15.5L20 20', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' },\n];\n\n/** Controlled (`value` + `onChange`), with a leading icon and a clear button the app names. */\nexport function Search() {\n  const query = useLocal('query', '');\n  return (\n    <TextInput\n      value={query.value}\n      onChange={next => query.set(next)}\n      label=\"Search notes\"\n      isLabelHidden\n      placeholder=\"Search notes\"\n      type=\"search\"\n      enterKeyHint=\"search\"\n      startIcon={<vector aria-hidden paths={magnifier} viewBox={[0, 0, 24, 24]} className=\"size-4\" />}\n      hasClear\n      clearLabel=\"Clear search\"\n      data-testid=\"search\"\n    />\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { TextInput } from '@liulidesign/core/TextInput';\n\n/** Controlled (`value` + `onChange`), as a search field with a clear button the app names. */\nexport function Search() {\n  const query = useLocal('query', '');\n  return (\n    <TextInput\n      value={query.value}\n      onChange={next => query.set(next)}\n      label=\"Search notes\"\n      isLabelHidden\n      placeholder=\"Search notes\"\n      type=\"search\"\n      hasClear\n      clearLabel=\"Clear search\"\n      data-testid=\"search\"\n    />\n  );\n}"
         },
         {
           "name": "Disabled",
@@ -2176,7 +2574,56 @@
       ],
       "related": [
         "Field"
-      ]
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "One line of text",
+        "order": 1,
+        "page": {
+          "lead": "Use a text input for one line the person types: a name, an email, a code or a search.",
+          "hero": "Bound",
+          "variants": [
+            {
+              "name": "Plain",
+              "title": "Label and placeholder"
+            },
+            {
+              "name": "Search",
+              "title": "Search, with a clear button"
+            }
+          ],
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "Small, medium and large"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateEmpty",
+              "title": "Empty"
+            },
+            {
+              "name": "StateFilled",
+              "title": "Filled"
+            },
+            {
+              "name": "StateInvalid",
+              "title": "Invalid"
+            },
+            {
+              "name": "StateDisabled",
+              "title": "Disabled"
+            }
+          ],
+          "inContext": [
+            {
+              "name": "Disabled",
+              "title": "A fixed value, with the reason"
+            }
+          ]
+        }
+      }
     }
   ]
 }

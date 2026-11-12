@@ -2,8 +2,8 @@ import type { ComponentDoc } from '../doc';
 
 export const doc: ComponentDoc = {
   name: 'Badge',
-  category: 'content',
-  status: 'lab',
+  category: 'feedback',
+  status: 'preview',
   summary: 'A short status or category label in a tinted pill',
   description:
     'Badge marks the state or kind of the thing next to it: Draft, Paid, Overdue, New. It is text, not a control, and is ' +
@@ -69,4 +69,18 @@ export const doc: ComponentDoc = {
     },
   ],
   related: ['Item', 'Card'],
+  gallery: {
+    specimen: 'Specimen',
+    tagline: 'A short status label',
+    order: 1,
+    page: {
+      lead: 'Use a badge to mark the status or kind of the thing beside it, in a word or two.',
+      hero: 'InARow',
+      variants: [
+        { name: 'Tones', title: 'Soft, in five tones' },
+        { name: 'Solid', title: 'Solid, for the one label that must stand out' },
+      ],
+      sizes: [{ name: 'Sizes', title: 'Small and medium, with an icon' }],
+    },
+  },
 };

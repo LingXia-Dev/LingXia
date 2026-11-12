@@ -15,29 +15,30 @@ export const fieldParts = {
  * enough for the icon but not for small text, so the icon carries the colour.
  */
 export const fieldRecipe = {
+  /** 8 from label to control (gap plus the label's own bottom space), 6 from control to help. */
   root: {
     base: 'gap-1.5',
   },
   label: {
-    base: 'font-medium text-text',
-    size: { sm: 'text-xs', md: 'text-sm', lg: 'text-base' } satisfies Record<FieldSize, string>,
+    base: 'pb-0.5 font-medium text-text',
+    size: { sm: 'text-caption', md: 'text-footnote', lg: 'text-body' } satisfies Record<FieldSize, string>,
     disabled: 'text-faint',
   },
   required: {
     base: 'text-danger',
   },
   description: {
-    base: 'text-xs text-muted',
+    base: 'text-footnote text-muted',
   },
   status: {
     empty: 'sr-only',
     shown: 'flex-row items-start gap-1.5',
   },
   statusIcon: {
-    base: 'size-4 shrink-0',
+    base: 'size-4 shrink-0 mt-px',
     type: { error: 'text-danger', warning: 'text-warning', success: 'text-success' } satisfies Record<FieldStatusType, string>,
   },
   statusText: {
-    base: 'grow basis-0 text-xs text-text',
+    base: 'grow basis-0 text-footnote text-text',
   },
 } as const;

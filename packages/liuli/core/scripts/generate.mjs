@@ -143,22 +143,110 @@ function reference(doc, entry) {
   return `${lines.join('\n')}\n`;
 }
 
+const jsx = text => `{${JSON.stringify(text)}}`;
+
+/** The names a component's gallery shows, in page order, each once. */
+function galleryNames(doc) {
+  const page = doc.gallery.page;
+  if (!page) return doc.examples.map(example => example.name);
+  return [...new Set([page.hero, ...(page.parts ? [page.parts.name] : []), ...['variants', 'sizes', 'states', 'inContext'].flatMap(key => (page[key] ?? []).map(ref => ref.name))])];
+}
+
 function galleryPage(doc) {
-  const examples = doc.examples.map(example => example.name);
-  return [
+  const page = doc.gallery.page;
+  const lines = [
     `// ${generated}`,
-    `import { ${examples.join(', ')} } from '../../../core/src/${doc.name}/${doc.name}.examples';`,
-    "import { GalleryPage, Section } from '../../shared/Section';",
+    `import { ${galleryNames(doc).join(', ')} } from '../../../core/src/${doc.name}/${doc.name}.examples';`,
+    `import { GalleryPage, ${page ? 'Lead, ' : ''}PageSection, Stage${page?.states ? ', StageGrid' : ''} } from '../../shared/Layout';`,
     '',
     'export function render() {',
     '  return (',
-    `    <GalleryPage>`,
-    ...doc.examples.flatMap(example => [`      <Section title={${JSON.stringify(example.title)}}>`, `        <${example.name} />`, '      </Section>']),
-    '    </GalleryPage>',
-    '  );',
-    '}',
+    '    <GalleryPage>',
+  ];
+  const bare = page?.stage === 'bare' ? ' bare' : '';
+  const stage = (ref, indent) => [`${indent}<Stage caption=${jsx(ref.title)}${bare}>`, `${indent}  <${ref.name} />`, `${indent}</Stage>`];
+  if (!page) {
+    for (const example of doc.examples)
+      lines.push(`      <PageSection title=${jsx(example.title)}>`, '        <Stage>', `          <${example.name} />`, '        </Stage>', '      </PageSection>');
+  } else {
+    lines.push(`      <Lead text=${jsx(page.lead)}${bare}>`, `        <${page.hero} />`, '      </Lead>');
+    if (page.parts)
+      lines.push('      <PageSection title="Parts">', `        <Stage caption=${jsx(page.parts.title)} bare>`, `          <${page.parts.name} />`, '        </Stage>', '      </PageSection>');
+    const sections = [['variants', 'Variants'], ['sizes', 'Sizes'], ['states', 'States'], ['inContext', 'In context']];
+    for (const [key, title] of sections) {
+      const refs = page[key];
+      if (!refs?.length) continue;
+      lines.push(`      <PageSection title=${jsx(title)}>`);
+      if (key === 'states') lines.push('        <StageGrid>', ...refs.flatMap(ref => stage(ref, '          ')), '        </StageGrid>');
+      else lines.push(...refs.flatMap(ref => stage(ref, '        ')));
+      lines.push('      </PageSection>');
+    }
+  }
+  lines.push('    </GalleryPage>', '  );', '}', '');
+  return lines.join('\n');
+}
+
+// The package's own status, shown once on the home page; a tile shows only a status that differs.
+const packageStatus = 'preview';
+const statusTitles = { preview: 'Preview', stable: 'Stable' };
+const categoryTitles = { actions: 'Actions', inputs: 'Inputs', feedback: 'Feedback', overlays: 'Overlays', content: 'Content' };
+
+// Foundations and Patterns are hand-written gallery pages listed in gallery/guides.json; each has a
+// tile specimen in gallery/shared/Specimens.tsx named after its page.
+const inCategory = (entries, category) => entries.filter(entry => entry.category === category).sort((a, b) => a.gallery.order - b.gallery.order);
+const pascal = page => page.replace(/(^|-)([a-z])/g, (_, __, letter) => letter.toUpperCase());
+const guideSpecimen = guide => `${pascal(guide.page)}Specimen`;
+
+function homePage(entries, guides, version) {
+  const tile = ({ name, tagline, status, isWide, page, specimen }) => [
+    '        <Tile',
+    `          name=${jsx(name)}`,
+    `          tagline=${jsx(tagline)}`,
+    ...(status ? [`          status=${jsx(status)}`] : []),
+    ...(isWide ? ['          isWide'] : []),
+    `          onOpen={() => actions.open({ page: ${JSON.stringify(page)} })}`,
+    `          testId=${jsx(`open-${page}`)}`,
+    '        >',
+    `          <${specimen} />`,
+    '        </Tile>',
+  ];
+  const guideSection = (title, list) => !list.length ? [] : [
+    `      <Category title=${jsx(title)}>`,
+    ...list.flatMap((guide, index) => tile({ name: guide.title, tagline: guide.tagline, isWide: list.length % 2 === 1 && index === list.length - 1, page: guide.page, specimen: guideSpecimen(guide) })),
+    '      </Category>',
+  ];
+  const lines = [
+    `// ${generated}`,
+    "import type { View } from '@lingxia/view';",
+    ...entries.map(entry => `import { ${entry.gallery.specimen} as ${entry.name}Specimen } from '../../../core/src/${entry.name}/${entry.name}.examples';`),
+    "import { Category, GalleryPage, Masthead, Tile } from '../../shared/Layout';",
+    ...(guides.foundations.length + guides.patterns.length ? [`import { ${[...guides.foundations, ...guides.patterns].map(guideSpecimen).join(', ')} } from '../../shared/Specimens';`] : []),
     '',
-  ].join('\n');
+    'type Actions = { open(target: { page: string }): Promise<void> };',
+    '',
+    'export function render({ actions }: View<Actions>) {',
+    '  return (',
+    '    <GalleryPage>',
+    `      <Masthead version=${jsx(version)} status=${jsx(statusTitles[packageStatus])} />`,
+    ...guideSection('Foundations', guides.foundations),
+  ];
+  for (const [category, title] of Object.entries(categoryTitles)) {
+    const members = inCategory(entries, category);
+    if (!members.length) continue;
+    lines.push(`      <Category title=${jsx(title)}>`);
+    for (const [index, entry] of members.entries())
+      lines.push(...tile({
+        name: entry.name,
+        tagline: entry.gallery.tagline,
+        status: entry.status === packageStatus ? undefined : statusTitles[entry.status],
+        isWide: members.length % 2 === 1 && index === members.length - 1,
+        page: kebab(entry.name),
+        specimen: `${entry.name}Specimen`,
+      }));
+    lines.push('      </Category>');
+  }
+  lines.push(...guideSection('Patterns', guides.patterns), '    </GalleryPage>', '  );', '}', '');
+  return lines.join('\n');
 }
 
 const outputs = new Map();
@@ -186,7 +274,14 @@ for (const name of names) {
     examples: doc.examples.map(example => ({ ...example, source: sources.get(example.name) ?? '' })),
     gaps: doc.gaps,
     related: doc.related ?? [],
+    gallery: doc.gallery,
   };
+  if (!(doc.category in categoryTitles)) problems.push(`src/${name}/${name}.doc.ts: category ${doc.category} is not a gallery category`);
+  const tagline = doc.gallery.tagline ?? '';
+  if (!tagline || tagline.length > 32 || tagline.endsWith('.')) problems.push(`src/${name}/${name}.doc.ts: gallery.tagline must be 1 to 32 characters without a trailing period`);
+  if (!Number.isInteger(doc.gallery.order) || doc.gallery.order < 1) problems.push(`src/${name}/${name}.doc.ts: gallery.order must be a whole number from 1`);
+  for (const shown of [doc.gallery.specimen, ...galleryNames(doc)])
+    if (!sources.has(shown)) problems.push(`src/${name}/${name}.doc.ts: gallery shows ${shown}, which ${name}.examples.tsx does not export`);
   for (const example of entry.examples) if (!example.source) problems.push(`src/${name}/${name}.doc.ts: example ${example.name} has no source`);
   catalog.push(entry);
   outputs.set(join(core, 'docs', `${name}.md`), reference(doc, entry));
@@ -194,17 +289,30 @@ for (const name of names) {
   outputs.set(join(page, 'index.tsx'), galleryPage(doc));
   outputs.set(join(page, 'index.json'), `{ "navigationBar": { "title": ${JSON.stringify(name)} } }\n`);
 }
+for (const category of Object.keys(categoryTitles)) {
+  const orders = inCategory(catalog, category).map(entry => entry.gallery.order);
+  if (new Set(orders).size !== orders.length) problems.push(`gallery.order repeats within ${category}: ${orders.join(', ')}`);
+}
 outputs.set(join(core, 'catalog.json'), `${JSON.stringify({ generated, components: catalog }, null, 2)}\n`);
-outputs.set(join(gallery, 'shared', 'components.ts'), [
-  `// ${generated}`,
-  'export const components = [',
-  ...catalog.map(entry => `  { page: ${JSON.stringify(kebab(entry.name))}, name: ${JSON.stringify(entry.name)}, summary: ${JSON.stringify(entry.summary)} },`),
-  '] as const;',
-  '',
-].join('\n'));
+const version = JSON.parse(readFileSync(join(core, 'package.json'), 'utf8')).version;
+// A gallery without guide pages has neither file.
+const guidesPath = join(gallery, 'guides.json');
+const guides = existsSync(guidesPath) ? JSON.parse(readFileSync(guidesPath, 'utf8')) : { foundations: [], patterns: [] };
+const specimensPath = join(gallery, 'shared', 'Specimens.tsx');
+const specimens = existsSync(specimensPath) ? readFileSync(specimensPath, 'utf8') : '';
+for (const guide of [...guides.foundations, ...guides.patterns]) {
+  const where = `gallery/guides.json: ${guide.page}`;
+  if (!guide.tagline || guide.tagline.length > 32 || guide.tagline.endsWith('.')) problems.push(`${where}: tagline must be 1 to 32 characters without a trailing period`);
+  for (const file of ['index.tsx', 'index.ts', 'index.json'])
+    if (!existsSync(join(gallery, 'pages', guide.page, file))) problems.push(`${where}: pages/${guide.page}/${file} is missing`);
+  if (!new RegExp(`export function ${guideSpecimen(guide)}\\b`).test(specimens)) problems.push(`${where}: shared/Specimens.tsx does not export ${guideSpecimen(guide)}`);
+}
+outputs.set(join(gallery, 'pages', 'home', 'index.tsx'), homePage(catalog, guides, version));
 const manifestPath = join(gallery, 'lxapp.json');
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-manifest.pages = [{ name: 'home', path: 'pages/home/index' }, ...catalog.map(entry => ({ name: kebab(entry.name), path: `pages/${kebab(entry.name)}/index` }))];
+// Home order, so the manifest reads like the gallery.
+const pageEntry = page => ({ name: page, path: `pages/${page}/index` });
+manifest.pages = [pageEntry('home'), ...guides.foundations.map(guide => pageEntry(guide.page)), ...Object.keys(categoryTitles).flatMap(category => inCategory(catalog, category).map(entry => pageEntry(kebab(entry.name)))), ...guides.patterns.map(guide => pageEntry(guide.page))];
 // One page per line, as the hand-written manifest had it.
 outputs.set(manifestPath, `${JSON.stringify(manifest, null, 2).replace(/\{\n\s+"name": ("[^"]+"),\n\s+"path": ("[^"]+")\n\s+\}/g, '{ "name": $1, "path": $2 }')}\n`);
 

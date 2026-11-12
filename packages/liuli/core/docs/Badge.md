@@ -2,7 +2,7 @@
 
 # Badge
 
-A short status or category label in a tinted pill. Status: lab.
+A short status or category label in a tinted pill. Status: preview.
 
 ```ts
 import { Badge } from '@liulidesign/core/Badge';
