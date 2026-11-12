@@ -258,6 +258,16 @@ spec("show, hide, confirm, and cancel in-app feedback overlays", {
   const overlays = OVERLAY_SURFACE[platform] ?? 'dom';
   const hostShows = async (label: string) =>
     (await app.chrome.elements({ scope: 'window' })).some((element) => element.label === label);
+  if (overlays === 'native') {
+    const unreadable = await app.chrome.elements({ scope: 'window' }).then(
+      () => false,
+      (error: { code?: string }) => {
+        if (error?.code === 'E_UNSUPPORTED') return true;
+        throw error;
+      },
+    );
+    if (unreadable) t.skip('native feedback overlays need readable host chrome');
+  }
 
   // Desktop overlays are drawn in the ui page's own document.
   const ui = await t.step('show and hide a toast', async () => {
