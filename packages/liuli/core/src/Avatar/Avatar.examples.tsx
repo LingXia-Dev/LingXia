@@ -16,7 +16,7 @@ export function People() {
 
 export function Sizes() {
   return (
-    <view className="flex-row items-end gap-3">
+    <view className="flex-row items-center gap-3">
       <Avatar name="Ana Lima" size="xs" />
       <Avatar name="Ana Lima" size="sm" />
       <Avatar name="Ana Lima" size="md" />
@@ -77,7 +77,7 @@ export function StateOverflow() {
 /** The home tile. */
 export function Specimen() {
   return (
-    <AvatarGroup label="Editors" size="sm">
+    <AvatarGroup label="Editors" size="sm" surface="sunken">
       <Avatar name="Ana Lima" />
       <Avatar name="Kai Chen" />
       <Avatar name="Mira Patel" />

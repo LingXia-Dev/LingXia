@@ -38,7 +38,7 @@ import { Avatar } from '@liulidesign/core/Avatar';
 
 export function Sizes() {
   return (
-    <view className="flex-row items-end gap-3">
+    <view className="flex-row items-center gap-3">
       <Avatar name="Ana Lima" size="xs" />
       <Avatar name="Ana Lima" size="sm" />
       <Avatar name="Ana Lima" size="md" />

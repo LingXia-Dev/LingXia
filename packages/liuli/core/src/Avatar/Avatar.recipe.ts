@@ -1,4 +1,4 @@
-import type { AvatarSize } from './Avatar';
+import type { AvatarGroupSurface, AvatarSize } from './Avatar';
 
 export const avatarParts = {
   root: 'view',
@@ -13,8 +13,12 @@ export const avatarRecipe = {
   root: {
     base: 'relative shrink-0 items-center justify-center rounded-full bg-accent-soft',
     size: { xs: 'size-6', sm: 'size-8', md: 'size-10', lg: 'size-14' } satisfies Record<AvatarSize, string>,
-    /** In a group, a ring in the surface colour cuts each one out of the next. */
-    inGroup: 'ring-2 ring-surface',
+    /** In a group, a 2 px edge in the colour of the surface behind cuts each one out of the next. */
+    inGroup: {
+      surface: 'border-2 border-surface',
+      raised: 'border-2 border-surface-raised',
+      sunken: 'border-2 border-surface-sunken',
+    } satisfies Record<AvatarGroupSurface, string>,
   },
   image: {
     base: 'absolute inset-0 size-full rounded-full object-cover',
