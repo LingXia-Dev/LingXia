@@ -1,0 +1,33 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { described, renderExample } from '../testing/harness.mjs';
+
+test('Delivery: a named radio group; each option is a radio named by its label and described by its second line', async () => {
+  const screen = await renderExample('RadioGroup/RadioGroup', 'Delivery');
+  const group = screen.getByTestId('delivery');
+  assert.equal(group.props.role, 'radiogroup');
+  assert.equal(group.props.accessibilityLabel, 'Delivery');
+  const express = screen.getByTestId('delivery-express');
+  assert.equal(express.tag, 'button');
+  assert.equal(express.props.role, 'radio');
+  assert.equal(express.props.accessibilityLabel, 'Express');
+  assert.deepEqual(described(screen, express), ['Next working day, €6']);
+  screen.press(express);
+  assert.equal(screen.getByTestId('delivery-express').props.stateChecked, 1);
+  assert.equal(screen.getByTestId('delivery-standard').props.stateChecked, 0);
+});
+
+test('Plans: a tap anywhere on a card chooses it', async () => {
+  const screen = await renderExample('RadioGroup/RadioGroup', 'Plans');
+  screen.press(screen.getByTestId('plan-team'));
+  assert.equal(screen.getByTestId('plan-team').props.stateChecked, 1);
+});
+
+test('Required: invalid and required until chosen; the error is the group description', async () => {
+  const screen = await renderExample('RadioGroup/RadioGroup', 'Required');
+  const group = screen.getByTestId('reason');
+  assert.equal(group.props.stateInvalid, 1);
+  assert.deepEqual(described(screen, group), ['Choose a reason.']);
+  screen.press(screen.getByTestId('reason-other'));
+  assert.notEqual(screen.getByTestId('reason').props.stateInvalid, 1);
+});

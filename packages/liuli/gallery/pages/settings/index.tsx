@@ -4,12 +4,19 @@ import { Button } from '@liulidesign/core/Button';
 import { Dialog } from '@liulidesign/core/Dialog';
 import { DropdownMenu, DropdownMenuDivider, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';
 import { Item } from '@liulidesign/core/Item';
+import { RadioGroup } from '@liulidesign/core/RadioGroup';
 import { Slider } from '@liulidesign/core/Slider';
 import { GalleryPage } from '../../shared/Layout';
 
 const dots: VectorPath[] = [{ d: 'M5 12h.01M12 12h.01M19 12h.01', fill: 'none', stroke: 'currentColor', strokeWidth: 3, strokeLinecap: 'round' }];
 const laptop: VectorPath[] = [{ d: 'M5 6.5h14v9H5zM3 18.5h18', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' }];
 const phone: VectorPath[] = [{ d: 'M8 3.5h8a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1zM11 17.5h2', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' }];
+
+const plans = [
+  { value: 'Free', label: 'Free', description: 'Up to 3 notebooks, on one device' },
+  { value: 'Pro', label: 'Pro · €4 a month', description: 'Unlimited notebooks, sync across devices' },
+  { value: 'Team', label: 'Team · €8 a person', description: 'Shared notebooks and admin controls' },
+];
 
 const appearances = ['System', 'Light', 'Dark'];
 const digests = ['Daily', 'Weekly', 'Never'];
@@ -50,6 +57,7 @@ export function render() {
   const appearance = useLocal('appearance', 'System');
   const digest = useLocal('digest', 'Weekly');
   const textSize = useLocal('textSize', 3);
+  const plan = useLocal<string | null>('plan', 'Pro');
   const devices = useLocal('devices', initialDevices.map(device => device.id));
   const confirming = useLocal('confirming', false);
   const scheduled = useLocal('scheduled', false);
@@ -65,10 +73,15 @@ export function render() {
               <text className="text-footnote font-semibold text-on-accent-soft">AL</text>
             </view>
           }
-          endContent={<Badge label="Pro" tone="accent" />}
+          endContent={<Badge label={plan.value ?? 'Free'} tone="accent" />}
           data-testid="account"
         />
       </Group>
+
+      <view className="gap-2">
+        <text role="heading" headingLevel={2} className="px-1 text-footnote font-medium text-muted">Plan</text>
+        <RadioGroup bind={plan} label="Plan" isLabelHidden options={plans} variant="card" data-testid="plan" />
+      </view>
 
       <Group title="General">
         <ChoiceRow

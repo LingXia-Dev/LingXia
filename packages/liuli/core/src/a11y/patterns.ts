@@ -108,6 +108,19 @@ export const patterns = {
       ],
     },
   },
+  radioGroup: {
+    role: 'radiogroup',
+    checks: {
+      'the group is found by its label': [{ do: 'find', role: 'radiogroup', name: 'label' }],
+      'a tap on an option chooses it': [{ do: 'tap', role: 'radio' }, { expect: 'checked', checked: true }],
+    },
+    keyboardChecks: {
+      'one Tab stop; arrows choose on arrival': [
+        { do: 'tab-to', role: 'radio' }, { expect: 'focused', role: 'radio' },
+        { do: 'press-key', key: 'down' }, { expect: 'checked', checked: true },
+      ],
+    },
+  },
   tabs: {
     role: 'tablist',
     checks: {

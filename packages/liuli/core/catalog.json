@@ -2257,6 +2257,298 @@
       }
     },
     {
+      "name": "RadioGroup",
+      "import": "@liulidesign/core/RadioGroup",
+      "exports": [
+        "RadioGroup"
+      ],
+      "category": "inputs",
+      "status": "preview",
+      "summary": "One choice from a short list, every option in view",
+      "description": "RadioGroup picks one option from two to six, all visible at once, as a plain list or as cards. It is a Field: the label names the group, and help text and status describe it.",
+      "keywords": [
+        "radio",
+        "radio group",
+        "radio button",
+        "option",
+        "choice",
+        "plan",
+        "pick one",
+        "single select"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The visible label and the control's accessible name."
+        },
+        {
+          "name": "isLabelHidden",
+          "type": "boolean",
+          "required": false,
+          "description": "Hides the visible label; the control keeps it as its name.",
+          "default": "false"
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "description": "Help text under the control, read as the control's description."
+        },
+        {
+          "name": "status",
+          "type": "FieldStatus",
+          "required": false,
+          "description": "An `error` status marks the control invalid; its message is read as the control's description."
+        },
+        {
+          "name": "isRequired",
+          "type": "boolean",
+          "required": false,
+          "description": "Marks the label with an asterisk and the control as required. Validation is the app's.",
+          "default": "false"
+        },
+        {
+          "name": "hasRequiredMark",
+          "type": "boolean",
+          "required": false,
+          "description": "Draws the asterisk on a required label; turn it off on a form where every field is required.",
+          "default": "true"
+        },
+        {
+          "name": "isDisabled",
+          "type": "boolean",
+          "required": false,
+          "description": "",
+          "default": "false"
+        },
+        {
+          "name": "disabledMessage",
+          "type": "string",
+          "required": false,
+          "description": "Shown in place of `description` while disabled."
+        },
+        {
+          "name": "size",
+          "type": "FieldSize",
+          "required": false,
+          "description": "",
+          "default": "'md'"
+        },
+        {
+          "name": "bind",
+          "type": "Local<string | null>",
+          "required": false,
+          "description": "A View-local cell the group reads and writes; use it or `value` with `onChange`."
+        },
+        {
+          "name": "value",
+          "type": "string | null",
+          "required": false,
+          "description": "The chosen option's value; `null` while none is chosen."
+        },
+        {
+          "name": "onChange",
+          "type": "((value: string) => void)",
+          "required": false,
+          "description": "Runs with the option chosen by a tap or by arrowing onto it."
+        },
+        {
+          "name": "options",
+          "type": "readonly RadioOption[]",
+          "required": true,
+          "description": "The choices, in order."
+        },
+        {
+          "name": "variant",
+          "type": "RadioGroupVariant",
+          "required": false,
+          "description": "`list` stacks plain rows; `card` makes each option a bordered card, for plans and other choices with a second line.",
+          "default": "'list'"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the group; each option gets `<testid>-<value>`."
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "field": "Field",
+        "group": "view",
+        "option": "button",
+        "circle": "view",
+        "dot": "view",
+        "text": "view",
+        "label": "text",
+        "description": "text"
+      },
+      "accessibility": {
+        "pattern": "radioGroup",
+        "name": "label",
+        "description": [
+          "description, or disabledMessage while disabled",
+          "the status message"
+        ],
+        "states": [
+          {
+            "state": "checked",
+            "from": "value or bind, on the chosen option"
+          },
+          {
+            "state": "disabled",
+            "from": "isDisabled, or the option's isDisabled"
+          },
+          {
+            "state": "invalid",
+            "from": "status.type === 'error'"
+          },
+          {
+            "state": "required",
+            "from": "isRequired"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "effect": "Into the group, on the chosen option or else the first."
+          },
+          {
+            "keys": "Up / Left, Down / Right",
+            "effect": "The previous or next option, chosen on arrival; wraps at the ends."
+          }
+        ],
+        "target": {
+          "sm": 32,
+          "md": 40,
+          "lg": 48
+        },
+        "contrast": [
+          {
+            "what": "circle boundary, not chosen",
+            "pair": [
+              "line-strong",
+              "surface"
+            ],
+            "minimum": "3:1",
+            "proven": true
+          },
+          {
+            "what": "circle fill, chosen",
+            "pair": [
+              "accent",
+              "surface"
+            ],
+            "minimum": "3:1",
+            "proven": true
+          },
+          {
+            "what": "chosen card edge",
+            "pair": [
+              "accent",
+              "surface"
+            ],
+            "minimum": "3:1",
+            "proven": true
+          }
+        ],
+        "notes": [
+          "A card shows the choice twice, in its edge and in the circle, so it never rests on colour alone.",
+          "With nothing chosen, Tab lands on the first option without choosing it."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Delivery",
+          "title": "Options with a second line",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { RadioGroup } from '@liulidesign/core/RadioGroup';\n\nconst deliveries = [\n  { value: 'standard', label: 'Standard', description: '3 to 5 working days, free' },\n  { value: 'express', label: 'Express', description: 'Next working day, €6' },\n  { value: 'pickup', label: 'Pick up in store', description: 'Ready in two hours' },\n];\n\n/** Options with a second line each. */\nexport function Delivery() {\n  const delivery = useLocal<string | null>('delivery', 'standard');\n  return <RadioGroup bind={delivery} label=\"Delivery\" options={deliveries} data-testid=\"delivery\" />;\n}"
+        },
+        {
+          "name": "Plans",
+          "title": "Cards",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { RadioGroup } from '@liulidesign/core/RadioGroup';\n\nconst plans = [\n  { value: 'free', label: 'Free', description: 'Up to 3 notebooks, on one device' },\n  { value: 'plus', label: 'Plus · €4 a month', description: 'Unlimited notebooks, sync across devices' },\n  { value: 'team', label: 'Team · €8 a person', description: 'Shared notebooks, admin controls' },\n];\n\n/** Each option a card: the whole card chooses it. */\nexport function Plans() {\n  const plan = useLocal<string | null>('plan', 'plus');\n  return <RadioGroup bind={plan} label=\"Plan\" options={plans} variant=\"card\" data-testid=\"plan\" />;\n}"
+        },
+        {
+          "name": "Plain",
+          "title": "Short options with help text",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { RadioGroup } from '@liulidesign/core/RadioGroup';\n\n/** Short options, no second line. */\nexport function Plain() {\n  const theme = useLocal<string | null>('theme', 'system');\n  return (\n    <RadioGroup\n      bind={theme}\n      label=\"Appearance\"\n      description=\"System follows the device.\"\n      options={[{ value: 'system', label: 'System' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }]}\n      data-testid=\"appearance\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Required",
+          "title": "Required, with an error",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { RadioGroup } from '@liulidesign/core/RadioGroup';\n\n/** Nothing chosen yet, required, after a failed send. */\nexport function Required() {\n  const reason = useLocal<string | null>('reason', null);\n  return (\n    <RadioGroup\n      bind={reason}\n      label=\"Why are you leaving?\"\n      isRequired\n      status={reason.value === null ? { type: 'error', message: 'Choose a reason.' } : undefined}\n      options={[{ value: 'price', label: 'It costs too much' }, { value: 'features', label: 'It is missing something I need' }, { value: 'other', label: 'Something else' }]}\n      data-testid=\"reason\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Sizes",
+          "title": "Sizes",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { RadioGroup } from '@liulidesign/core/RadioGroup';\n\nexport function Sizes() {\n  const pick = useLocal<string | null>('pick', 'a');\n  const options = [{ value: 'a', label: 'Chosen' }, { value: 'b', label: 'Not chosen' }];\n  return (\n    <view className=\"gap-5\">\n      <RadioGroup bind={pick} label=\"Small\" size=\"sm\" options={options} />\n      <RadioGroup bind={pick} label=\"Medium\" options={options} />\n      <RadioGroup bind={pick} label=\"Large\" size=\"lg\" options={options} />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [],
+      "related": [
+        "CheckboxInput",
+        "Field",
+        "Tabs"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "One choice from a few",
+        "order": 4,
+        "page": {
+          "lead": "Use radios to pick one option from a short list when seeing every option helps the choice.",
+          "hero": "Delivery",
+          "variants": [
+            {
+              "name": "Plans",
+              "title": "Cards: the whole card chooses"
+            },
+            {
+              "name": "Plain",
+              "title": "A plain list with help text"
+            }
+          ],
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "Small, medium and large"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateDefault",
+              "title": "Default"
+            },
+            {
+              "name": "StateInvalid",
+              "title": "Invalid"
+            },
+            {
+              "name": "StateDisabledOption",
+              "title": "A disabled option"
+            },
+            {
+              "name": "StateDisabled",
+              "title": "Disabled"
+            }
+          ],
+          "inContext": [
+            {
+              "name": "Required",
+              "title": "A required question, after a failed send"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "Slider",
       "import": "@liulidesign/core/Slider",
       "exports": [
