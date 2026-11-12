@@ -22,6 +22,7 @@ export function Payment() {
 export function Tones() {
   return (
     <view className="gap-3">
+      <Banner tone="neutral" title="Read only" message="An admin locked this notebook." />
       <Banner tone="info" title="Sharing is changing" message="From July, shared notebooks need a Team plan." />
       <Banner tone="success" title="All notes synced" />
       <Banner tone="warning" title="Storage almost full" message="You have used 9.6 of 10 GB." />
@@ -56,7 +57,7 @@ export function StateTitleOnly() {
 }
 
 export function StateWithMessage() {
-  return <Banner title="Locked" message="An admin locked it." />;
+  return <Banner tone="neutral" title="Locked" message="An admin locked it." />;
 }
 
 export function StateWithAction() {

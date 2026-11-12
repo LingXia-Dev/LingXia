@@ -3,9 +3,9 @@ import { Button } from '../Button/Button';
 import { glyphBox, glyphs } from '../internal/glyphs';
 import { bannerRecipe as r } from './Banner.recipe';
 
-export type BannerTone = 'info' | 'success' | 'warning' | 'danger';
+export type BannerTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger';
 
-const toneGlyph = { info: glyphs.info, success: glyphs.success, warning: glyphs.warning, danger: glyphs.error } as const;
+const toneGlyph = { neutral: glyphs.info, info: glyphs.info, success: glyphs.success, warning: glyphs.warning, danger: glyphs.error } as const;
 
 export type BannerDismiss =
   | {

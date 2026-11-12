@@ -45,6 +45,7 @@ import { Banner } from '@liulidesign/core/Banner';
 export function Tones() {
   return (
     <view className="gap-3">
+      <Banner tone="neutral" title="Read only" message="An admin locked this notebook." />
       <Banner tone="info" title="Sharing is changing" message="From July, shared notebooks need a Team plan." />
       <Banner tone="success" title="All notes synced" />
       <Banner tone="warning" title="Storage almost full" message="You have used 9.6 of 10 GB." />
@@ -118,6 +119,8 @@ export function OverList() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
+| title and message on neutral | `text` on `surface-sunken` | 4.5:1 | 14.36:1 | 14.46:1 |
+| neutral icon | `text-muted` on `surface-sunken` | 3:1 | 5.20:1 | 6.93:1 |
 | title and message on info | `text` on `accent-soft` | 4.5:1 | needs the resolved palette | needs the resolved palette |
 | title and message on success | `text` on `success-soft` | 4.5:1 | 14.34:1 | 11.76:1 |
 | title and message on warning | `text` on `warning-soft` | 4.5:1 | 14.59:1 | 11.36:1 |
@@ -128,7 +131,7 @@ Ratios are computed from crates/lingxia-theme/packs/default.json and rounded dow
 ## Guidance
 
 - Do: Put it above the content it is about, and say what to do in `message` or `action`.
-- Do: Use danger only when something has stopped working.
+- Do: Use neutral for a plain notice, and danger only when something has stopped working.
 - Do: Let people dismiss a banner that is news; keep one that blocks work until it is resolved.
 - Don't: Stack several banners; show the most urgent one.
 - Don't: Use a banner to confirm a small action that just worked; the control itself can show that.

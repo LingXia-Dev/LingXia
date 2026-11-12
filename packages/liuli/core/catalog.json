@@ -483,6 +483,22 @@
         "keyboard": [],
         "contrast": [
           {
+            "what": "title and message on neutral",
+            "pair": [
+              "text",
+              "surface-sunken"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "neutral icon",
+            "pair": [
+              "text-muted",
+              "surface-sunken"
+            ],
+            "minimum": "3:1"
+          },
+          {
             "what": "title and message on info",
             "pair": [
               "text",
@@ -530,7 +546,7 @@
         {
           "name": "Tones",
           "title": "Tones",
-          "source": "import { Banner } from '@liulidesign/core/Banner';\n\nexport function Tones() {\n  return (\n    <view className=\"gap-3\">\n      <Banner tone=\"info\" title=\"Sharing is changing\" message=\"From July, shared notebooks need a Team plan.\" />\n      <Banner tone=\"success\" title=\"All notes synced\" />\n      <Banner tone=\"warning\" title=\"Storage almost full\" message=\"You have used 9.6 of 10 GB.\" />\n      <Banner tone=\"danger\" title=\"Sync stopped\" message=\"We could not reach the server. Your changes are kept on this device.\" />\n    </view>\n  );\n}"
+          "source": "import { Banner } from '@liulidesign/core/Banner';\n\nexport function Tones() {\n  return (\n    <view className=\"gap-3\">\n      <Banner tone=\"neutral\" title=\"Read only\" message=\"An admin locked this notebook.\" />\n      <Banner tone=\"info\" title=\"Sharing is changing\" message=\"From July, shared notebooks need a Team plan.\" />\n      <Banner tone=\"success\" title=\"All notes synced\" />\n      <Banner tone=\"warning\" title=\"Storage almost full\" message=\"You have used 9.6 of 10 GB.\" />\n      <Banner tone=\"danger\" title=\"Sync stopped\" message=\"We could not reach the server. Your changes are kept on this device.\" />\n    </view>\n  );\n}"
         },
         {
           "name": "OverList",
@@ -554,7 +570,7 @@
           "variants": [
             {
               "name": "Tones",
-              "title": "Info, success, warning and danger"
+              "title": "Neutral, info, success, warning and danger"
             }
           ],
           "states": [

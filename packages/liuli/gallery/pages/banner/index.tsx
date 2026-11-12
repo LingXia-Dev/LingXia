@@ -9,7 +9,7 @@ export function render() {
         <Payment />
       </Lead>
       <PageSection title={"Variants"}>
-        <Stage caption={"Info, success, warning and danger"}>
+        <Stage caption={"Neutral, info, success, warning and danger"}>
           <Tones />
         </Stage>
       </PageSection>

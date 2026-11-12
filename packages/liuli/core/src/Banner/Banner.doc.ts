@@ -28,6 +28,8 @@ export const doc: ComponentDoc = {
     states: [],
     keyboard: [],
     contrast: [
+      { what: 'title and message on neutral', pair: ['text', 'surface-sunken'], minimum: '4.5:1' },
+      { what: 'neutral icon', pair: ['text-muted', 'surface-sunken'], minimum: '3:1' },
       { what: 'title and message on info', pair: ['text', 'accent-soft'], minimum: '4.5:1' },
       { what: 'title and message on success', pair: ['text', 'success-soft'], minimum: '4.5:1' },
       { what: 'title and message on warning', pair: ['text', 'warning-soft'], minimum: '4.5:1' },
@@ -42,7 +44,7 @@ export const doc: ComponentDoc = {
   guidance: {
     do: [
       'Put it above the content it is about, and say what to do in `message` or `action`.',
-      'Use danger only when something has stopped working.',
+      'Use neutral for a plain notice, and danger only when something has stopped working.',
       'Let people dismiss a banner that is news; keep one that blocks work until it is resolved.',
     ],
     dont: [
@@ -65,7 +67,7 @@ export const doc: ComponentDoc = {
     page: {
       lead: 'Use a banner to say something about the page or the account that people should act on or know.',
       hero: 'Payment',
-      variants: [{ name: 'Tones', title: 'Info, success, warning and danger' }],
+      variants: [{ name: 'Tones', title: 'Neutral, info, success, warning and danger' }],
       states: [
         { name: 'StateTitleOnly', title: 'A title only' },
         { name: 'StateWithMessage', title: 'With a message' },
