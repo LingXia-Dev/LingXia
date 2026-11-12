@@ -144,8 +144,11 @@ pub struct BrokerInfo {
 pub enum BrokerProbe {
     /// No broker is running.
     Absent,
-    /// A broker that predates `info` (closes the connection on it).
-    Legacy,
+    /// A broker that predates `info` (closes the connection on it). `pid` is
+    /// the process serving this socket, when the OS reports it.
+    Legacy {
+        pid: Option<u32>,
+    },
     Running(BrokerInfo),
 }
 
@@ -548,6 +551,7 @@ pub fn probe_broker() -> BrokerProbe {
     let Ok(stream) = connect() else {
         return BrokerProbe::Absent;
     };
+    let pid = serving_pid(&stream);
     let mut reader = BufReader::new(stream);
     if write_json(
         reader.get_mut(),
@@ -557,12 +561,50 @@ pub fn probe_broker() -> BrokerProbe {
     )
     .is_err()
     {
-        return BrokerProbe::Legacy;
+        return BrokerProbe::Legacy { pid };
     }
     match read_json::<_, Response>(&mut reader) {
         Ok(Some(Response::Info { info, .. })) => BrokerProbe::Running(info),
         // An older broker cannot parse `info` and drops the connection.
-        _ => BrokerProbe::Legacy,
+        _ => BrokerProbe::Legacy { pid },
+    }
+}
+
+/// The process on the other end of `stream`: the broker serving this socket,
+/// never another instance's.
+fn serving_pid(stream: &Stream) -> Option<u32> {
+    #[cfg(target_vendor = "apple")]
+    {
+        use std::os::fd::AsRawFd;
+        // Darwin's peer credentials carry no pid; LOCAL_PEERPID does.
+        let Stream::UdSocket(socket) = stream;
+        let mut pid: libc::pid_t = 0;
+        let mut len = std::mem::size_of::<libc::pid_t>() as libc::socklen_t;
+        // SAFETY: a live socket fd and an out buffer of the size passed.
+        let rc = unsafe {
+            libc::getsockopt(
+                socket.inner().as_raw_fd(),
+                libc::SOL_LOCAL,
+                libc::LOCAL_PEERPID,
+                (&mut pid as *mut libc::pid_t).cast(),
+                &mut len,
+            )
+        };
+        (rc == 0)
+            .then_some(pid)
+            .and_then(|pid| u32::try_from(pid).ok())
+    }
+    #[cfg(windows)]
+    {
+        stream.peer_creds().ok()?.pid()
+    }
+    #[cfg(all(unix, not(target_vendor = "apple")))]
+    {
+        stream
+            .peer_creds()
+            .ok()?
+            .pid()
+            .and_then(|pid| u32::try_from(pid).ok())
     }
 }
 
@@ -672,6 +714,24 @@ mod tests {
     }
 
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn the_serving_pid_is_the_listener_on_this_socket() {
+        let dir = tempfile::tempdir().unwrap();
+        let name = dir
+            .path()
+            .join("probe.sock")
+            .to_fs_name::<GenericFilePath>()
+            .unwrap();
+        let listener = ListenerOptions::new()
+            .name(name.clone())
+            .create_sync()
+            .unwrap();
+        let stream = Stream::connect(name).unwrap();
+        let _accepted = listener.accept().unwrap();
+        assert_eq!(serving_pid(&stream), Some(std::process::id()));
+    }
 
     fn session(id: &str) -> SessionInfo {
         SessionInfo {

@@ -3862,6 +3862,7 @@ name = "lingxia-control-protocol"
 version = "0.28.0"
 dependencies = [
  "interprocess",
+ "libc",
  "regex",
  "serde",
  "serde_json",

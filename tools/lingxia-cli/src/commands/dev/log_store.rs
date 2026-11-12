@@ -294,9 +294,9 @@ fn stale_broker(
     use lingxia_control_protocol::dev_session::broker::BrokerProbe;
     match probe {
         BrokerProbe::Absent => None,
-        BrokerProbe::Legacy => Some(StaleBroker {
+        BrokerProbe::Legacy { pid } => Some(StaleBroker {
             why: "an older build without version reporting".to_string(),
-            pid: None,
+            pid,
             sessions: None,
         }),
         BrokerProbe::Running(info) => {
@@ -344,15 +344,16 @@ enum BrokerRestart {
     AskToExit,
     /// Sessions use it, which re-register once it is gone: terminate it.
     Terminate(u32),
-    /// Too old to say its pid: find the `dev-broker` process and terminate it.
-    FindAndTerminate,
+    /// Neither it nor the OS names its process. Never guessed by scanning:
+    /// that would hit another instance's broker.
+    Unidentified,
 }
 
 fn broker_restart_plan(stale: &StaleBroker) -> BrokerRestart {
     match (stale.sessions, stale.pid) {
         (Some(0), _) => BrokerRestart::AskToExit,
         (_, Some(pid)) => BrokerRestart::Terminate(pid),
-        (_, None) => BrokerRestart::FindAndTerminate,
+        (_, None) => BrokerRestart::Unidentified,
     }
 }
 
@@ -367,16 +368,10 @@ fn replace_broker(
         && wait_broker_gone();
     if !asked {
         // Refused (a session registered meanwhile), or never idle.
-        let pids = match (plan, stale.pid) {
-            (BrokerRestart::FindAndTerminate, _) | (_, None) => broker_processes(),
-            (_, Some(pid)) => vec![pid],
+        let Some(pid) = stale.pid else {
+            return Err(anyhow!("its process could not be identified"));
         };
-        if pids.is_empty() {
-            return Err(anyhow!("no `lingxia dev-broker` process found"));
-        }
-        for pid in pids {
-            terminate_broker_process(pid);
-        }
+        terminate_broker_process(pid);
         if !wait_broker_gone() {
             return Err(anyhow!("it did not exit"));
         }
@@ -410,27 +405,6 @@ fn refresh_broker_candidates(system: &mut sysinfo::System, which: sysinfo::Proce
             .with_cmd(UpdateKind::Always)
             .with_user(UpdateKind::Always),
     );
-}
-
-/// This user's `lingxia dev-broker` processes, other than this process.
-fn broker_processes() -> Vec<u32> {
-    use sysinfo::{ProcessesToUpdate, System};
-    let mut system = System::new();
-    refresh_broker_candidates(&mut system, ProcessesToUpdate::All);
-    let me = sysinfo::get_current_pid().ok();
-    let my_user = me
-        .and_then(|pid| system.process(pid))
-        .and_then(|process| process.user_id().cloned());
-    system
-        .processes()
-        .iter()
-        .filter(|(pid, process)| {
-            Some(**pid) != me
-                && is_broker_command(process.cmd())
-                && (my_user.is_none() || process.user_id() == my_user.as_ref())
-        })
-        .map(|(pid, _)| pid.as_u32())
-        .collect()
 }
 
 fn is_broker_command(cmd: &[std::ffi::OsString]) -> bool {
@@ -1003,11 +977,10 @@ mod tests {
         assert_eq!(broker_restart_plan(&busy), BrokerRestart::Terminate(77));
         let idle = stale_broker(running(upgraded, 0), &current).unwrap();
         assert_eq!(broker_restart_plan(&idle), BrokerRestart::AskToExit);
-        let legacy = stale_broker(BrokerProbe::Legacy, &current).unwrap();
-        assert_eq!(
-            broker_restart_plan(&legacy),
-            BrokerRestart::FindAndTerminate
-        );
+        let legacy = stale_broker(BrokerProbe::Legacy { pid: Some(88) }, &current).unwrap();
+        assert_eq!(broker_restart_plan(&legacy), BrokerRestart::Terminate(88));
+        let unknown = stale_broker(BrokerProbe::Legacy { pid: None }, &current).unwrap();
+        assert_eq!(broker_restart_plan(&unknown), BrokerRestart::Unidentified);
     }
 
     #[test]
