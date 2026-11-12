@@ -126,7 +126,7 @@ function reference(doc, entry) {
   lines.push('', '## Anatomy', '', '| Part | Element | Required | Description |', '| --- | --- | --- | --- |');
   for (const part of doc.anatomy) lines.push(`| ${part.part} | \`<${entry.parts[part.part] ?? '?'}>\` | ${part.required ? 'yes' : 'no'} | ${cell(part.description)} |`);
   lines.push('', '## Accessibility', '');
-  lines.push(`- Pattern: ${a.pattern ?? 'none'}.`, `- Name: ${a.name}.`);
+  lines.push(`- Pattern: ${a.pattern ?? 'none'}.`, `- Name: ${a.name ?? 'none; its content is read'}.`);
   lines.push(`- Description: ${a.description.length ? a.description.join(', then ') : 'none'}.`);
   if (a.states.length) lines.push(`- States: ${a.states.map(state => `${state.state} (from ${state.from})`).join('; ')}.`);
   for (const key of a.keyboard) lines.push(`- ${key.keys[0].toUpperCase()}${key.keys.slice(1)}: ${key.effect}.`);

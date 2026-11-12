@@ -2,6 +2,7 @@
 import type { View } from '@lingxia/view';
 import { Specimen as AvatarSpecimen } from '../../../core/src/Avatar/Avatar.examples';
 import { Specimen as BadgeSpecimen } from '../../../core/src/Badge/Badge.examples';
+import { Specimen as BannerSpecimen } from '../../../core/src/Banner/Banner.examples';
 import { Specimen as ButtonSpecimen } from '../../../core/src/Button/Button.examples';
 import { Specimen as CardSpecimen } from '../../../core/src/Card/Card.examples';
 import { Specimen as CheckboxInputSpecimen } from '../../../core/src/CheckboxInput/CheckboxInput.examples';
@@ -167,6 +168,15 @@ export function render({ actions }: View<Actions>) {
           testId={"open-progress-bar"}
         >
           <ProgressBarSpecimen />
+        </Tile>
+        <Tile
+          name={"Banner"}
+          tagline={"Stays until resolved"}
+          isWide
+          onOpen={() => actions.open({ page: "banner" })}
+          testId={"open-banner"}
+        >
+          <BannerSpecimen />
         </Tile>
       </Category>
       <Category title={"Overlays"}>

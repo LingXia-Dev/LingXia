@@ -409,6 +409,201 @@
       }
     },
     {
+      "name": "Banner",
+      "import": "@liulidesign/core/Banner",
+      "exports": [
+        "Banner"
+      ],
+      "category": "feedback",
+      "status": "preview",
+      "summary": "A message in the page about the page or the account, that stays until resolved",
+      "description": "Banner tells people about something that affects what they are looking at: sync stopped, a card expiring, a notebook locked. It sits in the page's flow, above what it is about, with at most one action and an optional dismiss button. It is not a toast: it does not time out, and the app removes it when the condition ends or it is dismissed.",
+      "keywords": [
+        "banner",
+        "alert",
+        "callout",
+        "notice",
+        "message",
+        "status",
+        "warning",
+        "error",
+        "inline"
+      ],
+      "props": [
+        {
+          "name": "onDismiss",
+          "type": "(() => void)",
+          "required": false,
+          "description": "Removes the banner; the app stops rendering it."
+        },
+        {
+          "name": "dismissLabel",
+          "type": "string",
+          "required": false,
+          "description": "The dismiss button's name: \"Dismiss\"."
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": true,
+          "description": "The point, in a few words."
+        },
+        {
+          "name": "message",
+          "type": "string",
+          "required": false,
+          "description": "What it means or what to do, in a sentence."
+        },
+        {
+          "name": "tone",
+          "type": "BannerTone",
+          "required": false,
+          "description": "",
+          "default": "'info'"
+        },
+        {
+          "name": "action",
+          "type": "{ label: string; onClick: () => void; }",
+          "required": false,
+          "description": "One action that resolves it: \"Update card\", \"Retry\"."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "icon": "vector",
+        "text": "view",
+        "title": "text",
+        "message": "text",
+        "action": "Button",
+        "dismiss": "button"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": null,
+        "description": [],
+        "states": [],
+        "keyboard": [],
+        "contrast": [
+          {
+            "what": "title and message on info",
+            "pair": [
+              "text",
+              "accent-soft"
+            ],
+            "minimum": "4.5:1",
+            "proven": false
+          },
+          {
+            "what": "title and message on success",
+            "pair": [
+              "text",
+              "success-soft"
+            ],
+            "minimum": "4.5:1",
+            "proven": false
+          },
+          {
+            "what": "title and message on warning",
+            "pair": [
+              "text",
+              "warning-soft"
+            ],
+            "minimum": "4.5:1",
+            "proven": false
+          },
+          {
+            "what": "title and message on danger",
+            "pair": [
+              "text",
+              "danger-soft"
+            ],
+            "minimum": "4.5:1",
+            "proven": false
+          }
+        ],
+        "notes": [
+          "Role alert for danger, so it is announced when it appears; role status for the other tones, announced politely.",
+          "Render it only when the condition holds; announcing needs it to appear, not to be there from the start.",
+          "The text stays in the text role on every tint; the icon carries the tone."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Payment",
+          "title": "A problem with one action, dismissible",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Banner } from '@liulidesign/core/Banner';\n\n/** A problem with one way out, that the person can also put aside. */\nexport function Payment() {\n  const shown = useLocal(true);\n  const updated = useLocal(false);\n  if (!shown.value) return <text className=\"text-footnote text-muted\">Dismissed. It comes back on the next visit.</text>;\n  return (\n    <Banner\n      tone=\"warning\"\n      title=\"Your card expires this month\"\n      message=\"Update it before 30 June to keep syncing across devices.\"\n      action={{ label: updated.value ? 'Card updated' : 'Update card', onClick: () => updated.set(true) }}\n      onDismiss={() => shown.set(false)}\n      dismissLabel=\"Dismiss\"\n      data-testid=\"payment\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Tones",
+          "title": "Tones",
+          "source": "import { Banner } from '@liulidesign/core/Banner';\n\nexport function Tones() {\n  return (\n    <view className=\"gap-3\">\n      <Banner tone=\"info\" title=\"Sharing is changing\" message=\"From July, shared notebooks need a Team plan.\" />\n      <Banner tone=\"success\" title=\"All notes synced\" />\n      <Banner tone=\"warning\" title=\"Storage almost full\" message=\"You have used 9.6 of 10 GB.\" />\n      <Banner tone=\"danger\" title=\"Sync stopped\" message=\"We could not reach the server. Your changes are kept on this device.\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "OverList",
+          "title": "Above the list it is about",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Banner } from '@liulidesign/core/Banner';\n\n/** At the top of a list it is about, before the content. */\nexport function OverList() {\n  const retried = useLocal(false);\n  return (\n    <view className=\"gap-3\">\n      <Banner\n        tone=\"danger\"\n        title={retried.value ? 'Still offline' : 'Sync stopped'}\n        message=\"Changes are kept on this device until the connection returns.\"\n        action={{ label: 'Retry now', onClick: () => retried.set(true) }}\n        data-testid=\"sync\"\n      />\n      <view className=\"rounded-container border border-text/10 bg-surface divide-y divide-text/8\">\n        {['Q3 plan', 'Reading list', 'Interview notes'].map(note => (\n          <view key={note} className=\"px-4 py-3\"><text className=\"text-body text-text\">{note}</text></view>\n        ))}\n      </view>\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [],
+      "related": [
+        "Badge",
+        "Dialog",
+        "ProgressBar"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Stays until resolved",
+        "order": 3,
+        "page": {
+          "lead": "Use a banner to say something about the page or the account that people should act on or know.",
+          "hero": "Payment",
+          "variants": [
+            {
+              "name": "Tones",
+              "title": "Info, success, warning and danger"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateTitleOnly",
+              "title": "A title only"
+            },
+            {
+              "name": "StateWithMessage",
+              "title": "With a message"
+            },
+            {
+              "name": "StateWithAction",
+              "title": "With an action"
+            },
+            {
+              "name": "StateDismissible",
+              "title": "Dismissible"
+            }
+          ],
+          "inContext": [
+            {
+              "name": "OverList",
+              "title": "Above the list it is about"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "Button",
       "import": "@liulidesign/core/Button",
       "exports": [

@@ -9,7 +9,7 @@ const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const pages = [
   'colour', 'typography', 'shape-and-spacing', 'elevation', 'motion',
   'button', 'tabs', 'text-input', 'select', 'checkbox-input', 'radio-group', 'switch', 'slider', 'field',
-  'badge', 'progress-bar', 'dialog', 'dropdown-menu', 'tooltip', 'card', 'item', 'details', 'avatar',
+  'badge', 'progress-bar', 'banner', 'dialog', 'dropdown-menu', 'tooltip', 'card', 'item', 'details', 'avatar',
   'sign-in', 'settings', 'uploads',
 ];
 
@@ -203,4 +203,12 @@ spec('tooltip: a press opens the note; a tap outside closes it', { start: { page
   await view.swipe({ from: [vp.width / 2, vp.height - 40], to: [vp.width / 2, vp.height - 40], durationMs: 60 });
   await expect(note).toHaveCount(0);
   await expect(button).toHaveAttribute('data-state', 'closed');
+});
+
+spec('banner: the action runs; dismiss removes it', { start: { page: 'banner' }, timeout: 60_000 }, async (t) => {
+  const view = t.app.view;
+  await view.testId('payment-action').click();
+  await expect(view.testId('payment-action')).toHaveText('Card updated');
+  await view.getByRole('button', { name: 'Dismiss' }).first().click();
+  await expect(view.testId('payment')).toHaveCount(0);
 });

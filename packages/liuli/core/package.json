@@ -24,6 +24,8 @@
     "./Tooltip/recipe": "./src/Tooltip/Tooltip.recipe.ts",
     "./ProgressBar": "./src/ProgressBar/ProgressBar.tsx",
     "./ProgressBar/recipe": "./src/ProgressBar/ProgressBar.recipe.ts",
+    "./Banner": "./src/Banner/Banner.tsx",
+    "./Banner/recipe": "./src/Banner/Banner.recipe.ts",
     "./Item": "./src/Item/Item.tsx",
     "./Item/recipe": "./src/Item/Item.recipe.ts",
     "./Card": "./src/Card/Card.tsx",

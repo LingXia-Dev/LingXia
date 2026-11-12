@@ -50,8 +50,8 @@ export interface AccessibilityContract {
   /** The pattern this component binds to; its checks run in the gallery specs. `null` for layout
    * that holds a control but is not one (Field), or content that is not a control (Avatar). */
   readonly pattern: PatternName | null;
-  /** The prop the accessible name comes from. */
-  readonly name: 'label' | 'name';
+  /** The prop the accessible name comes from; `null` for a live region read by its content (Banner). */
+  readonly name: 'label' | 'name' | null;
   /** What is read after the name, through `aria-describedby`, in order; `[]` when nothing is. */
   readonly description: readonly string[];
   /** States the component exposes and the props that drive them. */

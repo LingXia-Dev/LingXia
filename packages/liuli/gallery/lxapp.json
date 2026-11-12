@@ -22,6 +22,7 @@
     { "name": "field", "path": "pages/field/index" },
     { "name": "badge", "path": "pages/badge/index" },
     { "name": "progress-bar", "path": "pages/progress-bar/index" },
+    { "name": "banner", "path": "pages/banner/index" },
     { "name": "dialog", "path": "pages/dialog/index" },
     { "name": "dropdown-menu", "path": "pages/dropdown-menu/index" },
     { "name": "tooltip", "path": "pages/tooltip/index" },
