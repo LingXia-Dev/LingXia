@@ -2558,7 +2558,7 @@ fn held_run_id(request: &ControlRequest) -> Option<String> {
 }
 
 enum RelayWait {
-    Answered(DevSessionMessage),
+    Answered(Box<DevSessionMessage>),
     TimedOut,
     Background,
     Disconnected,
@@ -2587,7 +2587,7 @@ fn wait_for_result(
         }
         let wake = background_at.map_or(deadline, |at| at.min(deadline));
         match result_rx.recv_timeout((wake - now).min(SLICE)) {
-            Ok(result) => return RelayWait::Answered(result),
+            Ok(result) => return RelayWait::Answered(Box::new(result)),
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => return RelayWait::Disconnected,
         }

@@ -261,7 +261,7 @@ fn prune(project_root: &Path, app_id: &str) {
         .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "json"))
         .filter_map(|entry| Some((entry.metadata().ok()?.modified().ok()?, entry.path())))
         .collect();
-    snapshots.sort_by(|a, b| b.0.cmp(&a.0));
+    snapshots.sort_by_key(|(modified, _)| std::cmp::Reverse(*modified));
     for (_, stale) in snapshots.iter().skip(KEPT_SNAPSHOTS) {
         let _ = fs::remove_file(stale);
     }
