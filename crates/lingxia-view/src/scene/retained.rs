@@ -77,6 +77,8 @@ pub(crate) struct RetainedLayout {
     pub(crate) selectables: Vec<Option<Arc<SelectableText>>>,
     /// Behind selected text, resolved from the palette.
     pub(crate) selection_fill: [u8; 4],
+    /// Each node that roots a top-layer box (a dialog, a popover) that is shown.
+    pub(crate) top_layer: Vec<bool>,
 }
 
 impl RetainedLayout {
@@ -219,6 +221,9 @@ impl RetainedLayout {
                         .iter()
                         .position(|node| node.identity == old.nodes[p].identity)
                 });
+            // The exit style sits on the panel, inside the layer box that is gone.
+            let lifted =
+                std::iter::successors(Some(root), |&p| old.parents[p]).any(|p| old.top_layer[p]);
             let base = next.nodes.len();
             let place = |old_index: usize| {
                 members
@@ -275,6 +280,8 @@ impl RetainedLayout {
                 next.blurs.push(old.blurs[index]);
                 next.inputs.push(None);
                 next.selectables.push(None);
+                // An exiting dialog still owns the top layer until its exit ends.
+                next.top_layer.push(index == root && lifted);
             }
             // Painted right after the anchor's subtree, so above its other children.
             let added: Vec<usize> = (base..next.nodes.len()).collect();

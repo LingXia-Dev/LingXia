@@ -520,6 +520,7 @@ impl ViewSession {
                     metrics.nodes = display.nodes.len();
                     metrics.paints = display.paint_count();
                     metrics.cost = display.cost();
+                    metrics.top_layer_open = display.top_layer_open();
                     let started = std::time::Instant::now();
                     let frame = build(display)?;
                     metrics.build_us += crate::session::metrics::micros(started);
@@ -724,6 +725,7 @@ impl ViewSession {
                     metrics.nodes = display.nodes.len();
                     metrics.paints = display.paint_count();
                     metrics.cost = display.cost();
+                    metrics.top_layer_open = display.top_layer_open();
                     let started = std::time::Instant::now();
                     let frame = build(display)?;
                     metrics.build_us += crate::session::metrics::micros(started);

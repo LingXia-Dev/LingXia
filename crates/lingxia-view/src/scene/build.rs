@@ -1455,6 +1455,11 @@ impl Renderer {
         }
         snap_points(records, &mut nodes);
         Ok(RetainedLayout {
+            top_layer: records
+                .iter()
+                .zip(&collapsed)
+                .map(|(record, collapsed)| record.number(field::TOP_LAYER).is_some() && !collapsed)
+                .collect(),
             selection_fill: palette.role(Role::Selection),
             paint_styles,
             commands,

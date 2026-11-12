@@ -451,13 +451,7 @@ impl HostEvents for AppleAdapter {
         self.shell.loaded(self.token);
     }
     fn presented(&self, frame: &FrameSnapshot, timing: &FrameTiming) {
-        // An exiting dialog still covers the bars until its exit ends.
-        let open = frame.frame.nodes.iter().any(|node| {
-            node.role.as_deref() == Some("dialog")
-                && lingxia_view::interaction::frame::visible(node)
-        });
-        let modal = open
-            || (self.modal.load(std::sync::atomic::Ordering::Relaxed) && frame.metrics.ghosts > 0);
+        let modal = frame.metrics.top_layer_open;
         if self.modal.swap(modal, std::sync::atomic::Ordering::Relaxed) != modal {
             self.shell.top_layer(self.token, modal);
         }

@@ -97,6 +97,16 @@ impl SceneKey {
 }
 
 impl DisplayList {
+    /// The host lifts the page over its chrome: a shown dialog, or its exit ghost. A popover
+    /// stays under the chrome; a dialog's backdrop hides the chrome anyway.
+    pub fn top_layer_open(&self) -> bool {
+        self.nodes.iter().any(|node| {
+            node.role.as_deref() == Some("dialog")
+                && node.visible_bounds[2] > 0.0
+                && node.visible_bounds[3] > 0.0
+        })
+    }
+
     pub fn animated_spans(&self) -> &[AnimatedSpan] {
         &self.animated
     }
