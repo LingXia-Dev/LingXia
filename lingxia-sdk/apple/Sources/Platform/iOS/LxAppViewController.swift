@@ -763,6 +763,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
         lingxia.onPageShow(appId, path)
         updateNavigationBar(appId: appId, path: path)
         updateTabBar(for: appId, path: path)
+        setupGpuPullToRefresh(view, appId: appId, path: path)
         bringUIElementsToFront()
         view.chromeChanged()
         return true
@@ -1329,14 +1330,44 @@ final class LxAppViewController: UIViewController, ObservableObject {
         return helper
     }
 
+    /// The pull of the GPU page on screen, when it is the page instance `webtag` names.
+    private func gpuRefresh(forPage webtag: String) -> GpuPullToRefresh? {
+        guard let page = activeGpuView as? GpuPageView, let refresh = page.pullToRefresh,
+              gpuPageInfo(page.token).webtag.toString() == webtag else { return nil }
+        return refresh
+    }
+
     /// Show the indicator of the page instance `webtag` names.
-    internal func startPullDownRefresh(webtag: String) {
-        refreshHelper(forPage: webtag)?.startRefreshing()
+    internal func startPullDownRefresh(appId: String, webtag: String) {
+        if let helper = refreshHelper(forPage: webtag) {
+            helper.startRefreshing()
+        } else if let refresh = gpuRefresh(forPage: webtag) {
+            refresh.startRefreshing()
+        } else {
+            // No indicator shows this page: its refresh still runs, as on Android.
+            LXLog.info("startPullDownRefresh: no indicator for \(webtag); refreshing without one", category: "PullToRefresh")
+            _ = onLxappEvent(appId, LxAppEvent.pullDownRefresh, webtag)
+        }
     }
 
     /// Hide the indicator of the page instance `webtag` names.
     internal func stopPullDownRefresh(webtag: String) {
         refreshHelper(forPage: webtag)?.endRefreshing()
+        gpuRefresh(forPage: webtag)?.endRefreshing()
+    }
+
+    /// Give the GPU page the pull its page declares, or take it away.
+    private func setupGpuPullToRefresh(_ page: GpuPageView, appId: String, path: String) {
+        guard isPullDownRefreshEnabled(appId: appId, path: normalizePath(path)) else {
+            page.pullToRefresh = nil
+            return
+        }
+        guard page.pullToRefresh == nil else { return }
+        page.pullToRefresh = GpuPullToRefresh(page: page) { [weak page] in
+            guard let page else { return }
+            let info = gpuPageInfo(page.token)
+            _ = onLxappEvent(info.app_id.toString(), LxAppEvent.pullDownRefresh, info.webtag.toString())
+        }
     }
 
     private func setupGlobalNavigationBar() {

@@ -26,6 +26,12 @@ final class GpuPageView: UIView {
     /// Recovery chrome after a failure, and whether it hides the page entirely.
     var recoveryPanel: UIView?
     var recoveryCovers = false
+    /// Set while the page declares `enablePullDownRefresh`.
+    var pullToRefresh: GpuPullToRefresh? {
+        didSet { if oldValue !== pullToRefresh { oldValue?.detach() } }
+    }
+    /// The touch now belongs to a pull; the core had it cancelled.
+    private var pulling = false
     var menuChosen = false
     /// Static-text selection handles and the one a finger holds (end, grab offset).
     var handleLayer: CAShapeLayer?
@@ -120,6 +126,8 @@ final class GpuPageView: UIView {
             }
             cancelLongPress()
             stopFlingNow()
+            pulling = false
+            pullToRefresh?.detach()
             // A requested frame still comes, without the display.
             let pending = vsyncLink.map { !$0.isPaused } ?? false
             vsyncLink?.invalidate()
@@ -236,7 +244,17 @@ final class GpuPageView: UIView {
         report()
     }
 
+    /// The bars' cover over the top edge, for the pull's strip.
+    var chromeTop: CGFloat { chrome.top }
+
+    /// The pull put the page back where it is laid out.
+    func pullReleased() {
+        report()
+    }
+
     private func report() {
+        // A pull moves the page down; it keeps the measurements of where it is laid out.
+        if pullToRefresh?.holdsPage == true { return }
         guard let window, bounds.width > 0, bounds.height > 0 else { return }
         let scale = window.screen.scale
         let insets = safeAreaInsets
@@ -355,13 +373,38 @@ final class GpuPageView: UIView {
         stopFlingNow()
         tracked = touch
         samples = []
+        pulling = false
+        pullToRefresh?.began(touch.location(in: nil))
         record(touch)
         send(0, touch)
+    }
+
+    /// Whether a move belongs to a pull to refresh; on its first, the core lets the touch go.
+    private func pulls(at point: CGPoint, from local: CGPoint) -> Bool {
+        guard let refresh = pullToRefresh else { return false }
+        let pulls = refresh.moved(point) { [token] in
+            let scale = self.window?.screen.scale ?? UIScreen.main.scale
+            return !gpuPageCanScrollVertically(token, Float(local.x * scale), Float(local.y * scale), -1)
+        }
+        if pulls, !pulling {
+            pulling = true
+            cancelLongPress()
+            send(3, at: local)
+        }
+        return pulls
+    }
+
+    /// The touch ended (`up`) or was cancelled: true when it ended a pull the core no longer has.
+    private func endsPull(up: Bool) -> Bool {
+        let ended = pullToRefresh?.ended(up: up) ?? false
+        defer { pulling = false }
+        return ended || pulling
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let tracked, touches.contains(tracked) else { return }
         if handleTouch(1, at: tracked.location(in: self)) { return }
+        if pulls(at: tracked.location(in: nil), from: tracked.location(in: self)) { return }
         record(tracked)
         send(1, tracked)
     }
@@ -370,6 +413,7 @@ final class GpuPageView: UIView {
         guard let tracked, touches.contains(tracked) else { return }
         self.tracked = nil
         if handleTouch(2, at: tracked.location(in: self)) { return }
+        if endsPull(up: true) { return }
         record(tracked)
         send(2, tracked, velocity: releaseVelocity())
     }
@@ -378,6 +422,7 @@ final class GpuPageView: UIView {
         guard let tracked, touches.contains(tracked) else { return }
         self.tracked = nil
         if handleTouch(3, at: tracked.location(in: self)) { return }
+        if endsPull(up: false) { return }
         send(3, tracked)
     }
 
@@ -402,6 +447,8 @@ final class GpuPageView: UIView {
             if handleTouch(0, at: point) { return true }
             stopFlingNow()
             samples = []
+            pulling = false
+            pullToRefresh?.began(point)
             record(point, at: now)
             send(0, at: point)
             return true
@@ -409,6 +456,8 @@ final class GpuPageView: UIView {
             guard automated != nil else { return false }
             automated = point
             if handleTouch(1, at: point) { return true }
+            // Automation's points do not move with the page, as a finger on the glass does not.
+            if pulls(at: point, from: point) { return true }
             record(point, at: now)
             send(1, at: point)
             return true
@@ -417,6 +466,7 @@ final class GpuPageView: UIView {
             automated = nil
             let up = phase == 2
             if handleTouch(up ? 2 : 3, at: point) { return true }
+            if endsPull(up: up) { return true }
             if up {
                 record(point, at: now)
                 send(2, at: point, velocity: releaseVelocity())
@@ -694,7 +744,17 @@ public enum GpuPages {
 
     static func dispose(token: Int64) {
         MainActor.assumeIsolated {
-            views.removeValue(forKey: token)?.removeFromSuperview()
+            guard let view = views.removeValue(forKey: token) else { return }
+            view.pullToRefresh = nil
+            view.removeFromSuperview()
+        }
+    }
+
+    /// The GPU view showing the page `webtag` of `appId`.
+    @MainActor static func view(appId: String, webtag: String) -> GpuPageView? {
+        views.values.first {
+            let info = gpuPageInfo($0.token)
+            return info.app_id.toString() == appId && info.webtag.toString() == webtag
         }
     }
 

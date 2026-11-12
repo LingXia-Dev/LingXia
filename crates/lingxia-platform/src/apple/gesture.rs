@@ -1,6 +1,5 @@
 use super::app::Platform;
 use crate::error::PlatformError;
-#[cfg(target_os = "macos")]
 use crate::traits::gesture::PullRefreshIndicator;
 use crate::traits::gesture::{AppGesture, AppGestureRequest, AppGestureResult};
 use async_trait::async_trait;
@@ -31,6 +30,21 @@ impl AppGesture for Platform {
     #[cfg(target_os = "ios")]
     fn webview_page_gestures(&self) -> bool {
         false
+    }
+
+    // Injected touches reach only the GPU page view, so the host's own views stay out of reach.
+    #[cfg(target_os = "ios")]
+    fn host_capabilities(&self) -> Vec<crate::traits::gesture::HostCapability> {
+        vec![crate::traits::gesture::HostCapability::RefreshIndicator]
+    }
+
+    #[cfg(target_os = "ios")]
+    async fn pull_refresh_indicator(
+        &self,
+        app_id: &str,
+        webtag: &str,
+    ) -> Result<Option<PullRefreshIndicator>, PlatformError> {
+        ios::pull_refresh_indicator(app_id, webtag).await
     }
 
     async fn perform_app_gesture(
@@ -1152,5 +1166,55 @@ mod ios {
             duration_ms: started.elapsed().as_secs_f64() * 1000.0,
             finger,
         })
+    }
+
+    /// A GPU page's pull-to-refresh indicator; `None` when the page has none.
+    pub(super) async fn pull_refresh_indicator(
+        app_id: &str,
+        webtag: &str,
+    ) -> Result<Option<crate::traits::gesture::PullRefreshIndicator>, PlatformError> {
+        use crate::traits::gesture::PullRefreshIndicator;
+        use std::ffi::{CString, c_char, c_void};
+        type StateFn = unsafe extern "C" fn(
+            *const c_char,
+            *const c_char,
+            *mut c_char,
+            isize,
+            *mut f64,
+        ) -> bool;
+        unsafe extern "C" {
+            fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
+        }
+        const RTLD_DEFAULT: *mut c_void = -2isize as *mut c_void;
+        let app =
+            CString::new(app_id).map_err(|e| PlatformError::InvalidParameter(e.to_string()))?;
+        let tag =
+            CString::new(webtag).map_err(|e| PlatformError::InvalidParameter(e.to_string()))?;
+        on_main(move || {
+            let symbol = unsafe { dlsym(RTLD_DEFAULT, c"lx_ios_pull_refresh_state".as_ptr()) };
+            if symbol.is_null() {
+                return Err("this host has no iOS pull-to-refresh".to_string());
+            }
+            let read: StateFn = unsafe { std::mem::transmute(symbol) };
+            let mut phase = [0 as c_char; 16];
+            let mut offset = 0.0;
+            let found = unsafe {
+                read(
+                    app.as_ptr(),
+                    tag.as_ptr(),
+                    phase.as_mut_ptr(),
+                    phase.len() as isize,
+                    &mut offset,
+                )
+            };
+            if !found {
+                return Ok(None);
+            }
+            let phase = unsafe { std::ffi::CStr::from_ptr(phase.as_ptr()) }
+                .to_string_lossy()
+                .into_owned();
+            Ok(Some(PullRefreshIndicator { phase, offset }))
+        })
+        .await
     }
 }

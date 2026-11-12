@@ -497,7 +497,7 @@ extension LxApp {
             guard let instance = iOSLxApp.getInstanceUnsafe() else { return }
             guard let manager = instance.currentLxAppManager else { return }
             
-            manager.startPullDownRefresh(webtag: webtagStr)
+            manager.startPullDownRefresh(appId: appidStr, webtag: webtagStr)
             
             os_log("startPullDownRefresh called for %@ %@", log: OSLog(subsystem: "LingXia", category: "PullToRefresh"), type: .info, appidStr, webtagStr)
         }

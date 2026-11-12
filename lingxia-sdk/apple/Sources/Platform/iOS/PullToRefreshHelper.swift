@@ -242,7 +242,8 @@ class PullToRefreshHelper: NSObject {
     }
 }
 
-private class RefreshIndicatorView: UIView {
+/// Also the spinner of a GPU page's pull (`GpuPullToRefresh`).
+class RefreshIndicatorView: UIView {
     private let spinner = UIActivityIndicatorView(style: .medium)
     // Where the spinner sits in the strip the pull opens, below [topInset].
     private let spinnerCenterY: CGFloat = 40.0
