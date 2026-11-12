@@ -20,10 +20,13 @@ export const doc: ComponentDoc = {
   ],
   accessibility: {
     pattern: 'checkbox',
-    name: 'label then description',
+    name: 'label',
+    description: ['description, or disabledMessage while disabled', 'the status message'],
     states: [
       { state: 'checked', from: 'value or bind' },
       { state: 'disabled', from: 'isDisabled' },
+      { state: 'invalid', from: "status.type === 'error'" },
+      { state: 'required', from: 'isRequired' },
     ],
     keyboard: [],
     contrast: [
@@ -33,8 +36,9 @@ export const doc: ComponentDoc = {
       { what: 'label', pair: ['text', 'surface'], minimum: '4.5:1', proven: true },
     ],
     notes: [
-      'The name is the label followed by the help text, because a control cannot yet carry a separate description.',
-      'The status message sits outside the control in a polite live region.',
+      'The help text sits inside the control so a tap on it toggles, but it is read as the description, not the name.',
+      'The status message sits outside the control in a polite live region and is also read as the description.',
+      'The box is 16 to 24 px, but the press target is the whole row, label and help text included.',
     ],
   },
   guidance: {
@@ -57,11 +61,6 @@ export const doc: ComponentDoc = {
       missing: 'A mixed state for a select-all box.',
       needs: 'a mixed checked state on the checkbox primitive',
       today: 'Two states only.',
-    },
-    {
-      missing: 'Help text announced as a description rather than inside the name; invalid reported.',
-      needs: 'aria-describedby and aria-invalid',
-      today: 'The name is label plus help text; the status is read from its live region.',
     },
   ],
   related: ['Field'],

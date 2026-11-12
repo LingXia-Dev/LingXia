@@ -3,7 +3,7 @@ import { Button } from '../Button/Button';
 import { TextInput } from '../TextInput/TextInput';
 import { Dialog } from './Dialog';
 
-/** A confirmation: Escape, back and the backdrop cancel; the destructive action is last. */
+/** A confirmation that interrupts: Escape and back cancel, a backdrop tap does not; the destructive action is last. */
 export function Confirm() {
   const open = useLocal('open', false);
   const deleted = useLocal('deleted', false);
@@ -17,6 +17,8 @@ export function Confirm() {
         label="Delete this note?"
         description="It leaves every device you are signed in on."
         size="sm"
+        isAlert
+        dismissOn="closeRequest"
         data-testid="dialog"
         actions={
           <>

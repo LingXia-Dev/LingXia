@@ -20,7 +20,12 @@ export const doc: ComponentDoc = {
   accessibility: {
     pattern: null,
     name: 'label',
-    states: [{ state: 'disabled', from: 'isDisabled, passed on to the control by the component that uses Field' }],
+    description: ['description, or disabledMessage while disabled', 'the status message'],
+    states: [
+      { state: 'disabled', from: 'isDisabled' },
+      { state: 'invalid', from: "status.type === 'error'" },
+      { state: 'required', from: 'isRequired' },
+    ],
     keyboard: [],
     contrast: [
       { what: 'label', pair: ['text', 'canvas'], minimum: '4.5:1', proven: true },
@@ -28,13 +33,13 @@ export const doc: ComponentDoc = {
       { what: 'status icon', pair: ['danger', 'canvas'], minimum: '3:1', proven: false },
     ],
     notes: [
-      'Help text and status are read after the control, in tree order; they are not yet tied to it.',
-      'The status region announces a message politely when it appears or changes.',
+      'Field hands its control the name, the description ids and the states; pass each one on to the control element.',
+      'The status region also announces a message politely when it appears or changes.',
     ],
   },
   guidance: {
     do: [
-      'Give the wrapped control aria-label equal to the Field label.',
+      'Pass every prop Field hands the control on to the control element.',
       'Say what to fix in a status message, not only that something is wrong.',
     ],
     dont: [
@@ -44,11 +49,6 @@ export const doc: ComponentDoc = {
   },
   examples: [{ name: 'WrappedSelect', title: 'Wrapping a primitive select' }],
   gaps: [
-    {
-      missing: 'Help text and status tied to the control; invalid and required reported.',
-      needs: 'aria-describedby, aria-invalid and aria-required on controls',
-      today: 'The control is named by the label; help and status are read after it; required is visual only.',
-    },
     {
       missing: 'Validation when the user leaves a field.',
       needs: 'focus and blur events on editors',

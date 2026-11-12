@@ -1,5 +1,5 @@
 /** The element each part lands on. */
-export const buttonParts = { root: 'button', icon: 'view', spinner: 'vector', label: 'text' } as const;
+export const buttonParts = { root: 'button', icon: 'view', spinner: 'vector', label: 'text', reason: 'text' } as const;
 
 /**
  * Button classes by part, then by prop value. Exported so an app can style a raw `<button>` (a
@@ -40,5 +40,9 @@ export const buttonRecipe = {
   label: {
     base: 'font-medium text-center',
     size: { sm: 'text-sm', md: 'text-sm', lg: 'text-base' },
+  },
+  /** The disabled reason: not drawn, read as the description. */
+  reason: {
+    base: 'sr-only',
   },
 } as const;

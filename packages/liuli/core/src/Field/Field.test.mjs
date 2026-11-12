@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
-import { renderExample, renderPage } from '../testing/harness.mjs';
+import { described, renderExample, renderPage } from '../testing/harness.mjs';
 
 test('WrappedSelect: the visible label is hidden from assistive tech, the control carries the name', async () => {
   const screen = await renderExample('Field/Field', 'WrappedSelect');
@@ -9,8 +9,11 @@ test('WrappedSelect: the visible label is hidden from assistive tech, the contro
   const label = field.children[0];
   assert.equal(label.props.accessibilityHidden, 1);
   assert.equal(textOf(label), 'Billing period *');
-  assert.equal(screen.getByTestId('period').props.accessibilityLabel, 'Billing period');
-  assert.equal(textOf(screen.getByText('You can change it later.')), 'You can change it later.');
+  const select = screen.getByTestId('period');
+  assert.equal(select.props.accessibilityLabel, 'Billing period');
+  assert.deepEqual(described(screen, select), ['You can change it later.', 'Choose a period to see the price.']);
+  assert.equal(select.props.stateRequired, 1);
+  assert.equal(select.props.stateInvalid, undefined, 'a warning is not an error');
 });
 
 test('the status region stays mounted and empties when the status goes', async () => {
@@ -21,8 +24,9 @@ test('the status region stays mounted and empties when the status goes', async (
     export function render() {
       const period = useLocal('period', '');
       return <page>
-        <Field label="Billing period" status={period.value ? undefined : { type: 'warning', message: 'Choose a period.' }}>
-          <select bind={period} aria-label="Billing period" options={[{ value: 'yearly', label: 'Yearly' }]} />
+        <Field label="Billing period" status={period.value ? undefined : { type: 'error', message: 'Choose a period.' }}>
+          {control => <select bind={period} aria-label={control['aria-label']} aria-describedby={control['aria-describedby']}
+            aria-invalid={control['aria-invalid']} data-testid="period" options={[{ value: 'yearly', label: 'Yearly' }]} />}
         </Field>
         <button data-testid="choose" onClick={() => period.set('yearly')}>Choose</button>
       </page>;
@@ -31,9 +35,13 @@ test('the status region stays mounted and empties when the status goes', async (
   const region = () => screen.queryAll(node => node.props.role === 'status');
   assert.equal(region().length, 1);
   assert.equal(textOf(region()[0]), 'Choose a period.');
+  assert.deepEqual(described(screen, screen.getByTestId('period')), ['Choose a period.']);
+  assert.equal(screen.getByTestId('period').props.stateInvalid, 1);
   assert.ok(region()[0].children.some(node => node.tag === 'vector' && node.props.accessibilityHidden === 1), 'icon, hidden');
   screen.press(screen.getByTestId('choose'));
   assert.equal(region().length, 1, 'still mounted');
   assert.equal(textOf(region()[0]), '');
   assert.equal(region()[0].props.opacity, 0, 'visually hidden while empty');
+  assert.equal(screen.getByTestId('period').props.ariaDescribedBy, undefined, 'nothing to describe');
+  assert.equal(screen.getByTestId('period').props.stateInvalid, undefined);
 });

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
-import { renderExample } from '../testing/harness.mjs';
+import { described, renderExample } from '../testing/harness.mjs';
 
 const status = screen => screen.queryAll(node => node.props.role === 'status')[0];
 
@@ -10,11 +10,15 @@ test('Bound: named by its label, typing reaches the bound cell, and validation s
   const email = () => screen.getByTestId('email');
   assert.equal(email().props.accessibilityLabel, 'Email');
   assert.equal(email().props.placeholder, 'you@example.com');
+  assert.equal(email().props.stateRequired, 1);
+  assert.deepEqual(described(screen, email()), ['We send the receipt here.']);
   assert.equal(textOf(status(screen)), '');
   screen.type(email(), 'ada');
   assert.equal(email().props.inputValue, 'ada');
-  assert.equal(textOf(status(screen)), 'Add the part after @, such as example.com.');
+  assert.equal(email().props.stateInvalid, 1);
+  assert.deepEqual(described(screen, email()), ['We send the receipt here.', 'Add the part after @, such as example.com.']);
   screen.type(email(), 'ada@example.com');
+  assert.equal(email().props.stateInvalid, undefined);
   assert.equal(textOf(status(screen)), '');
 });
 
@@ -35,5 +39,5 @@ test('Disabled: the editor takes no input and the reason replaces the help text'
   const code = screen.getByTestId('code');
   assert.equal(code.props.onInput, undefined);
   assert.equal(code.props.inputValue, 'LX-2041');
-  assert.equal(screen.getByText('Codes are fixed once sent.').tag, 'text');
+  assert.deepEqual(described(screen, code), ['Codes are fixed once sent.']);
 });

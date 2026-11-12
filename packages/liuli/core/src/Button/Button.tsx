@@ -1,4 +1,4 @@
-import { cx, useLocal, type Child } from '@lingxia/view';
+import { cx, useId, useLocal, type Child } from '@lingxia/view';
 import { glyphBox, glyphs } from '../internal/glyphs';
 import { settleFlag } from '../internal/settle';
 import { buttonRecipe as r } from './Button.recipe';
@@ -25,7 +25,7 @@ export interface ButtonProps {
   width?: ButtonWidth;
   /** @default false */
   isDisabled?: boolean;
-  /** Why it is disabled. Read after the label while disabled; not drawn. */
+  /** Why it is disabled: read as the button's description while disabled; not drawn. */
   disabledMessage?: string;
   /** Shows a spinner and ignores presses; the button stays focusable and reports busy. @default false */
   isLoading?: boolean;
@@ -54,6 +54,8 @@ export function Button({
   className,
   'data-testid': testId,
 }: ButtonProps) {
+  const reasonId = `${useId()}-reason`;
+  const hasReason = isDisabled && disabledMessage !== undefined;
   const pending = useLocal('pending', false);
   const busy = isLoading || pending.value;
   // Returning the promise lets the View report a rejected action as a handler error.
@@ -71,7 +73,8 @@ export function Button({
   return (
     <button
       data-testid={testId}
-      aria-label={isDisabled && disabledMessage ? `${label}, ${disabledMessage}` : label}
+      aria-label={label}
+      aria-describedby={hasReason ? reasonId : undefined}
       aria-busy={busy || undefined}
       disabled={isDisabled}
       onClick={press}
@@ -84,6 +87,7 @@ export function Button({
       )}
       <text className={cx(r.label.base, r.label.size[size])}>{label}</text>
       {endContent !== undefined && <view aria-hidden className={r.icon.base}>{endContent}</view>}
+      {hasReason && <text id={reasonId} aria-hidden className={r.reason.base}>{disabledMessage}</text>}
     </button>
   );
 }

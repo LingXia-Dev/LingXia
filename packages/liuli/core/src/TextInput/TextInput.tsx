@@ -62,52 +62,60 @@ export function TextInput(props: TextInputProps) {
       size={size}
       className={className}
     >
-      <view className={cx(r.box.base, r.box.size[size], status && r.box.status[status.type], isDisabled && r.box.disabled, controlClassName)}>
-        {startIcon !== undefined && <view aria-hidden className={r.icon.base}>{startIcon}</view>}
-        {props.bind ? (
-          <input
-            bind={props.bind}
-            aria-label={label}
-            data-testid={testId}
-            placeholder={placeholder}
-            type={type}
-            inputMode={inputMode}
-            autoComplete={autoComplete}
-            enterKeyHint={enterKeyHint}
-            autoCapitalize={autoCapitalize}
-            spellCheck={hasSpellCheck}
-            autoFocus={hasAutoFocus}
-            maxLength={maxLength}
-            disabled={isDisabled}
-            onSubmit={onSubmit}
-            className={inputClass}
-          />
-        ) : (
-          <input
-            value={props.value}
-            onInput={props.onChange}
-            aria-label={label}
-            data-testid={testId}
-            placeholder={placeholder}
-            type={type}
-            inputMode={inputMode}
-            autoComplete={autoComplete}
-            enterKeyHint={enterKeyHint}
-            autoCapitalize={autoCapitalize}
-            spellCheck={hasSpellCheck}
-            autoFocus={hasAutoFocus}
-            maxLength={maxLength}
-            disabled={isDisabled}
-            onSubmit={onSubmit}
-            className={inputClass}
-          />
-        )}
-        {props.hasClear && text !== '' && !isDisabled && (
-          <button aria-label={props.clearLabel} onClick={clear} className={r.clear.base}>
-            <vector aria-hidden paths={glyphs.close} viewBox={glyphBox} className={r.clearIcon.base} />
-          </button>
-        )}
-      </view>
+      {control => (
+        <view className={cx(r.box.base, r.box.size[size], status && r.box.status[status.type], isDisabled && r.box.disabled, controlClassName)}>
+          {startIcon !== undefined && <view aria-hidden className={r.icon.base}>{startIcon}</view>}
+          {props.bind ? (
+            <input
+              bind={props.bind}
+              aria-label={control['aria-label']}
+              aria-describedby={control['aria-describedby']}
+              aria-invalid={control['aria-invalid']}
+              aria-required={control['aria-required']}
+              data-testid={testId}
+              placeholder={placeholder}
+              type={type}
+              inputMode={inputMode}
+              autoComplete={autoComplete}
+              enterKeyHint={enterKeyHint}
+              autoCapitalize={autoCapitalize}
+              spellCheck={hasSpellCheck}
+              autoFocus={hasAutoFocus}
+              maxLength={maxLength}
+              disabled={control.disabled}
+              onSubmit={onSubmit}
+              className={inputClass}
+            />
+          ) : (
+            <input
+              value={props.value}
+              onInput={props.onChange}
+              aria-label={control['aria-label']}
+              aria-describedby={control['aria-describedby']}
+              aria-invalid={control['aria-invalid']}
+              aria-required={control['aria-required']}
+              data-testid={testId}
+              placeholder={placeholder}
+              type={type}
+              inputMode={inputMode}
+              autoComplete={autoComplete}
+              enterKeyHint={enterKeyHint}
+              autoCapitalize={autoCapitalize}
+              spellCheck={hasSpellCheck}
+              autoFocus={hasAutoFocus}
+              maxLength={maxLength}
+              disabled={control.disabled}
+              onSubmit={onSubmit}
+              className={inputClass}
+            />
+          )}
+          {props.hasClear && text !== '' && !isDisabled && (
+            <button aria-label={props.clearLabel} onClick={clear} className={r.clear.base}>
+              <vector aria-hidden paths={glyphs.close} viewBox={glyphBox} className={r.clearIcon.base} />
+            </button>
+          )}
+        </view>
+      )}
     </Field>
   );
 }

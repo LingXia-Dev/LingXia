@@ -46,7 +46,9 @@ export interface AccessibilityContract {
    * that holds a control but is not one (Field). */
   readonly pattern: PatternName | null;
   /** Where the accessible name comes from. */
-  readonly name: 'label' | 'label then description' | 'label, then disabledMessage when disabled';
+  readonly name: 'label';
+  /** What is read after the name, through `aria-describedby`, in order; `[]` when nothing is. */
+  readonly description: readonly string[];
   /** States the component exposes and the props that drive them. */
   readonly states: readonly { readonly state: StateName; readonly from: string }[];
   /** Keys beyond the pattern's own, or `[]`. */
@@ -68,7 +70,7 @@ export interface ContrastPair {
   readonly proven: boolean;
 }
 
-export type StateName = 'disabled' | 'busy' | 'checked' | 'expanded' | 'selected' | 'pressed' | 'modal';
+export type StateName = 'disabled' | 'busy' | 'checked' | 'expanded' | 'selected' | 'pressed' | 'modal' | 'invalid' | 'required';
 
 export interface ExampleRef {
   /** Named export of the examples module. */

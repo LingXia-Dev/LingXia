@@ -20,6 +20,7 @@ export const doc: ComponentDoc = {
   accessibility: {
     pattern: 'menuButton',
     name: 'label',
+    description: [],
     states: [
       { state: 'expanded', from: 'the trigger, while the menu is open (set by the View)' },
       { state: 'disabled', from: "isDisabled; an item's isDisabled" },
@@ -37,7 +38,8 @@ export const doc: ComponentDoc = {
       { what: 'destructive icon', pair: ['danger', 'surface-raised'], minimum: '3:1', proven: false },
     ],
     notes: [
-      'An item is named by its label and then its description.',
+      'An item is named by its label and then its description, both inside the item.',
+      'Sizes sm (32) and md (40) are below the 44 pt touch minimum; on touch layouts prefer lg until hit slop lets the press area extend past the paint.',
       'A tap outside, Escape and back close the menu; that tap reaches nothing else.',
     ],
   },

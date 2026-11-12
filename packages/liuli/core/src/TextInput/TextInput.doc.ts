@@ -20,7 +20,12 @@ export const doc: ComponentDoc = {
   accessibility: {
     pattern: 'textbox',
     name: 'label',
-    states: [{ state: 'disabled', from: 'isDisabled' }],
+    description: ['description, or disabledMessage while disabled', 'the status message'],
+    states: [
+      { state: 'disabled', from: 'isDisabled' },
+      { state: 'invalid', from: "status.type === 'error'" },
+      { state: 'required', from: 'isRequired' },
+    ],
     keyboard: [{ keys: 'the keyboard action key, Enter', effect: 'runs onSubmit' }],
     target: { sm: 32, md: 40, lg: 48 },
     contrast: [
@@ -29,7 +34,10 @@ export const doc: ComponentDoc = {
       { what: 'box boundary', pair: ['line-strong', 'surface'], minimum: '3:1', proven: true },
       { what: 'focus boundary', pair: ['focus', 'surface'], minimum: '3:1', proven: true },
     ],
-    notes: ['The clear button is a separate control named by `clearLabel`.'],
+    notes: [
+      'The clear button is a separate control named by `clearLabel`.',
+      'Sizes sm (32) and md (40) are below the 44 pt touch minimum; on touch layouts prefer lg until hit slop lets the press area extend past the paint.',
+    ],
   },
   guidance: {
     do: [
@@ -52,11 +60,6 @@ export const doc: ComponentDoc = {
       missing: 'Validation on leaving the field; dirty tracking.',
       needs: 'focus and blur events on editors',
       today: 'Validate as the value changes, or on submit.',
-    },
-    {
-      missing: 'Help text and status tied to the editor; invalid and required reported to assistive tech.',
-      needs: 'aria-describedby, aria-invalid and aria-required on editors',
-      today: 'Read after the editor in tree order; required is an asterisk only.',
     },
     {
       missing: 'Read-only text that can still be selected and copied.',

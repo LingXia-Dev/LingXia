@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { textOf } from '@lingxia/view/testing';
 import { renderExample, renderPage } from '../testing/harness.mjs';
 
 test('Variants: each button is named by its label and is not busy at rest', async () => {
@@ -18,12 +19,19 @@ test('Sizes: heights come from the control tokens', async () => {
   assert.deepEqual(heights, [32, 40, 48]);
 });
 
-test('DisabledWithReason: the reason joins the name only while disabled', async () => {
+test('DisabledWithReason: the name stays the label; the reason is its description only while disabled', async () => {
   const screen = await renderExample('Button/Button', 'DisabledWithReason');
-  assert.equal(screen.getByTestId('continue').props.accessibilityLabel, 'Continue, Accept the terms first');
-  assert.equal(screen.getByTestId('continue').props.onClick, undefined, 'a disabled button takes no press');
+  const button = () => screen.getByTestId('continue');
+  assert.equal(button().props.accessibilityLabel, 'Continue');
+  assert.equal(button().props.onClick, undefined, 'a disabled button takes no press');
+  const reason = screen.queryAll(node => node.props.elementId === button().props.ariaDescribedBy);
+  assert.equal(reason.length, 1);
+  assert.equal(textOf(reason[0]), 'Accept the terms first');
+  assert.equal(reason[0].props.accessibilityHidden, 1, 'read once, as the description');
   screen.press(screen.getByTestId('toggle-terms'));
-  assert.equal(screen.getByTestId('continue').props.accessibilityLabel, 'Continue');
+  assert.equal(button().props.accessibilityLabel, 'Continue');
+  assert.equal(button().props.ariaDescribedBy, undefined);
+  assert.equal(screen.queryAll(node => textOf(node) === 'Accept the terms first').length, 0);
 });
 
 test('clickAction: busy with a spinner until the action settles, and presses meanwhile are ignored', async () => {

@@ -14,6 +14,7 @@ export function Controlled() {
       value={accepted.value}
       onChange={next => accepted.set(next)}
       label="I accept the terms of service"
+      isRequired
       status={accepted.value ? undefined : { type: 'error', message: 'Accept the terms to create the account.' }}
       data-testid="terms"
     />

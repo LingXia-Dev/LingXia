@@ -1,4 +1,4 @@
-import { cx, type Child } from '@lingxia/view';
+import { cx, useId, type Child } from '@lingxia/view';
 import { glyphBox, glyphs } from '../internal/glyphs';
 import { dialogRecipe as r } from './Dialog.recipe';
 
@@ -14,8 +14,13 @@ export interface DialogProps {
   label: string;
   /** Keeps `label` as the name without drawing it as a title. @default false */
   isLabelHidden?: boolean;
-  /** One or two sentences under the title. */
+  /** One or two sentences under the title, read as the dialog's description. */
   description?: string;
+  /**
+   * Interrupts with something to confirm or acknowledge; screen readers announce it as an alert
+   * dialog. Pair it with `dismissOn="closeRequest"` or `"none"`. @default false
+   */
+  isAlert?: boolean;
   /** The body; it scrolls when the panel reaches its maximum height. */
   children?: Child;
   /** The footer, typically Buttons, the main action last. */
@@ -47,6 +52,7 @@ export function Dialog({
   label,
   isLabelHidden = false,
   description,
+  isAlert = false,
   children,
   actions,
   closeLabel,
@@ -55,13 +61,16 @@ export function Dialog({
   className,
   'data-testid': testId,
 }: DialogProps) {
+  const descriptionId = `${useId()}-description`;
   const close = () => onOpenChange(false);
   return (
     <dialog
       open={isOpen}
       onClose={close}
       closedby={closedBy[dismissOn]}
+      role={isAlert ? 'alertdialog' : undefined}
       aria-label={label}
+      aria-describedby={description !== undefined ? descriptionId : undefined}
       data-testid={testId}
       className={cx(r.panel.base, r.panel.size[size], className)}
     >
@@ -75,7 +84,7 @@ export function Dialog({
           )}
         </view>
       )}
-      {description !== undefined && <text className={r.description.base}>{description}</text>}
+      {description !== undefined && <text id={descriptionId} className={r.description.base}>{description}</text>}
       {children !== undefined && <scroll className={r.body.base}>{children}</scroll>}
       {actions !== undefined && <view className={r.footer.base}>{actions}</view>}
     </dialog>

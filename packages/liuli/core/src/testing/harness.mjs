@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { render } from '@lingxia/view/testing';
+import { render, textOf } from '@lingxia/view/testing';
 
 const core = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -38,4 +38,13 @@ export function renderExample(module, example, view = {}) {
       'export function render() { return <page><Example /></page>; }\n',
     view,
   );
+}
+
+/** The text of each element `node` names in `aria-describedby`, in order; the device reads these after the name. */
+export function described(screen, node) {
+  const ids = node.props.ariaDescribedBy?.split(' ') ?? [];
+  return ids.map(id => {
+    const target = screen.queryAll(other => other.props.elementId === id);
+    return target.length === 1 ? textOf(target[0]) : `<${target.length} elements with id ${id}>`;
+  });
 }

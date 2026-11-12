@@ -1,16 +1,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
-import { renderExample } from '../testing/harness.mjs';
+import { described, renderExample } from '../testing/harness.mjs';
 
 const dialogs = screen => screen.queryAll(node => node.tag === 'dialog');
 
-test('Confirm: closed renders nothing; open shows the named panel with title, description and actions', async () => {
+test('Confirm: closed renders nothing; open, an alert dialog named by its title and described by its text', async () => {
   const screen = await renderExample('Dialog/Dialog', 'Confirm');
   assert.equal(dialogs(screen).length, 0);
   screen.press(screen.getByTestId('open'));
   const dialog = screen.getByTestId('dialog');
   assert.equal(dialog.props.accessibilityLabel, 'Delete this note?');
+  assert.equal(dialog.props.role, 'alertdialog');
+  assert.deepEqual(described(screen, dialog), ['It leaves every device you are signed in on.']);
   const heading = screen.getByText('Delete this note?');
   assert.equal(heading.props.role, 'heading');
   assert.equal(textOf(screen.getByText('It leaves every device you are signed in on.')), 'It leaves every device you are signed in on.');
@@ -22,6 +24,8 @@ test('Confirm: closed renders nothing; open shows the named panel with title, de
 test('Form: the close button is named by closeLabel and closes; Save waits for a name', async () => {
   const screen = await renderExample('Dialog/Dialog', 'Form');
   screen.press(screen.getByTestId('open'));
+  assert.equal(screen.getByTestId('dialog').props.role, 'dialog');
+  assert.equal(screen.getByTestId('dialog').props.ariaDescribedBy, undefined);
   assert.equal(screen.getByTestId('save').props.onClick, undefined, 'disabled while empty');
   screen.type(screen.getByTestId('name'), 'Recipes');
   screen.press(screen.getByTestId('save'));

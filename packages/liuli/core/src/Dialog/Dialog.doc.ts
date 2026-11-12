@@ -22,7 +22,8 @@ export const doc: ComponentDoc = {
   accessibility: {
     pattern: 'dialog',
     name: 'label',
-    states: [{ state: 'modal', from: 'isOpen' }],
+    description: ['description'],
+    states: [{ state: 'modal', from: 'isOpen; announced as an alert dialog with isAlert' }],
     keyboard: [{ keys: 'Escape', effect: 'onOpenChange(false), unless dismissOn is none' }],
     contrast: [
       { what: 'title', pair: ['text', 'surface-raised'], minimum: '4.5:1', proven: true },
@@ -31,6 +32,7 @@ export const doc: ComponentDoc = {
     notes: [
       'Opened from a hardware keyboard, focus moves to the first control and returns to the opener on close; opened by touch, focus stays put.',
       'Android back and the screen reader dismiss gesture are close requests, like Escape.',
+      'The close button is 32 px; it is below the 44 pt touch minimum until hit slop exists, so always offer an action button too.',
     ],
   },
   guidance: {
@@ -46,15 +48,10 @@ export const doc: ComponentDoc = {
     ],
   },
   examples: [
-    { name: 'Confirm', title: 'Confirm a destructive action' },
+    { name: 'Confirm', title: 'Confirm a destructive action, as an alert dialog' },
     { name: 'Form', title: 'A short form' },
   ],
   gaps: [
-    {
-      missing: 'A dialog that screen readers announce as urgent.',
-      needs: 'the alertdialog role on the dialog primitive',
-      today: 'Use dismissOn="closeRequest" and a required decision.',
-    },
     {
       missing: 'A theme-wide motion token for the enter and exit timing.',
       needs: 'duration and easing tokens in the theme pack',

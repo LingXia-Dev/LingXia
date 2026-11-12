@@ -17,14 +17,20 @@ export function WrappedSelect() {
       isRequired
       data-testid="field"
     >
-      <select
-        bind={period}
-        aria-label="Billing period"
-        placeholder="Choose…"
-        options={periods}
-        data-testid="period"
-        className="min-h-control-md px-3 rounded-control border border-line-strong bg-surface text-sm text-text"
-      />
+      {control => (
+        <select
+          bind={period}
+          aria-label={control['aria-label']}
+          aria-describedby={control['aria-describedby']}
+          aria-invalid={control['aria-invalid']}
+          aria-required={control['aria-required']}
+          disabled={control.disabled}
+          placeholder="Choose…"
+          options={periods}
+          data-testid="period"
+          className="min-h-control-md px-3 rounded-control border border-line-strong bg-surface text-sm text-text"
+        />
+      )}
     </Field>
   );
 }

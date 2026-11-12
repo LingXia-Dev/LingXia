@@ -19,7 +19,8 @@ export const doc: ComponentDoc = {
   ],
   accessibility: {
     pattern: 'button',
-    name: 'label, then disabledMessage when disabled',
+    name: 'label',
+    description: ['disabledMessage, while disabled'],
     states: [
       { state: 'disabled', from: 'isDisabled' },
       { state: 'busy', from: 'isLoading, or a pending clickAction' },
@@ -34,7 +35,7 @@ export const doc: ComponentDoc = {
     ],
     notes: [
       'A loading button stays enabled and focusable, reports busy, and ignores presses.',
-      'Sizes sm and md are under the 44 px touch target; prefer lg for a lone touch action until hit areas can extend past the paint.',
+      'Sizes sm (32) and md (40) are below the 44 pt touch minimum; on touch layouts prefer lg until hit slop lets the press area extend past the paint.',
     ],
   },
   guidance: {
@@ -63,9 +64,9 @@ export const doc: ComponentDoc = {
       today: 'The press area equals the box; the docs steer touch layouts to lg.',
     },
     {
-      missing: 'The disabled reason read as a description, and shown to sighted users.',
-      needs: 'aria-describedby, and a focusable disabled state with a hint popover',
-      today: 'The reason joins the accessible name while disabled; nothing is drawn.',
+      missing: 'The disabled reason shown to sighted users.',
+      needs: 'a focusable disabled state and a hint popover opened by focus or long press',
+      today: 'The reason is read as the description; nothing is drawn.',
     },
     {
       missing: 'Announcing that loading started.',
