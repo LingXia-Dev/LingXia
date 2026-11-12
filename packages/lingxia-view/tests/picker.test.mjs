@@ -83,6 +83,25 @@ test('a select picker lists options, skips disabled ones and types ahead', () =>
   assert.equal(JSON.parse(takePickerResults())[0].value, 'd');
 });
 
+test('a select sheet without a value ticks nothing until a tap picks, and Done then commits the tap', () => {
+  reset();
+  const options = [{ value: 'de', label: 'Germany' }, { value: 'fr', label: 'France' }];
+  open({ kind: 'select', options, selected: null, label: 'Country' });
+  const ticked = () => render(() => h('view', {}), { pointer: 'coarse' })
+    .filter(n => /^lx-picker-option-/.test(n.testId) && n.props.stateSelected === 1).map(n => n.testId);
+  assert.deepEqual(ticked(), [], 'focus is not selection');
+  let nodes = render(() => h('view', {}), { pointer: 'coarse' });
+  dispatch(nodes.find(n => n.testId === 'lx-picker-done').props.onClick);
+  assert.deepEqual(JSON.parse(takePickerResults()), [{ identity: '/i:0:0/i:0:0', value: null }], 'Done with no pick changes nothing');
+  open({ kind: 'select', options, selected: null, label: 'Country' });
+  nodes = render(() => h('view', {}), { pointer: 'coarse' });
+  dispatch(nodes.find(n => n.testId === 'lx-picker-option-1').props.onClick);
+  assert.deepEqual(ticked(), ['lx-picker-option-1']);
+  nodes = render(() => h('view', {}), { pointer: 'coarse' });
+  dispatch(nodes.find(n => n.testId === 'lx-picker-done').props.onClick);
+  assert.equal(JSON.parse(takePickerResults())[0].value, 'fr');
+});
+
 test('on touch every picker sheet opens with Cancel, a title and Done on top', () => {
   for (const [request, title] of [
     [{ kind: 'date', value: '2026-10-29' }, 'October 2026'],

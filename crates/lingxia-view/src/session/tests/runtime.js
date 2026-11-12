@@ -4695,6 +4695,7 @@
         identity,
         options: list,
         selected: chosen,
+        pick: chosen,
         focus: chosen >= 0 ? chosen : list.findIndex((o) => o.enabled),
         label: typeof label2 === "string" ? label2 : "",
         typed: "",
@@ -4953,7 +4954,7 @@
   }
   function selectBody(touch) {
     const { options: options2, focus } = picker;
-    const selected = touch ? focus : picker.selected;
+    const selected = touch ? picker.pick : picker.selected;
     const check = "M4 10.5l4 4 8-9";
     return h(
       "view",
@@ -4967,7 +4968,7 @@
           "aria-selected": index === selected,
           disabled: !option2.enabled,
           onClick: () => {
-            if (touch) picker.focus = index;
+            if (touch) picker.pick = picker.focus = index;
             else settleSelect(index);
           },
           style: {
@@ -5007,7 +5008,7 @@
     const words = wordsFor(env?.displayLanguage);
     const touch = (env?.pointer ?? "coarse") === "coarse";
     const body = picker.kind === "date" ? dateBody(words, env, !touch) : picker.kind === "time" ? timeBody(words, env) : selectBody(touch);
-    const commit2 = () => picker.kind === "date" ? settle(iso2(picker.focus)) : picker.kind === "time" ? settle(timeIso(picker.value)) : settleSelect(picker.focus);
+    const commit2 = () => picker.kind === "date" ? settle(iso2(picker.focus)) : picker.kind === "time" ? settle(timeIso(picker.value)) : picker.pick >= 0 ? settleSelect(picker.pick) : settle(null);
     const cancel = (style2) => h("button", { "data-testid": "lx-picker-cancel", onClick: () => settle(null), style: style2 }, words.cancel);
     const done = (style2) => h("button", { "data-testid": "lx-picker-done", onClick: commit2, style: style2 }, words.done);
     const monthTitle = picker.kind === "date" && words.title(words.months[picker.focus.month - 1], picker.focus.year);

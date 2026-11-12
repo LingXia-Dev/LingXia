@@ -31,7 +31,7 @@ export function openPicker({ identity, kind, value, min, max, step, today: day, 
     const chosen = Number.isInteger(selected) && list[selected] ? selected : -1;
     // As wide as its field up to 360 pt, never narrower than its options.
     const width = Number.isFinite(anchorWidth) ? Math.min(Math.max(anchorWidth, 0), 360) : 0;
-    picker = { kind, key, identity, options: list, selected: chosen, focus: chosen >= 0 ? chosen : list.findIndex(o => o.enabled),
+    picker = { kind, key, identity, options: list, selected: chosen, pick: chosen, focus: chosen >= 0 ? chosen : list.findIndex(o => o.enabled),
       label: typeof label === 'string' ? label : '', typed: '', typedAt: 0, width };
     return true;
   }
@@ -205,13 +205,14 @@ function timeBody(words, env) {
 
 function selectBody(touch) {
   const { options, focus } = picker;
-  // On touch a tap picks and Done commits; with a mouse a click chooses at once.
-  const selected = touch ? focus : picker.selected;
+  // On touch a tap picks and Done commits; with a mouse a click chooses at once. The check marks the
+  // choice, never the keyboard focus: with no value nothing is ticked.
+  const selected = touch ? picker.pick : picker.selected;
   const check = 'M4 10.5l4 4 8-9';
   // The band follows the keyboard; the trailing check marks the choice.
   return h('view', { role: 'listbox', 'aria-label': picker.label || 'Options', style: { gap: 2, minWidth: Math.max(160, picker.width - 24) } },
     ...options.map((option, index) => h('button', { key: `o${index}`, 'data-testid': `lx-picker-option-${index}`, role: 'option',
-      'aria-selected': index === selected, disabled: !option.enabled, onClick: () => { if (touch) picker.focus = index; else settleSelect(index); },
+      'aria-selected': index === selected, disabled: !option.enabled, onClick: () => { if (touch) picker.pick = picker.focus = index; else settleSelect(index); },
       style: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 36, paddingLeft: 12, paddingRight: 10, borderRadius: 8,
         backgroundColor: index === focus ? 'surface-sunken' : 'transparent', color: option.enabled ? 'text' : 'text-faint', fontSize: 15 } },
       h('text', { style: { flexGrow: 1, textAlign: 'start' } }, option.label),
@@ -238,7 +239,7 @@ export function pickerNode(env) {
   const touch = (env?.pointer ?? 'coarse') === 'coarse';
   const body = picker.kind === 'date' ? dateBody(words, env, !touch) : picker.kind === 'time' ? timeBody(words, env) : selectBody(touch);
   const commit = () => picker.kind === 'date' ? settle(iso(picker.focus))
-    : picker.kind === 'time' ? settle(timeIso(picker.value)) : settleSelect(picker.focus);
+    : picker.kind === 'time' ? settle(timeIso(picker.value)) : picker.pick >= 0 ? settleSelect(picker.pick) : settle(null);
   const cancel = style => h('button', { 'data-testid': 'lx-picker-cancel', onClick: () => settle(null), style }, words.cancel);
   const done = style => h('button', { 'data-testid': 'lx-picker-done', onClick: commit, style }, words.done);
   const monthTitle = picker.kind === 'date' && words.title(words.months[picker.focus.month - 1], picker.focus.year);
