@@ -150,7 +150,6 @@ stack lowers to its declared face, or to the generic of a system stack (`system-
 border color, box shadow, placeholder color and the static transforms (`active:scale-95`). They cannot
 change size or spacing (`UI_CLASS_ELEMENT`). The change is immediate unless a `transition-*` utility
 animates it ([motion](motion.md)).
-`2xl:` is not recognized and fails as an unknown utility; write `min-[96rem]:`.
 
 Variants that test DOM state are refused with the alternative named in the message: other `group-*`, `peer-*`,
 other `has-[…]` selectors and `has-*` combined with another state, `aria-*`, `checked:`, `focus-visible:`,
@@ -205,8 +204,8 @@ resets earlier longhands, as in CSS.
 
 Structured values have object forms: `backgroundImage` takes `{ kind, stops, … }` (linear, radial,
 conic), `boxShadow` an array of `{ offsetX, offsetY, blur, spread, color }`, `translate`/`scale` a
-number or a pair, `rotate` degrees, `transformOrigin` a pair of box fractions. Colours in `style` are
-roles (`'surface'`, `'accent/12'`), `currentColor` or `transparent`; gradient stops and shadows may
+number or a pair, `rotate` degrees, `transformOrigin` a pair of box fractions. Literal colours in `style` are
+roles (`'surface'`, `'accent/12'`), `currentColor` or `transparent`; gradient stops, shadows and colours computed at render time may
 also be hex.
 
 ```tsx error UI_STYLE

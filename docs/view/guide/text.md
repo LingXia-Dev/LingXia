@@ -32,8 +32,8 @@ style down: `text-*`, `font-*`, `leading-*`, `tracking-*` and the other typograp
 
 ## Defaults
 
-Text is 14 px, weight 400, in the system sans font, colored with the `text` role. Unstyled buttons draw
-`on-accent` on `accent`, editors a `surface`, and the root `canvas`. Roles follow the theme and
+Text is 14 px, weight 400, in the system sans font, colored with the `text` role. Buttons are unstyled,
+editors draw a `surface`, and the root `canvas`. Roles follow the theme and
 appearance, so pages never set dark colours themselves.
 
 ## Whitespace
@@ -111,7 +111,7 @@ export function render() {
 
 ## Links
 
-`<link onClick>` is a pressable run: blue (`#365cdd`) and underlined unless you style it, restyled by
+`<link onClick>` is a pressable run: the `accent` role and underlined unless you style it, restyled by
 `active:` while pressed, and exposed to accessibility as a link named by its text (or
 `aria-label`). Only the link's own line pieces respond to taps. `disabled` removes its handler.
 A link may contain `<span>` runs (`<link>Read the <span className="font-semibold">terms</span></link>`); the

@@ -172,4 +172,4 @@ result and `stale` is `true`, so dim it rather than blanking the screen.
 The View runs in an isolate without host capabilities: no `lx`, `fetch`, `XMLHttpRequest`, `WebSocket`,
 `setTimeout`, `setInterval`, `requestAnimationFrame` or storage. Polling, timing, network, persistence
 and locale formatting (`Intl`) live in Logic; send their results through `data`, an action, a stream or
-a channel. A render that runs too long is stopped (`UI_TIMEOUT`) and the page must reload.
+a channel. A render that runs too long is dropped (`UI_OVERRUN`) and runs again; several in a row stop the page (`UI_TIMEOUT`) and it must reload.

@@ -31,7 +31,7 @@ export function render() {
   The bars take no input and assistive tech skips them meanwhile. Pad the dialog's content by
   `env.safeArea` (the system bars alone), not `env.insets`, or it leaves a gap where the bars were.
 - **A popover stays under the bars.** One that opens near the tab bar is drawn beneath it: open it
-  upward with `positionArea` (`top`, `top span-inline-start`, …) or use a sheet (a dialog) there.
+  upward with `style={{ positionArea: 'top' }}` (or `top span-inline-start`, …) or use a sheet (a dialog) there.
 - Opening either never shows or hides the tab bar.
 
 ## Opening and closing

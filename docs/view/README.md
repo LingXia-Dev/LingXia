@@ -48,7 +48,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 
 ## Platform status
 
-Native rendering ships on **Android**, **iOS** and **macOS**. On HarmonyOS and Windows an lxapp
+Native rendering ships on **Android**, **iOS**, **macOS** and **HarmonyOS**. On Windows an lxapp
 declaring `"renderer": "gpu"` does not render natively yet; keep a WebView lxapp there.
 
 ## How to read this guide

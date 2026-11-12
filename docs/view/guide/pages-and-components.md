@@ -77,7 +77,7 @@ export function render() {
 }
 ```
 
-Wrap siblings in a `<column>`, `<row>` or `<page>` instead. `<view>` is a `<column>`.
+Wrap siblings in a `<column>`, `<row>` or `<page>` instead. `<view>` is a flex column; `flex-row` (or `flex`) makes it a row.
 
 Anywhere else, a fragment groups children without a box: `<>…</>` or a component that returns one lays
 its children out in its place, and each keeps its own identity and local state while siblings come and
@@ -155,7 +155,7 @@ export function render() {
 ## Local state belongs to a component instance
 
 `useLocal(name, initial)` is keyed by `name` and the component's position (or key path) in the tree,
-not by call order. A position counts the authored children, so `{cond && <Banner />}` appearing or
+not by call order; `useLocal(initial)` is keyed by call order within the component. A position counts the authored children, so `{cond && <Banner />}` appearing or
 disappearing leaves the state of the siblings after it alone. Two `useLocal` calls with the same name in one component fail (`UI_LOCAL`). A cell
 that a render does not declare is dropped when that render commits, so a conditionally declared
 cell loses its value while the condition is false.

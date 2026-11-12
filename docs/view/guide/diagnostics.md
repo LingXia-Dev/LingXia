@@ -10,7 +10,7 @@ function ErrorBanner({ error, onRetry }: { error: ResourceError | null; onRetry:
   return (
     <row role="alert" className="items-center gap-3 p-3 rounded-lg bg-danger-soft">
       <text className="grow text-sm text-danger">{error.message}</text>
-      <button onClick={onRetry} className="rounded-lg bg-danger text-on-accent px-3 py-1">Retry</button>
+      <button onClick={onRetry} className="rounded-lg bg-danger text-on-danger px-3 py-1">Retry</button>
     </row>
   );
 }
@@ -44,7 +44,7 @@ pages/profile/index.tsx: 5 authoring problems
 pages/profile/index.tsx:4:7: UI_TAG: unsupported tag <div>
 pages/profile/index.tsx:5:39: UI_PROP: onClick is not a property of <text>
 pages/profile/index.tsx:4:22: UI_CLASS_UNKNOWN: flex-center is not a Tailwind utility
-pages/profile/index.tsx:5:23: UI_CLASS_ELEMENT: gap-2 sets gap, which <text> does not support
+pages/profile/index.tsx:5:23: UI_CLASS_ELEMENT: gap-2 does not apply to <text>; layout classes go on the element that holds it
 pages/profile/index.tsx:6:25: UI_CLASS_ELEMENT: active:p-2: active styles change paint only, not paddingTop, paddingRight, paddingBottom, paddingLeft
 ```
 

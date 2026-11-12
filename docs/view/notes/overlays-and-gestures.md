@@ -1,6 +1,6 @@
 # Design note: overlays, gestures and springs
 
-Status: proposed. Extends the [gesture model](../guide/interaction.md) and [motion](../guide/motion.md);
+Status: implemented (dialog, popover, drag). Extends the [gesture model](../guide/interaction.md) and [motion](../guide/motion.md);
 builds on [presence](presence-and-layout-motion.md).
 
 ## Overlays

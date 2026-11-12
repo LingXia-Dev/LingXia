@@ -56,10 +56,10 @@ or pass `value` and the change callback, and store the value yourself:
 | --- | --- | --- |
 | `<input>`, `<textarea>` | `string` | `onInput(text)` |
 | `<checkbox>`, `<switch>` | `boolean` | `onChange(checked)` |
-| `<radio>` | `string` (an option's `value`) | `onChange(value)` |
+| `<radio>`, `<select>` | `string` (an option's `value`) | `onChange(value)` |
 | `<slider>` | `number` | `onChange(value)` |
 
-`bind` with `value` or the callback is refused. A `bind` cell must be mounted in the current render and
+`<scroll>` snapping and `drag` take `bind` only (a `number` cell). `bind` with `value` or the callback is refused. A `bind` cell must be mounted in the current render and
 hold the control's type (`UI_INPUT`, `UI_CHECK`, `UI_RADIO`, `UI_SLIDER`).
 
 `onInput` receives every value change, as DOM `input` events do, including while an input method
@@ -132,7 +132,7 @@ export function render() {
 ## Checkbox and switch
 
 `<checkbox>` may contain noninteractive content (text, icons, images, layout) that becomes part of the
-control and its accessible name. `<switch>` takes plain text as its label. Both accept
+control and its accessible name; with content it draws no box of its own, so draw the checked state from its value. `<switch>` takes plain text as its label. Both accept
 `aria-label` when they have no visible text.
 
 ## Radio
@@ -143,7 +143,7 @@ disables every option.
 
 ## Select
 
-`<select options={[{ value, label, disabled? }]}>` opens the View's own picker, like the date and time
+`<select options={[{ value, label, disabled? }]}>` takes 1–64 options and opens the View's own picker, like the date and time
 inputs: a listbox popover with a mouse or trackpad, a bottom sheet on touch. Arrows change the choice,
 typing jumps to a label; automation uses `locator.selectOption(valueOrLabel)`.
 

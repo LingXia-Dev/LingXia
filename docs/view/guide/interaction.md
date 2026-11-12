@@ -21,7 +21,7 @@ export function render() {
         </row>
       </button>
       <button onClick={() => liked.set(!liked.value)} aria-label={liked.value ? 'Unlike' : 'Like'}
-        className={liked.value ? 'self-start rounded-full bg-danger p-3 text-on-accent' : 'self-start rounded-full bg-line p-3 text-text'}>
+        className={liked.value ? 'self-start rounded-full bg-danger p-3 text-on-danger' : 'self-start rounded-full bg-line p-3 text-text'}>
         {liked.value ? '♥' : '♡'}
       </button>
       <text className="text-xs text-muted">Opened {opened.value} times</text>
@@ -119,7 +119,7 @@ reader reads them as a named list ("2 of 3"), and dots under it follow the page 
 
 ## Dragging an element
 
-`drag="x"` or `drag="y"` lets the finger move a `<view>`, `<row>`, `<column>`, `<stack>`, `<grid>` or
+`drag="x"` or `drag="y"` lets the finger move a `<view>`, `<row>`, `<column>` or
 `<button>` along one axis, its whole subtree with it, between its `dragSnapPoints`: up to 8 offsets from
 where layout put it, in px or `%` of its own size (`x` offsets mirror in RTL, like `start`/`end`). The
 points are also its bounds: past the first or last it follows only part of the finger. On release it

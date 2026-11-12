@@ -145,7 +145,7 @@ has to stay clear of them.
 | number, `px` | logical pixels (`w-12` = 48) |
 | `rem` | 16 logical pixels, resolved at build time |
 | `%` | of the parent's content box |
-| `vw`, `vh` | of `env.viewport`; `dvh`, `svh`, `lvh` (and `dvw`…) are the same as `vh` (`vw`) |
+| `vw`, `vh` | of the page's safe box (inside the system bars, above the keyboard); `dvh`, `svh`, `lvh` (and `dvw`…) are the same as `vh` (`vw`) |
 | `ch` | only in `max-w-[Nch]`: N advances of "0" in the box's font |
 | `em` | only in `tracking-*` (letter spacing) |
 

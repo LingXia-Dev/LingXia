@@ -46,9 +46,10 @@ no React and no DOM. This page lists what changes.
 | `svg`, icon components | `<vector paths>` |
 | `ul`/`ol`/`li` | `<column role="list">` / `role="listitem"` |
 | `input`, `textarea` | `<input>`, `<textarea>` |
-| `input type="checkbox"`, `select`, `input type="range"` | `<checkbox>`/`<switch>`, `<radio>`, `<slider>` |
+| `input type="checkbox"`, radio buttons, `select`, `input type="range"` | `<checkbox>`/`<switch>`, `<radio>`, `<select>`, `<slider>` |
 | `form` | none: state + an action ([Inputs and forms](inputs-and-forms.md)) |
-| `canvas`, `video`, `iframe` | none; `<plot>` for charts |
+| `video` | `<video>` |
+| `canvas`, `iframe` | none; `<plot>` for charts |
 | scrolling `div` | `<scroll>`; long lists `<List>` |
 
 Unknown tags fail the build (`UI_TAG`). Text must be inside `<text>`; a bare string becomes one.
@@ -57,7 +58,7 @@ Unknown tags fail the build (`UI_TAG`). Text must be inside `<text>`; a bare str
 
 | React | View |
 | --- | --- |
-| `useState` | `useLocal(name, initial)`, keyed by name, JSON values only |
+| `useState` | `useLocal(initial)`, keyed by call order, or `useLocal(name, initial)`, keyed by name; JSON values only |
 | `useEffect` + `fetch` | `useRequest(name, action, params)` |
 | `useEffect` subscriptions, WebSockets | `useChannel`, `useStream` |
 | `useContext` | props, or `useView()` for the page data and environment |
@@ -95,7 +96,7 @@ A render that throws keeps the previous frame on screen ([Diagnostics](diagnosti
   build can check only classes it can trace through literals, conditionals and `const`s. Conflicts resolve
   as tailwind-merge does (the later class wins per property and variant), so a `cn` that only joins is enough.
 - There is no block or inline flow: every box is flexbox or grid, and `display: inline` is not supported.
-  Flex items do not shrink by default ([Layout](layout.md)).
+  Flex items shrink to min-content as in CSS ([Layout](layout.md)).
 - There is no stylesheet cascade. Text styles inherit through containers; nothing else inherits.
 - `data-*` variants match `data-*` props on the element itself; `has-*` covers checked, disabled and
   focused descendants; `group-active:` follows the enclosing pressed control. `aria-*`, other `group-*`,
@@ -104,8 +105,7 @@ A render that throws keeps the previous frame on screen ([Diagnostics](diagnosti
   var(--color-surface)`), its classes become `@utility` rules ([Styling](styling.md#themes-and-tokens)).
   Two names are roles already and cannot be rebound: write its soft `bg-accent` as `bg-accent-soft` and its
   grey `bg-muted` as `bg-surface-sunken`.
-- There is no preflight: a `<button>` paints the accent with 12 px padding until its classes say
-  otherwise. A web button styled from Tailwind's reset needs `bg-transparent p-0`.
+- A `<button>` is unstyled, as after Tailwind's preflight: give it its fill, padding and radius.
 - Transitions and animations are utilities ([Motion](motion.md)), including `starting:`/`exit:` and
   `transition-layout`; size transitions and 3D transforms are not supported.
 

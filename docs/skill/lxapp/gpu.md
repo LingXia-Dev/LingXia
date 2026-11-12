@@ -1,4 +1,4 @@
-# GPU Views (Android, iOS, macOS)
+# GPU Views (Android, iOS, macOS, HarmonyOS)
 
 An lxapp renders natively when its `lxapp.json` has `"renderer": "gpu"`: every page does, and a page
 config naming a renderer fails the build (no mixed apps). A page's View is `index.tsx` (Logic stays in
@@ -75,10 +75,10 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - Semantics: `role="heading" headingLevel={2}`, `list`/`listitem`, `menu`/`menuitem`, `alert`/`status`
   (announced), `aria-hidden` for decoration. A layout element with a role, or a scroll,
   groups its content for screen readers ("item 2 of 3"); plain wrappers collapse.
-  `aria-pressed`, `aria-selected`, `aria-expanded`, `aria-busy` announce states (e.g. `aria-busy={req.status === 'loading'}`).
+  `aria-pressed`, `aria-selected`, `aria-expanded`, `aria-busy` announce states (e.g. `aria-busy={req.pending}`).
 - `<dialog open onClose closedby aria-label>` is modal, above the page (`backdrop:` styles its scrim;
   `mt-auto mb-0 w-full` makes a sheet). `<view id popover>` + `<button popoverTarget>` is a light-dismiss
-  popover anchored to its invoker (`positionArea`, `open`/`onToggle`); `role="menu"` + `<button role="menuitem">` closes on click.
+  popover anchored to its invoker (`open`/`onToggle`; `style={{ positionArea: 'top' }}` opens it upward); `role="menu"` + `<button role="menuitem">` closes on click.
 - Swipe row: `<button drag="x" dragSnapPoints={[0, -144, '-100%']} aria-actions="archive-1 delete-1">` over `<button id="archive-1">`s;
   screen readers get those as the row's actions; specs call `locator.performAction('Delete')` (or `increment`/`decrement`/`dismiss`).
 - In-page overlays are `<dialog>`/popovers; `lx.surface.openPage(page, { as: 'float' })` is for a surface that
@@ -104,8 +104,8 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   (the last one submits); `cell.focus()` focuses the editor bound to that `useLocal` cell.
 - Buttons may contain text, icons and images; their text names them for
   accessibility. Images need `alt` (`""` for decoration).
-- The build fails with `UI_A11Y` when an editor, slider, radio group or plot lacks `aria-label`,
-  or a button, link, checkbox or switch has neither text nor a label; a placeholder is not a name.
+- The build fails with `UI_A11Y` when an editor, slider, radio group, select, plot or dialog lacks `aria-label`,
+  a button, link, checkbox or switch has neither text nor a label, or an `<image>` lacks `alt`; a placeholder is not a name.
 - Remote `<image>` sources follow HTTP caching: revalidated, and shown stale while offline.
 - Text follows the system font size; prefer `min-h-*` over fixed heights. Whitespace
   collapses as in CSS: use `whitespace-pre-line`/`pre-wrap` for authored newlines.

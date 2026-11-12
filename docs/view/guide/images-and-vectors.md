@@ -61,7 +61,7 @@ copy keeps showing when the device is offline.
 
 An unsized image is 64 × 64. Give it a size, or one dimension plus `aspect-*`. `object-cover` (fill and
 crop, the default), `object-contain` (fit inside) and `object-fill` (stretch) set how the picture fills its box;
-`object-position` is not supported. Round or clip it with `rounded-*` and `overflow-hidden` on the image
+`object-top`, `object-left-bottom` or `object-[25%_75%]` align a covered or contained picture. Round or clip it with `rounded-*` and `overflow-hidden` on the image
 or a parent. Images decode at the size they are painted, so a thumbnail of a large photo costs a
 thumbnail's memory.
 
@@ -76,8 +76,8 @@ placeholder. Long image lists should be virtual (`<List>`), which keeps only vis
 
 ### Accessibility
 
-`alt` names the image. `alt=""` marks it decorative and hides it from accessibility. Leaving `alt` out
-keeps the image exposed without a name.
+`alt` names the image. `alt=""` marks it decorative and hides it from accessibility. `alt` is required:
+leaving it out fails the build with `UI_A11Y`.
 
 ## `<vector>`
 
@@ -87,7 +87,7 @@ keeps the image exposed without a name.
 | --- | --- |
 | `paths` | 1–32 paths: `{ d, fill, stroke, strokeWidth, strokeDasharray, strokeDashoffset, strokeLinecap, strokeLinejoin, transform, vectorEffect }` |
 | `viewBox` | `[x, y, width, height]`, default `[0, 0, 24, 24]` |
-| `gradients` | up to 8 named SVG gradients (`linear` or `radial`, up to 16 stops), used as `fill: 'url(#id)'` |
+| `gradients` | up to 8 named SVG gradients (`linear`, `radial` or `conic`, up to 16 stops), used as `fill: 'url(#id)'` |
 
 `fill` and `stroke` take a hex color, a role (`'line-strong/65'`), `currentColor`, `none` or `url(#id)`; gradient stops take hex or roles. `currentColor` is the
 vector's text color, so `text-*` utilities color an icon. `transform` is an SVG transform list
@@ -133,7 +133,7 @@ export function render() {
 }
 ```
 
-`colors` takes 1–16 hex colors, cycled over bars and slices; a line uses the first. Line charts take `smooth`, `area` and
+`colors` takes 1–16 chart roles (`'chart-1'`…`'chart-5'`, the default), cycled over bars and slices; a line uses the first. Line charts take `smooth`, `area` and
 `markerEmphasisScale`; bar and line charts take `domainMin`/`domainMax`, which must contain zero and every
 value; pie charts take `pieLayout` (`center`, `innerRadius`, `outerRadius` as fractions of the box).
 `onSelect` receives the tapped index, or `-1` when a tap outside clears the selection; keep the index in
