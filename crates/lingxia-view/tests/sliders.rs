@@ -267,3 +267,28 @@ fn switch_parts_size_the_track_and_seat_the_thumb_evenly_at_either_end() {
     assert_eq!(off(156, 22), [255, 0, 0, 255]);
     assert_eq!(off(180, 22), [0, 0, 255, 255]);
 }
+
+#[test]
+fn a_disabled_switch_that_is_on_keeps_its_accent_faintly() {
+    let wire = json!([
+        SWITCH,
+        -1,
+        "",
+        "",
+        "",
+        3,
+        ACCESSIBILITY_LABEL,
+        "Wi-Fi",
+        CHECKED,
+        1,
+        ENABLED,
+        0
+    ]);
+    let pixel = pixels(
+        Renderer::default()
+            .layout(&decode(wire.as_array().unwrap()).unwrap(), 200, 100, 1.0)
+            .unwrap(),
+    );
+    let [r, _, b, _] = pixel(150, 22);
+    assert!(b > r + 50, "a faded accent, not grey: {:?}", pixel(150, 22));
+}

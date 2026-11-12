@@ -878,11 +878,20 @@ impl Renderer {
                             || records[p].number(field::ENABLED) != Some(0.0)
                     })
                     && record.number(field::ON_CHECKED_CHANGE).is_some();
-                let accent = palette.role(if enabled {
-                    Role::Accent
-                } else {
-                    Role::TextFaint
-                });
+                // A disabled control that is on stays recognisably on, at reduced strength.
+                let accent = {
+                    let [r, g, b, a] = palette.role(Role::Accent);
+                    [
+                        r,
+                        g,
+                        b,
+                        if enabled {
+                            a
+                        } else {
+                            (f32::from(a) * 0.4) as u8
+                        },
+                    ]
+                };
                 let neutral = palette.role(if enabled {
                     Role::LineStrong
                 } else {

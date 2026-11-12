@@ -151,6 +151,8 @@ export function render() {
 }
 ```
 
+A disabled switch or checkbox that is on keeps its accent at reduced strength.
+
 ## Radio
 
 `<radio options={[{ value, label, disabled?, 'data-testid'? }]}>` draws a group of 1–64 options. Values are
