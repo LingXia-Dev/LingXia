@@ -73,6 +73,11 @@ package that records one. A CLI built from a checkout needs a Runner built from
 the same commit (`tools/lingxia-runner/macos/install-local-runner.sh`, or
 `.ps1` on Windows).
 
+`dev -p harmony` from a fresh shell needs `OHOS_NDK_HOME` (command-line-tools
+`sdk/default/openharmony`), its `toolchains` and command-line-tools `bin` on
+`PATH`, and a Java runtime on `PATH` (DevEco's `jbr/Contents/Home/bin`), or
+hvigor's PackageHap fails with "Unable to locate a Java Runtime".
+
 Template providers refresh in the background; the one being scaffolded from is
 refreshed first.
 
