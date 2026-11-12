@@ -13,6 +13,7 @@ pub(super) enum FrameAnimations<'a> {
     Disabled,
     /// A frame that only proves the View renders: nobody presents it, so animations are
     /// decoded, not sampled.
+    #[cfg(feature = "hot-swap")]
     Trial,
     Explicit(&'a Prepared),
     Collected {
@@ -32,6 +33,7 @@ impl FrameAnimations<'_> {
     pub(super) fn validate(&self, records: &[crate::protocol::Record]) -> Result<(), String> {
         match self {
             Self::Disabled => validate_record_animations(records, None),
+            #[cfg(feature = "hot-swap")]
             Self::Trial => records
                 .iter()
                 .filter_map(|record| record.string(field::ANIMATION))
@@ -49,7 +51,9 @@ impl FrameAnimations<'_> {
         palette: &crate::theme::Palette,
     ) -> Result<(DisplayList, bool), String> {
         match self {
-            Self::Disabled | Self::Trial => Ok((display, false)),
+            Self::Disabled => Ok((display, false)),
+            #[cfg(feature = "hot-swap")]
+            Self::Trial => Ok((display, false)),
             Self::Explicit(frame) => compose(display, offsets, frame)
                 .map(|display| (display, !frame.visuals().is_empty())),
             Self::Collected {

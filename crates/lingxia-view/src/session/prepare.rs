@@ -117,6 +117,7 @@ impl ViewSession {
 
     /// Render once and throw the frame away, so a module that cannot render is refused
     /// before it replaces one that can; its animations need no presentation.
+    #[cfg(feature = "hot-swap")]
     pub(super) fn prepare_trial(
         &mut self,
         width: u16,
