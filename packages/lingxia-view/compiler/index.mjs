@@ -481,8 +481,15 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
       module += 'enableHotSwap();\n';
     }
     await writeFile(dest, module);
-    // Dev builds record each page's inputs so `lingxia dev` can rebuild only the pages an edit touches.
-    if (bundled.metafile) inputs[page] = Object.keys(bundled.metafile.inputs).filter(path => !path.startsWith('..') && !path.includes('node_modules') && path !== '<stdin>').map(path => path.split('\\').join('/'));
+    // Dev builds record each page's inputs so `lingxia dev` can rebuild only the pages an edit touches:
+    // the lxapp's files, and a linked package's sources and token file (`../kit/src/x.tsx`). Installed
+    // packages and the View runtime do not change under a session.
+    if (bundled.metafile) {
+      const tokenFiles = [...tokenPackages.values()].filter(owner => typeof owner.tokens === 'string').map(owner => relative(root, resolve(owner.dir, owner.tokens)));
+      inputs[page] = [...Object.keys(bundled.metafile.inputs), ...tokenFiles]
+        .filter(path => path !== '<stdin>' && !path.split(/[\\/]/).includes('node_modules') && !resolve(root, path).toLowerCase().startsWith(runtimeRoot))
+        .map(path => path.split('\\').join('/'));
+    }
     if (config) await copyFile(configPath, join(output, `${base}.json`));
   }
   if (Object.keys(inputs).length) {

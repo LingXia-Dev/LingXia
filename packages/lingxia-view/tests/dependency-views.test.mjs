@@ -137,3 +137,14 @@ test("a dependency's token file holds @theme and @utility only, and two packages
     await assert.rejects(build(), /view-kit\/tokens\.css:2: UI_CSS: --radius-control is 0\.75rem here and 0\.25rem in other-kit; set it once in the app's stylesheet/);
   });
 });
+
+test("a dev build lists a linked package's sources and token file as page inputs, not an installed copy's", async () => {
+  const files = { ...tokenKit, 'page.tsx': "import { Chip } from 'view-kit/chip';\nexport function render() { return <view><Chip /></view>; }\n" };
+  for (const [install, kitInputs] of [['link', ['../kit/src/chip.tsx', '../kit/tokens.css']], ['copy', []]]) {
+    await project(files, async (root, build) => {
+      await build({ dev: true });
+      const inputs = JSON.parse(await readFile(join(root, '.lingxia/gpu-inputs.json'), 'utf8'));
+      assert.deepEqual(inputs['page.tsx'].sort(), ['page.tsx', ...kitInputs].sort(), install);
+    }, { install });
+  }
+});

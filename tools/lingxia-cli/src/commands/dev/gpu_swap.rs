@@ -8,45 +8,64 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
+/// The files the last dev build's GPU pages compiled from (`.lingxia/gpu-inputs.json`), resolved,
+/// each with the pages it feeds. A linked package's files sit outside `dir` (`../kit/src/x.tsx`).
+fn inputs(dir: &Path) -> Option<BTreeMap<PathBuf, BTreeSet<String>>> {
+    let text = std::fs::read_to_string(dir.join(".lingxia").join("gpu-inputs.json")).ok()?;
+    let inputs: BTreeMap<String, Vec<String>> = serde_json::from_str(&text).ok()?;
+    let mut by_file: BTreeMap<PathBuf, BTreeSet<String>> = BTreeMap::new();
+    for (page, files) in inputs {
+        for file in files {
+            by_file
+                .entry(canonical(&dir.join(file)))
+                .or_default()
+                .insert(page.clone());
+        }
+    }
+    Some(by_file)
+}
+
+/// The inputs of `dir`'s GPU pages that lie outside it: linked packages' sources and token files.
+pub(super) fn external_inputs(dir: &Path) -> BTreeSet<PathBuf> {
+    let root = canonical(dir);
+    inputs(dir)
+        .map(|inputs| {
+            inputs
+                .into_keys()
+                .filter(|file| !file.starts_with(&root))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// The GPU pages to recompile for `changed`, or `None` when the edit needs a full rebuild.
 /// Inputs come from the last dev build (`.lingxia/gpu-inputs.json`).
 pub(super) fn plan(dir: &Path, changed: &BTreeSet<PathBuf>) -> Option<Vec<String>> {
-    let text = std::fs::read_to_string(dir.join(".lingxia").join("gpu-inputs.json")).ok()?;
-    let inputs: BTreeMap<String, Vec<String>> = serde_json::from_str(&text).ok()?;
-    let dir = canonical(dir);
+    let inputs = inputs(dir)?;
     let mut pages = BTreeSet::new();
     for path in changed {
         // Editors save atomically: a temp file written, then renamed over the real one.
         // The temp path is gone by now and the rename's target is in `changed` too.
         let exists = path.exists();
         let path = canonical(path);
-        let relative = path
-            .strip_prefix(&dir)
-            .ok()?
-            .to_string_lossy()
-            .replace('\\', "/");
         // Configuration and Logic can change what the app is; those reopen it.
-        if relative.ends_with(".json") {
+        if path
+            .extension()
+            .is_some_and(|extension| extension == "json")
+        {
             return None;
         }
-        let touched: Vec<&String> = inputs
-            .iter()
-            .filter(|(_, files)| files.contains(&relative))
-            .map(|(page, _)| page)
-            .collect();
-        if touched.is_empty() {
-            if !exists {
-                continue;
-            }
-            return None;
+        match inputs.get(&path) {
+            Some(touched) => pages.extend(touched.iter().cloned()),
+            None if !exists => continue,
+            None => return None,
         }
-        pages.extend(touched.into_iter().cloned());
     }
     (!pages.is_empty()).then(|| pages.into_iter().collect())
 }
 
 /// `path` with symlinks resolved; a vanished file resolves through its directory.
-fn canonical(path: &Path) -> PathBuf {
+pub(super) fn canonical(path: &Path) -> PathBuf {
     path.canonicalize()
         .unwrap_or_else(|_| match (path.parent(), path.file_name()) {
             (Some(parent), Some(name)) => canonical(parent).join(name),
@@ -234,6 +253,47 @@ mod tests {
         assert!(
             lxapp.path().join("dist/pages/a/index.js").is_file(),
             "the compile still writes its output"
+        );
+    }
+
+    #[test]
+    fn a_linked_package_edit_swaps_the_pages_that_import_it() {
+        let base = tempfile::tempdir().unwrap();
+        let app = base.path().join("app");
+        let write = |path: &Path| {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, "").unwrap();
+        };
+        for file in [
+            "kit/src/chip.tsx",
+            "kit/tokens.css",
+            "kit/README.md",
+            "app/pages/a/index.tsx",
+        ] {
+            write(&base.path().join(file));
+        }
+        std::fs::create_dir_all(app.join(".lingxia")).unwrap();
+        std::fs::write(
+            app.join(".lingxia/gpu-inputs.json"),
+            r#"{"pages/a/index.tsx":["pages/a/index.tsx","../kit/src/chip.tsx","../kit/tokens.css"],"pages/b/index.tsx":["pages/b/index.tsx"]}"#,
+        )
+        .unwrap();
+        let kit = canonical(&base.path().join("kit"));
+        assert_eq!(
+            external_inputs(&app),
+            BTreeSet::from([kit.join("src/chip.tsx"), kit.join("tokens.css")])
+        );
+        for file in ["kit/src/chip.tsx", "kit/tokens.css"] {
+            assert_eq!(
+                plan(&app, &BTreeSet::from([base.path().join(file)])),
+                Some(vec!["pages/a/index.tsx".to_owned()]),
+                "{file}"
+            );
+        }
+        // Another file of the package is no page input: it rebuilds.
+        assert_eq!(
+            plan(&app, &BTreeSet::from([base.path().join("kit/README.md")])),
+            None
         );
     }
 

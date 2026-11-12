@@ -366,11 +366,17 @@ fn run_watch(
         .filter_map(|root| super::gpu_swap::Compiler::spawn(&root.path).ok())
         .collect();
     let mut attached: BTreeSet<String> = BTreeSet::new();
+    // Linked packages' files the GPU pages compile from, outside every root: their directories
+    // are watched, and a save to one of those files counts as an edit of the app it feeds.
+    let mut external: std::collections::BTreeMap<PathBuf, String> = Default::default();
+    let mut external_dirs: BTreeSet<PathBuf> = BTreeSet::new();
+    refresh_external(&mut watcher, &roots, &mut external, &mut external_dirs);
     // Saves under `mocks/` reload the mocks only: no rebuild, no restart.
     let mut mocks_dirty: BTreeSet<String> = BTreeSet::new();
     let mut deferred = false;
     let mut was_paused = false;
     while !stop_flag.load(Ordering::Acquire) {
+        let mut applied = false;
         while let Ok(cmd) = commands.try_recv() {
             apply_watch_cmd(
                 cmd,
@@ -381,6 +387,10 @@ fn run_watch(
                 &mut dirty,
                 &mut mocks_dirty,
             );
+            applied = true;
+        }
+        if applied {
+            refresh_external(&mut watcher, &roots, &mut external, &mut external_dirs);
         }
         let swaps_only = mocks_dirty.is_empty()
             && dirty.iter().all(|app_id| {
@@ -421,7 +431,13 @@ fn run_watch(
                             }
                         }
                     }
-                    if let Some(root) = root_for_path(&roots, &path) {
+                    let app_id = root_for_path(&roots, &path)
+                        .map(|root| root.app_id.clone())
+                        .or_else(|| external.get(&super::gpu_swap::canonical(&path)).cloned());
+                    if let Some(root) = app_id
+                        .as_ref()
+                        .and_then(|app_id| roots.iter().find(|root| &root.app_id == app_id))
+                    {
                         let path = strip_verbatim_prefix(&path);
                         if super::mocks::is_mocks_path(strip_verbatim_prefix(&root.path), path) {
                             mocks_dirty.insert(root.app_id.clone());
@@ -499,6 +515,8 @@ fn run_watch(
                         deferred = true;
                     }
                 }
+                // A build or swap rewrites the inputs: a page may import another package file now.
+                refresh_external(&mut watcher, &roots, &mut external, &mut external_dirs);
             }
             Err(RecvTimeoutError::Disconnected) => break,
         }
@@ -666,6 +684,42 @@ fn subtree_change(
         (false, true) if !path.exists() => Some(SubtreeChange::Removed),
         _ => None,
     }
+}
+
+/// Points `external` at the GPU page inputs outside every root, and the watcher at their directories.
+fn refresh_external(
+    watcher: &mut RecommendedWatcher,
+    roots: &[WatchRoot],
+    external: &mut std::collections::BTreeMap<PathBuf, String>,
+    dirs: &mut BTreeSet<PathBuf>,
+) {
+    *external = external_inputs(roots);
+    let wanted: BTreeSet<PathBuf> = external
+        .keys()
+        .filter_map(|file| file.parent().map(Path::to_path_buf))
+        .collect();
+    for dir in dirs.difference(&wanted) {
+        let _ = watcher.unwatch(dir);
+    }
+    for dir in wanted.difference(dirs) {
+        if let Err(err) = watcher.watch(dir, RecursiveMode::NonRecursive) {
+            eprintln!("⚠ lxapp watch: {}: {err}", dir.display());
+        }
+    }
+    *dirs = wanted;
+}
+
+/// Each GPU page input outside every root, with the app it feeds (the first root that lists it).
+fn external_inputs(roots: &[WatchRoot]) -> std::collections::BTreeMap<PathBuf, String> {
+    let mut external = std::collections::BTreeMap::new();
+    for root in roots {
+        for file in super::gpu_swap::external_inputs(&root.path) {
+            if root_for_path(roots, &file).is_none() {
+                external.entry(file).or_insert_with(|| root.app_id.clone());
+            }
+        }
+    }
+    external
 }
 
 fn is_reload_event(kind: EventKind) -> bool {
@@ -955,6 +1009,34 @@ mod tests {
                 .iter()
                 .any(|(path, mode)| path == temp.path() && *mode == RecursiveMode::NonRecursive)
         );
+    }
+
+    #[test]
+    fn external_inputs_are_linked_package_files_outside_every_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let base = dunce::canonicalize(temp.path()).unwrap();
+        for file in [
+            "kit/src/chip.tsx",
+            "guest/pages/g/index.tsx",
+            "app/pages/a/index.tsx",
+        ] {
+            write(&base.join(file), "");
+        }
+        write(
+            &base.join("app/.lingxia/gpu-inputs.json"),
+            r#"{"pages/a/index.tsx":["pages/a/index.tsx","../kit/src/chip.tsx","../guest/pages/g/index.tsx"]}"#,
+        );
+        let root = |app_id: &str, dir: &str| WatchRoot {
+            app_id: app_id.into(),
+            path: base.join(dir),
+        };
+        // A file inside another watched root is that root's edit, not this app's.
+        let external = external_inputs(&[root("app", "app"), root("guest", "guest")]);
+        assert_eq!(
+            external.into_iter().collect::<Vec<_>>(),
+            vec![(base.join("kit/src/chip.tsx"), "app".to_owned())]
+        );
+        assert_eq!(external_inputs(&[root("guest", "guest")]).len(), 0);
     }
 
     #[test]
