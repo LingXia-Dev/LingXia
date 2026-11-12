@@ -134,6 +134,10 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     public Chrome getChrome() { return chrome; }
 
     private final android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+
+    private void onMain(Runnable work) {
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) work.run(); else main.post(work);
+    }
     private final GpuRecovery recovery = new GpuRecovery(this);
     /** Tags the recovery panel, so host automation reads it although it never reads page content. */
     public static final String RECOVERY_TAG = "lingxia.gpu.recovery";
@@ -838,16 +842,17 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         recovery.show(retained, message, action, action < 0 ? null : () -> { if (!destroyed) nativeRetry(host); });
     }
 
-    /** Runs only on the main thread, as the host's platform. */
+    /** The host's platform. Native calls arrive on the main thread, or from a View worker when a
+     *  failure is recorded there; UI work hops to the main thread, values are read in place. */
     private final class Platform implements GpuPlatform {
         @Override public void post(long task, long delayMillis) {
             main.postDelayed(() -> nativeRunTask(task), delayMillis);
         }
-        @Override public void requestVsync() {
+        @Override public void requestVsync() { onMain(() -> {
             if (destroyed || vsyncRequested) return;
             vsyncRequested = true;
             Choreographer.getInstance().postFrameCallback(vsync);
-        }
+        }); }
         @Override public String environment() { return sampleEnvironment(); }
         @Override public boolean presentPixels(java.nio.ByteBuffer rgba, int width, int height) {
             if (!active || !surface.getHolder().getSurface().isValid()) return false;
@@ -865,39 +870,39 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             }
             return true;
         }
-        @Override public void gpuAttached(boolean attached) {
+        @Override public void gpuAttached(boolean attached) { onMain(() -> {
             attaching = false;
             if (destroyed) return;
             gpuAttached = attached;
             if (!destroyed) nativeRedraw(host);
-        }
-        @Override public void announce(int event, int id) { surface.announce(event, id); }
-        @Override public void announceText(int id, boolean secure, String before, String after) {
+        }); }
+        @Override public void announce(int event, int id) { onMain(() -> { surface.announce(event, id); }); }
+        @Override public void announceText(int id, boolean secure, String before, String after) { onMain(() -> {
             if (!surface.accessibilityEnabled()) return;
             AccessibilityEvent event = surface.event(id, AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED);
             event.setClassName("android.widget.EditText"); event.setPassword(secure);
             event.setBeforeText(before); event.getText().add(after); event.setFromIndex(0);
             event.setRemovedCount(before.length()); event.setAddedCount(after.length());
             surface.send(event);
-        }
-        @Override public void announceSelection(int id, boolean secure, String text, int start, int end) {
+        }); }
+        @Override public void announceSelection(int id, boolean secure, String text, int start, int end) { onMain(() -> {
             if (!surface.accessibilityEnabled()) return;
             AccessibilityEvent event = surface.event(id, AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED);
             event.setClassName("android.widget.EditText"); event.setPassword(secure);
             event.getText().add(text); event.setFromIndex(start); event.setToIndex(end);
             event.setItemCount(text.length());
             surface.send(event);
-        }
-        @Override public void announceClicked() { surface.sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_CLICKED); }
-        @Override public void announceLive(int id, String text, boolean assertive) {
+        }); }
+        @Override public void announceClicked() { onMain(() -> { surface.sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_CLICKED); }); }
+        @Override public void announceLive(int id, String text, boolean assertive) { onMain(() -> {
             if (!surface.accessibilityEnabled()) return;
             if (assertive) { surface.announceForAccessibility(text); return; }
             AccessibilityEvent event = surface.event(id, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
             event.setContentChangeTypes(AccessibilityEvent.CONTENT_CHANGE_TYPE_TEXT);
             event.getText().add(text);
             surface.send(event);
-        }
-        @Override public void frame(long generation, String editor, boolean selection, float scale) {
+        }); }
+        @Override public void frame(long generation, String editor, boolean selection, float scale) { onMain(() -> {
             presentedGeneration = generation; selectionShown = selection; frameScale = scale; hasSurfaceFrame = true;
             JSONObject presented = new JSONObject();
             try {
@@ -908,15 +913,15 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             staticSelection.setBounds(0, 0, feedback.getWidth(), feedback.getHeight());
             staticSelection.update();
             updateCaretActivity();
-        }
-        @Override public void imeFocus(int index, long commit, boolean touch, float x, float y, boolean word) {
+        }); }
+        @Override public void imeFocus(int index, long commit, boolean touch, float x, float y, boolean word) { onMain(() -> {
             JSONObject node = surface.node(index);
             if (node == null) return;
             if (touch) ime.touch(node, commit, x, y, word); else ime.focus(node, commit);
-        }
-        @Override public void imeActivation() { if (ime.isActive()) ime.clear(true); }
-        @Override public void imeReset() { ime.reset(); }
-        @Override public void inputReply(long callback, String reply) {
+        }); }
+        @Override public void imeActivation() { onMain(() -> { if (ime.isActive()) ime.clear(true); }); }
+        @Override public void imeReset() { onMain(() -> { ime.reset(); }); }
+        @Override public void inputReply(long callback, String reply) { onMain(() -> {
             java.util.function.Consumer<JSONObject> consumer = inputReplies.remove(callback);
             if (consumer == null || destroyed) return;
             JSONObject result = null;
@@ -925,54 +930,54 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 if (value instanceof JSONObject) result = (JSONObject)value;
             } catch (org.json.JSONException error) { Log.e("LingXia.UI", "Invalid input reply", error); }
             consumer.accept(result);
-        }
-        @Override public void press(int node) { surface.showPress(node); }
-        @Override public void clearPress() { surface.clearPress(); }
-        @Override public void focusRing(int node) { surface.showFocusRing(node); }
-        @Override public void clearFocusRing() { surface.clearFocusRing(); }
-        @Override public void claim(boolean exclusive) {
+        }); }
+        @Override public void press(int node) { onMain(() -> { surface.showPress(node); }); }
+        @Override public void clearPress() { onMain(() -> { surface.clearPress(); }); }
+        @Override public void focusRing(int node) { onMain(() -> { surface.showFocusRing(node); }); }
+        @Override public void clearFocusRing() { onMain(() -> { surface.clearFocusRing(); }); }
+        @Override public void claim(boolean exclusive) { onMain(() -> {
             if (surface.getParent() != null) surface.getParent().requestDisallowInterceptTouchEvent(exclusive);
-        }
-        @Override public void armLongPress() { surface.armLongPress(); }
-        @Override public void cancelLongPress() { surface.disarmLongPress(); }
-        @Override public void fling(String region, boolean horizontal, float velocity) { surface.fling(region, horizontal, velocity); }
-        @Override public void stopFling() { surface.stopFling(); }
-        @Override public void clicked() { surface.performClick(); }
-        @Override public void haptic() { surface.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS); }
-        @Override public void topLayer(boolean modal) { listener.onTopLayer(modal); }
+        }); }
+        @Override public void armLongPress() { onMain(() -> { surface.armLongPress(); }); }
+        @Override public void cancelLongPress() { onMain(() -> { surface.disarmLongPress(); }); }
+        @Override public void fling(String region, boolean horizontal, float velocity) { onMain(() -> { surface.fling(region, horizontal, velocity); }); }
+        @Override public void stopFling() { onMain(() -> { surface.stopFling(); }); }
+        @Override public void clicked() { onMain(() -> { surface.performClick(); }); }
+        @Override public void haptic() { onMain(() -> { surface.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS); }); }
+        @Override public void topLayer(boolean modal) { onMain(() -> { listener.onTopLayer(modal); }); }
         @Override public int editText(int index, String text, int start, int end) {
             JSONObject node = surface.node(index);
             if (node == null || !hasFrame()) return GpuIme.EDIT_FAILED;
             return ime.accessibilityEdit(node, GpuView.this.frame().generation(), text, start, end);
         }
-        @Override public void loaded() { if (listener != null) listener.onLoaded(); }
-        @Override public void presented() {
+        @Override public void loaded() { onMain(() -> { if (listener != null) listener.onLoaded(); }); }
+        @Override public void presented() { onMain(() -> {
             if (listener != null && hasFrame()) listener.onFrame();
             finishPresentation(true);
-        }
+        }); }
         @Override public boolean restart(long connection) { return listener != null && listener.onRestart(connection); }
-        @Override public void recovery(int message, int action, boolean retained, String error) {
+        @Override public void recovery(int message, int action, boolean retained, String error) { onMain(() -> {
             showFailure(message, action, retained, error);
-        }
-        @Override public void bootstrapOverdue(boolean overdue) { showBootstrapMessage(overdue); }
-        @Override public void copyText(String text) { if (!destroyed) writeClipboard(text); }
-        @Override public void textMenu(String menu) {
+        }); }
+        @Override public void bootstrapOverdue(boolean overdue) { onMain(() -> { showBootstrapMessage(overdue); }); }
+        @Override public void copyText(String text) { onMain(() -> { if (!destroyed) writeClipboard(text); }); }
+        @Override public void textMenu(String menu) { onMain(() -> {
             if (destroyed) return;
             try { textMenu.show(menu == null ? null : new JSONObject(menu), frameScale); }
             catch (org.json.JSONException error) { throw new IllegalStateException("Invalid text menu", error); }
-        }
+        }); }
         /** Never show a frame drawn for another size: a held surface stays off screen and the
          *  host's page floor shows through until a current frame releases it. */
-        @Override public void revealed(boolean hold) {
+        @Override public void revealed(boolean hold) { onMain(() -> {
             holdSurface = hold;
             if (revealed) updateSurfaceVisibility(); else reveal();
             if (!hold) answerCurrentFrame(true);
-        }
-        @Override public void hostChrome(int canvas, int bar, int barLine, int content, int contentMuted, int accent, boolean dark) {
+        }); }
+        @Override public void hostChrome(int canvas, int bar, int barLine, int content, int contentMuted, int accent, boolean dark) { onMain(() -> {
             if (destroyed) return;
             chrome = new Chrome(canvas, bar, barLine, content, contentMuted, accent, dark);
             if (listener != null) listener.onChrome(chrome);
-        }
+        }); }
     }
 
     private static final int[] KEYS = {KeyEvent.KEYCODE_TAB, KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
