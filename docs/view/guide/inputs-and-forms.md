@@ -150,7 +150,19 @@ typing jumps to a label; automation uses `locator.selectOption(valueOrLabel)`.
 ## Slider
 
 `<slider>` takes `min` (0), `max` (100) and `step` (1); the value snaps to the step. It must have an
-`aria-label`. `text-*` sets its accent color.
+`aria-label`; `aria-valuetext` says how the value reads aloud (`"1:20 of 3:05"`). `text-*` sets its
+accent color. `secondaryValue` draws a second range behind the value, such as buffered media.
+
+Style its parts with `track:`, `range:`, `secondary:` and `thumb:`, after a state when needed:
+
+```tsx
+<slider bind={at} max={duration} secondaryValue={buffered} aria-label="Seek"
+  className="track:h-[3px] active:track:h-[5px] thumb:size-0 active:thumb:size-3 focus-visible:thumb:size-3 focus-visible:thumb:ring-2" />
+```
+
+State changes on parts ease over 150 ms; the thumb follows the value directly. The touch target is the
+slider's own box and never shrinks with the thumb's look, so a `thumb:size-0` scrubber stays fully draggable.
+The track ends sit inside the padding by half the thumb's widest state.
 
 ## Forms
 

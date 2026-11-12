@@ -757,3 +757,28 @@ test('children under different line-height multipliers do not share a lowered st
     h('view', { style: { fontSize: 10, lineHeight: 2 } }, h('text', { className: 'font-bold' }, 'b'))));
   assert.deepEqual(['a', 'b'].map(text => byText(root, text).props.lineHeight), [15, 20]);
 });
+
+test('slider parts lower to part records, and a state before the part carries it whole', async () => {
+  await use(['track:h-1', 'track:bg-line', 'thumb:size-4', 'thumb:bg-surface', 'active:thumb:size-5', 'hover:thumb:bg-accent',
+    'focus-visible:thumb:ring-2', 'disabled:range:bg-line', 'thumb:active:size-4', 'thumb:p-2', 'thumb:transition', 'range:shadow-md']);
+  const slider = (className, extra = {}, view) => rendered(() => h('slider', { 'aria-label': 'Volume', value: 40, className, ...extra }), view).props;
+  const pairs = text => Object.fromEntries(JSON.parse(text).reduce((out, v, i, all) => (i % 2 ? out : [...out, [v, all[i + 1]]]), []));
+  const base = slider('track:h-1 track:bg-line thumb:size-4 thumb:bg-surface active:thumb:size-5 focus-visible:thumb:ring-2');
+  assert.equal(Object.values(pairs(base.trackStyle)).join(','), '4,line');
+  assert.deepEqual(Object.values(pairs(base.thumbStyle)).sort(), [16, 16, 'surface'].sort());
+  assert.deepEqual(Object.values(pairs(base.pressedStyle.thumbStyle)).sort(), [20, 20, 'surface'].sort());
+  assert.ok(base.focusVisibleStyle);
+  assert.equal(slider('hover:thumb:bg-accent').hoverStyle, undefined);
+  assert.ok(slider('hover:thumb:bg-accent', {}, { env: { pointer: 'fine' } }).hoverStyle);
+  assert.ok(slider('disabled:range:bg-line', { disabled: true }).rangeStyle);
+  for (const [name, message] of [['thumb:active:size-4', /a state goes before the part: active:thumb:/], ['thumb:p-2', /thumb: takes bg-\*/],
+    ['thumb:transition', /eases its own state changes over 150 ms/], ['range:shadow-md', /range: takes bg-\*, h-\* and rounded-\*/]])
+    assert.throws(() => describe(() => h('slider', { 'aria-label': 'x', className: name }), {}), message);
+  assert.throws(() => describe(() => h('view', { className: 'thumb:size-4' }), {}), /UI_/);
+});
+
+test('a slider takes a secondary value and reads its aria-valuetext', () => {
+  const props = rendered(() => h('slider', { 'aria-label': 'Seek', value: 10, secondaryValue: 140, max: 100, 'aria-valuetext': '0:10 of 1:40' })).props;
+  assert.deepEqual([props.sliderSecondary, props.ariaValueText], [100, '0:10 of 1:40']);
+  assert.throws(() => describe(() => h('slider', { 'aria-label': 'x', secondaryValue: 'a' }), {}), /secondaryValue must be a finite number/);
+});

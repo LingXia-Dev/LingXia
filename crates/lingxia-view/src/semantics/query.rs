@@ -305,6 +305,9 @@ fn attributes(node: &NodeSnapshot) -> Value {
             json!(node.described_by.join(" ")),
         );
     }
+    if let Some(text) = node.range.as_ref().and_then(|range| range.text.as_ref()) {
+        out.insert("aria-valuetext".into(), json!(text));
+    }
     Value::Object(out)
 }
 

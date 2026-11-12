@@ -1,6 +1,6 @@
 import { declaredFamily } from '../runtime/fonts.js';
 import { elements, style as table } from '../generated/contract.js';
-import { fieldOptions } from '../generated/wire.js';
+import { fieldOptions, field } from '../generated/wire.js';
 import { limits, options } from '../generated/contract.js';
 import { normalizeShadows } from './shadow.js';
 import { appliesTo } from './hints.js';
@@ -354,6 +354,7 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
         out[key] = value; break;
       case 'object-position':
         out[key] = JSON.stringify(objectPosition(value)); break;
+      case 'part': out[key] = partRecord(name, value, env); break;
       default: throw Error(`UI_STYLE: ${name} has no native lowering`);
     }
   }
@@ -372,6 +373,16 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
     out.lineHeight = pixels;
   }
   return { fields: out, typography: { fontSize, lineHeight } };
+}
+
+// A slider part as `[field, value, …]` pairs; sizes are plain points, as the part has no box to resolve against.
+function partRecord(name, value, env) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) invalid(name);
+  for (const key of ['width', 'height']) if (value[key] !== undefined && !(finite(value[key]) && value[key] >= 0 && value[key] <= 1024)) invalid(`${name}.${key}`);
+  const pairs = [];
+  for (const [key, lowered] of Object.entries(lowerStyle('view', value, env).fields))
+    pairs.push(field[key], key === 'boxShadow' && lowered !== 'none' ? JSON.stringify(lowered) : lowered);
+  return JSON.stringify(pairs);
 }
 
 /** The paint subset of a style; state styles may carry nothing else. */

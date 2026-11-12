@@ -139,8 +139,13 @@ fn transition_inputs(
     let mut blocked = None;
     let mut inputs = Vec::new();
     for (index, record) in records.iter().enumerate() {
-        let Some(source) = record.string(field::TRANSITION) else {
-            continue;
+        // A slider eases its parts between states even without a transition of its own.
+        let parts = record.tag == crate::protocol::tag::SLIDER;
+        let definition = match record.string(field::TRANSITION) {
+            Some(source) if parts => transition::TransitionDef::decode(source)?.with_parts(),
+            Some(source) => transition::TransitionDef::decode(source)?,
+            None if parts => transition::TransitionDef::parts(),
+            None => continue,
         };
         let retained = &display.retained;
         let blocked = blocked.get_or_insert_with(|| retained.transform_blocked());
@@ -158,7 +163,7 @@ fn transition_inputs(
         );
         inputs.push(transition::Input {
             identity: retained.nodes[index].identity.to_string().into(),
-            definition: transition::TransitionDef::decode(source)?,
+            definition,
             origin: exit
                 .is_some()
                 .then(|| transition::Origin(Arc::clone(retained), index)),

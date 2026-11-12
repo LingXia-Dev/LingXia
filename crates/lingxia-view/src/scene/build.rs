@@ -554,51 +554,29 @@ impl Renderer {
             }
             let range = if record.tag == tag::SLIDER {
                 let mut range = crate::SliderSnapshot::from_record(record)?;
-                let half = crate::scene::slider::THUMB / 2.0;
+                let half = crate::scene::slider::widest_thumb(record)? / 2.0;
                 range.inset = [layout.padding.left + half, layout.padding.right + half];
                 Some(range)
             } else {
                 None
             };
             if let Some(range) = &range {
-                let left = control_bounds[0] + range.inset[0];
-                let track_width = (control_bounds[2] - range.inset[0] - range.inset[1]).max(0.0);
+                let accent = match record.string(field::COLOR) {
+                    Some("currentColor") => paint_style.foreground,
+                    value => color(value.unwrap_or("accent"))?,
+                };
                 let center = control_bounds[1]
                     + layout.padding.top
                     + (control_bounds[3] - layout.padding.top - layout.padding.bottom).max(0.0)
                         / 2.0;
-                let fraction = ((range.value - range.min) / (range.max - range.min)) as f32;
-                let accent = if range.enabled {
-                    match record.string(field::COLOR) {
-                        Some("currentColor") => paint_style.foreground,
-                        value => color(value.unwrap_or("accent"))?,
-                    }
-                } else {
-                    palette.role(Role::TextFaint)
-                };
-                commands.push(Paint::Rect {
-                    corners: None,
-                    color: palette.role(Role::Line),
-                    bounds: [left, center - 2.0, track_width, 4.0],
-                    radius: 2.0,
-                });
-                commands.push(Paint::Rect {
-                    corners: None,
-                    color: accent,
-                    bounds: [left, center - 2.0, track_width * fraction, 4.0],
-                    radius: 2.0,
-                });
-                commands.push(Paint::Rect {
-                    corners: None,
-                    color: accent,
-                    bounds: [
-                        left + track_width * fraction - crate::scene::slider::THUMB / 2.0,
-                        center - crate::scene::slider::THUMB / 2.0,
-                        crate::scene::slider::THUMB,
-                        crate::scene::slider::THUMB,
-                    ],
-                    radius: crate::scene::slider::THUMB / 2.0,
-                });
+                paint_style.slider = Some(crate::scene::slider::paint(
+                    range,
+                    record,
+                    [control_bounds[0], control_bounds[2], center],
+                    accent,
+                    &palette,
+                    &mut commands,
+                )?);
             }
             if record.tag == tag::SEARCH {
                 let cx = x + layout.padding.left - 30.0;

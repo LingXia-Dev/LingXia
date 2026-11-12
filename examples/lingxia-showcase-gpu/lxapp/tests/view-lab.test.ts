@@ -297,3 +297,39 @@ async function fillOf(t: Fixture, locator: ReturnType<Fixture['app']['view']['te
   });
   return shot.at(Math.round((box.x + 6 - viewport.left) * scale), Math.round(py * scale));
 }
+
+spec('a slider styled by parts reads its valuetext and grows its line and thumb while held', { start: { page: 'view-lab' } }, async (t) => {
+  const view = t.app.view;
+  await view.testId('lab-tab-input').click();
+  const scrub = view.getByRole('slider', { name: 'Scrub' });
+  await expect(scrub).toHaveAttribute('aria-valuetext', '0:30 of 3:00');
+  const box = await scrub.boundingBox();
+  // The touch target is the slider's box though its thumb draws nothing at rest.
+  const at: [number, number] = [box.x + box.width / 2, box.y + box.height / 2];
+  const rest = await lineRows(t, scrub);
+  const finger = await view.touch(at);
+  await new Promise<void>(resolve => setTimeout(resolve, 400));
+  const held = await lineRows(t, scrub);
+  await finger.up();
+  expect(held > rest ? 'grew' : `same ${JSON.stringify({ rest, held })}`).toBe('grew');
+  await expect(scrub).toHaveAttribute('aria-valuetext', /^1:30 of 3:00$/);
+  await expect.poll(async () => lineRows(t, scrub), { timeout: 3_000 }).toBe(rest);
+});
+
+/** How many pixel rows the slider's line covers a quarter of the way along, where no thumb sits. */
+async function lineRows(t: Fixture, locator: ReturnType<Fixture['app']['view']['testId']>) {
+  const view = t.app.view;
+  const box = await locator.boundingBox();
+  const viewport = await view.viewport();
+  let scale = 1;
+  const shot = await decodePng((await view.screenshot()).base64, width => {
+    scale = width / viewport.width;
+    return Math.round((box.y + box.height - viewport.top) * scale);
+  });
+  const x = Math.round((box.x + box.width / 4 - viewport.left) * scale);
+  const top = Math.round((box.y - viewport.top) * scale), bottom = Math.round((box.y + box.height - viewport.top) * scale);
+  const page = shot.at(x, top);
+  let rows = 0;
+  for (let y = top; y < bottom; y++) if (shot.at(x, y).some((value, i) => Math.abs(value - page[i]) > 40)) rows++;
+  return rows;
+}

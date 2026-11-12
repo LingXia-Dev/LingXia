@@ -745,7 +745,8 @@ impl Projection<'_> {
             value: select
                 .map(|_| node.text.clone())
                 .filter(|text| !text.is_empty())
-                .or_else(|| progress.map(|(_, text)| text)),
+                .or_else(|| progress.map(|(_, text)| text))
+                .or_else(|| node.range.as_ref().and_then(|range| range.text.clone())),
             scroll: node.scroll.as_ref().map(|scroll| ScrollPosition {
                 offset: scroll.offset,
                 max_offset: scroll.max_offset,

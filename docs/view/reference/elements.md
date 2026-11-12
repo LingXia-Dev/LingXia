@@ -214,7 +214,9 @@ Binding: `bind={local}` with a `useLocal<number>` cell, or `value` plus `onChang
 | `min` | `number` |  |
 | `max` | `number` |  |
 | `step` | `number` |  |
+| `secondaryValue` | `number` |  |
 | `aria-label` | `string` | yes |
+| `aria-valuetext` | `string` |  |
 | `disabled` | `boolean` |  |
 
 ## `<dialog>`

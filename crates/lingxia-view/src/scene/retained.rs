@@ -47,6 +47,8 @@ pub(crate) struct PaintStyle {
     pub(crate) transform: Option<crate::scene::transform::StaticTransform>,
     pub(crate) corners: Option<[[f32; 2]; 4]>,
     pub(crate) radius: f32,
+    /// Where a slider's parts sit in `commands`.
+    pub(crate) slider: Option<crate::scene::slider::SliderPaint>,
     /// A `bg-clip-text` gradient and the box it was laid out in, for an animated position.
     pub(crate) text_gradient: Option<(Arc<crate::scene::gradient::BackgroundGradient>, [f32; 4])>,
 }
@@ -361,6 +363,10 @@ impl RetainedLayout {
                     .collect()
             }),
             position: Some([f64::from(x - moved[0]), f64::from(y - moved[1])]),
+            parts: style
+                .slider
+                .as_ref()
+                .map(|slider| slider.values(&self.commands)),
         }
     }
 
@@ -773,7 +779,19 @@ impl RetainedLayout {
             let border = overrides.and_then(|o| o.border);
             let shadows = overrides.and_then(|o| o.shadows.as_ref());
             let first = self.ranges[index].start;
-            for (offset, paint) in self.commands[self.ranges[index].clone()].iter().enumerate() {
+            let reshaped;
+            let own = match (
+                overrides.and_then(|o| o.parts.as_ref()),
+                &paint_style.slider,
+            ) {
+                (Some(parts), Some(slider)) => {
+                    reshaped =
+                        slider.apply(&self.commands[self.ranges[index].clone()], first, parts);
+                    &reshaped[..]
+                }
+                _ => &self.commands[self.ranges[index].clone()],
+            };
+            for (offset, paint) in own.iter().enumerate() {
                 let command = first + offset;
                 let tint = |color: &[u8; 4], replaced: Option<[u8; 4]>, slot: Option<usize>| {
                     replaced.filter(|_| slot == Some(command)).unwrap_or(*color)

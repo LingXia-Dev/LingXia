@@ -266,6 +266,8 @@ export interface GpuFrameSlider {
   inset: number[];
   enabled: boolean;
   on_change?: number | null;
+  secondary?: number | null;
+  text?: string | null;
 }
 
 /** `Plot` in the frame contract. */

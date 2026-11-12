@@ -14,7 +14,7 @@ pub use generated::{
 
 pub use decode::{Wire, decode, decode_wire};
 pub use values::color;
-pub(crate) use values::{flex_basis, focus_style, image_position, length_or_percent};
+pub(crate) use values::{flex_basis, focus_style, image_position, length_or_percent, part_style};
 
 /// Absolute dimension fields paired with their percentage forms.
 pub const DIMENSIONS: [(usize, usize); 6] = [
@@ -46,8 +46,33 @@ pub const RADIUS_CORNERS: [usize; 4] = [
     field::RADIUS_BOTTOM_RIGHT,
     field::RADIUS_BOTTOM_LEFT,
 ];
-/// Paint-only fields an editor focus delta may carry.
-pub const FOCUS_PAINT_FIELDS: [usize; 8] = [
+/// The slider parts, in drawing order.
+pub const PARTS: [usize; 4] = [
+    field::TRACK_STYLE,
+    field::SECONDARY_STYLE,
+    field::RANGE_STYLE,
+    field::THUMB_STYLE,
+];
+/// What a slider part record may carry.
+pub const PART_FIELDS: [usize; 15] = [
+    field::BACKGROUND,
+    field::WIDTH,
+    field::HEIGHT,
+    field::RADIUS,
+    field::RADIUS_TOP_LEFT,
+    field::RADIUS_TOP_RIGHT,
+    field::RADIUS_BOTTOM_RIGHT,
+    field::RADIUS_BOTTOM_LEFT,
+    field::BORDER_TOP_WIDTH,
+    field::BORDER_RIGHT_WIDTH,
+    field::BORDER_BOTTOM_WIDTH,
+    field::BORDER_LEFT_WIDTH,
+    field::BORDER_COLOR,
+    field::BOX_SHADOW,
+    field::TRANSFORM,
+];
+/// Paint-only fields a state delta may carry; a slider's parts change only its drawing.
+pub const FOCUS_PAINT_FIELDS: [usize; 12] = [
     field::COLOR,
     field::BACKGROUND,
     field::OPACITY,
@@ -56,6 +81,10 @@ pub const FOCUS_PAINT_FIELDS: [usize; 8] = [
     field::BOX_SHADOW,
     field::PLACEHOLDER_COLOR,
     field::TRANSFORM,
+    field::TRACK_STYLE,
+    field::RANGE_STYLE,
+    field::SECONDARY_STYLE,
+    field::THUMB_STYLE,
 ];
 
 #[derive(Clone, Debug)]

@@ -1,6 +1,7 @@
 use lingxia_view::protocol::field::{
-    ACCESSIBILITY_LABEL, COLOR, ENABLED, ON_CLICK, ON_SLIDER_CHANGE, PADDING_LEFT, PADDING_RIGHT,
-    SLIDER_MAX, SLIDER_MIN, SLIDER_STEP, SLIDER_VALUE,
+    ACCESSIBILITY_LABEL, ARIA_VALUE_TEXT, BACKGROUND, COLOR, ENABLED, HEIGHT, ON_CLICK,
+    ON_SLIDER_CHANGE, PADDING_LEFT, PADDING_RIGHT, PRESSED_STYLE, SECONDARY_STYLE, SLIDER_MAX,
+    SLIDER_MIN, SLIDER_SECONDARY, SLIDER_STEP, SLIDER_VALUE, THUMB_STYLE, TRACK_STYLE, WIDTH,
 };
 use lingxia_view::protocol::tag::{SLIDER, TEXT};
 use lingxia_view::{Renderer, protocol::decode};
@@ -147,4 +148,83 @@ fn slider_track_follows_each_side_padding_and_the_thumb_radius() {
     let pixels = frame.rasterize().unwrap().pixels;
     let red = |x: usize| pixels.data_as_u8_slice()[(24 * 200 + x) * 4..][..4] == [255, 0, 0, 255];
     assert!(red(148) && red(158) && !red(162));
+}
+
+fn pixels(frame: lingxia_view::DisplayList) -> impl Fn(usize, usize) -> [u8; 4] {
+    let pixels = frame.rasterize().unwrap().pixels;
+    move |x, y| {
+        let at = (y * 200 + x) * 4;
+        pixels.data_as_u8_slice()[at..at + 4].try_into().unwrap()
+    }
+}
+
+#[test]
+fn slider_parts_restyle_track_secondary_and_thumb_and_the_widest_thumb_sets_the_ends() {
+    let part = |pairs: serde_json::Value| pairs.to_string();
+    let wire = json!([
+        SLIDER,
+        -1,
+        "",
+        "seek",
+        "",
+        8,
+        ACCESSIBILITY_LABEL,
+        "Seek",
+        SLIDER_VALUE,
+        0,
+        SLIDER_SECONDARY,
+        50,
+        ARIA_VALUE_TEXT,
+        "0:00 of 1:00",
+        TRACK_STYLE,
+        part(json!([HEIGHT, 8, BACKGROUND, "#0000ff"])),
+        SECONDARY_STYLE,
+        part(json!([BACKGROUND, "#00ff00"])),
+        THUMB_STYLE,
+        part(json!([WIDTH, 16, HEIGHT, 16, BACKGROUND, "#ff0000"])),
+        PRESSED_STYLE,
+        json!([
+            THUMB_STYLE,
+            part(json!([WIDTH, 32, HEIGHT, 32, BACKGROUND, "#ff0000"]))
+        ])
+        .to_string()
+    ]);
+    let frame = Renderer::default()
+        .layout(&decode(wire.as_array().unwrap()).unwrap(), 200, 100, 1.0)
+        .unwrap();
+    let range = frame.nodes[0].range.as_ref().unwrap();
+    // Padding 12 plus half the pressed thumb, so pressing does not move the ends.
+    assert_eq!(range.inset, [28.0; 2]);
+    assert_eq!(range.secondary, Some(50.0));
+    assert_eq!(range.text.as_deref(), Some("0:00 of 1:00"));
+    let pixel = pixels(frame);
+    // The thumb sits at the start; the secondary line covers the first half; the track the rest.
+    assert_eq!(pixel(28, 24), [255, 0, 0, 255]);
+    assert_eq!(pixel(60, 24), [0, 255, 0, 255]);
+    assert_eq!(pixel(150, 24), [0, 0, 255, 255]);
+    assert_ne!(pixel(150, 29), [0, 0, 255, 255]);
+    assert_eq!(pixel(150, 27), [0, 0, 255, 255]);
+}
+
+#[test]
+fn slider_parts_refuse_fields_a_part_cannot_draw() {
+    for pairs in [
+        json!([PADDING_LEFT, 4]),
+        json!([WIDTH, "50%"]),
+        json!([HEIGHT, 4000]),
+    ] {
+        let wire = json!([
+            SLIDER,
+            -1,
+            "",
+            "",
+            "",
+            2,
+            ACCESSIBILITY_LABEL,
+            "Volume",
+            THUMB_STYLE,
+            pairs.to_string()
+        ]);
+        assert!(decode(wire.as_array().unwrap()).is_err(), "{pairs}");
+    }
 }

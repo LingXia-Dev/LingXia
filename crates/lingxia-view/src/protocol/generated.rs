@@ -260,6 +260,11 @@ pub mod field {
     pub const ARIA_DESCRIBED_BY: usize = 223;
     pub const STATE_CHECKED: usize = 224;
     pub const FOCUS_VISIBLE_STYLE: usize = 225;
+    pub const TRACK_STYLE: usize = 226;
+    pub const RANGE_STYLE: usize = 227;
+    pub const SECONDARY_STYLE: usize = 228;
+    pub const THUMB_STYLE: usize = 229;
+    pub const SLIDER_SECONDARY: usize = 230;
 }
 
 pub const TAGS: &[&str] = &["column", "reserved-1", "text", "button", "reserved-4", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "reserved-16", "reserved-17", "plot", "vector", "page", "span", "link", "select", "video"];
@@ -492,6 +497,11 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("ariaDescribedBy", "element-ids"),
     ("stateChecked", "semantic-state"),
     ("focusVisibleStyle", "state-style"),
+    ("trackStyle", "part-style"),
+    ("rangeStyle", "part-style"),
+    ("secondaryStyle", "part-style"),
+    ("thumbStyle", "part-style"),
+    ("secondaryValue", "slider-number"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -819,7 +829,7 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
-    FieldAdmission { tags: Some(&[tag::BUTTON, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::LINK]), parent: None },
+    FieldAdmission { tags: Some(&[tag::BUTTON, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::LINK, tag::SLIDER]), parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
@@ -920,4 +930,9 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::COLUMN, tag::TEXT, tag::BUTTON, tag::SCROLL, tag::LIST, tag::IMAGE, tag::INPUT, tag::TEXTAREA, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::SEARCH, tag::SLIDER, tag::PLOT, tag::VECTOR, tag::PAGE, tag::SELECT, tag::VIDEO]), parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::BUTTON, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::SLIDER, tag::LINK, tag::SELECT, tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
 ];

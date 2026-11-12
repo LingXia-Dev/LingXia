@@ -1,5 +1,5 @@
 //! Value grammars shared by decode and layout: lengths, colors, bases and paint deltas.
-use super::{FIELDS, FOCUS_PAINT_FIELDS, field, limits, tag};
+use super::{FIELDS, FOCUS_PAINT_FIELDS, PART_FIELDS, field, limits, tag};
 use serde_json::Value;
 
 /// Largest callback handle a JS number represents exactly.
@@ -51,6 +51,37 @@ pub(crate) fn focus_style(value: &Value) -> Result<Vec<(usize, Value)>, String> 
         })
     {
         return Err("UI_STYLE: focus supports paint properties only".into());
+    }
+    let mut record = vec![
+        serde_json::json!(0),
+        serde_json::json!(-1),
+        serde_json::json!(""),
+        serde_json::json!(""),
+        serde_json::json!(""),
+        serde_json::json!(pairs.len() / 2),
+    ];
+    record.extend(pairs);
+    Ok(super::decode(&record)?.remove(0).fields.into_vec())
+}
+
+/// A slider part record: `[field, value, …]` over the part fields, sizes in plain points.
+pub(crate) fn part_style(value: &Value) -> Result<Vec<(usize, Value)>, String> {
+    let invalid = || "UI_STYLE: invalid slider part".to_string();
+    let text = value
+        .as_str()
+        .filter(|s| s.len() <= 4096)
+        .ok_or_else(invalid)?;
+    let pairs: Vec<Value> = serde_json::from_str(text).map_err(|_| invalid())?;
+    if pairs.len() > 2 * PART_FIELDS.len()
+        || !pairs.len().is_multiple_of(2)
+        || pairs.chunks_exact(2).any(|p| {
+            p[0].as_u64()
+                .is_none_or(|id| !PART_FIELDS.contains(&(id as usize)))
+                || (matches!(p[0].as_u64(), Some(id) if id as usize == field::WIDTH || id as usize == field::HEIGHT)
+                    && !p[1].as_f64().is_some_and(|v| (0.0..=1024.0).contains(&v)))
+        })
+    {
+        return Err(invalid());
     }
     let mut record = vec![
         serde_json::json!(0),
@@ -217,9 +248,7 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
         field::FOCUS_STYLE
         | field::FOCUS_VISIBLE_STYLE
         | field::FOCUS_WITHIN_STYLE
-        | field::GROUP_PRESSED_STYLE => {
-            focus_style(value).map(drop)
-        }
+        | field::GROUP_PRESSED_STYLE => focus_style(value).map(drop),
         field::FONT_FAMILY => ensure(
             value.as_str().is_some_and(|family| {
                 matches!(family, "sans" | "mono" | "serif")
@@ -305,9 +334,11 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             "UI_TEXT: lines must be an integer between 1 and 1024 on text",
         ),
         field::ON_SLIDER_CHANGE => ensure(handle(value), "UI_SLIDER: invalid callback"),
-        field::SLIDER_VALUE | field::SLIDER_MIN | field::SLIDER_MAX | field::SLIDER_STEP => {
-            ensure(finite_within(value, 1e9), "UI_SLIDER: invalid number")
-        }
+        field::SLIDER_VALUE
+        | field::SLIDER_MIN
+        | field::SLIDER_MAX
+        | field::SLIDER_STEP
+        | field::SLIDER_SECONDARY => ensure(finite_within(value, 1e9), "UI_SLIDER: invalid number"),
         field::IMAGE_RETRY_KEY => ensure(
             value
                 .as_str()
@@ -511,6 +542,7 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
                 "UI_STYLE: invalid inset",
             ),
             "state-style" => focus_style(value).map(drop),
+            "part-style" => part_style(value).map(drop),
             "number" => number(id, value),
             // A popover's anchor: a node's native identity, or a CSS anchor name (`--…`).
             "anchor" => ensure(

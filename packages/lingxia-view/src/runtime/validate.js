@@ -122,6 +122,12 @@ export function slider(props) {
   props.value = sliderValue(props, value);
 }
 
+/** A second value drawn behind the range, such as buffered media: clamped, never snapped. */
+export function sliderSecondary({ min, max, secondaryValue: value }) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) throw Error('UI_SLIDER: secondaryValue must be a finite number');
+  return Math.max(min, Math.min(max, value));
+}
+
 export function image(props) {
   if (typeof props.src !== 'string' || !props.src.length || props.src.length > limits.sourceBytes || props.src.includes('\0')) throw Error('UI_IMAGE: invalid source');
   if (props.alt !== undefined && (typeof props.alt !== 'string' || utf8Bytes(props.alt, 1024) > 1024 || props.alt.includes('\0') ||

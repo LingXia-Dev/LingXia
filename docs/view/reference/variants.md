@@ -21,7 +21,7 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 | `hover:` | any element, only when `env.pointer` is `fine`; paint only |
 | `focus:` | `<input>` `<textarea>` `<select>`; paint only |
 | `focus-visible:` | `<button>` `<input>` `<textarea>` `<checkbox>` `<switch>` `<radio>` `<slider>` `<link>` `<select>`; while focused from a key, switch or assistive tool (editors on any focus); paint only |
-| `active:` | `<button>` `<checkbox>` `<switch>` `<radio>` `<link>`; paint only |
+| `active:` | `<button>` `<checkbox>` `<switch>` `<radio>` `<slider>` `<link>`; paint only |
 | `disabled:` | `<button>` `<input>` `<textarea>` `<checkbox>` `<switch>` `<radio>` `<slider>` `<link>` `<select>`; replaces the whole class cascade |
 | `has:` | any element, alone; `has-checked:`, `has-disabled:` (a descendant checkbox, switch, answered radio or disabled element) and `has-focus:`; paint only |
 | `data:` | any element; matches its own `data-*` prop (`data-active:`, `data-[state=open]:`), layout included |
@@ -39,6 +39,10 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 | `dark:` | any element; not on colours, which follow appearance |
 | `starting:` | any element; paint only, the values it enters from |
 | `exit:` | any element; paint only, the values a removed element leaves toward |
+| `track:` | `<slider>`; its track: `bg-*`, `h-*`, `rounded-*`; after `active:` `hover:` `focus-visible:` or `disabled:`, eased over 150 ms |
+| `range:` | `<slider>`; its range, min to value: `bg-*`, `h-*`, `rounded-*`; after `active:` `hover:` `focus-visible:` or `disabled:`, eased over 150 ms |
+| `secondary:` | `<slider>`; its secondary range, min to `secondaryValue`: `bg-*`, `h-*`, `rounded-*`; after `active:` `hover:` `focus-visible:` or `disabled:`, eased over 150 ms |
+| `thumb:` | `<slider>`; its thumb: `bg-*`, `size-*`, `rounded-*`, `border-*`, `shadow-*`, `ring-*`, `scale-*`; after a state like the other parts |
 | `group-active:` | any element inside a pressable control; while that control is pressed; paint only |
 
 `space-x-*`, `space-y-*` and `divide-*` are utilities, not variants: they style every child but the last.

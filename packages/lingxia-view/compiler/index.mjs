@@ -27,7 +27,7 @@ const runtimeRoot = dirname(runtime).toLowerCase();
 const has = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 const common = new Set(commonProps);
 const editors = new Set(['input', 'textarea']);
-const controls = new Set(['button', 'checkbox', 'switch', 'radio', 'link']);
+const controls = new Set(['button', 'checkbox', 'switch', 'radio', 'link', 'slider']);
 const focusables = new Set([...editors, ...controls, 'select', 'slider']);
 // Elements that take input of their own; they may sit inside a pressable control.
 const interactiveTags = new Set(['button', 'link', 'checkbox', 'switch', 'radio', 'input', 'textarea', 'select', 'slider']);
@@ -243,6 +243,8 @@ function classProblems(rule, name, tag, suggestions, grid) {
   if (rule.error?.category === 'color') return [`UI_COLOR: ${name}: ${rule.error.message}`];
   if (rule.error) return [`UI_CLASS_UNSUPPORTED: ${name}: the native renderer does not support ${rule.error.message}`];
   if (!has(elements, tag) || rule.when?.children) return [];
+  // A part's properties were checked when it compiled; it needs a slider to belong to.
+  if (rule.when?.part) return tag === 'slider' ? [] : [`UI_CLASS_ELEMENT: ${name} styles a <slider>'s ${rule.when.part}, not <${tag}>`];
   const runs = tag === 'span' || tag === 'link';
   const props = [...Object.keys(rule.style ?? {}).filter(prop => !(runs && rule.pairedLeading && prop === 'lineHeight')), ...(rule.gradient ? ['backgroundImage'] : []),
     ...(rule.transform?.translate ? ['translate'] : []), ...(rule.transform?.scale ? ['scale'] : []),

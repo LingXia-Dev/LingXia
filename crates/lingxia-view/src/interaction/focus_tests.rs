@@ -396,16 +396,20 @@ fn tap(interaction: &mut ViewInteraction, y: f32) {
 
 #[test]
 fn focus_origin_follows_the_last_input_and_only_a_pointer_hides_focus() {
-    use crate::interaction::view::FocusOrigin;
     use crate::interaction::view::AccessibilityAction;
+    use crate::interaction::view::FocusOrigin;
     let mut interaction = ViewInteraction::default();
-    present(&mut interaction, vec![button("/a", 0.0), button("/b", 50.0)], 1);
+    present(
+        &mut interaction,
+        vec![button("/a", 0.0), button("/b", 50.0)],
+        1,
+    );
     assert_eq!(interaction.focus_origin(), FocusOrigin::Pointer);
     assert_eq!(tab(&mut interaction), Some(0));
     assert_eq!(interaction.focus_origin(), FocusOrigin::Keyboard);
     tap(&mut interaction, 60.0);
     assert_eq!(interaction.focus_origin(), FocusOrigin::Pointer);
-    let id = interaction.semantics().unwrap().roots()[0];
+    let id = interaction.semantics().unwrap().ids.id(0).unwrap();
     interaction.accessibility(id, AccessibilityAction::Focus, PageTicket::new(1));
     assert_eq!(interaction.focus_origin(), FocusOrigin::Assistive);
 }
@@ -428,7 +432,7 @@ fn focus_the_page_moves_itself_keeps_the_last_origin_visible_after_keys_hidden_a
     // After an assistive action: visible, as after a key.
     let mut assisted = ViewInteraction::default();
     present(&mut assisted, page(), 1);
-    let id = assisted.semantics().unwrap().roots()[0];
+    let id = assisted.semantics().unwrap().ids.id(0).unwrap();
     assisted.accessibility(id, AccessibilityAction::Focus, PageTicket::new(1));
     assert_eq!(ring(&present(&mut assisted, with_dialog(), 2)), Some(2));
 }
@@ -442,4 +446,33 @@ fn a_node_with_a_focus_visible_style_paints_its_own_ring() {
     assert!(interaction.rings_itself(0) && !interaction.rings_itself(1));
     assert_eq!(interaction.styled_focus(0).as_deref(), Some("/a"));
     assert_eq!(interaction.styled_focus(1), None);
+}
+
+#[test]
+fn a_dragged_slider_stays_pressed_until_release() {
+    use crate::interaction::view::{Pointer, PointerPhase};
+    let mut volume = super::policy_tests::slider_node();
+    volume.pressed_style = true;
+    let mut interaction = ViewInteraction::default();
+    present(&mut interaction, vec![volume], 1);
+    let mut at = |phase, x| {
+        interaction
+            .pointer(
+                Pointer {
+                    phase,
+                    x,
+                    y: 44.0,
+                    slop: 8.0,
+                    velocity: [0.0; 2],
+                    min_fling: 50.0,
+                },
+                PageTicket::new(1),
+            )
+            .1
+    };
+    let down = at(PointerPhase::Down, 60.0);
+    assert!(down.iter().any(|e| matches!(e, Effect::Press { .. })));
+    let moved = at(PointerPhase::Move, 120.0);
+    assert!(!moved.contains(&Effect::ClearPress), "{moved:?}");
+    assert!(at(PointerPhase::Up, 120.0).contains(&Effect::ClearPress));
 }

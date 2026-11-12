@@ -91,7 +91,8 @@ impl ViewInteraction {
                 }
                 let scale = frame.scale;
                 if self.slider.moved(point, event.slop / scale) {
-                    effects.extend(self.cancel_press());
+                    // A dragged slider stays pressed, so `active:thumb:` holds until release.
+                    effects.push(Effect::CancelLongPress);
                     if let Some(node) = self.slider.gesture_node().cloned()
                         && let Some(value) = slider::value_at(&node, point[0])
                     {

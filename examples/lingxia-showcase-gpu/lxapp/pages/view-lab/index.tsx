@@ -589,6 +589,7 @@ const rows = Object.freeze(Array.from({ length: 40 }, (_, index) => Object.freez
 function Controls() {
   const size = useLocal('controls-size', 'm');
   const volume = useLocal('controls-volume', 40);
+  const scrub = useLocal('controls-scrub', 30);
   const notes = useLocal('controls-notes', '');
   const query = useLocal('controls-query', '');
   const picked = useLocal('controls-picked', '');
@@ -599,6 +600,9 @@ function Controls() {
         options={[{ value: 's', label: 'Small', 'data-testid': 'lab-controls-size-s' }, { value: 'm', label: 'Medium', 'data-testid': 'lab-controls-size-m' },
           { value: 'l', label: 'Large', 'data-testid': 'lab-controls-size-l' }, { value: 'xl', label: 'Extra large', disabled: true, 'data-testid': 'lab-controls-size-xl' }]} />
       <slider data-testid="lab-controls-volume" bind={volume} min={0} max={100} step={10} aria-label="Volume" className="text-accent" />
+      <slider data-testid="lab-controls-scrub" bind={scrub} max={180} secondaryValue={Math.min(180, scrub.value + 45)} aria-label="Scrub"
+        aria-valuetext={`${Math.floor(scrub.value / 60)}:${String(scrub.value % 60).padStart(2, '0')} of 3:00`}
+        className="text-accent px-0 track:h-[3px] active:track:h-[6px] thumb:size-0 active:thumb:size-4 focus-visible:thumb:size-4 focus-visible:thumb:ring-2 focus-visible:thumb:ring-accent/40" />
       <textarea data-testid="lab-controls-notes" bind={notes} rows={3} maxRows={6} aria-label="Notes" placeholder="Several lines" className={field} />
       <input type="search" data-testid="lab-controls-search" bind={query} aria-label="Filter rows" placeholder="Filter rows" className={field} />
       <List data-testid="lab-controls-list" className="h-48 rounded-lg border border-line"

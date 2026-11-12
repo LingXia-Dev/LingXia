@@ -344,6 +344,8 @@ public struct GpuFrameSlider: Decodable, Sendable {
     public let inset: [Float]
     public let enabled: Bool
     public let onChange: UInt64?
+    public let secondary: Double?
+    public let text: String?
 
     enum CodingKeys: String, CodingKey {
         case min = "min"
@@ -353,6 +355,8 @@ public struct GpuFrameSlider: Decodable, Sendable {
         case inset = "inset"
         case enabled = "enabled"
         case onChange = "on_change"
+        case secondary = "secondary"
+        case text = "text"
     }
 }
 

@@ -6,6 +6,7 @@ import { resetLonghands } from './lower.js';
 let byName = new Map();
 const cache = new Map();
 const states = ['focus', 'focusVisible', 'active', 'hover', 'disabled', 'starting', 'exit', 'hasChecked', 'hasDisabled', 'focusWithin', 'groupActive'];
+const parts = ['track', 'range', 'secondary', 'thumb'];
 const geometryKeys = { linear: ['direction', 'angle'], radial: ['shape', 'size', 'at'], conic: ['from', 'at'] };
 
 function copy(value) {
@@ -170,7 +171,7 @@ export function resolveClasses(className, env = {}) {
     indices.forEach((index, at) => { ordered[index] = group[at]; });
   }
   matched.splice(0, matched.length, ...ordered);
-  const own = matched.filter(rule => !rule.when?.children && !rule.when?.every);
+  const own = matched.filter(rule => !rule.when?.children && !rule.when?.every && !rule.when?.part);
   const plain = own.filter(rule => !rule.when?.state);
   const meta = {};
   const base = cascade(plain, meta);
@@ -180,6 +181,22 @@ export function resolveClasses(className, env = {}) {
     if (!extra.length || (state === 'hover' && env.pointer !== 'fine')) continue;
     const full = cascade([...plain, ...extra]);
     result[state] = state === 'disabled' ? full : changed(full, base);
+  }
+  // A slider part resolves on its own; a state carries the part whole, as that state draws it.
+  for (const part of parts) {
+    const rules = matched.filter(rule => rule.when?.part === part);
+    if (!rules.length) continue;
+    const key = `${part}Part`, plainPart = rules.filter(rule => !rule.when.state);
+    const rest = cascade(plainPart);
+    if (Object.keys(rest).length) base[key] = rest;
+    for (const state of ['focusVisible', 'active', 'hover', 'disabled']) {
+      const extra = rules.filter(rule => rule.when.state === state);
+      if (!extra.length || (state === 'hover' && env.pointer !== 'fine')) continue;
+      const full = cascade([...plainPart, ...extra]);
+      if (state === 'disabled') (result.disabled ??= { ...base })[key] = full;
+      else if (JSON.stringify(full) !== JSON.stringify(rest)) (result[state] ??= {})[key] = full;
+    }
+    if (result.disabled && !result.disabled[key] && base[key]) result.disabled[key] = base[key];
   }
   // `backdrop:` styles a dialog's backdrop on its own, not as a delta of the dialog.
   const backdrop = own.filter(rule => rule.when?.state === 'backdrop');

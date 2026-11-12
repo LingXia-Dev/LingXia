@@ -346,6 +346,10 @@ public final class GpuFrame {
         public boolean enabled() { return json.optBoolean("enabled"); }
         /** `on_change`: u64? */
         public Long onChange() { if (json.isNull("on_change")) return null; return json.optLong("on_change"); }
+        /** `secondary`: f64? */
+        public Double secondary() { if (json.isNull("secondary")) return null; return json.optDouble("secondary"); }
+        /** `text`: string? */
+        public String text() { return json.isNull("text") ? null : json.optString("text", null); }
     }
 
     public static final class Plot {

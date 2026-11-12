@@ -137,9 +137,14 @@ function roleColor(value) {
 }
 
 /** The Tailwind colour names for the roles: `text-muted` is `muted`, so the class reads `text-muted`. */
-// The View's own variant and utility: `exit:` styles a removed element's ghost; `transition-layout`
+// The View's own variants and utility: `exit:` styles a removed element's ghost; `track:`, `range:`,
+// `secondary:` and `thumb:` style a slider's parts; `transition-layout`
 // adds FLIP position motion to whatever `transition-*` sets; `ease-spring*` time a transition by a spring.
 export const viewExtensions = `@custom-variant exit (&:where(.lx-exit));
+@custom-variant track (&::-lx-track);
+@custom-variant range (&::-lx-range);
+@custom-variant secondary (&::-lx-secondary);
+@custom-variant thumb (&::-lx-thumb);
 @theme {
   --ease-spring: spring(0);
   --ease-spring-bouncy: spring(0.25);
@@ -877,6 +882,14 @@ function selectorParts(selector) {
   const name = unescape(match[1]), rest = match[2];
   if (!rest) return { name };
   if (rest === '::placeholder') return { name, placeholder: true };
+  // A slider part: `thumb:` alone or after one interaction state (`active:thumb:`).
+  const part = rest.match(/::-lx-(track|range|secondary|thumb)(.*)$/);
+  if (part) {
+    if (part[2]) return { name, error: `selector ${rest} (a state goes before the part: ${part[2].slice(1)}:${part[1]}:)` };
+    const state = rest.slice(0, part.index).match(/^(?::(focus-visible|active|hover|disabled))?$/);
+    if (!state) return { name, error: `selector ${rest} (a slider part takes one of active:, hover:, focus-visible: or disabled: before it)` };
+    return { name, part: part[1], ...(state[1] ? { state: state[1] === 'focus-visible' ? 'focusVisible' : state[1] } : {}) };
+  }
   if (rest === '::backdrop') return { name, state: 'backdrop' };
   let remaining = rest, structure, data, has;
   // `data-*` matches the element's own data-* props, resolved at render like a media query.
@@ -900,6 +913,20 @@ function selectorParts(selector) {
   const state = matched === 'focus-visible' ? 'focusVisible' : matched;
   if (!remaining || state) return { name, ...(state ? { state } : {}), ...extra };
   return { name, error: relatives(selector) ?? `selector ${rest}${alternative(rest)}` };
+}
+
+const radii = ['borderRadius', 'borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomRightRadius', 'borderBottomLeftRadius'];
+const lineKeys = new Set(['backgroundColor', 'height', ...radii]);
+const partKeys = {
+  track: lineKeys, range: lineKeys, secondary: lineKeys,
+  thumb: new Set(['backgroundColor', 'width', 'height', ...radii, 'borderWidth', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'borderColor']),
+};
+// A part takes the few properties its native drawing has; the thumb also takes shadows, rings and scale.
+function partProblem(part, result) {
+  if (result.motion) unsupported(`${part}: eases its own state changes over 150 ms; drop transition-*, duration-* and ease-*`);
+  const extra = Object.keys(result).filter(key => key !== 'style' && !(part === 'thumb' && (key === 'shadow' || key === 'transform')));
+  const stray = Object.keys(result.style).filter(key => !partKeys[part].has(key));
+  if (extra.length || stray.length) unsupported(`${part}: takes ${part === 'thumb' ? 'bg-*, size-*/w-*/h-*, rounded-*, border-*, shadow-*, ring-* and scale-*' : 'bg-*, h-* and rounded-*'}, not ${[...stray, ...extra].join(', ')}`);
 }
 
 // Utilities that lower to nothing drawn are refused, never compiled to a no-op.
@@ -972,7 +999,8 @@ export async function compileUtilities(candidates, theme = '', { literalColors: 
       if (starting && target.state) unsupported('starting: with another state variant');
       if (starting) target.state = 'starting';
       if (hoverMedia && target.state !== 'hover') unsupported('(hover: hover) outside a hover variant');
-      const when = { ...media, ...(target.state ? { state: target.state } : {}), ...(target.children ? { children: true } : {}), ...(target.every ? { every: true } : {}),
+      if (target.part && (starting || media.reducedMotion !== undefined)) unsupported(`${target.part}: with starting: or motion-*`);
+      const when = { ...media, ...(target.state ? { state: target.state } : {}), ...(target.part ? { part: target.part } : {}), ...(target.children ? { children: true } : {}), ...(target.every ? { every: true } : {}),
         ...(target.direction ? { direction: target.direction } : {}), ...(target.structure ? { structure: target.structure } : {}), ...(target.data ? { data: target.data } : {}) };
       const lower = vars => {
         const result = declarations(rule.nodes, vars, root);
@@ -981,6 +1009,7 @@ export async function compileUtilities(candidates, theme = '', { literalColors: 
         if (result.style.animation) result.style.animation.whenReduced = when.reducedMotion === undefined ? 'base' : 'keep';
         if (target.every && (Object.keys(result).some(key => key !== 'style') || !Object.keys(result.style).every(key => placement.has(key))))
           unsupported('*: places grid children only (col-start-*, col-end-*, col-span-*, row-start-*, row-end-*, row-span-*); put other classes on each child');
+        if (target.part) partProblem(target.part, result);
         if (!target.placeholder) return result;
         if (Object.keys(result).some(key => key !== 'style') || Object.keys(result.style).some(key => key !== 'color') || !result.style.color)
           unsupported('placeholder supports only color');

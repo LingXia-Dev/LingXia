@@ -252,6 +252,9 @@ function variants(schema, system, rules) {
   const wireTags = field => schema.fields.find(entry => entry.key === field).tags;
   const on = field => Object.entries(schema.elements).filter(([, element]) => wireTags(field).includes(element.wire)).map(([name]) => code(`<${shown(schema, name)}>`)).join(' ');
   const disableable = Object.entries(schema.elements).filter(([, element]) => element.props.disabled).map(([name]) => code(`<${name}>`)).join(' ');
+  const line = part => `\`<slider>\`; its ${part}: \`bg-*\`, \`h-*\`, \`rounded-*\`; after \`active:\` \`hover:\` \`focus-visible:\` or \`disabled:\`, eased over 150 ms`;
+  const parts = { track: line('track'), range: line('range, min to value'), secondary: line('secondary range, min to `secondaryValue`'),
+    thumb: '`<slider>`; its thumb: `bg-*`, `size-*`, `rounded-*`, `border-*`, `shadow-*`, `ring-*`, `scale-*`; after a state like the other parts' };
   const admission = {
     focus: `${on('focusStyle')}; paint only`, 'focus-visible': `${on('focusVisibleStyle')}; while focused from a key, switch or assistive tool (editors on any focus); paint only`, active: `${on('pressedStyle')}; paint only`,
     hover: 'any element, only when `env.pointer` is `fine`; paint only', disabled: `${disableable}; replaces the whole class cascade`,
@@ -262,12 +265,13 @@ function variants(schema, system, rules) {
     starting: 'any element; paint only, the values it enters from',
     has: 'any element, alone; `has-checked:`, `has-disabled:` (a descendant checkbox, switch, answered radio or disabled element) and `has-focus:`; paint only',
     'focus-within': 'any element; while it or a descendant has focus; paint only',
+    ...parts,
     data: 'any element; matches its own `data-*` prop (`data-active:`, `data-[state=open]:`), layout included', exit: 'any element; paint only, the values a removed element leaves toward',
   };
   const supported = [], refused = [];
   for (const [name, candidate] of candidates) {
     const sample = candidate.slice(0, -probe.length - 1);
-    const error = name === 'placeholder' ? result('placeholder:text-muted') : result(candidate);
+    const error = name === 'placeholder' ? result('placeholder:text-muted') : parts[name] ? result(`${name}:bg-accent`) : result(candidate);
     if (error) refused.push([code(`${name}:`), code(`${sample}:`), error === 'not generated'
       ? 'matches no rule; the build reports it as `UI_CLASS_UNKNOWN`' : error.replace(/^UI_[A-Z_]+: /, '')]);
     else supported.push([code(`${name}:`), admission[name] ?? 'any element']);
@@ -544,7 +548,7 @@ export async function docs(schema, generated) {
   const [system, { compileUtilities }] = await Promise.all([designSystem(), lowering(generated)]);
   // One lowering pass covers every utility and every variant probe.
   const names = system.getClassList().map(([name]) => name);
-  const rules = await compileUtilities(new Set([...names, ...variantCandidates(system).map(([, candidate]) => candidate), 'placeholder:text-muted']));
+  const rules = await compileUtilities(new Set([...names, ...variantCandidates(system).map(([, candidate]) => candidate), 'placeholder:text-muted', ...['track', 'range', 'secondary', 'thumb'].map(part => `${part}:bg-accent`)]));
   const base = 'docs/view/reference';
   return {
     [`${base}/elements.md`]: await elements(schema),

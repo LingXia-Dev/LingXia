@@ -350,7 +350,7 @@ fn rebinding_survives_only_callback_changes() {
     }
 }
 
-fn slider_node() -> NodeSnapshot {
+pub(super) fn slider_node() -> NodeSnapshot {
     let mut volume = node("volume", "slider", [10.0, 20.0, 200.0, 48.0]);
     volume.accessibility_label = Some("Volume".into());
     volume.range = Some(SliderSnapshot {
@@ -359,6 +359,8 @@ fn slider_node() -> NodeSnapshot {
         step: 3.0,
         value: 3.0,
         inset: [24.0; 2],
+        secondary: None,
+        text: None,
         enabled: true,
         on_change: Some(7),
     });

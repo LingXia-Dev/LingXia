@@ -472,6 +472,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       check.slider(props);
       for (const [key, name] of [['sliderValue', 'value'], ['sliderMin', 'min'], ['sliderMax', 'max'], ['sliderStep', 'step'], ['accessibilityLabel', 'accessibilityLabel']])
         wire(key, props[name]);
+      if (props.secondaryValue !== undefined) wire('sliderSecondary', check.sliderSecondary(props));
       if (props.onChange && !disabled) on('onSliderChange', value => {
         const next = check.sliderValue(props, value);
         if (next !== props.value) props.onChange(next);
@@ -685,9 +686,15 @@ function structure(sibling, flat) {
 }
 
 // A progressbar's amount: `aria-valuenow` within min (0) and max (100); without it, indeterminate.
-function progressValues(role, props, wire) {
+function progressValues(role, props, wire, tag) {
   const { ariaValueNow: now, ariaValueMin: min, ariaValueMax: max, ariaValueText: text } = props;
   if (now === undefined && min === undefined && max === undefined && text === undefined) return;
+  // A slider has its own value and range; it may only say how the value reads.
+  if (tag === 'slider' && now === undefined && min === undefined && max === undefined) {
+    if (typeof text !== 'string') throw Error('UI_PROP: aria-valuetext must be a string');
+    wire('ariaValueText', text);
+    return;
+  }
   if (role !== 'progressbar') throw Error('UI_PROP: aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar"');
   const number = (value, name) => {
     if (value !== undefined && (typeof value !== 'number' || !Number.isFinite(value))) throw Error(`UI_PROP: ${name} must be a finite number`);
@@ -717,7 +724,7 @@ function semantics(tag, props, wire) {
     // A <dialog> wires its own role.
     if (tag !== 'dialog') wire('role', role);
   }
-  progressValues(role, props, wire);
+  progressValues(role, props, wire, tag);
   if (headingLevel !== undefined) {
     if (role !== 'heading' || !Number.isInteger(headingLevel) || headingLevel < 1 || headingLevel > 6)
       throw Error('UI_PROP: headingLevel is an integer 1..6 on role="heading"');

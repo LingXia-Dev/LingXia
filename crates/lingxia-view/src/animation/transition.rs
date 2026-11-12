@@ -16,21 +16,24 @@ pub enum Property {
     Shadow,
     /// FLIP: the offset from where layout last put the node, animating to zero.
     Layout,
+    /// A slider's part sizes and colours, eased on a fixed curve whatever the node's transition.
+    Parts,
 }
 
 /// The paint properties; `Layout` is reconciled on its own.
-const PROPERTIES: [Property; 6] = [
+const PROPERTIES: [Property; 7] = [
     Property::Opacity,
     Property::Transform,
     Property::Background,
     Property::Foreground,
     Property::Border,
     Property::Shadow,
+    Property::Parts,
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TransitionDef {
-    properties: [bool; 7],
+    properties: [bool; 8],
     duration: Duration,
     delay: Duration,
     timing: Timing,
@@ -59,7 +62,7 @@ impl TransitionDef {
             return Err(invalid());
         }
         let wire: Wire = serde_json::from_str(source).map_err(|_| invalid())?;
-        let mut properties = [false; 7];
+        let mut properties = [false; 8];
         for name in &wire.properties {
             let index = [
                 "opacity",
@@ -103,6 +106,35 @@ impl TransitionDef {
 
     pub fn covers(&self, property: Property) -> bool {
         self.properties[property as usize]
+    }
+
+    /// Only slider parts: 150 ms on the standard ease, as Tailwind's default transition.
+    pub fn parts() -> Self {
+        let mut properties = [false; 8];
+        properties[Property::Parts as usize] = true;
+        Self {
+            properties,
+            duration: Duration::from_millis(150),
+            delay: Duration::ZERO,
+            timing: Timing::Ease(
+                Easing::cubic_bezier([0.4, 0.0, 0.2, 1.0]).expect("a valid curve"),
+            ),
+        }
+    }
+
+    /// This definition with slider parts eased as well.
+    pub fn with_parts(mut self) -> Self {
+        self.properties[Property::Parts as usize] = true;
+        self
+    }
+
+    /// The timing `property` runs on: parts keep their own fixed ease.
+    fn timing_for(&self, property: Property) -> Self {
+        if property == Property::Parts {
+            Self::parts()
+        } else {
+            *self
+        }
     }
 
     /// The spring a released drag takes: this duration, and the bounce of an `ease-spring*`.
@@ -211,6 +243,8 @@ pub struct Resolved {
     pub shadows: Option<Vec<ShadowLayer>>,
     /// Where layout put the box, before its own transform; `None` when it cannot take one.
     pub position: Option<[f64; 2]>,
+    /// A slider's part sizes and colours.
+    pub parts: Option<crate::scene::slider::PartValues>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -220,6 +254,7 @@ enum Value {
     Color([u8; 4]),
     Shadows(Vec<ShadowLayer>),
     Offset([f64; 2]),
+    Parts(crate::scene::slider::PartValues),
 }
 
 impl Resolved {
@@ -232,6 +267,7 @@ impl Resolved {
             Property::Border => self.border.map(Value::Color),
             Property::Shadow => self.shadows.clone().map(Value::Shadows),
             Property::Layout => None,
+            Property::Parts => self.parts.clone().map(Value::Parts),
         }
     }
 }
@@ -244,6 +280,7 @@ fn mix(from: &Value, to: &Value, t: f64) -> Value {
         (Value::Offset(a), Value::Offset(b)) => {
             Value::Offset([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t])
         }
+        (Value::Parts(a), Value::Parts(b)) => Value::Parts(a.mix(b, t)),
         (Value::Shadows(a), Value::Shadows(b)) => Value::Shadows(
             (0..a.len().max(b.len()))
                 .map(|i| {
@@ -619,6 +656,7 @@ pub struct Overrides {
     pub foreground: Option<[u8; 4]>,
     pub border: Option<[u8; 4]>,
     pub shadows: Option<Vec<ShadowLayer>>,
+    pub parts: Option<crate::scene::slider::PartValues>,
 }
 
 impl Overrides {
@@ -688,7 +726,13 @@ impl Transitions {
                             let velocity = ghost.and_then(|instance| instance.velocity(now));
                             instances.insert(
                                 property,
-                                Instance::new(&definition, policy, begin, end, velocity)?,
+                                Instance::new(
+                                    &definition.timing_for(property),
+                                    policy,
+                                    begin,
+                                    end,
+                                    velocity,
+                                )?,
                             );
                         }
                     }
@@ -723,7 +767,13 @@ impl Transitions {
                     };
                     instances.insert(
                         property,
-                        Instance::new(&definition, policy, from, after, velocity)?,
+                        Instance::new(
+                            &definition.timing_for(property),
+                            policy,
+                            from,
+                            after,
+                            velocity,
+                        )?,
                     );
                 }
                 if let Some(instance) = old
@@ -785,7 +835,13 @@ impl Transitions {
                     let velocity = running.and_then(|instance| instance.velocity(now));
                     instances.insert(
                         property,
-                        Instance::new(&old.definition, policy, begin, end, velocity)?,
+                        Instance::new(
+                            &old.definition.timing_for(property),
+                            policy,
+                            begin,
+                            end,
+                            velocity,
+                        )?,
                     );
                 }
             }
@@ -878,6 +934,7 @@ impl Transitions {
                 (Property::Border, Value::Color(v)) => overrides.border = Some(v),
                 (Property::Shadow, Value::Shadows(v)) => overrides.shadows = Some(v),
                 (Property::Layout, Value::Offset(v)) => offset = Some(v),
+                (Property::Parts, Value::Parts(v)) => overrides.parts = Some(v),
                 _ => return Err("UI_TRANSITION: mismatched value".into()),
             }
         }
@@ -962,6 +1019,7 @@ mod tests {
             border: None,
             shadows: Some(Vec::new()),
             position: Some([0.0; 2]),
+            parts: None,
         }
     }
 
