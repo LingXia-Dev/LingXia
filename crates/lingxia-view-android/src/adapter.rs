@@ -116,6 +116,8 @@ pub(super) struct AndroidAdapter {
     reconcile_us: AtomicU64,
     /// A dialog of the top layer is open: the page sits above the host's bars.
     modal: std::sync::atomic::AtomicBool,
+    /// The bar-snapshot generation the last presented frame draws; 0 when none.
+    chrome_snapshot: AtomicU64,
     orientation: Mutex<Option<lingxia_view::scene::video::Orientation>>,
     /// Display frames keep coming for a playing video's new frames.
     ticking: Arc<AtomicBool>,
@@ -177,6 +179,7 @@ impl AndroidAdapter {
             raster: OnceLock::new(),
             reconcile_us: AtomicU64::new(0),
             modal: Default::default(),
+            chrome_snapshot: AtomicU64::new(0),
             orientation: Default::default(),
             ticking: Default::default(),
         }
@@ -791,6 +794,20 @@ impl HostEvents for AndroidAdapter {
         let modal = frame.metrics.top_layer_open;
         if self.modal.swap(modal, Ordering::Relaxed) != modal {
             self.flag(jni_str!("topLayer"), modal);
+        }
+        // The host hides a bar only once a frame on screen draws its snapshot.
+        let chrome = frame.metrics.chrome_snapshot;
+        if self.chrome_snapshot.swap(chrome, Ordering::Relaxed) != chrome {
+            let generation = i64::try_from(chrome).unwrap_or(i64::MAX);
+            self.java(|env, platform| {
+                env.call_method(
+                    platform,
+                    jni_str!("chromeSnapshot"),
+                    jni_sig!("(J)V"),
+                    &[JValue::Long(generation)],
+                )?;
+                Ok(())
+            });
         }
         let orientation = frame.metrics.video_orientation;
         let changed = {

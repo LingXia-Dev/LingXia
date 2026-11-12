@@ -337,6 +337,7 @@ class LxAppActivity : AppCompatActivity() {
             field = value
             (value as? GpuPage)?.setChromeListener(gpuChromeListener)
             (value as? GpuPage)?.setTopLayerListener(gpuTopLayerListener)
+            (value as? GpuPage)?.setChromeSnapshotListener(gpuChromeSnapshotListener)
             applyGpuChrome((value as? GpuPage)?.chrome)
             applyGpuTopLayer((value as? GpuPage)?.hasTopLayer() == true)
         }
@@ -348,11 +349,107 @@ class LxAppActivity : AppCompatActivity() {
     /** An open dialog of the GPU page on screen lifts the pages above the bars, which then take no touches. */
     private fun applyGpuTopLayer(modal: Boolean) {
         if (!::webViewContainer.isInitialized) return
-        webViewContainer.translationZ = if (modal) TOP_LAYER_Z else 0f
         // Under the dialog the bars are out of reach for assistive tech too.
         val hidden = if (modal) View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS else View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
         navigationBar?.importantForAccessibility = hidden
         tabBar?.importantForAccessibility = hidden
+        cancelGpuRaise()
+        if (modal) {
+            topLayerOpen = true
+            barSnapshots.clear()
+            // The page comes over the bars once a frame draws them under its dialog, so no frame
+            // shows neither; a page that never does is raised anyway.
+            if (captureGpuBars()) scheduleGpuRaise() else raiseGpuPage(true)
+        } else {
+            if (barSnapshots.isNotEmpty()) (currentWebView as? GpuPage)?.declineChromeSnapshot()
+            barSnapshots.clear()
+            topLayerOpen = false
+            raiseGpuPage(false)
+        }
+    }
+
+    private val gpuChromeSnapshotListener = java.util.function.BiConsumer<GpuPage, Long> { page, generation ->
+        if (page === currentWebView) gpuChromeSnapshot(generation)
+    }
+    private var topLayerOpen = false
+    /** The generation of the bar snapshot handed to the page, by edge. */
+    private val barSnapshots = mutableMapOf<Int, Long>()
+    /** Raises the page when no frame shows its bar snapshots in time. */
+    private var gpuRaise: Runnable? = null
+
+    private fun raiseGpuPage(up: Boolean) {
+        webViewContainer.translationZ = if (up) TOP_LAYER_Z else 0f
+    }
+
+    private fun scheduleGpuRaise() {
+        cancelGpuRaise()
+        val raise = Runnable {
+            gpuRaise = null
+            if (topLayerOpen) raiseGpuPage(true)
+        }
+        gpuRaise = raise
+        webViewContainer.postDelayed(raise, 250)
+    }
+
+    private fun cancelGpuRaise() {
+        gpuRaise?.let { webViewContainer.removeCallbacks(it) }
+        gpuRaise = null
+    }
+
+    /** A frame on screen draws the bar snapshots up to `generation`; 0 when it draws none. */
+    private fun gpuChromeSnapshot(generation: Long) {
+        if (!topLayerOpen || barSnapshots.isEmpty()) return
+        if (generation == 0L) {
+            // The page dropped them (its surface changed): the real bars show until it has new ones.
+            barSnapshots.clear()
+            cancelGpuRaise()
+            raiseGpuPage(false)
+            recaptureGpuBars()
+        } else if (generation >= (barSnapshots.values.maxOrNull() ?: Long.MAX_VALUE)) {
+            cancelGpuRaise()
+            raiseGpuPage(true)
+        }
+    }
+
+    /** A bar under the dialog changed: hand the page a fresh copy once the change has drawn. */
+    private fun recaptureGpuBars() {
+        if (!topLayerOpen || !::webViewContainer.isInitialized) return
+        webViewContainer.post {
+            if (topLayerOpen && captureGpuBars() && webViewContainer.translationZ == 0f && gpuRaise == null) {
+                scheduleGpuRaise()
+            }
+        }
+    }
+
+    /** Copies each bar on an edge of the page into it, to draw under its top layer. */
+    private fun captureGpuBars(): Boolean {
+        val page = currentWebView as? GpuPage ?: return false
+        if (page.width <= 0 || page.height <= 0) return false
+        val pageAt = IntArray(2).also { page.getLocationInWindow(it) }
+        var handed = false
+        for (bar in listOfNotNull<View>(navigationBar, tabBar)) {
+            if (!bar.isShown || bar.alpha <= 0.01f || bar.width <= 0 || bar.height <= 0) continue
+            val at = IntArray(2).also { bar.getLocationInWindow(it) }
+            val x = at[0] - pageAt[0]
+            val y = at[1] - pageAt[1]
+            val rect = android.graphics.Rect(x, y, x + bar.width, y + bar.height)
+            if (!rect.intersect(0, 0, page.width, page.height)) continue
+            if (rect.width() < page.width / 2 || rect.height() >= page.height / 2) continue
+            val edge = when {
+                rect.top <= 0 -> com.lingxia.view.GpuView.EDGE_TOP
+                rect.bottom >= page.height -> com.lingxia.view.GpuView.EDGE_BOTTOM
+                else -> continue
+            }
+            val bitmap = android.graphics.Bitmap.createBitmap(bar.width, bar.height, android.graphics.Bitmap.Config.ARGB_8888)
+            bar.draw(android.graphics.Canvas(bitmap))
+            val generation = page.chromeSnapshot(edge, bitmap, x.toFloat(), y.toFloat())
+            bitmap.recycle()
+            if (generation > 0) {
+                barSnapshots[edge] = generation
+                handed = true
+            }
+        }
+        return handed
     }
 
     /** The host chrome of the GPU page on screen; null on WebView pages, which keep their config. */
@@ -367,6 +464,8 @@ class LxAppActivity : AppCompatActivity() {
         gpuChrome = chrome
         tabBar?.setTheme(chrome?.let { TabBar.Theme(it.bar, it.contentMuted, it.accent, it.barLine) })
         navigationBar?.setTheme(chrome?.let { it.bar to it.content })
+        // The bars take the page's colours: the snapshots under a dialog follow.
+        recaptureGpuBars()
         if (::rootContainer.isInitialized) applyCanvasBackground()
         if (chrome != null) {
             syncNavigationBarToTabBar(tabBar?.visibility == View.VISIBLE)

@@ -3,7 +3,7 @@
 //! Java owns the host handle from `nativeHostCreate` to `nativeHostRelease` and
 //! calls every native on the main thread.
 use jni::errors::ThrowRuntimeExAndDefault;
-use jni::objects::{JCharArray, JClass, JObject, JString};
+use jni::objects::{JByteBuffer, JCharArray, JClass, JObject, JString};
 use jni::sys::{jboolean, jdouble, jfloat, jint, jlong};
 use jni::{Env, EnvUnowned, JValue, jni_sig, jni_str};
 use lingxia_view::interaction::view::{AccessibilityAction, Key, Pointer, PointerPhase};
@@ -152,6 +152,16 @@ pub fn register_natives(env: &mut Env, class: &JClass) -> jni::errors::Result<()
         method!("nativeWindowFocus", "(JZ)V", window_focus),
         method!("nativeReveal", "(JZ)V", reveal),
         method!("nativeTransition", "(JIF)V", transition),
+        method!(
+            "nativeChromeSnapshot",
+            "(JILjava/nio/ByteBuffer;IIFFFF)J",
+            chrome_snapshot
+        ),
+        method!(
+            "nativeDeclineChromeSnapshot",
+            "(J)V",
+            decline_chrome_snapshot
+        ),
         method!("nativeTextMenuAction", "(JI)Z", text_menu_action),
         method!("nativeTextMenuDismissed", "(J)V", text_menu_dismissed),
         method!("nativeTextHandleDrag", "(JZ)V", text_handle_drag),
@@ -553,6 +563,57 @@ extern "system" fn reveal<'a>(
 }
 
 /// `kind`: 0 a push starts, 1 a pop starts, 2 a displayed frame at `x`, 3 the slide ended.
+/// A host bar's premultiplied RGBA8 rows (top row first, a direct buffer) to draw under the open
+/// top layer at `x, y, w, h` in surface pixels; `edge` 0 top, 1 bottom. Returns the generation a
+/// presented frame reports once it shows the bar, or 0 when the rows do not match the size.
+#[allow(clippy::too_many_arguments)]
+extern "system" fn chrome_snapshot<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    edge: jint,
+    rows: JObject<'a>,
+    width: jint,
+    height: jint,
+    x: jfloat,
+    y: jfloat,
+    w: jfloat,
+    h: jfloat,
+) -> jlong {
+    run(&mut env, |env| {
+        let (Ok(width), Ok(height)) = (u32::try_from(width), u32::try_from(height)) else {
+            return Ok(0);
+        };
+        let rows = env.cast_local::<JByteBuffer>(rows)?;
+        let length = env.get_direct_buffer_capacity(&rows)?;
+        let address = env.get_direct_buffer_address(&rows)?;
+        if address.is_null() || length as u64 != u64::from(width) * u64::from(height) * 4 {
+            return Ok(0);
+        }
+        // SAFETY: Java keeps the direct buffer alive and unchanged for this call.
+        let rgba = unsafe { std::slice::from_raw_parts(address as *const u8, length) }.to_vec();
+        let edge = if edge == 0 {
+            lingxia_view::ChromeEdge::Top
+        } else {
+            lingxia_view::ChromeEdge::Bottom
+        };
+        let generation = host(handle)?.set_chrome_snapshot(edge, rgba, width, height, [x, y, w, h]);
+        Ok(i64::try_from(generation).unwrap_or(i64::MAX))
+    })
+}
+
+/// The bars show again before the top layer closed: the page drops their snapshots.
+extern "system" fn decline_chrome_snapshot<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+) {
+    run(&mut env, |_| {
+        host(handle)?.decline_chrome_snapshot();
+        Ok(())
+    })
+}
+
 extern "system" fn transition<'a>(
     mut env: EnvUnowned<'a>,
     _: JClass<'a>,

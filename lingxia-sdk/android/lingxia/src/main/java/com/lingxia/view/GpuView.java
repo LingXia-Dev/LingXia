@@ -43,6 +43,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     static native void nativeSetVisible(long host, boolean visible);
     static native void nativeReveal(long host, boolean surfaceHoldsFrame);
     static native void nativeTransition(long host, int kind, float x);
+    static native long nativeChromeSnapshot(long host, int edge, java.nio.ByteBuffer rows, int width, int height, float x, float y, float w, float h);
+    static native void nativeDeclineChromeSnapshot(long host);
     static native void nativeSwapModule(long host, String source);
     static native boolean nativeTextMenuAction(long host, int action);
     static native void nativeTextMenuDismissed(long host);
@@ -118,6 +120,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         default void onChrome(Chrome chrome) { }
         /** A top-layer dialog opened or closed; the host lifts the page above its bars meanwhile. */
         default void onTopLayer(boolean modal) { }
+        /** A frame on screen draws the bar snapshots up to {@code generation}; 0 when none. */
+        default void onChromeSnapshot(long generation) { }
     }
 
     /** Host chrome colours (ARGB) the core resolves from this page's palette. */
@@ -154,6 +158,24 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     /** The host's push or pop slide of this page: start, each displayed frame at {@code x} px, end. */
     public void transition(int kind, float x) {
         if (host != 0 && !destroyed) nativeTransition(host, kind, x);
+    }
+
+    public static final int EDGE_TOP = 0, EDGE_BOTTOM = 1;
+    /**
+     * While the top layer is open, draw {@code bar} under it at {@code x, y} (surface pixels) on
+     * {@code edge}. Returns the generation {@link Listener#onChromeSnapshot} reports once a frame
+     * shows it, or 0 when the page took none.
+     */
+    public long chromeSnapshot(int edge, Bitmap bar, float x, float y) {
+        if (host == 0 || destroyed || bar.getConfig() != Bitmap.Config.ARGB_8888) return 0;
+        // ARGB_8888 is premultiplied RGBA bytes in memory, top row first.
+        java.nio.ByteBuffer rows = java.nio.ByteBuffer.allocateDirect(bar.getByteCount());
+        bar.copyPixelsToBuffer(rows);
+        return nativeChromeSnapshot(host, edge, rows, bar.getWidth(), bar.getHeight(), x, y, bar.getWidth(), bar.getHeight());
+    }
+    /** The host shows its bars again before the top layer closed. */
+    public void declineChromeSnapshot() {
+        if (host != 0 && !destroyed) nativeDeclineChromeSnapshot(host);
     }
 
     public static boolean closeRequest(android.app.Activity activity) {
@@ -946,6 +968,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         @Override public void clicked() { onMain(() -> { surface.performClick(); }); }
         @Override public void haptic() { onMain(() -> { surface.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS); }); }
         @Override public void topLayer(boolean modal) { onMain(() -> { listener.onTopLayer(modal); }); }
+        @Override public void chromeSnapshot(long generation) { onMain(() -> { if (!destroyed) listener.onChromeSnapshot(generation); }); }
         @Override public int editText(int index, String text, int start, int end) {
             JSONObject node = surface.node(index);
             if (node == null || !hasFrame()) return GpuIme.EDIT_FAILED;

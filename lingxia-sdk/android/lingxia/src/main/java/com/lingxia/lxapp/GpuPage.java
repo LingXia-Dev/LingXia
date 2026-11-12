@@ -50,6 +50,9 @@ public final class GpuPage extends FrameLayout {
                     topLayer = modal;
                     if (topLayerListener != null) topLayerListener.accept(GpuPage.this, modal);
                 }
+                public void onChromeSnapshot(long generation) {
+                    if (chromeSnapshotListener != null) chromeSnapshotListener.accept(GpuPage.this, generation);
+                }
                 public void onError(Throwable error) {
                     if (!reported) { reported = true; created(token, null, error.toString()); }
                     // Through the host log pipeline, so `lxdev logs` shows why the page refused to present.
@@ -71,6 +74,12 @@ public final class GpuPage extends FrameLayout {
     /** Whoever shows this page lifts it above its bars while a dialog is open. */
     public void setTopLayerListener(java.util.function.BiConsumer<GpuPage, Boolean> listener) { topLayerListener = listener; }
     public boolean hasTopLayer() { return topLayer; }
+    private java.util.function.BiConsumer<GpuPage, Long> chromeSnapshotListener;
+    /** Whoever shows this page hears which bar snapshots a frame on screen draws. */
+    public void setChromeSnapshotListener(java.util.function.BiConsumer<GpuPage, Long> listener) { chromeSnapshotListener = listener; }
+    /** Hand the page a bar to draw under its open top layer; see {@link GpuView#chromeSnapshot}. */
+    public long chromeSnapshot(int edge, android.graphics.Bitmap bar, float x, float y) { return content.chromeSnapshot(edge, bar, x, y); }
+    public void declineChromeSnapshot() { content.declineChromeSnapshot(); }
     /** Whoever shows this page applies its chrome; it may arrive before the page is current. */
     public void setChromeListener(java.util.function.BiConsumer<GpuPage, GpuView.Chrome> listener) { chromeListener = listener; }
     /** The chrome this page last asked for, or null before its first frame. */

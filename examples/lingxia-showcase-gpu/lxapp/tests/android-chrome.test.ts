@@ -80,11 +80,22 @@ spec('a page dialog dims the nav and tab bars as it dims the page on Android', {
 }, async (t) => {
   const view = t.app.view;
   const device = androidDevice(t);
+  // The dimming is measured on lit bars: a phone in dark mode runs the page light for the check.
+  const previous = await t.app.logic.eval(({ lx }) => lx.host.control?.appearance.getPreference() ?? null);
+  if (previous !== null && previous !== 'light') {
+    await t.app.logic.eval(async ({ lx }) => { await lx.host.control!.appearance.setPreference('light'); });
+    t.defer(async () => {
+      await t.app.logic.eval(async ({ lx }, previous) => { await lx.host.control!.appearance.setPreference(previous); }, previous);
+    });
+  }
   await view.testId('lab-tab-feedback').click();
-  const { title, tab, width } = await bars(device);
-  const nav: [number, number] = [Math.round(width * 0.1), centre(title)[1]];
-  const bar: [number, number] = [Math.round(width * 0.02), centre(tab)[1]];
-  const page: [number, number] = [Math.round(width * 0.9), Math.round(centre(title)[1] + (centre(tab)[1] - centre(title)[1]) * 0.8)];
+  const { title, tab, surface } = await bars(device);
+  // Points across the page's own view: in landscape a cutout keeps the window off the screen's edge.
+  const [left, , right] = surface.bounds;
+  const across = (f: number) => Math.round(left + (right - left) * f);
+  const nav: [number, number] = [across(0.1), centre(title)[1]];
+  const bar: [number, number] = [across(0.02), centre(tab)[1]];
+  const page: [number, number] = [across(0.9), Math.round(centre(title)[1] + (centre(tab)[1] - centre(title)[1]) * 0.8)];
   // A glyph pixel of each label: the point on its centre row farthest from its bar's background.
   const row = ({ bounds: [l, , r] }: AndroidNode, y: number) =>
     Array.from({ length: 16 }, (_, i) => [Math.round(l + (r - l) * (i + 0.5) / 16), y] as [number, number]);
