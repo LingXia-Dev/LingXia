@@ -30,10 +30,10 @@ export const doc: ComponentDoc = {
     ],
     keyboard: [],
     contrast: [
-      { what: 'box boundary, unchecked', pair: ['line-strong', 'surface'], minimum: '3:1', proven: true },
-      { what: 'box fill, checked', pair: ['accent', 'surface'], minimum: '3:1', proven: true },
-      { what: 'check mark', pair: ['on-accent', 'accent'], minimum: '3:1', proven: true },
-      { what: 'label', pair: ['text', 'surface'], minimum: '4.5:1', proven: true },
+      { what: 'box boundary, unchecked', pair: ['line-strong', 'surface'], minimum: '3:1' },
+      { what: 'box fill, checked', pair: ['accent', 'surface'], minimum: '3:1' },
+      { what: 'check mark', pair: ['on-accent', 'accent'], minimum: '3:1' },
+      { what: 'label', pair: ['text', 'surface'], minimum: '4.5:1' },
     ],
     notes: [
       'The help text sits inside the control so a tap on it toggles, but it is read as the description, not the name.',

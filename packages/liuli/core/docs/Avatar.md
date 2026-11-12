@@ -119,9 +119,11 @@ export function WithName() {
 - Read as the person's name. Set `isDecorative` when the name is already written beside it.
 - The group is read by its label, then each name; the count by the app's own words.
 
-| Contrast | Pair | Minimum | Proven by the theme pack |
-| --- | --- | --- | --- |
-| initials | `on-accent-soft` on `accent-soft` | 4.5:1 | yes |
+| Contrast | Pair | Minimum | Light | Dark |
+| --- | --- | --- | --- | --- |
+| initials | `on-accent-soft` on `accent-soft` | 4.5:1 | needs the resolved palette | needs the resolved palette |
+
+Ratios are computed from crates/lingxia-theme/packs/default.json and rounded down.
 
 ## Guidance
 

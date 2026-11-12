@@ -78,11 +78,13 @@ export function InList() {
 - On and off differ in the thumb's side as well as the track colour, never in colour alone.
 - The standalone switch is 32 px tall; the row variant gives it a 48 px row.
 
-| Contrast | Pair | Minimum | Proven by the theme pack |
-| --- | --- | --- | --- |
-| track, on | `accent` on `surface` | 3:1 | yes |
-| track, off | `line-strong` on `surface` | 3:1 | yes |
-| label | `text` on `surface` | 4.5:1 | yes |
+| Contrast | Pair | Minimum | Light | Dark |
+| --- | --- | --- | --- | --- |
+| track, on | `accent` on `surface` | 3:1 | needs the resolved palette | needs the resolved palette |
+| track, off | `line-strong` on `surface` | 3:1 | 3.66:1 | 3.69:1 |
+| label | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
+
+Ratios are computed from crates/lingxia-theme/packs/default.json and rounded down.
 
 ## Guidance
 

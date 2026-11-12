@@ -30,9 +30,9 @@ export const doc: ComponentDoc = {
     ],
     target: { sm: 32, md: 40, lg: 48 },
     contrast: [
-      { what: 'box boundary', pair: ['line-strong', 'surface'], minimum: '3:1', proven: true },
-      { what: 'chosen label', pair: ['text', 'surface'], minimum: '4.5:1', proven: true },
-      { what: 'placeholder', pair: ['muted', 'surface'], minimum: '4.5:1', proven: true },
+      { what: 'box boundary', pair: ['line-strong', 'surface'], minimum: '3:1' },
+      { what: 'chosen label', pair: ['text', 'surface'], minimum: '4.5:1' },
+      { what: 'placeholder', pair: ['text-muted', 'surface'], minimum: '4.5:1' },
     ],
     notes: [
       'The placeholder is never the name: the label is, and it stays when the label is hidden.',

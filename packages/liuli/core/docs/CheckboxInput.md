@@ -105,12 +105,14 @@ export function Sizes() {
 - The status message sits outside the control in a polite live region and is also read as the description.
 - The box is 16 to 24 px, but the press target is the whole row, label and help text included.
 
-| Contrast | Pair | Minimum | Proven by the theme pack |
-| --- | --- | --- | --- |
-| box boundary, unchecked | `line-strong` on `surface` | 3:1 | yes |
-| box fill, checked | `accent` on `surface` | 3:1 | yes |
-| check mark | `on-accent` on `accent` | 3:1 | yes |
-| label | `text` on `surface` | 4.5:1 | yes |
+| Contrast | Pair | Minimum | Light | Dark |
+| --- | --- | --- | --- | --- |
+| box boundary, unchecked | `line-strong` on `surface` | 3:1 | 3.66:1 | 3.69:1 |
+| box fill, checked | `accent` on `surface` | 3:1 | needs the resolved palette | needs the resolved palette |
+| check mark | `on-accent` on `accent` | 3:1 | needs the resolved palette | needs the resolved palette |
+| label | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
+
+Ratios are computed from crates/lingxia-theme/packs/default.json and rounded down.
 
 ## Guidance
 

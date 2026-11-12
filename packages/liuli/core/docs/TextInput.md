@@ -130,12 +130,14 @@ export function Disabled() {
 - The clear button is a separate control named by `clearLabel`.
 - Sizes sm (32) and md (40) are below the 44 pt touch minimum; on touch layouts prefer lg until hit slop lets the press area extend past the paint.
 
-| Contrast | Pair | Minimum | Proven by the theme pack |
-| --- | --- | --- | --- |
-| text | `text` on `surface` | 4.5:1 | yes |
-| placeholder | `text-muted` on `surface` | 4.5:1 | yes |
-| box boundary | `line-strong` on `surface` | 3:1 | yes |
-| focus boundary | `focus` on `surface` | 3:1 | yes |
+| Contrast | Pair | Minimum | Light | Dark |
+| --- | --- | --- | --- | --- |
+| text | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
+| placeholder | `text-muted` on `surface` | 4.5:1 | 5.89:1 | 6.64:1 |
+| box boundary | `line-strong` on `surface` | 3:1 | 3.66:1 | 3.69:1 |
+| focus boundary | `focus` on `surface` | 3:1 | needs the resolved palette | needs the resolved palette |
+
+Ratios are computed from crates/lingxia-theme/packs/default.json and rounded down.
 
 ## Guidance
 

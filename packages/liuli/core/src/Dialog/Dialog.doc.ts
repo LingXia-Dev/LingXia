@@ -26,8 +26,8 @@ export const doc: ComponentDoc = {
     states: [{ state: 'modal', from: 'isOpen; announced as an alert dialog with isAlert' }],
     keyboard: [{ keys: 'Escape', effect: 'onOpenChange(false), unless dismissOn is none' }],
     contrast: [
-      { what: 'title', pair: ['text', 'surface-raised'], minimum: '4.5:1', proven: true },
-      { what: 'description', pair: ['text-muted', 'surface-raised'], minimum: '4.5:1', proven: false },
+      { what: 'title', pair: ['text', 'surface-raised'], minimum: '4.5:1' },
+      { what: 'description', pair: ['text-muted', 'surface-raised'], minimum: '4.5:1' },
     ],
     notes: [
       'Opened from a hardware keyboard, focus moves to the first control and returns to the opener on close; opened by touch, focus stays put.',
@@ -56,11 +56,6 @@ export const doc: ComponentDoc = {
       missing: 'A theme-wide motion token for the enter and exit timing.',
       needs: 'duration and easing tokens in the theme pack',
       today: 'duration-200 ease-out in the recipe.',
-    },
-    {
-      missing: 'Muted description text proven against the raised surface.',
-      needs: 'a text-muted on surface-raised contrast pair in the theme pack',
-      today: 'The pair is not checked by the build.',
     },
   ],
   related: ['Button', 'DropdownMenu'],

@@ -29,10 +29,10 @@ export const doc: ComponentDoc = {
     keyboard: [{ keys: 'the keyboard action key, Enter', effect: 'runs onSubmit' }],
     target: { sm: 32, md: 40, lg: 48 },
     contrast: [
-      { what: 'text', pair: ['text', 'surface'], minimum: '4.5:1', proven: true },
-      { what: 'placeholder', pair: ['text-muted', 'surface'], minimum: '4.5:1', proven: true },
-      { what: 'box boundary', pair: ['line-strong', 'surface'], minimum: '3:1', proven: true },
-      { what: 'focus boundary', pair: ['focus', 'surface'], minimum: '3:1', proven: true },
+      { what: 'text', pair: ['text', 'surface'], minimum: '4.5:1' },
+      { what: 'placeholder', pair: ['text-muted', 'surface'], minimum: '4.5:1' },
+      { what: 'box boundary', pair: ['line-strong', 'surface'], minimum: '3:1' },
+      { what: 'focus boundary', pair: ['focus', 'surface'], minimum: '3:1' },
     ],
     notes: [
       'The clear button is a separate control named by `clearLabel`.',

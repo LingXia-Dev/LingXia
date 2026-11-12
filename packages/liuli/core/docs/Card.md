@@ -132,9 +132,11 @@ export function Choice() {
 - ClickableCard is read as its `label` only, so the label summarises what the card shows.
 - Selection is a thicker accent border as well as a colour, so it does not rest on colour alone.
 
-| Contrast | Pair | Minimum | Proven by the theme pack |
-| --- | --- | --- | --- |
-| selected border | `accent` on `surface` | 3:1 | yes |
+| Contrast | Pair | Minimum | Light | Dark |
+| --- | --- | --- | --- | --- |
+| selected border | `accent` on `surface` | 3:1 | needs the resolved palette | needs the resolved palette |
+
+Ratios are computed from crates/lingxia-theme/packs/default.json and rounded down.
 
 ## Guidance
 

@@ -5,6 +5,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { transform } from 'esbuild';
 import ts from 'typescript';
+import { appearances, format, needed, palette, ratio } from './contrast.mjs';
 
 const core = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const src = join(core, 'src');
@@ -14,6 +15,7 @@ const generated = 'Generated from the doc file by scripts/generate.mjs; do not e
 
 const names = readdirSync(src).filter(name => /^[A-Z]/.test(name) && statSync(join(src, name)).isDirectory()).sort();
 const problems = [];
+const theme = await palette();
 
 async function loadDoc(name) {
   const file = join(src, name, `${name}.doc.ts`);
@@ -132,8 +134,17 @@ function reference(doc, entry) {
   for (const key of a.keyboard) lines.push(`- ${key.keys[0].toUpperCase()}${key.keys.slice(1)}: ${key.effect}.`);
   if (a.target) lines.push(`- Press target: ${Object.entries(a.target).map(([size, px]) => `${size} ${px} px`).join(', ')}.`);
   for (const note of a.notes ?? []) lines.push(`- ${note}`);
-  lines.push('', '| Contrast | Pair | Minimum | Proven by the theme pack |', '| --- | --- | --- | --- |');
-  for (const pair of a.contrast) lines.push(`| ${pair.what} | \`${pair.pair[0]}\` on \`${pair.pair[1]}\` | ${pair.minimum} | ${pair.proven ? 'yes' : 'no'} |`);
+  lines.push('', '| Contrast | Pair | Minimum | Light | Dark |', '| --- | --- | --- | --- | --- |');
+  for (const pair of a.contrast) {
+    const cells = appearances.map(appearance => {
+      const result = ratio(theme.roles[appearance], pair);
+      if (result.missing) return 'needs the resolved palette';
+      return result.value >= needed(pair) ? format(result.value) : `${format(result.value)}, below`;
+    });
+    const roles = `\`${pair.pair[0]}\` on \`${pair.pair[1]}\`${pair.over ? ` over \`${pair.over}\`` : ''}`;
+    lines.push(`| ${pair.what} | ${roles} | ${pair.minimum} | ${cells.join(' | ')} |`);
+  }
+  lines.push('', `Ratios are computed from ${theme.source} and rounded down.`);
   lines.push('', '## Guidance', '', ...doc.guidance.do.map(item => `- Do: ${item}`), ...doc.guidance.dont.map(item => `- Don't: ${item}`));
   if (doc.gaps.length) {
     lines.push('', '## Not yet', '', '| Missing | Needs | Meanwhile |', '| --- | --- | --- |');

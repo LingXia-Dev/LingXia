@@ -24,7 +24,7 @@ export const doc: ComponentDoc = {
     description: [],
     states: [],
     keyboard: [],
-    contrast: [{ what: 'initials', pair: ['on-accent-soft', 'accent-soft'], minimum: '4.5:1', proven: true }],
+    contrast: [{ what: 'initials', pair: ['on-accent-soft', 'accent-soft'], minimum: '4.5:1' }],
     notes: [
       'Read as the person\'s name. Set `isDecorative` when the name is already written beside it.',
       'The group is read by its label, then each name; the count by the app\'s own words.',

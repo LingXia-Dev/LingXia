@@ -129,14 +129,17 @@ export function DisabledWithReason() {
 - Disabled, every variant turns to a faint ink fill with muted text, so the label stays readable in both themes.
 - Sizes sm (32) and md (40) are below the 44 pt touch minimum; on touch layouts prefer lg until hit slop lets the press area extend past the paint.
 
-| Contrast | Pair | Minimum | Proven by the theme pack |
-| --- | --- | --- | --- |
-| primary label | `on-accent` on `accent` | 4.5:1 | yes |
-| destructive label | `on-danger` on `danger` | 4.5:1 | yes |
-| secondary label | `text` on `surface` | 4.5:1 | yes |
-| secondary boundary | `line-strong` on `surface` | 3:1 | yes |
-| link label | `accent` on `canvas` | 4.5:1 | no |
-| disabled label on its 6% ink fill | `text-muted` on `canvas` | 4.5:1 | yes |
+| Contrast | Pair | Minimum | Light | Dark |
+| --- | --- | --- | --- | --- |
+| primary label | `on-accent` on `accent` | 4.5:1 | needs the resolved palette | needs the resolved palette |
+| destructive label | `on-danger` on `danger` | 4.5:1 | 5.21:1 | 6.29:1 |
+| secondary label | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
+| secondary boundary | `line-strong` on `surface` | 3:1 | 3.66:1 | 3.69:1 |
+| link label | `accent` on `canvas` | 4.5:1 | needs the resolved palette | needs the resolved palette |
+| disabled label on its 6% ink fill, on the page | `text-muted` on `text/6` over `canvas` | 4.5:1 | 4.90:1 | 6.45:1 |
+| disabled label on its 6% ink fill, on a card | `text-muted` on `text/6` over `surface` | 4.5:1 | 5.24:1 | 5.72:1 |
+
+Ratios are computed from crates/lingxia-theme/packs/default.json and rounded down.
 
 ## Guidance
 

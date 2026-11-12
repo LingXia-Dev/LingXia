@@ -24,7 +24,7 @@ export const doc: ComponentDoc = {
     states: [{ state: 'expanded', from: 'isOpen, isDefaultOpen, or the group\'s open row' }],
     keyboard: [{ keys: 'Enter, Space', effect: 'Opens or closes the row.' }],
     target: { lg: 48 },
-    contrast: [{ what: 'summary text', pair: ['text', 'surface'], minimum: '4.5:1', proven: true }],
+    contrast: [{ what: 'summary text', pair: ['text', 'surface'], minimum: '4.5:1' }],
     notes: [
       'Closed content does not exist, so a search or a screen reader reaches it only once it is open.',
       'In an exclusive group, closing the open row leaves none open.',

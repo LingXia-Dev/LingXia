@@ -26,9 +26,9 @@ export const doc: ComponentDoc = {
     keyboard: [{ keys: 'Space', effect: 'Flips it.' }],
     target: { md: 32 },
     contrast: [
-      { what: 'track, on', pair: ['accent', 'surface'], minimum: '3:1', proven: true },
-      { what: 'track, off', pair: ['line-strong', 'surface'], minimum: '3:1', proven: true },
-      { what: 'label', pair: ['text', 'surface'], minimum: '4.5:1', proven: true },
+      { what: 'track, on', pair: ['accent', 'surface'], minimum: '3:1' },
+      { what: 'track, off', pair: ['line-strong', 'surface'], minimum: '3:1' },
+      { what: 'label', pair: ['text', 'surface'], minimum: '4.5:1' },
     ],
     notes: [
       'On and off differ in the thumb\'s side as well as the track colour, never in colour alone.',

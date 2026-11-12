@@ -88,11 +88,13 @@ export function WrappedSelect() {
 - Field hands its control the name, the description ids and the states; pass each one on to the control element.
 - The status region also announces a message politely when it appears or changes.
 
-| Contrast | Pair | Minimum | Proven by the theme pack |
-| --- | --- | --- | --- |
-| label | `text` on `canvas` | 4.5:1 | yes |
-| help text | `text-muted` on `canvas` | 4.5:1 | yes |
-| status icon | `danger` on `canvas` | 3:1 | no |
+| Contrast | Pair | Minimum | Light | Dark |
+| --- | --- | --- | --- | --- |
+| label | `text` on `canvas` | 4.5:1 | 15.19:1 | 15.31:1 |
+| help text | `text-muted` on `canvas` | 4.5:1 | 5.50:1 | 7.33:1 |
+| status icon | `danger` on `canvas` | 3:1 | 4.87:1 | 5.98:1 |
+
+Ratios are computed from crates/lingxia-theme/packs/default.json and rounded down.
 
 ## Guidance
 

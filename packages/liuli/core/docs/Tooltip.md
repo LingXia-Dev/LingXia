@@ -114,10 +114,12 @@ export function Sizes() {
 - A tap anywhere else closes the note, and that tap reaches nothing else.
 - Put only words in the note; anything to press belongs in a DropdownMenu or a Dialog.
 
-| Contrast | Pair | Minimum | Proven by the theme pack |
-| --- | --- | --- | --- |
-| note text | `surface` on `text` | 4.5:1 | yes |
-| info glyph | `muted` on `surface` | 3:1 | yes |
+| Contrast | Pair | Minimum | Light | Dark |
+| --- | --- | --- | --- | --- |
+| note text | `surface` on `text` | 4.5:1 | 16.26:1 | 13.87:1 |
+| info glyph | `text-muted` on `surface` | 3:1 | 5.89:1 | 6.64:1 |
+
+Ratios are computed from crates/lingxia-theme/packs/default.json and rounded down.
 
 ## Guidance
 

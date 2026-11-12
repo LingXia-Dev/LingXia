@@ -35,9 +35,9 @@ export const doc: ComponentDoc = {
     ],
     target: { sm: 32, md: 40, lg: 48 },
     contrast: [
-      { what: 'circle boundary, not chosen', pair: ['line-strong', 'surface'], minimum: '3:1', proven: true },
-      { what: 'circle fill, chosen', pair: ['accent', 'surface'], minimum: '3:1', proven: true },
-      { what: 'chosen card edge', pair: ['accent', 'surface'], minimum: '3:1', proven: true },
+      { what: 'circle boundary, not chosen', pair: ['line-strong', 'surface'], minimum: '3:1' },
+      { what: 'circle fill, chosen', pair: ['accent', 'surface'], minimum: '3:1' },
+      { what: 'chosen card edge', pair: ['accent', 'surface'], minimum: '3:1' },
     ],
     notes: [
       'A card shows the choice twice, in its edge and in the circle, so it never rests on colour alone.',

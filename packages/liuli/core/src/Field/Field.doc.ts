@@ -28,9 +28,9 @@ export const doc: ComponentDoc = {
     ],
     keyboard: [],
     contrast: [
-      { what: 'label', pair: ['text', 'canvas'], minimum: '4.5:1', proven: true },
-      { what: 'help text', pair: ['text-muted', 'canvas'], minimum: '4.5:1', proven: true },
-      { what: 'status icon', pair: ['danger', 'canvas'], minimum: '3:1', proven: false },
+      { what: 'label', pair: ['text', 'canvas'], minimum: '4.5:1' },
+      { what: 'help text', pair: ['text-muted', 'canvas'], minimum: '4.5:1' },
+      { what: 'status icon', pair: ['danger', 'canvas'], minimum: '3:1' },
     ],
     notes: [
       'Field hands its control the name, the description ids and the states; pass each one on to the control element.',

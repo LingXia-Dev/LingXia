@@ -121,12 +121,14 @@ export function Spinners() {
 - With reduced motion the sweep and the spin stop; the bar and the arc stay drawn.
 - Spinner is a progressbar named by its `label`, with nothing drawn but the arc.
 
-| Contrast | Pair | Minimum | Proven by the theme pack |
-| --- | --- | --- | --- |
-| fill against the track | `accent` on `surface-sunken` | 3:1 | no |
-| fill and spinner on a card | `accent` on `surface` | 3:1 | yes |
-| label | `text` on `surface` | 4.5:1 | yes |
-| value | `text-muted` on `surface` | 4.5:1 | yes |
+| Contrast | Pair | Minimum | Light | Dark |
+| --- | --- | --- | --- | --- |
+| fill against the track | `accent` on `surface-sunken` | 3:1 | needs the resolved palette | needs the resolved palette |
+| fill and spinner on a card | `accent` on `surface` | 3:1 | needs the resolved palette | needs the resolved palette |
+| label | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
+| value | `text-muted` on `surface` | 4.5:1 | 5.89:1 | 6.64:1 |
+
+Ratios are computed from crates/lingxia-theme/packs/default.json and rounded down.
 
 ## Guidance
 
@@ -142,6 +144,5 @@ export function Spinners() {
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
 | Finding a progress bar by role in device tests. | progressbar in the test locator roles | Device checks find it by `data-testid`; Node tests read its role. |
-| Proof that the fill stands out from the track. | an accent on surface-sunken contrast pair in the theme pack | Only accent on surface is proven; the fill against the track is unchecked. |
 
 Related: Button.

@@ -89,8 +89,7 @@
               "on-accent-soft",
               "accent-soft"
             ],
-            "minimum": "4.5:1",
-            "proven": true
+            "minimum": "4.5:1"
           }
         ],
         "notes": [
@@ -263,8 +262,7 @@
               "text",
               "surface-sunken"
             ],
-            "minimum": "4.5:1",
-            "proven": true
+            "minimum": "4.5:1"
           },
           {
             "what": "soft accent",
@@ -272,8 +270,7 @@
               "on-accent-soft",
               "accent-soft"
             ],
-            "minimum": "4.5:1",
-            "proven": true
+            "minimum": "4.5:1"
           },
           {
             "what": "soft success",
@@ -281,8 +278,7 @@
               "text",
               "success-soft"
             ],
-            "minimum": "4.5:1",
-            "proven": false
+            "minimum": "4.5:1"
           },
           {
             "what": "soft warning",
@@ -290,8 +286,7 @@
               "text",
               "warning-soft"
             ],
-            "minimum": "4.5:1",
-            "proven": false
+            "minimum": "4.5:1"
           },
           {
             "what": "soft danger",
@@ -299,8 +294,7 @@
               "text",
               "danger-soft"
             ],
-            "minimum": "4.5:1",
-            "proven": false
+            "minimum": "4.5:1"
           },
           {
             "what": "solid accent",
@@ -308,8 +302,7 @@
               "on-accent",
               "accent"
             ],
-            "minimum": "4.5:1",
-            "proven": true
+            "minimum": "4.5:1"
           },
           {
             "what": "solid success",
@@ -317,8 +310,7 @@
               "on-success",
               "success"
             ],
-            "minimum": "4.5:1",
-            "proven": true
+            "minimum": "4.5:1"
           },
           {
             "what": "solid warning",
@@ -326,8 +318,7 @@
               "on-warning",
               "warning"
             ],
-            "minimum": "4.5:1",
-            "proven": true
+            "minimum": "4.5:1"
           },
           {
             "what": "solid danger",
@@ -335,8 +326,7 @@
               "on-danger",
               "danger"
             ],
-            "minimum": "4.5:1",
-            "proven": true
+            "minimum": "4.5:1"
           }
         ],
         "notes": [
@@ -367,11 +357,6 @@
         }
       ],
       "gaps": [
-        {
-          "missing": "Proof that text reads on the soft status tints.",
-          "needs": "text on success-soft, warning-soft and danger-soft contrast pairs in the theme pack",
-          "today": "The pairs are listed here and unproven; neutral and accent are proven."
-        },
         {
           "missing": "An info tone and category hues (tags, labels, people).",
           "needs": "info and categorical hue roles with soft and on- pairs",
@@ -503,8 +488,7 @@
               "text",
               "accent-soft"
             ],
-            "minimum": "4.5:1",
-            "proven": false
+            "minimum": "4.5:1"
           },
           {
             "what": "title and message on success",
@@ -512,8 +496,7 @@
               "text",
               "success-soft"
             ],
-            "minimum": "4.5:1",
-            "proven": false
+            "minimum": "4.5:1"
           },
           {
             "what": "title and message on warning",
@@ -521,8 +504,7 @@
               "text",
               "warning-soft"
             ],
-            "minimum": "4.5:1",
-            "proven": false
+            "minimum": "4.5:1"
           },
           {
             "what": "title and message on danger",
@@ -530,8 +512,7 @@
               "text",
               "danger-soft"
             ],
-            "minimum": "4.5:1",
-            "proven": false
+            "minimum": "4.5:1"
           }
         ],
         "notes": [
@@ -745,8 +726,7 @@
               "on-accent",
               "accent"
             ],
-            "minimum": "4.5:1",
-            "proven": true
+            "minimum": "4.5:1"
           },
           {
             "what": "destructive label",
@@ -754,8 +734,7 @@
               "on-danger",
               "danger"
             ],
-            "minimum": "4.5:1",
-            "proven": true
+            "minimum": "4.5:1"
           },
           {
             "what": "secondary label",
@@ -763,8 +742,7 @@
               "text",
               "surface"
             ],
-            "minimum": "4.5:1",
-            "proven": true
+            "minimum": "4.5:1"
           },
           {
             "what": "secondary boundary",
@@ -772,8 +750,7 @@
               "line-strong",
               "surface"
             ],
-            "minimum": "3:1",
-            "proven": true
+            "minimum": "3:1"
           },
           {
             "what": "link label",
@@ -781,17 +758,25 @@
               "accent",
               "canvas"
             ],
-            "minimum": "4.5:1",
-            "proven": false
+            "minimum": "4.5:1"
           },
           {
-            "what": "disabled label on its 6% ink fill",
+            "what": "disabled label on its 6% ink fill, on the page",
             "pair": [
               "text-muted",
-              "canvas"
+              "text/6"
             ],
-            "minimum": "4.5:1",
-            "proven": true
+            "over": "canvas",
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "disabled label on its 6% ink fill, on a card",
+            "pair": [
+              "text-muted",
+              "text/6"
+            ],
+            "over": "surface",
+            "minimum": "4.5:1"
           }
         ],
         "notes": [
@@ -1044,8 +1029,7 @@
               "accent",
               "surface"
             ],
-            "minimum": "3:1",
-            "proven": true
+            "minimum": "3:1"
           }
         ],
         "notes": [
@@ -1275,8 +1259,7 @@
               "line-strong",
               "surface"
             ],
-            "minimum": "3:1",
-            "proven": true
+            "minimum": "3:1"
           },
           {
             "what": "box fill, checked",
@@ -1284,8 +1267,7 @@
               "accent",
               "surface"
             ],
-            "minimum": "3:1",
-            "proven": true
+            "minimum": "3:1"
           },
           {
             "what": "check mark",
@@ -1293,8 +1275,7 @@
               "on-accent",
               "accent"
             ],
-            "minimum": "3:1",
-            "proven": true
+            "minimum": "3:1"
           },
           {
             "what": "label",
@@ -1302,8 +1283,7 @@
               "text",
               "surface"
             ],
-            "minimum": "4.5:1",
-            "proven": true
+            "minimum": "4.5:1"
           }
         ],
         "notes": [
@@ -1486,8 +1466,7 @@
               "text",
               "surface"
             ],
-            "minimum": "4.5:1",
-            "proven": true
+            "minimum": "4.5:1"
           }
         ],
         "notes": [
@@ -1698,8 +1677,7 @@
               "text",
               "surface-raised"
             ],
-            "minimum": "4.5:1",
-            "proven": true
+            "minimum": "4.5:1"
           },
           {
             "what": "description",
@@ -1707,8 +1685,7 @@
               "text-muted",
               "surface-raised"
             ],
-            "minimum": "4.5:1",
-            "proven": false
+            "minimum": "4.5:1"
           }
         ],
         "notes": [
@@ -1734,11 +1711,6 @@
           "missing": "A theme-wide motion token for the enter and exit timing.",
           "needs": "duration and easing tokens in the theme pack",
           "today": "duration-200 ease-out in the recipe."
-        },
-        {
-          "missing": "Muted description text proven against the raised surface.",
-          "needs": "a text-muted on surface-raised contrast pair in the theme pack",
-          "today": "The pair is not checked by the build."
         }
       ],
       "related": [
@@ -1997,8 +1969,7 @@
               "text",
               "surface-raised"
             ],
-            "minimum": "4.5:1",
-            "proven": true
+            "minimum": "4.5:1"
           },
           {
             "what": "destructive icon",
@@ -2006,8 +1977,7 @@
               "danger",
               "surface-raised"
             ],
-            "minimum": "3:1",
-            "proven": false
+            "minimum": "3:1"
           }
         ],
         "notes": [
@@ -2247,8 +2217,7 @@
               "text",
               "canvas"
             ],
-            "minimum": "4.5:1",
-            "proven": true
+            "minimum": "4.5:1"
           },
           {
             "what": "help text",
@@ -2256,8 +2225,7 @@
               "text-muted",
               "canvas"
             ],
-            "minimum": "4.5:1",
-            "proven": true
+            "minimum": "4.5:1"
           },
           {
             "what": "status icon",
@@ -2265,8 +2233,7 @@
               "danger",
               "canvas"
             ],
-            "minimum": "3:1",
-            "proven": false
+            "minimum": "3:1"
           }
         ],
         "notes": [
@@ -2444,8 +2411,7 @@
               "text",
               "surface"
             ],
-            "minimum": "4.5:1",
-            "proven": true
+            "minimum": "4.5:1"
           },
           {
             "what": "second line and end values",
@@ -2453,8 +2419,7 @@
               "text-muted",
               "surface"
             ],
-            "minimum": "4.5:1",
-            "proven": true
+            "minimum": "4.5:1"
           },
           {
             "what": "chevron",
@@ -2462,8 +2427,7 @@
               "text-faint",
               "surface"
             ],
-            "minimum": "3:1",
-            "proven": true
+            "minimum": "3:1"
           }
         ],
         "notes": [
@@ -2682,8 +2646,7 @@
               "accent",
               "surface-sunken"
             ],
-            "minimum": "3:1",
-            "proven": false
+            "minimum": "3:1"
           },
           {
             "what": "fill and spinner on a card",
@@ -2691,8 +2654,7 @@
               "accent",
               "surface"
             ],
-            "minimum": "3:1",
-            "proven": true
+            "minimum": "3:1"
           },
           {
             "what": "label",
@@ -2700,8 +2662,7 @@
               "text",
               "surface"
             ],
-            "minimum": "4.5:1",
-            "proven": true
+            "minimum": "4.5:1"
           },
           {
             "what": "value",
@@ -2709,8 +2670,7 @@
               "text-muted",
               "surface"
             ],
-            "minimum": "4.5:1",
-            "proven": true
+            "minimum": "4.5:1"
           }
         ],
         "notes": [
@@ -2747,11 +2707,6 @@
           "missing": "Finding a progress bar by role in device tests.",
           "needs": "progressbar in the test locator roles",
           "today": "Device checks find it by `data-testid`; Node tests read its role."
-        },
-        {
-          "missing": "Proof that the fill stands out from the track.",
-          "needs": "an accent on surface-sunken contrast pair in the theme pack",
-          "today": "Only accent on surface is proven; the fill against the track is unchecked."
         }
       ],
       "related": [
@@ -2989,8 +2944,7 @@
               "line-strong",
               "surface"
             ],
-            "minimum": "3:1",
-            "proven": true
+            "minimum": "3:1"
           },
           {
             "what": "circle fill, chosen",
@@ -2998,8 +2952,7 @@
               "accent",
               "surface"
             ],
-            "minimum": "3:1",
-            "proven": true
+            "minimum": "3:1"
           },
           {
             "what": "chosen card edge",
@@ -3007,8 +2960,7 @@
               "accent",
               "surface"
             ],
-            "minimum": "3:1",
-            "proven": true
+            "minimum": "3:1"
           }
         ],
         "notes": [
@@ -3270,8 +3222,7 @@
               "line-strong",
               "surface"
             ],
-            "minimum": "3:1",
-            "proven": true
+            "minimum": "3:1"
           },
           {
             "what": "chosen label",
@@ -3279,17 +3230,15 @@
               "text",
               "surface"
             ],
-            "minimum": "4.5:1",
-            "proven": true
+            "minimum": "4.5:1"
           },
           {
             "what": "placeholder",
             "pair": [
-              "muted",
+              "text-muted",
               "surface"
             ],
-            "minimum": "4.5:1",
-            "proven": true
+            "minimum": "4.5:1"
           }
         ],
         "notes": [
@@ -3530,8 +3479,7 @@
               "accent",
               "surface"
             ],
-            "minimum": "3:1",
-            "proven": true
+            "minimum": "3:1"
           },
           {
             "what": "empty track",
@@ -3539,8 +3487,7 @@
               "line",
               "surface"
             ],
-            "minimum": "3:1",
-            "proven": false
+            "minimum": "3:1"
           }
         ],
         "notes": [
@@ -3746,8 +3693,7 @@
               "accent",
               "surface"
             ],
-            "minimum": "3:1",
-            "proven": true
+            "minimum": "3:1"
           },
           {
             "what": "track, off",
@@ -3755,8 +3701,7 @@
               "line-strong",
               "surface"
             ],
-            "minimum": "3:1",
-            "proven": true
+            "minimum": "3:1"
           },
           {
             "what": "label",
@@ -3764,8 +3709,7 @@
               "text",
               "surface"
             ],
-            "minimum": "4.5:1",
-            "proven": true
+            "minimum": "4.5:1"
           }
         ],
         "notes": [
@@ -3955,17 +3899,15 @@
               "text",
               "surface"
             ],
-            "minimum": "4.5:1",
-            "proven": true
+            "minimum": "4.5:1"
           },
           {
             "what": "other tabs' text",
             "pair": [
-              "muted",
+              "text-muted",
               "surface"
             ],
-            "minimum": "4.5:1",
-            "proven": true
+            "minimum": "4.5:1"
           },
           {
             "what": "underline",
@@ -3973,8 +3915,7 @@
               "accent",
               "surface"
             ],
-            "minimum": "3:1",
-            "proven": true
+            "minimum": "3:1"
           },
           {
             "what": "segmented thumb edge",
@@ -3982,8 +3923,7 @@
               "surface-raised",
               "surface-sunken"
             ],
-            "minimum": "3:1",
-            "proven": false
+            "minimum": "3:1"
           }
         ],
         "notes": [
@@ -4305,8 +4245,7 @@
               "text",
               "surface"
             ],
-            "minimum": "4.5:1",
-            "proven": true
+            "minimum": "4.5:1"
           },
           {
             "what": "placeholder",
@@ -4314,8 +4253,7 @@
               "text-muted",
               "surface"
             ],
-            "minimum": "4.5:1",
-            "proven": true
+            "minimum": "4.5:1"
           },
           {
             "what": "box boundary",
@@ -4323,8 +4261,7 @@
               "line-strong",
               "surface"
             ],
-            "minimum": "3:1",
-            "proven": true
+            "minimum": "3:1"
           },
           {
             "what": "focus boundary",
@@ -4332,8 +4269,7 @@
               "focus",
               "surface"
             ],
-            "minimum": "3:1",
-            "proven": true
+            "minimum": "3:1"
           }
         ],
         "notes": [
@@ -4540,17 +4476,15 @@
               "surface",
               "text"
             ],
-            "minimum": "4.5:1",
-            "proven": true
+            "minimum": "4.5:1"
           },
           {
             "what": "info glyph",
             "pair": [
-              "muted",
+              "text-muted",
               "surface"
             ],
-            "minimum": "3:1",
-            "proven": true
+            "minimum": "3:1"
           }
         ],
         "notes": [

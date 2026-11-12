@@ -126,10 +126,12 @@ export function Position() {
 - The device reads the number as the value; the words in `valueLabel` follow as the description until sliders take a value text.
 - One size until the primitive takes thumb and track styling; the press area is 40 px tall.
 
-| Contrast | Pair | Minimum | Proven by the theme pack |
-| --- | --- | --- | --- |
-| thumb and filled track | `accent` on `surface` | 3:1 | yes |
-| empty track | `line` on `surface` | 3:1 | no |
+| Contrast | Pair | Minimum | Light | Dark |
+| --- | --- | --- | --- | --- |
+| thumb and filled track | `accent` on `surface` | 3:1 | needs the resolved palette | needs the resolved palette |
+| empty track | `line` on `surface` | 3:1 | 1.31:1, below | 1.39:1, below |
+
+Ratios are computed from crates/lingxia-theme/packs/default.json and rounded down.
 
 ## Guidance
 

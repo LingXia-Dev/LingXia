@@ -26,7 +26,7 @@ export const doc: ComponentDoc = {
     ],
     keyboard: [],
     contrast: [
-      { what: 'selected border', pair: ['accent', 'surface'], minimum: '3:1', proven: true },
+      { what: 'selected border', pair: ['accent', 'surface'], minimum: '3:1' },
     ],
     notes: [
       'Card is not a control; its content is read in order. The button pattern applies to ClickableCard.',

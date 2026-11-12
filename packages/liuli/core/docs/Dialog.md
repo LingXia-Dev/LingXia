@@ -122,10 +122,12 @@ export function Form() {
 - Android back and the screen reader dismiss gesture are close requests, like Escape.
 - The close button is 32 px; it is below the 44 pt touch minimum until hit slop exists, so always offer an action button too.
 
-| Contrast | Pair | Minimum | Proven by the theme pack |
-| --- | --- | --- | --- |
-| title | `text` on `surface-raised` | 4.5:1 | yes |
-| description | `text-muted` on `surface-raised` | 4.5:1 | no |
+| Contrast | Pair | Minimum | Light | Dark |
+| --- | --- | --- | --- | --- |
+| title | `text` on `surface-raised` | 4.5:1 | 16.26:1 | 11.83:1 |
+| description | `text-muted` on `surface-raised` | 4.5:1 | 5.89:1 | 5.67:1 |
+
+Ratios are computed from crates/lingxia-theme/packs/default.json and rounded down.
 
 ## Guidance
 
@@ -141,6 +143,5 @@ export function Form() {
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
 | A theme-wide motion token for the enter and exit timing. | duration and easing tokens in the theme pack | duration-200 ease-out in the recipe. |
-| Muted description text proven against the raised surface. | a text-muted on surface-raised contrast pair in the theme pack | The pair is not checked by the build. |
 
 Related: Button, DropdownMenu.

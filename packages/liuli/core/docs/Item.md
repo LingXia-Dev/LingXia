@@ -173,11 +173,13 @@ export function Destructive() {
 - On a pressable row the start and end content are drawn only, so the row is read as its label and second line.
 - Every row is at least 48 px tall, above the 44 pt touch minimum.
 
-| Contrast | Pair | Minimum | Proven by the theme pack |
-| --- | --- | --- | --- |
-| label | `text` on `surface` | 4.5:1 | yes |
-| second line and end values | `text-muted` on `surface` | 4.5:1 | yes |
-| chevron | `text-faint` on `surface` | 3:1 | yes |
+| Contrast | Pair | Minimum | Light | Dark |
+| --- | --- | --- | --- | --- |
+| label | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
+| second line and end values | `text-muted` on `surface` | 4.5:1 | 5.89:1 | 6.64:1 |
+| chevron | `text-faint` on `surface` | 3:1 | 3.09:1 | 4.42:1 |
+
+Ratios are computed from crates/lingxia-theme/packs/default.json and rounded down.
 
 ## Guidance
 

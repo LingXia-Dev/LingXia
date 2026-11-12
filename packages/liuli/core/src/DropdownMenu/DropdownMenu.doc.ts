@@ -35,8 +35,8 @@ export const doc: ComponentDoc = {
     ],
     target: { sm: 32, md: 40, lg: 48 },
     contrast: [
-      { what: 'item text', pair: ['text', 'surface-raised'], minimum: '4.5:1', proven: true },
-      { what: 'destructive icon', pair: ['danger', 'surface-raised'], minimum: '3:1', proven: false },
+      { what: 'item text', pair: ['text', 'surface-raised'], minimum: '4.5:1' },
+      { what: 'destructive icon', pair: ['danger', 'surface-raised'], minimum: '3:1' },
     ],
     notes: [
       'An item is named by its label and then its description, both inside the item.',

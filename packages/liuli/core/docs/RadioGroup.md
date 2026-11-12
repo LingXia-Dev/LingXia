@@ -156,11 +156,13 @@ export function Sizes() {
 - A card shows the choice twice, in its edge and in the circle, so it never rests on colour alone.
 - With nothing chosen, Tab lands on the first option without choosing it.
 
-| Contrast | Pair | Minimum | Proven by the theme pack |
-| --- | --- | --- | --- |
-| circle boundary, not chosen | `line-strong` on `surface` | 3:1 | yes |
-| circle fill, chosen | `accent` on `surface` | 3:1 | yes |
-| chosen card edge | `accent` on `surface` | 3:1 | yes |
+| Contrast | Pair | Minimum | Light | Dark |
+| --- | --- | --- | --- | --- |
+| circle boundary, not chosen | `line-strong` on `surface` | 3:1 | 3.66:1 | 3.69:1 |
+| circle fill, chosen | `accent` on `surface` | 3:1 | needs the resolved palette | needs the resolved palette |
+| chosen card edge | `accent` on `surface` | 3:1 | needs the resolved palette | needs the resolved palette |
+
+Ratios are computed from crates/lingxia-theme/packs/default.json and rounded down.
 
 ## Guidance
 

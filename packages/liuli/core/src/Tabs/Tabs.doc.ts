@@ -34,10 +34,10 @@ export const doc: ComponentDoc = {
     ],
     target: { md: 40 },
     contrast: [
-      { what: 'chosen tab text', pair: ['text', 'surface'], minimum: '4.5:1', proven: true },
-      { what: 'other tabs\' text', pair: ['muted', 'surface'], minimum: '4.5:1', proven: true },
-      { what: 'underline', pair: ['accent', 'surface'], minimum: '3:1', proven: true },
-      { what: 'segmented thumb edge', pair: ['surface-raised', 'surface-sunken'], minimum: '3:1', proven: false },
+      { what: 'chosen tab text', pair: ['text', 'surface'], minimum: '4.5:1' },
+      { what: 'other tabs\' text', pair: ['text-muted', 'surface'], minimum: '4.5:1' },
+      { what: 'underline', pair: ['accent', 'surface'], minimum: '3:1' },
+      { what: 'segmented thumb edge', pair: ['surface-raised', 'surface-sunken'], minimum: '3:1' },
     ],
     notes: [
       'The chosen state is in the text weight and colour and in the indicator, never in colour alone.',

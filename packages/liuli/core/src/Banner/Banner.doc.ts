@@ -28,10 +28,10 @@ export const doc: ComponentDoc = {
     states: [],
     keyboard: [],
     contrast: [
-      { what: 'title and message on info', pair: ['text', 'accent-soft'], minimum: '4.5:1', proven: false },
-      { what: 'title and message on success', pair: ['text', 'success-soft'], minimum: '4.5:1', proven: false },
-      { what: 'title and message on warning', pair: ['text', 'warning-soft'], minimum: '4.5:1', proven: false },
-      { what: 'title and message on danger', pair: ['text', 'danger-soft'], minimum: '4.5:1', proven: false },
+      { what: 'title and message on info', pair: ['text', 'accent-soft'], minimum: '4.5:1' },
+      { what: 'title and message on success', pair: ['text', 'success-soft'], minimum: '4.5:1' },
+      { what: 'title and message on warning', pair: ['text', 'warning-soft'], minimum: '4.5:1' },
+      { what: 'title and message on danger', pair: ['text', 'danger-soft'], minimum: '4.5:1' },
     ],
     notes: [
       'Role alert for danger, so it is announced when it appears; role status for the other tones, announced politely.',

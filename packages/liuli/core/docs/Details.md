@@ -108,9 +108,11 @@ export function Independent() {
 - Closed content does not exist, so a search or a screen reader reaches it only once it is open.
 - In an exclusive group, closing the open row leaves none open.
 
-| Contrast | Pair | Minimum | Proven by the theme pack |
-| --- | --- | --- | --- |
-| summary text | `text` on `surface` | 4.5:1 | yes |
+| Contrast | Pair | Minimum | Light | Dark |
+| --- | --- | --- | --- | --- |
+| summary text | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
+
+Ratios are computed from crates/lingxia-theme/packs/default.json and rounded down.
 
 ## Guidance
 

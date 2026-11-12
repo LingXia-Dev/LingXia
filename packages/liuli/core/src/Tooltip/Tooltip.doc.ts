@@ -28,8 +28,8 @@ export const doc: ComponentDoc = {
     ],
     target: { sm: 32, md: 40 },
     contrast: [
-      { what: 'note text', pair: ['surface', 'text'], minimum: '4.5:1', proven: true },
-      { what: 'info glyph', pair: ['muted', 'surface'], minimum: '3:1', proven: true },
+      { what: 'note text', pair: ['surface', 'text'], minimum: '4.5:1' },
+      { what: 'info glyph', pair: ['text-muted', 'surface'], minimum: '3:1' },
     ],
     notes: [
       'A tap anywhere else closes the note, and that tap reaches nothing else.',

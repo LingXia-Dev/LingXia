@@ -23,15 +23,15 @@ export const doc: ComponentDoc = {
     states: [],
     keyboard: [],
     contrast: [
-      { what: 'neutral', pair: ['text', 'surface-sunken'], minimum: '4.5:1', proven: true },
-      { what: 'soft accent', pair: ['on-accent-soft', 'accent-soft'], minimum: '4.5:1', proven: true },
-      { what: 'soft success', pair: ['text', 'success-soft'], minimum: '4.5:1', proven: false },
-      { what: 'soft warning', pair: ['text', 'warning-soft'], minimum: '4.5:1', proven: false },
-      { what: 'soft danger', pair: ['text', 'danger-soft'], minimum: '4.5:1', proven: false },
-      { what: 'solid accent', pair: ['on-accent', 'accent'], minimum: '4.5:1', proven: true },
-      { what: 'solid success', pair: ['on-success', 'success'], minimum: '4.5:1', proven: true },
-      { what: 'solid warning', pair: ['on-warning', 'warning'], minimum: '4.5:1', proven: true },
-      { what: 'solid danger', pair: ['on-danger', 'danger'], minimum: '4.5:1', proven: true },
+      { what: 'neutral', pair: ['text', 'surface-sunken'], minimum: '4.5:1' },
+      { what: 'soft accent', pair: ['on-accent-soft', 'accent-soft'], minimum: '4.5:1' },
+      { what: 'soft success', pair: ['text', 'success-soft'], minimum: '4.5:1' },
+      { what: 'soft warning', pair: ['text', 'warning-soft'], minimum: '4.5:1' },
+      { what: 'soft danger', pair: ['text', 'danger-soft'], minimum: '4.5:1' },
+      { what: 'solid accent', pair: ['on-accent', 'accent'], minimum: '4.5:1' },
+      { what: 'solid success', pair: ['on-success', 'success'], minimum: '4.5:1' },
+      { what: 'solid warning', pair: ['on-warning', 'warning'], minimum: '4.5:1' },
+      { what: 'solid danger', pair: ['on-danger', 'danger'], minimum: '4.5:1' },
     ],
     notes: [
       'Not a control and not announced on change. A badge whose change matters sits next to a status region the app keeps.',
@@ -57,11 +57,6 @@ export const doc: ComponentDoc = {
     { name: 'InARow', title: 'At the end of a row' },
   ],
   gaps: [
-    {
-      missing: 'Proof that text reads on the soft status tints.',
-      needs: 'text on success-soft, warning-soft and danger-soft contrast pairs in the theme pack',
-      today: 'The pairs are listed here and unproven; neutral and accent are proven.',
-    },
     {
       missing: 'An info tone and category hues (tags, labels, people).',
       needs: 'info and categorical hue roles with soft and on- pairs',

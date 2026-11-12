@@ -187,10 +187,12 @@ export function Value() {
 - Sizes sm (32) and md (40) are below the 44 pt touch minimum; on touch layouts prefer lg until hit slop lets the press area extend past the paint.
 - A tap outside, Escape and back close the menu; that tap reaches nothing else.
 
-| Contrast | Pair | Minimum | Proven by the theme pack |
-| --- | --- | --- | --- |
-| item text | `text` on `surface-raised` | 4.5:1 | yes |
-| destructive icon | `danger` on `surface-raised` | 3:1 | no |
+| Contrast | Pair | Minimum | Light | Dark |
+| --- | --- | --- | --- | --- |
+| item text | `text` on `surface-raised` | 4.5:1 | 16.26:1 | 11.83:1 |
+| destructive icon | `danger` on `surface-raised` | 3:1 | 5.21:1 | 4.62:1 |
+
+Ratios are computed from crates/lingxia-theme/packs/default.json and rounded down.
 
 ## Guidance
 

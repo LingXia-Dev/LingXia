@@ -28,9 +28,9 @@ export const doc: ComponentDoc = {
     keyboard: [],
     target: { lg: 48 },
     contrast: [
-      { what: 'label', pair: ['text', 'surface'], minimum: '4.5:1', proven: true },
-      { what: 'second line and end values', pair: ['text-muted', 'surface'], minimum: '4.5:1', proven: true },
-      { what: 'chevron', pair: ['text-faint', 'surface'], minimum: '3:1', proven: true },
+      { what: 'label', pair: ['text', 'surface'], minimum: '4.5:1' },
+      { what: 'second line and end values', pair: ['text-muted', 'surface'], minimum: '4.5:1' },
+      { what: 'chevron', pair: ['text-faint', 'surface'], minimum: '3:1' },
     ],
     notes: [
       'The button pattern applies to a row with `onClick`. A plain row is not a control; its texts are read in order.',

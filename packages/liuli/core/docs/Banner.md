@@ -116,12 +116,14 @@ export function OverList() {
 - Render it only when the condition holds; announcing needs it to appear, not to be there from the start.
 - The text stays in the text role on every tint; the icon carries the tone.
 
-| Contrast | Pair | Minimum | Proven by the theme pack |
-| --- | --- | --- | --- |
-| title and message on info | `text` on `accent-soft` | 4.5:1 | no |
-| title and message on success | `text` on `success-soft` | 4.5:1 | no |
-| title and message on warning | `text` on `warning-soft` | 4.5:1 | no |
-| title and message on danger | `text` on `danger-soft` | 4.5:1 | no |
+| Contrast | Pair | Minimum | Light | Dark |
+| --- | --- | --- | --- | --- |
+| title and message on info | `text` on `accent-soft` | 4.5:1 | needs the resolved palette | needs the resolved palette |
+| title and message on success | `text` on `success-soft` | 4.5:1 | 14.34:1 | 11.76:1 |
+| title and message on warning | `text` on `warning-soft` | 4.5:1 | 14.59:1 | 11.36:1 |
+| title and message on danger | `text` on `danger-soft` | 4.5:1 | 14.24:1 | 12.84:1 |
+
+Ratios are computed from crates/lingxia-theme/packs/default.json and rounded down.
 
 ## Guidance
 

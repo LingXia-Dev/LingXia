@@ -68,11 +68,12 @@ export interface AccessibilityContract {
 
 export interface ContrastPair {
   readonly what: string;
-  /** Foreground role, then background role. */
+  /** Foreground role, then background role; `role/NN` paints the role at NN% opacity. */
   readonly pair: readonly [string, string];
+  /** The role under a translucent background. */
+  readonly over?: string;
+  /** The ratio contrast.test.mjs computes from the default theme, light and dark, must reach. */
   readonly minimum: '3:1' | '4.5:1';
-  /** Whether the theme pack proves this pair today; an unproven pair is a theme gap. */
-  readonly proven: boolean;
 }
 
 export type StateName = 'disabled' | 'busy' | 'checked' | 'expanded' | 'selected' | 'pressed' | 'modal' | 'invalid' | 'required';

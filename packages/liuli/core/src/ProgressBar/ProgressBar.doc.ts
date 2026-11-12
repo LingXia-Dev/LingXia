@@ -26,10 +26,10 @@ export const doc: ComponentDoc = {
     states: [],
     keyboard: [],
     contrast: [
-      { what: 'fill against the track', pair: ['accent', 'surface-sunken'], minimum: '3:1', proven: false },
-      { what: 'fill and spinner on a card', pair: ['accent', 'surface'], minimum: '3:1', proven: true },
-      { what: 'label', pair: ['text', 'surface'], minimum: '4.5:1', proven: true },
-      { what: 'value', pair: ['text-muted', 'surface'], minimum: '4.5:1', proven: true },
+      { what: 'fill against the track', pair: ['accent', 'surface-sunken'], minimum: '3:1' },
+      { what: 'fill and spinner on a card', pair: ['accent', 'surface'], minimum: '3:1' },
+      { what: 'label', pair: ['text', 'surface'], minimum: '4.5:1' },
+      { what: 'value', pair: ['text-muted', 'surface'], minimum: '4.5:1' },
     ],
     notes: [
       'Role progressbar, named by `label`. With `value` it reports the value, 0 and `max`; `valueLabel` is read in place of a percentage.',
@@ -61,11 +61,6 @@ export const doc: ComponentDoc = {
       missing: 'Finding a progress bar by role in device tests.',
       needs: 'progressbar in the test locator roles',
       today: 'Device checks find it by `data-testid`; Node tests read its role.',
-    },
-    {
-      missing: 'Proof that the fill stands out from the track.',
-      needs: 'an accent on surface-sunken contrast pair in the theme pack',
-      today: 'Only accent on surface is proven; the fill against the track is unchecked.',
     },
   ],
   related: ['Button'],
