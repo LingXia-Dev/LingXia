@@ -1,0 +1,86 @@
+import { Avatar, AvatarGroup } from './Avatar';
+
+// Pictures in the gallery package; a person's own photo goes here.
+const photo = (n: number) => `public/avatars/avatar-${n}.png`;
+
+/** A photo, and initials where there is none or it fails to load. */
+export function People() {
+  return (
+    <view className="flex-row items-center gap-3">
+      <Avatar name="Ana Lima" src={photo(1)} data-testid="ana" />
+      <Avatar name="Kai Chen" data-testid="kai" />
+      <Avatar name="Mira Patel" src="public/avatars/missing.png" data-testid="mira" />
+    </view>
+  );
+}
+
+export function Sizes() {
+  return (
+    <view className="flex-row items-end gap-3">
+      <Avatar name="Ana Lima" size="xs" />
+      <Avatar name="Ana Lima" size="sm" />
+      <Avatar name="Ana Lima" size="md" />
+      <Avatar name="Ana Lima" size="lg" />
+    </view>
+  );
+}
+
+/** Overlapping, with the rest folded into a count. */
+export function Group() {
+  return (
+    <AvatarGroup label="Editors" max={4} overflowLabel={count => `${count} more editors`} data-testid="editors">
+      <Avatar name="Ana Lima" src={photo(1)} />
+      <Avatar name="Kai Chen" />
+      <Avatar name="Mira Patel" src={photo(2)} />
+      <Avatar name="Tomás Ruiz" />
+      <Avatar name="Lena Vogel" />
+      <Avatar name="Sam Okafor" />
+    </AvatarGroup>
+  );
+}
+
+/** Beside the name it stands for, so it is decorative. */
+export function WithName() {
+  return (
+    <view className="flex-row items-center gap-3">
+      <Avatar name="Kai Chen" isDecorative />
+      <view className="gap-0.5">
+        <text className="text-body font-medium text-text">Kai Chen</text>
+        <text className="text-footnote text-muted">Edited 2 minutes ago</text>
+      </view>
+    </view>
+  );
+}
+
+export function StatePicture() {
+  return <Avatar name="Ana Lima" src={photo(1)} size="lg" />;
+}
+
+export function StateInitials() {
+  return <Avatar name="Kai Chen" size="lg" />;
+}
+
+export function StateFailed() {
+  return <Avatar name="Mira Patel" src="public/avatars/missing.png" size="lg" />;
+}
+
+export function StateOverflow() {
+  return (
+    <AvatarGroup label="Editors" max={1} size="lg" overflowLabel={count => `${count} more editors`}>
+      <Avatar name="Ana Lima" src={photo(1)} />
+      <Avatar name="Kai Chen" />
+      <Avatar name="Mira Patel" />
+    </AvatarGroup>
+  );
+}
+
+/** The home tile. */
+export function Specimen() {
+  return (
+    <AvatarGroup label="Editors" size="sm">
+      <Avatar name="Ana Lima" />
+      <Avatar name="Kai Chen" />
+      <Avatar name="Mira Patel" />
+    </AvatarGroup>
+  );
+}

@@ -81,7 +81,7 @@ export function WrappedSelect() {
 
 ## Accessibility
 
-- Pattern: none (holds a control).
+- Pattern: none.
 - Name: label.
 - Description: description, or disabledMessage while disabled, then the status message.
 - States: disabled (from isDisabled); invalid (from status.type === 'error'); required (from isRequired).

@@ -1,4 +1,5 @@
 import { useLocal, type Child, type VectorPath } from '@lingxia/view';
+import { Avatar } from '@liulidesign/core/Avatar';
 import { Badge } from '@liulidesign/core/Badge';
 import { Button } from '@liulidesign/core/Button';
 import { Dialog } from '@liulidesign/core/Dialog';
@@ -70,11 +71,7 @@ export function render() {
         <Item
           label="Ana Lima"
           description="ana@example.com"
-          startContent={
-            <view className="size-10 items-center justify-center rounded-full bg-accent-soft">
-              <text className="text-footnote font-semibold text-on-accent-soft">AL</text>
-            </view>
-          }
+          startContent={<Avatar name="Ana Lima" isDecorative />}
           endContent={<Badge label={plan.value ?? 'Free'} tone="accent" />}
           data-testid="account"
         />

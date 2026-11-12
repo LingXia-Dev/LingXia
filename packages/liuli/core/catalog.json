@@ -2,6 +2,182 @@
   "generated": "Generated from the doc file by scripts/generate.mjs; do not edit.",
   "components": [
     {
+      "name": "Avatar",
+      "import": "@liulidesign/core/Avatar",
+      "exports": [
+        "Avatar",
+        "AvatarGroup"
+      ],
+      "category": "content",
+      "status": "preview",
+      "summary": "A person or team as a circle: their picture, or their initials",
+      "description": "Avatar shows who: a picture when there is one, initials when there is none or it fails to load. AvatarGroup overlaps several in a row and folds the rest into a count.",
+      "keywords": [
+        "avatar",
+        "profile picture",
+        "photo",
+        "initials",
+        "user",
+        "person",
+        "member",
+        "facepile"
+      ],
+      "props": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "description": "Whose avatar: the accessible name, and the source of the initials."
+        },
+        {
+          "name": "src",
+          "type": "string",
+          "required": false,
+          "description": "A photo; initials show until it loads and if it fails."
+        },
+        {
+          "name": "initials",
+          "type": "string",
+          "required": false,
+          "description": "Overrides the initials taken from the first letters of the first two words of `name`."
+        },
+        {
+          "name": "size",
+          "type": "AvatarSize",
+          "required": false,
+          "description": "",
+          "default": "'md', or the group's size"
+        },
+        {
+          "name": "isDecorative",
+          "type": "boolean",
+          "required": false,
+          "description": "Hides it from assistive tech when the name is already beside it.",
+          "default": "false"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "image": "image",
+        "initials": "text",
+        "group": "view",
+        "overflow": "text"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "name",
+        "description": [],
+        "states": [],
+        "keyboard": [],
+        "contrast": [
+          {
+            "what": "initials",
+            "pair": [
+              "on-accent-soft",
+              "accent-soft"
+            ],
+            "minimum": "4.5:1",
+            "proven": true
+          }
+        ],
+        "notes": [
+          "Read as the person's name. Set `isDecorative` when the name is already written beside it.",
+          "The group is read by its label, then each name; the count by the app's own words."
+        ]
+      },
+      "examples": [
+        {
+          "name": "People",
+          "title": "A picture, initials, and a failed picture",
+          "source": "import { Avatar } from '@liulidesign/core/Avatar';\n\nconst photo = (n: number) => `public/avatars/avatar-${n}.png`;\n\n/** A photo, and initials where there is none or it fails to load. */\nexport function People() {\n  return (\n    <view className=\"flex-row items-center gap-3\">\n      <Avatar name=\"Ana Lima\" src={photo(1)} data-testid=\"ana\" />\n      <Avatar name=\"Kai Chen\" data-testid=\"kai\" />\n      <Avatar name=\"Mira Patel\" src=\"public/avatars/missing.png\" data-testid=\"mira\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Sizes",
+          "title": "Sizes",
+          "source": "import { Avatar } from '@liulidesign/core/Avatar';\n\nexport function Sizes() {\n  return (\n    <view className=\"flex-row items-end gap-3\">\n      <Avatar name=\"Ana Lima\" size=\"xs\" />\n      <Avatar name=\"Ana Lima\" size=\"sm\" />\n      <Avatar name=\"Ana Lima\" size=\"md\" />\n      <Avatar name=\"Ana Lima\" size=\"lg\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Group",
+          "title": "A group with a count",
+          "source": "import { Avatar, AvatarGroup } from '@liulidesign/core/Avatar';\n\nconst photo = (n: number) => `public/avatars/avatar-${n}.png`;\n\n/** Overlapping, with the rest folded into a count. */\nexport function Group() {\n  return (\n    <AvatarGroup label=\"Editors\" max={4} overflowLabel={count => `${count} more editors`} data-testid=\"editors\">\n      <Avatar name=\"Ana Lima\" src={photo(1)} />\n      <Avatar name=\"Kai Chen\" />\n      <Avatar name=\"Mira Patel\" src={photo(2)} />\n      <Avatar name=\"Tomás Ruiz\" />\n      <Avatar name=\"Lena Vogel\" />\n      <Avatar name=\"Sam Okafor\" />\n    </AvatarGroup>\n  );\n}"
+        },
+        {
+          "name": "WithName",
+          "title": "Beside the name",
+          "source": "import { Avatar } from '@liulidesign/core/Avatar';\n\n/** Beside the name it stands for, so it is decorative. */\nexport function WithName() {\n  return (\n    <view className=\"flex-row items-center gap-3\">\n      <Avatar name=\"Kai Chen\" isDecorative />\n      <view className=\"gap-0.5\">\n        <text className=\"text-body font-medium text-text\">Kai Chen</text>\n        <text className=\"text-footnote text-muted\">Edited 2 minutes ago</text>\n      </view>\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "An image role for the initials, so they are announced as a picture of the person.",
+          "needs": "role=\"img\" on view or text",
+          "today": "The initials are a text named by the full name."
+        }
+      ],
+      "related": [
+        "Item",
+        "Badge"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Who, at a glance",
+        "order": 4,
+        "page": {
+          "lead": "Use an avatar to show who did something or who is here, next to their name or in a group.",
+          "hero": "People",
+          "variants": [
+            {
+              "name": "Group",
+              "title": "Overlapping, with the rest as a count"
+            }
+          ],
+          "states": [
+            {
+              "name": "StatePicture",
+              "title": "A picture"
+            },
+            {
+              "name": "StateInitials",
+              "title": "No picture"
+            },
+            {
+              "name": "StateFailed",
+              "title": "A picture that failed"
+            },
+            {
+              "name": "StateOverflow",
+              "title": "Past the group's max"
+            }
+          ],
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "Extra small, small, medium and large"
+            }
+          ],
+          "inContext": [
+            {
+              "name": "WithName",
+              "title": "Beside the name it stands for"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "Badge",
       "import": "@liulidesign/core/Badge",
       "exports": [

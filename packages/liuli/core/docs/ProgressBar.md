@@ -113,7 +113,7 @@ export function Spinners() {
 
 ## Accessibility
 
-- Pattern: none (holds a control).
+- Pattern: none.
 - Name: label.
 - Description: none.
 - Role progressbar, named by `label`. With `value` it reports the value, 0 and `max`; `valueLabel` is read in place of a percentage.

@@ -110,7 +110,7 @@ export function InARow() {
 
 ## Accessibility
 
-- Pattern: none (holds a control).
+- Pattern: none.
 - Name: label.
 - Description: none.
 - Not a control and not announced on change. A badge whose change matters sits next to a status region the app keeps.

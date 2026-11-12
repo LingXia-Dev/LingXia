@@ -1,5 +1,6 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
 import type { View } from '@lingxia/view';
+import { Specimen as AvatarSpecimen } from '../../../core/src/Avatar/Avatar.examples';
 import { Specimen as BadgeSpecimen } from '../../../core/src/Badge/Badge.examples';
 import { Specimen as ButtonSpecimen } from '../../../core/src/Button/Button.examples';
 import { Specimen as CardSpecimen } from '../../../core/src/Card/Card.examples';
@@ -205,11 +206,18 @@ export function render({ actions }: View<Actions>) {
         <Tile
           name={"Details"}
           tagline={"Content behind a row"}
-          isWide
           onOpen={() => actions.open({ page: "details" })}
           testId={"open-details"}
         >
           <DetailsSpecimen />
+        </Tile>
+        <Tile
+          name={"Avatar"}
+          tagline={"Who, at a glance"}
+          onOpen={() => actions.open({ page: "avatar" })}
+          testId={"open-avatar"}
+        >
+          <AvatarSpecimen />
         </Tile>
       </Category>
       <Category title={"Patterns"}>
