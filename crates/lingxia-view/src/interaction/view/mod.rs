@@ -147,9 +147,8 @@ impl ViewInteraction {
     pub fn styled_focus(&self, node: usize) -> Option<String> {
         let frame = self.frame.as_ref()?;
         let snapshot = frame.nodes.get(node)?;
-        ((snapshot.focus_style || snapshot.focus_visible_style)
-            .then(|| snapshot.identity.clone()))
-        .map(String::from)
+        ((snapshot.focus_style || snapshot.focus_visible_style).then(|| snapshot.identity.clone()))
+            .map(String::from)
     }
 
     /// Whether `node` draws its own keyboard focus ring (around a switch, checkbox or radio
