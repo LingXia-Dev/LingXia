@@ -10,6 +10,7 @@ import { compileUtilities, tailwindWarm } from './tailwind.mjs';
 import { nearestSupported } from './suggest.mjs';
 import { loadStylesheet, validateTokens, fontFaces } from './stylesheets.mjs';
 import { viewTsconfig } from './tsconfig.mjs';
+import { sourceLabel } from './packages.mjs';
 import { existsSync, statSync } from 'node:fs';
 import { colorProblem, seriesProblem } from '../src/style/color.js';
 import { readFile, mkdir, writeFile, copyFile, realpath } from 'node:fs/promises';
@@ -250,8 +251,9 @@ function report(problems, page) {
 // A warm dev compiler rebuilds the files of one page per save; unchanged ones keep their analysis.
 const analyses = new Map();
 let analysisHits = 0, analysisMisses = 0;
-function analyse(path, contents, label, loader, literalColors) {
-  const key = `${literalColors}\0${label}\0${path}`;
+// `label` names the file in source positions, `id` in component and closure ids.
+function analyse(path, contents, label, id, loader, literalColors) {
+  const key = `${literalColors}\0${label}\0${id}\0${path}`;
   const cached = analyses.get(key);
   if (cached?.contents === contents) { analysisHits++; return cached; }
   analysisMisses++;
@@ -265,7 +267,7 @@ function analyse(path, contents, label, loader, literalColors) {
   collect(file);
   const analysed = {
     contents, file, names, problems: audit(contents, path, { literalColors }),
-    annotated: identify(loader.endsWith('x') ? stabilizeClosures(annotate(contents, path, label), path, label) : contents, path, label),
+    annotated: identify(loader.endsWith('x') ? stabilizeClosures(annotate(contents, path, label), path, id) : contents, path, id),
   };
   analyses.delete(key);
   if (analyses.size >= 512) analyses.delete(analyses.keys().next().value);
@@ -335,7 +337,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
             const contents = await readFile(path, 'utf8');
             const loader = path.endsWith('.tsx') ? 'tsx' : path.endsWith('.ts') ? 'ts' : path.endsWith('.jsx') ? 'jsx' : 'js';
             const label = relative(root, path).split('\\').join('/');
-            const analysed = analyse(path, contents, label, loader, literalColors);
+            const analysed = analyse(path, contents, label, sourceLabel(root, path), loader, literalColors);
             problems.push(...analysed.problems);
             sourceFiles.push(analysed.file);
             for (const name of analysed.names) candidates.add(name);

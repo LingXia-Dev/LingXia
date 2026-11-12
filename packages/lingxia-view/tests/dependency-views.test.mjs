@@ -1,7 +1,7 @@
 // View components that another package ships as TSX source compile like the app's own.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { buildPages } from '../compiler/index.mjs';
@@ -19,8 +19,9 @@ const kit = {
   '../kit/src/card.tsx': 'export function Card({ title }: { title: string }) { return <text className="text-sm">{title}</text>; }\n',
 };
 
-// The lxapp sits in `app/`; `../kit/…` files form a package beside it, linked into its node_modules.
-async function project(files, run) {
+// The lxapp sits in `app/`; `../kit/…` files form a package beside it, linked into its
+// node_modules as a workspace does, or copied there as an install does.
+async function project(files, run, { install = 'link' } = {}) {
   const base = await mkdtemp(join(tmpdir(), 'lingxia-view-deps-'));
   const root = join(base, 'app');
   try {
@@ -31,7 +32,8 @@ async function project(files, run) {
     }
     if (files['../kit/package.json']) {
       await mkdir(join(root, 'node_modules'), { recursive: true });
-      await symlink(join(base, 'kit'), join(root, 'node_modules/view-kit'), 'dir');
+      if (install === 'link') await symlink(join(base, 'kit'), join(root, 'node_modules/view-kit'), 'dir');
+      else await cp(join(base, 'kit'), join(root, 'node_modules/view-kit'), { recursive: true });
     }
     await run(root, (options = {}) => buildPages(root, ['page.tsx'], join(root, 'dist'), {}, options));
   } finally { await rm(base, { recursive: true, force: true }); }
@@ -55,4 +57,15 @@ test("a dependency's TSX compiles with the View's JSX whatever its own tsconfig 
     assert.doesNotMatch(source, /jsx-runtime/);
     assert.ok(records().some(record => record.text === 'From the app'));
   });
+});
+
+test("a dependency's components are identified by package name and path inside it, linked or installed", async () => {
+  const files = { ...kit, 'page.tsx': "import { Card } from 'view-kit/card';\nexport function render() { return <view><Card title=\"Hi\" /></view>; }\n" };
+  for (const install of ['link', 'copy']) {
+    await project(files, async (root, build) => {
+      await build();
+      const source = await readFile(join(root, 'dist/page.js'), 'utf8');
+      assert.match(source, /Card\.__lxid = "view-kit\/src\/card#Card"/, install);
+    }, { install });
+  }
 });
