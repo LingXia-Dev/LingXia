@@ -1097,7 +1097,8 @@ export class LiveFixture implements Fixture {
           lastPresentAt: frame.lastPresentAt,
           framesTotal: frame.frames,
           nodes: frame.nodes,
-          reveal: { count: frame.pacing.reveals, ...frame.reveal },
+          // An older host reports no cover state.
+          reveal: { count: frame.pacing.reveals, ...frame.reveal, windowCovered: frame.reveal.windowCovered ?? false },
           // An older host reports no budget counters.
           budget: frame.budget ?? { overruns: 0 },
           composite: frame.composite ?? null,

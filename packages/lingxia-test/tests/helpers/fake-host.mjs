@@ -300,7 +300,7 @@ export function createWorld(options = {}) {
         renderer: "gpu", page: "1", commit: 3, firstPresentAt: 42, lastPresentAt: 900, frames: 120,
         workerQueueUs: { last: 0, p50: 0, max: 0 }, evalMs: { last: 0, max: 0 }, imageCacheBytes: 0,
         imageCacheEntries: 0, animationFrames: 0, wakeups: 0, hud: hudOn, nodes: 42,
-        reveal: { deadlines: 0, watchdogs: 0, lastReveal: { reason: "frame", atMs: 40 } },
+        reveal: { deadlines: 0, watchdogs: 0, windowCovered: false, lastReveal: { reason: "frame", atMs: 40 } },
         pacing: {
           windowMs, frames: 60, samples: 59, refreshMs: 16.67, frameTimeMs: stats, fps: 59.9, dropped: 1, jank: 1,
           late: 0, cpuMs: stats, queueMs: stats, gpuMs: null,

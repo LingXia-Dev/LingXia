@@ -31,11 +31,12 @@ pub(super) struct Reveal {
 }
 
 impl Reveal {
-    /// `{deadlines, watchdogs, lastReveal: {reason, atMs}}`, times since `opened`.
+    /// `{deadlines, watchdogs, windowCovered, lastReveal: {reason, atMs}}`, times since `opened`.
     pub(super) fn metrics(&self, opened: Duration) -> serde_json::Value {
         serde_json::json!({
             "deadlines": self.deadlines,
             "watchdogs": self.watchdogs,
+            "windowCovered": self.window_covered,
             "lastReveal": self.last.map(|(reason, at)| serde_json::json!({
                 "reason": reason,
                 "atMs": at.saturating_sub(opened).as_millis() as u64,
