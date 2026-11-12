@@ -1,0 +1,34 @@
+{
+  "name": "@liulidesign/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Liuli (琉璃): LingXia's design system for GPU pages, as TSX source components.",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./Button": "./src/Button/Button.tsx",
+    "./Button/recipe": "./src/Button/Button.recipe.ts",
+    "./Field": "./src/Field/Field.tsx",
+    "./Field/recipe": "./src/Field/Field.recipe.ts",
+    "./TextInput": "./src/TextInput/TextInput.tsx",
+    "./TextInput/recipe": "./src/TextInput/TextInput.recipe.ts",
+    "./CheckboxInput": "./src/CheckboxInput/CheckboxInput.tsx",
+    "./CheckboxInput/recipe": "./src/CheckboxInput/CheckboxInput.recipe.ts",
+    "./Dialog": "./src/Dialog/Dialog.tsx",
+    "./Dialog/recipe": "./src/Dialog/Dialog.recipe.ts",
+    "./DropdownMenu": "./src/DropdownMenu/DropdownMenu.tsx",
+    "./DropdownMenu/recipe": "./src/DropdownMenu/DropdownMenu.recipe.ts",
+    "./package.json": "./package.json"
+  },
+  "lingxia": {
+    "tokens": "./tokens.css"
+  },
+  "scripts": {
+    "test": "node --test \"src/**/*.test.mjs\"",
+    "check": "node scripts/check.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "@lingxia/view": ">=0.28.0"
+  }
+}

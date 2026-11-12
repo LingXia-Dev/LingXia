@@ -1,0 +1,13 @@
+/* Liuli's scale tokens. Every page that bundles a Liuli component compiles with these below the
+   app's own stylesheet, so an app retunes Liuli by redefining a token there. Colours stay theme roles. */
+@theme {
+  /* Control heights: min-h-control-md, size-control-sm. */
+  --spacing-control-sm: 2rem;
+  --spacing-control-md: 2.5rem;
+  --spacing-control-lg: 3rem;
+
+  /* Corner radius by what the shape is, not by size. */
+  --radius-control: 0.625rem;
+  --radius-container: 0.875rem;
+  --radius-dialog: 1.25rem;
+}

@@ -1,0 +1,70 @@
+import type { ComponentDoc } from '../doc';
+
+export const doc: ComponentDoc = {
+  name: 'Dialog',
+  category: 'overlay',
+  status: 'lab',
+  summary: 'Modal panel over the page for a decision or a short task',
+  description:
+    'Dialog interrupts the page to ask for a decision or a short piece of input, and keeps focus and assistive tech inside until it closes. ' +
+    'It is controlled: `isOpen` shows it, `onOpenChange(false)` reports every close request.',
+  keywords: ['dialog', 'modal', 'confirm', 'alert', 'popup', 'overlay', 'prompt'],
+  propsType: 'DialogProps',
+  recipe: { map: 'dialogRecipe', parts: 'dialogParts' },
+  anatomy: [
+    { part: 'panel', required: true, description: 'The dialog primitive: a centred panel in the top layer above a scrim.' },
+    { part: 'title', required: true, description: '`label` as a level-2 heading, unless `isLabelHidden`.' },
+    { part: 'close', required: false, description: 'A close button named by `closeLabel`.' },
+    { part: 'description', required: false, description: 'Text under the title.' },
+    { part: 'body', required: false, description: '`children`, in a scroll that takes the remaining height.' },
+    { part: 'footer', required: false, description: '`actions`, end-aligned, wrapping when narrow.' },
+  ],
+  accessibility: {
+    pattern: 'dialog',
+    name: 'label',
+    states: [{ state: 'modal', from: 'isOpen' }],
+    keyboard: [{ keys: 'Escape', effect: 'onOpenChange(false), unless dismissOn is none' }],
+    contrast: [
+      { what: 'title', pair: ['text', 'surface-raised'], minimum: '4.5:1', proven: true },
+      { what: 'description', pair: ['text-muted', 'surface-raised'], minimum: '4.5:1', proven: false },
+    ],
+    notes: [
+      'Opened from a hardware keyboard, focus moves to the first control and returns to the opener on close; opened by touch, focus stays put.',
+      'Android back and the screen reader dismiss gesture are close requests, like Escape.',
+    ],
+  },
+  guidance: {
+    do: [
+      'Title it with the question or the task ("Delete this note?").',
+      'Name the actions by their outcome; put the main one last.',
+      'Keep a draft in state declared outside the dialog.',
+    ],
+    dont: [
+      'Open a dialog from a dialog; finish or close the first.',
+      'Put a long scrolling list in a dialog; use a page.',
+      'Place it inside a Button; overlays cannot sit in a pressable control.',
+    ],
+  },
+  examples: [
+    { name: 'Confirm', title: 'Confirm a destructive action' },
+    { name: 'Form', title: 'A short form' },
+  ],
+  gaps: [
+    {
+      missing: 'A dialog that screen readers announce as urgent.',
+      needs: 'the alertdialog role on the dialog primitive',
+      today: 'Use dismissOn="closeRequest" and a required decision.',
+    },
+    {
+      missing: 'A theme-wide motion token for the enter and exit timing.',
+      needs: 'duration and easing tokens in the theme pack',
+      today: 'duration-200 ease-out in the recipe.',
+    },
+    {
+      missing: 'Muted description text proven against the raised surface.',
+      needs: 'a text-muted on surface-raised contrast pair in the theme pack',
+      today: 'The pair is not checked by the build.',
+    },
+  ],
+  related: ['Button', 'DropdownMenu'],
+};
