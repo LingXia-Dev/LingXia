@@ -145,6 +145,8 @@ class LxAppActivity : AppCompatActivity() {
         internal const val DEFAULT_NAV_BAR_HEIGHT_DP = 44
         /** A first screen retired while awaited is looked up again, this many times. */
         private const val FIRST_SCREEN_RESOLVE_LIMIT = 3
+        /** How long lifting a forced orientation waits for the window to turn back. */
+        private const val ORIENTATION_RETURN_TIMEOUT_MS = 1500L
         private const val RETIRED_GPU_CONTAINER = "retired_gpu_container"
 
         /**
@@ -1747,6 +1749,7 @@ class LxAppActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         isDestroyed = true
+        cancelOrientationRelease()
         pendingGpuDisposals.toList().forEach { it.run() }
         ++gpuTransitionVersion
         clearGpuTransitionCover()
@@ -2774,13 +2777,64 @@ class LxAppActivity : AppCompatActivity() {
     /** Reading `requestedOrientation` is a synchronous system call; only this activity sets it. */
     private var appliedOrientation: Int? = null
 
+    /** The window's orientation when a forced one (a full-screen video's) replaced a free one. */
+    private var orientationBeforeForce: Int? = null
+    /** Lifting a force waits for the window to turn back before following the sensor again. */
+    private var pendingRelease: Runnable? = null
+    private val orientationHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
     private fun updateRequestedOrientation(orientation: Int) {
         val targetOrientation = resolveScreenOrientation(orientation)
-        if (appliedOrientation != targetOrientation) {
+        if (appliedOrientation == targetOrientation) return
+        val free = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        val wasFree = (appliedOrientation ?: free) == free
+        appliedOrientation = targetOrientation
+        val returning = pendingRelease != null
+        cancelOrientationRelease()
+        if (targetOrientation != free) {
+            // A force during a return keeps the orientation recorded before the first one.
+            if (wasFree && !returning) orientationBeforeForce = windowOrientation()
             requestedOrientation = targetOrientation
-            appliedOrientation = targetOrientation
+            return
+        }
+        val before = orientationBeforeForce
+        if (before == null || before == windowOrientation()) {
+            orientationBeforeForce = null
+            requestedOrientation = free
+            return
+        }
+        // Releasing at once would keep the forced rotation on a phone lying flat: the sensor
+        // reports nothing new. Turn back first, then follow the sensor.
+        requestedOrientation = before
+        val release = Runnable {
+            pendingRelease = null
+            orientationBeforeForce = null
+            requestedOrientation = free
+        }
+        pendingRelease = release
+        orientationHandler.postDelayed(release, ORIENTATION_RETURN_TIMEOUT_MS)
+    }
+
+    private fun cancelOrientationRelease() {
+        pendingRelease?.let(orientationHandler::removeCallbacks)
+        pendingRelease = null
+    }
+
+    /** A pending release runs as soon as the window has turned back. */
+    private fun releaseOrientationIfReturned() {
+        val release = pendingRelease ?: return
+        if (orientationBeforeForce == windowOrientation()) {
+            orientationHandler.removeCallbacks(release)
+            release.run()
         }
     }
+
+    private fun windowOrientation(): Int =
+        if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
 
     private fun resolveScreenOrientation(orientation: Int): Int {
         return when (orientation) {
@@ -3099,6 +3153,7 @@ class LxAppActivity : AppCompatActivity() {
     // Handle configuration changes to prevent Activity recreation
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
+        releaseOrientationIfReturned()
 
         NativeApi.onHostAppearanceChanged()
 
