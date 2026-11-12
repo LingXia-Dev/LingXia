@@ -5275,3 +5275,56 @@ fn a_held_slider_draws_its_active_parts_on_the_presented_frame() {
         "held, the track takes its active height"
     );
 }
+
+#[test]
+fn a_dragged_slider_keeps_its_active_parts_until_release() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let page = source(
+        "function render(){const v=useLocal('v',30);return h('view',{},h('slider',{'data-testid':'s',bind:v,max:180,'aria-label':'Seek',className:'px-0 thin active:track:thick thumb:size-0 active:thumb:size-4',style:{width:160}}))}",
+    )
+    .replace(
+        "__lingxiaPublish(render);",
+        "configureClasses([{name:'px-0',style:{paddingLeft:0,paddingRight:0}},{name:'thin',when:{part:'track'},style:{height:3}},{name:'active:track:thick',when:{state:'active',part:'track'},style:{height:6}},{name:'thumb:size-0',when:{part:'thumb'},style:{width:0,height:0}},{name:'active:thumb:size-4',when:{state:'active',part:'thumb'},style:{width:16,height:16}}]);__lingxiaPublish(render);",
+    );
+    let host = platform.host(&worker, &page, false);
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let line = crate::theme::Palette::builtin(false).role(lingxia_theme::Role::Line);
+    let track = |host: &ViewHost<Fake>| {
+        host.adapter()
+            .log
+            .lock()
+            .unwrap()
+            .rects
+            .iter()
+            .find(|(color, _)| *color == line)
+            .map(|(_, bounds)| bounds[3])
+    };
+    let at = |phase, x: f32| Pointer {
+        phase,
+        x,
+        y: 44.0,
+        slop: 8.0,
+        velocity: [0.0; 2],
+        min_fling: 50.0,
+    };
+    assert_eq!(track(&host), Some(3.0));
+    host.pointer(at(PointerPhase::Down, 100.0));
+    run_frames(&platform, &host, 20);
+    let mut seen = vec![("held", track(&host))];
+    for step in 1..=6 {
+        host.pointer(at(PointerPhase::Move, 100.0 + 12.0 * step as f32));
+        run_frames(&platform, &host, 4);
+        seen.push(("moved", track(&host)));
+    }
+    run_frames(&platform, &host, 20);
+    seen.push(("settled", track(&host)));
+    assert!(
+        seen.iter().all(|(_, height)| *height == Some(6.0)),
+        "{seen:?}"
+    );
+    host.pointer(at(PointerPhase::Up, 172.0));
+    run_frames(&platform, &host, 20);
+    assert_eq!(track(&host), Some(3.0), "released, the track rests");
+}

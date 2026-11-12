@@ -304,8 +304,10 @@ spec('a slider styled by parts reads its valuetext and grows its line and thumb 
   await new Promise<void>(resolve => setTimeout(resolve, 400));
   const held = await lineRows(t, scrub);
   await finger.moveTo([at[0] + box.width / 6, at[1]], { durationMs: 300 });
+  await new Promise<void>(resolve => setTimeout(resolve, 400));
+  const dragged = await lineRows(t, scrub);
   await finger.up();
-  expect(held > rest ? 'grew' : `same ${JSON.stringify({ rest, held })}`).toBe('grew');
+  expect(held > rest && dragged > rest ? 'grew' : `same ${JSON.stringify({ rest, held, dragged })}`).toBe('grew');
   await expect(scrub).not.toHaveAttribute('aria-valuetext', '0:30 of 3:00');
   await expect.poll(async () => lineRows(t, scrub), { timeout: 3_000 }).toBe(rest);
 });

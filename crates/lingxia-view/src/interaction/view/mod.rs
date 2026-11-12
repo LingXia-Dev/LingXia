@@ -512,7 +512,17 @@ impl ViewInteraction {
                 previous
                     .as_ref()
                     .and_then(|frame| self.gesture.pressed.and_then(|index| frame.node(index)))
-                    .and_then(|node| next.rebind(node).or_else(|| next.press_target(node)))
+                    .and_then(|node| {
+                        next.rebind(node)
+                            .or_else(|| next.press_target(node))
+                            // A slider still under its drag stays pressed as its value changes.
+                            .or_else(|| {
+                                self.slider
+                                    .gesture_node()
+                                    .filter(|held| held.identity == node.identity)
+                                    .and_then(|held| next.index_of(&held.identity))
+                            })
+                    })
             };
             if rebound.is_none() {
                 effects.extend(self.cancel_press());
