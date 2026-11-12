@@ -544,6 +544,7 @@ impl ViewSession {
                     metrics.paints = display.paint_count();
                     metrics.cost = display.cost();
                     metrics.top_layer_open = display.top_layer_open();
+                    metrics.chrome_snapshot = self.chrome.attach(&mut display);
                     let started = std::time::Instant::now();
                     let frame = build(display)?;
                     metrics.build_us += crate::session::metrics::micros(started);
@@ -749,6 +750,7 @@ impl ViewSession {
                     metrics.paints = display.paint_count();
                     metrics.cost = display.cost();
                     metrics.top_layer_open = display.top_layer_open();
+                    metrics.chrome_snapshot = self.chrome.attach(&mut display);
                     let started = std::time::Instant::now();
                     let frame = build(display)?;
                     metrics.build_us += crate::session::metrics::micros(started);

@@ -124,3 +124,130 @@ fn a_popover_leaves_the_chrome_over_the_page() {
     );
     assert!(!shot.open);
 }
+
+/// Indices of the chrome images this frame draws, the first page paint, and the first black
+/// paint (the backdrop or the sheet), with each chrome image's bounds and whether it is bound.
+struct Chrome {
+    images: Vec<(usize, [f32; 4], bool)>,
+    page: Option<usize>,
+    top_layer: Option<usize>,
+    shot: Shot,
+}
+
+fn present_chrome(page: &mut ViewSession, at: Duration, width: u16) -> (Chrome, u64) {
+    use crate::scene::paint::Paint;
+    let chrome = page
+        .prepare_view_animated(width, 100, 2.0, true, None, at, |display: DisplayList| {
+            let color = |paint: &Paint| match paint {
+                Paint::Vector { color, .. } | Paint::Rect { color, .. } => Some(*color),
+                _ => None,
+            };
+            Ok(Chrome {
+                images: display
+                    .commands
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, paint)| match paint {
+                        Paint::Image { src, bounds, .. }
+                            if crate::scene::display::ChromeEdge::of_source(src).is_some() =>
+                        {
+                            Some((index, *bounds, display.images.contains_key(src)))
+                        }
+                        _ => None,
+                    })
+                    .collect(),
+                page: display
+                    .commands
+                    .iter()
+                    .position(|p| color(p).is_some_and(|c| c[..3] == [255, 0, 0])),
+                top_layer: display
+                    .commands
+                    .iter()
+                    .position(|p| color(p).is_some_and(|c| c[..3] == [0, 0, 0] && c[3] > 0)),
+                shot: Shot {
+                    nodes: display.nodes.clone(),
+                    open: display.top_layer_open(),
+                },
+            })
+        })
+        .unwrap();
+    page.animation_presented(SURFACE, page.generation(), at)
+        .unwrap();
+    (chrome, page.frame_metrics().chrome_snapshot)
+}
+
+fn snapshot(page: &mut ViewSession, generation: u64) {
+    use crate::scene::display::ChromeEdge;
+    let rgba = vec![255u8; 4 * 4 * 2];
+    page.set_chrome_snapshot(
+        ChromeEdge::Top,
+        generation,
+        &rgba,
+        4,
+        2,
+        [0.0, 0.0, 400.0, 40.0],
+    )
+    .unwrap();
+}
+
+#[test]
+fn bar_snapshots_draw_between_the_page_and_its_top_layer() {
+    let (mut page, _) = opened("dialog");
+    snapshot(&mut page, 7);
+    let (chrome, generation) = present_chrome(&mut page, frame_time(300), W as u16 * 2);
+    assert_eq!(generation, 7);
+    let bound: Vec<_> = chrome.images.iter().filter(|(.., bound)| *bound).collect();
+    assert_eq!(bound.len(), 1, "only the top bar has a snapshot");
+    let (index, bounds, _) = *bound[0];
+    assert_eq!(bounds, [0.0, 0.0, 200.0, 20.0], "surface pixels at scale 2");
+    assert!(chrome.page.unwrap() < index, "over the page");
+    assert!(
+        index < chrome.top_layer.unwrap(),
+        "under the backdrop and the dialog"
+    );
+}
+
+#[test]
+fn bar_snapshots_go_when_the_top_layer_closes_or_the_surface_changes() {
+    let (mut page, _) = opened("dialog");
+    snapshot(&mut page, 1);
+    assert_eq!(
+        present_chrome(&mut page, frame_time(300), W as u16 * 2).1,
+        1
+    );
+    // A resize: the host captures the bars again.
+    assert_eq!(
+        present_chrome(&mut page, frame_time(301), W as u16 * 2 + 2).1,
+        0
+    );
+    snapshot(&mut page, 2);
+    let (chrome, generation) = present_chrome(&mut page, frame_time(302), W as u16 * 2 + 2);
+    assert_eq!(generation, 2);
+    click(&mut page, &chrome.shot, "sheet-backdrop");
+    let mut index = 400;
+    loop {
+        let (_, generation) = present_chrome(&mut page, frame_time(index), W as u16 * 2 + 2);
+        if generation == 0 {
+            break;
+        }
+        index += 1;
+        assert!(index < 460, "the exit ends");
+    }
+    assert!(index > 400, "the exit ghost keeps the bars dimmed");
+    // Reopened: nothing to draw until the host captures again.
+    let shot = run(&mut page, 500).pop().unwrap();
+    click(&mut page, &shot, "toggle");
+    let (chrome, generation) = present_chrome(&mut page, frame_time(600), W as u16 * 2 + 2);
+    assert_eq!(generation, 0);
+    assert!(chrome.images.iter().all(|(.., bound)| !bound));
+}
+
+#[test]
+fn a_page_without_a_top_layer_has_no_bar_slots() {
+    let mut page = page("popover");
+    run(&mut page, 0);
+    snapshot(&mut page, 3);
+    let (chrome, generation) = present_chrome(&mut page, frame_time(100), W as u16 * 2);
+    assert!(chrome.images.is_empty());
+    assert_eq!(generation, 0);
+}

@@ -96,6 +96,40 @@ impl SceneKey {
     }
 }
 
+/// A host bar the page draws under its top layer while it is raised over the bars.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ChromeEdge {
+    Top,
+    Bottom,
+}
+
+impl ChromeEdge {
+    pub const ALL: [Self; 2] = [Self::Top, Self::Bottom];
+
+    /// Image sources no page can name: a page's `src` may not hold NUL.
+    pub(crate) fn source(self) -> &'static str {
+        match self {
+            Self::Top => "\0chrome:top",
+            Self::Bottom => "\0chrome:bottom",
+        }
+    }
+
+    pub(crate) fn of_source(src: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|edge| edge.source() == src)
+    }
+
+    /// An empty image paint that [`DisplayList::attach_chrome`] sizes and binds.
+    pub(crate) fn slot(self) -> Paint {
+        Paint::Image {
+            src: self.source().to_owned(),
+            bounds: [0.0; 4],
+            radius: 0.0,
+            fit: crate::scene::image::Fit::Fill,
+            position: [0.0; 2],
+        }
+    }
+}
+
 impl DisplayList {
     /// The host lifts the page over its chrome: a shown dialog, or its exit ghost. A popover
     /// stays under the chrome; a dialog's backdrop hides the chrome anyway.
@@ -105,6 +139,29 @@ impl DisplayList {
                 && node.visible_bounds[2] > 0.0
                 && node.visible_bounds[3] > 0.0
         })
+    }
+
+    /// Draw the host's bar snapshots in their slots under the top layer; `rect` is in surface
+    /// pixels. Whether any slot exists, i.e. whether this frame draws them.
+    pub(crate) fn attach_chrome(
+        &mut self,
+        snapshots: &[(ChromeEdge, &crate::scene::image::Bitmap, [f32; 4])],
+    ) -> bool {
+        let mut slotted = false;
+        for paint in &mut self.commands {
+            let Paint::Image { src, bounds, .. } = paint else {
+                continue;
+            };
+            let Some(edge) = ChromeEdge::of_source(src) else {
+                continue;
+            };
+            slotted = true;
+            if let Some((_, bitmap, rect)) = snapshots.iter().find(|(e, ..)| *e == edge) {
+                *bounds = rect.map(|v| v / self.scale);
+                self.images.insert(src.clone(), (*bitmap).clone());
+            }
+        }
+        slotted
     }
 
     pub fn animated_spans(&self) -> &[AnimatedSpan] {
@@ -412,7 +469,7 @@ impl DisplayList {
     /// Only currently painted sources are requested; list overscan does not load images.
     pub fn image_sources(&self) -> impl Iterator<Item = &str> {
         self.commands.iter().filter_map(|paint| match paint {
-            Paint::Image { src, .. } => Some(src.as_str()),
+            Paint::Image { src, .. } if ChromeEdge::of_source(src).is_none() => Some(src.as_str()),
             _ => None,
         })
     }
@@ -420,7 +477,9 @@ impl DisplayList {
     pub fn image_buckets(&self) -> HashMap<String, crate::scene::image::Bucket> {
         let mut buckets = HashMap::new();
         for paint in &self.commands {
-            if let Paint::Image { src, bounds, .. } = paint {
+            if let Paint::Image { src, bounds, .. } = paint
+                && ChromeEdge::of_source(src).is_none()
+            {
                 let bucket =
                     crate::scene::image::Bucket::of(bounds[2] * self.scale, bounds[3] * self.scale);
                 let entry = buckets.entry(src.clone()).or_insert(bucket);

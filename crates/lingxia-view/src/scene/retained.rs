@@ -439,6 +439,7 @@ impl RetainedLayout {
         let mut subtree_end = vec![0usize; count];
         let mut spans = Vec::new();
         let mut open: Option<(usize, usize, usize)> = None;
+        let mut chrome_slots = false;
         // A drag element off its resting point moves every frame: its subtree is a span too.
         let dragged: Vec<bool> = self
             .nodes
@@ -488,6 +489,12 @@ impl RetainedLayout {
                     span,
                 );
                 open = None;
+            }
+            // The host's bar snapshots sit under the top layer, outside every page layer.
+            if self.top_layer[index] && !chrome_slots {
+                chrome_slots = true;
+                sync_layers(&mut commands, &mut active_layers, Vec::new());
+                commands.extend(crate::scene::display::ChromeEdge::ALL.map(|edge| edge.slot()));
             }
             let parent = self.parents[index];
             if open.is_none()

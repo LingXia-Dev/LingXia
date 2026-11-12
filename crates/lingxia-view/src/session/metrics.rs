@@ -37,6 +37,10 @@ pub struct FrameMetrics {
     /// The host lifts the page over its chrome: see [`crate::DisplayList::top_layer_open`].
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub top_layer_open: bool,
+    /// The bar snapshots this frame draws under the top layer, by the generation
+    /// [`crate::ViewHost::set_chrome_snapshot`] returned; 0 when it draws none.
+    #[serde(skip_serializing_if = "is_zero_u64")]
+    pub chrome_snapshot: u64,
 }
 
 /// Eval time by runtime phase in µs; spans nest (recall in resolve, rows in encode).
@@ -55,6 +59,10 @@ pub struct ViewPhases {
 }
 
 fn is_zero(value: &usize) -> bool {
+    *value == 0
+}
+
+fn is_zero_u64(value: &u64) -> bool {
     *value == 0
 }
 

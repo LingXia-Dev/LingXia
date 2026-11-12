@@ -15,6 +15,7 @@ use crate::{DisplayList, Frame, Renderer};
 use rong::{JSEngine, Source};
 use std::{cell::Cell, collections::HashMap, sync::Arc, time::Duration};
 mod bridge;
+mod chrome;
 mod editing;
 mod environment;
 mod events;
@@ -118,6 +119,8 @@ pub struct ViewSession {
     /// Limits this page has come near, each warned once; drained by the host.
     budget_warned: std::collections::BTreeSet<&'static str>,
     budget_warnings: Vec<String>,
+    /// The host's bars, drawn under the top layer while the page is raised over them.
+    chrome: chrome::ChromeSnapshots,
 }
 
 /// The error a frame build returns when the presenter declines the frame; the candidate is
@@ -215,6 +218,24 @@ impl ViewSession {
                 log::warn!(target: "lingxia_view", "BYTECODE_CACHE: cannot take lowered styles: {error}")
             }
         }
+    }
+
+    /// Hold a host bar's snapshot to draw under the top layer while it stays open; see
+    /// [`crate::ViewHost::set_chrome_snapshot`].
+    pub fn set_chrome_snapshot(
+        &mut self,
+        edge: crate::scene::display::ChromeEdge,
+        generation: u64,
+        rgba: &[u8],
+        width: u32,
+        height: u32,
+        rect: [f32; 4],
+    ) -> Result<(), String> {
+        self.chrome.set(edge, generation, rgba, width, height, rect)
+    }
+
+    pub fn clear_chrome_snapshots(&mut self) {
+        self.chrome.clear();
     }
 
     pub fn metrics(&self) -> &crate::FrameMetrics {
@@ -325,6 +346,7 @@ impl ViewSession {
             focused_control: None,
             budget_warned: Default::default(),
             budget_warnings: Vec::new(),
+            chrome: Default::default(),
             environment: serde_json::json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"safeArea":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":std::env::consts::OS,"formFactor":"phone","canDock":false,"displayLanguage":"en","pointer":"coarse"}),
             state: if logic {
                 crate::session::state::StateReplica::default()

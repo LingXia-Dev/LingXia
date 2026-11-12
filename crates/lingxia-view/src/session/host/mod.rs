@@ -361,6 +361,8 @@ struct Main<F> {
     demand_at: Option<Duration>,
     /// The frame-statistics HUD is drawn over the page.
     hud: bool,
+    /// The last generation [`ViewHost::set_chrome_snapshot`] handed out.
+    chrome_generation: u64,
     /// `measureFrames` windows a View step asked for: `(token, milliseconds)`.
     frame_measures: Vec<(u64, u64)>,
     /// Queued activations whose result has not come back; automation waits for them.
@@ -582,6 +584,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     display: None,
                     demand_at: None,
                     hud: false,
+                    chrome_generation: 0,
                     frame_measures: Vec::new(),
                     activating: 0,
                     automation_calls: Default::default(),
@@ -751,6 +754,8 @@ impl<A: PlatformAdapter> ViewHost<A> {
         self.inner.park_animations();
         let effects = self.inner.main().interaction.cancel_all();
         self.inner.deliver(effects);
+        // The bars are the host's again; a returning surface captures them anew.
+        self.decline_chrome_snapshot();
     }
 
     /// A runtime environment push (`language`, `surface` or `theme` kind, JSON).
@@ -858,6 +863,55 @@ impl<A: PlatformAdapter> ViewHost<A> {
         if changed {
             self.redraw();
         }
+    }
+
+    /// While the page's top layer is open (`top_layer_open` in frame metrics), draw a
+    /// snapshot of the host's `edge` bar under it so the backdrop dims the bar too.
+    /// `rgba` is premultiplied, `width` × `height`; `rect` places it in surface pixels.
+    /// Returns its generation: once a frame reporting `chrome_snapshot` at or past it is on
+    /// screen, the host may hide the real bar. The page drops the snapshots when the top layer
+    /// closes or the surface changes, and frames then report 0: show the bar again.
+    pub fn set_chrome_snapshot(
+        &self,
+        edge: crate::scene::display::ChromeEdge,
+        rgba: Vec<u8>,
+        width: u32,
+        height: u32,
+        rect: [f32; 4],
+    ) -> u64 {
+        let generation = {
+            let mut main = self.inner.main();
+            main.chrome_generation += 1;
+            main.chrome_generation
+        };
+        self.inner.work(
+            Guard::Page(self.inner.lifecycle.page()),
+            move |_, session| {
+                session.set_chrome_snapshot(edge, generation, &rgba, width, height, rect)
+            },
+            |inner, result| match result {
+                Some(Ok(())) => inner.schedule(),
+                Some(Err(error)) => log::warn!(target: "lingxia_view", "{error}"),
+                None => {}
+            },
+        );
+        generation
+    }
+
+    /// The host shows its bars again before the top layer closed: drop the snapshots.
+    pub fn decline_chrome_snapshot(&self) {
+        self.inner.work(
+            Guard::Page(self.inner.lifecycle.page()),
+            |_, session| {
+                session.clear_chrome_snapshots();
+                Ok(())
+            },
+            |inner, result| {
+                if result.is_some() {
+                    inner.schedule();
+                }
+            },
+        );
     }
 
     /// A deferred frame of `generation` reached the screen, or `shown: false` when the
