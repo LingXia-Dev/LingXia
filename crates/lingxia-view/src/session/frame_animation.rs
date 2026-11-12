@@ -77,6 +77,7 @@ impl FrameAnimations<'_> {
                     .filter(|(record, _)| {
                         record.string(field::ANIMATION).is_some()
                             || record.string(field::TRANSITION).is_some()
+                            || eases_parts(record)
                     })
                     .map(|(_, node)| node.identity.clone())
                     .collect();
@@ -139,11 +140,7 @@ fn transition_inputs(
     let mut blocked = None;
     let mut inputs = Vec::new();
     for (index, record) in records.iter().enumerate() {
-        // A slider or switch eases its parts between states even without a transition of its own.
-        let parts = matches!(
-            record.tag,
-            crate::protocol::tag::SLIDER | crate::protocol::tag::SWITCH
-        );
+        let parts = eases_parts(record);
         let definition = match record.string(field::TRANSITION) {
             Some(source) if parts => transition::TransitionDef::decode(source)?.with_parts(),
             Some(source) => transition::TransitionDef::decode(source)?,
@@ -176,6 +173,14 @@ fn transition_inputs(
         });
     }
     Ok(inputs)
+}
+
+/// A slider or switch eases its parts between states even without a transition of its own.
+fn eases_parts(record: &crate::protocol::Record) -> bool {
+    matches!(
+        record.tag,
+        crate::protocol::tag::SLIDER | crate::protocol::tag::SWITCH
+    )
 }
 
 /// Every animated node left out of `visible` is a leaf of `display`.

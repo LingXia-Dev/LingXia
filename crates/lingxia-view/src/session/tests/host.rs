@@ -53,6 +53,8 @@ struct Log {
     main: Vec<ThreadId>,
     /// Generations of frames the fake target accepted.
     generations: Vec<CommitTicket>,
+    /// The last prepared frame's filled rectangles: colour and bounds.
+    rects: Vec<([u8; 4], [f32; 4])>,
     /// Generations the host reported presented (`HostEvents::presented`).
     shown: Vec<CommitTicket>,
     /// The feedback style each presented frame carried.
@@ -140,6 +142,16 @@ impl Presenter for Fake {
         {
             let mut log = self.log.lock().unwrap();
             log.generations.push(generation);
+            log.rects = display
+                .commands
+                .iter()
+                .filter_map(|paint| match paint {
+                    crate::scene::paint::Paint::Rect { color, bounds, .. } => {
+                        Some((*color, *bounds))
+                    }
+                    _ => None,
+                })
+                .collect();
             log.hud.push(
                 display
                     .animated_spans()
@@ -4530,7 +4542,8 @@ fn a_pressable_row_holds_its_own_controls() {
             .clone();
         let b = |i: usize| node["bounds"][i].as_f64().unwrap() as f32;
         tap(&host, (b(0) + b(2) / 2.0) * 2.0, (b(1) + b(3) / 2.0) * 2.0);
-        platform.settle(&[&host]);
+        // The switch eases between states; a frozen clock would never let it settle.
+        run_frames(&platform, &host, 20);
     };
     // Only the innermost control shows the press.
     let snapshot: serde_json::Value =
@@ -4573,7 +4586,7 @@ fn a_pressable_row_holds_its_own_controls() {
         velocity: [0.0; 2],
         min_fling: 50.0,
     });
-    platform.settle(&[&host]);
+    run_frames(&platform, &host, 20);
     press("wifi");
     assert_eq!(
         state(),
@@ -5217,5 +5230,48 @@ fn a_list_anchor_with_a_duration_glides_there_and_input_stops_it() {
     assert!(
         stopped[12..].iter().all(|o| *o == at),
         "input took it over: {stopped:?}"
+    );
+}
+
+#[test]
+fn a_held_slider_draws_its_active_parts_on_the_presented_frame() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let page = source(
+        "function render(){const v=useLocal('v',50);return h('view',{},h('slider',{'data-testid':'s',bind:v,'aria-label':'Seek',className:'thin active:track:thick',style:{width:160}}))}",
+    )
+    .replace(
+        "__lingxiaPublish(render);",
+        "configureClasses([{name:'thin',when:{part:'track'},style:{height:3}},{name:'active:track:thick',when:{state:'active',part:'track'},style:{height:6}}]);__lingxiaPublish(render);",
+    );
+    let host = platform.host(&worker, &page, false);
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let line = crate::theme::Palette::builtin(false).role(lingxia_theme::Role::Line);
+    let track = |host: &ViewHost<Fake>| {
+        host.adapter()
+            .log
+            .lock()
+            .unwrap()
+            .rects
+            .iter()
+            .find(|(color, _)| *color == line)
+            .map(|(_, bounds)| bounds[3])
+    };
+    assert_eq!(track(&host), Some(3.0));
+    host.pointer(Pointer {
+        phase: PointerPhase::Down,
+        x: 160.0,
+        y: 44.0,
+        slop: 8.0,
+        velocity: [0.0; 2],
+        min_fling: 50.0,
+    });
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 20);
+    assert_eq!(
+        track(&host),
+        Some(6.0),
+        "held, the track takes its active height"
     );
 }

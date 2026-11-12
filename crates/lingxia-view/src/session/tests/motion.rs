@@ -227,3 +227,37 @@ fn the_animator_duration_scale_defaults_to_one_and_zero_reduces_motion() {
         assert!(shown(&environment).is_err());
     }
 }
+
+#[test]
+fn a_pressed_slider_draws_its_active_parts() {
+    use crate::scene::paint::Paint;
+    let module = super::source(
+        "function render(){const v=useLocal('v',50);return h('page',{},h('slider',{'data-testid':'s',bind:v,'aria-label':'Seek',className:'thin active:track:thick'}))}",
+    )
+    .replace(
+        "__lingxiaPublish(render);",
+        "configureClasses([{name:'thin',when:{part:'track'},style:{height:3}},{name:'active:track:thick',when:{state:'active',part:'track'},style:{height:6}}]);__lingxiaPublish(render);",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    let display = page.layout(400, 200, 1.0).unwrap();
+    let slider = display.nodes.iter().find(|n| n.test_id == "s").unwrap();
+    assert!(slider.pressed_style);
+    let identity = slider.identity.clone();
+    let line = page.renderer.palette.role(lingxia_theme::Role::Line);
+    let track = |display: &crate::scene::display::DisplayList| {
+        display.commands.iter().find_map(|p| match p {
+            Paint::Rect { color, bounds, .. } if *color == line => Some(bounds[3]),
+            _ => None,
+        })
+    };
+    assert_eq!(track(&display), Some(3.0));
+    page.set_pointer_state(Some(&identity), None);
+    page.layout(400, 200, 1.0).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(250));
+    let pressed = page.layout(400, 200, 1.0).unwrap();
+    assert_eq!(
+        track(&pressed),
+        Some(6.0),
+        "held, the track takes its active height"
+    );
+}
