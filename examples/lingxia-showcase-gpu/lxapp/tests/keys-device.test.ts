@@ -20,7 +20,7 @@ spec('hardware keys move a menu focus and choose an item', {
   const last = await view.testId('lab-overlay-last').boundingBox();
   await device.click(Math.round(surface.bounds[0] + (last.x + last.width / 2) * scale),
     Math.round(surface.bounds[1] + (last.y + last.height / 2) * scale));
-  // Keyboard only from here: Tab to the menu button, Enter opens the menu, Tab enters it.
+  // Keyboard only from here: Tab to the menu button; Enter opens the menu on its first item.
   const more = view.testId('lab-overlay-more');
   const tabTo = async (target: typeof more, what: string) => {
     for (let tab = 0; ; tab++) {
@@ -32,8 +32,7 @@ spec('hardware keys move a menu focus and choose an item', {
   await tabTo(more, 'the menu button');
   await device.key('enter');
   const item = (name: string) => view.getByRole('menuitem', { name });
-  await expect(item('Rename')).toBeVisible();
-  await tabTo(item('Rename'), 'the first menu item');
+  await expect(item('Rename')).toBeFocused();
   await device.key('end');
   await expect(item('Delete')).toBeFocused();
   await device.key('down');
@@ -44,4 +43,5 @@ spec('hardware keys move a menu focus and choose an item', {
   await expect(item('Rename')).toBeFocused();
   await device.key('enter');
   await expect(view.testId('lab-overlay-last')).toHaveText('last: Rename');
+  await expect(more).toBeFocused();
 });
