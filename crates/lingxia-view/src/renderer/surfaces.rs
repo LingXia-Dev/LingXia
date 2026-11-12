@@ -213,6 +213,7 @@ pub fn prepare(
 pub fn present(id: u64, revision: u64) -> Result<Option<[u64; 4]>, String> {
     let _work = gpu_work();
     let Some(presenter) = presenter(id)? else {
+        log::debug!(target: "lingxia_view", "gpu present refused: no presenter, page removed");
         return Ok(None);
     };
     let mut presenter = lock(&presenter)?;

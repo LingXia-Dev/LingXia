@@ -1058,9 +1058,11 @@ impl Presenter {
             .iter()
             .position(|held| *held == Some(revision))
         else {
+            log::debug!(target: "lingxia_view", "gpu present refused: revision {revision} is no longer held");
             return Ok(false);
         };
         let Some(surface) = &mut self.surface else {
+            log::debug!(target: "lingxia_view", "gpu present refused: no surface");
             return Ok(false);
         };
         let context = self.context.lock()?;
@@ -1071,11 +1073,17 @@ impl Presenter {
             wgpu::CurrentSurfaceTexture::Success(texture)
             | wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
             wgpu::CurrentSurfaceTexture::Outdated => {
+                log::debug!(target: "lingxia_view", "gpu present refused: surface outdated, resized to {width}x{height}");
                 context.resize_surface(surface, width, height)?;
                 self.depth = Some(depth_view(surface, &context.devices[self.device_id].device));
                 return Ok(false);
             }
-            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
+            wgpu::CurrentSurfaceTexture::Timeout => {
+                log::debug!(target: "lingxia_view", "gpu present refused: surface acquire timed out");
+                return Ok(false);
+            }
+            wgpu::CurrentSurfaceTexture::Occluded => {
+                log::debug!(target: "lingxia_view", "gpu present refused: surface occluded");
                 return Ok(false);
             }
             other => return Err(format!("UI_SURFACE: {other:?}")),
