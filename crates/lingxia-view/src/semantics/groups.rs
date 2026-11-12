@@ -1,4 +1,4 @@
-//! Composed controls: descendants of a button or checkbox form one semantic node, except the
+//! Composed controls: descendants of a button, checkbox or switch form one semantic node, except the
 //! controls nested in it, which stay their own.
 use crate::protocol::{Record, tag};
 use std::collections::HashMap;
@@ -41,7 +41,10 @@ pub(crate) fn control_groups(records: &[Record]) -> Result<ControlGroups, String
         let owner = record
             .parent
             .and_then(|parent| {
-                if matches!(records[parent].tag, tag::BUTTON | tag::CHECKBOX) {
+                if matches!(
+                    records[parent].tag,
+                    tag::BUTTON | tag::CHECKBOX | tag::SWITCH
+                ) {
                     Some(parent)
                 } else {
                     button_owners[parent]

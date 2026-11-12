@@ -985,7 +985,12 @@ impl Renderer {
                 } else {
                     let (slots, track, radius) = crate::scene::slider::paint_switch(
                         &crate::scene::slider::Switch {
-                            right: x + layout.size.width - layout.padding.right,
+                            right: x + layout.size.width - layout.padding.right
+                                + if crate::layout::style::composed_switch(records, index) {
+                                    check_reserve(record)
+                                } else {
+                                    0.0
+                                },
                             center: cy,
                             checked,
                             pressed,

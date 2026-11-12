@@ -34,9 +34,9 @@ fn boolean_control_wire_rejects_invalid_values_callbacks_and_children() {
             assert!(decode(invalid.as_array().unwrap()).is_err(), "{invalid}");
         }
     }
-    // A checkbox composes content; a switch is a leaf; containers carry no inline text.
+    // A checkbox and a switch compose content; containers carry no inline text.
     assert!(decode(text_child(CHECKBOX).as_array().unwrap()).is_ok());
-    assert!(decode(text_child(SWITCH).as_array().unwrap()).is_err());
+    assert!(decode(text_child(SWITCH).as_array().unwrap()).is_ok());
     let labeled_column = json!([CHECKBOX, -1, "", "", "", 0, COLUMN, 0, "", "", "Child", 0]);
     assert!(decode(labeled_column.as_array().unwrap()).is_err());
     for t in 0..CHECKBOX {

@@ -36,6 +36,15 @@ pub(crate) fn check_reserve(record: &Record) -> f32 {
     }
 }
 
+/// A switch with element children: they lay out beside its track, which they never cover.
+pub(crate) fn composed_switch(records: &[Record], index: usize) -> bool {
+    // Records come in tree order, so a first child follows its parent.
+    records[index].tag == tag::SWITCH
+        && records
+            .get(index + 1)
+            .is_some_and(|next| next.parent == Some(index))
+}
+
 pub(crate) fn check_height(record: &Record) -> f32 {
     match record.tag {
         tag::CHECKBOX | tag::RADIO_OPTION => 24.0,
@@ -350,6 +359,10 @@ pub(crate) fn node_style(
         // It runs on under the bottom bars, which show it through; its end still clears them.
         padding_bottom += safe.insets[2];
     }
+    let composed_switch = composed_switch(records, index);
+    if composed_switch {
+        padding_right += check_reserve(record);
+    }
     let display = record.string(field::DISPLAY);
     // `block` children stretch down a column; inline boxes shrink to content.
     let block = matches!(display, Some("block" | "inline-block"));
@@ -541,8 +554,11 @@ pub(crate) fn node_style(
                 length(120.0)
             } else if matches!(record.tag, tag::CHECKBOX | tag::SWITCH | tag::RADIO_OPTION) {
                 length(
-                    check_reserve(record)
-                        + padding_left
+                    if composed_switch {
+                        0.0
+                    } else {
+                        check_reserve(record)
+                    } + padding_left
                         + padding_right
                         + border_left
                         + border_right,

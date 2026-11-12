@@ -281,7 +281,8 @@ test('boolean control bindings persist and reject invalid values or children', (
     for (const value of [undefined, null, 0, 'false']) throwsOn(() => h(tag, { bind: useLocal('invalid', value) }), /UI_/);
     throwsOn(() => h(tag, { bind: useLocal('valid', false), value: false }), /UI_/);
   }
-  throwsOn(() => h('switch', {}, h('text', {}, 'Task')), /UI_CHILD/);
+  // A switch composes element children, as a checkbox does.
+  assert.equal(rendered(() => h('switch', { bind: useLocal('composed', false) }, h('text', {}, 'Task'))).children.length, 1);
 });
 
 test('radio shares a string binding, retains selection across reorder, and ignores selecting the selected option', () => {

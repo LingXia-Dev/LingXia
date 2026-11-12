@@ -4,7 +4,7 @@ use lingxia_view::protocol::field::{
     SECONDARY_STYLE, SLIDER_MAX, SLIDER_MIN, SLIDER_SECONDARY, SLIDER_STEP, SLIDER_VALUE,
     THUMB_STYLE, TRACK_STYLE, WIDTH,
 };
-use lingxia_view::protocol::tag::{SLIDER, SWITCH, TEXT};
+use lingxia_view::protocol::tag::{COLUMN, SLIDER, SWITCH, TEXT};
 use lingxia_view::{Renderer, protocol::decode};
 use serde_json::json;
 
@@ -294,4 +294,70 @@ fn a_disabled_switch_that_is_on_keeps_its_accent_faintly() {
     let pixel = pixels(frame)(at.0, at.1);
     let [r, _, b, _] = pixel.map(i32::from);
     assert!(b > r + 50, "a faded accent, not grey: {pixel:?}");
+}
+
+#[test]
+fn a_switch_with_element_children_lays_them_beside_its_track_and_takes_their_text_as_its_name() {
+    let wire = json!([
+        SWITCH,
+        -1,
+        "",
+        "wifi",
+        "",
+        3,
+        CHECKED,
+        1,
+        ON_CHECKED_CHANGE,
+        1,
+        TRACK_STYLE,
+        json!([BACKGROUND, "#0000ff"]).to_string(),
+        COLUMN,
+        0,
+        "",
+        "",
+        "",
+        0,
+        TEXT,
+        1,
+        "",
+        "",
+        "Wi-Fi Wi-Fi Wi-Fi Wi-Fi Wi-Fi Wi-Fi Wi-Fi Wi-Fi",
+        0,
+        TEXT,
+        1,
+        "",
+        "",
+        "Joins known networks",
+        0
+    ]);
+    let frame = Renderer::default()
+        .layout(&decode(wire.as_array().unwrap()).unwrap(), 200, 100, 1.0)
+        .unwrap();
+    let control = frame
+        .nodes
+        .iter()
+        .find(|node| node.tag == "switch")
+        .unwrap();
+    assert_eq!(
+        control.text,
+        "Wi-Fi Wi-Fi Wi-Fi Wi-Fi Wi-Fi Wi-Fi Wi-Fi Wi-Fi Joins known networks"
+    );
+    let [x, y, w, h] = control.bounds;
+    // The 52-wide track ends at the padding; the long label wraps short of it.
+    let track_left = x + w - 12.0 - 52.0;
+    let column = frame
+        .nodes
+        .iter()
+        .find(|node| node.tag == "column")
+        .unwrap();
+    assert!(
+        column.bounds[0] + column.bounds[2] <= track_left,
+        "{:?} reaches the track at {track_left}",
+        column.bounds
+    );
+    let pixel = pixels(frame);
+    assert_eq!(
+        pixel((x + w) as usize - 12 - 4, (y + h / 2.0) as usize),
+        [0, 0, 255, 255]
+    );
 }

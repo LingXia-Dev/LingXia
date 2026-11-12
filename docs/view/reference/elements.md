@@ -182,7 +182,7 @@ Binding: `bind={local}` with a `useLocal<boolean>` cell, or `value` plus `onChan
 
 ## `<switch>`
 
-Children: text only.
+Children: text, or noninteractive content elements (a composed control).
 
 Binding: `bind={local}` with a `useLocal<boolean>` cell, or `value` plus `onChange(value: boolean)`; not both.
 

@@ -679,7 +679,7 @@ pub const TAG_ADMISSION: &[TagAdmission] = &[
     TagAdmission { children: Children::None, content: false, parent: None, root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::None, content: false, parent: None, root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::Content, content: false, parent: None, root: false, keyed: false, requires: &[] },
-    TagAdmission { children: Children::Text, content: false, parent: None, root: false, keyed: false, requires: &[] },
+    TagAdmission { children: Children::Content, content: false, parent: None, root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::Options, content: false, parent: None, root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::Text, content: false, parent: Some(tag::RADIO), root: false, keyed: true, requires: &[field::CHECKED] },
     TagAdmission { children: Children::None, content: false, parent: None, root: false, keyed: false, requires: &[] },
