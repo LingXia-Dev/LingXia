@@ -388,6 +388,17 @@ Pure Logic helpers are plain TypeScript: import them into a Node test runner
 (`node --test`, vitest) instead. `lxdev test` is for behaviour that needs the
 app running.
 
+A GPU View component is unit-tested in Node with `@lingxia/view/testing`: `render(page, view)`
+compiles a page and runs it on the real View runtime. Query by test id, text or the props you wrote;
+roles, names, layout and gestures need a device, so check those with `lxdev test`.
+
+```js
+import { render, textOf } from '@lingxia/view/testing';
+const screen = await render('tests/counter.page.tsx', { data: { label: 'Taps' } });
+screen.press(screen.getByTestId('inc'));   // fires onClick, re-renders
+assert.equal(textOf(screen.getByTestId('value')), 'Taps: 1');
+```
+
 ```ts
 spec.configure({ tags: ['routed'] });            // every spec in this file
 spec('lists devices', { tags: ['smoke'] }, async (t) => { /* … */ });  // routed + smoke

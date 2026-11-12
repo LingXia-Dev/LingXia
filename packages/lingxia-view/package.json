@@ -9,6 +9,10 @@
       "default": "./src/index.js"
     },
     "./internal": "./src/internal.js",
+    "./testing": {
+      "types": "./src/testing.d.ts",
+      "default": "./src/testing.js"
+    },
     "./compiler": "./compiler/index.mjs"
   },
   "scripts": {
