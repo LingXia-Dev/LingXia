@@ -2522,7 +2522,9 @@ impl LxApp {
             &title,
             self.root_main_node(),
         );
-        make_current_lxapp(&self.appid);
+        // The shown main is the current lxapp, or eval and surface-close
+        // routing keep targeting the app opened last.
+        mark_lxapp_active(&self.appid);
     }
 
     /// Explicitly bring this main provider to the front. Unlike the startup
@@ -2877,7 +2879,7 @@ impl LxApp {
             | lingxia_surface::SurfaceContent::Page { app_id, .. },
         ) = controller.main_surface_content(surface_id)
         {
-            make_current_lxapp(&app_id);
+            mark_lxapp_active(&app_id);
         }
         true
     }
@@ -3937,17 +3939,6 @@ fn close_reason_str(reason: CloseReason) -> &'static str {
         CloseReason::AppClosed => "app_closed",
         CloseReason::Reclaimed => "reclaimed",
         CloseReason::Unknown => "unknown",
-    }
-}
-
-/// The shown main is the current lxapp. Without this, switching mains leaves
-/// `get_current_lxapp` (eval, surface-close routing) on the app opened last.
-fn make_current_lxapp(appid: &str) {
-    if let Some(manager) = get_lxapps_manager()
-        && manager.lxapps.contains_key(appid)
-    {
-        manager.remove_from_stack(appid);
-        manager.push_lxapp_stack(appid.to_string());
     }
 }
 

@@ -5810,6 +5810,14 @@ fn active_host_window_except(excluded: Option<HWND>) -> Option<HWND> {
 }
 
 fn set_primary_host_window(hwnd: HWND) {
+    // A restart may present the successor before the retiring host is
+    // destroyed; hand its frame over now, WM_DESTROY is only the fallback.
+    if let Some(previous) = stored_primary_host_window()
+        && previous != hwnd
+        && !is_window_visible(previous)
+    {
+        hand_over_primary_window_frame(previous);
+    }
     restore_primary_window_frame(hwnd);
     let slot = PRIMARY_HOST_WINDOW.get_or_init(|| Mutex::new(None));
     if let Ok(mut slot) = slot.lock() {
@@ -11499,7 +11507,8 @@ fn persist_primary_window_frame(hwnd: HWND) {
 /// new one. Save the outgoing frame (already hidden by then) and re-arm the
 /// restore, or the successor opens at the centered default size.
 fn hand_over_primary_window_frame(hwnd: HWND) {
-    if stored_primary_host_window() != Some(hwnd)
+    if DEFAULT_HOST_HEADLESS.load(Ordering::Acquire)
+        || stored_primary_host_window() != Some(hwnd)
         || TRAY_POPOVER_HWND.load(Ordering::Relaxed) == hwnd_handle(hwnd)
     {
         return;
@@ -11507,6 +11516,12 @@ fn hand_over_primary_window_frame(hwnd: HWND) {
     if persist_window_frame_if_primary(hwnd) {
         RESTORED_WINDOW_FRAME.store(false, Ordering::Release);
     }
+    let _ = PENDING_RESTORE_MAXIMIZE.compare_exchange(
+        hwnd_handle(hwnd),
+        0,
+        Ordering::AcqRel,
+        Ordering::Acquire,
+    );
 }
 
 fn persist_window_frame_if_primary(hwnd: HWND) -> bool {
@@ -11546,7 +11561,10 @@ fn persist_window_frame_if_primary(hwnd: HWND) -> bool {
         f64::from(rect.top),
         f64::from(rect.right - rect.left),
         f64::from(rect.bottom - rect.top),
-        placement_is_maximized(&placement),
+        // A restored-maximized window maximizes on first show; one retired
+        // before that is still the user's maximized window.
+        placement_is_maximized(&placement)
+            || PENDING_RESTORE_MAXIMIZE.load(Ordering::Acquire) == hwnd_handle(hwnd),
     ) else {
         return false;
     };

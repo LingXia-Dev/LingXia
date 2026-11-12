@@ -1359,10 +1359,10 @@ fn sync_related_shell_layouts(appid: &str) {
 /// The app, the shell owner, the visible main, and the stack-top app.
 ///
 /// Chrome lives on the *visible* webtag. `get_current_lxapp` is the navigation
-/// stack top — sidebar focus does not push it — so a later `navigateToApp`
-/// leaves the on-screen guest out of the set. Toggling that guest then
-/// rebuilds home's hidden webtag and the last-opened guest, never the one
-/// the user is looking at.
+/// stack top, which can lag the on-screen main (a later `navigateToApp`, a
+/// presented browser tab), so the visible main is added separately; without
+/// it, toggling that guest rebuilds home's hidden webtag and the last-opened
+/// guest, never the one the user is looking at.
 fn related_shell_appids(requested: &[String]) -> Vec<String> {
     let stack_top = lxapp::get_current_lxapp().0;
     merge_related_shell_appids(
