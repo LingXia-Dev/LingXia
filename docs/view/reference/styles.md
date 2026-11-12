@@ -107,19 +107,19 @@ Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:`
 | `textAlign` | `"start" \| "end" \| "left" \| "center" \| "right" \| "justify"` | `text-align` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` |
 | `textDecorationLine` | `"none" \| "line-through" \| "underline"` | `text-decoration-line` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<video>` |
 | `textTransform` | `"none" \| "uppercase" \| "lowercase" \| "capitalize"` | `text-transform` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` |
-| `backgroundClip` | `"border-box" \| "text"` | `background-clip` |  | `<text>` |
+| `backgroundClip` | `"border-box" \| "text"` | `background-clip` |  | `<text>` `<select>` |
 | `whiteSpace` | `"normal" \| "nowrap" \| "pre" \| "pre-wrap" \| "pre-line"` | `white-space` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` |
 | `wordBreak` | `"normal" \| "break-all" \| "keep-all"` | `word-break` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` |
 | `overflowWrap` | `"normal" \| "break-word" \| "anywhere"` | `overflow-wrap` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` |
-| `lineClamp` | `number` | `-webkit-line-clamp` |  | `<text>` |
-| `textOverflow` | `"clip" \| "ellipsis"` | `text-overflow` |  | `<text>` |
+| `lineClamp` | `number` | `-webkit-line-clamp` |  | `<text>` `<select>` |
+| `textOverflow` | `"clip" \| "ellipsis"` | `text-overflow` |  | `<text>` `<select>` |
 | `overflowX` | `"auto"` | `overflow-x` |  | `<scroll>` |
 | `overflowY` | `"auto"` | `overflow-y` |  | `<scroll>` |
 | `overscrollBehavior` | `"auto" \| "contain" \| "none"` | `overscroll-behavior`, `overscroll-behavior-x`, `overscroll-behavior-y` |  | `<scroll>` `<List>` |
 | `scrollSnapStop` | `"normal" \| "always"` | `scroll-snap-stop` |  | `<scroll>` `<List>` |
 | `scrollSnapType` | `"none" \| "x" \| "y"` | `scroll-snap-type` |  | `<scroll>` `<List>` |
 | `scrollSnapAlign` | `"none" \| "start" \| "center" \| "end"` | `scroll-snap-align` |  | all but `<span>` `<link>` |
-| `placeholderColor` | `string` |  | yes | `<input>` `<textarea>` |
+| `placeholderColor` | `string` |  | yes | `<input>` `<textarea>` `<select>` |
 | `objectFit` | `"cover" \| "contain" \| "fill"` | `object-fit` |  | `<image>` `<vector>` `<video>` |
 | `objectPosition` | `string` | `object-position` |  | `<image>` `<video>` |
 
@@ -201,7 +201,7 @@ Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:`
 
 ### `<select>`
 
-`width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `aspectRatio`, `maxHeight`, `margin`, `marginTop`, `marginRight`, `marginBottom`, `marginLeft`, `marginInlineStart`, `marginInlineEnd`, `position`, `inset`, `top`, `right`, `bottom`, `left`, `insetInlineStart`, `insetInlineEnd`, `zIndex`, `positionArea`, `flexGrow`, `flexShrink`, `flexBasis`, `alignSelf`, `gridColumn`, `gridColumnStart`, `gridColumnEnd`, `gridRow`, `gridRowStart`, `gridRowEnd`, `justifySelf`, `order`, `opacity`, `overflow`, `backgroundColor`, `backgroundImage`, `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomRightRadius`, `borderBottomLeftRadius`, `borderStartStartRadius`, `borderStartEndRadius`, `borderEndStartRadius`, `borderEndEndRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderInlineStartWidth`, `borderInlineEndWidth`, `borderStyle`, `borderColor`, `boxShadow`, `backdropFilter`, `translate`, `rotate`, `scale`, `transformOrigin`, `filter`, `display`, `scrollSnapAlign`, `padding`, `paddingTop`, `paddingRight`, `paddingBottom`, `paddingLeft`, `paddingInlineStart`, `paddingInlineEnd`, `color`, `fontSize`, `fontWeight`, `fontFamily`, `fontStyle`, `lineHeight`, `letterSpacing`, `fontVariantNumeric`, `userSelect`, `textAlign`, `textDecorationLine`, `textTransform`, `whiteSpace`, `wordBreak`, `overflowWrap`
+`width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `aspectRatio`, `maxHeight`, `margin`, `marginTop`, `marginRight`, `marginBottom`, `marginLeft`, `marginInlineStart`, `marginInlineEnd`, `position`, `inset`, `top`, `right`, `bottom`, `left`, `insetInlineStart`, `insetInlineEnd`, `zIndex`, `positionArea`, `flexGrow`, `flexShrink`, `flexBasis`, `alignSelf`, `gridColumn`, `gridColumnStart`, `gridColumnEnd`, `gridRow`, `gridRowStart`, `gridRowEnd`, `justifySelf`, `order`, `opacity`, `overflow`, `backgroundColor`, `backgroundImage`, `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomRightRadius`, `borderBottomLeftRadius`, `borderStartStartRadius`, `borderStartEndRadius`, `borderEndStartRadius`, `borderEndEndRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderInlineStartWidth`, `borderInlineEndWidth`, `borderStyle`, `borderColor`, `boxShadow`, `backdropFilter`, `translate`, `rotate`, `scale`, `transformOrigin`, `filter`, `display`, `scrollSnapAlign`, `padding`, `paddingTop`, `paddingRight`, `paddingBottom`, `paddingLeft`, `paddingInlineStart`, `paddingInlineEnd`, `color`, `fontSize`, `fontWeight`, `fontFamily`, `fontStyle`, `lineHeight`, `letterSpacing`, `fontVariantNumeric`, `userSelect`, `textAlign`, `textDecorationLine`, `textTransform`, `whiteSpace`, `wordBreak`, `overflowWrap`, `backgroundClip`, `lineClamp`, `textOverflow`, `placeholderColor`
 
 ### `<video>`
 

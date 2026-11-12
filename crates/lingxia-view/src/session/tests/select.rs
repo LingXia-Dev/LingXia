@@ -181,3 +181,34 @@ fn a_view_side_choice_on_a_superseded_frame_finds_its_option_by_value() {
     assert_eq!(refused.len(), 1);
     assert_eq!(refused[0].outcome, Err("its option is gone"));
 }
+
+#[test]
+fn a_long_label_stays_on_one_line_with_an_ellipsis_beside_a_muted_chevron() {
+    let label = "Quarterly billing with the annual discount applied";
+    let source = super::source(&format!(
+        "function render(){{return h('view',{{style:{{width:140}}}},h('select',{{'aria-label':'Plan',value:'q',options:[{{value:'q',label:'{label}'}}]}}))}}"
+    ));
+    let display = ViewSession::new(&source)
+        .unwrap()
+        .layout(300, 300, 1.0)
+        .unwrap();
+    let (mut lines, mut glyphs, mut ink) = (Vec::new(), 0, None);
+    for paint in display.commands.iter() {
+        if let Paint::Text {
+            glyphs: run, color, ..
+        } = paint
+        {
+            glyphs += run.len();
+            ink = Some(*color);
+            lines.extend(run.iter().map(|glyph| glyph.y.round() as i32));
+        }
+    }
+    lines.dedup();
+    assert_eq!(lines.len(), 1, "one line");
+    assert!(glyphs < label.len(), "cut short: {glyphs}");
+    let chevron = display.commands.iter().find_map(|paint| match paint {
+        Paint::Stroke { points, color, .. } if points.len() == 3 => Some(*color),
+        _ => None,
+    });
+    assert_ne!(chevron, ink, "the chevron is quieter than the label");
+}

@@ -629,7 +629,9 @@ impl Renderer {
                 } else {
                     content_width
                 };
-                if record.string(field::TEXT_OVERFLOW) == Some("ellipsis")
+                // A select's label is one line, cut with an ellipsis.
+                let select = record.tag == tag::SELECT;
+                if (select || record.string(field::TEXT_OVERFLOW) == Some("ellipsis"))
                     && let Some(short) = self.ellipsize(
                         record,
                         &styles[index],
@@ -640,7 +642,11 @@ impl Renderer {
                             .map(|(run, range)| (range.clone(), &styles[*run]))
                             .collect::<Vec<_>>(),
                         content_width,
-                        record.number(field::TEXT_LINES).map(|n| n as usize),
+                        if select {
+                            Some(1)
+                        } else {
+                            record.number(field::TEXT_LINES).map(|n| n as usize)
+                        },
                     )
                 {
                     *text = short;
@@ -1025,9 +1031,15 @@ impl Renderer {
                 } else {
                     x + layout.size.width - layout.padding.right - 10.0
                 };
+                // The chevron is chrome, quieter than the chosen label.
+                let chevron = if record.number(field::ENABLED) == Some(0.0) {
+                    Role::TextFaint
+                } else {
+                    Role::TextMuted
+                };
                 commands.push(Paint::Stroke {
                     round: true,
-                    color: color(colors[index])?,
+                    color: palette.role(chevron),
                     points: vec![[cx - 5.0, cy - 2.5], [cx, cy + 2.5], [cx + 5.0, cy - 2.5]],
                     width: 1.75,
                 });
