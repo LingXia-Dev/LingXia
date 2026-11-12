@@ -1009,6 +1009,186 @@
       }
     },
     {
+      "name": "Details",
+      "import": "@liulidesign/core/Details",
+      "exports": [
+        "Details",
+        "DetailsGroup"
+      ],
+      "category": "content",
+      "status": "preview",
+      "summary": "A summary row that shows and hides the content under it",
+      "description": "Details hides secondary content behind a row the person opens when they need it: an answer, advanced settings, the fine print. DetailsGroup stacks rows in one bordered list, and can keep a single row open as an accordion.",
+      "keywords": [
+        "details",
+        "disclosure",
+        "accordion",
+        "expand",
+        "collapse",
+        "faq",
+        "show more",
+        "summary"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The summary row's text; also what the toggle is named."
+        },
+        {
+          "name": "children",
+          "type": "Child",
+          "required": true,
+          "description": "The body, which exists only while open."
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "required": false,
+          "description": "Identifies the row in an exclusive `DetailsGroup`."
+        },
+        {
+          "name": "isDefaultOpen",
+          "type": "boolean",
+          "required": false,
+          "description": "Open on first render, uncontrolled.",
+          "default": "false"
+        },
+        {
+          "name": "isOpen",
+          "type": "boolean",
+          "required": false,
+          "description": "Controlled open state; pass `onOpenChange` with it."
+        },
+        {
+          "name": "onOpenChange",
+          "type": "((isOpen: boolean) => void)",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the disclosure."
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "group": "view",
+        "root": "view",
+        "summary": "button",
+        "label": "text",
+        "chevron": "vector",
+        "body": "view"
+      },
+      "accessibility": {
+        "pattern": "button",
+        "name": "label",
+        "description": [],
+        "states": [
+          {
+            "state": "expanded",
+            "from": "isOpen, isDefaultOpen, or the group's open row"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Enter, Space",
+            "effect": "Opens or closes the row."
+          }
+        ],
+        "target": {
+          "lg": 48
+        },
+        "contrast": [
+          {
+            "what": "summary text",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1",
+            "proven": true
+          }
+        ],
+        "notes": [
+          "Closed content does not exist, so a search or a screen reader reaches it only once it is open.",
+          "In an exclusive group, closing the open row leaves none open."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Single",
+          "title": "One row",
+          "source": "import { Details } from '@liulidesign/core/Details';\n\nconst surface = 'gap-1 rounded-container border border-text/10 bg-surface px-5 pt-4 pb-1';\n\n/** One disclosure under the text it qualifies: the summary opens and closes the content under it. */\nexport function Single() {\n  return (\n    <view className={surface}>\n      <text className=\"text-body text-text\">Team is €8 a month for each active member.</text>\n      <Details label=\"What counts as an active member?\" data-testid=\"active\">\n        <text className=\"text-body text-muted\">Anyone who opened a shared notebook in the last 30 days. Guests with view access are free.</text>\n      </Details>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Accordion",
+          "title": "An accordion",
+          "source": "import { Details, DetailsGroup } from '@liulidesign/core/Details';\n\n/** An accordion: opening one row closes the one that was open. */\nexport function Accordion() {\n  return (\n    <DetailsGroup isExclusive defaultValue=\"refunds\" data-testid=\"faq\">\n      <Details value=\"refunds\" label=\"Can I get a refund?\" data-testid=\"refunds\">\n        <text className=\"text-body text-muted\">Within 14 days of a payment, in full, from Billing.</text>\n      </Details>\n      <Details value=\"export\" label=\"How do I export my notes?\" data-testid=\"export\">\n        <text className=\"text-body text-muted\">Settings, then Export: Markdown files in one archive, with attachments.</text>\n      </Details>\n      <Details value=\"delete\" label=\"What happens when I delete my account?\" data-testid=\"delete\">\n        <text className=\"text-body text-muted\">Your notes are removed from every device after 30 days. Shared notebooks pass to their next member.</text>\n      </Details>\n    </DetailsGroup>\n  );\n}"
+        },
+        {
+          "name": "Independent",
+          "title": "Rows that open on their own",
+          "source": "import { Details, DetailsGroup } from '@liulidesign/core/Details';\n\n/** Several rows open at once. */\nexport function Independent() {\n  return (\n    <DetailsGroup>\n      <Details label=\"Shipping\" isDefaultOpen>\n        <text className=\"text-body text-muted\">Free over €40. Two to four working days.</text>\n      </Details>\n      <Details label=\"Returns\" isDefaultOpen>\n        <text className=\"text-body text-muted\">30 days, in the original packaging.</text>\n      </Details>\n    </DetailsGroup>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "Liuli on the Details primitive.",
+          "needs": "a `<Summary>` that can drop or move its start marker, and whose inner row stretches to the button's width",
+          "today": "Liuli builds the same button with aria-expanded, so the chevron can sit at the end."
+        },
+        {
+          "missing": "A body that grows open instead of appearing.",
+          "needs": "height transitions, or a layout motion that animates size",
+          "today": "The body fades and drops in; the rows below jump."
+        }
+      ],
+      "related": [
+        "Item",
+        "Card"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Content behind a row",
+        "order": 3,
+        "page": {
+          "stage": "bare",
+          "lead": "Use details for content some people need and most do not: an answer, advanced settings, the fine print.",
+          "hero": "Single",
+          "variants": [
+            {
+              "name": "Accordion",
+              "title": "An accordion: one row open at a time"
+            },
+            {
+              "name": "Independent",
+              "title": "A group whose rows open on their own"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateClosed",
+              "title": "Closed"
+            },
+            {
+              "name": "StateOpen",
+              "title": "Open"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "Dialog",
       "import": "@liulidesign/core/Dialog",
       "exports": [

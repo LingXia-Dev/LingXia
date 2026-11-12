@@ -4,6 +4,7 @@ import { Specimen as BadgeSpecimen } from '../../../core/src/Badge/Badge.example
 import { Specimen as ButtonSpecimen } from '../../../core/src/Button/Button.examples';
 import { Specimen as CardSpecimen } from '../../../core/src/Card/Card.examples';
 import { Specimen as CheckboxInputSpecimen } from '../../../core/src/CheckboxInput/CheckboxInput.examples';
+import { Specimen as DetailsSpecimen } from '../../../core/src/Details/Details.examples';
 import { Specimen as DialogSpecimen } from '../../../core/src/Dialog/Dialog.examples';
 import { Specimen as DropdownMenuSpecimen } from '../../../core/src/DropdownMenu/DropdownMenu.examples';
 import { Specimen as FieldSpecimen } from '../../../core/src/Field/Field.examples';
@@ -200,6 +201,15 @@ export function render({ actions }: View<Actions>) {
           testId={"open-item"}
         >
           <ItemSpecimen />
+        </Tile>
+        <Tile
+          name={"Details"}
+          tagline={"Content behind a row"}
+          isWide
+          onOpen={() => actions.open({ page: "details" })}
+          testId={"open-details"}
+        >
+          <DetailsSpecimen />
         </Tile>
       </Category>
       <Category title={"Patterns"}>

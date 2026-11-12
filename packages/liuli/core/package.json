@@ -16,6 +16,8 @@
     "./CheckboxInput/recipe": "./src/CheckboxInput/CheckboxInput.recipe.ts",
     "./Dialog": "./src/Dialog/Dialog.tsx",
     "./Dialog/recipe": "./src/Dialog/Dialog.recipe.ts",
+    "./Details": "./src/Details/Details.tsx",
+    "./Details/recipe": "./src/Details/Details.recipe.ts",
     "./DropdownMenu": "./src/DropdownMenu/DropdownMenu.tsx",
     "./DropdownMenu/recipe": "./src/DropdownMenu/DropdownMenu.recipe.ts",
     "./ProgressBar": "./src/ProgressBar/ProgressBar.tsx",
