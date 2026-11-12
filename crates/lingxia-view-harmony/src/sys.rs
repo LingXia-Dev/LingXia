@@ -271,6 +271,10 @@ unsafe extern "C" {
         info: *mut ArkUI_AccessibilityElementInfo,
         text: *const c_char,
     ) -> i32;
+    pub fn OH_ArkUI_AccessibilityElementInfoSetAccessibilityDescription(
+        info: *mut ArkUI_AccessibilityElementInfo,
+        description: *const c_char,
+    ) -> i32;
     pub fn OH_ArkUI_AccessibilityElementInfoSetChildNodeIds(
         info: *mut ArkUI_AccessibilityElementInfo,
         count: i32,

@@ -21,12 +21,15 @@ the `role` prop sets one of the authored roles on any non-control element.
 | `menu` | `menu` |
 | `menuitem` | `menu-item` |
 | `progressbar` | `progress-bar` |
+| `alertdialog` | `alert-dialog` |
+| `group` | `group` |
+| `tooltip` | `tooltip` |
 
 `headingLevel` (1..6) applies only to `role="heading"`.
 
 ## All exposed roles
 
-`button`, `check-box`, `switch`, `radio-group`, `radio-button`, `combo-box`, `text-field`, `scroll-view`, `horizontal-scroll-view`, `image`, `slider`, `text`, `link`, `heading`, `list`, `list-item`, `dialog`, `alert`, `status`, `grid`, `grid-cell`, `list-box`, `option`, `menu`, `menu-item`, `video`, `progress-bar`
+`button`, `check-box`, `switch`, `radio-group`, `radio-button`, `combo-box`, `text-field`, `scroll-view`, `horizontal-scroll-view`, `image`, `slider`, `text`, `link`, `heading`, `list`, `list-item`, `dialog`, `alert`, `status`, `grid`, `grid-cell`, `list-box`, `option`, `menu`, `menu-item`, `video`, `progress-bar`, `alert-dialog`, `group`, `tooltip`
 
 ## Live regions
 

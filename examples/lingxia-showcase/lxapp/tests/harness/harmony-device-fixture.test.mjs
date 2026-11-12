@@ -33,13 +33,13 @@ test('pixels read a BMP either way up', () => {
   assert.throws(() => bmpPixels(bmp(2), [[2, 0]]), /outside/);
 });
 
-test('the layout flattens to text, id, type and pixel bounds', () => {
+test('the layout flattens to text, id, type, description and pixel bounds', () => {
   const json = JSON.stringify({ attributes: { bounds: '[0,0][1080,2400]', type: 'root' }, children: [
-    { attributes: { text: 'View lab', id: 'title', type: 'Text', bounds: '[400,120][680,180]' }, children: [] },
+    { attributes: { text: 'View lab', id: 'title', type: 'Text', description: 'Lab', bounds: '[400,120][680,180]' }, children: [] },
   ] });
   assert.deepEqual(layoutNodes(json), [
-    { text: '', id: '', type: 'root', bounds: [0, 0, 1080, 2400] },
-    { text: 'View lab', id: 'title', type: 'Text', bounds: [400, 120, 680, 180] },
+    { text: '', id: '', type: 'root', description: '', bounds: [0, 0, 1080, 2400] },
+    { text: 'View lab', id: 'title', type: 'Text', description: 'Lab', bounds: [400, 120, 680, 180] },
   ]);
 });
 
@@ -70,6 +70,6 @@ test('the layout dump is read and then removed from the device', async (t) => {
     screen: async () => bmp(2),
   });
   const { nodes } = await (await fetch(`${base}/layout`)).json();
-  assert.deepEqual(nodes, [{ text: '', id: '', type: '', bounds: [0, 0, 10, 10] }]);
+  assert.deepEqual(nodes, [{ text: '', id: '', type: '', description: '', bounds: [0, 0, 10, 10] }]);
   assert.deepEqual(calls, ['uitest', 'cat', 'rm']);
 });

@@ -145,7 +145,7 @@ pub fn has_open_dialog(frame: &PresentedFrame) -> bool {
     frame
         .nodes
         .iter()
-        .any(|node| node.role.as_deref() == Some("dialog") && visible(node))
+        .any(|node| matches!(node.role.as_deref(), Some("dialog" | "alertdialog")) && visible(node))
 }
 
 pub fn visible(node: &NodeSnapshot) -> bool {

@@ -130,6 +130,9 @@ fn aria(role: Role) -> Option<&'static str> {
         Role::Menu => "menu",
         Role::MenuItem => "menuitem",
         Role::ProgressBar => "progressbar",
+        Role::AlertDialog => "alertdialog",
+        Role::Group => "group",
+        Role::Tooltip => "tooltip",
         Role::Text | Role::ScrollView | Role::HorizontalScrollView => return None,
     })
 }
@@ -159,7 +162,7 @@ fn virtual_element(node: &NodeSnapshot, semantic: Option<&SemanticNode>) -> Virt
             Some(Role::Heading) => ("h", None),
             Some(Role::List) => ("ul", None),
             Some(Role::ListItem) => ("li", None),
-            Some(Role::Dialog) => ("dialog", None),
+            Some(Role::Dialog | Role::AlertDialog) => ("dialog", None),
             _ if node.tag == "text" || node.tag == "span" => ("span", None),
             _ => ("div", None),
         },
@@ -276,6 +279,21 @@ fn attributes(node: &NodeSnapshot) -> Value {
     }
     for (name, value) in node.data.iter().flat_map(|map| map.iter()) {
         out.insert(format!("data-{name}"), json!(value));
+    }
+    // Authored ARIA a WebView would show as attributes, so one assertion reads both renderers.
+    for (name, state) in [
+        ("aria-invalid", node.states[4]),
+        ("aria-required", node.states[5]),
+    ] {
+        if let Some(state) = state {
+            out.insert(name.into(), json!(state.to_string()));
+        }
+    }
+    if !node.described_by.is_empty() {
+        out.insert(
+            "aria-describedby".into(),
+            json!(node.described_by.join(" ")),
+        );
     }
     Value::Object(out)
 }
@@ -424,6 +442,8 @@ pub fn tree(projection: &Projection) -> Value {
             ("selected", node.selected),
             ("expanded", node.expanded),
             ("busy", node.busy),
+            ("invalid", node.invalid),
+            ("required", node.required),
         ] {
             if let Some(state) = state {
                 out.insert(key.into(), json!(state));
@@ -431,6 +451,9 @@ pub fn tree(projection: &Projection) -> Value {
         }
         if let Some(level) = node.heading_level {
             out.insert("level".into(), json!(level));
+        }
+        if let Some(description) = &node.description {
+            out.insert("description".into(), json!(description));
         }
         if let Some(field) = &node.text_field {
             out.insert("value".into(), json!(field.text));

@@ -101,8 +101,10 @@ impl Renderer {
             false
         };
         if let Some(modal) = (0..records.len()).rev().find(|&index| {
-            records[index].string(field::ROLE) == Some("dialog")
-                && !hidden[index]
+            matches!(
+                records[index].string(field::ROLE),
+                Some("dialog" | "alertdialog")
+            ) && !hidden[index]
                 && in_top_layer(Some(index))
         }) {
             let mut around = vec![false; records.len()];
@@ -1219,6 +1221,10 @@ impl Renderer {
                     .string(field::ARIA_ACTIONS)
                     .map(|ids| ids.split(' ').map(str::to_owned).collect())
                     .unwrap_or_default(),
+                described_by: record
+                    .string(field::ARIA_DESCRIBED_BY)
+                    .map(|ids| ids.split(' ').map(str::to_owned).collect())
+                    .unwrap_or_default(),
                 plot_local: None,
                 data: record
                     .string(field::DATA_ATTRIBUTES)
@@ -1302,6 +1308,8 @@ impl Renderer {
                     field::STATE_SELECTED,
                     field::STATE_EXPANDED,
                     field::STATE_BUSY,
+                    field::STATE_INVALID,
+                    field::STATE_REQUIRED,
                 ]
                 .map(|id| record.number(id).map(|v| v == 1.0)),
                 progress: (record.string(field::ROLE) == Some("progressbar")).then(|| {

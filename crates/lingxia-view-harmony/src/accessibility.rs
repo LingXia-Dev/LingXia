@@ -19,7 +19,7 @@ fn component_type(role: Role) -> &'static CStr {
         Role::Button | Role::MenuItem | Role::GridCell => c"Button",
         Role::CheckBox => c"Checkbox",
         Role::Switch => c"Toggle",
-        Role::RadioGroup => c"Column",
+        Role::RadioGroup | Role::Group => c"Column",
         Role::RadioButton => c"Radio",
         Role::ComboBox => c"Select",
         Role::TextField => c"TextInput",
@@ -31,8 +31,10 @@ fn component_type(role: Role) -> &'static CStr {
         Role::List | Role::ListBox | Role::Menu => c"List",
         Role::ListItem | Role::Option => c"ListItem",
         Role::Grid => c"Grid",
-        Role::Dialog => c"Dialog",
-        Role::Text | Role::Link | Role::Heading | Role::Alert | Role::Status => c"Text",
+        Role::Dialog | Role::AlertDialog => c"Dialog",
+        Role::Text | Role::Link | Role::Heading | Role::Alert | Role::Status | Role::Tooltip => {
+            c"Text"
+        }
     }
 }
 
@@ -119,6 +121,15 @@ unsafe fn populate(
         sys::OH_ArkUI_AccessibilityElementInfoSetContents(info, contents.as_ptr());
         if !node.name.is_empty() {
             sys::OH_ArkUI_AccessibilityElementInfoSetAccessibilityText(info, name.as_ptr());
+        }
+        // ArkUI has no invalid or required state: an error reaches the reader through the
+        // description the field's `aria-describedby` names.
+        if let Some(description) = &node.description {
+            let description = c(description);
+            sys::OH_ArkUI_AccessibilityElementInfoSetAccessibilityDescription(
+                info,
+                description.as_ptr(),
+            );
         }
         if let Some(field) = &node.text_field {
             let hint = c(&field.hint);

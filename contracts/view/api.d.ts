@@ -18,8 +18,8 @@ export interface Props {
   style?: Style; className?: string; key?: string; "data-testid"?: string; dir?: "ltr" | "rtl" | "auto"; children?: Child;
   /** Unique on the page (`UI_ID`); what `popoverTarget` and `aria-actions` name. Build one with `useId()`. */
   id?: string;
-  /** Semantic role; controls keep their own. Headings take `headingLevel` 1..6. */
-  role?: "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "menuitem" | "progressbar"; headingLevel?: 1 | 2 | 3 | 4 | 5 | 6;
+  /** Semantic role; controls keep their own. Headings take `headingLevel` 1..6; `alertdialog` goes on a `<dialog>` that interrupts. */
+  role?: "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "menuitem" | "progressbar" | "alertdialog" | "group" | "tooltip"; headingLevel?: 1 | 2 | 3 | 4 | 5 | 6;
   /** A progressbar's value between `aria-valuemin` (0) and `aria-valuemax` (100); leave it out while the amount is unknown. `aria-valuetext` replaces the spoken percentage. */
   "aria-valuenow"?: number; "aria-valuemin"?: number; "aria-valuemax"?: number; "aria-valuetext"?: string;
   /** Removes the node and its subtree from accessibility. */
@@ -28,6 +28,10 @@ export interface Props {
   "aria-live"?: "off" | "polite" | "assertive";
   /** States assistive input announces; leave one out when the element has no such state. */
   "aria-pressed"?: boolean; "aria-selected"?: boolean; "aria-expanded"?: boolean; "aria-busy"?: boolean;
+  /** A field's error and required states; the error text belongs in `aria-describedby`. */
+  "aria-invalid"?: boolean; "aria-required"?: boolean;
+  /** Ids of elements (1..8, space-separated) whose text is read after the name, as a hint or error. */
+  "aria-describedby"?: string;
 }
 export type LeafProps = Omit<Props, "children"> & { children?: never };
 

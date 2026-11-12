@@ -179,7 +179,9 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
         field::STATE_PRESSED
         | field::STATE_SELECTED
         | field::STATE_EXPANDED
-        | field::STATE_BUSY => ensure(flag(value), "UI_PROP: invalid aria state"),
+        | field::STATE_BUSY
+        | field::STATE_INVALID
+        | field::STATE_REQUIRED => ensure(flag(value), "UI_PROP: invalid aria state"),
         field::ARIA_VALUE_NOW | field::ARIA_VALUE_MIN | field::ARIA_VALUE_MAX => ensure(
             value.as_f64().is_some_and(f64::is_finite),
             "UI_PROP: invalid aria value",
@@ -463,7 +465,7 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
         field::ON_CLICK | field::ON_DRAG_EVENT | field::ON_SNAP_CHANGE => {
             ensure(handle(value), "UI_PROP: invalid handle or flag")
         }
-        field::ELEMENT_ID | field::ARIA_ACTIONS => ensure(
+        field::ELEMENT_ID | field::ARIA_ACTIONS | field::ARIA_DESCRIBED_BY => ensure(
             value.as_str().is_some_and(|ids| {
                 let count = ids.split(' ').count();
                 (1..=if id == field::ELEMENT_ID { 1 } else { 8 }).contains(&count)

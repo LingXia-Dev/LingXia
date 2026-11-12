@@ -209,3 +209,28 @@ spec('a popover opens from a List row that names it by a useId id', { covers: ['
   await expect(view.testId('lab-choices-menu')).toBeVisible();
   await expect(view.testId('lab-choices-menu')).toContainText('menu for beta');
 });
+
+spec('a field states required and invalid, names its hint and error, in a group with a tooltip and an alertdialog', { covers: ['view:a11y', 'view:input'], start: { page: 'view-lab' } }, async (t) => {
+  const view = t.app.view;
+  await view.testId('lab-tab-input').click();
+  await expect(view.getByRole('group', { name: 'Delivery' })).toHaveCount(1);
+  await expect(view.getByRole('tooltip')).toHaveText('We deliver within the city');
+  const zip = view.getByRole('textbox', { name: 'ZIP code' });
+  await expect(zip).toHaveAttribute('aria-required', 'true');
+  await expect(zip).toHaveAttribute('aria-invalid', 'false');
+  const hint = (await zip.getAttribute('aria-describedby'))!;
+  expect(hint.split(' ')).toHaveLength(1);
+  await zip.fill('12');
+  await expect(zip).toHaveAttribute('aria-invalid', 'true');
+  await expect(view.testId('lab-form-error')).toHaveText('Not a ZIP code');
+  const both = (await zip.getAttribute('aria-describedby'))!.split(' ');
+  expect(both).toHaveLength(2);
+  expect(both[0]).toBe(hint);
+  await zip.fill('12345');
+  await expect(zip).toHaveAttribute('aria-invalid', 'false');
+  await view.getByRole('button', { name: 'Delete address' }).click();
+  const confirm = view.getByRole('alertdialog', { name: 'Delete this address?' });
+  await expect(confirm).toBeVisible();
+  await view.getByRole('button', { name: 'Keep it' }).click();
+  await expect(confirm).toHaveCount(0);
+});

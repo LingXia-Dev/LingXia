@@ -550,6 +550,9 @@ public struct GpuFrameSemanticNode: Decodable, Sendable {
     public let busy: Bool?
     public let value: String?
     public let scroll: GpuFrameScrollPosition?
+    public let description: String?
+    public let invalid: Bool?
+    public let required: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id = "id"
@@ -581,6 +584,9 @@ public struct GpuFrameSemanticNode: Decodable, Sendable {
         case busy = "busy"
         case value = "value"
         case scroll = "scroll"
+        case description = "description"
+        case invalid = "invalid"
+        case required = "required"
     }
 }
 
@@ -1083,6 +1089,9 @@ public struct GpuFrameAutomationTreeNode: Decodable, Sendable {
     public let selected: Bool?
     public let expanded: Bool?
     public let busy: Bool?
+    public let invalid: Bool?
+    public let required: Bool?
+    public let description: String?
     public let level: UInt8?
     public let value: GpuJSON?
     public let scroll: [Float]?
@@ -1101,6 +1110,9 @@ public struct GpuFrameAutomationTreeNode: Decodable, Sendable {
         case selected = "selected"
         case expanded = "expanded"
         case busy = "busy"
+        case invalid = "invalid"
+        case required = "required"
+        case description = "description"
         case level = "level"
         case value = "value"
         case scroll = "scroll"

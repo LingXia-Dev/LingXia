@@ -56,7 +56,7 @@
     "grid-auto-flow": ["row", "column", "row-dense", "column-dense"],
     "align-content": ["start", "center", "end", "between", "around", "evenly", "stretch"],
     "direction": ["ltr", "rtl", "auto"],
-    "role": ["heading", "list", "listitem", "dialog", "alert", "status", "grid", "gridcell", "listbox", "option", "menu", "menuitem", "progressbar"],
+    "role": ["heading", "list", "listitem", "dialog", "alert", "status", "grid", "gridcell", "listbox", "option", "menu", "menuitem", "progressbar", "alertdialog", "group", "tooltip"],
     "anchor-area": ["bottom span-inline-end", "bottom span-inline-start", "bottom", "top span-inline-end", "top span-inline-start", "top"],
     "live-region": ["off", "polite", "assertive"],
     "input-keyboard": ["text", "number", "email", "phone", "search", "date", "time"],
@@ -287,18 +287,21 @@
     {"id": 217, "key": "ariaValueNow", "wire": "ariaValueNow", "kind": "number"},
     {"id": 218, "key": "ariaValueMin", "wire": "ariaValueMin", "kind": "number"},
     {"id": 219, "key": "ariaValueMax", "wire": "ariaValueMax", "kind": "number"},
-    {"id": 220, "key": "ariaValueText", "wire": "ariaValueText", "kind": "string"}
+    {"id": 220, "key": "ariaValueText", "wire": "ariaValueText", "kind": "string"},
+    {"id": 221, "key": "stateInvalid", "wire": "stateInvalid", "kind": "semantic-state"},
+    {"id": 222, "key": "stateRequired", "wire": "stateRequired", "kind": "semantic-state"},
+    {"id": 223, "key": "ariaDescribedBy", "wire": "ariaDescribedBy", "kind": "element-ids", "tags": ["column", "text", "button", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "vector", "page", "select", "video"]}
   ],
   "input": {
     "autofill": {"username": "username", "current-password": "password", "new-password": "newPassword", "one-time-code": "smsOTPCode", "email": "emailAddress", "tel": "phone", "name": "personName", "given-name": "personGivenName", "family-name": "personFamilyName", "street-address": "postalAddress", "postal-code": "postalCode", "country": "addressCountry", "cc-number": "creditCardNumber", "cc-exp": "creditCardExpirationDate", "cc-csc": "creditCardSecurityCode", "bday": "birthDateFull"},
     "keys": {"maxLength": "max_length", "autoComplete": "auto_complete", "enterKeyHint": "enter_key_hint", "autoCapitalize": "auto_capitalize", "spellCheck": "spell_check", "min": "min", "max": "max", "step": "step", "picker": "picker"}
   },
   "semantics": {
-    "roles": ["button", "check-box", "switch", "radio-group", "radio-button", "combo-box", "text-field", "scroll-view", "horizontal-scroll-view", "image", "slider", "text", "link", "heading", "list", "list-item", "dialog", "alert", "status", "grid", "grid-cell", "list-box", "option", "menu", "menu-item", "video", "progress-bar"],
+    "roles": ["button", "check-box", "switch", "radio-group", "radio-button", "combo-box", "text-field", "scroll-view", "horizontal-scroll-view", "image", "slider", "text", "link", "heading", "list", "list-item", "dialog", "alert", "status", "grid", "grid-cell", "list-box", "option", "menu", "menu-item", "video", "progress-bar", "alert-dialog", "group", "tooltip"],
     "liveRegions": ["polite", "assertive"],
     "events": ["announce"],
     "actions": ["copy", "cut", "paste", "set-selection"],
-    "keys": {"headingLevel": "heading_level", "liveRegion": "live_region", "position": "position", "textSelection": "text_selection", "selectable": "selectable", "pressed": "pressed", "selected": "selected", "expanded": "expanded", "busy": "busy", "scroll": "scroll"}
+    "keys": {"headingLevel": "heading_level", "liveRegion": "live_region", "position": "position", "textSelection": "text_selection", "selectable": "selectable", "pressed": "pressed", "selected": "selected", "expanded": "expanded", "busy": "busy", "scroll": "scroll", "description": "description", "invalid": "invalid", "required": "required"}
   },
   "roles": [
     {"name": "canvas", "doc": "Window and page floor."},
@@ -360,7 +363,7 @@
       "Capitalize": {"enum": ["none", "sentences", "words", "characters"]},
       "ReturnKey": {"enum": ["newline", "done", "go", "next", "previous", "search", "send"]},
       "PickerKind": {"enum": ["date", "time"]},
-      "SemanticNode": {"id": "u32", "index": "usize", "role": "string", "name": "string", "text": "string", "test_id": "string", "bounds": "f32[4]", "visible": "bool", "enabled": "bool", "focusable": "bool", "clickable": "bool", "focused": "bool", "checked": "bool?", "scrollable": "bool", "range": "SemanticRange?", "text_field": "TextField?", "parent": "u32?", "children": "u32[]", "position": "usize[2]?", "actions": "SemanticAction[]", "heading_level": "u8?", "live_region": "string?", "text_selection": "u32[2]?", "pressed": "bool?", "selected": "bool?", "expanded": "bool?", "busy": "bool?", "value": "string?", "scroll": "ScrollPosition?"},
+      "SemanticNode": {"id": "u32", "index": "usize", "role": "string", "name": "string", "text": "string", "test_id": "string", "bounds": "f32[4]", "visible": "bool", "enabled": "bool", "focusable": "bool", "clickable": "bool", "focused": "bool", "checked": "bool?", "scrollable": "bool", "range": "SemanticRange?", "text_field": "TextField?", "parent": "u32?", "children": "u32[]", "position": "usize[2]?", "actions": "SemanticAction[]", "heading_level": "u8?", "live_region": "string?", "text_selection": "u32[2]?", "pressed": "bool?", "selected": "bool?", "expanded": "bool?", "busy": "bool?", "value": "string?", "scroll": "ScrollPosition?", "description": "string?", "invalid": "bool?", "required": "bool?"},
       "SemanticRange": {"min": "f64", "max": "f64", "value": "f64"},
       "TextField": {"text": "string", "hint": "string", "secure": "bool", "multiline": "bool", "selection": "u32[2]?"},
       "ScrollPosition": {"offset": "f32", "max_offset": "f32", "horizontal": "bool"},
@@ -384,7 +387,7 @@
       "AutomationArea": {"left": "f32", "top": "f32", "width": "f32", "height": "f32"},
       "AutomationRect": {"left": "f32", "top": "f32", "width": "f32", "height": "f32", "right": "f32", "bottom": "f32", "center_x": "f32", "center_y": "f32", "viewport_width": "f32", "viewport_height": "f32"},
       "AutomationTree": {"renderer": "string", "nodes": "AutomationTreeNode[]"},
-      "AutomationTreeNode": {"role": "string", "name": "string", "testId": "string?", "bounds": "f32[4]", "disabled": "bool?", "focused": "bool?", "offscreen": "bool?", "checked": "bool?", "pressed": "bool?", "selected": "bool?", "expanded": "bool?", "busy": "bool?", "level": "u8?", "value": "any?", "scroll": "f32[2]?", "children": "AutomationTreeNode[]?"},
+      "AutomationTreeNode": {"role": "string", "name": "string", "testId": "string?", "bounds": "f32[4]", "disabled": "bool?", "focused": "bool?", "offscreen": "bool?", "checked": "bool?", "pressed": "bool?", "selected": "bool?", "expanded": "bool?", "busy": "bool?", "invalid": "bool?", "required": "bool?", "description": "string?", "level": "u8?", "value": "any?", "scroll": "f32[2]?", "children": "AutomationTreeNode[]?"},
       "InputReply": {"token": "u64?", "state": "EditorState?", "needs_view_render": "bool?", "moved_to": "string?", "selection": "u32[2]?"},
       "EditorState": {"text": "string", "selection": "u32[2]", "composition": "u32[2]?", "focused": "bool", "can_undo": "bool", "can_redo": "bool"},
       "CopyReply": {"text": "string?"},

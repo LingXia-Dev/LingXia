@@ -45,6 +45,12 @@ pub enum Role {
     Video,
     /// An amount done; its range is absent while indeterminate.
     ProgressBar,
+    /// A dialog that interrupts with something to confirm or acknowledge.
+    AlertDialog,
+    /// Related content read as one named set.
+    Group,
+    /// A short description shown beside the control it describes.
+    Tooltip,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -143,6 +149,13 @@ pub struct SemanticNode {
     /// A scroll region's position and extent along its axis, in logical pixels.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scroll: Option<ScrollPosition>,
+    /// The text of the elements `aria-describedby` names, read after the name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub invalid: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub required: Option<bool>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
@@ -385,6 +398,9 @@ impl Projection<'_> {
                 "menu" => Role::Menu,
                 "menuitem" => Role::MenuItem,
                 "progressbar" => Role::ProgressBar,
+                "alertdialog" => Role::AlertDialog,
+                "group" => Role::Group,
+                "tooltip" => Role::Tooltip,
                 _ => Role::Status,
             }
         } else if button {
@@ -409,6 +425,8 @@ impl Projection<'_> {
                 | Role::RadioGroup
                 | Role::List
                 | Role::Dialog
+                | Role::AlertDialog
+                | Role::Group
                 | Role::ComboBox
                 | Role::Grid
                 | Role::ListBox
@@ -419,6 +437,7 @@ impl Projection<'_> {
                 | Role::ListItem
                 | Role::Alert
                 | Role::Status
+                | Role::Tooltip
                 | Role::GridCell
                 | Role::Option
                 | Role::MenuItem
@@ -583,7 +602,9 @@ impl Projection<'_> {
                 label,
             });
         }
-        if role == Role::Dialog && self.frame.nodes.iter().any(|node| node.close_request) {
+        if matches!(role, Role::Dialog | Role::AlertDialog)
+            && self.frame.nodes.iter().any(|node| node.close_request)
+        {
             actions.push(Action::Dismiss);
         }
         if meaningful(node) {
@@ -677,7 +698,45 @@ impl Projection<'_> {
                 max_offset: scroll.max_offset,
                 horizontal: scroll.axis == ScrollAxis::Horizontal,
             }),
+            description: self.description(node),
+            invalid: node.states[4],
+            required: node.states[5],
         })
+    }
+
+    /// What `aria-describedby` names, in order: each element's label, else its text and its
+    /// subtree's; ids the frame lacks are skipped.
+    fn description(&self, node: &NodeSnapshot) -> Option<String> {
+        let nodes = &self.frame.nodes;
+        let parts: Vec<String> = node
+            .described_by
+            .iter()
+            .filter_map(|id| {
+                let at = nodes
+                    .iter()
+                    .position(|other| other.element_id.as_ref() == Some(id))?;
+                let target = &nodes[at];
+                if let Some(label) = target
+                    .accessibility_label
+                    .as_deref()
+                    .filter(|l| !l.is_empty())
+                {
+                    return Some(label.to_owned());
+                }
+                let prefix = format!("{}/", target.identity);
+                let text: Vec<&str> = std::iter::once(target)
+                    .chain(
+                        nodes[at + 1..]
+                            .iter()
+                            .take_while(|other| other.identity.starts_with(&prefix)),
+                    )
+                    .map(|other| other.text.trim())
+                    .filter(|text| !text.is_empty())
+                    .collect();
+                (!text.is_empty()).then(|| text.join(" "))
+            })
+            .collect();
+        (!parts.is_empty()).then(|| parts.join(" "))
     }
 
     fn owning_list(&self, item: &NodeSnapshot) -> Option<&NodeSnapshot> {

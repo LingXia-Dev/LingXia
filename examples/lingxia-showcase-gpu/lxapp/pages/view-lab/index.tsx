@@ -10,7 +10,7 @@ const groups = {
   paint: { label: 'Paint', sections: [Grid, Gradients, Vectors, Borders, Transforms] },
   layout: { label: 'Layout', sections: [Display, Sizing, Direction, Choices, Structure, StickyHeaders, Fragments, Disclosure] },
   text: { label: 'Text', sections: [TextLayout, RichText, Selection, Document] },
-  input: { label: 'Input', sections: [Accessibility, Inputs, Controls, Focus, NestedControls, StateVariants] },
+  input: { label: 'Input', sections: [Accessibility, Inputs, Controls, Focus, NestedControls, StateVariants, FormSemantics] },
   feedback: { label: 'Feedback', sections: [Overlays, Progresses] },
   media: { label: 'Media', sections: [Media] },
   data: { label: 'Data', sections: [Plots] },
@@ -450,6 +450,33 @@ function Fragments() {
         {note.value && <text data-testid="lab-fragments-hint" className="text-xs">Each term is two texts in one fragment.</text>}
         {words.value.map(([word, meaning]) => <Fragment key={word}><Term word={word} meaning={meaning} /></Fragment>)}
       </view>
+    </Section>
+  );
+}
+
+// A field's hint, error, required and invalid states, a tooltip, and a dialog that interrupts.
+function FormSemantics() {
+  const zip = useLocal('form-zip', '');
+  const confirm = useLocal('form-confirm', false);
+  const hint = useId();
+  const error = useId();
+  const invalid = zip.value.length > 0 && !/^\d{5}$/.test(zip.value);
+  return (
+    <Section title="Form semantics" testId="lab-form">
+      <view role="group" aria-label="Delivery" data-testid="lab-form-group" className="gap-1">
+        <input data-testid="lab-form-zip" bind={zip} aria-label="ZIP code" aria-required aria-invalid={invalid}
+          aria-describedby={invalid ? `${hint} ${error}` : hint} placeholder="12345"
+          className={`px-3 py-2 rounded-lg border bg-surface text-sm ${invalid ? 'border-danger' : 'border-line-strong'}`} />
+        <text id={hint} className="text-xs text-muted">Five digits</text>
+        {invalid ? <text id={error} data-testid="lab-form-error" className="text-xs text-danger">Not a ZIP code</text> : null}
+        <text role="tooltip" data-testid="lab-form-tip" className="text-xs text-muted">We deliver within the city</text>
+      </view>
+      <Button testId="lab-form-delete" variant="secondary" onClick={() => confirm.set(true)}>Delete address</Button>
+      <dialog open={confirm.value} role="alertdialog" onClose={() => confirm.set(false)} aria-label="Delete this address?" data-testid="lab-form-confirm"
+        className="w-72 p-4 gap-3 rounded-2xl bg-surface-raised">
+        <text className="text-sm">It cannot be restored.</text>
+        <Button testId="lab-form-keep" onClick={() => confirm.set(false)}>Keep it</Button>
+      </dialog>
     </Section>
   );
 }

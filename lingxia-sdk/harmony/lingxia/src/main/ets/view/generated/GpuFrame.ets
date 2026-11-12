@@ -384,6 +384,9 @@ export interface GpuFrameSemanticNode {
   busy?: boolean | null;
   value?: string | null;
   scroll?: GpuFrameScrollPosition | null;
+  description?: string | null;
+  invalid?: boolean | null;
+  required?: boolean | null;
 }
 
 /** `SemanticRange` in the frame contract. */
@@ -654,6 +657,9 @@ export interface GpuFrameAutomationTreeNode {
   selected?: boolean | null;
   expanded?: boolean | null;
   busy?: boolean | null;
+  invalid?: boolean | null;
+  required?: boolean | null;
+  description?: string | null;
   level?: number | null;
   value?: Object | null;
   scroll?: number[] | null;

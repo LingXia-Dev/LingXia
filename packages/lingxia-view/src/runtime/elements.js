@@ -22,7 +22,7 @@ const videoEvents = [['loadedmetadata', 'onLoadedMetadata'], ['play', 'onPlay'],
   ['ratechange', 'onRateChange'], ['volumechange', 'onVolumeChange'], ['qualitychange', 'onQualityChange']];
 
 const common = new Set(commonProps);
-const semanticStates = { pressed: 'statePressed', selected: 'stateSelected', expanded: 'stateExpanded', busy: 'stateBusy' };
+const semanticStates = { pressed: 'statePressed', selected: 'stateSelected', expanded: 'stateExpanded', busy: 'stateBusy', invalid: 'stateInvalid', required: 'stateRequired' };
 const accepts = (field, tag) => admission.fields[field].includes(elements[tag].wire);
 // Elements that take input of their own; they may sit inside a pressable control.
 const interactiveTags = new Set(['button', 'link', 'checkbox', 'switch', 'radio', 'input', 'textarea', 'select', 'slider']);
@@ -328,7 +328,8 @@ function strongDirection(children, depth = 0) {
 // DOM-named accessibility props as the runtime carries them.
 const ariaNames = [['aria-label', 'accessibilityLabel'], ['aria-hidden', 'accessibilityHidden'], ['aria-live', 'accessibilityLiveRegion'],
   ['aria-valuenow', 'ariaValueNow'], ['aria-valuemin', 'ariaValueMin'], ['aria-valuemax', 'ariaValueMax'], ['aria-valuetext', 'ariaValueText']];
-const ariaStates = [['aria-pressed', 'pressed'], ['aria-selected', 'selected'], ['aria-expanded', 'expanded'], ['aria-busy', 'busy']];
+const ariaStates = [['aria-pressed', 'pressed'], ['aria-selected', 'selected'], ['aria-expanded', 'expanded'], ['aria-busy', 'busy'],
+  ['aria-invalid', 'invalid'], ['aria-required', 'required']];
 function ariaProps(props) {
   for (let i = 0; i < ariaNames.length; i++) {
     const authored = ariaNames[i][0];
@@ -410,15 +411,21 @@ function resolveElement(tag, original, children, identity, depth, parent) {
     if (!ids.length || ids.length > 8 || ids.some(id => !id || id.length > 256)) throw Error('UI_PROP: aria-actions lists 1..8 element ids');
     wire('ariaActions', ids.join(' '));
   }
+  if (props['aria-describedby'] !== undefined) {
+    // Elements whose text is read after this one's name: a hint, or the error of an invalid field.
+    const ids = typeof props['aria-describedby'] === 'string' ? props['aria-describedby'].trim().split(/\s+/) : [];
+    if (!ids.length || ids.length > 8 || ids.some(id => !id || id.length > 256)) throw Error('UI_PROP: aria-describedby lists 1..8 element ids');
+    wire('ariaDescribedBy', ids.join(' '));
+  }
   if (props.id !== undefined) {
     if (tag === 'span' || tag === 'link') throw Error(`UI_ID: <${tag}> is a run of its <text>; put the id on the <text>`);
     if (typeof props.id !== 'string' || !props.id.length || props.id.length > 256 || /\s/.test(props.id)) throw Error('UI_ID: an id is 1..256 characters without spaces');
     wire('elementId', props.id);
   }
   if (tag === 'dialog') {
-    if (props.role !== undefined) throw Error('UI_PROP: a <dialog> keeps its own role');
+    if (props.role !== undefined && props.role !== 'alertdialog') throw Error('UI_PROP: a <dialog> keeps its own role; only role="alertdialog" marks one that interrupts');
     if (!props.accessibilityLabel) throw Error('UI_A11Y: <dialog> needs an accessible name; add aria-label="…"');
-    wire('role', 'dialog');
+    wire('role', props.role ?? 'dialog');
   }
   switch (tag) {
     case 'link':
@@ -680,8 +687,10 @@ function semantics(tag, props, wire) {
   const { role, headingLevel, accessibilityHidden, accessibilityLiveRegion } = props;
   if (role !== undefined) {
     if (role === 'dialog') throw Error('UI_PROP: role="dialog" is the <dialog> element');
+    if (role === 'alertdialog' && tag !== 'dialog') throw Error('UI_PROP: role="alertdialog" goes on a <dialog>');
     if (!fieldOptions.role.includes(role)) throw Error(`UI_PROP: role must be one of ${fieldOptions.role.join(', ')}`);
-    wire('role', role);
+    // A <dialog> wires its own role.
+    if (tag !== 'dialog') wire('role', role);
   }
   progressValues(role, props, wire);
   if (headingLevel !== undefined) {

@@ -156,7 +156,9 @@ impl ViewInteraction {
                     None => (false, Vec::new()),
                 }
             }
-            AccessibilityAction::Dismiss if node.role.as_deref() == Some("dialog") => {
+            AccessibilityAction::Dismiss
+                if matches!(node.role.as_deref(), Some("dialog" | "alertdialog")) =>
+            {
                 match self.close_request() {
                     Some(effects) => (true, effects),
                     None => (false, Vec::new()),

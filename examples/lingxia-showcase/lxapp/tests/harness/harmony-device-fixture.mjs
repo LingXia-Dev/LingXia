@@ -37,7 +37,7 @@ export function layoutNodes(json) {
     const attributes = node?.attributes ?? {};
     const bounds = String(attributes.bounds ?? '').match(/-?\d+/g)?.map(Number);
     if (bounds?.length === 4) {
-      nodes.push({ text: String(attributes.text ?? ''), id: String(attributes.id ?? ''), type: String(attributes.type ?? ''), bounds });
+      nodes.push({ text: String(attributes.text ?? ''), id: String(attributes.id ?? ''), type: String(attributes.type ?? ''), description: String(attributes.description ?? ''), bounds });
     }
     for (const child of node?.children ?? []) walk(child);
   };

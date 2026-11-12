@@ -126,7 +126,7 @@ function modalNode() {
   const modal = modals[0];
   const button = (testId, label, confirm, color) => h('button', { 'data-testid': testId, onClick: () => settleModal(confirm), style: {
     flexGrow: 1, flexBasis: 0, minWidth: 0, paddingTop: 12, paddingBottom: 12, backgroundColor: 'transparent', color, fontSize: 16, fontWeight: confirm ? 600 : 400 } }, label);
-  return h('dialog', { 'data-testid': 'lx-modal', key: `modal-${modal.key}`, open: true, onClose: () => settleModal(false),
+  return h('dialog', { 'data-testid': 'lx-modal', role: 'alertdialog', key: `modal-${modal.key}`, open: true, onClose: () => settleModal(false),
     'aria-label': modal.title || modal.content || 'Dialog',
     style: { width: 320, maxWidth: '86%', borderRadius: 14, backgroundColor: 'surface-raised', overflow: 'hidden', transition: fade } },
     h('view', { style: { padding: 20, gap: 8, alignItems: 'center' } },

@@ -189,6 +189,9 @@ fn projected_roles_match_the_schema_vocabulary() {
         Role::MenuItem,
         Role::Video,
         Role::ProgressBar,
+        Role::AlertDialog,
+        Role::Group,
+        Role::Tooltip,
     ]
     .iter()
     .map(|role| {
@@ -248,4 +251,38 @@ fn a_menu_and_its_items_project_their_roles() {
     assert_eq!((menu.role, menu.name.as_str()), (Role::Menu, "Actions"));
     let item = semantic(&frame, "rename").unwrap();
     assert_eq!((item.role, item.name.as_str()), (Role::MenuItem, "Rename"));
+}
+
+#[test]
+fn described_invalid_required_fields_and_group_tooltip_roles_project() {
+    let frame = frame(
+        "h('view',{'data-testid':'g',role:'group','aria-label':'Delivery'},h('input',{'data-testid':'zip','aria-label':'ZIP','aria-invalid':true,'aria-required':true,'aria-describedby':'zip-hint zip-error missing'}),h('text',{id:'zip-hint'},'Five digits'),h('view',{id:'zip-error'},h('text',{},'Not a ZIP'),h('text',{},'here')),h('text',{'data-testid':'tip',role:'tooltip'},'Where we deliver'))",
+    );
+    let group = semantic(&frame, "g").unwrap();
+    assert_eq!((group.role, group.name.as_str()), (Role::Group, "Delivery"));
+    let zip = semantic(&frame, "zip").unwrap();
+    assert_eq!(
+        zip.description.as_deref(),
+        Some("Five digits Not a ZIP here")
+    );
+    assert_eq!((zip.invalid, zip.required), (Some(true), Some(true)));
+    let tip = semantic(&frame, "tip").unwrap();
+    assert_eq!(
+        (tip.role, tip.name.as_str()),
+        (Role::Tooltip, "Where we deliver")
+    );
+    assert_eq!(semantic(&frame, "g").unwrap().invalid, None);
+}
+
+#[test]
+fn an_alertdialog_is_modal_like_a_dialog() {
+    let frame = frame(
+        "h('page',{},h('button',{'data-testid':'behind',onClick(){}},'Behind'),h('dialog',{open:true,role:'alertdialog','aria-label':'Delete note?','data-testid':'d'},h('button',{'data-testid':'ok',onClick(){}},'Delete')))",
+    );
+    assert!(semantic(&frame, "behind").is_none());
+    let dialog = semantic(&frame, "d").unwrap();
+    assert_eq!(
+        (dialog.role, dialog.name.as_str()),
+        (Role::AlertDialog, "Delete note?")
+    );
 }

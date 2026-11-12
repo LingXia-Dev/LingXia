@@ -4,6 +4,8 @@ export interface HarmonyNode {
   text: string;
   id: string;
   type: string;
+  /** The accessibility description a screen reader reads after the name. */
+  description: string;
   /** `[left, top, right, bottom]` in screen pixels. */
   bounds: [number, number, number, number];
 }

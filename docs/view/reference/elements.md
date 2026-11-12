@@ -14,7 +14,7 @@ Styles each element accepts are in [styles.md](styles.md).
 | `"data-testid"` | `string` |  |
 | `dir` | `"ltr" \| "rtl" \| "auto"` |  |
 | `id` | `string` | Unique on the page (`UI_ID`); what `popoverTarget` and `aria-actions` name. Build one with `useId()`. |
-| `role` | `"heading" \| "list" \| "listitem" \| "alert" \| "status" \| "grid" \| "gridcell" \| "listbox" \| "option" \| "menu" \| "menuitem" \| "progressbar"` | Semantic role; controls keep their own. Headings take `headingLevel` 1..6. |
+| `role` | `"heading" \| "list" \| "listitem" \| "alert" \| "status" \| "grid" \| "gridcell" \| "listbox" \| "option" \| "menu" \| "menuitem" \| "progressbar" \| "alertdialog" \| "group" \| "tooltip"` | Semantic role; controls keep their own. Headings take `headingLevel` 1..6; `alertdialog` goes on a `<dialog>` that interrupts. |
 | `headingLevel` | `1 \| 2 \| 3 \| 4 \| 5 \| 6` |  |
 | `"aria-valuenow"` | `number` | A progressbar's value between `aria-valuemin` (0) and `aria-valuemax` (100); leave it out while the amount is unknown. `aria-valuetext` replaces the spoken percentage. |
 | `"aria-valuemin"` | `number` |  |
@@ -26,6 +26,9 @@ Styles each element accepts are in [styles.md](styles.md).
 | `"aria-selected"` | `boolean` |  |
 | `"aria-expanded"` | `boolean` |  |
 | `"aria-busy"` | `boolean` |  |
+| `"aria-invalid"` | `boolean` | A field's error and required states; the error text belongs in `aria-describedby`. |
+| `"aria-required"` | `boolean` |  |
+| `"aria-describedby"` | `string` | Ids of elements (1..8, space-separated) whose text is read after the name, as a hint or error. |
 
 `style` takes the element's own style subset; `className` takes complete Tailwind utilities.
 

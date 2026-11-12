@@ -46,7 +46,7 @@ export interface QueryMatch {
   editable?: boolean;
   /** Holds keyboard focus (`document.activeElement` on a WebView page). */
   focused?: boolean;
-  /** On a GPU page: `data-testid` and the authored `data-*` props, the only attributes it has. */
+  /** On a GPU page: `data-testid`, the authored `data-*` props and `aria-invalid`/`-required`/`-describedby`. */
   attributes?: Record<string, string>;
   rect?: {
     left: number;
@@ -156,6 +156,9 @@ export const ROLE_SELECTORS: Readonly<Record<LocatorRole, string>> = {
   menu: '[role="menu"]',
   menuitem: '[role="menuitem"]',
   progressbar: 'progress, [role="progressbar"]',
+  alertdialog: '[role="alertdialog"]',
+  group: '[role="group"]',
+  tooltip: '[role="tooltip"]',
 };
 
 export function roleSelector(role: string): string {

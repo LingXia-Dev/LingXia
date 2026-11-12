@@ -124,6 +124,9 @@ pub struct NodeSnapshot {
     /// The ids of the controls behind a swipe row, offered as its own actions.
     #[serde(skip)]
     pub aria_actions: Vec<String>,
+    /// The ids of the elements whose text describes this one (`aria-describedby`).
+    #[serde(skip)]
+    pub described_by: Vec<String>,
     pub identity: Identity,
     pub tag: &'static str,
     pub test_id: String,
@@ -169,9 +172,10 @@ pub struct NodeSnapshot {
     /// `polite` or `assertive`; alerts and statuses imply one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub live_region: Option<String>,
-    /// Authored `aria-pressed`/`-selected`/`-expanded`/`-busy`; absent ones are `None`.
+    /// Authored `aria-pressed`/`-selected`/`-expanded`/`-busy`/`-invalid`/`-required`; absent
+    /// ones are `None`.
     #[serde(skip)]
-    pub states: [Option<bool>; 4],
+    pub states: [Option<bool>; 6],
     #[serde(skip)]
     pub progress: Option<ProgressSnapshot>,
     /// A `<select>`: its options, the chosen one and the handle that reports a choice.

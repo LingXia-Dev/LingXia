@@ -101,7 +101,7 @@ impl DisplayList {
     /// stays under the chrome; a dialog's backdrop hides the chrome anyway.
     pub fn top_layer_open(&self) -> bool {
         self.nodes.iter().any(|node| {
-            node.role.as_deref() == Some("dialog")
+            matches!(node.role.as_deref(), Some("dialog" | "alertdialog"))
                 && node.visible_bounds[2] > 0.0
                 && node.visible_bounds[3] > 0.0
         })

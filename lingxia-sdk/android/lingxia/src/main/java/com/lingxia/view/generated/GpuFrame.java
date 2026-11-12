@@ -558,6 +558,12 @@ public final class GpuFrame {
         public String value() { return json.isNull("value") ? null : json.optString("value", null); }
         /** `scroll`: ScrollPosition? */
         public ScrollPosition scroll() { JSONObject o = json.optJSONObject("scroll"); return o == null ? null : new ScrollPosition(o); }
+        /** `description`: string? */
+        public String description() { return json.isNull("description") ? null : json.optString("description", null); }
+        /** `invalid`: bool? */
+        public Boolean invalid() { if (json.isNull("invalid")) return null; return json.optBoolean("invalid"); }
+        /** `required`: bool? */
+        public Boolean required() { if (json.isNull("required")) return null; return json.optBoolean("required"); }
     }
 
     public static final class SemanticRange {
@@ -1054,6 +1060,12 @@ public final class GpuFrame {
         public Boolean expanded() { if (json.isNull("expanded")) return null; return json.optBoolean("expanded"); }
         /** `busy`: bool? */
         public Boolean busy() { if (json.isNull("busy")) return null; return json.optBoolean("busy"); }
+        /** `invalid`: bool? */
+        public Boolean invalid() { if (json.isNull("invalid")) return null; return json.optBoolean("invalid"); }
+        /** `required`: bool? */
+        public Boolean required() { if (json.isNull("required")) return null; return json.optBoolean("required"); }
+        /** `description`: string? */
+        public String description() { return json.isNull("description") ? null : json.optString("description", null); }
         /** `level`: u8? */
         public Long level() { if (json.isNull("level")) return null; return json.optLong("level"); }
         /** `value`: any? */
