@@ -57,6 +57,7 @@ export function Tabs({ label, items, value, onChange, variant = 'underline', chi
               role="tab"
               id={`${id}-${item.value}`}
               aria-selected={isSelected}
+              data-state={isSelected ? 'active' : 'inactive'}
               disabled={item.isDisabled}
               data-testid={testId && `${testId}-${item.value}`}
               onClick={() => { if (!isSelected) onChange(item.value); }}

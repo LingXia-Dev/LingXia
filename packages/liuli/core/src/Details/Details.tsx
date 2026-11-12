@@ -45,6 +45,7 @@ export function Details({ label, children, value, isDefaultOpen = false, isOpen,
     <view data-testid={testId} className={cx(r.root.base, className)}>
       <button
         aria-expanded={open}
+        data-state={open ? 'open' : 'closed'}
         onClick={() => toggle(!open)}
         data-testid={testId && `${testId}-summary`}
         className={cx(r.summary.base, inGroup ? r.summary.inGroup : r.summary.alone)}

@@ -41,6 +41,7 @@ export function Switch(props: SwitchProps) {
     'aria-describedby': description !== undefined ? helpId : undefined,
     disabled: isDisabled,
     'data-testid': testId,
+    'data-state': (props.bind ? props.bind.value : props.value) ? 'on' : 'off',
     className: r.control.base,
   };
   return (

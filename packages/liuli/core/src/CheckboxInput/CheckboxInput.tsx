@@ -73,6 +73,7 @@ export function CheckboxInput(props: CheckboxInputProps) {
           aria-required={semantics['aria-required']}
           disabled={isDisabled}
           data-testid={testId}
+          data-state={checked ? 'checked' : 'unchecked'}
           className={r.control.base}
         >
           {content}
@@ -87,6 +88,7 @@ export function CheckboxInput(props: CheckboxInputProps) {
           aria-required={semantics['aria-required']}
           disabled={isDisabled}
           data-testid={testId}
+          data-state={checked ? 'checked' : 'unchecked'}
           className={r.control.base}
         >
           {content}

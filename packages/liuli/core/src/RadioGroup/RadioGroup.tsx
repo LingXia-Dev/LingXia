@@ -73,6 +73,7 @@ export function RadioGroup(props: RadioGroupProps) {
                 key={option.value}
                 role="radio"
                 aria-checked={isChecked}
+                data-state={isChecked ? 'checked' : 'unchecked'}
                 aria-label={option.label}
                 aria-describedby={option.description !== undefined ? helpId : undefined}
                 disabled={isDisabled || option.isDisabled}
