@@ -537,6 +537,9 @@ public enum GpuPages {
         MainActor.assumeIsolated { views[token]?.topLayerChanged?(modal) }
     }
 
+    /// The desktop shell keeps its bars beside the page, never under its dialogs.
+    static func chromeSnapshot(token: Int64, generation: UInt64) {}
+
     /// A desktop window has no back swipe or enclosing scroll view competing for the pointer.
     static func claim(token: Int64, exclusive: Bool) {}
 

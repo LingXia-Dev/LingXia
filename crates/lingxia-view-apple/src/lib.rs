@@ -45,6 +45,11 @@ pub trait Shell: Send + Sync + 'static {
     /// A top-layer dialog opened or closed: while one is open the view covers the host's bars,
     /// which take no input.
     fn top_layer(&self, token: i64, modal: bool);
+    /// The presented frame draws the host's bar snapshots up to `generation` under its top
+    /// layer; 0 when it draws none. See `ViewHost::set_chrome_snapshot`.
+    fn chrome_snapshot(&self, token: i64, generation: u64) {
+        let _ = (token, generation);
+    }
     /// A full-screen video asks the window for its orientation, or gives it back (`None`).
     fn video_orientation(
         &self,

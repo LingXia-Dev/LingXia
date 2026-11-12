@@ -399,6 +399,7 @@ class iOSNavigationBarView: UIView, NavigationBarProtocol {
             self.backgroundColor = UIColor.clear
             self.layer.backgroundColor = UIColor.clear.cgColor
         }
+        NotificationCenter.default.post(name: GpuHostChrome.barChanged, object: self)
     }
 
     private func updateContainerHeight(showNavbar: Bool) {

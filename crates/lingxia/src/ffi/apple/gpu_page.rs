@@ -43,6 +43,27 @@ mod bridge {
         #[swift_bridge(swift_name = "gpuPageSetVisible")]
         fn gpu_page_set_visible(token: i64, visible: bool);
 
+        // While the top layer is open, draw the host's bar at `edge` (0 top, 1 bottom) under
+        // it: premultiplied RGBA8, valid only for this call, placed at `x, y, w, h` in device
+        // pixels. Returns the generation a presented frame reports once it shows the bar.
+        #[swift_bridge(swift_name = "gpuPageChromeSnapshot")]
+        fn gpu_page_chrome_snapshot(
+            token: i64,
+            edge: u8,
+            pixels: usize,
+            length: usize,
+            width: u32,
+            height: u32,
+            x: f32,
+            y: f32,
+            w: f32,
+            h: f32,
+        ) -> u64;
+
+        // The host shows its bars again before the top layer closed.
+        #[swift_bridge(swift_name = "gpuPageDeclineChromeSnapshot")]
+        fn gpu_page_decline_chrome_snapshot(token: i64);
+
         // The window became occluded, minimized or hidden, or came back.
         #[swift_bridge(swift_name = "gpuPageWindowVisible")]
         fn gpu_page_window_visible(token: i64, visible: bool);
@@ -316,6 +337,9 @@ mod bridge {
         fn gpu_pages_haptic(token: i64);
         #[swift_bridge(swift_name = "GpuPages.topLayer")]
         fn gpu_pages_top_layer(token: i64, modal: bool);
+        // A presented frame draws the bar snapshots up to `generation`; 0 when none.
+        #[swift_bridge(swift_name = "GpuPages.chromeSnapshot")]
+        fn gpu_pages_chrome_snapshot(token: i64, generation: u64);
         #[swift_bridge(swift_name = "GpuPages.claim")]
         fn gpu_pages_claim(token: i64, exclusive: bool);
         #[swift_bridge(swift_name = "GpuPages.copyText")]
@@ -396,6 +420,43 @@ fn gpu_page_suspend(token: i64) {
 
 fn gpu_page_set_visible(token: i64, visible: bool) {
     with_page(token, |page| page.host().set_visible(visible));
+}
+
+#[allow(clippy::too_many_arguments)]
+fn gpu_page_chrome_snapshot(
+    token: i64,
+    edge: u8,
+    pixels: usize,
+    length: usize,
+    width: u32,
+    height: u32,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+) -> u64 {
+    use lingxia_view_apple::lingxia_view::ChromeEdge;
+    if pixels == 0 || length as u64 != u64::from(width) * u64::from(height) * 4 {
+        return 0;
+    }
+    let edge = if edge == 0 {
+        ChromeEdge::Top
+    } else {
+        ChromeEdge::Bottom
+    };
+    // SAFETY: Swift keeps `length` bytes at `pixels` alive for this call.
+    let rgba = unsafe { std::slice::from_raw_parts(pixels as *const u8, length) }.to_vec();
+    let mut generation = 0;
+    with_page(token, |page| {
+        generation = page
+            .host()
+            .set_chrome_snapshot(edge, rgba, width, height, [x, y, w, h]);
+    });
+    generation
+}
+
+fn gpu_page_decline_chrome_snapshot(token: i64) {
+    with_page(token, |page| page.host().decline_chrome_snapshot());
 }
 
 fn gpu_page_readback(token: i64) -> Vec<u8> {
@@ -889,6 +950,9 @@ mod live {
         }
         fn top_layer(&self, token: i64, modal: bool) {
             super::bridge::gpu_pages_top_layer(token, modal);
+        }
+        fn chrome_snapshot(&self, token: i64, generation: u64) {
+            super::bridge::gpu_pages_chrome_snapshot(token, generation);
         }
         fn video_orientation(
             &self,

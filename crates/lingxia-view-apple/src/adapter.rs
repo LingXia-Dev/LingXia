@@ -34,6 +34,7 @@ pub struct AppleAdapter {
     highlights: Mutex<[Option<usize>; 2]>,
     /// A dialog of the top layer is open: the view sits above the host's bars.
     modal: std::sync::atomic::AtomicBool,
+    chrome_snapshot: std::sync::atomic::AtomicU64,
     orientation: std::sync::Mutex<Option<lingxia_view::scene::video::Orientation>>,
 }
 
@@ -56,6 +57,7 @@ impl AppleAdapter {
             images: Mutex::new(HashMap::new()),
             highlights: Mutex::new([None; 2]),
             modal: Default::default(),
+            chrome_snapshot: Default::default(),
             orientation: Default::default(),
         }
     }
@@ -454,6 +456,14 @@ impl HostEvents for AppleAdapter {
         let modal = frame.metrics.top_layer_open;
         if self.modal.swap(modal, std::sync::atomic::Ordering::Relaxed) != modal {
             self.shell.top_layer(self.token, modal);
+        }
+        let chrome = frame.metrics.chrome_snapshot;
+        if self
+            .chrome_snapshot
+            .swap(chrome, std::sync::atomic::Ordering::Relaxed)
+            != chrome
+        {
+            self.shell.chrome_snapshot(self.token, chrome);
         }
         let orientation = frame.metrics.video_orientation;
         let mut held = self.orientation.lock().unwrap_or_else(|p| p.into_inner());

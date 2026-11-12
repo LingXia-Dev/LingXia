@@ -778,6 +778,7 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
             containerView.trailingAnchor.constraint(equalTo: trailingAnchor),
             containerView.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
+        NotificationCenter.default.post(name: GpuHostChrome.barChanged, object: self)
     }
 
     private func setupVerticalLayout(items: [TabBarItem], config: TabBar, containerView: UIView) {

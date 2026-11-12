@@ -41,6 +41,8 @@ final class GpuPageView: UIView {
         didSet {
             layer.backgroundColor = hostChrome?.canvas.cgColor
             NotificationCenter.default.post(name: GpuHostChrome.changed, object: self)
+            // The bars take the page's colours: the snapshots under a dialog follow.
+            recaptureBars()
         }
     }
 
@@ -78,6 +80,7 @@ final class GpuPageView: UIView {
         center.addObserver(self, selector: #selector(keyboardChanged(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
         center.addObserver(self, selector: #selector(windowFocusChanged(_:)), name: UIApplication.didBecomeActiveNotification, object: nil)
         center.addObserver(self, selector: #selector(windowFocusChanged(_:)), name: UIApplication.willResignActiveNotification, object: nil)
+        center.addObserver(self, selector: #selector(barChanged(_:)), name: GpuHostChrome.barChanged, object: nil)
     }
 
     @objc private func suspend() {
@@ -104,6 +107,18 @@ final class GpuPageView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         report()
+        if raised != nil, bounds.size != capturedSize { recaptureBars() }
+    }
+
+    override func willMove(toSuperview newSuperview: UIView?) {
+        super.willMove(toSuperview: newSuperview)
+        // Removed with its dialog open: the bars it hid must not stay hidden for the next page.
+        guard newSuperview !== superview, let raised else { return }
+        self.raised = nil
+        raiseFallback?.cancel()
+        raiseFallback = nil
+        barSnapshots.removeAll()
+        raised.silenced.forEach { $0.accessibilityElementsHidden = false }
     }
 
     override func safeAreaInsetsDidChange() {
@@ -142,6 +157,7 @@ final class GpuPageView: UIView {
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
         super.traitCollectionDidChange(previous)
         report()
+        if traitCollection.userInterfaceStyle != previous?.userInterfaceStyle { recaptureBars() }
     }
 
     /// Dynamic Type as `[authored, shown]` pairs: every size through 256, then doubling sizes,
@@ -190,7 +206,8 @@ final class GpuPageView: UIView {
 
     /// Set while a top-layer dialog lifts this view above the bars: where it sat, and the
     /// chrome the page keeps padding by meanwhile.
-    private var raised: (index: Int, chrome: (top: CGFloat, bottom: CGFloat), covered: [UIView])?
+    /// `silenced` are the covered views this page hid from VoiceOver.
+    private var raised: (index: Int, chrome: (top: CGFloat, bottom: CGFloat), covered: [UIView], silenced: [UIView])?
 
     /// Recognizers standing down while the View holds a gesture, and where it began on screen.
     private var heldOff: [UIGestureRecognizer] = []
@@ -226,13 +243,28 @@ final class GpuPageView: UIView {
         guard let parent = superview else { return }
         if modal, raised == nil, let index = parent.subviews.firstIndex(of: self) {
             // The bars it covers leave VoiceOver too, as under any modal.
-            let covered = parent.subviews[(index + 1)...].filter { !$0.accessibilityElementsHidden }
-            covered.forEach { $0.accessibilityElementsHidden = true }
-            raised = (index, chrome, covered)
-            parent.bringSubviewToFront(self)
+            let covered = Array(parent.subviews[(index + 1)...])
+            let silenced = covered.filter { !$0.accessibilityElementsHidden }
+            silenced.forEach { $0.accessibilityElementsHidden = true }
+            raised = (index, chrome, covered, silenced)
+            // The page comes over the bars once a frame draws them under its dialog, so no
+            // frame shows neither; a page that never does is raised anyway.
+            if captureBars(afterUpdates: false) {
+                let fallback = DispatchWorkItem { [weak self] in self?.raise() }
+                raiseFallback = fallback
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: fallback)
+            } else {
+                raise()
+            }
         } else if !modal, let raised {
+            raiseFallback?.cancel()
+            raiseFallback = nil
+            if !barSnapshots.isEmpty {
+                barSnapshots.removeAll()
+                gpuPageDeclineChromeSnapshot(token)
+            }
             self.raised = nil
-            raised.covered.forEach { $0.accessibilityElementsHidden = false }
+            raised.silenced.forEach { $0.accessibilityElementsHidden = false }
             parent.insertSubview(self, at: min(raised.index, parent.subviews.count - 1))
             report()
         }
@@ -242,6 +274,110 @@ final class GpuPageView: UIView {
     /// The host changed its bars; the page re-measures what covers it.
     func chromeChanged() {
         report()
+        recaptureBars()
+    }
+
+    /// The generation of the bar snapshot handed to the page, by edge (0 top, 1 bottom).
+    private var barSnapshots: [UInt8: UInt64] = [:]
+    /// Raises the page when no frame shows its bar snapshots in time.
+    private var raiseFallback: DispatchWorkItem?
+    private var recapturePending = false
+    /// The size the bars were captured at.
+    private var capturedSize: CGSize = .zero
+
+    private func raise() {
+        raiseFallback?.cancel()
+        raiseFallback = nil
+        guard raised != nil, let parent = superview, parent.subviews.last !== self else { return }
+        parent.bringSubviewToFront(self)
+    }
+
+    /// The presented frame shows the bar snapshots up to `generation`; 0 when it shows none.
+    func chromeSnapshot(_ generation: UInt64) {
+        guard let raised, !barSnapshots.isEmpty else { return }
+        if generation == 0 {
+            // The page dropped them (its surface changed): the real bars show until it has new ones.
+            barSnapshots.removeAll()
+            if let parent = superview { parent.insertSubview(self, at: min(raised.index, parent.subviews.count - 1)) }
+            recaptureBars()
+        } else if let newest = barSnapshots.values.max(), generation >= newest {
+            raise()
+        }
+    }
+
+    @objc private func barChanged(_ note: Notification) {
+        guard let changed = note.object as? UIView,
+              raised?.covered.contains(where: { changed.isDescendant(of: $0) }) == true
+        else { return }
+        recaptureBars()
+    }
+
+    /// A bar under the dialog changed (selection, badge, appearance, size): hand the page a
+    /// fresh copy once the change has drawn.
+    private func recaptureBars() {
+        guard raised != nil, !recapturePending else { return }
+        recapturePending = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.recapturePending = false
+            guard self.raised != nil, self.captureBars(afterUpdates: true) else { return }
+            // Lowered after the page dropped the old ones: it rises again on the new frame.
+            if self.raiseFallback == nil, self.superview?.subviews.last !== self {
+                let fallback = DispatchWorkItem { [weak self] in self?.raise() }
+                self.raiseFallback = fallback
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: fallback)
+            }
+        }
+    }
+
+    /// Copies each covered bar on an edge into the page, to draw under its top layer.
+    @discardableResult
+    private func captureBars(afterUpdates: Bool) -> Bool {
+        guard let raised, let window else { return false }
+        let scale = window.screen.scale
+        capturedSize = bounds.size
+        var handed = false
+        for bar in raised.covered where !bar.isHidden && bar.alpha > 0.01 {
+            let full = convert(bar.bounds, from: bar)
+            let rect = full.intersection(bounds)
+            guard !rect.isNull, rect.width >= bounds.width / 2, rect.height < bounds.height / 2 else { continue }
+            let edge: UInt8
+            if rect.minY <= bounds.minY { edge = 0 } else if rect.maxY >= bounds.maxY { edge = 1 } else { continue }
+            guard let image = Self.pixels(of: bar, scale: scale, afterUpdates: afterUpdates) else { continue }
+            let generation = image.data.withUnsafeBytes { raw in
+                gpuPageChromeSnapshot(
+                    token, edge, UInt(bitPattern: raw.baseAddress), UInt(raw.count),
+                    UInt32(image.width), UInt32(image.height),
+                    Float((full.minX - bounds.minX) * scale), Float((full.minY - bounds.minY) * scale),
+                    Float(full.width * scale), Float(full.height * scale))
+            }
+            guard generation > 0 else { continue }
+            barSnapshots[edge] = generation
+            handed = true
+        }
+        return handed
+    }
+
+    /// `bar` drawn as premultiplied RGBA8 rows, top first, at `scale`.
+    private static func pixels(of bar: UIView, scale: CGFloat, afterUpdates: Bool) -> (data: Data, width: Int, height: Int)? {
+        let width = Int((bar.bounds.width * scale).rounded())
+        let height = Int((bar.bounds.height * scale).rounded())
+        guard width > 0, height > 0, let space = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
+        var data = Data(count: width * height * 4)
+        let drawn = data.withUnsafeMutableBytes { raw -> Bool in
+            guard let context = CGContext(
+                data: raw.baseAddress, width: width, height: height, bitsPerComponent: 8,
+                bytesPerRow: width * 4, space: space,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+            else { return false }
+            // UIKit draws top-down.
+            context.translateBy(x: 0, y: CGFloat(height))
+            context.scaleBy(x: scale, y: -scale)
+            UIGraphicsPushContext(context)
+            defer { UIGraphicsPopContext() }
+            return bar.drawHierarchy(in: bar.bounds, afterScreenUpdates: afterUpdates)
+        }
+        return drawn ? (data, width, height) : nil
     }
 
     /// The bars' cover over the top edge, for the pull's strip.
@@ -569,6 +705,8 @@ final class GpuPageView: UIView {
 struct GpuHostChrome {
     /// Posted on the main thread with the page view as object.
     static let changed = Notification.Name("LingXiaGpuHostChromeChanged")
+    /// A host bar posts it, as object, after it changed what it draws.
+    static let barChanged = Notification.Name("LingXiaHostBarChanged")
     let canvas: UIColor
     let bar: UIColor
     let barLine: UIColor
@@ -655,6 +793,10 @@ public enum GpuPages {
 
     static func topLayer(token: Int64, modal: Bool) {
         MainActor.assumeIsolated { views[token]?.topLayer(modal) }
+    }
+
+    static func chromeSnapshot(token: Int64, generation: UInt64) {
+        MainActor.assumeIsolated { views[token]?.chromeSnapshot(generation) }
     }
 
     static func recovery(token: Int64, message: Int32, action: Int32, covers: Bool) {
