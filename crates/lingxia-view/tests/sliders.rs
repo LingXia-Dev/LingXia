@@ -252,20 +252,22 @@ fn switch_parts_size_the_track_and_seat_the_thumb_evenly_at_either_end() {
             THUMB_STYLE,
             part(json!([WIDTH, 20, HEIGHT, 20, BACKGROUND, "#ff0000"]))
         ]);
-        pixels(
-            Renderer::default()
-                .layout(&decode(wire.as_array().unwrap()).unwrap(), 200, 100, 1.0)
-                .unwrap(),
-        )
+        let frame = Renderer::default()
+            .layout(&decode(wire.as_array().unwrap()).unwrap(), 200, 100, 1.0)
+            .unwrap();
+        let [x, y, w, h] = frame.nodes[0].bounds;
+        let pixel = pixels(frame);
+        let (right, middle) = ((x + w) as usize - 12, (y + h / 2.0) as usize);
+        move |from_right: usize| pixel(right - from_right, middle)
     };
-    // The track ends at the padding, 144..188; the thumb rests 2 inside it.
+    // The 44-wide track ends at the padding; the 20 thumb rests 2 inside it.
     let on = frame(1);
-    assert_eq!(on(176, 22), [255, 0, 0, 255]);
-    assert_eq!(on(150, 22), [0, 0, 255, 255]);
-    assert_ne!(on(141, 22), [0, 0, 255, 255]);
+    assert_eq!(on(12), [255, 0, 0, 255]);
+    assert_eq!(on(38), [0, 0, 255, 255]);
+    assert_ne!(on(47), [0, 0, 255, 255]);
     let off = frame(0);
-    assert_eq!(off(156, 22), [255, 0, 0, 255]);
-    assert_eq!(off(180, 22), [0, 0, 255, 255]);
+    assert_eq!(off(32), [255, 0, 0, 255]);
+    assert_eq!(off(8), [0, 0, 255, 255]);
 }
 
 #[test]
@@ -284,11 +286,12 @@ fn a_disabled_switch_that_is_on_keeps_its_accent_faintly() {
         ENABLED,
         0
     ]);
-    let pixel = pixels(
-        Renderer::default()
-            .layout(&decode(wire.as_array().unwrap()).unwrap(), 200, 100, 1.0)
-            .unwrap(),
-    );
-    let [r, _, b, _] = pixel(150, 22);
-    assert!(b > r + 50, "a faded accent, not grey: {:?}", pixel(150, 22));
+    let frame = Renderer::default()
+        .layout(&decode(wire.as_array().unwrap()).unwrap(), 200, 100, 1.0)
+        .unwrap();
+    let [x, y, w, h] = frame.nodes[0].bounds;
+    let at = ((x + w) as usize - 12 - 40, (y + h / 2.0) as usize);
+    let pixel = pixels(frame)(at.0, at.1);
+    let [r, _, b, _] = pixel.map(i32::from);
+    assert!(b > r + 50, "a faded accent, not grey: {pixel:?}");
 }
