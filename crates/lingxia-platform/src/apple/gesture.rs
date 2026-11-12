@@ -113,6 +113,31 @@ mod mac {
         origin: (f64, f64),
         last: (f64, f64),
         cursor: Option<(f64, f64)>,
+        scrolled: bool,
+        began: Instant,
+    }
+
+    /// Fingers that rest and lift without ever scrolling press the trackpad: a click.
+    fn lifts_as_press(input: GestureInput, end: GestureEnd, scrolled: bool) -> bool {
+        input == GestureInput::Trackpad && end == GestureEnd::Up && !scrolled
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::{GestureEnd, GestureInput, lifts_as_press};
+
+        #[test]
+        fn only_a_still_trackpad_lift_presses() {
+            use GestureEnd::*;
+            use GestureInput::*;
+            assert!(lifts_as_press(Trackpad, Up, false));
+            // A pull or swipe that scrolled ends its scroll; a cancel and a held finger send no click.
+            assert!(!lifts_as_press(Trackpad, Up, true));
+            assert!(!lifts_as_press(Trackpad, Cancel, false));
+            assert!(!lifts_as_press(Trackpad, Hold, false));
+            // A mouse already pressed at its first point.
+            assert!(!lifts_as_press(Mouse, Up, false));
+        }
     }
 
     type Point = (f64, f64);
@@ -423,6 +448,7 @@ mod mac {
         // Fingers on a trackpad scroll without moving the cursor, so the whole gesture
         // reaches the view under its first point.
         let mut cursor = continued.and_then(|held| held.cursor);
+        let began = continued.map_or(started, |held| held.began);
         for GesturePoint { x, y, at_ms } in points {
             let due = started + Duration::from_secs_f64(at_ms / 1000.0);
             tokio::time::sleep_until(due.into()).await;
@@ -463,9 +489,24 @@ mod mac {
                         origin,
                         last: (x, y),
                         cursor,
+                        scrolled: continued.is_some_and(|held| held.scrolled) || events > 0,
+                        began,
                     },
                 );
                 Some(id)
+            }
+            end if lifts_as_press(
+                input,
+                end,
+                continued.is_some_and(|held| held.scrolled) || events > 0,
+            ) =>
+            {
+                // Pressed for as long as the fingers rested, so a hold still reads as one.
+                on_main(move || post_mouse(window, x, y, Mouse::Down)).await?;
+                tokio::time::sleep(began.elapsed()).await;
+                on_main(move || post_mouse(window, x, y, Mouse::Up)).await?;
+                events += 2;
+                None
             }
             end => {
                 let velocity = fling_velocity(&request.shape);
