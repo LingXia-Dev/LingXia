@@ -185,10 +185,12 @@ const CAPABILITY_NEEDS: Record<HostCapabilityKey, string> = {
   hostInput: "input that reaches the host's own views",
 };
 
+const POINTERS = ["fine", "coarse"];
+
 function validateRequires(requires: unknown, where: string): Requirements {
-  if (requires === undefined) return { args: [], openapi: false, input: [], capabilities: [] };
+  if (requires === undefined) return { args: [], openapi: false, input: [], capabilities: [], pointer: undefined };
   if (!requires || typeof requires !== "object") throw new TypeError(`${where} requires must be an object`);
-  const { args, openapi, input } = requires as SpecRequirements;
+  const { args, openapi, input, pointer } = requires as SpecRequirements;
   for (const key of HOST_CAPABILITIES) {
     const value = (requires as SpecRequirements)[key];
     if (value !== undefined && typeof value !== "boolean") throw new TypeError(`${where} requires.${key} must be a boolean`);
@@ -201,7 +203,8 @@ function validateRequires(requires: unknown, where: string): Requirements {
   if (input !== undefined && (!Array.isArray(input) || input.some((kind) => !GESTURE_INPUTS.includes(kind)))) {
     throw new TypeError(`${where} requires.input must be an array of ${GESTURE_INPUTS.join(" | ")}`);
   }
-  return { args: [...new Set(args ?? [])], openapi: openapi === true, input: [...new Set(input ?? [])], capabilities };
+  if (pointer !== undefined && !POINTERS.includes(pointer)) throw new TypeError(`${where} requires.pointer must be ${POINTERS.join(" | ")}`);
+  return { args: [...new Set(args ?? [])], openapi: openapi === true, input: [...new Set(input ?? [])], capabilities, pointer };
 }
 
 /** Checks what `spec()` and `spec.configure()` accept alike; throws on the first problem. */
@@ -256,6 +259,7 @@ function settle(item: RegisteredSpec, file: FileOptions | undefined): void {
     openapi: fileRequires.openapi || ownRequires.openapi,
     input: [...new Set([...fileRequires.input, ...ownRequires.input])],
     capabilities: [...new Set([...fileRequires.capabilities, ...ownRequires.capabilities])],
+    pointer: ownRequires.pointer ?? fileRequires.pointer,
   };
 }
 
@@ -271,6 +275,7 @@ function unmetRequirements(
   openapi: boolean,
   inputs: readonly string[],
   capabilities: readonly string[],
+  pointer: string | undefined,
 ): string | undefined {
   const missing = item.requires.args.filter((key) => args[key] === undefined);
   const needs: string[] = [];
@@ -284,6 +289,10 @@ function unmetRequirements(
   const lacking = item.requires.capabilities.filter((key) => !capabilities.includes(key));
   if (lacking.length > 0) {
     needs.push(`${lacking.map((key) => CAPABILITY_NEEDS[key]).join(" and ")} (this host has ${capabilities.length > 0 ? capabilities.join(", ") : "no host capabilities"})`);
+  }
+  if (item.requires.pointer !== undefined && pointer === undefined) return "Not run: this host does not report its pointer.";
+  if (item.requires.pointer !== undefined && pointer !== item.requires.pointer) {
+    needs.push(`a ${item.requires.pointer} pointer (this host's is ${pointer})`);
   }
   return needs.length === 0 ? undefined : `Not run: requires ${needs.join(" and ")}.`;
 }
@@ -315,7 +324,7 @@ function register(annotation: Annotation, title: string, optionsOrBody: SpecOpti
     timeout: DEFAULT_SPEC_TIMEOUT_MS,
     restoreProfile: false,
     forensics: true,
-    requires: { args: [], openapi: false, input: [], capabilities: [] },
+    requires: { args: [], openapi: false, input: [], capabilities: [], pointer: undefined },
     own: { ...options },
     expected,
     annotation,
@@ -472,7 +481,7 @@ function unfenceGlobalAutomation(): void {
   hostAutomation = undefined;
 }
 
-interface Requirements { args: string[]; openapi: boolean; input: string[]; capabilities: HostCapabilityKey[] }
+interface Requirements { args: string[]; openapi: boolean; input: string[]; capabilities: HostCapabilityKey[]; pointer: SpecRequirements["pointer"] }
 
 /** What this host's gestures can imitate. */
 function gestureInputs(): string[] {
@@ -489,6 +498,15 @@ function hostCapabilities(): string[] {
     return pinApp().page.gesture.capabilities();
   } catch {
     return [];
+  }
+}
+
+/** The current page's pointer environment from its frame report; `undefined` on a host or page that reports none. */
+async function pagePointer(): Promise<SpecRequirements["pointer"]> {
+  try {
+    return (await pinApp().page.uiFrame()).pointer;
+  } catch {
+    return undefined;
   }
 }
 
@@ -769,6 +787,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
   const plan = shuffleSeed === undefined ? repeated : shuffleWithSeed(repeated, shuffleSeed);
   let inputs: string[] | undefined;
   let capabilities: string[] | undefined;
+  let pointer: string | undefined;
   const budget = runBudget(control, plan.length);
   const fullName = (item: RegisteredSpec, repeat: number) =>
     (item.id ? `${item.id} | ${item.title}` : item.title) + (repeatEach > 1 ? ` [repeat ${repeat}/${repeatEach}]` : "");
@@ -882,7 +901,8 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
 
     const caseStarted = Date.now();
     const unmet = notRun(item) ? undefined : unmetRequirements(item, args, openapi !== undefined, item.requires.input.length > 0 ? (inputs ??= gestureInputs()) : [],
-      item.requires.capabilities.length > 0 ? (capabilities ??= hostCapabilities()) : []);
+      item.requires.capabilities.length > 0 ? (capabilities ??= hostCapabilities()) : [],
+      item.requires.pointer !== undefined ? (pointer ??= await pagePointer()) : undefined);
     if (budgetExhausted || contaminated || screenLocked || unmet !== undefined || notRun(item)) {
       if (contaminated) record.reason = contaminationReason ?? `Not run: an earlier spec left the run unable to continue. Recover: ${RECOVER_COMMAND}`;
       else if (budgetExhausted && budget) record.reason = `Not run: the run budget of ${Math.round(budget.ms / 1000)}s was exhausted after ${budgetExhausted.after}/${plan.length} specs.`;

@@ -441,7 +441,8 @@ export interface PageUiFrame {
   /** Median preparation cost of the frames presented in `windowMs`; `null` when none presented. */
   stagesMs: PageStageMedians | null;
   /** The host's latest push or pop slide of this page; `null` before one or from an older host. */
-  transition?: PageTransition | null;
+  transition?: PageTransition | null;  /** The page's primary pointer environment; an older host omits it. */
+  pointer?: 'fine' | 'coarse';
 }
 
 /** A host push or pop slide, timed on the same clock as `firstPresentAt`. */

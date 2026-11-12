@@ -70,14 +70,15 @@ spec('another tab page scroll runs under the tab bar too', { covers: ['view:scro
   expect(Math.abs(bottom(scroll) - bottom(page))).toBeLessThanOrEqual(1);
 });
 
-spec('a select picker covers the tab bar', { covers: ['view:select', 'view:dialog'], start: { page: 'view-lab' } }, async (t) => {
+// A fine pointer opens a popover, not a sheet with Cancel.
+spec('a select picker covers the tab bar', { covers: ['view:select', 'view:dialog'], start: { page: 'view-lab' }, requires: { pointer: 'coarse' } }, async (t) => {
   const view = t.app.view;
   await view.testId('lab-tab-input').click();
   await coversTheBar(t, () => view.testId('lab-input-plan').click(), view.testId('lx-picker'),
     () => view.testId('lx-picker-cancel').click());
 });
 
-spec('a date picker covers the tab bar', { covers: ['view:input', 'view:dialog'], start: { page: 'view-lab' } }, async (t) => {
+spec('a date picker covers the tab bar', { covers: ['view:input', 'view:dialog'], start: { page: 'view-lab' }, requires: { pointer: 'coarse' } }, async (t) => {
   const view = t.app.view;
   await view.testId('lab-tab-input').click();
   await coversTheBar(t, () => view.testId('lab-input-date').click(), view.testId('lx-picker'),

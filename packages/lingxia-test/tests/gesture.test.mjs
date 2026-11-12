@@ -170,6 +170,34 @@ test("requires capabilities must be booleans", () => {
   assert.throws(() => spec("bad", { requires: { chrome: "yes" } }, async () => {}), /requires\.chrome must be a boolean/);
 });
 
+test("requires.pointer runs on the pointer the page reports and skips on the other", async () => {
+  const world = createWorld();
+  world.gestureHost.pointer = "fine";
+  const ran = [];
+  spec("popover", { requires: { pointer: "fine" } }, async () => { ran.push("fine"); });
+  spec("sheet", { requires: { pointer: "coarse" } }, async () => { ran.push("coarse"); });
+  installFakeHost(world);
+  const report = await run();
+  assert.deepEqual(ran, ["fine"]);
+  assert.equal(report.cases[1].status, "skipped");
+  assert.equal(report.cases[1].reason, "Not run: requires a coarse pointer (this host's is fine).");
+});
+
+test("requires.pointer skips where the host does not report its pointer", async () => {
+  const world = createWorld();
+  world.gestureHost.pointer = undefined;
+  let ran = false;
+  spec("sheet", { requires: { pointer: "coarse" } }, async () => { ran = true; });
+  installFakeHost(world);
+  const report = await run();
+  assert.equal(ran, false);
+  assert.equal(report.cases[0].reason, "Not run: this host does not report its pointer.");
+});
+
+test("requires.pointer rejects anything but fine or coarse", () => {
+  assert.throws(() => spec("bad", { requires: { pointer: "touch" } }, async () => {}), /requires\.pointer must be fine \| coarse/);
+});
+
 test("edge back reports E_UNSUPPORTED with the host's reason", async () => {
   const world = createWorld();
   spec("edge", async (t) => {

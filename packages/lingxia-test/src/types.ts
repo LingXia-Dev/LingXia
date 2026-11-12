@@ -145,6 +145,8 @@ export interface SpecRequirements {
   refreshIndicator?: boolean;
   /** Injected input reaches the host's own views around the page: chrome taps, a pull to refresh. */
   hostInput?: boolean;
+  /** The page's primary pointer, as its `pointer` environment reads: `coarse` gets touch sheets, `fine` popovers. */
+  pointer?: "fine" | "coarse";
 }
 
 /** `restoreProfile: { keep }`. */

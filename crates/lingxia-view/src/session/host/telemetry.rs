@@ -312,6 +312,12 @@ impl<A: PlatformAdapter> Inner<A> {
             "transition": telemetry.transition_metrics(),
             "budget": { "overruns": telemetry.overruns },
             "hud": main.hud,
+            // What the page renders for (`env.pointer`), so specs can require one.
+            "pointer": main
+                .presented_environment
+                .as_ref()
+                .and_then(|environment| environment.value["pointer"].as_str())
+                .map(str::to_owned),
             // Nodes the presented frame laid out: a virtual list mounts only rows near the viewport.
             "nodes": main.snapshot.as_ref().map(|snapshot| snapshot.metrics.nodes),
             "pacing": telemetry

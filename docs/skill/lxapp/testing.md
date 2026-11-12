@@ -173,6 +173,8 @@ spec('pulling the list refreshes it once', { start: { page: 'feed' } }, async (t
 - On HarmonyOS, `app.chrome` and window taps reach only the host's own toast, modal and action sheet (`delivered: 'view'`).
 - `requires: { chrome: true }` (likewise `refreshIndicator`, `hostInput`) skips where the host cannot
   read its bars, read pull to refresh, or reach either with input; an undeclared `E_UNSUPPORTED` fails.
+- `requires: { pointer: 'coarse' }` (or `'fine'`) runs only where GPU pages get that pointer: touch sheets
+  vs mouse popovers. A host or WebView page that reports none skips.
 - A locator `click()` or scroll on an Android WebView page goes to the WebView
   itself, even for a target below the fold, so page chrome never sees it; drive
   chrome (pull to refresh, edge back) with the gestures above.
