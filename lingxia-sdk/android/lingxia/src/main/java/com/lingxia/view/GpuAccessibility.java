@@ -45,10 +45,12 @@ final class GpuAccessibility {
             case GpuSemantics.ROLE_OPTION: return "android.widget.CheckedTextView";
             case GpuSemantics.ROLE_MENU: return "android.widget.ListView";
             case GpuSemantics.ROLE_MENU_ITEM: return "android.widget.Button";
+            case GpuSemantics.ROLE_GROUP: return "android.view.ViewGroup";
             // Links (with a role description), headings, list items, alerts, status and dialogs read as text plus their traits.
             case GpuSemantics.ROLE_TEXT: case GpuSemantics.ROLE_LINK: case GpuSemantics.ROLE_HEADING:
-            case GpuSemantics.ROLE_LIST_ITEM: case GpuSemantics.ROLE_DIALOG: case GpuSemantics.ROLE_ALERT:
-            case GpuSemantics.ROLE_STATUS: return "android.widget.TextView";
+            case GpuSemantics.ROLE_LIST_ITEM: case GpuSemantics.ROLE_DIALOG: case GpuSemantics.ROLE_ALERT_DIALOG:
+            case GpuSemantics.ROLE_ALERT: case GpuSemantics.ROLE_STATUS: case GpuSemantics.ROLE_TOOLTIP:
+                return "android.widget.TextView";
             // A role the core added without a mapping here fails loudly, never reads as plain text.
             default: throw new IllegalArgumentException("unmapped semantic role " + role);
         }
@@ -143,8 +145,16 @@ final class GpuAccessibility {
             if (Build.VERSION.SDK_INT >= 28) info.setHeading(true);
             else info.setCollectionItemInfo(AccessibilityNodeInfo.CollectionItemInfo.obtain(0, 1, 0, 1, true));
         }
-        if (GpuSemantics.ROLE_DIALOG.equals(role)) {
+        if (GpuSemantics.ROLE_DIALOG.equals(role) || GpuSemantics.ROLE_ALERT_DIALOG.equals(role)) {
             if (Build.VERSION.SDK_INT >= 28 && !name.isEmpty()) info.setPaneTitle(name);
+        }
+        // An invalid field speaks its description as the error; otherwise it is the hint TalkBack reads last.
+        String description = text(node.description());
+        if (Boolean.TRUE.equals(node.invalid())) {
+            info.setContentInvalid(true);
+            if (!description.isEmpty()) info.setError(description);
+        } else if (!description.isEmpty() && Build.VERSION.SDK_INT >= 28) {
+            info.setTooltipText(description);
         }
         String live = node.liveRegion();
         if (GpuSemantics.LIVE_POLITE.equals(live)) info.setLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
