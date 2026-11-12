@@ -26,7 +26,9 @@ const fontSample = [
   '  font-family: "Brand Sans";',
   '  src: url("../public/brand.ttf");',
   '}',
-  '@theme { --font-sans: "Brand Sans", sans-serif; }',
+  '@theme {',
+  '  --font-sans: "Brand Sans";',
+  '}',
   '',
   '<page className="font-sans">…</page>',
 ].join('\n');
