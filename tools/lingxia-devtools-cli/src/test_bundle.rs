@@ -1107,7 +1107,48 @@ Use an ESM package or ESM entrypoint.",
             relative_display(resolution.path(), project_root)
         );
     }
+    stale_package_build(resolution.path())?;
     normalize_path(resolution.path())
+}
+
+/// A workspace package resolved into its `dist/` must not predate its `src/`: a stale build
+/// runs old matchers against the new runtime and fails in confusing ways.
+fn stale_package_build(entry: &Path) -> Result<()> {
+    let Some(root) = entry.ancestors().find(|dir| {
+        dir.file_name().is_some_and(|name| name == "dist")
+            && dir.parent().is_some_and(|root| {
+                root.join("package.json").is_file() && root.join("src").is_dir()
+            })
+    }) else {
+        return Ok(());
+    };
+    let root = root.parent().expect("dist has a parent");
+    let built = fs::metadata(entry).and_then(|meta| meta.modified())?;
+    let mut newest = None;
+    let mut pending = vec![root.join("src")];
+    while let Some(dir) = pending.pop() {
+        for item in fs::read_dir(&dir)?.flatten() {
+            let path = item.path();
+            let meta = item.metadata()?;
+            if meta.is_dir() {
+                pending.push(path);
+            } else if let Ok(modified) = meta.modified() {
+                newest = newest.max(Some(modified));
+            }
+        }
+    }
+    if newest.is_some_and(|newest| newest > built) {
+        let name = fs::read_to_string(root.join("package.json"))
+            .ok()
+            .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+            .and_then(|json| json["name"].as_str().map(str::to_owned))
+            .unwrap_or_else(|| "the package".into());
+        bail!(
+            "E_TEST_PACKAGE_STALE: {name} at {} was built before its src changed; run npm run build there",
+            root.display()
+        );
+    }
+    Ok(())
 }
 
 fn is_node_builtin(specifier: &str) -> bool {
@@ -1380,6 +1421,37 @@ mod tests {
             source_name(Path::new("/other/c.test.ts"), root),
             "/other/c.test.ts"
         );
+    }
+
+    #[test]
+    fn a_package_built_before_its_src_changed_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let package = dir.path().join("pkg");
+        fs::create_dir_all(package.join("src")).unwrap();
+        fs::create_dir_all(package.join("dist")).unwrap();
+        fs::write(package.join("package.json"), r#"{"name":"@lingxia/test"}"#).unwrap();
+        let entry = package.join("dist/index.js");
+        let source = package.join("src/index.ts");
+        let at = |secs| std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(secs);
+        let touch = |path: &Path, secs| {
+            fs::write(path, "").unwrap();
+            fs::File::options()
+                .write(true)
+                .open(path)
+                .unwrap()
+                .set_modified(at(secs))
+                .unwrap();
+        };
+        touch(&source, 100);
+        touch(&entry, 200);
+        assert!(stale_package_build(&entry).is_ok());
+        touch(&source, 300);
+        let error = stale_package_build(&entry).unwrap_err().to_string();
+        assert!(
+            error.starts_with("E_TEST_PACKAGE_STALE: @lingxia/test at "),
+            "{error}"
+        );
+        assert!(stale_package_build(&source).is_ok());
     }
 
     fn bundle_dir(dir: &Path) -> Result<TestBundle> {
