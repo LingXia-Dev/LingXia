@@ -62,7 +62,7 @@ export const doc: ComponentDoc = {
   related: ['DropdownMenu', 'Dialog'],
   gallery: {
     specimen: 'Specimen',
-    tagline: 'A short note on demand',
+    tagline: 'A note on demand',
     order: 3,
     page: {
       lead: 'Use a tooltip for a short note that explains what is beside it. Tap the info button to open it.',

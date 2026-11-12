@@ -60,7 +60,7 @@ export const doc: ComponentDoc = {
   related: ['Badge', 'Dialog', 'ProgressBar'],
   gallery: {
     specimen: 'Specimen',
-    tagline: 'Stays until resolved',
+    tagline: 'Stays until fixed',
     order: 3,
     page: {
       lead: 'Use a banner to say something about the page or the account that people should act on or know.',

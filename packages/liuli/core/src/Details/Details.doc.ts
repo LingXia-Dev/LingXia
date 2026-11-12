@@ -60,7 +60,7 @@ export const doc: ComponentDoc = {
   related: ['Item', 'Card'],
   gallery: {
     specimen: 'Specimen',
-    tagline: 'Content behind a row',
+    tagline: 'More, behind a row',
     order: 3,
     page: {
       stage: 'bare',

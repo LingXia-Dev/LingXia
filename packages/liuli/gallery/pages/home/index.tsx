@@ -31,7 +31,7 @@ export function render({ actions }: View<Actions>) {
       <Category title={"Foundations"}>
         <Tile
           name={"Colour"}
-          tagline={"Light and dark roles"}
+          tagline={"Theme colour roles"}
           onOpen={() => actions.open({ page: "colour" })}
           testId={"open-colour"}
         >
@@ -85,7 +85,7 @@ export function render({ actions }: View<Actions>) {
       <Category title={"Navigation"}>
         <Tile
           name={"Tabs"}
-          tagline={"One area, a few peers"}
+          tagline={"A few peer views"}
           isWide
           onOpen={() => actions.open({ page: "tabs" })}
           testId={"open-tabs"}
@@ -104,7 +104,7 @@ export function render({ actions }: View<Actions>) {
         </Tile>
         <Tile
           name={"Select"}
-          tagline={"One from a long list"}
+          tagline={"One of many"}
           onOpen={() => actions.open({ page: "select" })}
           testId={"open-select"}
         >
@@ -120,7 +120,7 @@ export function render({ actions }: View<Actions>) {
         </Tile>
         <Tile
           name={"RadioGroup"}
-          tagline={"One choice from a few"}
+          tagline={"One of a few"}
           onOpen={() => actions.open({ page: "radio-group" })}
           testId={"open-radio-group"}
         >
@@ -136,7 +136,7 @@ export function render({ actions }: View<Actions>) {
         </Tile>
         <Tile
           name={"Slider"}
-          tagline={"A value along a track"}
+          tagline={"A value on a track"}
           onOpen={() => actions.open({ page: "slider" })}
           testId={"open-slider"}
         >
@@ -144,7 +144,7 @@ export function render({ actions }: View<Actions>) {
         </Tile>
         <Tile
           name={"Field"}
-          tagline={"Label, help and status"}
+          tagline={"Label, help, status"}
           isWide
           onOpen={() => actions.open({ page: "field" })}
           testId={"open-field"}
@@ -155,7 +155,7 @@ export function render({ actions }: View<Actions>) {
       <Category title={"Feedback"}>
         <Tile
           name={"Badge"}
-          tagline={"A short status label"}
+          tagline={"A status label"}
           onOpen={() => actions.open({ page: "badge" })}
           testId={"open-badge"}
         >
@@ -171,7 +171,7 @@ export function render({ actions }: View<Actions>) {
         </Tile>
         <Tile
           name={"Banner"}
-          tagline={"Stays until resolved"}
+          tagline={"Stays until fixed"}
           isWide
           onOpen={() => actions.open({ page: "banner" })}
           testId={"open-banner"}
@@ -198,7 +198,7 @@ export function render({ actions }: View<Actions>) {
         </Tile>
         <Tile
           name={"Tooltip"}
-          tagline={"A short note on demand"}
+          tagline={"A note on demand"}
           isWide
           onOpen={() => actions.open({ page: "tooltip" })}
           testId={"open-tooltip"}
@@ -209,7 +209,7 @@ export function render({ actions }: View<Actions>) {
       <Category title={"Content"}>
         <Tile
           name={"Card"}
-          tagline={"Groups related content"}
+          tagline={"Related content"}
           onOpen={() => actions.open({ page: "card" })}
           testId={"open-card"}
         >
@@ -225,7 +225,7 @@ export function render({ actions }: View<Actions>) {
         </Tile>
         <Tile
           name={"Details"}
-          tagline={"Content behind a row"}
+          tagline={"More, behind a row"}
           onOpen={() => actions.open({ page: "details" })}
           testId={"open-details"}
         >
@@ -243,7 +243,7 @@ export function render({ actions }: View<Actions>) {
       <Category title={"Patterns"}>
         <Tile
           name={"Sign in"}
-          tagline={"A self-checking form"}
+          tagline={"A form that checks"}
           onOpen={() => actions.open({ page: "sign-in" })}
           testId={"open-sign-in"}
         >
@@ -251,7 +251,7 @@ export function render({ actions }: View<Actions>) {
         </Tile>
         <Tile
           name={"Settings"}
-          tagline={"Rows, menus, a confirm"}
+          tagline={"Rows and a confirm"}
           onOpen={() => actions.open({ page: "settings" })}
           testId={"open-settings"}
         >
@@ -259,7 +259,7 @@ export function render({ actions }: View<Actions>) {
         </Tile>
         <Tile
           name={"Uploads"}
-          tagline={"Work that takes time"}
+          tagline={"Long-running work"}
           isWide
           onOpen={() => actions.open({ page: "uploads" })}
           testId={"open-uploads"}

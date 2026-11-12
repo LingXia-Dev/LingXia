@@ -61,7 +61,7 @@ export const doc: ComponentDoc = {
   related: ['Item', 'Button'],
   gallery: {
     specimen: 'Specimen',
-    tagline: 'Groups related content',
+    tagline: 'Related content',
     order: 1,
     page: {
       stage: 'bare',

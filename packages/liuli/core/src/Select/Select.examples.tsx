@@ -74,5 +74,5 @@ export function StateDisabled() {
 
 /** The home tile. */
 export function Specimen() {
-  return <Select value="edited" onChange={() => {}} label="Sort by" isLabelHidden size="sm" options={sorts} className="w-36" />;
+  return <Select value="title" onChange={() => {}} label="Sort by" isLabelHidden size="sm" options={sorts} className="w-32 max-w-full" />;
 }

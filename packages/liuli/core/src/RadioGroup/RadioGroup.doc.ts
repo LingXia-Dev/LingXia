@@ -65,7 +65,7 @@ export const doc: ComponentDoc = {
   related: ['CheckboxInput', 'Field', 'Tabs'],
   gallery: {
     specimen: 'Specimen',
-    tagline: 'One choice from a few',
+    tagline: 'One of a few',
     order: 4,
     page: {
       lead: 'Use radios to pick one option from a short list when seeing every option helps the choice.',

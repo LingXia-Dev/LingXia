@@ -369,7 +369,7 @@
       ],
       "gallery": {
         "specimen": "Specimen",
-        "tagline": "A short status label",
+        "tagline": "A status label",
         "order": 1,
         "page": {
           "lead": "Use a badge to mark the status or kind of the thing beside it, in a word or two.",
@@ -546,7 +546,7 @@
       ],
       "gallery": {
         "specimen": "Specimen",
-        "tagline": "Stays until resolved",
+        "tagline": "Stays until fixed",
         "order": 3,
         "page": {
           "lead": "Use a banner to say something about the page or the account that people should act on or know.",
@@ -1068,7 +1068,7 @@
       ],
       "gallery": {
         "specimen": "Specimen",
-        "tagline": "Groups related content",
+        "tagline": "Related content",
         "order": 1,
         "page": {
           "stage": "bare",
@@ -1509,7 +1509,7 @@
       ],
       "gallery": {
         "specimen": "Specimen",
-        "tagline": "Content behind a row",
+        "tagline": "More, behind a row",
         "order": 3,
         "page": {
           "stage": "bare",
@@ -2261,7 +2261,7 @@
       ],
       "gallery": {
         "specimen": "Specimen",
-        "tagline": "Label, help and status",
+        "tagline": "Label, help, status",
         "order": 9,
         "page": {
           "lead": "Use a field to give a control Liuli's label, help text and status when Liuli has no component for it yet.",
@@ -3003,7 +3003,7 @@
       ],
       "gallery": {
         "specimen": "Specimen",
-        "tagline": "One choice from a few",
+        "tagline": "One of a few",
         "order": 4,
         "page": {
           "lead": "Use radios to pick one option from a short list when seeing every option helps the choice.",
@@ -3287,7 +3287,7 @@
       ],
       "gallery": {
         "specimen": "Specimen",
-        "tagline": "One from a long list",
+        "tagline": "One of many",
         "order": 2,
         "page": {
           "lead": "Use a select when there are too many options to show at once, or the choice matters less than the space.",
@@ -3545,7 +3545,7 @@
       ],
       "gallery": {
         "specimen": "Specimen",
-        "tagline": "A value along a track",
+        "tagline": "A value on a track",
         "order": 6,
         "page": {
           "lead": "Use a slider when the value is easier to feel than to type: a volume, a size, a place in a recording.",
@@ -3971,7 +3971,7 @@
       ],
       "gallery": {
         "specimen": "Specimen",
-        "tagline": "One area, a few peers",
+        "tagline": "A few peer views",
         "order": 1,
         "page": {
           "lead": "Use tabs to switch one area between a few peers. Each tab is a place, not an action.",
@@ -4537,7 +4537,7 @@
       ],
       "gallery": {
         "specimen": "Specimen",
-        "tagline": "A short note on demand",
+        "tagline": "A note on demand",
         "order": 3,
         "page": {
           "lead": "Use a tooltip for a short note that explains what is beside it. Tap the info button to open it.",

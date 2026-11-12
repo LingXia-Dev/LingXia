@@ -66,7 +66,7 @@ export const doc: ComponentDoc = {
   related: ['Item', 'Card'],
   gallery: {
     specimen: 'Specimen',
-    tagline: 'A short status label',
+    tagline: 'A status label',
     order: 1,
     page: {
       lead: 'Use a badge to mark the status or kind of the thing beside it, in a word or two.',

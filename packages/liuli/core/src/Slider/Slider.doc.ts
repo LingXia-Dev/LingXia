@@ -78,7 +78,7 @@ export const doc: ComponentDoc = {
   related: ['ProgressBar'],
   gallery: {
     specimen: 'Specimen',
-    tagline: 'A value along a track',
+    tagline: 'A value on a track',
     order: 6,
     page: {
       lead: 'Use a slider when the value is easier to feel than to type: a volume, a size, a place in a recording.',

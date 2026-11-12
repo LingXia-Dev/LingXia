@@ -71,7 +71,7 @@ export const doc: ComponentDoc = {
   related: ['Button', 'DropdownMenu'],
   gallery: {
     specimen: 'Specimen',
-    tagline: 'One area, a few peers',
+    tagline: 'A few peer views',
     order: 1,
     page: {
       lead: 'Use tabs to switch one area between a few peers. Each tab is a place, not an action.',

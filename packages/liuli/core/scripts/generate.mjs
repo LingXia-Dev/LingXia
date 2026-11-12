@@ -200,8 +200,9 @@ function galleryPage(doc) {
 // The package's own status, shown once on the home page; a tile shows only a status that differs.
 const packageStatus = 'preview';
 const statusTitles = { preview: 'Preview', stable: 'Stable' };
-// A tagline fits one line of a half-width home tile on a 360 pt screen at footnote size.
-const taglineLimit = 22;
+// A tagline fits one line of a half-width home tile on a 360 pt screen at footnote size, in the
+// widest system face (HarmonyOS Sans).
+const taglineLimit = 19;
 
 const categoryTitles = { actions: 'Actions', navigation: 'Navigation', inputs: 'Inputs', feedback: 'Feedback', overlays: 'Overlays', content: 'Content' };
 
