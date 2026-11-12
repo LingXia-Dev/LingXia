@@ -974,6 +974,7 @@ mod live {
     struct ApplePage {
         token: Token,
         port: lingxia_view_apple::lingxia_view::session::host::LogicPort,
+        stale: lingxia_view_apple::lingxia_view::session::host::StaleMark,
     }
 
     impl NativePage for ApplePage {
@@ -1027,6 +1028,7 @@ mod live {
             Ok(())
         }
         fn reload(&self, source: &str) -> Result<(), LxAppError> {
+            self.stale.set();
             let source = source.to_owned();
             on_page(self.token, move |page| page.host().load(source));
             Ok(())
@@ -1038,6 +1040,7 @@ mod live {
             Ok(())
         }
         fn park(&self) -> Result<(), LxAppError> {
+            self.stale.set();
             on_page(self.token, |page| page.host().park());
             Ok(())
         }
@@ -1084,8 +1087,9 @@ mod live {
                     .map(|page| {
                         page.host().load(request.source);
                         let port = page.host().logic_port();
+                        let stale = page.host().stale_mark();
                         PAGES.with(|pages| pages.borrow_mut().insert(token, page));
-                        Arc::new(ApplePage { token, port }) as Arc<dyn NativePage>
+                        Arc::new(ApplePage { token, port, stale }) as Arc<dyn NativePage>
                     });
                 gpu_page::created(token, created);
             }));
