@@ -1,12 +1,26 @@
-import { List, useVideo, type View } from '@lingxia/view';
+import { List, useVideo, VideoControls, type View } from '@lingxia/view';
 import '../../theme/index.css';
 import { PUBLIC_STREAM, PUBLIC_VIDEO } from '../../shared/public-video';
 
 const clips = ['public/video/pattern.mp4', 'public/video/fractal.mp4'];
 // Every third row plays a clip under a text overlay, so a scroll moves video between plain rows.
 const rows = Array.from({ length: 24 }, (_, index) => ({ id: String(index), clip: index % 3 === 1 ? clips[(index / 3) % 2 | 0] : null }));
-const items = [{ id: 'hero', clip: null }, { id: 'quality', clip: null }, { id: 'public', clip: null }, { id: 'stream', clip: null }, ...rows];
+const items = Object.freeze([{ id: 'hero', clip: null }, { id: 'portrait', clip: null }, { id: 'quality', clip: null }, { id: 'public', clip: null }, { id: 'stream', clip: null }, ...rows]);
 const sources = [{ src: 'public/video/q360.mp4', label: '360p' }, { src: 'public/video/q720.mp4', label: '720p' }];
+
+// A tall clip: full screen keeps a phone upright instead of turning it.
+function Portrait() {
+  const video = useVideo('portrait');
+  return (
+    <view className="gap-2">
+      <view className="items-center">
+        <video data-testid="video-portrait" player={video} src="public/video/portrait.mp4" muted loop aria-label="Portrait clip" className="w-36 rounded-xl" />
+      </view>
+      {/* Under the clip at full width: beside it the bar ran out of room for full screen. */}
+      <VideoControls player={video} data-testid="video-portrait-controls" />
+    </view>
+  );
+}
 
 function Hero({ actions }: { actions: View['actions'] }) {
   const hero = useVideo('hero');
@@ -124,6 +138,8 @@ export function render({ actions }: View) {
         renderItem={row =>
           row.id === 'hero' ? (
             <Hero actions={actions} />
+          ) : row.id === 'portrait' ? (
+            <Portrait />
           ) : row.id === 'quality' ? (
             <Quality actions={actions} />
           ) : row.id === 'public' ? (
