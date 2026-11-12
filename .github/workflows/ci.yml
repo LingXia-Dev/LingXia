@@ -928,6 +928,11 @@ jobs:
       - name: Test macOS activity viewer against WindowServer
         run: cargo run -p lingxia-device-io --features supervision --example pip_viewer
 
+      # The only other run of these tests is the advisory rust-test job. `hot-swap` is a
+      # superset: dev sessions ship it, and its tests rot when no gate builds them.
+      - name: Test lingxia-view (with hot-swap)
+        run: bash scripts/ci/cargo-test-required.sh -p lingxia-view --lib --features hot-swap
+
   runner:
     needs: changes
     if: ${{ needs.changes.outputs.runner == 'true' }}
